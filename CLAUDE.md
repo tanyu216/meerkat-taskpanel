@@ -23,9 +23,11 @@ served by `taskd`. Still planned: the **epic view** and **iteration management**
 roadmap lives in `README.md` / `README.zh-CN.md`.
 
 The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/install.md`).
-The host-external supervisor is a **skill of its own** (`skills/meerkat-loop/`), never
-installed for OpenClaw and **not** distributed through the marketplace: `install.sh
---target claude|codex|pi` is its only path, and it carries no version of its own.
+The board owns the workflow decisions (`issue reconcile --workflow`); the loop executes the
+resulting plan. The host-external supervisor is a **skill of its own**
+(`skills/meerkat-loop/`), never installed for OpenClaw and **not** distributed through the
+marketplace: `install.sh --target claude|codex|pi` is its only path, and it carries no
+version of its own.
 
 ## How to work here
 
@@ -159,7 +161,9 @@ the **hosted frontend root** is `web/dist`, the static build of `web/` that `tas
   and the loop's hand-written surface (`skills/meerkat-loop/`: `SKILL.md`, `references/`,
   `scripts/board-check.mjs`). The loop's `body/` + `templates/` are generated from
   `scripts/supervisor.mjs`, `scripts/loop/`, `scripts/wake-cwd.mjs`, `src/shared/` and
-  `scripts/install/templates/`. After any edit touching those inputs run
+  `scripts/install/templates/` (the workflow decisions live in
+  `src/core/domain/workflow.mjs` and are not in the body — the loop gets them from
+  `issue reconcile --workflow`). After any edit touching those inputs run
   `node scripts/sync-skills.mjs`; CI runs `--check` and fails on drift. There are **no committed
   copies of a skill** anywhere: `skills/` is the only `skills` tree in the repository, and
   `test/scaffold.test.mjs` asserts it.

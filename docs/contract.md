@@ -45,7 +45,7 @@ generator **reads** it rather than keeping a second copy — and the runtime
 publishes the same value:
 
 ```bash
-taskctl --version --json     # {"ok":true,"data":{"version":"1.0.0","schema_version":4}}
+taskctl --version --json     # {"ok":true,"data":{"version":"1.1.0","schema_version":4}}
 ```
 
 so a client can read the generation the provider actually speaks **at runtime**

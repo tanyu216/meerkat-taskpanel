@@ -20,7 +20,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
@@ -29,6 +29,11 @@ import { atLeastVersion, checkBoard, resolveBoardCommand } from "../../skills/me
 import { LOOP_BODY_ROOTS, LOOP_SKILL_NAME, LOOP_TEMPLATE_FILES, relativeImports, syncLoop } from "../../scripts/sync-loop.mjs";
 import { resolveSkillSource } from "../../scripts/sync-skills.mjs";
 import { readFrontmatterField } from "../../scripts/verify/lib/frontmatter.mjs";
+import {
+  ALLOWED_TRANSITIONS,
+  EPIC_ONLY_TRANSITIONS,
+} from "../../src/core/domain/status.mjs";
+import { STATUSES } from "../../src/core/domain/enums.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const LOOP_SKILL = resolveSkillSource(ROOT, LOOP_SKILL_NAME);
@@ -95,8 +100,7 @@ describe("loop skill: the generated payload", () => {
       "scripts/wake-cwd.mjs",
       "src/shared/scheduling.mjs",
       "src/shared/sla-patrol.mjs",
-      "src/shared/workflow.mjs",
-      "src/shared/constants.mjs",
+        "src/shared/constants.mjs",
       "src/shared/errors.mjs",
       "src/shared/redact.mjs",
       "src/shared/project-dir.mjs",
@@ -160,7 +164,7 @@ describe("loop skill: SKILL.md", () => {
 
   it("declares the board interface it requires", () => {
     assert.match(text, /task-interface v1/, "the required board interface generation must be stated");
-    assert.match(text, /board release >= 1\.0\.0/, "…and the release floor a machine can check");
+    assert.match(text, /board release >= 1\.1\.0/, "…and the release floor a machine can check");
     assert.ok(text.includes("scripts/board-check.mjs"), "the gate must be named at the point of declaration");
   });
 
@@ -209,7 +213,7 @@ describe("loop skill: the board gate", () => {
     assert.equal(tooOld.ok, false);
     assert.equal(tooOld.code, "BOARD_TOO_OLD");
     assert.match(tooOld.message, /0\.9\.0/);
-    assert.match(tooOld.message, /1\.0\.0/);
+    assert.match(tooOld.message, /1\.1\.0/);
   });
 
   it("does not count a prerelease as satisfying the floor", () => {
@@ -286,18 +290,19 @@ describe("loop skill: the board gate", () => {
 });
 
 describe("board skill: references resolve where the skill is installed", () => {
-  const files = [
-    "skills/meerkat-taskpanel/references/practice-guides.md",
-    "skills/meerkat-taskpanel/references/projects-json.md",
-    "skills/meerkat-taskpanel/references/scheduling-integration.md",
-  ];
+  const skillDir = join(ROOT, "skills/meerkat-taskpanel");
+  const references = readdirSync(join(skillDir, "references"))
+    .filter((name) => name.endsWith(".md"))
+    .map((name) => `references/${name}`);
+  const files = ["SKILL.md", ...references];
+  const read = (rel) => readFileSync(join(skillDir, rel), "utf8");
 
   it("has no link that climbs out of the skill into the repository root", () => {
     // `../../../docs/…` resolves in this checkout and dangles everywhere the skill is
     // actually installed — the plugin bundles carry `skills/<name>/` and nothing above it.
     // A distributed skill links out by absolute URL or not at all.
     for (const file of files) {
-      const text = readFileSync(join(ROOT, file), "utf8");
+      const text = read(file);
       const climbing = [...text.matchAll(/\]\((\.\.\/[^)]*)\)/g)]
         .map((match) => match[1])
         .filter((target) => target.startsWith("../.."));
@@ -305,10 +310,93 @@ describe("board skill: references resolve where the skill is installed", () => {
     }
   });
 
+  it("has a real target for every relative link", () => {
+    for (const file of files) {
+      const text = read(file);
+      const targets = [...text.matchAll(/\]\(([^)]+)\)/g)]
+        .map((match) => match[1])
+        .filter((target) => !/^(https?:|mailto:|#)/.test(target))
+        .map((target) => target.split("#")[0])
+        .filter((target) => target !== "");
+      for (const target of targets) {
+        assert.ok(
+          existsSync(join(dirname(join(skillDir, file)), target)),
+          `${file}: ${target} does not resolve`,
+        );
+      }
+    }
+  });
+
   it("points the loop ownership it describes at the loop skill", () => {
-    const text = readFileSync(join(ROOT, files[0]), "utf8");
+    const text = read("references/practice-guides.md");
     assert.match(text, /meerkat-loop/);
     assert.equal(text.includes("scripts/supervisor.mjs]("), false, "no relative link to the executor");
+  });
+});
+
+describe("board skill: the status whitelist matches the domain", () => {
+  const files = ["SKILL.md", "references/status-lifecycle.md"];
+
+  function block(text, file) {
+    const begin = text.indexOf("<!-- status-whitelist:begin -->");
+    const end = text.indexOf("<!-- status-whitelist:end -->");
+    assert.ok(begin >= 0 && end > begin, `${file}: missing status-whitelist markers`);
+    return text.slice(begin, end);
+  }
+
+  function parse(raw, file) {
+    const table = {};
+    const epic = [];
+    for (const line of raw.split("\n")) {
+      if (!line.includes("→")) continue;
+      const arrow = line.indexOf("→");
+      const from = line
+        .slice(0, arrow)
+        .replace(/`/g, "")
+        .trim()
+        .split(/\s+/)[0];
+      let right = line.slice(arrow + 1);
+      const epicMatch = right.match(/\(an epic also →\s*([^)]+)\)/);
+      if (epicMatch !== null) {
+        epic.push([from, epicMatch[1].replace(/`/g, "").trim()]);
+        right = right.replace(epicMatch[0], "");
+      }
+      if (/\(terminal\)/.test(right)) {
+        table[from] = [];
+        continue;
+      }
+      table[from] = right
+        .split(",")
+        .map((target) => target.replace(/`/g, "").trim())
+        .filter((target) => target !== "");
+    }
+    assert.ok(Object.keys(table).length > 0, `${file}: no rows parsed`);
+    return { table, epic };
+  }
+
+  it("re-encodes ALLOWED_TRANSITIONS and the epic overlay", () => {
+    const blocks = files.map((file) =>
+      block(readFileSync(join(ROOT, "skills/meerkat-taskpanel", file), "utf8"), file),
+    );
+    assert.equal(
+      blocks[0].replace(/\s+/g, " ").trim(),
+      blocks[1].replace(/\s+/g, " ").trim(),
+      "the SKILL.md and reference copies must agree",
+    );
+
+    const { table, epic } = parse(blocks[1], files[1]);
+    for (const status of STATUSES) {
+      assert.deepEqual(
+        [...table[status]].sort(),
+        [...ALLOWED_TRANSITIONS[status]].sort(),
+        `${status} row`,
+      );
+    }
+    assert.deepEqual(table.done, []);
+    assert.deepEqual(table.canceled, []);
+    assert.equal(epic.length, 1, "exactly one epic-only overlay");
+    const [from, to] = epic[0];
+    assert.ok(EPIC_ONLY_TRANSITIONS[from]?.includes(to), `epic overlay ${from} → ${to}`);
   });
 });
 

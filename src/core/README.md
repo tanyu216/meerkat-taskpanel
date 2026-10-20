@@ -26,6 +26,10 @@ Rules that are enforced, not just documented:
   one;
 * the delivery gate is a database trigger *and* a domain check, and the two are
   tested against each other (`test/contract/`);
+* the **workflow decisions** are the board's: `domain/workflow.mjs` is pure (reconcile
+  classification, review outcomes, review dispatch), and `commands/workflow.mjs` assembles
+  a bounded board snapshot for it. `issue reconcile --workflow` exposes the plan; the loop
+  executes its review actions. The board itself writes no review action;
 * an `epic` is never claimable, **in every status**. Its container auto-start
   (`commands/rollup.mjs#startContainer`) enters `in_progress` with
   `claimed_by = NULL` by design, so the I2 `EXECUTION_STATE_CORRUPT` report is

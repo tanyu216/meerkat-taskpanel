@@ -43,8 +43,8 @@ export function readBoard(opts, log) {
   // A board read that came back exactly at the cap may have been cut off, and
   // one row's open predicate ("no fix card exists") is a *negative* over the
   // whole board — so the truncation has to travel with the data rather than be
-  // rediscovered. The decision half then reports the affected row as open but
-  // undecidable instead of quietly calling it decided (§6.3-B).
+  // rediscovered. The board's workflow planner then reports the affected row as
+  // open but undecidable instead of quietly calling it decided (§6.3-B).
   const tasks = Array.isArray(read.data?.tasks) ? read.data.tasks : [];
   return { ...read, truncated: tasks.length >= opts.boardLimit };
 }
@@ -143,53 +143,52 @@ export async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncat
 }
 
 /**
- * The review cards currently waiting for acceptance.
- *
- * A targeted read rather than a filter over the large board read: a workflow
- * pass must not miss a review card because the unfiltered snapshot was capped,
- * and "which cards still owe a verdict" is exactly a status query.
- */
-export function readReviewCards(opts, log) {
-  const read = runCli(opts, opts.agents[0], [
-    "issue", "list", "--status", "in_review", "--limit", String(opts.boardLimit),
-  ]);
-  if (!read.ok) {
-    log(`workflow: review-card read failed: ${read.error}`);
-    return [];
-  }
-  return Array.isArray(read.data?.tasks) ? read.data.tasks : [];
-}
-
-/**
  * The real-I/O half of the workflow pass. Every write goes through `taskctl`
  * with `--actor-kind taskd`: an automated acceptance must be attributable as
  * the board's act, not a human's (the board's default actor kind is `human`),
  * and `taskd` names the concrete platform rather than a vague role word.
  */
-export async function runWorkflowPass(opts, config, log, { tasks = [], boardTruncated = false } = {}) {
+export async function runWorkflowPass(opts, config, log) {
   if (config.workflow !== true) return null;
   const agent = opts.agents[0];
   const automation = { actorKind: TASKD_KIND };
   const invoke = (args) => runCli(opts, agent, args, automation);
 
+  // The board decides; the loop executes. One call performs the board's own
+  // container reconcile and returns the plan the loop applies below.
+  const args = ["issue", "reconcile", "--workflow"];
+  if (opts.dryRun) args.push("--dry-run");
+  if (config.reviewer !== null) args.push("--reviewer", config.reviewer);
+  args.push("--auto-accept-reviews", config.autoAcceptReviews === false ? "no" : "yes");
+  args.push("--review-aging-ms", String(config.reviewAgingMs));
+  args.push("--max-actions", String(config.maxActions));
+
+  const planRead = invoke(args);
+  const planData = planRead.ok ? planRead.data ?? {} : null;
+  if (planData === null || planData.workflow === undefined || planData.workflow === null) {
+    log(
+      `workflow: issue reconcile --workflow returned no plan ` +
+        `(${planRead.ok ? "the board may be older than 1.1.0" : planRead.error ?? "unknown"})`,
+    );
+    return {
+      dryRun: opts.dryRun,
+      actions: [],
+      alerts: [],
+      changes: [],
+      executed: 0,
+      failed: 1,
+      summary: { actions: 0, alerts: 0 },
+    };
+  }
+  log(
+    `workflow: reconcile${opts.dryRun ? " (dry-run)" : ""} ${planData.scanned ?? 0} container(s), ` +
+      `${Array.isArray(planData.actions) ? planData.actions.length : 0} action(s)`,
+  );
+
   const result = await runWorkflowTick({
-    tasks,
-    reviewCards: readReviewCards(opts, log),
+    plan: planData.workflow,
     config,
-    boardTruncated,
     dryRun: opts.dryRun,
-    reconcile: () => {
-      const read = invoke(["issue", "reconcile", ...(opts.dryRun ? ["--dry-run"] : [])]);
-      return read.ok ? { ok: true, actions: read.data.actions ?? [] } : { ok: false, error: read.error };
-    },
-    readCard: (ref) => {
-      const read = runCli(opts, agent, ["issue", "get", ref]);
-      return read.ok ? { ok: true, card: read.data.task ?? null } : { ok: false, error: read.error };
-    },
-    readReports: (ref) => {
-      const read = runCli(opts, agent, ["report", "list", ref]);
-      return read.ok ? { ok: true, reports: read.data.reports ?? [] } : { ok: false, error: read.error };
-    },
     createReview: (action) => {
       const read = invoke([
         "issue", "create",
@@ -253,7 +252,6 @@ export async function runWorkflowPass(opts, config, log, { tasks = [], boardTrun
       return read.ok ? { ok: true } : { ok: false, error: read.error };
     },
     notify: opts.dryRun ? () => {} : notifyReal(opts, log),
-    now: () => new Date().toISOString(),
     log,
   });
 

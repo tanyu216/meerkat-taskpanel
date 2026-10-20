@@ -49,7 +49,7 @@ The deterministic entries are **not scheduled individually**:
 |---|---|---|
 | `scripts/loop/poll.mjs` | scan → atomic claim → wake a worker | claims and wakes |
 | `scripts/loop/patrol.mjs` | heartbeat alerts + SLA rows | nothing (notify only) |
-| `scripts/loop/workflow.mjs` | reconcile → review outcomes → dispatch | cards, as `system` |
+| `scripts/loop/workflow.mjs` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `taskd` |
 
 The continue prompt runs them in the order **patrol → workflow → poll**: the
 workflow pass dispatches a review card, and the poll that follows in the same
@@ -225,20 +225,23 @@ What that means concretely:
 
 The SLA half notifies. Everything after that — accepting a delivery, rejecting it and
 opening a rework, rolling a container up, splitting a card into one — used to wait for a
-human. The **workflow entry** (`scripts/loop/workflow.mjs`) is the loop's channel for it.
-It is a pass of its own, run by the continue turn after patrol, and it is the only path
-that moves a card.
+human. The **board** now owns those decisions; the loop's **workflow entry**
+(`scripts/loop/workflow.mjs`) executes them. It is a pass of its own, run by the continue
+turn after patrol.
 
-It does three things, in this order:
+The board computes one plan through `issue reconcile --workflow` (see
+[`status-lifecycle.md`](../skills/meerkat-taskpanel/references/status-lifecycle.md#11-the-boards-workflow-decisions) —
+provenance: `src/core/domain/workflow.mjs`). The loop never re-derives a decision. The
+plan has three parts, in this order:
 
-1. **reconcile.** `issue reconcile` replays the container rules
-   (`src/core/commands/rollup.mjs`); the loop only *classifies* what it reports. Normal
-   in-flight verdicts (`children_unfinished`, `no_child_started`, `awaiting_acceptance`)
-   are silent — the SLA pass already watches stuck children. `empty_epic` waits out a
-   30-minute grace period; `no_delivery_evidence`, `no_child_done` and
-   `dangling_child_edge` are notified, naming the blocking children.
-2. **outcomes.** For every review card whose verdict report is readable, apply it to the
-   card it audits (below).
+1. **reconcile.** The board replays the container rules
+   (`src/core/commands/rollup.mjs`) and returns the classified changes and notices.
+   Normal in-flight verdicts (`children_unfinished`, `no_child_started`,
+   `awaiting_acceptance`) are silent — the SLA pass already watches stuck children.
+   `empty_epic` waits out a 30-minute grace period; `no_delivery_evidence`,
+   `no_child_done` and `dangling_child_edge` are notified, naming the blocking children.
+2. **outcomes.** The plan says what each readable verdict means for the card it audits
+   (below); the loop applies it.
 3. **dispatch.** For every flow-A card still in `in_review`, create a review card for the
    configured reviewer — one per `(original, delivery round)`, with the deterministic
    idempotency key `loop-review|<ref>|r<round>`.
@@ -290,12 +293,14 @@ leader accepts); the loop is just the leader's automated stand-in.
 
 ### Acceptance authority is enforced by the board
 
-The separation is not only a prompt rule. `in_review → done` now has a **board-level
-acceptance authority**: only a `human` or the board itself (`system` — the loop's workflow
-pass) may perform it. A worker agent cannot close its own card, and cannot close somebody
-else's either; the refusal is `ACCEPTANCE_FORBIDDEN` (409) and it changes nothing. This is
+The separation is not only a prompt rule. `in_review → done` has a **board-level
+acceptance authority**: the board's policy and the card's scope decide who may perform it.
+Under the default `both`, a `human` or the board (`taskd` — the loop's workflow pass) may
+close a top-level card; a worker agent cannot close its own top-level card, and cannot
+close somebody else's either. A **child** card is the opposite: only a non-human writer
+closes it. The refusal is `ACCEPTANCE_FORBIDDEN` (409) and it changes nothing. This is
 what makes "a worker stops at `in_review`" a machine rule rather than a habit, and it is
-why the loop's automated acceptance is attributable as `system`.
+why the loop's automated acceptance is attributable as `taskd`.
 
 Two honest limits. First, the check reads the actor's **declared** kind: a loopback caller
 is trusted and `--actor-kind human` is refused, but the board has no cryptographic identity
@@ -1428,7 +1433,7 @@ launchd / systemd / cron  ──ping 60s──▶  supervisor --ping-only --once
 launchd / systemd / cron  ──continue 600s──▶  supervisor --continue-only --once
                                             claude -p "继续 …"   ← the judgment turn (no card, no project)
                                                 ├─ loop/patrol.mjs    notify-only SLA
-                                                ├─ loop/workflow.mjs  reconcile / review / verdicts (system)
+                                                ├─ loop/workflow.mjs  apply board workflow plan (taskd)
                                                 └─ loop/poll.mjs
                                                       issue candidates --assignee alice --include-unassigned
                                                           (empty → stop; 0 workers)

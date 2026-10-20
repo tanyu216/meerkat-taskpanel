@@ -1241,7 +1241,22 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "auto_accept_reviews": {
+              "type": "boolean"
+            },
             "dry_run": {
+              "type": "boolean"
+            },
+            "max_actions": {
+              "type": "integer"
+            },
+            "review_aging_ms": {
+              "type": "integer"
+            },
+            "reviewer": {
+              "type": "string"
+            },
+            "workflow": {
               "type": "boolean"
             }
           },

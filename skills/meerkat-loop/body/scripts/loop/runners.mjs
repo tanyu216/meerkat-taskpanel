@@ -29,15 +29,6 @@ import {
   recordSlaAlerts,
   stillQualifies,
 } from "../../src/shared/sla-patrol.mjs";
-import {
-  LOOP_ACCEPTOR,
-  isReviewCard,
-  parseReviewVerdict,
-  planWorkflowTick,
-  reviewOf,
-  reviewRoundOf,
-} from "../../src/shared/workflow.mjs";
-
 import { openAppendFd } from "./runtime.mjs";
 
 /**
@@ -259,32 +250,23 @@ export async function runSlaPatrolTick(deps) {
  * One workflow pass — the loop's *write* channel, beside the notify-only SLA
  * pass.
  *
- * This is the one place in the supervisor that moves cards, and the order is
- * the recovery protocol:
+ * The board decides; this function executes. `deps.plan` is the `workflow`
+ * object returned by `issue reconcile --workflow` (`commands/workflow.mjs`):
+ * reconcile notices, review outcomes and review-dispatch decisions. No write
+ * happens before it arrives.
  *
- *   1. **reconcile** — `issue reconcile` decides container start/close; the
- *      pass only classifies what it reported. A failed reconcile is logged and
- *      the pass continues: outcomes do not depend on it.
- *   2. **read** — the originals a review card names but the snapshot lacks, and
- *      the reports of every `in_review` review card. Both are bounded.
- *   3. **plan** — `planWorkflowTick`; no write happens before it returns.
- *   4. **execute** — each action independently; one failure never stops the
- *      rest. A review card is closed *last*, so a crash between the original's
- *      move and the card's close is recovered on the next pass, never lost.
+ * Execution order is the recovery protocol: each action independently; one
+ * failure never stops the rest; a review card is closed *last*, so a crash
+ * between the original's move and the card's close is recovered on the next
+ * pass, never lost.
  *
- * `autoAcceptReviews = false` removes only step 4's review-card close: the
- * verdict on the original is still applied, and the card stays in `in_review`
- * for a human.
+ * `autoAcceptReviews = false` is already reflected in each action's
+ * `closeReview`; the executor honours it without re-deciding.
  *
  * @param {{
- *   tasks?: object[],
- *   reviewCards?: object[],
+ *   plan?: {alerts?: object[], actions?: object[], changes?: object[], summary?: object},
  *   config?: object,
- *   boardTruncated?: boolean,
  *   dryRun?: boolean,
- *   reconcile?: () => Promise<{ok: boolean, actions?: object[], error?: string}>,
- *   readCard?: (ref: string) => Promise<{ok: boolean, card?: object, error?: string}>,
- *   readReports?: (ref: string) => Promise<{ok: boolean, reports?: object[], error?: string}>,
  *   createReview?: (action: object) => Promise<{ok: boolean, ref?: string, error?: string}>,
  *   createFixChild?: (action: object) => Promise<{ok: boolean, ref?: string, error?: string}>,
  *   linkFixChild?: (epicRef: string, childRef: string) => Promise<{ok: boolean, error?: string}>,
@@ -292,20 +274,14 @@ export async function runSlaPatrolTick(deps) {
  *   comment?: (ref: string, input: {kind: string, body: string}) => Promise<{ok: boolean, error?: string}>,
  *   setMeta?: (ref: string, meta: Record<string, string>) => Promise<{ok: boolean, error?: string}>,
  *   notify?: (alert: object) => void,
- *   now: () => string,
  *   log: (line: string) => void,
  * }} deps
  */
 export async function runWorkflowTick(deps) {
   const {
-    tasks = [],
-    reviewCards = [],
+    plan = { alerts: [], actions: [], changes: [], summary: {} },
     config = {},
-    boardTruncated = false,
     dryRun = false,
-    reconcile = null,
-    readCard = null,
-    readReports = null,
     createReview = null,
     createFixChild = null,
     linkFixChild = null,
@@ -313,96 +289,33 @@ export async function runWorkflowTick(deps) {
     comment = null,
     setMeta = null,
     notify = () => {},
-    now,
     log,
   } = deps;
 
-  const stamp = now();
-  const disabled = { dryRun, actions: [], alerts: [], changes: [], executed: 0, failed: 0, summary: { actions: 0, alerts: 0 } };
+  const disabled = {
+    dryRun,
+    actions: [],
+    alerts: [],
+    changes: [],
+    executed: 0,
+    failed: 0,
+    summary: { actions: 0, alerts: 0 },
+  };
   if (config.workflow !== true) return disabled;
 
-  let reconcileActions = [];
-  if (typeof reconcile === "function") {
-    const result = await reconcile();
-    if (result?.ok === false) {
-      log(`workflow: reconcile failed (${result.error ?? "unknown"}) — continuing with outcomes`);
-    } else {
-      reconcileActions = Array.isArray(result?.actions) ? result.actions : [];
-    }
-  }
+  const alerts = Array.isArray(plan.alerts) ? plan.alerts : [];
+  const changes = Array.isArray(plan.changes) ? plan.changes : [];
+  const actions = Array.isArray(plan.actions) ? plan.actions : [];
 
-  // One snapshot, keyed by both identifier and id: `meta.review_of` may name
-  // either, and the caller should never have to know which.
-  const all = [];
-  const byRef = new Map();
-  const add = (task) => {
-    const key = String(task?.identifier ?? "");
-    if (key === "" || byRef.has(key)) return;
-    all.push(task);
-    byRef.set(key, task);
-    if (typeof task.id === "string" && task.id !== "") byRef.set(task.id, task);
-  };
-  for (const task of tasks) add(task);
-  for (const card of reviewCards) add(card);
-
-  const budget = Number.isFinite(config.maxActions) && config.maxActions >= 0 ? config.maxActions : 20;
-
-  // An original the board read did not include is read on demand — a review
-  // card only names a string, and "unseen" must mean unread, not merely paged out.
-  let cardReads = 0;
-  for (const review of [...all]) {
-    if (!isReviewCard(review) || review.status === "done" || review.status === "canceled") continue;
-    const ref = reviewOf(review);
-    if (byRef.has(ref)) continue;
-    if (cardReads >= budget) {
-      log(`workflow: original reads capped at ${budget} — ${ref} not read this pass`);
-      break;
-    }
-    cardReads += 1;
-    const read = typeof readCard === "function" ? await readCard(ref) : { ok: false, error: "readCard unavailable" };
-    if (read?.ok === true && read.card) add(read.card);
-    else log(`workflow: could not read original ${ref} (${read?.error ?? "not found"})`);
-  }
-
-  const verdicts = {};
-  let reportReads = 0;
-  for (const review of all) {
-    if (!isReviewCard(review) || review.status !== "in_review") continue;
-    const ref = String(review.identifier ?? "");
-    if (ref === "") continue;
-    if (reportReads >= budget) {
-      verdicts[ref] = { ok: false, reason: "read_capped" };
-      continue;
-    }
-    reportReads += 1;
-    const read = typeof readReports === "function"
-      ? await readReports(ref)
-      : { ok: false, error: "readReports unavailable" };
-    if (read?.ok !== true) {
-      log(`workflow: report read failed for ${ref} (${read?.error ?? "unknown"})`);
-      continue;
-    }
-    verdicts[ref] = parseReviewVerdict(read.reports ?? [], reviewRoundOf(review));
-  }
-
-  const plan = planWorkflowTick({
-    tasks: all,
-    verdicts,
-    reconcileActions,
-    config,
-    boardTruncated,
-    now: stamp,
-  });
-
-  for (const alert of plan.alerts) {
+  for (const alert of alerts) {
     log(`workflow: ${describeWorkflowAlert(alert)}`);
     // Standing-state notices (no reviewer configured, a capped pass, a review
-    // waiting for a human by the operator's own `--auto-accept-reviews=no`)
-    // would otherwise re-notify on every pass forever. They are logged;
-    // only findings an operator can act on are notified.
+    // waiting for a human by the operator's own --auto-accept-reviews=no)
+    // would otherwise re-notify on every pass forever. They are logged; only
+    // findings an operator can act on are notified.
     if (WORKFLOW_NOTIFY_TYPES.has(alert.type)) notify(alert);
   }
-  for (const change of plan.changes) {
+  for (const change of changes) {
     log(`workflow: reconcile ${change.action} ${change.epic} (${change.reason})`);
   }
 
@@ -425,7 +338,11 @@ export async function runWorkflowTick(deps) {
       log(`workflow: review ${action.reviewRef} left in_review for human acceptance`);
       return;
     }
-    const status = byRef.get(action.reviewRef)?.status;
+    // The board carries the review card's status in the action; the loop no
+    // longer keeps a task snapshot. The fallback keeps an older plan safe:
+    // outcome actions are generated for an in_review card, cleanup is not.
+    const status =
+      action.reviewStatus ?? (action.type === "cancel_review" ? "canceled" : "in_review");
     if (status === "done" || status === "canceled") return;
     if (status === "in_review") {
       if (note !== null) await step(comment, "comment", action.reviewRef, { kind: "note", body: note });
@@ -435,7 +352,7 @@ export async function runWorkflowTick(deps) {
     await step(move, "move", action.reviewRef, "canceled");
   };
 
-  for (const action of plan.actions) {
+  for (const action of actions) {
     if (dryRun) {
       log(`workflow: would ${describeWorkflowAction(action)}`);
       continue;
@@ -447,12 +364,15 @@ export async function runWorkflowTick(deps) {
           break;
 
         case "approve":
+          if (typeof action.acceptedBy !== "string" || action.acceptedBy === "") {
+            throw new Error("approve action is missing acceptedBy");
+          }
           await step(comment, "comment", action.originalRef, {
             kind: "note",
             body: `Loop acceptance after review ${action.reviewRef} (round ${action.round}): VERDICT: APPROVE.`,
           });
           await step(setMeta, "setMeta", action.originalRef, {
-            accepted_by: LOOP_ACCEPTOR,
+            accepted_by: action.acceptedBy,
             accepted_round: String(action.round),
           });
           await step(move, "move", action.originalRef, "done");
@@ -468,11 +388,9 @@ export async function runWorkflowTick(deps) {
         // pass before the human acts, rewrites neither. The close is still the
         // last write, so a failure there is retried without repeating the rest.
         case "approve_hold": {
-          const original = byRef.get(action.originalRef);
-          const held =
-            String(original?.meta?.review_verdict ?? "") === "approve" &&
-            String(original?.meta?.review_verdict_round ?? "") === String(action.round);
-          if (!held) {
+          // The board already compared the marker with the original's current
+          // round; `held` says whether the comment/meta writes can be skipped.
+          if (action.held !== true) {
             await step(comment, "comment", action.originalRef, {
               kind: "note",
               body:
@@ -558,12 +476,12 @@ export async function runWorkflowTick(deps) {
 
   return {
     dryRun,
-    actions: plan.actions,
-    alerts: plan.alerts,
-    changes: plan.changes,
+    actions,
+    alerts,
+    changes,
     executed,
     failed,
-    summary: { ...plan.summary, executed, failed },
+    summary: { ...(plan.summary ?? {}), executed, failed },
   };
 }
 

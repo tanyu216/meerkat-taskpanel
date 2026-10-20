@@ -7,7 +7,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-20
+
 ### Added
+
+- **The board owns the workflow decisions; the loop executes them.**
+  `src/shared/workflow.mjs` moved to `src/core/domain/workflow.mjs`, and a new
+  `src/core/commands/workflow.mjs` assembles a bounded board snapshot for it.
+  `taskctl issue reconcile --workflow` (and the same route,
+  `POST /api/v1/tasks/reconcile`) now performs the board's container reconcile and returns
+  the review outcomes/dispatch plan; the loop applies the plan's review actions and no
+  longer carries the decision module. The loop requires board **1.1.0**. The board skill's
+  new `references/status-lifecycle.md` consolidates every status, transition, guard,
+  delivery-round rule, claim/heartbeat window, acceptance policy × scope matrix, creation
+  gate and refusal code, and is pinned to the domain table by a drift test.
 
 - **Acceptance is a board policy: `human-only` | `both` | `agent-only`.** `in_review →
   done` is no longer a fixed "human or taskd" rule. `both` (the default) keeps the
@@ -1244,5 +1257,6 @@ markdown migrator, and the full board HTTP API + SSE backend with the `web/` fro
   and release tree, runs `npm pack`, verifies the tarball's contents, and opens a **draft**
   GitHub Release. It previously did a packaging dry run only.
 
-[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/tanyu216/meerkat-taskpanel/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v1.0.0

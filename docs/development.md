@@ -338,9 +338,11 @@ transitive import closure of `scripts/supervisor.mjs`, `scripts/loop/*.mjs` and
 and `templates/` mirrors the
 loop-side files under `scripts/install/templates/`. That direction matters — the shared
 modules in `src/shared/` are **not** moved into the skill; they stay where the CLI imports
-them, and the skill's copy is generated and guarded. OpenClaw never receives the loop at all,
-by ruling: its framework already ships an equivalent supervisor, and `install.sh --target
-openclaw` copies the board skill only.
+them, and the skill's copy is generated and guarded. The **workflow decisions** are not in
+the loop body at all: they live in `src/core/domain/workflow.mjs`, and the loop gets them
+from the board through `issue reconcile --workflow`. OpenClaw never receives the loop at
+all, by ruling: its framework already ships an equivalent supervisor, and `install.sh
+--target openclaw` copies the board skill only.
 
 **After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/loop/`,
 `scripts/wake-cwd.mjs`, `src/shared/`, or `scripts/install/templates/`, run:**

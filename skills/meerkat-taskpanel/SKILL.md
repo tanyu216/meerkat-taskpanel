@@ -64,6 +64,62 @@ taskctl --help
 > to *run* goes through `taskctl`; where a reference documents a command that genuinely
 > needs the checkout, it says so.
 
+## The status workflow
+
+A card has **eight stored status words**, but only **seven are stages** (the board's
+columns): `backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`.
+`awaiting` is an **attention overlay** — a card parked on a human question, shown under
+`in_progress`. `done` and `canceled` are terminal; there is no reopen, and a finished card
+that needs more work is a new card.
+
+Only these moves exist; every other pair is refused (`INVALID_TRANSITION`, or
+`TERMINAL_STATE` out of a terminal card):
+
+<!-- status-whitelist:begin -->
+```text
+backlog     → todo, canceled
+todo        → backlog, in_progress, blocked, canceled        (an epic also → in_review)
+in_progress → in_review, blocked, todo, canceled, awaiting
+awaiting    → in_progress, canceled
+in_review   → done, in_progress, blocked
+blocked     → todo, in_progress, in_review, canceled
+done        → (terminal)
+canceled    → (terminal)
+```
+<!-- status-whitelist:end -->
+
+A legal edge can still be refused. Six rules decide it:
+
+1. **`in_review` needs evidence for the current round.** A `delivery` report, or the
+   audited `--no-report --reason` (≥ 8 characters), for the card's current
+   `delivery_round`; imported reports do not count. Leaving `in_review` for
+   `in_progress` or `blocked` starts a new round and voids the old report. Use
+   `issue deliver` — it writes the report and moves in one transaction.
+2. **`done` is acceptance, and only from `in_review`.** For a top-level card under the
+   default policy, an agent is refused with `ACCEPTANCE_FORBIDDEN`; a **child** card is
+   the opposite — only a non-human writer may close it. A human closing a top-level card
+   needs the current round's review cards resolved (`REVIEW_PENDING`).
+3. **`awaiting` has one entrance and two exits.** Only `in_progress → awaiting`, and it
+   must name `E1`–`E5`; only `awaiting → in_progress` (a human replied) or
+   `awaiting → canceled`. It cannot reach `in_review` or `done` — that would bypass the
+   gate.
+4. **`blocked` is not `awaiting`.** `--blocked-reason` is optional; leaving `blocked`
+   clears it. `in_review → blocked` is a rework and starts a new delivery round;
+   `blocked → in_review` is a legal delivery edge.
+5. **A container never reaches `done` by itself.** An epic cannot be claimed; the board
+   starts it and closes it to `in_review` with a rollup report. A parent cannot enter
+   `in_review` or `done` while any child is non-terminal (`CHILDREN_OPEN`).
+6. **The claim follows the status.** It is held in `in_progress`, `awaiting`, `in_review`
+   and `blocked`, and released on `todo`/`backlog`/`done`/`canceled`. `todo →
+   in_progress` is a claim; a rework keeps the existing executor. `issue claim` accepts
+   only `todo`/`in_progress`, and `issue heartbeat` only works in `in_progress`.
+
+The full model — every guard in evaluation order, the delivery-round table, the
+claim/heartbeat windows, the acceptance policy × scope matrix, the creation gate, the
+refusal codes, and the board's workflow decisions — is in
+[`references/status-lifecycle.md`](references/status-lifecycle.md). Command detail stays
+in [`references/cli.md`](references/cli.md).
+
 ## Claiming work (claim-first)
 
 **Claim first, and only claim what is yours to claim.** Before touching a card,
@@ -83,14 +139,16 @@ Do **not** claim a card that any of these is true of — it is not yours:
 - it is an **`epic`** — a container, not a unit of work; claim its leaf children;
 - it is a **deployment card** (`kind: deploy`) — deployment work runs against a
   live instance and is dispatched explicitly, so it is never auto-claimed;
-- a **`depends_on` blocker is not `done`**.
+- a **`depends_on` blocker is not `done`** — the candidates read treats a `canceled`
+  predecessor as unfinished too; the claim verb does not re-check blockers.
 
 `issue candidates --assignee <me>` already withholds the last three; use
 `taskctl relation list <ref>` when a card you expected is missing. Hold **one
 card at a time**, keep its claim fresh, deliver with a report, and stop at
 `in_review` — acceptance is somebody else's act: the loop (applying its independent
-reviewer's verdict) when one is configured, otherwise a human. Never move your own
-delivery to `done`: the board refuses an agent with `ACCEPTANCE_FORBIDDEN`.
+reviewer's verdict) when one is configured, otherwise a human. Never move a **top-level**
+delivery to `done`: the board refuses an agent with `ACCEPTANCE_FORBIDDEN`. A **child**
+card is the opposite — only a non-human writer closes it, and a human does not.
 
 Keeping that claim fresh is a **command you run**, not a hope — the board sends
 no pulse of its own, because nothing but you knows the work is still going:
@@ -166,8 +224,8 @@ Four board facts decide that order:
   and `issue candidates` never offers one — so a card that should end up `in_progress` must be
   claimed **while it is still a `task`**, and promoted after.
 - **The board starts the epic for you.** The first child to enter `in_progress` moves the
-  container `todo → in_progress` — a **system** move (no `claimed_by`, a `epic_auto_start`
-  activity, and a `kind=note` comment saying which child started it). An epic that is already
+  container `todo → in_progress` — a **board move** (actor kind `taskd`; no `claimed_by`, an
+  `epic_auto_start` activity, and a `kind=note` comment saying which child started it). An epic that is already
   `in_progress` is left alone, so the transition happens once however many children are claimed.
 - **An epic's route into review is its own.** `todo → in_review` is legal **for an `epic` only**
   — a container never enters the work cycle, so its `todo` row carries the delivery edge a task's
@@ -262,7 +320,8 @@ external.
   The templates, the counting rules and how to define your own metrics live in
   [`references/reports.md`](references/reports.md).
 - **Owning the clock** — the board has no timer. On a host where the loop is installed,
-  the `meerkat-loop` skill owns the scheduler; do not add a second one. On a host or
+  the `meerkat-loop` skill owns the scheduler; do not add a second one. The board computes
+  the workflow decisions (`issue reconcile --workflow`); the loop only applies the plan. On a host or
   service that owns its own timer, the board-side tick recipe (candidates → atomic claim →
   heartbeat → patrol read), the `--json` contract and the cron environment are in
   [`references/scheduling-integration.md`](references/scheduling-integration.md).
@@ -340,7 +399,10 @@ read from the file, never prescribed here.
 
 ## Reference
 
-See [`references/card-schema.md`](references/card-schema.md) for the **card format** — every
+See [`references/status-lifecycle.md`](references/status-lifecycle.md) for the **status
+model** — every transition, the guard on each edge, the delivery-round and claim rules, the
+acceptance matrix, the refusal codes, and the board's workflow decisions,
+[`references/card-schema.md`](references/card-schema.md) for the **card format** — every
 frontmatter key and every body section, i.e. what `taskctl export` writes and the md migrator
 reads back (the known keys, what an empty value means, and how a card round-trips),
 [`references/cli.md`](references/cli.md) for the command surface, the delivery gate,

@@ -24,7 +24,7 @@ Global form, and the two flags that always work (they never contact a board):
 ```bash
 taskctl --help
 taskctl --version
-taskctl --version --json   # {"ok":true,"data":{"version":"1.0.0","schema_version":4}}
+taskctl --version --json   # {"ok":true,"data":{"version":"1.1.0","schema_version":4}}
 ```
 
 `--version --json` is the **version leg**: it publishes the provider's contract
@@ -54,7 +54,7 @@ never the token itself) so any shell in any directory finds the same board.
 | `--url <url>` | Board to talk to. Wins over the runtime pointer, and never triggers autostart. |
 | `--token <token>` | Access token. Priority: `--token` > `$TASKD_TOKEN` > the pointer's token file > none (loopback needs no token). |
 | `--if-version <n>` | Optimistic concurrency: the write is refused with `VERSION_CONFLICT` if the task moved on. |
-| `--actor-kind <name>` | Who or what is writing: `human`, or the platform (`claude`, `codex`, …). This **is** the identity — there is no separate platform flag. Absent ⇒ `human`. |
+| `--actor-kind <name>` | The platform (`claude`, `codex`, …). This **is** the identity — there is no separate platform flag. `human` is **reserved and refused**; absent ⇒ `human`. |
 | `--as-human` | Write as the configured human (`$TASKCTL_HUMAN`). The one write that is not the agent's own. |
 | `--session-id <id>` | Agent session identifier. Requires `--actor-kind` — a session with no kind has nothing to attribute it to. |
 | `--agent <name>` | Name the actor. |
@@ -92,20 +92,23 @@ the map names.
 
 ### `issue`
 
+> The **status model** — every status, every legal transition and the guard on each edge —
+> is in [`status-lifecycle.md`](status-lifecycle.md). This section is the command surface.
+
 | Command | Purpose |
 |---|---|
 | `issue create --project <id> --title <t> [--acceptance <text>]… [--assignee <text>] [--reporter <text>] …` | Create a task. |
 | `issue list [--project] [--status <s>]… [--assignee-id] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List tasks. `--order weight` is the **assignee weight order** (below); the default is the board's own deterministic order, so nothing changes unless you ask. |
-| `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The poll's read: claimable cards for an assignee (`todo`, **auto-claimable** — not an `epic`, not a `deploy` —, every `depends_on` done; `--stale` adds the **recovery pool** — `in_progress` cards whose heartbeat is past the 30-minute holder window (`stale_same`) or past the six-hour takeover window for anyone (`stale_any`); `--include-unassigned` adds the **public pool** — unassigned claimable cards — for a supervisor whose policy allows them). Read-only — claiming still goes through `issue claim` (or `issue move … in_progress` for a `todo` card). `--order weight` refines the order *within* each claimability bucket, which stays the first key. |
+| `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The poll's read: claimable cards for an assignee (`todo`, **auto-claimable** — not an `epic`, not a `deploy` —, every `depends_on` predecessor `done`; a `canceled` predecessor also withholds the card — the test is literally `status !== "done"`; `--stale` adds the **recovery pool** — `in_progress` cards whose heartbeat is past the 30-minute holder window (`stale_same`) or past the six-hour takeover window for anyone (`stale_any`); `--include-unassigned` adds the **public pool** — unassigned claimable cards — for a supervisor whose policy allows them). Read-only — claiming still goes through `issue claim` (or `issue move … in_progress` for a `todo` card). `--order weight` refines the order *within* each claimability bucket, which stays the first key. |
 | `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]…` | Patch. `--status` is refused here on purpose. |
-| `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <clarify\|decision\|dependency\|out_of_bounds\|defect\|external\|resource\|unknown>]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. A move to `done` is an **acceptance**: only a `human` or the board itself (`system`) may perform it — an agent gets `ACCEPTANCE_FORBIDDEN`, even on its own card. `--awaiting-reason` is **required** by a move to `awaiting` — see [The `awaiting` state](#the-awaiting-state--asking-a-human-a-question). `--blocked-reason` is **optional** and records *what* a `blocked` card is waiting for — see [The `blocked` state](#the-blocked-state--what-the-card-is-waiting-for). |
-| `issue claim <ref> [--allow-steal --reason "<why>"]` | **Claim, re-claim or take over** — the one claim verb. On a `todo` card it behaves like `issue move <ref> in_progress`; on an `in_progress` card it is the only way to recover a stale claim (`in_progress → in_progress` is not a transition): the same holder after 30 minutes, anyone after 6 hours. A fresh claim by another actor is refused with `EXECUTION_ACTIVE`; `--allow-steal --reason` is the audited exception for a `todo` card assigned elsewhere. |
-| `issue heartbeat <ref>` | **Pulse a claim you hold**, so its heartbeat stays inside the fresh window and the card does not read as abandoned. Takes no flags of its own — the card is the positional and the pulsing actor is you (the global attribution flags). It refreshes `heartbeat_at` and **nothing else**: the status and the claimer are untouched, so it cannot resurrect a card somebody else moved. Only the holder may pulse — anybody else gets `EXECUTION_ACTIVE`; a card that is not `in_progress` gets `INVALID_TRANSITION` ("nothing to pulse"). The pulse is recorded as a `task_heartbeat` activity, which the board treats as **noise** (it never wakes an SSE client). |
+| `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <clarify\|decision\|dependency\|out_of_bounds\|defect\|external\|resource\|unknown>]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. A move to `done` is an **acceptance**: the board's policy and the card's scope decide who may perform it — under the default `both`, a **top-level** card is closed by a `human` or the board (`taskd`) and an agent gets `ACCEPTANCE_FORBIDDEN`; a **child** card is closed by a non-human writer. See [`status-lifecycle.md`](status-lifecycle.md#7-acceptance-policy--scope). `--awaiting-reason` is **required** by a move to `awaiting` — see [The `awaiting` state](#the-awaiting-state--asking-a-human-a-question). `--blocked-reason` is **optional** and records *what* a `blocked` card is waiting for — see [The `blocked` state](#the-blocked-state--what-the-card-is-waiting-for). |
+| `issue claim <ref> [--allow-steal --reason "<why>"]` | **Claim, re-claim or take over** — the one claim verb. On a `todo` card it behaves like `issue move <ref> in_progress`; on an `in_progress` card it is the only way to recover a stale claim (`in_progress → in_progress` is not a transition). Only `todo` and `in_progress` are accepted. The holder may re-claim once the heartbeat is **older than 10 minutes**; the `issue candidates --stale` read offers `stale_same` after **30 minutes**; anyone may take over after **6 hours** or with no heartbeat. A fresh claim by another actor is refused with `EXECUTION_ACTIVE`; `--allow-steal --reason` is the audited exception for a `todo` card assigned elsewhere. A rework is not a claim and is not this command. |
+| `issue heartbeat <ref>` | **Pulse a claim you hold**, so its heartbeat stays inside the fresh window and the card does not read as abandoned. Takes no flags of its own — the card is the positional and the pulsing actor is you (the global attribution flags). It refreshes `heartbeat_at` and **nothing else**: the status and the claimer are untouched, so it cannot resurrect a card somebody else moved. Only the holder may pulse — anybody else gets `EXECUTION_ACTIVE`; a card that is not `in_progress` gets `INVALID_TRANSITION` ("nothing to pulse"), and an epic has nothing to pulse either. The pulse is recorded as a `task_heartbeat` activity, which the board treats as **noise** (it never wakes an SSE client). |
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
-| `issue deliver <ref> --report-file <file\|->` | **Write the report and move to `in_review`, in one transaction.** |
-| `issue reconcile [--dry-run]` | **The container backstop.** Replays the epic rules over every non-terminal container: start a `todo` epic whose child has entered the work, close an epic whose children are all `done`. `--dry-run` reports the plan and writes nothing. Idempotent — a second run over the same board writes nothing; the same sweep runs once at `taskd` startup. Each transition it applies leaves a `kind=note` comment naming its source (`sweep`). |
+| `issue deliver <ref> --report-file <file\|-> [--no-report --reason "<why>"]` | **Write the report and move to `in_review`, in one transaction.** The two forms are mutually exclusive. The CLI has no `--to`; it always lands in `in_review`. |
+| `issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] [--auto-accept-reviews yes\|no] [--review-aging-ms <n>] [--max-actions <n>]` | **The container backstop, and the loop's workflow plan.** Without `--workflow`, replays the epic rules over every non-terminal container: start a `todo` epic whose child has entered the work, close an epic whose children are all **terminal with at least one `done`**. `--dry-run` reports the plan and writes nothing. Idempotent; the same sweep runs once at `taskd` startup. With `--workflow`, the board first reconciles (unless dry-run), then returns `workflow: {alerts, actions, changes, summary}` — the review outcomes/dispatch the loop executes. See [`status-lifecycle.md`](status-lifecycle.md#11-the-boards-workflow-decisions). |
 
 ### The weight order (`--order weight`)
 
@@ -148,7 +151,9 @@ bucket.
 `issue move <ref> in_progress` on a `todo` card **is** a claim: it takes the
 execution lock (`claimed_by` / `claimed_at` / `heartbeat_at`). A card has two
 roles — the **assignee** (who it is routed to) and its **claimer** (who is doing
-it now); normally they are the same person. Who may claim:
+it now); normally they are the same person. A rework (`in_review`/`blocked →
+in_progress`) is **not** a claim: it keeps the existing executor and does not
+re-check the routing lock. Who may claim:
 
 - **Unassigned** cards are an open pool: any actor may claim them.
 - An **epic** can never be claimed (`not_claimable`), and neither can `backlog`
@@ -332,6 +337,9 @@ accepts without editing.
 The second line is the **audited waiver** (F-B1). It is not a bypass: the reason
 must be at least 8 characters, the waiver is stamped on the task row, and a
 `report_waived` activity is recorded — `issue get` shows it in `report_waivers[]`.
+The round table (which exits bump the round), the waiver's per-round lifetime and the
+`blocked → in_review` delivery edge are in
+[`status-lifecycle.md`](status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round).
 
 ### The `awaiting` state — asking a human a question
 
@@ -448,7 +456,32 @@ column is cleared.
 
 The field is documented on the card itself in
 [`card-schema.md`](./card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for),
-including how a value that is not a literal survives a markdown import.
+including how a value that is not a literal survives a markdown import. The transition
+rules — `in_review → blocked` bumps the delivery round; `blocked → in_review` is a legal
+delivery edge — are in
+[`status-lifecycle.md`](status-lifecycle.md#3-the-guard-on-each-edge).
+
+### `reconcile --workflow` — the board's workflow plan
+
+`issue reconcile --workflow` is the loop/operator channel, not a worker's normal path. It
+performs the board's own container reconcile (unless `--dry-run`) and then returns the
+review decisions the loop applies:
+
+```bash
+taskctl issue reconcile --workflow --reviewer jobs --auto-accept-reviews yes \
+  --review-aging-ms 3600000 --max-actions 20 --json
+```
+
+`--json` returns `{dry_run, scanned, actions, workflow}`, where `workflow` is
+`{alerts, actions, changes, summary}`. The `actions` are decisions (`create_review`,
+`approve`, `approve_hold`, `reject_task`, `reject_epic`, `reject_task_finish`,
+`close_review`, `cancel_review`); the board writes none of them. The loop executes them and
+closes the review card last. Without `--workflow`, the command is the container backstop
+only, and the response is unchanged.
+
+The decision rules — dispatch, verdict handling, fail-safe alerts, one review card per
+`(original, round)`, and the acceptance matrix — are in
+[`status-lifecycle.md`](status-lifecycle.md#11-the-boards-workflow-decisions).
 
 ### `comment`
 
@@ -616,9 +649,12 @@ error shape:
 - `awaiting` without `--awaiting-reason E1..E5` → refused locally, exit `2`
   (see *The `awaiting` state* above).
 
-`issue create --status <s>` sets the status at creation, and `in_review` / `done`
-are refused there by the same gate. The HTTP form is
-`POST /api/v1/tasks/:ref/move` with `{"to": "<status>"}`.
+`issue create --status <s>` sets the status at creation. A `task` may start in
+`backlog`, `todo`, `blocked` or `canceled`; `in_progress` and `awaiting` are
+`VALIDATION_FAILED`, and `in_review` / `done` are `REPORT_REQUIRED` (there is no evidence
+yet). An `epic` may start only in `backlog` or `todo`. The HTTP form is
+`POST /api/v1/tasks/:ref/move` with `{"to": "<status>"}`; the creation table is in
+[`status-lifecycle.md`](status-lifecycle.md#8-creating-a-card-in-a-status).
 
 ### `priority` — one flag, one closed set
 

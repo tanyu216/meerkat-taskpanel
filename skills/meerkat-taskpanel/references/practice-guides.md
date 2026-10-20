@@ -77,7 +77,7 @@ the container (only an `epic` may be a parent), then one `issue create` per deli
 with its own `--target`, or the create guard reads the second as a retry of the first — and a
 `relation add <ref> --type parent --target <child>` per edge. An epic can never be claimed, but
 **the board drives it**: the first child entering `in_progress` moves the container
-`todo → in_progress` (a system move, with a `kind=note` comment), and when every child is
+`todo → in_progress` (a board move, actor kind `taskd`, with a `kind=note` comment), and when every child is
 finished — `done` or `canceled`, with at least one `done` — the rollup report is written and the
 container delivered to `in_review` for you. `todo → in_review` is still the epic's own edge (a
 task's `todo` row does not have it) — it is the repair path for a child attached after the fact,
@@ -133,17 +133,20 @@ node scripts/run.mjs issue deliver <ref> --report-file -
 Leaving `in_review` (except to `done`) starts the next round, so last round's
 report is history, not evidence. The audited waiver (`--no-report --reason`) is an
 escape hatch for the rare case, not the normal path — see `cli.md` §The delivery
-gate.
+gate. The round table and the exact waiver rules are in
+[`status-lifecycle.md`](status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round).
 
 ### 6. Self-review is not acceptance
 
 An agent takes a card **at most to `in_review`**. Only an independent acceptor —
-the loop (as the board's `system` actor, after a reviewer's verdict) or a human —
-moves it to `done`. Reporting your own work as delivered is not the same as the
-work being accepted, and the board keeps the two apart on purpose: `in_review` is
-"evidence attached, awaiting a verdict", `done` is "a verdict was given". This is
-enforced: an agent's move to `done` is refused with `ACCEPTANCE_FORBIDDEN`, even
-on the agent's own card.
+the loop (as the board, actor kind `taskd`, after a reviewer's verdict) or a human —
+moves it to `done` when the board's policy allows it. Reporting your own work as delivered
+is not the same as the work being accepted, and the board keeps the two apart on purpose:
+`in_review` is "evidence attached, awaiting a verdict", `done` is "a verdict was given".
+The scope matters: under the default policy an agent's move to `done` on a **top-level**
+card is refused with `ACCEPTANCE_FORBIDDEN`, while a **child** card is the opposite — only
+a non-human writer closes it. See
+[`status-lifecycle.md`](status-lifecycle.md#7-acceptance-policy--scope).
 
 When the loop runs with a reviewer (`install.sh --reviewer <agent>`), `in_review`
 is dispatched as a **review card** (`meta.review_of`, `meta.flow=B`) to that
@@ -262,7 +265,7 @@ Two clocks, and four entries the continue turn runs:
 | **ping** | 60 seconds | prune worker-registry entries whose pid is gone | $0; no board read, no LLM |
 | **continue** | 10 minutes | wake the host with a bounded `继续` prompt | one bounded LLM turn |
 | `loop/patrol.mjs` | in the turn | `issue list --status in_progress` → escalate a stale claim; report an unreadable heartbeat | $0 (no LLM by default) |
-| `loop/workflow.mjs` | in the turn | reconcile containers, dispatch reviews, apply verdicts | $0; writes as `system` |
+| `loop/workflow.mjs` | in the turn | ask the board for the plan (`issue reconcile --workflow`), then apply its review actions | $0; writes as `taskd` |
 | `loop/poll.mjs` | in the turn | `issue candidates` → claim → wake a worker | $0 scan; a worker turn starts **only** when a card was actually claimed |
 
 Things that keep it honest:

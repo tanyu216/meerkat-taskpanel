@@ -578,6 +578,6 @@ Options:
 The deterministic entries are also runnable on their own:
   node scripts/loop/poll.mjs       scan → atomic claim → wake a worker
   node scripts/loop/patrol.mjs     notify-only SLA rows (${PEER_MECHANISM}; peer watchdog ${PEER_LIVENESS_K}x${PEER_PERIOD_MIN}min)
-  node scripts/loop/workflow.mjs   reconcile / review dispatch / verdicts
+  node scripts/loop/workflow.mjs   apply the board's workflow plan
   node scripts/loop/continue.mjs   one judgment turn`;
 
