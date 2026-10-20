@@ -498,9 +498,37 @@ svg[data-token-icon][hidden] { display: none; }
   text-decoration: underline;
 }
 /* The platform badge is the one element that wears the platform's official
-   primary; the assignee names behind it keep the row's ordinary face. */
+   primary; the assignee names behind it keep the row's ordinary face.
+
+   It reads as a small identity chip rather than a bare word: a 5px dot in the
+   brand hue, the platform name in the mono face, and a tint mixed *from* that
+   hue so the badge belongs to the brand without shouting it. The tints are
+   `color-mix`ed with the row's own surface, which keeps both themes coherent
+   and keeps every hex in `tokens.css` (C08). */
 [data-agent-row] [data-agent-platform] {
-  color: var(--agent-color, inherit);
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 18px;
+  padding: 0 8px 0 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--agent-color, var(--brand-text-2));
+  background: color-mix(in srgb, var(--agent-color, var(--brand-text-3)) 9%, var(--brand-surface));
+  border: 1px solid color-mix(in srgb, var(--agent-color, var(--brand-border-strong)) 28%, var(--brand-border));
+  border-radius: var(--radius-full);
+}
+[data-agent-row] [data-agent-platform] .td-platform-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--agent-color, var(--brand-text-3)) 16%, transparent);
 }
 
 /* R13 ③ — the selected item wears the capsule. The item is the **wrapper**, not

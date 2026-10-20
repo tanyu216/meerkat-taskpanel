@@ -6203,9 +6203,14 @@ export async function run() {
         row.setAttribute("data-agent-row", "gemini");
         row.setAttribute("data-agent-brand", "gemini");
         const badge = document.createElement("span");
-        badge.className = "badge badge-xs td-mono normal-case";
+        badge.className = "td-platform-badge";
         badge.setAttribute("data-agent-platform", "gemini");
-        badge.textContent = "gemini";
+        const dot = document.createElement("span");
+        dot.className = "td-platform-dot";
+        const label = document.createElement("span");
+        label.className = "td-platform-name";
+        label.textContent = "gemini";
+        badge.append(dot, label);
         const name = document.createElement("button");
         name.className = "td-agent-assignee";
         name.setAttribute("data-agent-assignee", "gemini-probe");

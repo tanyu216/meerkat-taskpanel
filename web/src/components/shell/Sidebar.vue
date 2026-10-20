@@ -276,7 +276,14 @@ function onAssignee(name) {
           :data-agent-row="agent.platform"
           :data-agent-brand="agent.platform"
         >
-          <span class="badge badge-xs td-mono normal-case" :data-agent-platform="agent.platform">{{ agent.platform }}</span>
+          <!-- The platform badge: a tinted pill in the platform's official hue,
+               with a dot so the row keeps its identity even when two brands
+               share a near-black or near-white mark (cursor / grok). The rail
+               hides it at ≤1023px by its `data-agent-platform` hook. -->
+          <span class="td-platform-badge" :data-agent-platform="agent.platform">
+            <span class="td-platform-dot" aria-hidden="true"></span>
+            <span class="td-platform-name">{{ agent.platform }}</span>
+          </span>
           <!-- R11 ② · R13 — the row's text is the names themselves, each a real
                `<button>` inside its own `[data-assignee-item]` wrapper: the row
                still reads as one sentence. The wrapper is the capsule's shell
