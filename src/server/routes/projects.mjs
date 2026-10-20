@@ -19,8 +19,8 @@
  * camelCase happens here and in `shared/wire.mjs`, nowhere else.
  */
 
-import { orderDebugEntry, rankProjects } from "../../shared/project-order.mjs";
-import { projectToWire } from "../../shared/wire.mjs";
+import { orderDebugEntry, rankProjects } from "../../foundation/project-order.mjs";
+import { projectToWire } from "../../foundation/wire.mjs";
 import { arr, obj, shape, str, truthy } from "../requests.mjs";
 
 // Declared request schemas — the shape the contract snapshot freezes

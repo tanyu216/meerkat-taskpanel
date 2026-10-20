@@ -15,7 +15,7 @@
  * alike, which is why it is the only place that knows all of the above.
  */
 
-import { DomainError } from "../shared/errors.mjs";
+import { DomainError } from "../foundation/errors.mjs";
 import { createAcceptancePolicy } from "./acceptance-policy.mjs";
 import { createCommands, createContext } from "./commands/index.mjs";
 import { closeDatabase, openDatabase, sqliteVersion } from "./storage/driver.mjs";

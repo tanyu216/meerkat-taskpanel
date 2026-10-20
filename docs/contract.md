@@ -17,8 +17,8 @@ by an explicit snapshot update; drift is a failure, not a warning.
 | Section | Source of truth | Frozen |
 |---|---|---|
 | `routes` | `registerApiRoutes` in `src/server/index.mjs` (the same function `createTaskd` calls), plus the endpoints served outside the JSON router (`/health`, `/meta`, `/api/v1/events`, attachment bytes) | `METHOD /path`, and the route's **declared request schema** (`{query, body}`) down to `type`, `enum`, `items`, `anyOf`, `properties`, `required` and `additionalProperties` — recursively |
-| `errors` | `ERROR_CODES` in `src/shared/errors.mjs` | the code and its HTTP status |
-| `wire` | every `*ToWire` projection in `src/shared/wire.mjs` | the name **and JSON type** of every field each shape emits, including the nested `task.assignee` / `task.reporter` / `task.report_waiver` |
+| `errors` | `ERROR_CODES` in `src/foundation/errors.mjs` | the code and its HTTP status |
+| `wire` | every `*ToWire` projection in `src/foundation/wire.mjs` | the name **and JSON type** of every field each shape emits, including the nested `task.assignee` / `task.reporter` / `task.report_waiver` |
 
 The config-file codes `CONFIG_FILE_INVALID` and `CONFIG_FILE_INSECURE` are in the
 same `errors` table, and `--env-file` is a frozen global CLI flag. A change to either
@@ -44,7 +44,7 @@ Bumping the snapshot's own layout (not a section) bumps `schema_version`. It is
 request shapes and **2** added the wire field types; **1** was the original
 routes/errors/wire-names snapshot.
 
-The number itself is `CONTRACT_SCHEMA_VERSION` in `src/shared/constants.mjs` — the
+The number itself is `CONTRACT_SCHEMA_VERSION` in `src/foundation/constants.mjs` — the
 generator **reads** it rather than keeping a second copy — and the runtime
 publishes the same value:
 

@@ -1,7 +1,7 @@
 /**
  * T-20261014-212017-4 — the attachment policy, as pure rules.
  *
- * `src/shared/attachments.mjs` is the one place the type allow-list, the
+ * `src/foundation/attachments.mjs` is the one place the type allow-list, the
  * download default and the byte ceiling are decided, and it is shared on
  * purpose: the server is the guarantee, but the CLI judges the same two things
  * before it opens a socket, and neither may disagree with the other. There is no
@@ -18,10 +18,10 @@ import {
   contentTypeForFilename,
   downloadContentType,
   normalizeAttachmentContentType,
-} from "../../src/shared/attachments.mjs";
+} from "../../src/foundation/attachments.mjs";
 import { formatFileSize, previewKind } from "../../web/src/lib/attachments.js";
-import { ATTACHMENT_CONTENT_TYPES, ATTACHMENT_MAX_BYTES } from "../../src/shared/constants.mjs";
-import { DomainError, ERROR_CODES, toErrorPayload } from "../../src/shared/errors.mjs";
+import { ATTACHMENT_CONTENT_TYPES, ATTACHMENT_MAX_BYTES } from "../../src/foundation/constants.mjs";
+import { DomainError, ERROR_CODES, toErrorPayload } from "../../src/foundation/errors.mjs";
 import { EXTRA } from "../../web/src/i18n/extra.mjs";
 
 describe("shared/attachments — the declared type", () => {

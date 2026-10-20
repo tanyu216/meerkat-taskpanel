@@ -55,10 +55,10 @@ import { createReadStream } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { attachmentTooLargeError, downloadContentType, normalizeAttachmentContentType } from "../../shared/attachments.mjs";
-import { ATTACHMENTS_DIRNAME, ATTACHMENT_MAX_BYTES } from "../../shared/constants.mjs";
-import { DomainError } from "../../shared/errors.mjs";
-import { attachmentToWire } from "../../shared/wire.mjs";
+import { attachmentTooLargeError, downloadContentType, normalizeAttachmentContentType } from "../../foundation/attachments.mjs";
+import { ATTACHMENTS_DIRNAME, ATTACHMENT_MAX_BYTES } from "../../foundation/constants.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { attachmentToWire } from "../../foundation/wire.mjs";
 import { int, shape, str } from "../requests.mjs";
 import { errorResponse, readRawBody, sendJson } from "../router.mjs";
 import { resolveTask } from "../task-view.mjs";

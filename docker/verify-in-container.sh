@@ -36,7 +36,7 @@ node scripts/verify/web-dist.mjs --require=bundle
 step "node --test"
 node --test
 
-step "npm run test:coverage (src/core + src/shared >= 80% line/branch/function)"
+step "npm run test:coverage (src/core + src/foundation >= 80% line/branch/function)"
 npm run test:coverage
 
 step "npm run check"

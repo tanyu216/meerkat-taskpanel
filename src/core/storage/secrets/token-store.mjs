@@ -15,9 +15,9 @@ import { randomBytes } from "node:crypto";
 import { closeSync, fsyncSync, openSync, readFileSync, renameSync, rmSync, statSync, chmodSync, writeSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { SECRET_DIR_MODE, SECRET_FILE_MODE, TOKEN_BYTES, TOKEN_PREFIX } from "../../../shared/constants.mjs";
-import { DomainError } from "../../../shared/errors.mjs";
-import { redactText } from "../../../shared/redact.mjs";
+import { SECRET_DIR_MODE, SECRET_FILE_MODE, TOKEN_BYTES, TOKEN_PREFIX } from "../../../foundation/constants.mjs";
+import { DomainError } from "../../../foundation/errors.mjs";
+import { redactText } from "../../../foundation/redact.mjs";
 import { ensureDir, tokenPath } from "../paths.mjs";
 
 /** `td_` + 64 hex characters. */

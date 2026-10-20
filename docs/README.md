@@ -31,7 +31,7 @@ this repository. Where a topic has a live authority, the citation names it expli
 
 | Cited as | Live authority |
 |---|---|
-| Project ordering (`ARCHITECTURE §4.6`) | [`../design/DESIGN.md`](../design/DESIGN.md) §20, implemented by `src/shared/project-order.mjs` |
+| Project ordering (`ARCHITECTURE §4.6`) | [`../design/DESIGN.md`](../design/DESIGN.md) §20, implemented by `src/foundation/project-order.mjs` |
 | Container verification (`ARCHITECTURE §9.1`) | [docker.md](docker.md) |
 
 **Do not add a new `ARCHITECTURE.md` citation.** Name the live document instead.

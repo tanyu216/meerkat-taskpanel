@@ -24,8 +24,8 @@
 
 import { spawnSync } from "node:child_process";
 
-import { DomainError } from "../../shared/errors.mjs";
-import { TODO_PLACEHOLDER } from "../../shared/report-warning.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { TODO_PLACEHOLDER } from "../../foundation/report-warning.mjs";
 import { table } from "../output/human.mjs";
 
 /** Parse the report JSON a caller handed us — the one place a bad file is named. */

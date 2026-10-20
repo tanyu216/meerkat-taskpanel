@@ -29,7 +29,7 @@ import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import { applyMigrations, defaultMigrationsDir } from "../../../src/core/storage/migrations-runner.mjs";
-import { norm } from "../../../src/shared/norm.mjs";
+import { norm } from "../../../src/foundation/norm.mjs";
 import { TS, cleanupTempDirs, createTempBoard, makeTempDir } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);

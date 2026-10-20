@@ -265,7 +265,7 @@ export const JS_ONLY_CODES = Object.freeze([
   "SQLITE_UNAVAILABLE",
   "MD_PARSE_ERROR",
   "MD_GROWTH_GUARD",
-  // Attachments: both are decided by `src/shared/attachments.mjs` before any
+  // Attachments: both are decided by `src/foundation/attachments.mjs` before any
   // row exists, so no trigger and no SQLite constraint can raise them.
   "ATTACHMENT_TYPE_UNSUPPORTED",
   "ATTACHMENT_TOO_LARGE",

@@ -38,7 +38,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * its own:
  *
  *   * `src/cli` once had a module below the floor (the error renderer, now
- *     `errors.mjs` in `src/shared/transport/`). Re-opening that measurement for
+ *     `errors.mjs` in `src/foundation/transport/`). Re-opening that measurement for
  *     the now-smaller tree is a card of its own; lowering the number to make it
  *     pass would be the wrong fix.
  *   * `src/server` does clear the floor per module, but tightening a gate over a

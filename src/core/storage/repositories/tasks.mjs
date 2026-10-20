@@ -18,8 +18,8 @@
  * `test/concurrency/repository-boundary.test.mjs`.
  */
 
-import { DomainError } from "../../../shared/errors.mjs";
-import { HEARTBEAT_FRESH_MS, TASK_LIST_DEFAULT_LIMIT } from "../../../shared/constants.mjs";
+import { DomainError } from "../../../foundation/errors.mjs";
+import { HEARTBEAT_FRESH_MS, TASK_LIST_DEFAULT_LIMIT } from "../../../foundation/constants.mjs";
 import { holderLabel, isUnownedContainer } from "../../domain/claim.mjs";
 import { holdsClaim } from "../../domain/status.mjs";
 import { TASK_COLUMNS, taskFromRow, taskToRow } from "../../domain/task.mjs";

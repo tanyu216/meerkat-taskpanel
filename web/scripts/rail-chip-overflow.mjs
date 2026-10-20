@@ -142,7 +142,7 @@ const SOLID_ID = "f".repeat(36);
  * therefore for P2. A leg that only measured the wrapping shape would be testing
  * the easier half.
  */
-const { identifierPrefix } = await import(resolve(ROOT, "src/shared/ids.mjs"));
+const { identifierPrefix } = await import(resolve(ROOT, "src/foundation/ids.mjs"));
 const LEGACY_TEXT = identifierPrefix(LEGACY_ID);
 const SOLID_TEXT = identifierPrefix(SOLID_ID);
 

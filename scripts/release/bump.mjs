@@ -49,7 +49,7 @@ import { parseArgs } from "node:util";
 
 import { findVersionEntry } from "../verify/changelog.mjs";
 import { VERSION_SOURCES, validateVersions } from "../verify/version.mjs";
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 /** Repository root, resolved from this file (`scripts/release/`). */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");

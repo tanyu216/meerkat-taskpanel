@@ -15,9 +15,9 @@
 
 import { resolve } from "node:path";
 
-import { DomainError } from "../../shared/errors.mjs";
-import { PROJECTS_JSON_ENV, PROJECT_DIR_CODES, parseProjectMap, resolveProjectDir } from "../../shared/project-dir.mjs";
-import { repoRoot } from "../../shared/runtime-locator.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { PROJECTS_JSON_ENV, PROJECT_DIR_CODES, parseProjectMap, resolveProjectDir } from "../../foundation/project-dir.mjs";
+import { repoRoot } from "../../foundation/runtime-locator.mjs";
 import { fields, table } from "../output/human.mjs";
 
 /** `--meta k=v` repeated, in order, as a plain object. */

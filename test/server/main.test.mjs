@@ -27,7 +27,7 @@ import {
   DEFAULT_PORT,
   LABEL_GC_INTERVAL_MS,
   LABEL_TTL_DAYS_DEFAULT,
-} from "../../src/shared/constants.mjs";
+} from "../../src/foundation/constants.mjs";
 
 const tempDirs = [];
 after(() => {

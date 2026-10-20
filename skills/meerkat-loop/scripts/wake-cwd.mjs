@@ -16,9 +16,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { PROJECTS_JSON_ENV, checkTargetDirectory, parseProjectMap, resolveProjectDir } from "../src/shared/project-dir.mjs";
-import { repoRoot } from "../src/shared/runtime-locator.mjs";
-import { isEntryPoint } from "../src/shared/entry-guard.mjs";
+import { PROJECTS_JSON_ENV, checkTargetDirectory, parseProjectMap, resolveProjectDir } from "../src/foundation/project-dir.mjs";
+import { repoRoot } from "../src/foundation/runtime-locator.mjs";
+import { isEntryPoint } from "../src/foundation/entry-guard.mjs";
 
 const USAGE = `Usage: node scripts/wake-cwd.mjs --project <identity> [--projects-json <path>]
 

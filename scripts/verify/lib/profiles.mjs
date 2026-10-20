@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { SKILL_NAME, VERSION } from "../../../src/shared/constants.mjs";
+import { SKILL_NAME, VERSION } from "../../../src/foundation/constants.mjs";
 import { MANIFESTS, validateManifests } from "../manifests.mjs";
 import { HOST_BUNDLES, inspectBundle, parseMarketplace } from "./bundle.mjs";
 import { readFrontmatterField } from "./frontmatter.mjs";

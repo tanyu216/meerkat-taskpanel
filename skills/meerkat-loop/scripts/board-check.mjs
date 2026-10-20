@@ -260,7 +260,7 @@ export function main(argv, io = {}) {
   return 3;
 }
 
-// A private copy of `src/shared/entry-guard.mjs`: this file ships on its own, so it
+// A private copy of `src/foundation/entry-guard.mjs`: this file ships on its own, so it
 // cannot import back into the checkout. Both paths are canonicalised — Node realpaths
 // `import.meta.url` but not `process.argv[1]`, and a false guard exits 0 having done
 // nothing.

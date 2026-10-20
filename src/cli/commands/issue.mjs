@@ -14,8 +14,8 @@
  * in the CLI, so the refusal a user sees is the one the service raised.
  */
 
-import { reportWarnings } from "../../shared/report-warning.mjs";
-import { usageError } from "../../shared/transport/errors.mjs";
+import { reportWarnings } from "../../foundation/report-warning.mjs";
+import { usageError } from "../../foundation/transport/errors.mjs";
 import { TASK_OPS } from "../../core/commands/tasks-input.mjs";
 import { fields, table, taskLine } from "../output/human.mjs";
 import { parseReport } from "./report.mjs";

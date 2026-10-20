@@ -14,7 +14,7 @@ import { normalizeTaskCreate } from "../../../../src/core/domain/task.mjs";
 import { normalizeCommentCreate } from "../../../../src/core/domain/comment.mjs";
 import { normalizeReportCreate } from "../../../../src/core/domain/report.mjs";
 import { createRepositories } from "../../../../src/core/storage/repositories/index.mjs";
-import { DomainError } from "../../../../src/shared/errors.mjs";
+import { DomainError } from "../../../../src/foundation/errors.mjs";
 import {
   TS,
   TS2,

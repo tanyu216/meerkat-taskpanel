@@ -13,7 +13,7 @@ Rules that are enforced, not just documented:
 
 * `domain/` imports no Node builtin at all (`test/core/domain/purity.test.mjs`);
 * nothing here imports `cli/` or `server/` — the dependency direction is
-  `cli|server → core → shared`;
+  `cli|server → core → foundation`;
 * every failure is a `DomainError` with a code, never a bare `Error`;
 * a table rebuild re-creates **every** index and trigger the dropped table had, so an
   upgraded board and a fresh install end on the same schema. 0013's rebuild of `tasks`

@@ -1,7 +1,7 @@
 /**
  * The Node runtime floor, unit-tested at the pure-function boundary.
  *
- * `src/shared/node-version.mjs` is the single place the client entry
+ * `src/foundation/node-version.mjs` is the single place the client entry
  * (`src/cli`) consults before doing anything else, and it must agree
  * with the installer's `require_node` (`scripts/install/_common.sh`) on which
  * version strings are accepted. This file pins every branch of that contract,
@@ -20,7 +20,7 @@ import {
   isSupportedNode,
   nodeMajor,
   unsupportedNodeMessage,
-} from "../../src/shared/node-version.mjs";
+} from "../../src/foundation/node-version.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 

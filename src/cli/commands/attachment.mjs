@@ -21,9 +21,9 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 
-import { assertAttachmentSize, contentTypeForFilename, normalizeAttachmentContentType } from "../../shared/attachments.mjs";
-import { ATTACHMENT_MAX_BYTES } from "../../shared/constants.mjs";
-import { DomainError } from "../../shared/errors.mjs";
+import { assertAttachmentSize, contentTypeForFilename, normalizeAttachmentContentType } from "../../foundation/attachments.mjs";
+import { ATTACHMENT_MAX_BYTES } from "../../foundation/constants.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { table } from "../output/human.mjs";
 
 /**

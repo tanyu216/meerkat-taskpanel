@@ -16,7 +16,7 @@ import {
   EVENT_DEBOUNCE_MAX_MS,
   EVENT_DEBOUNCE_MS,
   SSE_SUBSCRIBE_IDLE_MS,
-} from "../../src/shared/constants.mjs";
+} from "../../src/foundation/constants.mjs";
 import {
   DEFAULT_CONTINUE_SECONDS,
   DEFAULT_MAX_CONCURRENCY,
@@ -28,14 +28,14 @@ import {
   resolveRecoverStale,
   resolveIntervalSeconds,
   resolveWorkflowConfig,
-} from "../../src/shared/scheduling.mjs";
+} from "../../src/foundation/scheduling.mjs";
 import {
   DEFAULT_TRAIL_LIMIT,
   LEADER_LOOKBACK_DAYS,
   PEER_LIVENESS_K,
   PEER_MECHANISM,
   PEER_PERIOD_MIN,
-} from "../../src/shared/sla-patrol.mjs";
+} from "../../src/foundation/sla-patrol.mjs";
 
 /** Host → dot-directory under the target home. */
 export const HOST_DIRS = Object.freeze({ claude: ".claude", codex: ".codex", pi: ".agents" });

@@ -14,7 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 
-import { loadEnvFile } from "../../src/shared/env-config.mjs";
+import { loadEnvFile } from "../../src/foundation/env-config.mjs";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");

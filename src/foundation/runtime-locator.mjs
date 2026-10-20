@@ -34,7 +34,7 @@ import {
   TOKEN_FILENAME,
 } from "./constants.mjs";
 
-/** Repository root, derived from this file's location (`src/shared/`). */
+/** Repository root, derived from this file's location (`src/foundation/`). */
 export function repoRoot() {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 }

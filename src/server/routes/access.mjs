@@ -18,7 +18,7 @@
  */
 
 import { rotateToken } from "../../core/index.mjs";
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { validateCidrs, writeAccessConfig } from "../access-config.mjs";
 import { arr, bool, shape, str } from "../requests.mjs";
 

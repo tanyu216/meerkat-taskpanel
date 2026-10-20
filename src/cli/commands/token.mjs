@@ -13,7 +13,7 @@
 
 import { readFileSync } from "node:fs";
 
-import { REDACTED_TOKEN } from "../../shared/redact.mjs";
+import { REDACTED_TOKEN } from "../../foundation/redact.mjs";
 import { fields } from "../output/human.mjs";
 
 export const COMMANDS = [

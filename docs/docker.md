@@ -344,7 +344,7 @@ line number.
 - the skill directory exists at `<home>/<target_dir>`;
 - `SKILL.md` still carries `name: meerkat-taskpanel` in its frontmatter;
 - `node <dest>/scripts/run.mjs --version` prints the version from
-  `src/shared/constants.mjs`.
+  `src/foundation/constants.mjs`.
 
 ### Why a temporary home
 

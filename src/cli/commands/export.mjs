@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { CLI_EXIT } from "../../shared/constants.mjs";
+import { CLI_EXIT } from "../../foundation/constants.mjs";
 import { fields } from "../output/human.mjs";
 
 /** Where a card goes: `<out>/<IDENTIFIER>.md`. */

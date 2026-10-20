@@ -3,7 +3,7 @@
  * which is what makes the human decision trail trustworthy (I4/I5).
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { normalizeCommentCreate } from "../domain/comment.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";

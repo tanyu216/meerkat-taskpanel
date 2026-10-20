@@ -14,7 +14,7 @@ import test, { describe, it } from "node:test";
 
 import { SQL_ENUM_SETS, STATUSES } from "../../src/core/domain/enums.mjs";
 import { REVISION_TABLES, TABLES, revisionTriggerNames } from "../../src/core/storage/schema.mjs";
-import { DB_RAISE_CODES, ERROR_CODES } from "../../src/shared/errors.mjs";
+import { DB_RAISE_CODES, ERROR_CODES } from "../../src/foundation/errors.mjs";
 import {
   addedColumns,
   checkInSets,

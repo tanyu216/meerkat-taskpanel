@@ -5,7 +5,7 @@
  * These are the things a one-shot entry and the scheduler both need: the
  * process-liveness probe, the worker registry, the log, the `taskctl` shell-out,
  * the SLA ledger / liveness marker, and the continue lock. None of it decides
- * anything — the decisions live in `src/shared/`.
+ * anything — the decisions live in `src/foundation/`.
  *
  * Node builtins only; no network, no dependencies.
  */
@@ -24,8 +24,8 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
-import { pruneRegistry } from "../../src/shared/scheduling.mjs";
-import { emptySlaLedger } from "../../src/shared/sla-patrol.mjs";
+import { pruneRegistry } from "../../src/foundation/scheduling.mjs";
+import { emptySlaLedger } from "../../src/foundation/sla-patrol.mjs";
 
 // ---------------------------------------------------------------------------
 // Registry (crash survival) + process liveness

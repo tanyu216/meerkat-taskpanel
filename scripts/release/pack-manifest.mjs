@@ -25,7 +25,7 @@
 import { readFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import { parseArgs } from "node:util";
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 /** Files a publishable tarball must contain. */
 export const REQUIRED = Object.freeze([

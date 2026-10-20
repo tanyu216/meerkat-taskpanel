@@ -16,9 +16,9 @@
 
 import { createServer } from "node:http";
 
-import { VERSION } from "../src/shared/constants.mjs";
-import { loadEnvFile } from "../src/shared/env-config.mjs";
-import { repoRoot } from "../src/shared/runtime-locator.mjs";
+import { VERSION } from "../src/foundation/constants.mjs";
+import { loadEnvFile } from "../src/foundation/env-config.mjs";
+import { repoRoot } from "../src/foundation/runtime-locator.mjs";
 
 // The same install-root `.env` the real server reads. Without this the compose
 // file's `MEERKAT_TASKPANEL_ENV_FILE` would be inert in the scaffold, and the

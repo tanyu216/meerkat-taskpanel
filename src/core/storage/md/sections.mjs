@@ -18,7 +18,7 @@
  * Everything here is pure text work; `import.mjs` turns it into rows.
  */
 
-import { DomainError } from "../../../shared/errors.mjs";
+import { DomainError } from "../../../foundation/errors.mjs";
 import { ACCEPTANCE_STATUSES, EVIDENCE_KINDS } from "../../domain/enums.mjs";
 
 /** The section order every card is written in. */

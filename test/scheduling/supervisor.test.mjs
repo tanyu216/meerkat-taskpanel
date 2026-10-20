@@ -39,13 +39,13 @@ import {
   resolveClaimUnassigned,
   resolveRecoverStale,
   wakeCommand,
-} from "../../src/shared/scheduling.mjs";
-import { emptySlaLedger, planSlaPatrol } from "../../src/shared/sla-patrol.mjs";
+} from "../../src/foundation/scheduling.mjs";
+import { emptySlaLedger, planSlaPatrol } from "../../src/foundation/sla-patrol.mjs";
 import { defaultRepo, parseArgs, selectMode } from "../../scripts/loop/options.mjs";
 import { loadSlaLedger, readPeerLastOk, saveLastOk, saveSlaLedger } from "../../scripts/loop/runtime.mjs";
 import { runPatrolTick, runPollTick, runWorkflowTick, spawnWorkerReal } from "../../scripts/loop/runners.mjs";
 import { resolveWakeDir } from "../../scripts/wake-cwd.mjs";
-import { PROJECT_DIR_CODES } from "../../src/shared/project-dir.mjs";
+import { PROJECT_DIR_CODES } from "../../src/foundation/project-dir.mjs";
 
 /** A tiny collector standing in for a "spy" — records every call. */
 function spy(impl = () => undefined) {
@@ -1689,7 +1689,7 @@ describe("supervisor module", () => {
       [new URL("../../scripts/loop/runtime.mjs", import.meta.url), ["loadRegistry", "saveRegistry", "runPingTick"]],
       [new URL("../../scripts/loop/runners.mjs", import.meta.url), ["runPollTick", "runPatrolTick", "spawnWorkerReal"]],
       [new URL("../../scripts/loop/subscribe.mjs", import.meta.url), ["runSubscribe", "createDispatchScheduler"]],
-      [new URL("../../src/shared/scheduling.mjs", import.meta.url), ["buildContinuePrompt", "planContinueInvocation", "planWakeInvocation"]],
+      [new URL("../../src/foundation/scheduling.mjs", import.meta.url), ["buildContinuePrompt", "planContinueInvocation", "planWakeInvocation"]],
     ];
     for (const [url, names] of modules) {
       const mod = await import(url.href);

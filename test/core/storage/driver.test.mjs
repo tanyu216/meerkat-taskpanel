@@ -30,7 +30,7 @@ import {
   resolveRuntimePointerPath,
   tokenPath,
 } from "../../../src/core/storage/paths.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 
 const tempDirs = [];
 function tempDir(prefix = "meerkat-taskpanel-driver-") {

@@ -17,7 +17,7 @@ import test, { after, describe, it } from "node:test";
 import { createCommands, createContext } from "../../../src/core/commands/index.mjs";
 import { advanceContainer } from "../../../src/core/commands/rollup.mjs";
 import { createRepositories } from "../../../src/core/storage/repositories/index.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 import {
   TS,
   TS2,

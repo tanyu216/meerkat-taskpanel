@@ -13,7 +13,7 @@
  *      legacy path, which is every row that predates the slot and every project
  *      the CLI creates from `--id`.
  *
- * The read side of that order is `projectPrefix` (shared/ids.mjs), used by both
+ * The read side of that order is `projectPrefix` (foundation/ids.mjs), used by both
  * the identifier allocator and the collision check below, so the two can never
  * disagree about what a project's prefix is.
  *
@@ -23,8 +23,8 @@
  * *nothing* is refused too: it would leave a project that can never mint a card.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
-import { PROJECT_PREFIX_META_KEY, identifierPrefix, projectPrefix } from "../../shared/ids.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { PROJECT_PREFIX_META_KEY, identifierPrefix, projectPrefix } from "../../foundation/ids.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 

@@ -16,7 +16,7 @@
  *   * **fresh heartbeat = no-op; a broken heartbeat is never silent.** Patrol
  *     returns an alert for a stale claim *and* for a heartbeat it cannot read.
  *
- * Layers: `shared` imports nothing from `src/`; only `constants.mjs` and
+ * Layers: `foundation` imports nothing from `src/`; only `constants.mjs` and
  * `errors.mjs` (both pure) are used here.
  */
 

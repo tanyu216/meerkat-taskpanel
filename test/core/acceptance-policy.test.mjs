@@ -23,7 +23,7 @@ import {
   readAcceptancePolicy,
   writeAcceptancePolicy,
 } from "../../src/core/acceptance-policy.mjs";
-import { envLineKey, mergeEnvText, parseEnvBool, parseEnvText } from "../../src/shared/env-file.mjs";
+import { envLineKey, mergeEnvText, parseEnvBool, parseEnvText } from "../../src/foundation/env-file.mjs";
 import { cleanupTempDirs, makeTempDir } from "../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);

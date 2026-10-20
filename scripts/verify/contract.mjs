@@ -66,8 +66,8 @@ import { parseArgs } from "node:util";
 
 import { OUT_OF_ROUTER_ENDPOINTS, registerApiRoutes } from "../../src/server/index.mjs";
 import { createRouter } from "../../src/server/router.mjs";
-import { CONTRACT_SCHEMA_VERSION } from "../../src/shared/constants.mjs";
-import { ERROR_CODES } from "../../src/shared/errors.mjs";
+import { CONTRACT_SCHEMA_VERSION } from "../../src/foundation/constants.mjs";
+import { ERROR_CODES } from "../../src/foundation/errors.mjs";
 import {
   activityToWire,
   commentToWire,
@@ -79,8 +79,8 @@ import {
   sessionToWire,
   taskToWire,
   workflowToWire,
-} from "../../src/shared/wire.mjs";
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+} from "../../src/foundation/wire.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 /** Repository root, resolved from this file (`scripts/verify/`). */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -93,7 +93,7 @@ export const SNAPSHOT_FILE = "test/fixtures/contract/api.snapshot.json";
  * frozen tool-schemas section; 3 added each route's declared request
  * `{query, body}`; 2 added the wire field types.)
  *
- * The value itself lives in `src/shared/constants.mjs` — the runtime publishes
+ * The value itself lives in `src/foundation/constants.mjs` — the runtime publishes
  * the same number (`taskctl --version --json`) and a client's drift gate reads it
  * from there, so the snapshot and the published number cannot disagree.
  */

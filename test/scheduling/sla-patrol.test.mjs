@@ -50,7 +50,7 @@ import {
   tierFor,
   trailReadCandidates,
   warnLeadMinutes,
-} from "../../src/shared/sla-patrol.mjs";
+} from "../../src/foundation/sla-patrol.mjs";
 import { runSlaPatrolTick } from "../../scripts/loop/runners.mjs";
 
 /**

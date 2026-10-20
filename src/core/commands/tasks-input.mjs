@@ -40,7 +40,7 @@
  * field `"wire"`.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
 
 /** The eight operations this module covers. */

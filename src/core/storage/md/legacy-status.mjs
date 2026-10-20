@@ -6,7 +6,7 @@
  * the way its author wrote it.
  */
 
-import { exportStatusValue } from "../../../shared/status-alias.mjs";
+import { exportStatusValue } from "../../../foundation/status-alias.mjs";
 
 /**
  * @param {string} status canonical status

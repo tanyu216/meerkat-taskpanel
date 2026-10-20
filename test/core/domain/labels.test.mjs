@@ -18,8 +18,8 @@ import {
   nextColor,
   normalizeLabelName,
 } from "../../../src/core/domain/labels.mjs";
-import { LABEL_PALETTE, LABEL_TTL_DAYS_DEFAULT } from "../../../src/shared/constants.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { LABEL_PALETTE, LABEL_TTL_DAYS_DEFAULT } from "../../../src/foundation/constants.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 
 describe("domain/labels — identity is `norm` (F7)", () => {
   it("folds case, NFKC and ALL whitespace into one key", () => {

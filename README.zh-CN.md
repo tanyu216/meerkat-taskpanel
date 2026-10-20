@@ -67,7 +67,7 @@ Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题
 ## 架构
 
 Meerkat TaskPanel 是三层薄结构，依赖方向始终向内：`src/cli`、`src/server` 是入口，
-`src/core` 持有领域模型、SQLite 存储与用例，`src/shared` 是它们共享的 DTO 与辅助函数。
+`src/core` 持有领域模型、SQLite 存储与用例，`src/foundation` 是它们共享的 DTO 与辅助函数。
 完整目录树见 [仓库结构](#仓库结构)；想为自己的宿主安装 skill/插件，见 [安装](#安装)。
 
 ## 截图
@@ -91,7 +91,7 @@ meerkat-taskpanel/
 │   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量 / md 导出
 │   ├── cli/                      #   taskctl（CLI 出口）
 │   ├── server/                   #   本地 HTTP API + SSE
-│   └── shared/                   #   共享 DTO / 常量
+│   └── foundation/               #   DTO / 常量 / 纯函数
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
 ├── skills/                       # 两个 skill：meerkat-taskpanel（看板）、meerkat-loop（监督进程）
 ├── .claude-plugin/               # marketplace + board 插件清单（插件根 = 仓根）

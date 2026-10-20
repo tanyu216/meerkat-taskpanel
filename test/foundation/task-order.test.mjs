@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import test, { describe, it } from "node:test";
 
 import { STATUSES } from "../../src/core/domain/enums.mjs";
-import { TASK_ORDER_SEVERITY_ENABLED, TASK_ORDER_WEIGHTS } from "../../src/shared/constants.mjs";
+import { TASK_ORDER_SEVERITY_ENABLED, TASK_ORDER_WEIGHTS } from "../../src/foundation/constants.mjs";
 import {
   FACTOR_IDS,
   TASK_ORDER_STATUS_RANK,
@@ -28,7 +28,7 @@ import {
   round3,
   taskOrderDebugEntry,
   tierOf,
-} from "../../src/shared/task-order.mjs";
+} from "../../src/foundation/task-order.mjs";
 
 const NOW = "2026-10-14T12:00:00.000Z";
 
@@ -59,7 +59,7 @@ const idsOf = (ranked) => ranked.map((item) => item.card.id);
  * The contract's §9.1 sample: six cards covering all three tiers and every
  * factor. A6 (`awaiting`) is the one cell the contract scores inconsistently —
  * §5.2 gives `awaiting` a 24h threshold, §9.1 writes "无（记 0）". See
- * `src/shared/task-order.mjs#slaOf` for why §5.2 wins; the tier and ordering
+ * `src/foundation/task-order.mjs#slaOf` for why §5.2 wins; the tier and ordering
  * behaviour is identical either way.
  */
 const SAMPLE = [
@@ -83,7 +83,7 @@ const scaled = (p) => {
 
 describe("task-order — the vocabulary it derives from", () => {
   it("keeps the board order in step with the core status list", () => {
-    // The rank table is restated here (shared imports nothing from src), so this
+    // The rank table is restated here (foundation imports nothing from src), so this
     // is the assertion that turns a status added to the enum into a red test
     // instead of a silently mis-tiered column.
     const boardOrder = STATUSES.filter((status) => status !== "awaiting");

@@ -27,9 +27,9 @@
  */
 
 import { currentRevision } from "../core/index.mjs";
-import { SSE_HEARTBEAT_MS, SSE_NOISE_EVENTS, SSE_POLL_MS, SSE_REPLAY_LIMIT, SSE_RETRY_MS } from "../shared/constants.mjs";
-import { DomainError } from "../shared/errors.mjs";
-import { activityToWire } from "../shared/wire.mjs";
+import { SSE_HEARTBEAT_MS, SSE_NOISE_EVENTS, SSE_POLL_MS, SSE_REPLAY_LIMIT, SSE_RETRY_MS } from "../foundation/constants.mjs";
+import { DomainError } from "../foundation/errors.mjs";
+import { activityToWire } from "../foundation/wire.mjs";
 
 /** Activity events that are pure noise on the wire (§4.3). */
 export function isNoiseActivity(activity) {

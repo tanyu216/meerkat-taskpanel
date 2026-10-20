@@ -20,7 +20,7 @@ import test, { after, before, describe, it } from "node:test";
 
 import { createTaskd } from "../../src/server/index.mjs";
 import { intOrUndefined, truthy } from "../../src/server/requests.mjs";
-import { SSE_NOISE_EVENTS } from "../../src/shared/constants.mjs";
+import { SSE_NOISE_EVENTS } from "../../src/foundation/constants.mjs";
 
 const tempDirs = [];
 let taskd;

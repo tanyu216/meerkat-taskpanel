@@ -15,7 +15,7 @@
  * alone (§F-C2).
  */
 
-import { DomainError } from "../shared/errors.mjs";
+import { DomainError } from "../foundation/errors.mjs";
 
 /** Flag names that never take a value. Everything else consumes the next token. */
 export const BOOLEAN_FLAGS = Object.freeze(

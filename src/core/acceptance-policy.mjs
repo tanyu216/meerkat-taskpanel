@@ -15,7 +15,7 @@
  *      embedding caller's override;
  *   2. the process environment (`TASKD_ACCEPTANCE_POLICY`) — an operator's
  *      override, and the value an installer forwards;
- *   3. the `.env` values, already parsed by `src/shared/env-config.mjs`
+ *   3. the `.env` values, already parsed by `src/foundation/env-config.mjs`
  *      (`envVars`); `envFile` is only the origin named in an error;
  *   4. {@link DEFAULT_ACCEPTANCE_POLICY} (`both`).
  *
@@ -25,7 +25,7 @@
  * access policy's own reader raises, because it is the same file.
  *
  * The module is core (not `src/server`) so the commands can use it without
- * inverting the layering (`server -> core -> shared`); it touches only `node:fs`
+ * inverting the layering (`server -> core -> foundation`); it touches only `node:fs`
  * to write the one file.
  */
 
@@ -44,9 +44,9 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { SECRET_DIR_MODE, SECRET_FILE_MODE } from "../shared/constants.mjs";
-import { mergeEnvText, parseEnvText } from "../shared/env-file.mjs";
-import { DomainError } from "../shared/errors.mjs";
+import { SECRET_DIR_MODE, SECRET_FILE_MODE } from "../foundation/constants.mjs";
+import { mergeEnvText, parseEnvText } from "../foundation/env-file.mjs";
+import { DomainError } from "../foundation/errors.mjs";
 import {
   ACCEPTANCE_POLICIES,
   DEFAULT_ACCEPTANCE_POLICY,

@@ -26,8 +26,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { ensureBoard, probeHealth, readPointer } from "../../src/shared/transport/runtime.mjs";
-import { resolveRuntimePointerPath } from "../../src/shared/runtime-locator.mjs";
+import { ensureBoard, probeHealth, readPointer } from "../../src/foundation/transport/runtime.mjs";
+import { resolveRuntimePointerPath } from "../../src/foundation/runtime-locator.mjs";
 import {
   baseEnv,
   cleanupTempDirs,

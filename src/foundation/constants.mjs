@@ -529,7 +529,7 @@ export const TASK_ORDER_MODES = Object.freeze(["board", "weight"]);
 /**
  * The default `?order=` — the existing deterministic `sort_order, created_at,
  * project_id, identifier` order. The weight order is a **deliberate opt-in**: it
- * is clock-dependent (R5), and it is what `src/shared/scheduling.mjs#planTick`
+ * is clock-dependent (R5), and it is what `src/foundation/scheduling.mjs#planTick`
  * dispatches on, so making it the default would silently change who works next
  * (§7.1/§7.4).
  */
@@ -549,8 +549,8 @@ export const TASK_ORDER_CAPABILITY = "weights-v1";
  * the record (I5), an `awaiting` card resuming, the patrol counting the leader
  * as active — the test is `kind === HUMAN_KIND`. Everything else is an agent.
  *
- * It lives here, in `shared`, because the transport reads it too
- * (`shared/transport/actor.mjs`) and `shared` imports nothing from `src/`.
+ * It lives here, in `foundation`, because the transport reads it too
+ * (`foundation/transport/actor.mjs`) and `foundation` imports nothing from `src/`.
  * `src/core/domain/enums.mjs` re-exports it for the domain layer.
  */
 export const HUMAN_KIND = "human";
@@ -572,9 +572,9 @@ export const TASKD_KIND = "taskd";
 /**
  * The board's acceptance policies — "who may move a card to `done`".
  *
- * Declared in `shared` because **both** sides of the board read the same
+ * Declared in `foundation` because **both** sides of the board read the same
  * vocabulary: `src/core/domain/status.mjs` enforces it, and
- * `src/shared/scheduling.mjs` resolves the loop's copy from its host config
+ * `src/foundation/scheduling.mjs` resolves the loop's copy from its host config
  * (which is what the loop believes before the board tells it otherwise).
  *
  *   * `human-only` — only a human accepts a top-level original;
@@ -602,7 +602,7 @@ export const LOOP_ACCEPTOR = "loop-review";
  *
  * It lives here rather than in `sla-patrol.mjs` because both sides read it: the
  * SLA pass caps its own read, and `workflowTick` caps the snapshot it plans
- * from. A loop-only module may not be imported by `src/core`; the shared SDK may.
+ * from. A loop-only module may not be imported by `src/core`; the foundation SDK may.
  */
 export const DEFAULT_BOARD_LIMIT = 500;
 

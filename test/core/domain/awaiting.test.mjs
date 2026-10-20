@@ -27,7 +27,7 @@ import {
   payloadOf,
   resumeDecision,
 } from "../../../src/core/domain/awaiting.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 
 const human = (id, body = "请问这一版的范围可以确认吗？后面还有一句。", extra = {}) => ({
   id,

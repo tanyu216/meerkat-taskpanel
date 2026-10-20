@@ -29,8 +29,8 @@ import {
   taskToWire,
   waiverOf,
   waiversFromActivities,
-} from "../../src/shared/wire.mjs";
-import { DomainError } from "../../src/shared/errors.mjs";
+} from "../../src/foundation/wire.mjs";
+import { DomainError } from "../../src/foundation/errors.mjs";
 
 const TOKEN = `td_${"ab".repeat(32)}`;
 

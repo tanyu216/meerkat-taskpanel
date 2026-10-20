@@ -13,9 +13,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe, it } from "node:test";
 
-import { loadEnvFile, parseEnvConfig } from "../../src/shared/env-config.mjs";
-import { resolveEnvFilePath } from "../../src/shared/runtime-locator.mjs";
-import { resolveToken } from "../../src/shared/transport/token.mjs";
+import { loadEnvFile, parseEnvConfig } from "../../src/foundation/env-config.mjs";
+import { resolveEnvFilePath } from "../../src/foundation/runtime-locator.mjs";
+import { resolveToken } from "../../src/foundation/transport/token.mjs";
 
 const TOKEN = `td_${"a".repeat(64)}`;
 

@@ -7,7 +7,7 @@
  * to `taskd`. A review card is closed last so a crash mid-pass is recoverable.
  */
 
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 import { runWorkflowPass } from "./board.mjs";
 import { runEntry } from "./entry.mjs";

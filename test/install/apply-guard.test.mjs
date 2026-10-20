@@ -318,7 +318,7 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
     assert.deepEqual(
       offenders,
       [],
-      `compare canonical paths instead (isEntryPoint from src/shared/entry-guard.mjs):\n${offenders.join("\n")}`,
+      `compare canonical paths instead (isEntryPoint from src/foundation/entry-guard.mjs):\n${offenders.join("\n")}`,
     );
   });
 });

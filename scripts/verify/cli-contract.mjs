@@ -38,8 +38,8 @@ import { resolve } from "node:path";
 import { registry } from "../../src/cli/commands/index.mjs";
 import { versionPayload } from "../../src/cli/index.mjs";
 import { errorEnvelope, successEnvelope } from "../../src/cli/output/json.mjs";
-import { DomainError } from "../../src/shared/errors.mjs";
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { DomainError } from "../../src/foundation/errors.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 export const ROOT = resolve(import.meta.dirname, "../..");
 /** The snapshot layout generation — bumped only by a breaking layout change. */

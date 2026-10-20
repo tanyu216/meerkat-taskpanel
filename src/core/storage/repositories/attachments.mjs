@@ -4,8 +4,8 @@
  * card with attachments does not lose the reference.
  */
 
-import { DomainError } from "../../../shared/errors.mjs";
-import { newId } from "../../../shared/ids.mjs";
+import { DomainError } from "../../../foundation/errors.mjs";
+import { newId } from "../../../foundation/ids.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 
 const CAMEL = {

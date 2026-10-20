@@ -4,7 +4,7 @@
  *
  * The card and `task-interface v1` both speak snake_case (`display_name`,
  * `created_at`, `delivery_round`), so the projection happens at the boundary and
- * nowhere else. It lives in `shared` because *both* surfaces need it: the server
+ * nowhere else. It lives in `foundation` because *both* surfaces need it: the server
  * to build a response, the CLI to render one — and neither may import the other.
  *
  * Pure: no clock, no database. The one thing a projection

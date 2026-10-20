@@ -1,7 +1,7 @@
 /**
  * C-WEIGHT-1 — the assignee weight order at the service boundary.
  *
- * The arithmetic is proved in `test/shared/task-order.test.mjs`. What can only be
+ * The arithmetic is proved in `test/foundation/task-order.test.mjs`. What can only be
  * proved here is the four §10.2 assertions that need a real SQLite board and the
  * real routes:
  *
@@ -25,7 +25,7 @@ import test, { after, before, describe, it } from "node:test";
 
 import { currentRevision } from "../../src/core/index.mjs";
 import { exportMd } from "../../src/core/storage/md/export.mjs";
-import { TASK_ORDER_CAPABILITY } from "../../src/shared/constants.mjs";
+import { TASK_ORDER_CAPABILITY } from "../../src/foundation/constants.mjs";
 import { createTaskd } from "../../src/server/index.mjs";
 
 const AGENT = { kind: "agent", id: "linus" };

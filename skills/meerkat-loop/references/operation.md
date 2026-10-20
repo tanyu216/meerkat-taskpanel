@@ -10,7 +10,7 @@ For `<host>` = `~/.claude`, `~/.codex` or `~/.agents`:
 | Artefact | Where | Notes |
 |---|---|---|
 | loop skill | `<host>/skills/meerkat-loop/` | always **copied**, never symlinked |
-| execution body | `<host>/meerkat-taskpanel/scripts/…` and `src/shared/…` | the copy the units run; closure in the skill's `manifest.txt` |
+| execution body | `<host>/meerkat-taskpanel/scripts/…` and `src/foundation/…` | the copy the units run; closure in the skill's `manifest.txt` |
 | units | `<host>/scheduling/{launchd,systemd,cron}/` | ping 60s, continue 600s. Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the host CLI |
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` |
 | host config | `<host>/meerkat-taskpanel.env` | claim policy, stale recovery, `MEERKAT_TASKPANEL_REPO`, workflow answers |

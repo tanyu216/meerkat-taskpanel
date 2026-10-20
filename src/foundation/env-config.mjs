@@ -15,7 +15,7 @@
  *     is ignored.
  *
  * The parser is deliberately the simple `KEY=VALUE` subset of
- * `src/shared/env-file.mjs`: no inline comments, interpolation, escapes or
+ * `src/foundation/env-file.mjs`: no inline comments, interpolation, escapes or
  * multiline values. A comment line starts with `#`; matching quotes are
  * stripped; `export ` is accepted.
  *

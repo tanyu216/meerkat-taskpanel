@@ -28,7 +28,7 @@ import {
   SQL_CONSTRAINT_CODES,
   TECHNICAL_ERROR_TEXT,
   toErrorPayload,
-} from "../../../src/shared/errors.mjs";
+} from "../../../src/foundation/errors.mjs";
 import { cleanupTempDirs, ensureActor, insertProject, insertTask, reasonCode, withBoard } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);

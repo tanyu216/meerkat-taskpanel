@@ -15,7 +15,7 @@
  * Pure composition — no writes, no clock.
  */
 
-import { taskToWire, waiversFromActivities } from "../shared/wire.mjs";
+import { taskToWire, waiversFromActivities } from "../foundation/wire.mjs";
 
 /**
  * `PROJ-0007` or a UUID — whichever the caller has.

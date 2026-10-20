@@ -38,7 +38,7 @@
  * Pure: no `node:` specifiers.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { BLOCKED_REASONS } from "./enums.mjs";
 
 /** @param {unknown} value */

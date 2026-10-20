@@ -41,7 +41,7 @@ import {
   STATIC_DIR_REL,
   TASK_ORDER_CAPABILITY,
   VERSION,
-} from "../shared/constants.mjs";
+} from "../foundation/constants.mjs";
 import { allowListFrom, readAccessConfig } from "./access-config.mjs";
 import { authorize } from "./auth.mjs";
 import { shape, str } from "./requests.mjs";

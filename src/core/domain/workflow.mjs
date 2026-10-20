@@ -36,10 +36,10 @@ import {
   DEFAULT_REVIEW_AGING_MS,
   DEFAULT_WORKFLOW_MAX_ACTIONS,
   LOOP_ACCEPTOR,
-} from "../../shared/constants.mjs";
+} from "../../foundation/constants.mjs";
 
 // The two workflow defaults are shared with the loop's config resolver, so they
-// live in `shared/constants.mjs` — one number, both sides. Re-exported here
+// live in `foundation/constants.mjs` — one number, both sides. Re-exported here
 // because this module's public surface has always named them.
 export { DEFAULT_REVIEW_AGING_MS, DEFAULT_WORKFLOW_MAX_ACTIONS };
 

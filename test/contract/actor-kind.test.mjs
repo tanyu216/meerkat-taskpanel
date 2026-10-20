@@ -22,7 +22,7 @@ import test, { describe, it } from "node:test";
 
 import { BOARD_ACTOR } from "../../src/core/commands/context.mjs";
 import { ACCEPTANCE_ACTOR_KINDS } from "../../src/core/domain/status.mjs";
-import { HUMAN_KIND, TASKD_KIND } from "../../src/shared/constants.mjs";
+import { HUMAN_KIND, TASKD_KIND } from "../../src/foundation/constants.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const SCAN_ROOTS = ["src", "scripts", "skills/meerkat-loop/scripts", "skills/meerkat-loop/src"];

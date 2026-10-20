@@ -15,7 +15,7 @@
  * is one row, so both callers resolve against the whole dictionary.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { resolveDictionaryEntry } from "../domain/dictionary.mjs";
 import { isActorKind } from "../domain/enums.mjs";
 

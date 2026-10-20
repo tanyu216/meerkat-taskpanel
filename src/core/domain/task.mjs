@@ -9,9 +9,9 @@
  * Pure: no `node:` specifiers, no clock — callers pass `now`.
  */
 
-import { ARCHIVE_AFTER_DAYS, HEARTBEAT_FRESH_MS, IDENTIFIER_PATTERN, LABEL_MAX_LEN } from "../../shared/constants.mjs";
-import { DomainError } from "../../shared/errors.mjs";
-import { identifierPrefix } from "../../shared/ids.mjs";
+import { ARCHIVE_AFTER_DAYS, HEARTBEAT_FRESH_MS, IDENTIFIER_PATTERN, LABEL_MAX_LEN } from "../../foundation/constants.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { identifierPrefix } from "../../foundation/ids.mjs";
 import { AWAITING_REASONS, STATUS, STATUSES, TASK_KINDS } from "./enums.mjs";
 import { normalizeBlockedReason } from "./blocked-reason.mjs";
 import { normalizeIdem } from "./idem.mjs";

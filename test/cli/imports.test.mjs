@@ -33,8 +33,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /**
  * Every module `src/cli` promises to ship. The transport seam
  * (`client/index|http|autostart`, `runtime`, `token`, `actor`, `errors`) is no
- * longer listed: it moved to `src/shared/transport/**` (see
- * `test/shared/transport-imports.test.mjs`). A missing module must fail, not
+ * longer listed: it moved to `src/foundation/transport/**` (see
+ * `test/foundation/transport-imports.test.mjs`). A missing module must fail, not
  * scan empty.
  */
 const PLANNED_CLI = [
@@ -169,7 +169,7 @@ describe("cli/imports — the layering rules", () => {
   });
 
   it("the autostart module spawns the daemon entry, and only that", () => {
-    const source = readSource(join(ROOT, "src/shared/transport/autostart.mjs"));
+    const source = readSource(join(ROOT, "src/foundation/transport/autostart.mjs"));
     // `src/server/index.mjs` is the *library* (`createTaskd`); the program is
     // `main.mjs`. The CLI must spawn the program — spawning the library would
     // import and exit.
@@ -182,7 +182,7 @@ describe("cli/imports — the layering rules", () => {
 /**
  * The orchestrator boundary: the loop is a *consumer* of the board's public
  * surface (`taskctl` / HTTP / the shared SDK), never a co-owner of its
- * implementation. `src/shared/` is the SDK both sides may import; the board's
+ * implementation. `src/foundation/` is the SDK both sides may import; the board's
  * core, CLI and server are not.
  */
 describe("cli/imports — the loop consumes the toolkit, it does not implement it", () => {
@@ -224,7 +224,7 @@ describe("cli/imports — the loop consumes the toolkit, it does not implement i
       ...filesUnder("src/cli"),
       ...filesUnder("src/server"),
     ];
-    const loopPolicy = new Set(["src/shared/scheduling.mjs", "src/shared/sla-patrol.mjs"]);
+    const loopPolicy = new Set(["src/foundation/scheduling.mjs", "src/foundation/sla-patrol.mjs"]);
 
     const violations = [];
     for (const file of files) {
@@ -238,11 +238,11 @@ describe("cli/imports — the loop consumes the toolkit, it does not implement i
     assert.deepEqual(violations, []);
   });
 
-  it("src/shared imports nothing from src/core, src/cli or src/server", () => {
+  it("src/foundation imports nothing from src/core, src/cli or src/server", () => {
     // The SDK is the bottom of the tree. A shared module reaching upward would
     // make the loop (which vendors shared) carry a board dependency.
     const violations = [];
-    for (const file of filesUnder("src/shared")) {
+    for (const file of filesUnder("src/foundation")) {
       for (const specifier of importedSpecifiers(readSource(file))) {
         const target = specifierTarget(file, specifier);
         if (target !== null && /^src\/(core|cli|server)\//.test(target)) {
@@ -256,7 +256,7 @@ describe("cli/imports — the loop consumes the toolkit, it does not implement i
   it("no shipped skill imports the board's implementation", () => {
     // An installed skill and the board's source tree are not co-located.
     // `skills/**` may only use Node builtins and relative links inside its own
-    // tree — the loop body's vendored `src/shared/**` included. Reaching
+    // tree — the loop body's vendored `src/foundation/**` included. Reaching
     // `src/core|cli|server` would resolve in a checkout and fail on a host.
     const files = listModuleFiles(join(ROOT, "skills"));
     assert.ok(files.length >= 3, `expected the shipped skill modules, found ${files.length}`);

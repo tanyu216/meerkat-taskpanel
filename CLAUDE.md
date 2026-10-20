@@ -108,7 +108,7 @@ node src/server/main.mjs                     # start taskd directly (taskctl als
 bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|all   # --prefix --link --force --dry-run
 ```
 
-`test:coverage` gates `src/core/**`, `src/shared/**`, `src/cli/**` and `src/server/**`; the
+`test:coverage` gates `src/core/**`, `src/foundation/**`, `src/cli/**` and `src/server/**`; the
 floors live once, in `package.json`. Other checkers: `verify:migrations`, `verify:changelog`.
 
 ## Repository layout
@@ -117,9 +117,9 @@ floors live once, in `package.json`. Other checkers: `verify:migrations`, `verif
 meerkat-taskpanel/
 ├── src/core/               # engine: domain (no Node builtins), storage (SQLite + migrations,
 │                           #   repositories, md export), commands (use-cases), bootstrap.openBoard()
-├── src/cli/                # taskctl (argv, usage, commands/, output/); reaches taskd via shared/transport
+├── src/cli/                # taskctl (argv, usage, commands/, output/); reaches taskd via foundation/transport
 ├── src/server/             # taskd: auth + CIDR, router, routes/, sse, static, writer lock, graceful stop
-├── src/shared/             # DTOs, constants, errors, pure helpers + the taskd transport seam
+├── src/foundation/             # DTOs, constants, errors, pure helpers + the taskd transport seam
 ├── web/                    # Vue 3 + Vite board frontend (own lockfile) -> web/dist, served by taskd
 ├── skills/                 # the two skills: meerkat-taskpanel (board), meerkat-loop (supervisor)
 ├── .claude-plugin/ .pi/ .opencode/ .cursor-plugin/   # harness markers; the plugin root IS the repo root
@@ -160,7 +160,7 @@ the **hosted frontend root** is `web/dist`, the static build of `web/` that `tas
   and the loop's hand-written surface (`skills/meerkat-loop/`: `SKILL.md`, `references/`,
   `scripts/board-check.mjs`). The loop's `manifest.txt` + `scripts/` (except the gate) +
   `src/` + `templates/` are generated from `scripts/supervisor.mjs`, `scripts/loop/`,
-  `scripts/wake-cwd.mjs`, `src/shared/` and
+  `scripts/wake-cwd.mjs`, `src/foundation/` and
   `scripts/install/templates/` (the workflow decisions live in
   `src/core/domain/workflow.mjs` and are not in the body — the loop gets them from
   `issue reconcile --workflow`). After any edit touching those inputs run
@@ -180,8 +180,9 @@ the **hosted frontend root** is `web/dist`, the static build of `web/` that `tas
   and flag — the loop and user scripts bind to that surface.
 - **Commit with explicit paths:** `git commit -- <path>` (never a bare `git commit -a`).
 - **Code style / layering:** `src/core/domain/` imports **no Node builtins**; dependency
-  direction is `cli|server -> core -> shared` (nothing imports from `cli`/`server`; `shared`
-  imports nothing from `src/`); every failure is a domain error with a code, never a bare `Error`.
+  direction is `cli|server -> core -> foundation` (nothing imports from `cli`/`server`;
+  `foundation` imports nothing from `src/`); every failure is a domain error with a code,
+  never a bare `Error`.
 - **`design/` is a live oracle.** Prototype pages under `design/prototype/` are read by tests
   (`test/design/`, `test/web/blocks.*`, `test/web/i18n.catalogue.test.mjs`), so editing them
   changes what green means. `design/` is excluded from the image by `.dockerignore`, so

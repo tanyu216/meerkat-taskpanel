@@ -39,7 +39,7 @@ import { createCommands, createContext } from "../../src/core/commands/index.mjs
 import { normalizeBlockedReason } from "../../src/core/domain/blocked-reason.mjs";
 import { BLOCKED_REASONS, SQL_ENUM_SETS } from "../../src/core/domain/enums.mjs";
 import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
-import { taskToWire } from "../../src/shared/wire.mjs";
+import { taskToWire } from "../../src/foundation/wire.mjs";
 import { readMigrationFiles } from "../helpers/sql-parse.mjs";
 import {
   TS,

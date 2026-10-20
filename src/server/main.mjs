@@ -23,11 +23,11 @@
  */
 
 import { acquireWriterLock, removeRuntimePointer, resolveDataDir, writeRuntimePointer } from "../core/index.mjs";
-import { DEFAULT_HOST, DEFAULT_PORT, HOST_ENV, PORT_ENV, VERSION } from "../shared/constants.mjs";
-import { loadEnvFile } from "../shared/env-config.mjs";
-import { repoRoot } from "../shared/runtime-locator.mjs";
+import { DEFAULT_HOST, DEFAULT_PORT, HOST_ENV, PORT_ENV, VERSION } from "../foundation/constants.mjs";
+import { loadEnvFile } from "../foundation/env-config.mjs";
+import { repoRoot } from "../foundation/runtime-locator.mjs";
 import { createTaskd } from "./index.mjs";
-import { isEntryPoint } from "../shared/entry-guard.mjs";
+import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 /**
  * `TASKD_PORT` may be 0 (ephemeral) — do not treat it as "unset".

@@ -51,7 +51,7 @@ import {
 import { resolveDataDir, resolveRuntimePointerPath, runtimePointerPathForDataDir } from "../runtime-locator.mjs";
 import { ioError } from "./errors.mjs";
 
-/** Repository root, from `src/shared/transport/`. */
+/** Repository root, from `src/foundation/transport/`. */
 export function repoRoot() {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 }

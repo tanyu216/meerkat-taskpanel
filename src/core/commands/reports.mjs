@@ -9,7 +9,7 @@
  * a revision bump.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { assertWaiverRequest } from "../domain/delivery-gate.mjs";
 import { STATUS } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";

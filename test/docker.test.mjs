@@ -43,7 +43,7 @@ import {
   runVerifyInContainerArgs,
 } from "../scripts/verify/lib/docker-plan.mjs";
 import { parseBaseImages, pullFlagFor, resolvePullFlag } from "../scripts/verify/lib/base-image.mjs";
-import { SKILL_NAME, VERSION } from "../src/shared/constants.mjs";
+import { SKILL_NAME, VERSION } from "../src/foundation/constants.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

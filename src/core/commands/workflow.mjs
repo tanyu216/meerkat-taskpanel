@@ -11,8 +11,8 @@
  * the plan is a decision, not an effect.
  */
 
-import { DEFAULT_BOARD_LIMIT } from "../../shared/constants.mjs";
-import { reportToWire, taskToWire } from "../../shared/wire.mjs";
+import { DEFAULT_BOARD_LIMIT } from "../../foundation/constants.mjs";
+import { reportToWire, taskToWire } from "../../foundation/wire.mjs";
 import {
   isReviewCard,
   parseReviewVerdict,

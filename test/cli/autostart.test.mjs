@@ -16,9 +16,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { waitForPointer, spawnTaskd } from "../../src/shared/transport/autostart.mjs";
-import { ensureBoard } from "../../src/shared/transport/runtime.mjs";
-import { resolveRuntimePointerPath } from "../../src/shared/runtime-locator.mjs";
+import { waitForPointer, spawnTaskd } from "../../src/foundation/transport/autostart.mjs";
+import { ensureBoard } from "../../src/foundation/transport/runtime.mjs";
+import { resolveRuntimePointerPath } from "../../src/foundation/runtime-locator.mjs";
 import {
   baseEnv,
   cleanupTempDirs,

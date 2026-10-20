@@ -8,8 +8,8 @@
 
 import { existsSync } from "node:fs";
 
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
-import { candidateArgs, pruneRegistry } from "../../src/shared/scheduling.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
+import { candidateArgs, pruneRegistry } from "../../src/foundation/scheduling.mjs";
 
 import { runEntry } from "./entry.mjs";
 import { resolveLoopConfig } from "./options.mjs";

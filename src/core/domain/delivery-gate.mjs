@@ -26,8 +26,8 @@
  * Pure: no `node:` specifiers.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
-import { deliverCommandHint } from "../../shared/deliver-hint.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { deliverCommandHint } from "../../foundation/deliver-hint.mjs";
 import { STATUS, TASK_KIND } from "./enums.mjs";
 import { requiresReport } from "./status.mjs";
 

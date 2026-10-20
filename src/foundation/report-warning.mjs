@@ -7,7 +7,7 @@
  * good — but it deserves a warning, and the writer and the checker owe the
  * caller the same sentence.
  *
- * It lives in `shared` so the template writer (`cli/commands/report.mjs`) and
+ * It lives in `foundation` so the template writer (`cli/commands/report.mjs`) and
  * the delivery checker (`cli/commands/issue.mjs`) read one rule rather than two
  * copies of it. Pure: no `node:` specifiers.
  */

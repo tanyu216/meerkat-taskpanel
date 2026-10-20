@@ -14,8 +14,8 @@
  * removal, and getting it wrong would silently under-count and mis-archive.
  */
 
-import { DomainError } from "../../../shared/errors.mjs";
-import { newId } from "../../../shared/ids.mjs";
+import { DomainError } from "../../../foundation/errors.mjs";
+import { newId } from "../../../foundation/ids.mjs";
 import { LABEL_COLUMNS, labelFromRow, normalizeLabelName } from "../../domain/labels.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 

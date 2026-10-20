@@ -8,7 +8,7 @@
  * Pure: no `node:` specifiers.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { PRIORITIES, PRIORITY } from "./enums.mjs";
 
 /** Importance rank — higher is more urgent. */

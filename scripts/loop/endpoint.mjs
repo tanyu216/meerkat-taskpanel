@@ -9,11 +9,11 @@
 
 import { join } from "node:path";
 
-import { URL_ENV } from "../../src/shared/constants.mjs";
-import { loadEnvFile } from "../../src/shared/env-config.mjs";
-import { normalizeBoardUrl } from "../../src/shared/transport/board-url.mjs";
-import { readPointer } from "../../src/shared/transport/runtime.mjs";
-import { resolveToken } from "../../src/shared/transport/token.mjs";
+import { URL_ENV } from "../../src/foundation/constants.mjs";
+import { loadEnvFile } from "../../src/foundation/env-config.mjs";
+import { normalizeBoardUrl } from "../../src/foundation/transport/board-url.mjs";
+import { readPointer } from "../../src/foundation/transport/runtime.mjs";
+import { resolveToken } from "../../src/foundation/transport/token.mjs";
 
 /** @param {unknown} value */
 function hasText(value) {

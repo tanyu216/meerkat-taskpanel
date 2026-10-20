@@ -1,5 +1,5 @@
 /**
- * The symlink-safe entry-point guard (`src/shared/entry-guard.mjs`).
+ * The symlink-safe entry-point guard (`src/foundation/entry-guard.mjs`).
  *
  * `import.meta.url` is resolved through `realpath` by Node while `process.argv[1]` is kept as
  * invoked, so any entry-point comparison that does not canonicalise *both* sides is false
@@ -8,7 +8,7 @@
  * symlinked ancestor) lives in `test/install/apply-guard.test.mjs`, which owns that fixture.
  *
  * These legs are deliberately **in-process**: a child `node` run earns no coverage of
- * `src/shared/**`, which is under an 80% floor.
+ * `src/foundation/**`, which is under an 80% floor.
  *
  * Run with: node --test
  */
@@ -21,10 +21,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { after, describe, it } from "node:test";
 
-import { canonicalPath, isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { canonicalPath, isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const GUARD = join(ROOT, "src", "shared", "entry-guard.mjs");
+const GUARD = join(ROOT, "src", "foundation", "entry-guard.mjs");
 const HERE = fileURLToPath(import.meta.url);
 const SELF_URL = import.meta.url;
 

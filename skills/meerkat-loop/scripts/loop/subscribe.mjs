@@ -12,14 +12,14 @@
  * dropped.
  */
 
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 import {
   EVENT_CONTINUE_MIN_MS,
   EVENT_DEBOUNCE_MAX_MS,
   EVENT_DEBOUNCE_MS,
   SSE_SUBSCRIBE_IDLE_MS,
   SUBSCRIBE_RETRY_MS,
-} from "../../src/shared/constants.mjs";
+} from "../../src/foundation/constants.mjs";
 
 import * as continueEntry from "./continue.mjs";
 import { runEntry } from "./entry.mjs";

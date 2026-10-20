@@ -4,7 +4,7 @@
  * exposing either here could only ever produce a 500.
  */
 
-import { commentToWire } from "../../shared/wire.mjs";
+import { commentToWire } from "../../foundation/wire.mjs";
 import { arr, intOrUndefined, REQUEST, shape, str } from "../requests.mjs";
 import { lookupFor, resolveTask } from "../task-view.mjs";
 

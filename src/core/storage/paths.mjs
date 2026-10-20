@@ -1,10 +1,10 @@
 /**
  * Where the board lives on disk.
  *
- * The *resolvers* live in `src/shared/runtime-locator.mjs` and are re-exported
+ * The *resolvers* live in `src/foundation/runtime-locator.mjs` and are re-exported
  * here: the CLI is an HTTP client (F-A1) and must be able to find the token and
  * the runtime pointer without importing `src/core/storage` at all, so the path
- * arithmetic was lifted into `shared` and this module became the core-side
+ * arithmetic was lifted into `foundation` and this module became the core-side
  * facade. There is exactly one implementation.
  *
  * What stays here is the one thing that *writes*: `ensureDir`.
@@ -13,7 +13,7 @@
 import { chmodSync, mkdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-import { SECRET_DIR_MODE } from "../../shared/constants.mjs";
+import { SECRET_DIR_MODE } from "../../foundation/constants.mjs";
 import {
   isAbsolutePath,
   logsDir,
@@ -22,7 +22,7 @@ import {
   resolveDbPath,
   resolveRuntimePointerPath,
   tokenPath,
-} from "../../shared/runtime-locator.mjs";
+} from "../../foundation/runtime-locator.mjs";
 
 export {
   isAbsolutePath,

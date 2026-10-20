@@ -3,7 +3,7 @@
  * with a timestamp, and rewriting one would rewrite history (§4.1).
  */
 
-import { relationToWire } from "../../shared/wire.mjs";
+import { relationToWire } from "../../foundation/wire.mjs";
 import { bool, REQUEST, shape, str } from "../requests.mjs";
 import { resolveTask } from "../task-view.mjs";
 

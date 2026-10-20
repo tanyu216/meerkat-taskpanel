@@ -159,7 +159,7 @@ What that means concretely:
   `evidence`, … A field means the same thing on both mechanisms, so the two can
   never label one card differently.
 - **Thresholds are `PROTOCOL §⑮`'s, referenced.** `SLA_ROWS` in
-  `src/shared/sla-patrol.mjs` is the runtime mapping table: every limit sits next
+  `src/foundation/sla-patrol.mjs` is the runtime mapping table: every limit sits next
   to the row it came from. `warn` is `L − P` (the mechanism's own period before
   the published limit — 到点提醒, not a breach), `overdue` is `L`, `escalate` is
   the published further timeout.
@@ -954,13 +954,13 @@ this checkout:
 ├── scripts/supervisor.mjs        the scheduler the units run
 ├── scripts/loop/*.mjs            the deterministic entries (poll / patrol / workflow / continue)
 ├── scripts/wake-cwd.mjs          what the wake glue calls to resolve a card's directory
-├── src/shared/*.mjs              the modules those import
+├── src/foundation/*.mjs              the modules those import
 ├── supervisor.log                runtime
 └── supervisor.state.json         runtime
 ```
 
-The `scripts/` + `src/shared/` shape is load-bearing: `supervisor.mjs` imports
-`../src/shared/scheduling.mjs`, and that module in turn imports `constants.mjs` and
+The `scripts/` + `src/foundation/` shape is load-bearing: `supervisor.mjs` imports
+`../src/foundation/scheduling.mjs`, and that module in turn imports `constants.mjs` and
 `errors.mjs` (which imports `redact.mjs`). One file alone would leave a relative import
 resolving to nothing, so the transitive closure travels with it.
 

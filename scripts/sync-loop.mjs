@@ -5,12 +5,12 @@
  * The loop is a deployment, not a library: what a host needs to run it is
  *
  *   * the **execution body** — `scripts/supervisor.mjs` (the tick), `scripts/wake-cwd.mjs`
- *     (the wake glue's directory resolver) and the `src/shared/` modules those two import;
+ *     (the wake glue's directory resolver) and the `src/foundation/` modules those two import;
  *   * the **templates** the installer renders — the launchd / systemd / cron units, the
  *     three `wake-<host>.sh` glues, and the host config.
  *
  * Both are *generated* here, from the single sources this repository already keeps
- * (`scripts/`, `src/shared/`, `scripts/install/templates/`), into
+ * (`scripts/`, `src/foundation/`, `scripts/install/templates/`), into
  *
  *   skills/meerkat-loop/{scripts,src}/**   + manifest.txt
  *   skills/meerkat-loop/templates/**
@@ -26,8 +26,8 @@
  * prune ever touches it. Any other file under `scripts/`, `src/` and `templates/` is
  * generated output.
  *
- * The `src/shared/` tree is copied **only as a closure of the two roots above**: the
- * shared modules the whole CLI depends on stay in place at the repository root and are
+ * The `src/foundation/` tree is copied **only as a closure of the two roots above**: the
+ * foundation modules the whole CLI depends on stay in place at the repository root and are
  * never moved — this script reads them and writes copies; it owns nothing upstream.
  *
  * `manifest.txt` is the closure itself, one repository-relative path per line. Because the
@@ -42,7 +42,7 @@
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isEntryPoint } from "../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../src/foundation/entry-guard.mjs";
 
 /** Directory name of the loop skill, inside `skills/` and each host's `skills/`. */
 export const LOOP_SKILL_NAME = "meerkat-loop";
@@ -70,7 +70,7 @@ export const LOOP_MANIFEST = "manifest.txt";
  * calls to answer "which directory does this card's project live in?"; and
  * `scripts/loop/*.mjs` are the deterministic entries the continue turn invokes.
  * Every root must travel with the body, or an installed unit names a file the host
- * does not have. Listing the shared modules explicitly is harmless (the closure
+ * does not have. Listing the foundation modules explicitly is harmless (the closure
  * dedupes) and protects the shipped tree from a future computed import.
  */
 export const LOOP_BODY_ROOTS = Object.freeze([
@@ -372,7 +372,7 @@ const USAGE = `Usage: node scripts/sync-loop.mjs [--check] [--root <dir>]
 
 Generates the loop payload (execution body + installer templates) inside
 skills/${LOOP_SKILL_NAME}/: manifest.txt, and the generated scripts/, src/ and
-templates/ trees, from this repository's own scripts/, src/shared/ and
+templates/ trees, from this repository's own scripts/, src/foundation/ and
 scripts/install/templates/. scripts/board-check.mjs is authored and is never
 written, reported as extra, or pruned. Run through scripts/sync-skills.mjs with
 everything else — that is the entry point CI uses.

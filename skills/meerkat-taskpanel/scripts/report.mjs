@@ -845,7 +845,7 @@ async function main(argv) {
   }
 }
 
-// A private copy of `src/shared/entry-guard.mjs`. This file ships as part of the board skill and
+// A private copy of `src/foundation/entry-guard.mjs`. This file ships as part of the board skill and
 // is copied out on its own, so an import reaching back into the checkout would dangle once it is.
 // Node resolves `import.meta.url` through `realpath` but leaves `process.argv[1]` as spelled, so
 // both sides must be canonicalised — otherwise the guard is silently false and this exits 0

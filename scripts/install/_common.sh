@@ -192,7 +192,7 @@ resolve_host_cli_dir() {
 #
 # The loop is a skill of its own (skills/meerkat-loop/): its execution body and the units /
 # wake / config templates it is deployed with are *generated* into it from this repository's
-# scripts/, src/shared/ and scripts/install/templates/, and guarded by
+# scripts/, src/foundation/ and scripts/install/templates/, and guarded by
 # `node scripts/sync-skills.mjs --check`. The installer reads them from there rather than
 # from this repository's own scripts/ — so what is deployed is exactly what was distributed
 # and verified, not a second reading of the same inputs.
@@ -554,10 +554,10 @@ apply_supervisor() {
 #
 #   <home>/<host-dir>/meerkat-taskpanel/scripts/supervisor.mjs   the executor
 #   <home>/<host-dir>/meerkat-taskpanel/scripts/wake-cwd.mjs     the glue's resolver
-#   <home>/<host-dir>/meerkat-taskpanel/src/shared/*.mjs         their imports
+#   <home>/<host-dir>/meerkat-taskpanel/src/foundation/*.mjs         their imports
 #
-# The `scripts/` + `src/shared/` shape is load-bearing, not decoration: the body's
-# modules import each other relatively (`../src/shared/scheduling.mjs`), so a copy of
+# The `scripts/` + `src/foundation/` shape is load-bearing, not decoration: the body's
+# modules import each other relatively (`../src/foundation/scheduling.mjs`), so a copy of
 # one file would resolve a relative import to nothing and the unit would die at load.
 # The set to copy is **not** restated here — it is read from the loop skill's generated
 # `manifest.txt` at its root, which is the closure itself (computed from the two entry points'

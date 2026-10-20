@@ -19,10 +19,10 @@
  * Exit codes: 0 success, 2 usage error, 1 the board refused the write.
  */
 
-import { loadEnvFile } from "../../../src/shared/env-config.mjs";
-import { repoRoot } from "../../../src/shared/runtime-locator.mjs";
+import { loadEnvFile } from "../../../src/foundation/env-config.mjs";
+import { repoRoot } from "../../../src/foundation/runtime-locator.mjs";
 import { readAcceptancePolicy, writeAcceptancePolicy } from "../../../src/core/acceptance-policy.mjs";
-import { ACCEPTANCE_POLICIES } from "../../../src/shared/constants.mjs";
+import { ACCEPTANCE_POLICIES } from "../../../src/foundation/constants.mjs";
 
 const USAGE = `Usage: node scripts/install/lib/acceptance.mjs <write|resolve> [options]
 

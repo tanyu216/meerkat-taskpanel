@@ -11,7 +11,7 @@
  * is the same whether the refusal comes from here or from the trigger.
  */
 
-import { DomainError, isDomainError } from "../../shared/errors.mjs";
+import { DomainError, isDomainError } from "../../foundation/errors.mjs";
 import {
   CLAIM_STALE_ANY_MS,
   CLAIM_STALE_SAME_MS,
@@ -19,8 +19,8 @@ import {
   TASK_LIST_DEFAULT_LIMIT,
   TASK_ORDER_DEFAULT,
   TASK_ORDER_MODES,
-} from "../../shared/constants.mjs";
-import { orderTasks, taskOrderDebugEntry } from "../../shared/task-order.mjs";
+} from "../../foundation/constants.mjs";
+import { orderTasks, taskOrderDebugEntry } from "../../foundation/task-order.mjs";
 import {
   assertClaimable,
   decideClaim,
@@ -945,7 +945,7 @@ export function archive(ctx, input) {
  *
  *   * `board` (the default, and what every caller got before this existed) — the
  *     repository's `sort_order, created_at, project_id, identifier`;
- *   * `weight` — the assignee weight order (`shared/task-order.mjs`), requested
+ *   * `weight` — the assignee weight order (`foundation/task-order.mjs`), requested
  *     with `?order=weight`.
  *
  * The default is deliberately untouched: the existing order is a frozen

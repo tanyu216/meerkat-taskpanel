@@ -15,8 +15,8 @@
  * Pure: no `node:` specifiers.
  */
 
-import { RELATION_ANCESTOR_CAP, RELATION_CHAIN_MAX, RELATION_FANIN_MAX } from "../../shared/constants.mjs";
-import { DomainError } from "../../shared/errors.mjs";
+import { RELATION_ANCESTOR_CAP, RELATION_CHAIN_MAX, RELATION_FANIN_MAX } from "../../foundation/constants.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { RELATION_TYPES, RELATION_TYPE, TASK_KIND } from "./enums.mjs";
 
 /**

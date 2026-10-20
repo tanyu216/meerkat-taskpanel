@@ -6345,8 +6345,8 @@ export async function run() {
    fixture server, the Playwright resolver and the in-page rule evaluator from
    here rather than growing a second copy of each. Only run the smoke when this
    file *is* the process entry point. */
-/* A private copy of `src/shared/entry-guard.mjs` — `web/` is a workspace of its own with its own
-   lockfile, so it does not reach into `src/shared/`. Node resolves `import.meta.url` through
+/* A private copy of `src/foundation/entry-guard.mjs` — `web/` is a workspace of its own with its own
+   lockfile, so it does not reach into `src/foundation/`. Node resolves `import.meta.url` through
    `realpath` while leaving `process.argv[1]` as spelled, so both sides must be canonicalised:
    otherwise the guard is silently false and this harness exits 0 having measured nothing. */
 function canonicalPath(path) {

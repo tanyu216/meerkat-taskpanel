@@ -28,7 +28,7 @@ import {
   requiresReport,
   transitionReasonCode,
 } from "../../../src/core/domain/status.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 
 /** F1 ruling, option A — transcribed from the card, not from the module. */
 const EXPECTED_ALLOWED = {

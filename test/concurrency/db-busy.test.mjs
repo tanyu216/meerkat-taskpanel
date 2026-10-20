@@ -35,8 +35,8 @@ import { SQLITE_ERRCODE, mapSqliteError } from "../../src/core/storage/sqlite-er
 import { transaction } from "../../src/core/storage/unit-of-work.mjs";
 import { createTaskd } from "../../src/server/index.mjs";
 import { attachmentContentPath } from "../../src/server/routes/attachments.mjs";
-import { ATTACHMENTS_DIRNAME, DB_BUSY_MAX_ATTEMPTS } from "../../src/shared/constants.mjs";
-import { ERROR_CODES } from "../../src/shared/errors.mjs";
+import { ATTACHMENTS_DIRNAME, DB_BUSY_MAX_ATTEMPTS } from "../../src/foundation/constants.mjs";
+import { ERROR_CODES } from "../../src/foundation/errors.mjs";
 
 const tempDirs = [];
 const children = new Set();

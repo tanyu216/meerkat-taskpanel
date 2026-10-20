@@ -9,7 +9,7 @@
  * policy live.
  *
  * The file format is the simple `KEY=VALUE` subset documented in
- * `src/shared/env-config.mjs`:
+ * `src/foundation/env-config.mjs`:
  *
  *   TASKD_ALLOW_LIST_ENABLED=false
  *   TASKD_ALLOW_CIDRS=192.168.0.0/16,10.0.0.0/8
@@ -20,7 +20,7 @@
  *      (`TASKD_ALLOW_CIDRS` / `TASKD_ALLOW_LIST_ENABLED`) — an operator's
  *      override. `source: "env"`; the panel is read-only, because a save would
  *      be silently undone by the next process start.
- *   2. the `.env` values, already parsed by `src/shared/env-config.mjs`
+ *   2. the `.env` values, already parsed by `src/foundation/env-config.mjs`
  *      (`envVars`) — `source: "file"`.
  *   3. the defaults — allow-list **off**, seeded with the two private ranges
  *      (`source: "default"`). Off is deliberately the safe upgrade: an existing
@@ -34,10 +34,10 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { mergeEnvText, parseEnvBool } from "../shared/env-file.mjs";
-import { ALLOW_CIDRS_ENV, SECRET_DIR_MODE, SECRET_FILE_MODE } from "../shared/constants.mjs";
-import { DomainError } from "../shared/errors.mjs";
-import { redactText } from "../shared/redact.mjs";
+import { mergeEnvText, parseEnvBool } from "../foundation/env-file.mjs";
+import { ALLOW_CIDRS_ENV, SECRET_DIR_MODE, SECRET_FILE_MODE } from "../foundation/constants.mjs";
+import { DomainError } from "../foundation/errors.mjs";
+import { redactText } from "../foundation/redact.mjs";
 import { parseAllowList, parseCidr } from "./cidr.mjs";
 
 /** The env-file key for the allow-list master switch. */

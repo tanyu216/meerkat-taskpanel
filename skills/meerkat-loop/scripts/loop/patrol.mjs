@@ -7,7 +7,7 @@
  * `--patrol-interval` is a measurement unit, not how often this runs.
  */
 
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 import { readBoard, runSlaPass } from "./board.mjs";
 import { runEntry } from "./entry.mjs";

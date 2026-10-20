@@ -1,5 +1,5 @@
 /**
- * The host-local project → directory rule (`src/shared/project-dir.mjs`).
+ * The host-local project → directory rule (`src/foundation/project-dir.mjs`).
  *
  * The board holds no directory (O3), so "which directory does this project work
  * in?" is answered by `projects.json` — and the answer must be *validated*, not
@@ -24,7 +24,7 @@ import {
   checkTargetDirectory,
   parseProjectMap,
   resolveProjectDir,
-} from "../../src/shared/project-dir.mjs";
+} from "../../src/foundation/project-dir.mjs";
 
 /** An `inspect` that answers from a fixed table. */
 const kinds = (table) => (path) => table[path] ?? "missing";

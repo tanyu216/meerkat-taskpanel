@@ -21,7 +21,7 @@ import { COMMANDS as tokenCommands } from "../../src/cli/commands/token.mjs";
 import { allCommands, groups, registry } from "../../src/cli/commands/index.mjs";
 import { actorLabel, fields, table, taskLine } from "../../src/cli/output/human.mjs";
 import { commandSynopsis, flagSynopsis, commandUsage, groupUsage, topLevelUsage, versionLine } from "../../src/cli/usage.mjs";
-import { CONTRACT_SCHEMA_VERSION, VERSION } from "../../src/shared/constants.mjs";
+import { CONTRACT_SCHEMA_VERSION, VERSION } from "../../src/foundation/constants.mjs";
 
 const tempDirs = [];
 after(() => {

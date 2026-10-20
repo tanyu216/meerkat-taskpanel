@@ -25,7 +25,7 @@ import test, { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
 import { mergeSettings } from "../../scripts/install/lib/apply.mjs";
-import { VERSION } from "../../src/shared/constants.mjs";
+import { VERSION } from "../../src/foundation/constants.mjs";
 
 const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-hostbundle-" });
 

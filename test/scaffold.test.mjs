@@ -21,7 +21,7 @@ import test, { after, describe, it } from "node:test";
 import { listFiles, resolveSkillSource } from "../scripts/sync-skills.mjs";
 import { MANIFESTS, validateManifests } from "../scripts/verify/manifests.mjs";
 import { validateSkill } from "../scripts/verify/skill.mjs";
-import { VERSION } from "../src/shared/constants.mjs";
+import { VERSION } from "../src/foundation/constants.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

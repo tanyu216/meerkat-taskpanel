@@ -105,7 +105,7 @@ the [Highlights](#highlights) below describe.
 
 Meerkat TaskPanel is three thin layers, with the dependency arrow always pointing inward:
 `src/cli` and `src/server` are the front doors, `src/core` owns the domain model,
-SQLite storage and the use-cases, and `src/shared` holds the DTOs and helpers they agree on.
+SQLite storage and the use-cases, and `src/foundation` holds the DTOs and helpers they agree on.
 The full tree is in [Repository layout](#repository-layout); to install the skill or plugin
 for your host, start with [Install](#install).
 
@@ -130,7 +130,7 @@ meerkat-taskpanel/
 │   ├── core/                     #   domain model / SQLite repo / state machine / invariants / md export
 │   ├── cli/                      #   taskctl (CLI entry)
 │   ├── server/                   #   local HTTP API + SSE
-│   └── shared/                   #   shared DTOs / constants
+│   └── foundation/               #   DTOs / constants / pure helpers
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
 ├── skills/                       # the two skills: meerkat-taskpanel (board), meerkat-loop (supervisor)
 ├── .claude-plugin/               # marketplace + the board plugin manifest (plugin root = the repo root)

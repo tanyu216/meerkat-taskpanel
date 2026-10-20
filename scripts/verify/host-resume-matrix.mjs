@@ -32,7 +32,7 @@
  *   * scripts/verify/host-cli.mjs — drives the real CLIs too, but only for plugin/marketplace
  *     *recognition*; it has no resume dimension. Same isolation tricks are reused here
  *     (throwaway HOME, SKIP-on-absent), so the two are complementary and coexist.
- *   * src/shared/scheduling.mjs#wakeCommand — the production consumer. It emits
+ *   * src/foundation/scheduling.mjs#wakeCommand — the production consumer. It emits
  *     `claude -p [--resume <sid>]` / `codex exec [resume <sid>]` /
  *     `pi --print [--session <sid>]` (pi has no `run` subcommand — `--print` is its
  *     headless entry); this matrix is the evidence that those flags are real in the CLI
@@ -52,7 +52,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 const IMAGE = "meerkat-taskpanel:verify";
 

@@ -21,7 +21,7 @@
 | `src/core/` | Domain model, SQLite repository, state machine, invariants (M1) |
 | `src/cli/` | `taskctl` — the CLI entry point |
 | `src/server/` | Local HTTP API + SSE for the board (M6) |
-| `src/shared/` | Shared DTOs, constants, small pure helpers |
+| `src/foundation/` | Shared DTOs, constants, small pure helpers |
 | `web/` | Vue 3 + Vite board frontend → `web/dist` (the hosted frontend root) |
 | `skills/meerkat-taskpanel/` | The skill — **single source of truth** |
 | `.claude-plugin/` | The board plugin manifest and the marketplace; the plugin root is the repository root, which is how every harness shares the one `skills/` tree |
@@ -33,13 +33,13 @@
 | `design/` | Product design artifacts — the DESIGN / BLOCKS documents, the interactive `prototype/`, brand assets and exported assets (see `design/README.md`) |
 | `docs/` | Usage and development documentation |
 
-Dependency direction: `core`, `cli` and `server` may import from `shared`;
-nothing imports from `cli` or `server`; `shared` imports nothing from `src/`.
-`src/shared/` is the **public SDK**: both the board and the loop may import it.
+Dependency direction: `core`, `cli` and `server` may import from `foundation`;
+nothing imports from `cli` or `server`; `foundation` imports nothing from `src/`.
+`src/foundation/` is the **public SDK**: both the board and the loop may import it.
 
 The loop is an **orchestrator, not a co-owner**. `scripts/loop/**`, the supervisor and
-`scripts/wake-cwd.mjs` may import `shared/` but never `src/core|cli|server`; the board may
-not import the loop's policy modules (`shared/scheduling.mjs`, `shared/sla-patrol.mjs`); and
+`scripts/wake-cwd.mjs` may import `foundation/` but never `src/core|cli|server`; the board may
+not import the loop's policy modules (`foundation/scheduling.mjs`, `foundation/sla-patrol.mjs`); and
 no shipped skill imports `src/core|cli|server` at all — an installed skill and a checkout are
 not co-located, so such an import would resolve here and fail on a host. All three directions
 are asserted by `test/cli/imports.test.mjs`.
@@ -321,7 +321,7 @@ polled twice a second.
 
 Writes take the SQLite write lock for the length of one transaction. When
 another writer holds it past `busy_timeout` (5s), the request is **retried** a
-bounded number of times (see `DB_BUSY_MAX_ATTEMPTS` in `src/shared/constants.mjs`)
+bounded number of times (see `DB_BUSY_MAX_ATTEMPTS` in `src/foundation/constants.mjs`)
 and, if it still cannot get in, answered with:
 
 ```
@@ -368,12 +368,12 @@ root. `test/scaffold.test.mjs` asserts that, since with no copy targets left
 The loop's `manifest.txt`, `scripts/` and `src/` are generated *from this repository*:
 `manifest.txt` is the transitive import closure of `scripts/supervisor.mjs`,
 `scripts/loop/*.mjs` and `scripts/wake-cwd.mjs` (the list the installer copies), `scripts/`
-holds those modules and `src/` holds the shared modules they import. `templates/` mirrors the
+holds those modules and `src/` holds the foundation modules they import. `templates/` mirrors the
 loop-side files under `scripts/install/templates/`. `scripts/board-check.mjs` is the one
 authored file inside a generated root — `sync-loop.mjs` never writes, prunes or reports it.
-That direction matters — the shared
-modules in `src/shared/` are **not** moved into the skill; they stay where the CLI imports
-them, and the skill's copy is generated and guarded. The vendored set is `src/shared/**`
+That direction matters — the foundation
+modules in `src/foundation/` are **not** moved into the skill; they stay where the CLI imports
+them, and the skill's copy is generated and guarded. The vendored set is `src/foundation/**`
 only: the loop body never contains `src/core`, `src/cli` or `src/server`. The **workflow
 decisions** are not in
 the loop body at all: they live in `src/core/domain/workflow.mjs`, and the loop gets them
@@ -382,7 +382,7 @@ all, by ruling: its framework already ships an equivalent supervisor, and `insta
 --target openclaw` copies the board skill only.
 
 **After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/loop/`,
-`scripts/wake-cwd.mjs`, `src/shared/`, or `scripts/install/templates/`, run:**
+`scripts/wake-cwd.mjs`, `src/foundation/`, or `scripts/install/templates/`, run:**
 
 ```bash
 node scripts/sync-skills.mjs

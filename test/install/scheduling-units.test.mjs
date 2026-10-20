@@ -220,7 +220,7 @@ describe("install.sh: scheduling units", () => {
     );
 
     // The module graph is closed under the copy. `supervisor.mjs` imports
-    // `../src/shared/scheduling.mjs`, so the `scripts/` + `src/shared/` shape has to
+    // `../src/foundation/scheduling.mjs`, so the `scripts/` + `src/foundation/` shape has to
     // travel with it — one file alone would leave a dangling relative import and the
     // unit would die at load. Every relative import inside the copy resolves inside
     // the copy, so loading the body needs nothing from the checkout.

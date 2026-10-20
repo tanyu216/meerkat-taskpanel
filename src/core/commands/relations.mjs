@@ -6,7 +6,7 @@
  * database is what actually guarantees them.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { RELATION_TYPE } from "../domain/enums.mjs";
 import { assertBlockEdgeAllowed, assertParentEdgeAllowed, normalizeRelation, parentChainOf } from "../domain/relation.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";

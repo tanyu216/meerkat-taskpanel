@@ -9,7 +9,7 @@ keeps whatever its tasks produce is its own business.
 ## The id is also the identifier prefix
 
 Every task identifier is `<PREFIX>-<serial>`. The prefix is **derived from the project id** by
-`identifierPrefix` (`src/shared/ids.mjs`):
+`identifierPrefix` (`src/foundation/ids.mjs`):
 
 1. trim surrounding whitespace,
 2. uppercase,

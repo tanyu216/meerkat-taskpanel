@@ -1,5 +1,5 @@
 /**
- * The loop’s workflow configuration (`src/shared/scheduling.mjs`): flag > env >
+ * The loop’s workflow configuration (`src/foundation/scheduling.mjs`): flag > env >
  * file > default. Pure; no board, no clock.
  */
 
@@ -10,12 +10,12 @@ import {
   DEFAULT_REVIEW_AGING_MINUTES,
   DEFAULT_WORKFLOW_MAX_ACTIONS as LOOP_MAX_ACTIONS,
   resolveWorkflowConfig,
-} from "../../src/shared/scheduling.mjs";
+} from "../../src/foundation/scheduling.mjs";
 import {
   DEFAULT_BOARD_LIMIT,
   DEFAULT_REVIEW_AGING_MS,
   DEFAULT_WORKFLOW_MAX_ACTIONS,
-} from "../../src/shared/constants.mjs";
+} from "../../src/foundation/constants.mjs";
 import {
   DEFAULT_REVIEW_AGING_MS as BOARD_AGING_MS,
   DEFAULT_WORKFLOW_MAX_ACTIONS as BOARD_MAX_ACTIONS,

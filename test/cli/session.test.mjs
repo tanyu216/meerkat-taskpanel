@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
-import { sessionId as deriveSessionId } from "../../src/shared/ids.mjs";
+import { sessionId as deriveSessionId } from "../../src/foundation/ids.mjs";
 import { cleanupTempDirs, dataOf, withCli } from "./helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);

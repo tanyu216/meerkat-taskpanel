@@ -22,7 +22,7 @@ import {
   SESSION_ID_NAMESPACE,
   TOKEN_FILENAME,
   TOKEN_PREFIX,
-} from "../../src/shared/constants.mjs";
+} from "../../src/foundation/constants.mjs";
 import {
   DB_RAISE_CODES,
   DomainError,
@@ -31,13 +31,13 @@ import {
   SQL_CONSTRAINT_CODES,
   isDomainError,
   toErrorPayload,
-} from "../../src/shared/errors.mjs";
+} from "../../src/foundation/errors.mjs";
 import {
   REDACTED_TOKEN,
   redactDeep,
   redactText,
   redactToken,
-} from "../../src/shared/redact.mjs";
+} from "../../src/foundation/redact.mjs";
 
 const TOKEN = `td_${"a1b2c3d4".repeat(8)}`;
 

@@ -19,7 +19,7 @@ import test, { after, before, describe, it } from "node:test";
 
 import { createTaskd } from "../../src/server/index.mjs";
 import { attachmentContentPath, sanitizeFilename } from "../../src/server/routes/attachments.mjs";
-import { ATTACHMENT_MAX_BYTES } from "../../src/shared/constants.mjs";
+import { ATTACHMENT_MAX_BYTES } from "../../src/foundation/constants.mjs";
 
 const AGENT = { kind: "agent", id: "linus" };
 const tempDirs = [];

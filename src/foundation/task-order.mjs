@@ -13,7 +13,7 @@
  *      outcome, since the top of the list is then occupied by dead work.
  *   2. **score** — a linear weighted sum of six factors, each normalised into
  *      `[0,1]` beforehand by `min(value / cap, 1)` (a **ratio cap**). This is a
- *      deliberate break from `shared/project-order.mjs`'s *rank* normalisation:
+ *      deliberate break from `foundation/project-order.mjs`'s *rank* normalisation:
  *      there, a project's score depends on the other projects in the set. Here
  *      every card's score is a function of that card alone, which is what makes
  *      the order paginable and what keeps "someone added a card yesterday" from
@@ -41,8 +41,8 @@ import {
  * Board column order — the first seven of `core/domain/enums.mjs#STATUSES`, in
  * the order the board draws them.
  *
- * Restated rather than imported because `shared` imports nothing from `src/`;
- * `test/shared/task-order.test.mjs` asserts the two lists still agree, so a
+ * Restated rather than imported because `foundation` imports nothing from `src/`;
+ * `test/foundation/task-order.test.mjs` asserts the two lists still agree, so a
  * status added to the enum turns into a red test rather than a silent drift.
  *
  * `awaiting` is the M1 **overlay** state, not an eighth column: a waiting card

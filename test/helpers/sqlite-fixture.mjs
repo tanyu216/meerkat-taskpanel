@@ -14,7 +14,7 @@ import { closeDatabase, openDatabase } from "../../src/core/storage/driver.mjs";
 import { applyMigrations } from "../../src/core/storage/migrations-runner.mjs";
 import { ensureParentDir } from "../../src/core/storage/paths.mjs";
 import { mapSqliteError } from "../../src/core/storage/sqlite-errors.mjs";
-import { norm } from "../../src/shared/norm.mjs";
+import { norm } from "../../src/foundation/norm.mjs";
 
 /** A fixed, millisecond-width UTC stamp — tests never depend on the wall clock. */
 export const TS = "2026-10-08T00:00:00.000Z";

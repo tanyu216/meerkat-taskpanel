@@ -14,8 +14,8 @@
  */
 
 import { TASK_OPS } from "../../core/index.mjs";
-import { DomainError } from "../../shared/errors.mjs";
-import { reportToWire, taskToWire, workflowToWire } from "../../shared/wire.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { reportToWire, taskToWire, workflowToWire } from "../../foundation/wire.mjs";
 import { bool, int, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
 import { lookupFor, resolveTask, taskPayload } from "../task-view.mjs";
 

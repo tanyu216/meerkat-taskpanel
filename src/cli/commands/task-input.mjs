@@ -17,7 +17,7 @@
  * ## Why the CLI may import that module and not the core barrel
  *
  * `src/core/commands/tasks-input.mjs` imports exactly two things
- * (`shared/errors.mjs`, `domain/enums.mjs`) and reaches no storage — which is
+ * (`foundation/errors.mjs`, `domain/enums.mjs`) and reaches no storage — which is
  * what lets the CLI read the declaration without dragging `node:sqlite` into a
  * process whose whole point is that it talks to the board over HTTP.
  * `test/cli/imports.test.mjs` pins that: the CLI's only `src/core` import is

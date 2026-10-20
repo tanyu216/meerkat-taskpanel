@@ -14,8 +14,8 @@
  * secret).
  */
 
-import { errorPayload } from "../../shared/transport/errors.mjs";
-import { redactDeep } from "../../shared/redact.mjs";
+import { errorPayload } from "../../foundation/transport/errors.mjs";
+import { redactDeep } from "../../foundation/redact.mjs";
 
 /** @param {unknown} data */
 export function successEnvelope(data) {

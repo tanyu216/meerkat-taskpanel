@@ -3,7 +3,7 @@
  *
  * The loop used to be an implicit side effect of installing the board skill. It is now a
  * skill of its own, with a **generated** payload: the execution body and the installer
- * templates are produced from this repository's own `scripts/`, `src/shared/` and
+ * templates are produced from this repository's own `scripts/`, `src/foundation/` and
  * `scripts/install/templates/`, and guarded by `node scripts/sync-skills.mjs --check`.
  *
  * These tests hold the three things that make that split real rather than cosmetic:
@@ -98,20 +98,20 @@ describe("loop skill: the generated payload", () => {
       "scripts/loop/endpoint.mjs",
       "scripts/loop/event-rules.mjs",
       "scripts/wake-cwd.mjs",
-      "src/shared/scheduling.mjs",
-      "src/shared/sla-patrol.mjs",
-      "src/shared/env-config.mjs",
-      "src/shared/constants.mjs",
-      "src/shared/errors.mjs",
-      "src/shared/redact.mjs",
-      "src/shared/project-dir.mjs",
-      "src/shared/runtime-locator.mjs",
-      "src/shared/entry-guard.mjs",
-      "src/shared/transport/autostart.mjs",
-      "src/shared/transport/errors.mjs",
-      "src/shared/transport/runtime.mjs",
-      "src/shared/transport/token.mjs",
-      "src/shared/transport/board-url.mjs",
+      "src/foundation/scheduling.mjs",
+      "src/foundation/sla-patrol.mjs",
+      "src/foundation/env-config.mjs",
+      "src/foundation/constants.mjs",
+      "src/foundation/errors.mjs",
+      "src/foundation/redact.mjs",
+      "src/foundation/project-dir.mjs",
+      "src/foundation/runtime-locator.mjs",
+      "src/foundation/entry-guard.mjs",
+      "src/foundation/transport/autostart.mjs",
+      "src/foundation/transport/errors.mjs",
+      "src/foundation/transport/runtime.mjs",
+      "src/foundation/transport/token.mjs",
+      "src/foundation/transport/board-url.mjs",
     ]) {
       assert.ok(body.includes(rel), `${rel} must be part of the loop body`);
     }

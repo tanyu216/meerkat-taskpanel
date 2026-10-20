@@ -6,8 +6,8 @@
  * `taskctl` and the loop's own files. Only the entries import it.
  */
 
-import { TASKD_KIND } from "../../src/shared/constants.mjs";
-import { MECHANISM, pruneSlaLedger, trailReadCandidates } from "../../src/shared/sla-patrol.mjs";
+import { TASKD_KIND } from "../../src/foundation/constants.mjs";
+import { MECHANISM, pruneSlaLedger, trailReadCandidates } from "../../src/foundation/sla-patrol.mjs";
 
 import { runSlaPatrolTick, runWorkflowTick, notifyReal } from "./runners.mjs";
 import {

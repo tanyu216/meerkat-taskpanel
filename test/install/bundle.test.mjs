@@ -20,7 +20,7 @@ import { createInstallHarness } from "./helpers/install-harness.mjs";
 import { AGENT_BUNDLE_SCHEMA, CLAUDE_MANIFEST, CODEX_MANIFEST, HOST_BUNDLES, NATIVE_MANIFEST, detectBundle, findSkills, inspectBundle, normalizePathList, parseMarketplace, resolveSkillRoots } from "../../scripts/verify/lib/bundle.mjs";
 import { PROFILE_HOSTS, loadProfiles, runProfiles } from "../../scripts/verify/lib/profiles.mjs";
 import { LOOP_SKILL_NAME } from "../../scripts/sync-loop.mjs";
-import { SKILL_NAME } from "../../src/shared/constants.mjs";
+import { SKILL_NAME } from "../../src/foundation/constants.mjs";
 
 const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-bundle-" });
 

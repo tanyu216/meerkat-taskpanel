@@ -8,7 +8,7 @@ import { defineConfig } from "vite";
  * Board frontend build (M6b, plan §F6/F7).
  *
  * `web/dist` is the artefact path the backend actually hosts
- * (`src/shared/constants.mjs` → `STATIC_DIR_REL = "web/dist"`). `root` is this
+ * (`src/foundation/constants.mjs` → `STATIC_DIR_REL = "web/dist"`). `root` is this
  * directory, so Vite's default `outDir` is already `web/dist`; it is named
  * explicitly so the contract is visible rather than implied.
  *

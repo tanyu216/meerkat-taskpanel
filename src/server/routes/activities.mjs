@@ -9,7 +9,7 @@
  * the stream (or never had it) uses to catch up one card at a time.
  */
 
-import { activityToWire } from "../../shared/wire.mjs";
+import { activityToWire } from "../../foundation/wire.mjs";
 import { intOrUndefined, shape, str } from "../requests.mjs";
 import { resolveTask } from "../task-view.mjs";
 

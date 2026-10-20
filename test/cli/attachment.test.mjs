@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { ATTACHMENT_MAX_BYTES } from "../../src/shared/constants.mjs";
+import { ATTACHMENT_MAX_BYTES } from "../../src/foundation/constants.mjs";
 import { cleanupTempDirs, dataOf, errorOf, makeTempDir, withCli } from "./helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);

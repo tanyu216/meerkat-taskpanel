@@ -76,7 +76,7 @@ These are checked, not merely preferred. Skipping one turns CI red.
 | **Migrations are append-only.** Never edit or delete a committed `src/core/storage/migrations/*.sql`; add a new numbered file. The runner refuses a database whose applied file has changed | `migrations-runner.mjs`, `.githooks/pre-commit` |
 | **A version tag needs a `## [X.Y.Z]` CHANGELOG section** | `version-gate.yml`, `.githooks/pre-push` |
 | **Every failure is a domain error with a code** — never a bare `Error` | review |
-| **Layering:** `cli\|server -> core -> shared`. `src/core/domain/` imports no Node builtins | review |
+| **Layering:** `cli\|server -> core -> foundation`. `src/core/domain/` imports no Node builtins | review |
 
 ## Reporting a bug or proposing a change
 

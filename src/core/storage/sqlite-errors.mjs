@@ -24,8 +24,8 @@
  * for any caller that builds a `DomainError` of its own.
  */
 
-import { DB_RAISE_CODES, DomainError, isDomainError } from "../../shared/errors.mjs";
-import { redactText } from "../../shared/redact.mjs";
+import { DB_RAISE_CODES, DomainError, isDomainError } from "../../foundation/errors.mjs";
+import { redactText } from "../../foundation/redact.mjs";
 
 /** SQLite extended result codes we care about. */
 export const SQLITE_ERRCODE = Object.freeze({

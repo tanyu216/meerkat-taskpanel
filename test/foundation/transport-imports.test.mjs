@@ -1,15 +1,15 @@
 /**
- * The shared transport seam, machine-enforced.
+ * The foundation transport seam, machine-enforced.
  *
  * The taskd transport seam (HTTP client, autostart, runtime pointer, token
- * resolution, actor derivation, error mapping) lives in `src/shared/transport/**`,
+ * resolution, actor derivation, error mapping) lives in `src/foundation/transport/**`,
  * below the surfaces, and `src/cli` imports it. This file pins it against the
  * source text:
  *
  *   1. **Every planned seam module exists.** An empty (or half-written) scan must
  *      fail rather than pass vacuously.
- *   2. **The seam depends downward only.** `src/shared` sits below the surfaces,
- *      so a seam module may import other `src/shared` modules, Node builtins and
+ *   2. **The seam depends downward only.** `src/foundation` sits below the surfaces,
+ *      so a seam module may import other `src/foundation` modules, Node builtins and
  *      its own relatives — never `src/cli` or `src/server`.
  *   3. **The surface reaches it.** The "reuse, do not fork" mechanism behind
  *      gate-equivalence is only real if the CLI actually imports the one seam; a
@@ -26,7 +26,7 @@ import test, { describe, it } from "node:test";
 import { importedSpecifiers, isNodeBuiltin, listModuleFiles, readSource } from "../helpers/source-scan.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const SHARED = resolve(ROOT, "src/shared");
+const SHARED = resolve(ROOT, "src/foundation");
 const TRANSPORT = resolve(SHARED, "transport");
 const CLI = resolve(ROOT, "src/cli");
 const SERVER = resolve(ROOT, "src/server");
@@ -51,7 +51,7 @@ function within(dir, target) {
 
 const transportFiles = listModuleFiles(TRANSPORT);
 
-describe("shared/transport — the extracted seam", () => {
+describe("foundation/transport — the extracted seam", () => {
   it("ships every planned seam module (an empty scan must not pass)", () => {
     assert.ok(
       transportFiles.length >= PLANNED_TRANSPORT.length,
@@ -75,8 +75,8 @@ describe("shared/transport — the extracted seam", () => {
     assert.deepEqual(violations, [], "the shared seam sits below the surfaces; it must not import one");
   });
 
-  it("src/shared imports nothing from src/cli or src/server (the iron rule)", () => {
-    // The charter rule is whole-tree, not just seam-scoped: `src/shared` is the
+  it("src/foundation imports nothing from src/cli or src/server (the iron rule)", () => {
+    // The charter rule is whole-tree, not just seam-scoped: `src/foundation` is the
     // bottom of the dependency graph, so *no* module under it — seam or helper —
     // may reach up into a surface. With the seam extracted, the rule holds
     // unqualified.
@@ -90,10 +90,10 @@ describe("shared/transport — the extracted seam", () => {
         }
       }
     }
-    assert.deepEqual(violations, [], "nothing in src/shared may import cli/server");
+    assert.deepEqual(violations, [], "nothing in src/foundation may import cli/server");
   });
 
-  it("the seam imports only node builtins and src/shared relatives", () => {
+  it("the seam imports only node builtins and src/foundation relatives", () => {
     const violations = [];
     for (const file of transportFiles) {
       for (const specifier of importedSpecifiers(readSource(file))) {
@@ -110,7 +110,7 @@ describe("shared/transport — the extracted seam", () => {
     assert.deepEqual(violations, [], "the seam may reach other shared modules, nothing above them");
   });
 
-  it("src/cli imports the seam from src/shared", () => {
+  it("src/cli imports the seam from src/foundation", () => {
     const reaches = (dir) => {
       const files = listModuleFiles(dir);
       return files.some((file) =>

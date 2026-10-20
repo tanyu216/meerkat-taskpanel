@@ -1,7 +1,7 @@
 /**
  * Step 3: the dependency iron rules, machine-checked (plan §3.1, ARCHITECTURE §3).
  *
- *   domain    → only `domain/*` + `src/shared/*`, and no Node builtins at all
+ *   domain    → only `domain/*` + `src/foundation/*`, and no Node builtins at all
  *   storage   → domain + shared, never an HTTP/network module
  *   commands  → domain + storage + shared
  *   shared    → never imports `src/core`
@@ -26,7 +26,7 @@ import {
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const CORE = resolve(ROOT, "src/core");
-const SHARED = resolve(ROOT, "src/shared");
+const SHARED = resolve(ROOT, "src/foundation");
 
 /** Files that exist right now; the test grows with the tree automatically. */
 const domainFiles = listModuleFiles(resolve(CORE, "domain"));
@@ -96,7 +96,7 @@ describe("domain purity", () => {
     assert.deepEqual(offenders, [], "storage must not speak HTTP");
   });
 
-  it("src/shared/** never imports src/core", () => {
+  it("src/foundation/** never imports src/core", () => {
     const offenders = [];
     for (const file of sharedFiles) {
       for (const spec of importedSpecifiers(readSource(file))) {

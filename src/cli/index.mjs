@@ -5,7 +5,7 @@
  * The whole program is five steps, in this order:
  *
  *   0. **preflight** — refuse a runtime older than Node 22 (see
- *      `shared/node-version.mjs`), so a too-old Node fails here, loudly, rather
+ *      `foundation/node-version.mjs`), so a too-old Node fails here, loudly, rather
  *      than deep inside a command when `node:sqlite` is finally imported;
  *   1. **parse** — `argv.mjs`, which refuses anything malformed as `CLI_USAGE`;
  *   2. **answer `--help` / `--version`** — before any board is contacted, so
@@ -21,22 +21,22 @@
 
 import { readFileSync } from "node:fs";
 
-import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, VERSION } from "../shared/constants.mjs";
-import { loadEnvFile } from "../shared/env-config.mjs";
-import { DomainError } from "../shared/errors.mjs";
-import { isSupportedNode, unsupportedNodeMessage } from "../shared/node-version.mjs";
-import { redactText } from "../shared/redact.mjs";
-import { repoRoot } from "../shared/runtime-locator.mjs";
-import { ACTOR_ENV_KEYS, resolveActor } from "../shared/transport/actor.mjs";
+import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, VERSION } from "../foundation/constants.mjs";
+import { loadEnvFile } from "../foundation/env-config.mjs";
+import { DomainError } from "../foundation/errors.mjs";
+import { isSupportedNode, unsupportedNodeMessage } from "../foundation/node-version.mjs";
+import { redactText } from "../foundation/redact.mjs";
+import { repoRoot } from "../foundation/runtime-locator.mjs";
+import { ACTOR_ENV_KEYS, resolveActor } from "../foundation/transport/actor.mjs";
 import { parseArgv } from "./argv.mjs";
-import { createBoardClient } from "../shared/transport/client.mjs";
+import { createBoardClient } from "../foundation/transport/client.mjs";
 import { registry } from "./commands/index.mjs";
-import { exitCodeFor } from "../shared/transport/errors.mjs";
+import { exitCodeFor } from "../foundation/transport/errors.mjs";
 import { renderFailure, renderResult } from "./output/index.mjs";
-import { ensureBoard, readPointer } from "../shared/transport/runtime.mjs";
-import { resolveToken } from "../shared/transport/token.mjs";
+import { ensureBoard, readPointer } from "../foundation/transport/runtime.mjs";
+import { resolveToken } from "../foundation/transport/token.mjs";
 import { commandUsage, groupUsage, topLevelUsage, versionLine } from "./usage.mjs";
-import { isEntryPoint } from "../shared/entry-guard.mjs";
+import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 /** `--json`, in either spelling. Read from the raw argv so it survives a parse failure. */
 export function wantsJson(argv) {

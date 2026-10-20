@@ -87,9 +87,9 @@ import {
   LOGS_DIRNAME,
   RUNTIME_FILENAME,
   RUNTIME_POINTER_ENV,
-} from "../../../src/shared/constants.mjs";
-import { resolveDataDir, resolveRuntimePointerPath } from "../../../src/shared/runtime-locator.mjs";
-import { probeHealth, readPointer } from "../../../src/shared/transport/runtime.mjs";
+} from "../../../src/foundation/constants.mjs";
+import { resolveDataDir, resolveRuntimePointerPath } from "../../../src/foundation/runtime-locator.mjs";
+import { probeHealth, readPointer } from "../../../src/foundation/transport/runtime.mjs";
 
 /**
  * The exit code a finished `install` leaves: **3** when it refused to re-point the

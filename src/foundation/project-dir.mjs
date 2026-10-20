@@ -38,7 +38,7 @@
  * `$HOME` — and must not claim every directory under it.
  *
  * The rules are pure and the filesystem is injected (`inspect`), so every branch
- * is exercised without touching a disk — the split `src/shared/scheduling.mjs`
+ * is exercised without touching a disk — the split `src/foundation/scheduling.mjs`
  * already uses for the supervisor's decision half.
  */
 

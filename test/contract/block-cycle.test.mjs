@@ -28,7 +28,7 @@
 import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
-import { DomainError } from "../../src/shared/errors.mjs";
+import { DomainError } from "../../src/foundation/errors.mjs";
 import {
   assertBlockEdgeAllowed,
   blockedClosure,

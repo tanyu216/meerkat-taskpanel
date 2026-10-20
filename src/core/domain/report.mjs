@@ -19,8 +19,8 @@ import {
   REPORT_MAX_BYTES,
   REPORT_MAX_CONCLUSION_CHARS,
   REPORT_MAX_ITEMS,
-} from "../../shared/constants.mjs";
-import { DomainError } from "../../shared/errors.mjs";
+} from "../../foundation/constants.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { ACCEPTANCE_STATUSES, EVIDENCE_KINDS, isActorKind } from "./enums.mjs";
 
 /** UTF-8 byte length, computed without the node-only byteLength helper. */

@@ -15,8 +15,8 @@
  * `DB_BUSY` (503 + `Retry-After`), never as a generic 500.
  */
 
-import { DB_BUSY_BACKOFF_MS, DB_BUSY_MAX_ATTEMPTS } from "../../shared/constants.mjs";
-import { DomainError } from "../../shared/errors.mjs";
+import { DB_BUSY_BACKOFF_MS, DB_BUSY_MAX_ATTEMPTS } from "../../foundation/constants.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { mapSqliteError } from "./sqlite-errors.mjs";
 import { GLOBAL_REVISION_SINGLETON } from "./schema.mjs";
 

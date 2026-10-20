@@ -43,7 +43,7 @@ import { createInstallHarness } from "./helpers/install-harness.mjs";
 
 import { READY_TIMEOUT_MS, TASKD_LABEL, TASKD_TEMPLATE_FILES, TASKD_UNIT, enablePlan, exitCode, guardPaths, installGuard, isOurBoard, plistEnvBlock, servedBoard, systemdEnvBlock, systemdUserDir, unitBoard, unitEnv, unitPath, unitVars, waitForHealth } from "../../scripts/install/lib/taskd-guard.mjs";
 import { render } from "../../scripts/install/lib/apply.mjs";
-import { AUTOSTART_TIMEOUT_MS } from "../../src/shared/constants.mjs";
+import { AUTOSTART_TIMEOUT_MS } from "../../src/foundation/constants.mjs";
 
 const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-guard-", installDefaults: {} });
 

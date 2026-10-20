@@ -27,8 +27,8 @@ import {
 } from "../../src/server/access-config.mjs";
 import { readAcceptancePolicy, writeAcceptancePolicy } from "../../src/core/acceptance-policy.mjs";
 import { createTaskd } from "../../src/server/index.mjs";
-import { loadEnvFile } from "../../src/shared/env-config.mjs";
-import { ALLOW_CIDRS_ENV } from "../../src/shared/constants.mjs";
+import { loadEnvFile } from "../../src/foundation/env-config.mjs";
+import { ALLOW_CIDRS_ENV } from "../../src/foundation/constants.mjs";
 
 const tempDirs = [];
 const servers = [];

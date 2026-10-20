@@ -37,7 +37,7 @@
  * collapse onto the same `$USER`, and a `--session-id` must not shadow the
  * `$TASKCTL_AGENT` the host named.
  *
- * Pure. It lives in `src/shared` (extracted from `src/cli`) so the derivation
+ * Pure. It lives in `src/foundation` (extracted from `src/cli`) so the derivation
  * sits below the CLI surface rather than inside it.
  */
 

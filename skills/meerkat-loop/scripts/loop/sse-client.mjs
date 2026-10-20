@@ -6,7 +6,7 @@
  * the backoff ladder is the caller's decision between connections.
  */
 
-import { SUBSCRIBE_BACKOFF_MAX_MS } from "../../src/shared/constants.mjs";
+import { SUBSCRIBE_BACKOFF_MAX_MS } from "../../src/foundation/constants.mjs";
 import { createSseParser } from "./sse-parse.mjs";
 
 /** The reconnect ladder: 1 s, 2 s, 4 s … capped at 30 s. */

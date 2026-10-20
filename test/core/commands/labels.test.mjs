@@ -13,7 +13,7 @@ import test, { after, describe, it } from "node:test";
 import { FORBIDDEN_LABEL_COMMANDS, createCommands, createContext } from "../../../src/core/commands/index.mjs";
 import * as commandsModule from "../../../src/core/commands/index.mjs";
 import { createRepositories } from "../../../src/core/storage/repositories/index.mjs";
-import { LABEL_PALETTE } from "../../../src/shared/constants.mjs";
+import { LABEL_PALETTE } from "../../../src/foundation/constants.mjs";
 import { cleanupTempDirs, countRows, revision, withBoard } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
