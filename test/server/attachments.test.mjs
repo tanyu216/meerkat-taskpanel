@@ -153,9 +153,9 @@ describe("attachments — content over HTTP", () => {
  *
  * Every case here drives a real socket against a real board and a real data
  * directory. The three refusals that matter are the type allow-list, the size
- * ceiling above the transport's own 8 MiB guard, and the removal's **hard
- * delete** — the ruling this card records: the row and its bytes go together,
- * and re-uploading is the whole recovery story.
+ * ceiling (`ATTACHMENT_MAX_BYTES`), and the removal's **hard delete** — the
+ * ruling this card records: the row and its bytes go together, and re-uploading
+ * is the whole recovery story.
  *
  * The size ceiling gets *two* cases plus a pairing case, because an upload is
  * two requests and the ceiling can be reached in either one — T-20261015-075845-2
@@ -229,7 +229,37 @@ describe("attachments — the write surface (metadata routes)", () => {
     assert.equal((await response.json()).data.attachment.content_type, "text/plain");
   });
 
-  it("refuses a declared size over the 8 MiB ceiling", async () => {
+  it("accepts a video, and still hands it back as a download rather than a document", async () => {
+    const created = await create({ filename: "clip.mp4", content_type: "video/mp4", size: 4 });
+    assert.equal(created.status, 200);
+    const { attachment, upload_url } = (await created.json()).data;
+    assert.equal(attachment.content_type, "video/mp4");
+
+    await fetch(`${base}${upload_url}`, { method: "PUT", body: Buffer.from("fake") });
+    const get = await fetch(`${base}${upload_url}`);
+    assert.equal(get.status, 200);
+    assert.equal(get.headers.get("content-type"), "video/mp4");
+    // A video is a file, not a page: the type boundary is the same three headers
+    // a text attachment gets. The drawer previews through a blob URL, so this
+    // route never has to say `inline`.
+    assert.equal(get.headers.get("content-disposition"), 'attachment; filename="clip.mp4"');
+    assert.equal(get.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(get.headers.get("cache-control"), "no-store");
+
+    await fetch(`${base}/api/v1/attachments/${attachment.id}`, { method: "DELETE" });
+  });
+
+  it("accepts a declared size exactly at the ceiling", async () => {
+    // The boundary the refusals do not exercise: a file that *fits* is accepted
+    // on the metadata half without allocating the payload itself.
+    const response = await create({ filename: "at-limit.bin", content_type: "application/octet-stream", size: ATTACHMENT_MAX_BYTES });
+    assert.equal(response.status, 200);
+    const { attachment } = (await response.json()).data;
+    assert.equal(attachment.size, ATTACHMENT_MAX_BYTES);
+    await fetch(`${base}/api/v1/attachments/${attachment.id}`, { method: "DELETE" });
+  });
+
+  it("refuses a declared size over the ceiling", async () => {
     const response = await create({ filename: "huge.bin", content_type: "application/octet-stream", size: ATTACHMENT_MAX_BYTES + 1 });
     assert.equal(response.status, 413);
     const { error } = await response.json();

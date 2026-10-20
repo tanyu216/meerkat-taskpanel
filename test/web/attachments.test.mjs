@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { attachmentRows, formatFileSize, safeFileName } from "../../web/src/lib/attachments.js";
+import { attachmentRows, formatFileSize, previewKind, safeFileName } from "../../web/src/lib/attachments.js";
 
 describe("web/attachments — the display size", () => {
   it("writes whole KB below a megabyte and one decimal above, like the prototype", () => {
@@ -35,14 +35,14 @@ describe("web/attachments — the rows", () => {
       { id: "a2", filename: "shot.png", size: 248 * 1024, content_type: "image/png" },
     ]);
     assert.deepEqual(rows, [
-      { id: "a1", name: "spec.md", size: "12 KB", contentType: "text/markdown" },
-      { id: "a2", name: "shot.png", size: "248 KB", contentType: "image/png" },
+      { id: "a1", name: "spec.md", size: "12 KB", contentType: "text/markdown", previewKind: "markdown" },
+      { id: "a2", name: "shot.png", size: "248 KB", contentType: "image/png", previewKind: "image" },
     ]);
   });
 
   it("drops an entry that names no file — an unnamed row is not an attachment", () => {
     assert.deepEqual(attachmentRows([{ id: "a1", size: 10 }, { id: "a2", filename: "", size: 10 }, { id: "a3", filename: "ok.txt" }]), [
-      { id: "a3", name: "ok.txt", size: "", contentType: null },
+      { id: "a3", name: "ok.txt", size: "", contentType: null, previewKind: null },
     ]);
   });
 
@@ -53,6 +53,35 @@ describe("web/attachments — the rows", () => {
     // handed to this function by mistake is not a listing, and says so by
     // rendering nothing rather than by inventing rows.
     assert.deepEqual(attachmentRows({ attachments: [{ filename: "x" }] }), []);
+  });
+});
+
+/**
+ * The preview family is **derived from the stored content type**, never from
+ * the extension and never from `attachments.kind` (which has no writer). The
+ * board only stores a type it can name, so the stored type is the one honest
+ * statement about what the bytes are.
+ */
+describe("web/attachments — what can be previewed", () => {
+  it("names the four families the drawer can render", () => {
+    for (const type of ["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"]) {
+      assert.equal(previewKind(type), "image", type);
+    }
+    for (const type of ["video/mp4", "video/webm"]) assert.equal(previewKind(type), "video", type);
+    assert.equal(previewKind("application/pdf"), "pdf");
+    assert.equal(previewKind("text/markdown"), "markdown");
+  });
+
+  it("folds case and drops parameters, like the board's own type policy", () => {
+    assert.equal(previewKind("IMAGE/PNG"), "image");
+    assert.equal(previewKind("text/markdown; charset=utf-8"), "markdown");
+    assert.equal(previewKind("  application/pdf  "), "pdf");
+  });
+
+  it("answers nothing for everything else — including a row that declares no type", () => {
+    for (const type of [null, undefined, "", "text/plain", "text/csv", "application/json", "application/zip", "text/html", "image/svg+xml", 42]) {
+      assert.equal(previewKind(type), null, String(type));
+    }
   });
 });
 

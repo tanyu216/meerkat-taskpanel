@@ -8,8 +8,8 @@
  * this board that is not JSON) and the pairing that removal makes of them.
  *
  * The two refusals worth driving from here are the ones a caller can act on: a
- * file over the 8 MiB ceiling, and a type outside the board's allow-list. Both
- * arrive as `code`s the skill documents, not as prose.
+ * file over the `ATTACHMENT_MAX_BYTES` ceiling, and a type outside the board's
+ * allow-list. Both arrive as `code`s the skill documents, not as prose.
  */
 
 import assert from "node:assert/strict";
@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
+import { ATTACHMENT_MAX_BYTES } from "../../src/shared/constants.mjs";
 import { cleanupTempDirs, dataOf, errorOf, makeTempDir, withCli } from "./helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);
@@ -84,11 +85,22 @@ describe("cli/attachment", () => {
     });
   });
 
-  it("refuses a file over the 8 MiB ceiling before it opens a socket", async () => {
+  it("names a video container from its extension", async () => {
+    await board(async ({ run }) => {
+      const dir = scratch();
+      const file = join(dir, "clip.mp4");
+      writeFileSync(file, Buffer.from("not really a video, but the extension names the type"));
+      const added = dataOf(run(["attachment", "add", "DEMO-0001", "--file", file, "--json"]));
+      assert.equal(added.attachment.content_type, "video/mp4");
+      assert.equal(added.attachment.filename, "clip.mp4");
+    });
+  });
+
+  it("refuses a file over the ceiling before it opens a socket", async () => {
     await board(async ({ run }) => {
       const dir = scratch();
       const file = join(dir, "huge.bin");
-      writeFileSync(file, Buffer.alloc(8 * 1024 * 1024 + 1));
+      writeFileSync(file, Buffer.alloc(ATTACHMENT_MAX_BYTES + 1));
       const failed = run(["attachment", "add", "DEMO-0001", "--file", file, "--json"]);
       assert.notEqual(failed.status, 0);
       assert.equal(errorOf(failed).code, "ATTACHMENT_TOO_LARGE");

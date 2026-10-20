@@ -100,6 +100,32 @@ const AGENT = {
 };
 
 /**
+ * A one-page PDF with a correct cross-reference table, so the drawer's preview
+ * leg hands Chromium a document its viewer actually opens. Built here rather than
+ * pasted as a base64 blob so the offsets cannot drift from the objects.
+ *
+ * @returns {Buffer}
+ */
+function minimalPdf() {
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>",
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = [];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(body.length);
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xrefAt = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) body += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefAt}\n%%EOF\n`;
+  return Buffer.from(body, "utf8");
+}
+
+/**
  * Fixture data for the demo board.
  *
  * The board is a kanban over seven statuses, so the sample must put a card in
@@ -152,9 +178,9 @@ export function fixtureApi() {
   // 12 cards, all in the default project (p1), covering the seven statuses.
   const tasks = [
     // TD-1 is the card the drawer opens on in the interaction pass, so it is the
-    // one that carries attachments — the same shape the prototype's sampled card
-    // has (two rows). `meta.attachment_count` states the same number the list
-    // shows, so the card badge and the drawer cannot disagree.
+    // one that carries attachments — one row per preview family plus a zip the
+    // drawer must not offer to open. `meta.attachment_count` states the same
+    // number the list shows, so the card badge and the drawer cannot disagree.
     fixture("p1", "backlog", {
       identifier: "TD-1",
       title: "Draft the onboarding copy",
@@ -162,10 +188,13 @@ export function fixtureApi() {
       labels: ["design"],
       assignee: AGENT.pi,
       meta: {
-        attachment_count: 2,
+        attachment_count: 5,
         attachments: [
           { filename: "board-keyboard-spec.md", size: 12 * 1024 },
           { filename: "focus-order-record.png", size: 248 * 1024 },
+          { filename: "layout-drawing.pdf", size: 64 * 1024 },
+          { filename: "walkthrough.mp4", size: 2 * 1024 * 1024 },
+          { filename: "build-bundle.zip", size: 1024 },
         ],
       },
     }),
@@ -283,15 +312,33 @@ export function fixtureApi() {
       { id: "rel-blocked-by", type: "blocks", source: "td_TD_5", target: "td_TD_1", origin: null, created_at: minutes(43 * 60) },
     ],
   };
-  // R14 ① — the drawer's attachment rows, keyed by the card's internal id the
-  // way the route scopes them. TD-1 is the card the interaction pass opens, so
-  // it is the one with files; two rows, so the section is a list and not a
-  // single-row special case.
+  // R14 ① / the preview leg — the drawer's attachment rows, keyed by the card's
+  // internal id the way the route scopes them. TD-1 is the card the interaction
+  // pass opens, so it is the one with files: one row per preview family, plus a
+  // row the drawer must NOT offer to open (a zip). `meta.attachment_count` on the
+  // card states the same number, so the badge and the list cannot disagree.
   const attachments = {
     td_TD_1: [
       { id: "att-1", task_id: "td_TD_1", comment_id: null, filename: "board-keyboard-spec.md", content_type: "text/markdown", size: 12 * 1024, kind: "attachment", created_at: minutes(47 * 60) },
       { id: "att-2", task_id: "td_TD_1", comment_id: null, filename: "focus-order-record.png", content_type: "image/png", size: 248 * 1024, kind: "attachment", created_at: minutes(46 * 60) },
+      { id: "att-3", task_id: "td_TD_1", comment_id: null, filename: "layout-drawing.pdf", content_type: "application/pdf", size: 64 * 1024, kind: "attachment", created_at: minutes(45 * 60) },
+      { id: "att-4", task_id: "td_TD_1", comment_id: null, filename: "walkthrough.mp4", content_type: "video/mp4", size: 2 * 1024 * 1024, kind: "attachment", created_at: minutes(44 * 60) },
+      { id: "att-5", task_id: "td_TD_1", comment_id: null, filename: "build-bundle.zip", content_type: "application/zip", size: 1024, kind: "attachment", created_at: minutes(43 * 60) },
     ],
+  };
+  // The bytes the content endpoint serves for those rows. The image and the PDF
+  // are real (a 1×1 PNG and a one-page PDF with a correct xref) so Chromium
+  // renders them rather than reporting a decode failure as a console error; the
+  // video is a few bytes of opaque data — the leg asserts the `<video>` element
+  // and its blob source, not playback.
+  const attachmentBytes = {
+    "att-1": Buffer.from("# Keyboard spec\n\n## Focus order\n\nSome **markdown**.\n", "utf8"),
+    "att-2": Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z0xkAAAAASUVORK5CYII=",
+      "base64",
+    ),
+    "att-3": minimalPdf(),
+    "att-4": Buffer.from("not a real video, but the drawer only reads its blob source\n", "utf8"),
   };
   // v4 — TD-1 is the card the interaction pass opens, so it carries the session
   // trail (one running, one closed) and the report family (two rounds; the
@@ -349,6 +396,7 @@ export function fixtureApi() {
     activities,
     relations,
     attachments,
+    attachmentBytes,
     sessions,
     reports,
     // B19 — the access policy the fixture API serves and `PUT` mutates. The
@@ -501,6 +549,23 @@ export function startServer() {
         // here to catch.
         parent_chain: parentChainOf(task?.id ?? ref, data.relations),
       });
+    }
+    // The preview reads the same bytes endpoint a download does. Served outside
+    // the JSON envelope, exactly like the real route (bytes in, bytes out), with
+    // the row's own stored type as `content-type`.
+    const contentFor = /^\/api\/v1\/attachments\/([^/]+)\/content$/.exec(path);
+    if (contentFor) {
+      const id = decodeURIComponent(contentFor[1]);
+      const row = Object.values(data.attachments).flat().find((entry) => entry.id === id);
+      const bytes = data.attachmentBytes[id];
+      if (!row || !bytes) {
+        res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", http: 404, message: "no stored content" } }));
+        return;
+      }
+      res.writeHead(200, { "content-type": row.content_type, "content-length": bytes.length, "cache-control": "no-store" });
+      res.end(bytes);
+      return;
     }
     // T-20261014-212017-4 / G2 — the drawer's file list reads the `attachments`
     // **table** (`GET /api/v1/tasks/:ref/attachments`), never `task.meta`. The
@@ -1444,6 +1509,90 @@ export async function run() {
     r14Check(
       r14Ring.boxShadow === "rgba(15, 122, 115, 0.35) 0px 0px 0px 4px",
       `[data-detail-close]'s focus halo is ${r14Ring.boxShadow}, expected rgba(15, 122, 115, 0.35) 0px 0px 0px 4px (--brand-focus-ring at 4px)`,
+    );
+
+    /* ---- the attachment preview -------------------------------------------
+       A row whose stored type the drawer can render opens its bytes in place
+       (implementation-only; the prototype has no preview arithmetic, so this
+       interaction is measured rather than declared in the contract — the
+       contract's rule kinds read a document, they cannot press a button).
+
+       One row per family is opened in turn. The assertion is deliberately the
+       *blob* source: the board's content route keeps saying `attachment`, so the
+       preview must never be a direct navigation to that URL. The zip row is the
+       negative: a type the drawer cannot render must not offer to open. */
+    const previewFailures = [];
+    const previewCheck = (ok, message) => { if (!ok) previewFailures.push(message); };
+    const readPreview = () =>
+      page.evaluate(() => ({
+        rows: [...document.querySelectorAll("[data-attachment-row]")].map((row) => ({
+          name: row.querySelector("[data-attachment-name]")?.textContent?.trim() ?? "",
+          open: row.querySelector("[data-attachment-open]") !== null,
+          expanded: row.querySelector("[data-attachment-open]")?.getAttribute("aria-expanded") ?? null,
+        })),
+        regions: [...document.querySelectorAll("[data-attachment-preview]")].map((region) => ({
+          kind: region.getAttribute("data-attachment-preview-kind"),
+          image: region.querySelector("img")?.getAttribute("src") ?? null,
+          video: region.querySelector("video")?.getAttribute("src") ?? null,
+          pdf: region.querySelector("iframe")?.getAttribute("src") ?? null,
+          markdown: region.querySelector(".td-gfm")?.innerHTML ?? null,
+          error: region.querySelector("[data-attachment-preview-error]") !== null,
+        })),
+      }));
+    const pressAttachment = (name) =>
+      page.evaluate((wanted) => {
+        const row = [...document.querySelectorAll("[data-attachment-row]")].find(
+          (entry) => entry.querySelector("[data-attachment-name]")?.textContent?.trim() === wanted,
+        );
+        row?.querySelector("[data-attachment-open]")?.click();
+      }, name);
+
+    const previewRest = await readPreview();
+    previewCheck(previewRest.rows.length === 5, `expected 5 attachment rows, read ${previewRest.rows.length}`);
+    previewCheck(
+      previewRest.rows.filter((row) => row.open).length === 4,
+      `expected 4 previewable rows (md/png/pdf/mp4), read ${JSON.stringify(previewRest.rows)}`,
+    );
+    previewCheck(
+      previewRest.rows.find((row) => row.name === "build-bundle.zip")?.open === false,
+      "the zip row carries an open affordance; a type the drawer cannot render must not",
+    );
+    previewCheck(
+      previewRest.rows.every((row) => row.expanded !== "true"),
+      "an attachment row claims aria-expanded=true before anything was pressed",
+    );
+
+    for (const [name, kind, reader] of [
+      ["focus-order-record.png", "image", "image"],
+      ["layout-drawing.pdf", "pdf", "pdf"],
+      ["walkthrough.mp4", "video", "video"],
+      ["board-keyboard-spec.md", "markdown", "markdown"],
+    ]) {
+      await pressAttachment(name);
+      await page.waitForTimeout(150);
+      const read = await readPreview();
+      const region = read.regions[0];
+      previewCheck(read.regions.length === 1, `${name}: expected exactly one open preview, read ${read.regions.length}`);
+      previewCheck(region?.kind === kind, `${name}: preview kind ${JSON.stringify(region?.kind)}, expected ${kind}`);
+      const source = region?.[reader] ?? null;
+      previewCheck(typeof source === "string" && source.length > 0, `${name}: the ${kind} renderer received no source`);
+      if (reader !== "markdown") {
+        previewCheck(
+          typeof source === "string" && source.startsWith("blob:"),
+          `${name}: the ${kind} source is ${JSON.stringify(source)}, expected a blob: URL (never the content route directly)`,
+        );
+      }
+      const row = read.rows.find((entry) => entry.name === name);
+      previewCheck(row?.expanded === "true", `${name}: aria-expanded is ${JSON.stringify(row?.expanded)}, expected true`);
+    }
+
+    await pressAttachment("board-keyboard-spec.md");
+    await page.waitForTimeout(150);
+    const previewClosed = await readPreview();
+    previewCheck(previewClosed.regions.length === 0, "the second press on an open row did not close its preview");
+    previewCheck(
+      previewClosed.rows.every((row) => row.expanded !== "true"),
+      "a closed preview left a row claiming aria-expanded=true",
     );
 
     await page.keyboard.press("Escape");
@@ -5889,6 +6038,7 @@ export async function run() {
       },
       r12Id: { failures: r12IdFailures, longId: LONG_ID, clamped: CLAMPED, longHead, spill, listRead },
       r14: { failures: r14Failures, focus: r14Focus, relations: r14Relations, close: r14Close, ring: r14Ring },
+      attachmentPreview: { failures: previewFailures, rest: previewRest, closed: previewClosed },
       drawerTabs: {
         failures: drawerTabsFailures,
         tabs: tabsRead,
@@ -6061,6 +6211,12 @@ if (isEntryPoint) run().then(
             `and the relation rows read ${report.r14.relations.join(" / ")}`,
         );
       }
+      if (report.attachmentPreview.failures.length > 0) {
+        console.log(`Attachment preview — ${report.attachmentPreview.failures.length} failed:`);
+        for (const failure of report.attachmentPreview.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log("Attachment preview — image / pdf / video / markdown open as blob-backed renderers, the zip row offers no open affordance and a second press closes");
+      }
       if (report.drawerTabs.failures.length > 0) {
         console.log(`v4 (drawer tabs) — ${report.drawerTabs.failures.length} failed:`);
         for (const failure of report.drawerTabs.failures) console.log(`  ✗ ${failure}`);
@@ -6119,6 +6275,7 @@ if (isEntryPoint) run().then(
       report.b26.failures.length === 0 &&
       report.r12Id.failures.length === 0 &&
       report.r14.failures.length === 0 &&
+      report.attachmentPreview.failures.length === 0 &&
       report.drawerTabs.failures.length === 0 &&
       report.m7.failures.length === 0 &&
       report.r16.failures.length === 0 &&
