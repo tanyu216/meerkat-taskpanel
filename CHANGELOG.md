@@ -7,6 +7,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The board skill is now a taskctl manual, not a design archive.** The skill's prose was
+  reduced by roughly half: each rule has one home (`status-lifecycle.md` for the state model,
+  `cli.md` for the command surface and the `--json` contract, `card-schema.md` for the card
+  file, `reports.md` for periodic reports, `projects-json.md` for the local directory map),
+  and the restatement, migration history and `src/…` provenance were removed. The two
+  references that carried no instruction of their own — `practice-guides.md` (an abridged copy
+  of `SKILL.md` plus per-host install guides) and `scheduling-integration.md` (the loop's
+  topology) — were deleted; the few unique rules (conflict retry, session id, the tick recipe,
+  the `--json` machine contract) moved into `SKILL.md`. The loop still depends on the board
+  skill; the board skill no longer depends on the loop.
+
 ## [1.1.0] - 2026-10-20
 
 ### Added

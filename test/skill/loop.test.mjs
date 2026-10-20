@@ -328,7 +328,7 @@ describe("board skill: references resolve where the skill is installed", () => {
   });
 
   it("points the loop ownership it describes at the loop skill", () => {
-    const text = read("references/practice-guides.md");
+    const text = read("SKILL.md");
     assert.match(text, /meerkat-loop/);
     assert.equal(text.includes("scripts/supervisor.mjs]("), false, "no relative link to the executor");
   });

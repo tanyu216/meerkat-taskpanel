@@ -202,7 +202,7 @@
 
 #### ②-a 指针 / 跨仓说明（**保留**）
 
-落点（**19 个自撰文件**，均为 R1）：`README.md`·`README.zh-CN.md`·`CHANGELOG.md`·`docs/{README,install,publishing,scheduling}.md`·`install.sh`·`scripts/install/{_common.sh,openclaw.sh}`·`scripts/sync-skills.mjs`·`skills/meerkat-loop/{SKILL.md,references/operation.md}`·`skills/meerkat-taskpanel/references/practice-guides.md`·`test/install/{claim-unassigned,scheduling-units,supervisor-enable,supervisor-plan}.test.mjs`·`test/scaffold.test.mjs`（+ 随生成的副本）。
+落点（**18 个自撰文件**，均为 R1）：`README.md`·`README.zh-CN.md`·`CHANGELOG.md`·`docs/{README,install,publishing,scheduling}.md`·`install.sh`·`scripts/install/{_common.sh,openclaw.sh}`·`scripts/sync-skills.mjs`·`skills/meerkat-loop/{SKILL.md,references/operation.md}`·`test/install/{claim-unassigned,scheduling-units,supervisor-enable,supervisor-plan}.test.mjs`·`test/scaffold.test.mjs`（+ 随生成的副本）。
 
 **处置 = 保留**，理由：J1+J2-R1——这些句子解释的正是「**OpenClaw 上由别的框架承担 supervisor，本产品因此不给它装 loop**」这一跨仓事实；README 已明写「**Read it as a reference, not a universal fit**」，归属充分。
 **唯一附加义务**：**保持链接**。任何把 `openclaw-team` 从「带 URL 的第三方项目」降格为「裸词」的编辑，都使该处从 R1 掉进 F1。
@@ -328,7 +328,7 @@
 |---|---|---|
 | `PROTOCOL` / `PROTOCOL §N` | **R2 跨仓兼容声明** + **已发布的接口数据** | `src/shared/sla-patrol.mjs` 产出 `threshold_ref`（`PROTOCOL §⑮`）并被 `test/scheduling/sla-patrol.test.mjs` 断言；`README*.md`、`docs/scheduling.md`、`skills/meerkat-loop/**` 说明超时表出处 |
 | `task-interface` / `task-interface v1` | **R2 兼容声明**（loop 侧）+ **R3 溯源**（注释） | loop 侧 `skills/meerkat-loop/**` 与 `test/skill/loop.test.mjs`；产品侧的**自述与注释**（`src/shared/**`、`src/core/domain/enums.mjs` 等） |
-| `openclaw-team` | **R1 指针**（带 URL） | 跨仓事实：OpenClaw 宿主由该框架承担 supervisor，本产品因此**不给它装 loop**（`README*.md`、`docs/{install,scheduling}.md`、`install.sh`、`skills/**/practice-guides.md`） |
+| `openclaw-team` | **R1 指针**（带 URL） | 跨仓事实：OpenClaw 宿主由该框架承担 supervisor，本产品因此**不给它装 loop**（`README*.md`、`docs/{install,scheduling}.md`、`install.sh`） |
 | 框架**私有 store 路径** | **F1 —— 禁** | 无落点（2026-10-17 由本轮指路牌清理达成，见 §7.2 第一条） |
 | 框架**内部机制词** | **F1 —— 禁** | 仅本文件，为「说明禁令」而出现（门禁对**它一个**文件按规则豁免；`design/README.md` 的登记行已改写为不枚举这些词，因此不需要豁免） |
 

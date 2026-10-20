@@ -1495,8 +1495,8 @@ boundary: every host gets one — see `docs/install.md`.)
   skill it is distributed as, and the board interface generation it requires;
   [`references/operation.md`](../skills/meerkat-loop/references/operation.md) is the
   operator's view.
-- [`../skills/meerkat-taskpanel/references/practice-guides.md`](../skills/meerkat-taskpanel/references/practice-guides.md) —
-  the "Waking & patrol" section, for the agent-facing view.
+- [`../skills/meerkat-taskpanel/SKILL.md`](../skills/meerkat-taskpanel/SKILL.md) —
+  the agent-facing view: §Owning the clock.
 - [`../skills/meerkat-taskpanel/references/cli.md`](../skills/meerkat-taskpanel/references/cli.md) —
   `issue candidates --include-unassigned`.
 - [openclaw-team](https://github.com/tanyu216/openclaw-team) — the OpenClaw supervisor.

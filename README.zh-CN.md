@@ -256,8 +256,9 @@ claim-first 片段、写入可调度的认领触发脚本 `~/.codex/meerkat-task
 做会话级归属。Codex **本身没有定时器**，因此规则 1 由[监督进程](#调度ping-与-continue)唤醒
 `codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
 
-完整指南 —— 八条规则的展开、各宿主的安装与触发差异，以及一个实战示例 —— 在 skill 内：
-[`skills/meerkat-taskpanel/references/practice-guides.md`](skills/meerkat-taskpanel/references/practice-guides.md)。
+面向 agent 的指南 —— claim-first、状态模型、交付门与看板 workflow —— 在 skill 内：
+[`skills/meerkat-taskpanel/SKILL.md`](skills/meerkat-taskpanel/SKILL.md)；各宿主的安装与触发细节见
+[`docs/install.md`](docs/install.md)。
 
 ## 开发
 

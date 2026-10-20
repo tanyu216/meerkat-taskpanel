@@ -335,9 +335,10 @@ own**, so rule 1 is driven by the [supervisor](#scheduling-ping--continue) wakin
 `codex exec` turn (or a Codex app automation), with the bundled claim trigger as the
 minimal fallback.
 
-The full guide — the eight rules in detail, the per-host install and trigger
-differences, and a worked example — lives in the skill at
-[`skills/meerkat-taskpanel/references/practice-guides.md`](skills/meerkat-taskpanel/references/practice-guides.md).
+The agent-facing guide — claim-first, the status model, the delivery gate and the
+board workflow — lives in the skill at
+[`skills/meerkat-taskpanel/SKILL.md`](skills/meerkat-taskpanel/SKILL.md); per-host
+install and trigger details are in [`docs/install.md`](docs/install.md).
 
 ## Development
 
