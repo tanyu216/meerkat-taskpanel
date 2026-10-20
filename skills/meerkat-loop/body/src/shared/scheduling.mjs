@@ -20,7 +20,13 @@
  * `errors.mjs` (both pure) are used here.
  */
 
-import { ACCEPTANCE_POLICIES, CLAIM_STALE_SAME_MS, DEFAULT_ACCEPTANCE_POLICY } from "./constants.mjs";
+import {
+  ACCEPTANCE_POLICIES,
+  CLAIM_STALE_SAME_MS,
+  DEFAULT_ACCEPTANCE_POLICY,
+  DEFAULT_REVIEW_AGING_MS,
+  DEFAULT_WORKFLOW_MAX_ACTIONS,
+} from "./constants.mjs";
 import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
 
@@ -170,10 +176,13 @@ export function resolveIntervalSeconds(input = {}) {
   return fallback;
 }
 
-/** Default cap on writes one workflow pass may perform. */
-export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
+// The workflow defaults are shared with the board's planner: one number, both
+// sides. Re-exported here because the loop's config resolver has always named
+// them, and the minute form is derived rather than kept as a second copy.
+export { DEFAULT_WORKFLOW_MAX_ACTIONS };
+
 /** Default age, in minutes, before a silent review card is reported. */
-export const DEFAULT_REVIEW_AGING_MINUTES = 60;
+export const DEFAULT_REVIEW_AGING_MINUTES = DEFAULT_REVIEW_AGING_MS / 60_000;
 
 /**
  * The workflow sub-pass's configuration.

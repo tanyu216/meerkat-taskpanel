@@ -6,9 +6,36 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { resolveWorkflowConfig } from "../../src/shared/scheduling.mjs";
+import {
+  DEFAULT_REVIEW_AGING_MINUTES,
+  DEFAULT_WORKFLOW_MAX_ACTIONS as LOOP_MAX_ACTIONS,
+  resolveWorkflowConfig,
+} from "../../src/shared/scheduling.mjs";
+import {
+  DEFAULT_BOARD_LIMIT,
+  DEFAULT_REVIEW_AGING_MS,
+  DEFAULT_WORKFLOW_MAX_ACTIONS,
+} from "../../src/shared/constants.mjs";
+import {
+  DEFAULT_REVIEW_AGING_MS as BOARD_AGING_MS,
+  DEFAULT_WORKFLOW_MAX_ACTIONS as BOARD_MAX_ACTIONS,
+} from "../../src/core/domain/workflow.mjs";
 
 describe("resolveWorkflowConfig", () => {
+  it("shares one set of workflow defaults with the board's planner", () => {
+    // The board decides with these numbers and the loop resolves them; a second
+    // copy is how the two sides drift into disagreeing about "aged" or "capped".
+    assert.equal(LOOP_MAX_ACTIONS, BOARD_MAX_ACTIONS);
+    assert.equal(BOARD_MAX_ACTIONS, DEFAULT_WORKFLOW_MAX_ACTIONS);
+    assert.equal(BOARD_AGING_MS, DEFAULT_REVIEW_AGING_MS);
+    assert.equal(DEFAULT_REVIEW_AGING_MINUTES * 60_000, DEFAULT_REVIEW_AGING_MS);
+    assert.equal(DEFAULT_BOARD_LIMIT, 500);
+
+    const config = resolveWorkflowConfig();
+    assert.equal(config.maxActions, DEFAULT_WORKFLOW_MAX_ACTIONS);
+    assert.equal(config.reviewAgingMs, DEFAULT_REVIEW_AGING_MS);
+  });
+
   it("defaults to on, no reviewer, auto-accept, 20 writes", () => {
     assert.deepEqual(resolveWorkflowConfig(), {
       workflow: true,

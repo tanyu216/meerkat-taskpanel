@@ -336,7 +336,7 @@ one command:
 ```bash
 taskctl issue reconcile --workflow [--dry-run]
   [--reviewer <agent>] [--auto-accept-reviews yes|no]
-  [--review-aging-ms <n>] [--max-actions <n>]
+  [--review-aging-ms <n>] [--max-actions <n>] [--board-limit <n>]
 ```
 
 Without `--workflow`, the command only reconciles containers (the historical behaviour). With

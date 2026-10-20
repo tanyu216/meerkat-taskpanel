@@ -1,12 +1,17 @@
 name: contract-gate
 
-# The API contract gates.
+# The contract gates.
 #
 # `test/fixtures/contract/api.snapshot.json` freezes the surface a client binds
 # to — routes, each route's declared request shape, error codes and wire fields.
 # This job fails when the committed snapshot and the live surface disagree, so a
 # route rename, an error-status change or a dropped wire field is caught at
 # pull-request time instead of by a client after release.
+#
+# `test/fixtures/contract/cli.snapshot.json` is the CLI twin: every group,
+# command, positional and flag, plus the success/error envelope keys. The loop
+# and any script that spawns `taskctl --json` bind to that surface, not to the
+# HTTP one.
 #
 # The second gate is the pairing half: `scripts/verify/route-request.mjs` proves
 # each route's *declared* request schema equals what its handler actually reads
@@ -42,6 +47,10 @@ jobs:
       # (sorted-key, stable) form `--update` writes.
       - name: API contract matches the snapshot
         run: node scripts/verify/contract.mjs
+
+      # The CLI surface the orchestrator (and user scripts) bind to.
+      - name: CLI contract matches the snapshot
+        run: node scripts/verify/cli-contract.mjs
 
       # The declaration the snapshot freezes must be the one the handler honours.
       # Static and offline, like the checker above: it reads handler source, opens

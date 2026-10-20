@@ -26,6 +26,34 @@ import {
 const COMMENTS_PER_CARD = 200;
 
 /**
+ * The `issue create` argv for one review card.
+ *
+ * `review_of` / `review_round` are **declared** create fields: the board
+ * resolves them, stores the structural marker (`review_of_id` / `review_round`)
+ * and mirrors the meta keys itself. Writing those meta keys here would copy the
+ * board's protocol into the orchestrator — a break the day the board's mirror
+ * changes, and invisible to the CLI's own contract.
+ */
+export function reviewCreateArgs(action) {
+  return [
+    "issue", "create",
+    "--project", String(action.project_id ?? ""),
+    "--kind", "task",
+    "--title", action.title,
+    "--description", action.description,
+    "--assignee", action.reviewer,
+    "--assignee-kind", "agent",
+    "--label", "review",
+    "--meta", "flow=B",
+    "--review-of", action.original_ref,
+    "--review-round", String(action.round),
+    "--target", action.target,
+    "--idem", action.idem,
+    ...action.acceptance.flatMap((text) => ["--acceptance", text]),
+  ];
+}
+
+/**
  * Read the board — patrol's input.
  *
  * One unfiltered read, not a read per status: the SLA rows span `blocked`,
@@ -191,22 +219,7 @@ export async function runWorkflowPass(opts, config, log) {
     config,
     dryRun: opts.dryRun,
     createReview: (action) => {
-      const read = invoke([
-        "issue", "create",
-        "--project", String(action.project_id ?? ""),
-        "--kind", "task",
-        "--title", action.title,
-        "--description", action.description,
-        "--assignee", action.reviewer,
-        "--assignee-kind", "agent",
-        "--label", "review",
-        "--meta", `review_of=${action.original_ref}`,
-        "--meta", "flow=B",
-        "--meta", `review_round=${action.round}`,
-        "--target", action.target,
-        "--idem", action.idem,
-        ...action.acceptance.flatMap((text) => ["--acceptance", text]),
-      ]);
+      const read = invoke(reviewCreateArgs(action));
       return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : { ok: false, error: read.error };
     },
     createFixChild: (action) => {

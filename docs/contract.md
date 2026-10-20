@@ -239,6 +239,41 @@ is the pull-request-time authority. See
 If it is *not* intended, the checker has just caught a regression before it
 reached a client.
 
+## The CLI contract snapshot
+
+`taskctl --json` is the surface the host-external loop binds to, and any user script may
+too. `test/fixtures/contract/cli.snapshot.json` freezes it separately from the HTTP
+snapshot:
+
+- every command group and verb, and each command's positionals;
+- every flag's `flag` / `as` / `value` / `required` / `repeat` / `short` (`summary` and
+  `usage` prose are **not** frozen — they are documentation, not shape);
+- the global flags, in the same shape;
+- the **keys** of the success and error envelopes, the error payload, and the
+  `--version --json` data. The version number itself is not frozen, so a release does not
+  move the contract.
+
+The snapshot is generated from the live registry (`src/cli/commands/index.mjs`), the
+envelope helpers and `versionPayload()`, is byte-stable, and lives in its own file so a CLI
+change does not bump `CONTRACT_SCHEMA_VERSION`.
+
+```bash
+node scripts/verify/cli-contract.mjs            # compare; 0 or 1
+node scripts/verify/cli-contract.mjs --update   # refresh the snapshot
+node scripts/verify/cli-contract.mjs --print
+```
+
+The test suite adds one leg the snapshot cannot: `references/cli.md` must name every frozen
+command and every flag. A declared-but-undocumented flag is how a toolkit quietly becomes
+guesswork.
+
+When you change a command, refresh the snapshot in the same commit:
+
+```bash
+node scripts/verify/cli-contract.mjs --update
+git add test/fixtures/contract/cli.snapshot.json
+```
+
 ## See also
 
 - [`../src/core/README.md`](../src/core/README.md) — the domain rules the error

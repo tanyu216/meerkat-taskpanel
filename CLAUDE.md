@@ -102,6 +102,7 @@ npm run verify:docker:container              # run docker/verify-in-container.sh
 node scripts/sync-skills.mjs                 # regenerate the loop payload + plugin skill copies
 node scripts/build.mjs                       # produce dist/ (the npm release tree; deletes + recreates)
 node scripts/verify/contract.mjs             # API contract snapshot; --update refreshes it, drift exits 1
+node scripts/verify/cli-contract.mjs         # CLI surface snapshot (commands/flags/envelope); --update
 node scripts/verify/route-request.mjs        # declared request schema vs what the handler reads; --print
 node src/server/main.mjs                     # start taskd directly (taskctl also auto-starts it)
 bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|all   # --prefix --link --force --dry-run
@@ -126,7 +127,7 @@ meerkat-taskpanel/
 ├── .claude-plugin/ .pi/ .opencode/ .cursor-plugin/   # harness markers; the plugin root IS the repo root
 ├── design/                 # DESIGN / BLOCKS, the interactive prototype/, brand/, assets/, fidelity-rNN.md
 ├── scripts/                # build, install/, sync-skills + sync-loop, supervisor, verify/{manifests,skill,
-│                           #   migrations,paths,contract,route-request,changelog,version,docker,…}
+│                           #   migrations,paths,contract,cli-contract,route-request,changelog,version,docker,…}
 ├── docker/                 # Dockerfile (webbuild stage + runtime), compose, profiles, verify-in-container.sh
 ├── monitoring/             # OTel / Prometheus exporter
 ├── test/                   # contract, core, concurrency, server, web, install, scheduling, verify, skill, design
@@ -171,10 +172,13 @@ the **hosted frontend root** is `web/dist`, the static build of `web/` that `tas
   `src/core/storage/migrations/*.sql`; add a new numbered file. The DB runner refuses a database
   whose applied file changed, and adding a migration reds several hand-kept version lists — see
   `npm run verify:migrations` and `docs/migration.md`.
-- **The API contract is explicit.** A route, error code or wire-field change must update
+- **The contracts are explicit.** A route, error code or wire-field change must update
   `test/fixtures/contract/api.snapshot.json` via `node scripts/verify/contract.mjs --update` —
   never let it drift. Adding a new `DomainError` code touches `ERROR_CODES`, its bucket and that
-  snapshot.
+  snapshot. A command, positional or flag change must update
+  `test/fixtures/contract/cli.snapshot.json` via `node scripts/verify/cli-contract.mjs
+  --update`, and `skills/meerkat-taskpanel/references/cli.md` must name every frozen command
+  and flag — the loop and user scripts bind to that surface.
 - **Commit with explicit paths:** `git commit -- <path>` (never a bare `git commit -a`).
 - **Code style / layering:** `src/core/domain/` imports **no Node builtins**; dependency
   direction is `cli|server -> core -> shared` (nothing imports from `cli`/`server`; `shared`
@@ -247,6 +251,6 @@ authoritative home, because the container image drops `design/`.
 - `CONTRIBUTING.md` — the container gate, PR flow, conventions the gates enforce.
 - `docs/development.md` — layout, commands, the two build layers, skills generation, constraints.
 - `docs/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
-- `docs/contract.md` — the API contract snapshot + route-request lint.
+- `docs/contract.md` — the API and CLI contract snapshots + route-request lint.
 - `docs/migration.md`, `docs/scheduling.md`, `docs/observability.md`, `docs/security.md` — the named subsystems.
 - `src/core/README.md` — what the core engine owns and the rules it enforces.
