@@ -33,6 +33,7 @@
 import {
   ACCEPTANCE_POLICIES,
   DEFAULT_ACCEPTANCE_POLICY,
+  LOOP_ACCEPTOR,
 } from "../../shared/constants.mjs";
 
 /** Default cap on writes one workflow pass may perform. */
@@ -73,8 +74,8 @@ export const DEFAULT_REVIEW_AGING_MS = 60 * 60_000;
 /** The `meta.flow` a worker card runs (and the only flow reviewed here). */
 export const WORK_FLOW = "A";
 
-/** The `meta.accepted_by` marker this loop writes on an automated acceptance. */
-export const LOOP_ACCEPTOR = "loop-review";
+/** The `meta.accepted_by` marker an automated acceptance writes. */
+export { LOOP_ACCEPTOR };
 
 /** The most evidence a verdict's findings may carry into a comment. */
 export const FINDINGS_MAX_CHARS = 4_000;

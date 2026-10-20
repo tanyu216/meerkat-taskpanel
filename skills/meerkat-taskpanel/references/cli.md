@@ -108,7 +108,7 @@ the map names.
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue deliver <ref> --report-file <file\|-> [--no-report --reason "<why>"]` | **Write the report and move to `in_review`, in one transaction.** The two forms are mutually exclusive. The CLI has no `--to`; it always lands in `in_review`. |
-| `issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] [--auto-accept-reviews yes\|no] [--review-aging-ms <n>] [--max-actions <n>]` | **The container backstop, and the loop's workflow plan.** Without `--workflow`, replays the epic rules over every non-terminal container: start a `todo` epic whose child has entered the work, close an epic whose children are all **terminal with at least one `done`**. `--dry-run` reports the plan and writes nothing. Idempotent; the same sweep runs once at `taskd` startup. With `--workflow`, the board first reconciles (unless dry-run), then returns `workflow: {alerts, actions, changes, summary}` — the review outcomes/dispatch the loop executes. See [`status-lifecycle.md`](status-lifecycle.md#11-the-boards-workflow-decisions). |
+| `issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] [--auto-accept-reviews yes\|no] [--review-aging-ms <n>] [--max-actions <n>] [--board-limit <n>]` | **The container backstop, and the loop's workflow plan.** Without `--workflow`, replays the epic rules over every non-terminal container: start a `todo` epic whose child has entered the work, close an epic whose children are all **terminal with at least one `done`**. `--dry-run` reports the plan and writes nothing. Idempotent; the same sweep runs once at `taskd` startup. With `--workflow`, the board first reconciles (unless dry-run), then returns `workflow: {alerts, actions, changes, summary}` — the review outcomes/dispatch the loop executes. See [`status-lifecycle.md`](status-lifecycle.md#11-the-boards-workflow-decisions). |
 
 ### The weight order (`--order weight`)
 
@@ -218,7 +218,9 @@ the card that comes back must still be the same executor's.
 service: `in_progress → todo` left `claimed_by` behind, and the legal
 `todo → backlog` then tripped it — surfacing to the board as a raw
 `CHECK constraint failed: …`. Releasing the claim on the way out of the work
-cycle makes that path unreachable.
+cycle makes that path unreachable. The three heartbeat windows (10 minutes fresh, 30
+minutes `stale_same`, 6 hours for anyone) and the rework-is-not-a-claim rule are in
+[`status-lifecycle.md`](status-lifecycle.md#5-claims-and-heartbeats).
 
 ### Deployment cards: never auto-claimed
 
@@ -402,7 +404,9 @@ beside `status` (see below).
 
 **Reading it.** `issue list --status awaiting` lists the cards parked on a human.
 The web board's **waiting** view is that same set, and each row carries the entry
-category as a badge (localized `waiting.reason.E1..E5`).
+category as a badge (localized `waiting.reason.E1..E5`). The transition rules — one
+entrance, two exits, no route to `in_review`/`done` — are in
+[`status-lifecycle.md`](status-lifecycle.md#3-the-guard-on-each-edge).
 
 ### The `blocked` state — what the card is waiting for
 
@@ -469,11 +473,12 @@ review decisions the loop applies:
 
 ```bash
 taskctl issue reconcile --workflow --reviewer jobs --auto-accept-reviews yes \
-  --review-aging-ms 3600000 --max-actions 20 --json
+  --review-aging-ms 3600000 --max-actions 20 --board-limit 500 --json
 ```
 
 `--json` returns `{dry_run, scanned, actions, workflow}`, where `workflow` is
-`{alerts, actions, changes, summary}`. The `actions` are decisions (`create_review`,
+`{alerts, actions, changes, summary}` in snake_case. `--board-limit` bounds the board
+snapshot; a truncated snapshot still applies outcomes but dispatches nothing. The `actions` are decisions (`create_review`,
 `approve`, `approve_hold`, `reject_task`, `reject_epic`, `reject_task_finish`,
 `close_review`, `cancel_review`); the board writes none of them. The loop executes them and
 closes the review card last. Without `--workflow`, the command is the container backstop

@@ -358,3 +358,35 @@ export function reportToWire(report, options = {}) {
     created_at: report.createdAt,
   };
 }
+
+/**
+ * A workflow plan, as the wire shows it.
+ *
+ * The plan is an internal loop protocol, but it crosses HTTP, so it follows the
+ * same snake_case convention as every other response. The board produces the
+ * plan in the command layer's camelCase; this is the one boundary that renames
+ * it. The response body is not frozen by the contract snapshot (the snapshot
+ * freezes requests and the listed DTO projections); the casing is still part of
+ * the surface a consumer reads.
+ *
+ * @param {{alerts?: object[], actions?: object[], changes?: object[], summary?: object}} plan
+ */
+export function workflowToWire(plan) {
+  return snakeDeep(plan);
+}
+
+/** `originalRef` → `original_ref`. */
+function snakeKey(key) {
+  return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+/** Keys only; values (including the action `type` vocabulary) stay untouched. */
+function snakeDeep(value) {
+  if (Array.isArray(value)) return value.map(snakeDeep);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, member]) => [snakeKey(key), snakeDeep(member)]),
+    );
+  }
+  return value;
+}

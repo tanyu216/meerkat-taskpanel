@@ -236,12 +236,11 @@ export function resolveWorkflowConfig(input = {}) {
   return {
     workflow:
       firstYesNo(flags.workflow, env.MEERKAT_TASKPANEL_WORKFLOW, file.MEERKAT_TASKPANEL_WORKFLOW) ?? true,
-    // The board's acceptance policy, as the loop believes it. The board is
-    // authoritative (`<dataDir>/taskd.env`); this copy is what the installer
-    // remembered. A drift is visible: the board refuses the loop's move with
-    // `ACCEPTANCE_FORBIDDEN`, and the runner leaves the review card in place.
-    // An unrecognised value falls back to the default rather than wedging the
-    // loop — the board will still refuse what it must.
+    // The board's acceptance policy, as the loop remembers it. Advisory: the
+    // board decides in the plan (`approve` vs `approve_hold`), and the loop
+    // executes that decision. This copy is kept for diagnostics and for host
+    // configs written by older installers. An unrecognised value falls back to
+    // the default rather than wedging the loop.
     acceptancePolicy: firstAcceptancePolicy(
       flags.acceptance,
       env.MEERKAT_TASKPANEL_ACCEPTANCE_POLICY,

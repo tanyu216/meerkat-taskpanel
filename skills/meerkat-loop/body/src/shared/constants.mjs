@@ -503,3 +503,10 @@ export const ACCEPTANCE_POLICIES = Object.freeze(["human-only", "both", "agent-o
 
 /** The policy used when none is configured (`both`, the historical rule). */
 export const DEFAULT_ACCEPTANCE_POLICY = "both";
+
+/**
+ * The `meta.accepted_by` marker the workflow pass writes when the board's
+ * automated acceptance (not a human) closes a card after a review verdict.
+ * One source for the core decision, the SLA patrol and the loop's executor.
+ */
+export const LOOP_ACCEPTOR = "loop-review";

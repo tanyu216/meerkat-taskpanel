@@ -30,6 +30,7 @@ import { reconcileContainers } from "./rollup.mjs";
  *   autoAcceptReviews?: boolean,
  *   reviewAgingMs?: number,
  *   maxActions?: number,
+ *   boardLimit?: number,
  *   dryRun?: boolean,
  * }} [input]
  * @returns {{
@@ -46,7 +47,10 @@ export function workflowTick(ctx, input = {}) {
   // The loop's read is bounded (`--board-limit`); the board's is too, so a
   // large board keeps the same fail-safe: a truncated snapshot still applies
   // review outcomes, but it dispatches nothing.
-  const limit = DEFAULT_BOARD_LIMIT;
+  const limit =
+    Number.isFinite(input.boardLimit) && input.boardLimit > 0
+      ? Math.trunc(input.boardLimit)
+      : DEFAULT_BOARD_LIMIT;
   const rows = ctx.repos.tasks.list({ limit: limit + 1 });
   const boardTruncated = rows.length > limit;
   const snapshot = boardTruncated ? rows.slice(0, limit) : rows;

@@ -450,7 +450,8 @@ export const COMMANDS = [
     summary: "Replay the epic rules and, with --workflow, return the board's workflow plan.",
     usage:
       'issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] ' +
-      "[--auto-accept-reviews yes|no] [--review-aging-ms <n>] [--max-actions <n>]",
+      "[--auto-accept-reviews yes|no] [--review-aging-ms <n>] [--max-actions <n>] " +
+      "[--board-limit <n>]",
     positionals: [],
     flags: [
       {
@@ -493,6 +494,13 @@ export const COMMANDS = [
         value: "<n>",
         summary: "Cap on the plan's actions.",
       },
+      {
+        flag: "board-limit",
+        key: "boardLimit",
+        as: "string",
+        value: "<n>",
+        summary: "Cap on the board snapshot read.",
+      },
     ],
     async run(ctx) {
       const autoAccept =
@@ -524,6 +532,7 @@ export const COMMANDS = [
         auto_accept_reviews: autoAccept,
         review_aging_ms: integerFlag("--review-aging-ms", ctx.flags.reviewAgingMs),
         max_actions: integerFlag("--max-actions", ctx.flags.maxActions),
+        board_limit: integerFlag("--board-limit", ctx.flags.boardLimit),
       });
       const changed = payload.actions.filter((entry) => entry.action !== "none");
       // An open container the sweep could not close carries the children that
@@ -554,7 +563,8 @@ export const COMMANDS = [
       const workflow =
         payload.workflow === undefined
           ? ""
-          : `\nworkflow: ${payload.workflow.summary.actions} action(s), ` +
+          : `\nworkflow: ${changed.length} reconcile change(s), ` +
+            `${payload.workflow.summary.actions} action(s), ` +
             `${payload.workflow.summary.alerts} alert(s)` +
             (payload.dry_run ? " (dry-run)" : "");
       return { data: payload, human: human + workflow };

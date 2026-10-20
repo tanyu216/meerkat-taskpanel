@@ -887,12 +887,12 @@ describe("runWorkflowTick (injected deps)", () => {
 
   const approve = (overrides = {}) => ({
     type: "approve",
-    reviewStatus: "in_review",
-    reviewRef: "T-2",
-    originalRef: "T-1",
+    review_status: "in_review",
+    review_ref: "T-2",
+    original_ref: "T-1",
     round: 1,
-    closeReview: true,
-    acceptedBy: "loop-review",
+    close_review: true,
+    accepted_by: "loop-review",
     ...overrides,
   });
 
@@ -919,7 +919,7 @@ describe("runWorkflowTick (injected deps)", () => {
           alerts: [],
           changes: [],
           summary: { actions: 1 },
-          actions: [{ type: "create_review", originalRef: "T-1", idem: "loop-review|T-1|r1" }],
+          actions: [{ type: "create_review", original_ref: "T-1", idem: "loop-review|T-1|r1" }],
         },
         dryRun: true,
         createReview,
@@ -959,12 +959,12 @@ describe("runWorkflowTick (injected deps)", () => {
     const order = [];
     const hold = {
       type: "approve_hold",
-      reviewStatus: "in_review",
-      reviewRef: "T-2",
-      originalRef: "T-1",
+      review_status: "in_review",
+      review_ref: "T-2",
+      original_ref: "T-1",
       round: 1,
-      closeReview: true,
-      acceptedBy: "loop-review",
+      close_review: true,
+      accepted_by: "loop-review",
       held: false,
     };
     await runWorkflowTick(
@@ -1005,13 +1005,13 @@ describe("runWorkflowTick (injected deps)", () => {
           actions: [
             {
               type: "reject_task",
-              reviewStatus: "in_review",
-              reviewRef: "T-2",
-              originalRef: "T-1",
+              review_status: "in_review",
+              review_ref: "T-2",
+              original_ref: "T-1",
               round: 1,
-              reworkRound: 2,
+              rework_round: 2,
               findings: "the gate is untested",
-              closeReview: true,
+              close_review: true,
             },
           ],
         },
@@ -1042,16 +1042,16 @@ describe("runWorkflowTick (injected deps)", () => {
           actions: [
             {
               type: "reject_epic",
-              reviewStatus: "in_review",
-              reviewRef: "T-2",
-              originalRef: "E-1",
+              review_status: "in_review",
+              review_ref: "T-2",
+              original_ref: "E-1",
               round: 1,
-              reworkRound: 2,
-              projectId: "proj",
-              assigneeId: "agent-1",
-              originalTitle: "Epic",
+              rework_round: 2,
+              project_id: "proj",
+              assignee_id: "agent-1",
+              original_title: "Epic",
               findings: "",
-              closeReview: true,
+              close_review: true,
             },
           ],
         },
@@ -1078,7 +1078,7 @@ describe("runWorkflowTick (injected deps)", () => {
     const move = spy(async () => ({ ok: true }));
     const result = await runWorkflowTick(
       baseDeps({
-        plan: { alerts: [], changes: [], summary: {}, actions: [approve({ closeReview: false })] },
+        plan: { alerts: [], changes: [], summary: {}, actions: [approve({ close_review: false })] },
         move,
       }),
     );
@@ -1096,8 +1096,8 @@ describe("runWorkflowTick (injected deps)", () => {
           changes: [],
           summary: {},
           actions: [
-            { type: "create_review", originalRef: "T-1" },
-            { type: "create_review", originalRef: "T-3" },
+            { type: "create_review", original_ref: "T-1" },
+            { type: "create_review", original_ref: "T-3" },
           ],
         },
         createReview,
@@ -1121,9 +1121,9 @@ describe("runWorkflowTick (injected deps)", () => {
           changes: [],
           summary: {},
           actions: [
-            { type: "close_review", reviewStatus: "in_review", reviewRef: "T-2", reason: "x", closeReview: true },
-            { type: "cancel_review", reviewStatus: "todo", reviewRef: "T-3", reason: "y", closeReview: true },
-            { type: "close_review", reviewStatus: "done", reviewRef: "T-4", reason: "z", closeReview: true },
+            { type: "close_review", review_status: "in_review", review_ref: "T-2", reason: "x", close_review: true },
+            { type: "cancel_review", review_status: "todo", review_ref: "T-3", reason: "y", close_review: true },
+            { type: "close_review", review_status: "done", review_ref: "T-4", reason: "z", close_review: true },
           ],
         },
         comment: async () => ({ ok: true }),
@@ -1176,12 +1176,12 @@ describe("runWorkflowTick (injected deps)", () => {
     const notify = spy();
     const result = await runWorkflowTick(
       baseDeps({
-        plan: { alerts: [], changes: [], summary: {}, actions: [{ ...approve(), acceptedBy: undefined }] },
+        plan: { alerts: [], changes: [], summary: {}, actions: [{ ...approve(), accepted_by: undefined }] },
         notify,
       }),
     );
     assert.equal(result.failed, 1);
-    assert.equal(notify.calls[0][0].error, "approve action is missing acceptedBy");
+    assert.equal(notify.calls[0][0].error, "approve action is missing accepted_by");
   });
 });
 

@@ -233,6 +233,93 @@ describe("server/routes — tasks, the gate and deliver", () => {
   });
 });
 
+describe("server/routes — the workflow plan on reconcile", () => {
+  let originalRef;
+  let reviewRef;
+  const asReviewer = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "jobs" }) };
+
+  it("sets up an original in review and a review card that approved it", async () => {
+    const original = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Work awaiting review",
+        assignee: "ada",
+        assignee_kind: "agent",
+      }),
+    );
+    originalRef = original.task.identifier;
+    dataOf(
+      await call("POST", `/api/v1/tasks/${originalRef}/move`, { to: "in_progress" }, {
+        "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "ada" }),
+      }),
+    );
+    dataOf(
+      await call("POST", `/api/v1/tasks/${originalRef}/deliver`, {
+        report: {
+          conclusion: "Done.",
+          acceptance: [{ text: "works", status: "met" }],
+          evidence: [{ kind: "path", path: "src/cli/index.mjs" }],
+        },
+      }, { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "ada" }) }),
+    );
+
+    const review = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: `Review ${originalRef}`,
+        assignee: "jobs",
+        assignee_kind: "agent",
+        review_of: originalRef,
+        review_round: 1,
+      }),
+    );
+    reviewRef = review.task.identifier;
+    dataOf(await call("POST", `/api/v1/tasks/${reviewRef}/move`, { to: "in_progress" }, asReviewer));
+    dataOf(
+      await call("POST", `/api/v1/tasks/${reviewRef}/deliver`, {
+        report: {
+          conclusion: "VERDICT: APPROVE\n\nLooks right.",
+          acceptance: [{ text: "reviewed", status: "met" }],
+          evidence: [{ kind: "path", path: "src/core/domain/workflow.mjs" }],
+        },
+      }, asReviewer),
+    );
+  });
+
+  it("keeps the legacy reconcile response unchanged", async () => {
+    const data = dataOf(await call("POST", "/api/v1/tasks/reconcile", { dry_run: true }));
+    assert.equal(data.dry_run, true);
+    assert.ok(Array.isArray(data.actions));
+    assert.equal(Object.hasOwn(data, "workflow"), false);
+  });
+
+  it("returns the plan as a snake_case wire object, and writes nothing", async () => {
+    const data = dataOf(
+      await call("POST", "/api/v1/tasks/reconcile", { workflow: true, dry_run: true, board_limit: 50 }),
+    );
+    const plan = data.workflow;
+    assert.ok(plan !== null && typeof plan === "object", JSON.stringify(data));
+    assert.ok(Array.isArray(plan.alerts));
+    assert.ok(Array.isArray(plan.actions));
+    assert.ok(Array.isArray(plan.changes));
+    assert.equal(typeof plan.summary, "object");
+
+    const approve = plan.actions.find((action) => action.type === "approve");
+    assert.ok(approve, JSON.stringify(plan));
+    assert.equal(approve.original_ref, originalRef);
+    assert.equal(approve.review_ref, reviewRef);
+    assert.equal(approve.accepted_by, "loop-review");
+    assert.equal(approve.review_status, "in_review");
+    // The wire is snake_case end to end — the deep conversion is what the
+    // loop executor reads, so a camelCase field here would be invisible to it.
+    assert.equal(Object.hasOwn(approve, "originalRef"), false);
+
+    // A plan is a decision, never an effect: both cards are where they were.
+    assert.equal(dataOf(await call("GET", `/api/v1/tasks/${originalRef}`)).task.status, "in_review");
+    assert.equal(dataOf(await call("GET", `/api/v1/tasks/${reviewRef}`)).task.status, "in_review");
+  });
+});
+
 describe("server/routes — the heartbeat write surface (T-20261017-063818)", () => {
   /** The caller identity every write below carries, as the CLI sends it. */
   const LINUS = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "linus" }) };

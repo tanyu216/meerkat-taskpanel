@@ -78,6 +78,7 @@ import {
   reportToWire,
   sessionToWire,
   taskToWire,
+  workflowToWire,
 } from "../../src/shared/wire.mjs";
 import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
@@ -353,6 +354,23 @@ export function collectWire() {
   const task = taskToWire(PROBE_TASK, { lookup: PROBE_ACTOR_LOOKUP });
   const comment = commentToWire(PROBE_COMMENT, { lookup: PROBE_ACTOR_LOOKUP });
   const report = reportToWire(PROBE_REPORT, { lookup: PROBE_ACTOR_LOOKUP });
+  const workflow = workflowToWire({
+    alerts: [{ type: "verdict_unreadable", review: "T-2", original: "T-1" }],
+    actions: [
+      {
+        type: "approve",
+        reviewStatus: "in_review",
+        reviewRef: "T-2",
+        originalRef: "T-1",
+        round: 1,
+        closeReview: true,
+        acceptedBy: "loop-review",
+        held: false,
+      },
+    ],
+    changes: [{ epic: "E-1", action: "close", reason: "all_children_terminal" }],
+    summary: { approved: 1, actions: 1, alerts: 1 },
+  });
   const shapes = {
     activity: activityToWire(PROBE_ACTIVITY),
     comment,
@@ -363,6 +381,7 @@ export function collectWire() {
     report,
     session: sessionToWire(PROBE_SESSION),
     task,
+    workflow_plan: workflow,
   };
 
   const out = [];
@@ -376,6 +395,53 @@ export function collectWire() {
   out.push({ shape: "task.claimed_by_actor", fields: fieldTypes(task.claimed_by_actor) });
   out.push({ shape: "task.reporter", fields: fieldTypes(task.reporter) });
   out.push({ shape: "task.report_waiver", fields: fieldTypes(task.report_waiver) });
+  out.push({ shape: "workflow_plan.action", fields: fieldTypes(workflow.actions[0]) });
+  out.push({
+    shape: "workflow_plan.action_create",
+    fields: fieldTypes(
+      workflowToWire({
+        actions: [
+          {
+            type: "create_review",
+            originalRef: "T-1",
+            projectId: "proj",
+            reviewer: "jobs",
+            round: 1,
+            idem: "loop-review|T-1|r1",
+            target: "review:T-1:r1",
+            title: "Review T-1",
+            description: "…",
+            acceptance: ["a"],
+          },
+        ],
+      }).actions[0],
+    ),
+  });
+  out.push({
+    shape: "workflow_plan.action_reject",
+    fields: fieldTypes(
+      workflowToWire({
+        actions: [
+          {
+            type: "reject_epic",
+            reviewStatus: "in_review",
+            reviewRef: "T-2",
+            originalRef: "E-1",
+            round: 1,
+            reworkRound: 2,
+            projectId: "proj",
+            assigneeId: "agent-1",
+            originalTitle: "Epic",
+            findings: "…",
+            closeReview: true,
+          },
+        ],
+      }).actions[0],
+    ),
+  });
+  out.push({ shape: "workflow_plan.alert", fields: fieldTypes(workflow.alerts[0]) });
+  out.push({ shape: "workflow_plan.change", fields: fieldTypes(workflow.changes[0]) });
+  out.push({ shape: "workflow_plan.summary", fields: fieldTypes(workflow.summary) });
 
   return out.sort((a, b) => (a.shape < b.shape ? -1 : 1));
 }

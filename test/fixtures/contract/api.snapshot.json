@@ -1244,6 +1244,9 @@
             "auto_accept_reviews": {
               "type": "boolean"
             },
+            "board_limit": {
+              "type": "integer"
+            },
             "dry_run": {
               "type": "boolean"
             },
@@ -1500,6 +1503,83 @@
         "kind": "null"
       },
       "shape": "task.reporter"
+    },
+    {
+      "fields": {
+        "actions": "array",
+        "alerts": "array",
+        "changes": "array",
+        "summary": "object"
+      },
+      "shape": "workflow_plan"
+    },
+    {
+      "fields": {
+        "accepted_by": "string",
+        "close_review": "boolean",
+        "held": "boolean",
+        "original_ref": "string",
+        "review_ref": "string",
+        "review_status": "string",
+        "round": "number",
+        "type": "string"
+      },
+      "shape": "workflow_plan.action"
+    },
+    {
+      "fields": {
+        "acceptance": "array",
+        "description": "string",
+        "idem": "string",
+        "original_ref": "string",
+        "project_id": "string",
+        "reviewer": "string",
+        "round": "number",
+        "target": "string",
+        "title": "string",
+        "type": "string"
+      },
+      "shape": "workflow_plan.action_create"
+    },
+    {
+      "fields": {
+        "assignee_id": "string",
+        "close_review": "boolean",
+        "findings": "string",
+        "original_ref": "string",
+        "original_title": "string",
+        "project_id": "string",
+        "review_ref": "string",
+        "review_status": "string",
+        "rework_round": "number",
+        "round": "number",
+        "type": "string"
+      },
+      "shape": "workflow_plan.action_reject"
+    },
+    {
+      "fields": {
+        "original": "string",
+        "review": "string",
+        "type": "string"
+      },
+      "shape": "workflow_plan.alert"
+    },
+    {
+      "fields": {
+        "action": "string",
+        "epic": "string",
+        "reason": "string"
+      },
+      "shape": "workflow_plan.change"
+    },
+    {
+      "fields": {
+        "actions": "number",
+        "alerts": "number",
+        "approved": "number"
+      },
+      "shape": "workflow_plan.summary"
     }
   ]
 }

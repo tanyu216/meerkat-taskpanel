@@ -261,7 +261,7 @@ export async function runSlaPatrolTick(deps) {
  * pass, never lost.
  *
  * `autoAcceptReviews = false` is already reflected in each action's
- * `closeReview`; the executor honours it without re-deciding.
+ * `close_review`; the executor honours it without re-deciding.
  *
  * @param {{
  *   plan?: {alerts?: object[], actions?: object[], changes?: object[], summary?: object},
@@ -334,22 +334,22 @@ export async function runWorkflowTick(deps) {
   // `canceled` (the state machine forbids `todo → done`); one waiting for
   // acceptance becomes `done`.
   const closeReviewCard = async (action, note) => {
-    if (action.closeReview === false) {
-      log(`workflow: review ${action.reviewRef} left in_review for human acceptance`);
+    if (action.close_review === false) {
+      log(`workflow: review ${action.review_ref} left in_review for human acceptance`);
       return;
     }
     // The board carries the review card's status in the action; the loop no
     // longer keeps a task snapshot. The fallback keeps an older plan safe:
     // outcome actions are generated for an in_review card, cleanup is not.
     const status =
-      action.reviewStatus ?? (action.type === "cancel_review" ? "canceled" : "in_review");
+      action.review_status ?? (action.type === "cancel_review" ? "canceled" : "in_review");
     if (status === "done" || status === "canceled") return;
     if (status === "in_review") {
-      if (note !== null) await step(comment, "comment", action.reviewRef, { kind: "note", body: note });
-      await step(move, "move", action.reviewRef, "done");
+      if (note !== null) await step(comment, "comment", action.review_ref, { kind: "note", body: note });
+      await step(move, "move", action.review_ref, "done");
       return;
     }
-    await step(move, "move", action.reviewRef, "canceled");
+    await step(move, "move", action.review_ref, "canceled");
   };
 
   for (const action of actions) {
@@ -364,21 +364,21 @@ export async function runWorkflowTick(deps) {
           break;
 
         case "approve":
-          if (typeof action.acceptedBy !== "string" || action.acceptedBy === "") {
-            throw new Error("approve action is missing acceptedBy");
+          if (typeof action.accepted_by !== "string" || action.accepted_by === "") {
+            throw new Error("approve action is missing accepted_by");
           }
-          await step(comment, "comment", action.originalRef, {
+          await step(comment, "comment", action.original_ref, {
             kind: "note",
-            body: `Loop acceptance after review ${action.reviewRef} (round ${action.round}): VERDICT: APPROVE.`,
+            body: `Loop acceptance after review ${action.review_ref} (round ${action.round}): VERDICT: APPROVE.`,
           });
-          await step(setMeta, "setMeta", action.originalRef, {
-            accepted_by: action.acceptedBy,
+          await step(setMeta, "setMeta", action.original_ref, {
+            accepted_by: action.accepted_by,
             accepted_round: String(action.round),
           });
-          await step(move, "move", action.originalRef, "done");
+          await step(move, "move", action.original_ref, "done");
           await closeReviewCard(
             action,
-            `Loop auto-accepted this review card after applying VERDICT: APPROVE to ${action.originalRef}.`,
+            `Loop auto-accepted this review card after applying VERDICT: APPROVE to ${action.original_ref}.`,
           );
           break;
 
@@ -391,59 +391,59 @@ export async function runWorkflowTick(deps) {
           // The board already compared the marker with the original's current
           // round; `held` says whether the comment/meta writes can be skipped.
           if (action.held !== true) {
-            await step(comment, "comment", action.originalRef, {
+            await step(comment, "comment", action.original_ref, {
               kind: "note",
               body:
-                `Review ${action.reviewRef} (round ${action.round}): VERDICT: APPROVE. ` +
+                `Review ${action.review_ref} (round ${action.round}): VERDICT: APPROVE. ` +
                 `This board accepts top-level cards by a human, so the card is left in in_review for acceptance.`,
             });
-            await step(setMeta, "setMeta", action.originalRef, {
+            await step(setMeta, "setMeta", action.original_ref, {
               review_verdict: "approve",
               review_verdict_round: String(action.round),
             });
           }
           await closeReviewCard(
             action,
-            `Loop recorded VERDICT: APPROVE for ${action.originalRef}; the card awaits human acceptance.`,
+            `Loop recorded VERDICT: APPROVE for ${action.original_ref}; the card awaits human acceptance.`,
           );
           break;
         }
 
         case "reject_task": {
-          const body = `VERDICT: REJECT (review ${action.reviewRef}, round ${action.round}).\n\n${
+          const body = `VERDICT: REJECT (review ${action.review_ref}, round ${action.round}).\n\n${
             action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
           }`;
-          await step(comment, "comment", action.originalRef, { kind: "change", body });
-          await step(setMeta, "setMeta", action.originalRef, { rework_round: String(action.reworkRound) });
-          await step(move, "move", action.originalRef, "in_progress");
-          await step(move, "move", action.originalRef, "todo");
+          await step(comment, "comment", action.original_ref, { kind: "change", body });
+          await step(setMeta, "setMeta", action.original_ref, { rework_round: String(action.rework_round) });
+          await step(move, "move", action.original_ref, "in_progress");
+          await step(move, "move", action.original_ref, "todo");
           await closeReviewCard(
             action,
-            `Loop closed this review card after moving ${action.originalRef} back to rework.`,
+            `Loop closed this review card after moving ${action.original_ref} back to rework.`,
           );
           break;
         }
 
         case "reject_epic": {
-          const body = `VERDICT: REJECT (review ${action.reviewRef}, round ${action.round}).\n\n${
+          const body = `VERDICT: REJECT (review ${action.review_ref}, round ${action.round}).\n\n${
             action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
           }`;
           const created = await step(createFixChild, "create_fix_child", action);
           const childRef = created?.ref ?? created?.identifier ?? created?.task?.identifier ?? null;
           if (childRef === null) throw new Error("create_fix_child returned no ref");
-          await step(linkFixChild, "link_fix_child", action.originalRef, childRef);
-          await step(comment, "comment", action.originalRef, { kind: "change", body });
-          await step(setMeta, "setMeta", action.originalRef, { rework_round: String(action.reworkRound) });
-          await step(move, "move", action.originalRef, "in_progress");
+          await step(linkFixChild, "link_fix_child", action.original_ref, childRef);
+          await step(comment, "comment", action.original_ref, { kind: "change", body });
+          await step(setMeta, "setMeta", action.original_ref, { rework_round: String(action.rework_round) });
+          await step(move, "move", action.original_ref, "in_progress");
           await closeReviewCard(
             action,
-            `Loop closed this review card after reopening ${action.originalRef} with fix child ${childRef}.`,
+            `Loop closed this review card after reopening ${action.original_ref} with fix child ${childRef}.`,
           );
           break;
         }
 
         case "reject_task_finish":
-          await step(move, "move", action.originalRef, "todo");
+          await step(move, "move", action.original_ref, "todo");
           await closeReviewCard(action, `Loop closed this review card after completing the rework move.`);
           break;
 
@@ -461,7 +461,7 @@ export async function runWorkflowTick(deps) {
       executed += 1;
     } catch (err) {
       failed += 1;
-      const ref = action.originalRef ?? action.reviewRef;
+      const ref = action.original_ref ?? action.review_ref;
       log(
         `workflow: ${action.type} failed for ${ref} ` +
           `(${err.message}) — leaving the review card for the next pass`,
@@ -513,19 +513,19 @@ function describeWorkflowAlert(alert) {
 function describeWorkflowAction(action) {
   switch (action.type) {
     case "create_review":
-      return `create review ${action.idem} for ${action.originalRef}`;
+      return `create review ${action.idem} for ${action.original_ref}`;
     case "approve":
-      return `approve ${action.originalRef} (round ${action.round}) and close ${action.reviewRef}`;
+      return `approve ${action.original_ref} (round ${action.round}) and close ${action.review_ref}`;
     case "approve_hold":
-      return `record approval of ${action.originalRef} (round ${action.round}) and leave it for a human`;
+      return `record approval of ${action.original_ref} (round ${action.round}) and leave it for a human`;
     case "reject_task":
     case "reject_epic":
-      return `${action.type} ${action.originalRef} (round ${action.round})`;
+      return `${action.type} ${action.original_ref} (round ${action.round})`;
     case "reject_task_finish":
-      return `finish the rework move for ${action.originalRef}`;
+      return `finish the rework move for ${action.original_ref}`;
     case "close_review":
     case "cancel_review":
-      return `${action.type} ${action.reviewRef} (${action.reason})`;
+      return `${action.type} ${action.review_ref} (${action.reason})`;
     default:
       return action.type;
   }

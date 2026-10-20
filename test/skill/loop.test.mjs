@@ -100,7 +100,7 @@ describe("loop skill: the generated payload", () => {
       "scripts/wake-cwd.mjs",
       "src/shared/scheduling.mjs",
       "src/shared/sla-patrol.mjs",
-        "src/shared/constants.mjs",
+      "src/shared/constants.mjs",
       "src/shared/errors.mjs",
       "src/shared/redact.mjs",
       "src/shared/project-dir.mjs",

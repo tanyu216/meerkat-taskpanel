@@ -550,10 +550,9 @@ Options:
   --reviewer <agent>        The independent reviewer. Unset disables review dispatch.
   --auto-accept-reviews=yes|no
                             Close a review card after applying its verdict (default: yes).
-  --acceptance <policy>     human-only | both | agent-only (default: both). The board is
-                            authoritative; this is what the loop believes. human-only makes
-                            the loop HOLD a top-level approval for a human (children and
-                            review cards are still closed by the loop).
+  --acceptance <policy>     human-only | both | agent-only (default: both). Advisory: the
+                            board decides the plan; this is the loop's remembered copy,
+                            kept for diagnostics and compatibility.
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
   --patrol-llm=yes|no       Allow patrol to start an LLM turn (default: no).

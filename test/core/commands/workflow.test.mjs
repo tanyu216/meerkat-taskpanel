@@ -109,4 +109,20 @@ describe("commands/workflowTick — the board's plan", () => {
       assert.equal(result.workflow.summary.actions, 0);
     });
   });
+
+  it("dispatches nothing when the snapshot is bounded below the board", async () => {
+    await board(({ commands }) => {
+      seed(commands);
+      // Two cards on the board, a read capped at one: the planner must treat
+      // the missing rows as unknown and refuse to dispatch on a partial view.
+      const result = commands.workflowTick({ reviewer: "jobs", boardLimit: 1 });
+      assert.deepEqual(result.workflow.actions, []);
+      assert.ok(
+        result.workflow.alerts.some(
+          (alert) => alert.type === "dispatch_skipped" && alert.reason === "board_truncated",
+        ),
+        JSON.stringify(result.workflow.alerts),
+      );
+    });
+  });
 });

@@ -162,13 +162,14 @@ export async function runWorkflowPass(opts, config, log) {
   args.push("--auto-accept-reviews", config.autoAcceptReviews === false ? "no" : "yes");
   args.push("--review-aging-ms", String(config.reviewAgingMs));
   args.push("--max-actions", String(config.maxActions));
+  args.push("--board-limit", String(opts.boardLimit));
 
   const planRead = invoke(args);
   const planData = planRead.ok ? planRead.data ?? {} : null;
   if (planData === null || planData.workflow === undefined || planData.workflow === null) {
     log(
       `workflow: issue reconcile --workflow returned no plan ` +
-        `(${planRead.ok ? "the board may be older than 1.1.0" : planRead.error ?? "unknown"})`,
+        `(${planRead.ok ? "the board did not answer with a workflow plan" : planRead.error ?? "unknown"})`,
     );
     return {
       dryRun: opts.dryRun,
@@ -192,14 +193,14 @@ export async function runWorkflowPass(opts, config, log) {
     createReview: (action) => {
       const read = invoke([
         "issue", "create",
-        "--project", String(action.projectId ?? ""),
+        "--project", String(action.project_id ?? ""),
         "--kind", "task",
         "--title", action.title,
         "--description", action.description,
         "--assignee", action.reviewer,
         "--assignee-kind", "agent",
         "--label", "review",
-        "--meta", `review_of=${action.originalRef}`,
+        "--meta", `review_of=${action.original_ref}`,
         "--meta", "flow=B",
         "--meta", `review_round=${action.round}`,
         "--target", action.target,
@@ -211,18 +212,18 @@ export async function runWorkflowPass(opts, config, log) {
     createFixChild: (action) => {
       const read = invoke([
         "issue", "create",
-        "--project", String(action.projectId ?? ""),
+        "--project", String(action.project_id ?? ""),
         "--kind", "task",
-        "--title", `Rework ${action.originalRef}: ${String(action.originalTitle ?? "").slice(0, 100)}`,
+        "--title", `Rework ${action.original_ref}: ${String(action.original_title ?? "").slice(0, 100)}`,
         "--description",
-        `Rejected by review ${action.reviewRef} (round ${action.round}).\n\n${
+        `Rejected by review ${action.review_ref} (round ${action.round}).\n\n${
           action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
         }`,
-        ...(action.assigneeId === null ? [] : ["--assignee-id", String(action.assigneeId)]),
-        "--meta", `rework_of=${action.originalRef}`,
-        "--meta", `rework_round=${action.reworkRound}`,
-        "--target", `rework:${action.originalRef}:r${action.reworkRound}`,
-        "--idem", `loop-rework|${action.originalRef}|r${action.reworkRound}`,
+        ...(action.assignee_id === null ? [] : ["--assignee-id", String(action.assignee_id)]),
+        "--meta", `rework_of=${action.original_ref}`,
+        "--meta", `rework_round=${action.rework_round}`,
+        "--target", `rework:${action.original_ref}:r${action.rework_round}`,
+        "--idem", `loop-rework|${action.original_ref}|r${action.rework_round}`,
       ]);
       return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : { ok: false, error: read.error };
     },
