@@ -22,6 +22,11 @@ web/dist
 # runtime state — bind-mounted at run time via docker-compose.yml, never baked in
 .data
 
+# the install-root config file — it may hold TASKD_TOKEN, and `COPY . .` would
+# otherwise bake it into the image. Compose points MEERKAT_TASKPANEL_ENV_FILE at
+# the writable data volume instead.
+.env
+
 # parallel-task worktrees (CLAUDE.md keeps them inside the checkout) — another branch's
 # whole tree must never enter this build context
 .worktrees

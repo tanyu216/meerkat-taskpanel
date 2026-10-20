@@ -272,7 +272,7 @@ export_tp_env() {
   TP_AUTO_ACCEPT_REVIEWS="${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-yes}"
   TP_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
   # Who may close a task (`human-only` | `both` | `agent-only`). The board reads
-  # its own copy from `<dataDir>/taskd.env`; this is the loop's remembered copy.
+  # its own copy from the install-root `.env`; this is the loop's remembered copy.
   TP_ACCEPTANCE_POLICY="${MEERKAT_TASKPANEL_ACCEPTANCE_POLICY:-both}"
   case "$TP_ACCEPTANCE_POLICY" in
     human-only | both | agent-only) ;;
@@ -714,6 +714,51 @@ ensure_env_key() {
 
   printf '%s=%s\n' "$key" "$value" >> "$TP_ENV"
   echo "$TP_HOST: recorded $key in $TP_ENV"
+}
+
+# seed_env_file — create the install-root `.env` on a fresh install.
+#
+# One file, read by taskd and taskctl (and the loop's SSE subscriber). It is a
+# *machine/install* config, not a per-host one: `--target all` must not write six
+# copies, so install.sh calls this once, outside the host loop.
+#
+# Never overwrites: the file may hold a token or deliberate edits, so even
+# `--force` leaves an existing one alone. `--dry-run` prints and writes nothing.
+# `MEERKAT_TASKPANEL_ENV_FILE` overrides the path (tests, containers, a read-only
+# package root).
+seed_env_file() {
+  env_file="${MEERKAT_TASKPANEL_ENV_FILE:-$ROOT/.env}"
+  case "$env_file" in
+    /*) ;;
+    *) env_file="$ROOT/$env_file" ;;
+  esac
+  template="$ROOT/scripts/install/templates/env.example"
+
+  # The old board file is no longer read (hard switch). Say so, but do not touch
+  # it: a human may still want to move its keys by hand.
+  legacy_dir="${TASKD_DATA_DIR:-$ROOT/.data}"
+  if [ -f "$legacy_dir/taskd.env" ]; then
+    echo "install.sh: note: $legacy_dir/taskd.env is no longer read; move its keys into $env_file" >&2
+  fi
+
+  if [ -f "$env_file" ]; then
+    echo "install.sh: kept $env_file (already exists)"
+    return 0
+  fi
+  if [ -n "${DRY_RUN:-}" ] || [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    echo "install.sh: would create $env_file (0600)"
+    return 0
+  fi
+  if [ ! -f "$template" ]; then
+    echo "install.sh: warning: missing $template; not creating $env_file" >&2
+    return 0
+  fi
+  if ! ( umask 077; mkdir -p "$(dirname "$env_file")"; cp "$template" "$env_file"; chmod 600 "$env_file" ); then
+    echo "install.sh: warning: could not create $env_file (read-only install?); set MEERKAT_TASKPANEL_ENV_FILE to a writable path" >&2
+    return 0
+  fi
+  echo "install.sh: created $env_file (0600)"
+  return 0
 }
 
 # write_host_config — persist the claim policy the supervisor reads by default, the

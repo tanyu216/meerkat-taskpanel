@@ -17,7 +17,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,15 +40,30 @@ const TASKD_VARS = [
   "TASKD_DB",
   "TASKD_PORT",
   "TASKD_HOST",
+  "TASKD_URL",
   "TASKD_TOKEN",
+  "TASKD_TOKEN_FILE",
   "TASKD_RUNTIME_POINTER",
   "TASKD_NO_AUTOSTART",
+  "MEERKAT_TASKPANEL_ENV_FILE",
   "TASKCTL_AGENT",
   "TASKCTL_AGENT_PLATFORM",
+  "TASKCTL_ACTOR_KIND",
+  "TASKCTL_HUMAN",
   "TASKCTL_SESSION_ID",
   "USER",
   "LOGNAME",
 ];
+
+/**
+ * An *empty* config file, so a child reads "no configuration" rather than a
+ * developer's install-root `.env`. Naming a missing file would be an error by
+ * design; naming an empty one is the supported "no config" spelling.
+ */
+const EMPTY_ENV_DIR = mkdtempSync(join(tmpdir(), `meerkat-taskpanel-test-env-${process.pid}-`));
+const EMPTY_ENV_FILE = join(EMPTY_ENV_DIR, ".env");
+mkdirSync(EMPTY_ENV_DIR, { recursive: true });
+writeFileSync(EMPTY_ENV_FILE, "");
 
 const tempDirs = [];
 
@@ -75,6 +90,9 @@ export function cleanupTempDirs() {
 export function baseEnv() {
   const env = { ...process.env };
   for (const key of TASKD_VARS) delete env[key];
+  // The CLI/server now read `<install root>/.env` by default. Point every child
+  // at an empty file, so a developer's real file cannot leak in.
+  env.MEERKAT_TASKPANEL_ENV_FILE = EMPTY_ENV_FILE;
   return env;
 }
 
@@ -178,7 +196,7 @@ export function readTokenFile(dataDir) {
  * Run the real CLI, synchronously.
  *
  * @param {string[]} args
- * @param {{url?: string|null, dataDir?: string, env?: object, input?: string, cwd?: string, timeout?: number, token?: string, noUrl?: boolean}} [options]
+ * @param {{url?: string|null, dataDir?: string, env?: object, input?: string, cwd?: string, timeout?: number, token?: string, noUrl?: boolean, actorKind?: string, noIdentity?: boolean}} [options]
  */
 export function runCli(args, options = {}) {
   const dataDir = options.dataDir ?? makeTempDir();
@@ -193,7 +211,29 @@ export function runCli(args, options = {}) {
     ...(options.token === undefined ? {} : { TASKD_TOKEN: options.token }),
     ...(options.env ?? {}),
   };
-  const argv = [...args];
+  // Identity is required for every command except help/version. Most existing
+  // cases were written against the old "no kind ⇒ human" default, so inject the
+  // explicit human spelling unless the case names its own identity. A case that
+  // wants an agent passes `--actor-kind` in `args` (or `actorKind` here); a case
+  // proving the refusal passes `noIdentity`.
+  const namesIdentity =
+    args.some(
+      (arg) =>
+        typeof arg === "string" &&
+        (arg === "--as-human" || arg === "--actor-kind" || arg.startsWith("--actor-kind=")),
+    ) ||
+    (typeof options.env?.TASKCTL_ACTOR_KIND === "string" && options.env.TASKCTL_ACTOR_KIND.trim() !== "");
+  const identity =
+    options.noIdentity === true
+      ? []
+      : options.actorKind !== undefined
+        ? ["--actor-kind", options.actorKind]
+        : namesIdentity
+          ? []
+          // `=true` matters: the tokenizer does not know `--as-human` is a
+          // boolean, so a bare form would consume the command as its value.
+          : ["--as-human=true"];
+  const argv = [...identity, ...args];
   if (options.url !== undefined && options.url !== null && options.noUrl !== true) {
     argv.push("--url", options.url);
   }

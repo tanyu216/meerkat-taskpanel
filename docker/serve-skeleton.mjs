@@ -17,9 +17,16 @@
 import { createServer } from "node:http";
 
 import { VERSION } from "../src/shared/constants.mjs";
+import { loadEnvFile } from "../src/shared/env-config.mjs";
+import { repoRoot } from "../src/shared/runtime-locator.mjs";
 
-const HOST = process.env.TASKD_HOST || "0.0.0.0";
-const PORT = Number(process.env.TASKD_PORT || 9527);
+// The same install-root `.env` the real server reads. Without this the compose
+// file's `MEERKAT_TASKPANEL_ENV_FILE` would be inert in the scaffold, and the
+// container would ignore the operator's host/port/policy.
+const config = loadEnvFile({ env: process.env, root: repoRoot() });
+const env = config.env;
+const HOST = env.TASKD_HOST || "0.0.0.0";
+const PORT = Number(env.TASKD_PORT || 9527);
 const STAGE = "scaffold";
 const STARTED_AT = Date.now();
 

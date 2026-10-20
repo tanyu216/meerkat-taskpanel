@@ -10,28 +10,67 @@ taskctl --version
 taskctl --version --json   # {"ok":true,"data":{"version":"…","schema_version":4}}
 ```
 
+Every command **except `--help` / `--version`** must identify its writer. `kind` is the platform;
+`--agent` is the role or person:
+
+```bash
+taskctl --actor-kind claude --agent jobs  issue list
+taskctl --actor-kind claude --agent linus issue claim PROJ-7
+taskctl --actor-kind claude --agent turing issue deliver PROJ-7 --report-file -
+```
+
+The host shim injects both halves for an installed skill, so a session normally does not repeat
+them. A human writes with `--as-human`.
+
 `--version --json` publishes the contract's `schema_version` — a coarse generation marker for
 detecting drift, readable without a board. Run `taskctl <group> --help` or
 `taskctl <group> <command> --help` for the surface of one group.
 
+## Configuration (`.env`)
+
+One install-root file, `<program root>/.env`, is read by `taskctl`, `taskd` and the loop's SSE
+subscriber. The process environment wins key by key; CLI flags win over both.
+
+- **Path:** `--env-file <path>` > `$MEERKAT_TASKPANEL_ENV_FILE` > `<program root>/.env`.
+  A file named with `--env-file` that does not exist is an error; a missing
+  `MEERKAT_TASKPANEL_ENV_FILE` target or default is "no configuration".
+- **`TASKD_URL`** is the preferred address: it is probed. A dead **loopback** address falls
+  through to the runtime pointer or a lazy start; a dead **remote** address is an error.
+  `--url` is an explicit pin and never starts anything.
+- **Token:** `--token` > `$TASKD_TOKEN` > `$TASKD_TOKEN_FILE` > the pointer's token file.
+  Setting both token keys in `.env` is an error; an inline `TASKD_TOKEN` requires the file to be
+  `0600`.
+- **Server keys** (`TASKD_ALLOW_LIST_ENABLED`, `TASKD_ALLOW_CIDRS`,
+  `TASKD_ACCEPTANCE_POLICY`, `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS`) live in the same file;
+  the Access panel writes them. `TASKD_HOST` / `TASKD_PORT` / `TASKD_DATA_DIR` / `TASKD_DB` /
+  `TASKD_RUNTIME_POINTER` and `TASKD_NO_AUTOSTART` are also read.
+- **Identity is not a `.env` key.** `TASKCTL_ACTOR_KIND` and `TASKCTL_SESSION_ID` are per host /
+  per invocation and are refused in the file; `TASKCTL_AGENT` / `TASKCTL_HUMAN` may be defaults.
+- **Unknown keys:** a typo inside `TASKD_*` / `TASKCTL_*` / `MEERKAT_TASKPANEL_*` is an error.
+  Other keys (`VITE_*`, `NODE_ENV`, …) are ignored and never merged into the child environment.
+- **Grammar:** `KEY=VALUE`, `#` comments, matching quotes. No inline comments, interpolation,
+  escapes or multiline values. Use absolute paths.
+
 ## Starting the board
 
-If no board is running, `taskctl` starts one (`node src/server/main.mjs`, detached, logging to
-`<dataDir>/logs/taskd.log`) and waits for `/health`. `TASKD_NO_AUTOSTART=1` forbids that — a
-missing board then becomes a clear error rather than a surprise process.
+`taskctl` resolves the board as: `--url` pin → `TASKD_URL` (probed; a dead remote address is an
+error) → the runtime pointer → lazy start. If no board is running it starts one
+(`node src/server/main.mjs`, detached, logging to `<dataDir>/logs/taskd.log`) and waits for
+`/health`. `TASKD_NO_AUTOSTART=1` forbids the lazy start.
 
 ## Global options
 
 | Option | Meaning |
 |---|---|
 | `--json` | Print `{"ok":true,"data":…}` on stdout. Failures print `{"ok":false,"error":{code,message,http,details,hint}}` on **stdout** too, so a pipe needs one stream. |
-| `--url <url>` | Board to talk to. Wins over the runtime pointer, and never triggers autostart. |
-| `--token <token>` | Access token. Priority: `--token` > `$TASKD_TOKEN` > the pointer's token file > none (loopback needs no token). Never echoed. |
+| `--env-file <path>` | Config file. Default `<program root>/.env`; `$MEERKAT_TASKPANEL_ENV_FILE` overrides it. |
+| `--url <url>` | The board to talk to, as a **pin**: never probed, never autostarted. |
+| `--token <token>` | Access token. Priority: `--token` > `$TASKD_TOKEN` > `$TASKD_TOKEN_FILE` > the pointer's token file > none (loopback needs no token). Never echoed. |
 | `--if-version <n>` | Optimistic concurrency: refuse the write with `VERSION_CONFLICT` if the task moved on. |
-| `--actor-kind <name>` | The platform (`claude`, `codex`, …). This **is** the identity; there is no separate platform flag. `human` is reserved and refused; absent ⇒ `human`. |
-| `--as-human` | Write as the configured human (`$TASKCTL_HUMAN`). |
+| `--actor-kind <name>` | The platform (`claude`, `codex`, `openclaw`, `pi`, `opencode`, `cursor`; automation uses `system`). **Required** except `--help` / `--version`. `human` is reserved and refused; use `--as-human`. |
+| `--as-human` | Write as the configured human (`$TASKCTL_HUMAN`). Also satisfies the identity requirement. |
 | `--session-id <id>` | Agent session identifier. Requires `--actor-kind`. |
-| `--agent <name>` | Name the actor. |
+| `--agent <name>` | The role/person recorded on writes (`jobs`, `linus`, `turing`, …). Defaults to `$TASKCTL_AGENT` / `$USER`; a team passes it per call. |
 | `--version` | Print the release version and exit. |
 | `-h`, `--help` | Help for the CLI, a group, or one command. |
 

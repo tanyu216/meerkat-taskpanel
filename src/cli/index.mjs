@@ -22,9 +22,12 @@
 import { readFileSync } from "node:fs";
 
 import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, VERSION } from "../shared/constants.mjs";
+import { loadEnvFile } from "../shared/env-config.mjs";
+import { DomainError } from "../shared/errors.mjs";
 import { isSupportedNode, unsupportedNodeMessage } from "../shared/node-version.mjs";
 import { redactText } from "../shared/redact.mjs";
-import { resolveActor } from "../shared/transport/actor.mjs";
+import { repoRoot } from "../shared/runtime-locator.mjs";
+import { ACTOR_ENV_KEYS, resolveActor } from "../shared/transport/actor.mjs";
 import { parseArgv } from "./argv.mjs";
 import { createBoardClient } from "../shared/transport/client.mjs";
 import { registry } from "./commands/index.mjs";
@@ -141,8 +144,45 @@ export async function run(argv, io) {
   }
 
   try {
-    const pointerOptions = {
+    // Every command except `--help` / `--version` must declare who is writing.
+    // A missing kind is a usage error, not a silent `human` write: the board's
+    // human/agent distinction is load-bearing. `--as-human` is the explicit
+    // human spelling; `--actor-kind human` is still refused by `resolveActor`.
+    const declaredKind =
+      parsed.flags.actorKind ??
+      env[ACTOR_ENV_KEYS.kind] ??
+      (parsed.flags.asHuman === true ? "human" : null);
+    if (declaredKind === null || String(declaredKind).trim() === "") {
+      throw new DomainError("CLI_USAGE", {
+        message:
+          "--actor-kind is required (claude|codex|openclaw|pi|opencode|cursor); " +
+          "pass it, export TASKCTL_ACTOR_KIND, or use --as-human",
+        details: {
+          field: "actorKind",
+          examples: ["claude", "codex", "openclaw", "pi", "opencode", "cursor"],
+          alternative: "--as-human",
+        },
+        hint: {
+          fix: "agents pass --actor-kind <platform> (the host shim does this); a human may use --as-human",
+        },
+      });
+    }
+
+    const config = loadEnvFile({
+      flag: parsed.flags.envFile ?? null,
       env,
+      cwd: io.cwd ?? process.cwd(),
+      root: repoRoot(),
+    });
+    const effectiveEnv = config.env;
+
+    // Resolve the actor before touching a board: a reserved `human` kind or a
+    // session with no platform is a usage mistake, and it should not depend on
+    // whether a board happens to be running.
+    const identity = resolveActor({ flags: parsed.flags, env: effectiveEnv });
+
+    const pointerOptions = {
+      env: effectiveEnv,
       ...(io.pointerPath === undefined ? {} : { pointerPath: io.pointerPath }),
     };
 
@@ -156,13 +196,13 @@ export async function run(argv, io) {
     // board answers.
     const { token, source } = resolveToken({
       flag: parsed.flags.token,
-      env,
-      pointer: readPointer(io.pointerPath === undefined ? { env } : { env, path: io.pointerPath }),
+      env: effectiveEnv,
+      tokenFile: config.tokenFile,
+      pointer: readPointer(io.pointerPath === undefined ? { env: effectiveEnv } : { env: effectiveEnv, path: io.pointerPath }),
     });
     tokenSource = source;
 
     const { url } = await ensureBoard({ url: parsed.flags.url ?? null, ...pointerOptions });
-    const identity = resolveActor({ flags: parsed.flags, env });
     const client = createBoardClient({
       url,
       token,
@@ -172,7 +212,7 @@ export async function run(argv, io) {
 
     const ctx = createContext(parsed, {
       client,
-      env,
+      env: effectiveEnv,
       cwd: io.cwd ?? process.cwd(),
       ...(io.stdin === undefined ? {} : { stdin: io.stdin }),
       ...(io.readFile === undefined ? {} : { readFile: io.readFile }),

@@ -40,6 +40,7 @@ const PLANNED_TRANSPORT = [
   "token.mjs",
   "actor.mjs",
   "errors.mjs",
+  "board-url.mjs",
 ];
 
 /** Is `target` inside `dir`? */

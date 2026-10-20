@@ -310,6 +310,46 @@ describe("loop/subscribe — endpoint resolution", () => {
     );
     assert.equal(endpoint.token, "td_flag");
   });
+
+  it("prefers --url > TASKD_URL > the pointer", () => {
+    const dir = tempDir();
+    const pointerPath = join(dir, "runtime.json");
+    writeFileSync(pointerPath, JSON.stringify({ url: "http://127.0.0.1:9999", dataDir: dir }));
+    const env = { TASKD_URL: "http://remote.example:9600", TASKD_RUNTIME_POINTER: pointerPath, TASKD_DATA_DIR: dir };
+    assert.equal(resolveEventEndpoint({ repo: dir, token: null }, env).url, "http://remote.example:9600");
+    assert.equal(
+      resolveEventEndpoint({ repo: dir, url: "http://flag.example:9527", token: null }, env).url,
+      "http://flag.example:9527",
+    );
+  });
+
+  it("reads the URL and an inline token from the install-root .env", () => {
+    const dir = tempDir();
+    const token = `td_${"b".repeat(64)}`;
+    const envFile = join(dir, ".env");
+    writeFileSync(envFile, `TASKD_URL=http://from-file.example:9600\nTASKD_TOKEN=${token}\n`, { mode: 0o600 });
+    const endpoint = resolveEventEndpoint(
+      { repo: dir, token: null },
+      { MEERKAT_TASKPANEL_ENV_FILE: envFile, TASKD_RUNTIME_POINTER: join(dir, "missing.json"), TASKD_DATA_DIR: dir },
+    );
+    assert.equal(endpoint.url, "http://from-file.example:9600");
+    assert.equal(endpoint.token, token);
+  });
+
+  it("surfaces a broken explicitly configured token file", () => {
+    const dir = tempDir();
+    const envFile = join(dir, ".env");
+    // A URL is needed for the resolver to reach the token step at all.
+    writeFileSync(envFile, "TASKD_URL=http://127.0.0.1:9999\nTASKD_TOKEN_FILE=missing\n", { mode: 0o600 });
+    assert.throws(
+      () =>
+        resolveEventEndpoint(
+          { repo: dir, token: null },
+          { MEERKAT_TASKPANEL_ENV_FILE: envFile, TASKD_RUNTIME_POINTER: join(dir, "missing.json"), TASKD_DATA_DIR: dir },
+        ),
+      (err) => err.code === "CONFIG_FILE_INVALID" && err.details.source === "config",
+    );
+  });
 });
 
 describe("loop/subscribe — the process loop", () => {

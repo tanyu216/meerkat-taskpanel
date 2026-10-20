@@ -4,10 +4,10 @@
  * comes from.
  *
  * The policy is server/board configuration, not board data, so — like
- * `TASKD_ALLOW_CIDRS` — it lives in `<dataDir>/taskd.env`. The panel/installer
- * writes it there; the command layer reads it **on each acceptance decision**
- * rather than caching it at start-up, which is what lets a re-install or a
- * hand-edit take effect without a `taskd` restart.
+ * `TASKD_ALLOW_CIDRS` — it lives in the install-root `.env`. The panel and the
+ * installer write it there; the command layer reads it **on each acceptance
+ * decision** rather than caching it at start-up, which is what lets a re-install
+ * or a hand-edit take effect without a `taskd` restart.
  *
  * Precedence, in order:
  *
@@ -15,7 +15,8 @@
  *      embedding caller's override;
  *   2. the process environment (`TASKD_ACCEPTANCE_POLICY`) — an operator's
  *      override, and the value an installer forwards;
- *   3. `<dataDir>/taskd.env`;
+ *   3. the `.env` values, already parsed by `src/shared/env-config.mjs`
+ *      (`envVars`); `envFile` is only the origin named in an error;
  *   4. {@link DEFAULT_ACCEPTANCE_POLICY} (`both`).
  *
  * An **invalid** configured value is refused rather than ignored: a board whose
@@ -25,7 +26,7 @@
  *
  * The module is core (not `src/server`) so the commands can use it without
  * inverting the layering (`server -> core -> shared`); it touches only `node:fs`
- * to read the one file.
+ * to write the one file.
  */
 
 import { randomBytes } from "node:crypto";
@@ -52,29 +53,51 @@ import {
   normalizeAcceptancePolicy,
 } from "./domain/status.mjs";
 
-/** The env-file key the installer and the panel write. */
+/** The config-file key the installer and the panel write. */
 export const ACCEPTANCE_POLICY_ENV = "TASKD_ACCEPTANCE_POLICY";
 
-/** The file name, beside the token and the database (`ACCESS_ENV_FILE`). */
-export const ACCEPTANCE_ENV_FILE = "taskd.env";
-
-/** @param {string} dataDir */
-export function acceptanceEnvPath(dataDir) {
-  return join(dataDir, ACCEPTANCE_ENV_FILE);
+/**
+ * Read one key from the parsed `.env` values (a `Map`, or a plain object for
+ * embedders). `undefined` means "not configured"; an explicit empty string is
+ * still "configured but blank" and is treated as absent, as before.
+ *
+ * @param {Map<string,string>|Record<string,string>|null|undefined} vars
+ * @param {string} key
+ * @returns {string|undefined}
+ */
+function readVar(vars, key) {
+  if (vars === null || vars === undefined) return undefined;
+  if (typeof vars.get === "function") return vars.has(key) ? vars.get(key) : undefined;
+  return Object.hasOwn(vars, key) ? vars[key] : undefined;
 }
 
 /**
- * Read one key from a `KEY=VALUE` file, leniently.
+ * Read one key from the file now.
  *
- * The file is shared with the access policy, so a malformed *other* line is the
- * access reader's finding, not ours; only the key we are asked about matters.
+ * The acceptance policy is documented as applying "from the next write" after a
+ * re-install or a hand edit, so the bound resolver must not freeze the parsed
+ * values at start-up. This read is deliberately lenient about *other* lines
+ * (they are the access reader's business); the key it returns is validated by
+ * `parse`.
  *
- * @param {string} text
+ * @param {string|null} envFile
  * @param {string} key
- * @returns {string|null}
+ * @returns {string|undefined}
  */
-function readEnvKey(text, key) {
-  return parseEnvText(text).get(key) ?? null;
+function readFileKey(envFile, key) {
+  if (typeof envFile !== "string" || envFile === "") return undefined;
+  let text;
+  try {
+    text = readFileSync(envFile, "utf8");
+  } catch (err) {
+    if (err?.code === "ENOENT") return undefined;
+    throw new DomainError("ACCESS_CONFIG_INVALID", {
+      message: `cannot read ${envFile}: ${err?.message ?? String(err)}`,
+      details: { file: envFile },
+      cause: err,
+    });
+  }
+  return parseEnvText(text).get(key);
 }
 
 /** @param {string|null|undefined} raw @param {string} origin */
@@ -94,11 +117,15 @@ function parse(raw, origin) {
 /**
  * The policy in force for this board, as `{policy, source}`.
  *
- * @param {{dataDir?: string|null, env?: NodeJS.ProcessEnv, acceptancePolicy?: string|null}} input
+ * @param {{
+ *   env?: NodeJS.ProcessEnv, envFile?: string|null,
+ *   envVars?: Map<string,string>|Record<string,string>|null,
+ *   acceptancePolicy?: string|null,
+ * }} input
  * @returns {{policy: string, source: "explicit"|"env"|"file"|"default"}}
  */
 export function readAcceptancePolicy(input = {}) {
-  const { dataDir = null, env = process.env, acceptancePolicy } = input;
+  const { env = process.env, envFile = null, envVars = null, acceptancePolicy } = input;
   if (acceptancePolicy !== undefined && acceptancePolicy !== null && acceptancePolicy !== "") {
     return { policy: parse(acceptancePolicy, "explicit option"), source: "explicit" };
   }
@@ -106,28 +133,24 @@ export function readAcceptancePolicy(input = {}) {
   if (fromEnv !== undefined && fromEnv !== null && String(fromEnv).trim() !== "") {
     return { policy: parse(fromEnv, "process environment"), source: "env" };
   }
-  if (dataDir === null) return { policy: DEFAULT_ACCEPTANCE_POLICY, source: "default" };
-  const file = acceptanceEnvPath(dataDir);
-  let text;
-  try {
-    text = readFileSync(file, "utf8");
-  } catch (err) {
-    if (err?.code === "ENOENT") return { policy: DEFAULT_ACCEPTANCE_POLICY, source: "default" };
-    throw new DomainError("ACCESS_CONFIG_INVALID", {
-      message: `cannot read ${file}: ${err?.message ?? String(err)}`,
-      details: { file },
-      cause: err,
-    });
+  const raw =
+    envVars === null || envVars === undefined
+      ? readFileKey(envFile, ACCEPTANCE_POLICY_ENV)
+      : readVar(envVars, ACCEPTANCE_POLICY_ENV);
+  if (raw === undefined || String(raw).trim() === "") {
+    return { policy: DEFAULT_ACCEPTANCE_POLICY, source: "default" };
   }
-  const raw = readEnvKey(text, ACCEPTANCE_POLICY_ENV);
-  if (raw === null || raw.trim() === "") return { policy: DEFAULT_ACCEPTANCE_POLICY, source: "default" };
-  return { policy: parse(raw, file), source: "file" };
+  return { policy: parse(raw, envFile ?? "configuration file"), source: "file" };
 }
 
 /**
  * A resolver bound to one board — the function `createContext` carries.
  *
- * @param {{dataDir?: string|null, env?: NodeJS.ProcessEnv, acceptancePolicy?: string|null}} [options]
+ * @param {{
+ *   env?: NodeJS.ProcessEnv, envFile?: string|null,
+ *   envVars?: Map<string,string>|Record<string,string>|null,
+ *   acceptancePolicy?: string|null,
+ * }} [options]
  * @returns {() => string} the policy, re-read on each call
  */
 export function createAcceptancePolicy(options = {}) {
@@ -135,14 +158,20 @@ export function createAcceptancePolicy(options = {}) {
 }
 
 /**
- * Persist the policy into `<dataDir>/taskd.env`, **merging** with the access
+ * Persist the policy into the install-root `.env`, **merging** with the access
  * policy's keys rather than rewriting the file.
  *
- * @param {{dataDir: string, policy: string}} input
+ * @param {{envFile: string, policy: string}} input
  * @returns {{policy: string, file: string}}
  */
 export function writeAcceptancePolicy(input) {
-  const { dataDir } = input;
+  const { envFile } = input;
+  if (typeof envFile !== "string" || envFile === "") {
+    throw new DomainError("ACCESS_CONFIG_INVALID", {
+      message: "no config file is configured for this board",
+      details: { field: "envFile" },
+    });
+  }
   const policy = normalizeAcceptancePolicy(input.policy);
   if (policy === null) {
     throw new DomainError("VALIDATION_FAILED", {
@@ -153,25 +182,31 @@ export function writeAcceptancePolicy(input) {
     });
   }
 
-  const file = acceptanceEnvPath(dataDir);
   let existing = "";
   try {
-    existing = readFileSync(file, "utf8");
+    existing = readFileSync(envFile, "utf8");
   } catch (err) {
     if (err?.code !== "ENOENT") {
       throw new DomainError("ACCESS_CONFIG_INVALID", {
-        message: `cannot read ${file}: ${err?.message ?? String(err)}`,
-        details: { file },
+        message: `cannot read ${envFile}: ${err?.message ?? String(err)}`,
+        details: { file: envFile },
         cause: err,
       });
     }
   }
   const text = mergeEnvText(existing, { [ACCEPTANCE_POLICY_ENV]: policy });
-  writeAtomic(file, text);
-  return { policy, file };
+  writeAtomic(envFile, text);
+  return { policy, file: envFile };
 }
 
-/** Atomic 0600 write with a temporary file in the same directory. */
+/**
+ * Atomic 0600 write with a temporary file in the same directory.
+ *
+ * `mkdirSync(..., { recursive: true })` creates a missing parent but does **not**
+ * chmod an existing one: the install root is somebody's checkout, not a secrets
+ * directory, and the old `ensureDir(dataDir, 0700)` would have made the whole
+ * repository private.
+ */
 function writeAtomic(file, text) {
   try {
     mkdirSync(dirname(file), { recursive: true, mode: SECRET_DIR_MODE });

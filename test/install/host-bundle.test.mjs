@@ -197,6 +197,11 @@ describe("host bundle: claude", () => {
     const shimText = readFileSync(shim, "utf8");
     assert.ok(shimText.includes('agent="${TASKCTL_AGENT:-alice}"'), shimText);
     assert.ok(shimText.includes('--agent "$agent"'), shimText);
+    // The shim's `--agent` is a *default*, not a lock: `"$@"` comes last, so a
+    // team role (`--agent jobs` / `linus` / `turing`) overrides it.
+    const execLine = shimText.split("\n").find((line) => line.startsWith("exec "));
+    assert.ok(execLine, "the shim must end in an exec line");
+    assert.match(execLine, /--agent "\$agent".*"\$@"$/, "the caller's flags must come last");
     // ...and the *kind*, or every write from this shim reads as a human's.
     assert.ok(shimText.includes('kind="${TASKCTL_ACTOR_KIND:-claude}"'), shimText);
     assert.ok(shimText.includes('--actor-kind "$kind"'), shimText);

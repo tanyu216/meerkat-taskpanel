@@ -2455,7 +2455,7 @@ const BLOCKS = [
         kind: "manual",
         note:
           "The allow-list is persisted, not a placeholder: `GET|PUT /api/v1/access` read and " +
-          "write `<dataDir>/taskd.env`, the switch and every row are a draft, and the panel's one " +
+          "write the install-root `.env`, the switch and every row are a draft, and the panel's one " +
           "Save commits them. The two default rows are 192.168.0.0/16 and 10.0.0.0/8; the list " +
           "starts **off** so an upgrade never silently narrows remote access.",
       },

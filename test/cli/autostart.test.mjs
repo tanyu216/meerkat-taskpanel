@@ -65,6 +65,76 @@ describe("cli/autostart — refusals need no process", () => {
     assert.equal(existsSync(join(dataDir, "logs", "taskd.log")), false, "no daemon was spawned");
   });
 
+  it("uses a configured TASKD_URL that answers, without starting anything", async () => {
+    const taskd = await startTaskd();
+    try {
+      const dataDir = makeTempDir();
+      const result = runCli(["project", "list", "--json"], {
+        dataDir,
+        noUrl: true,
+        env: { TASKD_URL: taskd.url, TASKD_NO_AUTOSTART: "1" },
+      });
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.equal(existsSync(join(dataDir, "logs", "taskd.log")), false, "no daemon was spawned");
+    } finally {
+      await taskd.close();
+    }
+  });
+
+  it("does not autostart behind a dead remote TASKD_URL", async () => {
+    const dataDir = makeTempDir();
+    const result = runCli(["project", "list", "--json"], {
+      dataDir,
+      noUrl: true,
+      env: { TASKD_URL: "http://192.0.2.1:9", TASKD_NO_AUTOSTART: "" },
+    });
+    assert.equal(result.status, 1);
+    const error = JSON.parse(result.stdout).error;
+    assert.equal(error.code, "CLI_IO");
+    assert.equal(error.details.configured, true);
+    assert.equal(error.details.autostart, false);
+    assert.equal(existsSync(join(dataDir, "logs", "taskd.log")), false, "no daemon was spawned");
+  });
+
+  it("refuses a dead loopback TASKD_URL when autostart is disabled", async () => {
+    const dataDir = makeTempDir();
+    const dead = await closedPortUrl();
+    const result = runCli(["project", "list", "--json"], {
+      dataDir,
+      noUrl: true,
+      env: { TASKD_URL: dead, TASKD_NO_AUTOSTART: "1" },
+    });
+    assert.equal(result.status, 1);
+    const error = JSON.parse(result.stdout).error;
+    assert.equal(error.code, "CLI_IO");
+    assert.equal(error.details.configured, true);
+    assert.equal(error.details.noAutostart, true);
+  });
+
+  it("lazily starts a board for a dead loopback TASKD_URL and uses its port", async () => {
+    const dataDir = makeTempDir();
+    const dead = await closedPortUrl();
+    const port = new URL(dead).port;
+    const result = runCli(["project", "list", "--json"], {
+      dataDir,
+      noUrl: true,
+      // Remove the harness's `TASKD_PORT=0` so the configured URL's port is the
+      // one the lazy start is asked to bind.
+      env: { TASKD_URL: dead, TASKD_NO_AUTOSTART: "", TASKD_PORT: "" },
+      timeout: 60_000,
+    });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const pointer = readJsonFile(join(dataDir, "runtime.json"));
+    assert.notEqual(pointer, null, "the lazy start wrote its pointer");
+    assert.equal(String(pointer.port), port, "the configured URL's port was used");
+    try {
+      process.kill(pointer.pid, "SIGTERM");
+    } catch {
+      /* already gone */
+    }
+    await waitUntil(() => !existsSync(join(dataDir, "runtime.json")), { timeoutMs: 5_000 });
+  });
+
   it("tells the daemon it starts which pointer file to write", async () => {
     // The spawned daemon resolves its own pointer from the *environment*, so a
     // caller that named a path has to say so out loud. Otherwise the parent

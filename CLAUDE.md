@@ -215,6 +215,12 @@ authoritative home, because the container image drops `design/`.
 
 ## Key invariants to remember
 
+- **One config file at the install root.** `.env` (gitignored and dockerignored) is read by
+  both `taskd` and `taskctl`; the process environment wins key by key and CLI flags win above
+  both. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects another path. The old
+  `<dataDir>/taskd.env` is no longer read (hard switch). Identity (`--actor-kind`) is required
+  on every command except `--help` / `--version`; `--agent` names the role and is not a
+  shared-file key.
 - The **delivery gate** requires a report **for the current delivery round** before a card can
   move to `in_review`; a report from an earlier round is history, not evidence. It is enforced by
   a DB trigger *and* a domain check, tested against each other under `test/contract/`. There is

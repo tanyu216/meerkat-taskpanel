@@ -4,8 +4,12 @@
  * Every write records an actor — a **kind** and an **id** — and this is the only
  * place that knows how a caller identified itself.
  *
- *   kind = --actor-kind (or `$TASKCTL_ACTOR_KIND`), else `human`
- *   id   = --agent ?? `$TASKCTL_AGENT` ?? `$TASKCTL_HUMAN` ?? `$USER` ?? LOGNAME ?? "local"
+ *   kind = --actor-kind (or `$TASKCTL_ACTOR_KIND`), else `human` when `--as-human`
+ *   id   = --agent ?? `$TASKCTL_AGENT` ?? (`human` kind ⇒ `$TASKCTL_HUMAN`) ?? `$USER` ?? LOGNAME ?? "local"
+ *
+ * The CLI *requires* a kind before calling this (`--help` / `--version` are the
+ * only exemptions), so the `human` default above is a library-level fallback for
+ * direct callers — never how a `taskctl` command gets its kind.
  *
  * **There is no separate "platform" axis.** A writer's platform and its kind are
  * one fact; splitting them produced a `platform` field nothing read and a
@@ -85,9 +89,13 @@ export function resolveActor(input = {}) {
 
   const asHuman = flags.asHuman === true;
   const kind = asHuman ? HUMAN_KIND : (declared ?? HUMAN_KIND);
-  const id = asHuman
+  // `TASKCTL_HUMAN` names the person, not a role. An agent that forgets
+  // `--agent` must not inherit it as its own id — two roles sharing one host
+  // would both be recorded as the human. Only a human write takes that name;
+  // an agent falls through to its configured agent name or the OS user.
+  const id = kind === HUMAN_KIND
     ? (env[ACTOR_ENV_KEYS.human] ?? flags.agent ?? env[ACTOR_ENV_KEYS.agent] ?? env.USER ?? env.LOGNAME ?? "local")
-    : (flags.agent ?? env[ACTOR_ENV_KEYS.agent] ?? env[ACTOR_ENV_KEYS.human] ?? env.USER ?? env.LOGNAME ?? "local");
+    : (flags.agent ?? env[ACTOR_ENV_KEYS.agent] ?? env.USER ?? env.LOGNAME ?? "local");
 
   return { actor: { kind, id: String(id) }, session, kind, id: String(id) };
 }

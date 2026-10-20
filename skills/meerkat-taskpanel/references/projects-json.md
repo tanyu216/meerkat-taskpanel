@@ -66,7 +66,8 @@ A lookup ends in one of three answers:
 | `PROJECT_DIR_UNMAPPED` | there is no entry for the project | stop and ask |
 
 Two surfaces apply the same file: `taskctl project dir <project>` (the map path is
-`$MEERKAT_TASKPANEL_PROJECTS_JSON`, else the copy beside the skill), and the wake glue, which
+`$MEERKAT_TASKPANEL_PROJECTS_JSON` — which may also be set in the install-root `.env`, the
+process environment winning — else the copy beside the skill), and the wake glue, which
 `cd`s into the directory before starting a host. A worker needs a directory, so a wake refuses
 both `dir: null` and an unmapped project.
 

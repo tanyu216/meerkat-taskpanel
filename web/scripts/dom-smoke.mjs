@@ -554,7 +554,7 @@ export function startServer() {
       const snapshot = () => ({
         token: data.access.token,
         token_file: "/fixture/token",
-        config_file: "/fixture/taskd.env",
+        config_file: "/fixture/.env",
         allow_list: { enabled: data.access.allow_list.enabled, cidrs: [...data.access.allow_list.cidrs] },
         source: data.access.source,
       });

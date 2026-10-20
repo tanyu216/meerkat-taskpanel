@@ -23,7 +23,7 @@ else
   # the shim by absolute path, and offer the repo CLI for the case where the shim
   # is missing but node is present.
   echo "(taskctl shim or node not found — try: $shim issue candidates --assignee $name)"
-  echo "  or: node {{REPO}}/src/cli/index.mjs --agent $name issue candidates --assignee $name"
+  echo "  or: node {{REPO}}/src/cli/index.mjs --actor-kind claude --agent $name issue candidates --assignee $name"
 fi
 
 echo

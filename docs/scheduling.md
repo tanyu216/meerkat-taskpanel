@@ -389,7 +389,7 @@ close; the reviewer gates only **dispatch** — outcomes still run without one, 
 already in flight can finish after a deployment removes its reviewer.
 
 `acceptance` is the loop's **copy** of the board's policy; the board is authoritative
-(`<dataDir>/taskd.env`, written by `install.sh` and re-read on every acceptance decision).
+(the install-root `.env`, seeded by `install.sh` and re-read on every acceptance decision).
 Under `human-only` the loop records a top-level `APPROVE` as a comment plus
 `meta.review_verdict=approve` / `review_verdict_round`, closes the review card, and leaves
 the original `in_review` for a human; the marker makes the hold idempotent. Child cards and
@@ -846,10 +846,11 @@ Three **internal** bypasses exist; none is a user option:
 The guard and `taskctl`'s lazy start share one runtime pointer, one data directory and
 one write lock, so they never fight over the slot:
 
-- **The order is unchanged.** `taskctl` still resolves its board as *explicit `--url`* →
-  *a healthy run pointer* → *lazy start* (unless `TASKD_NO_AUTOSTART` is set). A guarded
-  `taskd` leaves a **healthy pointer**, so a CLI call reuses it and never starts a second
-  server.
+- **The order gains one rung.** `taskctl` resolves its board as *explicit `--url`* (a pin) →
+  *`TASKD_URL`* (preferred: a dead **loopback** address falls through, a dead **remote** one is
+  an error) → *a healthy run pointer* → *lazy start* (unless `TASKD_NO_AUTOSTART` is set). A
+  guarded `taskd` leaves a **healthy pointer**, so a CLI call reuses it and never starts a
+  second server. The subscriber uses the same `--url` > `TASKD_URL` > pointer order.
 - **One slot.** Both use the same run pointer (the machine-wide default, or the same
   `TASKD_RUNTIME_POINTER`), the same data directory, and the same write lock. `pid`
   reuse through the pointer is tolerated by the transport's wait-for-pointer step.
@@ -1367,6 +1368,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--board-limit <n>` | `500` | max cards read in one patrol pass |
 | `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
 | `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config: the claim default, and (for a host copy) `MEERKAT_TASKPANEL_REPO` |
+| `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber and its `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
 | `--home <path>` | `$HOME` | base for those defaults |
 | `--glue <path>` | `<home>/<host-dir>/bin/wake-<host>.sh` | the wake glue that resolves the project directory and starts the worker ([Where a worker runs](#where-a-worker-runs)) |
 | `--projects-json <path>` | `<home>/<host-dir>/skills/meerkat-taskpanel/projects.json` | the host-local map handed to the glue |

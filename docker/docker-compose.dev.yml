@@ -25,6 +25,7 @@ services:
       TASKD_HOST: 127.0.0.1
       TASKD_PORT: "9527"
       TASKD_DATA_DIR: /app/.data
+      MEERKAT_TASKPANEL_ENV_FILE: /app/.data/.env
       VITE_USE_POLLING: "1"
     ports:
       # Host 19527 is deliberately distinct from both system defaults: taskd's

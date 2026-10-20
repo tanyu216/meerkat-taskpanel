@@ -34,9 +34,14 @@ code. It resolves the CLI in this order, using the first that exists:
 4. the `taskctl` shim `install.sh` writes beside this skill (`<host>/bin/taskctl`);
 5. `taskctl` on `PATH`.
 
-Rung 4 carries your identity: the shim passes `--agent <name> --actor-kind <host>` on every
-call. If `taskctl` is already on `PATH`, call it directly. If no board is running, `taskctl`
-starts one (set `TASKD_NO_AUTOSTART=1` to forbid that).
+Rung 4 carries your identity: the shim passes `--actor-kind <host>` and a default `--agent
+<name>` on every call. `--actor-kind` is required on every command except `--help` /
+`--version`; a team passes `--agent jobs` / `linus` / `turing` to override the default, and a
+human uses `--as-human`. The identity is a per-host default, not shared config.
+`taskd`/`taskctl` read the install-root `.env` for the board URL, token and server policy
+(the process environment wins key by key); `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects
+another file. If no board is running, `taskctl` starts one (set `TASKD_NO_AUTOSTART=1` to
+forbid that).
 
 ## The status workflow
 

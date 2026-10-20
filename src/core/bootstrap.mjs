@@ -41,6 +41,9 @@ import { readRuntimePointer, writeRuntimePointer } from "./storage/secrets/runti
  *   allowStale?: boolean,
  *   busyTimeoutMs?: number,
  *   acceptancePolicy?: string,
+ *   envFile?: string|null,          // the config file path, for errors / the Access panel
+ *   envVars?: Map<string,string>|Record<string,string>|null, // the parsed `.env` layer
+ *   processEnv?: NodeJS.ProcessEnv|null, // the *unmerged* environment (source decisions)
  *   logger?: Function,
  * }} [options]
  * @returns {Promise<object>}
@@ -58,6 +61,9 @@ export async function openBoard(options = {}) {
     readonly = false,
     allowStale = false,
     logger,
+    envFile = null,
+    envVars = null,
+    processEnv = null,
   } = options;
 
   const dataDir = resolveDataDir({ dataDir: options.dataDir ?? null, env });
@@ -127,11 +133,15 @@ export async function openBoard(options = {}) {
       ? staleRepositoriesTrap(schema)
       : createRepositories(db);
   // The acceptance policy is read per decision (`ctx.acceptancePolicy()`), not
-  // frozen here: `taskd.env` may be rewritten by a re-install while the board
-  // keeps running, and a policy must apply from the next write.
+  // frozen here: `.env` may be rewritten by a re-install while the board keeps
+  // running, and a policy must apply from the next write. `envVars` is the file
+  // layer; `processEnv` stays separate so `source` can say which won.
   const acceptancePolicy = createAcceptancePolicy({
-    dataDir,
-    env,
+    env: processEnv ?? env,
+    envFile,
+    // Deliberately *not* the parsed snapshot: the policy must apply from the
+    // next decision after a re-install or a hand edit, so the resolver re-reads
+    // its key.
     ...(options.acceptancePolicy === undefined ? {} : { acceptancePolicy: options.acceptancePolicy }),
   });
   const ctx = createContext({ db, repos, acceptancePolicy, ...(clock === undefined ? {} : { clock }), ...(idFactory === undefined ? {} : { idFactory }), logger });
@@ -141,6 +151,7 @@ export async function openBoard(options = {}) {
     db,
     dbPath,
     dataDir,
+    envFile,
     repos,
     ctx,
     commands,

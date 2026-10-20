@@ -40,7 +40,14 @@ import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { AUTOSTART_POLL_MS, AUTOSTART_TIMEOUT_MS, LOG_FILENAME, LOGS_DIRNAME, RUNTIME_POINTER_ENV } from "../constants.mjs";
+import {
+  AUTOSTART_POLL_MS,
+  AUTOSTART_TIMEOUT_MS,
+  LOG_FILENAME,
+  LOGS_DIRNAME,
+  RUNTIME_POINTER_ENV,
+  SPAWN_ENV_OMIT,
+} from "../constants.mjs";
 import { resolveDataDir, resolveRuntimePointerPath, runtimePointerPathForDataDir } from "../runtime-locator.mjs";
 import { ioError } from "./errors.mjs";
 
@@ -131,6 +138,10 @@ export async function spawnTaskd(options) {
       ? [named]
       : [resolveRuntimePointerPath({ env, platform, home }), runtimePointerPathForDataDir(dataDir)];
   const childEnv = { ...env };
+  // The daemon needs the data directory, host/port and server policy; it does
+  // not need a client credential or an agent identity. `MEERKAT_TASKPANEL_ENV_FILE`
+  // is deliberately retained so the child reads the same config file.
+  for (const key of SPAWN_ENV_OMIT) delete childEnv[key];
   if (typeof pointerPath === "string") childEnv[RUNTIME_POINTER_ENV] = pointerPath;
   else if (named === null) delete childEnv[RUNTIME_POINTER_ENV];
   // Named through the environment only: the variable is inherited exactly as the
