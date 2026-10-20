@@ -3076,43 +3076,71 @@ button.td-prop-value:hover {
 .td-file-open:disabled {
   cursor: default;
 }
-.td-file-preview {
-  margin-top: var(--space-2);
-  padding: var(--space-2);
-  border: var(--border) solid var(--brand-border);
-  border-radius: var(--radius-field);
-  background-color: var(--brand-sunken);
+/* The preview dialog — implementation-only (the prototype has no preview
+   arithmetic). It is teleported to `<body>` and covers the viewport: the
+   drawer's `transform` would otherwise turn it into that box's containing
+   block instead of the window's. */
+.td-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--brand-surface);
 }
-/* A row that follows an expanded preview still needs the gap `.td-file + .td-file`
-   gives its neighbours — the preview block now sits between them. */
-.td-file-preview + .td-file {
-  margin-top: var(--space-2);
+.td-preview-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px var(--space-3);
+  border-bottom: var(--border) solid var(--brand-border);
 }
-.td-file-preview-status {
+.td-preview-name {
+  overflow: hidden;
   font-size: var(--text-12);
-  color: var(--brand-text-3);
+  font-weight: var(--weight-medium);
+  color: var(--brand-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.td-file-preview-image {
-  display: block;
+.td-preview-head .td-iconbtn {
+  margin-left: auto;
+}
+.td-preview-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: var(--space-3);
+  background-color: var(--brand-sunken);
+  overflow: auto;
+}
+.td-preview-body img,
+.td-preview-body video {
   max-width: 100%;
-  max-height: 60vh;
-  margin-inline: auto;
+  max-height: 100%;
   object-fit: contain;
 }
-.td-file-preview-video {
-  display: block;
+.td-preview-body iframe {
   width: 100%;
-  max-height: 60vh;
-}
-.td-file-preview-pdf {
-  display: block;
-  width: 100%;
-  height: 60vh;
+  height: 100%;
   border: 0;
+  background-color: var(--brand-surface);
 }
-.td-file-preview-md {
-  max-height: 60vh;
+.td-preview-md {
+  align-self: flex-start;
+  width: min(900px, 100%);
+  max-height: 100%;
+  padding: var(--space-3);
+  border-radius: var(--radius-field);
+  background-color: var(--brand-surface);
   overflow: auto;
+}
+.td-preview-status {
+  font-size: var(--text-12);
+  color: var(--brand-text-3);
 }
 .td-file:has(.td-file-actions) .td-file-size {
   margin-left: 0;

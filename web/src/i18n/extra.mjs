@@ -95,6 +95,7 @@ export const EXTRA = {
     // The drawer's inline preview: a previewable row's filename is a disclosure
     // button, and the region it opens is a named surface of its own.
     "attachment.preview": "Attachment preview",
+    "attachment.previewClose": "Close preview",
     "attachment.previewLoading": "Loading preview…",
     "attachment.previewError": "This attachment could not be loaded.",
     // R13 修订（seg3 · 决定甲）— `assignee.clear` is gone from here too. R15 ②
@@ -208,6 +209,7 @@ export const EXTRA = {
     "error.attachType": "看板不接受该文件类型。",
     "attach.placeholder": "无附件",
     "attachment.preview": "附件预览",
+    "attachment.previewClose": "关闭预览",
     "attachment.previewLoading": "正在加载预览…",
     "attachment.previewError": "该附件无法加载。",
     "activity.filters.label": "动态筛选",
