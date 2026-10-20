@@ -5,7 +5,7 @@
  * shorter renders verbatim, with no ellipsis. The cap was **eight** until
  * T-20261014-001418 moved it to ten (Terry, 2026-10-14) so that it is one
  * number across the board. An identifier is `<PREFIX>-<serial>` and the prefix
- * is the project's whole id (`src/shared/ids.mjs` `formatIdentifier`), so a
+ * is the project's whole id (`src/foundation/ids.mjs` `formatIdentifier`), so a
  * project with a long id mints identifiers well past the cap — the truncation
  * branch is real data, not a hypothetical edge.
  *

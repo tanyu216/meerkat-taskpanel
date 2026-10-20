@@ -10,7 +10,7 @@
  * Pure: no `node:` specifiers.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { isTerminalStatus } from "./status.mjs";
 
 /** @type {Record<string, {id: string, name: string, reason: string, layer: string, statement: string}>} */

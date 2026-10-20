@@ -7,7 +7,7 @@
  * its id without anybody having to remember it.
  */
 
-import { sessionId as deriveSessionId } from "../../shared/ids.mjs";
+import { sessionId as deriveSessionId } from "../../foundation/ids.mjs";
 import { table } from "../output/human.mjs";
 
 export const COMMANDS = [

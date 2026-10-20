@@ -40,7 +40,7 @@
  * field `"wire"`.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
 
 /** The eight operations this module covers. */
@@ -124,6 +124,7 @@ const CREATE = Object.freeze([
   both("allow_dup", { type: BOOLEAN }),
   sugar("target", "meta.target"),
   both("review_of"),
+  both("review_round", { type: INTEGER }),
   both("parent"),
   wireOnly("identifier"),
   wireOnly("source_path"),

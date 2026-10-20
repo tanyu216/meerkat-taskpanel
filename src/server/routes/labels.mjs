@@ -7,7 +7,7 @@
  * same shape as the assignee/reporter reads next door.
  */
 
-import { labelToWire } from "../../shared/wire.mjs";
+import { labelToWire } from "../../foundation/wire.mjs";
 import { intOrUndefined, shape, str, truthy } from "../requests.mjs";
 
 // Declared request schema, frozen by the contract snapshot (`routes[].request`);

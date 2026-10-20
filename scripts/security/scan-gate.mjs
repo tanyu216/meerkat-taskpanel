@@ -1013,7 +1013,7 @@ async function main(argv) {
   return decision.exitCode;
 }
 
-// A private copy of `src/shared/entry-guard.mjs`. This file must import **Node builtins only** —
+// A private copy of `src/foundation/entry-guard.mjs`. This file must import **Node builtins only** —
 // see the "keeps the gate free of third-party imports" case in `workflow.test.mjs`, because a
 // security gate that depends on repository code cannot be trusted to run before that code has
 // been cleared. Node resolves `import.meta.url` through `realpath` but leaves `process.argv[1]`

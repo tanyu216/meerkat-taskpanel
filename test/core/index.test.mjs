@@ -21,7 +21,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const PLANNED = [
   "index.mjs",
   "bootstrap.mjs",
-  // M6 — the board's acceptance policy (read from taskd.env, per decision).
+  // M6 — the board's acceptance policy (read from the install-root .env, per decision).
   "acceptance-policy.mjs",
   "domain/enums.mjs",
   "domain/status.mjs",
@@ -38,6 +38,7 @@ const PLANNED = [
   "domain/labels.mjs",
   "domain/claim.mjs",
   "domain/invariants.mjs",
+  "domain/workflow.mjs",
   "domain/index.mjs",
   "storage/paths.mjs",
   "storage/driver.mjs",
@@ -60,11 +61,7 @@ const PLANNED = [
   "storage/md/frontmatter.mjs",
   "storage/md/sections.mjs",
   "storage/md/legacy-status.mjs",
-  "storage/md/import.mjs",
   "storage/md/export.mjs",
-  "storage/md/migrate-cli.mjs",
-  "storage/md/project-registry.mjs",
-  "storage/md/invariants-check.mjs",
   "storage/secrets/token-store.mjs",
   "storage/secrets/runtime-pointer.mjs",
   "commands/context.mjs",
@@ -79,6 +76,7 @@ const PLANNED = [
   "commands/comments.mjs",
   "commands/relations.mjs",
   "commands/rollup.mjs",
+  "commands/workflow.mjs",
   "commands/dictionary.mjs",
   "commands/labels.mjs",
   "commands/agent-sessions.mjs",
@@ -104,7 +102,6 @@ describe("core/index — the surface", () => {
       "applyMigrations",
       "assertSchemaCurrent",
       "ensureToken",
-      "importMd",
       "exportMd",
       // domain, re-exported wholesale
       "ALLOWED_TRANSITIONS",

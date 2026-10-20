@@ -11,9 +11,9 @@
  * one transaction, or two concurrent creates hand out the same number.
  */
 
-import { PROJECT_ACTIVITY_WINDOW_DAYS, SSE_NOISE_EVENTS } from "../../../shared/constants.mjs";
-import { DomainError } from "../../../shared/errors.mjs";
-import { newId, projectPrefix } from "../../../shared/ids.mjs";
+import { PROJECT_ACTIVITY_WINDOW_DAYS, SSE_NOISE_EVENTS } from "../../../foundation/constants.mjs";
+import { DomainError } from "../../../foundation/errors.mjs";
+import { newId, projectPrefix } from "../../../foundation/ids.mjs";
 import { identifierForPrefix, assertIsoMillis } from "../../domain/task.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 import { transaction } from "../unit-of-work.mjs";

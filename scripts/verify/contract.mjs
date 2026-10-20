@@ -66,8 +66,8 @@ import { parseArgs } from "node:util";
 
 import { OUT_OF_ROUTER_ENDPOINTS, registerApiRoutes } from "../../src/server/index.mjs";
 import { createRouter } from "../../src/server/router.mjs";
-import { CONTRACT_SCHEMA_VERSION } from "../../src/shared/constants.mjs";
-import { ERROR_CODES } from "../../src/shared/errors.mjs";
+import { CONTRACT_SCHEMA_VERSION } from "../../src/foundation/constants.mjs";
+import { ERROR_CODES } from "../../src/foundation/errors.mjs";
 import {
   activityToWire,
   commentToWire,
@@ -78,8 +78,9 @@ import {
   reportToWire,
   sessionToWire,
   taskToWire,
-} from "../../src/shared/wire.mjs";
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+  workflowToWire,
+} from "../../src/foundation/wire.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 /** Repository root, resolved from this file (`scripts/verify/`). */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -92,7 +93,7 @@ export const SNAPSHOT_FILE = "test/fixtures/contract/api.snapshot.json";
  * frozen tool-schemas section; 3 added each route's declared request
  * `{query, body}`; 2 added the wire field types.)
  *
- * The value itself lives in `src/shared/constants.mjs` — the runtime publishes
+ * The value itself lives in `src/foundation/constants.mjs` — the runtime publishes
  * the same number (`taskctl --version --json`) and a client's drift gate reads it
  * from there, so the snapshot and the published number cannot disagree.
  */
@@ -353,6 +354,23 @@ export function collectWire() {
   const task = taskToWire(PROBE_TASK, { lookup: PROBE_ACTOR_LOOKUP });
   const comment = commentToWire(PROBE_COMMENT, { lookup: PROBE_ACTOR_LOOKUP });
   const report = reportToWire(PROBE_REPORT, { lookup: PROBE_ACTOR_LOOKUP });
+  const workflow = workflowToWire({
+    alerts: [{ type: "verdict_unreadable", review: "T-2", original: "T-1" }],
+    actions: [
+      {
+        type: "approve",
+        reviewStatus: "in_review",
+        reviewRef: "T-2",
+        originalRef: "T-1",
+        round: 1,
+        closeReview: true,
+        acceptedBy: "loop-review",
+        held: false,
+      },
+    ],
+    changes: [{ epic: "E-1", action: "close", reason: "all_children_terminal" }],
+    summary: { approved: 1, actions: 1, alerts: 1 },
+  });
   const shapes = {
     activity: activityToWire(PROBE_ACTIVITY),
     comment,
@@ -363,6 +381,7 @@ export function collectWire() {
     report,
     session: sessionToWire(PROBE_SESSION),
     task,
+    workflow_plan: workflow,
   };
 
   const out = [];
@@ -376,6 +395,53 @@ export function collectWire() {
   out.push({ shape: "task.claimed_by_actor", fields: fieldTypes(task.claimed_by_actor) });
   out.push({ shape: "task.reporter", fields: fieldTypes(task.reporter) });
   out.push({ shape: "task.report_waiver", fields: fieldTypes(task.report_waiver) });
+  out.push({ shape: "workflow_plan.action", fields: fieldTypes(workflow.actions[0]) });
+  out.push({
+    shape: "workflow_plan.action_create",
+    fields: fieldTypes(
+      workflowToWire({
+        actions: [
+          {
+            type: "create_review",
+            originalRef: "T-1",
+            projectId: "proj",
+            reviewer: "jobs",
+            round: 1,
+            idem: "loop-review|T-1|r1",
+            target: "review:T-1:r1",
+            title: "Review T-1",
+            description: "…",
+            acceptance: ["a"],
+          },
+        ],
+      }).actions[0],
+    ),
+  });
+  out.push({
+    shape: "workflow_plan.action_reject",
+    fields: fieldTypes(
+      workflowToWire({
+        actions: [
+          {
+            type: "reject_epic",
+            reviewStatus: "in_review",
+            reviewRef: "T-2",
+            originalRef: "E-1",
+            round: 1,
+            reworkRound: 2,
+            projectId: "proj",
+            assigneeId: "agent-1",
+            originalTitle: "Epic",
+            findings: "…",
+            closeReview: true,
+          },
+        ],
+      }).actions[0],
+    ),
+  });
+  out.push({ shape: "workflow_plan.alert", fields: fieldTypes(workflow.alerts[0]) });
+  out.push({ shape: "workflow_plan.change", fields: fieldTypes(workflow.changes[0]) });
+  out.push({ shape: "workflow_plan.summary", fields: fieldTypes(workflow.summary) });
 
   return out.sort((a, b) => (a.shape < b.shape ? -1 : 1));
 }

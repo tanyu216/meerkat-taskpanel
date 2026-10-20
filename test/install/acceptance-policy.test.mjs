@@ -6,9 +6,10 @@
  *
  *   * `<target_home>/<host-dir>/meerkat-taskpanel.env` — what the loop believes
  *     (`MEERKAT_TASKPANEL_ACCEPTANCE_POLICY`);
- *   * `<dataDir>/taskd.env` — what the board enforces (`TASKD_ACCEPTANCE_POLICY`).
- *     The board is authoritative, and this file is shared with the Access panel,
- *     so the write merges rather than rewrites.
+ *   * the install-root `.env` — what the board enforces
+ *     (`TASKD_ACCEPTANCE_POLICY`). The board is authoritative, and this file is
+ *     shared with the Access panel and the client, so the write merges rather
+ *     than rewrites.
  *
  * Run with: node --test
  */
@@ -38,24 +39,23 @@ const hostConfig = (home) => {
   return existsSync(path) ? readFileSync(path, "utf8") : "";
 };
 
-const boardConfig = (dataDir) => {
-  const path = join(dataDir, "taskd.env");
-  return existsSync(path) ? readFileSync(path, "utf8") : "";
-};
+const boardConfig = (envFile) => (existsSync(envFile) ? readFileSync(envFile, "utf8") : "");
 
 describe("install.sh: acceptance policy", () => {
-  it("defaults to both and persists it in the host config and the board's taskd.env", () => {
+  it("defaults to both and persists it in the host config and the install-root .env", () => {
     const home = makeTempDir();
     const dataDir = makeTempDir();
     const bin = makeTempDir();
+    const envFile = join(dataDir, ".env");
     makeFakeCli(bin, "claude");
     const run = runInstall(["--target", "claude", "--prefix", home], {
       PATH: `${bin}:${process.env.PATH}`,
       TASKD_DATA_DIR: dataDir,
+      MEERKAT_TASKPANEL_ENV_FILE: envFile,
     });
     assert.equal(run.status, 0, run.stderr);
     assert.match(hostConfig(home), /^MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=both$/m);
-    assert.match(boardConfig(dataDir), /^TASKD_ACCEPTANCE_POLICY=both$/m);
+    assert.match(boardConfig(envFile), /^TASKD_ACCEPTANCE_POLICY=both$/m);
   });
 
   it("takes both spellings, in joined and spaced form, and refuses a misspelt value", () => {
@@ -69,14 +69,16 @@ describe("install.sh: acceptance policy", () => {
       const home = makeTempDir();
       const dataDir = makeTempDir();
       const bin = makeTempDir();
+      const envFile = join(dataDir, ".env");
       makeFakeCli(bin, "claude");
       const run = runInstall(["--target", "claude", "--prefix", home, ...flags], {
         PATH: `${bin}:${process.env.PATH}`,
         TASKD_DATA_DIR: dataDir,
+        MEERKAT_TASKPANEL_ENV_FILE: envFile,
       });
       assert.equal(run.status, 0, run.stderr);
       assert.match(hostConfig(home), new RegExp(`^MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=${expected}$`, "m"));
-      assert.match(boardConfig(dataDir), new RegExp(`^TASKD_ACCEPTANCE_POLICY=${expected}$`, "m"));
+      assert.match(boardConfig(envFile), new RegExp(`^TASKD_ACCEPTANCE_POLICY=${expected}$`, "m"));
     }
 
     const run = runInstall(["--target", "claude", "--acceptance=loop-only", "--dry-run"]);
@@ -84,35 +86,42 @@ describe("install.sh: acceptance policy", () => {
     assert.match(run.stderr, /human-only, both or agent-only/);
   });
 
-  it("merges into an existing taskd.env instead of erasing another writer's keys", () => {
+  it("merges into an existing .env instead of erasing another writer's keys", () => {
     const home = makeTempDir();
     const dataDir = makeTempDir();
     const bin = makeTempDir();
+    const envFile = join(dataDir, ".env");
     makeFakeCli(bin, "claude");
-    writeFileSync(join(dataDir, "taskd.env"), "TASKD_ALLOW_LIST_ENABLED=true\nTASKD_ALLOW_CIDRS=10.0.0.0/8\n", "utf8");
+    writeFileSync(envFile, "TASKD_ALLOW_LIST_ENABLED=true\nTASKD_ALLOW_CIDRS=10.0.0.0/8\n", "utf8");
 
     const run = runInstall(["--target", "claude", "--prefix", home, "--acceptance=human-only"], {
       PATH: `${bin}:${process.env.PATH}`,
       TASKD_DATA_DIR: dataDir,
+      MEERKAT_TASKPANEL_ENV_FILE: envFile,
     });
     assert.equal(run.status, 0, run.stderr);
-    const text = boardConfig(dataDir);
+    const text = boardConfig(envFile);
     assert.match(text, /^TASKD_ALLOW_LIST_ENABLED=true$/m);
     assert.match(text, /^TASKD_ALLOW_CIDRS=10\.0\.0\.0\/8$/m);
     assert.match(text, /^TASKD_ACCEPTANCE_POLICY=human-only$/m);
-    assert.equal((text.match(/TASKD_ACCEPTANCE_POLICY=/g) ?? []).length, 1, "one line, not an append per run");
+    assert.equal((text.match(/^TASKD_ACCEPTANCE_POLICY=/gm) ?? []).length, 1, "one active line, not an append per run");
   });
 
   it("is idempotent: a second install leaves one key and the same value", () => {
     const home = makeTempDir();
     const dataDir = makeTempDir();
     const bin = makeTempDir();
+    const envFile = join(dataDir, ".env");
     makeFakeCli(bin, "claude");
-    const env = { PATH: `${bin}:${process.env.PATH}`, TASKD_DATA_DIR: dataDir };
+    const env = {
+      PATH: `${bin}:${process.env.PATH}`,
+      TASKD_DATA_DIR: dataDir,
+      MEERKAT_TASKPANEL_ENV_FILE: envFile,
+    };
     assert.equal(runInstall(["--target", "claude", "--prefix", home, "--acceptance=both"], env).status, 0);
     assert.equal(runInstall(["--target", "claude", "--prefix", home, "--acceptance=both", "--force"], env).status, 0);
-    const text = boardConfig(dataDir);
-    assert.equal((text.match(/TASKD_ACCEPTANCE_POLICY=/g) ?? []).length, 1);
+    const text = boardConfig(envFile);
+    assert.equal((text.match(/^TASKD_ACCEPTANCE_POLICY=/gm) ?? []).length, 1);
     assert.match(text, /^TASKD_ACCEPTANCE_POLICY=both$/m);
   });
 
@@ -120,24 +129,28 @@ describe("install.sh: acceptance policy", () => {
     const home = makeTempDir();
     const dataDir = makeTempDir();
     const bin = makeTempDir();
+    const envFile = join(dataDir, ".env");
     makeFakeCli(bin, "claude");
     const run = runInstall(["--target", "claude", "--prefix", home, "--acceptance=agent-only", "--dry-run"], {
       PATH: `${bin}:${process.env.PATH}`,
       TASKD_DATA_DIR: dataDir,
+      MEERKAT_TASKPANEL_ENV_FILE: envFile,
     });
     assert.equal(run.status, 0, run.stderr);
-    assert.equal(boardConfig(dataDir), "", "no taskd.env");
+    assert.equal(boardConfig(envFile), "", "no .env");
     assert.match(run.stdout, /would write TASKD_ACCEPTANCE_POLICY=agent-only/);
+    assert.match(run.stdout, /would create .*\.env/);
   });
 
   it("agent-only warns (but does not refuse) when nothing can close a card", () => {
     const home = makeTempDir();
     const dataDir = makeTempDir();
     const bin = makeTempDir();
+    const envFile = join(dataDir, ".env");
     makeFakeCli(bin, "claude");
     const run = runInstall(
       ["--target", "claude", "--prefix", home, "--acceptance=agent-only", "--workflow=no", "--auto-accept-reviews=no"],
-      { PATH: `${bin}:${process.env.PATH}`, TASKD_DATA_DIR: dataDir },
+      { PATH: `${bin}:${process.env.PATH}`, TASKD_DATA_DIR: dataDir, MEERKAT_TASKPANEL_ENV_FILE: envFile },
     );
     assert.equal(run.status, 0, "warnings only — who closes is the skill's business");
     assert.match(run.stderr, /agent-only with --workflow=no/);

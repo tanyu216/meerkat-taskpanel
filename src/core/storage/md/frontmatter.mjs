@@ -18,7 +18,7 @@
  * bug the plan calls out is a growth loop, and this is where it is prevented).
  */
 
-import { DomainError } from "../../../shared/errors.mjs";
+import { DomainError } from "../../../foundation/errors.mjs";
 
 /** The `---` fence. */
 export const FENCE = "---";

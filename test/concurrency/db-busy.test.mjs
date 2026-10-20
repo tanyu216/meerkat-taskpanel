@@ -20,7 +20,7 @@
  *
  * The last one is the acceptance criterion — "锁超时端到端不再 500" — and it is
  * driven by a *separate process* holding the lock, which is the shape of the
- * real failure (a `migrate-cli` run, a second connection, a stalled disk).
+ * real failure (a second connection, a stalled disk).
  */
 
 import assert from "node:assert/strict";
@@ -35,8 +35,8 @@ import { SQLITE_ERRCODE, mapSqliteError } from "../../src/core/storage/sqlite-er
 import { transaction } from "../../src/core/storage/unit-of-work.mjs";
 import { createTaskd } from "../../src/server/index.mjs";
 import { attachmentContentPath } from "../../src/server/routes/attachments.mjs";
-import { ATTACHMENTS_DIRNAME, DB_BUSY_MAX_ATTEMPTS } from "../../src/shared/constants.mjs";
-import { ERROR_CODES } from "../../src/shared/errors.mjs";
+import { ATTACHMENTS_DIRNAME, DB_BUSY_MAX_ATTEMPTS } from "../../src/foundation/constants.mjs";
+import { ERROR_CODES } from "../../src/foundation/errors.mjs";
 
 const tempDirs = [];
 const children = new Set();
@@ -176,7 +176,7 @@ describe("concurrency/db-busy — the retry budget", () => {
  *
  * `--input-type=module` because the runtime is ESM; the database handle is a
  * *separate process's* connection, which is exactly how the audit reproduced the
- * failure (and how `migrate-cli` contends with a live daemon).
+ * failure (and how a second connection contends with a live daemon).
  */
 const HOLDER_SOURCE = `
 import { DatabaseSync } from "node:sqlite";

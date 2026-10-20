@@ -18,7 +18,7 @@ import { describe, it } from "node:test";
 
 import plugin, { MeerkatTaskpanelPlugin } from "../../.opencode/plugins/meerkat-taskpanel.js";
 import { LOOP_SKILL_NAME } from "../../scripts/sync-loop.mjs";
-import { SKILL_NAME } from "../../src/shared/constants.mjs";
+import { SKILL_NAME } from "../../src/foundation/constants.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SKILLS_DIR = join(ROOT, "skills");

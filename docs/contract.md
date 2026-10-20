@@ -17,8 +17,12 @@ by an explicit snapshot update; drift is a failure, not a warning.
 | Section | Source of truth | Frozen |
 |---|---|---|
 | `routes` | `registerApiRoutes` in `src/server/index.mjs` (the same function `createTaskd` calls), plus the endpoints served outside the JSON router (`/health`, `/meta`, `/api/v1/events`, attachment bytes) | `METHOD /path`, and the route's **declared request schema** (`{query, body}`) down to `type`, `enum`, `items`, `anyOf`, `properties`, `required` and `additionalProperties` — recursively |
-| `errors` | `ERROR_CODES` in `src/shared/errors.mjs` | the code and its HTTP status |
-| `wire` | every `*ToWire` projection in `src/shared/wire.mjs` | the name **and JSON type** of every field each shape emits, including the nested `task.assignee` / `task.reporter` / `task.report_waiver` |
+| `errors` | `ERROR_CODES` in `src/foundation/errors.mjs` | the code and its HTTP status |
+| `wire` | every `*ToWire` projection in `src/foundation/wire.mjs` | the name **and JSON type** of every field each shape emits, including the nested `task.assignee` / `task.reporter` / `task.report_waiver` |
+
+The config-file codes `CONFIG_FILE_INVALID` and `CONFIG_FILE_INSECURE` are in the
+same `errors` table, and `--env-file` is a frozen global CLI flag. A change to either
+surface is a snapshot update, not a documentation edit.
 
 Nothing is a second copy of a list. The routes are *enumerated* by registering
 them against a stub router (registration only records `{method, pattern, handler,
@@ -40,12 +44,12 @@ Bumping the snapshot's own layout (not a section) bumps `schema_version`. It is
 request shapes and **2** added the wire field types; **1** was the original
 routes/errors/wire-names snapshot.
 
-The number itself is `CONTRACT_SCHEMA_VERSION` in `src/shared/constants.mjs` — the
+The number itself is `CONTRACT_SCHEMA_VERSION` in `src/foundation/constants.mjs` — the
 generator **reads** it rather than keeping a second copy — and the runtime
 publishes the same value:
 
 ```bash
-taskctl --version --json     # {"ok":true,"data":{"version":"1.0.0","schema_version":4}}
+taskctl --version --json     # {"ok":true,"data":{"version":"1.1.0","schema_version":4}}
 ```
 
 so a client can read the generation the provider actually speaks **at runtime**
@@ -238,6 +242,41 @@ is the pull-request-time authority. See
 
 If it is *not* intended, the checker has just caught a regression before it
 reached a client.
+
+## The CLI contract snapshot
+
+`taskctl --json` is the surface the host-external loop binds to, and any user script may
+too. `test/fixtures/contract/cli.snapshot.json` freezes it separately from the HTTP
+snapshot:
+
+- every command group and verb, and each command's positionals;
+- every flag's `flag` / `as` / `value` / `required` / `repeat` / `short` (`summary` and
+  `usage` prose are **not** frozen — they are documentation, not shape);
+- the global flags, in the same shape;
+- the **keys** of the success and error envelopes, the error payload, and the
+  `--version --json` data. The version number itself is not frozen, so a release does not
+  move the contract.
+
+The snapshot is generated from the live registry (`src/cli/commands/index.mjs`), the
+envelope helpers and `versionPayload()`, is byte-stable, and lives in its own file so a CLI
+change does not bump `CONTRACT_SCHEMA_VERSION`.
+
+```bash
+node scripts/verify/cli-contract.mjs            # compare; 0 or 1
+node scripts/verify/cli-contract.mjs --update   # refresh the snapshot
+node scripts/verify/cli-contract.mjs --print
+```
+
+The test suite adds one leg the snapshot cannot: `references/cli.md` must name every frozen
+command and every flag. A declared-but-undocumented flag is how a toolkit quietly becomes
+guesswork.
+
+When you change a command, refresh the snapshot in the same commit:
+
+```bash
+node scripts/verify/cli-contract.mjs --update
+git add test/fixtures/contract/cli.snapshot.json
+```
 
 ## See also
 

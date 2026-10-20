@@ -7,9 +7,9 @@
  * trivially testable with a frozen clock and a temp database.
  */
 
-import { TASKD_KIND } from "../../shared/constants.mjs";
-import { DomainError } from "../../shared/errors.mjs";
-import { newId } from "../../shared/ids.mjs";
+import { TASKD_KIND } from "../../foundation/constants.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { newId } from "../../foundation/ids.mjs";
 import { isActorKind } from "../domain/enums.mjs";
 import { DEFAULT_ACCEPTANCE_POLICY } from "../domain/status.mjs";
 import { toIsoMillis } from "../domain/task.mjs";

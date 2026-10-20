@@ -24,8 +24,8 @@
  * for any caller that builds a `DomainError` of its own.
  */
 
-import { DB_RAISE_CODES, DomainError, isDomainError } from "../../shared/errors.mjs";
-import { redactText } from "../../shared/redact.mjs";
+import { DB_RAISE_CODES, DomainError, isDomainError } from "../../foundation/errors.mjs";
+import { redactText } from "../../foundation/redact.mjs";
 
 /** SQLite extended result codes we care about. */
 export const SQLITE_ERRCODE = Object.freeze({
@@ -112,7 +112,7 @@ export const CHECK_TEXT_TO_CODE = Object.freeze([
   // CHECK. The service now releases the claim as part of the move that leaves
   // the work cycle (`domain/status.mjs#CLAIM_HOLDING_STATUSES`), so this entry is
   // **defensive**: it maps a state that only a foreign writer can produce (a
-  // hand-written row, an md import) to a code that names itself, instead of
+  // hand-written row, a historical import) to a code that names itself, instead of
   // falling through to a generic `VALIDATION_FAILED`.
   { match: "claimed_by IS NULL OR status <> 'backlog'", code: "CLAIM_ON_BACKLOG" },
 ]);

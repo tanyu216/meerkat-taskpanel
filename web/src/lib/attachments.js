@@ -35,23 +35,56 @@ export function formatFileSize(bytes) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"]);
+const VIDEO_TYPES = new Set(["video/mp4", "video/webm"]);
+
+/**
+ * The family a stored content type can be previewed as, or `null`.
+ *
+ * The family is **derived from the type the board stored**, never from the
+ * filename and never from `attachments.kind` (which the board writes as
+ * `attachment` and never reads): the allow-list is what the board validated, so
+ * it is the one honest statement about what the bytes are. `null` — a row that
+ * declared no type, or a type the drawer has no renderer for — means the row
+ * stays a plain file row with a download button.
+ *
+ * Case and parameters are folded for the same reason the server folds them
+ * (`text/markdown; charset=utf-8` is `text/markdown`).
+ *
+ * @param {unknown} contentType
+ * @returns {"image"|"video"|"pdf"|"markdown"|null}
+ */
+export function previewKind(contentType) {
+  if (typeof contentType !== "string") return null;
+  const base = contentType.split(";")[0].trim().toLowerCase();
+  if (IMAGE_TYPES.has(base)) return "image";
+  if (VIDEO_TYPES.has(base)) return "video";
+  if (base === "application/pdf") return "pdf";
+  if (base === "text/markdown") return "markdown";
+  return null;
+}
+
 /**
  * The drawer's rows, in the order the wire returned them (the table's own
  * `created_at, id`), with any entry that names no file dropped — a row with an
  * empty name is not an attachment.
  *
  * @param {unknown} rows the `attachments` half of the listing
- * @returns {{id: string, name: string, size: string, contentType: string|null}[]}
+ * @returns {{id: string, name: string, size: string, contentType: string|null, previewKind: string|null}[]}
  */
 export function attachmentRows(rows) {
   const list = Array.isArray(rows) ? rows : [];
   return list
-    .map((file) => ({
-      id: String(file?.id ?? ""),
-      name: String(file?.filename ?? file?.name ?? ""),
-      size: formatFileSize(file?.size),
-      contentType: typeof file?.content_type === "string" ? file.content_type : (file?.contentType ?? null),
-    }))
+    .map((file) => {
+      const contentType = typeof file?.content_type === "string" ? file.content_type : (file?.contentType ?? null);
+      return {
+        id: String(file?.id ?? ""),
+        name: String(file?.filename ?? file?.name ?? ""),
+        size: formatFileSize(file?.size),
+        contentType,
+        previewKind: previewKind(contentType),
+      };
+    })
     .filter((row) => row.name !== "");
 }
 

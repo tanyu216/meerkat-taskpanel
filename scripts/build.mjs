@@ -10,9 +10,11 @@
  * Nothing is copied into `dist/plugins/`: no skill is distributed as a committed copy, and
  * every harness reads the repository's own `skills/` tree through a manifest at the root.
  *
- * The loop payload (`skills/meerkat-loop/body` + `templates/`) is a *generated* artefact
- * that a release ships as-is; the build verifies it is current rather than rewriting the
- * source tree, so a stale payload is a red build instead of a silent divergence.
+ * The loop payload (`skills/meerkat-loop/{manifest.txt,scripts,templates}`, with foundation
+ * under `scripts/foundation/`) is a
+ * *generated* artefact that a release ships as-is; `scripts/board-check.mjs` in that tree
+ * is authored. The build verifies the payload is current rather than rewriting the source
+ * tree, so a stale payload is a red build instead of a silent divergence.
  *
  * No network access. Node builtins only.
  */

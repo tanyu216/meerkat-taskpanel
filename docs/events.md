@@ -37,11 +37,11 @@ enforced by `test/contract/activity-events.test.mjs`:
 | `label_gc` | `commands/labels.mjs` | none | `archived`, `kept`, `mismatched`, `reason`, `ttlDays` | yes |
 | `session_registered` | `commands/agent-sessions.mjs` | task | `sessionId`, `seg`, `backend`, `phase` | yes |
 | `session_closed` | `commands/agent-sessions.mjs` | task | `sessionId`, `status` | yes |
-| `progress` | `storage/md/import.mjs` | task | `line`, `seq` | yes |
+| `progress` | historical import | task | `line`, `seq` | yes |
 | `attachment_added` | `server/routes/attachments.mjs` | task | `attachmentId`, `filename`, `content_type`, `size` | yes |
 | `attachment_updated` | `server/routes/attachments.mjs` (content PUT) | task | same, with the new `size` | yes |
 | `attachment_removed` | `server/routes/attachments.mjs` | task | same | yes |
-| `import_completed` | `storage/md/import.mjs` | none | counters (`cards`, `tasks`, …) | yes |
+| `import_completed` | historical import | none | counters (`cards`, `tasks`, …) | yes |
 
 `task_heartbeat` is the only **wire noise**: it changes nothing a board renders, so
 `SSE_NOISE_EVENTS` filters it. Its cursor still advances, like every other row.
@@ -106,7 +106,8 @@ Suppression is by **actor identity**, not by a role word:
 - events authored by this loop's own agents (`actor_id ∈ --agent`, non-human) are ignored,
   which covers claims and the workflow pass.
 
-`import_completed` is authored by `taskd`/`md-import`, so it passes and wakes the loop.
+`import_completed` (a historical import's row) is authored by `taskd`/`md-import`, so it
+passes and wakes the loop.
 
 Coalescing: 300 ms debounce, at most 2 s wait, at most one event-triggered continue turn
 per minute; a turn refused by the continue lock is retried after 5 s.
@@ -115,8 +116,6 @@ per minute; a turn refused by the continue lock is retried after 5 s.
 
 These change server state but have no activity row, by design:
 
-- **md import** writes projects/tasks/comments/relations/sessions/reports directly and
-  emits a single `import_completed`; per-card events would storm the stream.
 - **migrations** run at startup, before any client is connected.
 - **access policy and token rotation** are files, not board state; the Access panel
   re-reads on open.

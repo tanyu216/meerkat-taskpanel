@@ -47,8 +47,8 @@ append-only audit trail, first-class dependency and epic edges, resumable sessio
 the [Highlights](#highlights) below describe.
 
 > **Status: the engine has landed in full — the core engine, the `taskctl` CLI and its
-> local `taskd`, the six-host installers, the markdown migrator, and the full board
-> backend plus the `web/` frontend.**
+> local `taskd`, the six-host installers, and the full board backend plus the `web/`
+> frontend.**
 > `src/core/` holds the domain model, SQLite storage and migrations, use-cases and
 > `openBoard()`; `src/cli/` + `src/server/` provide the real `taskctl` command surface and
 > the local `taskd` HTTP service the CLI auto-starts on loopback
@@ -105,7 +105,7 @@ the [Highlights](#highlights) below describe.
 
 Meerkat TaskPanel is three thin layers, with the dependency arrow always pointing inward:
 `src/cli` and `src/server` are the front doors, `src/core` owns the domain model,
-SQLite storage and the use-cases, and `src/shared` holds the DTOs and helpers they agree on.
+SQLite storage and the use-cases, and `src/foundation` holds the DTOs and helpers they agree on.
 The full tree is in [Repository layout](#repository-layout); to install the skill or plugin
 for your host, start with [Install](#install).
 
@@ -127,10 +127,10 @@ meerkat-taskpanel/
 ├── package.json                  # workspace root, bin(taskctl), scripts
 ├── install.sh                    # install dispatcher: --target claude|openclaw|codex|pi|opencode|cursor|all
 ├── src/                          # engineering source
-│   ├── core/                     #   domain model / SQLite repo / state machine / invariants / md migrator
+│   ├── core/                     #   domain model / SQLite repo / state machine / invariants / md export
 │   ├── cli/                      #   taskctl (CLI entry)
 │   ├── server/                   #   local HTTP API + SSE
-│   └── shared/                   #   shared DTOs / constants
+│   └── foundation/               #   DTOs / constants / pure helpers
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
 ├── skills/                       # the two skills: meerkat-taskpanel (board), meerkat-loop (supervisor)
 ├── .claude-plugin/               # marketplace + the board plugin manifest (plugin root = the repo root)
@@ -203,6 +203,17 @@ and managed keys — without it an existing value is kept and reported as
 `left unchanged — use --force to overwrite`), `--dry-run` (preview every write and change
 nothing), `--skip-node-check` (bypass the Node >= 22 check).
 
+**Configuration is one file.** `taskctl` and `taskd` read `.env` at the program install root
+(the checkout root, or the npm package root) for the board URL, the client token, the
+allow-list and the acceptance policy. The process environment wins key by key and a CLI flag
+wins over both; `--env-file <path>` or `MEERKAT_TASKPANEL_ENV_FILE` selects another file.
+`install.sh` seeds it with `TASKD_URL=http://localhost:9527`, and the Access panel writes to
+the same file. Every `taskctl` command also needs an identity: `--actor-kind claude` (or
+`codex`, `pi`, …; `--as-human` for a person), which the installed shim supplies. **Breaking
+change:** the old `<dataDir>/taskd.env` is no longer read — move its keys into `.env` by
+hand. Details: [`docs/install.md`](docs/install.md) and
+[`docs/development.md`](docs/development.md).
+
 ## Practice guide
 
 Installing the skill is one line; working the board well is a set of habits.
@@ -229,11 +240,13 @@ Every **60 seconds** it **pings**: it drops worker-registry entries whose pid is
 board read and no model turn. Every **ten minutes** it runs a **continue** turn: it wakes
 the host with a bounded `继续` prompt, and that turn runs the loop's deterministic entries —
 the notify-only SLA patrol (stale heartbeats, an unanswered confirmation gate, a delivery
-nobody reviewed, the rest of `PROTOCOL §⑮`), the workflow channel (container rules, an
-independent reviewer per delivery, the verdict applied), and the poll that claims a card
-and wakes a worker **only when the claim succeeded** ($0 on an empty scan). The SLA rows
-are **notifications to the leader**, never actions on a card; the workflow entry is the
-one that writes (`--reviewer` enables dispatch; `--workflow=no` turns it off). Claude Code
+nobody reviewed, the rest of `PROTOCOL §⑮`), the workflow channel (the board computes the
+plan through `issue reconcile --workflow` — container rules, an independent reviewer per
+delivery, the verdict applied; the loop executes the plan's review actions), and the poll
+that claims a card and wakes a worker **only when the claim succeeded** ($0 on an empty
+scan). The SLA rows are **notifications to the leader**, never actions on a card; the
+workflow entry executes the board's plan (`--reviewer` enables dispatch; `--workflow=no`
+turns it off). Claude Code
 and Codex have **no timers of their own**, so the loop sits *outside* them and only ever
 wakes the worker (`claude -p`, `codex exec`, `pi --print`). On launchd/systemd the optional
 **subscribe daemon** holds one SSE connection and asks for a continue turn when a
@@ -333,9 +346,10 @@ own**, so rule 1 is driven by the [supervisor](#scheduling-ping--continue) wakin
 `codex exec` turn (or a Codex app automation), with the bundled claim trigger as the
 minimal fallback.
 
-The full guide — the eight rules in detail, the per-host install and trigger
-differences, and a worked example — lives in the skill at
-[`skills/meerkat-taskpanel/references/practice-guides.md`](skills/meerkat-taskpanel/references/practice-guides.md).
+The agent-facing guide — claim-first, the status model, the delivery gate and the
+board workflow — lives in the skill at
+[`skills/meerkat-taskpanel/SKILL.md`](skills/meerkat-taskpanel/SKILL.md); per-host
+install and trigger details are in [`docs/install.md`](docs/install.md).
 
 ## Development
 
@@ -371,7 +385,7 @@ Contributions land under the MIT license.
 | **Engine** | `src/core/` — domain model, SQLite storage + migrations, state machine, invariants pushed down into database triggers, `openBoard()` | *landed* |
 | **CLI & local service** | `src/cli/` — the `taskctl` command surface aligned with `task-interface v1`; the loopback `taskd` it auto-starts | *landed* |
 | **Installers** | `install.sh` + `scripts/install/<host>.sh` — the six host targets, idempotent and merge-style | *landed* |
-| **Markdown migrator** | `src/core/storage/md/` — import/export cards as markdown, with reconcile and a post-import invariants check | *landed* |
+| **Markdown export** | `src/core/storage/md/` — `taskctl export md` writes one canonical card per task | *landed* |
 | **Board API & frontend** | `src/server/` — the full board HTTP API and its SSE stream; `web/` — the Vue 3 board built to `web/dist` | *landed* |
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate | *(planned)* |
 | **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity | *(planned)* |

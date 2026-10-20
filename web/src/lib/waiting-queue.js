@@ -211,6 +211,25 @@ export function acceptanceRow(task) {
 }
 
 /**
+ * Turn an **already-derived** acceptance set into rows.
+ *
+ * Separate from `acceptanceRows` because the predicate needs the *whole* board
+ * reading (children and review cards) while the view may show only the rows an
+ * assignee narrowing leaves. Re-running `acceptanceWaitingTasks` on the narrowed
+ * list would judge a card against the cards that survived the filter — a child
+ * assigned to another agent would silently count as resolved — so the narrow
+ * step must happen **after** the derivation, on its result.
+ *
+ * @param {object[]} tasks acceptance cards (`acceptanceWaitingTasks`' answer)
+ * @param {number} [now]
+ */
+export function acceptanceRowsFrom(tasks, now = Date.now()) {
+  return (Array.isArray(tasks) ? tasks : [])
+    .map(acceptanceRow)
+    .map((row) => ({ ...row, stamp: feedTime(row.since, now) }));
+}
+
+/**
  * The acceptance half of the queue, ordered with the awaiting half.
  *
  * @param {object[]} tasks the **whole** board reading (the derivation needs
@@ -219,9 +238,7 @@ export function acceptanceRow(task) {
  * @param {number} [now]
  */
 export function acceptanceRows(tasks, policy, now = Date.now()) {
-  return acceptanceWaitingTasks(tasks, policy)
-    .map(acceptanceRow)
-    .map((row) => ({ ...row, stamp: feedTime(row.since, now) }));
+  return acceptanceRowsFrom(acceptanceWaitingTasks(tasks, policy), now);
 }
 
 /**

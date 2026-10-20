@@ -1,0 +1,1410 @@
+{
+  "schema": 1,
+  "envelope": {
+    "error": [
+      "error",
+      "ok"
+    ],
+    "error_fields": [
+      "code",
+      "details",
+      "hint",
+      "http",
+      "message"
+    ],
+    "success": [
+      "data",
+      "ok"
+    ],
+    "version_data": [
+      "schema_version",
+      "version"
+    ]
+  },
+  "globals": [
+    {
+      "flag": "actor-kind",
+      "as": "string",
+      "value": "<name>",
+      "required": false,
+      "repeat": false,
+      "short": null
+    },
+    {
+      "flag": "agent",
+      "as": "string",
+      "value": "<name>",
+      "required": false,
+      "repeat": false,
+      "short": null
+    },
+    {
+      "flag": "as-human",
+      "as": "boolean",
+      "value": null,
+      "required": false,
+      "repeat": false,
+      "short": null
+    },
+    {
+      "flag": "env-file",
+      "as": "string",
+      "value": "<path>",
+      "required": false,
+      "repeat": false,
+      "short": null
+    },
+    {
+      "flag": "help",
+      "as": "boolean",
+      "value": null,
+      "required": false,
+      "repeat": false,
+      "short": "-h"
+    },
+    {
+      "flag": "if-version",
+      "as": "number",
+      "value": "<n>",
+      "required": false,
+      "repeat": false,
+      "short": null
+    },
+    {
+      "flag": "json",
+      "as": "boolean",
+      "value": null,
+      "required": false,
+      "repeat": false,
+      "short": null
+    },
+    {
+      "flag": "session-id",
+      "as": "string",
+      "value": "<id>",
+      "required": false,
+      "repeat": false,
+      "short": null
+    },
+    {
+      "flag": "token",
+      "as": "string",
+      "value": "<token>",
+      "required": false,
+      "repeat": false,
+      "short": null
+    },
+    {
+      "flag": "url",
+      "as": "string",
+      "value": "<url>",
+      "required": false,
+      "repeat": false,
+      "short": null
+    },
+    {
+      "flag": "version",
+      "as": "boolean",
+      "value": null,
+      "required": false,
+      "repeat": false,
+      "short": null
+    }
+  ],
+  "groups": [
+    {
+      "name": "actors",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "list",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "query",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "attachment",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "add",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "The card the file belongs to."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "content-type",
+              "as": "string",
+              "value": "<type>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "file",
+              "as": "string",
+              "value": "<path>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "name",
+              "as": "string",
+              "value": "<filename>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": []
+        },
+        {
+          "name": "remove",
+          "positionals": [
+            {
+              "name": "id",
+              "summary": "The attachment id (`attachment list` prints it)."
+            }
+          ],
+          "flags": []
+        }
+      ]
+    },
+    {
+      "name": "comment",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "add",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "body",
+              "as": "string",
+              "value": "<text>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "file",
+              "as": "string",
+              "value": "<path|->",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "kind",
+              "as": "string",
+              "value": "<kind>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "kind",
+              "as": "string",
+              "value": "<kind>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "export",
+      "default_command": "md",
+      "commands": [
+        {
+          "name": "md",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "check",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "md",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "out",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "issue",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "archive",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "days",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "assign",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "assignee",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-id",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "force-create",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reporter",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reporter-id",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "candidates",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "assignee",
+              "as": "string",
+              "value": "<name>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "include-unassigned",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "order",
+              "as": "string",
+              "value": "board|weight",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "order-debug",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "stale",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "claim",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "allow-steal",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reason",
+              "as": "string",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "create",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "acceptance",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "allow-dup",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-id",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-kind",
+              "as": "string",
+              "value": "<agent|human>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "description",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "force-create",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "idem",
+              "as": "string",
+              "value": "<key>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "kind",
+              "as": "string",
+              "value": "<task|epic|deploy>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "label",
+              "as": "string",
+              "value": "<label>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "meta",
+              "as": "kv",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "parent",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "priority",
+              "as": "string",
+              "value": "<low|medium|high|urgent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project",
+              "as": "string",
+              "value": "<id>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reporter",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reporter-id",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reporter-kind",
+              "as": "string",
+              "value": "<agent|human>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-of",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-round",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "status",
+              "as": "string",
+              "value": "<status>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "target",
+              "as": "string",
+              "value": "<t>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "title",
+              "as": "string",
+              "value": "<text>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "deliver",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "no-report",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reason",
+              "as": "string",
+              "value": "<why>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "report-file",
+              "as": "string",
+              "value": "<file|->",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "seg",
+              "as": "string",
+              "value": "<seg>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "get",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": []
+        },
+        {
+          "name": "heartbeat",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": []
+        },
+        {
+          "name": "list",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "assignee-id",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "include-archived",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "order",
+              "as": "string",
+              "value": "board|weight",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "order-debug",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "status",
+              "as": "string",
+              "value": "<status>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "meta",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "meta",
+              "as": "kv",
+              "value": null,
+              "required": true,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "move",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            },
+            {
+              "name": "to",
+              "summary": "Target status."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "allow-steal",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "awaiting-reason",
+              "as": "string",
+              "value": "<E1..E5>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "blocked-reason",
+              "as": "string",
+              "value": "<class>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "no-report",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reason",
+              "as": "string",
+              "value": "<why>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "reconcile",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "auto-accept-reviews",
+              "as": "string",
+              "value": "yes|no",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "board-limit",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "max-actions",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-aging-ms",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "update",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "acceptance",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "description",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "kind",
+              "as": "string",
+              "value": "<task|epic|deploy>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "label",
+              "as": "string",
+              "value": "<label>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "meta",
+              "as": "kv",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "priority",
+              "as": "string",
+              "value": "<priority>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "title",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "labels",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "list",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "query",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "project",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "create",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "id",
+              "as": "string",
+              "value": "<id>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "label",
+              "as": "string",
+              "value": "<label>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "meta",
+              "as": "kv",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "name",
+              "as": "string",
+              "value": "<name>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "readme",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "dir",
+          "positionals": [
+            {
+              "name": "id",
+              "summary": "Project id (or the name registered in projects.json)."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "projects-json",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "include-archived",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "readme",
+          "positionals": [
+            {
+              "name": "id",
+              "summary": "Project id."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "file",
+              "as": "string",
+              "value": "<path|->",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "set",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "update",
+          "positionals": [
+            {
+              "name": "id",
+              "summary": "Project id."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "label",
+              "as": "string",
+              "value": "<label>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "meta",
+              "as": "kv",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "name",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "readme",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "relation",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "add",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Source task (the parent, for `parent`)."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "force",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "target",
+              "as": "string",
+              "value": "<id|identifier>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "type",
+              "as": "string",
+              "value": "<parent|blocks|related>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": []
+        },
+        {
+          "name": "remove",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Either endpoint's task."
+            },
+            {
+              "name": "relationId",
+              "summary": "The relation id."
+            }
+          ],
+          "flags": []
+        }
+      ]
+    },
+    {
+      "name": "report",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "list",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "round",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "template",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "command",
+              "as": "string",
+              "value": "<cmd:exit>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "commit",
+              "as": "string",
+              "value": "<sha>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "coverage",
+              "as": "string",
+              "value": "<pct[@scope]>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "path",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "session",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "close",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            },
+            {
+              "name": "sessionId",
+              "summary": "Session row id."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "failed",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": []
+        },
+        {
+          "name": "set",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "backend",
+              "as": "string",
+              "value": "<name>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "owner",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "phase",
+              "as": "string",
+              "value": "<phase>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "pid",
+              "as": "number",
+              "value": "<pid>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "seg",
+              "as": "string",
+              "value": "<seg>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session",
+              "as": "string",
+              "value": "<task-id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "token",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "rotate",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "show",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

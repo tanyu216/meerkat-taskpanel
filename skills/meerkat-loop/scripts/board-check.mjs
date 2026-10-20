@@ -2,35 +2,19 @@
 /**
  * The board gate — "is the board this loop is pointed at a generation I can drive?".
  *
- * The loop and the board are released independently, so the loop has to state, and
- * check, what it needs. `SKILL.md` §Required board interface states it in the terms a
- * reader reasons about — board `task-interface v1`, which the board first shipped in
- * release 1.0.0 — and this script is the machine half of that statement.
- *
- * The board publishes both numbers at runtime:
- *
- *   taskctl --version --json  →  {"ok":true,"data":{"version":"1.0.0","schema_version":4}}
- *
- * so the check is a real query against the board, not a comparison against a constant
- * somebody typed here twice. What it proves is deliberately narrow:
- *
- *   * a taskctl-shaped board answered at the location we asked;
- *   * its declared release is at least the floor this loop was written against.
- *
- * What it does **not** prove: that every command the loop calls still behaves the same
- * way. That is a release-time concern (see `references/operation.md` §Compatibility); this
- * gate exists to catch the coarse, common mistake — pointing a loop at an old board — and
- * it says so rather than implying more.
+ * It asks the board for `taskctl --version --json` and refuses a version below
+ * the floor. That is all it proves: a taskctl-shaped board answered, and it is
+ * at least the release this loop was written against. It does not prove that
+ * every command still behaves the same way — see `references/operation.md`
+ * §Compatibility.
  *
  *   node scripts/board-check.mjs                     # taskctl on PATH
  *   node scripts/board-check.mjs --repo <checkout>    # <checkout>/src/cli/index.mjs
  *   node scripts/board-check.mjs --cli <path>         # that executable, verbatim
  *   node scripts/board-check.mjs --json               # machine-readable verdict
  *
- * Exit codes: 0 compatible · 2 the command line is wrong · 3 no verdict (the board could
- * not be asked, or it answered with a version below the floor).
- *
- * Node builtins only; no network, no dependencies.
+ * Exit codes: 0 compatible · 2 bad command line · 3 no verdict (unreachable
+ * board, or a version below the floor).
  */
 
 import { spawnSync } from "node:child_process";
@@ -47,7 +31,7 @@ import { fileURLToPath } from "node:url";
 export const REQUIRED_BOARD_INTERFACE = "task-interface v1";
 
 /** The board release that first shipped that generation — the floor this gate enforces. */
-export const REQUIRED_BOARD_VERSION = "1.0.0";
+export const REQUIRED_BOARD_VERSION = "1.1.0";
 
 const USAGE = `Usage: node scripts/board-check.mjs [options]
 
@@ -84,10 +68,8 @@ export function parseVersion(value) {
 /**
  * Is `candidate` at least `floor`?
  *
- * Compared on the numeric triple, with one deliberate wrinkle at the boundary: a
- * prerelease that *equals* the floor triple (`1.0.0-rc.1` against a floor of `1.0.0`)
- * does **not** satisfy it. A release candidate is not the release, and "we are on 1.0.0"
- * is exactly the claim a floor exists to check.
+ * Compared on the numeric triple; a prerelease equal to the floor (`1.0.0-rc.1`
+ * against `1.0.0`) does not satisfy it.
  *
  * @param {string} candidate
  * @param {string} floor
@@ -278,11 +260,10 @@ export function main(argv, io = {}) {
   return 3;
 }
 
-// A private copy of `src/shared/entry-guard.mjs`. This file is copied out on its own as part of
-// the loop skill, so an import reaching back into the checkout would dangle once it is. Node
-// resolves `import.meta.url` through `realpath` but leaves `process.argv[1]` as spelled, so both
-// sides must be canonicalised — otherwise the guard is silently false and this exits 0 having
-// checked nothing.
+// A private copy of `src/foundation/entry-guard.mjs`: this file ships on its own, so it
+// cannot import back into the checkout. Both paths are canonicalised — Node realpaths
+// `import.meta.url` but not `process.argv[1]`, and a false guard exits 0 having done
+// nothing.
 function canonicalPath(path) {
   try {
     return realpathSync(path);

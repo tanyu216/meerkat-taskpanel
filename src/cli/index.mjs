@@ -5,7 +5,7 @@
  * The whole program is five steps, in this order:
  *
  *   0. **preflight** — refuse a runtime older than Node 22 (see
- *      `shared/node-version.mjs`), so a too-old Node fails here, loudly, rather
+ *      `foundation/node-version.mjs`), so a too-old Node fails here, loudly, rather
  *      than deep inside a command when `node:sqlite` is finally imported;
  *   1. **parse** — `argv.mjs`, which refuses anything malformed as `CLI_USAGE`;
  *   2. **answer `--help` / `--version`** — before any board is contacted, so
@@ -21,23 +21,37 @@
 
 import { readFileSync } from "node:fs";
 
-import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, VERSION } from "../shared/constants.mjs";
-import { isSupportedNode, unsupportedNodeMessage } from "../shared/node-version.mjs";
-import { redactText } from "../shared/redact.mjs";
-import { resolveActor } from "../shared/transport/actor.mjs";
+import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, VERSION } from "../foundation/constants.mjs";
+import { loadEnvFile } from "../foundation/env-config.mjs";
+import { DomainError } from "../foundation/errors.mjs";
+import { isSupportedNode, unsupportedNodeMessage } from "../foundation/node-version.mjs";
+import { redactText } from "../foundation/redact.mjs";
+import { repoRoot } from "../foundation/runtime-locator.mjs";
+import { ACTOR_ENV_KEYS, resolveActor } from "../foundation/transport/actor.mjs";
 import { parseArgv } from "./argv.mjs";
-import { createBoardClient } from "../shared/transport/client.mjs";
+import { createBoardClient } from "../foundation/transport/client.mjs";
 import { registry } from "./commands/index.mjs";
-import { exitCodeFor } from "../shared/transport/errors.mjs";
+import { exitCodeFor } from "../foundation/transport/errors.mjs";
 import { renderFailure, renderResult } from "./output/index.mjs";
-import { ensureBoard, readPointer } from "../shared/transport/runtime.mjs";
-import { resolveToken } from "../shared/transport/token.mjs";
+import { ensureBoard, readPointer } from "../foundation/transport/runtime.mjs";
+import { resolveToken } from "../foundation/transport/token.mjs";
 import { commandUsage, groupUsage, topLevelUsage, versionLine } from "./usage.mjs";
-import { isEntryPoint } from "../shared/entry-guard.mjs";
+import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 /** `--json`, in either spelling. Read from the raw argv so it survives a parse failure. */
 export function wantsJson(argv) {
   return argv.some((token) => token === "--json" || token.startsWith("--json="));
+}
+
+/**
+ * The `--version --json` payload.
+ *
+ * One construction, used by the CLI and read by the CLI contract checker: the
+ * snapshot freezes the payload's *keys*, so it must come from the code that
+ * actually answers the command, never from a second list.
+ */
+export function versionPayload() {
+  return { version: VERSION, schema_version: CONTRACT_SCHEMA_VERSION };
 }
 
 /** Read all of stdin. Used by `--report-file -` and the `--file -` flags. */
@@ -114,10 +128,7 @@ export async function run(argv, io) {
     // directory, and a consumer that needs only the version must not pay for a
     // board (nor fail when there is none).
     if (json) {
-      renderResult(
-        { data: { version: VERSION, schema_version: CONTRACT_SCHEMA_VERSION }, human: "" },
-        { json, out, err },
-      );
+      renderResult({ data: versionPayload(), human: "" }, { json, out, err });
       return CLI_EXIT.OK;
     }
     out(versionLine());
@@ -133,8 +144,45 @@ export async function run(argv, io) {
   }
 
   try {
-    const pointerOptions = {
+    // Every command except `--help` / `--version` must declare who is writing.
+    // A missing kind is a usage error, not a silent `human` write: the board's
+    // human/agent distinction is load-bearing. `--as-human` is the explicit
+    // human spelling; `--actor-kind human` is still refused by `resolveActor`.
+    const declaredKind =
+      parsed.flags.actorKind ??
+      env[ACTOR_ENV_KEYS.kind] ??
+      (parsed.flags.asHuman === true ? "human" : null);
+    if (declaredKind === null || String(declaredKind).trim() === "") {
+      throw new DomainError("CLI_USAGE", {
+        message:
+          "--actor-kind is required (claude|codex|openclaw|pi|opencode|cursor); " +
+          "pass it, export TASKCTL_ACTOR_KIND, or use --as-human",
+        details: {
+          field: "actorKind",
+          examples: ["claude", "codex", "openclaw", "pi", "opencode", "cursor"],
+          alternative: "--as-human",
+        },
+        hint: {
+          fix: "agents pass --actor-kind <platform> (the host shim does this); a human may use --as-human",
+        },
+      });
+    }
+
+    const config = loadEnvFile({
+      flag: parsed.flags.envFile ?? null,
       env,
+      cwd: io.cwd ?? process.cwd(),
+      root: repoRoot(),
+    });
+    const effectiveEnv = config.env;
+
+    // Resolve the actor before touching a board: a reserved `human` kind or a
+    // session with no platform is a usage mistake, and it should not depend on
+    // whether a board happens to be running.
+    const identity = resolveActor({ flags: parsed.flags, env: effectiveEnv });
+
+    const pointerOptions = {
+      env: effectiveEnv,
       ...(io.pointerPath === undefined ? {} : { pointerPath: io.pointerPath }),
     };
 
@@ -148,13 +196,13 @@ export async function run(argv, io) {
     // board answers.
     const { token, source } = resolveToken({
       flag: parsed.flags.token,
-      env,
-      pointer: readPointer(io.pointerPath === undefined ? { env } : { env, path: io.pointerPath }),
+      env: effectiveEnv,
+      tokenFile: config.tokenFile,
+      pointer: readPointer(io.pointerPath === undefined ? { env: effectiveEnv } : { env: effectiveEnv, path: io.pointerPath }),
     });
     tokenSource = source;
 
     const { url } = await ensureBoard({ url: parsed.flags.url ?? null, ...pointerOptions });
-    const identity = resolveActor({ flags: parsed.flags, env });
     const client = createBoardClient({
       url,
       token,
@@ -164,7 +212,7 @@ export async function run(argv, io) {
 
     const ctx = createContext(parsed, {
       client,
-      env,
+      env: effectiveEnv,
       cwd: io.cwd ?? process.cwd(),
       ...(io.stdin === undefined ? {} : { stdin: io.stdin }),
       ...(io.readFile === undefined ? {} : { readFile: io.readFile }),

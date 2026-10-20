@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test, { describe, it } from "node:test";
 
-import { RELATION_CHAIN_MAX, RELATION_FANIN_MAX } from "../../../src/shared/constants.mjs";
+import { RELATION_CHAIN_MAX, RELATION_FANIN_MAX } from "../../../src/foundation/constants.mjs";
 import {
   ancestorsOf,
   assertEpicDowngradeAllowed,

@@ -70,7 +70,7 @@ exception — see [OpenCode](#opencode) and [Cursor](#cursor).
 
 `--link` applies to the **board** skill only. The loop is always copied: a symlinked
 execution body would put the checkout back into the load path of the very thing the split
-exists to make independent of it (`skills/meerkat-loop/body/`).
+exists to make independent of it (`skills/meerkat-loop/scripts/`).
 
 **Every host gets a `taskctl` shim**, at `<host>/bin/taskctl`
 (`~/.claude/bin/taskctl`, `~/.codex/bin/taskctl`, `~/.agents/bin/taskctl`, …), and it injects
@@ -124,8 +124,8 @@ version control.
 
 | Artefact | Where | What |
 |---|---|---|
-| loop skill | `<host>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`body/`), the unit/wake/config templates it is deployed with, and the board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
-| loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/shared/*.mjs` | a **copy** of the scheduler, the deterministic entries, the glue's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `body/manifest.txt` |
+| loop skill | `<host>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`manifest.txt` + `scripts/`, including `scripts/foundation/`), the unit/wake/config templates it is deployed with, and the authored board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
+| loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../scripts/foundation/**` | a **copy** of the scheduler, the deterministic entries, the glue's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `manifest.txt` |
 | launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{ping,continue}.plist` | `StartInterval` 60 / 600 |
 | systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{ping,continue}.{service,timer}` | 60s / 600s timers |
 | cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue |
@@ -364,11 +364,15 @@ MEERKAT_TASKPANEL_REVIEWER=
 MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=both
 ```
 
-The board's own copy — what it actually enforces — is `TASKD_ACCEPTANCE_POLICY` in
-`<dataDir>/taskd.env`, written by the installer next to the token. `both` is the default;
-`human-only` makes the loop hold a top-level approval for a human, and `agent-only` lets any
-non-human writer close a card. The file is shared with the Access panel and is merged, never
-rewritten.
+The board's own copy — what it actually enforces — is `TASKD_ACCEPTANCE_POLICY` in the
+**install-root `.env`**, seeded by the installer (`<program root>/.env`, 0600) and the same
+file the Access panel and the client read. `both` is the default; `human-only` makes the loop
+hold a top-level approval for a human, and `agent-only` lets any non-human writer close a card.
+The file is merged, never rewritten. The old `<dataDir>/taskd.env` is no longer read: move any
+keys it has into `.env`.
+
+`MEERKAT_TASKPANEL_ENV_FILE` points the installer and both binaries at a different file (a
+read-only package root, a container, or the test suite).
 
 `--reviewer` (or `MEERKAT_TASKPANEL_REVIEWER`) is what turns review dispatch on. With it
 unset the supervisor still reconciles containers and applies verdicts already in flight —
@@ -399,7 +403,7 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <ho
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<host>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
 | `--recover-stale=yes\|no` | May the supervisor recover stale `in_progress` claims — the same holder after 30 minutes, any agent after 6 hours? Persisted to the host config; default `yes`. |
-| `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — container reconcile, review dispatch and applying verdicts. Persisted to the host config; default `yes`. `no` means the loop writes no card at all. |
+| `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — ask the board for the workflow plan (`issue reconcile --workflow`) and apply its review actions. Persisted to the host config; default `yes`. `no` means the loop writes no card at all. |
 | `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the host config. Unset (the default) disables **dispatch** only; a delivery then waits for a human to accept it. |
 | `--auto-accept-reviews=yes\|no` | Let the loop close a review card after applying its verdict. Persisted; default `yes`. `no` is the escape hatch: the verdict is still applied, but the review card stays in `in_review` for a human. |
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |
@@ -868,7 +872,12 @@ Nothing is written outside those directories, and nothing is sent over the netwo
   [Idempotence](#idempotence-re-running-and-force).
 - **`skill source not found`** — run `install.sh` from this checkout (it resolves
   `skills/meerkat-taskpanel/` relative to itself); a `dist/` bundle must be unpacked first.
-- **`loop payload out of date`** — `skills/meerkat-loop/body` and its `templates/` are
-  generated. Run `node scripts/sync-skills.mjs`; `npm run check:skills` fails CI on drift.
+- **`loop payload out of date`** — `skills/meerkat-loop/manifest.txt`, `scripts/` and
+  `templates/` are generated. Run `node scripts/sync-skills.mjs`; `npm run
+  check:skills` fails CI on drift.
+- **An older install still has `skills/meerkat-loop/body/` or `src/`** — those layouts were
+  retired. The leftovers are inert (units and wake glue read
+  `<host>/meerkat-taskpanel/scripts/…`); re-run the install with `--force` to replace the
+  skill directory, and delete `<host>/meerkat-taskpanel/src/` by hand if it is still there.
 - **OpenClaw does not list the plugin** — install the bundle at the repository root
   (`openclaw plugins install "$PWD" ...`); see the OpenClaw section above.

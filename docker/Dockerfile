@@ -37,7 +37,7 @@
 # Build:  docker build -f docker/Dockerfile -t meerkat-taskpanel:verify .
 # Verify: docker run --rm meerkat-taskpanel:verify bash docker/verify-in-container.sh
 #
-# Base image: `verify:docker` / `verify:migrate:container` preflight
+# Base image: `verify:docker` preflights
 # `node:22-bookworm-slim` against the LOCAL image store and pass the builder's no-pull
 # flag (`--pull=false` on the legacy builder, `--pull=never` on BuildKit), so a routine
 # verification never re-downloads it. A manual `docker build` keeps Docker's default

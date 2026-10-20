@@ -50,8 +50,8 @@ import {
   tierFor,
   trailReadCandidates,
   warnLeadMinutes,
-} from "../../src/shared/sla-patrol.mjs";
-import { runSlaPatrolTick } from "../../scripts/supervisor.mjs";
+} from "../../src/foundation/sla-patrol.mjs";
+import { runSlaPatrolTick } from "../../scripts/loop/runners.mjs";
 
 /**
  * A fixed clock inside the Asia/Shanghai working window (18:00 local), placed

@@ -100,6 +100,32 @@ const AGENT = {
 };
 
 /**
+ * A one-page PDF with a correct cross-reference table, so the drawer's preview
+ * leg hands Chromium a document its viewer actually opens. Built here rather than
+ * pasted as a base64 blob so the offsets cannot drift from the objects.
+ *
+ * @returns {Buffer}
+ */
+function minimalPdf() {
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>",
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = [];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(body.length);
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xrefAt = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) body += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefAt}\n%%EOF\n`;
+  return Buffer.from(body, "utf8");
+}
+
+/**
  * Fixture data for the demo board.
  *
  * The board is a kanban over seven statuses, so the sample must put a card in
@@ -152,9 +178,9 @@ export function fixtureApi() {
   // 12 cards, all in the default project (p1), covering the seven statuses.
   const tasks = [
     // TD-1 is the card the drawer opens on in the interaction pass, so it is the
-    // one that carries attachments — the same shape the prototype's sampled card
-    // has (two rows). `meta.attachment_count` states the same number the list
-    // shows, so the card badge and the drawer cannot disagree.
+    // one that carries attachments — one row per preview family plus a zip the
+    // drawer must not offer to open. `meta.attachment_count` states the same
+    // number the list shows, so the card badge and the drawer cannot disagree.
     fixture("p1", "backlog", {
       identifier: "TD-1",
       title: "Draft the onboarding copy",
@@ -162,10 +188,13 @@ export function fixtureApi() {
       labels: ["design"],
       assignee: AGENT.pi,
       meta: {
-        attachment_count: 2,
+        attachment_count: 5,
         attachments: [
           { filename: "board-keyboard-spec.md", size: 12 * 1024 },
           { filename: "focus-order-record.png", size: 248 * 1024 },
+          { filename: "layout-drawing.pdf", size: 64 * 1024 },
+          { filename: "walkthrough.mp4", size: 2 * 1024 * 1024 },
+          { filename: "build-bundle.zip", size: 1024 },
         ],
       },
     }),
@@ -232,6 +261,19 @@ export function fixtureApi() {
   // *local calendar day* and heads those days `Today` / `Yesterday`, so a fixture
   // pinned to a date would silently change meaning tomorrow.
   const minutes = (n) => new Date(Date.now() - n * 60_000).toISOString();
+  /**
+   * A stamp that is always on **today's** local calendar day.
+   *
+   * The feed groups by local day and the zh copy leg names the first group
+   * `今天`. Relative stamps alone make that assertion false for the first
+   * minutes after local midnight (the newest rows are still `minutes(12)` /
+   * `minutes(25)` old, i.e. yesterday). Clamping to one minute past midnight
+   * keeps the intended "today" row at every hour; outside that window the
+   * ordinary relative stamp is unchanged.
+   */
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const today = (n) => new Date(Math.max(Date.now() - n * 60_000, midnight.getTime() + 60_000)).toISOString();
   const activities = [
     // TD-1 · the drawer's stream (B09) — untouched, one row per sentence.
     { id: "act-1", task_id: "td_TD_1", actor_kind: "human", actor_id: "Terry", event: "task_created", changes: { identifier: "TD-1", status: "backlog" }, revision: 1, created_at: minutes(30 * 60) },
@@ -239,7 +281,7 @@ export function fixtureApi() {
     { id: "act-3", task_id: "td_TD_1", actor_kind: "human", actor_id: "Terry", event: "task_moved", changes: { from: "backlog", to: "todo" }, revision: 3, created_at: minutes(8 * 60) },
     { id: "act-4", task_id: "td_TD_1", actor_kind: "agent", actor_id: "jobs", event: "comment_added", changes: { commentId: "cm-1", kind: "discuss" }, revision: 4, created_at: minutes(4 * 60) },
     // Today — one row per admitted family, plus the burst and the two noise rows.
-    { id: "act-5", task_id: "td_TD_7", actor_kind: "human", actor_id: "Terry", event: "comment_added", changes: { commentId: "cm-2", kind: "decision" }, revision: 5, created_at: minutes(12) },
+    { id: "act-5", task_id: "td_TD_7", actor_kind: "human", actor_id: "Terry", event: "comment_added", changes: { commentId: "cm-2", kind: "decision" }, revision: 5, created_at: today(12) },
     { id: "act-6", task_id: "td_TD_13", actor_kind: "human", actor_id: "Terry", event: "comment_added", changes: { commentId: "cm-3", kind: "decision" }, revision: 6, created_at: minutes(25) },
     { id: "act-7", task_id: "td_TD_5", actor_kind: "agent", actor_id: "jobs", event: "task_delivered", changes: { from: "in_progress", to: "in_review", round: 2, reportId: "rp-2", deliveryRound: 2 }, revision: 7, created_at: minutes(40) },
     { id: "act-8", task_id: "td_TD_3", actor_kind: "agent", actor_id: "linus", event: "task_moved", changes: { from: "todo", to: "in_progress", deliveryRound: 1 }, revision: 8, created_at: minutes(90) },
@@ -283,15 +325,33 @@ export function fixtureApi() {
       { id: "rel-blocked-by", type: "blocks", source: "td_TD_5", target: "td_TD_1", origin: null, created_at: minutes(43 * 60) },
     ],
   };
-  // R14 ① — the drawer's attachment rows, keyed by the card's internal id the
-  // way the route scopes them. TD-1 is the card the interaction pass opens, so
-  // it is the one with files; two rows, so the section is a list and not a
-  // single-row special case.
+  // R14 ① / the preview leg — the drawer's attachment rows, keyed by the card's
+  // internal id the way the route scopes them. TD-1 is the card the interaction
+  // pass opens, so it is the one with files: one row per preview family, plus a
+  // row the drawer must NOT offer to open (a zip). `meta.attachment_count` on the
+  // card states the same number, so the badge and the list cannot disagree.
   const attachments = {
     td_TD_1: [
       { id: "att-1", task_id: "td_TD_1", comment_id: null, filename: "board-keyboard-spec.md", content_type: "text/markdown", size: 12 * 1024, kind: "attachment", created_at: minutes(47 * 60) },
       { id: "att-2", task_id: "td_TD_1", comment_id: null, filename: "focus-order-record.png", content_type: "image/png", size: 248 * 1024, kind: "attachment", created_at: minutes(46 * 60) },
+      { id: "att-3", task_id: "td_TD_1", comment_id: null, filename: "layout-drawing.pdf", content_type: "application/pdf", size: 64 * 1024, kind: "attachment", created_at: minutes(45 * 60) },
+      { id: "att-4", task_id: "td_TD_1", comment_id: null, filename: "walkthrough.mp4", content_type: "video/mp4", size: 2 * 1024 * 1024, kind: "attachment", created_at: minutes(44 * 60) },
+      { id: "att-5", task_id: "td_TD_1", comment_id: null, filename: "build-bundle.zip", content_type: "application/zip", size: 1024, kind: "attachment", created_at: minutes(43 * 60) },
     ],
+  };
+  // The bytes the content endpoint serves for those rows. The image and the PDF
+  // are real (a 1×1 PNG and a one-page PDF with a correct xref) so Chromium
+  // renders them rather than reporting a decode failure as a console error; the
+  // video is a few bytes of opaque data — the leg asserts the `<video>` element
+  // and its blob source, not playback.
+  const attachmentBytes = {
+    "att-1": Buffer.from("# Keyboard spec\n\n## Focus order\n\nSome **markdown**.\n", "utf8"),
+    "att-2": Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z0xkAAAAASUVORK5CYII=",
+      "base64",
+    ),
+    "att-3": minimalPdf(),
+    "att-4": Buffer.from("not a real video, but the drawer only reads its blob source\n", "utf8"),
   };
   // v4 — TD-1 is the card the interaction pass opens, so it carries the session
   // trail (one running, one closed) and the report family (two rounds; the
@@ -349,6 +409,7 @@ export function fixtureApi() {
     activities,
     relations,
     attachments,
+    attachmentBytes,
     sessions,
     reports,
     // B19 — the access policy the fixture API serves and `PUT` mutates. The
@@ -502,6 +563,23 @@ export function startServer() {
         parent_chain: parentChainOf(task?.id ?? ref, data.relations),
       });
     }
+    // The preview reads the same bytes endpoint a download does. Served outside
+    // the JSON envelope, exactly like the real route (bytes in, bytes out), with
+    // the row's own stored type as `content-type`.
+    const contentFor = /^\/api\/v1\/attachments\/([^/]+)\/content$/.exec(path);
+    if (contentFor) {
+      const id = decodeURIComponent(contentFor[1]);
+      const row = Object.values(data.attachments).flat().find((entry) => entry.id === id);
+      const bytes = data.attachmentBytes[id];
+      if (!row || !bytes) {
+        res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", http: 404, message: "no stored content" } }));
+        return;
+      }
+      res.writeHead(200, { "content-type": row.content_type, "content-length": bytes.length, "cache-control": "no-store" });
+      res.end(bytes);
+      return;
+    }
     // T-20261014-212017-4 / G2 — the drawer's file list reads the `attachments`
     // **table** (`GET /api/v1/tasks/:ref/attachments`), never `task.meta`. The
     // fixture answers the same shape the route does, scoped to the card asked
@@ -554,7 +632,7 @@ export function startServer() {
       const snapshot = () => ({
         token: data.access.token,
         token_file: "/fixture/token",
-        config_file: "/fixture/taskd.env",
+        config_file: "/fixture/.env",
         allow_list: { enabled: data.access.allow_list.enabled, cidrs: [...data.access.allow_list.cidrs] },
         source: data.access.source,
       });
@@ -1445,6 +1523,155 @@ export async function run() {
       r14Ring.boxShadow === "rgba(15, 122, 115, 0.35) 0px 0px 0px 4px",
       `[data-detail-close]'s focus halo is ${r14Ring.boxShadow}, expected rgba(15, 122, 115, 0.35) 0px 0px 0px 4px (--brand-focus-ring at 4px)`,
     );
+
+    /* ---- the attachment preview -------------------------------------------
+       A row whose stored type the drawer can render opens its bytes in a
+       **full-screen dialog** (implementation-only; the prototype has no preview
+       arithmetic, so this interaction is measured rather than declared in the
+       contract — the contract's rule kinds read a document, they cannot press a
+       button).
+
+       One row per family is opened in turn. The assertions that matter: the
+       overlay covers the viewport and is teleported out of the drawer (whose
+       transform would otherwise become its containing block), the source is a
+       *blob* URL (the content route keeps saying `attachment`, so it must never
+       be a direct navigation), focus lands on the close button, ✕ closes the
+       dialog without closing the drawer and hands focus back to the row, and
+       Escape does the same. The zip row is the negative: a type the drawer
+       cannot render must not offer to open. */
+    const previewFailures = [];
+    const previewCheck = (ok, message) => { if (!ok) previewFailures.push(message); };
+    const readPreview = () =>
+      page.evaluate(() => {
+        const overlay = document.querySelector("[data-attachment-preview]");
+        const rect = overlay?.getBoundingClientRect() ?? null;
+        return {
+          viewport: { width: innerWidth, height: innerHeight },
+          rows: [...document.querySelectorAll("[data-attachment-row]")].map((row) => ({
+            name: row.querySelector("[data-attachment-name]")?.textContent?.trim() ?? "",
+            nameTag: row.querySelector("[data-attachment-name]")?.tagName?.toLowerCase() ?? null,
+            open: row.querySelector("[data-attachment-open]") !== null,
+            popup: row.querySelector("[data-attachment-open]")?.getAttribute("aria-haspopup") ?? null,
+            // The action cluster's order, read from the DOM rather than assumed:
+            // the eye is the **view** affordance and sits before download.
+            actions: [...row.querySelectorAll("[data-attachment-open], [data-attachment-download], [data-attachment-remove]")]
+              .filter((element) => element.closest(".td-file-actions") !== null)
+              .map((element) =>
+                element.hasAttribute("data-attachment-open")
+                  ? "open"
+                  : element.hasAttribute("data-attachment-download")
+                    ? "download"
+                    : "remove",
+              ),
+          })),
+          overlays: overlay
+            ? [
+                {
+                  kind: overlay.getAttribute("data-attachment-preview-kind"),
+                  role: overlay.getAttribute("role"),
+                  modal: overlay.getAttribute("aria-modal"),
+                  inDrawer: overlay.closest("[data-detail-drawer]") !== null,
+                  rect: rect && { width: rect.width, height: rect.height, top: rect.top, left: rect.left },
+                  image: overlay.querySelector("img")?.getAttribute("src") ?? null,
+                  video: overlay.querySelector("video")?.getAttribute("src") ?? null,
+                  pdf: overlay.querySelector("iframe")?.getAttribute("src") ?? null,
+                  markdown: overlay.querySelector(".td-gfm")?.innerHTML ?? null,
+                  close: overlay.querySelector("[data-attachment-preview-close]") !== null,
+                  error: overlay.querySelector("[data-attachment-preview-error]") !== null,
+                },
+              ]
+            : [],
+          focus: document.activeElement?.hasAttribute?.("data-attachment-preview-close")
+            ? "close"
+            : document.activeElement?.hasAttribute?.("data-attachment-open")
+              ? "row"
+              : document.activeElement?.tagName?.toLowerCase() ?? null,
+          drawerState: document.querySelector("[data-detail-drawer]")?.getAttribute("data-state") ?? null,
+        };
+      });
+    const pressAttachment = (name) =>
+      page.evaluate((wanted) => {
+        const row = [...document.querySelectorAll("[data-attachment-row]")].find(
+          (entry) => entry.querySelector("[data-attachment-name]")?.textContent?.trim() === wanted,
+        );
+        row?.querySelector("[data-attachment-open]")?.click();
+      }, name);
+    const pressSelector = (selector) => page.evaluate((wanted) => document.querySelector(wanted)?.click(), selector);
+
+    const previewRest = await readPreview();
+    previewCheck(previewRest.rows.length === 5, `expected 5 attachment rows, read ${previewRest.rows.length}`);
+    previewCheck(
+      previewRest.rows.filter((row) => row.open).length === 4,
+      `expected 4 previewable rows (md/png/pdf/mp4), read ${JSON.stringify(previewRest.rows)}`,
+    );
+    previewCheck(
+      previewRest.rows.find((row) => row.name === "build-bundle.zip")?.open === false,
+      "the zip row carries an open affordance; a type the drawer cannot render must not",
+    );
+    previewCheck(
+      previewRest.rows.filter((row) => row.open).every((row) => row.popup === "dialog"),
+      `a previewable row's button does not announce a dialog: ${JSON.stringify(previewRest.rows)}`,
+    );
+    previewCheck(previewRest.overlays.length === 0, "a preview overlay is present before anything was pressed");
+    for (const row of previewRest.rows) {
+      const expected = row.open ? "open,download,remove" : "download,remove";
+      previewCheck(
+        row.actions.join(",") === expected,
+        `${row.name}: the action cluster reads ${row.actions.join(",") || "(none)"}, expected ${expected}`,
+      );
+      previewCheck(
+        row.nameTag === "span",
+        `${row.name}: the filename is a <${row.nameTag}>, expected a plain span — the eye button is the affordance`,
+      );
+    }
+
+    for (const [name, kind, reader] of [
+      ["focus-order-record.png", "image", "image"],
+      ["layout-drawing.pdf", "pdf", "pdf"],
+      ["walkthrough.mp4", "video", "video"],
+      ["board-keyboard-spec.md", "markdown", "markdown"],
+    ]) {
+      await pressAttachment(name);
+      await page.waitForTimeout(150);
+      const read = await readPreview();
+      const overlay = read.overlays[0];
+      previewCheck(read.overlays.length === 1, `${name}: expected exactly one preview dialog, read ${read.overlays.length}`);
+      previewCheck(overlay?.kind === kind, `${name}: preview kind ${JSON.stringify(overlay?.kind)}, expected ${kind}`);
+      previewCheck(overlay?.role === "dialog" && overlay?.modal === "true", `${name}: the overlay is not a modal dialog`);
+      previewCheck(overlay?.inDrawer === false, `${name}: the dialog renders inside the drawer; it must be teleported to the body`);
+      previewCheck(
+        overlay?.rect?.top === 0 &&
+          overlay?.rect?.left === 0 &&
+          Math.abs((overlay?.rect?.width ?? 0) - read.viewport.width) <= 1 &&
+          Math.abs((overlay?.rect?.height ?? 0) - read.viewport.height) <= 1,
+        `${name}: the dialog is ${JSON.stringify(overlay?.rect)} in a ${JSON.stringify(read.viewport)} viewport, expected to cover it`,
+      );
+      const source = overlay?.[reader] ?? null;
+      previewCheck(typeof source === "string" && source.length > 0, `${name}: the ${kind} renderer received no source`);
+      if (reader !== "markdown") {
+        previewCheck(
+          typeof source === "string" && source.startsWith("blob:"),
+          `${name}: the ${kind} source is ${JSON.stringify(source)}, expected a blob: URL (never the content route directly)`,
+        );
+      }
+      previewCheck(overlay?.close === true, `${name}: the dialog has no [data-attachment-preview-close]`);
+      previewCheck(read.focus === "close", `${name}: focus after opening is ${read.focus}, expected the close button`);
+    }
+
+    await pressSelector("[data-attachment-preview-close]");
+    await page.waitForTimeout(150);
+    const previewClosed = await readPreview();
+    previewCheck(previewClosed.overlays.length === 0, "✕ did not close the preview dialog");
+    previewCheck(previewClosed.drawerState === "open", "closing the preview also closed the drawer");
+    previewCheck(previewClosed.focus === "row", `focus after closing is ${previewClosed.focus}, expected the row's open button`);
+
+    await pressAttachment("board-keyboard-spec.md");
+    await page.waitForTimeout(150);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const previewEscaped = await readPreview();
+    previewCheck(previewEscaped.overlays.length === 0, "Escape did not close the preview dialog");
+    previewCheck(previewEscaped.drawerState === "open", "Escape closed the drawer as well as the preview dialog");
 
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
@@ -5827,6 +6054,193 @@ export async function run() {
       if (m7Dir) rmSync(m7Dir, { recursive: true, force: true });
     }
 
+    /* ---- UI fixes · dropdown anchoring, combo values, status dots, chips,
+       cross-view narrowing and platform colours ----------------------------
+       A self-contained pass: it reloads the board rather than inheriting the
+       route/theme/language the routing leg left behind. Every assertion targets
+       a behaviour Terry reported, so a regression here is a user-visible one,
+       not a geometry nicety. */
+    const uiFailures = [];
+    const uiCheck = (ok, message) => {
+      if (!ok) uiFailures.push(message);
+    };
+    const ui = {};
+    try {
+      await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction(() => document.querySelectorAll("[data-card]").length > 0, null, { timeout: 10_000 });
+
+      // ① Every filter dropdown opens *visibly*: fixed-position, anchored, and
+      //    the point under its centre is the menu itself. Before the anchoring
+      //    rule the 32px bar clipped the panel and the click fell through.
+      ui.filters = {};
+      for (const hook of ["data-filter-assignee", "data-filter-priority", "data-filter-status", "data-filter-label"]) {
+        const control = page.locator(`[${hook}]`);
+        await control.locator("summary").click();
+        await page.waitForTimeout(60);
+        ui.filters[hook] = await control.locator(".td-details-menu").evaluate((menu) => {
+          const rect = menu.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return {
+            position: getComputedStyle(menu).position,
+            anchored: menu.getAttribute("data-anchored"),
+            hitInside: hit !== null && menu.contains(hit),
+            top: Math.round(rect.top),
+            bottom: Math.round(rect.bottom),
+          };
+        });
+        const reading = ui.filters[hook];
+        uiCheck(reading.position === "fixed" && reading.anchored === "true", `${hook}: the menu is ${reading.position}/${reading.anchored}, not a fixed anchored panel`);
+        uiCheck(reading.hitInside, `${hook}: the menu's centre is not hit-testable (the bar still clips it)`);
+        await control.locator("summary").click();
+        await page.waitForTimeout(30);
+      }
+      ui.barOverflow = await page.evaluate(() => getComputedStyle(document.querySelector("[data-filters]")).overflowX);
+      uiCheck(ui.barOverflow === "auto", `[data-filters] overflow-x is ${ui.barOverflow}, the contract expects auto`);
+
+      // ② The reporter shows what it holds, for a roster row and for a new name.
+      await page.click("[data-new-task]");
+      await page.waitForTimeout(120);
+      const reporterInput = page.locator("[data-create-task] [data-reporter-input]");
+      await reporterInput.click();
+      await reporterInput.fill("linus");
+      await page.waitForTimeout(80);
+      await page.locator('[data-create-task] [data-reporter-option][data-reporter-value="linus"]').click();
+      await page.waitForTimeout(80);
+      ui.reporterPicked = await reporterInput.inputValue();
+      uiCheck(ui.reporterPicked === "linus", `the reporter box shows ${JSON.stringify(ui.reporterPicked)} after choosing linus`);
+      await reporterInput.click();
+      await reporterInput.fill("New Reporter");
+      await page.waitForTimeout(80);
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(80);
+      ui.reporterNew = await reporterInput.inputValue();
+      uiCheck(ui.reporterNew === "New Reporter", `the reporter box shows ${JSON.stringify(ui.reporterNew)} after typing a new name`);
+
+      // ③ The status control is a dropdown whose rows (and trigger) wear the
+      //    board's coloured dot.
+      const statusControl = page.locator("[data-create-task-status]");
+      ui.statusTag = await statusControl.evaluate((el) => el.tagName);
+      uiCheck(ui.statusTag === "DETAILS", `[data-create-task-status] is a <${ui.statusTag}>, not the dot-bearing dropdown`);
+      await statusControl.locator("summary").click();
+      await page.waitForTimeout(60);
+      ui.statusRows = await statusControl.locator("[data-create-task-status-option]").count();
+      ui.statusDots = await statusControl.locator("[data-create-task-status-option] .td-status-dot").count();
+      uiCheck(ui.statusRows === 5 && ui.statusDots === 5, `the status menu has ${ui.statusRows} rows and ${ui.statusDots} dots, expected 5/5`);
+      await statusControl.locator('[data-create-task-status-option][data-status-value="blocked"]').click();
+      await page.waitForTimeout(60);
+      ui.statusValue = await statusControl.getAttribute("data-create-task-status-value");
+      ui.statusDot = await statusControl.evaluate((el) => {
+        const dot = el.querySelector("summary .td-status-dot");
+        const probe = document.createElement("span");
+        probe.className = "td-status-dot";
+        probe.setAttribute("data-status", "blocked");
+        document.body.append(probe);
+        const expected = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return { got: getComputedStyle(dot).backgroundColor, expected };
+      });
+      uiCheck(ui.statusValue === "blocked", `the status value is ${ui.statusValue} after choosing blocked`);
+      uiCheck(ui.statusDot.got === ui.statusDot.expected, `the trigger dot is ${ui.statusDot.got}, expected the blocked token ${ui.statusDot.expected}`);
+
+      // ④ A long relation title cannot grow the chip past the routing track.
+      await page.locator("[data-create-task] [data-parent-input]").click();
+      await page.locator("[data-create-task] [data-parent-input]").fill("TD");
+      await page.waitForTimeout(80);
+      await page.locator("[data-create-task] [data-parent-option]").first().click();
+      await page.waitForTimeout(80);
+      ui.chip = await page.evaluate(() => {
+        const chip = document.querySelector("[data-create-task] [data-parent-chip]");
+        const title = chip?.querySelector(".td-combo-title");
+        if (title) title.textContent = "A very long parent title ".repeat(20);
+        const track = document.querySelector("[data-create-right]");
+        const panel = document.querySelector("[data-create-task-panel]");
+        const rect = chip?.getBoundingClientRect();
+        return {
+          chipRight: rect?.right,
+          panelRight: panel?.getBoundingClientRect().right,
+          chipWidth: rect?.width,
+          trackWidth: track?.getBoundingClientRect().width,
+          titleScroll: title?.scrollWidth,
+          titleClient: title?.clientWidth,
+          documentOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      uiCheck(
+        ui.chip.chipRight !== undefined && ui.chip.chipRight <= ui.chip.panelRight + 1,
+        `the relation chip ends at ${ui.chip.chipRight}, past the dialog's ${ui.chip.panelRight}`,
+      );
+      uiCheck(
+        ui.chip.chipWidth <= ui.chip.trackWidth + 1,
+        `the relation chip is ${ui.chip.chipWidth}px in a ${ui.chip.trackWidth}px track`,
+      );
+      uiCheck(
+        ui.chip.titleScroll > ui.chip.titleClient,
+        `the chip title did not ellipsise (${ui.chip.titleScroll} / ${ui.chip.titleClient})`,
+      );
+      uiCheck(ui.chip.documentOverflow <= 0, `the dialog overflows the document by ${ui.chip.documentOverflow}px`);
+      await page.click("[data-modal-close]");
+      await page.waitForTimeout(80);
+
+      // ⑤ A roster press narrows Activity and Waiting, not only board/list.
+      await page.locator('[data-agent-assignee="linus"]').click();
+      await page.waitForTimeout(80);
+      await page.click('[data-nav-item="activity"]');
+      await page.waitForFunction(() => document.querySelectorAll("[data-activity-row]").length > 0, null, { timeout: 10_000 });
+      ui.activityActors = await page.locator("[data-activity-row]").evaluateAll((rows) => [...new Set(rows.map((row) => row.getAttribute("data-actor")))]);
+      uiCheck(ui.activityActors.length > 0 && ui.activityActors.every((actor) => actor === "linus"), `Activity's narrowed rows name ${JSON.stringify(ui.activityActors)}, expected every row to be linus`);
+      await page.click('[data-nav-item="waiting"]');
+      await page.waitForFunction(() => document.querySelectorAll("[data-waiting-item]").length > 0, null, { timeout: 10_000 });
+      ui.waitingActors = await page.locator("[data-waiting-item] [data-waiting-actor]").evaluateAll((els) => [...new Set(els.map((el) => el.textContent.trim()))]);
+      uiCheck(ui.waitingActors.length > 0 && ui.waitingActors.every((actor) => actor === "linus"), `Waiting's narrowed rows name ${JSON.stringify(ui.waitingActors)}, expected every row to be linus`);
+
+      // ⑥ The platform palette is mapped per theme. A probe row is enough: the
+      //    sidebar's own rows cannot carry nine platforms without reworking the
+      //    fixture, and the rule under test is the attribute → token mapping.
+      ui.brand = await page.evaluate(() => {
+        const root = document.documentElement;
+        const previous = root.getAttribute("data-theme");
+        const row = document.createElement("div");
+        row.setAttribute("data-agent-row", "gemini");
+        row.setAttribute("data-agent-brand", "gemini");
+        const badge = document.createElement("span");
+        badge.className = "td-platform-badge";
+        badge.setAttribute("data-agent-platform", "gemini");
+        const dot = document.createElement("span");
+        dot.className = "td-platform-dot";
+        const label = document.createElement("span");
+        label.className = "td-platform-name";
+        label.textContent = "gemini";
+        badge.append(dot, label);
+        const name = document.createElement("button");
+        name.className = "td-agent-assignee";
+        name.setAttribute("data-agent-assignee", "gemini-probe");
+        name.textContent = "gemini";
+        row.append(badge, name);
+        document.body.append(row);
+        root.setAttribute("data-theme", "dark");
+        const dark = getComputedStyle(badge).color;
+        if (previous === null) root.removeAttribute("data-theme");
+        else root.setAttribute("data-theme", previous);
+        const light = getComputedStyle(badge).color;
+        const nameLight = getComputedStyle(name).color;
+        row.remove();
+        return { light, dark, nameLight, previous };
+      });
+      uiCheck(ui.brand.light === "rgb(66, 133, 244)", `the light Gemini badge is ${ui.brand.light}, expected #4285F4`);
+      uiCheck(ui.brand.dark === "rgb(138, 180, 248)", `the dark Gemini badge is ${ui.brand.dark}, expected #8AB4F8`);
+      uiCheck(
+        ui.brand.nameLight !== ui.brand.light,
+        `the assignee name is ${ui.brand.nameLight}, the platform hue leaked into it`,
+      );
+
+      // Back to the resting board for the legs after this one (there are none
+      // today, but the fixtures are shared with future additions).
+      await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction(() => document.querySelectorAll("[data-card]").length > 0, null, { timeout: 10_000 });
+    } catch (err) {
+      uiFailures.push(`the UI-fix pass could not run: ${err.message}`);
+    }
+
     const results = [
       ...boardResults,
       ...listResults,
@@ -5889,6 +6303,7 @@ export async function run() {
       },
       r12Id: { failures: r12IdFailures, longId: LONG_ID, clamped: CLAMPED, longHead, spill, listRead },
       r14: { failures: r14Failures, focus: r14Focus, relations: r14Relations, close: r14Close, ring: r14Ring },
+      attachmentPreview: { failures: previewFailures, rest: previewRest, closed: previewClosed },
       drawerTabs: {
         failures: drawerTabsFailures,
         tabs: tabsRead,
@@ -5905,6 +6320,7 @@ export async function run() {
         pageErrors: m7.pageErrors,
         resourceNotices: m7.resourceNotices ?? 0,
       },
+      ui: { failures: uiFailures, ...ui },
       r16: {
         failures: r16Failures,
         routes: r16Routes,
@@ -5934,8 +6350,8 @@ export async function run() {
    fixture server, the Playwright resolver and the in-page rule evaluator from
    here rather than growing a second copy of each. Only run the smoke when this
    file *is* the process entry point. */
-/* A private copy of `src/shared/entry-guard.mjs` — `web/` is a workspace of its own with its own
-   lockfile, so it does not reach into `src/shared/`. Node resolves `import.meta.url` through
+/* A private copy of `src/foundation/entry-guard.mjs` — `web/` is a workspace of its own with its own
+   lockfile, so it does not reach into `src/foundation/`. Node resolves `import.meta.url` through
    `realpath` while leaving `process.argv[1]` as spelled, so both sides must be canonicalised:
    otherwise the guard is silently false and this harness exits 0 having measured nothing. */
 function canonicalPath(path) {
@@ -6061,6 +6477,12 @@ if (isEntryPoint) run().then(
             `and the relation rows read ${report.r14.relations.join(" / ")}`,
         );
       }
+      if (report.attachmentPreview.failures.length > 0) {
+        console.log(`Attachment preview — ${report.attachmentPreview.failures.length} failed:`);
+        for (const failure of report.attachmentPreview.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log("Attachment preview — image / pdf / video / markdown open in a full-screen blob-backed dialog, ✕ and Escape close it without closing the drawer and hand focus back to the row, and the zip row offers no open affordance");
+      }
       if (report.drawerTabs.failures.length > 0) {
         console.log(`v4 (drawer tabs) — ${report.drawerTabs.failures.length} failed:`);
         for (const failure of report.drawerTabs.failures) console.log(`  ✗ ${failure}`);
@@ -6078,6 +6500,19 @@ if (isEntryPoint) run().then(
         console.log(
           `M7 · C-PREFIX-1 (create-project refusal) — on a real board, \`####\` and a taken prefix each raise one visible danger toast ` +
             `with the dialog held open and no project written (wire ${report.m7.statuses.join(",")}), a free prefix still creates, and the synthetic 409 lands in the same catch`,
+        );
+      }
+      if (report.ui.failures.length > 0) {
+        console.log(`UI fixes — ${report.ui.failures.length} failed:`);
+        for (const failure of report.ui.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          `UI fixes — the four filter dropdowns anchor unclipped (bar overflow ${report.ui.barOverflow}), ` +
+            `reporter holds ${JSON.stringify(report.ui.reporterPicked)} / ${JSON.stringify(report.ui.reporterNew)}, ` +
+            `status is a ${report.ui.statusTag} with ${report.ui.statusDots} dot rows and chooses ${report.ui.statusValue}, ` +
+            `the long parent chip stays in its ${Math.round(report.ui.chip.trackWidth)}px track, ` +
+            `Activity narrows to ${JSON.stringify(report.ui.activityActors)} and Waiting to ${JSON.stringify(report.ui.waitingActors)}, ` +
+            `and the Gemini platform badge resolves ${report.ui.brand.light} / ${report.ui.brand.dark} (light/dark) with names left alone`,
         );
       }
       if (report.r16.failures.length > 0) {
@@ -6119,8 +6554,10 @@ if (isEntryPoint) run().then(
       report.b26.failures.length === 0 &&
       report.r12Id.failures.length === 0 &&
       report.r14.failures.length === 0 &&
+      report.attachmentPreview.failures.length === 0 &&
       report.drawerTabs.failures.length === 0 &&
       report.m7.failures.length === 0 &&
+      report.ui.failures.length === 0 &&
       report.r16.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);

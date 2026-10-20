@@ -1,26 +1,13 @@
 /**
- * Which board activities wake the loop, and which are the loop's own echo.
+ * Which board activities wake the loop, and which are its own echo.
  *
- * The subscriber is a **signal**, not a mutation path: a dispatched event only
- * asks the existing continue turn to scan the board. That is what makes replay,
- * duplicate frames and bursts harmless — the scan is state-based and idempotent.
- *
- * The suppression rule is about **who wrote the event**, not what role word a
- * writer used:
- *   * a human's event is never suppressed;
- *   * the board's own housekeeping is authored by `taskd` (the concrete platform
- *     name; legacy rows may carry the old vague `system` with the same id);
- *   * this loop's own agents write claims and workflow moves under their own
- *     ids, so an event authored by one of `opts.agents` is our echo.
- *
- * `import_completed` is authored by `taskd`/`md-import`, not by `taskd`/`taskd`,
- * so it survives suppression — which is the point: an import that changed the
- * board is work the loop must discover.
- *
- * Node builtins only; no network, no dependencies.
+ * Suppression is by author, not by role word: a human's event is never
+ * suppressed; `taskd` is the board's own housekeeping; an event authored by one
+ * of `opts.agents` is our echo. `import_completed` is authored by `taskd` but
+ * under `md-import`, so it survives — an import is work to discover.
  */
 
-import { HUMAN_KIND, TASKD_KIND } from "../../src/shared/constants.mjs";
+import { HUMAN_KIND, TASKD_KIND } from "../../src/foundation/constants.mjs";
 
 /**
  * Events that can make work newly actionable or complete. Everything else is

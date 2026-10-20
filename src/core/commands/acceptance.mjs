@@ -19,7 +19,7 @@
  * delivery gate.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { acceptanceScopeOf, assertAcceptanceAuthority, isTerminalStatus } from "../domain/status.mjs";
 import { STATUS } from "../domain/enums.mjs";
 

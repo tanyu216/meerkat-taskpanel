@@ -14,15 +14,15 @@
  *                   (never guess); none ⇒ create
  *   4. `forceCreate` skips 3 and creates
  *
- * `normalizeName` is a re-export of `src/shared/norm.mjs#norm`, the single source
+ * `normalizeName` is a re-export of `src/foundation/norm.mjs#norm`, the single source
  * of truth for labels / assignees / reporters alike. The name is kept because
  * `actors`' column is `normalized_name` — that column **is** `norm`.
  *
  * Pure: no `node:` specifiers.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
-import { norm } from "../../shared/norm.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { norm } from "../../foundation/norm.mjs";
 import { DICTIONARY_KINDS } from "./enums.mjs";
 
 /**
@@ -30,7 +30,7 @@ import { DICTIONARY_KINDS } from "./enums.mjs";
  *
  * Ruling F7 (2026-10-09) changed this from "collapse whitespace" to "remove ALL
  * whitespace": `"B u g"` and `bug` are now the same key, and so are
- * `code review` and `codereview`. `src/shared/norm.mjs` holds the definition.
+ * `code review` and `codereview`. `src/foundation/norm.mjs` holds the definition.
  */
 export const normalizeName = norm;
 
@@ -117,7 +117,7 @@ const CAMEL = {
   kind: "kind",
   display_name: "displayName",
   // `normalized_name` is the historical column name for `norm` (F4-A): the value
-  // it holds is exactly `src/shared/norm.mjs#norm`, so a label and an assignee
+  // it holds is exactly `src/foundation/norm.mjs#norm`, so a label and an assignee
   // with the same spelling share one identity rule.
   normalized_name: "normalizedName",
   first_seen_at: "firstSeenAt",

@@ -102,23 +102,15 @@ describe("concurrency/repository-boundary — the source scan", () => {
     );
   });
 
-  it("names the one sanctioned exception instead of letting it hide", () => {
-    // `updateCas` has a second caller: the md importer, which writes history
-    // directly and deliberately (it is not a use-case — see `core/README.md`).
-    // It is listed here so that *any other* new caller — including one in a
-    // surface — is a failure rather than a silent pass.
-    const allowed = new Set(["src/core/storage/md/import.mjs"]);
+  it("keeps the command layer the only caller", () => {
     const files = listModuleFiles(resolve(ROOT, "src"));
     const callers = [];
     for (const file of files) {
       const rel = file.slice(ROOT.length + 1);
       if (/\.updateCas\(/.test(stripComments(readSource(file)))) callers.push(rel);
     }
-    const unauthorised = callers.filter(
-      (rel) => !rel.startsWith("src/core/commands/") && !allowed.has(rel),
-    );
-    assert.deepEqual(unauthorised, [], "only the command layer and the documented importer may patch a task");
-    assert.deepEqual(callers.filter((rel) => allowed.has(rel)), [...allowed], "the exception is still real");
+    const unauthorised = callers.filter((rel) => !rel.startsWith("src/core/commands/"));
+    assert.deepEqual(unauthorised, [], "only the command layer may patch a task");
   });
 });
 

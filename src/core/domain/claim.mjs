@@ -45,9 +45,9 @@
  * `resolveAssignee` lookup, so this stays testable without a database.
  */
 
-import { CLAIM_STALE_ANY_MS, HEARTBEAT_FRESH_MS } from "../../shared/constants.mjs";
-import { DomainError } from "../../shared/errors.mjs";
-import { norm } from "../../shared/norm.mjs";
+import { CLAIM_STALE_ANY_MS, HEARTBEAT_FRESH_MS } from "../../foundation/constants.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { norm } from "../../foundation/norm.mjs";
 import { STATUS, TASK_KIND } from "./enums.mjs";
 import { isClaimable } from "./status.mjs";
 

@@ -134,6 +134,22 @@
   --brand-pri-low: #4779ad;           /* §6 correction of #4a7fb5 → 4.56:1   */
   --brand-pri-none: #b8c0c5;          /* held at brief value — see BRAND.md  */
 
+  /* ---- agent platform colours ------------------------------------------
+     The official primary of each mainstream agent the roster can name. The
+     sidebar paints a platform's names and badge with its hue, so a roster of
+     agents is legible by identity rather than by reading every handle. A
+     monochrome brand keeps its black mark in the light and swaps to its white
+     one in the dark — the two are the same official identity, not a tint. */
+  --brand-agent-claude: #d97757;
+  --brand-agent-codex: #10a37f;
+  --brand-agent-cursor: #000000;
+  --brand-agent-opencode: #201d1d;
+  --brand-agent-pi: #8a7f72;
+  --brand-agent-openclaw: #d84a31;
+  --brand-agent-grok: #000000;
+  --brand-agent-hermes: #d4a017;
+  --brand-agent-gemini: #4285f4;
+
   /* ---- typography ------------------------------------------------------- */
   --font-sans: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont,
     "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB",
@@ -244,6 +260,17 @@
   --brand-pri-low: #7ea6f0;
   --brand-pri-none: #7c868c;
 
+  /* ---- agent platform colours (dark) ----------------------------------- */
+  --brand-agent-claude: #d97757;
+  --brand-agent-codex: #74aa9c;
+  --brand-agent-cursor: #ffffff;
+  --brand-agent-opencode: #fdfcfc;
+  --brand-agent-pi: #c4a882;
+  --brand-agent-openclaw: #f5654a;
+  --brand-agent-grok: #ffffff;
+  --brand-agent-hermes: #e8c25a;
+  --brand-agent-gemini: #8ab4f8;
+
   /* R8 ① — the dark veil and the panel's elevation. Both are correct as written
      in `:root` and both are inert in the dark: `--brand-scrim` resolves from
      `--color-neutral`, which is *lighter* than the canvas here, so the veil
@@ -318,6 +345,16 @@
     --brand-pri-medium: #e8a93a;
     --brand-pri-low: #7ea6f0;
     --brand-pri-none: #7c868c;
+
+    --brand-agent-claude: #d97757;
+    --brand-agent-codex: #74aa9c;
+    --brand-agent-cursor: #ffffff;
+    --brand-agent-opencode: #fdfcfc;
+    --brand-agent-pi: #c4a882;
+    --brand-agent-openclaw: #f5654a;
+    --brand-agent-grok: #ffffff;
+    --brand-agent-hermes: #e8c25a;
+    --brand-agent-gemini: #8ab4f8;
 
     /* R8 ① — the dark veil and the panel's elevation, restated for the auto
        theme (`[data-theme="auto"]` under a dark system preference) exactly as

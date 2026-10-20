@@ -14,8 +14,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, before, describe, it } from "node:test";
 
-import { PROJECT_ORDER_WEIGHTS } from "../../src/shared/constants.mjs";
-import { normalise, orderDebugEntry, rankProjects } from "../../src/shared/project-order.mjs";
+import { PROJECT_ORDER_WEIGHTS } from "../../src/foundation/constants.mjs";
+import { normalise, orderDebugEntry, rankProjects } from "../../src/foundation/project-order.mjs";
 import { createTaskd } from "../../src/server/index.mjs";
 
 const AGENT = { kind: "agent", id: "linus" };

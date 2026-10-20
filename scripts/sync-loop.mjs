@@ -5,30 +5,39 @@
  * The loop is a deployment, not a library: what a host needs to run it is
  *
  *   * the **execution body** — `scripts/supervisor.mjs` (the tick), `scripts/wake-cwd.mjs`
- *     (the wake glue's directory resolver) and the `src/shared/` modules those two import;
+ *     (the wake glue's directory resolver) and the `src/foundation/` modules those two import;
  *   * the **templates** the installer renders — the launchd / systemd / cron units, the
  *     three `wake-<host>.sh` glues, and the host config.
  *
  * Both are *generated* here, from the single sources this repository already keeps
- * (`scripts/`, `src/shared/`, `scripts/install/templates/`), into
+ * (`scripts/`, `src/foundation/`, `scripts/install/templates/`), into
  *
- *   skills/meerkat-loop/body/{scripts,src}/**   + body/manifest.txt
+ *   skills/meerkat-loop/scripts/**   + manifest.txt
  *   skills/meerkat-loop/templates/**
  *
- * They are generated, never hand-written: a second hand-maintained copy of the supervisor
- * would drift from the one the repo runs, and the drift would only show up at 3am in a
- * loaded unit. `--check` asserts the copies are byte-identical and reports drift, and it
- * is wired into `npm run check:skills` / CI — so editing `scripts/supervisor.mjs` without
- * re-running this script is a red build, not a silent divergence.
+ * Foundation travels under `scripts/foundation/` (not `src/foundation/`), so the loop's
+ * `scripts/` tree is self-contained. That remap means the entry scripts cannot be literal
+ * copies: their foundation specifiers are rewritten (`../src/foundation/x` →
+ * `./foundation/x`), and only those specifiers. Foundation files keep their internal
+ * relative shape, so their copies stay byte-for-byte identical. `--check` compares every
+ * generated file against this transform and reports drift; it is wired into
+ * `npm run check:skills` / CI — so editing `scripts/supervisor.mjs` without re-running
+ * this script is a red build, not a silent divergence.
  *
- * The `src/shared/` tree is copied **only as a closure of the two roots above**: the
- * shared modules the whole CLI depends on stay in place at the repository root and are
+ * `scripts/board-check.mjs` is the one exception inside a generated root: it is authored,
+ * ships as-is, and is on `LOOP_AUTHORED_PATHS`, so neither `--check` nor the write-mode
+ * prune ever touches it. Any other file under `scripts/` and `templates/` is generated
+ * output.
+ *
+ * The `src/foundation/` tree is copied **only as a closure of the two roots above**: the
+ * foundation modules the whole CLI depends on stay in place at the repository root and are
  * never moved — this script reads them and writes copies; it owns nothing upstream.
  *
- * `body/manifest.txt` is the closure itself, one repository-relative path per line. It is
- * generated, so the loop's *consumers* — `scripts/install/_common.sh` (which copies the
- * body into the host) and `test/install/scheduling-units.test.mjs` (which proves the copy
- * is closed under its own imports) — read one file instead of each restating the list.
+ * `manifest.txt` is the closure itself, one **destination-relative** path per line
+ * (`scripts/...`). It is generated, so the loop's *consumers* —
+ * `scripts/install/_common.sh` (which copies the body into the host) and
+ * `test/install/scheduling-units.test.mjs` (which proves the copy is closed under its own
+ * imports) — read one file instead of each restating the list.
  *
  * Node builtins only; no network, no dependencies.
  */
@@ -36,10 +45,32 @@
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isEntryPoint } from "../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../src/foundation/entry-guard.mjs";
 
 /** Directory name of the loop skill, inside `skills/` and each host's `skills/`. */
 export const LOOP_SKILL_NAME = "meerkat-loop";
+
+/**
+ * Roots this generator owns, relative to the loop skill root. Everything under them is
+ * generated output — except the authored paths below.
+ */
+export const LOOP_GENERATED_ROOTS = Object.freeze(["scripts", "templates"]);
+
+/** Repository-relative directory of the foundation layer. */
+export const LOOP_FOUNDATION_REPO = "src/foundation";
+
+/** Destination-relative directory the loop carries foundation under. */
+export const LOOP_FOUNDATION_SKILL = "scripts/foundation";
+
+/**
+ * Hand-written files that live inside a generated root. `scripts/board-check.mjs` is the
+ * skill's interface gate: authored, shipped as-is, never written over, reported as stale,
+ * or pruned.
+ */
+export const LOOP_AUTHORED_PATHS = Object.freeze(["scripts/board-check.mjs"]);
+
+/** The execution-body closure, written at the skill root. */
+export const LOOP_MANIFEST = "manifest.txt";
 
 /**
  * The entry points whose transitive relative imports make up the loop body.
@@ -48,7 +79,7 @@ export const LOOP_SKILL_NAME = "meerkat-loop";
  * calls to answer "which directory does this card's project live in?"; and
  * `scripts/loop/*.mjs` are the deterministic entries the continue turn invokes.
  * Every root must travel with the body, or an installed unit names a file the host
- * does not have. Listing the shared modules explicitly is harmless (the closure
+ * does not have. Listing the foundation modules explicitly is harmless (the closure
  * dedupes) and protects the shipped tree from a future computed import.
  */
 export const LOOP_BODY_ROOTS = Object.freeze([
@@ -145,6 +176,55 @@ export function relativeImports(text) {
   return out;
 }
 
+/** Map a repository-relative body path to its skill/host-relative destination. */
+export function loopDest(rel) {
+  const prefix = `${LOOP_FOUNDATION_REPO}/`;
+  return rel.startsWith(prefix) ? `${LOOP_FOUNDATION_SKILL}/${rel.slice(prefix.length)}` : rel;
+}
+
+/** Map a destination-relative body path back to its repository source. */
+export function loopSource(dest) {
+  const prefix = `${LOOP_FOUNDATION_SKILL}/`;
+  return dest.startsWith(prefix) ? `${LOOP_FOUNDATION_REPO}/${dest.slice(prefix.length)}` : dest;
+}
+
+/**
+ * Rewrite only those relative specifiers that resolve into the foundation layer, so a
+ * copied entry script points at the skill's own `scripts/foundation/` instead of the
+ * repository's `src/foundation/`. Everything else — including quote style and spacing — is
+ * preserved; foundation modules resolve to their own subtree and come out unchanged.
+ *
+ * This is the one documented transform between a source and its generated copy.
+ *
+ * @param {string} text source text
+ * @param {string} sourceRel repository-relative path of the source file
+ * @param {string} [root] repository root
+ * @returns {string}
+ */
+export function transformBody(text, sourceRel, root = defaultRoot()) {
+  const repo = resolve(root);
+  const sourceAbs = join(repo, sourceRel);
+  const destDir = dirname(loopDest(sourceRel));
+  const prefix = `${LOOP_FOUNDATION_REPO}/`;
+
+  const rewrite = (specifier) => {
+    const target = resolve(dirname(sourceAbs), specifier);
+    const targetRel = relative(repo, target).split(sep).join("/");
+    if (!targetRel.startsWith(prefix)) return specifier;
+    const destTarget = `${LOOP_FOUNDATION_SKILL}/${targetRel.slice(prefix.length)}`;
+    const next = relative(destDir, destTarget).split(sep).join("/");
+    return next.startsWith(".") ? next : `./${next}`;
+  };
+
+  return text
+    .replace(/(from\s+)(["'])(\.[^"']+)\2/g, (match, before, quote, specifier) =>
+      `${before}${quote}${rewrite(specifier)}${quote}`,
+    )
+    .replace(/(import\s*\(\s*)(["'])(\.[^"']+)\2(\s*\))/g, (match, before, quote, specifier, after) =>
+      `${before}${quote}${rewrite(specifier)}${quote}${after}`,
+    );
+}
+
 /**
  * The transitive closure of `LOOP_BODY_ROOTS` over relative imports, as
  * repository-relative paths, sorted.
@@ -184,22 +264,42 @@ export async function loopBodyClosure(root = defaultRoot()) {
   return [...seen].sort();
 }
 
+/** Absolute authored paths for one loop skill root. */
+function authoredPaths(skill) {
+  return new Set(LOOP_AUTHORED_PATHS.map((rel) => join(skill, rel)));
+}
+
+/** Refuse to generate over a hand-written file. */
+function assertNoAuthoredCollision(skill, files) {
+  const authored = authoredPaths(skill);
+  for (const file of files) {
+    if (!authored.has(file.dest)) continue;
+    throw new Error(
+      `sync-loop: generated ${file.rel} would overwrite authored ${relative(skill, file.dest)} — ` +
+        "remove it from the body closure, or from LOOP_AUTHORED_PATHS if it is generated",
+    );
+  }
+}
+
 /** One generated file: where it comes from, where it goes. */
 function loopFiles(root, bodyClosure) {
+  const skill = resolveLoopSource(root);
   const out = [];
   for (const rel of bodyClosure) {
+    const destRel = loopDest(rel);
     out.push({
       kind: "body",
       source: join(root, rel),
-      dest: join(resolveLoopSource(root), "body", rel),
-      rel,
+      sourceRel: rel,
+      dest: join(skill, destRel),
+      rel: destRel,
     });
   }
   for (const rel of LOOP_TEMPLATE_FILES) {
     out.push({
       kind: "template",
       source: join(root, "scripts", "install", "templates", rel),
-      dest: join(resolveLoopSource(root), "templates", rel),
+      dest: join(skill, "templates", rel),
       rel,
     });
   }
@@ -208,8 +308,9 @@ function loopFiles(root, bodyClosure) {
 
 /** Every file this generator owns under the loop skill, sorted. */
 function ownedPaths(root, bodyClosure) {
+  const skill = resolveLoopSource(root);
   return [
-    join(resolveLoopSource(root), "body", "manifest.txt"),
+    join(skill, LOOP_MANIFEST),
     ...loopFiles(root, bodyClosure).map((file) => file.dest),
   ].sort();
 }
@@ -230,10 +331,12 @@ export async function syncLoop({ root = defaultRoot(), check = false } = {}) {
   const base = resolve(root);
   const skill = resolveLoopSource(base);
   const bodyClosure = await loopBodyClosure(base);
-  const manifestText = `${bodyClosure.join("\n")}\n`;
-  const manifestDest = join(skill, "body", "manifest.txt");
+  const body = [...new Set(bodyClosure.map(loopDest))].sort();
+  const manifestText = `${body.join("\n")}\n`;
+  const manifestDest = join(skill, LOOP_MANIFEST);
 
   const files = loopFiles(base, bodyClosure);
+  assertNoAuthoredCollision(skill, files);
   const results = [];
 
   /**
@@ -256,22 +359,29 @@ export async function syncLoop({ root = defaultRoot(), check = false } = {}) {
   };
 
   for (const file of files) {
-    const state = await reconcile(file.dest, await readFile(file.source, "utf8"));
+    const source = await readFile(file.source, "utf8");
+    const text = file.kind === "body" ? transformBody(source, file.sourceRel, base) : source;
+    const state = await reconcile(file.dest, text);
     results.push({ ...file, state });
   }
 
   const manifestState = await reconcile(manifestDest, manifestText);
 
   if (check) {
-    // Anything under the two generated roots that is not owned above is stale output from
-    // an older run — a renamed template, a dropped import. `--check` reports it; a write
-    // drops it, so neither can leave a copy behind that nothing regenerates.
+    // Anything under a generated root that is neither owned above nor authored is stale
+    // output from an older run — a renamed template, a dropped import. `--check` reports
+    // it; a write drops it, so neither can leave a copy behind that nothing regenerates.
     const owned = new Set(ownedPaths(base, bodyClosure));
+    const authored = authoredPaths(skill);
     const found = [];
-    for (const sub of ["body", "templates"]) {
-      for (const rel of await listFiles(join(skill, sub))) found.push(join(skill, sub, rel));
+    for (const sub of LOOP_GENERATED_ROOTS) {
+      const dir = join(skill, sub);
+      for (const rel of await listFiles(dir)) {
+        const abs = join(dir, rel);
+        if (!owned.has(abs) && !authored.has(abs)) found.push(abs);
+      }
     }
-    for (const path of found.filter((p) => !owned.has(p)).sort()) {
+    for (const path of found.sort()) {
       results.push({ kind: "extra", source: null, dest: path, rel: relative(skill, path), state: "extra" });
     }
   } else {
@@ -283,7 +393,7 @@ export async function syncLoop({ root = defaultRoot(), check = false } = {}) {
     ok: states.every((state) => state === "equal" || state === "written"),
     check,
     skill,
-    body: bodyClosure,
+    body,
     manifest: { dest: manifestDest, state: manifestState },
     files: results,
   };
@@ -292,39 +402,44 @@ export async function syncLoop({ root = defaultRoot(), check = false } = {}) {
 /**
  * Remove files under the generated roots that this generator does not own.
  *
- * `body/` and `templates/` are generated wholesale, so a file left there by a previous
- * run (a renamed template, a dropped import) is stale output — not user content. The
- * authored parts of the skill (`SKILL.md`, `references/`, `scripts/`) live outside those
- * two roots and are never touched.
+ * `scripts/` and `templates/` are generated wholesale (except the authored paths, which
+ * are spared), so a file left there by a previous run — a renamed template, a dropped
+ * import — is stale output, not user content. `SKILL.md` and `references/` live outside
+ * those roots and are never touched.
  *
  * @param {string} skill loop skill root
  * @param {Set<string>} owned absolute paths to keep
  */
 async function pruneUnowned(skill, owned) {
-  for (const sub of ["body", "templates"]) {
+  const authored = authoredPaths(skill);
+  for (const sub of LOOP_GENERATED_ROOTS) {
     const dir = join(skill, sub);
     for (const rel of await listFiles(dir)) {
       const abs = join(dir, rel);
-      if (!owned.has(abs)) await rm(abs, { force: true });
+      if (owned.has(abs) || authored.has(abs)) continue;
+      await rm(abs, { force: true });
     }
   }
 }
 
-/** Human-readable report for one generated file. */
+/** Human-readable report for one generated file, relative to the skill root. */
 function formatFile(file, skill) {
   const rel = relative(skill, file.dest);
   if (file.state === "equal" || file.state === "written") {
-    return `  ${file.state === "equal" ? "OK      " : "written "} ${file.kind}/${rel}`;
+    return `  ${file.state === "equal" ? "OK      " : "written "} ${rel}`;
   }
-  return `  ${file.state.toUpperCase().padEnd(8)} ${file.kind}/${rel}`;
+  return `  ${file.state.toUpperCase().padEnd(8)} ${rel}`;
 }
 
 const USAGE = `Usage: node scripts/sync-loop.mjs [--check] [--root <dir>]
 
 Generates the loop payload (execution body + installer templates) inside
-skills/${LOOP_SKILL_NAME}/, from this repository's own scripts/, src/shared/ and
-scripts/install/templates/. Run through scripts/sync-skills.mjs with everything else —
-that is the entry point CI uses.
+skills/${LOOP_SKILL_NAME}/: manifest.txt, and the generated scripts/ and templates/
+trees, from this repository's own scripts/, src/foundation/ and
+scripts/install/templates/. Foundation is carried under scripts/foundation/, so the
+entry scripts' foundation specifiers are rewritten while every other byte is kept.
+scripts/board-check.mjs is authored and is never written, reported as extra, or
+pruned. Run through scripts/sync-skills.mjs — that is the entry point CI uses.
 
 Options:
   --check        Only verify the generated payload is in sync; do not write.
@@ -361,7 +476,7 @@ async function main() {
       : `Generating the loop payload (source: ${report.skill})`,
   );
   console.log(
-    `  ${report.manifest.state === "equal" ? "OK      " : report.manifest.state.padEnd(8)} body/manifest.txt (${report.body.length} file${report.body.length === 1 ? "" : "s"})`,
+    `  ${report.manifest.state === "equal" ? "OK      " : report.manifest.state.padEnd(8)} manifest.txt (${report.body.length} file${report.body.length === 1 ? "" : "s"})`,
   );
   for (const file of report.files) console.log(formatFile(file, report.skill));
 

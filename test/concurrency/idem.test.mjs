@@ -18,7 +18,7 @@ import test, { after, describe, it } from "node:test";
 import { createCommands, createContext } from "../../src/core/commands/index.mjs";
 import { closeDatabase, openDatabase } from "../../src/core/storage/driver.mjs";
 import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
-import { isDomainError } from "../../src/shared/errors.mjs";
+import { isDomainError } from "../../src/foundation/errors.mjs";
 import { TS2, cleanupTempDirs, countRows, createTempBoard, insertProject } from "../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);

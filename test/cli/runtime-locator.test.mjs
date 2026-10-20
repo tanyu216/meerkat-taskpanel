@@ -18,7 +18,7 @@ import {
   resolveDbPath,
   resolveRuntimePointerPath,
   tokenPath,
-} from "../../src/shared/runtime-locator.mjs";
+} from "../../src/foundation/runtime-locator.mjs";
 import * as paths from "../../src/core/storage/paths.mjs";
 
 /** The real repository root, derived the same way — not assumed to be named. */

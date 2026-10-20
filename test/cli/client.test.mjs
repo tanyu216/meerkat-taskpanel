@@ -17,11 +17,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, before, describe, it } from "node:test";
 
-import { createBoardClient } from "../../src/shared/transport/client.mjs";
-import { domainErrorFromPayload, requestJson, withQuery } from "../../src/shared/transport/http.mjs";
-import { probeHealth, repoRoot, serverEntry, spawnTaskd, waitForPointer } from "../../src/shared/transport/autostart.mjs";
-import { ensureBoard, readPointer } from "../../src/shared/transport/runtime.mjs";
-import { ERROR_CODES, isDomainError } from "../../src/shared/errors.mjs";
+import { createBoardClient } from "../../src/foundation/transport/client.mjs";
+import { domainErrorFromPayload, requestJson, withQuery } from "../../src/foundation/transport/http.mjs";
+import { probeHealth, repoRoot, serverEntry, spawnTaskd, waitForPointer } from "../../src/foundation/transport/autostart.mjs";
+import { ensureBoard, readPointer } from "../../src/foundation/transport/runtime.mjs";
+import { ERROR_CODES, isDomainError } from "../../src/foundation/errors.mjs";
 import { baseEnv, cleanupTempDirs, makeTempDir, startTaskd } from "./helpers/cli-harness.mjs";
 
 const tempDirs = [];

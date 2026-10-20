@@ -51,7 +51,7 @@ import {
   unreadCount,
   writeActivityFilter,
 } from "../../stores/activity.js";
-import { board, openDetail, projectLoading } from "../../stores/board.js";
+import { board, openDetail, projectLoading, writeAssigneeFilter } from "../../stores/board.js";
 import { pushToast, view } from "../../stores/ui.js";
 
 /**
@@ -170,10 +170,19 @@ function onFilter(slot, value) {
   replaceActivityQuery();
 }
 
-/** The filter-empty state's own button: the three slots back to `all`, no toast
- *  (it is a way out of an empty feed, not a command the reader gave the bar). */
+/**
+ * The filter-empty state's own button: back to everything, no toast (it is a
+ * way out of an empty feed, not a command the reader gave the bar).
+ *
+ * The sidebar's assignee narrowing hides rows here too, and the board's filter
+ * bar is not on this view — so a reset that left it in force would point at a
+ * filter the reader cannot see. The bar's own Clear keeps its documented
+ * activity-only scope; this button is the empty state's escape, so it clears
+ * the cross-view condition as well.
+ */
 function onReset() {
   resetActivityFilters();
+  writeAssigneeFilter("all");
   replaceActivityQuery();
 }
 

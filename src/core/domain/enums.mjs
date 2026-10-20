@@ -4,7 +4,7 @@
  *
  * Cardinal rule (F2 ruling): the card's seven states are canonical. The
  * `task-interface v1` words `ready`/`failed` are aliases only and are resolved
- * by `src/shared/status-alias.mjs` — never stored.
+ * by `src/foundation/status-alias.mjs` — never stored.
  *
  * This module is pure: no `node:` specifiers.
  */
@@ -179,7 +179,7 @@ export const COMMENT_KINDS = Object.freeze([
  *
  * The one value with meaning is `HUMAN_KIND`. Everything else is an agent.
  */
-export { HUMAN_KIND } from "../../shared/constants.mjs";
+export { HUMAN_KIND } from "../../foundation/constants.mjs";
 
 /**
  * Is this usable as an actor kind? Anything non-blank.

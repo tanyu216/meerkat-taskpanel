@@ -2,30 +2,20 @@
 /**
  * The continue entry — the scheduler's periodic judgment turn.
  *
- * It builds a bounded prompt that begins with 继续 and starts the host's
- * headless agent directly. There is no card and no project directory: this is
- * not a worker wake, so it never goes through the wake glue (which refuses an
- * empty project rather than guessing a directory).
- *
- * The turn is where the deterministic loop work lives: the prompt tells the
- * agent to run `patrol.mjs`, then `workflow.mjs`, then `poll.mjs`. Poll is last
- * so a review card dispatched by the workflow pass can be claimed and woken in
- * the same turn.
- *
- * A lock makes the turn single-flight across processes. The scheduler process
- * writes it before spawning, then rewrites it with the child's pid; the next
- * tick sees the live child and skips rather than paying for a second LLM turn.
- *
- * Node builtins only; no network, no dependencies.
+ * Builds a bounded prompt beginning with 继续 and starts the host agent. The
+ * prompt runs patrol → workflow → poll; poll is last so a review card
+ * dispatched in this turn can be claimed immediately. A lock makes the turn
+ * single-flight across processes.
  */
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
-import { buildContinuePrompt, planContinueInvocation } from "../../src/shared/scheduling.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
+import { buildContinuePrompt, planContinueInvocation } from "../../src/foundation/scheduling.mjs";
 
-import { loopCommandArgs, parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
+import { runEntry } from "./entry.mjs";
+import { loopCommandArgs, resolveLoopConfig } from "./options.mjs";
 import { spawnContinueTurn } from "./runners.mjs";
 import {
   acquireContinueLock,
@@ -164,19 +154,8 @@ export async function runOnce(opts, env = process.env, hooks = {}) {
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {Promise<number>}
  */
-export async function main(argv, env = process.env) {
-  let opts;
-  try {
-    opts = parseArgs(argv, env);
-  } catch (err) {
-    process.stderr.write(`continue: ${err.message}\n`);
-    return 2;
-  }
-  if (opts.help) {
-    process.stdout.write(USAGE);
-    return 0;
-  }
-  return runOnce(opts, env);
+export function main(argv, env = process.env) {
+  return runEntry("continue", argv, env, runOnce);
 }
 
 if (isEntryPoint(import.meta.url)) {

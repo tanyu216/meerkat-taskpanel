@@ -25,7 +25,7 @@
  * What this module deliberately does **not** do: persist anything, and take a
  * lock. The cursor is the loop's own watermark (design §2.3: "the loop cursor
  * `?after=<revision>` … the 'already consumed' test persisted"); this is the
- * pure decision half, matching `shared/scheduling.mjs`'s split between "what to
+ * pure decision half, matching `foundation/scheduling.mjs`'s split between "what to
  * do" and "doing it". The write it leads to — `awaiting → in_progress` — goes
  * through the existing `moveStatus` CAS, so no new concurrency judgement is
  * introduced (card D: "复用既有 CAS … 不得新造并发判据").
@@ -33,7 +33,7 @@
  * Pure: no `node:` specifiers.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { AWAITING_REASONS, STATUS } from "./enums.mjs";
 
 export { AWAITING_REASONS };

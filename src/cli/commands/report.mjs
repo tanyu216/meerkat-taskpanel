@@ -13,7 +13,7 @@
  *     a costume. `leftovers` gets a TODO placeholder so the shape is still valid.
  *   * **acceptance comes from the card**: `meta.acceptance` first (written by
  *     `issue create --acceptance`), then `meta.acceptance_legacy` (the checkbox
- *     list the md migrator imports), then nothing plus a warning. `checked` is
+ *     list carried by an imported card), then nothing plus a warning. `checked` is
  *     *not* consulted: a ticked box on an imported card is not evidence.
  *   * **evidence anchors are explicit first, guessed second, never invented**:
  *     `--commit`/`--path`/`--command`/`--coverage` become anchors verbatim; with
@@ -24,8 +24,8 @@
 
 import { spawnSync } from "node:child_process";
 
-import { DomainError } from "../../shared/errors.mjs";
-import { TODO_PLACEHOLDER } from "../../shared/report-warning.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { TODO_PLACEHOLDER } from "../../foundation/report-warning.mjs";
 import { table } from "../output/human.mjs";
 
 /** Parse the report JSON a caller handed us — the one place a bad file is named. */
@@ -58,7 +58,13 @@ export function acceptanceFrom(task) {
     return {
       items: modern.map((text) => ({ text: String(text), status: "not_met", note: "TODO: met / partial / not_met" })),
       source: "meta.acceptance",
-      warning: null,
+      // The marker is a flag, not a verdict (see `meta.epic_triage=off`): it
+      // says the worker derived the list when the card had none, so the report
+      // is still evidence against items the acceptor may want to re-check.
+      warning:
+        meta.acceptance_derived === "yes"
+          ? "these acceptance items were derived at claim (meta.acceptance_derived=yes); make sure your report answers each one"
+          : null,
     };
   }
 

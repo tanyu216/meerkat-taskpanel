@@ -14,7 +14,7 @@ import {
   parsePriority,
   priorityRank,
 } from "../../../src/core/domain/priority.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 
 describe("domain/priority", () => {
   it("parses canonical values and defaults on empty-ish input", () => {

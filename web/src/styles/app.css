@@ -108,6 +108,22 @@
 [data-priority="low"] { --pri-color: var(--brand-pri-low); }
 [data-priority="none"] { --pri-color: var(--brand-pri-none); }
 
+/* The agent platform's official primary. The sidebar row carries
+   `data-agent-brand`, not `data-agent-platform`: the platform attribute is the
+   badge's own hook, and the ≤1023px rail hides every `[data-agent-platform]`
+   inside the sidebar — putting it on the row would hide the row itself. The
+   values live in `tokens.css` (C08: no brand hex outside the token block) and
+   are restated per theme there. */
+[data-agent-brand="claude"] { --agent-color: var(--brand-agent-claude); }
+[data-agent-brand="codex"] { --agent-color: var(--brand-agent-codex); }
+[data-agent-brand="cursor"] { --agent-color: var(--brand-agent-cursor); }
+[data-agent-brand="opencode"] { --agent-color: var(--brand-agent-opencode); }
+[data-agent-brand="pi"] { --agent-color: var(--brand-agent-pi); }
+[data-agent-brand="openclaw"] { --agent-color: var(--brand-agent-openclaw); }
+[data-agent-brand="grok"] { --agent-color: var(--brand-agent-grok); }
+[data-agent-brand="hermes"] { --agent-color: var(--brand-agent-hermes); }
+[data-agent-brand="gemini"] { --agent-color: var(--brand-agent-gemini); }
+
 /* ------------------------------------------------------------- primitives */
 
 :root {
@@ -480,6 +496,39 @@ svg[data-token-icon][hidden] { display: none; }
 .td-agent-assignee:hover {
   color: var(--brand-text);
   text-decoration: underline;
+}
+/* The platform badge is the one element that wears the platform's official
+   primary; the assignee names behind it keep the row's ordinary face.
+
+   It reads as a small identity chip rather than a bare word: a 5px dot in the
+   brand hue, the platform name in the mono face, and a tint mixed *from* that
+   hue so the badge belongs to the brand without shouting it. The tints are
+   `color-mix`ed with the row's own surface, which keeps both themes coherent
+   and keeps every hex in `tokens.css` (C08). */
+[data-agent-row] [data-agent-platform] {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 18px;
+  padding: 0 8px 0 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--agent-color, var(--brand-text-2));
+  background: color-mix(in srgb, var(--agent-color, var(--brand-text-3)) 9%, var(--brand-surface));
+  border: 1px solid color-mix(in srgb, var(--agent-color, var(--brand-border-strong)) 28%, var(--brand-border));
+  border-radius: var(--radius-full);
+}
+[data-agent-row] [data-agent-platform] .td-platform-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--agent-color, var(--brand-text-3)) 16%, transparent);
 }
 
 /* R13 ③ — the selected item wears the capsule. The item is the **wrapper**, not
@@ -868,6 +917,16 @@ svg[data-token-icon][hidden] { display: none; }
   background-color: var(--brand-accent-soft);
   border: 1px solid var(--brand-border);
   border-radius: 999px;
+}
+/* A relation chip is a flex item whose `.td-combo-title` is nowrap, so its
+   automatic minimum width was the whole title and the chip painted past the
+   dialog's routing track. Allowing it below min-content lets the title's own
+   `overflow: hidden; text-overflow: ellipsis` do its job. Scoped by the
+   `.td-chips` parent so status/label chips keep their intrinsic width. */
+.td-chips > .td-chip {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 .td-chip-status .td-status-dot {
   width: 6px;
@@ -2355,6 +2414,20 @@ button.td-prop-value:hover {
   padding: var(--space-1);
   margin: 0;
 }
+/* `lib/anchored-menu.js` writes `data-anchored` and the inline coordinates when
+   a member opens. Fixed positioning takes the panel out of the filter bar's
+   `overflow-x: auto` clip (which computed `overflow-y: auto` and hid it); the
+   resting box above stays for a document with no script. The specificity beats
+   the `top: calc(100% + 4px)` in that rule, so there is one box, not a fight. */
+.td-details-menu[data-anchored="true"] {
+  position: fixed;
+  top: auto;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
 .td-details-menu button {
   @apply block w-full cursor-pointer border-0 bg-transparent text-left text-inherit;
   padding: var(--space-1) var(--space-2);
@@ -2539,6 +2612,10 @@ button.td-prop-value:hover {
   flex-wrap: wrap;
   gap: var(--space-1);
   margin-bottom: var(--space-1);
+  /* The row lives in the dialog's routing track; without this it would be free
+     to grow past it and the chip cap above would have nothing to cap against. */
+  min-width: 0;
+  max-width: 100%;
 }
 .td-chips:empty { display: none; }
 
@@ -3054,6 +3131,77 @@ button.td-prop-value:hover {
   align-items: center;
   gap: 2px;
   margin-left: auto;
+}
+
+/* The attachment preview — implementation-only (the prototype has no preview
+   arithmetic). A row whose stored type the drawer can render turns its filename
+   into a disclosure button, and the region it opens sits directly under that
+   row: one at a time, so the drawer never grows two viewers. */
+/* The preview dialog — implementation-only (the prototype has no preview
+   arithmetic). It is teleported to `<body>` and covers the viewport: the
+   drawer's `transform` would otherwise turn it into that box's containing
+   block instead of the window's. */
+.td-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--brand-surface);
+}
+.td-preview-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px var(--space-3);
+  border-bottom: var(--border) solid var(--brand-border);
+}
+.td-preview-name {
+  overflow: hidden;
+  font-size: var(--text-12);
+  font-weight: var(--weight-medium);
+  color: var(--brand-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.td-preview-head .td-iconbtn {
+  margin-left: auto;
+}
+.td-preview-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: var(--space-3);
+  background-color: var(--brand-sunken);
+  overflow: auto;
+}
+.td-preview-body img,
+.td-preview-body video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.td-preview-body iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background-color: var(--brand-surface);
+}
+.td-preview-md {
+  align-self: flex-start;
+  width: min(900px, 100%);
+  max-height: 100%;
+  padding: var(--space-3);
+  border-radius: var(--radius-field);
+  background-color: var(--brand-surface);
+  overflow: auto;
+}
+.td-preview-status {
+  font-size: var(--text-12);
+  color: var(--brand-text-3);
 }
 .td-file:has(.td-file-actions) .td-file-size {
   margin-left: 0;

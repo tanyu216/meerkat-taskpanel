@@ -75,11 +75,17 @@ describe("contract/activity-events — the catalogue and its writers agree", () 
   });
 
   it("has exactly one vocabulary: no undeclared writer, no unwritten word", () => {
+    // `progress` and `import_completed` were written by the markdown importer. That
+    // importer is gone; the names stay declared so activity rows it already wrote
+    // remain readable, and this list is what keeps a second writer from appearing.
+    const historical = new Set(["progress", "import_completed"]);
     const found = producers();
     const declared = new Set(ACTIVITY_EVENTS);
     const undeclared = [...found].filter(([name]) => !declared.has(name)).map(([name, at]) => `${name} at ${at}`);
-    const unwritten = ACTIVITY_EVENTS.filter((name) => !found.has(name));
+    const unwritten = ACTIVITY_EVENTS.filter((name) => !found.has(name) && !historical.has(name));
+    const resurrected = [...found].filter(([name]) => historical.has(name)).map(([name, at]) => `${name} at ${at}`);
     assert.deepEqual(undeclared, [], `writers outside ACTIVITY_EVENTS:\n${undeclared.join("\n")}`);
     assert.deepEqual(unwritten, [], `declared events with no writer: ${unwritten.join(", ")}`);
+    assert.deepEqual(resurrected, [], `historical events must stay writerless:\n${resurrected.join("\n")}`);
   });
 });

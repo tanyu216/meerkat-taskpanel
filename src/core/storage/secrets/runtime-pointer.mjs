@@ -54,9 +54,9 @@ import {
   SECRET_DIR_MODE,
   SECRET_FILE_MODE,
   VERSION,
-} from "../../../shared/constants.mjs";
-import { DomainError } from "../../../shared/errors.mjs";
-import { redactText } from "../../../shared/redact.mjs";
+} from "../../../foundation/constants.mjs";
+import { DomainError } from "../../../foundation/errors.mjs";
+import { redactText } from "../../../foundation/redact.mjs";
 import { resolveRuntimePointerPath } from "../paths.mjs";
 import { isProcessAlive } from "../writer-lock.mjs";
 

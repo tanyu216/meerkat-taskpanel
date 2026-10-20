@@ -175,4 +175,22 @@ describe("web/blocks.bundle — authored CSS source checks", () => {
       else assert.deepEqual(hits, [], `${name} hard-codes brand hex outside the token block: ${hits.join(", ")}`);
     }
   });
+
+  it("C09 · every platform's official colour is defined for all three theme states and mapped", () => {
+    const styles = readStyles();
+    const tokens = styles.find((entry) => entry.name === "tokens.css")?.css ?? "";
+    const app = styles.find((entry) => entry.name === "app.css")?.css ?? "";
+    for (const platform of DOMAINS.PLATFORM) {
+      const token = `--brand-agent-${platform}`;
+      // `:root`, `[data-theme="dark"]` and the auto-dark media block: the brand
+      // layer's own rule is that a dark value is restated for `auto`.
+      const definitions = tokens.match(new RegExp(`${token}:\\s*#[0-9a-fA-F]{6}`, "g")) ?? [];
+      assert.equal(definitions.length, 3, `${token} must be defined in the light, dark and auto-dark blocks`);
+      assert.match(
+        app,
+        new RegExp(`\\[data-agent-brand="${platform}"\\][^\\n]*--agent-color:\\s*var\\(${token}\\)`),
+        `${platform} must map [data-agent-brand] to ${token}`,
+      );
+    }
+  });
 });

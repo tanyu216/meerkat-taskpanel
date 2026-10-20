@@ -24,7 +24,7 @@ import {
   normalizeSql,
   wantsForeignKeysOff,
 } from "../../../src/core/storage/migrations-runner.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 import {
   TS,
   TS2,

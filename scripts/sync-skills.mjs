@@ -20,7 +20,7 @@
  *
  * What is left to generate is the loop's own payload: its execution body and its installer
  * templates are *generated into* `skills/meerkat-loop/` from this repository's own
- * `scripts/`, `src/shared/` and `scripts/install/templates/`, by `scripts/sync-loop.mjs`.
+ * `scripts/`, `src/foundation/` and `scripts/install/templates/`, by `scripts/sync-loop.mjs`.
  * This script is the entry point for that, and `--check` guards it.
  *
  * The earlier shape of this file also synced per-host copies into `plugins/<target>/`,
@@ -36,7 +36,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { syncLoop } from "./sync-loop.mjs";
-import { isEntryPoint } from "../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../src/foundation/entry-guard.mjs";
 
 /** The board skill — the default for every function that takes a skill name. */
 export const DEFAULT_SKILL = "meerkat-taskpanel";
@@ -105,7 +105,7 @@ function parseArgs(argv) {
 const USAGE = `Usage: node scripts/sync-skills.mjs [--check] [--root <dir>]
 
 Generates the loop payload (execution body + installer templates) inside
-skills/meerkat-loop/, from scripts/, src/shared/ and scripts/install/templates/.
+skills/meerkat-loop/, from scripts/, src/foundation/ and scripts/install/templates/.
 
 There are no committed skill copies to sync: every harness reads the repository's own
 skills/ tree through a manifest at the repository root. See the file header for the
@@ -133,7 +133,7 @@ async function main() {
     console.log(`  ${label.padEnd(8)} ${relative(loop.skill, file.dest)}`);
   }
   console.log(
-    `  ${(loop.manifest.state === "equal" ? "OK" : loop.manifest.state).padEnd(8)} body/manifest.txt (${loop.body.length} files)`,
+    `  ${(loop.manifest.state === "equal" ? "OK" : loop.manifest.state).padEnd(8)} manifest.txt (${loop.body.length} files)`,
   );
 
   if (loop.ok) {

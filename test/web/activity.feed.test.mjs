@@ -266,6 +266,36 @@ describe("B26 · the three filters", () => {
   });
 });
 
+describe("B26 · the sidebar's assignee narrowing", () => {
+  const items = [
+    { id: "a1", identifier: "TD-1", actor: "jobs", actorKind: "agent", group: "status", title: "t" },
+    { id: "a2", identifier: "TD-2", actor: "Terry", actorKind: "human", group: "comment", title: "t" },
+    { id: "a3", identifier: "TD-2", actor: "jobs", actorKind: "agent", group: "meta", title: "t" },
+    { id: "a4", identifier: "TD-1", actor: "Terry", actorKind: "human", group: "delivery", title: "t" },
+  ];
+  const me = "Terry";
+
+  it("is no condition at all / all, and reads like the board's four values", () => {
+    assert.equal(filterItems(items).length, 4);
+    assert.equal(filterItems(items, { assignee: "all", assigneeMe: me }).length, 4);
+    assert.equal(filterItems(items, { assignee: "", assigneeMe: me }).length, 4);
+    assert.deepEqual(filterItems(items, { assignee: "agent", assigneeMe: me }).map((i) => i.id), ["a1", "a3"]);
+    assert.deepEqual(filterItems(items, { assignee: "human", assigneeMe: me }).map((i) => i.id), ["a2", "a4"]);
+    assert.deepEqual(filterItems(items, { assignee: "me", assigneeMe: me }).map((i) => i.id), ["a2", "a4"]);
+    assert.deepEqual(filterItems(items, { assignee: "jobs", assigneeMe: me }).map((i) => i.id), ["a1", "a3"]);
+  });
+
+  it("ANDs with the feed's own three controls", () => {
+    assert.deepEqual(filterItems(items, { actor: "agent", assignee: "jobs", assigneeMe: me }).map((i) => i.id), ["a1", "a3"]);
+    assert.deepEqual(
+      filterItems(items, { actor: "human", assignee: "jobs", assigneeMe: me }),
+      [],
+      "the sidebar narrowing and the actor control are two conditions on one axis — both must hold",
+    );
+    assert.deepEqual(filterItems(items, { event: "comment", assignee: "jobs", assigneeMe: me }), []);
+  });
+});
+
 describe("B26 · the count, the empty states and the unread split", () => {
   it("counts rows, not events: a folded burst counts once", () => {
     const feed = feedOf([

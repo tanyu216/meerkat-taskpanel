@@ -12,8 +12,8 @@ import {
   exportStatusValue,
   isCanonical,
   resolveStatus,
-} from "../../src/shared/status-alias.mjs";
-import { deliverCommandHint } from "../../src/shared/deliver-hint.mjs";
+} from "../../src/foundation/status-alias.mjs";
+import { deliverCommandHint } from "../../src/foundation/deliver-hint.mjs";
 import {
   contentHash,
   formatIdentifier,
@@ -24,8 +24,8 @@ import {
   sha256Hex,
   stableStringify,
   uuidv5,
-} from "../../src/shared/ids.mjs";
-import { SESSION_ID_NAMESPACE } from "../../src/shared/constants.mjs";
+} from "../../src/foundation/ids.mjs";
+import { SESSION_ID_NAMESPACE } from "../../src/foundation/constants.mjs";
 
 describe("shared/ids", () => {
   it("newId is a v4 UUID, twice-distinct", () => {

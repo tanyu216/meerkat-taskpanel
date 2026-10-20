@@ -20,7 +20,7 @@ import {
   isAssignee,
   isAutoClaimableKind,
 } from "../../../src/core/domain/claim.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 
 const NOW = "2026-10-08T00:10:00.000Z";
 const FRESH = "2026-10-08T00:05:00.000Z"; // 5 minutes old

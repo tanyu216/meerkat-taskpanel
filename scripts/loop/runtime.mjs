@@ -5,7 +5,7 @@
  * These are the things a one-shot entry and the scheduler both need: the
  * process-liveness probe, the worker registry, the log, the `taskctl` shell-out,
  * the SLA ledger / liveness marker, and the continue lock. None of it decides
- * anything — the decisions live in `src/shared/`.
+ * anything — the decisions live in `src/foundation/`.
  *
  * Node builtins only; no network, no dependencies.
  */
@@ -24,8 +24,8 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
-import { pruneRegistry } from "../../src/shared/scheduling.mjs";
-import { emptySlaLedger } from "../../src/shared/sla-patrol.mjs";
+import { pruneRegistry } from "../../src/foundation/scheduling.mjs";
+import { emptySlaLedger } from "../../src/foundation/sla-patrol.mjs";
 
 // ---------------------------------------------------------------------------
 // Registry (crash survival) + process liveness
@@ -70,18 +70,33 @@ export function saveRegistry(path, registry) {
 /**
  * Run the taskctl CLI and parse its `--json` envelope. Returns `{ok, data|error}`.
  *
- * `actorKind` is not cosmetic: without it every write this supervisor performs
- * defaults to `human` on the board, which is how a loop claim used to read as a
- * person's act. Claims pass the host (`claude`/`codex`/`pi`); the workflow
- * pass's writes pass `system`, so an automated acceptance is attributable and
- * the SLA attribution rules can exclude it.
+ * The CLI requires an identity on every call: reads and claims use the host
+ * (`claude`/`codex`/`pi`), workflow writes pass `system` so an automated
+ * acceptance is attributable. `--env-file` and `--url` are forwarded; the token
+ * rides in the child environment, never argv.
  */
 export function runCli(opts, agent, args, { input = null, actorKind = null } = {}) {
-  const globals = ["--json", "--agent", agent, ...(actorKind === null ? [] : ["--actor-kind", actorKind])];
+  // Identity is required on every CLI call now. The loop's host (claude/codex/pi)
+  // is the platform for its agent actions; the board's own workflow pass names
+  // `system` explicitly. A caller that forgot gets the host, never `human`.
+  const kind = actorKind ?? opts.host ?? "system";
+  const globals = [
+    "--json",
+    "--agent",
+    agent,
+    "--actor-kind",
+    kind,
+    ...(opts.envFile ? ["--env-file", opts.envFile] : []),
+    ...(opts.url ? ["--url", opts.url] : []),
+  ];
+  // A token never goes on argv (it would be visible in `ps`); the child reads
+  // it from its environment.
+  const childEnv = { ...process.env };
+  if (opts.token) childEnv.TASKD_TOKEN = opts.token;
   const run = spawnSync(process.execPath, [opts.cli, ...globals, ...args], {
     encoding: "utf8",
     input,
-    env: process.env,
+    env: childEnv,
   });
   if (run.error) return { ok: false, error: run.error.message };
   try {
@@ -103,18 +118,10 @@ export function openAppendFd(path) {
 }
 
 /**
- * The SLA de-duplication ledger.
+ * The SLA de-duplication ledger — a file beside the state, not a card.
  *
- * A file beside the supervisor's own state, not a card: the loop holds no write
- * capability onto card state (§9.1), and the contract's card-trail backend is a
- * *shared* substrate for two mechanisms that may run on different hosts. This
- * mechanism therefore de-duplicates within itself and records that choice as a
- * deliberate deviation — the cross-mechanism residual is at most one duplicate
- * notification per key until the peer's marker is wired (§8.3 rule 5).
- *
- * Every failure is soft: an unreadable ledger reads as empty, so the pass
- * notifies rather than suppressing. A duplicate is admissible; a lost alert is
- * not.
+ * Fail-soft: an unreadable ledger reads as empty, so the pass notifies rather
+ * than suppresses. A duplicate is admissible; a lost alert is not.
  */
 export function loadSlaLedger(path) {
   try {
@@ -135,14 +142,9 @@ export function saveSlaLedger(path, ledger) {
 }
 
 /**
- * The mutual liveness watchdog's two files (§8.4).
- *
- * Each mechanism publishes a **last-successful-run marker** and watches the
- * peer's. The marker is a plain `{mechanism, last_ok, ...}` object written
- * atomically (temp + rename) so a reader never sees half a file. Reading the
- * peer's is deliberately failure-tolerant: an unreadable marker reads as
- * `null`, and what `null` *means* is the decision half's business — this half
- * does not get to turn a parse error into a silence.
+ * The liveness watchdog's marker: `{mechanism, last_ok, …}`, written atomically
+ * so a reader never sees half a file. An unreadable peer marker reads as null;
+ * interpreting that is the decision half's job.
  */
 export function saveLastOk(path, { mechanism, at, host = null, periodSeconds = null } = {}) {
   mkdirSync(dirname(path), { recursive: true });
@@ -202,10 +204,8 @@ export function createLogger(opts) {
 /**
  * One ping pass: drop registry entries whose worker pid is gone.
  *
- * This is deliberately the whole job. Ping reads one small file and may write
- * it; it never reads the board, claims a card or starts an LLM turn. A pid that
- * is alive but no longer the worker is not detectable portably without `ps`
- * archaeology, and a reused pid would make that detection lie.
+ * Ping reads and writes one small file — no board read, no claim, no LLM. A
+ * reused pid is not distinguishable portably, so liveness is all it checks.
  *
  * @param {{
  *   registry?: object,
@@ -272,14 +272,10 @@ function lockAgeMs(path, now) {
 }
 
 /**
- * Take the continue lock atomically.
- *
- * The lock is written with `wx`, so two units firing in the same second can
- * never both start a turn. The first pass records this process (still alive
- * while it spawns); the caller rewrites the file with the child's pid once the
- * turn is running. A lock is reclaimable when its pid is gone, when it has
- * outlived `maxAgeMs` (a hung turn), or when it is an unreadable file older
- * than a minute (a crash between create and write).
+ * Take the continue lock atomically (`wx`, so two units cannot both start a
+ * turn). The caller later rewrites it with the child's pid. A lock is
+ * reclaimable when its pid is gone, when it outlived `maxAgeMs`, or when it is
+ * an unreadable file older than a minute.
  *
  * @param {string} path
  * @param {{isAlive?: (pid:number)=>boolean, now?: ()=>number, maxAgeMs?: number}} [options]

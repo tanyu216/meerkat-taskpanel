@@ -15,8 +15,8 @@
  * routing itself is unit-testable.
  */
 
-import { redactText } from "../../shared/redact.mjs";
-import { renderErrorText } from "../../shared/transport/errors.mjs";
+import { redactText } from "../../foundation/redact.mjs";
+import { renderErrorText } from "../../foundation/transport/errors.mjs";
 import { errorEnvelope, serialize, successEnvelope } from "./json.mjs";
 
 /**

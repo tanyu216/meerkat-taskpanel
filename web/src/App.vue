@@ -11,6 +11,7 @@
  */
 import { onMounted, onUnmounted } from "vue";
 
+import { installAnchoredMenus } from "./lib/anchored-menu.js";
 import { closeFloatingControls, installLightDismiss } from "./lib/light-dismiss.js";
 import { initBoard, reloadConflict, board, closeDetail } from "./stores/board.js";
 import { applyLocation } from "./stores/route.js";
@@ -49,6 +50,12 @@ function onKeydown(event) {
 }
 
 let uninstallLightDismiss = () => {};
+/**
+ * The filter bar's `overflow-x: auto` clip its own dropdown panels. The menus
+ * are anchored to the viewport instead (`lib/anchored-menu.js`), so a panel is
+ * what a press paints rather than a 32px-clipped sliver.
+ */
+let uninstallAnchoredMenus = () => {};
 
 /**
  * R16 §4.2/§4.3 — the address's own two events. The reader is shared, so a deep
@@ -63,6 +70,7 @@ function onPopState() {
 onMounted(() => {
   document.addEventListener("keydown", onKeydown);
   uninstallLightDismiss = installLightDismiss(document);
+  uninstallAnchoredMenus = installAnchoredMenus(document);
   // The boot itself is an "an address arrived" event (§4.3): resolve the address
   // this document was opened on — a deep link, a refresh, the bare `/` — before
   // the board's first read, so the view is the address's from the first paint.
@@ -77,6 +85,7 @@ onUnmounted(() => {
   document.removeEventListener("keydown", onKeydown);
   globalThis.removeEventListener?.("popstate", onPopState);
   uninstallLightDismiss();
+  uninstallAnchoredMenus();
 });
 </script>
 

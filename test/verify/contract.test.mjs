@@ -29,7 +29,7 @@ import test, { after, describe, it } from "node:test";
 import { STATUSES } from "../../src/core/index.mjs";
 import { registerApiRoutes } from "../../src/server/index.mjs";
 import { createRouter } from "../../src/server/router.mjs";
-import { ERROR_CODES } from "../../src/shared/errors.mjs";
+import { ERROR_CODES } from "../../src/foundation/errors.mjs";
 import {
   ROOT,
   SCHEMA_VERSION,

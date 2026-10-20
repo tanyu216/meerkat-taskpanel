@@ -11,7 +11,7 @@
  * is the same whether the refusal comes from here or from the trigger.
  */
 
-import { DomainError, isDomainError } from "../../shared/errors.mjs";
+import { DomainError, isDomainError } from "../../foundation/errors.mjs";
 import {
   CLAIM_STALE_ANY_MS,
   CLAIM_STALE_SAME_MS,
@@ -19,8 +19,8 @@ import {
   TASK_LIST_DEFAULT_LIMIT,
   TASK_ORDER_DEFAULT,
   TASK_ORDER_MODES,
-} from "../../shared/constants.mjs";
-import { orderTasks, taskOrderDebugEntry } from "../../shared/task-order.mjs";
+} from "../../foundation/constants.mjs";
+import { orderTasks, taskOrderDebugEntry } from "../../foundation/task-order.mjs";
 import {
   assertClaimable,
   decideClaim,
@@ -54,7 +54,7 @@ import { advanceContainerForChild, hasChildStarted, startContainerForChild } fro
 
 /**
  * @param {object} ctx
- * @param {{projectId: string, title: string, actor: object, assignee?: string, assigneeKind?: string, reporter?: string, reporterKind?: string, forceCreate?: boolean, idem?: string, allowDup?: boolean, reviewOf?: string, parent?: string, [key: string]: unknown}} input
+ * @param {{projectId: string, title: string, actor: object, assignee?: string, assigneeKind?: string, reporter?: string, reporterKind?: string, forceCreate?: boolean, idem?: string, allowDup?: boolean, reviewOf?: string, reviewRound?: number, parent?: string, [key: string]: unknown}} input
  */
 export function createTask(ctx, input) {
   const actor = actorOf(input.actor);
@@ -85,12 +85,11 @@ export function createTask(ctx, input) {
         projectId: input.projectId,
       });
 
-      // The gate's INSERT-shaped half (M3fix D1). `createTask` is the single
-      // door the HTTP and CLI faces share; refusing here — before any
-      // row is written — makes `in_review`/`done` unreachable at creation the
-      // same way a reportless `task_move` is refused. The md importer does not
-      // call this use-case (it writes history directly), which is why the guard
-      // cannot be a trigger: an INSERT trigger would abort an `in_review` import.
+      // The gate's INSERT-shaped half. `createTask` is the single door the HTTP
+      // and CLI faces share; refusing here — before any row is written — makes
+      // `in_review`/`done` unreachable at creation the same way a reportless
+      // `task_move` is refused. It is a JS guard, not a trigger, because the
+      // gate belongs to this use-case rather than to every INSERT.
       assertCreationGate({ task: candidate, status: candidate.status });
 
       // --- the mechanical idempotency guard --------------------------------
@@ -176,7 +175,15 @@ export function createTask(ctx, input) {
       // match on; the column holds the internal id, and that is what the
       // acceptance policy reads. Resolve once, here, so a dangling reference is
       // refused instead of silently producing a card that is not exempt.
-      Object.assign(candidate, resolveReviewMarker(ctx, input.projectId, input));
+      //
+      // Both spellings are stamped from the same resolution. Before this, a
+      // card created through the declared top-level `review_of` field carried
+      // only the column, so `workflow.reviewOf`/the SLA patrol/candidate
+      // projection (all meta readers) could not find its original.
+      const marker = resolveReviewMarker(ctx, input.projectId, input);
+      candidate.reviewOfId = marker.reviewOfId;
+      candidate.reviewRound = marker.reviewRound;
+      if (marker.reviewOfId !== null) candidate.meta = mirrorReviewMeta(candidate.meta, marker);
 
       let task;
       try {
@@ -232,7 +239,7 @@ export function createTask(ctx, input) {
  * @param {object} ctx
  * @param {string} projectId
  * @param {{reviewOf?: unknown, reviewRound?: unknown, meta?: object}} input
- * @returns {{reviewOfId: string|null, reviewRound: number|null}}
+ * @returns {{reviewOfId: string|null, reviewRound: number|null, reviewOfIdentifier: string|null}}
  */
 function resolveReviewMarker(ctx, projectId, input) {
   const rawRef = input.reviewOf ?? input.meta?.review_of;
@@ -248,7 +255,7 @@ function resolveReviewMarker(ctx, projectId, input) {
         hint: { fix: "pass review_of together with review_round, or drop the round" },
       });
     }
-    return { reviewOfId: null, reviewRound: null };
+    return { reviewOfId: null, reviewRound: null, reviewOfIdentifier: null };
   }
 
   const original = ctx.repos.tasks.resolve(projectId, ref);
@@ -276,7 +283,65 @@ function resolveReviewMarker(ctx, projectId, input) {
       });
     }
   }
-  return { reviewOfId: original.id, reviewRound: round };
+  return { reviewOfId: original.id, reviewRound: round, reviewOfIdentifier: original.identifier };
+}
+
+/**
+ * Write the readable mirror of the review marker into `meta`.
+ *
+ * The meta keys are what the loop's snapshot readers match on
+ * (`workflow.reviewOf`, the SLA patrol's `reviewOfRefs`, the candidate
+ * projection), while the columns are what the acceptance gate reads. A card
+ * that carried only the columns looked like a review card to `isReviewCard`
+ * but had no resolvable original, so its verdict was never applied.
+ *
+ * Returns a new object and never mutates `meta`: `normalizeTaskCreate` keeps
+ * the caller's object by reference. The value is normalized rather than
+ * trusted — the original's identifier, an integer round — and `review_round` is
+ * omitted, not written as null, for a card that audits every round (the
+ * readers' "absent means any round" reading).
+ *
+ * @param {object|null|undefined} meta
+ * @param {{reviewOfIdentifier: string|null, reviewRound: number|null}} marker
+ * @returns {object}
+ */
+function mirrorReviewMeta(meta, marker) {
+  const next = { ...(meta ?? {}), review_of: marker.reviewOfIdentifier };
+  if (marker.reviewRound === null || marker.reviewRound === undefined) delete next.review_round;
+  else next.review_round = marker.reviewRound;
+  return next;
+}
+
+/**
+ * Canonicalize a meta patch against the immutable review columns.
+ *
+ * The columns are the authority; `meta` is the readable mirror. A review card's
+ * patch therefore gets the original's identifier and the audited round back,
+ * whatever it carried; a card without a marker loses both keys, which also
+ * closes the reverse drift (a `meta.review_of` on an ordinary card would make
+ * `isReviewCard`'s compatibility fallback disagree with the acceptance gate).
+ * Every other key is preserved — including the loop's `rework_round`, which
+ * lives on the original, not on a review card.
+ *
+ * @param {{tasks: {get: (id: string) => object|null}}} repos
+ * @param {object} current the task being patched
+ * @param {object} meta the caller's patch value
+ * @returns {object}
+ */
+function canonicalReviewMeta(repos, current, meta) {
+  if (current.reviewOfId === null || current.reviewOfId === undefined) {
+    const next = { ...(meta ?? {}) };
+    delete next.review_of;
+    delete next.review_round;
+    return next;
+  }
+  // `foreign_keys=ON` (driver.mjs) plus 0025's immutable marker mean a set
+  // `reviewOfId` always names a card that still exists.
+  const original = repos.tasks.get(current.reviewOfId);
+  return mirrorReviewMeta(meta, {
+    reviewOfIdentifier: original.identifier,
+    reviewRound: current.reviewRound ?? null,
+  });
 }
 
 /**
@@ -325,6 +390,14 @@ export function updateTask(ctx, input) {
         });
         patch.labels = resolved.stored;
         labelAudit = resolved.audit;
+      }
+
+      // The structural columns are the authority for the review marker; `meta`
+      // is the readable mirror. Canonicalize a meta patch against them so the
+      // loop's readers and the acceptance gate can never disagree about which
+      // card a review audits.
+      if (patch.meta !== undefined) {
+        patch.meta = canonicalReviewMeta(ctx.repos, current, patch.meta);
       }
 
       if (Object.keys(patch).length === 0) {
@@ -872,7 +945,7 @@ export function archive(ctx, input) {
  *
  *   * `board` (the default, and what every caller got before this existed) — the
  *     repository's `sort_order, created_at, project_id, identifier`;
- *   * `weight` — the assignee weight order (`shared/task-order.mjs`), requested
+ *   * `weight` — the assignee weight order (`foundation/task-order.mjs`), requested
  *     with `?order=weight`.
  *
  * The default is deliberately untouched: the existing order is a frozen

@@ -18,7 +18,7 @@ import test, { after, describe, it } from "node:test";
 
 import { createCommands, createContext } from "../../../src/core/commands/index.mjs";
 import { createRepositories } from "../../../src/core/storage/repositories/index.mjs";
-import { identifierPrefix } from "../../../src/shared/ids.mjs";
+import { identifierPrefix } from "../../../src/foundation/ids.mjs";
 import { TS, cleanupTempDirs, countRows, withBoard } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);

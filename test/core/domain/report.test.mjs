@@ -13,7 +13,7 @@ import {
   REPORT_MAX_BYTES,
   REPORT_MAX_CONCLUSION_CHARS,
   REPORT_MAX_ITEMS,
-} from "../../../src/shared/constants.mjs";
+} from "../../../src/foundation/constants.mjs";
 import {
   OPEN_ACCEPTANCE_STATUSES,
   acceptanceFromJson,

@@ -9,6 +9,83 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **One config file: `.env` at the program install root.** `taskd`, `taskctl` and the loop's
+  SSE endpoint now read `<program root>/.env` (the checkout root, or the npm package root) for
+  the board URL, the client token, the allow-list and the acceptance policy. Precedence is
+  CLI flag > process environment > `.env` > default, key by key, so `$TASKD_TOKEN` overrides a
+  `TASKD_TOKEN_FILE` in the file. `--env-file <path>` and `MEERKAT_TASKPANEL_ENV_FILE` select
+  another file. Values come only from the known `TASKD_*` / `TASKCTL_*` /
+  `MEERKAT_TASKPANEL_*` keys — a shared `.env` carrying `VITE_*`, `PATH` or `NODE_OPTIONS` is
+  ignored, and an unknown key inside our own namespaces is an error rather than a silent
+  no-op. `install.sh` seeds a `.env` with `TASKD_URL=http://localhost:9527`; the Access panel
+  writes to the same file. Two new codes: `CONFIG_FILE_INVALID` (unreadable, malformed,
+  unknown or conflicting keys, bad URL/port, a missing explicit token file) and
+  `CONFIG_FILE_INSECURE` (an inline token or explicit token file that is group/world
+  readable). `TASKD_URL` also makes a remote board usable without repeating `--url`: a live
+  configured URL is used, a dead non-loopback one is an error rather than an autostart.
+- **Every `taskctl` invocation carries an identity.** `--actor-kind` (platform: `claude`,
+  `codex`, `openclaw`, `pi`, `opencode`, `cursor`, or `system` for automation) — or
+  `TASKCTL_ACTOR_KIND`, or `--as-human` — is required on every command except `--help` and
+  `--version`; omitting it is `CLI_USAGE`. The id is a role: `--agent jobs|linus|turing`
+  overrides the `TASKCTL_AGENT` default, and a non-human id no longer falls back to
+  `TASKCTL_HUMAN`. `--actor-kind human` is still refused; a human write uses `--as-human`.
+
+### Changed
+
+- **Breaking: `src/shared/` is now `src/foundation/`.** The layer's name now describes its
+  role (the dependency floor: `cli|server → core → foundation`, importing nothing from
+  `src/`) instead of its audience. Because the package ships `src` without an `exports` map,
+  deep imports such as `meerkat-taskpanel/src/shared/constants.mjs` must move to
+  `meerkat-taskpanel/src/foundation/constants.mjs`. The loop payload follows: its foundation
+  copy lives at `skills/meerkat-loop/scripts/foundation/**`, and the skill carries no `src/`
+  tree. Foundation copies are byte-for-byte; the 14 generated entry scripts differ only in
+  their foundation import specifiers (`../src/foundation/x` → `./foundation/x`), which
+  `sync-loop --check` verifies. Host-installed paths move from
+  `<host>/meerkat-taskpanel/src/shared/**` to `<host>/meerkat-taskpanel/scripts/foundation/**`;
+  an old tree is inert after the upgrade and can be deleted by hand.
+- **The loop skill no longer wraps its generated payload in `body/`.** `manifest.txt` and
+  the generated `scripts/` + `src/` trees now sit at `skills/meerkat-loop/`, alongside the
+  authored `scripts/board-check.mjs` (which `sync-loop.mjs` never writes, prunes, or reports
+  as stale). Copied modules stay byte-identical because their relative imports are unchanged;
+  host-installed paths (`<host>/meerkat-taskpanel/{scripts,src}`) are unchanged. An older
+  host may retain an inert `<host>/skills/meerkat-loop/body/`; `--force` replaces it.
+- **Breaking: `<dataDir>/taskd.env` is no longer read.** The allow-list and acceptance policy
+  now live in the install-root `.env`; there is no runtime fallback. An existing installation
+  must move the keys by hand (`mv <dataDir>/taskd.env <program root>/.env`, merging with any
+  keys already there). `install.sh` prints this hint when it finds the old file; it does not
+  move or read it.
+
+### Removed
+
+- `ACCESS_ENV_FILE` and `ACCEPTANCE_ENV_FILE` and the `<dataDir>/taskd.env` path helpers.
+  Config writers now create a missing parent directory but never `chmod` an existing one.
+
+- **The board skill is now a taskctl manual, not a design archive.** The skill's prose was
+  reduced by roughly half: each rule has one home (`status-lifecycle.md` for the state model,
+  `cli.md` for the command surface and the `--json` contract, `card-schema.md` for the card
+  file, `reports.md` for periodic reports, `projects-json.md` for the local directory map),
+  and the restatement, migration history and `src/…` provenance were removed. The two
+  references that carried no instruction of their own — `practice-guides.md` (an abridged copy
+  of `SKILL.md` plus per-host install guides) and `scheduling-integration.md` (the loop's
+  topology) — were deleted; the few unique rules (conflict retry, session id, the tick recipe,
+  the `--json` machine contract) moved into `SKILL.md`. The loop still depends on the board
+  skill; the board skill no longer depends on the loop.
+
+## [1.1.0] - 2026-10-20
+
+### Added
+
+- **The board owns the workflow decisions; the loop executes them.**
+  `src/shared/workflow.mjs` moved to `src/core/domain/workflow.mjs`, and a new
+  `src/core/commands/workflow.mjs` assembles a bounded board snapshot for it.
+  `taskctl issue reconcile --workflow` (and the same route,
+  `POST /api/v1/tasks/reconcile`) now performs the board's container reconcile and returns
+  the review outcomes/dispatch plan; the loop applies the plan's review actions and no
+  longer carries the decision module. The loop requires board **1.1.0**. The board skill's
+  new `references/status-lifecycle.md` consolidates every status, transition, guard,
+  delivery-round rule, claim/heartbeat window, acceptance policy × scope matrix, creation
+  gate and refusal code, and is pinned to the domain table by a drift test.
+
 - **Acceptance is a board policy: `human-only` | `both` | `agent-only`.** `in_review →
   done` is no longer a fixed "human or taskd" rule. `both` (the default) keeps the
   historical behaviour; `human-only` lets only a human close a **top-level** card (children
@@ -23,6 +100,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and a human closing a top-level card needs the current round's reviews resolved
   (`REVIEW_PENDING`). Review identity moves from the writable `meta.review_of` into the
   immutable `tasks.review_of_id` / `review_round` columns (migration 0025).
+- **Workers derive the acceptance list when a card has none.** The wake handoff and the
+  board skill now tell a worker to read the card with `issue get --json`; when both
+  `meta.acceptance` and an imported `meta.acceptance_legacy` are empty, it derives 1–6
+  externally checkable acceptance items from the title, description, labels and comments,
+  persists them with `--acceptance`, marks them `meta.acceptance_derived=yes`, and leaves a
+  `change` comment listing them. Existing lists are never rewritten, epics and review cards
+  are skipped, and a reviewer audits a derived list for coverage; `report template` warns
+  when it seeds that list.
 - **The loop can be event-driven.** `supervisor.mjs --subscribe` holds one SSE connection
   to the board and asks for a continue turn when a dispatch-relevant event arrives
   (coalesced, at most one turn per minute). It does not claim or wake by itself: the
@@ -1236,5 +1321,6 @@ markdown migrator, and the full board HTTP API + SSE backend with the `web/` fro
   and release tree, runs `npm pack`, verifies the tarball's contents, and opens a **draft**
   GitHub Release. It previously did a packaging dry run only.
 
-[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/tanyu216/meerkat-taskpanel/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v1.0.0

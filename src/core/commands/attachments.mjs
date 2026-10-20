@@ -20,7 +20,7 @@
 
 import { existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 

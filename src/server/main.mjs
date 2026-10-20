@@ -23,9 +23,11 @@
  */
 
 import { acquireWriterLock, removeRuntimePointer, resolveDataDir, writeRuntimePointer } from "../core/index.mjs";
-import { DEFAULT_HOST, DEFAULT_PORT, HOST_ENV, PORT_ENV, VERSION } from "../shared/constants.mjs";
+import { DEFAULT_HOST, DEFAULT_PORT, HOST_ENV, PORT_ENV, VERSION } from "../foundation/constants.mjs";
+import { loadEnvFile } from "../foundation/env-config.mjs";
+import { repoRoot } from "../foundation/runtime-locator.mjs";
 import { createTaskd } from "./index.mjs";
-import { isEntryPoint } from "../shared/entry-guard.mjs";
+import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 /**
  * `TASKD_PORT` may be 0 (ephemeral) — do not treat it as "unset".
@@ -45,20 +47,37 @@ export function portFromEnv(env) {
 export async function main(env = process.env, options = {}) {
   const { register = true } = options;
 
+  // `.env` is a *server* input too: host/port/data dir/allow-list/acceptance.
+  // The process environment wins key by key, so an operator's override is
+  // unchanged. The raw `env` is kept separately for the two readers whose
+  // `source` the Access panel shows.
+  const config = loadEnvFile({
+    env,
+    root: repoRoot(),
+    ...(options.envFile === undefined ? {} : { flag: options.envFile }),
+  });
+  const effectiveEnv = config.env;
+
   // R1 — the write lock comes first: it must be held *before* a second
   // connection to the same board can be opened. A refusal here is a clean
   // `BOARD_ALREADY_RUNNING` (the caller prints it and exits non-zero), which is
   // what turns "two daemons fight over the pointer" into "the second one never
   // started".
-  const dataDir = resolveDataDir({ dataDir: options.dataDir ?? null, env });
+  const dataDir = resolveDataDir({ dataDir: options.dataDir ?? null, env: effectiveEnv });
   const lock = acquireWriterLock(dataDir);
 
   let taskd;
   try {
     taskd = await createTaskd({
-      host: env[HOST_ENV] ?? DEFAULT_HOST,
-      port: portFromEnv(env) ?? DEFAULT_PORT,
-      env,
+      host: effectiveEnv[HOST_ENV] ?? DEFAULT_HOST,
+      port: portFromEnv(effectiveEnv) ?? DEFAULT_PORT,
+      env: effectiveEnv,
+      processEnv: env,
+      // The resolved path even when the file does not exist yet: an Access-panel
+      // save creates it (0600), which is how a board started before `install.sh`
+      // seeded one still gets a writable policy file.
+      envFile: config.file,
+      envVars: config.vars,
       ...(options.dataDir === undefined ? {} : { dataDir: options.dataDir }),
     });
   } catch (err) {
@@ -93,7 +112,7 @@ export async function main(env = process.env, options = {}) {
       tokenFile: taskd.board.token?.file ?? null,
       pid: process.pid,
     },
-    { env, pid: process.pid },
+    { env: effectiveEnv, pid: process.pid },
   );
   const pointerOptions = { path: written.path, pid: process.pid, dataDir: taskd.board.dataDir };
 

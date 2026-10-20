@@ -2,22 +2,16 @@
 /**
  * The patrol entry — the notify-only half of the loop.
  *
- * It reads the board once, runs the legacy heartbeat alerts and the shared SLA
- * rows, and notifies. No alert moves a card, and no LLM turn starts unless
- * `--patrol-llm=yes` explicitly asks for one. The workflow entry is what
- * writes; it is a separate pass on purpose.
- *
- * The SLA thresholds are measured in 300-second units (`--patrol-interval`).
- * That is a measurement unit, not a promise of sampling frequency: the
- * continue turn decides how often this entry actually runs.
- *
- * Node builtins only; no network, no dependencies.
+ * Reads the board once, emits the heartbeat alerts and the SLA rows, and
+ * notifies. No alert moves a card; no LLM turn starts unless `--patrol-llm=yes`.
+ * `--patrol-interval` is a measurement unit, not how often this runs.
  */
 
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 import { readBoard, runSlaPass } from "./board.mjs";
-import { parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
+import { runEntry } from "./entry.mjs";
+import { resolveLoopConfig } from "./options.mjs";
 import { notifyReal, runPatrolTick, spawnWorkerReal } from "./runners.mjs";
 import { createLogger } from "./runtime.mjs";
 
@@ -72,19 +66,8 @@ export async function runOnce(opts, env = process.env) {
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {Promise<number>}
  */
-export async function main(argv, env = process.env) {
-  let opts;
-  try {
-    opts = parseArgs(argv, env);
-  } catch (err) {
-    process.stderr.write(`patrol: ${err.message}\n`);
-    return 2;
-  }
-  if (opts.help) {
-    process.stdout.write(USAGE);
-    return 0;
-  }
-  return runOnce(opts, env);
+export function main(argv, env = process.env) {
+  return runEntry("patrol", argv, env, runOnce);
 }
 
 if (isEntryPoint(import.meta.url)) {

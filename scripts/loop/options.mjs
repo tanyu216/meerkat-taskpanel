@@ -1,14 +1,8 @@
-#!/usr/bin/env node
 /**
  * The loop's option surface — one parser for the scheduler and every entry.
  *
- * Keeping this in one place is what makes `node scripts/loop/poll.mjs` and
- * `node scripts/supervisor.mjs --once` mean the same thing: the entries and
- * the scheduler receive the same flags, the same host config and the same
- * defaults. The continue prompt re-serialises only the values a child entry
- * must share (`loopCommandArgs`), never the whole option object.
- *
- * Node builtins only; no network, no dependencies.
+ * Flags are declared in `FLAGS`; the parse loop is generic. The continue prompt
+ * re-serialises only the values a child entry must share (`loopCommandArgs`).
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -17,11 +11,12 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  DEFAULT_BOARD_LIMIT,
   EVENT_CONTINUE_MIN_MS,
   EVENT_DEBOUNCE_MAX_MS,
   EVENT_DEBOUNCE_MS,
   SSE_SUBSCRIBE_IDLE_MS,
-} from "../../src/shared/constants.mjs";
+} from "../../src/foundation/constants.mjs";
 import {
   DEFAULT_CONTINUE_SECONDS,
   DEFAULT_MAX_CONCURRENCY,
@@ -33,15 +28,14 @@ import {
   resolveRecoverStale,
   resolveIntervalSeconds,
   resolveWorkflowConfig,
-} from "../../src/shared/scheduling.mjs";
+} from "../../src/foundation/scheduling.mjs";
 import {
-  DEFAULT_BOARD_LIMIT,
   DEFAULT_TRAIL_LIMIT,
   LEADER_LOOKBACK_DAYS,
   PEER_LIVENESS_K,
   PEER_MECHANISM,
   PEER_PERIOD_MIN,
-} from "../../src/shared/sla-patrol.mjs";
+} from "../../src/foundation/sla-patrol.mjs";
 
 /** Host → dot-directory under the target home. */
 export const HOST_DIRS = Object.freeze({ claude: ".claude", codex: ".codex", pi: ".agents" });
@@ -84,9 +78,117 @@ export function defaultRepo(configPath, beside = resolve(dirname(fileURLToPath(i
   return recorded ? resolve(recorded) : beside;
 }
 
-/** @param {string[]} argv */
-export function parseArgs(argv, env = process.env) {
-  const opts = {
+/**
+ * One flag declaration.
+ *
+ * `kind`:
+ *   * `"value"` (default) — `--flag value` or `--flag=value`;
+ *   * `"switch"` — no value, and `--flag=value` is refused;
+ *   * `"toggle"` — bare form means on; `=yes|no` also accepted.
+ */
+const FLAGS = new Map();
+
+/** @param {string} name @param {(opts: object, value?: string) => void} set @param {"value"|"switch"|"toggle"} [kind] */
+function flag(name, set, kind = "value") {
+  FLAGS.set(name, { set, kind });
+}
+
+/** Split a repeatable/comma-separated value. */
+function list(value) {
+  return value.split(",").map((part) => part.trim()).filter(Boolean);
+}
+
+/** @param {string} name @param {string} raw */
+function number(name, raw) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) throw new Error(`${name} requires a number, got '${raw}'`);
+  return value;
+}
+
+flag("--agent", (opts, value) => opts.agents.push(...list(value)));
+flag("--host", (opts, value) => { opts.host = value; });
+flag("--repo", (opts, value) => { opts.repo = resolve(value); });
+flag("--ping-interval", (opts, value) => { opts.pingInterval = number("--ping-interval", value); });
+// Deprecated alias for the ping clock. The old units pass a bare `--once`, so
+// the alias only has to keep the flag itself working.
+flag("--poll-interval", (opts, value) => {
+  opts.pingInterval = number("--poll-interval", value);
+  opts.legacyPollInterval = true;
+});
+flag("--continue-interval", (opts, value) => { opts.continueInterval = number("--continue-interval", value); });
+flag("--continue", (opts, value) => { opts.continue = value; });
+flag("--continue-state", (opts, value) => { opts.continueState = value; });
+flag("--patrol-interval", (opts, value) => { opts.patrolInterval = number("--patrol-interval", value); });
+flag("--max-concurrency", (opts, value) => { opts.maxConcurrency = number("--max-concurrency", value); });
+flag("--claim-unassigned", (opts, value) => { opts.claimUnassigned = value; });
+flag("--assignee-only", (opts) => { opts.claimUnassigned = "no"; }, "switch");
+flag("--recover-stale", (opts, value) => { opts.recoverStale = value; });
+flag("--workflow", (opts, value) => { opts.workflow = value; });
+flag("--reviewer", (opts, value) => { opts.reviewer = value; });
+flag("--auto-accept-reviews", (opts, value) => { opts.autoAcceptReviews = value; });
+// Advisory copy of the board's acceptance policy (the board decides).
+flag("--acceptance", (opts, value) => { opts.acceptance = value; });
+flag("--acceptance-policy", (opts, value) => { opts.acceptance = value; });
+flag("--workflow-max-actions", (opts, value) => { opts.workflowMaxActions = value; });
+flag("--review-aging-minutes", (opts, value) => { opts.reviewAgingMinutes = value; });
+flag("--once", (opts) => { opts.once = true; }, "switch");
+flag("--ping-only", (opts) => { opts.pingOnly = true; }, "switch");
+flag("--continue-only", (opts) => { opts.continueOnly = true; }, "switch");
+flag("--patrol-only", (opts) => { opts.patrolOnly = true; }, "switch");
+flag("--subscribe", (opts) => { opts.subscribe = true; }, "switch");
+flag("--url", (opts, value) => { opts.url = value; });
+flag("--env-file", (opts, value) => { opts.envFile = value; });
+flag("--token", (opts, value) => { opts.token = value; });
+flag("--sse-idle-ms", (opts, value) => { opts.sseIdleMs = number("--sse-idle-ms", value); });
+flag("--event-debounce-ms", (opts, value) => { opts.eventDebounceMs = number("--event-debounce-ms", value); });
+flag("--event-debounce-max-ms", (opts, value) => { opts.eventDebounceMaxMs = number("--event-debounce-max-ms", value); });
+flag("--event-continue", (opts, value) => { opts.eventContinue = value; });
+flag("--event-continue-min-ms", (opts, value) => { opts.eventContinueMinMs = number("--event-continue-min-ms", value); });
+flag("--patrol-llm", (opts, value) => {
+  opts.patrolLlm = value === undefined ? true : /^(yes|true|1|y|on)$/i.test(value);
+}, "toggle");
+flag("--notify", (opts, value) => { opts.notify = value; });
+flag("--dry-run", (opts) => { opts.dryRun = true; }, "switch");
+flag("--log", (opts, value) => { opts.log = value; });
+flag("--state", (opts, value) => { opts.state = value; });
+flag("--sla-ledger", (opts, value) => { opts.slaLedger = value; });
+flag("--sla-leader", (opts, value) => { opts.slaLeader = value; });
+flag("--sla-last-ok", (opts, value) => { opts.slaLastOk = value; });
+flag("--sla-peer", (opts, value) => { opts.slaPeer = value; });
+flag("--board-limit", (opts, value) => { opts.boardLimit = number("--board-limit", value); });
+flag("--trail-limit", (opts, value) => { opts.trailLimit = number("--trail-limit", value); });
+flag("--config", (opts, value) => { opts.config = value; });
+flag("--home", (opts, value) => { opts.home = resolve(value); });
+flag("--cli", (opts, value) => { opts.cli = value; });
+flag("--glue", (opts, value) => { opts.glue = value; });
+flag("--projects-json", (opts, value) => { opts.projectsJson = value; });
+flag("--wake-command", (opts, value) => { opts.wakeCommand = value; });
+
+/** Host-local files derived from `--home` and `--host`. */
+function hostPaths(home, host) {
+  const dir = join(home, HOST_DIRS[host]);
+  return {
+    log: join(dir, "meerkat-taskpanel", "supervisor.log"),
+    state: join(dir, "meerkat-taskpanel", "supervisor.state.json"),
+    config: join(dir, "meerkat-taskpanel.env"),
+    glue: join(dir, "bin", `wake-${host}.sh`),
+    projectsJson: join(dir, "skills", "meerkat-taskpanel", "projects.json"),
+  };
+}
+
+/** The files that live beside the worker registry. */
+function statePaths(state) {
+  const dir = dirname(state);
+  return {
+    continueState: join(dir, "continue.state.json"),
+    slaLedger: join(dir, "sla-ledger.json"),
+    slaLastOk: join(dir, "loop-patrol-last-ok.json"),
+  };
+}
+
+/** @param {NodeJS.ProcessEnv} env */
+function defaultOptions(env) {
+  return {
     agents: [],
     host: "claude",
     repo: null,   // resolved below: --repo, else defaultRepo()
@@ -110,6 +212,7 @@ export function parseArgs(argv, env = process.env) {
     patrolOnly: false,
     subscribe: false,
     url: null,
+    envFile: null,
     token: null,
     sseIdleMs: undefined,
     eventDebounceMs: undefined,
@@ -137,122 +240,38 @@ export function parseArgs(argv, env = process.env) {
     wakeCommand: null,
     help: false,
   };
+}
 
-  const number = (flag, raw) => {
-    const value = Number(raw);
-    if (!Number.isFinite(value) || value < 0) throw new Error(`${flag} requires a number, got '${raw}'`);
-    return value;
-  };
+/** @param {string[]} argv */
+export function parseArgs(argv, env = process.env) {
+  const opts = defaultOptions(env);
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    const take = (flag) => {
-      const value = argv[++i];
-      if (value === undefined) throw new Error(`${flag} requires a value`);
-      return value;
-    };
-    if (arg === "--agent") opts.agents.push(...take("--agent").split(",").map((s) => s.trim()).filter(Boolean));
-    else if (arg.startsWith("--agent=")) opts.agents.push(...arg.slice(8).split(",").map((s) => s.trim()).filter(Boolean));
-    else if (arg === "--host") opts.host = take("--host");
-    else if (arg.startsWith("--host=")) opts.host = arg.slice(7);
-    else if (arg === "--repo") opts.repo = resolve(take("--repo"));
-    else if (arg.startsWith("--repo=")) opts.repo = resolve(arg.slice(7));
-    else if (arg === "--ping-interval") opts.pingInterval = number("--ping-interval", take("--ping-interval"));
-    else if (arg.startsWith("--ping-interval=")) opts.pingInterval = number("--ping-interval", arg.slice(16));
-    else if (arg === "--continue-interval") opts.continueInterval = number("--continue-interval", take("--continue-interval"));
-    else if (arg.startsWith("--continue-interval=")) opts.continueInterval = number("--continue-interval", arg.slice(20));
-    else if (arg === "--continue") opts.continue = take("--continue");
-    else if (arg.startsWith("--continue=")) opts.continue = arg.slice(11);
-    else if (arg === "--continue-state") opts.continueState = take("--continue-state");
-    else if (arg.startsWith("--continue-state=")) opts.continueState = arg.slice(17);
-    // Deprecated alias: the old poll cadence now names the ping clock. The old
-    // units pass a bare `--once`, not this flag, so the compatibility surface is
-    // the mode selector, not this alias.
-    else if (arg === "--poll-interval") {
-      opts.pingInterval = number("--poll-interval", take("--poll-interval"));
-      opts.legacyPollInterval = true;
-    } else if (arg.startsWith("--poll-interval=")) {
-      opts.pingInterval = number("--poll-interval", arg.slice(16));
-      opts.legacyPollInterval = true;
-    } else if (arg === "--patrol-interval") opts.patrolInterval = number("--patrol-interval", take("--patrol-interval"));
-    else if (arg.startsWith("--patrol-interval=")) opts.patrolInterval = number("--patrol-interval", arg.slice(18));
-    else if (arg === "--max-concurrency") opts.maxConcurrency = number("--max-concurrency", take("--max-concurrency"));
-    else if (arg.startsWith("--max-concurrency=")) opts.maxConcurrency = number("--max-concurrency", arg.slice(18));
-    else if (arg === "--claim-unassigned") opts.claimUnassigned = take("--claim-unassigned");
-    else if (arg.startsWith("--claim-unassigned=")) opts.claimUnassigned = arg.slice(19);
-    else if (arg === "--assignee-only") opts.claimUnassigned = "no";
-    else if (arg === "--recover-stale") opts.recoverStale = take("--recover-stale");
-    else if (arg.startsWith("--recover-stale=")) opts.recoverStale = arg.slice(16);
-    else if (arg === "--workflow") opts.workflow = take("--workflow");
-    else if (arg.startsWith("--workflow=")) opts.workflow = arg.slice(11);
-    else if (arg === "--reviewer") opts.reviewer = take("--reviewer");
-    else if (arg.startsWith("--reviewer=")) opts.reviewer = arg.slice(11);
-    else if (arg === "--auto-accept-reviews") opts.autoAcceptReviews = take("--auto-accept-reviews");
-    else if (arg.startsWith("--auto-accept-reviews=")) opts.autoAcceptReviews = arg.slice(22);
-    // "Who closes a task" — the board's policy, mirrored here so the loop's
-    // approval plan knows when a human-only board expects it to HOLD.
-    else if (arg === "--acceptance") opts.acceptance = take("--acceptance");
-    else if (arg.startsWith("--acceptance=")) opts.acceptance = arg.slice(13);
-    else if (arg === "--acceptance-policy") opts.acceptance = take("--acceptance-policy");
-    else if (arg.startsWith("--acceptance-policy=")) opts.acceptance = arg.slice(20);
-    else if (arg === "--workflow-max-actions") opts.workflowMaxActions = take("--workflow-max-actions");
-    else if (arg.startsWith("--workflow-max-actions=")) opts.workflowMaxActions = arg.slice(23);
-    else if (arg === "--review-aging-minutes") opts.reviewAgingMinutes = take("--review-aging-minutes");
-    else if (arg.startsWith("--review-aging-minutes=")) opts.reviewAgingMinutes = arg.slice(23);
-    else if (arg === "--once") opts.once = true;
-    else if (arg === "--ping-only") opts.pingOnly = true;
-    else if (arg === "--continue-only") opts.continueOnly = true;
-    else if (arg === "--patrol-only") opts.patrolOnly = true;
-    else if (arg === "--subscribe") opts.subscribe = true;
-    else if (arg === "--url") opts.url = take("--url");
-    else if (arg.startsWith("--url=")) opts.url = arg.slice(6);
-    else if (arg === "--token") opts.token = take("--token");
-    else if (arg.startsWith("--token=")) opts.token = arg.slice(8);
-    else if (arg === "--sse-idle-ms") opts.sseIdleMs = number("--sse-idle-ms", take("--sse-idle-ms"));
-    else if (arg.startsWith("--sse-idle-ms=")) opts.sseIdleMs = number("--sse-idle-ms", arg.slice(14));
-    else if (arg === "--event-debounce-ms") opts.eventDebounceMs = number("--event-debounce-ms", take("--event-debounce-ms"));
-    else if (arg.startsWith("--event-debounce-ms=")) opts.eventDebounceMs = number("--event-debounce-ms", arg.slice(20));
-    else if (arg === "--event-debounce-max-ms") opts.eventDebounceMaxMs = number("--event-debounce-max-ms", take("--event-debounce-max-ms"));
-    else if (arg.startsWith("--event-debounce-max-ms=")) opts.eventDebounceMaxMs = number("--event-debounce-max-ms", arg.slice(24));
-    else if (arg === "--event-continue") opts.eventContinue = take("--event-continue");
-    else if (arg.startsWith("--event-continue=")) opts.eventContinue = arg.slice(17);
-    else if (arg === "--event-continue-min-ms") opts.eventContinueMinMs = number("--event-continue-min-ms", take("--event-continue-min-ms"));
-    else if (arg.startsWith("--event-continue-min-ms=")) opts.eventContinueMinMs = number("--event-continue-min-ms", arg.slice(24));
-    else if (arg === "--patrol-llm") opts.patrolLlm = true;
-    else if (arg.startsWith("--patrol-llm=")) opts.patrolLlm = /^(yes|true|1|y|on)$/i.test(arg.slice(13));
-    else if (arg === "--notify") opts.notify = take("--notify");
-    else if (arg.startsWith("--notify=")) opts.notify = arg.slice(9);
-    else if (arg === "--dry-run") opts.dryRun = true;
-    else if (arg === "--log") opts.log = take("--log");
-    else if (arg.startsWith("--log=")) opts.log = arg.slice(6);
-    else if (arg === "--state") opts.state = take("--state");
-    else if (arg.startsWith("--state=")) opts.state = arg.slice(8);
-    else if (arg === "--sla-ledger") opts.slaLedger = take("--sla-ledger");
-    else if (arg.startsWith("--sla-ledger=")) opts.slaLedger = arg.slice(13);
-    else if (arg === "--sla-leader") opts.slaLeader = take("--sla-leader");
-    else if (arg.startsWith("--sla-leader=")) opts.slaLeader = arg.slice(13);
-    else if (arg === "--sla-last-ok") opts.slaLastOk = take("--sla-last-ok");
-    else if (arg.startsWith("--sla-last-ok=")) opts.slaLastOk = arg.slice(14);
-    else if (arg === "--sla-peer") opts.slaPeer = take("--sla-peer");
-    else if (arg.startsWith("--sla-peer=")) opts.slaPeer = arg.slice(11);
-    else if (arg === "--board-limit") opts.boardLimit = number("--board-limit", take("--board-limit"));
-    else if (arg.startsWith("--board-limit=")) opts.boardLimit = number("--board-limit", arg.slice(14));
-    else if (arg === "--trail-limit") opts.trailLimit = number("--trail-limit", take("--trail-limit"));
-    else if (arg.startsWith("--trail-limit=")) opts.trailLimit = number("--trail-limit", arg.slice(14));
-    else if (arg === "--config") opts.config = take("--config");
-    else if (arg.startsWith("--config=")) opts.config = arg.slice(9);
-    else if (arg === "--home") opts.home = resolve(take("--home"));
-    else if (arg.startsWith("--home=")) opts.home = resolve(arg.slice(7));
-    else if (arg === "--cli") opts.cli = take("--cli");
-    else if (arg.startsWith("--cli=")) opts.cli = arg.slice(6);
-    else if (arg === "--glue") opts.glue = take("--glue");
-    else if (arg.startsWith("--glue=")) opts.glue = arg.slice(7);
-    else if (arg === "--projects-json") opts.projectsJson = take("--projects-json");
-    else if (arg.startsWith("--projects-json=")) opts.projectsJson = arg.slice(16);
-    else if (arg === "--wake-command") opts.wakeCommand = take("--wake-command");
-    else if (arg.startsWith("--wake-command=")) opts.wakeCommand = arg.slice(15);
-    else if (arg === "-h" || arg === "--help") opts.help = true;
-    else throw new Error(`unknown option: ${arg}`);
+    const equals = arg.startsWith("--") ? arg.indexOf("=") : -1;
+    const name = equals === -1 ? arg : arg.slice(0, equals);
+
+    if (name === "-h" || name === "--help") {
+      opts.help = true;
+      continue;
+    }
+
+    const spec = FLAGS.get(name);
+    if (spec === undefined) throw new Error(`unknown option: ${arg}`);
+
+    if (spec.kind === "switch" || (spec.kind === "toggle" && equals === -1)) {
+      if (spec.kind === "switch" && equals !== -1) throw new Error(`unknown option: ${arg}`);
+      spec.set(opts);
+      continue;
+    }
+
+    let value;
+    if (equals !== -1) value = arg.slice(equals + 1);
+    else {
+      value = argv[++i];
+      if (value === undefined) throw new Error(`${name} requires a value`);
+    }
+    spec.set(opts, value);
   }
 
   if (opts.agents.length === 0) {
@@ -261,28 +280,19 @@ export function parseArgs(argv, env = process.env) {
   }
   if (!(opts.host in HOST_DIRS)) throw new Error(`unknown host '${opts.host}' (expected claude|codex|pi)`);
 
-  const hostDir = HOST_DIRS[opts.host];
-  opts.log ??= join(opts.home, hostDir, "meerkat-taskpanel", "supervisor.log");
-  opts.state ??= join(opts.home, hostDir, "meerkat-taskpanel", "supervisor.state.json");
-  // The continue lock lives beside the worker registry but never inside it: the
-  // registry is the poll's concurrency gate, and a lock entry would consume a
-  // worker slot.
-  opts.continueState ??= join(dirname(opts.state), "continue.state.json");
-  // The ledger sits beside the state file by default, so a host with a custom
-  // --state keeps one directory for everything the supervisor remembers.
-  opts.slaLedger ??= join(dirname(opts.state), "sla-ledger.json");
-  // The liveness marker goes beside them, for the same reason — and it is the
-  // path a peer deployment points its own `--sla-peer` at (`<mech>-last-ok.json`
-  // is this mechanism's name for it, mirroring the peer's `sla-scan` marker).
-  opts.slaLastOk ??= join(dirname(opts.state), "loop-patrol-last-ok.json");
-  // The leader identity is deployable, not hard-coded (§3 of the contract).
+  const paths = hostPaths(opts.home, opts.host);
+  opts.log ??= paths.log;
+  opts.state ??= paths.state;
+  // The lock and the ledgers sit beside the worker registry, never inside it: an
+  // entry there would consume a worker slot.
+  const beside = statePaths(opts.state);
+  opts.continueState ??= beside.continueState;
+  opts.slaLedger ??= beside.slaLedger;
+  opts.slaLastOk ??= beside.slaLastOk;
   opts.slaLeader ??= env.MEERKAT_TASKPANEL_SLA_LEADER ?? null;
   opts.slaPeer ??= env.MEERKAT_TASKPANEL_SLA_PEER ?? null;
-  // The leader lookback is a mechanism parameter with a default, not a knob a
-  // deployment normally touches — it is read here so `planSlaPatrol`'s caller
-  // states it rather than leaving it implicit.
   opts.slaLookbackDays ??= LEADER_LOOKBACK_DAYS;
-  opts.config ??= join(opts.home, hostDir, "meerkat-taskpanel.env");
+  opts.config ??= paths.config;
   opts.configFile = readConfigFile(opts.config);
   // Cadences follow the same precedence as every other policy: flag > env >
   // the host config the installer wrote > default. Invalid values are ignored,
@@ -301,13 +311,8 @@ export function parseArgs(argv, env = process.env) {
   });
   opts.repo ??= defaultRepo(opts.config);
   opts.cli ??= join(opts.repo, "src", "cli", "index.mjs");
-  // The two host-local artefacts a wake needs: the glue that owns the working
-  // directory, and the project map it resolves that directory from. Both live
-  // under the host's dot-directory, exactly where `install.sh` put them.
-  opts.glue ??= join(opts.home, hostDir, "bin", `wake-${opts.host}.sh`);
-  opts.projectsJson ??= join(opts.home, hostDir, "skills", "meerkat-taskpanel", "projects.json");
-  // Event-subscriber defaults. A flag always wins; these are the values a
-  // deployment never normally states.
+  opts.glue ??= paths.glue;
+  opts.projectsJson ??= paths.projectsJson;
   opts.sseIdleMs ??= SSE_SUBSCRIBE_IDLE_MS;
   opts.eventDebounceMs ??= EVENT_DEBOUNCE_MS;
   opts.eventDebounceMaxMs ??= EVENT_DEBOUNCE_MAX_MS;
@@ -452,18 +457,18 @@ export function loopCommandArgs(opts) {
     if (value === null || value === undefined || value === "") return;
     args.push(flag, String(value));
   };
-  // Only state values that differ from what the child would derive anyway.
-  // Otherwise every line of the prompt carries a dozen redundant absolute
-  // paths, three times over.
-  const hostDir = HOST_DIRS[opts.host];
+  // Only state values that differ from what the child would derive anyway,
+  // or every line of the prompt carries a dozen redundant absolute paths.
+  const paths = hostPaths(opts.home, opts.host);
+  const beside = statePaths(opts.state);
   const defaults = {
-    config: join(opts.home, hostDir, "meerkat-taskpanel.env"),
+    config: paths.config,
     repo: defaultRepo(opts.config),
     cli: join(opts.repo, "src", "cli", "index.mjs"),
-    glue: join(opts.home, hostDir, "bin", `wake-${opts.host}.sh`),
-    projectsJson: join(opts.home, hostDir, "skills", "meerkat-taskpanel", "projects.json"),
-    slaLedger: join(dirname(opts.state), "sla-ledger.json"),
-    slaLastOk: join(dirname(opts.state), "loop-patrol-last-ok.json"),
+    glue: paths.glue,
+    projectsJson: paths.projectsJson,
+    slaLedger: beside.slaLedger,
+    slaLastOk: beside.slaLastOk,
   };
   for (const [flag, key] of [
     ["--config", "config"],
@@ -477,6 +482,8 @@ export function loopCommandArgs(opts) {
     if (opts[key] !== defaults[key]) add(flag, opts[key]);
   }
   for (const [flag, value] of [
+    ["--url", opts.url],
+    ["--env-file", opts.envFile],
     ["--sla-peer", opts.slaPeer],
     ["--sla-leader", opts.slaLeader],
     ["--notify", opts.notify],
@@ -531,8 +538,12 @@ Options:
                             turn per burst). launchd/systemd only; cron cannot
                             host a long-lived process. Cannot be combined with
                             --once or another selector.
-  --url <url>               Board URL for the subscriber (default: runtime pointer).
-  --token <token>           Board token (default: $TASKD_TOKEN / pointer tokenFile).
+  --url <url>               Board URL (default: TASKD_URL in the process env or
+                            install-root .env, then the runtime pointer).
+  --env-file <path>         Config file (default: MEERKAT_TASKPANEL_ENV_FILE,
+                            then <repo>/.env).
+  --token <token>           Board token (default: $TASKD_TOKEN / TASKD_TOKEN_FILE
+                            / pointer tokenFile).
   --sse-idle-ms <ms>        Reconnect after this much stream silence (default: 45000).
   --event-debounce-ms <ms>  Coalesce a burst of events (default: 300).
   --event-debounce-max-ms <ms>
@@ -550,10 +561,9 @@ Options:
   --reviewer <agent>        The independent reviewer. Unset disables review dispatch.
   --auto-accept-reviews=yes|no
                             Close a review card after applying its verdict (default: yes).
-  --acceptance <policy>     human-only | both | agent-only (default: both). The board is
-                            authoritative; this is what the loop believes. human-only makes
-                            the loop HOLD a top-level approval for a human (children and
-                            review cards are still closed by the loop).
+  --acceptance <policy>     human-only | both | agent-only (default: both). Advisory: the
+                            board decides the plan; the loop prints this copy at startup
+                            for diagnostics and keeps it for compatibility.
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
   --patrol-llm=yes|no       Allow patrol to start an LLM turn (default: no).
@@ -578,6 +588,6 @@ Options:
 The deterministic entries are also runnable on their own:
   node scripts/loop/poll.mjs       scan → atomic claim → wake a worker
   node scripts/loop/patrol.mjs     notify-only SLA rows (${PEER_MECHANISM}; peer watchdog ${PEER_LIVENESS_K}x${PEER_PERIOD_MIN}min)
-  node scripts/loop/workflow.mjs   reconcile / review dispatch / verdicts
+  node scripts/loop/workflow.mjs   apply the board's workflow plan
   node scripts/loop/continue.mjs   one judgment turn`;
 

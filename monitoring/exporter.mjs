@@ -25,12 +25,12 @@
 
 import { createServer } from "node:http";
 
-import { VERSION } from "../src/shared/constants.mjs";
+import { VERSION } from "../src/foundation/constants.mjs";
 import { MonitoringError, isMonitoringError } from "./lib/errors.mjs";
 import { exportMetrics, resolveOtlpEndpoint, withMetricsPath } from "./lib/otlp.mjs";
 import { Registry, validateObservation } from "./lib/registry.mjs";
 import { SLO_TARGETS, httpStatusFor, summarize, toHealth } from "./lib/slo.mjs";
-import { isEntryPoint } from "../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../src/foundation/entry-guard.mjs";
 
 /** Loopback by default: the sidecar is a local component, not a public one. */
 export const DEFAULT_HOST = "127.0.0.1";

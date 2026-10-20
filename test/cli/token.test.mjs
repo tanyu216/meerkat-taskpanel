@@ -1,24 +1,24 @@
 /**
  * Step 5: token priority, redaction and exit codes (§7.1, §F-F).
  *
- * The priority ladder is `--token` > `$TASKD_TOKEN` > pointer→tokenFile > none,
- * and "none" is legal on loopback. The second half of the contract — that the
- * token never appears in any output — is asserted end-to-end in the
- * `cli/token rotate — end to end (V10)` describe below, where a real CLI process
- * is on the wire.
+ * The priority ladder is `--token` > `$TASKD_TOKEN` > `TASKD_TOKEN_FILE` (the
+ * explicit config value) > pointer→tokenFile > none, and "none" is legal on
+ * loopback. The second half of the contract — that the token never appears in
+ * any output — is asserted end-to-end in the `cli/token rotate — end to end
+ * (V10)` describe below, where a real CLI process is on the wire.
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import { withCli } from "./helpers/cli-harness.mjs";
-import { resolveActor } from "../../src/shared/transport/actor.mjs";
-import { exitCodeFor, ioError, renderErrorText, usageError } from "../../src/shared/transport/errors.mjs";
-import { TOKEN_FORMAT, isTokenShape, resolveToken } from "../../src/shared/transport/token.mjs";
-import { DomainError } from "../../src/shared/errors.mjs";
+import { resolveActor } from "../../src/foundation/transport/actor.mjs";
+import { exitCodeFor, ioError, renderErrorText, usageError } from "../../src/foundation/transport/errors.mjs";
+import { TOKEN_FORMAT, isTokenShape, resolveToken } from "../../src/foundation/transport/token.mjs";
+import { DomainError } from "../../src/foundation/errors.mjs";
 
 const TOKEN = `td_${"a1b2c3d4".repeat(8)}`;
 const OTHER = `td_${"0f".repeat(32)}`;
@@ -97,6 +97,50 @@ describe("cli/token — the three-step ladder", () => {
     assert.equal(isTokenShape(`${TOKEN}0`), false);
     assert.equal(isTokenShape(`TD_${"a".repeat(64)}`), false);
     assert.match(TOKEN_FORMAT.source, /^\^td_/);
+  });
+
+  it("trusts an explicitly configured token file, strictly", () => {
+    const dir = tempDir();
+    const file = join(dir, "explicit-token");
+    writeFileSync(file, `${TOKEN}\n`, "utf8");
+    chmodSync(file, 0o600);
+    assert.deepEqual(resolveToken({ env: {}, tokenFile: file }), { token: TOKEN, source: "file" });
+  });
+
+  it("lets $TASKD_TOKEN win without reading the configured file", () => {
+    const resolved = resolveToken({
+      env: { TASKD_TOKEN: TOKEN },
+      // A missing path proves the higher rung short-circuits the file read.
+      tokenFile: "/nope/missing-token",
+    });
+    assert.deepEqual(resolved, { token: TOKEN, source: "env" });
+  });
+
+  it("refuses a configured file that is missing or is not a token", () => {
+    const dir = tempDir();
+    assert.throws(
+      () => resolveToken({ env: {}, tokenFile: join(dir, "missing") }),
+      (err) => err.code === "CONFIG_FILE_INVALID" && err.details.source === "config",
+    );
+
+    const bad = join(dir, "bad-token");
+    writeFileSync(bad, "not-a-token\n", "utf8");
+    chmodSync(bad, 0o600);
+    assert.throws(
+      () => resolveToken({ env: {}, tokenFile: bad }),
+      (err) => err.code === "TOKEN_FILE_CORRUPT" && err.details.source === "config",
+    );
+  });
+
+  it("refuses a configured token file other users can read", () => {
+    const dir = tempDir();
+    const file = join(dir, "open-token");
+    writeFileSync(file, `${TOKEN}\n`, "utf8");
+    chmodSync(file, 0o644);
+    assert.throws(
+      () => resolveToken({ env: {}, tokenFile: file }),
+      (err) => err.code === "CONFIG_FILE_INSECURE" && /chmod 600/.test(JSON.stringify(err.hint)),
+    );
   });
 });
 
@@ -213,6 +257,18 @@ describe("cli/actor", () => {
     // The configured human is the last name before the OS user, so a host that
     // has one does not fall through to whatever the shell happens to say.
     assert.equal(resolveActor({ flags: {}, env: { TASKCTL_HUMAN: "Terry" } }).actor.id, "Terry");
+  });
+
+  it("does not let an agent inherit the human's name as its id", () => {
+    // `TASKCTL_HUMAN` names the person, not a role. Two agents sharing one host
+    // (jobs / linus / turing) must not both be recorded as that person when they
+    // forget `--agent`; they fall through to the OS user or "local".
+    const resolved = resolveActor({
+      flags: { actorKind: "claude" },
+      env: { TASKCTL_HUMAN: "Terry", USER: "tanyu" },
+    });
+    assert.equal(resolved.actor.kind, "claude");
+    assert.equal(resolved.actor.id, "tanyu");
   });
 });
 

@@ -22,7 +22,7 @@ import {
   taskToRow,
   toIsoMillis,
 } from "../../../src/core/domain/task.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 
 const NOW = "2026-10-08T00:00:00.000Z";
 const create = (input = {}, context = {}) =>

@@ -13,8 +13,8 @@
  * (§4.4). Nothing else here is exported upward.
  */
 
-import { DomainError } from "../../../shared/errors.mjs";
-import { newId } from "../../../shared/ids.mjs";
+import { DomainError } from "../../../foundation/errors.mjs";
+import { newId } from "../../../foundation/ids.mjs";
 import { dictionaryEntryFromRow } from "../../domain/dictionary.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 

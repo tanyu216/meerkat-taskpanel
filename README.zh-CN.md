@@ -25,7 +25,7 @@ Meerkat TaskPanel 就是回答这些问题的记录：
 Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题是 **Agent 之间的任务协作** —— 拆分工作、声明依赖、交接结果；而对围绕它们的人来说，它把这种协作变成**可可视化、可追溯**的东西，而不是锁在模型的上下文里。真正干这些事的机制 —— 只增不改的审计轨迹、一等公民的依赖与 epic 关系、可续接的会话 —— 正是下方[亮点](#亮点)所描述的。
 
 > **状态：引擎已整体落地 —— 核心引擎、`taskctl` CLI 与其本地 `taskd`、六宿主安装器、
-> md 迁移器，以及完整的看板后端与 `web/` 前端。**
+> 以及完整的看板后端与 `web/` 前端。**
 > `src/core/` 已包含领域模型、SQLite 存储与迁移、用例与 `openBoard()`；`src/cli/` +
 > `src/server/` 提供了真实的 `taskctl` 命令面，以及 CLI 会在回环地址上自动启动的本地
 > `taskd` HTTP 服务（`TASKD_NO_AUTOSTART=1` 可禁用）；`src/server/` 提供完整的看板 HTTP API
@@ -67,7 +67,7 @@ Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题
 ## 架构
 
 Meerkat TaskPanel 是三层薄结构，依赖方向始终向内：`src/cli`、`src/server` 是入口，
-`src/core` 持有领域模型、SQLite 存储与用例，`src/shared` 是它们共享的 DTO 与辅助函数。
+`src/core` 持有领域模型、SQLite 存储与用例，`src/foundation` 是它们共享的 DTO 与辅助函数。
 完整目录树见 [仓库结构](#仓库结构)；想为自己的宿主安装 skill/插件，见 [安装](#安装)。
 
 ## 截图
@@ -88,10 +88,10 @@ meerkat-taskpanel/
 ├── package.json                  # 工作区根 + bin(taskctl) + scripts
 ├── install.sh                    # 安装分发器：--target claude|openclaw|codex|pi|opencode|cursor|all
 ├── src/                          # 工程源码
-│   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量 / md 迁移器
+│   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量 / md 导出
 │   ├── cli/                      #   taskctl（CLI 出口）
 │   ├── server/                   #   本地 HTTP API + SSE
-│   └── shared/                   #   共享 DTO / 常量
+│   └── foundation/               #   DTO / 常量 / 纯函数
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
 ├── skills/                       # 两个 skill：meerkat-taskpanel（看板）、meerkat-loop（监督进程）
 ├── .claude-plugin/               # marketplace + board 插件清单（插件根 = 仓根）
@@ -157,6 +157,15 @@ OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的�
 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`
 （预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
+**配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的
+`.env`，取看板 URL、客户端 token、allow-list 与验收策略。进程环境逐键优先，CLI 参数再优先于
+两者；`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会
+写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每条
+`taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），
+安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其
+中的键搬进 `.env`。详见 [`docs/install.md`](docs/install.md) 与
+[`docs/development.md`](docs/development.md)。
+
 ## 实践指南
 
 安装 skill 只需一行；把看板用好则是一套习惯。所有宿主共享同一条**八条规则**内核：
@@ -174,10 +183,11 @@ OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的�
 **每 60 秒**做一次 **ping**：清掉 registry 中进程已退出的 worker 条目 —— 不读看板、不启动模型。
 **每十分钟**做一次 **continue** 回合：用有界的 `继续` 提示词唤醒宿主，由这一回合运行循环的
 确定性入口 —— 只通知的 SLA 巡检（心跳过期、无人应答的确认门、没人排验收的交付，以及
-`PROTOCOL §⑮` 的其余各项）、唯一会写卡的工作流通道（重放容器规则、为每笔交付派出独立审核员、
-应用结论），以及**只有真正认领成功**才唤醒 worker 的 poll（空扫描 $0）。SLA 的每一条都是
-**发给 leader 的通知**，绝不对卡动手；工作流入口是唯一写卡的一方（`--reviewer` 启用派发，
-`--workflow=no` 整条通道关闭）。Claude Code 与 Codex **本身没有定时器**，因此循环活在它们
+`PROTOCOL §⑮` 的其余各项）、工作流通道（看板通过 `issue reconcile --workflow` 计算计划：
+容器规则、为每笔交付派出独立审核员、应用结论；循环执行计划中的审核动作），以及**只有真正
+认领成功**才唤醒 worker 的 poll（空扫描 $0）。SLA 的每一条都是**发给 leader 的通知**，绝不
+对卡动手；工作流入口执行看板的计划（`--reviewer` 启用派发，`--workflow=no` 整条通道关闭）。
+Claude Code 与 Codex **本身没有定时器**，因此循环活在它们
 **之外**，被唤醒的只是 worker（`claude -p`、`codex exec`、`pi --print`）。在 launchd/systemd
 上，可选的 **subscribe 守护进程**保持一条 SSE 连接，收到可派发事件时请求一个 continue 回合，
 因此工作发现是事件驱动的；continue 周期仍是兜底，也是基于时间的检查（过期认领、审核老化、
@@ -255,8 +265,9 @@ claim-first 片段、写入可调度的认领触发脚本 `~/.codex/meerkat-task
 做会话级归属。Codex **本身没有定时器**，因此规则 1 由[监督进程](#调度ping-与-continue)唤醒
 `codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
 
-完整指南 —— 八条规则的展开、各宿主的安装与触发差异，以及一个实战示例 —— 在 skill 内：
-[`skills/meerkat-taskpanel/references/practice-guides.md`](skills/meerkat-taskpanel/references/practice-guides.md)。
+面向 agent 的指南 —— claim-first、状态模型、交付门与看板 workflow —— 在 skill 内：
+[`skills/meerkat-taskpanel/SKILL.md`](skills/meerkat-taskpanel/SKILL.md)；各宿主的安装与触发细节见
+[`docs/install.md`](docs/install.md)。
 
 ## 开发
 
@@ -287,7 +298,7 @@ PR 流程，以及 CI 强制执行的约定。贡献以 MIT 许可落库。
 | **引擎** | `src/core/` —— 领域模型、SQLite 存储与迁移、状态机、下沉到数据库触发器的各项不变量、`openBoard()` | *已落地* |
 | **CLI 与本地服务** | `src/cli/` —— 对齐 `task-interface v1` 的 `taskctl` 命令面，以及 CLI 自动启动的回环 `taskd` | *已落地* |
 | **安装器** | `install.sh` + `scripts/install/<host>.sh` —— 六个宿主目标，幂等且合并式写入 | *已落地* |
-| **md 迁移器** | `src/core/storage/md/` —— 卡与 markdown 互导，带 reconcile 与导入后不变量检查 | *已落地* |
+| **md 导出** | `src/core/storage/md/` —— `taskctl export md` 为每张卡写一份规范 markdown | *已落地* |
 | **看板 API 与前端** | `src/server/` —— 完整的看板 HTTP API 及其 SSE 流；`web/` —— 构建到 `web/dist` 的 Vue 3 看板 | *已落地* |
 | **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合 | *（规划中）* |
 | **迭代管理** | 迭代（sprint）周期管理：任务归入迭代、迭代内进度与容量 | *（规划中）* |

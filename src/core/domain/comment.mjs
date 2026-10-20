@@ -9,7 +9,7 @@
  * Pure: no `node:` specifiers.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { COMMENT_KINDS, isActorKind } from "./enums.mjs";
 import { assertIsoMillis } from "./task.mjs";
 

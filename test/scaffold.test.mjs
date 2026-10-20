@@ -21,7 +21,7 @@ import test, { after, describe, it } from "node:test";
 import { listFiles, resolveSkillSource } from "../scripts/sync-skills.mjs";
 import { MANIFESTS, validateManifests } from "../scripts/verify/manifests.mjs";
 import { validateSkill } from "../scripts/verify/skill.mjs";
-import { VERSION } from "../src/shared/constants.mjs";
+import { VERSION } from "../src/foundation/constants.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -266,10 +266,11 @@ describe("install.sh", () => {
 });
 
 describe("repository guard files", () => {
-  it(".gitignore covers build output, runtime data, nested worktrees and OS noise", async () => {
+  it(".gitignore covers build output, runtime data, nested worktrees, the config file and OS noise", async () => {
     const ignore = await readFile(join(ROOT, ".gitignore"), "utf8");
-    for (const entry of ["node_modules/", "dist/", ".data/", ".worktrees/", ".DS_Store"]) {
-      assert.ok(ignore.includes(entry), `.gitignore must contain ${entry}`);
+    const entries = ignore.split("\n").map((line) => line.trim());
+    for (const entry of ["node_modules/", "dist/", ".data/", ".worktrees/", ".DS_Store", ".env"]) {
+      assert.ok(entries.includes(entry), `.gitignore must contain ${entry}`);
     }
   });
 

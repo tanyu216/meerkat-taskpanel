@@ -31,26 +31,22 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { exportMd } from "../../src/core/storage/md/export.mjs";
-import { importMd, parseCard } from "../../src/core/storage/md/import.mjs";
 import { createCommands, createContext } from "../../src/core/commands/index.mjs";
 import { normalizeBlockedReason } from "../../src/core/domain/blocked-reason.mjs";
 import { BLOCKED_REASONS, SQL_ENUM_SETS } from "../../src/core/domain/enums.mjs";
 import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
-import { taskToWire } from "../../src/shared/wire.mjs";
+import { taskToWire } from "../../src/foundation/wire.mjs";
 import { readMigrationFiles } from "../helpers/sql-parse.mjs";
 import {
   TS,
   TS2,
   cleanupTempDirs,
-  createTempBoard,
   insertProject,
   insertTask,
-  makeTempDir,
   reasonCode,
   withBoard,
 } from "../helpers/sqlite-fixture.mjs";
@@ -60,80 +56,7 @@ after(cleanupTempDirs);
 const MIGRATIONS_DIR = join(import.meta.dirname, "../../src/core/storage/migrations");
 const AGENT = { kind: "agent", id: "linus" };
 
-/** A card, minimal but valid, with `overrides` merged into the frontmatter. */
-function cardText(overrides = {}) {
-  const front = {
-    id: "PROJ-0001",
-    title: "A card",
-    status: "todo",
-    priority: "medium",
-    project: "proj",
-    target: "/tmp/meerkat-taskpanel-fixture",
-    created_by: "Elon",
-    created_at: TS,
-    ...overrides,
-  };
-  const lines = Object.entries(front)
-    .map(([key, value]) => `${key}: ${typeof value === "string" && value.includes(": ") ? JSON.stringify(value) : value}`)
-    .join("\n");
-  return `---\n${lines}\n---\n## Background\n\ntext\n`;
-}
-
-/** A board plus a directory holding the given cards (the caller closes it). */
-async function boardWithCards(cards) {
-  const board = await createTempBoard();
-  board.repos = createRepositories(board.db);
-  board.dir = join(makeTempDir("md-blocked-reason-"), "cards");
-  mkdirSync(board.dir, { recursive: true });
-  for (const [name, text] of Object.entries(cards)) writeFileSync(join(board.dir, name), text, "utf8");
-  return board;
-}
-
-/** The exported text of one card, from a real import → export round trip. */
-function exportOne(board, identifier = "PROJ-0001") {
-  const outDir = join(makeTempDir("md-blocked-reason-out-"), "out");
-  exportMd({ repos: board.repos, outDir, now: TS });
-  return readFileSync(join(outDir, `${identifier}.md`), "utf8");
-}
-
 describe("blocked_reason — the card field (0016)", () => {
-  it("is a known card key: it lands in the column, never in meta_json.legacy", () => {
-    const set = parseCard(cardText({ status: "blocked", blocked_at: TS, blocked_reason: "clarify" }), { file: "x.md" });
-    assert.equal(set.blockedReason, "clarify");
-    assert.equal("blocked_reason" in set.legacy, false, "a recognised key is never filed as an unknown one");
-    assert.equal("blocked_reason" in set.meta, false, "and it is a column, not a meta key");
-  });
-
-  it("leaves an unset reason unset — null, and out of legacy as well", () => {
-    const card = parseCard(cardText({}), { file: "x.md" });
-    assert.equal(card.blockedReason, null);
-    assert.equal("blocked_reason" in card.legacy, false, "absence is not an unknown key either");
-  });
-
-  it("round-trips a set value verbatim, and writes no key at all for an unset one", async () => {
-    const board = await boardWithCards({
-      "PROJ-0001.md": cardText({ status: "blocked", blocked_at: TS, blocked_reason: "dependency" }),
-      "PROJ-0002.md": cardText({ id: "PROJ-0002" }),
-    });
-    try {
-      const stats = importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
-      assert.equal(stats.warnings.length, 0);
-      assert.equal(board.repos.tasks.getByIdentifier("proj", "PROJ-0001").blockedReason, "dependency");
-
-      const withReason = exportOne(board, "PROJ-0001");
-      assert.match(withReason, /^blocked_reason: dependency$/m, "the literal survives the round trip");
-      assert.match(withReason, /^blocked_at: 2026-10-08T00:00:00\.000Z$/m, "beside blocked_at, as the card wrote it");
-
-      // A card with none: the key is absent, not empty. `blocked_at` is written
-      // either way — it has carried a key on every card since the beginning,
-      // which is exactly what `blocked_reason` does not do.
-      const without = exportOne(board, "PROJ-0002");
-      assert.equal(/^blocked_reason:/m.test(without), false, "an unset reason writes no key");
-    } finally {
-      board.close();
-    }
-  });
-
   it("accepts every literal the vocabulary names, and refuses anything else by name", () => {
     for (const reason of BLOCKED_REASONS) {
       assert.equal(normalizeBlockedReason(reason), reason);
@@ -316,97 +239,10 @@ describe("blocked_reason — the card field (0016)", () => {
   });
 });
 
-describe("blocked_reason — a value the board cannot classify (D2)", () => {
-  // Before the key was known, a card carrying `blocked_reason: <not a literal>`
-  // rode through `meta_json.legacy` untouched. Recognising the key may not turn
-  // that card into a lost one: markdown is the only way a provider's work
-  // reaches the board. So the *read* edge preserves what it cannot classify and
-  // warns, while the *write* entries stay strict.
-  const ODD = "quantum_entanglement";
-
-  it("keeps the card's own wording in legacy, leaves the column empty, and says so", () => {
-    const card = parseCard(
-      cardText({ status: "blocked", blocked_at: TS, blocked_reason: ODD }),
-      { file: "x.md" },
-    );
-    assert.equal(card.blockedReason, null, "a value that is not a literal is never stored in the column");
-    assert.equal(card.legacy.blocked_reason, ODD, "the card's own wording is preserved verbatim");
-    assert.equal(card.blockedReasonUnrecognized, true);
-    assert.ok(card.meta.import_warnings.includes("blocked_reason_unrecognized"));
-    // …while the write entry still refuses it: the leniency belongs to the
-    // import edge, where the input is not under the board's control.
-    assert.throws(() => normalizeBlockedReason(ODD), (err) => err.code === "VALIDATION_FAILED");
-  });
-
-  it("imports such a card instead of skipping it, warns, and exports it word for word", async () => {
-    const board = await boardWithCards({
-      "PROJ-0001.md": cardText({ status: "blocked", blocked_at: TS, blocked_reason: ODD }),
-    });
-    try {
-      const stats = importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
-      assert.equal(stats.parseSkipped.length, 0, "the card is imported, not skipped");
-      assert.equal(stats.warnings.length, 1, "and the mismatch is a warning, not a silent repair");
-      assert.match(stats.warnings[0], /blocked_reason/);
-
-      const task = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");
-      assert.equal(task.blockedReason, null, "the column stays empty");
-      assert.deepEqual(task.meta.import_warnings, ["blocked_reason_unrecognized"]);
-
-      const text = exportOne(board);
-      assert.match(text, new RegExp(`^blocked_reason: ${ODD}$`, "m"), "the value goes back out as it came in");
-    } finally {
-      board.close();
-    }
-  });
-
-  it("holds the same line for a value that is not even a scalar", () => {
-    // The frontmatter subset hands every bare scalar back as a string, so a list
-    // is the shape that reaches the non-string branch at all.
-    const card = parseCard(cardText({ blocked_reason: "[clarify, later]" }), { file: "x.md" });
-    assert.equal(card.blockedReason, null);
-    assert.deepEqual(card.legacy.blocked_reason, ["clarify", "later"]);
-  });
-
-  it("trims surrounding whitespace and nothing else (D3′)", () => {
-    const quoted = parseCard(
-      cardText({ status: "blocked", blocked_reason: '"  dependency  "' }),
-      { file: "x.md" },
-    );
-    assert.equal(quoted.blockedReason, "dependency", "space around a word is not a second spelling of it");
-    assert.equal("blocked_reason" in quoted.legacy, false, "it is a literal — so there is nothing to preserve");
-    // A different *word* is still refused: no case repair, no near-match folding.
-    assert.throws(() => normalizeBlockedReason("Dependency"), (err) => err.code === "VALIDATION_FAILED");
-    assert.throws(() => normalizeBlockedReason("dependencies"), (err) => err.code === "VALIDATION_FAILED");
-  });
-});
-
-describe("blocked_reason — what it must not disturb (Acceptance ⑤)", () => {
-  it("still files a key the importer does not know under meta_json.legacy, in order", () => {
-    const card = parseCard(
-      cardText({ git_rules: "x", blocked_reason: "clarify", subsession_ids: "a b" }),
-      { file: "x.md" },
-    );
-    // `target` is legacy by the O3 ruling (the board owns no project directory),
-    // so it is an *unknown* key here like the other two — and its position is
-    // the card's own order, which is what "preserved verbatim" means.
-    assert.deepEqual(Object.keys(card.legacy), ["target", "git_rules", "subsession_ids"], "unknown keys keep their order");
-    assert.equal("blocked_reason" in card.legacy, false);
-  });
-
-  it("exports an unknown key exactly where the card had it", async () => {
-    const board = await boardWithCards({ "PROJ-0001.md": cardText({ git_rules: "x" }) });
-    try {
-      importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
-      assert.match(exportOne(board), /^git_rules: x$/m);
-    } finally {
-      board.close();
-    }
-  });
-
+describe("blocked_reason — what it must not disturb", () => {
   it("adds no key to a card the checked-in goldens describe", () => {
-    // The goldens are the byte-for-byte oracle for a fixture that carries no
-    // reason (`test/contract/md-golden.test.mjs`), so 0016 owes them nothing —
-    // asserted here directly rather than inferred from that file staying green.
+    // The goldens are the byte-for-byte export oracle (`test/cli/export.test.mjs`),
+    // so 0016 owes them nothing.
     for (const name of ["PROJ-0001", "PROJ-0004", "PROJ-0006"]) {
       const golden = readFileSync(join(import.meta.dirname, `../fixtures/md/golden/${name}.md`), "utf8");
       assert.equal(/^blocked_reason:/m.test(golden), false, `${name} carries no blocked_reason line`);

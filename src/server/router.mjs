@@ -17,7 +17,7 @@
  *     validator, and handing it here changes no request's fate.
  */
 
-import { toErrorPayload } from "../shared/errors.mjs";
+import { toErrorPayload } from "../foundation/errors.mjs";
 
 /** Bodies are bounded so a runaway client cannot exhaust the service. */
 export const MAX_BODY_BYTES = 1024 * 1024;
@@ -143,7 +143,7 @@ export function readJsonBody(req, options = {}) {
  * the router would not take), which is right for every JSON body. An
  * attachment's bytes carry their own code instead — the caller that sets the
  * ceiling and serves the surface is the one that can say so
- * (`src/shared/attachments.mjs#attachmentTooLargeError`, T-20261015-075845-2):
+ * (`src/foundation/attachments.mjs#attachmentTooLargeError`, T-20261015-075845-2):
  * the same over-limit upload must not answer two different codes depending on
  * which half of it the board noticed first.
  *

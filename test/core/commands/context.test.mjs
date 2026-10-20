@@ -11,7 +11,7 @@ import test, { after, describe, it } from "node:test";
 
 import { BOARD_ACTOR, actorOf, createContext } from "../../../src/core/commands/context.mjs";
 import { createRepositories } from "../../../src/core/storage/repositories/index.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 import { TS, cleanupTempDirs, createTempBoard } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);

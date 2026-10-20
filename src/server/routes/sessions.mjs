@@ -6,7 +6,7 @@
  * when `--session-id` is omitted.
  */
 
-import { sessionToWire } from "../../shared/wire.mjs";
+import { sessionToWire } from "../../foundation/wire.mjs";
 import { int, REQUEST, shape, str } from "../requests.mjs";
 import { resolveTask } from "../task-view.mjs";
 

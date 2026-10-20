@@ -25,7 +25,7 @@ import {
   quoteArg,
   resolveContinueEnabled,
   resolveIntervalSeconds,
-} from "../../src/shared/scheduling.mjs";
+} from "../../src/foundation/scheduling.mjs";
 
 describe("resolveContinueEnabled", () => {
   it("defaults to on", () => {

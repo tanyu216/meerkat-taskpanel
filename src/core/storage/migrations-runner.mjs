@@ -15,7 +15,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { MIGRATIONS_DIRNAME, MIGRATION_FILE_PATTERN } from "./schema.mjs";
 import { REQUIRED_PRAGMAS } from "./driver.mjs";
 import { mapSqliteError } from "./sqlite-errors.mjs";

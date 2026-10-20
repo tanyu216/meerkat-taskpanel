@@ -21,7 +21,7 @@
 | `src/core/` | Domain model, SQLite repository, state machine, invariants (M1) |
 | `src/cli/` | `taskctl` — the CLI entry point |
 | `src/server/` | Local HTTP API + SSE for the board (M6) |
-| `src/shared/` | Shared DTOs, constants, small pure helpers |
+| `src/foundation/` | Foundation DTOs, constants, small pure helpers |
 | `web/` | Vue 3 + Vite board frontend → `web/dist` (the hosted frontend root) |
 | `skills/meerkat-taskpanel/` | The skill — **single source of truth** |
 | `.claude-plugin/` | The board plugin manifest and the marketplace; the plugin root is the repository root, which is how every harness shares the one `skills/` tree |
@@ -33,14 +33,27 @@
 | `design/` | Product design artifacts — the DESIGN / BLOCKS documents, the interactive `prototype/`, brand assets and exported assets (see `design/README.md`) |
 | `docs/` | Usage and development documentation |
 
-Dependency direction: `core`, `cli` and `server` may import from `shared`;
-nothing imports from `cli` or `server`; `shared` imports nothing from `src/`.
+Dependency direction: `core`, `cli` and `server` may import from `foundation`;
+nothing imports from `cli` or `server`; `foundation` imports nothing from `src/`.
+`src/foundation/` is the **public SDK**: both the board and the loop may import it.
+
+The loop is an **orchestrator, not a co-owner**. `scripts/loop/**`, the supervisor and
+`scripts/wake-cwd.mjs` may import `foundation/` but never `src/core|cli|server`; the board may
+not import the loop's policy modules (`foundation/scheduling.mjs`, `foundation/sla-patrol.mjs`); and
+no shipped skill imports `src/core|cli|server` at all — an installed skill and a checkout are
+not co-located, so such an import would resolve here and fail on a host. All three directions
+are asserted by `test/cli/imports.test.mjs`.
+
+The ownership rule behind them: a rule that decides **what state is legal or required**
+belongs to the board; a rule that decides **when to act, whom to involve, or where to wake**
+belongs to the loop. The loop reaches the board only through its public surface (`taskctl
+--json` / HTTP), never by importing it.
 
 ## Commands
 
 ```bash
 node --test                          # smoke / contract test suite
-node scripts/sync-skills.mjs         # regenerate the loop payload (body + templates)
+node scripts/sync-skills.mjs         # regenerate the loop payload (manifest + scripts/ + templates/)
 node scripts/sync-skills.mjs --check # verify both are in sync
 node scripts/verify/manifests.mjs    # validate the host + loop + marketplace manifests
 node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
@@ -97,7 +110,7 @@ The mechanics:
 3. Wait for CI. Three workflows already carry a `pull_request` trigger, so no workflow
    change is needed for PR gating:
    - `.github/workflows/check.yml` — the Node 22/24 matrix plus the container job;
-   - `.github/workflows/contract-gate.yml` — the contract snapshot and the route-request lint;
+   - `.github/workflows/contract-gate.yml` — the API and CLI contract snapshots and the route-request lint;
    - `.github/workflows/security-scan.yml`.
 4. Merge once green.
 
@@ -196,22 +209,42 @@ Beyond `/health`, every request is authorised before it is routed (§7):
   anywhere but this machine.
 
 The allow-list is server configuration, persisted **outside the database** in
-`<dataDir>/taskd.env` (`TASKD_ALLOW_LIST_ENABLED` + `TASKD_ALLOW_CIDRS`). The
+the install-root `.env` (`TASKD_ALLOW_LIST_ENABLED` + `TASKD_ALLOW_CIDRS`). The
 precedence is: an explicit process-environment value (an operator override, and
-the Access panel turns read-only), then that file, then the defaults — the list
-**off**, seeded with `192.168.0.0/16` and `10.0.0.0/8`. A loopback save through
-`PUT /access` writes the file and applies the policy to the next request without
-a restart; `rotate_token: true` rotates the token in the same save.
+the Access panel turns read-only), then the `.env` values, then the defaults —
+the list **off**, seeded with `192.168.0.0/16` and `10.0.0.0/8`. A loopback save
+through `PUT /access` writes the file and applies the policy to the next request
+without a restart; `rotate_token: true` rotates the token in the same save.
+
+**One config file, environment first.** `<program root>/.env` is read by both
+`taskd` and `taskctl` (and the loop's SSE subscriber). The process environment
+wins key by key; CLI flags win over both. `--env-file <path>` or
+`MEERKAT_TASKPANEL_ENV_FILE` selects a different file (tests, containers, a
+read-only package root). A file named with `--env-file` that does not exist is an
+error; a missing `MEERKAT_TASKPANEL_ENV_FILE` target or default is "no
+configuration" (the Access panel creates the file on its first save). The file
+grammar is the simple `KEY=VALUE` subset
+(`#` comments, matching quotes; no interpolation or multiline values). Only
+known keys are merged: unknown keys outside the project's namespaces are
+ignored, while a typo inside them is an error.
+
+`.env` is not tracked (`git` and `docker` both ignore it); the Access panel
+writes it 0600. An inline `TASKD_TOKEN` requires that mode. The old
+`<dataDir>/taskd.env` is **no longer read** — this is a hard switch; move its
+keys into `.env`.
 
 Security-relevant environment variables:
 
 | Variable | Meaning |
 |---|---|
 | `TASKD_HOST` / `TASKD_PORT` | bind address / port (defaults `0.0.0.0:9527`) |
+| `TASKD_URL` | client's preferred board address; probed. A dead loopback address may fall through to the pointer or a lazy start; a dead remote address is an error. `--url` is a pin |
 | `TASKD_ALLOW_CIDRS` | comma-separated CIDR allow-list for non-loopback callers; unset = no list (allow all), malformed entries fail closed. Setting it (or `TASKD_ALLOW_LIST_ENABLED`) makes the process environment own the policy, so the Access panel is read-only |
-| `TASKD_ALLOW_LIST_ENABLED` | `true`/`false`: whether the list is in force. Both keys are also read from `<dataDir>/taskd.env`, which the Access panel writes |
+| `TASKD_ALLOW_LIST_ENABLED` | `true`/`false`: whether the list is in force. Both keys are also read from the install-root `.env`, which the Access panel writes |
 | `TASKD_DATA_DIR` / `TASKD_DB` | data directory / database file |
 | `TASKD_TOKEN` | token a client presents (`--token` outranks it) |
+| `TASKD_TOKEN_FILE` | a token file the client reads (`TASKD_TOKEN` outranks it) |
+| `MEERKAT_TASKPANEL_ENV_FILE` | selects the config file; not a secret |
 | `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS` | label housekeeping (§4.4) |
 
 ### One writer per data directory
@@ -288,7 +321,7 @@ polled twice a second.
 
 Writes take the SQLite write lock for the length of one transaction. When
 another writer holds it past `busy_timeout` (5s), the request is **retried** a
-bounded number of times (see `DB_BUSY_MAX_ATTEMPTS` in `src/shared/constants.mjs`)
+bounded number of times (see `DB_BUSY_MAX_ATTEMPTS` in `src/foundation/constants.mjs`)
 and, if it still cannot get in, answered with:
 
 ```
@@ -325,25 +358,34 @@ around them (it delegates the payload half to `scripts/sync-loop.mjs`):
 | Skill | Authored in | Generated into |
 |---|---|---|
 | `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | nothing — every harness reads `skills/` in place |
-| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `body/` + `templates/` |
+| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `manifest.txt` + `scripts/` (except the gate) + `templates/`; foundation is generated inside `scripts/foundation/` |
 
 There is exactly one `skills` tree in the repository. No harness receives a copy: each reads
 `skills/` in place through a manifest at the repository root, which is the board's plugin
 root. `test/scaffold.test.mjs` asserts that, since with no copy targets left
 `sync-skills.mjs --check` has nothing to compare and could not notice an orphan tree.
 
-The loop's `body/` and `templates/` are generated *from this repository*: `body/` is the
-transitive import closure of `scripts/supervisor.mjs`, `scripts/loop/*.mjs` and
-`scripts/wake-cwd.mjs` (written out as `body/manifest.txt`, the list the installer copies),
-and `templates/` mirrors the
-loop-side files under `scripts/install/templates/`. That direction matters — the shared
-modules in `src/shared/` are **not** moved into the skill; they stay where the CLI imports
-them, and the skill's copy is generated and guarded. OpenClaw never receives the loop at all,
-by ruling: its framework already ships an equivalent supervisor, and `install.sh --target
-openclaw` copies the board skill only.
+The loop's `manifest.txt` and `scripts/` are generated *from this repository*:
+`manifest.txt` is the transitive import closure of `scripts/supervisor.mjs`,
+`scripts/loop/*.mjs` and `scripts/wake-cwd.mjs` (the list the installer copies), `scripts/`
+holds those modules and `scripts/foundation/` holds the foundation modules they import.
+`templates/` mirrors the loop-side files under `scripts/install/templates/`.
+`scripts/board-check.mjs` is the one authored file inside a generated root —
+`sync-loop.mjs` never writes, prunes or reports it. That direction matters — the foundation
+modules in the repository's `src/foundation/` are **not** moved into the skill; they stay
+where the CLI imports them, and the skill's copy is generated and guarded. The vendored set
+is the loop's foundation closure only: the loop body never contains `src/core`, `src/cli`,
+`src/server`, or any foundation module the entry points do not import. Foundation copies are
+byte-for-byte; entry scripts differ only in their foundation import specifiers
+(`../src/foundation/x` → `./foundation/x`), and `--check` compares against that transform. The **workflow
+decisions** are not in
+the loop body at all: they live in `src/core/domain/workflow.mjs`, and the loop gets them
+from the board through `issue reconcile --workflow`. OpenClaw never receives the loop at
+all, by ruling: its framework already ships an equivalent supervisor, and `install.sh
+--target openclaw` copies the board skill only.
 
 **After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/loop/`,
-`scripts/wake-cwd.mjs`, `src/shared/`, or `scripts/install/templates/`, run:**
+`scripts/wake-cwd.mjs`, `src/foundation/`, or `scripts/install/templates/`, run:**
 
 ```bash
 node scripts/sync-skills.mjs

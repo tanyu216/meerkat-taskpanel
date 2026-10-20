@@ -89,7 +89,7 @@ import { createRouter } from "../../src/server/router.mjs";
 import { inputOf, TASK_OPS } from "../../src/core/commands/tasks-input.mjs";
 import { registry as cliRegistry } from "../../src/cli/commands/index.mjs";
 import { projectFlags } from "../../src/cli/commands/task-input.mjs";
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 // ---------------------------------------------------------------------------
 // Lexing: just enough JavaScript to find reads, and to not be fooled by prose

@@ -12,7 +12,7 @@
  * actor).
  */
 
-import { dictionaryEntryToWire } from "../../shared/wire.mjs";
+import { dictionaryEntryToWire } from "../../foundation/wire.mjs";
 import { intOrUndefined, shape, str } from "../requests.mjs";
 
 // The declared request schema the read takes — frozen by the contract snapshot

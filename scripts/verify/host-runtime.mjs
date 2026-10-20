@@ -42,7 +42,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { wakeCommand } from "../../src/shared/scheduling.mjs";
+import { wakeCommand } from "../../src/foundation/scheduling.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 

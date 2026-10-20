@@ -12,7 +12,7 @@
  *   see plan §3.3.6③).
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { isMemoryPath } from "./paths.mjs";
 
 /** `STRICT` tables need SQLite ≥ 3.37. */

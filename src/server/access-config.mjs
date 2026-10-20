@@ -1,13 +1,15 @@
 /**
- * The board's **access policy**, persisted beside the token (`taskd.env`).
+ * The board's **access policy**, persisted in the install-root `.env`.
  *
  * Why a file and not a table: the policy is server configuration, not board
  * data. `taskd` needs it before it serves a request (and before the first
- * remote caller is judged), exactly like `TASKD_ALLOW_CIDRS`; the token already
- * lives in the same directory under the same 0600 rule. Saving through the
- * Access panel therefore writes an env file, never a database row.
+ * remote caller is judged), exactly like `TASKD_ALLOW_CIDRS`. Saving through the
+ * Access panel therefore writes the shared config file, never a database row —
+ * and that file is also where the client's board URL, token and the acceptance
+ * policy live.
  *
- * The file is the panel's own format — `KEY=VALUE`, one pair per line:
+ * The file format is the simple `KEY=VALUE` subset documented in
+ * `src/foundation/env-config.mjs`:
  *
  *   TASKD_ALLOW_LIST_ENABLED=false
  *   TASKD_ALLOW_CIDRS=192.168.0.0/16,10.0.0.0/8
@@ -18,7 +20,8 @@
  *      (`TASKD_ALLOW_CIDRS` / `TASKD_ALLOW_LIST_ENABLED`) — an operator's
  *      override. `source: "env"`; the panel is read-only, because a save would
  *      be silently undone by the next process start.
- *   2. `<dataDir>/taskd.env` — `source: "file"`.
+ *   2. the `.env` values, already parsed by `src/foundation/env-config.mjs`
+ *      (`envVars`) — `source: "file"`.
  *   3. the defaults — allow-list **off**, seeded with the two private ranges
  *      (`source: "default"`). Off is deliberately the safe upgrade: an existing
  *      board keeps serving its LAN until someone turns the list on.
@@ -28,21 +31,17 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { chmodSync, closeSync, fsyncSync, openSync, readFileSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
+import { chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { ensureDir } from "../core/index.mjs";
-import { mergeEnvText, parseEnvBool, parseEnvText } from "../shared/env-file.mjs";
-import { ALLOW_CIDRS_ENV, SECRET_DIR_MODE, SECRET_FILE_MODE } from "../shared/constants.mjs";
-import { DomainError } from "../shared/errors.mjs";
-import { redactText } from "../shared/redact.mjs";
+import { mergeEnvText, parseEnvBool } from "../foundation/env-file.mjs";
+import { ALLOW_CIDRS_ENV, SECRET_DIR_MODE, SECRET_FILE_MODE } from "../foundation/constants.mjs";
+import { DomainError } from "../foundation/errors.mjs";
+import { redactText } from "../foundation/redact.mjs";
 import { parseAllowList, parseCidr } from "./cidr.mjs";
 
 /** The env-file key for the allow-list master switch. */
 export const ALLOW_LIST_ENABLED_ENV = "TASKD_ALLOW_LIST_ENABLED";
-
-/** The file name beside `token` and the database. */
-export const ACCESS_ENV_FILE = "taskd.env";
 
 /** The two ranges the panel seeds when no policy has been saved. */
 export const DEFAULT_ALLOW_CIDRS = Object.freeze(["192.168.0.0/16", "10.0.0.0/8"]);
@@ -51,11 +50,6 @@ export const DEFAULT_ALLOW_CIDRS = Object.freeze(["192.168.0.0/16", "10.0.0.0/8"
 export const MAX_ALLOW_CIDRS = 64;
 /** One entry's maximum length; a CIDR is never near this. */
 const MAX_CIDR_LENGTH = 64;
-
-/** @param {string} dataDir */
-export function accessEnvPath(dataDir) {
-  return join(dataDir, ACCESS_ENV_FILE);
-}
 
 /** @param {string} value @param {string} key */
 function parseBoolean(value, key) {
@@ -74,6 +68,21 @@ function splitCidrs(value) {
     .split(/[\s,;]+/)
     .map((entry) => entry.trim())
     .filter((entry) => entry !== "");
+}
+
+/**
+ * Read one key from the parsed `.env` values (a `Map`, or a plain object for
+ * embedders). `undefined` means "not configured"; an explicit empty string is
+ * still "configured" (`TASKD_ALLOW_CIDRS=` is the deny-all spelling).
+ *
+ * @param {Map<string,string>|Record<string,string>|null|undefined} vars
+ * @param {string} key
+ * @returns {string|undefined}
+ */
+function readVar(vars, key) {
+  if (vars === null || vars === undefined) return undefined;
+  if (typeof vars.get === "function") return vars.has(key) ? vars.get(key) : undefined;
+  return Object.hasOwn(vars, key) ? vars[key] : undefined;
 }
 
 /**
@@ -131,11 +140,19 @@ export function validateCidrs(value) {
 /**
  * Read the policy in force.
  *
- * @param {{dataDir: string, env?: NodeJS.ProcessEnv, allowCidrs?: string}} input
+ * `env` is the **process** environment, not the merged one: a value from
+ * `.env` must stay distinguishable so the panel can edit it. `envVars` is the
+ * parsed `.env` map; `envFile` is only the path reported in `config_file`.
+ *
+ * @param {{
+ *   env?: NodeJS.ProcessEnv, envFile?: string|null,
+ *   envVars?: Map<string,string>|Record<string,string>|null,
+ *   allowCidrs?: string,
+ * }} input
  * @returns {{enabled: boolean, cidrs: string[], source: "env"|"file"|"default", file: string|null, invalid?: string[]}}
  */
-export function readAccessConfig(input) {
-  const { dataDir, env = process.env, allowCidrs } = input;
+export function readAccessConfig(input = {}) {
+  const { env = process.env, envFile = null, envVars = null, allowCidrs } = input;
   const envCidrs = allowCidrs !== undefined ? allowCidrs : env[ALLOW_CIDRS_ENV];
   const envEnabled = env[ALLOW_LIST_ENABLED_ENV];
 
@@ -148,30 +165,19 @@ export function readAccessConfig(input) {
     return { enabled, cidrs, source: "env", file: null, invalid: parsed.invalid };
   }
 
-  const file = accessEnvPath(dataDir);
-  let text;
-  try {
-    text = readFileSync(file, "utf8");
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      return { enabled: false, cidrs: [...DEFAULT_ALLOW_CIDRS], source: "default", file };
-    }
-    throw new DomainError("ACCESS_CONFIG_INVALID", {
-      message: `cannot read the access configuration: ${redactText(err.message)}`,
-      details: { file },
-      cause: err,
-    });
+  const rawCidrs = readVar(envVars, ALLOW_CIDRS_ENV);
+  const rawEnabled = readVar(envVars, ALLOW_LIST_ENABLED_ENV);
+  if (rawCidrs === undefined && rawEnabled === undefined) {
+    return { enabled: false, cidrs: [...DEFAULT_ALLOW_CIDRS], source: "default", file: envFile };
   }
 
-  const values = parseEnvText(text, { strict: true });
-  const rawCidrs = values.get(ALLOW_CIDRS_ENV);
   const entries = rawCidrs === undefined ? [] : splitCidrs(rawCidrs);
   const cidrs = [];
   for (const entry of entries) {
     if (entry.length > MAX_CIDR_LENGTH || parseCidr(entry) === null) {
       throw new DomainError("ACCESS_CONFIG_INVALID", {
-        message: `${JSON.stringify(entry)} in ${file} is not a valid CIDR range`,
-        details: { file, entry },
+        message: `${JSON.stringify(entry)} in ${envFile ?? "the configuration file"} is not a valid CIDR range`,
+        details: { file: envFile, entry },
       });
     }
     if (!cidrs.includes(entry)) cidrs.push(entry);
@@ -179,17 +185,15 @@ export function readAccessConfig(input) {
   // The master switch is explicit in files this panel writes. A hand-written
   // file that only names ranges keeps the historic meaning: a list present ⇒
   // the list is in force.
-  const enabled = values.has(ALLOW_LIST_ENABLED_ENV)
-    ? parseBoolean(values.get(ALLOW_LIST_ENABLED_ENV), ALLOW_LIST_ENABLED_ENV)
-    : entries.length > 0;
+  const enabled = rawEnabled !== undefined ? parseBoolean(rawEnabled, ALLOW_LIST_ENABLED_ENV) : entries.length > 0;
 
   if (cidrs.length > MAX_ALLOW_CIDRS) {
     throw new DomainError("ACCESS_CONFIG_INVALID", {
-      message: `${file} holds more than ${MAX_ALLOW_CIDRS} ranges`,
-      details: { file },
+      message: `${envFile ?? "the configuration file"} holds more than ${MAX_ALLOW_CIDRS} ranges`,
+      details: { file: envFile },
     });
   }
-  return { enabled, cidrs, source: "file", file };
+  return { enabled, cidrs, source: "file", file: envFile };
 }
 
 /**
@@ -211,13 +215,19 @@ export function allowListFrom(config) {
 }
 
 /**
- * Persist a validated policy to `<dataDir>/taskd.env`, atomically.
+ * Persist a validated policy into the install-root `.env`, atomically.
  *
- * @param {{dataDir: string, enabled: boolean, cidrs: string[]}} input
+ * @param {{envFile: string, enabled: boolean, cidrs: string[]}} input
  * @returns {{enabled: boolean, cidrs: string[], source: "file", file: string}}
  */
 export function writeAccessConfig(input) {
-  const { dataDir, enabled, cidrs } = input;
+  const { envFile, enabled, cidrs } = input;
+  if (typeof envFile !== "string" || envFile === "") {
+    throw new DomainError("ACCESS_CONFIG_INVALID", {
+      message: "no config file is configured for this board",
+      details: { field: "envFile" },
+    });
+  }
   if (typeof enabled !== "boolean") {
     throw new DomainError("VALIDATION_FAILED", {
       message: "allow_list.enabled must be a boolean",
@@ -225,7 +235,7 @@ export function writeAccessConfig(input) {
     });
   }
   const ranges = validateCidrs(cidrs);
-  const file = writeEnvKeys(dataDir, {
+  const file = writeEnvKeys(envFile, {
     [ALLOW_LIST_ENABLED_ENV]: enabled ? "true" : "false",
     [ALLOW_CIDRS_ENV]: ranges.join(","),
   });
@@ -233,39 +243,54 @@ export function writeAccessConfig(input) {
 }
 
 /**
- * Persist one or more keys into `<dataDir>/taskd.env`, **merging** with what is
- * already there.
+ * Persist one or more keys into the install-root `.env`, **merging** with what
+ * is already there.
  *
  * The file is shared by independent settings — the access policy
- * (`TASKD_ALLOW_CIDRS`) and the acceptance policy
- * (`TASKD_ACCEPTANCE_POLICY`) — so a whole-file rewrite by one writer would
- * silently erase the other's answer. Unknown lines (including an operator's
- * comments) are preserved; a key in `patch` is replaced in place (the last
- * occurrence wins, and earlier duplicates are dropped), and new keys are
+ * (`TASKD_ALLOW_CIDRS`), the acceptance policy (`TASKD_ACCEPTANCE_POLICY`) and
+ * the client's board URL/token — so a whole-file rewrite by one writer would
+ * silently erase the others. Unknown lines (including an operator's comments)
+ * are preserved; a key in `patch` is replaced in place and new keys are
  * appended.
  *
- * @param {string} dataDir
+ * The parent directory is created only when missing and is **never** chmodded:
+ * it is the install root, not a secrets directory.
+ *
+ * @param {string} envFile
  * @param {Record<string, string>} patch
  * @returns {string} the file written
  */
-export function writeEnvKeys(dataDir, patch) {
+export function writeEnvKeys(envFile, patch) {
+  if (typeof envFile !== "string" || envFile === "") {
+    throw new DomainError("ACCESS_CONFIG_INVALID", {
+      message: "no config file is configured for this board",
+      details: { field: "envFile" },
+    });
+  }
   if (patch === null || typeof patch !== "object") {
     throw new DomainError("VALIDATION_FAILED", {
-      message: "taskd.env patch must be an object of KEY=VALUE strings",
+      message: "config file patch must be an object of KEY=VALUE strings",
       details: { field: "patch" },
     });
   }
-  ensureDir(dataDir, { mode: SECRET_DIR_MODE });
-  const file = accessEnvPath(dataDir);
+  try {
+    mkdirSync(dirname(envFile), { recursive: true, mode: SECRET_DIR_MODE });
+  } catch (err) {
+    throw new DomainError("ACCESS_CONFIG_INVALID", {
+      message: `cannot create ${dirname(envFile)}: ${redactText(err.message)}`,
+      details: { file: envFile },
+      cause: err,
+    });
+  }
 
   let existing = "";
   try {
-    existing = readFileSync(file, "utf8");
+    existing = readFileSync(envFile, "utf8");
   } catch (err) {
     if (err.code !== "ENOENT") {
       throw new DomainError("ACCESS_CONFIG_INVALID", {
-        message: `cannot read the access configuration: ${redactText(err.message)}`,
-        details: { file },
+        message: `cannot read the configuration: ${redactText(err.message)}`,
+        details: { file: envFile },
         cause: err,
       });
     }
@@ -276,11 +301,11 @@ export function writeEnvKeys(dataDir, patch) {
   // (comments included) and only gains the new key.
   const header =
     existing === ""
-      ? "# Meerkat TaskPanel board configuration — written by the Access panel and install.sh.\n" +
-        "# taskd reads this file; the acceptance policy is re-read on every decision.\n"
+      ? "# Meerkat TaskPanel configuration — written by the Access panel and install.sh.\n" +
+        "# Read by taskd and taskctl; the process environment wins key by key.\n"
       : "";
-  writeAtomic(file, header + mergeEnvText(existing, patch));
-  return file;
+  writeAtomic(envFile, header + mergeEnvText(existing, patch));
+  return envFile;
 }
 
 /** @param {string} file @param {string} text */
@@ -304,7 +329,7 @@ function writeAtomic(file, text) {
       /* nothing to clean up */
     }
     throw new DomainError("ACCESS_CONFIG_INVALID", {
-      message: `could not write the access configuration: ${redactText(err.message)}`,
+      message: `could not write the configuration: ${redactText(err.message)}`,
       details: { file },
       cause: err,
     });

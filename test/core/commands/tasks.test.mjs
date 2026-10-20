@@ -17,7 +17,7 @@ import test, { after, describe, it } from "node:test";
 import { createCommands, createContext } from "../../../src/core/commands/index.mjs";
 import { advanceContainer } from "../../../src/core/commands/rollup.mjs";
 import { createRepositories } from "../../../src/core/storage/repositories/index.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 import {
   TS,
   TS2,
@@ -213,6 +213,46 @@ describe("commands/tasks — create and update", () => {
       );
       assert.equal(revision(db), after, "a lost CAS changes nothing");
       assert.deepEqual(activitiesFor(db, task.id), ["task_created", "task_updated"]);
+    });
+  });
+
+  it("canonicalizes the review marker from the immutable columns on update", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        reviewOf: original.identifier,
+        reviewRound: 2,
+        actor: AGENT,
+      });
+
+      const updated = commands.updateTask({
+        id: review.id,
+        patch: { meta: { ...review.meta, review_of: "PROJ-9999", review_round: 9, team: "panel" } },
+        actor: AGENT,
+      });
+
+      assert.equal(updated.meta.review_of, original.identifier, "the column wins");
+      assert.equal(updated.meta.review_round, 2);
+      assert.equal(updated.meta.team, "panel", "other keys are untouched");
+      assert.equal(updated.reviewOfId, original.id, "the column never moves");
+    });
+  });
+
+  it("strips a meta marker from a card with no structural marker, and keeps rework_round", async () => {
+    await board(async ({ commands }) => {
+      const card = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const updated = commands.updateTask({
+        id: card.id,
+        patch: { meta: { ...card.meta, review_of: "PROJ-9999", review_round: 4, rework_round: "2" } },
+        actor: AGENT,
+      });
+
+      assert.equal(Object.hasOwn(updated.meta, "review_of"), false);
+      assert.equal(Object.hasOwn(updated.meta, "review_round"), false);
+      assert.equal(updated.meta.rework_round, "2", "the loop's write survives");
     });
   });
 });
@@ -1682,6 +1722,25 @@ describe("commands/tasks — listCandidates (poll read)", () => {
     });
   });
 
+  it("projects a review card created through the top-level review_of field", async () => {
+    await board(async ({ commands }) => {
+      const original = linusTodo(commands, { title: "Audit me", allowDup: true });
+      const review = linusTodo(commands, {
+        title: "Review it",
+        allowDup: true,
+        reviewOf: original.identifier,
+        reviewRound: 2,
+      });
+
+      const projected = commands
+        .listCandidates({ assignee: "linus" })
+        .find((candidate) => candidate.identifier === review.identifier);
+      assert.ok(projected, "the review card is a normal todo candidate for its reviewer");
+      assert.equal(projected.review_of, original.identifier);
+      assert.equal(projected.review_round, 2);
+    });
+  });
+
   it("excludes a task whose depends_on is not done, and admits it once done", async () => {
     await board(async ({ db, commands }) => {
       const blocker = linusTodo(commands, { title: "Blocker", allowDup: true });
@@ -2504,6 +2563,54 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
         ),
         "VALIDATION_FAILED",
       );
+    });
+  });
+
+  it("stamps the resolved marker into meta without mutating the caller's meta", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+
+      const callerMeta = { flow: "B" };
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        reviewOf: original.identifier,
+        reviewRound: 2,
+        meta: callerMeta,
+        actor: AGENT,
+      });
+      assert.equal(review.meta.review_of, original.identifier, "the identifier, not the id");
+      assert.equal(review.meta.review_round, 2, "an integer, not the caller's spelling");
+      assert.equal(review.meta.flow, "B", "other meta keys survive");
+      assert.deepEqual(callerMeta, { flow: "B" }, "the caller's object is never mutated");
+      assert.equal(review.reviewOfId, original.id, "the column still holds the internal id");
+      assert.equal(review.reviewRound, 2);
+
+      // The meta path is normalized rather than trusted: an id and a string
+      // round become the identifier and an integer.
+      const metaInput = { review_of: original.id, review_round: "3" };
+      const viaMeta = commands.createTask({
+        projectId: "proj",
+        title: "Review via meta",
+        allowDup: true,
+        meta: metaInput,
+        actor: AGENT,
+      });
+      assert.equal(viaMeta.meta.review_of, original.identifier);
+      assert.equal(viaMeta.meta.review_round, 3);
+      assert.deepEqual(metaInput, { review_of: original.id, review_round: "3" });
+
+      // No round: omit the key rather than write null/"".
+      const noRound = commands.createTask({
+        projectId: "proj",
+        title: "Roundless review",
+        allowDup: true,
+        reviewOf: original.identifier,
+        actor: AGENT,
+      });
+      assert.equal(Object.hasOwn(noRound.meta, "review_round"), false);
+      assert.equal(noRound.reviewRound, null);
     });
   });
 });

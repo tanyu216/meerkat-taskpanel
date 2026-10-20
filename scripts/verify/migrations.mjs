@@ -36,7 +36,7 @@ import { parseArgs } from "node:util";
 
 import { MIGRATION_FILE_PATTERN } from "../../src/core/storage/schema.mjs";
 import { checksumFor } from "../../src/core/storage/migrations-runner.mjs";
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 /** Repository root, resolved from this file (`scripts/verify/`). */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");

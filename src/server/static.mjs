@@ -20,7 +20,7 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 
-import { STATIC_INDEX } from "../shared/constants.mjs";
+import { STATIC_INDEX } from "../foundation/constants.mjs";
 
 /** The handful of types a board bundle actually ships. */
 const CONTENT_TYPES = Object.freeze({

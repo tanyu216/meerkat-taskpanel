@@ -17,7 +17,7 @@ import {
   resolveDictionaryEntry,
 } from "../../../src/core/domain/dictionary.mjs";
 import { DICTIONARY_KINDS } from "../../../src/core/domain/enums.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 
 const entry = (id, displayName, kind = "agent") => ({
   id,

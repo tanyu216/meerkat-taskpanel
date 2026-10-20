@@ -6,8 +6,8 @@
  * of inventing a second one.
  */
 
-import { DomainError } from "../../../shared/errors.mjs";
-import { sessionId as deriveSessionId } from "../../../shared/ids.mjs";
+import { DomainError } from "../../../foundation/errors.mjs";
+import { sessionId as deriveSessionId } from "../../../foundation/ids.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 
 const CAMEL = {

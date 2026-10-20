@@ -1,25 +1,17 @@
 #!/usr/bin/env node
 /**
- * The workflow entry — the loop's only writing channel.
+ * The workflow entry — the loop's card-writing channel.
  *
- * One pass: `issue reconcile` (container start/close), the review outcomes
- * (apply a reviewer's `VERDICT:` report to the card it audits), then review
- * dispatch. Every write is attributed to `system`; the state machine, not this
- * entry, is what refuses an illegal move. A review card is closed last, so a
- * crash between the original's move and the card's close is recovered on the
- * next pass.
- *
- * Off with `--workflow=no`; dispatch needs `--reviewer`; and
- * `--auto-accept-reviews=no` leaves a review card in `in_review` for a human
- * while still applying the verdict to the original.
- *
- * Node builtins only; no network, no dependencies.
+ * Asks the board for the workflow plan (`issue reconcile --workflow`) and
+ * applies its review actions. The board decides; this entry writes, attributed
+ * to `taskd`. A review card is closed last so a crash mid-pass is recoverable.
  */
 
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
-import { readBoard, runWorkflowPass } from "./board.mjs";
-import { parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
+import { runWorkflowPass } from "./board.mjs";
+import { runEntry } from "./entry.mjs";
+import { resolveLoopConfig } from "./options.mjs";
 import { createLogger } from "./runtime.mjs";
 
 /**
@@ -40,7 +32,10 @@ export async function runOnce(opts, env = process.env) {
     `workflow: ${config.workflow ? "on" : "off"} ` +
       `reviewer=${config.reviewer === null ? "not configured" : `${config.reviewer}${reviewerIsWorker ? " (also a worker)" : ""}`} ` +
       `auto_accept_reviews=${config.autoAcceptReviews ? "yes" : "no"} max_actions=${config.maxActions} ` +
-      `review_aging=${Math.round(config.reviewAgingMs / 60_000)}m`,
+      `review_aging=${Math.round(config.reviewAgingMs / 60_000)}m ` +
+      // The board decides acceptance in the plan; this copy is printed so an
+      // operator can see which policy the host *thinks* it is running under.
+      `acceptance=${config.acceptancePolicy} (advisory)`,
   );
   if (config.workflow && config.reviewer !== null && reviewerIsWorker) {
     log(
@@ -54,12 +49,7 @@ export async function runOnce(opts, env = process.env) {
 
   if (!config.workflow) return 0;
 
-  const read = readBoard(opts, log);
-  if (!read.ok) return 1;
-  const result = await runWorkflowPass(opts, config, log, {
-    tasks: read.data.tasks ?? [],
-    boardTruncated: read.truncated === true,
-  });
+  const result = await runWorkflowPass(opts, config, log);
   return result?.failed > 0 ? 1 : 0;
 }
 
@@ -68,19 +58,8 @@ export async function runOnce(opts, env = process.env) {
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {Promise<number>}
  */
-export async function main(argv, env = process.env) {
-  let opts;
-  try {
-    opts = parseArgs(argv, env);
-  } catch (err) {
-    process.stderr.write(`workflow: ${err.message}\n`);
-    return 2;
-  }
-  if (opts.help) {
-    process.stdout.write(USAGE);
-    return 0;
-  }
-  return runOnce(opts, env);
+export function main(argv, env = process.env) {
+  return runEntry("workflow", argv, env, runOnce);
 }
 
 if (isEntryPoint(import.meta.url)) {

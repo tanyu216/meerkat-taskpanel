@@ -244,9 +244,15 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
     join(ROOT, "skills"),
     join(ROOT, "web", "scripts"),
   ];
+  // Only the generated output is excluded. `skills/meerkat-loop/scripts/board-check.mjs`
+  // is authored and shares that directory, so the exclusion names files and subdirectories
+  // rather than the whole `scripts/` tree.
   const GENERATED = [
-    join(ROOT, "skills", "meerkat-loop", "body"),
+    join(ROOT, "skills", "meerkat-loop", "scripts", "foundation"),
     join(ROOT, "skills", "meerkat-loop", "templates"),
+    join(ROOT, "skills", "meerkat-loop", "scripts", "loop"),
+    join(ROOT, "skills", "meerkat-loop", "scripts", "supervisor.mjs"),
+    join(ROOT, "skills", "meerkat-loop", "scripts", "wake-cwd.mjs"),
   ];
 
   /**
@@ -267,7 +273,6 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
   const MUST_BE_SCANNED = [
     "src/cli/index.mjs",
     "src/server/main.mjs",
-    "src/core/storage/md/migrate-cli.mjs",
     "scripts/wake-cwd.mjs",
     "scripts/supervisor.mjs",
     "scripts/loop/poll.mjs",
@@ -276,15 +281,15 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
     "scripts/loop/continue.mjs",
     "scripts/verify/contract.mjs",
     "scripts/verify/web-dist.mjs",
-    "scripts/migrate/drill.mjs",
     "scripts/security/scan-gate.mjs",
     "monitoring/exporter.mjs",
     "skills/meerkat-taskpanel/scripts/report.mjs",
+    "skills/meerkat-loop/scripts/board-check.mjs",
     "web/scripts/dom-smoke.mjs",
   ];
 
   const scanned = SCAN_ROOTS.flatMap(listModuleFiles).filter(
-    (file) => !GENERATED.some((root) => file.startsWith(root + sep)),
+    (file) => !GENERATED.some((root) => file === root || file.startsWith(root + sep)),
   );
 
   it("scans the authored tree, and every known entry point still declares a guard", () => {
@@ -313,7 +318,7 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
     assert.deepEqual(
       offenders,
       [],
-      `compare canonical paths instead (isEntryPoint from src/shared/entry-guard.mjs):\n${offenders.join("\n")}`,
+      `compare canonical paths instead (isEntryPoint from src/foundation/entry-guard.mjs):\n${offenders.join("\n")}`,
     );
   });
 });

@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url";
 import test, { after, before, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-import { VERSION } from "../../src/shared/constants.mjs";
+import { VERSION } from "../../src/foundation/constants.mjs";
 
 const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-installed-" });
 

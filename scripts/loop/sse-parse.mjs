@@ -1,20 +1,10 @@
 /**
- * The Server-Sent Events frame parser (the `text/event-stream` grammar).
+ * The Server-Sent Events frame parser — transport-free, so split chunks,
+ * multi-line `data:` values and `retry:` lines are testable without a server.
  *
- * This is deliberately transport-free: `sse-client.mjs` feeds it decoded text
- * chunks and receives whole frames. Keeping it pure is what makes the awkward
- * cases — a CRLF split across two socket reads, a multi-line `data:` value, the
- * initial `retry:` line — testable without a server.
- *
- * Grammar notes that matter here:
- *   * a comment (`: …`) carries no data and never dispatches;
- *   * `data:` lines accumulate and join with `\n`;
- *   * a blank line dispatches the accumulated frame;
- *   * `event:` names the frame; unnamed frames are `message`;
- *   * `retry:` is a hint (the client owns its own ladder, but it is exposed);
- *   * `id:` is the resume cursor.
- *
- * Node builtins only; no network, no dependencies.
+ * `data:` lines join with `\n`; a blank line dispatches; `event:` names the
+ * frame (`message` when absent); `id:` is the resume cursor; comments carry no
+ * data.
  */
 
 /** A frame larger than this is a protocol error, not something to buffer. */

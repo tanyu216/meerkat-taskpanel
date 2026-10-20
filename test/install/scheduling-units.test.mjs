@@ -75,13 +75,13 @@ function unitPaths(home, hostDir, host) {
 /**
  * The loop execution body `install.sh` copies into the host, as repo-relative paths.
  *
- * Read from the loop skill's **generated** `body/manifest.txt` rather than restated here:
+ * Read from the loop skill's **generated** `manifest.txt` rather than restated here:
  * the manifest *is* the closure (computed from the body's imports by `scripts/sync-loop.mjs`
  * and guarded by `sync-skills --check`), so a member the installer copies but this test
  * does not know about — or the reverse — is impossible.
  */
 const LOOP_SKILL = join(ROOT, "skills", "meerkat-loop");
-const LOOP_BODY = readFileSync(join(LOOP_SKILL, "body", "manifest.txt"), "utf8")
+const LOOP_BODY = readFileSync(join(LOOP_SKILL, "manifest.txt"), "utf8")
   .split("\n")
   .map((line) => line.trim())
   .filter(Boolean);
@@ -215,12 +215,12 @@ describe("install.sh: scheduling units", () => {
     assert.ok(!copy.startsWith(ROOT + sep), "the copied executor must not live in the checkout");
     assert.equal(
       readFileSync(copy, "utf8"),
-      readFileSync(join(LOOP_SKILL, "body", "scripts", "supervisor.mjs"), "utf8"),
+      readFileSync(join(LOOP_SKILL, "scripts", "supervisor.mjs"), "utf8"),
       "the copy must be the executor itself, not a stub",
     );
 
     // The module graph is closed under the copy. `supervisor.mjs` imports
-    // `../src/shared/scheduling.mjs`, so the `scripts/` + `src/shared/` shape has to
+    // `../foundation/scheduling.mjs`, so the `scripts/` + `scripts/foundation/` shape has to
     // travel with it — one file alone would leave a dangling relative import and the
     // unit would die at load. Every relative import inside the copy resolves inside
     // the copy, so loading the body needs nothing from the checkout.
@@ -239,7 +239,7 @@ describe("install.sh: scheduling units", () => {
     for (const rel of LOOP_BODY) {
       assert.equal(
         readFileSync(join(loopDir, rel), "utf8"),
-        readFileSync(join(LOOP_SKILL, "body", rel), "utf8"),
+        readFileSync(join(LOOP_SKILL, rel), "utf8"),
         `${rel} must be the loop skill's copy`,
       );
     }
@@ -259,7 +259,9 @@ describe("install.sh: scheduling units", () => {
     // approximate. It also proves the executor the unit names is a working module, not
     // a file that merely exists.
     const installed = await import(pathToFileURL(copy).href);
-    assert.equal(typeof installed.defaultRepo, "function", "the copy must expose the runner surface");
+    assert.equal(typeof installed.main, "function", "the copy must expose the executor");
+    const installedOptions = await import(pathToFileURL(join(loopDir, "scripts", "loop", "options.mjs")).href);
+    assert.equal(typeof installedOptions.defaultRepo, "function", "the copy must expose its option surface");
 
     // The board engine stays in the checkout, so the copied executor — which has no
     // `src/cli/index.mjs` beside it — reads the location the installer recorded in the
@@ -270,7 +272,7 @@ describe("install.sh: scheduling units", () => {
       readFileSync(configPath, "utf8").includes(`MEERKAT_TASKPANEL_REPO=${ROOT}`),
       "the host config must record where the board engine lives",
     );
-    assert.equal(installed.defaultRepo(configPath), ROOT);
+    assert.equal(installedOptions.defaultRepo(configPath), ROOT);
   });
 
   it("leaves a hand-edited loop body alone unless --force, and refreshes it with it", () => {
@@ -293,8 +295,8 @@ describe("install.sh: scheduling units", () => {
     assert.equal(forced.status, 0, forced.stderr);
     assert.equal(
       readFileSync(copy, "utf8"),
-      readFileSync(join(ROOT, "scripts", "supervisor.mjs"), "utf8"),
-      "--force must refresh the loop body",
+      readFileSync(join(LOOP_SKILL, "scripts", "supervisor.mjs"), "utf8"),
+      "--force must refresh the loop body from the skill's payload",
     );
   });
 
@@ -445,7 +447,21 @@ describe("install.sh: the loop skill's distribution", () => {
 
       const dest = join(home, hostDir, "skills", "meerkat-loop");
       assert.ok(existsSync(join(dest, "SKILL.md")), `${host}: the loop skill's SKILL.md must land`);
-      assert.ok(existsSync(join(dest, "body", "manifest.txt")), `${host}: the loop payload must land`);
+      assert.ok(existsSync(join(dest, "manifest.txt")), `${host}: the loop payload must land`);
+      assert.equal(
+        existsSync(join(dest, "body")),
+        false,
+        `${host}: a fresh install must not carry the retired body/ wrapper`,
+      );
+      assert.equal(
+        existsSync(join(dest, "src")),
+        false,
+        `${host}: the loop skill must not carry a src/ tree`,
+      );
+      assert.ok(
+        existsSync(join(dest, "scripts", "foundation", "constants.mjs")),
+        `${host}: foundation must land under scripts/foundation/`,
+      );
       assert.ok(
         existsSync(join(dest, "templates", "scheduling", "cron", "meerkat-taskpanel.cron")),
         `${host}: the loop templates must land`,
@@ -535,7 +551,7 @@ describe("install.sh: the loop skill's distribution", () => {
     // into the load path of the very thing the split exists to make independent of it.
     assert.ok(lstatSync(loop).isDirectory(), "--link must NOT symlink the loop skill");
     assert.equal(lstatSync(loop).isSymbolicLink(), false);
-    assert.ok(existsSync(join(loop, "body", "scripts", "supervisor.mjs")));
+    assert.ok(existsSync(join(loop, "scripts", "supervisor.mjs")));
   });
 
   it("--dry-run announces the loop skill and writes nothing", () => {

@@ -43,7 +43,7 @@ import {
   runVerifyInContainerArgs,
 } from "../scripts/verify/lib/docker-plan.mjs";
 import { parseBaseImages, pullFlagFor, resolvePullFlag } from "../scripts/verify/lib/base-image.mjs";
-import { SKILL_NAME, VERSION } from "../src/shared/constants.mjs";
+import { SKILL_NAME, VERSION } from "../src/foundation/constants.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -798,7 +798,7 @@ describe("static: Dockerfile", () => {
 describe("static: .dockerignore", () => {
   it("exists and trims the build context", async () => {
     const text = await read(".dockerignore");
-    for (const entry of [".git", "node_modules", "dist", "web/dist", ".data", "coverage", "*.tgz", "design", ".worktrees", ".DS_Store"]) {
+    for (const entry of [".git", "node_modules", "dist", "web/dist", ".data", "coverage", "*.tgz", "design", ".worktrees", ".DS_Store", ".env"]) {
       assert.ok(
         text.split("\n").map((l) => l.trim()).includes(entry),
         `.dockerignore should contain ${entry}`,

@@ -164,7 +164,7 @@ function resolveTarget(env) {
 
 /**
  * The refusal: what was looked for, where, and the three ways to make it work. Modelled on
- * `src/shared/transport/errors.mjs#renderErrorText` (`try:` / `  or:` / `note:`) so a
+ * `src/foundation/transport/errors.mjs#renderErrorText` (`try:` / `  or:` / `note:`) so a
  * failure reads the same whether it came from the CLI or from the wrapper that starts it.
  *
  * @param {Array<{origin: string, root: string}>} roots

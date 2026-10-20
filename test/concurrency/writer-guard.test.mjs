@@ -36,7 +36,7 @@ import {
   resolveRuntimePointerPath,
   writeRuntimePointer,
 } from "../../src/core/index.mjs";
-import { WRITER_LOCK_FILENAME } from "../../src/shared/constants.mjs";
+import { WRITER_LOCK_FILENAME } from "../../src/foundation/constants.mjs";
 
 /** The daemon *program* — what autostart spawns. */
 const SERVER = resolve(dirname(fileURLToPath(import.meta.url)), "../../src/server/main.mjs");

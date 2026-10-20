@@ -2,43 +2,35 @@
 /**
  * The event subscriber — the loop's ears.
  *
- * It keeps one long-lived SSE connection to the board and turns a **signal**
- * into a dispatch decision. It does not claim, move or wake anything itself:
- * an event asks for one existing `continue` turn, whose `patrol → workflow →
- * poll` sequence makes the actual decision from the board's current state.
+ * Holds one SSE connection and asks for a `continue` turn when a
+ * dispatch-relevant event arrives. It never claims, moves or wakes anything:
+ * the continue turn rescans, so replay, duplicate frames and bursts are
+ * harmless and there is only one dispatch path.
  *
- * That division is what keeps replay, duplicate frames and bursts harmless:
- * the continue turn rescans, and the claim CAS plus the worker registry are the
- * only dispatch authorities. It also means there is one dispatch path, not two.
- *
- * Coalescing is deliberate:
- *   * a burst is debounced (300 ms) but never delayed past 2 s;
- *   * at most one turn starts per minute;
- *   * a turn refused by the continue lock is remembered and retried (5 s), not
- *     dropped — the in-flight turn may have scanned before this event existed.
- *
- * Node builtins only; no network, no dependencies.
+ * A burst is debounced (300 ms, capped at 2 s), at most one turn starts per
+ * minute, and a turn refused by the continue lock is retried (5 s), not
+ * dropped.
  */
 
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 import {
   EVENT_CONTINUE_MIN_MS,
   EVENT_DEBOUNCE_MAX_MS,
   EVENT_DEBOUNCE_MS,
   SSE_SUBSCRIBE_IDLE_MS,
   SUBSCRIBE_RETRY_MS,
-} from "../../src/shared/constants.mjs";
+} from "../../src/foundation/constants.mjs";
 
 import * as continueEntry from "./continue.mjs";
+import { runEntry } from "./entry.mjs";
 import { resolveEventEndpoint } from "./endpoint.mjs";
 import { advanceCursor, classify } from "./event-rules.mjs";
-import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./options.mjs";
+import { resolveLoopConfig, selectMode } from "./options.mjs";
 import { createLogger } from "./runtime.mjs";
 import { connectSse, nextBackoff } from "./sse-client.mjs";
 
 /**
- * A tiny coalescing scheduler, exported so its timing is unit-testable without
- * a socket. `run` receives the hooks the continue entry understands.
+ * A coalescing scheduler, exported so its timing is testable without a socket.
  *
  * @param {{
  *   run: (hooks: {onSkip: () => void}) => Promise<unknown>,
@@ -274,23 +266,14 @@ export async function runOnce(opts, env = process.env) {
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {Promise<number>}
  */
-export async function main(argv, env = process.env) {
-  let opts;
-  try {
-    opts = parseArgs(argv, env);
-  } catch (err) {
-    process.stderr.write(`subscribe: ${err.message}\n`);
-    return 2;
-  }
-  if (opts.help) {
-    process.stdout.write(USAGE);
-    return 0;
-  }
-  if (selectMode(opts) !== "subscribe") {
-    process.stderr.write("subscribe: pass --subscribe (it is a daemon mode, not an --once entry)\n");
-    return 2;
-  }
-  return runOnce(opts, env);
+export function main(argv, env = process.env) {
+  return runEntry(
+    "subscribe",
+    argv,
+    env,
+    runOnce,
+    (opts) => (selectMode(opts) === "subscribe" ? null : "pass --subscribe (a daemon mode, not an --once entry)"),
+  );
 }
 
 if (isEntryPoint(import.meta.url)) {

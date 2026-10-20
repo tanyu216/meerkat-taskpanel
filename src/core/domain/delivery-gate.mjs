@@ -6,11 +6,10 @@
  * A report from an earlier round is not a report: if work came back for rework,
  * the previous conclusion is history, not evidence.
  *
- * "Delivery" is part of the requirement too (0008). The md importer writes a
- * card's `## Report` — including a degraded narrative, or a structured report
- * with no evidence — as a history row (`origin: "import"`). Such a row was never
- * checked by `normalizeReportCreate`, so it proves nothing and must not open the
- * gate. Only a row `writeReport`/`deliver` wrote (`origin: "delivery"`, whose
+ * "Delivery" is part of the requirement too (0008). A historical report row
+ * (`origin: "import"`) — a degraded narrative, or a structured report with no
+ * evidence — was never checked by `normalizeReportCreate`, so it proves nothing
+ * and must not open the gate. Only a row `writeReport`/`deliver` wrote (`origin: "delivery"`, whose
  * acceptance/evidence are non-empty by construction) counts. The trigger in
  * `0008_report_origin.sql` repeats exactly this rule.
  *
@@ -27,8 +26,8 @@
  * Pure: no `node:` specifiers.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
-import { deliverCommandHint } from "../../shared/deliver-hint.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { deliverCommandHint } from "../../foundation/deliver-hint.mjs";
 import { STATUS, TASK_KIND } from "./enums.mjs";
 import { requiresReport } from "./status.mjs";
 
@@ -61,11 +60,9 @@ export const EPIC_INITIAL_STATUSES = Object.freeze([STATUS.BACKLOG, STATUS.TODO]
  * Refuse an *initial* status a task may not start in.
  *
  * The UPDATE trigger (`tr_deliver_gate`) cannot cover this: it fires on UPDATE,
- * while a create is an INSERT — and the md importer, which deliberately *writes
- * history* rather than delivering, inserts `in_review`/`done` cards straight
- * into the table without going through the gate. So the guarantee lives one
- * layer up, in `createTask` — the single door every user-facing face (HTTP and
- * CLI) goes through, and a door the importer never uses.
+ * while a create is an INSERT. So the guarantee lives one layer up, in
+ * `createTask` — the single door every user-facing face (HTTP and CLI) goes
+ * through.
  *
  * The refusal is deliberately the *same structured error* a reportless move to
  * `in_review` produces — `REPORT_REQUIRED`, the same `details` and the same
@@ -168,7 +165,8 @@ export function assertWaiverRequest(input) {
  * Does this report count as a *delivery* — the only kind the gate accepts?
  *
  * A report's `origin` says who wrote it: `delivery` (via `writeReport`/`deliver`,
- * content validated non-empty) or `import` (the md importer, writing history).
+ * content validated non-empty) or `import` (a historical row written outside the
+ * delivery path).
  * A missing `origin` defaults to `delivery` for backwards compatibility with
  * callers that pass `{round}` alone (`tasks.mjs` supplies the real `origin`).
  *

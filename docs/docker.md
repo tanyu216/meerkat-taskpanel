@@ -54,6 +54,12 @@ no `design/`, no `node_modules`). The image:
 - carries `web/dist` — the built board frontend — copied from the `webbuild` stage. `taskd`
   serves that directory as the hosted root (`STATIC_DIR_REL = "web/dist"`). There is no
   `node_modules` in the image.
+- reads the install-root `.env` like a host install. `.env` is in `.dockerignore`, so a
+  developer's file (and any token in it) is never baked into the image. The compose files set
+  `MEERKAT_TASKPANEL_ENV_FILE=/app/.data/.env`, so an Access-panel save lands on the data
+  volume and survives a container recreate; the scaffold (`docker/serve-skeleton.mjs`) uses
+  the same loader. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` is the escape hatch for a
+  read-only install root.
 
 ## Base image cache
 
@@ -64,8 +70,7 @@ compressed, and on a host whose daemon proxy or DNS is broken that pull does not
 time — it turns a healthy tree into a red gate.
 
 `npm run verify:docker` therefore runs a **preflight** before any build
-(`scripts/verify/lib/base-image.mjs`), and `npm run verify:migrate:container` uses the same
-policy:
+(`scripts/verify/lib/base-image.mjs`):
 
 1. every base image named by a `FROM` line is inspected in the local image store
    (`docker image inspect`). Present → the run never touches the network;
@@ -339,7 +344,7 @@ line number.
 - the skill directory exists at `<home>/<target_dir>`;
 - `SKILL.md` still carries `name: meerkat-taskpanel` in its frontmatter;
 - `node <dest>/scripts/run.mjs --version` prints the version from
-  `src/shared/constants.mjs`.
+  `src/foundation/constants.mjs`.
 
 ### Why a temporary home
 

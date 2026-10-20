@@ -45,8 +45,8 @@ import {
   DEFAULT_ACCEPTANCE_POLICY,
   HUMAN_KIND,
   TASKD_KIND,
-} from "../../shared/constants.mjs";
-import { DomainError } from "../../shared/errors.mjs";
+} from "../../foundation/constants.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { STATUS, STATUSES, TASK_KIND } from "./enums.mjs";
 
 /**
@@ -370,7 +370,7 @@ function allowedKindsFor(policy, scope) {
  * This is a service-layer invariant, and deliberately so: the actor of a write
  * is not a column of the `tasks` row, so — unlike the delivery gate, which a
  * trigger can decide from the report table — no `tasks` trigger can see it.
- * `SQL_CONSTRAINT_CODES`/`DB_RAISE_CODES` in `shared/errors.mjs` name the codes
+ * `SQL_CONSTRAINT_CODES`/`DB_RAISE_CODES` in `foundation/errors.mjs` name the codes
  * a trigger *can* raise; this one is `JS_ONLY_CODES` for exactly that reason.
  *
  * The check reads the actor's **declared** kind. The board trusts a caller's

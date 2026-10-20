@@ -23,8 +23,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { MD_GROWTH_FACTOR } from "../../../shared/constants.mjs";
-import { DomainError } from "../../../shared/errors.mjs";
+import { MD_GROWTH_FACTOR } from "../../../foundation/constants.mjs";
+import { DomainError } from "../../../foundation/errors.mjs";
 import { serializeFrontmatter } from "./frontmatter.mjs";
 import { statusForExport } from "./legacy-status.mjs";
 import {

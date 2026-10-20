@@ -12,9 +12,9 @@
  * Pure: no `node:` specifiers.
  */
 
-import { LABEL_TTL_DAYS_DEFAULT } from "../../shared/constants.mjs";
-import { DomainError } from "../../shared/errors.mjs";
-import { norm } from "../../shared/norm.mjs";
+import { LABEL_TTL_DAYS_DEFAULT } from "../../foundation/constants.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
+import { norm } from "../../foundation/norm.mjs";
 
 /**
  * The identity key of a label: the shared `norm`. Re-exported under a

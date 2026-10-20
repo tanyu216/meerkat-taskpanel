@@ -123,8 +123,22 @@ export const DOMAINS = Object.freeze({
   PRIORITY: Object.freeze(["urgent", "high", "medium", "low", "none"]),
   /** Card identity model (B07/C07). */
   ASSIGNEE_KIND: Object.freeze(["human", "agent"]),
-  /** The four agent platforms (B03/B07/B16/B22/C07). */
-  PLATFORM: Object.freeze(["claude", "openclaw", "codex", "pi"]),
+  /**
+   * The agent platforms the board renders (B03/B07/B16/B22/C07). The original
+   * four hosts plus the five the roster may name today; each carries an official
+   * brand colour in the sidebar (`--brand-agent-*` in `tokens.css`).
+   */
+  PLATFORM: Object.freeze([
+    "claude",
+    "codex",
+    "cursor",
+    "opencode",
+    "pi",
+    "openclaw",
+    "grok",
+    "hermes",
+    "gemini",
+  ]),
   /**
    * Sidebar navigation (B03). M1 appends `waiting` — the one deliberate
    * extension of this frozen baseline, approved with B03's count together
@@ -2455,7 +2469,7 @@ const BLOCKS = [
         kind: "manual",
         note:
           "The allow-list is persisted, not a placeholder: `GET|PUT /api/v1/access` read and " +
-          "write `<dataDir>/taskd.env`, the switch and every row are a draft, and the panel's one " +
+          "write the install-root `.env`, the switch and every row are a draft, and the panel's one " +
           "Save commits them. The two default rows are 192.168.0.0/16 and 10.0.0.0/8; the list " +
           "starts **off** so an upgrade never silently narrows remote access.",
       },
@@ -3317,6 +3331,15 @@ export const AUXILIARY_HOOKS = Object.freeze([
   // ⇒ remove", so it left the app (`DetailDrawer.vue`) **and** this table
   // together. The three `[data-attachment-*]` / `[data-activity-*]` hooks stay:
   // U1(a) keeps them, and `test/web/blocks.contract.mjs` §B09 backs them.
+  // The drawer's inline attachment preview — implementation-only, like the three
+  // `[data-attachment-*]` hooks above: the prototype's rows carry download and
+  // remove but no preview arithmetic, so the disclosure button and its region
+  // exist only in the shipped app (`design/contracts/attachment-preview.md`).
+  Object.freeze({ selector: "[data-attachment-open]", purpose: "a previewable attachment row's eye button (before download), which opens the dialog" }),
+  Object.freeze({ selector: "[data-attachment-preview]", purpose: "the full-screen dialog an attachment's bytes render in" }),
+  Object.freeze({ selector: "[data-attachment-preview-close]", purpose: "the dialog's close button" }),
+  Object.freeze({ selector: "[data-attachment-preview-loading]", purpose: "the dialog's loading sentence" }),
+  Object.freeze({ selector: "[data-attachment-preview-error]", purpose: "the dialog's failure sentence" }),
   Object.freeze({ selector: "[data-label]", purpose: "one chip per card label" }),
   Object.freeze({ selector: "[data-assignee-value]", purpose: "the name an assignee roster option carries" }),
   Object.freeze({ selector: "[data-reporter-value]", purpose: "the name a reporter roster option carries" }),

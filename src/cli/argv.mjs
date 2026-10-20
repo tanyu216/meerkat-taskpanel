@@ -15,7 +15,7 @@
  * alone (§F-C2).
  */
 
-import { DomainError } from "../shared/errors.mjs";
+import { DomainError } from "../foundation/errors.mjs";
 
 /** Flag names that never take a value. Everything else consumes the next token. */
 export const BOOLEAN_FLAGS = Object.freeze(
@@ -39,11 +39,12 @@ export const GLOBAL_FLAGS = Object.freeze([
   { flag: "json", key: "json", as: "boolean", summary: "Machine-readable JSON on stdout ({ok:true,data})." },
   { flag: "url", key: "url", as: "string", value: "<url>", summary: "Board to talk to (default: the local taskd)." },
   { flag: "token", key: "token", as: "string", value: "<token>", summary: "Access token (never echoed)." },
+  { flag: "env-file", key: "envFile", as: "string", value: "<path>", summary: "Config file (default: <install root>/.env; env: MEERKAT_TASKPANEL_ENV_FILE)." },
   { flag: "if-version", key: "ifVersion", as: "number", value: "<n>", summary: "Optimistic-concurrency guard." },
-  { flag: "actor-kind", key: "actorKind", as: "string", value: "<name>", summary: "Who or what is writing: human, or the platform (claude|codex|…)." },
+  { flag: "actor-kind", key: "actorKind", as: "string", value: "<name>", summary: "The platform writing (claude|codex|…); required on every command except --help/--version. `human` is reserved; use --as-human." },
   { flag: "as-human", key: "asHuman", as: "boolean", summary: "Write as the configured human, not as yourself." },
   { flag: "session-id", key: "sessionId", as: "string", value: "<id>", summary: "Agent session identifier." },
-  { flag: "agent", key: "agent", as: "string", value: "<name>", summary: "Actor id recorded on writes." },
+  { flag: "agent", key: "agent", as: "string", value: "<name>", summary: "Actor id recorded on writes — a role or person (jobs, linus, turing, …)." },
   { flag: "help", key: "help", as: "boolean", short: "-h", summary: "Show help for the command and exit." },
   { flag: "version", key: "version", as: "boolean", summary: "Print the version and exit (with --json: the version and the contract schema_version)." },
 ]);

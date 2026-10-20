@@ -14,8 +14,8 @@ database (Node's built-in `node:sqlite`) — no external services. Node **>= 22*
 **zero runtime dependencies**, MIT, public repo.
 
 **Status (honest):** the engine has landed in full — the core engine, the `taskctl` CLI and
-its local `taskd`, the six-host installers, the markdown migrator, and the board HTTP API +
-SSE plus the `web/` frontend. `src/core/` has the domain model, SQLite storage
+its local `taskd`, the six-host installers, and the board HTTP API + SSE plus the `web/`
+frontend. `src/core/` has the domain model, SQLite storage
 + migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl` command surface
 and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` is the
 board HTTP API + SSE; `web/` is the Vue 3 + Vite frontend that builds to `web/dist` and is
@@ -23,9 +23,11 @@ served by `taskd`. Still planned: the **epic view** and **iteration management**
 roadmap lives in `README.md` / `README.zh-CN.md`.
 
 The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/install.md`).
-The host-external supervisor is a **skill of its own** (`skills/meerkat-loop/`), never
-installed for OpenClaw and **not** distributed through the marketplace: `install.sh
---target claude|codex|pi` is its only path, and it carries no version of its own.
+The board owns the workflow decisions (`issue reconcile --workflow`); the loop executes the
+resulting plan. The host-external supervisor is a **skill of its own**
+(`skills/meerkat-loop/`), never installed for OpenClaw and **not** distributed through the
+marketplace: `install.sh --target claude|codex|pi` is its only path, and it carries no
+version of its own.
 
 ## How to work here
 
@@ -100,31 +102,30 @@ npm run verify:docker:container              # run docker/verify-in-container.sh
 node scripts/sync-skills.mjs                 # regenerate the loop payload + plugin skill copies
 node scripts/build.mjs                       # produce dist/ (the npm release tree; deletes + recreates)
 node scripts/verify/contract.mjs             # API contract snapshot; --update refreshes it, drift exits 1
+node scripts/verify/cli-contract.mjs         # CLI surface snapshot (commands/flags/envelope); --update
 node scripts/verify/route-request.mjs        # declared request schema vs what the handler reads; --print
 node src/server/main.mjs                     # start taskd directly (taskctl also auto-starts it)
 bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|all   # --prefix --link --force --dry-run
 ```
 
-`test:coverage` gates `src/core/**`, `src/shared/**`, `src/cli/**` and `src/server/**`; the
-floors live once, in `package.json`. Other checkers: `verify:migrations`,
-`verify:changelog`, `verify:migrate:container`, `node src/core/storage/md/migrate-cli.mjs
-check --dir <cards>` (also `import` / `export`; exit 3 when `check` finds differences).
+`test:coverage` gates `src/core/**`, `src/foundation/**`, `src/cli/**` and `src/server/**`; the
+floors live once, in `package.json`. Other checkers: `verify:migrations`, `verify:changelog`.
 
 ## Repository layout
 
 ```text
 meerkat-taskpanel/
 ├── src/core/               # engine: domain (no Node builtins), storage (SQLite + migrations,
-│                           #   repositories, md import/export), commands (use-cases), bootstrap.openBoard()
-├── src/cli/                # taskctl (argv, usage, commands/, output/); reaches taskd via shared/transport
+│                           #   repositories, md export), commands (use-cases), bootstrap.openBoard()
+├── src/cli/                # taskctl (argv, usage, commands/, output/); reaches taskd via foundation/transport
 ├── src/server/             # taskd: auth + CIDR, router, routes/, sse, static, writer lock, graceful stop
-├── src/shared/             # DTOs, constants, errors, pure helpers + the taskd transport seam
+├── src/foundation/             # DTOs, constants, errors, pure helpers + the taskd transport seam
 ├── web/                    # Vue 3 + Vite board frontend (own lockfile) -> web/dist, served by taskd
 ├── skills/                 # the two skills: meerkat-taskpanel (board), meerkat-loop (supervisor)
 ├── .claude-plugin/ .pi/ .opencode/ .cursor-plugin/   # harness markers; the plugin root IS the repo root
 ├── design/                 # DESIGN / BLOCKS, the interactive prototype/, brand/, assets/, fidelity-rNN.md
 ├── scripts/                # build, install/, sync-skills + sync-loop, supervisor, verify/{manifests,skill,
-│                           #   migrations,paths,contract,route-request,changelog,version,docker,…}
+│                           #   migrations,paths,contract,cli-contract,route-request,changelog,version,docker,…}
 ├── docker/                 # Dockerfile (webbuild stage + runtime), compose, profiles, verify-in-container.sh
 ├── monitoring/             # OTel / Prometheus exporter
 ├── test/                   # contract, core, concurrency, server, web, install, scheduling, verify, skill, design
@@ -157,9 +158,12 @@ the **hosted frontend root** is `web/dist`, the static build of `web/` that `tas
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
 - **The skills are generated, never hand-edited.** Author only under `skills/meerkat-taskpanel/`
   and the loop's hand-written surface (`skills/meerkat-loop/`: `SKILL.md`, `references/`,
-  `scripts/board-check.mjs`). The loop's `body/` + `templates/` are generated from
-  `scripts/supervisor.mjs`, `scripts/loop/`, `scripts/wake-cwd.mjs`, `src/shared/` and
-  `scripts/install/templates/`. After any edit touching those inputs run
+  `scripts/board-check.mjs`). The loop's `manifest.txt` + `scripts/` (except the gate) +
+  `src/` + `templates/` are generated from `scripts/supervisor.mjs`, `scripts/loop/`,
+  `scripts/wake-cwd.mjs`, `src/foundation/` and
+  `scripts/install/templates/` (the workflow decisions live in
+  `src/core/domain/workflow.mjs` and are not in the body — the loop gets them from
+  `issue reconcile --workflow`). After any edit touching those inputs run
   `node scripts/sync-skills.mjs`; CI runs `--check` and fails on drift. There are **no committed
   copies of a skill** anywhere: `skills/` is the only `skills` tree in the repository, and
   `test/scaffold.test.mjs` asserts it.
@@ -167,14 +171,18 @@ the **hosted frontend root** is `web/dist`, the static build of `web/` that `tas
   `src/core/storage/migrations/*.sql`; add a new numbered file. The DB runner refuses a database
   whose applied file changed, and adding a migration reds several hand-kept version lists — see
   `npm run verify:migrations` and `docs/migration.md`.
-- **The API contract is explicit.** A route, error code or wire-field change must update
+- **The contracts are explicit.** A route, error code or wire-field change must update
   `test/fixtures/contract/api.snapshot.json` via `node scripts/verify/contract.mjs --update` —
   never let it drift. Adding a new `DomainError` code touches `ERROR_CODES`, its bucket and that
-  snapshot.
+  snapshot. A command, positional or flag change must update
+  `test/fixtures/contract/cli.snapshot.json` via `node scripts/verify/cli-contract.mjs
+  --update`, and `skills/meerkat-taskpanel/references/cli.md` must name every frozen command
+  and flag — the loop and user scripts bind to that surface.
 - **Commit with explicit paths:** `git commit -- <path>` (never a bare `git commit -a`).
 - **Code style / layering:** `src/core/domain/` imports **no Node builtins**; dependency
-  direction is `cli|server -> core -> shared` (nothing imports from `cli`/`server`; `shared`
-  imports nothing from `src/`); every failure is a domain error with a code, never a bare `Error`.
+  direction is `cli|server -> core -> foundation` (nothing imports from `cli`/`server`;
+  `foundation` imports nothing from `src/`); every failure is a domain error with a code,
+  never a bare `Error`.
 - **`design/` is a live oracle.** Prototype pages under `design/prototype/` are read by tests
   (`test/design/`, `test/web/blocks.*`, `test/web/i18n.catalogue.test.mjs`), so editing them
   changes what green means. `design/` is excluded from the image by `.dockerignore`, so
@@ -207,6 +215,12 @@ authoritative home, because the container image drops `design/`.
 
 ## Key invariants to remember
 
+- **One config file at the install root.** `.env` (gitignored and dockerignored) is read by
+  both `taskd` and `taskctl`; the process environment wins key by key and CLI flags win above
+  both. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects another path. The old
+  `<dataDir>/taskd.env` is no longer read (hard switch). Identity (`--actor-kind`) is required
+  on every command except `--help` / `--version`; `--agent` names the role and is not a
+  shared-file key.
 - The **delivery gate** requires a report **for the current delivery round** before a card can
   move to `in_review`; a report from an earlier round is history, not evidence. It is enforced by
   a DB trigger *and* a domain check, tested against each other under `test/contract/`. There is
@@ -243,6 +257,6 @@ authoritative home, because the container image drops `design/`.
 - `CONTRIBUTING.md` — the container gate, PR flow, conventions the gates enforce.
 - `docs/development.md` — layout, commands, the two build layers, skills generation, constraints.
 - `docs/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
-- `docs/contract.md` — the API contract snapshot + route-request lint.
+- `docs/contract.md` — the API and CLI contract snapshots + route-request lint.
 - `docs/migration.md`, `docs/scheduling.md`, `docs/observability.md`, `docs/security.md` — the named subsystems.
 - `src/core/README.md` — what the core engine owns and the rules it enforces.

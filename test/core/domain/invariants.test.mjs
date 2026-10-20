@@ -13,7 +13,7 @@ import {
   invariantById,
   invariantIds,
 } from "../../../src/core/domain/invariants.mjs";
-import { ERROR_CODES } from "../../../src/shared/errors.mjs";
+import { ERROR_CODES } from "../../../src/foundation/errors.mjs";
 
 describe("domain/invariants", () => {
   it("registers exactly I1..I6", () => {

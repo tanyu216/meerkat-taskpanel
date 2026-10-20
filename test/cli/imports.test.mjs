@@ -33,8 +33,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /**
  * Every module `src/cli` promises to ship. The transport seam
  * (`client/index|http|autostart`, `runtime`, `token`, `actor`, `errors`) is no
- * longer listed: it moved to `src/shared/transport/**` (see
- * `test/shared/transport-imports.test.mjs`). A missing module must fail, not
+ * longer listed: it moved to `src/foundation/transport/**` (see
+ * `test/foundation/transport-imports.test.mjs`). A missing module must fail, not
  * scan empty.
  */
 const PLANNED_CLI = [
@@ -169,12 +169,123 @@ describe("cli/imports — the layering rules", () => {
   });
 
   it("the autostart module spawns the daemon entry, and only that", () => {
-    const source = readSource(join(ROOT, "src/shared/transport/autostart.mjs"));
+    const source = readSource(join(ROOT, "src/foundation/transport/autostart.mjs"));
     // `src/server/index.mjs` is the *library* (`createTaskd`); the program is
     // `main.mjs`. The CLI must spawn the program — spawning the library would
     // import and exit.
     assert.match(source, /"src",\s*"server",\s*"main\.mjs"/);
     assert.match(source, /detached:\s*true/);
     assert.equal(/(^|\/)server\/index\.mjs/.test(source), false, "the CLI must not spawn the library entry");
+  });
+});
+
+/**
+ * The orchestrator boundary: the loop is a *consumer* of the board's public
+ * surface (`taskctl` / HTTP / the shared SDK), never a co-owner of its
+ * implementation. `src/foundation/` is the SDK both sides may import; the board's
+ * core, CLI and server are not.
+ */
+describe("cli/imports — the loop consumes the toolkit, it does not implement it", () => {
+  /** A relative specifier resolved against the importing file, as a repo-relative path. */
+  function specifierTarget(file, specifier) {
+    if (!specifier.startsWith(".")) return null;
+    const resolved = resolve(dirname(file), specifier);
+    return resolved.startsWith(`${ROOT}/`) ? resolved.slice(ROOT.length + 1) : resolved;
+  }
+
+  it("scripts/loop and the supervisor never import src/core, src/cli or src/server", () => {
+    const files = [
+      ...listModuleFiles(join(ROOT, "scripts/loop")),
+      join(ROOT, "scripts/supervisor.mjs"),
+      join(ROOT, "scripts/wake-cwd.mjs"),
+    ].filter((file) => existsSync(file));
+    assert.ok(files.length >= 5, `expected the loop module set, found ${files.length}`);
+
+    const violations = [];
+    for (const file of files) {
+      for (const specifier of importedSpecifiers(readSource(file))) {
+        const target = specifierTarget(file, specifier);
+        if (target === null) continue;
+        if (/^src\/(core|cli|server)\//.test(target)) {
+          violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+  });
+
+  it("src/core, src/cli and src/server never import the loop's policy modules", () => {
+    // `scheduling.mjs` (the loop's clocks/wake) and `sla-patrol.mjs` (the SLA
+    // rules) are loop policy. They may live under `shared/` so the loop payload
+    // can vendor them, but the board must not depend on them: that would make
+    // the toolkit import its own orchestrator.
+    const files = [
+      ...filesUnder("src/core"),
+      ...filesUnder("src/cli"),
+      ...filesUnder("src/server"),
+    ];
+    const loopPolicy = new Set(["src/foundation/scheduling.mjs", "src/foundation/sla-patrol.mjs"]);
+
+    const violations = [];
+    for (const file of files) {
+      for (const specifier of importedSpecifiers(readSource(file))) {
+        const target = specifierTarget(file, specifier);
+        if (target !== null && loopPolicy.has(target)) {
+          violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+  });
+
+  it("src/foundation imports nothing from src/core, src/cli or src/server", () => {
+    // The SDK is the bottom of the tree. A shared module reaching upward would
+    // make the loop (which vendors shared) carry a board dependency.
+    const violations = [];
+    for (const file of filesUnder("src/foundation")) {
+      for (const specifier of importedSpecifiers(readSource(file))) {
+        const target = specifierTarget(file, specifier);
+        if (target !== null && /^src\/(core|cli|server)\//.test(target)) {
+          violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+  });
+
+  it("no shipped skill imports the board's implementation", () => {
+    // An installed skill and the board's source tree are not co-located.
+    // `skills/**` may only use Node builtins and relative links inside its own
+    // tree — the loop body's vendored `src/foundation/**` included. Reaching
+    // `src/core|cli|server` would resolve in a checkout and fail on a host.
+    const files = listModuleFiles(join(ROOT, "skills"));
+    assert.ok(files.length >= 3, `expected the shipped skill modules, found ${files.length}`);
+
+    const violations = [];
+    for (const file of files) {
+      for (const specifier of importedSpecifiers(readSource(file))) {
+        const target = specifierTarget(file, specifier);
+        if (target !== null && /^src\/(core|cli|server)\//.test(target)) {
+          violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+
+    // The payload has no `src/` tree at all: foundation travels under scripts/foundation.
+    // Asserting each `src/{core,cli,server}` path separately would pass vacuously once the
+    // parent directory is gone, so assert the parent itself.
+    assert.equal(
+      existsSync(join(ROOT, "skills/meerkat-loop/src")),
+      false,
+      "the loop payload must not carry a src/ tree",
+    );
+    for (const dir of ["core", "cli", "server"]) {
+      assert.equal(
+        existsSync(join(ROOT, "skills/meerkat-loop/scripts/foundation", dir)),
+        false,
+        `the foundation payload must not vendor ${dir}`,
+      );
+    }
   });
 });

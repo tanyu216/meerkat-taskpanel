@@ -24,7 +24,7 @@ import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import { createTaskd } from "../../src/server/index.mjs";
-import { identifierPrefix } from "../../src/shared/ids.mjs";
+import { identifierPrefix } from "../../src/foundation/ids.mjs";
 
 const tempDirs = [];
 const daemons = [];

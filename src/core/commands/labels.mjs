@@ -18,7 +18,7 @@
  * transaction with one activity (the same rule the dictionary follows).
  */
 
-import { LABEL_PALETTE, LABEL_TTL_DAYS_DEFAULT } from "../../shared/constants.mjs";
+import { LABEL_PALETTE, LABEL_TTL_DAYS_DEFAULT } from "../../foundation/constants.mjs";
 import { BOARD_ACTOR } from "./context.mjs";
 import { isCollectable, labelDisplayName, nextColor, normalizeLabelName } from "../domain/labels.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";

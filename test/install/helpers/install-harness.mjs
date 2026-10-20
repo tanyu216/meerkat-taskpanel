@@ -35,6 +35,16 @@ export function createInstallHarness({
 } = {}) {
   const dirs = [];
 
+  // The installer seeds `<repo>/.env` by default. Every test gets its own temp
+  // path instead, so a run never writes the checkout (or reads a developer's
+  // real config). A suite can still override it through `env`.
+  const envDir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-env-"));
+  dirs.push(envDir);
+  const defaults = {
+    ...installDefaults,
+    MEERKAT_TASKPANEL_ENV_FILE: join(envDir, ".env"),
+  };
+
   const makeTempDir = (override = prefix) => {
     const dir = mkdtempSync(join(tmpdir(), override));
     dirs.push(dir);
@@ -45,7 +55,7 @@ export function createInstallHarness({
     spawnSync("bash", [INSTALL, ...args], {
       cwd: ROOT,
       encoding: "utf8",
-      env: { ...process.env, ...installDefaults, ...env },
+      env: { ...process.env, ...defaults, ...env },
     });
 
   const cleanup = () => {

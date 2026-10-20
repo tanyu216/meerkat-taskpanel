@@ -46,6 +46,22 @@ describe("cli/issue — create, list, get", () => {
     });
   });
 
+  it("create accepts --review-of and --review-round end to end", async () => {
+    await board(async ({ run }) => {
+      const original = createIssue(run, ["--title", "Original"]);
+      const review = createIssue(run, [
+        "--title", "Review",
+        "--review-of", original.task.identifier,
+        "--review-round", "2",
+      ]);
+
+      assert.equal(review.task.review_of_id, original.task.id);
+      assert.equal(review.task.review_round, 2);
+      assert.equal(review.task.meta.review_of, original.task.identifier);
+      assert.equal(review.task.meta.review_round, 2);
+    });
+  });
+
   it("lists with filters, and prints one line per task", async () => {
     await board(async ({ run }) => {
       createIssue(run);
@@ -116,6 +132,27 @@ describe("cli/issue — update, move, assign, archive", () => {
       assert.equal(nothing.status, 0, "nothing to do is not an error");
       assert.equal(nothing.stdout, "");
       assert.match(nothing.stderr, /nothing to update/);
+    });
+  });
+
+  it("derives the acceptance list in one PATCH on a claimed card, preserving meta", async () => {
+    await board(async ({ run }) => {
+      createIssue(run, ["--target", "src/x", "--meta", "epic_triage=off"]);
+      dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--json"]));
+
+      const updated = dataOf(
+        run([
+          "issue", "update", "DEMO-0001",
+          "--acceptance", "a", "--acceptance", "b",
+          "--meta", "acceptance_derived=yes", "--json",
+        ]),
+      );
+
+      assert.equal(updated.task.status, "in_progress");
+      assert.deepEqual(updated.task.meta.acceptance, ["a", "b"]);
+      assert.equal(updated.task.meta.acceptance_derived, "yes");
+      assert.equal(updated.task.meta.target, "src/x");
+      assert.equal(updated.task.meta.epic_triage, "off");
     });
   });
 
@@ -989,6 +1026,19 @@ describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
 });
 
 describe("cli/issue — reconcile (the container backstop)", () => {
+  it("returns the board's workflow plan when asked", async () => {
+    await board(async ({ run }) => {
+      const data = dataOf(run(["issue", "reconcile", "--workflow", "--json"]));
+      assert.equal(data.dry_run, false);
+      assert.deepEqual(data.workflow.actions, []);
+      assert.equal(data.workflow.summary.actions, 0);
+      // The human form says the workflow half ran too; the JSON shape above is
+      // what the loop consumes.
+      const human = run(["issue", "reconcile", "--workflow", "--dry-run"]);
+      assert.match(human.stdout, /workflow/i);
+    });
+  });
+
   it("plans a missed closure with --dry-run, applies it once, and is idempotent", async () => {
     await board(async ({ run }) => {
       // A child finished with no container above it: the event path never saw a

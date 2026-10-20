@@ -17,7 +17,7 @@
  * ## Why the CLI may import that module and not the core barrel
  *
  * `src/core/commands/tasks-input.mjs` imports exactly two things
- * (`shared/errors.mjs`, `domain/enums.mjs`) and reaches no storage — which is
+ * (`foundation/errors.mjs`, `domain/enums.mjs`) and reaches no storage — which is
  * what lets the CLI read the declaration without dragging `node:sqlite` into a
  * process whose whole point is that it talks to the board over HTTP.
  * `test/cli/imports.test.mjs` pins that: the CLI's only `src/core` import is
@@ -85,7 +85,14 @@ export const SPELLING = Object.freeze({
       value: "<t>",
       summary: "The card's target — stored in its meta; also the idempotency key's target slot.",
     },
-    review_of: { value: "<id>", summary: "Idempotency key's source slot (a card under review)." },
+    review_of: {
+      value: "<id>",
+      summary: "Mark this card as a review of that card (identifier or id); resolved and stamped at creation.",
+    },
+    review_round: {
+      value: "<n>",
+      summary: "The delivery round this review card audits (positive integer; needs --review-of).",
+    },
     parent: { value: "<id>", summary: "Idempotency key's source slot (a parent card)." },
   }),
   [TASK_OPS.update]: Object.freeze({

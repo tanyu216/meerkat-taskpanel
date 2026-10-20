@@ -17,7 +17,7 @@
  */
 
 import { GLOBAL_FLAGS } from "./argv.mjs";
-import { CLI_NAME, VERSION } from "../shared/constants.mjs";
+import { CLI_NAME, VERSION } from "../foundation/constants.mjs";
 
 /** `--flag <value>` / `-h, --help` — how a flag reads in a usage line. */
 export function flagSynopsis(spec) {

@@ -164,9 +164,10 @@ _中文_: 交付门禁
 _Avoid_: review gate, checklist, policy
 
 **Acceptance authority**:
-The actor kinds permitted to move a card into `done` — a human, or the board itself
-(`system`). A worker agent may not accept, including on its own card: acceptance is a
-separate act from delivery, and the board refuses the shortcut.
+The board policy and card scope that decide who may move a card into `done`. Under the
+default `both`, a human or the board (`taskd`) closes a **top-level** card, and a worker
+agent may not accept its own; a **child** card is the opposite, closed only by a non-human
+writer. Acceptance is a separate act from delivery, and the board refuses the shortcut.
 _中文_: 验收权限
 _Avoid_: approver role, reviewer (the reviewer reports; it does not accept)
 
@@ -183,7 +184,9 @@ _Avoid_: source, channel
 
 **Acceptance**:
 A stated condition for a card being done, together with whether it was met, partially met,
-not met, or not applicable. It is what a report is evidence against.
+not met, or not applicable. It is what a report is evidence against. When a card carries no
+list, its worker may derive one at claim; `meta.acceptance_derived=yes` records that, and an
+independent acceptor still has to audit its coverage.
 _中文_: 验收
 _Avoid_: criterion, requirement, DoD
 
@@ -298,16 +301,21 @@ _中文_: 巡检
 _Avoid_: audit, sweep, health check; do not call the whole loop "the patrol"
 
 **Workflow**:
-The loop's writing entry: reconcile containers, dispatch review cards, apply a reviewer's
-verdict and close the review card. It runs as `system` and is not scheduled; the continue
-turn runs it after patrol.
+The board's workflow decisions (`issue reconcile --workflow`: reconcile containers, review
+outcomes, review dispatch) and the loop's execution of that plan. The board decides; the
+loop creates the review card, applies the verdict and closes the review card as `taskd`.
+It is not scheduled; the continue turn runs it after patrol.
 _中文_: 工作流通道
 _Avoid_: workflow engine, pipeline; SLA alerts are not part of it
 
 **Review card**:
-An ordinary `task` card that audits another card: it records `review_of` (the original),
-`flow=B` and the delivery round it audits, and carries the reviewer's verdict report. It is
-not a `kind` of its own, and it reaches `done` through `in_review` like every other card.
+An ordinary `task` card that audits another card: it records `review_of` (the original's
+identifier), `flow=B` and the delivery round it audits, and carries the reviewer's verdict
+report. Creation also stamps the immutable structural marker (`review_of_id`,
+`review_round`), which is what the acceptance gate reads; `meta.review_of` /
+`meta.review_round` are its readable mirror and are canonicalized from the columns on
+update. It is not a `kind` of its own, and it reaches `done` through `in_review` like every
+other card.
 _中文_: 审核卡
 _Avoid_: review task kind, acceptance card, approval
 
@@ -436,7 +444,7 @@ still fresh.
 _Avoid_: using state and status interchangeably
 
 **Migration**:
-Deliberately overloaded, and the two senses are unrelated. One is a change to the database
-schema; the other is taking over a team's existing markdown cards. The repository names both
-"migration" on purpose — read the surrounding sentence to tell which is meant.
-_中文_: 迁移（数据库结构与「接管旧卡片」共用一词）
+A numbered, append-only change to the database schema (`src/core/storage/migrations/*.sql`).
+It is not a word for moving cards in or out of the board: cards are created through the
+board, and `taskctl export md` writes them out.
+_中文_: 迁移（仅指数据库结构；不指卡片搬迁）

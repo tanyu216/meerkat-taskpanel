@@ -16,7 +16,7 @@ import {
   waiverCovers,
 } from "../../../src/core/domain/delivery-gate.mjs";
 import { STATUSES } from "../../../src/core/domain/enums.mjs";
-import { DomainError } from "../../../src/shared/errors.mjs";
+import { DomainError } from "../../../src/foundation/errors.mjs";
 
 const task = { id: "task-1", identifier: "PROJ-0007", deliveryRound: 1 };
 const reports = (...rounds) => rounds.map((round) => ({ round }));

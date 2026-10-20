@@ -14,7 +14,7 @@
  * (the writer lock and the runtime pointer are removed on the way out).
  *
  * taskd runs under Node's `--watch`, so a change to any imported backend module
- * (`src/server`, `src/core`, `src/shared`) restarts it in place; Vite's HMR
+ * (`src/server`, `src/core`, `src/foundation`) restarts it in place; Vite's HMR
  * covers `web/src`. Together they make the container live for both halves.
  *
  * Environment:

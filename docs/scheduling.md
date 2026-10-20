@@ -49,7 +49,7 @@ The deterministic entries are **not scheduled individually**:
 |---|---|---|
 | `scripts/loop/poll.mjs` | scan → atomic claim → wake a worker | claims and wakes |
 | `scripts/loop/patrol.mjs` | heartbeat alerts + SLA rows | nothing (notify only) |
-| `scripts/loop/workflow.mjs` | reconcile → review outcomes → dispatch | cards, as `system` |
+| `scripts/loop/workflow.mjs` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `taskd` |
 
 The continue prompt runs them in the order **patrol → workflow → poll**: the
 workflow pass dispatches a review card, and the poll that follows in the same
@@ -159,7 +159,7 @@ What that means concretely:
   `evidence`, … A field means the same thing on both mechanisms, so the two can
   never label one card differently.
 - **Thresholds are `PROTOCOL §⑮`'s, referenced.** `SLA_ROWS` in
-  `src/shared/sla-patrol.mjs` is the runtime mapping table: every limit sits next
+  `src/foundation/sla-patrol.mjs` is the runtime mapping table: every limit sits next
   to the row it came from. `warn` is `L − P` (the mechanism's own period before
   the published limit — 到点提醒, not a breach), `overdue` is `L`, `escalate` is
   the published further timeout.
@@ -225,30 +225,41 @@ What that means concretely:
 
 The SLA half notifies. Everything after that — accepting a delivery, rejecting it and
 opening a rework, rolling a container up, splitting a card into one — used to wait for a
-human. The **workflow entry** (`scripts/loop/workflow.mjs`) is the loop's channel for it.
-It is a pass of its own, run by the continue turn after patrol, and it is the only path
-that moves a card.
+human. The **board** now owns those decisions; the loop's **workflow entry**
+(`scripts/loop/workflow.mjs`) executes them. It is a pass of its own, run by the continue
+turn after patrol.
 
-It does three things, in this order:
+The board computes one plan through `issue reconcile --workflow` (see
+[`status-lifecycle.md`](../skills/meerkat-taskpanel/references/status-lifecycle.md#11-the-boards-workflow-decisions) —
+provenance: `src/core/domain/workflow.mjs`). The loop never re-derives a decision. The
+plan has three parts, in this order:
 
-1. **reconcile.** `issue reconcile` replays the container rules
-   (`src/core/commands/rollup.mjs`); the loop only *classifies* what it reports. Normal
-   in-flight verdicts (`children_unfinished`, `no_child_started`, `awaiting_acceptance`)
-   are silent — the SLA pass already watches stuck children. `empty_epic` waits out a
-   30-minute grace period; `no_delivery_evidence`, `no_child_done` and
-   `dangling_child_edge` are notified, naming the blocking children.
-2. **outcomes.** For every review card whose verdict report is readable, apply it to the
-   card it audits (below).
+1. **reconcile.** The board replays the container rules
+   (`src/core/commands/rollup.mjs`) and returns the classified changes and notices.
+   Normal in-flight verdicts (`children_unfinished`, `no_child_started`,
+   `awaiting_acceptance`) are silent — the SLA pass already watches stuck children.
+   `empty_epic` waits out a 30-minute grace period; `no_delivery_evidence`,
+   `no_child_done` and `dangling_child_edge` are notified, naming the blocking children.
+2. **outcomes.** The plan says what each readable verdict means for the card it audits
+   (below); the loop applies it.
 3. **dispatch.** For every flow-A card still in `in_review`, create a review card for the
    configured reviewer — one per `(original, delivery round)`, with the deterministic
    idempotency key `loop-review|<ref>|r<round>`.
 
 ### The review card, and who closes it
 
-A review card is an ordinary `kind=task` card — `meta.review_of`, `meta.flow=B`,
-`meta.review_round`, and a `review` label for discoverability. Detection reads the meta
-keys, never the label. There is no `kind=review`: the board's kinds are `task`/`epic`/
-`deploy`, and a review is a task like any other.
+A review card is an ordinary `kind=task` card, created with `review_of` (the original's
+identifier or id) and, optionally, `review_round` (a positive integer), plus `meta.flow=B`
+and a `review` label for discoverability. At creation the board resolves that reference and
+stamps **both** the immutable structural marker (`review_of_id` / `review_round`, 0025) and
+its readable mirror in `meta` (`meta.review_of` = the original's identifier,
+`meta.review_round` = the integer round). Detection reads the structural column first and
+falls back to `meta.review_of` for a snapshot written before 0025; the acceptance gate reads
+the column only. A caller-supplied `meta.review_of` given as an id, or a string round, is
+normalized to the resolved identifier and an integer, and a meta patch is canonicalized
+from the column, so a later PATCH cannot make the two spellings disagree. There is no
+`kind=review`: the board's kinds are `task`/`epic`/`deploy`, and a review is a task like
+any other.
 
 Its lifecycle cannot skip `in_review`:
 
@@ -260,9 +271,12 @@ todo --(claim)--> in_progress --(reviewer delivers VERDICT report)--> in_review 
 or `done` (`REPORT_REQUIRED` — there is no evidence yet). So the only question was **who
 applies the last transition**. The answer here is the **loop**, not the reviewer:
 
-- the reviewer reads the original, its acceptance list, the current round's delivery
-  report, the comment trail and (for an epic) the rollup and children; it delivers a
-  report whose first line is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
+- the reviewer reads the original with `issue get --json` (the human form omits the
+  description and the list), its acceptance list, the current round's delivery report, the
+  comment trail and (for an epic) the rollup and children. If the original carries
+  `meta.acceptance_derived=yes`, it checks the list covers the description and comments — a
+  list that narrows the card is grounds for `REJECT`. It delivers a report whose first line
+  is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
 - the loop applies the verdict as `--actor-kind taskd`. An `APPROVE` writes
   `meta.accepted_by=loop-review` and moves the original `in_review → done`; a `REJECT`
   comments the findings, writes `meta.rework_round`, and moves it back to rework. Only
@@ -279,12 +293,14 @@ leader accepts); the loop is just the leader's automated stand-in.
 
 ### Acceptance authority is enforced by the board
 
-The separation is not only a prompt rule. `in_review → done` now has a **board-level
-acceptance authority**: only a `human` or the board itself (`system` — the loop's workflow
-pass) may perform it. A worker agent cannot close its own card, and cannot close somebody
-else's either; the refusal is `ACCEPTANCE_FORBIDDEN` (409) and it changes nothing. This is
+The separation is not only a prompt rule. `in_review → done` has a **board-level
+acceptance authority**: the board's policy and the card's scope decide who may perform it.
+Under the default `both`, a `human` or the board (`taskd` — the loop's workflow pass) may
+close a top-level card; a worker agent cannot close its own top-level card, and cannot
+close somebody else's either. A **child** card is the opposite: only a non-human writer
+closes it. The refusal is `ACCEPTANCE_FORBIDDEN` (409) and it changes nothing. This is
 what makes "a worker stops at `in_review`" a machine rule rather than a habit, and it is
-why the loop's automated acceptance is attributable as `system`.
+why the loop's automated acceptance is attributable as `taskd`.
 
 Two honest limits. First, the check reads the actor's **declared** kind: a loopback caller
 is trusted and `--actor-kind human` is refused, but the board has no cryptographic identity
@@ -373,7 +389,7 @@ close; the reviewer gates only **dispatch** — outcomes still run without one, 
 already in flight can finish after a deployment removes its reviewer.
 
 `acceptance` is the loop's **copy** of the board's policy; the board is authoritative
-(`<dataDir>/taskd.env`, written by `install.sh` and re-read on every acceptance decision).
+(the install-root `.env`, seeded by `install.sh` and re-read on every acceptance decision).
 Under `human-only` the loop records a top-level `APPROVE` as a comment plus
 `meta.review_verdict=approve` / `review_verdict_round`, closes the review card, and leaves
 the original `in_review` for a human; the marker makes the hold idempotent. Child cards and
@@ -383,10 +399,12 @@ non-human writer — which agent applies the verdict is the deployment's busines
 ## Continuity: a fresh handoff, not a resumed pile
 
 Every wake hands the worker a **bounded, fresh handoff** built by
-`buildHandoff()`: the card id and title, the exact `taskctl` commands to read and
-deliver it, and the attribution flags
-`--agent <name> --actor-kind <host> --session-id <id>`. The handoff is capped
-(≈1–2 KB) so a wake never drags an unbounded context into the model. It names no
+`buildHandoff()`: the card id and title, the acceptance-list step (read the card with
+`issue get --json`, work to an existing list, or derive one and persist it with
+`meta.acceptance_derived=yes`), the exact `taskctl` commands to read and deliver it, and
+the attribution flags `--agent <name> --actor-kind <host> --session-id <id>`. The handoff
+is capped at **under 2500 characters** (a test pins it, including a maximum title and a
+UUID session id) so a wake never drags an unbounded context into the model. It names no
 directory: the board holds none (O3), and the working directory is the host's
 business — see [Where a worker runs](#where-a-worker-runs).
 
@@ -828,10 +846,11 @@ Three **internal** bypasses exist; none is a user option:
 The guard and `taskctl`'s lazy start share one runtime pointer, one data directory and
 one write lock, so they never fight over the slot:
 
-- **The order is unchanged.** `taskctl` still resolves its board as *explicit `--url`* →
-  *a healthy run pointer* → *lazy start* (unless `TASKD_NO_AUTOSTART` is set). A guarded
-  `taskd` leaves a **healthy pointer**, so a CLI call reuses it and never starts a second
-  server.
+- **The order gains one rung.** `taskctl` resolves its board as *explicit `--url`* (a pin) →
+  *`TASKD_URL`* (preferred: a dead **loopback** address falls through, a dead **remote** one is
+  an error) → *a healthy run pointer* → *lazy start* (unless `TASKD_NO_AUTOSTART` is set). A
+  guarded `taskd` leaves a **healthy pointer**, so a CLI call reuses it and never starts a
+  second server. The subscriber uses the same `--url` > `TASKD_URL` > pointer order.
 - **One slot.** Both use the same run pointer (the machine-wide default, or the same
   `TASKD_RUNTIME_POINTER`), the same data directory, and the same write lock. `pid`
   reuse through the pointer is tolerated by the transport's wait-for-pointer step.
@@ -935,20 +954,20 @@ this checkout:
 ├── scripts/supervisor.mjs        the scheduler the units run
 ├── scripts/loop/*.mjs            the deterministic entries (poll / patrol / workflow / continue)
 ├── scripts/wake-cwd.mjs          what the wake glue calls to resolve a card's directory
-├── src/shared/*.mjs              the modules those import
+├── scripts/foundation/*.mjs      the modules those import
 ├── supervisor.log                runtime
 └── supervisor.state.json         runtime
 ```
 
-The `scripts/` + `src/shared/` shape is load-bearing: `supervisor.mjs` imports
-`../src/shared/scheduling.mjs`, and that module in turn imports `constants.mjs` and
+The `scripts/` + `scripts/foundation/` shape is load-bearing: `supervisor.mjs` imports
+`./foundation/scheduling.mjs`, and that module in turn imports `constants.mjs` and
 `errors.mjs` (which imports `redact.mjs`). One file alone would leave a relative import
 resolving to nothing, so the transitive closure travels with it.
 
 **The list is not restated anywhere.** `scripts/sync-loop.mjs` computes the closure from
 the body's entry points (`scripts/supervisor.mjs`, `scripts/loop/*.mjs` and
 `scripts/wake-cwd.mjs`) and
-writes it into the loop skill as `body/manifest.txt`; the installer copies exactly what
+writes it into the loop skill as `manifest.txt`; the installer copies exactly what
 that manifest lists, and `test/install/scheduling-units.test.mjs` proves the same list is
 closed under its own imports. So the loop skill's payload is generated and guarded
 (`node scripts/sync-skills.mjs --check`), and a new import cannot leave the installer, the
@@ -1349,6 +1368,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--board-limit <n>` | `500` | max cards read in one patrol pass |
 | `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
 | `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config: the claim default, and (for a host copy) `MEERKAT_TASKPANEL_REPO` |
+| `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber and its `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
 | `--home <path>` | `$HOME` | base for those defaults |
 | `--glue <path>` | `<home>/<host-dir>/bin/wake-<host>.sh` | the wake glue that resolves the project directory and starts the worker ([Where a worker runs](#where-a-worker-runs)) |
 | `--projects-json <path>` | `<home>/<host-dir>/skills/meerkat-taskpanel/projects.json` | the host-local map handed to the glue |
@@ -1415,7 +1435,7 @@ launchd / systemd / cron  ──ping 60s──▶  supervisor --ping-only --once
 launchd / systemd / cron  ──continue 600s──▶  supervisor --continue-only --once
                                             claude -p "继续 …"   ← the judgment turn (no card, no project)
                                                 ├─ loop/patrol.mjs    notify-only SLA
-                                                ├─ loop/workflow.mjs  reconcile / review / verdicts (system)
+                                                ├─ loop/workflow.mjs  apply board workflow plan (taskd)
                                                 └─ loop/poll.mjs
                                                       issue candidates --assignee alice --include-unassigned
                                                           (empty → stop; 0 workers)
@@ -1477,8 +1497,8 @@ boundary: every host gets one — see `docs/install.md`.)
   skill it is distributed as, and the board interface generation it requires;
   [`references/operation.md`](../skills/meerkat-loop/references/operation.md) is the
   operator's view.
-- [`../skills/meerkat-taskpanel/references/practice-guides.md`](../skills/meerkat-taskpanel/references/practice-guides.md) —
-  the "Waking & patrol" section, for the agent-facing view.
+- [`../skills/meerkat-taskpanel/SKILL.md`](../skills/meerkat-taskpanel/SKILL.md) —
+  the agent-facing view: §Owning the clock.
 - [`../skills/meerkat-taskpanel/references/cli.md`](../skills/meerkat-taskpanel/references/cli.md) —
   `issue candidates --include-unassigned`.
 - [openclaw-team](https://github.com/tanyu216/openclaw-team) — the OpenClaw supervisor.

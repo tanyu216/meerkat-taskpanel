@@ -2,24 +2,17 @@
 /**
  * The poll entry — scan, atomically claim, wake one worker per accepted claim.
  *
- * This is the loop's only work-discovery path. It is a plain local CLI pass:
- * an empty board scans nothing and spawns nothing, and the board's CAS is the
- * only dispatch — a refused claim never yields a wake. The continue turn runs
- * it, and a human can run it by hand.
- *
- * `--recover-stale` also offers stale `in_progress` claims (same holder after
- * 30 minutes, anyone after 6 hours); `issue claim` is the one claim verb for
- * both a ready card and a re-claim.
- *
- * Node builtins only; no network, no dependencies.
+ * An empty board scans nothing and spawns nothing; a refused claim never wakes
+ * a worker. `--recover-stale` also offers stale `in_progress` claims.
  */
 
 import { existsSync } from "node:fs";
 
-import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
-import { candidateArgs, pruneRegistry } from "../../src/shared/scheduling.mjs";
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
+import { candidateArgs, pruneRegistry } from "../../src/foundation/scheduling.mjs";
 
-import { parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
+import { runEntry } from "./entry.mjs";
+import { resolveLoopConfig } from "./options.mjs";
 import { runPollTick, spawnWorkerReal } from "./runners.mjs";
 import {
   createLogger,
@@ -102,19 +95,8 @@ export async function runOnce(opts, env = process.env) {
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {Promise<number>}
  */
-export async function main(argv, env = process.env) {
-  let opts;
-  try {
-    opts = parseArgs(argv, env);
-  } catch (err) {
-    process.stderr.write(`poll: ${err.message}\n`);
-    return 2;
-  }
-  if (opts.help) {
-    process.stdout.write(USAGE);
-    return 0;
-  }
-  return runOnce(opts, env);
+export function main(argv, env = process.env) {
+  return runEntry("poll", argv, env, runOnce);
 }
 
 if (isEntryPoint(import.meta.url)) {

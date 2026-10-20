@@ -11,7 +11,7 @@
  * The dialog is always in the document and toggled by `hidden`, so the contract's
  * single `[data-create-task]` holds whether it is open or not.
  */
-import { computed, reactive, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 
 import {
   board,
@@ -24,6 +24,7 @@ import {
   taskRoster,
 } from "../../stores/board.js";
 import { createTaskOpen, createTaskStatus, pushToast } from "../../stores/ui.js";
+import { dismissMemberFrom } from "../../lib/light-dismiss.js";
 import { errorTextKey } from "../../i18n/messages.mjs";
 import { t } from "../../i18n/index.js";
 
@@ -61,7 +62,23 @@ const relationOptions = taskRoster;
 
 const canSubmit = computed(() => form.title.trim() !== "" && form.project_id);
 
+/**
+ * The status control is a `<details>` dropdown rather than a native `<select>`:
+ * an `<option>` cannot hold the board's coloured `.td-status-dot`, and the
+ * point of the field is to state the stage the way every other status read-out
+ * on the board does. The trigger shows the dot too, so the field says its value
+ * while the menu is closed.
+ */
+function chooseStatus(status, event) {
+  dismissMemberFrom(event);
+  form.status = status;
+}
+
+/** The status dropdown, so a reopened dialog never inherits an open menu. */
+const statusMenu = ref(null);
+
 function reset() {
+  statusMenu.value?.removeAttribute("open");
   form.title = "";
   form.description = "";
   form.priority = "medium";
@@ -220,12 +237,51 @@ async function submit() {
               </select>
             </label>
 
-            <label class="flex flex-col gap-1 mb-3">
+            <div class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.status">{{ $t("createTask.field.status") }}</span>
-              <select v-model="form.status" class="select select-sm td-select w-full" data-create-task-status>
-                <option v-for="status in createStatuses" :key="status" :value="status">{{ $t(`status.${status}`) }}</option>
-              </select>
-            </label>
+              <!-- A `<details>` is not a labelable element, so the field is a
+                   `div` with the `<summary>` stating its own accessible name —
+                   the same shape the filters bar's controls use. The write
+                   surface the contract names (`[data-create-task-status]`) is
+                   the control root. -->
+              <details
+                ref="statusMenu"
+                class="dropdown w-full"
+                data-create-task-status
+                :data-create-task-status-value="form.status"
+                data-dismiss-on-outside
+              >
+                <summary
+                  class="btn btn-sm td-label-trigger w-full cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+                  role="button"
+                  aria-haspopup="menu"
+                  data-create-task-status-summary
+                  data-i18n-aria-label="createTask.field.status"
+                  :aria-label="$t('createTask.field.status')"
+                >
+                  <span class="td-status-dot" :data-status="form.status" aria-hidden="true"></span>
+                  <span data-create-task-status-text>{{ $t(`status.${form.status}`) }}</span>
+                  <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M6 9.5 12 15.5 18 9.5" />
+                  </svg>
+                </summary>
+                <ul class="td-details-menu td-status-menu menu">
+                  <li v-for="status in createStatuses" :key="status">
+                    <button
+                      type="button"
+                      data-create-task-status-option
+                      :data-status-value="status"
+                      :data-status="status"
+                      :aria-current="status === form.status ? 'true' : 'false'"
+                      @click="chooseStatus(status, $event)"
+                    >
+                      <span class="td-status-dot" aria-hidden="true"></span>
+                      <span>{{ $t(`status.${status}`) }}</span>
+                    </button>
+                  </li>
+                </ul>
+              </details>
+            </div>
 
             <label class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.reporter">{{ $t("createTask.field.reporter") }}</span>
