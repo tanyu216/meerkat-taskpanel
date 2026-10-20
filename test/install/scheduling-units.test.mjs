@@ -75,13 +75,13 @@ function unitPaths(home, hostDir, host) {
 /**
  * The loop execution body `install.sh` copies into the host, as repo-relative paths.
  *
- * Read from the loop skill's **generated** `body/manifest.txt` rather than restated here:
+ * Read from the loop skill's **generated** `manifest.txt` rather than restated here:
  * the manifest *is* the closure (computed from the body's imports by `scripts/sync-loop.mjs`
  * and guarded by `sync-skills --check`), so a member the installer copies but this test
  * does not know about — or the reverse — is impossible.
  */
 const LOOP_SKILL = join(ROOT, "skills", "meerkat-loop");
-const LOOP_BODY = readFileSync(join(LOOP_SKILL, "body", "manifest.txt"), "utf8")
+const LOOP_BODY = readFileSync(join(LOOP_SKILL, "manifest.txt"), "utf8")
   .split("\n")
   .map((line) => line.trim())
   .filter(Boolean);
@@ -215,7 +215,7 @@ describe("install.sh: scheduling units", () => {
     assert.ok(!copy.startsWith(ROOT + sep), "the copied executor must not live in the checkout");
     assert.equal(
       readFileSync(copy, "utf8"),
-      readFileSync(join(LOOP_SKILL, "body", "scripts", "supervisor.mjs"), "utf8"),
+      readFileSync(join(LOOP_SKILL, "scripts", "supervisor.mjs"), "utf8"),
       "the copy must be the executor itself, not a stub",
     );
 
@@ -239,7 +239,7 @@ describe("install.sh: scheduling units", () => {
     for (const rel of LOOP_BODY) {
       assert.equal(
         readFileSync(join(loopDir, rel), "utf8"),
-        readFileSync(join(LOOP_SKILL, "body", rel), "utf8"),
+        readFileSync(join(LOOP_SKILL, rel), "utf8"),
         `${rel} must be the loop skill's copy`,
       );
     }
@@ -447,7 +447,12 @@ describe("install.sh: the loop skill's distribution", () => {
 
       const dest = join(home, hostDir, "skills", "meerkat-loop");
       assert.ok(existsSync(join(dest, "SKILL.md")), `${host}: the loop skill's SKILL.md must land`);
-      assert.ok(existsSync(join(dest, "body", "manifest.txt")), `${host}: the loop payload must land`);
+      assert.ok(existsSync(join(dest, "manifest.txt")), `${host}: the loop payload must land`);
+      assert.equal(
+        existsSync(join(dest, "body")),
+        false,
+        `${host}: a fresh install must not carry the retired body/ wrapper`,
+      );
       assert.ok(
         existsSync(join(dest, "templates", "scheduling", "cron", "meerkat-taskpanel.cron")),
         `${host}: the loop templates must land`,
@@ -537,7 +542,7 @@ describe("install.sh: the loop skill's distribution", () => {
     // into the load path of the very thing the split exists to make independent of it.
     assert.ok(lstatSync(loop).isDirectory(), "--link must NOT symlink the loop skill");
     assert.equal(lstatSync(loop).isSymbolicLink(), false);
-    assert.ok(existsSync(join(loop, "body", "scripts", "supervisor.mjs")));
+    assert.ok(existsSync(join(loop, "scripts", "supervisor.mjs")));
   });
 
   it("--dry-run announces the loop skill and writes nothing", () => {

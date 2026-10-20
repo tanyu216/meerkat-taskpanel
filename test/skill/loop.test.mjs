@@ -41,7 +41,7 @@ const GATE = join(LOOP_SKILL, "scripts", "board-check.mjs");
 
 /** The body closure, read from the generated manifest the installer also reads. */
 function bodyClosure() {
-  return readFileSync(join(LOOP_SKILL, "body", "manifest.txt"), "utf8")
+  return readFileSync(join(LOOP_SKILL, "manifest.txt"), "utf8")
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
@@ -51,7 +51,7 @@ describe("loop skill: the generated payload", () => {
   it("is in sync with the sources it is generated from", async () => {
     const report = await syncLoop({ root: ROOT, check: true });
     assert.equal(report.ok, true, JSON.stringify(report.files.filter((f) => f.state !== "equal"), null, 2));
-    assert.equal(report.manifest.state, "equal", "body/manifest.txt must match the computed closure");
+    assert.equal(report.manifest.state, "equal", "manifest.txt must match the computed closure");
   });
 
   it("generates the body as the closure of its entry points", async () => {
@@ -66,10 +66,10 @@ describe("loop skill: the generated payload", () => {
     // behind in the repository, or a host copy would die at load with a relative import
     // that resolves to nothing.
     for (const rel of report.body) {
-      const text = readFileSync(join(LOOP_SKILL, "body", rel), "utf8");
+      const text = readFileSync(join(LOOP_SKILL, rel), "utf8");
       for (const specifier of relativeImports(text)) {
-        const target = resolve(dirname(join(LOOP_SKILL, "body", rel)), specifier);
-        const targetRel = target.slice(join(LOOP_SKILL, "body").length + 1);
+        const target = resolve(dirname(join(LOOP_SKILL, rel)), specifier);
+        const targetRel = target.slice(LOOP_SKILL.length + 1);
         assert.ok(
           report.body.includes(targetRel),
           `${rel} imports ${specifier}, which is not in the closure (${targetRel})`,
@@ -120,11 +120,41 @@ describe("loop skill: the generated payload", () => {
   it("copies the body byte for byte from the repository's own modules", () => {
     for (const rel of bodyClosure()) {
       assert.equal(
-        readFileSync(join(LOOP_SKILL, "body", rel), "utf8"),
+        readFileSync(join(LOOP_SKILL, rel), "utf8"),
         readFileSync(join(ROOT, rel), "utf8"),
         `${rel} must be an exact copy of the repository's module`,
       );
     }
+  });
+
+  it("keeps the payload at the skill root, with no body/ wrapper", () => {
+    assert.equal(
+      existsSync(join(LOOP_SKILL, "body")),
+      false,
+      "the legacy body/ wrapper must be gone — the manifest and generated trees sit at the skill root",
+    );
+    assert.ok(existsSync(join(LOOP_SKILL, "manifest.txt")), "the closure manifest sits at the skill root");
+  });
+
+  it("never treats the authored board gate as generated output", async () => {
+    const report = await syncLoop({ root: ROOT, check: true });
+
+    assert.ok(existsSync(GATE), "the authored gate must still exist");
+    assert.equal(
+      bodyClosure().includes("scripts/board-check.mjs"),
+      false,
+      "the hand-written gate is not part of the execution body",
+    );
+    assert.equal(
+      report.files.some((file) => file.dest === GATE),
+      false,
+      "the generator must not write the authored gate",
+    );
+    assert.equal(
+      report.files.some((file) => file.state === "extra" && file.dest === GATE),
+      false,
+      "the authored gate must not be reported as stale output",
+    );
   });
 
   it("carries the loop's installer templates, and only the loop's", () => {

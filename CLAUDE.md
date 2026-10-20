@@ -158,8 +158,9 @@ the **hosted frontend root** is `web/dist`, the static build of `web/` that `tas
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
 - **The skills are generated, never hand-edited.** Author only under `skills/meerkat-taskpanel/`
   and the loop's hand-written surface (`skills/meerkat-loop/`: `SKILL.md`, `references/`,
-  `scripts/board-check.mjs`). The loop's `body/` + `templates/` are generated from
-  `scripts/supervisor.mjs`, `scripts/loop/`, `scripts/wake-cwd.mjs`, `src/shared/` and
+  `scripts/board-check.mjs`). The loop's `manifest.txt` + `scripts/` (except the gate) +
+  `src/` + `templates/` are generated from `scripts/supervisor.mjs`, `scripts/loop/`,
+  `scripts/wake-cwd.mjs`, `src/shared/` and
   `scripts/install/templates/` (the workflow decisions live in
   `src/core/domain/workflow.mjs` and are not in the body — the loop gets them from
   `issue reconcile --workflow`). After any edit touching those inputs run

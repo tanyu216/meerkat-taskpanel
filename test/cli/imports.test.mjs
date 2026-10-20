@@ -274,7 +274,7 @@ describe("cli/imports — the loop consumes the toolkit, it does not implement i
 
     for (const dir of ["core", "cli", "server"]) {
       assert.equal(
-        existsSync(join(ROOT, "skills/meerkat-loop/body/src", dir)),
+        existsSync(join(ROOT, "skills/meerkat-loop/src", dir)),
         false,
         `the loop payload must not vendor src/${dir}`,
       );

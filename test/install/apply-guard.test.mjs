@@ -244,9 +244,15 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
     join(ROOT, "skills"),
     join(ROOT, "web", "scripts"),
   ];
+  // Only the generated output is excluded. `skills/meerkat-loop/scripts/board-check.mjs`
+  // is authored and shares that directory, so the exclusion names files and subdirectories
+  // rather than the whole `scripts/` tree.
   const GENERATED = [
-    join(ROOT, "skills", "meerkat-loop", "body"),
+    join(ROOT, "skills", "meerkat-loop", "src"),
     join(ROOT, "skills", "meerkat-loop", "templates"),
+    join(ROOT, "skills", "meerkat-loop", "scripts", "loop"),
+    join(ROOT, "skills", "meerkat-loop", "scripts", "supervisor.mjs"),
+    join(ROOT, "skills", "meerkat-loop", "scripts", "wake-cwd.mjs"),
   ];
 
   /**
@@ -278,11 +284,12 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
     "scripts/security/scan-gate.mjs",
     "monitoring/exporter.mjs",
     "skills/meerkat-taskpanel/scripts/report.mjs",
+    "skills/meerkat-loop/scripts/board-check.mjs",
     "web/scripts/dom-smoke.mjs",
   ];
 
   const scanned = SCAN_ROOTS.flatMap(listModuleFiles).filter(
-    (file) => !GENERATED.some((root) => file.startsWith(root + sep)),
+    (file) => !GENERATED.some((root) => file === root || file.startsWith(root + sep)),
   );
 
   it("scans the authored tree, and every known entry point still declares a guard", () => {

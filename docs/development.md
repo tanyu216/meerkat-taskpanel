@@ -53,7 +53,7 @@ belongs to the loop. The loop reaches the board only through its public surface 
 
 ```bash
 node --test                          # smoke / contract test suite
-node scripts/sync-skills.mjs         # regenerate the loop payload (body + templates)
+node scripts/sync-skills.mjs         # regenerate the loop payload (manifest + scripts/ + src/ + templates/)
 node scripts/sync-skills.mjs --check # verify both are in sync
 node scripts/verify/manifests.mjs    # validate the host + loop + marketplace manifests
 node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
@@ -358,18 +358,20 @@ around them (it delegates the payload half to `scripts/sync-loop.mjs`):
 | Skill | Authored in | Generated into |
 |---|---|---|
 | `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | nothing — every harness reads `skills/` in place |
-| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `body/` + `templates/` |
+| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `manifest.txt` + `scripts/` (except the gate) + `src/` + `templates/` |
 
 There is exactly one `skills` tree in the repository. No harness receives a copy: each reads
 `skills/` in place through a manifest at the repository root, which is the board's plugin
 root. `test/scaffold.test.mjs` asserts that, since with no copy targets left
 `sync-skills.mjs --check` has nothing to compare and could not notice an orphan tree.
 
-The loop's `body/` and `templates/` are generated *from this repository*: `body/` is the
-transitive import closure of `scripts/supervisor.mjs`, `scripts/loop/*.mjs` and
-`scripts/wake-cwd.mjs` (written out as `body/manifest.txt`, the list the installer copies),
-and `templates/` mirrors the
-loop-side files under `scripts/install/templates/`. That direction matters — the shared
+The loop's `manifest.txt`, `scripts/` and `src/` are generated *from this repository*:
+`manifest.txt` is the transitive import closure of `scripts/supervisor.mjs`,
+`scripts/loop/*.mjs` and `scripts/wake-cwd.mjs` (the list the installer copies), `scripts/`
+holds those modules and `src/` holds the shared modules they import. `templates/` mirrors the
+loop-side files under `scripts/install/templates/`. `scripts/board-check.mjs` is the one
+authored file inside a generated root — `sync-loop.mjs` never writes, prunes or reports it.
+That direction matters — the shared
 modules in `src/shared/` are **not** moved into the skill; they stay where the CLI imports
 them, and the skill's copy is generated and guarded. The vendored set is `src/shared/**`
 only: the loop body never contains `src/core`, `src/cli` or `src/server`. The **workflow

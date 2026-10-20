@@ -133,7 +133,7 @@ async function main() {
     console.log(`  ${label.padEnd(8)} ${relative(loop.skill, file.dest)}`);
   }
   console.log(
-    `  ${(loop.manifest.state === "equal" ? "OK" : loop.manifest.state).padEnd(8)} body/manifest.txt (${loop.body.length} files)`,
+    `  ${(loop.manifest.state === "equal" ? "OK" : loop.manifest.state).padEnd(8)} manifest.txt (${loop.body.length} files)`,
   );
 
   if (loop.ok) {

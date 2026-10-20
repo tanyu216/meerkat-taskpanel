@@ -32,6 +32,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The loop skill no longer wraps its generated payload in `body/`.** `manifest.txt` and
+  the generated `scripts/` + `src/` trees now sit at `skills/meerkat-loop/`, alongside the
+  authored `scripts/board-check.mjs` (which `sync-loop.mjs` never writes, prunes, or reports
+  as stale). Copied modules stay byte-identical because their relative imports are unchanged;
+  host-installed paths (`<host>/meerkat-taskpanel/{scripts,src}`) are unchanged. An older
+  host may retain an inert `<host>/skills/meerkat-loop/body/`; `--force` replaces it.
 - **Breaking: `<dataDir>/taskd.env` is no longer read.** The allow-list and acceptance policy
   now live in the install-root `.env`; there is no runtime fallback. An existing installation
   must move the keys by hand (`mv <dataDir>/taskd.env <program root>/.env`, merging with any

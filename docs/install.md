@@ -70,7 +70,7 @@ exception — see [OpenCode](#opencode) and [Cursor](#cursor).
 
 `--link` applies to the **board** skill only. The loop is always copied: a symlinked
 execution body would put the checkout back into the load path of the very thing the split
-exists to make independent of it (`skills/meerkat-loop/body/`).
+exists to make independent of it (`skills/meerkat-loop/scripts/`).
 
 **Every host gets a `taskctl` shim**, at `<host>/bin/taskctl`
 (`~/.claude/bin/taskctl`, `~/.codex/bin/taskctl`, `~/.agents/bin/taskctl`, …), and it injects
@@ -124,8 +124,8 @@ version control.
 
 | Artefact | Where | What |
 |---|---|---|
-| loop skill | `<host>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`body/`), the unit/wake/config templates it is deployed with, and the board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
-| loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/shared/*.mjs` | a **copy** of the scheduler, the deterministic entries, the glue's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `body/manifest.txt` |
+| loop skill | `<host>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`manifest.txt` + `scripts/` + `src/`), the unit/wake/config templates it is deployed with, and the authored board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
+| loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/shared/*.mjs` | a **copy** of the scheduler, the deterministic entries, the glue's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `manifest.txt` |
 | launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{ping,continue}.plist` | `StartInterval` 60 / 600 |
 | systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{ping,continue}.{service,timer}` | 60s / 600s timers |
 | cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue |
@@ -872,7 +872,11 @@ Nothing is written outside those directories, and nothing is sent over the netwo
   [Idempotence](#idempotence-re-running-and-force).
 - **`skill source not found`** — run `install.sh` from this checkout (it resolves
   `skills/meerkat-taskpanel/` relative to itself); a `dist/` bundle must be unpacked first.
-- **`loop payload out of date`** — `skills/meerkat-loop/body` and its `templates/` are
-  generated. Run `node scripts/sync-skills.mjs`; `npm run check:skills` fails CI on drift.
+- **`loop payload out of date`** — `skills/meerkat-loop/manifest.txt`, `scripts/`, `src/`
+  and `templates/` are generated. Run `node scripts/sync-skills.mjs`; `npm run
+  check:skills` fails CI on drift.
+- **An older install still has `skills/meerkat-loop/body/`** — that wrapper was retired; the
+  leftover is inert (units and wake glue read `<host>/meerkat-taskpanel/`). Re-run the
+  install with `--force` to replace the skill directory.
 - **OpenClaw does not list the plugin** — install the bundle at the repository root
   (`openclaw plugins install "$PWD" ...`); see the OpenClaw section above.

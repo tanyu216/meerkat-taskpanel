@@ -967,7 +967,7 @@ resolving to nothing, so the transitive closure travels with it.
 **The list is not restated anywhere.** `scripts/sync-loop.mjs` computes the closure from
 the body's entry points (`scripts/supervisor.mjs`, `scripts/loop/*.mjs` and
 `scripts/wake-cwd.mjs`) and
-writes it into the loop skill as `body/manifest.txt`; the installer copies exactly what
+writes it into the loop skill as `manifest.txt`; the installer copies exactly what
 that manifest lists, and `test/install/scheduling-units.test.mjs` proves the same list is
 closed under its own imports. So the loop skill's payload is generated and guarded
 (`node scripts/sync-skills.mjs --check`), and a new import cannot leave the installer, the

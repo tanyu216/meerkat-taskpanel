@@ -560,7 +560,7 @@ apply_supervisor() {
 # modules import each other relatively (`../src/shared/scheduling.mjs`), so a copy of
 # one file would resolve a relative import to nothing and the unit would die at load.
 # The set to copy is **not** restated here — it is read from the loop skill's generated
-# `body/manifest.txt`, which is the closure itself (computed from the two entry points'
+# `manifest.txt` at its root, which is the closure itself (computed from the two entry points'
 # imports by `scripts/sync-loop.mjs` and guarded by `--check`). One source, so a new
 # import in the body cannot leave bash — or the test that proves the copy is closed —
 # silently behind.
@@ -574,7 +574,7 @@ apply_supervisor() {
 # already matches is left untouched; a differing one is left alone without `--force`.
 # `--dry-run` says which of the two it would be, so drift is reportable without writing.
 install_loop_body() {
-  manifest="$(loop_src)/body/manifest.txt"
+  manifest="$(loop_src)/manifest.txt"
   if [ ! -f "$manifest" ]; then
     echo "$TP_HOST: loop body manifest not found: $manifest" >&2
     echo "$TP_HOST: run 'node scripts/sync-skills.mjs' in the checkout and retry." >&2
@@ -583,7 +583,7 @@ install_loop_body() {
 
   while read -r rel; do
     [ -n "$rel" ] || continue
-    src="$(loop_src)/body/$rel"
+    src="$(loop_src)/$rel"
     dest="$TP_LOOP/$rel"
 
     if [ ! -f "$src" ]; then
