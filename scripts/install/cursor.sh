@@ -7,24 +7,21 @@
 # drives — rung two of the wrapper's resolution ladder, the one that survives the skill
 # being copied away from the repository.
 #
-# Cursor deliberately gets **no** supervisor and **no** scheduling unit. The plugin
-# (`.cursor-plugin/plugin.json` at the repository root) already hands Cursor the same
-# skills read in place, and — the reason the loop stays out — Cursor's headless and
-# resume forms are unverified here: `docs/scheduling.md` has no Cursor row at all, and
-# the only invocation anyone records (`cursor-agent -p`) appears in a third-party
-# experiment table, not in an install or reference document. The units start *the glue*,
-# which is a headless call; pointing an unattended daemon at an unverified command is a
-# different risk class from copying a skill. So there is no `~/.cursor/scheduling` and no
-# `wake-cursor.sh`, and `--supervisor-hosts cursor` is rejected (exit 2).
+# Cursor gets the host-external supervisor too: the loop skill, the loop body, the
+# scheduling units and `wake-cursor.sh`. Its headless entry point is `cursor-agent -p`.
 #
-# Rank of the evidence, stated rather than implied: `~/.cursor/skills/` comes from
-# secondary sources (Cursor's help index and a third-party agent-skills guide agree), not
-# from a document this repository can run. It is a skill *directory*, so a wrong guess
-# leaves an inert folder; that is why the target ships while the daemon does not.
+# Rank of the evidence, stated rather than implied: this whole host is secondary-sourced
+# (Cursor's help index and a third-party agent-skills guide for `~/.cursor/skills/`; the
+# fresh `cursor-agent -p` form from a third-party experiment table). The **resume** form
+# (`-p --resume <sid>`) is unverified — there is no Cursor CLI on the machine this was
+# built on — so the wake glue labels it, `--wake-command` stays the escape hatch, and
+# docs/scheduling.md records the gap. `test/install/scheduling-units.test.mjs` asserts
+# the installed glue's shape.
 set -eu
 . "$(cd "$(dirname "$0")" && pwd)/_common.sh"
 
 install_skill ".cursor" "cursor"
+install_loop_skill ".cursor" "cursor"
 
 export_tp_env ".cursor" "cursor"
 
@@ -34,9 +31,8 @@ export_tp_env ".cursor" "cursor"
 # pin the caller's identity (`--agent <name> --actor-kind <host>`) on every CLI call.
 # Without it a write from this host carries a name and no kind, and the board reads a
 # write with no kind as a **person's** — which is what puts it on the record as a
-# decision (I5) and lets it resume an `awaiting` card. So it is installed here even
-# though the rulings above keep the loop out: those are about an unattended daemon,
-# and this is one wrapper around a command the agent already runs itself.
+# decision (I5) and lets it resume an `awaiting` card.
 emit_file "taskctl-shim.sh" "$TP_SHIM" --exec
 
+install_scheduling
 write_host_config

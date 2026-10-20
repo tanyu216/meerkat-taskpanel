@@ -422,26 +422,28 @@ describe("install.sh: scheduling units", () => {
 // ---------------------------------------------------------------------------
 // The loop skill: installed by the three hosts that can be woken, never by OpenClaw
 //
-// The loop is a skill of its own (T-20261012-163500-loopdecouple-b), distributed to
-// claude / codex / pi. OpenClaw is excluded **permanently** (ruling O3): the
+// The loop is a skill of its own (T-20261012-163500-loopdecouple-b), distributed to the
+// five non-OpenClaw hosts. OpenClaw is excluded **permanently** (ruling O3): the
 // openclaw-team framework already ships a per-agent poll and a `task-patrol` — the same
 // design (cadence: the framework's own AUTOMATIONS.md, not a number restated here); two
 // supervisors on one board would only race each other for the same cards.
 // ---------------------------------------------------------------------------
 
-/** Hosts the installer must place the loop skill in, and the dot-directory each uses. */
+/** Hosts the installer must place the loop skill in, the dot-directory, and the CLI name. */
 const LOOP_HOSTS = [
-  ["claude", ".claude"],
-  ["codex", ".codex"],
-  ["pi", ".agents"],
+  ["claude", ".claude", "claude"],
+  ["codex", ".codex", "codex"],
+  ["pi", ".agents", "pi"],
+  ["opencode", ".config/opencode", "opencode"],
+  ["cursor", ".cursor", "cursor-agent"],
 ];
 
 describe("install.sh: the loop skill's distribution", () => {
-  for (const [host, hostDir] of LOOP_HOSTS) {
+  for (const [host, hostDir, cli] of LOOP_HOSTS) {
     it(`installs the meerkat-loop skill for ${host}`, () => {
       const home = makeTempDir();
       const bin = makeTempDir();
-      makeFakeCli(bin, host);
+      makeFakeCli(bin, cli);
       const run = runInstall(["--target", host], installEnv(home, bin));
       assert.equal(run.status, 0, run.stderr);
 
@@ -466,6 +468,14 @@ describe("install.sh: the loop skill's distribution", () => {
         existsSync(join(dest, "templates", "scheduling", "cron", "meerkat-taskpanel.cron")),
         `${host}: the loop templates must land`,
       );
+
+      const wake = join(home, hostDir, "bin", `wake-${host}.sh`);
+      assert.ok(existsSync(wake), `${host}: the wake glue must land`);
+      assert.ok(isExecutable(wake), `${host}: the wake glue must be executable`);
+      assert.ok(
+        readFileSync(wake, "utf8").includes("wake-cwd.mjs"),
+        `${host}: the glue must resolve the card's project directory`,
+      );
     });
   }
 
@@ -488,49 +498,29 @@ describe("install.sh: the loop skill's distribution", () => {
     assert.equal(existsSync(join(home, ".openclaw", "meerkat-taskpanel")), false);
   });
 
-  it("never installs the loop skill or a scheduling unit for opencode", () => {
+  it("wires OpenCode's glue to `opencode run`, with the session form for a resume", () => {
     const home = makeTempDir();
-    const run = runInstall(["--target", "opencode", "--prefix", home]);
+    const bin = makeTempDir();
+    makeFakeCli(bin, "opencode");
+    const run = runInstall(["--target", "opencode"], installEnv(home, bin));
     assert.equal(run.status, 0, run.stderr);
 
-    // The board skill and the config that points the skill's wrapper at the checkout DO
-    // land — this is an exclusion of the *loop*, not of OpenCode.
-    assert.ok(
-      existsSync(join(home, ".config/opencode", "skills", "meerkat-taskpanel", "SKILL.md")),
-      "opencode must still get the board skill",
-    );
-    assert.ok(
-      existsSync(join(home, ".config/opencode", "meerkat-taskpanel.env")),
-      "opencode must get the host config (it is what resolves the CLI from a copied skill)",
-    );
-
-    // No loop payload, no units, no wake glue. OpenCode's skills come from the plugin and
-    // its headless form is unverified, so no unattended daemon is wired to it — the same
-    // shape as OpenClaw's exclusion, for a different and equally stated reason.
-    assert.equal(existsSync(join(home, ".config/opencode", "skills", "meerkat-loop")), false);
-    assert.equal(existsSync(join(home, ".config/opencode", "scheduling")), false);
-    assert.equal(existsSync(join(home, ".config/opencode", "meerkat-taskpanel")), false);
-    assert.equal(existsSync(join(home, ".config/opencode", "bin", "wake-opencode.sh")), false);
+    const glue = readFileSync(join(home, ".config/opencode", "bin", "wake-opencode.sh"), "utf8");
+    assert.match(glue, /exec opencode run "\$prompt"/);
+    assert.match(glue, /exec opencode run --session "\$sid" "\$prompt"/);
   });
 
-  it("never installs the loop skill or a scheduling unit for cursor", () => {
+  it("wires Cursor's glue to `cursor-agent -p`, and labels the resume form unverified", () => {
     const home = makeTempDir();
-    const run = runInstall(["--target", "cursor", "--prefix", home]);
+    const bin = makeTempDir();
+    makeFakeCli(bin, "cursor-agent");
+    const run = runInstall(["--target", "cursor"], installEnv(home, bin));
     assert.equal(run.status, 0, run.stderr);
 
-    assert.ok(
-      existsSync(join(home, ".cursor", "skills", "meerkat-taskpanel", "SKILL.md")),
-      "cursor must still get the board skill",
-    );
-    assert.ok(
-      existsSync(join(home, ".cursor", "meerkat-taskpanel.env")),
-      "cursor must get the host config (it is what resolves the CLI from a copied skill)",
-    );
-
-    assert.equal(existsSync(join(home, ".cursor", "skills", "meerkat-loop")), false);
-    assert.equal(existsSync(join(home, ".cursor", "scheduling")), false);
-    assert.equal(existsSync(join(home, ".cursor", "meerkat-taskpanel")), false);
-    assert.equal(existsSync(join(home, ".cursor", "bin", "wake-cursor.sh")), false);
+    const glue = readFileSync(join(home, ".cursor", "bin", "wake-cursor.sh"), "utf8");
+    assert.match(glue, /exec cursor-agent -p "\$prompt"/);
+    assert.match(glue, /exec cursor-agent -p --resume "\$sid" "\$prompt"/);
+    assert.match(glue, /NOT verified/, "the unverified resume form must say so");
   });
 
   it("copies the loop skill even under --link, which names the board skill only", () => {

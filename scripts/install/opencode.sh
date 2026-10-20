@@ -9,21 +9,17 @@
 # `taskctl` on PATH — and rung two is the one that survives the skill being copied away
 # from the repository, so the env file is what makes this target more than a file copy.
 #
-# OpenCode deliberately gets **no** supervisor and **no** scheduling unit. Its skills are
-# already delivered in place by the plugin (`.opencode/plugins/meerkat-taskpanel.js`
-# registers the repository's own `skills/` tree), so this target exists for a host that
-# also wants the skill on disk with a resolvable CLI — not to duplicate the plugin. And
-# the supervisor's glue is a *headless* invocation, while OpenCode's headless and resume
-# forms are unverified here: `docs/scheduling.md` says exactly that ("opencode is not a
-# supported `--host`; its headless and resume forms were **not verified** — its CLI was
-# not installed"). Pointing an unattended daemon at an unverified command is a different
-# risk class from copying a skill, so the loop stays out until someone can probe those
-# forms on a machine that has the CLI. There is no `~/.config/opencode/scheduling` and no
-# `wake-opencode.sh`; `test/install/scheduling-units.test.mjs` asserts the absence.
+# OpenCode gets the host-external supervisor too: the loop skill, the loop body, the
+# scheduling units and `wake-opencode.sh`. Its headless form is `opencode run <prompt>`
+# (and `opencode run --session <sid> <prompt>` to resume) — the shape recorded in
+# `scripts/verify/host-resume-matrix.mjs`. That matrix is the evidence, not a run on
+# this machine: the CLI is absent here, so the resume form is flagged in
+# `docs/scheduling.md` and `--wake-command` remains the escape hatch.
 set -eu
 . "$(cd "$(dirname "$0")" && pwd)/_common.sh"
 
 install_skill ".config/opencode" "opencode"
+install_loop_skill ".config/opencode" "opencode"
 
 export_tp_env ".config/opencode" "opencode"
 
@@ -33,9 +29,8 @@ export_tp_env ".config/opencode" "opencode"
 # pin the caller's identity (`--agent <name> --actor-kind <host>`) on every CLI call.
 # Without it a write from this host carries a name and no kind, and the board reads a
 # write with no kind as a **person's** — which is what puts it on the record as a
-# decision (I5) and lets it resume an `awaiting` card. So it is installed here even
-# though the rulings above keep the loop out: those are about an unattended daemon,
-# and this is one wrapper around a command the agent already runs itself.
+# decision (I5) and lets it resume an `awaiting` card.
 emit_file "taskctl-shim.sh" "$TP_SHIM" --exec
 
+install_scheduling
 write_host_config

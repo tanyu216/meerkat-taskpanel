@@ -5,14 +5,14 @@ board/loop compatibility contract.
 
 ## What the installer writes
 
-For `<host>` = `~/.claude`, `~/.codex` or `~/.agents`:
+For `<host>` = `~/.claude`, `~/.codex`, `~/.agents`, `~/.config/opencode` or `~/.cursor`:
 
 | Artefact | Where | Notes |
 |---|---|---|
 | loop skill | `<host>/skills/meerkat-loop/` | always **copied**, never symlinked |
 | execution body | `<host>/meerkat-taskpanel/scripts/…` and `scripts/foundation/…` | the copy the units run; closure in the skill's `manifest.txt` |
 | units | `<host>/scheduling/{launchd,systemd,cron}/` | ping 60s, continue 600s. Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the host CLI |
-| wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` |
+| wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` / `opencode run` / `cursor-agent -p` |
 | host config | `<host>/meerkat-taskpanel.env` | claim policy, stale recovery, `MEERKAT_TASKPANEL_REPO`, workflow answers |
 | runtime | `<host>/meerkat-taskpanel/{supervisor.log,supervisor.state.json}` | tick log and worker registry |
 
@@ -35,7 +35,7 @@ crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
 `install.sh --supervisor=enable` (alias `--enable-supervisor`) is the opt-in;
-`--supervisor-hosts claude,codex,pi` limits the hosts and `--scheduler
+`--supervisor-hosts claude,codex,pi,opencode,cursor` limits the hosts and `--scheduler
 auto|launchd|systemd|cron` picks the mechanism. `--supervisor=disable` and
 `--supervisor=status` use the same entry point. On a TTY with no flag it asks
 once and defaults to **no**; `MEERKAT_TASKPANEL_SUPERVISOR` is the
@@ -68,7 +68,7 @@ Precedence: flag > process env > host config > default.
 | Flag | Default | Meaning |
 |---|---|---|
 | `--agent <name>` | `$TASKCTL_AGENT` → `$USER` | agent(s) to work for; repeatable / comma-separated |
-| `--host claude\|codex\|pi` | `claude` | which worker to wake |
+| `--host claude\|codex\|pi\|opencode\|cursor` | `claude` | which worker to wake |
 | `--repo <path>` | `MEERKAT_TASKPANEL_REPO`, else this checkout | where `--cli` resolves from; fallback cwd |
 | `--ping-interval <sec>` | 60 | liveness clock |
 | `--continue-interval <sec>` | 600 | judgment clock |

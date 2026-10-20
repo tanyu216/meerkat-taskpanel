@@ -6,9 +6,10 @@ itself, which every harness reads in place:
 - **`meerkat-taskpanel`** (`skills/meerkat-taskpanel/`) — the board. Installed for all six
   hosts.
 - **`meerkat-loop`** (`skills/meerkat-loop/`) — the host-external supervisor that keeps a
-  board moving when no agent is looking. Installed for **claude, codex and pi only**;
-  OpenClaw gets the board on its own, because the openclaw-team framework already runs an
-  equivalent poll / patrol (see [`scheduling.md`](scheduling.md#openclaw-do-not-build-a-supervisor)).
+  board moving when no agent is looking. Installed for **every host except OpenClaw**
+  (claude, codex, pi, opencode, cursor); OpenClaw gets the board on its own, because the
+  openclaw-team framework already runs an equivalent poll / patrol (see
+  [`scheduling.md`](scheduling.md#openclaw-do-not-build-a-supervisor)).
 
 There are three layers, and it is worth keeping them straight:
 
@@ -31,7 +32,7 @@ There are three layers, and it is worth keeping them straight:
    plugin root (`.claude-plugin/plugin.json`), which is what lets every harness share the
    one `skills/` tree instead of receiving a copy. The marketplace has a single entry —
    `meerkat-taskpanel`, sourced at `./`. `meerkat-loop` is **not** a marketplace plugin: it
-   is installed by `install.sh`, and only for claude, codex and pi.
+   is installed by `install.sh`, and only for the five non-OpenClaw hosts.
 
 > **Status: the engine has landed in full.** The skill is discoverable, the `taskctl`
 > commands it describes are implemented, and the board backend (`src/server/`, HTTP + SSE)
@@ -57,8 +58,8 @@ match the assignee the board uses for it; it defaults to `$USER`.
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `.` — the same root bundle |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `~/.codex/skills/meerkat-loop` | `.` — the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `~/.agents/skills/meerkat-loop` | `.` — the root `package.json`'s `pi` field |
-| OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | **none** — see [OpenCode](#opencode) | `.opencode/plugins/` (in-process registration) |
-| Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | **none** — see [Cursor](#cursor) | `.` — the repository root (`.cursor-plugin/plugin.json`) |
+| OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | `~/.config/opencode/skills/meerkat-loop` | `.opencode/plugins/` (in-process registration) |
+| Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | `~/.cursor/skills/meerkat-loop` | `.` — the repository root (`.cursor-plugin/plugin.json`) |
 
 The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists a single
 plugin, `./` (the board); Codex reads the same marketplace manifest, which is why it has no
@@ -77,7 +78,7 @@ exists to make independent of it (`skills/meerkat-loop/scripts/`).
 **both halves of the identity** on every call — `--agent <name>` and `--actor-kind <host>` —
 with `TASKCTL_AGENT` / `TASKCTL_ACTOR_KIND` as the fallbacks. It is not the supervisor and
 not a scheduling unit: it is one wrapper around a command the agent already runs itself,
-which is why hosts whose rulings keep the loop out (OpenClaw, OpenCode, Cursor) still get it.
+which is why every host — including OpenClaw, which has no loop — gets it.
 Without it a write from that host carries a name and no kind, and the board reads a write
 with no kind as a **person's** — which is what would put it on the record as a decision.
 
@@ -120,7 +121,7 @@ re-create it afterwards). With `--link` the skill directory is a symlink into a
 checkout, so the file lands in `skills/meerkat-taskpanel/` there — keep it out of
 version control.
 
-### Scheduling units (claude, codex, pi)
+### Scheduling units (claude, codex, pi, opencode, cursor)
 
 | Artefact | Where | What |
 |---|---|---|
@@ -169,16 +170,16 @@ A plain install **writes** the units above and prints the load command — it ne
 anything. Starting the daemon is a separate, **explicit request**, and it is one flag:
 
 ```bash
-bash install.sh --target all --supervisor=enable                # enable claude, codex and pi
+bash install.sh --target all --supervisor=enable                # enable every non-OpenClaw loop host
 bash install.sh --supervisor=enable --supervisor-hosts claude   # …just one host
 bash install.sh --supervisor=status                             # what is loaded right now
 bash install.sh --supervisor=disable --supervisor-hosts claude  # stop and remove it
 ```
 
-**Per-host selection is `--supervisor-hosts claude,codex,pi`** — a subset of the loop hosts
+**Per-host selection is `--supervisor-hosts claude,codex,pi,opencode,cursor`** — a subset of the loop hosts
 the install covers (default: the loop hosts present in `--target`). It is deliberately
 *not* `--host`: in this repo `--host` already means the **wake** selector inside
-`scripts/supervisor.mjs --host claude|codex|pi`, and reusing the name on `install.sh` would
+`scripts/supervisor.mjs --host claude|codex|pi|opencode|cursor`, and reusing the name on `install.sh` would
 collide. **`openclaw` is rejected** in this list (reason on stderr, exit 2) — it has no loop
 supervisor to enable (see
 [`scheduling.md §OpenClaw: do not build a supervisor`](scheduling.md#openclaw-do-not-build-a-supervisor)).
@@ -534,7 +535,7 @@ root is therefore reported as a cursor bundle. That is the only line the second 
 changes: `Format: bundle`, `Shape`, `Capability mode` and `Bundle capabilities: skills` are
 identical either way (measured against OpenClaw 2026.9.8 with and without the marker).
 
-> **No supervisor for OpenClaw.** Unlike claude, codex and pi, OpenClaw gets **no**
+> **No supervisor for OpenClaw.** Unlike the other five hosts, OpenClaw gets **no**
 > scheduling unit and **no `meerkat-loop` skill**: it already has a scheduler in the
 > [openclaw-team](https://github.com/tanyu216/openclaw-team) framework, whose
 > per-agent poll and `task-patrol` automations *are* the design in
@@ -639,25 +640,26 @@ bash install.sh --target opencode --link --force
 #    see the registration below
 ```
 
-Step 1 writes the board skill to `~/.config/opencode/skills/meerkat-taskpanel` and the
-host config `~/.config/opencode/meerkat-taskpanel.env`, whose `MEERKAT_TASKPANEL_REPO`
-is what lets the skill's wrapper find the board engine once the skill no longer sits
-beside the checkout (see the resolution ladder in
+Step 1 writes the board skill to `~/.config/opencode/skills/meerkat-taskpanel`, the loop
+skill and its execution body, the scheduling units and `~/.config/opencode/bin/wake-opencode.sh`,
+and the host config `~/.config/opencode/meerkat-taskpanel.env`, whose
+`MEERKAT_TASKPANEL_REPO` is what lets the skill's wrapper find the board engine once the
+skill no longer sits beside the checkout (see the resolution ladder in
 [the wrapper](../skills/meerkat-taskpanel/scripts/run.mjs)).
 
-> **No supervisor, and no scheduling unit.** OpenCode gets no `~/.config/opencode/scheduling`,
-> no `meerkat-loop` skill and no `wake-opencode.sh`. The supervisor's glue is a *headless*
-> invocation, and OpenCode's headless and resume forms are **unverified** here —
-> `docs/scheduling.md` says so in as many words ("opencode is not a supported `--host`;
-> its headless and resume forms were **not verified** — its CLI was not installed").
-> Pointing an unattended daemon at an unverified command is a different risk class from
-> copying a skill, so `--supervisor-hosts opencode` is rejected (exit 2). Use the plugin
-> route below and wake OpenCode yourself until someone can probe those forms.
+**The loop, and its evidence.** OpenCode's headless form is `opencode run <prompt>`; a
+resume is `opencode run --session <sid> <prompt>`. That shape is recorded in
+[`scripts/verify/host-resume-matrix.mjs`](../scripts/verify/host-resume-matrix.mjs), the
+flag-level matrix this repository keeps for exactly this question. It is **not** a run on
+this machine: OpenCode's CLI is absent here and in the container, so the resume form stays
+flagged and `--wake-command` remains the escape hatch (`docs/scheduling.md`).
 
 Uninstall:
 
 ```bash
-rm -rf ~/.config/opencode/skills/meerkat-taskpanel ~/.config/opencode/meerkat-taskpanel.env
+rm -rf ~/.config/opencode/skills/meerkat-taskpanel ~/.config/opencode/skills/meerkat-loop \
+       ~/.config/opencode/meerkat-taskpanel ~/.config/opencode/scheduling \
+       ~/.config/opencode/bin/wake-opencode.sh ~/.config/opencode/meerkat-taskpanel.env
 ```
 
 #### The plugin route
@@ -678,6 +680,11 @@ The step above copies the skill; the plugin hands OpenCode the repository's own 
 `config.skills.paths`; on V2, where `config.skills` is a flat array, it registers one
 `Skill.Info` per `skills/<name>/SKILL.md` instead. Both skills arrive together, because
 OpenCode's registration unit is a directory.
+
+The plugin also carries the per-repo **issue-tracker check** (see
+[the session-start check](#the-session-start-issue-tracker-check)): on V1 through
+`experimental.chat.messages.transform`, on V2 through `ctx.session.hook("context", …)`.
+It is injected once per session, deduped by its own marker.
 
 ```bash
 # verify — a session should list meerkat-taskpanel as a skill
@@ -704,9 +711,10 @@ bash install.sh --target cursor --link --force
 #    or search for it in the plugin marketplace
 ```
 
-Step 1 writes the board skill to `~/.cursor/skills/meerkat-taskpanel` and the host config
-`~/.cursor/meerkat-taskpanel.env`, whose `MEERKAT_TASKPANEL_REPO` is what lets the skill's
-wrapper find the board engine once the skill no longer sits beside the checkout.
+Step 1 writes the board skill to `~/.cursor/skills/meerkat-taskpanel`, the loop skill and
+its execution body, the scheduling units and `~/.cursor/bin/wake-cursor.sh`, and the host
+config `~/.cursor/meerkat-taskpanel.env`, whose `MEERKAT_TASKPANEL_REPO` is what lets the
+skill's wrapper find the board engine once the skill no longer sits beside the checkout.
 
 > **Rank of the evidence.** `~/.cursor/skills/` is where Cursor reads user skills, per
 > secondary sources (Cursor's help index and a third-party agent-skills guide agree;
@@ -718,16 +726,18 @@ wrapper find the board engine once the skill no longer sits beside the checkout.
 Uninstall:
 
 ```bash
-rm -rf ~/.cursor/skills/meerkat-taskpanel ~/.cursor/meerkat-taskpanel.env
+rm -rf ~/.cursor/skills/meerkat-taskpanel ~/.cursor/skills/meerkat-loop \
+       ~/.cursor/meerkat-taskpanel ~/.cursor/scheduling \
+       ~/.cursor/bin/wake-cursor.sh ~/.cursor/meerkat-taskpanel.env
 ```
 
-> **No supervisor, and no scheduling unit.** Cursor gets no `~/.cursor/scheduling`, no
-> `meerkat-loop` skill and no `wake-cursor.sh`, and `--supervisor-hosts cursor` is
-> rejected (exit 2). `docs/scheduling.md` has no Cursor row at all — its headless and
-> resume forms are unverified here, and the only invocation anyone records
-> (`cursor-agent -p`) appears in a third-party experiment table, not in an install or
-> reference document. The units start *the glue*, which is a headless call; an unattended
-> daemon is not the place to guess.
+> **The loop, and what is still unverified.** Cursor's fresh headless form is
+> `cursor-agent -p <prompt>`; the **resume** form used by the wake glue
+> (`cursor-agent -p --resume <sid> <prompt>`) has not been run against a real Cursor CLI —
+> there is none on the machine this was built on. The glue says so in its own header, the
+> resume cell in `scripts/verify/host-resume-matrix.mjs` is best-effort (an absent CLI
+> SKIPs), and `--wake-command` is the documented escape hatch. The fresh form itself comes
+> from a third-party experiment table, not a Cursor reference document.
 
 #### The plugin route
 
@@ -735,19 +745,60 @@ rm -rf ~/.cursor/skills/meerkat-taskpanel ~/.cursor/meerkat-taskpanel.env
 `skills/` tree, read in place, so Cursor needs no `skills/` directory of its own. Like
 OpenCode, Cursor registers a *directory*, so both skills arrive together.
 
-**No hooks are shipped, deliberately.** Cursor's hook contract is its own schema (a
-lowercase `sessionStart` key, a relative `command`, `additional_context` rather than Claude
-Code's `hookSpecificOutput.additionalContext`), and Cursor's own documentation has no
-uninstall or update path to follow. Rather than invent one, the plugin is skills-only —
-which is also what the board's Claude plugin and OpenClaw bundle are. Porting the
-session-start briefing to Cursor is a follow-up card, and it must be proved with a
-unique-marker test (a throwaway hook whose marker must reach the model with no tool call)
-rather than assumed.
+**The session-start hook.** The manifest also declares
+`"hooks": "./hooks/hooks-cursor.json"`, whose `sessionStart` entry runs
+`hooks/session-start.sh`. The script emits exactly
+`{"additional_context": "…"}` — Cursor's own schema, not Claude Code's
+`hookSpecificOutput.additionalContext` — carrying the per-repo issue-tracker check (see
+[the session-start check](#the-session-start-issue-tracker-check)). A missing instruction
+still emits valid JSON and exits 0. The hook's output shape and the JSON escape are pinned
+by `test/install/cursor-plugin.test.mjs`; the real host's dispatch is the unverified half.
 
-**Unverified, and flagged as such.** Cursor's CLI is not installed here, so nothing in this
-section has been run from this repository. Upstream does not document Cursor's
-uninstall/update path at all, so even the install gesture above is transcribed from
-`obra/superpowers` rather than reproduced.
+**Unverified, and flagged as such.** Cursor's CLI is not installed here, so neither the
+hook dispatch nor `cursor-agent`'s flags have been run from this repository. The schema is
+transcribed from `obra/superpowers` (`hooks/hooks-cursor.json` + the manifest's `hooks`
+key), which is the only first-hand copy available.
+
+## The session-start issue-tracker check
+
+The board can stand in as the **issue tracker for the Matt Pocock engineering skill
+suite** (`/triage`, `/to-tickets`, `/wayfinder`, …). The `setup-matt-pocock-skills` skill
+is installed globally, but everything it writes is **per repository**
+(`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, `docs/agents/domain.md`,
+and the `## Agent skills` block in `CLAUDE.md` or `AGENTS.md`). So the check runs at
+session start, in the repository the session is in:
+
+1. If `docs/agents/issue-tracker.md` exists, nothing happens — the repository is
+   configured.
+2. If it is missing, the host agent invokes `/setup-matt-pocock-skills` **non-interactively**
+   and configures meerkat-taskpanel as the tracker. The agent decides the integration
+   content itself: the instruction supplies the facts (`taskctl` operations, triage
+   statuses and labels, `projects.json`) and the defaults, not a fixed template.
+3. If the skill cannot be found or the write is refused, the agent prints one line
+   beginning `meerkat-taskpanel: issue-tracker setup skipped —` and continues. Never
+   fatal, never retried in a loop.
+
+The instruction text is authored once, in
+[`skills/meerkat-taskpanel/references/issue-tracker-check.md`](../skills/meerkat-taskpanel/references/issue-tracker-check.md).
+Each host reads it through the surface it already has:
+
+| Host | Surface | Route |
+|---|---|---|
+| Claude Code | the installed `SessionStart` hook prints it | `install.sh --target claude` |
+| Codex | the installed `AGENTS.md` block inlines it | `install.sh --target codex` |
+| Pi | `session_start` / `context` callbacks in `.pi/extensions/` | the plugin/extension route (`pi install`) |
+| OpenCode | V1 `experimental.chat.messages.transform`, V2 `ctx.session.hook("context", …)` | the plugin route (`opencode.json`) |
+| Cursor | `hooks/hooks-cursor.json` → `hooks/session-start.sh`, `additional_context` | the Cursor plugin route |
+
+> **Two limits, stated plainly.** First, Pi / OpenCode / Cursor receive the injection
+> through their **plugin/extension route**, not through the `--target` skill copy: a user
+> who only copies the skill gets the skill and no session-start instruction. Second,
+> **headless turns only warn** — a worker wake, a review wake, or the loop's `继续` turn
+> will not run the setup or write repository files, because setup is a human-facing act.
+> An unattended loop therefore never configures a repository; an interactive session does.
+
+Existing installs need `--force` to refresh the skill copy and the Codex `AGENTS.md`
+block, both of which are merge-never-clobber.
 
 ## Agent integration: skill only
 

@@ -5,7 +5,7 @@
  *   node scripts/verify/host-resume-matrix.mjs [options]
  *
  * Options:
- *   --host <h1,h2>       restrict to some of claude,codex,pi,opencode (default: all)
+ *   --host <h1,h2>       restrict to some of claude,codex,pi,opencode,cursor (default: all)
  *   --timeout <ms>       per-probe timeout (default 60000)
  *   --e2e                also run the "new session -> remember a marker -> resume reads it
  *                        back" round trip (needs working credentials; OFF by default)
@@ -124,6 +124,24 @@ export const HOSTS = [
       nonInteractive: /run\b/,
     },
     headless: "opencode run <prompt>",
+  },
+  {
+    // Cursor's whole surface is secondary-sourced, and its resume flag in particular
+    // is unverified: there is no Cursor CLI on the machine this table was written on.
+    // The probe is best-effort — an absent CLI SKIPs, and a CLI whose help does not
+    // match simply reports PARTIAL.
+    host: "cursor",
+    bin: "cursor-agent",
+    dotDir: ".cursor",
+    configEnv: null,
+    help: [["--help"]],
+    dims: {
+      continueLast: /--continue\b/,
+      resumeById: /--resume\b/,
+      fork: /--fork\b/,
+      nonInteractive: /-p, --print\b/,
+    },
+    headless: "cursor-agent -p <prompt>",
   },
 ];
 
@@ -402,7 +420,7 @@ async function main() {
     process.stdout.write(
       "Usage: node scripts/verify/host-resume-matrix.mjs [--host claude,codex] [--e2e] [--container]\n" +
         "       [--json] [--evidence-dir DIR]\n\n" +
-        "  Flag-level resume matrix for claude|codex|pi|opencode; --e2e adds marker round trips.\n",
+        "  Flag-level resume matrix for claude|codex|pi|opencode|cursor; --e2e adds marker round trips.\n",
     );
     return 0;
   }

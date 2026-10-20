@@ -1,6 +1,6 @@
 ---
 name: meerkat-loop
-description: The host-external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping and a 10-minute continue turn that wakes the host to run the notify-only SLA patrol, the board's review workflow, and the atomic claim-and-wake poll. Installs launchd / systemd / cron units and the per-host wake glue for claude, codex and pi; OpenClaw is excluded.
+description: The host-external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping and a 10-minute continue turn that wakes the host to run the notify-only SLA patrol, the board's review workflow, and the atomic claim-and-wake poll. Installs launchd / systemd / cron units and the per-host wake glue for claude, codex, pi, opencode and cursor; OpenClaw is excluded.
 ---
 
 # Meerkat Loop
@@ -75,8 +75,8 @@ pairing.
 ## Installing
 
 ```bash
-bash install.sh --target claude     # or codex, pi
-bash install.sh --target all        # claude, codex, pi, and openclaw (board only)
+bash install.sh --target claude     # or codex, pi, opencode, cursor
+bash install.sh --target all        # every host; openclaw gets the board only
 ```
 
 The installer copies this skill into the host's skill directory, copies the

@@ -156,6 +156,8 @@ describe("planContinueInvocation", () => {
   for (const [host, command, args] of [
     ["codex", "codex", ["exec", "继续"]],
     ["pi", "pi", ["--print", "继续"]],
+    ["opencode", "opencode", ["run", "继续"]],
+    ["cursor", "cursor-agent", ["-p", "继续"]],
   ]) {
     it(`uses ${command} for ${host}`, () => {
       const plan = planContinueInvocation({ host, prompt: "继续", cwd: "/repo" });

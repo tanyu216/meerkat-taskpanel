@@ -38,7 +38,13 @@ import {
 } from "../../src/foundation/sla-patrol.mjs";
 
 /** Host → dot-directory under the target home. */
-export const HOST_DIRS = Object.freeze({ claude: ".claude", codex: ".codex", pi: ".agents" });
+export const HOST_DIRS = Object.freeze({
+  claude: ".claude",
+  codex: ".codex",
+  pi: ".agents",
+  opencode: ".config/opencode",
+  cursor: ".cursor",
+});
 
 /** Parse a `KEY=value` env file, or `{}` when it is absent/unreadable. */
 export function readConfigFile(path) {
@@ -278,7 +284,9 @@ export function parseArgs(argv, env = process.env) {
     const fallback = env.TASKCTL_AGENT || env.USER || env.LOGNAME || "agent";
     opts.agents = [fallback];
   }
-  if (!(opts.host in HOST_DIRS)) throw new Error(`unknown host '${opts.host}' (expected claude|codex|pi)`);
+  if (!(opts.host in HOST_DIRS)) {
+    throw new Error(`unknown host '${opts.host}' (expected claude|codex|pi|opencode|cursor)`);
+  }
 
   const paths = hostPaths(opts.home, opts.host);
   opts.log ??= paths.log;
@@ -521,7 +529,7 @@ The clocks stay as the fallback (and as the only path for time-based work).
 Options:
   --agent <name>            Agent(s) to work for. Repeatable / comma-separated.
                             Default: $TASKCTL_AGENT, then $USER.
-  --host claude|codex|pi    Which worker/agent to wake (default: claude).
+  --host claude|codex|pi|opencode|cursor    Which worker/agent to wake (default: claude).
   --repo <path>             Repository root (default: this checkout; a host-installed
                             copy takes it from --config — MEERKAT_TASKPANEL_REPO).
   --ping-interval <sec>     Liveness clock (default: ${DEFAULT_PING_SECONDS}).

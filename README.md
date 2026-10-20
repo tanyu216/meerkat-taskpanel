@@ -193,7 +193,8 @@ tree instead of receiving a copy. OpenClaw consumes that Claude-format bundle to
 is its supported route — see [`docs/install.md`](docs/install.md#openclaw).
 
 The `meerkat-loop` supervisor skill is **not** distributed through the marketplace: it is
-installed by `install.sh --target claude|codex|pi`, and it never reaches OpenClaw.
+installed by `install.sh --target claude|codex|pi|opencode|cursor`, and it never reaches
+OpenClaw.
 
 Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the
 agent's board identity, default `$USER` — must equal its assignee; re-running with a new
@@ -254,7 +255,7 @@ dispatch-relevant board event arrives, so discovery is event-driven; the continu
 remains the fallback and the only path for time-based work (stale claims, review aging, SLA).
 On cron — which cannot host a long-lived process — discovery stays within one continue
 cadence; `--continue-interval` is the lever. **To turn it on,** run
-`install.sh --target claude|codex|pi`: it installs the `meerkat-loop` skill and
+`install.sh --target claude|codex|pi|opencode|cursor`: it installs the `meerkat-loop` skill and
 drops that host's launchd / systemd / cron units, then **prints the load command** — it
 never starts a daemon for you (it also asks once whether the supervisor may claim
 **unassigned** cards, default yes). OpenClaw needs no loop: its framework already carries
@@ -270,8 +271,9 @@ source). The deterministic entries are ordinary programs, runnable by hand, and 
 continue prompt names them by absolute path.
 
 The loop ships as **its own skill** (`skills/meerkat-loop/`), and `install.sh` installs it
-for **claude, codex and pi only** — OpenClaw gets the board and nothing else, because the
-openclaw-team framework already runs an equivalent poll / patrol. Alongside the skill the
+for **every host except OpenClaw** (claude, codex, pi, opencode, cursor) — OpenClaw gets the
+board and nothing else, because the openclaw-team framework already runs an equivalent
+poll / patrol. Alongside the skill the
 installer drops per-host launchd / systemd / cron units and a wake-glue script, and prints
 the exact load command — it never enables a daemon for you. The installer also asks once
 whether the supervisor may claim **unassigned** cards (default yes) and remembers the

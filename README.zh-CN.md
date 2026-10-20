@@ -148,8 +148,8 @@ skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 
 OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的安装路线 —— 见
 [`docs/install.md`](docs/install.md#openclaw)。
 
-`meerkat-loop` 监督进程**不走** marketplace 分发：它由 `install.sh --target claude|codex|pi`
-安装，且永不进入 OpenClaw。
+`meerkat-loop` 监督进程**不走** marketplace 分发：它由
+`install.sh --target claude|codex|pi|opencode|cursor` 安装，且永不进入 OpenClaw。
 
 常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，
 默认 `$USER`，须与其 assignee 一致；对既有安装改名需配 `--force` 才生效）、`--no-automation`
@@ -193,7 +193,7 @@ Claude Code 与 Codex **本身没有定时器**，因此循环活在它们
 因此工作发现是事件驱动的；continue 周期仍是兜底，也是基于时间的检查（过期认领、审核老化、
 SLA）的唯一路径。cron 无法承载长驻进程，仍按一个 continue 周期发现工作；
 `--continue-interval` 是旋钮。**启用方式**：运行
-`install.sh --target claude|codex|pi` —— 它会安装 `meerkat-loop` skill、投放该宿主的
+`install.sh --target claude|codex|pi|opencode|cursor` —— 它会安装 `meerkat-loop` skill、投放该宿主的
 launchd / systemd / cron 单元，并**打印加载命令**（绝不替你启动守护进程；安装时还会问一次
 是否允许认领**未分配**的卡，默认允许）。OpenClaw 无需这套循环：框架已自带一个。
 
@@ -204,14 +204,15 @@ ping 只读一个小 registry，$0；continue 每个周期产生一个有界模�
 确定性的成本闸门 —— **只有真正认领到卡**才启动 worker 回合（原子认领是唯一的派单源）。
 确定性入口都是普通程序，可单独运行；continue 提示词用绝对路径点名它们。
 
-这个循环本身也是一个 skill（`skills/meerkat-loop/`），并且 `install.sh` **只为 claude / codex / pi
-安装它**；OpenClaw 只拿到看板、不拿 loop —— openclaw-team 框架已自带等价实现。除 skill 之外，
+这个循环本身也是一个 skill（`skills/meerkat-loop/`），并且 `install.sh` **为除 OpenClaw 外的全部宿主
+安装它**（claude / codex / pi / opencode / cursor）；OpenClaw 只拿到看板、不拿 loop ——
+openclaw-team 框架已自带等价实现。除 skill 之外，
 安装器还会写入各宿主的 launchd / systemd / cron 调度单元与唤醒脚本，并**打印**加载
 命令 —— 绝不替你启用守护进程。安装时还会问一次是否允许认领**未分配**的卡（默认允许），
 并把答案记到 `<宿主目录>/meerkat-taskpanel.env`。loop skill 会声明它所需的 board
 `task-interface` 版本，并由 `scripts/board-check.mjs` 对着看板自己的 `--version --json` 强制执行；
 完整设计 —— 两个时钟、仅触发才计费的成本闸门、
-幂等唤醒、并发上限、失效兜底，以及 claude / codex / pi 三宿主的触发差异 —— 见
+幂等唤醒、并发上限、失效兜底，以及五个非 OpenClaw 宿主的触发差异 —— 见
 [`docs/scheduling.md`](docs/scheduling.md)。
 
 ### OpenClaw

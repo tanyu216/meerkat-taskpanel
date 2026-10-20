@@ -39,7 +39,7 @@ export const ACTIONS = Object.freeze(["enable", "disable", "status"]);
 /** The mechanisms `--scheduler` may name, plus `auto` (this platform's one). */
 export const SCHEDULERS = Object.freeze(["auto", "launchd", "systemd", "cron"]);
 /** The hosts that run the supervisor. OpenClaw is never among them (D8). */
-export const LOOP_HOSTS = Object.freeze(["claude", "codex", "pi"]);
+export const LOOP_HOSTS = Object.freeze(["claude", "codex", "pi", "opencode", "cursor"]);
 /** Every systemd user unit the loop installs — copied before `daemon-reload`. */
 export const SYSTEMD_UNITS = Object.freeze([
   "meerkat-taskpanel-ping.service",
