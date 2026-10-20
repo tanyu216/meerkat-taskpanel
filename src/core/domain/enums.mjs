@@ -237,6 +237,7 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "task_claimed",
   "task_heartbeat",
   "task_moved",
+  "task_reopened",
   "task_archived",
   "report_written",
   "task_delivered",

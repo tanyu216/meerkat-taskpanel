@@ -105,6 +105,11 @@ export function isAwaiting(task) {
  * the UI must not *offer* a move the server will refuse, and M1's rule is that
  * an `awaiting` card is offered no route to `in_review`, `done` or `blocked`
  * (design §6/§8-13) — the delivery gate's UI half.
+ *
+ * The terminal rows stay **empty** even though the domain now has the reopen
+ * edge: that edge is audited (it requires a reason), so it must not ride the
+ * generic move menu or a drag-and-drop, which cannot ask for one. The drawer's
+ * dedicated Reopen control (`reopenTask` below) is its UI.
  */
 export const ALLOWED_TRANSITIONS = Object.freeze({
   backlog: Object.freeze(["todo", "canceled"]),
@@ -809,6 +814,40 @@ export async function moveTask(task, to) {
     // One sentence per refusal, chosen by its `code`. A conflict is sticky —
     // it needs the reader to act before the board is trustworthy again — and
     // every other refusal is an ordinary toast that expires on its own.
+    const text = t(errorTextKey(err), task.identifier);
+    if (conflict) pushStickyToast(text, "danger");
+    else pushToast(text, "danger");
+    throw err;
+  }
+}
+
+/**
+ * Reopen a terminal card to `todo`.
+ *
+ * Deliberately **not** optimistic: unlike a status flip, the server also
+ * advances the delivery round and releases the finished row's `idem` /
+ * `archived_at`, so the returned record is the only truthful one. The reason
+ * is required by the service and recorded as a `task_reopened` activity.
+ *
+ * @param {object} task the wire task
+ * @param {string} reason why the finished work is active again
+ */
+export async function reopenTask(task, reason) {
+  const baseVersion = task.version;
+  try {
+    const data = await api.reopenTask(task.identifier, { reason, if_version: baseVersion });
+    replaceTask(data.task);
+    pushToast(`${t("toast.reopened")} · ${task.identifier} → ${t("status.todo")}`, "success");
+    return data.task;
+  } catch (err) {
+    const conflict = err instanceof ApiError && err.isVersionConflict;
+    if (conflict) {
+      board.conflict = {
+        identifier: task.identifier,
+        expectedVersion: err.details?.expectedVersion ?? baseVersion,
+        currentVersion: err.details?.currentVersion ?? null,
+      };
+    }
     const text = t(errorTextKey(err), task.identifier);
     if (conflict) pushStickyToast(text, "danger");
     else pushToast(text, "danger");

@@ -68,6 +68,12 @@ The seven statuses that are the board's columns. `awaiting` is not among them: i
 attention overlay on a card that is otherwise in progress.
 _Avoid_: column, lane, swimlane, phase
 
+**Reopen**:
+The one exit from a terminal status: `done`/`canceled → todo`, with an audited reason. It
+starts a new delivery round. A review card cannot be reopened; reopen the card it reviews.
+_中文_: 重开
+_Avoid_: un-cancel, restore, retry
+
 **Kind**:
 What a card *is* — `task`, `epic` or `deploy` — as opposed to where it currently sits.
 Only an epic may be a parent; a deploy card is withheld from automatic claiming.

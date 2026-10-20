@@ -1333,6 +1333,25 @@ describe("commands/tasks — one move, one revision", () => {
       assert.equal(actorName(db, reworked.claimedBy), "linus", "a rework does not drop the claim");
     });
   });
+
+  it("costs two bumps for a reopen, not three (the bookkeeping is one UPDATE)", async () => {
+    await board(async ({ db, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT, idem: "reopen-rev" });
+      commands.claim({ id: task.id, actor: AGENT });
+      commands.deliver({ taskId: task.id, report: report(), actor: AGENT });
+      commands.moveStatus({ id: task.id, to: "done", actor: HUMAN });
+
+      const before = revision(db);
+      const reopened = commands.reopenStatus({ id: task.id, actor: HUMAN, reason: "rework requested" });
+      assert.equal(reopened.deliveryRound, 2);
+      assert.equal(
+        revision(db) - before,
+        2,
+        "the status move and its audit row — clearing idem/archived_at must not add a revision",
+      );
+      assert.equal(reopened.status, "todo");
+    });
+  });
 });
 
 describe("commands/tasks — archive (I6)", () => {
@@ -1376,20 +1395,103 @@ describe("commands/tasks — archive (I6)", () => {
 });
 
 describe("commands/tasks — terminal states", () => {
-  it("cannot leave done, even through the service", async () => {
-    await board(async ({ db, commands }) => {
-      const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });
-      commands.claim({ id: task.id, actor: AGENT });
-      commands.deliver({ taskId: task.id, report: report(), actor: AGENT });
-      commands.moveStatus({ id: task.id, to: "done", actor: HUMAN });
+  /** A card delivered and accepted the normal way. */
+  function doneTask(commands, overrides = {}) {
+    const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT, ...overrides });
+    commands.claim({ id: task.id, actor: AGENT });
+    commands.deliver({ taskId: task.id, report: report(), actor: AGENT });
+    commands.moveStatus({ id: task.id, to: "done", actor: HUMAN });
+    return task;
+  }
 
+  it("reopens done to todo with an audited reason, and starts a new round", async () => {
+    await board(async ({ db, commands }) => {
+      const task = doneTask(commands, { idem: "reopen-me" });
+      assert.equal(commands.getTask({ id: task.id }).status, "done");
+      commands.archive({ id: task.id, actor: HUMAN, days: 0 });
+      assert.notEqual(commands.getTask({ id: task.id }).archivedAt, null, "precondition: archived");
+
+      // No reason: refused before any write.
       const before = revision(db);
-      assert.throws(() => commands.moveStatus({ id: task.id, to: "todo", actor: HUMAN }), (err) => {
-        assert.equal(err.code, "TERMINAL_STATE");
-        assert.equal(err.http, 409);
+      assert.throws(() => commands.reopenStatus({ id: task.id, actor: HUMAN }), (err) => {
+        assert.equal(err.code, "VALIDATION_FAILED");
         return true;
       });
-      assert.equal(revision(db), before);
+      assert.equal(revision(db), before, "a refused reopen writes nothing");
+      assert.equal(commands.getTask({ id: task.id }).status, "done");
+
+      const reopened = commands.reopenStatus({
+        id: task.id,
+        actor: HUMAN,
+        reason: "customer found a regression",
+      });
+      assert.equal(reopened.status, "todo");
+      assert.equal(reopened.deliveryRound, 2, "a reopen starts a new delivery round");
+      assert.equal(reopened.archivedAt, null, "the card returns to the board");
+      assert.equal(reopened.idem, null, "the finished card's idempotency key is released");
+      assert.deepEqual(activitiesFor(db, task.id).slice(-1), ["task_reopened"]);
+      const row = db
+        .prepare("SELECT changes_json FROM task_activities WHERE task_id = ? ORDER BY id DESC LIMIT 1")
+        .get(task.id);
+      const changes = JSON.parse(row.changes_json);
+      assert.equal(changes.from, "done");
+      assert.equal(changes.to, "todo");
+      assert.equal(changes.reason, "customer found a regression");
+      assert.equal(changes.deliveryRound, 2);
+    });
+  });
+
+  it("reopens a canceled card the same way", async () => {
+    await board(async ({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Abandoned", actor: AGENT });
+      commands.moveStatus({ id: task.id, to: "canceled", actor: AGENT });
+      const reopened = commands.reopenStatus({
+        id: task.id,
+        actor: AGENT,
+        reason: "the customer changed their mind",
+      });
+      assert.equal(reopened.status, "todo");
+      assert.equal(reopened.deliveryRound, 2);
+    });
+  });
+
+  it("refuses to reopen a card that is not terminal", async () => {
+    await board(async ({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Still open", actor: AGENT });
+      assert.throws(
+        () => commands.reopenStatus({ id: task.id, actor: HUMAN, reason: "not done yet" }),
+        (err) => err.code === "INVALID_TRANSITION",
+      );
+    });
+  });
+
+  it("refuses to reopen a review card", async () => {
+    await board(async ({ commands }) => {
+      const original = doneTask(commands);
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review it",
+        actor: HUMAN,
+        reviewOf: original.identifier,
+        reviewRound: original.deliveryRound,
+      });
+      commands.claim({ id: review.id, actor: AGENT });
+      commands.deliver({ taskId: review.id, report: report(), actor: AGENT });
+      commands.moveStatus({ id: review.id, to: "done", actor: HUMAN });
+      assert.throws(
+        () => commands.reopenStatus({ id: review.id, actor: HUMAN, reason: "I want to reopen the review" }),
+        (err) => err.code === "INVALID_TRANSITION",
+      );
+    });
+  });
+
+  it("does not let deliver become a reasonless reopen", async () => {
+    await board(async ({ commands }) => {
+      const task = doneTask(commands);
+      assert.throws(
+        () => commands.deliver({ taskId: task.id, report: report(), to: "todo", actor: AGENT }),
+        (err) => err.code === "TERMINAL_STATE",
+      );
       assert.equal(commands.getTask({ id: task.id }).status, "done");
     });
   });

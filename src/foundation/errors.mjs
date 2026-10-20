@@ -69,7 +69,7 @@ export const ERROR_CODES = Object.freeze({
   // A card may not enter `in_review`/`done` while one of its children is still
   // in flight. Manual and automatic paths apply the same rule.
   CHILDREN_OPEN: spec(409, "This card still has non-terminal child cards."),
-  TERMINAL_STATE: spec(409, "done/canceled are terminal; they cannot be left."),
+  TERMINAL_STATE: spec(409, "done/canceled are terminal; they may only be reopened to todo."),
   VERSION_CONFLICT: spec(409, "Version conflict — re-read the task and retry once."),
   CLAIM_LOST: spec(409, "Claim could not be taken: the task was taken concurrently."),
   EXECUTION_ACTIVE: spec(409, "Another actor holds a fresh claim on this task."),

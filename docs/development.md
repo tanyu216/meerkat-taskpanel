@@ -190,7 +190,7 @@ browser?" is printed rather than inferred. See
 | `/health`, `/meta` | GET | liveness + version/capabilities; `/health` is unauthenticated |
 | `/projects`, `/projects/:id`, `/projects/:id/readme` | GET/POST/PATCH/PUT | `/projects` is ordered server-side (DESIGN.md §20) and carries each project's `task_count` (the sidebar badge — total tasks, archived included, independent of the order) |
 | `/tasks`, `/tasks/:ref` | GET/POST/PATCH | `:ref` is an identifier or a UUID |
-| `/tasks/:ref/move`, `/tasks/:ref/deliver`, `/tasks/:ref/assign`, `/tasks/:ref/archive` | POST | the delivery gate bites on `/move` and `/deliver` |
+| `/tasks/:ref/move`, `/tasks/:ref/reopen`, `/tasks/:ref/deliver`, `/tasks/:ref/assign`, `/tasks/:ref/archive` | POST | the delivery gate bites on `/move` and `/deliver`; `/reopen` is the audited `done|canceled → todo` edge |
 | `/tasks/:ref/comments`, `/tasks/:ref/relations`, `/tasks/:ref/sessions`, `/tasks/:ref/activities`, `/tasks/:ref/reports` | GET/POST/DELETE | activities is the audit cursor read |
 | `/attachments/:id/content` | GET/PUT | raw bytes; not JSON — handled outside the router |
 | `/events` | GET (SSE) | `global_revision` increments; `?after=<rev>` replays; a deliberate stop sends a named `shutdown` frame (see [Stopping the daemon](#stopping-the-daemon)) |

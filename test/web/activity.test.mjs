@@ -78,6 +78,9 @@ describe("web/activity — the row sentence", () => {
   });
 
   it("renders a move as the prototype's `status: from → to` line", () => {
+    assert.deepEqual(activityLine({ event: "task_reopened", changes: { from: "done", to: "todo" } }), {
+      text: "status: done → todo",
+    });
     assert.deepEqual(activityLine({ event: "task_moved", changes: { from: "backlog", to: "todo" } }), {
       text: "status: backlog → todo",
     });

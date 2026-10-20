@@ -9,6 +9,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Done/canceled cards can be reopened to `todo`.** `taskctl issue reopen <ref> --reason "<why>"`
+  (and `POST /api/v1/tasks/:ref/reopen`) returns a finished card to the queue with an audited
+  `task_reopened` activity, starts a new delivery round, clears its archive and releases its
+  idempotency key. `in_progress` is not a reopen target; review cards are refused (reopen the
+  original). The board's drawer offers the action behind an 8-character reason prompt.
 - **One config file: `.env` at the program install root.** `taskd`, `taskctl` and the loop's
   SSE endpoint now read `<program root>/.env` (the checkout root, or the npm package root) for
   the board URL, the client token, the allow-list and the acceptance policy. Precedence is

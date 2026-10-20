@@ -68,6 +68,13 @@ describe("contract/liveness — every non-terminal status can reach canceled", (
     }
   }
 
+  it("a reopened terminal card can reach canceled again", () => {
+    for (const terminal of ["done", "canceled"]) {
+      assert.ok(allowedTargets(terminal).includes("todo"), `${terminal} → todo is the reopen edge`);
+      assert.ok(reachable(terminal, null).has("canceled"), `${terminal} → todo → canceled`);
+    }
+  });
+
   it("in_review reaches canceled in two moves (there is no direct edge)", () => {
     assert.equal(allowedTargets("in_review").includes("canceled"), false, "deliberate: no direct edge");
     for (const via of ["in_progress", "blocked"]) {

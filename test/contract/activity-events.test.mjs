@@ -64,6 +64,7 @@ describe("contract/activity-events — the catalogue and its writers agree", () 
       "attachment_updated",
       "attachment_removed",
       "import_completed",
+      "task_reopened",
     ]) {
       assert.ok(ACTIVITY_EVENTS.includes(name), `${name} is declared`);
     }

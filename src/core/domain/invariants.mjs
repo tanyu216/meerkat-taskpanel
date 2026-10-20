@@ -11,7 +11,7 @@
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
-import { isTerminalStatus } from "./status.mjs";
+import { REOPEN_TARGET, isTerminalStatus } from "./status.mjs";
 
 /** @type {Record<string, {id: string, name: string, reason: string, layer: string, statement: string}>} */
 export const INVARIANTS = Object.freeze({
@@ -31,10 +31,10 @@ export const INVARIANTS = Object.freeze({
   }),
   I3: Object.freeze({
     id: "I3",
-    name: "terminal-is-forever",
+    name: "terminal-reopens-to-todo",
     reason: "TERMINAL_STATE",
     layer: "sql",
-    statement: "done and canceled have no outgoing transitions",
+    statement: "done and canceled may only leave for todo — the audited reopen edge",
   }),
   I4: Object.freeze({
     id: "I4",
@@ -93,9 +93,9 @@ export function assertCommentAppendOnly(operation, target = {}) {
  * @param {string} from @param {string} to
  */
 export function assertNotTerminal(from, to) {
-  if (isTerminalStatus(from)) {
+  if (isTerminalStatus(from) && to !== REOPEN_TARGET) {
     throw new DomainError("TERMINAL_STATE", {
-      message: `${from} is terminal; it cannot move to ${to}`,
+      message: `${from} is terminal; it may only be reopened to ${REOPEN_TARGET}`,
       details: { from, to },
     });
   }

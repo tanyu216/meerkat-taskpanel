@@ -17,6 +17,7 @@ import { HUMAN_KIND, TASKD_KIND } from "../../src/foundation/constants.mjs";
 export const DISPATCH_EVENTS = Object.freeze([
   "task_created",
   "task_moved",
+  "task_reopened",
   "task_delivered",
   "report_written",
   "report_waived",

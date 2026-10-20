@@ -8,7 +8,7 @@
  *
  *   I1 claim is atomic                 → exactly one winner, ever
  *   I2 execution uniqueness            → a live claim cannot be taken twice
- *   I3 terminal states are terminal    → done/canceled never move
+ *   I3 terminal states reopen to todo  → done/canceled have exactly one exit
  *   I4 comments are append-only        → no UPDATE, no DELETE
  *   I5 human decisions are on record   → readable, and just as immutable
  *   I6 archiving is for finished work  → and does not touch status
@@ -185,17 +185,32 @@ describe("contract/invariants — I1/I2 claim atomicity", () => {
 });
 
 describe("contract/invariants — I3 terminal states", () => {
-  it("never leaves done/canceled, by direct SQL", async () => {
+  it("leaves done/canceled only for todo, by direct SQL", async () => {
     await withBoard(({ db }) => {
       insertProject(db);
-      insertTask(db, { id: "done", identifier: "PROJ-DONE", status: "done" });
-      insertTask(db, { id: "canceled", identifier: "PROJ-CANCEL", status: "canceled" });
-      for (const id of ["done", "canceled"]) {
-        const other = id === "done" ? "canceled" : "done";
+      const forbidden = ["backlog", "in_progress", "in_review", "blocked", "awaiting", "done", "canceled"];
+      for (const from of ["done", "canceled"]) {
+        for (const to of forbidden) {
+          if (to === from) continue;
+          const id = `${from}_${to}`;
+          insertTask(db, { id, identifier: `PROJ-${id}`, status: from });
+          assert.equal(
+            reasonCode(() => db.prepare("UPDATE tasks SET status = ? WHERE id = ?").run(to, id)),
+            "TERMINAL_STATE",
+            `${from} → ${to} must be refused`,
+          );
+        }
+        // …and the one exit it has: back to the queue, with a new round.
+        const id = `${from}_todo`;
+        insertTask(db, { id, identifier: `PROJ-${id}`, status: from });
+        const round = () => db.prepare("SELECT delivery_round AS r FROM tasks WHERE id = ?").get(id).r;
+        const before = round();
         assert.equal(
-          reasonCode(() => db.prepare("UPDATE tasks SET status = ? WHERE id = ?").run(other, id)),
-          "TERMINAL_STATE",
+          reasonCode(() => db.prepare("UPDATE tasks SET status = 'todo' WHERE id = ?").run(id)),
+          "NO_ERROR",
+          `${from} → todo is the reopen edge`,
         );
+        assert.equal(round(), before + 1, "a reopen starts a new delivery round");
       }
     });
   });

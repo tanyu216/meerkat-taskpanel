@@ -615,6 +615,32 @@ export function startServer() {
     // points, which needs both ends to resolve to it. The `/comments` and
     // `/activities` sub-paths are matched above and never reach here; a sub-path
     // that does keeps the old shape.
+    // The reopen verb the terminal drawer posts. It mutates the fixture row so
+    // the returned record and the board agree; the suite's zero-console-error
+    // rule means it must not fall through to the `ok({})` catch-all below.
+    if (req.method === "POST" && /^\/api\/v1\/tasks\/[^/]+\/reopen$/.test(path)) {
+      const ref = decodeURIComponent(path.slice("/api/v1/tasks/".length).split("/")[0]);
+      const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref) ?? data.tasks[0];
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(chunk));
+      req.on("end", () => {
+        // The probe always sends a reason; parsing keeps the handler shaped
+        // like the real one rather than pretending the body is absent.
+        try {
+          JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+        } catch {
+          // A malformed body is refused by the real route; the probe never sends one.
+        }
+        if (task) {
+          task.status = "todo";
+          task.version = (task.version ?? 1) + 1;
+          task.archived_at = null;
+          task.delivery_round = (task.delivery_round ?? 1) + 1;
+        }
+        ok({ task, status: "todo" });
+      });
+      return;
+    }
     if (path.startsWith("/api/v1/tasks/")) {
       const ref = decodeURIComponent(path.slice("/api/v1/tasks/".length).split("/")[0]);
       const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref) ?? data.tasks[0];
@@ -6241,6 +6267,67 @@ export async function run() {
       uiFailures.push(`the UI-fix pass could not run: ${err.message}`);
     }
 
+    /* I3 · reopen — a terminal card's one writable action. The fixture's TD-10
+       is `done`; the probe opens it, proves the field controls are still
+       read-only, checks the reason minimum, and reopens it. It runs after the
+       other passes because it changes the fixture row's status. */
+    const reopenFailures = [];
+    const reopenCheck = (ok, message) => { if (!ok) reopenFailures.push(message); };
+    try {
+      await page.evaluate(() => document.querySelector('[data-card][data-identifier="TD-10"]')?.click());
+      await page.waitForTimeout(300);
+
+      const before = await page.evaluate(() => {
+        const button = document.querySelector("[data-detail-reopen]");
+        return {
+          visible: !!button && !button.hidden,
+          readonlyRoot: document.querySelector("[data-detail-drawer]")?.getAttribute("data-readonly") ?? null,
+          statusDisabled: document.querySelector("[data-detail-status]")?.disabled ?? null,
+        };
+      });
+      reopenCheck(before.visible, "the terminal drawer does not offer the reopen control");
+      reopenCheck(before.readonlyRoot === "true", `the terminal drawer root does not state data-readonly (${before.readonlyRoot})`);
+      reopenCheck(before.statusDisabled === true, "the terminal drawer's status control is not disabled");
+
+      await page.evaluate(() => document.querySelector("[data-detail-reopen]")?.click());
+      await page.waitForTimeout(80);
+
+      const setReason = (value) =>
+        page.evaluate((text) => {
+          const input = document.querySelector("[data-detail-reopen-reason]");
+          if (!input) return false;
+          input.value = text;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        }, value);
+
+      reopenCheck(await setReason("short"), "the reopen prompt did not render");
+      await page.waitForTimeout(40);
+      const shortDisabled = await page.evaluate(() => document.querySelector("[data-detail-reopen-confirm]")?.disabled ?? null);
+      reopenCheck(shortDisabled === true, "the confirm is enabled with a reason shorter than 8 characters");
+
+      await setReason("customer found a regression");
+      await page.waitForTimeout(40);
+      const longDisabled = await page.evaluate(() => document.querySelector("[data-detail-reopen-confirm]")?.disabled ?? null);
+      reopenCheck(longDisabled === false, "the confirm stays disabled with a valid reason");
+
+      await page.evaluate(() => document.querySelector("[data-detail-reopen-confirm]")?.click());
+      await page.waitForTimeout(400);
+      const after = await page.evaluate(() => ({
+        chip: document.querySelector("[data-detail-status-chip]")?.getAttribute("data-status") ?? null,
+        card: document.querySelector('[data-card][data-identifier="TD-10"]')?.getAttribute("data-status") ?? null,
+        readonlyRoot: document.querySelector("[data-detail-drawer]")?.getAttribute("data-readonly") ?? null,
+      }));
+      reopenCheck(after.chip === "todo", `the drawer still shows ${after.chip} after reopening`);
+      reopenCheck(after.card === "todo", `the card still reads ${after.card} after reopening`);
+      reopenCheck(after.readonlyRoot === null, "the drawer stayed read-only after the reopen");
+
+      await page.evaluate(() => document.querySelector("[data-detail-close]")?.click());
+      await page.waitForTimeout(150);
+    } catch (err) {
+      reopenFailures.push(`the reopen probe could not run: ${err.message}`);
+    }
+
     const results = [
       ...boardResults,
       ...listResults,
@@ -6264,6 +6351,7 @@ export async function run() {
       viewports,
       viewportFailures,
       interactions,
+      reopen: { failures: reopenFailures },
       m1,
       m1Failures,
       r6: { failures: r6Failures, themeSweep, titleGeometry, listDetail, panel: panelGeometry, rail },
@@ -6527,6 +6615,15 @@ if (isEntryPoint) run().then(
             `, and the feed's task anchor opens its drawer in place with ${report.r16.afterAnchor.pathname}${report.r16.afterAnchor.search} left as it was`,
         );
       }
+      if (report.reopen.failures.length > 0) {
+        console.log(`I3 (reopen) — ${report.reopen.failures.length} failed:`);
+        for (const failure of report.reopen.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          "I3 (reopen) — a terminal drawer offers one audited action: the fields stay read-only, " +
+            "the confirm enforces the 8-character reason, and the card returns to todo",
+        );
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -6559,6 +6656,7 @@ if (isEntryPoint) run().then(
       report.m7.failures.length === 0 &&
       report.ui.failures.length === 0 &&
       report.r16.failures.length === 0 &&
+      report.reopen.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

@@ -71,6 +71,7 @@ describe("loop/subscribe — event rules", () => {
     for (const event of [
       "task_created",
       "task_moved",
+      "task_reopened",
       "task_delivered",
       "report_written",
       "report_waived",

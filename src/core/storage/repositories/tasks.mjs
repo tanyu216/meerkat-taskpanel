@@ -390,10 +390,16 @@ export function createTasksRepository(db) {
      * `domain/status.mjs#CLAIM_HOLDING_STATUSES` for why `in_review`/`blocked`
      * count as *inside* the cycle.
      *
-     * @param {{id: string, ifVersion?: number, to: string, now: string, reportLatestId?: number|null, waiver?: {round: number, reason: string}|null, awaitingReason?: string|null, blockedReason?: string|null}} input
+     * A `reopen` move (terminal → `todo`) also clears the two columns the
+     * finished row released: `idem` (so the row does not re-enter
+     * `ux_tasks_idem_active` and collide) and `archived_at` (so the card is back
+     * on the board's default reads). Both are written in this same UPDATE, not
+     * by a second one: one move, one row revision.
+     *
+     * @param {{id: string, ifVersion?: number, to: string, now: string, reportLatestId?: number|null, waiver?: {round: number, reason: string}|null, awaitingReason?: string|null, blockedReason?: string|null, reopen?: boolean}} input
      */
     moveCas(input) {
-      const { id, ifVersion, to, now, reportLatestId, waiver, awaitingReason, blockedReason } = input;
+      const { id, ifVersion, to, now, reportLatestId, waiver, awaitingReason, blockedReason, reopen } = input;
       return transaction(
         db,
         () => {
@@ -417,6 +423,9 @@ export function createTasksRepository(db) {
           // no longer owns — and the backlog CHECK cannot be reached from here.
           if (!holdsClaim(to)) {
             sets.push("claimed_by = NULL", "claimed_kind = NULL", "claimed_at = NULL", "heartbeat_at = NULL");
+          }
+          if (reopen === true) {
+            sets.push("archived_at = NULL", "idem = NULL");
           }
           if (reportLatestId !== undefined) {
             sets.push("report_latest_id = ?");

@@ -83,6 +83,7 @@ export const ADMITTED_EVENTS = Object.freeze({
   task_created: Object.freeze({ kind: "created", verb: "created", group: "meta" }),
   task_claimed: Object.freeze({ kind: "claimed", verb: "claimed", group: "meta" }),
   task_moved: Object.freeze({ kind: "status", verb: "status", group: "status" }),
+  task_reopened: Object.freeze({ kind: "status", verb: "status", group: "status" }),
   // Archive is a terminal act, not a transition to a status of its own; its
   // `changes.from` names the stage it left.
   task_archived: Object.freeze({ kind: "archived", verb: "status", group: "status" }),

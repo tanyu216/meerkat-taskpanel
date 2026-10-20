@@ -35,6 +35,7 @@ import {
   priorityOf,
   removeAttachment,
   removeDepends,
+  reopenTask,
   reporterRoster,
   saveDetailField,
   uploadAttachment,
@@ -62,6 +63,11 @@ const descriptionDraft = ref("");
 /** The two in-place property menus (status / priority). */
 const statusMenuOpen = ref(false);
 const priorityMenuOpen = ref(false);
+/** The reopen prompt — a terminal card's one writable surface. */
+const reopenOpen = ref(false);
+const reopenReason = ref("");
+const reopenBusy = ref(false);
+const reopenInput = ref(null);
 const fileInput = ref(null);
 /** The id of the attachment whose download is in flight (the row's busy beat). */
 const busyAttachment = ref("");
@@ -147,10 +153,14 @@ const PRIORITY_MENU = ["none", "low", "medium", "high", "urgent"];
 
 /**
  * `done`/`canceled` are terminal (E-2): the drawer opens read-only, every
- * writable control is disabled, and the badge says why. Elon's reopen is a
- * privileged path and is deliberately not offered here.
+ * field control is disabled, and the badge says why. The one exception is the
+ * audited **Reopen** control: it returns the card to `todo`, requires a reason,
+ * and is deliberately not part of the generic move menu (which cannot ask for
+ * one).
  */
 const readonly = computed(() => status.value === "done" || status.value === "canceled");
+/** The service's own minimum; the confirm button follows it so the refusal is local. */
+const reopenReady = computed(() => reopenReason.value.trim().length >= 8);
 
 /**
  * The activity rows: actor + a localised sentence + a relative timestamp whose
@@ -238,7 +248,7 @@ function onTabKeydown(event) {
 }
 /* A different card starts on Details; a card without sessions can never leave
    a hidden Sessions tab selected. */
-watch(() => task.value?.id, () => { activeTab.value = "details"; });
+watch(() => task.value?.id, () => { activeTab.value = "details"; cancelReopen(); });
 watch(hasSessions, (present) => {
   if (!present && activeTab.value === "sessions") activeTab.value = "details";
 });
@@ -566,6 +576,41 @@ async function choosePriority(to) {
   await runCommit(() => saveDetailField("priority", to));
 }
 
+/* ------------------------------------------------------------- reopen (I3) */
+
+function openReopen() {
+  if (!readonly.value) return;
+  closePropMenus();
+  reopenReason.value = "";
+  reopenOpen.value = true;
+  nextTick(() => reopenInput.value?.focus());
+}
+
+function cancelReopen() {
+  reopenOpen.value = false;
+  reopenReason.value = "";
+}
+
+/**
+ * Reopen the card. `reopenTask` is not optimistic (the server also advances the
+ * delivery round and clears the archived/idem bookkeeping), and it surfaces the
+ * refusal through the board's toast; the panel stays open with the reason so a
+ * retry does not lose what the reader typed.
+ */
+async function confirmReopen() {
+  if (!reopenReady.value || reopenBusy.value || !task.value) return;
+  reopenBusy.value = true;
+  try {
+    await reopenTask(task.value, reopenReason.value.trim());
+    reopenOpen.value = false;
+    reopenReason.value = "";
+  } catch {
+    // Already reported by `reopenTask`.
+  } finally {
+    reopenBusy.value = false;
+  }
+}
+
 /* ------------------------------------------------- sentence (the md editor) */
 
 function startDescriptionEdit() {
@@ -746,6 +791,7 @@ watch(
 // region closes with the buttons rather than staying readable behind them.
 watch(readonly, (value) => {
   if (value) closePreview();
+  else cancelReopen();
 });
 
 /**
@@ -984,10 +1030,21 @@ function copyId() {
           <span data-detail-status-chip-label>{{ $t(`status.${statusValue}`) }}</span>
         </span>
         <!-- E-2 (T-20261014-212017-3) — a terminal card's drawer is read-only:
-             the root states it, this badge says so, and every writable control
-             below is disabled. Elon's reopen is a privileged path and is
-             deliberately not offered here. -->
+             the root states it, this badge says so, and every field control
+             below is disabled. Reopen is the one audited exception: a terminal
+             card's only writable action, kept out of the generic move menu
+             because it must carry a reason. It sits before the close button so
+             the R7/R14 head geometry (the close's right edge and centre line)
+             is untouched, and wears the badge's own shape. -->
         <span class="badge badge-sm td-chip" data-detail-readonly :hidden="!(readonly && open)">{{ $t("drawer.readonly") }}</span>
+        <button
+          type="button"
+          class="badge badge-sm td-chip cursor-pointer"
+          data-detail-reopen
+          :hidden="!(readonly && open)"
+          :aria-expanded="reopenOpen ? 'true' : 'false'"
+          @click="openReopen"
+        >{{ $t("drawer.reopen") }}</button>
         <!-- I-1 (T-20261014-154730) — the button **is** the design's `.td-iconbtn`,
              the same class the column header's `+` (F4) and the topbar filters
              toggle (F10) already wear. The design's `32×32` (§3) is that box, so
@@ -1051,6 +1108,39 @@ function copyId() {
     </div>
 
     <div v-else class="td-drawer-body">
+      <!-- The reopen prompt. A terminal card's only writable surface: the
+           service requires a reason of at least 8 characters, so the confirm
+           stays disabled until the draft meets the same minimum. The textarea
+           deliberately does **not** carry `data-detail-save-field` (the
+           contract counts exactly 8 of those, all on field controls). -->
+      <div v-if="reopenOpen && readonly" class="flex flex-col gap-2 mb-4" data-detail-reopen-panel>
+        <label class="td-prop-label" for="td-reopen-reason">{{ $t("drawer.reopenReason") }}</label>
+        <textarea
+          id="td-reopen-reason"
+          ref="reopenInput"
+          v-model="reopenReason"
+          class="textarea textarea-sm w-full"
+          data-detail-reopen-reason
+        ></textarea>
+        <p v-if="reopenReason.trim().length > 0 && !reopenReady" class="text-xs text-(--brand-danger)">
+          {{ $t("drawer.reopenTooShort") }}
+        </p>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            class="btn btn-sm"
+            data-detail-reopen-confirm
+            :disabled="!reopenReady || reopenBusy"
+            @click="confirmReopen"
+          >{{ $t("drawer.reopenConfirm") }}</button>
+          <button
+            type="button"
+            class="btn btn-sm btn-ghost"
+            data-detail-reopen-cancel
+            @click="cancelReopen"
+          >{{ $t("drawer.reopenCancel") }}</button>
+        </div>
+      </div>
       <!-- R10 ② — the drawer's save state, one region for all three editable
            fields. `data-save-state` is the source of truth (`idle` ships, as the
            resting state) and the alert below is its only visible half: hidden

@@ -384,11 +384,12 @@ describe("route-request.mjs — the CLI", () => {
     // POST /tasks/:ref/heartbeat. 36 since the Access panel gained its
     // loopback-only GET + PUT /api/v1/access pair.
     // 37 since the claim/reclaim verb added POST /tasks/:ref/claim — the one
-    // claim path that is not a status transition (`in_progress → in_progress`).
-    assert.match(result.stdout, /route-request: OK — 37 routes/);
-    // Eight since the claim verb declared `tasks.claim` beside the seven
+    // claim path that is not a status transition (`in_progress → in_progress`);
+    // 38 since reopen added POST /tasks/:ref/reopen.
+    assert.match(result.stdout, /route-request: OK — 38 routes/);
+    // Nine since the reopen verb declared `tasks.reopen` beside the eight
     // commands that already projected their input.
-    assert.match(result.stdout, /8 command inputs paired/);
+    assert.match(result.stdout, /9 command inputs paired/);
     assert.match(result.stdout, /5 out-of-router endpoints acknowledged/);
   });
 

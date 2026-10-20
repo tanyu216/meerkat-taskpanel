@@ -164,6 +164,7 @@ export const api = {
   createTask: (body) => post("/tasks", body),
   patchTask: (ref, body) => patch(`/tasks/${encodeURIComponent(ref)}`, body),
   moveTask: (ref, body) => post(`/tasks/${encodeURIComponent(ref)}/move`, body),
+  reopenTask: (ref, body) => post(`/tasks/${encodeURIComponent(ref)}/reopen`, body),
   taskComments: (ref, query) => get(`/tasks/${encodeURIComponent(ref)}/comments`, query),
   addComment: (ref, body) => post(`/tasks/${encodeURIComponent(ref)}/comments`, body),
   taskRelations: (ref) => get(`/tasks/${encodeURIComponent(ref)}/relations`),

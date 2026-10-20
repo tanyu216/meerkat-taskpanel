@@ -89,6 +89,14 @@ const PATCH_BODY = project(TASK_OPS.update);
 /** `POST /api/v1/tasks/:ref/move` — the transition, plus the audited waiver (F-B1). */
 const MOVE_BODY = project(TASK_OPS.move);
 /**
+ * `POST /api/v1/tasks/:ref/reopen` — `done|canceled → todo`, with its reason.
+ *
+ * The destination is not on the wire: reopening has exactly one target, and a
+ * caller that wants a general move uses `/move`. `reason` is the audited
+ * exception; `if_version` is the same CAS the other writes carry.
+ */
+const REOPEN_BODY = project(TASK_OPS.reopen);
+/**
  * `POST /api/v1/tasks/:ref/claim` — the claim/reclaim verb.
  *
  * A claim is not always a transition: a stale `in_progress` claim is reused,
@@ -308,6 +316,19 @@ export function registerTaskRoutes(router, surface) {
     });
     return { ...taskPayload(repos, task), status: task.status };
   }, { body: MOVE_BODY });
+
+  // The reopen verb. Its own route (rather than a `/move` shape) so the reason
+  // is part of the contract and the UI's drawer has a single, auditable action.
+  router.post("/api/v1/tasks/:ref/reopen", ({ params, body, actor }) => {
+    const current = resolveTask(repos, params.ref);
+    const task = commands.reopenStatus({
+      id: current.id,
+      ifVersion: body.if_version,
+      reason: body.reason,
+      actor,
+    });
+    return { ...taskPayload(repos, task), status: task.status };
+  }, { body: REOPEN_BODY });
 
   // The claim/reclaim verb. `performClaim` decides between reuse, a stale
   // re-claim, and a takeover; the route only forwards the actor's intent.

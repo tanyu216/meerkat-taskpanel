@@ -1,5 +1,5 @@
 /**
- * `issue create|list|get|update|meta|move|heartbeat|assign|archive|deliver` (A1–A5).
+ * `issue create|list|get|update|meta|move|reopen|heartbeat|assign|archive|deliver` (A1–A5).
  *
  * This module owns the two commands the milestone is really about:
  *
@@ -295,6 +295,32 @@ export const COMMANDS = [
         ? `moved ${payload.task.identifier} → ${payload.task.status}`
         : `moved ${payload.task.identifier} → ${payload.task.status} (waived, round ${payload.task.report_waiver.round})`;
       return { data: payload, human, warnings };
+    },
+  },
+
+  {
+    name: "reopen",
+    summary: "Reopen a done/canceled card to todo (audited: --reason required).",
+    op: TASK_OPS.reopen,
+    usage: 'issue reopen <id|identifier> --reason "<why>"',
+    positionals: [{ name: "ref", summary: "Task id or identifier." }],
+    flags: projectFlags(TASK_OPS.reopen),
+    async run(ctx) {
+      // Same audited-exception rule as --allow-steal; the service enforces it
+      // again with a DomainError, so a direct HTTP caller cannot skip it.
+      if (typeof ctx.flags.reason !== "string" || ctx.flags.reason.trim().length < 8) {
+        throw usageError('issue reopen: --reason "<why>" is required (at least 8 characters)', {
+          fix: "say why accepted/canceled work is being reopened",
+        });
+      }
+      const payload = await ctx.client.post(
+        `/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/reopen`,
+        projectBody(TASK_OPS.reopen, {
+          reason: ctx.flags.reason,
+          if_version: ctx.flags.ifVersion,
+        }),
+      );
+      return { data: payload, human: `reopened ${payload.task.identifier} → ${payload.task.status}` };
     },
   },
 

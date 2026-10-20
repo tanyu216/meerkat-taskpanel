@@ -74,8 +74,9 @@ else `parent`, else `""`). When a create carries a key and a **non-terminal**
 task already holds it, the create is **refused and the existing task is
 returned** — its `id`/`identifier` *is* the answer — with no new row and no new
 activity. Terminal cards (`done`/`canceled`) **release** the key, so the same
-work can be created again later. `--allow-dup` writes `NULL` and bypasses the
-guard entirely.
+work can be created again later — and a **reopen** (`done`/`canceled → todo`)
+releases it too, in the same UPDATE that returns the card to the queue.
+`--allow-dup` writes `NULL` and bypasses the guard entirely.
 
 The key deliberately **does not look at the title**: a match means "the same
 card was submitted twice", not "these are conceptually the same task". A generic

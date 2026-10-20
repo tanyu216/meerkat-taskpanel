@@ -119,6 +119,9 @@ export const SPELLING = Object.freeze({
         "clarify · decision · dependency · out_of_bounds · defect · external · resource · unknown",
     },
   }),
+  [TASK_OPS.reopen]: Object.freeze({
+    reason: { value: "<why>", summary: "Why the card is being reopened (audited; at least 8 characters)." },
+  }),
   [TASK_OPS.deliver]: Object.freeze({
     // The flag carries a path; the body carries the parsed object. Reading and
     // parsing is the command's job, so only the spelling changes here.

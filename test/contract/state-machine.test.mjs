@@ -1,9 +1,11 @@
 /**
  * Step 6: the state machine, down both paths — and, since 0024, for every kind.
  *
- * `domain/status.mjs` is the fact source and `0024_epic_deliver_from_todo.sql`
- * re-encodes it as a trigger (0002's, rebuilt with M1's `awaiting` clause and
- * then with the epic overlay). This test walks **every ordered pair for every
+ * `domain/status.mjs` is the fact source; `0024_epic_deliver_from_todo.sql`
+ * re-encodes the non-terminal whitelist (0002's, rebuilt with M1's `awaiting`
+ * clause and then with the epic overlay), and `0027_reopen_terminal.sql` owns
+ * the terminal source — the one reopen edge — plus the round bump. This test
+ * walks **every ordered pair for every
  * kind** — `kinds × statuses²`, so 192 cells today — through the service helper
  * *and* through raw SQL, and requires the two verdicts to agree. No count is
  * written out by hand: the pair set is derived from `STATUSES`, the kind set
@@ -101,11 +103,11 @@ describe("contract/state-machine — every pair, two paths", () => {
     for (const status of STATUSES) {
       const targets = allowedTargets(status);
       assert.equal(targets.includes(status), false, `${status} → ${status} must not be whitelisted`);
-      assert.equal(
-        targets.length === 0,
-        isTerminalStatus(status),
-        `${status}: a terminal status has no exit and a non-terminal one has at least one`,
-      );
+      if (isTerminalStatus(status)) {
+        assert.deepEqual([...targets], ["todo"], `${status}: the only exit is the reopen edge`);
+      } else {
+        assert.ok(targets.length > 0, `${status}: a non-terminal status has at least one exit`);
+      }
     }
   });
 
@@ -201,12 +203,21 @@ describe("contract/state-machine — every pair, two paths", () => {
     });
   });
 
-  it("cannot leave a terminal status — down both paths (I3)", async () => {
+  it("reopens only to todo — down both paths (I3)", async () => {
     await withBoard(({ db }) => {
+      const round = (id) => db.prepare("SELECT delivery_round AS r FROM tasks WHERE id = ?").get(id).r;
       for (const terminal of ["done", "canceled"]) {
         for (const to of STATUSES) {
           if (to === terminal) continue;
           const taskId = boardWith(db, terminal, to, "_t");
+          if (to === "todo") {
+            const before = round(taskId);
+            assert.equal(move(db, taskId, to), "NO_ERROR", `${terminal} → todo is the reopen edge`);
+            assert.equal(round(taskId), before + 1, "a reopen starts a new delivery round");
+            assert.equal(canTransition(terminal, to), true);
+            assert.equal(transitionReasonCode(terminal, to), null);
+            continue;
+          }
           assert.equal(
             move(db, taskId, to),
             "TERMINAL_STATE",
@@ -380,6 +391,19 @@ describe("contract/state-machine — one move, one revision (plan §3.3.6③)", 
       const before = revision();
       assert.equal(move(db, "t", "in_progress"), "NO_ERROR");
       assert.equal(revision() - before, 1, "status move + nested round bump = 1 revision");
+      assert.equal(db.prepare("SELECT delivery_round AS r FROM tasks WHERE id='t'").get().r, 2);
+    });
+  });
+
+  it("costs exactly one revision when a terminal card is reopened", async () => {
+    await withBoard(({ db }) => {
+      insertProject(db);
+      insertTask(db, { id: "t", identifier: "PROJ-0001", status: "done" });
+      const revision = () => Number(db.prepare("SELECT revision AS r FROM global_revision WHERE singleton=1").get().r);
+
+      const before = revision();
+      assert.equal(move(db, "t", "todo"), "NO_ERROR");
+      assert.equal(revision() - before, 1, "status move + round bump = 1 revision");
       assert.equal(db.prepare("SELECT delivery_round AS r FROM tasks WHERE id='t'").get().r, 2);
     });
   });
