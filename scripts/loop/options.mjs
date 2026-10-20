@@ -551,8 +551,8 @@ Options:
   --auto-accept-reviews=yes|no
                             Close a review card after applying its verdict (default: yes).
   --acceptance <policy>     human-only | both | agent-only (default: both). Advisory: the
-                            board decides the plan; this is the loop's remembered copy,
-                            kept for diagnostics and compatibility.
+                            board decides the plan; the loop prints this copy at startup
+                            for diagnostics and keeps it for compatibility.
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
   --patrol-llm=yes|no       Allow patrol to start an LLM turn (default: no).

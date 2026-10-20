@@ -250,6 +250,9 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
   it("workflow asks the board for the plan, and writes nothing in dry-run", () => {
     const { run, record } = runWithSentinel("workflow.mjs");
     assert.equal(run.status, 0, run.stderr);
+    // The loop's acceptance copy is advisory — the board decides in the plan.
+    // It is still said out loud at startup, which is the only thing it is for.
+    assert.match(run.stderr, /acceptance=both \(advisory\)/, "the advisory policy is stated");
     const args = calls(record);
     assert.equal(args.length, 1, "one board call: the board computes the plan");
     const call = args[0];

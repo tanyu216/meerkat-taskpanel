@@ -40,7 +40,10 @@ export async function runOnce(opts, env = process.env) {
     `workflow: ${config.workflow ? "on" : "off"} ` +
       `reviewer=${config.reviewer === null ? "not configured" : `${config.reviewer}${reviewerIsWorker ? " (also a worker)" : ""}`} ` +
       `auto_accept_reviews=${config.autoAcceptReviews ? "yes" : "no"} max_actions=${config.maxActions} ` +
-      `review_aging=${Math.round(config.reviewAgingMs / 60_000)}m`,
+      `review_aging=${Math.round(config.reviewAgingMs / 60_000)}m ` +
+      // The board decides acceptance in the plan; this copy is printed so an
+      // operator can see which policy the host *thinks* it is running under.
+      `acceptance=${config.acceptancePolicy} (advisory)`,
   );
   if (config.workflow && config.reviewer !== null && reviewerIsWorker) {
     log(

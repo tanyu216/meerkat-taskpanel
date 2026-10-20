@@ -28,8 +28,8 @@ units. The continue turn runs them in this order:
 
    **Who it may close** follows the board's acceptance policy. The board is
    authoritative and decides it in the plan; `--acceptance` /
-   `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` is this loop's advisory copy, used for
-   diagnostics, not for the decision:
+   `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` is this loop's advisory copy — printed
+   at startup for diagnostics, never used for the decision:
 
    | policy | top-level original | child card | review card |
    |---|---|---|---|
