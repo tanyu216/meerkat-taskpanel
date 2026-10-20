@@ -19,7 +19,7 @@ import {
   downloadContentType,
   normalizeAttachmentContentType,
 } from "../../src/shared/attachments.mjs";
-import { formatFileSize } from "../../web/src/lib/attachments.js";
+import { formatFileSize, previewKind } from "../../web/src/lib/attachments.js";
 import { ATTACHMENT_CONTENT_TYPES, ATTACHMENT_MAX_BYTES } from "../../src/shared/constants.mjs";
 import { DomainError, ERROR_CODES, toErrorPayload } from "../../src/shared/errors.mjs";
 import { EXTRA } from "../../web/src/i18n/extra.mjs";
@@ -73,6 +73,34 @@ describe("shared/attachments — the declared type", () => {
         (err) => err.code === "ATTACHMENT_TYPE_UNSUPPORTED" && err.details.received === type,
         type,
       );
+    }
+  });
+});
+
+/**
+ * The drawer's classifier and the board's allow-list are two copies of one
+ * decision (the web build cannot import `src/`), so they are pinned to each
+ * other the way the two file-size formatters are: a type the drawer offers to
+ * preview but the board refuses to store is a permanently dead branch, and a
+ * type the board accepts but the drawer cannot render is a silent downgrade.
+ * Neither shows up without this crossing.
+ */
+describe("the drawer's preview families are storable", () => {
+  it("offers no preview for a type the board would refuse", () => {
+    const previewable = [
+      "image/png",
+      "image/jpeg",
+      "image/gif",
+      "image/webp",
+      "image/bmp",
+      "application/pdf",
+      "text/markdown",
+      "video/mp4",
+      "video/webm",
+    ];
+    for (const type of previewable) {
+      assert.notEqual(previewKind(type), null, `${type} must be a preview family`);
+      assert.ok(ATTACHMENT_CONTENT_TYPES.includes(type), `${type} is previewable but the board will not store it`);
     }
   });
 });

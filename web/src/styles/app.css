@@ -3064,10 +3064,9 @@ button.td-prop-value:hover {
   padding: 0;
   border: 0;
   background: none;
+  /* Only the UA reset is this rule's job: `.td-file-name` (the same element)
+     already states the size, weight and colour, and it stays the one source. */
   font-family: inherit;
-  font-size: var(--text-12);
-  font-weight: var(--weight-medium);
-  color: var(--brand-text);
   text-align: start;
   cursor: pointer;
 }

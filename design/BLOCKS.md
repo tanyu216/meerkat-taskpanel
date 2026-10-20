@@ -667,7 +667,7 @@ into a disclosure button (`[data-attachment-open]`, with `aria-expanded`) and op
 `[data-attachment-preview-loading]` / `[data-attachment-preview-error]`. The prototype has no
 preview arithmetic (its rows carry only download/remove), so these four hooks are registered
 here as implementation-only and the prototype is **not** retro-fitted. The deviation is the
-contract's, not an oversight — see `design/contracts/attachment-preview.md`.]
+contract's, not an oversight — see `design/contracts/attachment-preview.md`.〕
 
 ⚠️ `[data-activity-row]` / `[data-activity-actor]` are **also** B26's feed hooks (see **B26.2**),
 where the stamp is `[data-activity-at]` — 实测全文档 `[data-activity-row]` / `[data-activity-actor]`

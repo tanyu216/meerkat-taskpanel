@@ -92,8 +92,8 @@ export const EXTRA = {
     "error.attachTooLarge": "That file is larger than the board's 64 MiB limit.",
     "error.attachType": "That file type is not allowed on the board.",
     "attach.placeholder": "No attachments",
-    // The drawer's inline preview (T-…): a previewable row's filename is a
-    // disclosure button, and the region it opens is a named surface of its own.
+    // The drawer's inline preview: a previewable row's filename is a disclosure
+    // button, and the region it opens is a named surface of its own.
     "attachment.preview": "Attachment preview",
     "attachment.previewLoading": "Loading preview…",
     "attachment.previewError": "This attachment could not be loaded.",

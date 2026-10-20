@@ -688,7 +688,7 @@ function closePreview() {
  * sentence rather than a toast: the reader is already looking at that row.
  */
 async function togglePreview(row) {
-  if (readonly.value || !row?.id || !row.preview) return;
+  if (readonly.value || !row?.id || !row.previewKind) return;
   if (openPreviewId.value === row.id) {
     closePreview();
     return;
@@ -701,7 +701,7 @@ async function togglePreview(row) {
   try {
     const blob = await fetchAttachmentBlob(row);
     if (token !== previewToken) return;
-    if (row.preview === "markdown") previewHtml.value = renderMarkdown(await blob.text());
+    if (row.previewKind === "markdown") previewHtml.value = renderMarkdown(await blob.text());
     else previewUrl.value = URL.createObjectURL(blob);
     if (token === previewToken) previewState.value = "ready";
   } catch {
@@ -723,7 +723,16 @@ watch(
   },
 );
 
-onBeforeUnmount(releasePreview);
+// Closing is the one release path: it also invalidates a fetch still in flight,
+// so a response landing after unmount cannot mint an object URL nobody revokes.
+// A live status change (SSE) can make the open card terminal while its preview
+// is up. The drawer's rule for a terminal card is "no file affordance", so the
+// region closes with the buttons rather than staying readable behind them.
+watch(readonly, (value) => {
+  if (value) closePreview();
+});
+
+onBeforeUnmount(closePreview);
 
 async function removeAttachmentRow(row) {
   if (readonly.value) return;
@@ -1414,13 +1423,13 @@ function copyId() {
                 <path d="M14 3v5h5M7 3h7l5 5v13H7z" />
               </svg>
               <button
-                v-if="file.preview"
+                v-if="file.previewKind"
                 type="button"
                 class="td-file-name td-file-open"
                 data-attachment-name
                 data-attachment-open
                 :aria-expanded="openPreviewId === file.id ? 'true' : 'false'"
-                :aria-controls="openPreviewId === file.id ? `td-attachment-preview-${file.id}` : undefined"
+                :aria-controls="file.id ? `td-attachment-preview-${file.id}` : undefined"
                 :disabled="readonly"
                 :aria-disabled="readonly ? 'true' : undefined"
                 @click="togglePreview(file)"
@@ -1462,11 +1471,11 @@ function copyId() {
               </span>
             </div>
             <div
-              v-if="file.preview && openPreviewId === file.id"
+              v-if="file.previewKind && openPreviewId === file.id"
               :id="`td-attachment-preview-${file.id}`"
               class="td-file-preview"
               data-attachment-preview
-              :data-attachment-preview-kind="file.preview"
+              :data-attachment-preview-kind="file.previewKind"
               role="region"
               :aria-label="$t('attachment.preview')"
             >
@@ -1483,25 +1492,25 @@ function copyId() {
                 >{{ $t("attachment.previewError") }}</span
               >
               <img
-                v-else-if="file.preview === 'image' && previewUrl"
+                v-else-if="file.previewKind === 'image' && previewUrl"
                 class="td-file-preview-image"
                 :src="previewUrl"
                 :alt="file.name"
               />
               <video
-                v-else-if="file.preview === 'video' && previewUrl"
+                v-else-if="file.previewKind === 'video' && previewUrl"
                 class="td-file-preview-video"
                 :src="previewUrl"
                 controls
                 preload="metadata"
               ></video>
               <iframe
-                v-else-if="file.preview === 'pdf' && previewUrl"
+                v-else-if="file.previewKind === 'pdf' && previewUrl"
                 class="td-file-preview-pdf"
                 :src="previewUrl"
                 :title="file.name"
               ></iframe>
-              <div v-else-if="file.preview === 'markdown'" class="td-gfm td-file-preview-md" v-html="previewHtml"></div>
+              <div v-else-if="file.previewKind === 'markdown'" class="td-gfm td-file-preview-md" v-html="previewHtml"></div>
             </div>
           </template>
           <span v-if="task && attachments.length === 0" class="text-xs text-(--brand-text-3)" data-i18n="attachments.none">{{ $t("attachments.none") }}</span>

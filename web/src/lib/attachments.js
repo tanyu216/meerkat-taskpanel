@@ -70,7 +70,7 @@ export function previewKind(contentType) {
  * empty name is not an attachment.
  *
  * @param {unknown} rows the `attachments` half of the listing
- * @returns {{id: string, name: string, size: string, contentType: string|null, preview: string|null}[]}
+ * @returns {{id: string, name: string, size: string, contentType: string|null, previewKind: string|null}[]}
  */
 export function attachmentRows(rows) {
   const list = Array.isArray(rows) ? rows : [];
@@ -82,7 +82,7 @@ export function attachmentRows(rows) {
         name: String(file?.filename ?? file?.name ?? ""),
         size: formatFileSize(file?.size),
         contentType,
-        preview: previewKind(contentType),
+        previewKind: previewKind(contentType),
       };
     })
     .filter((row) => row.name !== "");

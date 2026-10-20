@@ -249,6 +249,16 @@ describe("attachments — the write surface (metadata routes)", () => {
     await fetch(`${base}/api/v1/attachments/${attachment.id}`, { method: "DELETE" });
   });
 
+  it("accepts a declared size exactly at the ceiling", async () => {
+    // The boundary the refusals do not exercise: a file that *fits* is accepted
+    // on the metadata half without allocating the payload itself.
+    const response = await create({ filename: "at-limit.bin", content_type: "application/octet-stream", size: ATTACHMENT_MAX_BYTES });
+    assert.equal(response.status, 200);
+    const { attachment } = (await response.json()).data;
+    assert.equal(attachment.size, ATTACHMENT_MAX_BYTES);
+    await fetch(`${base}/api/v1/attachments/${attachment.id}`, { method: "DELETE" });
+  });
+
   it("refuses a declared size over the ceiling", async () => {
     const response = await create({ filename: "huge.bin", content_type: "application/octet-stream", size: ATTACHMENT_MAX_BYTES + 1 });
     assert.equal(response.status, 413);

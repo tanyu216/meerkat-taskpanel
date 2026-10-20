@@ -2,7 +2,7 @@
 
 > **口径一句话**：抽屉里能否预览，由**已存储的 `content_type`** 决定；预览字节经 **blob URL** 进入页面，下载端点**恒为** `content-disposition: attachment`，board 的 origin 永远不渲染用户内容。
 >
-> 事实源（实读）：`src/shared/constants.mjs`（白名单与上限）、`src/shared/attachments.mjs`（类型归一与扩展名映射）、`src/server/routes/attachments.mjs`（字节端点）、`web/src/lib/attachments.js`（`previewKind`）、`web/src/components/detail/DetailDrawer.vue`（展开区）、`web/test/**` 与 `web/scripts/dom-smoke.mjs`（判据）。
+> 事实源（实读）：`src/shared/constants.mjs`（白名单与上限）、`src/shared/attachments.mjs`（类型归一与扩展名映射）、`src/server/routes/attachments.mjs`（字节端点）、`web/src/lib/attachments.js`（`previewKind`）、`web/src/components/detail/DetailDrawer.vue`（展开区）、`test/contract/**` / `test/server/**` / `test/web/**` / `test/cli/**` 与 `web/scripts/dom-smoke.mjs`（判据）。
 > **本文件是新增文件**：不改 `design/prototype/**` 一行；不改 `design/DESIGN.md` / `design/BLOCKS.md` 的既有规则，只在 §B09 尾注补一段实现侧钩子的登记。
 
 ## 0. 结论摘要

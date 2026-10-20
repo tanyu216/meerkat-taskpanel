@@ -35,14 +35,14 @@ describe("web/attachments — the rows", () => {
       { id: "a2", filename: "shot.png", size: 248 * 1024, content_type: "image/png" },
     ]);
     assert.deepEqual(rows, [
-      { id: "a1", name: "spec.md", size: "12 KB", contentType: "text/markdown", preview: "markdown" },
-      { id: "a2", name: "shot.png", size: "248 KB", contentType: "image/png", preview: "image" },
+      { id: "a1", name: "spec.md", size: "12 KB", contentType: "text/markdown", previewKind: "markdown" },
+      { id: "a2", name: "shot.png", size: "248 KB", contentType: "image/png", previewKind: "image" },
     ]);
   });
 
   it("drops an entry that names no file — an unnamed row is not an attachment", () => {
     assert.deepEqual(attachmentRows([{ id: "a1", size: 10 }, { id: "a2", filename: "", size: 10 }, { id: "a3", filename: "ok.txt" }]), [
-      { id: "a3", name: "ok.txt", size: "", contentType: null, preview: null },
+      { id: "a3", name: "ok.txt", size: "", contentType: null, previewKind: null },
     ]);
   });
 
