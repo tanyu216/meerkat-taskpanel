@@ -488,23 +488,19 @@ svg[data-token-icon][hidden] { display: none; }
   font-weight: inherit;
   line-height: inherit;
   padding: 0;
-  /* The platform's official hue, inherited from the row's `data-agent-brand`;
-     `inherit` is the fallback for a row that names no brand. */
-  color: var(--agent-color, inherit);
+  color: inherit;
   background: none;
   border: 0;
   cursor: pointer;
 }
 .td-agent-assignee:hover {
-  color: var(--agent-color, var(--brand-text));
+  color: var(--brand-text);
   text-decoration: underline;
 }
-/* The row's platform badge wears the same hue as its names, so the row reads as
-   one identity. The dashed edge is the platform badge's own mark; only its
-   colour follows the brand. */
+/* The platform badge is the one element that wears the platform's official
+   primary; the assignee names behind it keep the row's ordinary face. */
 [data-agent-row] [data-agent-platform] {
   color: var(--agent-color, inherit);
-  border-color: color-mix(in srgb, var(--agent-color, var(--brand-text-3)) 55%, transparent);
 }
 
 /* R13 ③ — the selected item wears the capsule. The item is the **wrapper**, not

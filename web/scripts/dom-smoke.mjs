@@ -261,6 +261,19 @@ export function fixtureApi() {
   // *local calendar day* and heads those days `Today` / `Yesterday`, so a fixture
   // pinned to a date would silently change meaning tomorrow.
   const minutes = (n) => new Date(Date.now() - n * 60_000).toISOString();
+  /**
+   * A stamp that is always on **today's** local calendar day.
+   *
+   * The feed groups by local day and the zh copy leg names the first group
+   * `今天`. Relative stamps alone make that assertion false for the first
+   * minutes after local midnight (the newest rows are still `minutes(12)` /
+   * `minutes(25)` old, i.e. yesterday). Clamping to one minute past midnight
+   * keeps the intended "today" row at every hour; outside that window the
+   * ordinary relative stamp is unchanged.
+   */
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const today = (n) => new Date(Math.max(Date.now() - n * 60_000, midnight.getTime() + 60_000)).toISOString();
   const activities = [
     // TD-1 · the drawer's stream (B09) — untouched, one row per sentence.
     { id: "act-1", task_id: "td_TD_1", actor_kind: "human", actor_id: "Terry", event: "task_created", changes: { identifier: "TD-1", status: "backlog" }, revision: 1, created_at: minutes(30 * 60) },
@@ -268,7 +281,7 @@ export function fixtureApi() {
     { id: "act-3", task_id: "td_TD_1", actor_kind: "human", actor_id: "Terry", event: "task_moved", changes: { from: "backlog", to: "todo" }, revision: 3, created_at: minutes(8 * 60) },
     { id: "act-4", task_id: "td_TD_1", actor_kind: "agent", actor_id: "jobs", event: "comment_added", changes: { commentId: "cm-1", kind: "discuss" }, revision: 4, created_at: minutes(4 * 60) },
     // Today — one row per admitted family, plus the burst and the two noise rows.
-    { id: "act-5", task_id: "td_TD_7", actor_kind: "human", actor_id: "Terry", event: "comment_added", changes: { commentId: "cm-2", kind: "decision" }, revision: 5, created_at: minutes(12) },
+    { id: "act-5", task_id: "td_TD_7", actor_kind: "human", actor_id: "Terry", event: "comment_added", changes: { commentId: "cm-2", kind: "decision" }, revision: 5, created_at: today(12) },
     { id: "act-6", task_id: "td_TD_13", actor_kind: "human", actor_id: "Terry", event: "comment_added", changes: { commentId: "cm-3", kind: "decision" }, revision: 6, created_at: minutes(25) },
     { id: "act-7", task_id: "td_TD_5", actor_kind: "agent", actor_id: "jobs", event: "task_delivered", changes: { from: "in_progress", to: "in_review", round: 2, reportId: "rp-2", deliveryRound: 2 }, revision: 7, created_at: minutes(40) },
     { id: "act-8", task_id: "td_TD_3", actor_kind: "agent", actor_id: "linus", event: "task_moved", changes: { from: "todo", to: "in_progress", deliveryRound: 1 }, revision: 8, created_at: minutes(90) },
@@ -6189,22 +6202,31 @@ export async function run() {
         const row = document.createElement("div");
         row.setAttribute("data-agent-row", "gemini");
         row.setAttribute("data-agent-brand", "gemini");
+        const badge = document.createElement("span");
+        badge.className = "badge badge-xs td-mono normal-case";
+        badge.setAttribute("data-agent-platform", "gemini");
+        badge.textContent = "gemini";
         const name = document.createElement("button");
         name.className = "td-agent-assignee";
         name.setAttribute("data-agent-assignee", "gemini-probe");
         name.textContent = "gemini";
-        row.append(name);
+        row.append(badge, name);
         document.body.append(row);
         root.setAttribute("data-theme", "dark");
-        const dark = getComputedStyle(name).color;
+        const dark = getComputedStyle(badge).color;
         if (previous === null) root.removeAttribute("data-theme");
         else root.setAttribute("data-theme", previous);
-        const light = getComputedStyle(name).color;
+        const light = getComputedStyle(badge).color;
+        const nameLight = getComputedStyle(name).color;
         row.remove();
-        return { light, dark, previous };
+        return { light, dark, nameLight, previous };
       });
-      uiCheck(ui.brand.light === "rgb(66, 133, 244)", `the light Gemini name is ${ui.brand.light}, expected #4285F4`);
-      uiCheck(ui.brand.dark === "rgb(138, 180, 248)", `the dark Gemini name is ${ui.brand.dark}, expected #8AB4F8`);
+      uiCheck(ui.brand.light === "rgb(66, 133, 244)", `the light Gemini badge is ${ui.brand.light}, expected #4285F4`);
+      uiCheck(ui.brand.dark === "rgb(138, 180, 248)", `the dark Gemini badge is ${ui.brand.dark}, expected #8AB4F8`);
+      uiCheck(
+        ui.brand.nameLight !== ui.brand.light,
+        `the assignee name is ${ui.brand.nameLight}, the platform hue leaked into it`,
+      );
 
       // Back to the resting board for the legs after this one (there are none
       // today, but the fixtures are shared with future additions).
@@ -6485,7 +6507,7 @@ if (isEntryPoint) run().then(
             `status is a ${report.ui.statusTag} with ${report.ui.statusDots} dot rows and chooses ${report.ui.statusValue}, ` +
             `the long parent chip stays in its ${Math.round(report.ui.chip.trackWidth)}px track, ` +
             `Activity narrows to ${JSON.stringify(report.ui.activityActors)} and Waiting to ${JSON.stringify(report.ui.waitingActors)}, ` +
-            `and the Gemini brand colour resolves ${report.ui.brand.light} / ${report.ui.brand.dark} (light/dark)`,
+            `and the Gemini platform badge resolves ${report.ui.brand.light} / ${report.ui.brand.dark} (light/dark) with names left alone`,
         );
       }
       if (report.r16.failures.length > 0) {
