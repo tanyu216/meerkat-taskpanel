@@ -5,7 +5,7 @@
 > 卡：`T-20261014-011057-2`（goal：裁定 `task-interface v1` 等 openclaw-team 框架名在产品仓的可用边界。范围 = operator 2026-10-14 拍板的 **(B) 命名耦合**。）
 > **裁定来源**：卡面 Background 的三问（① `task-interface` 作产品对外契约名是否合法；② 哪些框架内部名不得进产品契约/文档；③ 跨仓发版说明类引用如何标注方可保留）+ Acceptance ③ 的事实源口径。本文件是**执行方的落文**，不是新裁定。
 > 分工：**本卡 = C1**（写面 `design/**`，**零实现**）→ 后续**清理卡 = C2**（Linus，按 §4 逐类处置 + §7 分批）→ **独立验证 = C3**（Turing，按 §4 每条的「判据」核落点）。本文件是 C2/C3 的**唯一口径**。
-> 事实源（**实读**）：`src/shared/wire.mjs`、`src/shared/constants.mjs`、`src/core/domain/enums.mjs`、`src/core/domain/idem.mjs`、`src/core/storage/md/project-registry.mjs`、`src/core/commands/tasks.mjs`、`src/cli/index.mjs`、`test/fixtures/contract/api.snapshot.json`、`docs/contract.md`、`README.md`、`README.zh-CN.md`、`CHANGELOG.md`、`skills/meerkat-loop/**`、`skills/meerkat-taskpanel/**`、`install.sh`、`scripts/install/**`（**实读未实测**）；框架侧的协议文档与接口合同（**实读**，仓库外，路径不入仓）。
+> 事实源（**实读**）：`src/shared/wire.mjs`、`src/shared/constants.mjs`、`src/core/domain/enums.mjs`、`src/core/domain/idem.mjs`、`src/core/commands/tasks.mjs`、`src/cli/index.mjs`、`test/fixtures/contract/api.snapshot.json`、`docs/contract.md`、`README.md`、`README.zh-CN.md`、`CHANGELOG.md`、`skills/meerkat-loop/**`、`skills/meerkat-taskpanel/**`、`install.sh`、`scripts/install/**`（**实读未实测**）；框架侧的协议文档与接口合同（**实读**，仓库外，路径不入仓）。
 > 定位规则：一律「**文件**」或「**文件:符号**」；散文类文件以**引文**定位，**不使用行号锚**（行号会随任何一次编辑漂移）。
 > 基线 commit：`61f7f3a`（= 本 lane 工作树 HEAD = `main` HEAD，开工时实测同一 sha）。
 > 本文件为**新增文件**：不改任何代码；`design/README.md` 仅按 `C-PREFIX-1` 先例补一行登记（见 §8）。**未 push**（§10）。
@@ -13,6 +13,8 @@
 > **⛔ 已退役（2026-10-17）。** 本裁定 2026-10-14 由 C1 落文，**§8 的双签从未取得，C2（清理）从未开工，C3（独立验证）从未执行**。2026-10-17 复核：其 §7 独立判据 ④⑤ PASS、**①②③ FAIL** —— `PROTOCOL` 的落点由本文件记录的 6 个文件涨到 **29 个**（约 13 个在已发布面）；`src/shared/**` 与 `src/core/domain/enums.mjs` 的 `task-interface` 未清零；`task-ops` 全仓非 0，命中全在本文件与其登记行。operator 2026-10-17 裁定 **退役并收窄**：不执行 §7 的 P0/P1/P2，把 ①②③ 换成本文件 §7.1 的**现状表**，只有 §7.2 的**两条禁令**继续生效并由 `scripts/verify/signposts.mjs` 机械执行。
 >
 > **随之作废**：§2 的计数与文件清单锚在 `61f7f3a`（现落后 `dev` HEAD 数百个提交），只作当时的快照；§4 里 `plugins/**` 的全部生成副本目标（12 + 8 + 4 份）**在今天的树上不存在** —— `plugins/` 已由 `39a009d` 整目录删除，`skills/` 是仓库里唯一的 skills 树；§10 的 lane 分支持已消失。**§2–§6 保留为历史落点盘点，不再是工单。**
+>
+> **2026-10-20 后续**：OpenClaw 专用的 markdown 卡片导入器已整块移出产品 —— `src/core/storage/md/{import,migrate-cli,project-registry,invariants-check}.mjs`、`scripts/migrate/**`、`docker/migrate-in-container.sh`、`test/migrate/**` 均已删除，`docs/migration.md` 只保留 schema 迁移闸门与 MCP 移除记录。因此本文件 §2/§4/§7 中锚在 `project-registry.mjs`、`docs/migration.md` 的 `__team__` 段或 `test/migrate/**` 的行**只作历史记录**；当前事实源已不含这些文件。
 
 ---
 
@@ -81,12 +83,12 @@
 
 | # | 落点 | 是否随 npm 发布 | 现文 |
 |---|---|---|---|
-| 1 | `docs/migration.md`（「The reserved `__team__` project」段） | **是**（`docs` 在 `package.json#files`） | `__team__` is the reserved **team-internal** project (PROTOCOL §②): … |
+| 1 | `docs/migration.md`（「The reserved `__team__` project」段）**（随 importer 删除）** | **是**（`docs` 在 `package.json#files`） | `__team__` is the reserved **team-internal** project (PROTOCOL §②): … |
 | 2 | `src/core/README.md` | **是**（`src` 在 `files`） | L1 reading: `PROTOCOL §㉙` + `guides/task-interface.md §14`. |
 | 3 | `src/core/domain/idem.mjs`（模块注释） | **是** | L1 reading: `PROTOCOL §㉙` + `guides/task-interface.md §14`. |
-| 4 | `src/core/storage/md/project-registry.mjs`（`BUILDIN_PROJECTS` 注释） | **是** | `__team__` is the reserved team-internal project (PROTOCOL §②: …) |
+| 4 | `src/core/storage/md/project-registry.mjs`（`BUILDIN_PROJECTS` 注释）**（文件已删除）** | **是** | `__team__` is the reserved team-internal project (PROTOCOL §②: …) |
 | 5 | `test/core/domain/idem.test.mjs` | 否（`test` 不在 `files`） | L1 reading: `PROTOCOL §㉙` + `guides/task-interface §14`. |
-| 6 | `test/migrate/import-hardening.test.mjs`（describe 名） | 否 | … the buildin `__team__` project (PROTOCOL ②) |
+| 6 | `test/migrate/import-hardening.test.mjs`（describe 名）**（已删除）** | 否 | … the buildin `__team__` project (PROTOCOL ②) |
 
 **「随 npm 发布」这一列是本表的关键**：`package.json#files` = `src` / `skills` / `plugins` / `scripts` / `docs` / `install.sh` / 三个根散文。⇒ 上表 1–4 **是** npm 包的对外面，5–6 只面对**仓库读者**。
 
@@ -233,12 +235,12 @@
 
 | 落点 | 处置 | 改法（产品侧自足表述） |
 |---|---|---|
-| `docs/migration.md` | **改写** | `__team__` is the reserved **team-internal** project（团队框架自用的登记项，不对应任何仓库）；删去 `(PROTOCOL §②)`。 |
-| `src/core/storage/md/project-registry.mjs`（`BUILDIN_PROJECTS` 注释） | **改写** | 同上。 |
+| `docs/migration.md` | **改写（该段已随 importer 删除）** | `__team__` is the reserved **team-internal** project（团队框架自用的登记项，不对应任何仓库）；删去 `(PROTOCOL §②)`。 |
+| `src/core/storage/md/project-registry.mjs`（`BUILDIN_PROJECTS` 注释） | **改写（文件已删除）** | 同上。 |
 | `src/core/README.md` | **改写** | 见 ①-d。 |
 | `src/core/domain/idem.mjs` | **改写** | 见 ①-d。 |
 | `test/core/domain/idem.test.mjs` | **改写** | 见 ①-d。 |
-| `test/migrate/import-hardening.test.mjs`（describe 名） | **改写** | describe 名去掉 `(PROTOCOL ②)`，改为 `(the reserved __team__ project)`。 |
+| `test/migrate/import-hardening.test.mjs`（describe 名） | **改写（文件已删除）** | describe 名去掉 `(PROTOCOL ②)`，改为 `(the reserved __team__ project)`。 |
 
 **理由**：全部 F1。4/6 处随 npm 发布，其中 `docs/migration.md` 的 `__team__` 段是**用户读得到的**——一个装完 npm 包的读者手里没有 `PROTOCOL.md`，`§②` 对他不可解析。**这不是「产品不能提框架」，而是「产品不能把框架的章节号当依据」**：`__team__` 为什么保留，产品**自己说得出**（见右列）。
 **不触发**再生成（6 处均不在 loop payload 闭包内；`project-registry.mjs`、`idem.mjs`、`migration.md` 均无 `body/` 副本）。
@@ -263,6 +265,8 @@
 | **立禁** | ④ | 0（零落点） | — |
 
 > **C2 的实际改动面 = 16 个自撰文件**（4+6+4+2）。计数口径：同一文件跨多个子角色时按**处置最重**的一条计一次（如 `src/core/README.md` 同属 ①-d 与 ③，均判「改写」，计一次）。生成副本**不计入工单**——它们由 sync 重写，与源恒等；手改即 CI 红。
+>
+> **2026-10-20 起**：上表「改写」6 个文件中的 `docs/migration.md` 的 `__team__` 段、`project-registry.mjs`、`test/migrate/import-hardening.test.mjs` 已随 markdown importer 删除；「加标注」的 `skills/meerkat-taskpanel/**` 仍在。历史计数不再代表当前工单。
 > **反向校验（C3 可直接跑）**：C2 完成后 `git diff --name-only 61f7f3a..` 的自撰文件集，应恰为该 16 个 ∪ 生成副本；出现第 17 个自撰文件即越界。
 
 ---
