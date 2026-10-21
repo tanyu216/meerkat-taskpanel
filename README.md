@@ -234,6 +234,17 @@ preempt a conflict** (re-read once, retry only if still claimable); and **stay
 traceable** (carry the session id). What differs between hosts is *who applies
 them*.
 
+### Matt Pocock's engineering skills
+
+If you use Matt Pocock's engineering skills, we recommend running
+`/setup-matt-pocock-skills` to integrate meerkat-taskpanel as your task-management and
+issue-tracking surface. That setup is per-repository and entirely yours: taskpanel ships no
+special integration for an external skills collection.
+
+```text
+/setup-matt-pocock-skills  — integrate meerkat-taskpanel as this repository's issue tracker
+```
+
 ### Scheduling: ping & continue
 
 **In short:** the loop is a **scheduler that runs outside the host**. It owns two clocks.

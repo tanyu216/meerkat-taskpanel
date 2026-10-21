@@ -8,6 +8,5 @@
   "repository": "https://github.com/tanyu216/meerkat-taskpanel",
   "license": "MIT",
   "keywords": ["task-management", "ai-agent", "kanban"],
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks-cursor.json"
+  "skills": "./skills/"
 }

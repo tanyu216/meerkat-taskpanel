@@ -80,7 +80,6 @@ const FILES_WHITELIST = [
   ".pi",
   ".opencode",
   ".cursor-plugin",
-  "hooks",
   "scripts",
   "docs",
   "install.sh",

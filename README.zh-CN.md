@@ -177,6 +177,16 @@ OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的�
 **自评≠验收**（Agent 只到 `in_review`；由循环应用审核员结论、或由人验收 `done`；Agent 自己移入 `done` 会被 `ACCEPTANCE_FORBIDDEN` 拒绝）；**冲突不抢占**（重读一次，
 仍可领才重试）；**可追溯**（携带会话 id）。宿主之间的差异，只在**由谁来执行这些规则**。
 
+### Matt Pocock 工程类 skills
+
+如果你使用 Matt Pocock 的工程类 skills，推荐运行 `/setup-matt-pocock-skills`，把
+meerkat-taskpanel 集成为任务管理与问题追踪面。该集成按仓库配置、由用户自行决定；
+taskpanel 不内置任何针对外部 skills 集合的专门集成。
+
+```text
+/setup-matt-pocock-skills  集成 meerkat-taskpanel 进来作为 issues tracker
+```
+
 ### 调度：ping 与 continue
 
 **简言之**：这个循环是一个**活在宿主之外**的**调度器**，拥有两个时钟。

@@ -1,9 +1,5 @@
 /**
- * The Pi extension — how Pi finds the board skill without a copy of it, and how
- * a session receives the per-repo issue-tracker check.
- *
- * The logic lives in `meerkat-taskpanel-core.mjs` so `node --test` can drive it
- * with a fake `pi`; this file is the host entry point and calls `register(pi)`.
+ * The Pi extension — how Pi finds the board skill without a copy of it.
  *
  * Pi is a Shape-B host: it loads a JS/TS module that exposes lifecycle callbacks, and it
  * runs the module *as written*. The root `package.json` declares both halves under `pi`:
@@ -26,10 +22,14 @@
  * `skills/` is the one tree.
  */
 
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { register } from "./meerkat-taskpanel-core.mjs";
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const skillsDir = resolve(packageRoot, "skills");
 
 export default function meerkatTaskpanelPiExtension(pi: ExtensionAPI): void {
-  register(pi);
+  pi.on("resources_discover", async () => ({ skillPaths: [skillsDir] }));
 }
