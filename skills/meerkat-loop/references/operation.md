@@ -131,10 +131,12 @@ Rules that make it safe to run unattended:
   conflicting verdict produces an alert and **no write**; the next pass retries.
 - **The verdict is the reviewer's** — a report from anybody else is
   `review_report_not_by_reviewer` and is not applied.
-- **A silent reviewer is reported** — no readable verdict within
-  `--review-aging-minutes` raises `review_aging`. The original's SLA row is
-  suppressed while an **open** review card exists; a closed review card leaves
-  the row as the original's watcher, so a canceled or done review cannot hide it.
+- **A silent reviewer is reported** — an `in_review` review card with an
+  unreadable verdict raises `verdict_unreadable`; a review card that is not
+  `in_review` and has no readable verdict raises `review_aging` after
+  `--review-aging-minutes`. The original's SLA row is suppressed while an
+  **open** review card exists; a closed review card leaves the row as the
+  original's watcher, so a canceled or done review cannot hide it.
 - **The board enforces acceptance** — a refused writer gets
   `ACCEPTANCE_FORBIDDEN`; the loop leaves the review card in place and retries.
 - **The review card is closed last** — a crash between the original's move and

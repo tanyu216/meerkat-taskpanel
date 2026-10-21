@@ -339,19 +339,23 @@ the container; with it, the container stays `in_progress` and names the child bl
   the reviewer is woken by the poll entry in the continue turn, through the normal claim, so the cost gate
   is unchanged. A dedicated reviewer is scanned for review cards only and never claims the
   public pool; a reviewer that is also a worker keeps the ordinary lane.
-- **Bounded.** At most `--workflow-max-actions` (default 20) writes per pass, and the
-  same number bounds the on-demand reads (a missing original, a verdict report). A cap is
-  logged.
-- **Fail-safe.** An unreadable verdict, an unseen original, a round mismatch or a
-  conflicting verdict (`done` + `REJECT`) produces an alert and **no write**; the review
-  card stays put and the next pass retries. A truncated board read dispatches nothing.
+- **Bounded.** At most `--workflow-max-actions` (default 20) writes per pass. Reads are
+  bounded by `--board-limit` (default 500), which also decides whether the snapshot is
+  truncated. A cap is logged.
+- **Fail-safe.** An unreadable verdict, an unseen original or a conflicting verdict
+  (`done` + `REJECT`) produces an alert and **no write**; the review card stays put and the
+  next pass retries. A round mismatch closes the review card (`close_review`, reason
+  `round_mismatch`) under the default auto-accept, and only alerts (`review_stale_round`)
+  when auto-accept is off. A truncated board read dispatches nothing.
 - **The verdict must come from the reviewer.** The report's author is checked against the
   configured reviewer (else the review card's assignee), by id and display name. A report
   written by anybody else is `review_report_not_by_reviewer` and is not applied.
-- **A silent reviewer is not silent forever.** Creating the review card suppresses the
+- **A silent reviewer is not silent forever.** An **open** review card suppresses the
   original's `acceptance_card_creation` row, so a reviewer that is never woken would
-  otherwise have no watcher at all. A review card with no readable verdict older than
-  `--review-aging-minutes` (default 60) raises `review_aging`.
+  otherwise have no watcher at all. A review card in `in_review` whose report has no readable
+  verdict raises `verdict_unreadable` immediately; a review card that is not `in_review`
+  (todo / in_progress / blocked / awaiting) older than `--review-aging-minutes` (default 60)
+  raises `review_aging`.
 - **Notified only when actionable.** Standing state — no reviewer configured, a capped
   pass, a review card the operator deliberately left for a human — is logged, not sent to
   `--notify` on every period. Findings an operator can act on (including `review_aging`
@@ -359,10 +363,12 @@ the container; with it, the container stays `in_progress` and names the child bl
 - **One action failing never stops the rest**; the review card is always closed last, so
   every half-applied outcome is recoverable (`original done + APPROVE`,
   `rework_round` matching a rework in progress, …).
-- **Idempotent.** Deterministic `--idem` keys plus the SQLite partial unique index; a
-  terminal (`canceled`) review card releases its key, a `done` one does not. Illegal
-  transitions are refused by the state machine, so two overlapping passes are wasteful at
-  worst, never duplicating.
+- **Idempotent.** Deterministic `--idem` keys plus the SQLite partial unique index; both
+  `done` and `canceled` release the key (the index excludes both terminal statuses). The
+  planner's policy is what differs: a `canceled` review is recreated, while a `done` review
+  leaves the original open as `review_done_but_original_open`. Illegal transitions are
+  refused by the state machine, so two overlapping passes are wasteful at worst, never
+  duplicating.
 - **A transient SLA alert is possible.** In the tick that dispatches a review, the SLA
   pass may not yet see the review card and can emit one `acceptance_card_creation` notice;
   the next tick suppresses it (for that round only — see below). The reverse ordering
