@@ -1335,6 +1335,41 @@
           ]
         },
         {
+          "name": "id",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "owner",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "seg",
+              "as": "string",
+              "value": "<seg>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session",
+              "as": "string",
+              "value": "<task-id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
           "name": "list",
           "positionals": [
             {

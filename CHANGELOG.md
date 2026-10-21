@@ -15,6 +15,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (serial from 1, zero-padded to at least four digits, no overflow cap), plus the prefix fold
   and a copyable generated-form regex. A test re-derives every example against the code, so
   the page cannot drift.
+- **`taskctl session id` derives a session id without registering one.** The id is exactly
+  what `session set` writes for the same `(task, owner, seg)` — same namespace, same
+  NUL-joined name — so a caller can hand it to a host as `--session-id` before the session
+  exists. The command is read-only (a GET and a local derivation; no session row) and always
+  derives: a global `--session-id` is ignored. The skill also ships
+  `scripts/session-id.mjs`, a self-contained offline derivation for when the board is not
+  running; it takes the resolved task UUID (`issue get --json` → `data.task.id`). Parity is
+  pinned by a vector matrix against `src/foundation/ids.mjs`, including the namespace and the
+  RFC 4122 test vector.
 - **An agent session records a one-sentence goal.** `taskctl session set <ref> --seg … --owner-kind …
   --goal "<one sentence>"` stores what that conversation is working on on the session row
   (migration 0028), so concurrent segments on one card each state their own. Omitting `--goal` on a
