@@ -681,11 +681,6 @@ The step above copies the skill; the plugin hands OpenCode the repository's own 
 `Skill.Info` per `skills/<name>/SKILL.md` instead. Both skills arrive together, because
 OpenCode's registration unit is a directory.
 
-The plugin also carries the per-repo **issue-tracker check** (see
-[the session-start check](#the-session-start-issue-tracker-check)): on V1 through
-`experimental.chat.messages.transform`, on V2 through `ctx.session.hook("context", …)`.
-It is injected once per session, deduped by its own marker.
-
 ```bash
 # verify — a session should list meerkat-taskpanel as a skill
 opencode run --standalone --print-logs "hello" 2>&1 | grep -i meerkat
@@ -746,63 +741,10 @@ rm -rf ~/.cursor/skills/meerkat-taskpanel ~/.cursor/skills/meerkat-loop \
 `skills/` tree, read in place, so Cursor needs no `skills/` directory of its own. Like
 OpenCode, Cursor registers a *directory*, so both skills arrive together.
 
-**The session-start hook.** The manifest also declares
-`"hooks": "./hooks/hooks-cursor.json"`, whose `sessionStart` entry runs
-`hooks/session-start.sh`. The script emits exactly
-`{"additional_context": "…"}` — Cursor's own schema, not Claude Code's
-`hookSpecificOutput.additionalContext` — carrying the per-repo issue-tracker check (see
-[the session-start check](#the-session-start-issue-tracker-check)). A missing instruction
-still emits valid JSON and exits 0. The hook's output shape and the JSON escape are pinned
-by `test/install/cursor-plugin.test.mjs`; the real host's dispatch is the unverified half.
-
-**What the probes prove, and what they cannot.** The hook's output shape and the JSON
-escape are pinned by `test/install/cursor-plugin.test.mjs`, and the flag shape is probed by
+**What the probe proves.** The flag shape is probed by
 `scripts/verify/host-resume-matrix.mjs --host cursor` (plus `--e2e` for a real `-p` call
-when `CURSOR_API_KEY` is set). Cursor's **hook dispatch** — whether the host reads
-`hooks-cursor.json` and delivers `additional_context` to the model — cannot be proved by
-the CLI binary; it needs the real Cursor runtime. The schema itself is transcribed from
-`obra/superpowers` (`hooks/hooks-cursor.json` + the manifest's `hooks` key).
-
-## The session-start issue-tracker check
-
-The board can stand in as the **issue tracker for the Matt Pocock engineering skill
-suite** (`/triage`, `/to-tickets`, `/wayfinder`, …). The `setup-matt-pocock-skills` skill
-is installed globally, but everything it writes is **per repository**
-(`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, `docs/agents/domain.md`,
-and the `## Agent skills` block in `CLAUDE.md` or `AGENTS.md`). So the check runs at
-session start, in the repository the session is in:
-
-1. If `docs/agents/issue-tracker.md` exists, nothing happens — the repository is
-   configured.
-2. If it is missing, the host agent invokes `/setup-matt-pocock-skills` **non-interactively**
-   and configures meerkat-taskpanel as the tracker. The agent decides the integration
-   content itself: the instruction supplies the facts (`taskctl` operations, triage
-   statuses and labels, `projects.json`) and the defaults, not a fixed template.
-3. If the skill cannot be found or the write is refused, the agent prints one line
-   beginning `meerkat-taskpanel: issue-tracker setup skipped —` and continues. Never
-   fatal, never retried in a loop.
-
-The instruction text is authored once, in
-[`skills/meerkat-taskpanel/references/issue-tracker-check.md`](../skills/meerkat-taskpanel/references/issue-tracker-check.md).
-Each host reads it through the surface it already has:
-
-| Host | Surface | Route |
-|---|---|---|
-| Claude Code | the installed `SessionStart` hook prints it | `install.sh --target claude` |
-| Codex | the installed `AGENTS.md` block inlines it | `install.sh --target codex` |
-| Pi | `session_start` / `context` callbacks in `.pi/extensions/` | the plugin/extension route (`pi install`) |
-| OpenCode | V1 `experimental.chat.messages.transform`, V2 `ctx.session.hook("context", …)` | the plugin route (`opencode.json`) |
-| Cursor | `hooks/hooks-cursor.json` → `hooks/session-start.sh`, `additional_context` | the Cursor plugin route |
-
-> **Two limits, stated plainly.** First, Pi / OpenCode / Cursor receive the injection
-> through their **plugin/extension route**, not through the `--target` skill copy: a user
-> who only copies the skill gets the skill and no session-start instruction. Second,
-> **headless turns only warn** — a worker wake, a review wake, or the loop's `继续` turn
-> will not run the setup or write repository files, because setup is a human-facing act.
-> An unattended loop therefore never configures a repository; an interactive session does.
-
-Existing installs need `--force` to refresh the skill copy and the Codex `AGENTS.md`
-block, both of which are merge-never-clobber.
+when `CURSOR_API_KEY` is set). Cursor's plugin runtime itself — how it loads the manifest
+and its skills — is the host's domain, not something the CLI binary can prove.
 
 ## Agent integration: skill only
 

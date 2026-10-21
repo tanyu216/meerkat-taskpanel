@@ -19,7 +19,6 @@ import { describe, it } from "node:test";
 import plugin, { MeerkatTaskpanelPlugin } from "../../.opencode/plugins/meerkat-taskpanel.js";
 import { LOOP_SKILL_NAME } from "../../scripts/sync-loop.mjs";
 import { SKILL_NAME } from "../../src/foundation/constants.mjs";
-import { CHECK_MARKER } from "../../src/foundation/session-check.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SKILLS_DIR = join(ROOT, "skills");
@@ -126,96 +125,5 @@ describe("opencode plugin — V2 setup", () => {
 
     await plugin.setup(ctx);
     assert.deepEqual(added, [LOOP_SKILL_NAME], "the surviving skill is still registered");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// The session-start issue-tracker check
-// ---------------------------------------------------------------------------
-
-/** Run the V1 message-transform hook against a message list. */
-async function runTransform(messages) {
-  const hooks = await MeerkatTaskpanelPlugin({ client: {}, directory: ROOT });
-  const output = { messages };
-  await hooks["experimental.chat.messages.transform"]({}, output);
-  return output;
-}
-
-/** Collect the V2 session hooks registered by `setup`. */
-async function collectSessionHooks() {
-  const hooks = {};
-  const ctx = {
-    skill: { transform: async (fn) => fn({ add: () => {} }) },
-    session: {
-      hook: async (name, fn) => {
-        hooks[name] = fn;
-      },
-    },
-  };
-  await plugin.setup(ctx);
-  return hooks;
-}
-
-function userMessage(text, shape = "content") {
-  return shape === "parts"
-    ? { info: { role: "user" }, parts: [{ type: "text", text }] }
-    : { role: "user", content: [{ type: "text", text }] };
-}
-
-describe("opencode plugin — the issue-tracker check (V1)", () => {
-  it("injects the shared instruction into the first user message", async () => {
-    const output = await runTransform([userMessage("hello", "parts")]);
-    const parts = output.messages[0].parts;
-    assert.ok(parts[0].text.startsWith(CHECK_MARKER), JSON.stringify(parts));
-    assert.equal(parts[1].text, "hello");
-  });
-
-  it("does not inject twice when the message already carries the marker", async () => {
-    const output = await runTransform([
-      { info: { role: "user" }, parts: [{ type: "text", text: `${CHECK_MARKER}\nbody` }, { type: "text", text: "hello" }] },
-    ]);
-    assert.equal(output.messages[0].parts.length, 2, "no third part");
-  });
-
-  it("leaves a message list with no user message alone, and never throws", async () => {
-    const output = await runTransform([{ info: { role: "system" }, parts: [] }]);
-    assert.deepEqual(output.messages, [{ info: { role: "system" }, parts: [] }]);
-
-    await runTransform(undefined);
-    assert.ok(true, "a malformed output must not throw");
-  });
-});
-
-describe("opencode plugin — the issue-tracker check (V2)", () => {
-  it("registers a context hook that injects the shared instruction", async () => {
-    const hooks = await collectSessionHooks();
-    assert.equal(typeof hooks.context, "function", "setup must register a context hook");
-
-    const event = { messages: [userMessage("hello")], sessionID: "s1" };
-    await hooks.context(event);
-    assert.ok(event.messages[0].content[0].text.startsWith(CHECK_MARKER), JSON.stringify(event.messages));
-    assert.equal(event.messages[0].content[1].text, "hello");
-  });
-
-  it("does not inject twice", async () => {
-    const hooks = await collectSessionHooks();
-    const event = { messages: [userMessage(`${CHECK_MARKER}\nbody`)] };
-    await hooks.context(event);
-    assert.equal(event.messages[0].content.length, 1);
-  });
-
-  it("adds a user message when the session has none", async () => {
-    const hooks = await collectSessionHooks();
-    const event = { messages: [] };
-    await hooks.context(event);
-    assert.equal(event.messages.length, 1);
-    assert.ok(event.messages[0].content[0].text.startsWith(CHECK_MARKER));
-  });
-
-  it("never lets a malformed event throw", async () => {
-    const hooks = await collectSessionHooks();
-    await hooks.context(undefined);
-    await hooks.context({ messages: "nope" });
-    assert.ok(true, "the hook must stay contained");
   });
 });

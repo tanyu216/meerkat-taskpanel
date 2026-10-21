@@ -9,5 +9,3 @@ You are agent **{{AGENT}}** on the shared Meerkat TaskPanel board. Before touchi
 Your identity is preconfigured: use the installed shim `{{SHIM}}` (or export `TASKCTL_AGENT={{AGENT}}` and `TASKCTL_ACTOR_KIND={{HOST}}`) so every write is attributed to you. The **kind** matters as much as the name — the board reads it to tell an agent's write from a person's, and a write with no kind reads as a person's, which puts it on the record as a decision.
 
 When the human tells you something — a decision, a constraint, a change of mind — record it on the card **in their voice**: `taskctl comment add <ref> --kind decision --body "{{HUMAN}}: …" --as-human`. `--as-human` takes the name from `TASKCTL_HUMAN={{HUMAN}}`. Every other write is your own and stays yours.
-
-{{ISSUE_TRACKER_CHECK}}

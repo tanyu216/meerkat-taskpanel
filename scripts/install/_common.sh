@@ -255,12 +255,6 @@ export_tp_env() {
   TP_AGENT="$(agent_name)"
   TP_HUMAN="$(human_name)"
   TP_REPO="$(repo_root)"
-  # The session-start issue-tracker check. It is authored once, as a file in the
-  # board skill, so the install-time surfaces (the Claude hook, the Codex
-  # AGENTS.md block) and the plugin routes (pi / opencode / cursor) read the same
-  # text. A missing copy is not fatal: the hook and the snippet simply render
-  # nothing.
-  TP_ISSUE_TRACKER_CHECK="$(cat "$TP_REPO/skills/meerkat-taskpanel/references/issue-tracker-check.md" 2>/dev/null || true)"
   TP_SHIM="$(target_home)/$host_dir/bin/taskctl"
   TP_HOOK="$(target_home)/$host_dir/hooks/meerkat-taskpanel-session-start.sh"
   TP_TRIGGER="$(target_home)/$host_dir/meerkat-taskpanel-claim.sh"
@@ -381,7 +375,7 @@ export_tp_env() {
     return 1
   fi
 
-  export TP_AGENT TP_HUMAN TP_REPO TP_ISSUE_TRACKER_CHECK TP_SHIM TP_HOOK TP_TRIGGER
+  export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
   export TP_HOST TP_HOST_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
   export TP_RECOVER_STALE TP_WORKFLOW TP_AUTO_ACCEPT_REVIEWS TP_REVIEWER TP_ACCEPTANCE_POLICY
   export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
