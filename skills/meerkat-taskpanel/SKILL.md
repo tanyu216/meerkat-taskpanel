@@ -1,6 +1,6 @@
 ---
 name: meerkat-taskpanel
-description: Coordinate work across an AI Agent team using a shared local task board. Use when an agent or a human needs to create and track tasks, move them through a status workflow, assign owners, comment on a decision, edit a task's description or its priority, link parent/child and blocking relations, record which agent session is working on what, deliver a task with a report, write a periodic (daily / weekly / monthly) report with statistics over completed work, or export the board as markdown. Runs the local `taskctl` CLI; no network required.
+description: Coordinate work across an AI Agent team using a shared local task board. Use when an agent or a human needs to create and track tasks, move them through a status workflow, assign owners, comment on a decision, edit a task's description or its priority, link parent/child and blocking relations, record which agent session is working on what, deliver a task with a report, or export the board as markdown. Runs the local `taskctl` CLI; no network required.
 ---
 
 # Meerkat TaskPanel
@@ -321,7 +321,5 @@ resolution rules, the validation codes and re-install behaviour:
   codes, the delivery gate, the `--json` envelope.
 - [`references/card-schema.md`](references/card-schema.md) — the markdown card: frontmatter
   keys, body sections, round-trip rules (`taskctl export md`).
-- [`references/reports.md`](references/reports.md) — periodic (daily / weekly / monthly)
-  reports and their statistics.
 - [`references/projects-json.md`](references/projects-json.md) — the local project ↔
   directory map.

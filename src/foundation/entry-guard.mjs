@@ -20,10 +20,10 @@
  * which is the part the naive `file://` template form never handled.
  *
  * Importable from `src/cli`, `src/server`, `src/core`, `scripts/**` and the loop body (whose
- * closure vendors it). Four files carry a private copy instead, for three reasons:
+ * closure vendors it). Three files carry a private copy instead, for three reasons:
  *
- *   * the board skill's `scripts/report.mjs` and the loop skill's `scripts/board-check.mjs` ship
- *     on their own, so a relative import out of their directory would dangle once they are copied;
+ *   * the loop skill's `scripts/board-check.mjs` ships on its own, so a relative import out of
+ *     its directory would dangle once it is copied;
  *   * `web/scripts/dom-smoke.mjs` lives in a separate workspace with its own lockfile;
  *   * `scripts/security/scan-gate.mjs` may import **Node builtins only**, because a security gate
  *     cannot depend on the code it exists to clear.

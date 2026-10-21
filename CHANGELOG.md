@@ -98,6 +98,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the `--json` machine contract) moved into `SKILL.md`. The loop still depends on the board
   skill; the board skill no longer depends on the loop.
 
+- **The board skill no longer ships periodic reports.** `references/reports.md` and
+  `scripts/report.mjs` were deleted, along with their test. The skill is now strictly a
+  `taskctl` manual for task handling, status and workflow; computing statistics or a daily /
+  weekly / monthly report is a consumer concern. `taskctl issue list --json --include-archived`
+  already returns every card's `status`, `status_changed_at`, `created_at` and `updated_at` —
+  the same envelope the deleted generator read — so any aggregation can be written against it.
+  Per-card delivery reports (`taskctl report`, `--report-file`, `report_waived`, rollup) are
+  unchanged. An existing host install keeps the old files until it is re-installed with
+  `--force`.
+
 ## [1.1.0] - 2026-10-20
 
 ### Added

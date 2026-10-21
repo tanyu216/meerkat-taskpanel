@@ -447,9 +447,8 @@ report.
 _Avoid_: digest, report summary, report hash
 
 **Rollup**:
-Informal prose for how child results aggregate into an epic, and for the periodic report
-that summarises a window of work. It is a behaviour, not a field, command or type — do not
-look for a rollup object.
+Informal prose for how child results aggregate into an epic. It is a behaviour, not a
+field, command or type — do not look for a rollup object.
 _中文_: rollup（中文镜像沿用英文，非字段名）
 
 **State**:
