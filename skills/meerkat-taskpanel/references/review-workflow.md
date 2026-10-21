@@ -164,8 +164,10 @@ loop closes last           review card → done (or canceled if the original was
 - A review card is a normal task: it is claimable, heartbeat-able, and delivered like any
   other card. It is special only in what its report must contain and in who may close it.
 - Do not promote a review card to an epic, and do not derive an acceptance list on one.
-- A review card that somehow has a `parent` is treated as a **child** for acceptance (scope
-  precedence), which is the conservative reading of both rules.
+- A `parent` edge is refused when either end is a review card (`VALIDATION_FAILED`,
+  `details.field = source|target`, `details.type = parent`), even with `--force`. Attach the
+  edge to the original work card instead. Existing edges are not repaired; raw repository
+  writes remain a bypass.
 - The original must be `in_review` at review-card creation (`VALIDATION_FAILED` otherwise).
   Deliver first: `taskctl issue deliver <original> --report-file -`; then create the review
   card for the original's current round. The reviewer's Step 0 still guards a target that

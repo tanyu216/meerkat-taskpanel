@@ -166,8 +166,9 @@ taskctl relation add PROJ-0007 --type parent --target PROJ-0008
 ```
 
 Only an `epic` may be a parent (`VALIDATION_FAILED`, `details.field: kind`, until promoted).
-An epic cannot be claimed, so a card that must end up `in_progress` is claimed first and
-promoted after. `todo → in_review` is the epic's own edge. The promotion is an ordinary patch
+Neither end of a `parent` edge may be a review card (`VALIDATION_FAILED`,
+`details.field: source|target`), even with `--force`. An epic cannot be claimed, so a card
+that must end up `in_progress` is claimed first and promoted after. `todo → in_review` is the epic's own edge. The promotion is an ordinary patch
 (status, claim, heartbeat and delivery round stay put) and leaves no comment — write the split
 down yourself. An epic that still has children cannot be downgraded to `task`. The board
 starts and closes the container; see
