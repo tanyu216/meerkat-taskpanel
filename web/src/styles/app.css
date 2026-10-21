@@ -709,6 +709,15 @@ svg[data-token-icon][hidden] { display: none; }
   min-height: var(--space-7);
   padding: 0 26px 0 var(--space-2);
   gap: 6px;
+  /* The trigger is a `<select>` lookalike, and a field's text starts at its
+     inline edge. daisyUI's `.btn` centres its content, which stayed invisible
+     while every trigger was content-sized — but the create dialog's status
+     control is stretched to the column's width, so its dot + name floated in
+     the middle while the two native `<select>`s above it started at the left
+     edge. Stated here, on the shell, so the relation holds wherever the
+     trigger is given a track. The caret is absolutely positioned and is not
+     part of the flex line. */
+  justify-content: flex-start;
   font-size: var(--text-12);
   font-weight: var(--weight-regular);
   color: var(--brand-text);

@@ -1995,6 +1995,15 @@ const BLOCKS = [
       // to resolve against — the second break in the chain, measured at 302px.
       { kind: "computed", probe: ".td-field-grow", property: "display", equals: "flex" },
       { kind: "computed", probe: ".td-field-grow", property: "flexDirection", equals: "column" },
+      // Terry 2026-10-21 — the chosen value in the routing column's status
+      // control reads from the field's own inline start, the way the two native
+      // `<select>`s above it do (a select's text is left-aligned). The trigger
+      // is the design's `.td-label-trigger` wearing daisyUI's `.btn`, whose
+      // `justify-content: center` centred the dot + name group inside the
+      // full-width box: the one field in the column whose value did not start
+      // on the column's text edge. The caret is absolutely positioned, so it is
+      // not part of what this centres/left-aligns.
+      { kind: "computed", probe: "[data-create-task-status-summary]", property: "justifyContent", equals: "flex-start" },
       {
         kind: "manual",
         note:
