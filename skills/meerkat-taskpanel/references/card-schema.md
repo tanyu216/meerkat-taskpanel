@@ -165,8 +165,9 @@ Published generated-form pattern:
 ## Body sections
 
 The body is `##` sections, canonical order **Background · Acceptance · Comments · Sessions ·
-Report**. The exporter writes exactly these five. Prose in `## Background` becomes the card's
-description.
+Attachments (only when the card has files) · Report**. The exporter always writes the other
+five; `## Attachments` appears only when the card carries attachments. Prose in
+`## Background` becomes the card's description.
 
 The card does **not** carry the activity trail. The old `## Progress` section rendered the
 imported `progress` activity event, which has had no writer since the markdown importer was
@@ -188,6 +189,16 @@ Newlines in `<body>` are escaped as `\n`.
 carries an empty value. Inside `goal`, a backslash is doubled, a newline becomes
 `\n`, a carriage return `\r`, and `·` becomes its Unicode escape (backslash-u00b7)
 — so the sentence can contain ` · ` without splitting the record.
+
+```
+## Attachments
+- id:<uuid> · filename:<name> · type:<mime> · size:<bytes> · created_at:<ts>
+```
+One line per file, written only when the card has at least one. `comment_id:<id>` is appended
+when the file belongs to a comment. The filename and type are escaped the same way as a
+session's `goal` (backslash, newline, carriage return, `·`), so a hand-named file cannot
+inject a heading or split the record. The bytes are **not** in the card; they live on the
+board (`GET /api/v1/attachments/:id/content`).
 
 ```
 ## Report
@@ -219,6 +230,7 @@ report is `origin='import'` and never satisfies it.
 | Unknown keys re-emitted in place | A rewrite does not lose a team's own fields. |
 | A known key's unrecognised value re-emitted in place | Recognising a key never costs a card its wording. |
 | Optional keys written only when set | An existing card is not grown by a key it never had. |
+| Attachments section written only when present | A card without files keeps its five-section shape. |
 | Growth guard | A rewrite that would grow a card past the guard factor refuses. |
 
 Asymmetries: `assignee_kind` is not re-exported (it lives on the actor row); `meta_json` holds

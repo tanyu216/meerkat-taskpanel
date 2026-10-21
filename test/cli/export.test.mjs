@@ -251,6 +251,23 @@ describe("cli/export — one card, one file", () => {
     });
   });
 
+  it("exports the attachment list in the card body", async () => {
+    await boardWithTwo(async ({ run, dataDir }) => {
+      const dir = makeTempDir();
+      const file = join(dir, "notes.txt");
+      writeFileSync(file, "hello", "utf8");
+      run(["attachment", "add", "DEMO-0002", "--file", file, "--json"]);
+
+      const out = join(dataDir, "with-attachment");
+      const result = run(["export", "md", "DEMO-0002", "--out", out, "--json"]);
+      assert.equal(result.status, 0, result.stderr);
+      const card = readFileSync(join(out, "DEMO-0002.md"), "utf8");
+      assert.match(card, /^## Attachments$/m);
+      assert.match(card, /filename:notes\.txt/);
+      assert.equal(existsSync(join(out, "DEMO-0001.md")), false);
+    });
+  });
+
   it("exports an archived card by ref", async () => {
     await boardWithTwo(async ({ run, dataDir }) => {
       run(["issue", "move", "DEMO-0002", "canceled", "--json"]);

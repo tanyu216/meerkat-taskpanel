@@ -25,6 +25,7 @@ export const SECTION_ORDER = Object.freeze([
   "Acceptance",
   "Comments",
   "Sessions",
+  "Attachments",
   "Report",
 ]);
 
@@ -220,8 +221,11 @@ const SESSION_FIELDS = ["seg", "owner", "owner_kind", "id", "goal", "phase", "st
 const SESSION_ESCAPES = { "\\": "\\\\", "\n": "\\n", "\r": "\\r", "·": "\\u00b7" };
 const SESSION_UNESCAPES = { "\\\\": "\\", "\\n": "\n", "\\r": "\r", "\\u00b7": "·" };
 
-/** @param {string} text */
-function escapeSessionField(text) {
+/**
+ * Escape a value so it stays inside one ` · `-separated field.
+ * @param {string} text
+ */
+export function escapeField(text) {
   return String(text).replace(/[\\\n\r·]/g, (ch) => SESSION_ESCAPES[ch]);
 }
 
@@ -318,13 +322,45 @@ export function renderSessionsBlock(sessions) {
         `owner_kind:${session.ownerKind ?? session.owner_kind ?? ""}`,
         // The parser produces `id`; rows from the database produce `sessionId`.
         `id:${session.sessionId ?? session.id ?? ""}`,
-        `goal:${escapeSessionField(session.goal ?? "")}`,
+        `goal:${escapeField(session.goal ?? "")}`,
         `phase:${session.phase ?? ""}`,
         `status:${session.status}`,
         `pid:${session.pid ?? ""}`,
         session.ts,
       ].join(FIELD_SEP)}`,
     )
+    .join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Attachments
+// ---------------------------------------------------------------------------
+
+/**
+ * One ` · `-separated field list per attachment row.
+ *
+ * The filename is escaped with `escapeField` so a hand-named file cannot inject
+ * a heading, a new record, or split the line on ` · `. `comment_id` is appended
+ * only when the attachment belongs to a comment — the common case is a
+ * card-level file.
+ *
+ * @param {{id: string, filename: string, contentType?: string|null, size: number, commentId?: string|null, createdAt: string}[]} attachments
+ */
+export function renderAttachmentsBlock(attachments) {
+  return attachments
+    .map((attachment) => {
+      const fields = [
+        `id:${attachment.id}`,
+        `filename:${escapeField(attachment.filename)}`,
+        `type:${escapeField(attachment.contentType ?? "")}`,
+        `size:${attachment.size}`,
+        `created_at:${attachment.createdAt}`,
+      ];
+      if (attachment.commentId !== null && attachment.commentId !== undefined) {
+        fields.push(`comment_id:${attachment.commentId}`);
+      }
+      return `- ${fields.join(FIELD_SEP)}`;
+    })
     .join("\n");
 }
 

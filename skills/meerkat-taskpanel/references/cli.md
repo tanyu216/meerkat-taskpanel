@@ -103,7 +103,7 @@ ask rather than guessing.
 | `issue create --project <id> --title <t> [--acceptance <text>]… [--assignee <text>] [--assignee-id <id>] [--assignee-kind <agent\|human>] [--reporter <text>] [--reporter-id <id>] [--reporter-kind <agent\|human>] [--description <md>] [--priority] [--kind task\|epic\|deploy] [--label <l>]… [--meta k=v]… [--target <t>] [--parent <ref>] [--status <s>] [--idem <key>] [--allow-dup] [--force-create] [--review-of <ref> [--review-round <n>]]` | Create a task. `--idem` is the creation idempotency key (a match returns the existing card). `--parent` fills the idempotency key's source slot and links nothing. |
 | `issue list [--project] [--status <s>]… [--assignee-id] [--review-of <ref>] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List tasks. `--order weight` is the assignee weight order (below); the default is board order. `--review-of <ref>` returns the **review cards of** that card — not the card itself — across every round (`review_round` is on each returned card, so a caller selecting the current round filters on it). It combines with the other filters and is read-only. An unknown ref is `NOT_FOUND`; an identifier that exists in two projects is `VALIDATION_FAILED`. |
 | `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The claim read: `todo` cards that are auto-claimable (not an `epic`, not a `deploy`), every `depends_on` predecessor `done` (a `canceled` one also withholds). `--stale` adds the recovery pool (holder after 30 min, anyone after 6 h); `--include-unassigned` adds the public pool. Read-only; no `--limit`. |
-| `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
+| `issue get <id\|identifier>` | One task, plus `report_waivers[]` and `attachments[]` (`id`, `filename`, `content_type`, `size`, `kind`, `created_at`, `comment_id`). The human view adds an attachment table when the card has files. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]…` | Patch. `--status` is refused here on purpose. |
 | `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <word>]` | Move, subject to the delivery gate. `todo → in_progress` is a **claim**; a move to `done` is an **acceptance**. `done`/`canceled → todo` is the audited **reopen** and needs `--reason` (prefer `issue reopen`). `--awaiting-reason` is required for `awaiting`; `--blocked-reason` is optional. |
 | `issue reopen <ref> --reason "<why>"` | **Reopen a `done`/`canceled` card to `todo`.** Audited: the reason is required (≥ 8 characters) and recorded as `task_reopened`. Starts a new delivery round, clears the archive and releases the idem key. A review card is refused — reopen the original; the loop issues the next round's review. |
@@ -265,11 +265,13 @@ both write and check mode). The service renders and the CLI writes; `POST /api/v
 never touches a caller-named path. Before overwriting an existing non-empty file the CLI
 applies the same `MD_GROWTH_FACTOR` (4×) guard as the core exporter: a rewrite that would grow
 the file past it is refused with `MD_GROWTH_GUARD` rather than silently replacing it — inspect
-the file and remove or rename it to accept the rewrite. The product is the card **store
-mirror** (frontmatter plus sections) used for round-tripping and CI checks, not a
-human-readable task detail: use `issue get <ref>` for prose and `issue get <ref> --json` for
-machines. The implicit spelling `export --md <ref>` cannot carry a ref; use `export md <ref>`.
-The file format is in [`card-schema.md`](card-schema.md).
+the file and remove or rename it to accept the rewrite. A card with attachments also carries
+an `## Attachments` section between `## Sessions` and `## Report` (one metadata line per file;
+the bytes stay on the board). The product is the card **store mirror** (frontmatter plus
+sections) used for round-tripping and CI checks, not a human-readable task detail: use
+`issue get <ref>` for prose and `issue get <ref> --json` for machines. The implicit spelling
+`export --md <ref>` cannot carry a ref; use `export md <ref>`. The file format is in
+[`card-schema.md`](card-schema.md).
 
 ### `token`
 

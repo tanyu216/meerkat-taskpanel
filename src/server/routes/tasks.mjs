@@ -15,7 +15,7 @@
 
 import { TASK_OPS } from "../../core/index.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
-import { reportToWire, taskToWire, workflowToWire } from "../../foundation/wire.mjs";
+import { attachmentToWire, reportToWire, taskToWire, workflowToWire } from "../../foundation/wire.mjs";
 import { bool, int, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
 import { lookupFor, resolveTask, taskPayload } from "../task-view.mjs";
 
@@ -257,7 +257,16 @@ export function registerTaskRoutes(router, surface) {
     return { candidates, ...(orderDebug === null ? {} : { order_debug: orderDebug }) };
   }, { query: CANDIDATES_QUERY });
 
-  router.get("/api/v1/tasks/:ref", ({ params }) => taskPayload(repos, resolveTask(repos, params.ref)));
+  router.get("/api/v1/tasks/:ref", ({ params }) => {
+    const task = resolveTask(repos, params.ref);
+    // The detail read carries the attachment metadata. The board list does not
+    // (an unbounded array on every card), and neither do mutation responses —
+    // `taskPayload` stays lean; this route composes the extra collection.
+    return {
+      ...taskPayload(repos, task),
+      attachments: repos.attachments.listByTask(task.id).map(attachmentToWire),
+    };
+  });
 
   router.patch("/api/v1/tasks/:ref", ({ params, body, actor }) => {
     const current = resolveTask(repos, params.ref);

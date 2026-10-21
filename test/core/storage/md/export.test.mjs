@@ -105,6 +105,40 @@ describe("md/export — rendering", () => {
     }
   });
 
+  it("renders an Attachments section only when the card has attachments", async () => {
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    try {
+      repos.projects.create({ id: "proj", name: "P", now: TS });
+      const ctx = createContext({ db: board.db, repos, clock: () => TS });
+      const task = createCommands(ctx).createTask({
+        projectId: "proj",
+        title: "With a file",
+        actor: { kind: "agent", id: "linus" },
+      });
+
+      const without = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
+      assert.doesNotMatch(without, /^## Attachments$/m);
+
+      repos.attachments.insert({
+        taskId: task.id,
+        filename: "notes.txt",
+        contentType: "text/plain",
+        size: 5,
+        kind: "attachment",
+        createdAt: TS,
+      });
+
+      const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
+      assert.match(card, /^## Attachments$/m);
+      assert.match(card, /filename:notes\.txt/);
+      assert.ok(card.indexOf("## Sessions") < card.indexOf("## Attachments"));
+      assert.ok(card.indexOf("## Attachments") < card.indexOf("## Report"));
+    } finally {
+      board.close();
+    }
+  });
+
   it("does not render a Progress section, even when historical progress rows exist", async () => {
     const board = await createTempBoard();
     const repos = createRepositories(board.db);

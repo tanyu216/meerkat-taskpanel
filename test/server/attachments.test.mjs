@@ -187,6 +187,21 @@ describe("attachments — the write surface (metadata routes)", () => {
     assert.equal((await response.json()).error.code, "NOT_FOUND");
   });
 
+  it("includes the attachment list in the single-card read, and not in the list read", async () => {
+    const single = await fetch(`${base}/api/v1/tasks/${taskId}`);
+    assert.equal(single.status, 200);
+    const { data } = await single.json();
+    assert.deepEqual(data.attachments.map((row) => row.filename), ["notes.txt"]);
+    for (const row of data.attachments) {
+      assert.deepEqual(Object.keys(row).sort(), ["comment_id", "content_type", "created_at", "filename", "id", "kind", "size", "task_id"]);
+    }
+
+    // The board read is unchanged: attachments are a detail, not a list field.
+    const listed = await fetch(`${base}/api/v1/tasks?project_id=proj`);
+    const { data: board } = await listed.json();
+    assert.equal(Object.hasOwn(board.tasks[0], "attachments"), false);
+  });
+
   it("mints a row, stores bytes against it, and hands them back as a download", async () => {
     const created = await create({ filename: "spec.md", content_type: "text/markdown", size: 11 });
     assert.equal(created.status, 200);

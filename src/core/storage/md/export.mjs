@@ -28,6 +28,7 @@ import { serializeFrontmatter } from "./frontmatter.mjs";
 import {
   joinSections,
   renderAcceptanceBlock,
+  renderAttachmentsBlock,
   renderCommentsBlock,
   renderReportBlock,
   renderSessionsBlock,
@@ -215,6 +216,13 @@ export function renderCard(task, context) {
       })),
     ),
   );
+
+  // Only when the card has files: a card without attachments keeps the same
+  // five-section shape it had before this section existed.
+  const attachments = repos.attachments.listByTask(task.id);
+  if (attachments.length > 0) {
+    sections.set("Attachments", renderAttachmentsBlock(attachments));
+  }
 
   sections.set(
     "Report",

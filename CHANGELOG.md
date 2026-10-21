@@ -9,6 +9,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Card details carry the attachment list.** The single-card read
+  (`GET /api/v1/tasks/:ref`, `taskctl issue get <ref>`) now returns `attachments[]` with the
+  same metadata as `attachment list`; the human `issue get` prints an attachment table. The
+  markdown card gains an `## Attachments` section between Sessions and Report, written only
+  when the card has files, so a card without attachments keeps its five-section shape. The
+  board list and mutation responses stay lean; bytes remain on the board and are not in the
+  card.
 - **The identifier syntax is published in the installed skill.** `references/card-schema.md`
   now states both tiers: the permissive storable pattern (`isValidIdentifier`: 1–128
   characters, `[A-Za-z0-9][A-Za-z0-9._-]*`) and the generated shape `<PREFIX>-<serial>`

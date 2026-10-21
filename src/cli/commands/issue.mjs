@@ -18,6 +18,7 @@ import { reportWarnings } from "../../foundation/report-warning.mjs";
 import { usageError } from "../../foundation/transport/errors.mjs";
 import { TASK_OPS } from "../../core/commands/tasks-input.mjs";
 import { fields, table, taskLine } from "../output/human.mjs";
+import { sizeLabel } from "./attachment.mjs";
 import { parseReport } from "./report.mjs";
 import { projectBody, projectFlags } from "./task-input.mjs";
 
@@ -182,7 +183,17 @@ export const COMMANDS = [
       if (payload.report_waivers.length > 0) {
         extra.push(["waivers", `${payload.report_waivers.length} on record`]);
       }
-      return { data: payload, human: taskHuman(task, extra) };
+      const human = taskHuman(task, extra);
+      const attachments = payload.attachments ?? [];
+      return {
+        data: payload,
+        human: attachments.length === 0
+          ? human
+          : `${human}\n\n${table(
+              ["id", "filename", "size", "type"],
+              attachments.map((row) => [row.id, row.filename, sizeLabel(row.size), row.content_type ?? "-"]),
+            )}`,
+      };
     },
   },
 

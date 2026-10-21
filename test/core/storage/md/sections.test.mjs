@@ -17,6 +17,7 @@ import {
   parseReportBlock,
   parseSessionsBlock,
   renderAcceptanceBlock,
+  renderAttachmentsBlock,
   renderCommentsBlock,
   renderReportBlock,
   renderSessionsBlock,
@@ -64,6 +65,7 @@ describe("md/sections — splitting", () => {
       "Acceptance",
       "Comments",
       "Sessions",
+      "Attachments",
       "Report",
     ]);
     // Unknown sections are appended rather than dropped.
@@ -278,6 +280,37 @@ describe("md/sections — sessions", () => {
     );
     assert.deepEqual(sessions.map((session) => session.seg), ["seg1"]);
     assert.equal(notices.length, 2);
+  });
+});
+
+describe("md/sections — attachments", () => {
+  it("renders one escaped field list per row, including comment_id when present", () => {
+    assert.equal(
+      renderAttachmentsBlock([
+        {
+          id: "att-1",
+          filename: "notes.txt",
+          contentType: "text/plain",
+          size: 12,
+          kind: "attachment",
+          commentId: null,
+          createdAt: "2026-10-08T00:00:00.000Z",
+        },
+        {
+          id: "att-2",
+          filename: "a · b\nc.txt",
+          contentType: "application/pdf",
+          size: 99,
+          kind: "attachment",
+          commentId: "c-1",
+          createdAt: "2026-10-09T00:00:00.000Z",
+        },
+      ]),
+      [
+        "- id:att-1 · filename:notes.txt · type:text/plain · size:12 · created_at:2026-10-08T00:00:00.000Z",
+        "- id:att-2 · filename:a \\u00b7 b\\nc.txt · type:application/pdf · size:99 · created_at:2026-10-09T00:00:00.000Z · comment_id:c-1",
+      ].join("\n"),
+    );
   });
 });
 
