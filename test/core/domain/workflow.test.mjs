@@ -680,6 +680,46 @@ describe("planWorkflowTick", () => {
     assert.ok(result.alerts.some((alert) => alert.type === "actions_capped"));
     assert.equal(result.summary.alerts, result.alerts.length);
   });
+
+  it("warns when agent-only cannot close review cards", () => {
+    const result = planWorkflowTick({
+      tasks: [card(), reviewCard()],
+      verdicts: {},
+      config: { ...CONFIG, acceptancePolicy: "agent-only", autoAcceptReviews: false },
+      now: NOW,
+    });
+    assert.deepEqual(result.alerts.find((alert) => alert.type === "review_cards_unclosable"), {
+      type: "review_cards_unclosable",
+      reason: "agent_only_without_auto_accept",
+      policy: "agent-only",
+      autoAcceptReviews: false,
+      reviews: 1,
+      dedupKey: "review_cards_unclosable|agent-only|auto_accept_off",
+    });
+  });
+
+  it("does not warn for other policies, auto-accept on, or no open review", () => {
+    for (const config of [
+      { ...CONFIG, acceptancePolicy: "both", autoAcceptReviews: false },
+      { ...CONFIG, acceptancePolicy: "human-only", autoAcceptReviews: false },
+      { ...CONFIG, acceptancePolicy: "agent-only", autoAcceptReviews: true },
+    ]) {
+      const result = planWorkflowTick({ tasks: [card(), reviewCard()], verdicts: {}, config, now: NOW });
+      assert.equal(
+        result.alerts.some((alert) => alert.type === "review_cards_unclosable"),
+        false,
+        JSON.stringify(config),
+      );
+    }
+
+    const closed = planWorkflowTick({
+      tasks: [card(), reviewCard({ status: "done" })],
+      verdicts: {},
+      config: { ...CONFIG, acceptancePolicy: "agent-only", autoAcceptReviews: false },
+      now: NOW,
+    });
+    assert.equal(closed.alerts.some((alert) => alert.type === "review_cards_unclosable"), false);
+  });
 });
 
 describe("acceptance policy (human-only holds a top-level approval)", () => {

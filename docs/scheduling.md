@@ -362,8 +362,9 @@ the container; with it, the container stays `in_progress` and names the child bl
 - **Notified only when actionable.** Standing state — no reviewer configured, a
   dispatch-only cap, a review card the operator deliberately left for a human — is logged,
   not sent to `--notify` on every period. Findings an operator can act on (including
-  `review_aging`, an unattributable verdict and `actions_capped`) are notified; the ledger
-  suppresses repeats.
+  `review_aging`, an unattributable verdict, `actions_capped` and
+  `review_cards_unclosable`) are notified; the ledger suppresses repeats, keyed to the state
+  rather than the clock.
 - **One action failing never stops the rest**; the review card is always closed last, so
   every half-applied outcome is recoverable (`original done + APPROVE`,
   `rework_round` matching a rework in progress, …).
@@ -410,6 +411,13 @@ Under `human-only` the loop records a top-level `APPROVE` as a comment plus
 the original `in_review` for a human; the marker makes the hold idempotent. Child cards and
 review cards are still closed by the loop. Under `agent-only` the board only requires a
 non-human writer — which agent applies the verdict is the deployment's business.
+
+`agent-only` + `--auto-accept-reviews=no` is a dead configuration for review cards: a human
+cannot close them and the loop will not, so they accumulate. The board reports it per open
+card as `review_cards_unclosable` (`reason: agent_only_without_auto_accept`, `reviews`, one
+ledger key), so it notifies once rather than every pass; the loop warns at startup whether or
+not a card is stuck. The fix is to turn auto-accept on or let a non-human writer close the
+card — the board's plan stays authoritative either way.
 
 ## Continuity: a fresh handoff, not a resumed pile
 

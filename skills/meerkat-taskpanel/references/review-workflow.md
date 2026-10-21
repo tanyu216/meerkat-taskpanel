@@ -115,6 +115,12 @@ move and handle `ACCEPTANCE_FORBIDDEN` — its `details` carry `policy` and `sco
 `--acceptance` flag is an **advisory local copy** for diagnostics; it never overrides the
 board.
 
+`agent-only` combined with `--auto-accept-reviews=no` leaves review cards with no writer who
+may close them: a human is refused and the loop deliberately does not close them. The board
+reports each open card as `review_cards_unclosable` and the loop warns at startup. If a card
+must be closed on such a board, a **non-human** writer (the loop with auto-accept on, or
+another agent) has to do it.
+
 ## 5. The human's side
 
 - **`REVIEW_PENDING`** — a human closing a top-level original while a **current-round** review

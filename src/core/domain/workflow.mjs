@@ -888,6 +888,25 @@ export function planWorkflowTick(input = {}) {
     });
   }
 
+  // Under `agent-only` a review card needs a non-human writer to reach `done`;
+  // with auto-accept off the loop never closes one either, so they accumulate
+  // until somebody notices. State the conflict while a card is actually stuck.
+  const policy = acceptancePolicyOf(config);
+  const autoAccept = config.autoAcceptReviews !== false;
+  const openReviews = tasks.filter(
+    (task) => isReviewCard(task) && task?.status === "in_review",
+  ).length;
+  if (policy === "agent-only" && !autoAccept && openReviews > 0) {
+    alerts.push({
+      type: "review_cards_unclosable",
+      reason: "agent_only_without_auto_accept",
+      policy,
+      autoAcceptReviews: false,
+      reviews: openReviews,
+      dedupKey: alertKey("review_cards_unclosable", policy, "auto_accept_off"),
+    });
+  }
+
   const count = (type) => actions.filter((action) => action.type === type).length;
   return {
     alerts,

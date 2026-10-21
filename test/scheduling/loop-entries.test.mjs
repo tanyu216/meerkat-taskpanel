@@ -261,6 +261,26 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.ok(call.includes("--dry-run"), JSON.stringify(call));
   });
 
+  it("workflow warns when agent-only meets auto-accept off", () => {
+    const { run } = runWithSentinel("workflow.mjs", [
+      "--acceptance", "agent-only", "--auto-accept-reviews=no",
+    ]);
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(
+      run.stderr,
+      /acceptance=agent-only with auto_accept_reviews=no/,
+      "the conflict is named",
+    );
+    assert.match(run.stderr, /authoritative/, "the board's plan is named as the authority");
+    assert.match(run.stderr, /review cards/, "the consequence is named");
+  });
+
+  it("workflow does not warn for agent-only with auto-accept on", () => {
+    const { run } = runWithSentinel("workflow.mjs", ["--acceptance", "agent-only"]);
+    assert.equal(run.status, 0, run.stderr);
+    assert.doesNotMatch(run.stderr, /review cards will accumulate/);
+  });
+
   it("workflow=no does not read the board at all", () => {
     const { run, record } = runWithSentinel("workflow.mjs", ["--workflow=no"]);
     assert.equal(run.status, 0, run.stderr);

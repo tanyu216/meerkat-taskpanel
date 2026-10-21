@@ -139,6 +139,22 @@ describe("commands/workflowTick — the board's plan", () => {
     );
   });
 
+  it("surfaces the agent-only / auto-accept conflict from the board's policy", async () => {
+    await board(
+      ({ commands }) => {
+        seed(commands);
+        const result = commands.workflowTick({ reviewer: "jobs", autoAcceptReviews: false });
+        const alert = result.workflow.alerts.find(
+          (entry) => entry.type === "review_cards_unclosable",
+        );
+        assert.equal(alert.policy, "agent-only");
+        assert.equal(alert.reviews, 1);
+        assert.equal(alert.autoAcceptReviews, false);
+      },
+      { acceptancePolicy: () => "agent-only" },
+    );
+  });
+
   it("returns a plan with no actions when nobody delivered", async () => {
     await board(({ commands }) => {
       commands.createTask({ projectId: "proj", title: "Not started", actor: HUMAN });

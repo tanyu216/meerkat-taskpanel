@@ -146,6 +146,11 @@ Rules that make it safe to run unattended:
   original's watcher, so a canceled or done review cannot hide it.
 - **The board enforces acceptance** — a refused writer gets
   `ACCEPTANCE_FORBIDDEN`; the loop leaves the review card in place and retries.
+- **A dead configuration is named** — `acceptance=agent-only` with
+  `auto_accept_reviews=no` leaves review cards with no writer who may close them.
+  The board reports each open one as `review_cards_unclosable` (notified once per
+  ledger key) and the loop prints a startup warning; the fix is auto-accept on or
+  a non-human writer.
 - **The review card is closed last** — a crash between the original's move and
   the card's close is recovered next pass.
 - **A canceled review card ends `canceled`** — from `in_review` it takes the

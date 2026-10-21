@@ -235,6 +235,8 @@ Scope precedence is **`hasParent` > review marker > `top_level`**.
   the original `in_review`; the human accepts it with `issue move <original> done`.
 - Under `agent-only`, a **human cannot close a review card** (the review scope allows only a
   non-human writer), even though review cards are human-closable under `both` / `human-only`.
+  Paired with `--auto-accept-reviews=no` nobody closes them: the board raises
+  `review_cards_unclosable` for each open card and the loop warns at startup.
 
 ## 8. Creating a card in a status
 

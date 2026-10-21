@@ -46,6 +46,16 @@ export async function runOnce(opts, env = process.env) {
   if (!config.workflow && config.reviewer !== null) {
     log(`warning: reviewer ${config.reviewer} is configured but workflow is off — no review card will be dispatched`);
   }
+  // `agent-only` forbids a human writer; auto-accept off forbids the loop. The
+  // board reports it per open card (`review_cards_unclosable`); this copy is
+  // the configuration-level warning, stated whether or not a card is stuck.
+  if (config.workflow && config.acceptancePolicy === "agent-only" && config.autoAcceptReviews === false) {
+    log(
+      "warning: acceptance=agent-only with auto_accept_reviews=no — a human cannot close a review card " +
+        "and this loop will not either, so review cards will accumulate; the board's plan is " +
+        "authoritative and will report each one (this copy is advisory)",
+    );
+  }
 
   if (!config.workflow) return 0;
 
