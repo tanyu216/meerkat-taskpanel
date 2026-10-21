@@ -38,7 +38,7 @@ import {
 import { assertTransition, isReopen, isTerminalStatus } from "../domain/status.mjs";
 import { assertAwaitingReason } from "../domain/awaiting.mjs";
 import { normalizeBlockedReason } from "../domain/blocked-reason.mjs";
-import { STATUS } from "../domain/enums.mjs";
+import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { hasIdemDiscriminator, idemKey, idemSource, normalizeIdem } from "../domain/idem.mjs";
 import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
 import { assertEpicDowngradeAllowed } from "../domain/relation.mjs";
@@ -180,7 +180,7 @@ export function createTask(ctx, input) {
       // card created through the declared top-level `review_of` field carried
       // only the column, so `workflow.reviewOf`/the SLA patrol/candidate
       // projection (all meta readers) could not find its original.
-      const marker = resolveReviewMarker(ctx, input.projectId, input);
+      const marker = resolveReviewMarker(ctx, input.projectId, input, candidate.kind);
       candidate.reviewOfId = marker.reviewOfId;
       candidate.reviewRound = marker.reviewRound;
       if (marker.reviewOfId !== null) candidate.meta = mirrorReviewMeta(candidate.meta, marker);
@@ -239,9 +239,10 @@ export function createTask(ctx, input) {
  * @param {object} ctx
  * @param {string} projectId
  * @param {{reviewOf?: unknown, reviewRound?: unknown, meta?: object}} input
+ * @param {string} [kind] the new card's kind (already normalized)
  * @returns {{reviewOfId: string|null, reviewRound: number|null, reviewOfIdentifier: string|null}}
  */
-function resolveReviewMarker(ctx, projectId, input) {
+function resolveReviewMarker(ctx, projectId, input, kind = TASK_KIND.TASK) {
   const rawRef = input.reviewOf ?? input.meta?.review_of;
   const ref = rawRef === undefined || rawRef === null ? "" : String(rawRef).trim();
   const rawRound = input.reviewRound ?? input.meta?.review_round;
@@ -256,6 +257,17 @@ function resolveReviewMarker(ctx, projectId, input) {
       });
     }
     return { reviewOfId: null, reviewRound: null, reviewOfIdentifier: null };
+  }
+
+  // A review is a work card the reviewer can claim. An epic cannot be claimed,
+  // so an epic review card would never be woken — it would only age. `deploy`
+  // is claimable but not a review; everything but `task` is refused.
+  if (kind !== TASK_KIND.TASK) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `a review card must be kind=task (got ${JSON.stringify(kind)})`,
+      details: { field: "kind", received: kind, allowed: [TASK_KIND.TASK] },
+      hint: { fix: "create the review card as a task; an epic cannot be claimed or reviewed" },
+    });
   }
 
   const original = ctx.repos.tasks.resolve(projectId, ref);
@@ -273,6 +285,19 @@ function resolveReviewMarker(ctx, projectId, input) {
     });
   }
 
+  // A review cannot itself be reviewed. The structural column is the predicate;
+  // the meta key is the compatibility fallback for a row written before 0025.
+  const originalIsReview =
+    (original.reviewOfId !== null && original.reviewOfId !== undefined) ||
+    (typeof original.meta?.review_of === "string" && original.meta.review_of.trim() !== "");
+  if (originalIsReview) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `review_of ${JSON.stringify(ref)} names a review card; a review cannot itself be reviewed`,
+      details: { field: "review_of", received: rawRef, projectId, reviewed: original.identifier },
+      hint: { fix: "reopen or re-deliver the original card; the loop will issue a new review for the new round" },
+    });
+  }
+
   let round = null;
   if (roundText !== "") {
     round = Number(roundText);
@@ -280,6 +305,22 @@ function resolveReviewMarker(ctx, projectId, input) {
       throw new DomainError("VALIDATION_FAILED", {
         message: `review_round must be a positive integer (got ${JSON.stringify(rawRound)})`,
         details: { field: "review_round", received: rawRound },
+      });
+    }
+    // The audited round is the original's current round. A future or stale
+    // round can never produce a satisfying outcome; catch it at creation
+    // instead of later as `round_mismatch` / `review_stale_round`.
+    if (round !== original.deliveryRound) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message:
+          `review_round ${round} does not match ${original.identifier}'s current delivery round ` +
+          `${original.deliveryRound}`,
+        details: { field: "review_round", received: rawRound, expected: original.deliveryRound },
+        hint: {
+          fix:
+            "use the original's current delivery_round, or omit review_round for a " +
+            "round-agnostic review",
+        },
       });
     }
   }
