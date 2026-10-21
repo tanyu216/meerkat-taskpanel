@@ -1251,7 +1251,7 @@ describe("server/routes — the acceptance wire (M6)", () => {
         title: "Wire review",
         allow_dup: true,
         review_of: child.identifier,
-        meta: { review_round: 2, flow: "B" },
+        meta: { review_round: 1, flow: "B" },
       }),
     ).task;
 
@@ -1263,10 +1263,10 @@ describe("server/routes — the acceptance wire (M6)", () => {
     assert.equal(byId.get(child.id).parent_id, epic.id, "the child names its container");
     assert.equal(byId.get(epic.id).parent_id, null);
     assert.equal(byId.get(review.id).review_of_id, child.id, "the id, not the identifier");
-    assert.equal(byId.get(review.id).review_round, 2);
+    assert.equal(byId.get(review.id).review_round, 1);
     assert.equal(byId.get(review.id).parent_id, null);
     assert.equal(review.meta.review_of, child.identifier, "creation stamps the identifier into meta");
-    assert.equal(review.meta.review_round, 2, "and the integer round");
+    assert.equal(review.meta.review_round, 1, "and the integer round");
     assert.equal(review.meta.flow, "B", "other meta keys survive");
 
     const single = dataOf(await call("GET", `/api/v1/tasks/${child.identifier}`));
@@ -1287,14 +1287,14 @@ describe("server/routes — the acceptance wire (M6)", () => {
         title: "Wire review round",
         allow_dup: true,
         review_of: original.identifier,
-        review_round: 3,
+        review_round: 1,
       }),
     ).task;
 
     assert.equal(review.review_of_id, original.id);
-    assert.equal(review.review_round, 3, "the top-level field reached the marker resolver");
+    assert.equal(review.review_round, 1, "the top-level field reached the marker resolver");
     assert.equal(review.meta.review_of, original.identifier);
-    assert.equal(review.meta.review_round, 3);
+    assert.equal(review.meta.review_round, 1);
   });
 });
 

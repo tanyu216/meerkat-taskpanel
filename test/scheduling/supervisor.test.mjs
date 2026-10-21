@@ -46,6 +46,10 @@ import { loadSlaLedger, readPeerLastOk, readPeerMarker, saveLastOk, saveSlaLedge
 import { notifyReal, runPatrolTick, runPollTick, runWorkflowTick, spawnWorkerReal } from "../../scripts/loop/runners.mjs";
 import { resolveWakeDir } from "../../scripts/wake-cwd.mjs";
 import { PROJECT_DIR_CODES } from "../../src/foundation/project-dir.mjs";
+import { createCommands, createContext } from "../../src/core/commands/index.mjs";
+import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
+import { workflowToWire } from "../../src/foundation/wire.mjs";
+import { cleanupTempDirs, withBoard } from "../helpers/sqlite-fixture.mjs";
 
 /** A tiny collector standing in for a "spy" — records every call. */
 function spy(impl = () => undefined) {
@@ -1144,6 +1148,33 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.deepEqual(move.calls.map(([ref, to]) => `${ref}:${to}`), ["T-2:done", "T-3:canceled"]);
   });
 
+  it("cancels an in-review review card through in_progress, never done", async () => {
+    const order = [];
+    await runWorkflowTick(
+      baseDeps({
+        plan: {
+          alerts: [],
+          changes: [],
+          summary: {},
+          actions: [
+            { type: "cancel_review", review_status: "in_review", review_ref: "T-3", reason: "original_canceled", close_review: true },
+            { type: "cancel_review", review_status: "in_progress", review_ref: "T-4", reason: "original_canceled", close_review: true },
+          ],
+        },
+        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
+        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+      }),
+    );
+    assert.deepEqual(order, [
+      "comment:T-3:note",
+      "move:T-3:in_progress",
+      "move:T-3:canceled",
+      "comment:T-4:note",
+      "move:T-4:canceled",
+    ]);
+    assert.equal(order.includes("move:T-3:done"), false, "a canceled review is never recorded as accepted");
+  });
+
   it("notifies only findings, not standing-state alerts", async () => {
     const notify = spy();
     const logs = [];
@@ -1193,6 +1224,106 @@ describe("runWorkflowTick (injected deps)", () => {
     );
     assert.equal(result.failed, 1);
     assert.equal(notify.calls[0][0].error, "approve action is missing accepted_by");
+  });
+
+  it("notifies a workflow alert once per state, not once per pass", async () => {
+    const notify = spy();
+    const plan = {
+      alerts: [
+        {
+          type: "verdict_unreadable",
+          review: "T-2",
+          original: "T-1",
+          reason: "no_report",
+          dedup_key: "verdict_unreadable|T-2|no_report",
+        },
+      ],
+      changes: [],
+      actions: [],
+      summary: {},
+    };
+    const first = await runWorkflowTick(
+      baseDeps({ plan, notify, ledger: emptySlaLedger(), now: () => "2026-10-22T10:00:00.000Z" }),
+    );
+    assert.deepEqual(notify.calls.map(([alert]) => alert.type), ["verdict_unreadable"]);
+
+    await runWorkflowTick(
+      baseDeps({ plan, notify, ledger: first.ledger, now: () => "2026-10-22T10:10:00.000Z" }),
+    );
+    assert.equal(notify.count(), 1, "the same state is suppressed on the next pass");
+    assert.equal(Object.keys(first.ledger.seen).length, 1);
+  });
+
+  it("re-notifies when the alert's state changes", async () => {
+    const notify = spy();
+    const alert = (reason) => ({
+      type: "verdict_unreadable",
+      review: "T-2",
+      original: "T-1",
+      reason,
+      dedup_key: `verdict_unreadable|T-2|${reason}`,
+    });
+    const first = await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [alert("no_report")], changes: [], actions: [], summary: {} },
+        notify,
+        ledger: emptySlaLedger(),
+        now: () => "2026-10-22T10:00:00.000Z",
+      }),
+    );
+    await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [alert("no_verdict")], changes: [], actions: [], summary: {} },
+        notify,
+        ledger: first.ledger,
+        now: () => "2026-10-22T10:10:00.000Z",
+      }),
+    );
+    assert.equal(notify.count(), 2);
+  });
+
+  it("dedupes workflow_action_failed by action, ref and error", async () => {
+    const notify = spy();
+    const failing = { type: "create_review", original_ref: "T-1" };
+    const createReview = async () => ({ ok: false, error: "board busy" });
+    const first = await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [], changes: [], actions: [failing], summary: {} },
+        createReview,
+        notify,
+        ledger: emptySlaLedger(),
+        now: () => "2026-10-22T10:00:00.000Z",
+      }),
+    );
+    await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [], changes: [], actions: [failing], summary: {} },
+        createReview,
+        notify,
+        ledger: first.ledger,
+        now: () => "2026-10-22T10:10:00.000Z",
+      }),
+    );
+    assert.equal(notify.count(), 1, "the same failure is not repeated");
+  });
+
+  it("fails open when the ledger is unreadable", async () => {
+    const notify = spy();
+    await runWorkflowTick(
+      baseDeps({
+        plan: {
+          alerts: [
+            { type: "verdict_unreadable", review: "T-2", dedup_key: "verdict_unreadable|T-2|no_report" },
+          ],
+          changes: [],
+          actions: [],
+          summary: {},
+        },
+        notify,
+        ledger: { version: 1, seen: null },
+      }),
+    );
+    assert.equal(notify.count(), 1);
   });
 });
 
@@ -1253,6 +1384,19 @@ describe("parseArgs — the wake surface", () => {
     const moved = parseArgs(["--host", "claude", "--once", "--state", "/tmp/state.json"], ENV);
     assert.equal(moved.slaLedger, "/tmp/sla-ledger.json", "one directory remembers everything");
     assert.equal(parseArgs(["--host", "claude", "--once", "--sla-ledger=/tmp/l.json"], ENV).slaLedger, "/tmp/l.json");
+  });
+
+  it("defaults the workflow ledger beside the state file, and follows a custom one", () => {
+    assert.equal(
+      parseArgs(["--host", "claude", "--once"], ENV).workflowLedger,
+      "/home/alice/.claude/meerkat-taskpanel/workflow-ledger.json",
+    );
+    const moved = parseArgs(["--host", "claude", "--once", "--state", "/tmp/state.json"], ENV);
+    assert.equal(moved.workflowLedger, "/tmp/workflow-ledger.json");
+    assert.equal(
+      parseArgs(["--host", "claude", "--once", "--workflow-ledger=/tmp/w.json"], ENV).workflowLedger,
+      "/tmp/w.json",
+    );
   });
 
   it("bounds the two reads the SLA pass makes", () => {
@@ -1839,5 +1983,86 @@ describe("the scheduler's two clocks", () => {
     const opts = parseArgs(["--host", "claude", "--state", "/tmp/state.json"], ENV);
     assert.equal(opts.continueState, "/tmp/continue.state.json");
     assert.notEqual(opts.continueState, opts.state);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The plan → wire → runner seam
+// ---------------------------------------------------------------------------
+
+describe("the workflow plan survives the wire and executes", () => {
+  after(cleanupTempDirs);
+
+  const HUMAN = { kind: "human", id: "Terry" };
+  const WORKER = { kind: "agent", id: "linus" };
+  const REVIEWER = { kind: "agent", id: "jobs" };
+
+  const DELIVERY = {
+    conclusion: "The thing is done.",
+    acceptance: [{ text: "the thing works", status: "met" }],
+    evidence: [{ kind: "commit", sha: "abc1234" }],
+  };
+  const VERDICT = {
+    conclusion: "VERDICT: APPROVE",
+    acceptance: [{ text: "the evidence matches", status: "met" }],
+    evidence: [{ kind: "path", path: "src/thing.mjs" }],
+  };
+
+  it("carries a board plan through the wire and executes the approve", async () => {
+    await withBoard(async ({ db }) => {
+      const repos = createRepositories(db);
+      const ctx = createContext({ db, repos });
+      const commands = createCommands(ctx);
+
+      commands.createProject({ id: "proj", name: "Project", actor: HUMAN });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Do the thing",
+        assignee: "linus",
+        actor: HUMAN,
+      });
+      commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });
+      commands.deliver({ taskId: original.id, report: DELIVERY, actor: WORKER });
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review Do the thing",
+        assignee: "jobs",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        meta: { flow: "B" },
+        actor: HUMAN,
+      });
+      commands.moveStatus({ id: review.id, to: "in_progress", actor: REVIEWER });
+      commands.deliver({ taskId: review.id, report: VERDICT, actor: REVIEWER });
+
+      const plan = workflowToWire(commands.workflowTick({ reviewer: "jobs" }).workflow);
+      assert.equal(plan.actions[0]?.original_ref, original.identifier);
+      assert.equal(plan.actions[0]?.review_ref, review.identifier);
+
+      const order = [];
+      const result = await runWorkflowTick({
+        plan,
+        config: { workflow: true },
+        createReview: async () => ({ ok: true }),
+        createFixChild: async () => ({ ok: true }),
+        linkFixChild: async () => ({ ok: true }),
+        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
+        setMeta: async (ref) => (order.push(`meta:${ref}`), { ok: true }),
+        notify: () => {},
+        log: () => {},
+      });
+
+      assert.deepEqual(order, [
+        `comment:${original.identifier}:note`,
+        `meta:${original.identifier}`,
+        `move:${original.identifier}:done`,
+        `comment:${review.identifier}:note`,
+        `move:${review.identifier}:done`,
+      ]);
+      assert.equal(result.executed, 1);
+      assert.equal(result.failed, 0);
+    });
   });
 });

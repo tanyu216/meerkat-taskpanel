@@ -209,6 +209,7 @@ export async function runWorkflowPass(opts, config, log) {
     plan: planData.workflow,
     config,
     dryRun: opts.dryRun,
+    ledger: loadSlaLedger(opts.workflowLedger),
     createReview: (action) => {
       const read = invoke(reviewCreateArgs(action));
       return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : { ok: false, error: read.error };
@@ -259,6 +260,20 @@ export async function runWorkflowPass(opts, config, log) {
     notify: opts.dryRun ? () => {} : notifyReal(opts, log),
     log,
   });
+
+  if (!opts.dryRun && typeof opts.workflowLedger === "string" && opts.workflowLedger !== "") {
+    try {
+      saveSlaLedger(
+        opts.workflowLedger,
+        pruneSlaLedger(result.ledger, { now: new Date().toISOString() }),
+      );
+    } catch (err) {
+      log(
+        `workflow: could not persist the workflow ledger (${err.message}) — ` +
+          "a duplicate is possible, a lost alert is not",
+      );
+    }
+  }
 
   log(
     `workflow: ${result.executed} action(s) executed, ${result.failed} failed, ` +

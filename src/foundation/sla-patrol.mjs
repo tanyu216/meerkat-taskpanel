@@ -943,17 +943,25 @@ function acceptanceDetection(card, context) {
   if (card?.status !== "in_review") return null;
   const flow = card?.meta?.flow ?? "A";
   if (String(flow).toUpperCase() !== "A") return null;
-  // A review card suppresses this row only for the round it audits. A card that
-  // was rejected and re-delivered is a *new* round with no review card yet — a
-  // last round's review card must not silence it (the rejection path relies on
-  // this: the next delivery has to be reviewed again). A review card written
-  // before `review_round` existed carries `null`, which still suppresses — that
-  // was the pre-round behaviour and the only honest reading of such a card.
+  // An **open** review card suppresses this row only for the round it audits.
+  // A card that was rejected and re-delivered is a *new* round with no review
+  // card yet — a last round's review card must not silence it (the rejection
+  // path relies on this: the next delivery has to be reviewed again). A review
+  // card written before `review_round` existed carries `null`, which still
+  // suppresses while it is open — that was the pre-round behaviour and the only
+  // honest reading of such a card.
   const round = intOrNull(card?.delivery_round);
   for (const id of idsOf(card)) {
     const rounds = context.reviewOfRefs.get(id);
     if (rounds !== undefined && (rounds.has(null) || rounds.has(round))) return null;
   }
+  // A closed review does not silence the wait. A `done` review means the verdict
+  // landed but the original is still `in_review` — the human-only hold, or a
+  // crash before the original moved. The row becomes the acceptance reminder.
+  const reviewDone = idsOf(card).some((id) => {
+    const rounds = context.doneReviewRefs?.get(id);
+    return rounds !== undefined && (rounds.has(null) || rounds.has(round));
+  });
 
   const changedAt = instant(card?.status_changed_at) === null ? null : card.status_changed_at;
   const spec = SLA_ROWS.acceptance_card_creation;
@@ -983,7 +991,9 @@ function acceptanceDetection(card, context) {
     openPredicate,
     action: undecidable
       ? `${spec.action} — the board read was incomplete, so the review-card check could not be decided; the wait is treated as open`
-      : spec.action,
+      : reviewDone
+        ? "the review is done but the original is still in_review — the leader must accept it, or reopen it for another round"
+        : spec.action,
     evidence: evidenceOf(card, spec.thresholdRef, openPredicate),
   };
 }
@@ -1243,6 +1253,7 @@ function boardContext(cards, trails, options = {}) {
   // A set rather than a boolean: a stale review card from round 1 must not
   // suppress the round-2 delivery (see `acceptanceDetection`).
   const reviewOfRefs = new Map();
+  const doneReviewRefs = new Map();
   const terminalRefs = new Set();
   const leaderId = options.leaderId ?? null;
   const truncated = options.boardTruncated === true;
@@ -1286,12 +1297,25 @@ function boardContext(cards, trails, options = {}) {
     const reviewOf = card?.meta?.review_of;
     if (typeof reviewOf === "string" && reviewOf.trim() !== "") {
       const ref = reviewOf.trim();
-      const rounds = reviewOfRefs.get(ref) ?? new Set();
-      // No `review_round` on an older card is `null`, not 0: it means "the
-      // round this card audits was never recorded", which suppresses every
-      // round (the conservative reading — silence, not a false alarm).
-      rounds.add(intOrNull(card?.meta?.review_round));
-      reviewOfRefs.set(ref, rounds);
+      // Only an open review covers the wait. A `done` review means the verdict
+      // landed but the original is still `in_review` (the human-only hold, or a
+      // crash); a `canceled` one means the review was abandoned. Neither may
+      // silence the original's only watcher.
+      const bucket =
+        card?.status === "done"
+          ? doneReviewRefs
+          : TERMINAL_STATUSES.includes(card?.status)
+            ? null
+            : reviewOfRefs;
+      if (bucket !== null) {
+        const rounds = bucket.get(ref) ?? new Set();
+        // No `review_round` on an older card is `null`, not 0: it means "the
+        // round this card audits was never recorded", which covers every round
+        // (the conservative reading — silence, not a false alarm, while the
+        // review is still open).
+        rounds.add(intOrNull(card?.meta?.review_round));
+        bucket.set(ref, rounds);
+      }
     }
     if (TERMINAL_STATUSES.includes(card?.status)) {
       for (const id of idsOf(card)) terminalRefs.add(id);
@@ -1317,7 +1341,7 @@ function boardContext(cards, trails, options = {}) {
     }
   }
 
-  return { cards, reviewOfRefs, terminalRefs, leaderEvent, leaderId, boardTruncated: truncated };
+  return { cards, reviewOfRefs, doneReviewRefs, terminalRefs, leaderEvent, leaderId, boardTruncated: truncated };
 }
 
 /**

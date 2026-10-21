@@ -17,7 +17,7 @@ import {
   isReviewCard,
   parseReviewVerdict,
   planWorkflowTick,
-  reviewRoundOf,
+  roundOf,
 } from "../domain/workflow.mjs";
 import { reconcileContainers } from "./rollup.mjs";
 
@@ -63,7 +63,10 @@ export function workflowTick(ctx, input = {}) {
     taskToWire(task, { lookup, parentId: parents.get(task.id) ?? null }),
   );
 
-  // A verdict is the review card's current-round report. Only in_review review
+  // A verdict is the review card's report for its OWN current delivery round
+  // (`delivery_round`), not the round it audits (`review_round`): every report
+  // is stamped with the card's own round, and a fresh review card's own round
+  // is 1 even when it audits the original's round 2+. Only in_review review
   // cards can carry one that matters; terminal cards are skipped by the planner.
   const verdicts = {};
   for (let i = 0; i < snapshot.length; i += 1) {
@@ -74,7 +77,7 @@ export function workflowTick(ctx, input = {}) {
     const reports = ctx.repos.reports
       .listByTask(snapshot[i].id)
       .map((report) => reportToWire(report, { lookup }));
-    verdicts[ref] = parseReviewVerdict(reports, reviewRoundOf(card));
+    verdicts[ref] = parseReviewVerdict(reports, roundOf(card));
   }
 
   const reviewer =

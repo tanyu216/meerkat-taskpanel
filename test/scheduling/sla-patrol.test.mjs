@@ -794,6 +794,44 @@ describe("acceptance_card_creation", () => {
     assert.deepEqual(result.alerts, []);
   });
 
+  it("is suppressed by a non-terminal review card", () => {
+    const result = plan([
+      card({ identifier: "T-1", status: "in_review", status_changed_at: "2026-10-01T04:00:00.000Z", delivery_round: 1 }),
+      card({ identifier: "T-9", status: "in_progress", meta: { review_of: "T-1", review_round: 1 } }),
+    ]);
+    assert.deepEqual(rowsOf(result).filter((row) => row === "acceptance_card_creation"), []);
+  });
+
+  it("does not stay silent behind a done review card", () => {
+    const result = plan([
+      card({ identifier: "T-1", status: "in_review", status_changed_at: "2026-10-01T04:00:00.000Z", delivery_round: 1 }),
+      card({ identifier: "T-9", status: "done", meta: { review_of: "T-1", review_round: 1 } }),
+    ]);
+    const alert = result.alerts.find((entry) => entry.sla_row === "acceptance_card_creation");
+    assert.ok(alert, "a closed review does not silence the original");
+    assert.match(alert.action, /review is done/i);
+    assert.equal(alert.evidence.open_predicate, "no_review_card");
+  });
+
+  it("does not stay silent behind a canceled review card", () => {
+    const result = plan([
+      card({ identifier: "T-1", status: "in_review", status_changed_at: "2026-10-01T04:00:00.000Z", delivery_round: 1 }),
+      card({ identifier: "T-9", status: "canceled", meta: { review_of: "T-1", review_round: 1 } }),
+    ]);
+    const alert = result.alerts.find((entry) => entry.sla_row === "acceptance_card_creation");
+    assert.ok(alert, "a canceled review does not silence the original");
+    assert.match(alert.action, /create the acceptance review card/i);
+  });
+
+  it("does not stay silent behind a legacy done review with no round", () => {
+    const result = plan([
+      card({ identifier: "T-1", status: "in_review", status_changed_at: "2026-10-01T04:00:00.000Z", delivery_round: 2 }),
+      card({ identifier: "T-9", status: "done", meta: { review_of: "T-1" } }),
+    ]);
+    const alert = result.alerts.find((entry) => entry.sla_row === "acceptance_card_creation");
+    assert.ok(alert);
+  });
+
   it("stays silent for a delivery still inside its 24h working limit", () => {
     const result = plan([card({ status: "in_review", status_changed_at: ago(600) })]);
     assert.deepEqual(result.alerts, []);

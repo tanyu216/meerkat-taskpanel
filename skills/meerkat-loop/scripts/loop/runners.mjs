@@ -272,6 +272,8 @@ export async function runWorkflowTick(deps) {
     plan = { alerts: [], actions: [], changes: [], summary: {} },
     config = {},
     dryRun = false,
+    ledger = null,
+    now = () => new Date().toISOString(),
     createReview = null,
     createFixChild = null,
     linkFixChild = null,
@@ -282,6 +284,11 @@ export async function runWorkflowTick(deps) {
     log,
   } = deps;
 
+  const baseLedger =
+    ledger && typeof ledger === "object" && ledger.seen && typeof ledger.seen === "object"
+      ? ledger
+      : { version: 1, seen: {} };
+
   const disabled = {
     dryRun,
     actions: [],
@@ -290,6 +297,7 @@ export async function runWorkflowTick(deps) {
     executed: 0,
     failed: 0,
     summary: { actions: 0, alerts: 0 },
+    ledger: baseLedger,
   };
   if (config.workflow !== true) return disabled;
 
@@ -297,14 +305,31 @@ export async function runWorkflowTick(deps) {
   const changes = Array.isArray(plan.changes) ? plan.changes : [];
   const actions = Array.isArray(plan.actions) ? plan.actions : [];
 
+  // Workflow findings are notified once per state, not once per tick. The
+  // ledger has the same shape the SLA pass uses; `partitionSlaAlerts` /
+  // `recordSlaAlerts` read only `dedup_key`, so they are mechanism-agnostic.
+  let workingLedger = baseLedger;
+  const notifyBatch = (batch) => {
+    const { notify: fresh, suppressed } = partitionSlaAlerts(
+      batch.map((alert) => ({
+        ...alert,
+        dedup_key: alert.dedup_key ?? alert.dedupKey,
+        mechanism: alert.mechanism ?? "workflow",
+      })),
+      workingLedger,
+    );
+    for (const alert of fresh) notify(alert);
+    workingLedger = recordSlaAlerts(workingLedger, fresh, now(), suppressed);
+  };
+
   for (const alert of alerts) {
     log(`workflow: ${describeWorkflowAlert(alert)}`);
-    // Standing-state notices (no reviewer configured, a capped pass, a review
-    // waiting for a human by the operator's own --auto-accept-reviews=no)
-    // would otherwise re-notify on every pass forever. They are logged; only
-    // findings an operator can act on are notified.
-    if (WORKFLOW_NOTIFY_TYPES.has(alert.type)) notify(alert);
   }
+  // Standing-state notices (no reviewer configured, a capped pass, a review
+  // waiting for a human by the operator's own --auto-accept-reviews=no)
+  // would otherwise re-notify on every pass forever. They are logged; only
+  // findings an operator can act on are notified.
+  notifyBatch(alerts.filter((alert) => WORKFLOW_NOTIFY_TYPES.has(alert.type)));
   for (const change of changes) {
     log(`workflow: reconcile ${change.action} ${change.epic} (${change.reason})`);
   }
@@ -319,8 +344,10 @@ export async function runWorkflowTick(deps) {
     return result;
   };
 
-  // Closing the review card is the last write of every outcome. A card that
-  // never started can only be `canceled`; one awaiting acceptance becomes `done`.
+  // Closing the review card is the last write of every outcome. A cancel is a
+  // two-hop move when the card is `in_review`: the state machine has no direct
+  // `in_review → canceled` edge. `close_review` still ends `done`, because that
+  // is the only terminal an `in_review` card can reach directly.
   const closeReviewCard = async (action, note) => {
     if (action.close_review === false) {
       log(`workflow: review ${action.review_ref} left in_review for human acceptance`);
@@ -330,8 +357,13 @@ export async function runWorkflowTick(deps) {
     const status =
       action.review_status ?? (action.type === "cancel_review" ? "canceled" : "in_review");
     if (status === "done" || status === "canceled") return;
+    if (note !== null) await step(comment, "comment", action.review_ref, { kind: "note", body: note });
     if (status === "in_review") {
-      if (note !== null) await step(comment, "comment", action.review_ref, { kind: "note", body: note });
+      if (action.type === "cancel_review") {
+        await step(move, "move", action.review_ref, "in_progress");
+        await step(move, "move", action.review_ref, "canceled");
+        return;
+      }
       await step(move, "move", action.review_ref, "done");
       return;
     }
@@ -452,7 +484,15 @@ export async function runWorkflowTick(deps) {
       // `ACCEPTANCE_FORBIDDEN`/`CHILDREN_OPEN` mean this deployment's copy of
       // the policy (or the board's state) disagrees with the plan, and the loop
       // deliberately leaves the review card in place rather than forcing it.
-      notify({ type: "workflow_action_failed", action: action.type, ref, error: err.message });
+      notifyBatch([
+        {
+          type: "workflow_action_failed",
+          action: action.type,
+          ref,
+          error: err.message,
+          dedupKey: `workflow_action_failed|${action.type}|${ref}|${err.message}`,
+        },
+      ]);
     }
   }
 
@@ -464,6 +504,7 @@ export async function runWorkflowTick(deps) {
     executed,
     failed,
     summary: { ...(plan.summary ?? {}), executed, failed },
+    ledger: workingLedger,
   };
 }
 

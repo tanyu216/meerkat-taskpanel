@@ -53,13 +53,13 @@ describe("cli/issue — create, list, get", () => {
       const review = createIssue(run, [
         "--title", "Review",
         "--review-of", original.task.identifier,
-        "--review-round", "2",
+        "--review-round", "1",
       ]);
 
       assert.equal(review.task.review_of_id, original.task.id);
-      assert.equal(review.task.review_round, 2);
+      assert.equal(review.task.review_round, 1);
       assert.equal(review.task.meta.review_of, original.task.identifier);
-      assert.equal(review.task.meta.review_round, 2);
+      assert.equal(review.task.meta.review_round, 1);
     });
   });
 

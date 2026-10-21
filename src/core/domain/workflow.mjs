@@ -212,7 +212,8 @@ const VERDICT_LINE = /^VERDICT\s*:\s*(APPROVE|REJECT)\b/i;
  * reviewer writes its findings once, where the worker will read them.
  *
  * @param {object[]} reports reports for the review card, round-ascending
- * @param {number|null} round the round the review audits; `null` reads the latest
+ * @param {number|null} round the round the review card's report is stamped with
+ *   (its own `delivery_round`), not the round it audits; `null` reads the latest
  * @returns {{ok: true, verdict: "APPROVE"|"REJECT", findings: string, report: object}
  *   | {ok: false, reason: "no_report"|"no_verdict"}}
  */
@@ -277,6 +278,15 @@ function boundedFindings(text) {
   return `${trimmed.slice(0, FINDINGS_MAX_CHARS - 1)}…`;
 }
 
+/**
+ * A stable de-duplication key for a workflow alert: the state that produced it,
+ * never the clock. The loop's ledger suppresses a repeated key, so changing the
+ * status, round or reason is what makes the same finding worth a new notice.
+ */
+function alertKey(...parts) {
+  return parts.map((part) => (part === null || part === undefined ? "" : String(part))).join("|");
+}
+
 // ---------------------------------------------------------------------------
 // Reconcile classification
 // ---------------------------------------------------------------------------
@@ -317,16 +327,28 @@ export function classifyReconcileActions(actions, input = {}) {
       // reason to suppress it — the conservative direction is to alert.
       const created = instant(byRef.get(epic)?.created_at ?? byRef.get(epic)?.createdAt);
       if (now !== null && created !== null && now - created <= graceMs) continue;
-      alerts.push({ type: "reconcile", reason, epic, status: action.status ?? null });
+      alerts.push({
+        type: "reconcile",
+        reason,
+        epic,
+        status: action.status ?? null,
+        dedupKey: alertKey("reconcile", reason, epic, ""),
+      });
       continue;
     }
 
+    const blocking = Array.isArray(action.blocking) ? action.blocking : [];
+    const blockingIds = blocking
+      .map((item) => String(item?.identifier ?? item ?? ""))
+      .sort()
+      .join(",");
     alerts.push({
       type: "reconcile",
       reason,
       epic,
       status: action.status ?? null,
-      ...(Array.isArray(action.blocking) && action.blocking.length > 0 ? { blocking: action.blocking } : {}),
+      ...(blocking.length > 0 ? { blocking } : {}),
+      dedupKey: alertKey("reconcile", reason, epic, blockingIds),
     });
   }
   return { alerts, changes };
@@ -401,7 +423,12 @@ export function planReviewDispatch(input = {}) {
     if (ref === "" || skip.has(ref)) continue;
 
     if (isSelfReview(task, reviewer)) {
-      alerts.push({ type: "self_review_not_independent", original: ref, reviewer });
+      alerts.push({
+        type: "self_review_not_independent",
+        original: ref,
+        reviewer,
+        dedupKey: alertKey("self_review", ref, reviewer),
+      });
       continue;
     }
 
@@ -419,6 +446,7 @@ export function planReviewDispatch(input = {}) {
         original: ref,
         review: String(done.identifier ?? ""),
         round,
+        dedupKey: alertKey("review_done_open", ref, done.identifier ?? "", round),
       });
       continue;
     }
@@ -541,7 +569,12 @@ export function planReviewOutcomes(input = {}) {
     const originalRef = reviewOf(review);
     const original = byRef.get(originalRef);
     if (original === undefined) {
-      alerts.push({ type: "original_unseen", review: reviewRef, original: originalRef });
+      alerts.push({
+        type: "original_unseen",
+        review: reviewRef,
+        original: originalRef,
+        dedupKey: alertKey("original_unseen", reviewRef, originalRef),
+      });
       continue;
     }
 
@@ -598,7 +631,14 @@ export function planReviewOutcomes(input = {}) {
       if (autoAccept) {
         actions.push({ type: "close_review", reviewStatus: review.status, reviewRef, originalRef, round, reason: "round_mismatch", closeReview: true });
       } else {
-        alerts.push({ type: "review_stale_round", review: reviewRef, original: originalRef, round, originalRound });
+        alerts.push({
+          type: "review_stale_round",
+          review: reviewRef,
+          original: originalRef,
+          round,
+          originalRound,
+          dedupKey: alertKey("review_stale", reviewRef, round, originalRound),
+        });
       }
       continue;
     }
@@ -617,6 +657,7 @@ export function planReviewOutcomes(input = {}) {
           review: reviewRef,
           original: originalRef,
           reason: verdict?.reason ?? "not_read",
+          dedupKey: alertKey("verdict_unreadable", reviewRef, verdict?.reason ?? "not_read"),
         });
       } else if (now !== null) {
         const age = now - (instant(review.status_changed_at) ?? instant(review.created_at) ?? now);
@@ -628,6 +669,7 @@ export function planReviewOutcomes(input = {}) {
             status: review.status ?? null,
             ageMs: age,
             thresholdMs: agingMs,
+            dedupKey: alertKey("review_aging", reviewRef, review.status ?? null, round),
           });
         }
       }
@@ -648,6 +690,7 @@ export function planReviewOutcomes(input = {}) {
         original: originalRef,
         expected: expectedReviewer,
         author: reportAuthor(verdict.report),
+        dedupKey: alertKey("not_reviewer", reviewRef, reportAuthor(verdict.report) ?? "unknown"),
       });
       continue;
     }
@@ -723,7 +766,13 @@ export function planReviewOutcomes(input = {}) {
       if (verdict.verdict === "APPROVE") {
         actions.push({ type: "close_review", reviewStatus: review.status, reviewRef, originalRef, round: originalRound, reason: "already_approved", closeReview });
       } else {
-        alerts.push({ type: "verdict_conflict", review: reviewRef, original: originalRef, reason: "original_done_but_rejected" });
+        alerts.push({
+          type: "verdict_conflict",
+          review: reviewRef,
+          original: originalRef,
+          reason: "original_done_but_rejected",
+          dedupKey: alertKey("verdict_conflict", reviewRef, "original_done_but_rejected"),
+        });
       }
       continue;
     }
@@ -751,6 +800,7 @@ export function planReviewOutcomes(input = {}) {
       review: reviewRef,
       original: originalRef,
       status: original.status ?? null,
+      dedupKey: alertKey("unexpected", reviewRef, original.status ?? null),
     });
   }
 

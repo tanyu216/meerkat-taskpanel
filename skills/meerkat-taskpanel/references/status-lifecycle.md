@@ -227,6 +227,14 @@ Scope precedence is **`hasParent` > review marker > `top_level`**.
 - `--actor-kind human` is reserved; a human write uses `--as-human`.
 - The policy comes from `TASKD_ACCEPTANCE_POLICY` / the environment / the install-root `.env`,
   defaulting to `both`.
+- The board enforces the policy; there is **no `taskctl` command that reads it**. Attempt the
+  move and handle `ACCEPTANCE_FORBIDDEN` — its `details` carry `policy` and `scope`. The loop's
+  `--acceptance` is an advisory local copy, never authoritative.
+- Under `human-only`, a top-level `APPROVE` is **held**: the loop records
+  `meta.review_verdict=approve` / `review_verdict_round`, closes the review card, and leaves
+  the original `in_review`; the human accepts it with `issue move <original> done`.
+- Under `agent-only`, a **human cannot close a review card** (the review scope allows only a
+  non-human writer), even though review cards are human-closable under `both` / `human-only`.
 
 ## 8. Creating a card in a status
 
@@ -253,7 +261,7 @@ The markdown importer is the exception: it writes history directly, importing
 | `ACCEPTANCE_FORBIDDEN` | 409 | The writer may not move the card to `done` under the policy/scope matrix. |
 | `CHILDREN_OPEN` | 409 | `in_review` or `done` while a child is non-terminal. |
 | `REVIEW_PENDING` | 409 | A human closing a top-level card with current-round review cards still open. |
-| `VALIDATION_FAILED` | 400 | Unknown status; create in `in_progress`/`awaiting`; an epic's illegal initial status; an unknown `awaiting_reason`/`blocked_reason`; a malformed waiver. |
+| `VALIDATION_FAILED` | 400 | Unknown status; create in `in_progress`/`awaiting`; an epic's illegal initial status; an unknown `awaiting_reason`/`blocked_reason`; a malformed waiver; a `review_of` that names a review card; a `review_round` that is not the original's current `delivery_round`; a review card that is not `kind=task`. |
 | `VERSION_CONFLICT` | 409 | `--if-version` does not match the card's version. |
 | `EXECUTION_ACTIVE` | 409 | Another actor holds a fresh claim, or a non-holder sends a heartbeat. |
 | `CLAIM_LOST` | 409 | The claim's compare-and-swap lost a race. |
@@ -281,6 +289,19 @@ is refused with `INVALID_TRANSITION`.
 | `depends_on` blocks claiming | **read rule** — candidates filters only |
 
 ## 11. The board's workflow decisions
+
+### Flow A and flow B
+
+A **flow-A** card is an ordinary work card; `meta.flow` absent means A (fail-safe — an
+unknown card is not exempted from review). A **flow-B** card is a review card the loop
+dispatched; it carries `meta.flow=B`, and a delivery on a flow-B card is never itself
+reviewed. The review-card predicate is the structural `review_of_id` (with `meta.review_of`
+as the legacy fallback), never the `review` label and never `meta.flow`.
+
+The review card audits a **specific delivery round**: `review_round` is the original's round,
+while the review card's own `delivery_round` is the round its verdict report is stamped with
+(a fresh review card starts at 1). A re-delivery after a rejection is a new round and needs a
+new review card; one review card covers one `(original, delivery round)` pair.
 
 The board decides what happens after a delivery; the loop executes. One command:
 
@@ -312,6 +333,14 @@ The fail-safe rules are part of the decision:
 - the board's acceptance policy decides `approve` vs `approve_hold`.
 
 `approve` actions carry `acceptedBy: loop-review`; `approve_hold` actions carry `held`.
+
+A `cancel_review` on a review card that is still `in_review` is a two-hop move
+(`in_review → in_progress → canceled`): the whitelist has no direct
+`in_review → canceled` edge, and a canceled review is never recorded as `done`.
+
+Only an **open** review card suppresses the original's `acceptance_card_creation`
+SLA row. A `done` review turns that row into an acceptance reminder; a `canceled`
+one leaves the standard creation action.
 
 ## 12. Choosing a status
 

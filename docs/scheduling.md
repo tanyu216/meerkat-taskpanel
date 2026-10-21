@@ -338,19 +338,23 @@ the container; with it, the container stays `in_progress` and names the child bl
   the reviewer is woken by the poll entry in the continue turn, through the normal claim, so the cost gate
   is unchanged. A dedicated reviewer is scanned for review cards only and never claims the
   public pool; a reviewer that is also a worker keeps the ordinary lane.
-- **Bounded.** At most `--workflow-max-actions` (default 20) writes per pass, and the
-  same number bounds the on-demand reads (a missing original, a verdict report). A cap is
-  logged.
-- **Fail-safe.** An unreadable verdict, an unseen original, a round mismatch or a
-  conflicting verdict (`done` + `REJECT`) produces an alert and **no write**; the review
-  card stays put and the next pass retries. A truncated board read dispatches nothing.
+- **Bounded.** At most `--workflow-max-actions` (default 20) writes per pass. Reads are
+  bounded by `--board-limit` (default 500), which also decides whether the snapshot is
+  truncated. A cap is logged.
+- **Fail-safe.** An unreadable verdict, an unseen original or a conflicting verdict
+  (`done` + `REJECT`) produces an alert and **no write**; the review card stays put and the
+  next pass retries. A round mismatch closes the review card (`close_review`, reason
+  `round_mismatch`) under the default auto-accept, and only alerts (`review_stale_round`)
+  when auto-accept is off. A truncated board read dispatches nothing.
 - **The verdict must come from the reviewer.** The report's author is checked against the
   configured reviewer (else the review card's assignee), by id and display name. A report
   written by anybody else is `review_report_not_by_reviewer` and is not applied.
-- **A silent reviewer is not silent forever.** Creating the review card suppresses the
+- **A silent reviewer is not silent forever.** An **open** review card suppresses the
   original's `acceptance_card_creation` row, so a reviewer that is never woken would
-  otherwise have no watcher at all. A review card with no readable verdict older than
-  `--review-aging-minutes` (default 60) raises `review_aging`.
+  otherwise have no watcher at all. A review card in `in_review` whose report has no readable
+  verdict raises `verdict_unreadable` immediately; a review card that is not `in_review`
+  (todo / in_progress / blocked / awaiting) older than `--review-aging-minutes` (default 60)
+  raises `review_aging`.
 - **Notified only when actionable.** Standing state — no reviewer configured, a capped
   pass, a review card the operator deliberately left for a human — is logged, not sent to
   `--notify` on every period. Findings an operator can act on (including `review_aging`
@@ -358,18 +362,24 @@ the container; with it, the container stays `in_progress` and names the child bl
 - **One action failing never stops the rest**; the review card is always closed last, so
   every half-applied outcome is recoverable (`original done + APPROVE`,
   `rework_round` matching a rework in progress, …).
-- **Idempotent.** Deterministic `--idem` keys plus the SQLite partial unique index; a
-  terminal (`canceled`) review card releases its key, a `done` one does not. Illegal
-  transitions are refused by the state machine, so two overlapping passes are wasteful at
-  worst, never duplicating.
+- **Idempotent.** Deterministic `--idem` keys plus the SQLite partial unique index; both
+  `done` and `canceled` release the key (the index excludes both terminal statuses). The
+  planner's policy is what differs: a `canceled` review is recreated, while a `done` review
+  leaves the original open as `review_done_but_original_open`. Illegal transitions are
+  refused by the state machine, so two overlapping passes are wasteful at worst, never
+  duplicating.
 - **A transient SLA alert is possible.** In the tick that dispatches a review, the SLA
   pass may not yet see the review card and can emit one `acceptance_card_creation` notice;
   the next tick suppresses it (for that round only — see below). The reverse ordering
   would delay every dispatch by a tick for no benefit.
-- **Round-aware suppression.** `acceptance_card_creation` is silenced by a review card for
-  the **same delivery round**, or by a legacy review card with no `review_round` (the
-  conservative reading). A review card from a previous round does not silence a fresh
-  delivery, which is what makes the rejection → rework → re-review loop work.
+- **Round-aware suppression.** `acceptance_card_creation` is silenced by an **open** review
+  card for the **same delivery round**, or by a legacy open review card with no
+  `review_round` (the conservative reading). A review card from a previous round does not
+  silence a fresh delivery, which is what makes the rejection → rework → re-review loop work.
+  A **closed** review card does not silence it either: a `done` one turns the row into the
+  acceptance reminder (the verdict landed, the original still waits), and a `canceled` one
+  leaves the standard "create a review card" action. A closed review must never be the
+  original's only watcher.
 
 ### Configuration
 
@@ -381,6 +391,7 @@ the container; with it, the container stays `in_progress` and names the child bl
 | writes per pass | `--workflow-max-actions <n>` | `MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS` | `20` |
 | silent-review threshold | `--review-aging-minutes <n>` | `MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES` | `60` |
 | who may close a task | `--acceptance <policy>` | `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` | `both` |
+| workflow alert ledger | `--workflow-ledger <path>` | — | `workflow-ledger.json` beside `--state` |
 
 Precedence is flag → environment → host config → default, the same as the claim policy.
 `workflow` gates the whole channel; `auto-accept-reviews` gates only the review card's own
@@ -1358,6 +1369,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--log <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.log` | where the tick log appends |
 | `--state <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 | `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
+| `--workflow-ledger <path>` | `workflow-ledger.json` beside `--state` | the workflow alert de-duplication ledger; an unreadable one suppresses nothing |
 | `--sla-leader <id>` | from `$MEERKAT_TASKPANEL_SLA_LEADER`, else unset | the author id the leader writes under, for the `leader_stalled` attribution set; unset ⇒ the board's own decision authority (`author_kind = "human"`). Set the **same** identity on both mechanisms |
 | `--sla-last-ok <path>` | `loop-patrol-last-ok.json` beside `--state` | where this mechanism publishes its own last-successful-run marker for the peer's watchdog |
 | `--sla-peer <path>` | from `$MEERKAT_TASKPANEL_SLA_PEER`, else unset | the peer inspector's last-ok marker; a marker older than `3 × P_peer` raises `inspector_liveness`, where `P_peer` is the cadence the marker declares (fallback 15min). Unset ⇒ the peer's half is a registered dependency and nothing alarms |

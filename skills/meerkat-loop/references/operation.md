@@ -82,6 +82,7 @@ Precedence: flag > process env > host config > default.
 | `--acceptance <policy>` | `both` | `human-only` \| `both` \| `agent-only`; **advisory**, the board decides |
 | `--workflow-max-actions <n>` | 20 | writes per workflow pass |
 | `--review-aging-minutes <n>` | 60 | report a review card with no readable verdict this long |
+| `--workflow-ledger <path>` | beside `--state` | workflow alert de-duplication ledger; an unreadable one suppresses nothing |
 | `--subscribe` | off | run the SSE daemon; launchd/systemd only |
 | `--event-continue=yes\|no` | yes | let events wake a continue turn |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
@@ -130,13 +131,19 @@ Rules that make it safe to run unattended:
   conflicting verdict produces an alert and **no write**; the next pass retries.
 - **The verdict is the reviewer's** — a report from anybody else is
   `review_report_not_by_reviewer` and is not applied.
-- **A silent reviewer is reported** — no readable verdict within
-  `--review-aging-minutes` raises `review_aging`. The original's SLA row is
-  suppressed while the review card exists, so this is its only watcher.
+- **A silent reviewer is reported** — an `in_review` review card with an
+  unreadable verdict raises `verdict_unreadable`; a review card that is not
+  `in_review` and has no readable verdict raises `review_aging` after
+  `--review-aging-minutes`. The original's SLA row is suppressed while an
+  **open** review card exists; a closed review card leaves the row as the
+  original's watcher, so a canceled or done review cannot hide it.
 - **The board enforces acceptance** — a refused writer gets
   `ACCEPTANCE_FORBIDDEN`; the loop leaves the review card in place and retries.
 - **The review card is closed last** — a crash between the original's move and
   the card's close is recovered next pass.
+- **A canceled review card ends `canceled`** — from `in_review` it takes the
+  two-hop `in_review → in_progress → canceled`; the loop never records a
+  canceled review as `done`.
 - **A truncated board read dispatches nothing**, and a reviewer equal to the
   card's own assignee is refused (`self_review_not_independent`).
 

@@ -233,6 +233,31 @@ exclusive with `--report-file`) is the audited waiver for one round. Never move 
 card to `done` yourself; a **child** card is closed by a non-human writer. See
 [`references/status-lifecycle.md`](references/status-lifecycle.md#7-acceptance-policy--scope).
 
+A delivery is not the end of the flow: the board dispatches an independent review card for a
+flow-A `in_review` card, applies the reviewer's `VERDICT:`, and accepts or returns it. Under
+`human-only` a top-level `APPROVE` is **held** for a human instead of closing.
+
+## When the card is a review card (flow B)
+
+A card is a review card when `issue get <ref> --json` carries `review_of_id` / `review_round`
+(or `issue candidates --json` carries `review_of` / `review_round`). The `review` label is a
+discovery aid, never the predicate. `meta.flow` absent means flow A; the loop writes
+`meta.flow=B` on the review card it dispatches, and a flow-B card is never reviewed again.
+
+Claim it like any `todo` card, but the work is a review, not a change to the original: read
+the original's description, every acceptance item, the current round's report and evidence,
+the comment trail and (for an epic) its children. Then deliver a report **on this card** whose
+first line is exactly `VERDICT: APPROVE` or `VERDICT: REJECT`; put the findings after that
+line and in `leftovers`. Move neither card — the loop applies the verdict and closes the
+review card.
+
+The review card's `review_round` is the **original's** round being audited; the review card's
+own `delivery_round` is a different number (a fresh card starts at 1). A re-delivery after a
+rejection needs a new review card for the new round.
+
+Full protocol, the two-round model and the acceptance-policy behaviour:
+[`references/review-workflow.md`](references/review-workflow.md).
+
 ## Asking a human, or blocked
 
 - A question for a person is **`awaiting`**, not `blocked` and not a chat message:
