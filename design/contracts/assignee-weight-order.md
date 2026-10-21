@@ -24,7 +24,7 @@
 - **② 推荐权值向量 = `P .30 / 停留 .25 / SLA .20 / 建龄 .10 / 下游解锁 .10 / 严重度 .05`**（Σ = 1.00），每项带**合理区间**与量级依据；量级依据的根 = **归一化到概率单纯形（Σ=1）⇒ 一项权值直接读作「占排序决策的百分比」**，见 **§5**。
 - **③ 合成公式 = 线性加权，配「比值封顶」归一化**（非 §20 的秩归一化，理由见 §6.2，与分页/稳定性直接相关）；**tie-break = 7 级确定性链**，末级落到卡号（唯一）⇒ 排序是**全序**、与 `Array#sort` 是否稳定无关，见 **§6.3**。卡面建议的 `priority → created_at` 先后是链上的第 3、5 级。
 - **④ 交互**：**不设为默认排序**（默认仍是 `sort_order, created_at, …` 的既有确定性序，而 `sort_order` 恒为 0 ⇒ 实际等于创建顺序）；**可选可切换**（`?order=weight` + `?order_debug=1`；**`order_debug` 顺带选中 weight 序且优先于 `order=`**，见 §13.1；能力位 `task_order: "weights-v1"`）；**影响 board（列内）/ list / candidates 候选清单**，**明确不影响 activity（B26 时间线）与 waiting（B27 最久优先）**；筛选不变、分组不变（权重只在组内定序，**永不跨列搬卡**），分页**可下推到 SQL**，见 **§7**。**最重的一条交互**：候选清单的顺序 = supervisor 的**派发优先级**（`src/shared/scheduling.mjs#planTick` 按给定顺序唤醒到并发上限）⇒ 权重向量能改变团队行为，故必须 opt-in + 可回溯（§7.4）。**等待 Terry 拍板的一项**：tier 的先后（§7.1 T0/T1/T2）。
-- **⑤ 边界与风险**共 16 条（§8 R1–R16），含 **4 条**本轮核出的**真陷阱**（v1.2 订正：原列 5 条，`blocked_reason` 一项已不再成立）；**`blocked_reason` 已存在**（迁移 `0016`，commit `f0c95a3`；已进 wire/导出）——v1.0 的否定断言属**基线漂移**（契约基线 `2c85440` 早于该迁移，见 §8 R1 / §14）；前端优先级域是 **5 值含 `none`**、core 是 4 值，而 `priorityRank` 对未知值的兜底是 `medium`（会把 `none` 排到 `low` **之上**）；`depends_on` 在本实现里**不是列**而是 relation 图；SLA 阈值**只存在于团队 `PROTOCOL §⑮`，产品侧未定义**；`blocked_at` **离开 blocked 后不清空** ⇒ S 必须被 `status == "blocked"` 门住（`moveCas` 只在进入时写、从不清除）。另把「超期」「`blocked` 的两义」「依赖不在 wire 上 + 截断先于过滤」单列（R13/R14/R16）。见 **§8**。
+- **⑤ 边界与风险**共 16 条（§8 R1–R16），含 **4 条**本轮核出的**真陷阱**（v1.2 订正：原列 5 条，`blocked_reason` 一项已不再成立）；**`blocked_reason` 已存在**（迁移 `0016`，commit `f0c95a3`；已进 wire/导出）——v1.0 的否定断言属**基线漂移**（契约基线 `2c85440` 早于该迁移，见 §8 R1 / §14）；前端优先级域是 **5 值含 `none`**、core 是 4 值，而 `priorityRank` 对未知值的兜底是 `medium`（会把 `none` 排到 `low` **之上**）；`depends_on` 在本实现里**不是列**而是 relation 图；SLA 阈值**已内化为产品自有契约**（`docs/sla.md` §2；`TASK_ORDER_SLA_HOURS` 取墙钟口径；v1.3 订正：v1.0 时「产品侧未定义」为真，外部阈值已由内化取代）；`blocked_at` **离开 blocked 后不清空** ⇒ S 必须被 `status == "blocked"` 门住（`moveCas` 只在进入时写、从不清除）。另把「超期」「`blocked` 的两义」「依赖不在 wire 上 + 截断先于过滤」单列（R13/R14/R16）。见 **§8**。
 - **⑥ 交付**：本文件（`design/contracts/assignee-weight-order.md`）+ `design/README.md` 一行登记。**未 push**（本 lane 只提交到 `lane/T-20261014-033502-seg1`），见 Report。
 
 ---
@@ -72,7 +72,7 @@
 三点作用域约束（都要在实现里显式，不能靠默认）：
 
 1. **只作用于「有 assignee 的卡」**。未分配池（`assignee_id` 为空）不是任何人的权重序；它在 S3 的候选清单里已有自己的桶（`reason: "unassigned"`），本契约不改。
-2. **只作用于「非终态」卡**。`done` / `canceled` 是终态且不可逆（`PROTOCOL §①`），给它们算权重没有意义；默认过滤已由 `archived_at IS NULL` + 状态筛选承担，权重函数**不**对终态卡给分（给了也只是浪费算力）。
+2. **只作用于「非终态」卡**。`done` / `canceled` 是终态且不可逆（`src/core/domain/status.mjs#TERMINAL_STATUSES`），给它们算权重没有意义；默认过滤已由 `archived_at IS NULL` + 状态筛选承担，权重函数**不**对终态卡给分（给了也只是浪费算力）。
 3. **不含 `epic` / `deploy` 类**（在**领取型**读上）。`src/core/domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS` 已把 `epic`（容器）与 `deploy`（部署卡）排除出自动领取；权重序**不得**把这两类顶到候选清单最前——否则等于绕过那条既有裁定。这是在**领读**上的约束；纯展示读（board/list）可以照常算序，但排序结果不应让 `epic` 因为「挡了很多下游卡」而占据第一屏（用 tier 兜底，§7.1 T1 说明）。
 
 ---
@@ -104,7 +104,7 @@
 | **W** | 停留时长 | 在当前状态已停留的小时数（＝「卡在这一步多久了」） | `tasks.status_changed_at`；**为空回退 `created_at`** | 封顶比值：`min(小时 / 72, 1)` | 停留越久越靠前 | 非终态；**这是「创建时长」的更精确替身**，见 §4.3 |
 | **A** | 建龄 | 自建卡起的小时数（Terry 点名的「创建时长」） | `tasks.created_at` | 封顶比值：`min(小时 / 720, 1)` | 越老越靠前 | 非终态 |
 | **S** | SLA 压力 | 当前状态的已耗时 ÷ 该状态阈值，封顶 | `tasks.blocked_at`（blocked）/ `status_changed_at`（其余）+ **阈值参数表** | 封顶比值：`min(已耗 / 阈值, 1)` | 越接近/越过阈值越靠前 | **仅当该状态有阈值**；无阈值记 `0`（不是跳过、不是 NaN）。阈值见 §5.2 |
-| **B** | 下游解锁 | 本卡完成后能解锁的**未完成**下游卡数（fan-out） | relation `blocks`：`src/core/storage/repositories/relations.mjs#listBlockedBy`（本卡为 `source`），逐个判目标 `status !== done` | `min(下游数 / 3, 1)` | 挡得越多越靠前 | 常态；上限 3，因为 0/1/2/3+ 是全部有意义的档位（`PROTOCOL §①` 限 fan-in ≤ 8、链长 ≤ 8）。⚠ 关系**不在卡列表 wire 上**（见 §8 R16），故实现须用**一次聚合读**、不得逐卡回查（N+1） |
+| **B** | 下游解锁 | 本卡完成后能解锁的**未完成**下游卡数（fan-out） | relation `blocks`：`src/core/storage/repositories/relations.mjs#listBlockedBy`（本卡为 `source`），逐个判目标 `status !== done` | `min(下游数 / 3, 1)` | 挡得越多越靠前 | 常态；上限 3，因为 0/1/2/3+ 是全部有意义的档位（`src/foundation/constants.mjs#TASK_ORDER_CAPS.unblocks = 3`；父卡 fan-in ≤ 8、链长 ≤ 8 是另一组图上限 `RELATION_FANIN_MAX` / `RELATION_CHAIN_MAX`，`blocks` 边本身无度数上限）。⚠ 关系**不在卡列表 wire 上**（见 §8 R16），故实现须用**一次聚合读**、不得逐卡回查（N+1） |
 | **L** | 严重度（**可选，默认关**） | `sev:*` 标签的严重度 | `tasks.labels`（`sev:blocker\|critical\|major\|minor`，词表见 `guides/task-interface.md` §15） | 序数线性：`rank / 3` | 越严重越靠前 | **默认权值 0**（即不参与），直到 labels 词表被机器校验（§8 R9）；无 `sev:` 标签 ⇒ `0` |
 
 **卡面所列字段的逐条核对**（Acceptance ① 要求「取值来源字段」，故必须逐字核实）：
@@ -117,7 +117,7 @@
 | `priority` / `status` | ✔ 同上 | `P` / tier |
 | `labels` | ✔ 同上 | `L`（可选） |
 | `project` | ✔（`project_id`） | 作用域与 tie-break 末级 |
-| `depends_on` | ⚠ **不是列**——它是 relation 表上的 `blocks` 边（`TASK_COLUMNS` 里没有 `depends_on`；`PROTOCOL §①` 的 frontmatter 有它，产品侧落成 relation） | tier T1 与因子 `B` |
+| `depends_on` | ⚠ **不是列**——它是 relation 表上的 `blocks` 边（`TASK_COLUMNS` 里没有 `depends_on`；产品侧以 relation 落地，方向见 `src/core/domain/relation.mjs`） | tier T1 与因子 `B` |
 | `blocked_reason` | ✔ **已存在**（v1.2 订正）——迁移 `0016`（commit `f0c95a3`），`src/core/domain/task.mjs#TASK_COLUMNS` 有列，已进 wire（`src/shared/wire.mjs#COPY_TASK_FIELDS`）/ 导出（`src/core/storage/md/export.mjs`） | **仍不采用**（§8 R1）——但理由已变：v1.0 是「没有这个字段」，v1.2 起是「**采用它 = 设计变更**」（回设计轮，§12 U7）。本卡不改权重公式 |
 
 ### 4.3 一处必须点名的冗余：W 与 A 高度相关，建议只留一个
@@ -152,9 +152,9 @@
 
 ### 5.2 阈值参数表（S 因子的量纲统一）
 
-`S` 唯一需要外部数字的因子。**产品侧没有 SLA 阈值**（全库无 `SLA` 常量，实读），唯一成文阈值在**团队** `PROTOCOL §⑮`。故：阈值**以参数表形式**引入，默认值**照抄 §⑮ 可映射的那几行**，其余**留空 ⇒ 记 0**（诚实：没定义就不假装有）。
+`S` 唯一需要外部数字的因子。v1.0 时产品侧没有 SLA 阈值；**v1.3 订正：SLA 契约已内化**（`docs/sla.md` §2/§3），`src/foundation/constants.mjs#TASK_ORDER_SLA_HOURS` 取其状态可映射行。故：阈值仍**以参数表形式**引入，默认值与 `docs/sla.md` §2 对齐，其余**留空 ⇒ 记 0**（诚实：没定义就不假装有）。
 
-| 卡的状态 | `PROTOCOL §⑮` 对应行 | 默认阈值 | 计时起点 |
+| 卡的状态 | `docs/sla.md` §2 对应行 | 默认阈值 | 计时起点 |
 |---|---|---|---|
 | `blocked` | 「blocked 等待澄清」≤ 2h | **2h** | `blocked_at` |
 | `in_review` | 「确认门等待复核」≤ 4h / 「产品验收排队」≤ 24h | **24h**（取宽口径） | `status_changed_at` |
@@ -163,8 +163,8 @@
 
 **两点必须说清的口径风险**：
 
-- **§⑮ 的阈值是「工作时间」口径**（Asia/Shanghai 09:00–23:00，非工作时段顺延，`PROTOCOL §⑮` 首行）。在一个零依赖的 core 里实现工作日历是**真实的工程量**，而 §⑮ 的顺延规则本是**人工 patrol 的约定**、不是产品时钟。
-  **建议（v1）**：`S` 用**墙钟**耗时，阈值按**墙钟**表达；工作日历列为 **v2 显式扩展**。⇒ 这会在工作时间口径下**提前**报压（夜里的 2h 其实是次日 2h）。**若 Terry 要求严格对齐 §⑮，这是本设计唯一需要新增工程量的地方**，须在实现卡里单列。
+- **`docs/sla.md` §3 的阈值是「工作时间」口径**（Asia/Shanghai 09:00–23:00，非工作时段顺延）。在一个零依赖的 core 里实现工作日历是**真实的工程量**，而该顺延规则本是**人工 patrol 的约定**、不是产品时钟。
+  **建议（v1）**：`S` 用**墙钟**耗时，阈值按**墙钟**表达；工作日历列为 **v2 显式扩展**。⇒ 这会在工作时间口径下**提前**报压（夜里的 2h 其实是次日 2h）。**若 Terry 要求严格对齐 `docs/sla.md` §3，这是本设计唯一需要新增工程量的地方**，须在实现卡里单列。
 - **阈值必须是可配置常量，不得散落在代码里**。落点见 §10.2。
 
 ### 5.3 敏感度：anti-starvation 是一个**可测的**开关，而推荐值恰好坐在它的临界点上
@@ -186,7 +186,7 @@
 建议 Terry 只回答 **3 个问题**，其余按推荐值随包发布：
 
 1. **anti-starvation 要不要**（即 `P` 是否 < `W+A+B+L`）？要 ⇒ 用 `0.30`；不要（优先级必须绝对优先）⇒ `P ≥ 0.46` 或**把优先级提到硬分层里**（§7.1 的备选排法 C）。
-2. **SLA 阈值用谁的口径**？墙钟（v1，省工程量、夜里会提前报压）还是严格对齐 `PROTOCOL §⑮` 的工作时间顺延（需新增工作日历）？
+2. **SLA 阈值用谁的口径**？墙钟（v1，省工程量、夜里会提前报压）还是严格对齐 `docs/sla.md` §3 的工作时间顺延（需新增工作日历）？
 3. **可选项 `L`（sev 标签）开不开**？开则需先接受「labels 词表暂未机器校验」这一前提。
 
 ---
@@ -317,17 +317,17 @@ order  = sort by ( tier ↑, round3(score) ↓, <tie-break 链 §6.3> )
 |---|---|---|---|
 | **R1** | **`blocked_reason`：v1.0 判卡面所列该字段在树中不可得，该断言已失效 ⇒ 漂移** | **该字段已存在**：`src/core/storage/migrations/0016_blocked_reason.sql`（`ALTER TABLE tasks ADD COLUMN blocked_reason TEXT CHECK (blocked_reason IN ('clarify','decision','dependency','out_of_bounds','defect','external','resource','unknown'))`），落地 commit `f0c95a3`（`T-20261014-022254-4`，2026-10-14 06:20）；已进 **wire**（`src/shared/wire.mjs#COPY_TASK_FIELDS` 的 `blocked_reason: "blockedReason"`）、**导出**（`src/core/storage/md/export.mjs`）、**导入**（`md/import.mjs`）与 **写入**（`src/core/storage/repositories/tasks.mjs#moveCas`：进 `blocked` 时写、任何离开即清，与 `awaiting_reason` 同法）。契约基线 `2c85440`（2026-10-14 03:25）**早于**该迁移 ⇒ v1.0 的否定断言**当时为真、其后失效** | 因子表**仍不采用** `blocked_reason`——但**理由已变**：v1.0 是「没有这个字段」，v1.2 起是「**采用它 = 设计变更**，回设计轮由 Terry 定」（见 §12 U7）。**本卡只订正事实**：**不**把 `blocked_reason` 纳入权重公式、**不**改任何排序结论。「为什么被阻塞」现在**有**结构化字段（`blocked_reason`，8 值枚举），与 `awaiting_reason`（E1–E5，属 `awaiting` 不是 `blocked`）**并列但不同轴** |
 | **R2** | **优先级域两侧不一致**：《前端》5 值含 `none`（`test/web/blocks.contract.mjs#DOMAINS.PRIORITY` 冻结、原型 `data-priority="none"` 实有 4 张卡、`web/src/stores/board.js#PRIORITIES` 五值）；《core/存储》4 值（`src/core/domain/enums.mjs#PRIORITIES`），**永远不产出 `none`** | `src/core/domain/priority.mjs#priorityRank` 对**未知值兜底 `medium`** | **潜在陷阱（服务端目前不会踩到，但别把它做出来）**：因为 core 只产出 4 值，服务端算序时 `none` **不会出现**；但只要有人在**五值域**（wire / web / 原型）上复用 `priorityRank`，`none` 会被算成 `medium`（`rank 1`）、**排在 `low`（`rank 0`）之上**——「没定优先级」压过「定为最低优先级」。⇒ **必须另写一张显式全表**覆盖 `none`：`none=.000, low=.000, medium=.333, high=.667, urgent=1.000`，**禁止**复用 `priorityRank` 的 `?? medium` 兜底 |
-| **R3** | **SLA 阈值在产品侧未定义** | 全库无 `SLA` 常量；唯一成文在**团队** `PROTOCOL §⑮`，且是**工作时间**口径 | §5.2 参数表 + 默认值 + 「无对应 ⇒ 记 0」；签核问题 2（墙钟 vs 工作日历） |
+| **R3** | **SLA 阈值已内化，但打分口径仍需拍板**（v1.3 订正：v1.0 时「产品侧未定义」为真） | 阈值表在 `docs/sla.md` §2，`src/foundation/constants.mjs#TASK_ORDER_SLA_HOURS` 取其状态可映射行；`docs/sla.md` §3 是**工作时间**口径，打分表刻意用墙钟 | §5.2 参数表 + 默认值 + 「无对应 ⇒ 记 0」；签核问题 2（墙钟 vs §3 工作日历） |
 | **R4** | **空值 / 缺失字段** | `status_changed_at` 可为空（`""`）；`blocked_at` 仅在 blocked 时有值；`priority` 缺省 `medium`；`labels` 可为 `[]` | 逐因子给**总函数**：`status_changed_at` 空 ⇒ **回退 `created_at`**；`blocked_at` 空 ⇒ 该卡非 blocked，`S` 走 `status_changed_at`；**任何缺失都不产生 `NaN`**（`NaN` 会毒化整个比较器，让 `sort` 输出垃圾——这是 JS 里最典型的排序事故）。**兜底值必须是 `0`（无压力），不是最大值**（否则缺数据的卡会插队） |
 | **R5** | **`score` 随时间变化 ⇒ 序不稳定** | 由定义（`W/A/S` 用 `now`） | 明示：权重序是**时钟相关**的。⇒ ①**默认序不变**（§7.1）；② 纯函数**不读时钟**——`now` 由调用方注入（**照抄** `src/shared/project-order.mjs#rankProjects` 的 `now` 传参惯例），保证同一 `(数据, now)` ⇒ 同一序，可复现、可测 |
 | **R6** | **单调性 ⇒ 无振荡** | 封顶比值对时间是**单调不减**的；tier 只在人类改状态时变 | 给出**一条性质**：固定数据下，一张卡的分**永不因时间流逝而下降** ⇒ 唯一的序变化来自人类动作（改状态/优先级/依赖）。**不会出现 A、B 互相超越的抖动**。这是选择「封顶比值」而非「秩归一化」的附带收益（秩归一化下，别人加卡会让你的分**下降**） |
 | **R7** | **W 与 B27 的 `since` 是两只不同的钟** | W = `status_changed_at`（状态机写入）；B27 的 `since` = 触发评论的 `created_at`，**否则** `updated_at`（`web/src/lib/waiting-queue.js#sinceOf`） | **不得合并**：两者在「刚有人评论过」的卡上会**背离**（W 大、`since` 新）。本契约不改 B27，只在文档里点名，防止实现者顺手复用 |
-| **R8** | **时区 / 时钟** | 全库时间列一律 ISO-8601 UTC 定宽毫秒（`PROTOCOL §①`、`src/shared/wire.mjs`），字典序 = 时间序 | 差值一律 `Date.parse` 后相减，**不做本地时区换算**（v1，墙钟口径）；**负值钳到 0**（时钟回拨 / 未来时间戳 ⇒ 记 `0`，不得产生负分） |
+| **R8** | **时区 / 时钟** | 全库时间列一律 ISO-8601 UTC 定宽毫秒（迁移 `0001_core_tables.sql`；`src/core/domain/task.mjs#toIsoMillis` / `#ISO_MILLIS`），字典序 = 时间序 | 差值一律 `Date.parse` 后相减，**不做本地时区换算**（v1，墙钟口径）；**负值钳到 0**（时钟回拨 / 未来时间戳 ⇒ 记 `0`，不得产生负分） |
 | **R9** | **可选因子 `L` 依赖一张未机器校验的词表** | `sev:` 词表在 `guides/task-interface.md` §15，是**约定**不是 schema；`labels` 本身自由文本 | 默认**关**（权值 0）；要开需先接受这个前提（签核问题 3） |
 | **R10** | **`epic` / `deploy` 被权重序顶到最前** | `src/core/domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS` 排除它俩；`deploy` 的排除还是**当天的裁定**（`da20acc`） | 领取型读里**沿用**既有的 kind 过滤（不得绕过）；展示型读里 `epic` 多半会因为「挡下游多」拿高 `B`——用 tier 与既定列集兜住，并在实现卡的测试里**显式**断言「epic 不在候选清单首位」 |
 | **R11** | **可解释性：为什么这张排第一** | 有 `order_debug` 投影，但**客户端默认看不到** | `order_debug=1` 返回逐卡 `{ tier, factors: {raw, normalised, weighted}, score, rank }`。**不做**「人话解释」的自动生成（那是文案工程，会引入新的 i18n 键与原型面，越界） |
 | **R12** | **性能 / 规模** | `tasks.mjs#list` 是 `LIMIT ? OFFSET ?`，有 `ix_tasks_board (project_id, status, sort_order)`；本契约的排序键是**表达式**，**既有索引不覆盖**它 | **诚实结论**：权重序是一次**全筛选集排序**（`O(n log n)`），`sort_order` 索引只能加速过滤、**加速不了这个键**。可接受的前提是**作用域足够窄**（单个 assignee 的卡，几十张量级）。**若要在整个项目上跑，需要一次真实测量**——本 lane 未测（未进容器、未起 `taskd`），这一条**必须**由 C2 的实现卡补上测量，或由配套调研卡（`T-20261014-033502-2`）的 §4 结论接续。<br>**已测 —— v1.1 回填，关闭 §12 U6**：C2 实现卡（`T-20261014-043124`）新增 `test/core/commands/task-order-scale.test.mjs`：**1004 张卡的单项目**（4 个 assignee 轮转、创建时间散布 60 天），各取 3 次中位数。作者 host 实测 **整项目板序 8.0 ms / 权重序 14.3 ms / 首页 50 张 10.7 ms**；同卡独立验证腿（`T-20261014-043124-2`）另跑 **6.9 / 12.6 ms**；本订正 lane 今日 host 复跑 **5.7 / 9.8 ms、首页 50 张 8.2 ms**（`node --test`，宿主允许项，见 `docs/docker.md` §Host-allowed checks）。⇒ **定性预判成立**（全筛选集排序、既有索引不加速该键），但**千卡量级仍是十毫秒级**，且只在显式 `order=weight` 时付出；默认序走 SQL 索引，**零成本**。**两条附注**：① 这是**宿主**测量、非容器测量，且随负载浮动 ⇒ 只记**量级与区间**（十毫秒级），不把某一次读数写成常数；② `order_debug=1` 的投影覆盖**整个 ranking**（§13.2），诊断读的成本随整个作用域增长 ⇒ **不要把 `order_debug` 放进轮询路径** |
-| **R13** | **超期（overdue）** | `S` 是**封顶比值**，`min(已耗 / 阈值, 1)` ⇒ **越过阈值后不再加分** | **这是刻意的决定，不是遗漏**。理由：① 超期后仍然继续加分，会让一张极度超期的卡**永久钉在第一**，把 anti-starvation 变成新形式的饥饿（饿死的是「重要但不超期」的活）；② 超期的**语义变化**（从「有压力」到「已违约」）是**另一类信号**，应由**告警/巡检**承担（`monitoring/`、`PROTOCOL §⑮` 的 patrol），不该塞进排序权重。⇒ 超期卡靠 `S = 1.0` **进第一梯队**，但**不靠继续加分**赢过所有人。若 Terry 要「越期越狠」，那要**新增**一个独立因子（如「超期倍数，另设封顶」），本契约不预置 |
+| **R13** | **超期（overdue）** | `S` 是**封顶比值**，`min(已耗 / 阈值, 1)` ⇒ **越过阈值后不再加分** | **这是刻意的决定，不是遗漏**。理由：① 超期后仍然继续加分，会让一张极度超期的卡**永久钉在第一**，把 anti-starvation 变成新形式的饥饿（饿死的是「重要但不超期」的活）；② 超期的**语义变化**（从「有压力」到「已违约」）是**另一类信号**，应由**告警/巡检**承担（`monitoring/`、`docs/sla.md` 定义的 patrol），不该塞进排序权重。⇒ 超期卡靠 `S = 1.0` **进第一梯队**，但**不靠继续加分**赢过所有人。若 Terry 要「越期越狠」，那要**新增**一个独立因子（如「超期倍数，另设封顶」），本契约不预置 |
 | **R14** | **`blocked` 一词有两个所指，必须分清** | ① `tasks.status == "blocked"`（卡自己声明的阻塞，`blocked_at` 计时）；② 「有未完成的 `depends_on` 前置」（卡被别的卡挡住，**状态可能仍是 `todo`**） | 两者**进的是同一层 T1**（都是「停滞、要自己出手」），但**取的是不同字段**：① 读 `status` + `blocked_at`；② 读 relation `blocks`。**不得**用「`status == blocked`」去近似「有未完成前置」（大量被依赖卡住的卡状态仍是 `todo`，实读 `listCandidates` 的 `allBlockersDone` 就是为这一类做的硬过滤） |
 | **R15** | **`blocked_at` 离开 blocked 后不清空**（它是「最近一次进入 blocked 的时刻」，`src/core/storage/repositories/tasks.mjs#moveCas` **只在 `to === "blocked"` 时写入、任何离开都不清**） | 同左（实读 `moveCas`：`if (to === "blocked") { sets.push("blocked_at = ?") }`，未见清除分支；对比 `awaiting_reason` 是**每次 move 都重写**、离开即清） | **S 因子的 `blocked_at` 分支必须被 `status == "blocked"` 严格门住**。若实现漏了这个门，一张「三个月前被阻塞过一次、早已解阻」的卡会带着三个月前的时间戳拿到 `S = 1.0` 而插到最前——**静默、无报错**。⇒ 实现与 C3 都要有一条断言：「非 blocked 卡的 `S` 只走 `status_changed_at`」 |
 | **R16** | **卡列表 wire 不携带依赖数**，且既有候选读**先截断再过滤** | 关系是 `task_relations` 的 `blocks` 边，**不在**卡列表的 wire 字段里（`src/shared/wire.mjs#taskToWire` 无此字段）；`src/core/commands/tasks.mjs#listCandidates` 是 `list({status:"todo"})`（**默认 `limit = 200`**）**之后**才在 JS 里按 assignee 过滤 | ① `B` 因子**必须**用一次**面向该作用域的聚合读**（`listBlockedBy` 按卡批量取），**不得**逐卡回查（N+1）；② **截断先于过滤**是**既有**的缺陷，不是本契约引入的——但权重序若建在截断后的集合上，就会「在错的一页里排得整整齐齐」。⇒ C2 的实现卡**必须**把读的**作用域（assignee/project + status）下推到 SQL**，再在**未截断的**集合上排序/分页（这正是 §6.2 选逐卡归一化的收益），并把这条列为一条**独立断言**。**v1.1：已落地**（`T-20261014-043124`），见 §7.3 与 §12 U9 |
@@ -477,7 +477,7 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 | E2 | 卡面 Background「可用数据面」 | 把 `depends_on` 列为字段；本实现里它是 **relation 的 `blocks` 边**，不是列 | 本契约按 relation 图取值；见 §4.2 核对表 |
 | E3 | `DESIGN.md` §20 / `BLOCKS.md` / `constants.mjs` | 引 `ARCHITECTURE §4.6` 为权威，但**树里没有 `ARCHITECTURE.md`** | 本契约改引 `DESIGN.md §20` + `src/shared/project-order.mjs`；§4.6 的引用链当时是**文档债**（建议另开一张 doc-sync 卡）。**已由 `T-20261014-042518` 修复**：全仓 §4.6 引用 → `DESIGN.md` §20，`ARCHITECTURE.md` 家族 → `docs/README.md` 的存在性说明 |
 | E4 | 前端域 vs core 域 | 优先级前端 5 值（含 `none`，被 `DOMAINS.PRIORITY` 冻结）vs core 4 值 | 本契约用显式全表；见 §8 R2 |
-| E5 | 卡面 Background「SLA 阈值口径 = `PROTOCOL §⑮`」 | §⑮ 是**团队**协议（工作时间口径、人工 patrol），**不是产品阈值** | 本契约把阈值做成**参数表 + 墙钟默认**，并把它列为签核问题 2；见 §5.2 |
+| E5 | 卡面 Background「SLA 阈值口径 = 外部团队表」 | 该外部表已内化为 `docs/sla.md` §2/§3（commit `a4cc5e4`），产品侧 `TASK_ORDER_SLA_HOURS` 取状态可映射行 | 本契约把阈值做成**参数表 + 墙钟默认**，并把它列为签核问题 2；见 §5.2 |
 | E6 | 原型（oracle） | 本议题在原型上**完全空地**（只有项目序被烤进侧栏） | 本契约的验证判据全部落在纯函数/服务端；**若 Terry 要 UI toggle，需先开一个设计轮次动原型**；见 §2 |
 | E7 | 卡面 Acceptance ③ 的 tie-break 示例 | 写的是「priority → created_at 先后」 | 本契约把它落成链上的第 3、5 级，并在其后补 3 级（含复用既有 `ORDER BY` 末两键）；**是对卡面的细化，不是改动** |
 | E8 | 配套输入卡 `T-20261014-033502-2`（Linus，只读盘点）的 Report | 与本契约**结论一致**的三条独立佐证：`sort_order` 无写入方；权重须服务端算（`LIMIT` 在 `ORDER BY` 之后 + md 导出复用同一 `ORDER BY` + `planTick` 按序唤醒）；`blocked_reason` 的可得性（**第三条已由 v1.2 订正**：该字段**已存在**，见 §8 R1）。另给出**本契约已吸收**的两条：候选读**先截断 200 再过滤**（§8 R16）、`blocked_at` **不清空**（§8 R15） | 本契约按符号名**自行复核**了这三条（`grep sortOrder` / `repositories/tasks.mjs#list` / `scheduling.mjs#planTick` / `repositories/tasks.mjs#moveCas`）后才采信；其为**实读+合成基准**，本 lane **未跑**它的 `bench-weight-sort.mjs`（未进容器）。⇒ v1.0 时 §8 R12 的性能结论标为「未测」；**v1.1 已回填**（由 `T-20261014-043124` 的规模用例补测，见 §8 R12 与 §14） |
@@ -492,6 +492,7 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 2. **改动** `design/README.md`：仅把「The first one is `contracts/project-prefix-binding.md` …」一句改成 **They are … and …** 的两项并列（`+3 −2` 行）。目录树里 `contracts/` 一行**本来就有**（上一契约留的），未动；**其余一字未改**。
 3. **v1.1 订正**（另一 lane，doc-only；写面同样限 `design/contracts/**`）：本文件内的 §0 ④（一句）、§4.1（补 T3 收口行）、§6.2 / §7.1 / §7.3（登记 (a) 三项口径；§7.3 另记「先截断后过滤」的收口）、§8 R12（回填实测、关闭 U6）、§8 R16（标注已落地）、§9.1 / §9.2 / §9.4 / 新增 §9.5（`awaiting` 笔误订正与复核）、§11 E8（去陈旧「未测」）、§12 U6 与 U9（关闭），以及新增的 §13 / §14。**未新增文件**；`design/README.md`、`DESIGN.md`、`BLOCKS.md`、`design/prototype/**`、`src/**`、`web/**`、`test/**` **一字未动**。逐条见 §14。
 4. **v1.2 订正**（又一 lane，doc-only；写面同样限 `design/contracts/**`）：本文件内的 §0 ⑤（一条）、§4.2 核对表（`blocked_reason` 行）、§8 R1（三栏重写）、§11 E1 / §11 E8（`blocked_reason` 一条）、§12 U7（前提已满足、归属改为设计轮）、以及本清单第 4 条与 §14。订正的是**事实**（该字段已存在）；**权重公式 / 因子集 / 排序结论一字未动**。**未新增文件**；其余路径一字未动。逐条见 §14。
+5. **v1.3 订正**（2026-10-22，doc-only；写面同样限 `design/contracts/**`）：清除对本仓库外部协议文档章节号的引用，改指产品自有权威（`docs/sla.md`、`status.mjs`、`relation.mjs`、`constants.mjs`、迁移 0001）；订正三处已随 SLA 内化失效的「产品侧无 SLA 阈值」断言（§0 ⑤、§5.2、§8 R3）；R8 的陈旧 `src/shared/wire.mjs` 改指 `src/foundation/wire.mjs`（文内其余 `src/shared/*` 陈旧路径不在本次写面）。**权重公式 / 因子集 / 排序结论一字未动**。逐条见 §14。
 
 **未改动**：`DESIGN.md`、`BLOCKS.md`、`fidelity-*.md`、`design/prototype/**`、`src/**`、`web/**`、`test/**`。**本卡不含实现代码**（卡面 ⑥）。
 
@@ -501,7 +502,7 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 |---|---|---|
 | U1 | tier 的层序（§7.1 排法 A/B/C） | **Terry / Elon**（§5.4 问题 1 的一部分） |
 | U2 | anti-starvation 要不要（`P` 的 0.30 vs ≥0.46 vs 提层） | **Terry**（§5.4 问题 1）— 杠杆点 = `wP ≈ 0.2987` |
-| U3 | SLA 阈值口径：墙钟（v1）vs `PROTOCOL §⑮` 工作时间顺延 | **Terry**（§5.4 问题 2） |
+| U3 | SLA 阈值口径：墙钟（v1）vs `docs/sla.md` §3 工作时间顺延 | **Terry**（§5.4 问题 2） |
 | U4 | 可选因子 `L`（sev 标签）开不开 | **Terry**（§5.4 问题 3） |
 | U5 | 三步校准的**实际执行**（需要板历史 + 人类标注） | **Elon 排期**（§5.3，本 lane 未跑） |
 | U6 | ~~权重序在**整项目规模**上的性能测量~~ —— **已关闭（v1.1）** | ~~**C2 实现卡**（§8 R12）~~ 由 `T-20261014-043124` 补测（`test/core/commands/task-order-scale.test.mjs`，1004 卡），v1.1 回填 §8 R12 |
@@ -629,6 +630,28 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 **未改（一字未动）**：§1–§3、§4.1、§4.2 的**软权重因子表**（因子集 / 归一化 / 方向）与 §4.3、§5（权值向量 / 区间 / §5.2 阈值表 / §5.3 校准 / §5.4 **仍为 3 个问题**）、§6（合成公式与 tie-break）、§7、§8 其余 15 条、§9（样例与敏感度，含 v1.1 的 A6 订正）、§10（C2 落点 / C3 的 10 条断言）、§11 E2–E7、§12 U1–U6 / U8–U10、§13；以及 `DESIGN.md`、`BLOCKS.md`、`design/README.md`、`README.md`、`README.zh-CN.md`、`fidelity-*.md`、`design/prototype/**`、`src/**`、`web/**`、`test/**`。**零实现代码**（卡面 ③）。
 
 **证据分级（按 §1）**：本节「已存在」是**实读**——本 lane 逐符号读了 `src/core/storage/migrations/0016_blocked_reason.sql`、`src/shared/wire.mjs#COPY_TASK_FIELDS`、`src/core/storage/md/export.mjs` / `import.mjs`、`src/core/storage/repositories/tasks.mjs#moveCas`、`src/core/domain/task.mjs#TASK_COLUMNS` / `blocked-reason.mjs` / `enums.mjs#BLOCKED_REASONS`，并以 `git merge-base --is-ancestor` 核**`f0c95a3` 已进本 lane 基线**。**边界照旧**：本 lane **未**起 `taskd`、**未**构建 `web/dist`、**未**驱动浏览器、**未**进容器——改动**纯文档**。
+
+### v1.3 —— 2026-10-22（doc-only；写面 `design/contracts/**`）
+
+**一句话**：清除对本仓库外部协议文档章节号的引用，改指产品自有权威；订正三处已随 SLA 内化失效的「产品侧无 SLA 阈值」断言。**权重公式、因子集、排序结论一字未动。**
+
+**为什么**：装完 npm 包的读者打不开外部章节锚；且 `a4cc5e4` 已把 SLA 契约内化为 `docs/sla.md`，`threshold_ref` 现在指向该文档，旧断言不再成立。
+
+| 处 | 订正 / 登记 | 依据 |
+|---|---|---|
+| §0 ⑤ | SLA 阈值由「只存在于外部团队表、产品侧未定义」改为 `docs/sla.md` §2 + `TASK_ORDER_SLA_HOURS` | `docs/sla.md`、commit `a4cc5e4` |
+| §4.1 约束 2 | 终态依据改为 `status.mjs#TERMINAL_STATUSES` | 源码 |
+| §4.1 因子 B | 上限 3 改指 `TASK_ORDER_CAPS.unblocks`；区分父卡 fan-in / 链长上限与 `blocks` 无度数上限 | `constants.mjs` |
+| §4.2 核对表 | `depends_on` 依据改为 `relation.mjs` 的产品实现说明 | 源码 |
+| §5.2 | 阈值来源与工作时间口径改指 `docs/sla.md` §2/§3；表头同步 | `docs/sla.md` |
+| §5.4 问题 2 | 改指 `docs/sla.md` §3 | 同上 |
+| §8 R3 / R8 / R13 | R3 改为「已内化、口径待拍板」；R8 时间戳依据改为迁移 0001 + `task.mjs`；R13 patrol 依据改为 `docs/sla.md` | 源码 / 文档 |
+| §11 E5、§12 U3 | 改指 `docs/sla.md` | 同上 |
+| §12 | 写面清单加第 5 条 | — |
+
+**未改（一字未动）**：因子定义、权重向量、合成公式、tie-break、§7 交互、§9 样例数字、§10 的 C3 断言、§13 口径登记。文内其余 `src/shared/*` 路径是 v1.0 基线的系统性陈旧，不在本次写面；只修了与本次引用相邻的 R8。
+
+**证据分级**：本节为**实读**（逐符号读了 `docs/sla.md`、`src/foundation/constants.mjs`、`src/core/domain/{status,relation,task}.mjs`、迁移 0001）；**未**起 `taskd`、**未**进容器——改动**纯文档**。
 
 ### v1.0 —— `T-20261014-033502`（基线 `2c85440`）
 

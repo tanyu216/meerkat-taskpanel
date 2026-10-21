@@ -1464,8 +1464,8 @@ function copyId() {
           <span v-else-if="dependsDraft.length === 0" class="text-xs text-(--brand-text-3)" data-i18n="relations.none">{{ $t("relations.none") }}</span>
         </div>
 
-        <!-- T-20261014-212017-3 §4.4 — `depends_on` ⇄ the `blocks` edge
-             (PROTOCOL §①). The card's prerequisites are an editable multi-select
+        <!-- T-20261014-212017-3 §4.4 — `depends_on` ⇄ the `blocks` edge.
+             The card's prerequisites are an editable multi-select
              of this project's cards; the value the control holds is each
              prerequisite's **identifier**, and the store resolves it to a task id
              to write the edge (`stores/board.js#addDepends`). A cycle, a

@@ -1481,7 +1481,7 @@ export async function run() {
     // fallback (that one prints the bare lowercase enum word).
     // T-20261014-212017-3 §4.4 — `Blocks` is no longer one of these rows. The
     // card's `depends_on` is an editable chip control of its own (the `blocks`
-    // edge, PROTOCOL §①), and the read-only row was withdrawn so the same fact
+    // edge), and the read-only row was withdrawn so the same fact
     // has one source. `parent` and `related` stay read-only, which is what this
     // reader still walks.
     const R14_RELATION_ROWS = ["Parent · PROJ-0007", "Related · TD-4"];

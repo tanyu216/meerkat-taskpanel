@@ -13,7 +13,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `docs/sla.md` is now the single source of truth for the threshold table, the tier ladder,
   the 09:00–23:00 Asia/Shanghai working-hours basis, the 26-field alert tuple, the
   de-duplication ledger, the pre-emit re-check and the peer-inspector marker format. The
-  external `PROTOCOL §⑮` / `team/guides` citations are gone from the live surface; `SLA_ROWS`
+  external SLA anchors / `team/guides` citations are gone from the live surface; `SLA_ROWS`
   references the document, and a test pins the two together. `confirm_request` is a new
   comment kind (migration `0030`) that opens a confirmation gate at high confidence; the
   legacy `[confirm-request]` marker and prose shape remain as fallbacks, and only a
@@ -96,6 +96,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The external protocol document's name is gone from the tree.** The remaining external
+  section anchors have been rewritten to the product's own sources: creation idempotency to
+  `src/core/README.md`, SLA thresholds to `docs/sla.md` §2/§3, relation caps to
+  `RELATION_FANIN_MAX` / `RELATION_CHAIN_MAX`, terminal states to `status.mjs`, and timestamps
+  to migration `0001` / `task.mjs`. Prototype and design-contract comments were rewritten too;
+  the only retained literal is the historical raw-output block in
+  `design/contracts/naming-boundary.md` §9, plus the negative guard in
+  `test/scheduling/sla-patrol.test.mjs`. No gate was changed.
 - **The SLA patrol reads what the board and the peer actually say.** Five correctness fixes:
   the inspector boundary now uses the cadence a peer declares in its last-ok marker (fallback
   15 min) instead of a hard-coded one; an acceptance wait on a capped board read is still
@@ -287,8 +295,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   on an allowlist), or one of the framework's **internal mechanism names**. What it
   deliberately does *not* ban is the larger half: framework names that name somebody else's
   thing, attributed and not used as our own — the project name, the interface-generation
-  codename the loop declares, and the protocol anchors the SLA patrol publishes as a wire
-  field and the test suite asserts. Its one exemption
+  codename the loop declares, and the external SLA anchors the patrol then published as a
+  wire field and the test suite asserted. Its one exemption
   (`test/fixtures/framework-signposts-allowlist.json`) is keyed by `{file, rule}` rather than
   by file, so that the contract which must write the forbidden terms is not thereby also
   allowed to spell the store path. It runs in `npm run verify`, in `.githooks/pre-push`
@@ -482,8 +490,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   appear in this repository, and laid out a three-batch cleanup plus independent acceptance
   criteria. It was written on 2026-10-14, **never double-signed, and never executed**: when
   it was reviewed on 2026-10-17 the sign-off boxes were still empty, two of its five criteria
-  had never held (the protocol anchors are *published* data — a wire field the SLA patrol
-  emits and the suite asserts — and the framework's project name is a sanctioned pointer),
+  had never held (the external SLA anchors were *then* published data — a wire field the
+  patrol emitted and the suite asserted — and the framework's project name is a sanctioned
+  pointer),
   and the vocabulary it meant to shrink had grown from 6 files to 29. It is now marked
   **retired and narrowed**: the batch plan and the criteria are kept as history, a current-state
   table says where each framework word legitimately lives today, and only two bans remain

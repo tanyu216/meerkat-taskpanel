@@ -2210,7 +2210,7 @@
        out from under the card it belongs to. */
 
     /* depends_on. The card's `blocks` relation and this control are the same
-       fact (PROTOCOL §①), so the card is the seed: each read-only link becomes
+       fact, so the card is the seed: each read-only link becomes
        a chip, and the row that carried them goes — one fact, one source, from
        here on the chips. */
     var $dependsInput = $drawer.find("[data-detail-depends-input]");
@@ -2254,8 +2254,8 @@
         .attr("aria-selected", "true");
     });
 
-    /* Read-only. A terminal card — `done` or `canceled` — is not reversible
-       (PROTOCOL §①), so the drawer shows it and offers no way to move it: every
+    /* Read-only. A terminal card — `done` or `canceled` — is not reversible,
+       so the drawer shows it and offers no way to move it: every
        edit affordance is disabled together, from one list, so a control added
        later has one place to be enrolled. Elon's reopen is a privileged path
        and is deliberately not part of this surface. */
@@ -2917,8 +2917,8 @@
     },
     /* T-20261014-212017-3 — the drawer's own prerequisite control: the same
        multi-select relation combo the create dialog carries (B24), pointed at
-       this surface's hook family. `depends_on` is the `blocks` relation
-       (PROTOCOL §①), which is why its label is `relations.blocks`. */
+       this surface's hook family. `depends_on` is the `blocks` relation,
+       which is why its label is `relations.blocks`. */
     detailDepends: {
       roster: taskRoster,
       input: "[data-detail-depends-input]",

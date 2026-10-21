@@ -46,6 +46,14 @@ Exactly these 23 keys, in this order. Anything else rides in `meta_json.legacy` 
 | `parent` | This card's parent. | A single card id; the parent is an `epic`. |
 | `notify_leader` | Tell the leader this card needs attention. | Kept verbatim in `meta_json`; the board preserves it and does not act on it. |
 
+### Relation caps
+
+`depends_on` is not a column: it is a `blocks` relation whose **source is the blocker**. The
+parent/child graph is bounded — a card has at most one parent, a parent holds at most **8**
+children (`RELATION_FANIN_MAX`), and a parent/child chain is at most **8** deep
+(`RELATION_CHAIN_MAX`). Cycles are refused, and an ancestor and its descendant may not also
+carry a `blocks` edge. A `blocks` edge itself has **no degree cap**.
+
 ### The status machine
 
 - **The card carries the stored status**, always in its canonical spelling.

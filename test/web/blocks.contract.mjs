@@ -1672,7 +1672,7 @@ const BLOCKS = [
       // driven pass, where a card with files is actually open.
       { kind: "count", selector: "[data-attachment-upload]", within: "[data-detail-attachments-section]", equals: 1 },
       { kind: "count", selector: "[data-attachment-file]", within: "[data-detail-attachments-section]", equals: 1 },
-      // ④ depends_on — one chip control over the `blocks` edge (PROTOCOL §①).
+      // ④ depends_on — one chip control over the `blocks` edge.
       { kind: "count", selector: "[data-detail-depends-input]", within: "[data-detail-depends]", equals: 1 },
       { kind: "count", selector: "[data-detail-depends-menu]", within: "[data-detail-depends]", equals: 1 },
       { kind: "count", selector: "[data-detail-depends-chips]", within: "[data-detail-depends]", equals: 1 },

@@ -1,7 +1,8 @@
 /**
  * Idempotency keys for task creation — the *mechanical* backstop.
  *
- * L1 reading: `PROTOCOL §㉙` + `guides/task-interface.md §14`. The key is
+ * The rule is stated in full in `src/core/README.md` §Creation idempotency
+ * (provenance: `guides/task-interface.md` §14). The key is
  * `<kind> | <assignee> | <source> | <target>` (each field `String(x).trim()`,
  * joined with a single space-padded pipe, exactly as the md base derives it so
  * the two bases agree on the same card). `source` is `review_of`, else `parent`,

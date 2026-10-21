@@ -55,7 +55,8 @@ Rules that are enforced, not just documented:
 
 Two agent turns can race to create the same card. The defence has two layers,
 and the ordering matters: the mechanical key below is a **backstop**, not the
-gate. L1 reading: `PROTOCOL §㉙` + `guides/task-interface.md §14`.
+gate. The rule is stated in full below and implemented by `domain/idem.mjs`;
+provenance: `guides/task-interface.md` §14.
 
 **1 — Main gate: read before you create (semantic, an LLM does it).** Before
 creating a card, the creator reads the existing **non-terminal** cards —

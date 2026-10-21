@@ -495,8 +495,10 @@ export const TASK_ORDER_SEVERITY_ENABLED = false;
  * `min(value / cap, 1)`: a card's score depends on that card alone, which is
  * what lets the order be paginated and keeps one card's arrival from re-scoring
  * everybody else. `dwell`/`age` are hours; `unblocks` is a count of open
- * downstream cards, capped at 3 because `0/1/2/3+` are the only meaningful
- * buckets (`PROTOCOL §①` limits fan-in and chain length to 8).
+ * downstream cards, capped at 3 by `TASK_ORDER_CAPS.unblocks` below because
+ * `0/1/2/3+` are the only meaningful buckets (the relation graph itself caps
+ * parent fan-in and chain length at 8 — `RELATION_FANIN_MAX` /
+ * `RELATION_CHAIN_MAX`).
  */
 export const TASK_ORDER_CAPS = Object.freeze({ dwellHours: 72, ageHours: 720, unblocks: 3 });
 
