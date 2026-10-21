@@ -281,6 +281,7 @@ describe("commands/comments", () => {
       const task = commands.createTask({ projectId: "proj", title: "one", actor: AGENT });
       commands.addComment({ taskId: task.id, body: "ship it", kind: "confirm", actor: HUMAN });
       commands.addComment({ taskId: task.id, body: "noted", kind: "note", actor: AGENT });
+      commands.addComment({ taskId: task.id, body: "please confirm", kind: "confirm_request", actor: AGENT });
       const decisions = commands.listDecisions({ taskId: task.id });
       // author_id is an actor id since 0020 — the trail still reads as the person.
       assert.deepEqual(decisions.map((c) => actorName(db, c.authorId)), ["Terry"]);

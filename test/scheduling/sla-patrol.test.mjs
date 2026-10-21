@@ -1,6 +1,7 @@
 /**
- * The SLA patrol (`PROTOCOL §⑮`), the loop's half of the shared inspection
- * contract (`team/guides/sla-inspection-contract.md`, "C1").
+ * The SLA patrol — the loop's half of the repository's own SLA contract
+ * (`docs/sla.md`), which is the single source of truth for the thresholds,
+ * the tier ladder, the working-hours basis and the de-duplication rules.
  *
  * What is asserted here, and why each one is a counter-proof rather than a
  * smoke test:
@@ -19,12 +20,15 @@
  *   * **fail-safe** — an unreadable origin alerts instead of going green, and a
  *     dropped candidate is always reported.
  *
- * Pure: no clock of its own, no board, no filesystem.
+ * The decision tests are pure: no clock of its own, no board, no filesystem.
+ * The one exception is the contract-document test at the end, which reads
+ * `docs/sla.md` so the prose and `SLA_ROWS` cannot drift apart.
  *
  * Run with: node --test
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
@@ -33,6 +37,7 @@ import {
   PEER_LIVENESS_K,
   PEER_PERIOD_MIN,
   SLA_ROWS,
+  WORKING_WINDOW,
   addWorkingMinutes,
   alertIdFor,
   blockedReasonOf,
@@ -40,6 +45,7 @@ import {
   elapsedWorkingMinutes,
   emptySlaLedger,
   findConfirmRequest,
+  leaderAttributionWarning,
   looksLikeConfirmRequest,
   partitionSlaAlerts,
   planSlaPatrol,
@@ -98,8 +104,8 @@ function card(fields) {
   };
 }
 
-function plan(cards, { trails = {}, now = NOW, periodSeconds = PERIOD_SECONDS } = {}) {
-  return planSlaPatrol({ cards, trails, now, periodSeconds, mechanismHost: "claude/linus" });
+function plan(cards, { trails = {}, now = NOW, periodSeconds = PERIOD_SECONDS, ...rest } = {}) {
+  return planSlaPatrol({ cards, trails, now, periodSeconds, mechanismHost: "claude/linus", ...rest });
 }
 
 const rowsOf = (result) => result.alerts.map((alert) => alert.sla_row).sort();
@@ -135,6 +141,18 @@ describe("elapsedWorkingMinutes (the measurement basis, §6.4)", () => {
     assert.equal(a, 120);
   });
 
+  it("pins the window and counts every calendar day — there is no weekend calendar", () => {
+    // The contract is deliberately daily: 09:00–23:00 in Asia/Shanghai, every
+    // day of the week. 2026-10-17 is a Saturday; 10:00 → 12:00 local counts.
+    assert.deepEqual(WORKING_WINDOW, {
+      zone: "Asia/Shanghai",
+      offsetMinutes: 480,
+      startHour: 9,
+      endHour: 23,
+    });
+    assert.equal(elapsedWorkingMinutes("2026-10-17T02:00:00.000Z", "2026-10-17T04:00:00.000Z"), 120);
+  });
+
   it("returns null for an unreadable origin — the caller must not read that as fresh", () => {
     assert.equal(elapsedWorkingMinutes(null, NOW), null);
     assert.equal(elapsedWorkingMinutes("not-a-date", NOW), null);
@@ -165,13 +183,14 @@ describe("addWorkingMinutes (display-only due_at, §4 #13)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Thresholds — the runtime mapping table carries PROTOCOL §⑮, never a new number
+// Thresholds — the runtime mapping table carries docs/sla.md, never a new number
 // ---------------------------------------------------------------------------
 
-describe("SLA_ROWS (the §⑮ runtime mapping table, hook H6)", () => {
-  it("pins every published limit to its §⑮ value, with the reference beside it", () => {
-    // These are PROTOCOL §⑮'s numbers, transcribed once, here, with the row they
-    // come from. If L1 ever moves one, this test is where the drift shows up.
+describe("SLA_ROWS (the docs/sla.md runtime mapping table, hook H6)", () => {
+  it("pins every published limit to its contract value, with the reference beside it", () => {
+    // These are docs/sla.md §2's numbers, transcribed once, here, with the row
+    // they come from. If the contract ever moves one, this test is where the
+    // drift shows up.
     const published = {
       blocked_clarification: [120, 1440],
       confirmation_gate: [240, 1440],
@@ -183,10 +202,17 @@ describe("SLA_ROWS (the §⑮ runtime mapping table, hook H6)", () => {
     for (const [row, [limit, further]] of Object.entries(published)) {
       assert.equal(SLA_ROWS[row].limitMin, limit, `${row} normal limit`);
       assert.equal(SLA_ROWS[row].furtherMin, further, `${row} further timeout`);
-      assert.match(SLA_ROWS[row].ref, /^PROTOCOL §⑮/);
-      assert.match(SLA_ROWS[row].thresholdRef, /^PROTOCOL §⑮/);
-      assert.doesNotMatch(SLA_ROWS[row].ref, /:\d+/, "no line-number anchors (§⑥.1 #11)");
+      assert.match(SLA_ROWS[row].ref, /^docs\/sla\.md §/);
+      assert.match(SLA_ROWS[row].thresholdRef, /^docs\/sla\.md §/);
+      assert.doesNotMatch(SLA_ROWS[row].ref, /:\d+/, "no line-number anchors (§4)");
     }
+  });
+
+  it("names no external document anywhere in the table", () => {
+    assert.doesNotMatch(
+      JSON.stringify(SLA_ROWS),
+      /PROTOCOL|§⑮|sla-inspection-contract|team\/guides/,
+    );
   });
 
   it("says which code path covers each row, including the rows it does not emit", () => {
@@ -201,9 +227,31 @@ describe("SLA_ROWS (the §⑮ runtime mapping table, hook H6)", () => {
     }
   });
 
-  it("exposes the §⑮ stamp for a row, and nothing for an unknown one", () => {
-    assert.match(slaRowRef("blocked_clarification"), /PROTOCOL §⑮/);
+  it("exposes the in-repo contract stamp for a row, and nothing for an unknown one", () => {
+    assert.match(slaRowRef("blocked_clarification"), /^docs\/sla\.md §/);
     assert.equal(slaRowRef("nonsense"), null);
+  });
+
+  it("keeps docs/sla.md in step with the table", () => {
+    // The document is the human contract; this is the machine check that it
+    // still carries every row and every published number.
+    const doc = readFileSync(new URL("../../docs/sla.md", import.meta.url), "utf8");
+    for (const [row, spec] of Object.entries(SLA_ROWS)) {
+      assert.ok(doc.includes(row), `docs/sla.md names ${row}`);
+      if (spec.limitMin !== null) {
+        assert.match(doc, new RegExp(`\\b${spec.limitMin}\\b`), `${row} normal limit ${spec.limitMin}`);
+      }
+      if (spec.furtherMin !== null) {
+        assert.match(doc, new RegExp(`\\b${spec.furtherMin}\\b`), `${row} further bound ${spec.furtherMin}`);
+      }
+    }
+  });
+
+  it("documents the tuple's field count accurately", () => {
+    const doc = readFileSync(new URL("../../docs/scheduling.md", import.meta.url), "utf8");
+    const match = doc.match(/(\d+)-field object of the contract/);
+    assert.ok(match, "docs/scheduling.md states the tuple's size");
+    assert.equal(Number(match[1]), 26);
   });
 });
 
@@ -227,7 +275,7 @@ describe("tierFor (the shared ladder, §5.2)", () => {
     assert.equal(tierFor("leader_stalled", 360, 5), "escalate");
   });
 
-  it("has no tier at all for a row with no §⑮ threshold", () => {
+  it("has no tier at all for a row with no contract threshold", () => {
     assert.equal(tierFor("inspector_liveness", 9999, 5), null);
     assert.equal(tierFor("nonsense", 9999, 5), null);
   });
@@ -298,7 +346,7 @@ describe("blocked_clarification", () => {
     assert.notEqual(result.alerts[0].threshold_min, null, "absence must not silence the row");
   });
 
-  it("gives dependency / external / resource visibility without inventing a §⑮ limit (gap G-3)", () => {
+  it("gives dependency / external / resource visibility without inventing a contract limit (gap G-3)", () => {
     for (const reason of ["dependency", "external", "resource"]) {
       const result = plan([card({ status: "blocked", blocked_at: ago(116), meta: { blocked_reason: reason } })]);
       assert.equal(result.alerts.length, 1, reason);
@@ -319,10 +367,10 @@ describe("blocked_clarification", () => {
 });
 
 describe("the releasability hint (§7.4) — a hint, never an action", () => {
-  it("flags a blocked card whose trail has an answer after the block", () => {
+  it("flags a blocked card whose trail has a leader's answer after the block", () => {
     const result = plan(
       [card({ status: "blocked", blocked_at: ago(130) })],
-      { trails: { "T-1": [{ kind: "change", created_at: ago(20), body: "revised" }] } },
+      { trails: { "T-1": [{ kind: "change", created_at: ago(20), body: "revised", author_kind: "human", author_id: "local" }] } },
     );
     const alert = result.alerts[0];
     assert.equal(alert.releasable, true);
@@ -331,10 +379,33 @@ describe("the releasability hint (§7.4) — a hint, never an action", () => {
     assert.match(alert.action, /never moves a card/);
   });
 
+  it("does not treat a worker's change as the leader's answer", () => {
+    const result = plan(
+      [card({ status: "blocked", blocked_at: ago(130) })],
+      { trails: { "T-1": [{ kind: "change", created_at: ago(20), body: "still blocked", author_kind: "agent", author_id: "linus" }] } },
+    );
+    assert.equal(result.alerts[0].releasable, false);
+    assert.equal(result.alerts[0].releasable_basis, null);
+  });
+
+  it("narrows the answer to the configured leader id", () => {
+    const blocked = card({ status: "blocked", blocked_at: ago(130) });
+    const byOther = plan([blocked], {
+      trails: { "T-1": [{ kind: "change", created_at: ago(20), author_kind: "agent", author_id: "linus" }] },
+      leaderId: "elon",
+    });
+    assert.equal(byOther.alerts[0].releasable, false);
+    const byElon = plan([blocked], {
+      trails: { "T-1": [{ kind: "change", created_at: ago(20), author_kind: "agent", author_id: "elon" }] },
+      leaderId: "elon",
+    });
+    assert.equal(byElon.alerts[0].releasable, true);
+  });
+
   it("does not flag a blocked card whose only trail entry predates the block", () => {
     const result = plan(
       [card({ status: "blocked", blocked_at: ago(20) })],
-      { trails: { "T-1": [{ kind: "change", created_at: ago(40), body: "before the block" }] } },
+      { trails: { "T-1": [{ kind: "change", created_at: ago(40), body: "before the block", author_kind: "human", author_id: "local" }] } },
     );
     assert.deepEqual(result.alerts, [], "inside the lead, and nothing to release");
   });
@@ -380,6 +451,57 @@ describe("confirmation_gate", () => {
     assert.equal(alert.severity, "overdue", "250 minutes of a 240-minute limit");
   });
 
+  it("fires on a confirm_request comment, at high confidence", () => {
+    const result = plan(
+      [card({ status: "in_progress", status_changed_at: ago(300) })],
+      { trails: { "T-1": [{ kind: "confirm_request", created_at: ago(250), author_kind: "agent", author_id: "linus" }] } },
+    );
+    const alert = result.alerts.find((entry) => entry.sla_row === "confirmation_gate");
+    assert.ok(alert);
+    assert.equal(alert.measure_start_at, ago(250));
+    assert.equal(alert.measure_start_source, "comments");
+    assert.equal(alert.confidence, "high");
+  });
+
+  it("prefers a confirm_request entry over a later legacy body marker", () => {
+    // The formal kind is the current channel; the body marker is a fallback for
+    // deployments that have not adopted it. Priority, not recency, decides.
+    const result = plan(
+      [card({ status: "in_progress", status_changed_at: ago(300) })],
+      {
+        trails: {
+          "T-1": [
+            { kind: "confirm_request", created_at: ago(250), author_kind: "agent", author_id: "linus" },
+            { kind: "note", created_at: ago(200), body: "docs/plan.md [confirm-request]" },
+          ],
+        },
+      },
+    );
+    assert.equal(
+      result.alerts.find((entry) => entry.sla_row === "confirmation_gate").measure_start_at,
+      ago(250),
+      "the formal kind wins even though the marker is newer",
+    );
+  });
+
+  it("takes the latest entry within one channel", () => {
+    const result = plan(
+      [card({ status: "in_progress", status_changed_at: ago(600) })],
+      {
+        trails: {
+          "T-1": [
+            { kind: "confirm_request", created_at: ago(500), author_kind: "agent", author_id: "linus" },
+            { kind: "confirm_request", created_at: ago(300), author_kind: "agent", author_id: "linus" },
+          ],
+        },
+      },
+    );
+    assert.equal(
+      result.alerts.find((entry) => entry.sla_row === "confirmation_gate").measure_start_at,
+      ago(300),
+    );
+  });
+
   it("stays silent when the card carries no confirmation request at all", () => {
     const result = plan([card({ status: "in_progress", status_changed_at: ago(600) })]);
     assert.deepEqual(result.alerts, []);
@@ -392,7 +514,7 @@ describe("confirmation_gate", () => {
         trails: {
           "T-1": [
             { kind: "note", created_at: ago(250), body: "plan.md ready [confirm-request]" },
-            { kind: "confirm", created_at: ago(10), body: "confirmed" },
+            { kind: "confirm", created_at: ago(10), body: "confirmed", author_kind: "human", author_id: "local" },
           ],
         },
       },
@@ -400,7 +522,7 @@ describe("confirmation_gate", () => {
     assert.deepEqual(result.alerts, []);
   });
 
-  it("matches the §⑭ request shape only when all three parts are present, at confidence low", () => {
+  it("matches the §6.2 request shape only when all three parts are present, at confidence low", () => {
     assert.equal(looksLikeConfirmRequest("docs/plan.md — 请确认，open items: 2"), true);
     assert.equal(looksLikeConfirmRequest("docs/plan.md — looks good"), false, "no confirmation ask");
     assert.equal(looksLikeConfirmRequest("确认了，open items 2"), false, "no document path");
@@ -545,7 +667,7 @@ describe("inspector_liveness (the mutual watchdog, §5.3 / §8.4 / F3)", () => {
     const alert = livenessAlert(live({ peerLastOkAt: ago(BOUND_MIN + 1) }));
     assert.ok(alert, "a peer marker older than k × P_peer is a silent inspector");
     assert.equal(alert.severity, "warn");
-    assert.equal(alert.threshold_min, null, "no PROTOCOL §⑮ row ⇒ no invented threshold");
+    assert.equal(alert.threshold_min, null, "no contract row ⇒ no invented threshold");
     assert.equal(alert.confidence, "high", "the marker's own timestamp is exact");
     assert.equal(alert.target, "leader");
     assert.equal(alert.evidence.peer, "openclaw-cron");
@@ -676,6 +798,27 @@ describe("acceptance_card_creation", () => {
     const result = plan([card({ status: "in_review", status_changed_at: ago(600) })]);
     assert.deepEqual(result.alerts, []);
   });
+
+  it("marks a capped board read as undecidable, but still reports the wait", () => {
+    const delivered = card({ status: "in_review", status_changed_at: "2026-10-01T04:00:00.000Z" });
+    const exact = plan([delivered]).alerts.find((entry) => entry.sla_row === "acceptance_card_creation");
+    assert.equal(exact.confidence, "high");
+    assert.equal(exact.evidence.open_predicate, "no_review_card");
+
+    const capped = plan([delivered], { boardTruncated: true }).alerts
+      .find((entry) => entry.sla_row === "acceptance_card_creation");
+    assert.ok(capped, "an incomplete read must not silence the wait");
+    assert.equal(capped.confidence, "low");
+    assert.equal(capped.evidence.open_predicate, "no_review_card_undecidable");
+    assert.match(capped.action, /could not be decided/);
+
+    // Positive evidence still suppresses: a review card we did see is enough.
+    const covered = plan(
+      [delivered, card({ identifier: "T-9", status: "todo", meta: { review_of: "T-1" } })],
+      { boardTruncated: true },
+    );
+    assert.deepEqual(rowsOf(covered).filter((row) => row === "acceptance_card_creation"), []);
+  });
 });
 
 describe("leader_stalled", () => {
@@ -728,7 +871,7 @@ describe("leader_stalled", () => {
     assert.equal(hasStalled(result), false);
   });
 
-  it("escalates past the §⑮.1 stall bound", () => {
+  it("escalates past the §5.2 stall bound", () => {
     const result = plan([blocked("T-1", "2026-10-01T04:00:00.000Z")]);
     const alert = result.alerts.find((entry) => entry.sla_row === "leader_stalled");
     assert.equal(alert.severity, "escalate");
@@ -746,6 +889,12 @@ describe("leader_stalled", () => {
       assert.equal(hasStalled(silent), true, `${kind}: the quiet board stalls`);
       assert.equal(hasStalled(active), false, `${kind}: a leader's ${kind} resets the clock`);
     }
+  });
+
+  it("does not count a worker's confirm_request as leader activity", () => {
+    const stale = blocked("T-1", "2026-09-01T04:00:00.000Z");
+    const result = plan([stale], { trails: { "T-1": [comment("confirm_request", ago(1), WORKER)] } });
+    assert.equal(hasStalled(result), true, "a request is not a leader action");
   });
 
   it("does not count the loop's own automated acceptance as leader activity", () => {
@@ -826,6 +975,28 @@ describe("leader_stalled", () => {
   });
 });
 
+describe("leaderAttributionWarning (a configuration hint, never an attribution)", () => {
+  it("warns when the configured id only matches a display name", () => {
+    const cards = [card({ reporter: { id: "terry", display_name: "Terry", kind: "human" } })];
+    assert.match(leaderAttributionWarning("Terry", cards, {}), /display name/);
+  });
+
+  it("stays quiet when the id matches a reporter or a comment author", () => {
+    const cards = [card({ reporter: { id: "terry", display_name: "Terry", kind: "human" } })];
+    assert.equal(leaderAttributionWarning("terry", cards, {}), null);
+    assert.equal(leaderAttributionWarning("terry", [], { "T-1": [{ author_id: "terry" }] }), null);
+  });
+
+  it("warns when the id matches no author at all", () => {
+    assert.match(leaderAttributionWarning("nobody", [], {}), /no author/);
+  });
+
+  it("does nothing when no leader id is configured", () => {
+    assert.equal(leaderAttributionWarning(null, [], {}), null);
+    assert.equal(leaderAttributionWarning("", [], {}), null);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Cross-cutting properties
 // ---------------------------------------------------------------------------
@@ -861,9 +1032,9 @@ describe("the shared tuple (§4) and the safe-operation envelope (§9)", () => {
     assert.equal(JSON.stringify(result.alerts).includes("operator"), false);
   });
 
-  it("names the §⑮ row it derives from, never a line anchor", () => {
+  it("names the contract row it derives from, never a line anchor", () => {
     for (const alert of plan([card({ status: "blocked", blocked_at: ago(130) })]).alerts) {
-      assert.match(alert.sla_ref, /^PROTOCOL §⑮/);
+      assert.match(alert.sla_ref, /^docs\/sla\.md §/);
       assert.doesNotMatch(alert.sla_ref, /:\d/);
     }
   });
@@ -898,6 +1069,30 @@ describe("stillQualifies (one shared decision rule for scan and re-check)", () =
       .find((entry) => entry.sla_row === "acceptance_card_creation");
     assert.equal(stillQualifies(acceptance, { status: "done" }).ok, false);
     assert.equal(stillQualifies(acceptance, { status: "in_review" }).ok, true);
+  });
+
+  it("drops a gate the leader has since answered, from the live trail read", () => {
+    const gate = plan([card({ status: "in_progress", status_changed_at: ago(300), meta: { gate_at: ago(300) } })])
+      .alerts.find((entry) => entry.sla_row === "confirmation_gate");
+    assert.ok(gate);
+    const open = [{ kind: "confirm_request", created_at: ago(300) }];
+    assert.equal(stillQualifies(gate, { status: "in_progress" }, { trail: open }).ok, true);
+
+    const answered = [
+      ...open,
+      { kind: "confirm", created_at: ago(10), author_kind: "human", author_id: "local" },
+    ];
+    assert.deepEqual(
+      stillQualifies(gate, { status: "in_progress" }, { trail: answered, leaderId: null }),
+      { ok: false, reason: "gate_answered" },
+    );
+
+    // A worker's confirmation does not close the leader's gate.
+    const worker = [
+      ...open,
+      { kind: "confirm", created_at: ago(10), author_kind: "agent", author_id: "linus" },
+    ];
+    assert.equal(stillQualifies(gate, { status: "in_progress" }, { trail: worker }).ok, true);
   });
 });
 
@@ -1036,6 +1231,64 @@ describe("runSlaPatrolTick (injected deps)", () => {
     assert.equal(result.alerts.length, 0);
     assert.equal(notify.count(), 0, "zero-cost idle");
     assert.equal(recheck.count(), 0, "no candidate ⇒ no extra read");
+  });
+
+  it("forwards the peer's declared period to the planner", async () => {
+    const deps = (peerPeriodMinutes) => runnerDeps({
+      peerLastOkAt: ago(80),
+      peerPeriodMinutes,
+      recheck: async () => ({ checked: true, card: null }),
+    });
+    const fallback = await runSlaPatrolTick(deps(15));
+    assert.equal(fallback.alerts.length, 1);
+    assert.equal(fallback.alerts[0].sla_row, "inspector_liveness");
+
+    const declared = await runSlaPatrolTick(deps(30));
+    assert.deepEqual(declared.alerts, [], "80 minutes is inside a declared 30-minute peer's 3× bound");
+  });
+
+  it("re-reads the trail for a fresh gate alert and drops it when answered", async () => {
+    const notify = spy();
+    const recheckTrail = spy(async () => ({
+      checked: true,
+      trail: [
+        { kind: "confirm_request", created_at: ago(300) },
+        { kind: "confirm", created_at: ago(10), author_kind: "human", author_id: "local" },
+      ],
+    }));
+    const result = await runSlaPatrolTick(runnerDeps({
+      cards: [card({ status: "in_progress", status_changed_at: ago(300), meta: { gate_at: ago(300) } })],
+      notify,
+      recheck: async () => ({ checked: true, card: { status: "in_progress" } }),
+      recheckTrail,
+    }));
+    assert.equal(recheckTrail.count(), 1);
+    assert.equal(result.alerts.length, 0);
+    assert.ok(result.dropped.some((drop) => drop.reason === "gate_answered"));
+    assert.equal(notify.count(), 0);
+  });
+
+  it("keeps a gate alert when the live trail read fails", async () => {
+    const notify = spy();
+    const result = await runSlaPatrolTick(runnerDeps({
+      cards: [card({ status: "in_progress", status_changed_at: ago(300), meta: { gate_at: ago(300) } })],
+      notify,
+      recheck: async () => ({ checked: true, card: { status: "in_progress" } }),
+      recheckTrail: async () => ({ checked: false }),
+    }));
+    assert.equal(result.alerts.length, 1);
+    assert.equal(notify.count(), 1);
+  });
+
+  it("does not read a trail for a non-gate row", async () => {
+    const recheckTrail = spy(async () => ({ checked: true, trail: [] }));
+    const result = await runSlaPatrolTick(runnerDeps({
+      cards: [card({ status: "blocked", blocked_at: ago(130) })],
+      recheck: async () => ({ checked: true, card: { status: "blocked" } }),
+      recheckTrail,
+    }));
+    assert.equal(result.alerts.length, 1);
+    assert.equal(recheckTrail.count(), 0);
   });
 
   it("re-checks before it notifies, and keeps the alert when the card is unchanged", async () => {

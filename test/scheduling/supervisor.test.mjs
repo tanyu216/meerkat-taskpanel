@@ -42,8 +42,8 @@ import {
 } from "../../src/foundation/scheduling.mjs";
 import { emptySlaLedger, planSlaPatrol } from "../../src/foundation/sla-patrol.mjs";
 import { defaultRepo, parseArgs, selectMode } from "../../scripts/loop/options.mjs";
-import { loadSlaLedger, readPeerLastOk, saveLastOk, saveSlaLedger } from "../../scripts/loop/runtime.mjs";
-import { runPatrolTick, runPollTick, runWorkflowTick, spawnWorkerReal } from "../../scripts/loop/runners.mjs";
+import { loadSlaLedger, readPeerLastOk, readPeerMarker, saveLastOk, saveSlaLedger } from "../../scripts/loop/runtime.mjs";
+import { notifyReal, runPatrolTick, runPollTick, runWorkflowTick, spawnWorkerReal } from "../../scripts/loop/runners.mjs";
 import { resolveWakeDir } from "../../scripts/wake-cwd.mjs";
 import { PROJECT_DIR_CODES } from "../../src/foundation/project-dir.mjs";
 
@@ -849,7 +849,7 @@ describe("runPatrolTick (injected deps)", () => {
     assert.equal(spawnPatrol.count(), 1);
   });
 
-  // The heartbeat row is the ONE `PROTOCOL §⑮` row the SLA pass deliberately
+  // The heartbeat row is the ONE contract row the SLA pass deliberately
   // does not re-emit (`SLA_ROWS.heartbeat_stale.coveredBy`): the legacy alert
   // below is a published consumer contract, and a second notification for the
   // same condition would be a regression dressed up as coverage.
@@ -1319,6 +1319,38 @@ describe("the SLA ledger file", () => {
     const shapeless = join(dir, "peer2.json");
     writeFileSync(shapeless, JSON.stringify({ mechanism: "openclaw-cron" }), "utf8");
     assert.equal(readPeerLastOk(shapeless), null);
+  });
+
+  it("reads the peer's declared cadence with its last-ok, and falls back when absent", () => {
+    const dir = tempDir("meerkat-peer-cadence-");
+    const path = join(dir, "peer.json");
+    writeFileSync(path, JSON.stringify({
+      mechanism: "openclaw-cron",
+      last_ok: "2026-10-14T10:00:00.000Z",
+      cadence_period_min: 30,
+    }), "utf8");
+    assert.deepEqual(readPeerMarker(path), { lastOk: "2026-10-14T10:00:00.000Z", periodMinutes: 30 });
+
+    writeFileSync(path, JSON.stringify({ last_ok: "2026-10-14T10:00:00.000Z" }), "utf8");
+    assert.deepEqual(readPeerMarker(path), { lastOk: "2026-10-14T10:00:00.000Z", periodMinutes: null });
+
+    writeFileSync(path, JSON.stringify({ last_ok: "2026-10-14T10:00:00.000Z", cadence_period_min: 0 }), "utf8");
+    assert.equal(readPeerMarker(path).periodMinutes, null, "zero is not a cadence");
+
+    assert.equal(readPeerMarker(join(dir, "nope.json")), null);
+    assert.equal(readPeerMarker(null), null);
+  });
+
+  it("kills a hung notify command and keeps the pass alive", () => {
+    const lines = [];
+    const started = Date.now();
+    notifyReal(
+      { notify: `${process.execPath} -e "setTimeout(() => {}, 5000)"` },
+      (line) => lines.push(line),
+      { timeoutMs: 50 },
+    )({ alert_id: "T-1#blocked_clarification#warn@2026-10-14T10:00:00.000Z" });
+    assert.ok(Date.now() - started < 2000, "a hung notifier must not block the pass");
+    assert.ok(lines.some((line) => line.includes("notify timed out")), lines.join("\n"));
   });
 });
 

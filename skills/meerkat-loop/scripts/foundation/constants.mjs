@@ -504,12 +504,12 @@ export const TASK_ORDER_CAPS = Object.freeze({ dwellHours: 72, ageHours: 720, un
  * SLA thresholds in **hours of wall clock**, by card status (contract §5.2 / R3).
  *
  * There is no product-side SLA constant anywhere else in the tree; these mirror
- * the rows of the team `PROTOCOL §⑮` that can be mapped onto a status. A status
+ * the status-mappable rows of `docs/sla.md` §2. A status
  * **absent** from this table has no threshold and scores `S = 0` — not a skip,
  * not a `NaN` ("no definition" is reported, not faked). v1 measures wall clock;
- * `PROTOCOL §⑮`'s Asia/Shanghai working-hours calendar is a v2 extension Terry
- * still has to rule on (§5.4 question 2), and is the one place a strict reading
- * would add real engineering.
+ * the inspection contract's Asia/Shanghai working-hours basis (`docs/sla.md` §3)
+ * is not applied here — that is a v2 extension, and the one place a strict
+ * reading would add real engineering.
  */
 export const TASK_ORDER_SLA_HOURS = Object.freeze({ blocked: 2, in_review: 24, awaiting: 24 });
 
@@ -616,7 +616,7 @@ export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
  * This is a real gap the SLA pass cannot cover: creating the review card
  * suppresses the original's `acceptance_card_creation` row, so a reviewer that
  * is never woken (or keeps failing to report) would otherwise be silent. The
- * default is generous: an hour of wall clock is well inside the `§⑮` day-long
+ * default is generous: an hour of wall clock is well inside the contract's day-long
  * acceptance limit, and a faster threshold would page on a normal queue.
  *
  * The board's planner and the loop's config resolver both read it — one number,

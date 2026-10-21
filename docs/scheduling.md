@@ -140,25 +140,24 @@ an LLM turn by default — escalation is a notification, not a model call
 
 ## The rest of the SLA table: the same pass, five more rows
 
-A stale heartbeat is **one** row of `PROTOCOL §⑮`'s timeout table. The others —
+A stale heartbeat is **one** row of the SLA contract's threshold table. The others —
 a card parked on the leader's clarification, an unanswered confirmation gate, a
 delivery nobody queued an acceptance review for, a defect whose fix card was
 never created, and the leader's own patrol going quiet — used to be invisible to
 the same pass that watched the heartbeat. They are now covered by the **same
-patrol entry**, through the shared inspection contract
-(`sla-inspection-contract.md`, the `team/guides/` document both mechanisms are
-written against), which also gives the stale-heartbeat row a channel the two
+patrol entry**, through the repository's own inspection contract
+(`docs/sla.md`), which also gives the stale-heartbeat row a channel the two
 mechanisms can share and adds a row for the inspectors' own liveness — an
 inspector that has stopped reads exactly like a healthy board.
 
 What that means concretely:
 
-- **One tuple, shared with the openclaw-side inspector.** Each alert is the flat
-  25-field object of the contract (§4): `alert_id`, `dedup_key`, `sla_row`,
+- **One tuple, shared with a peer inspector.** Each alert is the flat
+  26-field object of the contract (`docs/sla.md` §4): `alert_id`, `dedup_key`, `sla_row`,
   `severity`, `measure_start_at`, `threshold_min`, `due_at`, `action`, `target`,
   `evidence`, … A field means the same thing on both mechanisms, so the two can
   never label one card differently.
-- **Thresholds are `PROTOCOL §⑮`'s, referenced.** `SLA_ROWS` in
+- **Thresholds are the contract's, referenced.** `SLA_ROWS` in
   `src/foundation/sla-patrol.mjs` is the runtime mapping table: every limit sits next
   to the row it came from. `warn` is `L − P` (the mechanism's own period before
   the published limit — 到点提醒, not a breach), `overdue` is `L`, `escalate` is
@@ -1361,7 +1360,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
 | `--sla-leader <id>` | from `$MEERKAT_TASKPANEL_SLA_LEADER`, else unset | the author id the leader writes under, for the `leader_stalled` attribution set; unset ⇒ the board's own decision authority (`author_kind = "human"`). Set the **same** identity on both mechanisms |
 | `--sla-last-ok <path>` | `loop-patrol-last-ok.json` beside `--state` | where this mechanism publishes its own last-successful-run marker for the peer's watchdog |
-| `--sla-peer <path>` | from `$MEERKAT_TASKPANEL_SLA_PEER`, else unset | the peer inspector's last-ok marker; a marker older than `3 × 15min` raises `inspector_liveness`. Unset ⇒ the peer's half is a registered dependency and nothing alarms |
+| `--sla-peer <path>` | from `$MEERKAT_TASKPANEL_SLA_PEER`, else unset | the peer inspector's last-ok marker; a marker older than `3 × P_peer` raises `inspector_liveness`, where `P_peer` is the cadence the marker declares (fallback 15min). Unset ⇒ the peer's half is a registered dependency and nothing alarms |
 | `--board-limit <n>` | `500` | max cards read in one patrol pass |
 | `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
 | `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config: the claim default, and (for a host copy) `MEERKAT_TASKPANEL_REPO` |

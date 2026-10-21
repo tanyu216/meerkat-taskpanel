@@ -24,8 +24,8 @@ const create = (input = {}) =>
   );
 
 describe("domain/comment — create", () => {
-  it("accepts the six kinds and defaults to note", () => {
-    assert.deepEqual([...COMMENT_KINDS], ["discuss", "decision", "confirm", "change", "note", "defect"]);
+  it("accepts the seven kinds and defaults to note", () => {
+    assert.deepEqual([...COMMENT_KINDS], ["discuss", "decision", "confirm", "confirm_request", "change", "note", "defect"]);
     for (const kind of COMMENT_KINDS) {
       assert.equal(create({ kind }).kind, kind);
       assert.equal(isCommentKind(kind), true);
@@ -40,7 +40,7 @@ describe("domain/comment — create", () => {
       assert.equal(err.details.field, "body");
       return true;
     });
-    assert.throws(() => create({ kind: "shout" }), (err) => err.details.allowed.length === 6);
+    assert.throws(() => create({ kind: "shout" }), (err) => err.details.allowed.length === 7);
     // The *comment* kind is a closed vocabulary; the **author**'s is not. A kind
     // is `human`, or the platform an agent runs on, or whatever a host calls
     // itself — the column has no CHECK (`0018` dropped it) and neither does this.
@@ -78,6 +78,11 @@ describe("domain/comment — decisions and row mapping", () => {
     assert.equal(isDecisionComment(decision), true);
     assert.equal(isDecisionComment(create({ kind: "confirm" })), false, "an agent's confirm is not a human decision");
     assert.equal(isDecisionComment(create({ kind: "note", author: { kind: "human", id: "Terry" } })), false);
+    assert.equal(
+      isDecisionComment(create({ kind: "confirm_request", author: { kind: "human", id: "Terry" } })),
+      false,
+      "a confirmation request is not a decision",
+    );
     for (const kind of ["decision", "change"]) {
       assert.equal(isDecisionComment(create({ kind, author: { kind: "human", id: "T" } })), true, kind);
     }

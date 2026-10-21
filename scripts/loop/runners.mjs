@@ -147,6 +147,7 @@ export async function runPatrolTick(deps) {
  */
 export async function runSlaPatrolTick(deps) {
   const { cards, trails, ledger, periodSeconds, mechanismHost, recheck, notify, now, log } = deps;
+  const { recheckTrail = null } = deps;
   const stamp = now();
   const planned = planSlaPatrol({
     cards,
@@ -157,6 +158,7 @@ export async function runSlaPatrolTick(deps) {
     leaderId: deps.leaderId ?? null,
     boardTruncated: deps.boardTruncated === true,
     peerLastOkAt: deps.peerLastOkAt ?? null,
+    peerPeriodMinutes: deps.peerPeriodMinutes ?? null,
     peerRequired: deps.peerRequired === true,
     lookbackDays: deps.lookbackDays,
   });
@@ -187,7 +189,22 @@ export async function runSlaPatrolTick(deps) {
       survivors.push(alert);
       continue;
     }
-    const verdict = stillQualifies(alert, live.card ?? null);
+    const liveCard = live.card ?? null;
+    let verdict = stillQualifies(alert, liveCard);
+    // A gate's "answered" state is a trail fact the single-card read cannot see.
+    // Only a fresh gate alert pays for the second read; a failed one keeps the
+    // alert (§9.3 — an unreadable check must never silence a real one).
+    if (verdict.ok && alert.sla_row === "confirmation_gate" && typeof recheckTrail === "function") {
+      const trailRead = await recheckTrail(alert.card_id);
+      if (trailRead?.checked === true) {
+        verdict = stillQualifies(alert, liveCard, {
+          trail: trailRead.trail,
+          leaderId: deps.leaderId ?? null,
+        });
+      } else {
+        log(`patrol: live trail re-check unavailable for ${alert.card_id} — notifying anyway`);
+      }
+    }
     if (verdict.ok) survivors.push(alert);
     else dropped.push({ card_id: alert.card_id, sla_row: alert.sla_row, reason: verdict.reason });
   }
@@ -569,11 +586,28 @@ export function spawnWorkerReal(opts, config, log) {
   };
 }
 
-export function notifyReal(opts, log) {
+/** A notify command may hang; the pass must not hang with it. */
+export const NOTIFY_TIMEOUT_MS = 10_000;
+
+export function notifyReal(opts, log, { timeoutMs = NOTIFY_TIMEOUT_MS } = {}) {
   return (alert) => {
     if (!opts.notify) return;
-    const run = spawnSync(opts.notify, { shell: true, input: JSON.stringify(alert), encoding: "utf8" });
-    if (run.error) log(`notify failed: ${run.error.message}`);
+    const run = spawnSync(opts.notify, {
+      shell: true,
+      input: JSON.stringify(alert),
+      encoding: "utf8",
+      timeout: timeoutMs,
+      killSignal: "SIGTERM",
+    });
+    // `spawnSync` reports a timeout as ETIMEDOUT on some platforms and as a
+    // SIGTERM kill with no status on others; both mean the same thing here.
+    if (run.error?.code === "ETIMEDOUT" || (run.signal === "SIGTERM" && run.status === null)) {
+      log(`notify timed out after ${timeoutMs}ms`);
+    } else if (run.error) {
+      log(`notify failed: ${run.error.message}`);
+    } else if (run.status !== 0) {
+      log(`notify exited ${run.status}`);
+    }
   };
 }
 

@@ -194,7 +194,7 @@ export function tierOf(card) {
  * Without the gate it would read as permanently, maximally overdue — silently.
  *
  * **One place the frozen contract disagrees with itself, resolved here.** §5.2's
- * threshold table gives `awaiting` a **24h** threshold ("no direct PROTOCOL §⑮
+ * threshold table gives `awaiting` a **24h** threshold ("no direct contract
  * row; take the wide reading"), but §9.1/§9.2 score the sample's `awaiting` card
  * (A6) as `S = 0` — "无（记 0）". §5.2 is the normative parameter table and the
  * acceptance criterion points at it ("SLA 阈值口径 = 墙钟 v1 (§5.2/R3)"), so the

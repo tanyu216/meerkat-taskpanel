@@ -9,6 +9,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The SLA contract is in the repository, and a confirmation request has a kind.**
+  `docs/sla.md` is now the single source of truth for the threshold table, the tier ladder,
+  the 09:00–23:00 Asia/Shanghai working-hours basis, the 26-field alert tuple, the
+  de-duplication ledger, the pre-emit re-check and the peer-inspector marker format. The
+  external `PROTOCOL §⑮` / `team/guides` citations are gone from the live surface; `SLA_ROWS`
+  references the document, and a test pins the two together. `confirm_request` is a new
+  comment kind (migration `0030`) that opens a confirmation gate at high confidence; the
+  legacy `[confirm-request]` marker and prose shape remain as fallbacks, and only a
+  leader-authored `confirm` closes the gate. The router's request schema snapshot gains the
+  new enum value.
 - **Card details carry the attachment list.** The single-card read
   (`GET /api/v1/tasks/:ref`, `taskctl issue get <ref>`) now returns `attachments[]` with the
   same metadata as `attachment list`; the human `issue get` prints an attachment table. The
@@ -86,6 +96,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The SLA patrol reads what the board and the peer actually say.** Five correctness fixes:
+  the inspector boundary now uses the cadence a peer declares in its last-ok marker (fallback
+  15 min) instead of a hard-coded one; an acceptance wait on a capped board read is still
+  reported but marked undecidable at `confidence: "low"`; a fresh confirmation gate re-reads
+  the card's trail immediately before notifying and drops itself when the leader has answered;
+  a blocked card's "answered" hint and a gate's closing `confirm` both require a leader author
+  (a worker's comment no longer releases a card or closes a gate); and `--notify` is bounded at
+  10 s so a hung notifier cannot stall the pass. `patrol` also logs a warning when
+  `--sla-leader` matches a display name rather than an actor id.
 - **The continue prompt opens in English.** The loop's periodic judgment turn now starts with
   `Continue — Meerkat TaskPanel loop, judgment turn.` rather than `继续`; the scheduled units,
   the skill text and the docs quote the new cue. Behaviour is unchanged: the host reads the

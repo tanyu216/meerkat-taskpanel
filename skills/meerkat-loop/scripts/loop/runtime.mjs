@@ -156,19 +156,28 @@ export function saveLastOk(path, { mechanism, at, host = null, periodSeconds = n
   renameSync(tmp, path);
 }
 
-/** The peer's last-successful-run marker's `last_ok`, or `null` when unreadable. */
-export function readPeerLastOk(path) {
+/** The peer's last-successful-run marker, with the cadence it declares. */
+export function readPeerMarker(path) {
   if (path === null || path === undefined) return null;
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8"));
     const value = parsed?.last_ok ?? parsed?.lastOk ?? null;
-    return typeof value === "string" && value !== "" ? value : null;
+    if (typeof value !== "string" || value === "") return null;
+    const cadence = parsed?.cadence_period_min ?? parsed?.cadencePeriodMin ?? null;
+    const periodMinutes =
+      typeof cadence === "number" && Number.isFinite(cadence) && cadence > 0 ? cadence : null;
+    return { lastOk: value, periodMinutes };
   } catch {
     // Absent, unreadable or malformed all mean the same thing here: the peer has
     // not published a usable marker. Whether that is an alarm or a dependency is
     // decided above this line.
     return null;
   }
+}
+
+/** The peer's last-successful-run marker's `last_ok`, or `null` when unreadable. */
+export function readPeerLastOk(path) {
+  return readPeerMarker(path)?.lastOk ?? null;
 }
 
 // ---------------------------------------------------------------------------
