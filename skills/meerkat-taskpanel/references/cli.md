@@ -215,9 +215,9 @@ outside it is `ATTACHMENT_TYPE_UNSUPPORTED`. An unknown extension becomes
 
 | Command | Purpose |
 |---|---|
-| `session set <ref> --seg <seg> --backend <name> [--owner] [--phase] [--pid] [--session <id>]` | Register a session (the id is derived from `task, owner, seg`, so a resume keeps it). |
+| `session set <ref> --seg <seg> --owner-kind <name> [--owner] [--phase] [--pid] [--goal <text>] [--session <id>]` | Register a session (the id is derived from `task, owner, seg`, so a resume keeps it). `--owner-kind` is the owner's platform kind (e.g. `claude`, `codex`); `--goal` is one sentence saying what this session is for. Omit `--goal` on a re-registration to keep the recorded sentence. |
 | `session close <ref> <session-id> [--failed]` | Close it. |
-| `session list <ref>` | List them. |
+| `session list <ref>` | List them, including each session's `goal`. |
 
 ### `actors list` / `labels list`
 

@@ -270,11 +270,12 @@ const sessionTrail = computed(() => {
   return rows.map((row) => ({
     id: row.id,
     status: row.status,
-    backend: row.backend ?? "—",
+    ownerKind: row.owner_kind ?? "—",
     sessionId: row.session_id ?? "—",
     owner: row.owner ?? "—",
     seg: row.seg ?? null,
     phase: row.phase ?? null,
+    goal: row.goal ?? "",
     running: row.status === "running",
     stamp: relativeTime(row.ts),
   }));
@@ -1716,14 +1717,14 @@ function copyId() {
           <div data-detail-agent-session-body>
             <!-- The trail: running first, then newest-first. The first row
                  carries B16's platform seat; historical rows name their own
-                 backend in a plain badge. Resume is stated only for a running
+                 owner kind in a plain badge. Resume is stated only for a running
                  session (kept in the DOM with v-show so the contract's hook
                  survives a card whose sessions have all closed). -->
             <div v-for="(row, index) in sessionTrail" :key="row.id" class="td-session" :class="{ 'mt-2': index > 0 }" data-agent-session>
               <div class="flex items-center gap-2">
-                <span v-if="index === 0" class="badge badge-xs td-agent-badge" :data-agent-platform="isAgent ? platform : undefined">{{ isAgent ? platform : row.backend }}</span>
-                <span v-else class="badge badge-xs td-agent-badge">{{ row.backend }}</span>
-                <span class="td-mono text-xs text-(--brand-text-2)" :data-agent-platform-value="index === 0 ? platform || row.backend : undefined">{{ index === 0 ? (platform || row.backend) : row.backend }}</span>
+                <span v-if="index === 0" class="badge badge-xs td-agent-badge" :data-agent-platform="isAgent ? platform : undefined">{{ isAgent ? platform : row.ownerKind }}</span>
+                <span v-else class="badge badge-xs td-agent-badge">{{ row.ownerKind }}</span>
+                <span class="td-mono text-xs text-(--brand-text-2)" :data-agent-platform-value="index === 0 ? platform || row.ownerKind : undefined">{{ index === 0 ? (platform || row.ownerKind) : row.ownerKind }}</span>
                 <span class="badge badge-xs" :data-session-status="row.status">{{ $t(`drawer.session.status.${row.status}`) }}</span>
                 <button v-if="index === 0" v-show="row.running" type="button" class="btn btn-outline btn-xs ms-auto" data-agent-resume data-i18n="drawer.resume">{{ $t("drawer.resume") }}</button>
               </div>
@@ -1737,6 +1738,9 @@ function copyId() {
                 <span v-if="row.phase">{{ $t("drawer.session.phase") }} {{ row.phase }}</span>
                 <span v-if="row.stamp" class="td-activity-ts" :title="row.stamp.absolute">{{ $t(row.stamp.key, row.stamp.arg) }}</span>
               </div>
+              <!-- The one sentence the session registered for. No i18n key: this
+                   is the session's own data, not a label the board owns. -->
+              <p v-if="row.goal" class="mt-2 text-xs text-(--brand-text-2)" data-session-goal>{{ row.goal }}</p>
             </div>
             <!-- The contract's B16 hooks must exist at rest even when the card
                  has no session rows; the section is hidden in that case. -->

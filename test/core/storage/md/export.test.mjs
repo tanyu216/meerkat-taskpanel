@@ -55,6 +55,35 @@ describe("md/export — rendering", () => {
       board.close();
     }
   });
+
+  it("writes a session's goal into the Sessions section, escaped to one field", async () => {
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    try {
+      repos.projects.create({ id: "proj", name: "P", now: TS });
+      const ctx = createContext({ db: board.db, repos, clock: () => TS });
+      const task = createCommands(ctx).createTask({
+        projectId: "proj",
+        title: "With a session",
+        actor: { kind: "agent", id: "linus" },
+      });
+      repos.sessions.upsertByNaturalKey({
+        taskId: task.id,
+        seg: "s1",
+        owner: "linus",
+        ownerKind: "claude",
+        sessionId: "sid",
+        goal: "fix a · b",
+        status: "running",
+        ts: TS,
+      });
+      const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
+      assert.match(card, /goal:fix a \\u00b7 b/, "the separator is escaped, not written raw");
+      assert.match(card, /^## Sessions$/m);
+    } finally {
+      board.close();
+    }
+  });
 });
 
 describe("md/legacy-status — the word written back", () => {

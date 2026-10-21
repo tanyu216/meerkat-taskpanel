@@ -299,23 +299,26 @@ describe("commands/agent-sessions", () => {
         taskId: task.id,
         seg: "seg2",
         owner: "linus",
-        backend: "claude",
+        ownerKind: "claude",
         sessionId: "ff309028",
         pid: 4242,
+        goal: "ship the drawer ordering",
       });
       assert.equal(session.status, "running");
       assert.equal(session.seg, "seg2");
+      assert.equal(session.goal, "ship the drawer ordering");
 
       const again = commands.registerSession({
         taskId: task.id,
         seg: "seg2",
         owner: "linus",
-        backend: "claude",
+        ownerKind: "claude",
         sessionId: "ff309028",
         phase: "verify",
       });
       assert.equal(again.id, session.id, "the natural key keeps one row");
       assert.equal(again.phase, "verify");
+      assert.equal(again.goal, "ship the drawer ordering", "re-registering without a goal keeps it");
 
       const closed = commands.closeSession({ sessionId: session.id, actor: AGENT });
       assert.equal(closed.status, "closed");
@@ -326,7 +329,7 @@ describe("commands/agent-sessions", () => {
       );
       assert.throws(() => commands.closeSession({ sessionId: "nope" }), (err) => err.code === "NOT_FOUND");
       assert.throws(
-        () => commands.registerSession({ taskId: "nope", seg: "s", backend: "claude", sessionId: "x" }),
+        () => commands.registerSession({ taskId: "nope", seg: "s", ownerKind: "claude", sessionId: "x" }),
         (err) => err.code === "NOT_FOUND",
       );
       // A session registered by identifier, with the owner defaulting to the actor.
@@ -334,7 +337,7 @@ describe("commands/agent-sessions", () => {
         taskId: task.identifier,
         seg: "seg3",
         owner: "linus",
-        backend: "codex",
+        ownerKind: "codex",
         sessionId: "abc",
         status: "failed",
       });

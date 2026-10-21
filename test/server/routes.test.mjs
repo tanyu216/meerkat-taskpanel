@@ -544,14 +544,29 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
       await call("POST", `/api/v1/tasks/${REF}/sessions`, {
         seg: "seg2",
         owner: "linus",
-        backend: "claude",
+        owner_kind: "claude",
         session_id: "d144dea1-f923-5ed8-8e6e-6e889abf76e5",
+        goal: "ship the drawer ordering",
       }),
     );
     assert.equal(registered.session.status, "running");
+    assert.equal(registered.session.goal, "ship the drawer ordering");
+
+    // A re-registration that omits the goal keeps the one already recorded.
+    dataOf(
+      await call("POST", `/api/v1/tasks/${REF}/sessions`, {
+        seg: "seg2",
+        owner: "linus",
+        owner_kind: "claude",
+        session_id: "d144dea1-f923-5ed8-8e6e-6e889abf76e5",
+        phase: "verify",
+      }),
+    );
 
     const listed = dataOf(await call("GET", `/api/v1/tasks/${REF}/sessions`));
     assert.equal(listed.sessions.length, 1);
+    assert.equal(listed.sessions[0].goal, "ship the drawer ordering");
+    assert.equal(listed.sessions[0].phase, "verify");
 
     const closed = dataOf(
       await call("POST", `/api/v1/tasks/${REF}/sessions/${registered.session.id}/close`, {}),
@@ -737,7 +752,7 @@ describe("server/routes — the edges a happy path never reaches", () => {
       await call("POST", "/api/v1/tasks/DEMO-0001/sessions", {
         seg: "s-extra",
         owner: "linus",
-        backend: "claude",
+        owner_kind: "claude",
         session_id: "session-x",
         phase: "review",
         pid: 4242,
@@ -861,7 +876,7 @@ describe("server/routes — a session registered from headers only", () => {
       await call(
         "POST",
         "/api/v1/tasks/DEMO-0001/sessions",
-        { backend: "codex", owner: "linus" },
+        { owner_kind: "codex", owner: "linus" },
         { "x-taskctl-session": "session-from-header", "x-taskctl-seg": "seg-from-header" },
       ),
     );

@@ -152,7 +152,16 @@ describe("cli/wire — the JSON vocabulary", () => {
     assert.equal(projectToWire({ id: "p1", meta: { prefix: "####" } }).prefix, "P1");
     assert.equal(commentToWire({ id: "c", taskId: "t", body: "b", kind: "note", authorKind: "human", authorId: "e", refs: [], version: 1, createdAt: "t" }).author_kind, "human");
     assert.equal(relationToWire({ id: 1, type: "parent", source: "a", target: "b", origin: null, createdAt: "t" }).source, "a");
-    assert.equal(sessionToWire({ id: "s", taskId: "t", seg: "s1", owner: "linus", backend: "claude", sessionId: "x", status: "running", ts: "t" }).session_id, "x");
+    assert.equal(sessionToWire({ id: "s", taskId: "t", seg: "s1", owner: "linus", ownerKind: "claude", sessionId: "x", status: "running", ts: "t" }).session_id, "x");
+    assert.equal(
+      sessionToWire({ id: "s", taskId: "t", seg: "s1", owner: "linus", ownerKind: "claude", sessionId: "x", status: "running", ts: "t" }).goal,
+      "",
+      "a session with no goal reads as the empty sentence",
+    );
+    assert.equal(
+      sessionToWire({ id: "s", taskId: "t", seg: "s1", owner: "linus", ownerKind: "claude", sessionId: "x", status: "running", ts: "t", goal: "ship it" }).goal,
+      "ship it",
+    );
     assert.equal(dictionaryEntryToWire({ id: "a-1", kind: "agent", displayName: "linus", normalizedName: "linus", useCount: 2 }).display_name, "linus");
     const report = reportToWire({ id: 3, taskId: "t", round: 1, conclusion: "ok", acceptance: [], evidence: { items: [{ kind: "commit", sha: "abc1234" }], truncated: false }, authorKind: "agent", authorId: "linus", createdAt: "t" });
     assert.equal(report.evidence[0].sha, "abc1234");

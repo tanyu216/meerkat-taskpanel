@@ -768,6 +768,9 @@
             },
             "limit": {
               "type": "string"
+            },
+            "order": {
+              "type": "string"
             }
           },
           "required": [],
@@ -1172,10 +1175,13 @@
         "body": {
           "additionalProperties": true,
           "properties": {
-            "backend": {
+            "goal": {
               "type": "string"
             },
             "owner": {
+              "type": "string"
+            },
+            "owner_kind": {
               "type": "string"
             },
             "phase": {
@@ -1438,9 +1444,10 @@
     },
     {
       "fields": {
-        "backend": "string",
+        "goal": "string",
         "id": "string",
         "owner": "string",
+        "owner_kind": "string",
         "phase": "string",
         "pid": "number",
         "seg": "string",

@@ -14,14 +14,15 @@ export const COMMANDS = [
   {
     name: "set",
     summary: "Register (or refresh) an agent session for a task.",
-    usage: "session set <id|identifier> --seg <seg> --backend <name> [--owner <name>] [--phase <phase>]",
+    usage: "session set <id|identifier> --seg <seg> --owner-kind <name> [--owner <name>] [--phase <phase>] [--goal <text>]",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: [
       { flag: "seg", key: "seg", as: "string", value: "<seg>", required: true },
-      { flag: "backend", key: "backend", as: "string", value: "<name>", required: true, summary: "e.g. claude, codex." },
+      { flag: "owner-kind", key: "ownerKind", as: "string", value: "<name>", required: true, summary: "The owner's platform kind, e.g. claude, codex." },
       { flag: "owner", key: "owner", as: "string", value: "<name>" },
       { flag: "phase", key: "phase", as: "string", value: "<phase>" },
       { flag: "pid", key: "pid", as: "number", value: "<pid>" },
+      { flag: "goal", key: "goal", as: "string", value: "<text>", summary: "One sentence: what this session is for." },
       { flag: "session", key: "sessionRef", as: "string", value: "<task-id>", summary: "Task id used to derive the session id (defaults to the resolved one)." },
     ],
     async run(ctx) {
@@ -33,10 +34,11 @@ export const COMMANDS = [
       const { session } = await ctx.client.post(`/api/v1/tasks/${task.identifier}/sessions`, {
         seg: ctx.flags.seg,
         owner,
-        backend: ctx.flags.backend,
+        owner_kind: ctx.flags.ownerKind,
         session_id: sessionId,
         phase: ctx.flags.phase,
         pid: ctx.flags.pid,
+        goal: ctx.flags.goal,
       });
       return { data: { session }, human: `session ${session.id} ${session.status} (seg ${session.seg}, owner ${session.owner})` };
     },
@@ -67,13 +69,14 @@ export const COMMANDS = [
       const { sessions } = await ctx.client.get(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/sessions`);
       const human = sessions.length === 0
         ? "no sessions"
-        : table(["id", "seg", "owner", "backend", "status", "phase"], sessions.map((s) => [
+        : table(["id", "seg", "owner", "owner_kind", "status", "phase", "goal"], sessions.map((s) => [
             s.id,
             s.seg,
             s.owner,
-            s.backend,
+            s.owner_kind,
             s.status,
             s.phase ?? "-",
+            s.goal || "-",
           ]));
       return { data: { sessions }, human };
     },

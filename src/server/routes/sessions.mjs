@@ -17,11 +17,12 @@ import { resolveTask } from "../task-view.mjs";
 const REGISTER_BODY = shape({
   seg: str(),
   owner: str(),
-  backend: str(),
+  owner_kind: str(),
   session_id: str(),
   phase: str(),
   pid: int(),
   status: REQUEST.sessionStatus,
+  goal: str(),
 });
 
 /** `POST /api/v1/tasks/:ref/sessions/:sessionId/close` — `status` defaults to `closed`. */
@@ -42,11 +43,12 @@ export function registerSessionRoutes(router, surface) {
       taskId: task.id,
       seg: body.seg ?? seg,
       owner: body.owner,
-      backend: body.backend,
+      ownerKind: body.owner_kind,
       sessionId: body.session_id ?? session,
       phase: body.phase,
       pid: body.pid,
       status: body.status,
+      goal: body.goal,
       actor,
     });
     return { session: sessionToWire(registered) };

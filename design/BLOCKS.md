@@ -879,7 +879,7 @@ The trail is ordered **running first, then `ts` descending**. Visibility is
 hidden together when the card has no session rows. The assignee kind is not the
 switch — a human-assigned card can carry real session rows, and the server
 enforces no assignee/session relationship. Historical rows name their own
-`backend` in a plain badge; the `data-agent-platform` seat states the card's own
+`owner_kind` in a plain badge; the `data-agent-platform` seat states the card's own
 platform.
 
 ## B17 · Error state

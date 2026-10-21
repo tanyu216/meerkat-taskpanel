@@ -359,8 +359,8 @@ export function fixtureApi() {
   // internal id, exactly as `agent-sessions.mjs` / `reports.mjs` list them.
   const sessions = {
     td_TD_1: [
-      { id: "sess-2", task_id: "td_TD_1", seg: "3", owner: "turing", backend: "pi", session_id: "sess_pi_01HQ8ZM4K2", phase: "implement", pid: 4242, status: "running", ts: minutes(4) },
-      { id: "sess-1", task_id: "td_TD_1", seg: "2", owner: "linus", backend: "claude", session_id: "sess_claude_01HQ18W7T4M2", phase: "review", pid: null, status: "closed", ts: minutes(60) },
+      { id: "sess-2", task_id: "td_TD_1", seg: "3", owner: "turing", owner_kind: "pi", session_id: "sess_pi_01HQ8ZM4K2", phase: "implement", pid: 4242, status: "running", goal: "implement the session goal field", ts: minutes(4) },
+      { id: "sess-1", task_id: "td_TD_1", seg: "2", owner: "linus", owner_kind: "claude", session_id: "sess_claude_01HQ18W7T4M2", phase: "review", pid: null, status: "closed", goal: "review the drawer ordering", ts: minutes(60) },
     ],
   };
   const reports = {
@@ -1228,6 +1228,7 @@ export async function run() {
       visiblePanels: [...document.querySelectorAll("[data-detail-panel]")].filter((p) => !p.hidden).map((p) => p.getAttribute("data-detail-panel")),
       ids: [...document.querySelectorAll("[data-detail-agent-session-body] [data-agent-session-id]")].map((e) => e.textContent.trim()),
       statuses: [...document.querySelectorAll("[data-detail-agent-session-body] [data-session-status]")].map((e) => e.getAttribute("data-session-status")),
+      goals: [...document.querySelectorAll("[data-detail-agent-session-body] [data-session-goal]")].map((e) => e.textContent.trim()),
       resumes: document.querySelectorAll("[data-detail-agent-session-body] [data-agent-resume]").length,
     }));
     drawerTabsCheck(
@@ -1239,6 +1240,10 @@ export async function run() {
       `trail rows ${trailRead.ids.length} / ${trailRead.statuses.join("/")}`,
     );
     drawerTabsCheck(trailRead.resumes === 1, `Resume count is ${trailRead.resumes}, expected 1 (running only)`);
+    drawerTabsCheck(
+      trailRead.goals.join("|") === "implement the session goal field|review the drawer ordering",
+      `session goals read ${JSON.stringify(trailRead.goals)}`,
+    );
 
     await page.click('[data-detail-tab="reports"]');
     await page.waitForTimeout(120);

@@ -216,8 +216,9 @@ export function renderCard(task, context) {
       repos.sessions.listByTask(task.id).map((session) => ({
         seg: session.seg,
         owner: session.owner,
-        backend: session.backend,
+        ownerKind: session.ownerKind,
         sessionId: session.sessionId,
+        goal: session.goal,
         phase: session.phase,
         status: session.status,
         pid: session.pid,

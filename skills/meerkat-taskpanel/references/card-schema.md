@@ -98,9 +98,12 @@ Newlines in `<body>` are escaped as `\n`.
 
 ```
 ## Sessions
-- seg:<name> · owner:<agent> · backend:<cli> · id:<uuid> · phase:<p> · status:<s> · pid:<n> · <ts>
+- seg:<name> · owner:<agent> · owner_kind:<platform> · id:<uuid> · goal:<one sentence> · phase:<p> · status:<s> · pid:<n> · <ts>
 ```
-`status` ∈ `running` · `closed` · `failed`.
+`status` ∈ `running` · `closed` · `failed`. `goal` is optional; a card without one
+carries an empty value. Inside `goal`, a backslash is doubled, a newline becomes
+`\n`, a carriage return `\r`, and `·` becomes its Unicode escape (backslash-u00b7)
+— so the sentence can contain ` · ` without splitting the record.
 
 ```
 ## Progress

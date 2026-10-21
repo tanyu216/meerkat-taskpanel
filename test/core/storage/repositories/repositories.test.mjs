@@ -681,17 +681,19 @@ describe("repositories/sessions and attachments and activities", () => {
         taskId: task.id,
         seg: "seg2",
         owner: "linus",
-        backend: "claude",
+        ownerKind: "claude",
         sessionId: "ff309028",
         pid: 42,
+        goal: "ship the drawer ordering",
         ts: TS,
       });
       assert.equal(session.status, "running");
+      assert.equal(session.goal, "ship the drawer ordering");
       const same = repos.sessions.upsertByNaturalKey({
         taskId: task.id,
         seg: "seg2",
         owner: "linus",
-        backend: "claude",
+        ownerKind: "claude",
         sessionId: "ff309028",
         phase: "verify",
         status: "running",
@@ -699,13 +701,25 @@ describe("repositories/sessions and attachments and activities", () => {
       });
       assert.equal(same.id, session.id, "the natural key keeps one row");
       assert.equal(same.phase, "verify");
+      assert.equal(same.goal, "ship the drawer ordering", "an omitted goal keeps the registered one");
+      const regraded = repos.sessions.upsertByNaturalKey({
+        taskId: task.id,
+        seg: "seg2",
+        owner: "linus",
+        ownerKind: "claude",
+        sessionId: "ff309028",
+        goal: "  verify the upgrade  ",
+        ts: TS2,
+      });
+      assert.equal(regraded.id, session.id);
+      assert.equal(regraded.goal, "verify the upgrade", "a new goal is trimmed and replaces the old one");
       assert.deepEqual(repos.sessions.listByTask(task.id).length, 1);
       assert.equal(repos.sessions.find(task.id, "seg2", "linus").id, session.id);
       assert.equal(repos.sessions.get(session.id).pid, 42, "an unspecified pid is not clobbered to null");
       assert.equal(repos.sessions.close(session.id, { ts: TS2 }).status, "closed");
       assert.throws(() => repos.sessions.close("nope", { ts: TS2 }), (err) => err.code === "NOT_FOUND");
       assert.throws(
-        () => repos.sessions.upsertByNaturalKey({ taskId: task.id, seg: "", owner: "x", backend: "claude", sessionId: "s", ts: TS }),
+        () => repos.sessions.upsertByNaturalKey({ taskId: task.id, seg: "", owner: "x", ownerKind: "claude", sessionId: "s", ts: TS }),
         (err) => err.code === "VALIDATION_FAILED",
       );
     });
@@ -750,6 +764,16 @@ describe("repositories/sessions and attachments and activities", () => {
 
       repos.activities.append({ taskId: task.id, event: "task_updated", createdAt: TS2 });
       assert.deepEqual(repos.activities.list({ taskId: task.id }).map((a) => a.event), ["task_created", "task_updated"]);
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id, order: "desc" }).map((a) => a.event),
+        ["task_updated", "task_created"],
+        "order:desc reads newest first",
+      );
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id, order: "bogus" }).map((a) => a.event),
+        ["task_created", "task_updated"],
+        "an unknown order is defensively ASC",
+      );
       assert.deepEqual(repos.activities.list({ taskId: task.id, afterId: first.id }).map((a) => a.event), ["task_updated"]);
       assert.deepEqual(repos.activities.list({ afterRevision: 10_000 }), []);
       assert.equal(repos.activities.count(task.id), 2);

@@ -499,7 +499,7 @@ describe("web/board — the live stream drives the revision", () => {
     const { board, startEvents } = await freshBoard();
     seedTask(board);
     board.detail = { task: { id: "td_1", identifier: "TD-1" }, comments: [] };
-    installFetch({
+    const calls = installFetch({
       "GET /api/v1/tasks/TD-1/comments": () => ok({ comments: [{ id: "c1", body: "hi" }] }),
       "GET /api/v1/tasks/TD-1/activities": () => ok({ activities: [] }),
     });
@@ -509,6 +509,12 @@ describe("web/board — the live stream drives the revision", () => {
     mock.timers.tick(100);
     await settle();
     assert.equal(board.detail.comments.length, 1);
+    // The live re-read keeps the drawer's newest-first contract.
+    assert.match(
+      calls.find((call) => call.url.includes("/activities")).url,
+      /[?&]order=desc(&|$)/,
+      "the refresh activity read asks for descending order",
+    );
   });
 
   it("invalidates and re-reads a waiting payload when the card's question can change", async () => {
@@ -870,7 +876,7 @@ describe("web/board — opening the detail drawer", () => {
     board.currentProjectId = "p1";
 
     let release;
-    installFetch({
+    const calls = installFetch({
       ...detailRoutes("TD-1", wireTask("TD-1")),
       "GET /api/v1/tasks/TD-1": () => new Promise((resolve) => (release = resolve)),
     });
@@ -883,6 +889,13 @@ describe("web/board — opening the detail drawer", () => {
     release(ok({ task: wireTask("TD-1") }));
     await pending;
     assert.equal(board.detail.task.identifier, "TD-1");
+    // The drawer asks for the 50 newest, newest first — the server keeps ASC as
+    // its default for the SSE replay cursor.
+    assert.match(
+      calls.find((call) => call.url.includes("/activities")).url,
+      /[?&]order=desc(&|$)/,
+      "the drawer's activity read asks for descending order",
+    );
   });
 
   it("does not let a late card read replace the card opened after it", async () => {

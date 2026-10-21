@@ -124,7 +124,7 @@ describe("contract/attribution-boundary — what 0020 does and does not referenc
         .run(TS, TS, TS);
       board.db
         .prepare(
-          "INSERT INTO agent_sessions(id, task_id, seg, owner, backend, session_id, status, ts) VALUES ('s1', 't1', 'seg1', 'md-import', 'claude', 'sid', 'running', ?)",
+          "INSERT INTO agent_sessions(id, task_id, seg, owner, owner_kind, session_id, status, ts) VALUES ('s1', 't1', 'seg1', 'md-import', 'claude', 'sid', 'running', ?)",
         )
         .run(TS);
 

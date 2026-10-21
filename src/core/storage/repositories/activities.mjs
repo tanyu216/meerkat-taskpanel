@@ -48,7 +48,11 @@ export function createActivitiesRepository(db) {
     },
 
     /**
-     * @param {{taskId?: string, afterRevision?: number, afterId?: number, limit?: number}} [filter]
+     * @param {{taskId?: string, afterRevision?: number, afterId?: number, limit?: number, order?: "asc"|"desc"}} [filter]
+     *
+     * `order` is the drawer's read (newest first, paired with `limit` so the
+     * newest N are returned). It defaults to ASC because the SSE replay cursor
+     * pages forward by `id`; anything other than `"desc"` is ASC here.
      */
     list(filter = {}) {
       const clauses = [];
@@ -66,9 +70,10 @@ export function createActivitiesRepository(db) {
         values.push(filter.afterId);
       }
       const limit = Number.isInteger(filter.limit) ? filter.limit : 500;
+      const direction = filter.order === "desc" ? "DESC" : "ASC";
       const sql = `SELECT * FROM task_activities
                    ${clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : ""}
-                   ORDER BY id ASC LIMIT ?`;
+                   ORDER BY id ${direction} LIMIT ?`;
       return db.prepare(sql).all(...values, limit).map(activityFromRow);
     },
 

@@ -21,20 +21,29 @@ describe("cli/session", () => {
       run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
 
       const registered = dataOf(
-        run(["session", "set", "DEMO-0001", "--seg", "seg2", "--backend", "claude", "--owner", "linus", "--json"]),
+        run([
+          "session", "set", "DEMO-0001", "--seg", "seg2", "--owner-kind", "claude", "--owner", "linus",
+          "--goal", "ship the drawer ordering", "--json",
+        ]),
       );
       assert.equal(registered.session.seg, "seg2");
       assert.equal(registered.session.owner, "linus");
       assert.equal(registered.session.status, "running");
+      assert.equal(registered.session.goal, "ship the drawer ordering");
+
+      // Re-registering without --goal keeps the sentence already recorded.
+      run(["session", "set", "DEMO-0001", "--seg", "seg2", "--owner-kind", "claude", "--owner", "linus", "--json"]);
 
       const listed = dataOf(run(["session", "list", "DEMO-0001", "--json"]));
       assert.equal(listed.sessions.length, 1);
+      assert.equal(listed.sessions[0].goal, "ship the drawer ordering");
       assert.match(run(["session", "list", "DEMO-0001"]).stdout, /seg2\s+linus\s+claude\s+running/);
+      assert.match(run(["session", "list", "DEMO-0001"]).stdout, /ship the drawer ordering/);
 
       const closed = dataOf(run(["session", "close", "DEMO-0001", registered.session.id, "--json"]));
       assert.equal(closed.session.status, "closed");
       const failed = dataOf(
-        run(["session", "set", "DEMO-0001", "--seg", "seg3", "--backend", "codex", "--json"]),
+        run(["session", "set", "DEMO-0001", "--seg", "seg3", "--owner-kind", "codex", "--json"]),
       );
       assert.equal(dataOf(run(["session", "close", "DEMO-0001", failed.session.id, "--failed", "--json"])).session.status, "failed");
     });
@@ -46,10 +55,10 @@ describe("cli/session", () => {
       const task = dataOf(run(["issue", "create", "--project", "demo", "--title", "T", "--json"])).task;
 
       const byIdentifier = dataOf(
-        run(["session", "set", "DEMO-0001", "--seg", "s1", "--backend", "claude", "--owner", "linus", "--json"]),
+        run(["session", "set", "DEMO-0001", "--seg", "s1", "--owner-kind", "claude", "--owner", "linus", "--json"]),
       );
       const byId = dataOf(
-        run(["session", "set", task.id, "--seg", "s1", "--backend", "claude", "--owner", "linus", "--json"]),
+        run(["session", "set", task.id, "--seg", "s1", "--owner-kind", "claude", "--owner", "linus", "--json"]),
       );
       assert.equal(byId.session.id, byIdentifier.session.id, "one session, not two");
       assert.equal(byIdentifier.session.session_id, deriveSessionId(task.id, "linus", "s1"));
@@ -57,13 +66,13 @@ describe("cli/session", () => {
     });
   });
 
-  it("requires --seg and --backend", async () => {
+  it("requires --seg and --owner-kind", async () => {
     await withCli(async ({ run, dataDir }) => {
       run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
       run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
       const missing = run(["session", "set", "DEMO-0001", "--seg", "s1"]);
       assert.equal(missing.status, 2);
-      assert.match(missing.stderr, /--backend is required/);
+      assert.match(missing.stderr, /--owner-kind is required/);
     });
   });
 });

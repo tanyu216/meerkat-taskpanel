@@ -132,7 +132,9 @@ _Avoid_: ping, keepalive, poll
 
 **Session**:
 The record of which conversation is doing the work on a card. It is the trail that answers
-"which agent, in which run, touched this", and it is distinct from the actor.
+"which agent, in which run, touched this", and it is distinct from the actor. Its row pairs
+`owner` with `owner_kind` — the owner's platform kind, the same `kind` an actor reference
+carries elsewhere.
 _中文_: 会话
 _Avoid_: connection, run, thread
 
@@ -140,6 +142,13 @@ _Avoid_: connection, run, thread
 The discriminator that lets one card have several concurrent working conversations. A
 session is identified by the card, the owner and the segment together.
 _Avoid_: part, shard, chunk
+
+**Goal**:
+The one sentence a session registers to say what it is working on. It lives on the
+session row, so concurrent segments on one card each state their own; it is not a card
+field and does not replace the round's report.
+_中文_: 目标
+_Avoid_: description, note, summary
 
 **Candidate**:
 A card the loop may claim, with the reason it qualified — `ready` (assigned and unblocked),

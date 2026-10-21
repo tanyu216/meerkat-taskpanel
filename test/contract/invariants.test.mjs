@@ -589,7 +589,7 @@ describe("contract/invariants — global_revision covers every write table", () 
         () => db.prepare("INSERT INTO comments(id,task_id,body,kind,author_kind,author_id,created_at) VALUES('c','t','b','note','agent','as',?)").run(TS),
         () => db.prepare("INSERT INTO task_activities(task_id,event,changes_json,created_at) VALUES('t','x','{}',?)").run(TS),
         () => db.prepare("INSERT INTO attachments(id,task_id,filename,kind,created_at) VALUES('at','t','f','attachment',?)").run(TS),
-        () => db.prepare("INSERT INTO agent_sessions(id,task_id,seg,owner,backend,session_id,status,ts) VALUES('s','t','seg1','linus','claude','sid','running',?)").run(TS),
+        () => db.prepare("INSERT INTO agent_sessions(id,task_id,seg,owner,owner_kind,session_id,status,ts) VALUES('s','t','seg1','linus','claude','sid','running',?)").run(TS),
         () => db.prepare("INSERT INTO task_reports(task_id,round,conclusion,acceptance_json,evidence_json,author_kind,author_id,created_at) VALUES('t',1,'c','[]','[]','agent','linus',?)").run(TS),
         () => db.prepare("UPDATE projects SET name = 'renamed' WHERE id = 'proj'").run(),
         () => db.prepare("UPDATE tasks SET title = 'renamed' WHERE id = 't'").run(),

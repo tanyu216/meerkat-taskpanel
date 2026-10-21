@@ -2307,7 +2307,7 @@ const BLOCKS = [
           "together when the card has no session rows; the assignee kind is not the switch " +
           "(a human-assigned card can carry sessions — the server enforces no " +
           "assignee/session relationship). The `data-agent-platform` seat states the card's " +
-          "own platform; historical rows name their own `backend` in a plain badge. How many " +
+          "own platform; historical rows name their own `owner_kind` in a plain badge. How many " +
           "cards carry sessions is fixture data. [data-agent-platform-value] seats the " +
           "session's **platform id** (e.g. `claude`) — the seat is the id, not a CLI flag, " +
           "and that is what the app renders there. The prototype's static sample reads " +

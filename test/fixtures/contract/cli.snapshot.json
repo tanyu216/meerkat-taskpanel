@@ -1354,10 +1354,10 @@
           ],
           "flags": [
             {
-              "flag": "backend",
+              "flag": "goal",
               "as": "string",
-              "value": "<name>",
-              "required": true,
+              "value": "<text>",
+              "required": false,
               "repeat": false,
               "short": null
             },
@@ -1366,6 +1366,14 @@
               "as": "string",
               "value": "<name>",
               "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "owner-kind",
+              "as": "string",
+              "value": "<name>",
+              "required": true,
               "repeat": false,
               "short": null
             },

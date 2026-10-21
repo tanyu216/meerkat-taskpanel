@@ -269,12 +269,13 @@ const PROBE_SESSION = {
   taskId: "probe",
   seg: "probe",
   owner: "probe",
-  backend: "probe",
+  ownerKind: "probe",
   sessionId: "probe",
   phase: "probe",
   pid: 1,
   status: "probe",
   ts: "probe",
+  goal: "probe",
 };
 
 /**

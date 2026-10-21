@@ -15,12 +15,13 @@ const CAMEL = {
   task_id: "taskId",
   seg: "seg",
   owner: "owner",
-  backend: "backend",
+  owner_kind: "ownerKind",
   session_id: "sessionId",
   phase: "phase",
   pid: "pid",
   status: "status",
   ts: "ts",
+  goal: "goal",
 };
 
 /** camelCase field → column, for the merge above. */
@@ -42,10 +43,10 @@ export function agentSessionFromRow(row) {
 export function createAgentSessionsRepository(db) {
   return {
     /**
-     * @param {{taskId: string, seg: string, owner: string, backend: string, sessionId: string, phase?: string|null, pid?: number|null, status?: string, ts: string}} input
+     * @param {{taskId: string, seg: string, owner: string, ownerKind: string, sessionId: string, phase?: string|null, pid?: number|null, status?: string, ts: string, goal?: string}} input
      */
     upsertByNaturalKey(input) {
-      for (const field of ["taskId", "seg", "owner", "backend", "sessionId"]) {
+      for (const field of ["taskId", "seg", "owner", "ownerKind", "sessionId"]) {
         if (typeof input[field] !== "string" || input[field].trim() === "") {
           throw new DomainError("VALIDATION_FAILED", {
             message: `agent session ${field} is required`,
@@ -61,11 +62,14 @@ export function createAgentSessionsRepository(db) {
         .get(input.taskId, input.seg, input.owner);
       const merged = { ...input };
       if (current !== undefined) {
-        for (const field of ["backend", "sessionId", "phase", "pid", "status"]) {
+        for (const field of ["ownerKind", "sessionId", "phase", "pid", "status", "goal"]) {
           if (merged[field] === undefined) merged[field] = current[toColumn(field)];
         }
       }
       input = merged;
+      // `goal` is optional: a new session without one stores the empty sentence,
+      // and a re-registration that omits it keeps the one already recorded.
+      const goal = input.goal === undefined ? "" : String(input.goal).trim();
 
       const status = input.status ?? "running";
       if (!["running", "closed", "failed"].includes(status)) {
@@ -76,26 +80,28 @@ export function createAgentSessionsRepository(db) {
       }
       try {
         db.prepare(
-          `INSERT INTO agent_sessions(id, task_id, seg, owner, backend, session_id, phase, pid, status, ts)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO agent_sessions(id, task_id, seg, owner, owner_kind, session_id, phase, pid, status, ts, goal)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(task_id, seg, owner) DO UPDATE SET
-             backend = excluded.backend,
+             owner_kind = excluded.owner_kind,
              session_id = excluded.session_id,
              phase = excluded.phase,
              pid = excluded.pid,
              status = excluded.status,
-             ts = excluded.ts`,
+             ts = excluded.ts,
+             goal = excluded.goal`,
         ).run(
           id,
           input.taskId,
           input.seg,
           input.owner,
-          input.backend,
+          input.ownerKind,
           input.sessionId,
           input.phase ?? null,
           input.pid ?? null,
           status,
           input.ts,
+          goal,
         );
       } catch (err) {
         throw mapSqliteError(err, { op: "agentSessions.upsert", table: "agent_sessions" });

@@ -35,7 +35,7 @@ enforced by `test/contract/activity-events.test.mjs`:
 | `relation_added` | `commands/relations.mjs` | **target** | `relationId`, `type`, `source`, `target` | yes |
 | `relation_removed` | `commands/relations.mjs` | **target** | `relationId`, `type`, `source`, `target` | yes |
 | `label_gc` | `commands/labels.mjs` | none | `archived`, `kept`, `mismatched`, `reason`, `ttlDays` | yes |
-| `session_registered` | `commands/agent-sessions.mjs` | task | `sessionId`, `seg`, `backend`, `phase` | yes |
+| `session_registered` | `commands/agent-sessions.mjs` | task | `sessionId`, `seg`, `ownerKind`, `phase` | yes |
 | `session_closed` | `commands/agent-sessions.mjs` | task | `sessionId`, `status` | yes |
 | `progress` | historical import | task | `line`, `seq` | yes |
 | `attachment_added` | `server/routes/attachments.mjs` | task | `attachmentId`, `filename`, `content_type`, `size` | yes |

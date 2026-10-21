@@ -9,6 +9,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **An agent session records a one-sentence goal.** `taskctl session set <ref> --seg … --owner-kind …
+  --goal "<one sentence>"` stores what that conversation is working on on the session row
+  (migration 0028), so concurrent segments on one card each state their own. Omitting `--goal` on a
+  re-registration keeps the recorded sentence; `session list` and the drawer's Agent session trail
+  show it. The markdown card's `## Sessions` line carries it as `goal:` between `id` and `phase`,
+  escaped so the sentence may contain ` · `.
 - **Done/canceled cards can be reopened to `todo`.** `taskctl issue reopen <ref> --reason "<why>"`
   (and `POST /api/v1/tasks/:ref/reopen`) returns a finished card to the queue with an audited
   `task_reopened` activity, starts a new delivery round, clears its archive and releases its
@@ -54,6 +60,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Breaking: an agent session's `backend` is now `owner_kind`.** The column, the wire field, the
+  `session set` flag (`--backend` → `--owner-kind`) and the markdown `## Sessions` field all use the
+  one spelling; migration 0029 renames the column in place (`RENAME COLUMN`, no rebuild). The value
+  is unchanged — an actor's platform kind (`claude`, `codex`, `pi`, …) — but the old word is gone
+  from the API and the card grammar, with no compatibility alias.
+- **The drawer's Activity trail lists newest first.** `GET /api/v1/tasks/:ref/activities` takes an
+  optional `order=asc|desc` (default `asc`, which the SSE replay cursor needs); the drawer asks for
+  `desc` with `limit=50`, so it now shows the newest 50 events rather than the oldest 50. An unknown
+  `order` is `VALIDATION_FAILED`, like `GET /tasks?order=`.
 - **Breaking: `src/shared/` is now `src/foundation/`.** The layer's name now describes its
   role (the dependency floor: `cli|server → core → foundation`, importing nothing from
   `src/`) instead of its audience. Because the package ships `src` without an `exports` map,

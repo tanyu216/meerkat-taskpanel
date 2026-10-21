@@ -8,7 +8,7 @@ import { BOARD_ACTOR, actorOf } from "./context.mjs";
 
 /**
  * @param {object} ctx
- * @param {{taskId: string, seg: string, owner?: string, actor?: object, backend: string, sessionId: string, phase?: string|null, pid?: number|null, status?: string}} input
+ * @param {{taskId: string, seg: string, owner?: string, actor?: object, ownerKind: string, sessionId: string, phase?: string|null, pid?: number|null, status?: string, goal?: string}} input
  */
 export function registerSession(ctx, input) {
   const actor = actorOf(input.actor ?? { kind: BOARD_ACTOR.kind, id: input.owner ?? BOARD_ACTOR.id });
@@ -22,19 +22,22 @@ export function registerSession(ctx, input) {
         taskId: task.id,
         seg: input.seg,
         owner: input.owner ?? actor.id,
-        backend: input.backend,
+        ownerKind: input.ownerKind,
         sessionId: input.sessionId,
         phase: input.phase ?? null,
         pid: input.pid ?? null,
         status: input.status ?? "running",
         ts: now,
+        // Pass `undefined` through: the repository keeps the recorded goal on a
+        // re-registration that does not mention it.
+        goal: input.goal,
       });
       ctx.repos.activities.append({
         taskId: task.id,
         actorKind: actor.kind,
         actorId: actor.id,
         event: "session_registered",
-        changes: { sessionId: session.id, seg: session.seg, backend: session.backend, phase: session.phase },
+        changes: { sessionId: session.id, seg: session.seg, ownerKind: session.ownerKind, phase: session.phase },
         createdAt: now,
       });
       return session;

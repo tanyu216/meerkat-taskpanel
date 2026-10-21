@@ -268,12 +268,13 @@ export function sessionToWire(session) {
     task_id: session.taskId,
     seg: session.seg,
     owner: session.owner,
-    backend: session.backend,
+    owner_kind: session.ownerKind,
     session_id: session.sessionId,
     phase: session.phase ?? null,
     pid: session.pid ?? null,
     status: session.status,
     ts: session.ts,
+    goal: session.goal ?? "",
   };
 }
 

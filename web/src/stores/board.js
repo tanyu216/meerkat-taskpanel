@@ -1178,7 +1178,8 @@ export async function openDetail(identifier) {
     const [taskData, relations, activities, sessions, reports] = await Promise.all([
       api.task(identifier),
       api.taskRelations(identifier).catch(() => ({ relations: [] })),
-      api.taskActivities(identifier, { limit: 50 }).catch(() => ({ activities: [] })),
+      // Newest first: `limit` with ASC returned the OLDEST 50 rows.
+      api.taskActivities(identifier, { limit: 50, order: "desc" }).catch(() => ({ activities: [] })),
       api.taskSessions(identifier).catch(() => ({ sessions: [] })),
       api.taskReports(identifier).catch(() => ({ reports: [] })),
     ]);
@@ -1267,7 +1268,7 @@ async function refreshDetail(wanted, taskId) {
   read("relations", () => api.taskRelations(identifier), (data) => {
     patch.relations = data;
   });
-  read("activities", () => api.taskActivities(identifier, { limit: 50 }), (data) => {
+  read("activities", () => api.taskActivities(identifier, { limit: 50, order: "desc" }), (data) => {
     patch.activities = data.activities ?? [];
   });
   read("sessions", () => api.taskSessions(identifier), (data) => {

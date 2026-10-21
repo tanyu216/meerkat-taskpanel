@@ -11,7 +11,7 @@
  *   - 2026-10-08T15:43:04.955Z · decision · elon — text with \n escapes
  *
  *   ## Sessions
- *   - seg:seg1 · owner:linus · backend:claude · id:<uuid> · phase:x · status:running · pid: · 2026-…
+ *   - seg:seg1 · owner:linus · owner_kind:claude · id:<uuid> · goal:<one sentence> · phase:x · status:running · pid: · 2026-…
  *
  *   ## Report           (or `### R2 · <ts> · <author>` per round)
  *
@@ -243,10 +243,28 @@ export function renderCommentsBlock(comments) {
 // Sessions
 // ---------------------------------------------------------------------------
 
-const SESSION_FIELDS = ["seg", "owner", "backend", "id", "phase", "status", "pid"];
+const SESSION_FIELDS = ["seg", "owner", "owner_kind", "id", "goal", "phase", "status", "pid"];
 
 /**
- * `- seg:x · owner:y · backend:z · id:<uuid> · phase:p · status:s · pid:n · <ts>`
+ * The goal is free prose inside a line whose fields are separated by ` · `, so
+ * it gets its own escape set. One pass, because a two-pass backslash escape
+ * would corrupt a literal `·`: `\\` is handled by the same regex as `\\n`.
+ */
+const SESSION_ESCAPES = { "\\": "\\\\", "\n": "\\n", "\r": "\\r", "·": "\\u00b7" };
+const SESSION_UNESCAPES = { "\\\\": "\\", "\\n": "\n", "\\r": "\r", "\\u00b7": "·" };
+
+/** @param {string} text */
+function escapeSessionField(text) {
+  return String(text).replace(/[\\\n\r·]/g, (ch) => SESSION_ESCAPES[ch]);
+}
+
+/** @param {string} text */
+function unescapeSessionField(text) {
+  return String(text).replace(/\\(?:u00b7|n|r|\\)/g, (match) => SESSION_UNESCAPES[match]);
+}
+
+/**
+ * `- seg:x · owner:y · owner_kind:z · id:<uuid> · goal:g · phase:p · status:s · pid:n · <ts>`
  *
  * Tolerant like its siblings. A real card keeps the unedited template
  * placeholder comment in `## Sessions` (11 of the M5 drill's cards did), and a
@@ -309,7 +327,8 @@ export function parseSessionsBlock(text, options = {}) {
         wellFormed = false;
         break;
       }
-      entry[name] = part.slice(colon + 1).trim();
+      const value = part.slice(colon + 1).trim();
+      entry[name] = name === "goal" ? unescapeSessionField(value) : value;
     }
     if (!wellFormed) {
       notice();
@@ -321,16 +340,18 @@ export function parseSessionsBlock(text, options = {}) {
   return sessions;
 }
 
-/** @param {{seg: string, owner: string, backend: string, sessionId: string, phase?: string|null, status: string, pid?: number|null, ts: string}[]} sessions */
+/** @param {{seg: string, owner: string, ownerKind?: string, owner_kind?: string, sessionId: string, goal?: string|null, phase?: string|null, status: string, pid?: number|null, ts: string}[]} sessions */
 export function renderSessionsBlock(sessions) {
   return sessions
     .map((session) =>
       `- ${[
         `seg:${session.seg}`,
         `owner:${session.owner}`,
-        `backend:${session.backend}`,
+        // The parser produces `owner_kind`; database rows produce `ownerKind`.
+        `owner_kind:${session.ownerKind ?? session.owner_kind ?? ""}`,
         // The parser produces `id`; rows from the database produce `sessionId`.
         `id:${session.sessionId ?? session.id ?? ""}`,
+        `goal:${escapeSessionField(session.goal ?? "")}`,
         `phase:${session.phase ?? ""}`,
         `status:${session.status}`,
         `pid:${session.pid ?? ""}`,

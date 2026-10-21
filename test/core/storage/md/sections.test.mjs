@@ -190,8 +190,8 @@ describe("md/sections — sessions", () => {
   it("parses the team's key:value session lines, empty pid included", () => {
     const sessions = parseSessionsBlock(
       [
-        "- seg:seg1 · owner:linus · backend:claude · id:32306ef3-a9ad-5453-b300-5f12642ac16f · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z",
-        "- seg:seg2 · owner:linus · backend:claude · id:ff309028 · status:running · 2026-10-02T00:00:00.000Z",
+        "- seg:seg1 · owner:linus · owner_kind:claude · id:32306ef3-a9ad-5453-b300-5f12642ac16f · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z",
+        "- seg:seg2 · owner:linus · owner_kind:claude · id:ff309028 · status:running · 2026-10-02T00:00:00.000Z",
       ].join("\n"),
     );
     assert.equal(sessions[0].seg, "seg1");
@@ -200,15 +200,44 @@ describe("md/sections — sessions", () => {
     assert.equal(sessions[1].phase, "", "a missing field becomes an empty string");
     assert.equal(sessions[1].status, "running");
     assert.equal(renderSessionsBlock([sessions[0]]).startsWith("- seg:seg1 · owner:linus"), true);
-    assert.equal(renderSessionsBlock([sessions[0]]), `- seg:seg1 · owner:linus · backend:claude · id:32306ef3-a9ad-5453-b300-5f12642ac16f · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z`);
+    assert.equal(renderSessionsBlock([sessions[0]]), `- seg:seg1 · owner:linus · owner_kind:claude · id:32306ef3-a9ad-5453-b300-5f12642ac16f · goal: · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z`);
+  });
+
+  it("round-trips a goal that carries the field separator, a newline and a backslash", () => {
+    const goal = "fix a · b\nsecond line\r\\done: yes";
+    const rendered = renderSessionsBlock([
+      {
+        seg: "seg1",
+        owner: "linus",
+        ownerKind: "claude",
+        sessionId: "sess-1",
+        goal,
+        status: "running",
+        pid: null,
+        ts: "2026-10-01T00:00:00.000Z",
+      },
+    ]);
+    assert.equal(rendered.includes("\n"), false, "the record stays one line");
+    const [parsed] = parseSessionsBlock(rendered);
+    assert.equal(parsed.goal, goal);
+    assert.equal(parsed.seg, "seg1");
+    assert.equal(parsed.status, "running");
+  });
+
+  it("reads a pre-0028 session line without a goal as the empty sentence", () => {
+    const [parsed] = parseSessionsBlock(
+      "- seg:seg1 · owner:linus · owner_kind:claude · id:sess-1 · status:running · 2026-10-01T00:00:00.000Z",
+    );
+    assert.equal(parsed.goal, "");
+    assert.equal(parsed.status, "running");
   });
 
   it("tolerates the template placeholder comment and keeps the real sessions", () => {
     const notices = [];
     const sessions = parseSessionsBlock(
       [
-        "<!-- 子会话关联（resume 依据）：每段一行 · 字段 seg/owner/backend/id/phase/status/pid -->",
-        "- seg:seg1 · owner:linus · backend:claude · id:sess-1 · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z",
+        "<!-- 子会话关联（resume 依据）：每段一行 · 字段 seg/owner/owner_kind/id/phase/status/pid -->",
+        "- seg:seg1 · owner:linus · owner_kind:claude · id:sess-1 · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z",
       ].join("\n"),
       { notices },
     );
@@ -217,7 +246,7 @@ describe("md/sections — sessions", () => {
     assert.deepEqual(notices[0], {
       section: "Sessions",
       line: 1,
-      text: "<!-- 子会话关联（resume 依据）：每段一行 · 字段 seg/owner/backend/id/phase/status/pid -->",
+      text: "<!-- 子会话关联（resume 依据）：每段一行 · 字段 seg/owner/owner_kind/id/phase/status/pid -->",
     });
   });
 
@@ -226,7 +255,7 @@ describe("md/sections — sessions", () => {
     const sessions = parseSessionsBlock(
       [
         "- 2026-10-09T15:52+08:00 · change · author=elon · a comment that is not a session record",
-        "- seg:seg1 · owner:linus · backend:claude · id:sess-1 · status:running · 2026-10-02T00:00:00.000Z",
+        "- seg:seg1 · owner:linus · owner_kind:claude · id:sess-1 · status:running · 2026-10-02T00:00:00.000Z",
       ].join("\n"),
       { notices },
     );
@@ -243,7 +272,7 @@ describe("md/sections — sessions", () => {
         "- seg:seg2 · whatever:1 · 2026-10-01T00:00:00.000Z", // unknown field
         "- notakeyvalue · 2026-10-01T00:00:00.000Z", // field without `<name>:<value>`
         "plain prose with no bullet",
-        "- seg:seg3 · owner:linus · backend:claude · id:sess-3 · status:running · 2026-10-03T00:00:00.000Z",
+        "- seg:seg3 · owner:linus · owner_kind:claude · id:sess-3 · status:running · 2026-10-03T00:00:00.000Z",
       ].join("\n"),
       { notices },
     );
@@ -262,7 +291,7 @@ describe("md/sections — sessions", () => {
       [
         "<!-- a comment block",
         "that spans several lines -->",
-        "- seg:seg1 · owner:linus · backend:claude · id:sess-1 · status:running · 2026-10-01T00:00:00.000Z",
+        "- seg:seg1 · owner:linus · owner_kind:claude · id:sess-1 · status:running · 2026-10-01T00:00:00.000Z",
       ].join("\n"),
       { notices },
     );

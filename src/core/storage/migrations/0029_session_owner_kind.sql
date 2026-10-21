@@ -1,0 +1,25 @@
+-- 0029_session_owner_kind.sql — a session names its owner's kind, not a "backend".
+--
+-- ---------------------------------------------------------------------------
+-- Why
+-- ---------------------------------------------------------------------------
+--
+-- `agent_sessions.backend` always held a platform name (`claude`, `codex`, `pi`,
+-- …). Since `0023` an actor's kind is exactly that — `human`, or the platform an
+-- agent runs on — and every other actor reference in the schema pairs an id with
+-- its kind: `assignee_id`/`assignee_kind`, `reporter_id`/`reporter_kind`,
+-- `claimed_by`/`claimed_kind`, `author_id`/`author_kind`. A session's actor field
+-- is `owner`, so its kind is `owner_kind`. "Backend" was the only place the
+-- vocabulary disagreed with itself.
+--
+-- ---------------------------------------------------------------------------
+-- How
+-- ---------------------------------------------------------------------------
+--
+-- `RENAME COLUMN` is a schema edit, not a table rebuild: the row's value, the
+-- natural-key index `ux_sessions_natural(task_id, seg, owner)` and the revision
+-- triggers all survive untouched. No column default or constraint changes; the
+-- column stays `TEXT NOT NULL` and the free-string rule (`owner` is telemetry,
+-- not a registry reference) is unchanged.
+
+ALTER TABLE agent_sessions RENAME COLUMN backend TO owner_kind;

@@ -69,6 +69,23 @@ describe("server/routes — a task's audit trail", () => {
     assert.deepEqual(after.map((entry) => entry.event), ["comment_added", "task_claimed"]);
   });
 
+  it("returns the newest first when ?order=desc is asked for", async () => {
+    const body = await get("?order=desc");
+    assert.deepEqual(
+      body.data.activities.map((entry) => entry.event),
+      ["task_claimed", "comment_added", "task_created"],
+    );
+
+    // The drawer's contract: the 50 newest rows, newest first — not the oldest 50.
+    const newest = (await get("?limit=1&order=desc")).data.activities;
+    assert.deepEqual(newest.map((entry) => entry.event), ["task_claimed"]);
+
+    // `order` is validated like `GET /tasks?order=`, not silently ignored.
+    const response = await fetch(`${base}/api/v1/tasks/${identifier}/activities?order=bogus`);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error.code, "VALIDATION_FAILED");
+  });
+
   it("404s an unknown task reference", async () => {
     const response = await fetch(`${base}/api/v1/tasks/PROJ-9999/activities`);
     assert.equal(response.status, 404);
