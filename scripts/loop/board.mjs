@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The real board I/O behind the deterministic entries.
+ * The real board I/O behind the deterministic passes.
  *
  * `runners.mjs` holds the injected-dependency passes; this module wires them to
  * `taskctl` and the loop's own files. Only the entries import it.

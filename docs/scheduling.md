@@ -5,7 +5,7 @@ clock: a liveness ping, a periodic judgment turn, the atomic claim, the wake, an
 the notify-only patrol that catches what the scan misses. The scheduler lives
 **outside** the host — `scripts/supervisor.mjs`, which `install.sh` copies into the
 host out of the **[`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill** — and
-the host is only ever the worker that gets woken. The deterministic entries live
+the host is only ever the worker that gets woken. The deterministic passes live
 under `scripts/loop/` and are run by the continue turn.
 
 The loop is a skill of its own, and it is distributed as one: `claude`, `codex` and `pi`
@@ -35,21 +35,21 @@ independent entries under `scripts/loop/`, and the continue turn invokes them.
 The split is deliberate. A 60-second clock that read the board would be a poll
 again; a 10-minute clock that ran the entries itself would keep the loop's
 responsibilities inside the scheduler. On launchd/systemd the optional
-**event subscriber** (`--subscribe`) holds one SSE connection to the board and
-asks for a continue turn when a dispatch-relevant event arrives, so a new card or
+**event subscriber** (`--subscribe`) follows the board's event stream through
+`taskctl events tail` and asks for a continue turn when a dispatch-relevant event arrives, so a new card or
 a completed dependency is seen within seconds; the continue clock remains the
 fallback and the only path for time-based work (stale claims, review aging, SLA
 tiers). On cron — which cannot host a long-lived process — discovery stays at
 most one continue cadence. `--continue-interval` is still the lever for that
 fallback; lowering it raises the LLM cost linearly.
 
-The deterministic entries are **not scheduled individually**:
+The deterministic passes are **not scheduled individually**:
 
 | Entry | Job | Writes |
 |---|---|---|
-| `scripts/loop/poll.mjs` | scan → atomic claim → wake a worker | claims and wakes |
-| `scripts/loop/patrol.mjs` | heartbeat alerts + SLA rows | nothing (notify only) |
-| `scripts/loop/workflow.mjs` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `taskd` |
+| `scripts/loop/passes.mjs poll` | scan → atomic claim → wake a worker | claims and wakes |
+| `scripts/loop/passes.mjs patrol` | heartbeat alerts + SLA rows | nothing (notify only) |
+| `scripts/loop/passes.mjs workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `taskd` |
 
 The continue prompt runs them in the order **patrol → workflow → poll**: the
 workflow pass dispatches a review card, and the poll that follows in the same
@@ -230,9 +230,9 @@ What that means concretely:
 
 The SLA half notifies. Everything after that — accepting a delivery, rejecting it and
 opening a rework, rolling a container up, splitting a card into one — used to wait for a
-human. The **board** now owns those decisions; the loop's **workflow entry**
-(`scripts/loop/workflow.mjs`) executes them. It is a pass of its own, run by the continue
-turn after patrol.
+human. The **board** now owns those decisions; the loop's **workflow pass**
+(`scripts/loop/passes.mjs workflow`) executes them. It is a pass of its own, run by the
+continue turn after patrol.
 
 The board computes one plan through `issue reconcile --workflow` (see
 [`status-lifecycle.md`](../skills/meerkat-taskpanel/references/status-lifecycle.md#11-the-boards-workflow-decisions) —
@@ -902,7 +902,8 @@ one write lock, so they never fight over the slot:
   *`TASKD_URL`* (preferred: a dead **loopback** address falls through, a dead **remote** one is
   an error) → *a healthy run pointer* → *lazy start* (unless `TASKD_NO_AUTOSTART` is set). A
   guarded `taskd` leaves a **healthy pointer**, so a CLI call reuses it and never starts a
-  second server. The subscriber uses the same `--url` > `TASKD_URL` > pointer order.
+  second server. The subscriber inherits the same order because `taskctl events tail`
+  resolves the board for it.
 - **One slot.** Both use the same run pointer (the machine-wide default, or the same
   `TASKD_RUNTIME_POINTER`), the same data directory, and the same write lock. `pid`
   reuse through the pointer is tolerated by the transport's wait-for-pointer step.
@@ -1004,7 +1005,7 @@ this checkout:
 ```text
 <home>/<host-dir>/meerkat-taskpanel/
 ├── scripts/supervisor.mjs        the scheduler the units run
-├── scripts/loop/*.mjs            the deterministic entries (poll / patrol / workflow / continue)
+├── scripts/loop/*.mjs            the deterministic passes (patrol / workflow / poll) and the subscriber
 ├── scripts/wake-cwd.mjs          what the wake glue calls to resolve a card's directory
 ├── scripts/foundation/*.mjs      the modules those import
 ├── supervisor.log                runtime
@@ -1116,8 +1117,8 @@ crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
 The `.subscribe` unit is the **event daemon**. launchd (`KeepAlive`) and systemd
-(`Type=simple`, `Restart=always`) keep one SSE connection to the board and ask for a
-continue turn when a dispatch-relevant event arrives. It is optional: ping/continue remain
+(`Type=simple`, `Restart=always`) follow the board's event stream through
+`taskctl events tail` and ask for a continue turn when a dispatch-relevant event arrives. It is optional: ping/continue remain
 the fallback, and they are the only path for time-based work (stale claims, review aging,
 SLA tiers). **cron cannot host it** — a crontab entry is not a long-lived process — so a
 cron deployment stays on the continue cadence.
@@ -1416,7 +1417,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--board-limit <n>` | `500` | max cards read in one patrol pass |
 | `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
 | `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config: the claim default, and (for a host copy) `MEERKAT_TASKPANEL_REPO` |
-| `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber and its `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
+| `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber's `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
 | `--home <path>` | `$HOME` | base for those defaults |
 | `--glue <path>` | `<home>/<host-dir>/bin/wake-<host>.sh` | the wake glue that resolves the project directory and starts the worker ([Where a worker runs](#where-a-worker-runs)) |
 | `--projects-json <path>` | `<home>/<host-dir>/skills/meerkat-taskpanel/projects.json` | the host-local map handed to the glue |
@@ -1482,9 +1483,9 @@ launchd / systemd / cron  ──ping 60s──▶  supervisor --ping-only --once
 
 launchd / systemd / cron  ──continue 600s──▶  supervisor --continue-only --once
                                             claude -p "Continue …"   ← the judgment turn (no card, no project)
-                                                ├─ loop/patrol.mjs    notify-only SLA
-                                                ├─ loop/workflow.mjs  apply board workflow plan (taskd)
-                                                └─ loop/poll.mjs
+                                                ├─ passes.mjs patrol    notify-only SLA
+                                                ├─ passes.mjs workflow  apply board workflow plan (taskd)
+                                                └─ passes.mjs poll
                                                       issue candidates --assignee alice --include-unassigned
                                                           (empty → stop; 0 workers)
                                                       issue claim <ref>        ← atomic claim, the only dispatch

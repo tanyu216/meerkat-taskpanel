@@ -221,6 +221,11 @@ authoritative home, because the container image drops `design/`.
   `<dataDir>/taskd.env` is no longer read (hard switch). Identity (`--actor-kind`) is required
   on every command except `--help` / `--version`; `--agent` names the role and is not a
   shared-file key.
+- **The loop speaks only `taskctl`.** `scripts/loop/**` and `scripts/supervisor.mjs` never call
+  the board's HTTP API directly — the live event stream is `taskctl events tail`, not `fetch`,
+  and the loop carries no board discovery or token code. Board capability detail (invocations,
+  JSON keys) lives in `skills/meerkat-taskpanel/references/capabilities.md`; the loop skill
+  records decisions only.
 - The **delivery gate** requires a report **for the current delivery round** before a card can
   move to `in_review`; a report from an earlier round is history, not evidence. It is enforced by
   a DB trigger *and* a domain check, tested against each other under `test/contract/`. There is

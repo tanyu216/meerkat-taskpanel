@@ -270,6 +270,34 @@
       ]
     },
     {
+      "name": "events",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "tail",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "after",
+              "as": "number",
+              "value": "<rev>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "idle",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "export",
       "default_command": "md",
       "commands": [

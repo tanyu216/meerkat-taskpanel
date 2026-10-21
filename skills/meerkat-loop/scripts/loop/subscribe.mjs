@@ -2,10 +2,14 @@
 /**
  * The event subscriber — the loop's ears.
  *
- * Holds one SSE connection and asks for a `continue` turn when a
- * dispatch-relevant event arrives. It never claims, moves or wakes anything:
- * the continue turn rescans, so replay, duplicate frames and bursts are
- * harmless and there is only one dispatch path.
+ * Spawns `taskctl events tail` and asks for a `continue` turn when a
+ * dispatch-relevant event arrives. The loop never speaks HTTP itself: board
+ * discovery, the token and the stream all live behind `taskctl`, and this file
+ * only decides when to reconnect and when to wake the host.
+ *
+ * It never claims, moves or wakes anything: the continue turn rescans, so
+ * replay, duplicate frames and bursts are harmless and there is only one
+ * dispatch path.
  *
  * A burst is debounced (300 ms, capped at 2 s), at most one turn starts per
  * minute, and a turn refused by the continue lock is retried (5 s), not
@@ -17,17 +21,110 @@ import {
   EVENT_CONTINUE_MIN_MS,
   EVENT_DEBOUNCE_MAX_MS,
   EVENT_DEBOUNCE_MS,
+  HUMAN_KIND,
   SSE_SUBSCRIBE_IDLE_MS,
+  SUBSCRIBE_BACKOFF_MAX_MS,
   SUBSCRIBE_RETRY_MS,
+  TASKD_KIND,
 } from "../foundation/constants.mjs";
 
-import * as continueEntry from "./continue.mjs";
-import { runEntry } from "./entry.mjs";
-import { resolveEventEndpoint } from "./endpoint.mjs";
-import { advanceCursor, classify } from "./event-rules.mjs";
-import { resolveLoopConfig, selectMode } from "./options.mjs";
-import { createLogger } from "./runtime.mjs";
-import { connectSse, nextBackoff } from "./sse-client.mjs";
+import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./options.mjs";
+import { createLogger, streamCli } from "./runtime.mjs";
+import { runContinueOnce } from "./runners.mjs";
+
+/** The reconnect ladder: 1 s, 2 s, 4 s … capped at 30 s. */
+export function nextBackoff(current) {
+  const next = current <= 0 ? 1000 : current * 2;
+  return Math.min(next, SUBSCRIBE_BACKOFF_MAX_MS);
+}
+
+// ---------------------------------------------------------------------------
+// Which events wake the loop
+// ---------------------------------------------------------------------------
+
+/**
+ * Events that can make work newly actionable or complete. Everything else is
+ * either noise for dispatch (comments, sessions, progress, attachments) or a
+ * project-level change the UI reloads but the loop does not act on.
+ */
+export const DISPATCH_EVENTS = Object.freeze([
+  "task_created",
+  "task_moved",
+  "task_reopened",
+  "task_delivered",
+  "report_written",
+  "report_waived",
+  "epic_auto_start",
+  "relation_added",
+  "relation_removed",
+  "import_completed",
+]);
+
+/**
+ * `task_updated` is field-dependent: a title edit is not a dispatch, a
+ * reassignment or a workflow `meta` flag is.
+ */
+export const TASK_UPDATED_DISPATCH_FIELDS = Object.freeze([
+  "assigneeId",
+  "assigneeKind",
+  "kind",
+  "labels",
+  "meta",
+]);
+
+const DISPATCH = new Set(DISPATCH_EVENTS);
+const UPDATED_FIELDS = new Set(TASK_UPDATED_DISPATCH_FIELDS);
+
+/**
+ * Did this loop (or the board itself) write the activity?
+ *
+ * Suppression is by author, not by role word: a human's event is never
+ * suppressed; `taskd` is the board's own housekeeping; an event authored by one
+ * of `opts.agents` is our echo. `import_completed` is authored by `taskd` but
+ * under `md-import`, so it survives — an import is work to discover.
+ *
+ * @param {object} activity an `activityToWire` payload
+ * @param {{agents: string[]}} context
+ * @returns {boolean}
+ */
+export function isOwnWrite(activity, context) {
+  if (activity?.actor_kind === HUMAN_KIND) return false;
+  const id = activity?.actor_id;
+  if (typeof id !== "string" || id === "") return false;
+  if (id === TASKD_KIND) return true;
+  return Array.isArray(context?.agents) && context.agents.includes(id);
+}
+
+/**
+ * `"dispatch"` asks for a continue turn; `"ignore"` does nothing.
+ *
+ * @param {object} activity
+ * @param {{agents: string[]}} context
+ * @returns {"dispatch"|"ignore"}
+ */
+export function classify(activity, context) {
+  if (isOwnWrite(activity, context)) return "ignore";
+  const event = activity?.event;
+  if (event === "task_updated") {
+    const fields = Array.isArray(activity?.changes?.fields) ? activity.changes.fields : [];
+    return fields.some((field) => UPDATED_FIELDS.has(field)) ? "dispatch" : "ignore";
+  }
+  return DISPATCH.has(event) ? "dispatch" : "ignore";
+}
+
+/**
+ * The reconnect cursor is the largest `id:` seen. It is a revision, and the
+ * server replays rows strictly newer than it.
+ *
+ * @param {number|null} cursor
+ * @param {{id: number|string|null}} frame
+ * @returns {number|null}
+ */
+export function advanceCursor(cursor, frame) {
+  const next = Number.parseInt(frame?.id ?? "", 10);
+  if (!Number.isFinite(next)) return cursor;
+  return cursor === null || next > cursor ? next : cursor;
+}
 
 /**
  * A coalescing scheduler, exported so its timing is testable without a socket.
@@ -156,8 +253,6 @@ function sleep(ms, signal) {
  */
 export async function runSubscribe(opts, env = process.env, deps = {}) {
   const log = deps.log ?? createLogger(opts);
-  const connect = deps.connectSse ?? connectSse;
-  const resolveEndpoint = deps.resolveEventEndpoint ?? resolveEventEndpoint;
   const controller = deps.controller ?? new AbortController();
   const signal = controller.signal;
   const now = deps.now ?? Date.now;
@@ -173,7 +268,7 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
   const scheduler = createDispatchScheduler({
     run:
       deps.runContinue ??
-      ((hooks) => continueEntry.runOnce(opts, env, hooks)),
+      ((hooks) => runContinueOnce(opts, env, hooks)),
     now,
     setTimer: deps.setTimer,
     clearTimer: deps.clearTimer,
@@ -184,44 +279,49 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
     log,
   });
 
+  // One connection attempt = one `taskctl events tail` child. Board discovery,
+  // the token and `.env` all belong to the CLI now; the loop only owns the
+  // reconnect ladder and the dispatch decision.
+  const streamEvents =
+    deps.streamEvents ??
+    ((input) =>
+      streamCli(
+        opts,
+        opts.agents[0],
+        [
+          "events",
+          "tail",
+          "--idle",
+          String(input.idleMs),
+          ...(input.after === null || input.after === undefined
+            ? []
+            : ["--after", String(input.after)]),
+        ],
+        {
+          signal: input.signal,
+          onOpen: input.onOpen,
+          onEvent: input.onEvent,
+          log,
+        },
+      ));
+
   let cursor = deps.initialCursor ?? null;
   let backoff = 1000;
 
   while (!signal.aborted) {
-    let endpoint = null;
-    try {
-      endpoint = await resolveEndpoint(opts, env);
-    } catch (err) {
-      log(`subscribe: endpoint resolution failed: ${err.message}`);
-    }
-    if (endpoint === null) {
-      log("subscribe: no board pointer yet; retrying");
-      await sleepFor(backoff);
-      backoff = nextBackoff(backoff);
-      continue;
-    }
-
     let result;
     try {
-      result = await connect({
-        url: endpoint.url,
-        token: endpoint.token,
+      result = await streamEvents({
         after: cursor,
         idleMs: opts.sseIdleMs ?? SSE_SUBSCRIBE_IDLE_MS,
         signal,
         onOpen: () => {
           backoff = 1000;
-          log(`subscribe: connected ${endpoint.url}`);
+          log("subscribe: connected");
         },
-        onFrame: (frame) => {
-          cursor = advanceCursor(cursor, frame);
-          let activity;
-          try {
-            activity = JSON.parse(frame.data);
-          } catch {
-            return; // a frame that is not JSON cannot name a board event
-          }
-          if (dispatchEnabled && classify(activity, { agents: opts.agents }) === "dispatch") {
+        onEvent: ({ id, data }) => {
+          cursor = advanceCursor(cursor, { id });
+          if (dispatchEnabled && classify(data, { agents: opts.agents }) === "dispatch") {
             scheduler.notify();
           }
         },
@@ -230,7 +330,7 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
       result = { reason: "error", error: err instanceof Error ? err : new Error(String(err)) };
     }
 
-    if (signal.aborted) break;
+    if (signal.aborted || result.reason === "aborted") break;
     if (result.reason === "shutdown") {
       backoff = 1000;
       log("subscribe: the board is shutting down; reconnecting");
@@ -266,14 +366,23 @@ export async function runOnce(opts, env = process.env) {
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {Promise<number>}
  */
-export function main(argv, env = process.env) {
-  return runEntry(
-    "subscribe",
-    argv,
-    env,
-    runOnce,
-    (opts) => (selectMode(opts) === "subscribe" ? null : "pass --subscribe (a daemon mode, not an --once entry)"),
-  );
+export async function main(argv, env = process.env) {
+  let opts;
+  try {
+    opts = parseArgs(argv, env);
+  } catch (err) {
+    process.stderr.write(`subscribe: ${err.message}\n`);
+    return 2;
+  }
+  if (opts.help) {
+    process.stdout.write(USAGE);
+    return 0;
+  }
+  if (selectMode(opts) !== "subscribe") {
+    process.stderr.write("subscribe: pass --subscribe (a daemon mode, not an --once entry)\n");
+    return 2;
+  }
+  return runOnce(opts, env);
 }
 
 if (isEntryPoint(import.meta.url)) {

@@ -19,6 +19,7 @@ import { GLOBAL_FLAGS } from "../argv.mjs";
 import { COMMANDS as attachmentCommands } from "./attachment.mjs";
 import { COMMANDS as commentCommands } from "./comment.mjs";
 import { COMMANDS as actorCommands } from "./dict.mjs";
+import { COMMANDS as eventCommands } from "./events.mjs";
 import { COMMANDS as exportCommands } from "./export.mjs";
 import { COMMANDS as issueCommands } from "./issue.mjs";
 import { COMMANDS as labelCommands } from "./labels.mjs";
@@ -51,6 +52,11 @@ export const groups = Object.freeze([
   },
   { name: "token", summary: "The board's access token.", commands: tokenCommands },
   { name: "sla", summary: "The board's computed SLA rows (read-only).", commands: slaCommands },
+  {
+    name: "events",
+    summary: "The board's live activity stream (read-only, NDJSON).",
+    commands: eventCommands,
+  },
 ]);
 
 export const registry = Object.freeze({ globals: GLOBAL_FLAGS, groups });

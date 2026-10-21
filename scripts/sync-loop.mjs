@@ -88,10 +88,7 @@ export const LOOP_BODY_ROOTS = Object.freeze([
   "scripts/loop/runtime.mjs",
   "scripts/loop/runners.mjs",
   "scripts/loop/board.mjs",
-  "scripts/loop/poll.mjs",
-  "scripts/loop/patrol.mjs",
-  "scripts/loop/workflow.mjs",
-  "scripts/loop/continue.mjs",
+  "scripts/loop/passes.mjs",
   "scripts/loop/subscribe.mjs",
   "scripts/wake-cwd.mjs",
 ]);

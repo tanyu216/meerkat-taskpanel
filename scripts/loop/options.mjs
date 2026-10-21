@@ -642,9 +642,8 @@ Options:
   --projects-json <path>    Host-local project map handed to the glue.
   -h, --help                Show this help
 
-The deterministic entries are also runnable on their own:
-  node scripts/loop/poll.mjs       scan → atomic claim → wake a worker
-  node scripts/loop/patrol.mjs     notify-only SLA rows (${PEER_MECHANISM}; peer watchdog ${PEER_LIVENESS_K}x${PEER_PERIOD_MIN}min)
-  node scripts/loop/workflow.mjs   apply the board's workflow plan
-  node scripts/loop/continue.mjs   one judgment turn`;
+The deterministic passes are also runnable on their own:
+  node scripts/loop/passes.mjs patrol     notify-only SLA rows (${PEER_MECHANISM}; peer watchdog ${PEER_LIVENESS_K}x${PEER_PERIOD_MIN}min)
+  node scripts/loop/passes.mjs workflow   apply the board's workflow plan
+  node scripts/loop/passes.mjs poll       scan → atomic claim → wake a worker`;
 

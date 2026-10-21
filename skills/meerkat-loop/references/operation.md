@@ -52,9 +52,9 @@ node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice
 node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --ping-only --once
 node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --continue-only --once
 
-node <host>/meerkat-taskpanel/scripts/loop/patrol.mjs   --host claude --agent alice
-node <host>/meerkat-taskpanel/scripts/loop/workflow.mjs --host claude --agent alice
-node <host>/meerkat-taskpanel/scripts/loop/poll.mjs     --host claude --agent alice
+node <host>/meerkat-taskpanel/scripts/loop/passes.mjs patrol   --host claude --agent alice
+node <host>/meerkat-taskpanel/scripts/loop/passes.mjs workflow --host claude --agent alice
+node <host>/meerkat-taskpanel/scripts/loop/passes.mjs poll     --host claude --agent alice
 ```
 
 A bare `node` is right in your own shell. The units cannot assume it, which is
@@ -83,7 +83,7 @@ Precedence: flag > process env > host config > default.
 | `--workflow-max-actions <n>` | 20 | writes per workflow pass |
 | `--review-aging-minutes <n>` | 60 | report a review card with no readable verdict this long |
 | `--workflow-ledger <path>` | beside `--state` | workflow alert de-duplication ledger; an unreadable one suppresses nothing |
-| `--subscribe` | off | run the SSE daemon; launchd/systemd only |
+| `--subscribe` | off | run the event subscriber (`taskctl events tail`); launchd/systemd only |
 | `--event-continue=yes\|no` | yes | let events wake a continue turn |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--sla-peer <path>` | unset | peer inspector's last-ok marker; unset registers a dependency, not an alarm |
@@ -95,25 +95,22 @@ Precedence: flag > process env > host config > default.
 ## The workflow channel
 
 The SLA rows are notify-only. The workflow pass is the only path that writes a
-card, and the board decides what it writes: one plan from `issue
-reconcile --workflow` (container reconcile, review outcomes, auto-accept,
-dispatch), which the loop then executes.
+card, and the board decides what it writes: one plan (container reconcile,
+review outcomes, auto-accept, dispatch), which the loop then executes. The exact
+invocation and every action field are the board skill's capability contract
+(`references/capabilities.md` §6–7); the review-card shape and its structural
+identity are `references/review-workflow.md` in the same skill.
 
 A flow-A delivery that lands in `in_review` **whose `review_required` snapshot
-is 1** is dispatched to the configured reviewer as a **review card**: an
-ordinary `kind=task` card with `meta.review_of=<original>`, `meta.flow=B`,
-`meta.review_round=<round>` and the label `review`. Detection reads the
-structural `review_of_id`, never the label. The reviewer is
-`project.reviewer ??` the deployment reviewer. Poll wakes every configured
-reviewer through the normal atomic claim; a dedicated reviewer sees only review
-cards and never the public pool.
+is 1** is dispatched to the configured reviewer as a **review card**. The
+reviewer is `project.reviewer ??` the deployment reviewer. Poll wakes every
+configured reviewer through the normal atomic claim; a dedicated reviewer sees
+only review cards and never the public pool.
 
-A card at `review_required = 0` gets no review card. The board's plan carries
-`auto_accept`; the loop writes `meta.accepted_by=loop-auto` /
-`accepted_round` / `auto_accepted=1`, comments, and moves the original
-`in_review → done`. It does this only when `taskd` may accept the card's scope
-under the board policy; under `human-only` a top-level card is left for the
-human (`auto_accept_skipped`, reason `human_only`), while a child still
+A card at `review_required = 0` gets no review card. The plan carries
+`auto_accept`, and the loop applies it only when `taskd` may accept the card's
+scope under the board policy; under `human-only` a top-level card is left for
+the human (`auto_accept_skipped`, reason `human_only`), while a child still
 auto-accepts. `autoAcceptReviews` does not gate this path — it only controls
 whether the loop closes a review card.
 
@@ -128,10 +125,10 @@ The reviewer moves nothing. The loop is the acceptor:
 
 | Verdict | The loop does |
 |---|---|
-| `APPROVE` (`both` / `agent-only`, or any child card) | note + `meta.accepted_by=loop-review` on the original, `in_review → done`; close the review card |
-| `APPROVE` (`human-only`, top-level original) | **hold**: note + `meta.review_verdict=approve` / `review_verdict_round`; close the review card — the original stays `in_review` for the human |
-| `REJECT` on a task | findings as a `kind=change` comment, `meta.rework_round=<new round>`, `in_review → in_progress → todo`; close the review card |
-| `REJECT` on an epic | **first** create and link a fix child, then comment and reopen `in_review → in_progress`; the child stops `reconcile` from re-closing the container |
+| `APPROVE` (`both` / `agent-only`, or any child card) | record the acceptance on the original, move `in_review → done`; close the review card |
+| `APPROVE` (`human-only`, top-level original) | **hold**: record the verdict on the original; close the review card — the original stays `in_review` for the human |
+| `REJECT` on a task | findings as a `kind=change` comment, start a new rework round, `in_review → in_progress → todo`; close the review card |
+| `REJECT` on an epic | **first** create and link a fix child, then comment and reopen `in_review → in_progress`; the child stops the board's reconcile from re-closing the container |
 
 Rules that make it safe to run unattended:
 

@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import test, { after, before, describe, it } from "node:test";
 
 import { createBoardClient } from "../../src/foundation/transport/client.mjs";
-import { domainErrorFromPayload, requestJson, withQuery } from "../../src/foundation/transport/http.mjs";
+import { domainErrorFromPayload, requestJson, requestStream, withQuery } from "../../src/foundation/transport/http.mjs";
 import { probeHealth, repoRoot, serverEntry, spawnTaskd, waitForPointer } from "../../src/foundation/transport/autostart.mjs";
 import { ensureBoard, readPointer } from "../../src/foundation/transport/runtime.mjs";
 import { ERROR_CODES, isDomainError } from "../../src/foundation/errors.mjs";
@@ -42,6 +42,163 @@ describe("shared/transport/http — query strings", () => {
     assert.equal(withQuery("/a", { x: 1, y: "two" }), "/a?x=1&y=two");
     assert.equal(withQuery("/a?b=1", { c: "3" }), "/a?b=1&c=3");
     assert.equal(withQuery("/a", { status: ["todo", "blocked"] }), "/a?status=todo&status=blocked");
+  });
+});
+
+describe("shared/transport/http — the event stream", () => {
+  /** A one-shot HTTP server; the caller closes it through `closeAllConnections`. */
+  async function serve(handler) {
+    const server = createServer(handler);
+    await new Promise((done) => server.listen(0, "127.0.0.1", done));
+    return { server, url: `http://127.0.0.1:${server.address().port}` };
+  }
+
+  it("carries the same token, actor and session headers as a JSON call", async () => {
+    let seen = null;
+    const { server, url } = await serve((req, res) => {
+      seen = req.headers;
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.end("data: {}\n\n");
+    });
+    try {
+      const stream = await requestStream({
+        url,
+        path: "/api/v1/events",
+        token: "td_secret",
+        actor: { kind: "claude", id: "jobs" },
+        session: "sid-1",
+        seg: "seg-2",
+      });
+      for await (const _chunk of stream) { /* drain */ }
+      assert.equal(seen.accept, "text/event-stream");
+      assert.equal(seen.authorization, "Bearer td_secret");
+      assert.equal(seen["x-taskctl-actor"], JSON.stringify({ kind: "claude", id: "jobs" }));
+      assert.equal(seen["x-taskctl-session"], "sid-1");
+      assert.equal(seen["x-taskctl-seg"], "seg-2");
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+    }
+  });
+
+  it("yields chunks as they arrive", async () => {
+    const { server, url } = await serve((req, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write("id: 1\ndata: {\"event\":\"a\"}\n\n");
+      setTimeout(() => res.end("id: 2\ndata: {\"event\":\"b\"}\n\n"), 10);
+    });
+    try {
+      const stream = await requestStream({ url, path: "/api/v1/events" });
+      let text = "";
+      for await (const chunk of stream) text += chunk;
+      assert.match(text, /"event":"a"/);
+      assert.match(text, /"event":"b"/);
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+    }
+  });
+
+  it("rebuilds a non-2xx JSON envelope as the board's DomainError", async () => {
+    const { server, url } = await serve((req, res) => {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: { code: "VALIDATION_FAILED", message: "bad after", http: 400 } }));
+    });
+    try {
+      await assert.rejects(
+        () => requestStream({ url, path: "/api/v1/events" }),
+        (err) => err.code === "VALIDATION_FAILED" && err.http === 400,
+      );
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+    }
+  });
+
+  it("refuses a response that is not an event stream", async () => {
+    const { server, url } = await serve((req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end("{}");
+    });
+    try {
+      await assert.rejects(
+        () => requestStream({ url, path: "/api/v1/events" }),
+        (err) => err.code === "CLI_IO" && err.details.reason === "content-type",
+      );
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+    }
+  });
+
+  it("aborts a silent body and tags it `idle`", async () => {
+    const { server, url } = await serve((req, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(": connected\n\n");
+    });
+    try {
+      const stream = await requestStream({ url, path: "/api/v1/events", idleMs: 40 });
+      await assert.rejects(
+        async () => {
+          for await (const _chunk of stream) { /* drain */ }
+        },
+        (err) => err.code === "CLI_IO" && err.details.reason === "idle",
+      );
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+    }
+  });
+
+  it("resets the idle timer on every chunk (no overall body deadline)", async () => {
+    const { server, url } = await serve((req, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      let n = 0;
+      const timer = setInterval(() => {
+        n += 1;
+        if (n > 6) {
+          clearInterval(timer);
+          res.end();
+          return;
+        }
+        res.write(`data: ${n}\n\n`);
+      }, 20);
+    });
+    try {
+      const stream = await requestStream({ url, path: "/api/v1/events", idleMs: 60 });
+      let chunks = 0;
+      for await (const _chunk of stream) chunks += 1;
+      assert.ok(chunks > 0, "the stream should deliver chunks past the first idle window");
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+    }
+  });
+
+  it("tags a caller abort as `aborted`", async () => {
+    const { server, url } = await serve((req, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(": connected\n\n");
+    });
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20);
+    try {
+      const stream = await requestStream({
+        url,
+        path: "/api/v1/events",
+        signal: controller.signal,
+        idleMs: 5_000,
+      });
+      await assert.rejects(
+        async () => {
+          for await (const _chunk of stream) { /* drain */ }
+        },
+        (err) => err.code === "CLI_IO" && err.details.reason === "aborted",
+      );
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+    }
   });
 });
 

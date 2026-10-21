@@ -93,8 +93,8 @@ vocabulary and a generic “recorded an event” fallback for an unknown one.
 
 ### The loop subscriber (`scripts/loop/subscribe.mjs`)
 
-Optional, launchd/systemd only. It holds one SSE connection and turns a **signal** into
-one continue turn; it never claims, moves or wakes by itself. That keeps replay and
+Optional, launchd/systemd only. It consumes `taskctl events tail` (NDJSON) and turns a
+**signal** into one continue turn; it never claims, moves or wakes by itself. That keeps replay and
 duplicate frames harmless — the continue turn rescans board state, and the claim CAS plus
 the worker registry are the dispatch authorities.
 

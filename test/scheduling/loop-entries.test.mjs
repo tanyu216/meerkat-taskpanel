@@ -77,8 +77,23 @@ function calls(record) {
     .map((line) => JSON.parse(line));
 }
 
-function runEntry(entry, args, env = {}) {
-  return spawnSync(process.execPath, [join(ROOT, "scripts", "loop", entry), ...args], {
+function runEntry(entry, args, env = {}, subcommand = null) {
+  return spawnSync(
+    process.execPath,
+    [
+      join(ROOT, "scripts", "loop", entry),
+      ...(subcommand === null ? [] : [subcommand]),
+      ...args,
+    ],
+    {
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+    },
+  );
+}
+
+function runSupervisor(args, env = {}) {
+  return spawnSync(process.execPath, [join(ROOT, "scripts", "supervisor.mjs"), ...args], {
     encoding: "utf8",
     env: { ...process.env, ...env },
   });
@@ -199,7 +214,8 @@ describe("ping and continue entries", () => {
     const dir = tempDir("tp-entry-continue-");
     const record = join(dir, "spawned");
     const bin = join(dir, "bin");
-    const run = runEntry("continue.mjs", [
+    const run = runSupervisor([
+      "--continue-only", "--once",
       "--host", "claude", "--agent", "alice",
       "--repo", dir, "--state", join(dir, "state.json"),
       "--log", join(dir, "log"), "--continue-state", join(dir, "continue.state.json"),
@@ -217,20 +233,20 @@ describe("ping and continue entries", () => {
 // ---------------------------------------------------------------------------
 
 describe("deterministic entries (dry-run, sentinel CLI)", () => {
-  function runWithSentinel(entry, extra = []) {
-    const dir = tempDir(`tp-entry-${entry}-`);
+  function runWithSentinel(pass, extra = []) {
+    const dir = tempDir(`tp-entry-${pass}-`);
     const { script, record } = sentinelCli(dir);
-    const run = runEntry(entry, [
+    const run = runEntry("passes.mjs", [
       "--host", "claude", "--agent", "alice", "--dry-run",
       "--cli", script, "--repo", dir,
       "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       ...extra,
-    ], { TP_SENTINEL: record });
+    ], { TP_SENTINEL: record }, pass);
     return { run, record, dir };
   }
 
   it("poll scans candidates and writes nothing", () => {
-    const { run, record } = runWithSentinel("poll.mjs");
+    const { run, record } = runWithSentinel("poll");
     assert.equal(run.status, 0, run.stderr);
     const args = calls(record);
     assert.ok(args.length > 0, "poll must scan");
@@ -245,7 +261,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
   });
 
   it("patrol reads the board and the SLA rows, and writes nothing", () => {
-    const { run, record, dir } = runWithSentinel("patrol.mjs");
+    const { run, record, dir } = runWithSentinel("patrol");
     assert.equal(run.status, 0, run.stderr);
     const args = calls(record);
     assert.ok(args.some((call) => call.join(" ").includes("issue list ")), "the legacy stale read");
@@ -257,7 +273,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
   });
 
   it("workflow asks the board for the plan, and writes nothing in dry-run", () => {
-    const { run, record } = runWithSentinel("workflow.mjs");
+    const { run, record } = runWithSentinel("workflow");
     assert.equal(run.status, 0, run.stderr);
     // The loop's acceptance copy is advisory — the board decides in the plan.
     // It is still said out loud at startup, which is the only thing it is for.
@@ -275,7 +291,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
   });
 
   it("workflow refuses agent-only with auto-accept off", () => {
-    const { run } = runWithSentinel("workflow.mjs", [
+    const { run } = runWithSentinel("workflow", [
       "--acceptance", "agent-only", "--auto-accept-reviews=no",
     ]);
     assert.equal(run.status, 2, run.stderr);
@@ -288,13 +304,13 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
   });
 
   it("workflow does not warn for agent-only with auto-accept on", () => {
-    const { run } = runWithSentinel("workflow.mjs", ["--acceptance", "agent-only"]);
+    const { run } = runWithSentinel("workflow", ["--acceptance", "agent-only"]);
     assert.equal(run.status, 0, run.stderr);
     assert.doesNotMatch(run.stderr, /review cards will accumulate/);
   });
 
   it("workflow=no does not read the board at all", () => {
-    const { run, record } = runWithSentinel("workflow.mjs", ["--workflow=no"]);
+    const { run, record } = runWithSentinel("workflow", ["--workflow=no"]);
     assert.equal(run.status, 0, run.stderr);
     assert.deepEqual(calls(record), []);
   });
@@ -330,7 +346,7 @@ describe("continue spawn", () => {
     const fake = fakeClaude(dir);
     const state = join(dir, "state.json");
     const lock = join(dir, "continue.state.json");
-    const run = runEntry("continue.mjs", [
+    const run = runSupervisor(["--continue-only", "--once",
       "--host", "claude", "--agent", "alice",
       "--repo", dir, "--state", state, "--log", join(dir, "log"),
       "--continue-state", lock,
@@ -350,7 +366,7 @@ describe("continue spawn", () => {
     const fake = fakeClaude(dir);
     const lock = join(dir, "continue.state.json");
     writeFileSync(lock, JSON.stringify({ version: 1, pid: process.pid, startedAt: new Date().toISOString() }));
-    const run = runEntry("continue.mjs", [
+    const run = runSupervisor(["--continue-only", "--once",
       "--host", "claude", "--agent", "alice",
       "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       "--continue-state", lock,
@@ -365,7 +381,7 @@ describe("continue spawn", () => {
     const emptyBin = join(dir, "empty");
     mkdirSync(emptyBin, { recursive: true });
     const lock = join(dir, "continue.state.json");
-    const run = runEntry("continue.mjs", [
+    const run = runSupervisor(["--continue-only", "--once",
       "--host", "claude", "--agent", "alice",
       "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       "--continue-state", lock,

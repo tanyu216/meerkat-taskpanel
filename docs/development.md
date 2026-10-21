@@ -53,8 +53,10 @@ keeps the de-duplication ledger, the pre-emit re-read and the notification, plus
 
 The ownership rule behind them: a rule that decides **what state is legal or required**
 belongs to the board; a rule that decides **when to act, whom to involve, or where to wake**
-belongs to the loop. The loop reaches the board only through its public surface (`taskctl
---json` / HTTP), never by importing it.
+belongs to the loop. The loop reaches the board only through `taskctl --json` — including
+`taskctl events tail` for the live stream — never by importing it and never by calling the
+HTTP API directly. Capability detail lives in the board skill's
+`references/capabilities.md`; the loop skill records decisions only.
 
 ## Commands
 
@@ -224,7 +226,7 @@ through `PUT /access` writes the file and applies the policy to the next request
 without a restart; `rotate_token: true` rotates the token in the same save.
 
 **One config file, environment first.** `<program root>/.env` is read by both
-`taskd` and `taskctl` (and the loop's SSE subscriber). The process environment
+`taskd` and `taskctl` (and the loop, through its `taskctl` children). The process environment
 wins key by key; CLI flags win over both. `--env-file <path>` or
 `MEERKAT_TASKPANEL_ENV_FILE` selects a different file (tests, containers, a
 read-only package root). A file named with `--env-file` that does not exist is an
