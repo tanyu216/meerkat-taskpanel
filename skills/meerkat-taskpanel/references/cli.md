@@ -265,9 +265,10 @@ both write and check mode). The service renders and the CLI writes; `POST /api/v
 never touches a caller-named path. Before overwriting an existing non-empty file the CLI
 applies the same `MD_GROWTH_FACTOR` (4×) guard as the core exporter: a rewrite that would grow
 the file past it is refused with `MD_GROWTH_GUARD` rather than silently replacing it — inspect
-the file and remove or rename it to accept the rewrite. A card with attachments also carries
-an `## Attachments` section between `## Sessions` and `## Report` (one metadata line per file;
-the bytes stay on the board). The product is the card **store mirror** (frontmatter plus
+the file and remove or rename it to accept the rewrite. The `## Acceptance` section renders
+the modern `meta.acceptance` list as plain bullets; an imported card's checkbox list is the
+fallback. A card with attachments also carries an `## Attachments` section between `## Sessions`
+and `## Report` (one metadata line per file; the bytes stay on the board). The product is the card **store mirror** (frontmatter plus
 sections) used for round-tripping and CI checks, not a human-readable task detail: use
 `issue get <ref>` for prose and `issue get <ref> --json` for machines. The implicit spelling
 `export --md <ref>` cannot carry a ref; use `export md <ref>`. The file format is in

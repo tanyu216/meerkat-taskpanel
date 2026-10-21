@@ -105,6 +105,59 @@ describe("md/export — rendering", () => {
     }
   });
 
+  it("renders modern acceptance as plain bullets, preferring it over the imported checkboxes", async () => {
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    try {
+      repos.projects.create({ id: "proj", name: "P", now: TS });
+      const ctx = createContext({ db: board.db, repos, clock: () => TS });
+      createCommands(ctx).createTask({
+        projectId: "proj",
+        title: "Modern acceptance",
+        meta: {
+          acceptance: ["cli works", "gate visible"],
+          acceptance_legacy: [{ text: "old checkbox", checked: true }],
+        },
+        actor: { kind: "agent", id: "linus" },
+      });
+
+      const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
+      assert.match(card, /^## Acceptance$/m);
+      assert.match(card, /^- cli works$/m);
+      assert.match(card, /^- gate visible$/m);
+      assert.doesNotMatch(card, /^- \[[ x]\] cli works$/m, "no invented checkbox state");
+      assert.doesNotMatch(card, /^- \[x\] old checkbox$/m, "the modern list wins; legacy is not merged");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("keeps the imported checkbox list when there is no modern list", async () => {
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    try {
+      repos.projects.create({ id: "proj", name: "P", now: TS });
+      const ctx = createContext({ db: board.db, repos, clock: () => TS });
+      createCommands(ctx).createTask({
+        projectId: "proj",
+        title: "Imported acceptance",
+        meta: {
+          acceptance_legacy: [
+            { text: "done thing", checked: true },
+            { text: "open thing", checked: false },
+          ],
+        },
+        actor: { kind: "agent", id: "linus" },
+      });
+
+      const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
+      assert.match(card, /^- \[x\] done thing$/m);
+      assert.match(card, /^- \[ \] open thing$/m);
+    } finally {
+      board.close();
+    }
+  });
+
   it("renders an Attachments section only when the card has attachments", async () => {
     const board = await createTempBoard();
     const repos = createRepositories(board.db);

@@ -28,6 +28,7 @@ import { serializeFrontmatter } from "./frontmatter.mjs";
 import {
   joinSections,
   renderAcceptanceBlock,
+  renderAcceptanceList,
   renderAttachmentsBlock,
   renderCommentsBlock,
   renderReportBlock,
@@ -182,9 +183,16 @@ export function renderCard(task, context) {
 
   const sections = new Map();
   sections.set("Background", task.description ?? "");
+  // The modern list (`issue create/update --acceptance`) wins when it exists —
+  // the same precedence `report` uses. It has no checked state, so it renders as
+  // plain bullets; the imported checkbox list is the fallback and keeps its
+  // checkboxes (the author's intent, not delivery evidence).
+  const modernAcceptance = Array.isArray(meta.acceptance) ? meta.acceptance : null;
   sections.set(
     "Acceptance",
-    renderAcceptanceBlock(meta.acceptance_legacy ?? []),
+    modernAcceptance !== null && modernAcceptance.length > 0
+      ? renderAcceptanceList(modernAcceptance)
+      : renderAcceptanceBlock(meta.acceptance_legacy ?? []),
   );
 
   sections.set(

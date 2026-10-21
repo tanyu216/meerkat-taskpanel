@@ -135,6 +135,20 @@ export function renderAcceptanceBlock(items) {
   return items.map((item) => `- [${item.checked ? "x" : " "}] ${item.text}`).join("\n");
 }
 
+/**
+ * Modern acceptance items (`meta.acceptance`, a string list) → plain bullets.
+ *
+ * There is no per-item checked state here, so none is invented; an imported
+ * card's `meta.acceptance_legacy` keeps its checkboxes through
+ * `renderAcceptanceBlock`. `escapeInline` keeps one criterion on one line, so a
+ * newline in the text cannot inject a second bullet or a heading.
+ *
+ * @param {unknown[]} items
+ */
+export function renderAcceptanceList(items) {
+  return items.map((item) => `- ${escapeInline(item)}`).join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // Comments
 // ---------------------------------------------------------------------------
