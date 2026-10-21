@@ -20,6 +20,19 @@ after(cleanupTempDirs);
 
 const AGENT = { kind: "agent", id: "linus" };
 
+const REPORT = {
+  conclusion: "done",
+  acceptance: [{ text: "it works", status: "met" }],
+  evidence: [{ kind: "commit", sha: "abc1234" }],
+  author: AGENT,
+};
+
+/** Put the original in `in_review`; a review card may only be created for one. */
+const deliverCard = (commands, task) => {
+  commands.claim({ id: task.id, actor: AGENT });
+  return commands.deliver({ taskId: task.id, report: REPORT, actor: AGENT });
+};
+
 /** A board with repositories, commands and one project. */
 async function board(fn) {
   return withBoard(({ db }) => {
@@ -118,6 +131,7 @@ describe("commands/idem — derived key", () => {
       // The reference must resolve (0025 resolves it to the marker), so the
       // reviewed card is a real one — its identifier is the discriminator.
       const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
       const reviewed = commands.createTask({ projectId: "proj", title: "R", reviewOf: original.identifier, parent: "P-1", actor: AGENT });
       assert.equal(reviewed.idem, `task |  | ${original.identifier} | `);
       const reReviewed = commands.createTask({ projectId: "proj", title: "R", reviewOf: original.identifier, parent: "P-2", actor: AGENT });
@@ -140,6 +154,7 @@ describe("commands/idem — derived key", () => {
   it("reads the discriminators from meta too, when the callers omit the top-level ones", async () => {
     await board(async ({ db, commands }) => {
       const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
       const first = commands.createTask({
         projectId: "proj",
         title: "From meta",

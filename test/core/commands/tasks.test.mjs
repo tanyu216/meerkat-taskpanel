@@ -219,6 +219,8 @@ describe("commands/tasks — create and update", () => {
   it("canonicalizes the review marker from the immutable columns on update", async () => {
     await board(async ({ commands }) => {
       const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
       const review = commands.createTask({
         projectId: "proj",
         title: "Review",
@@ -259,6 +261,8 @@ describe("commands/tasks — create and update", () => {
   it("lists the cards that review one card, through both order modes", async () => {
     await board(async ({ commands }) => {
       const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
       const review = commands.createTask({
         projectId: "proj",
         title: "Review",
@@ -1491,7 +1495,9 @@ describe("commands/tasks — terminal states", () => {
 
   it("refuses to reopen a review card", async () => {
     await board(async ({ commands }) => {
-      const original = doneTask(commands);
+      const original = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
       const review = commands.createTask({
         projectId: "proj",
         title: "Review it",
@@ -1818,6 +1824,8 @@ describe("commands/tasks — listCandidates (poll read)", () => {
   it("projects a review card's target and audited round", async () => {
     await board(async ({ commands }) => {
       const original = linusTodo(commands, { title: "Audit me", allowDup: true });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
       const review = linusTodo(commands, {
         title: "Review it",
         allowDup: true,
@@ -1851,6 +1859,8 @@ describe("commands/tasks — listCandidates (poll read)", () => {
   it("projects a review card created through the top-level review_of field", async () => {
     await board(async ({ commands }) => {
       const original = linusTodo(commands, { title: "Audit me", allowDup: true });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
       const review = linusTodo(commands, {
         title: "Review it",
         allowDup: true,
@@ -2441,6 +2451,7 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
   it("a review card is closed by the human or the board, and by any non-human under agent-only", async () => {
     const makeReview = (commands) => {
       const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
       const review = commands.createTask({
         projectId: "proj",
         title: "Review",
@@ -2671,6 +2682,7 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
         "VALIDATION_FAILED",
       );
       const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
       const review = commands.createTask({
         projectId: "proj",
         title: "Review",
@@ -2698,6 +2710,7 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
   it("stamps the resolved marker into meta without mutating the caller's meta", async () => {
     await board(async ({ commands }) => {
       const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
 
       const callerMeta = { flow: "B" };
       const review = commands.createTask({
@@ -2746,6 +2759,7 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
   it("refuses a review_of that names another review card", async () => {
     await board(async ({ commands }) => {
       const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
       const review = commands.createTask({
         projectId: "proj",
         title: "Review",
@@ -2860,6 +2874,117 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
           }),
         (err) => err.code === "VALIDATION_FAILED" && err.details.field === "kind",
       );
+    });
+  });
+
+  it("requires the original to be in_review", async () => {
+    for (const setup of ["todo", "in_progress", "done", "canceled"]) {
+      await board(async ({ commands }) => {
+        const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+        if (setup === "in_progress") commands.claim({ id: original.id, actor: AGENT });
+        if (setup === "done") {
+          deliverCard(commands, original);
+          commands.moveStatus({ id: original.id, to: "done", actor: HUMAN });
+        }
+        if (setup === "canceled") commands.moveStatus({ id: original.id, to: "canceled", actor: AGENT });
+
+        assert.throws(
+          () =>
+            commands.createTask({
+              projectId: "proj",
+              title: "Review",
+              allowDup: true,
+              reviewOf: original.identifier,
+              reviewRound: original.deliveryRound,
+              actor: AGENT,
+            }),
+          (err) =>
+            err.code === "VALIDATION_FAILED" &&
+            err.details.field === "review_of" &&
+            err.details.status === setup &&
+            err.details.expected === "in_review" &&
+            err.details.deliveryRound === original.deliveryRound &&
+            /deliver/.test(err.hint?.fix ?? ""),
+          `${setup} must be refused`,
+        );
+      });
+    }
+
+    await board(async ({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        reviewOf: original.identifier,
+        reviewRound: original.deliveryRound,
+        actor: AGENT,
+      });
+      assert.equal(review.reviewOfId, original.id, "in_review is the control case");
+    });
+  });
+
+  it("reports review-of-review before original-status", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        reviewOf: original.identifier,
+        reviewRound: original.deliveryRound,
+        actor: AGENT,
+      });
+
+      // The review card itself is `todo`, so a status-first guard would report
+      // "not in_review"; the marker guard must win.
+      assert.throws(
+        () =>
+          commands.createTask({
+            projectId: "proj",
+            title: "Review of a review",
+            allowDup: true,
+            reviewOf: review.identifier,
+            reviewRound: review.deliveryRound,
+            actor: AGENT,
+          }),
+        (err) =>
+          err.code === "VALIDATION_FAILED" &&
+          err.details.field === "review_of" &&
+          /cannot itself be reviewed/.test(err.message),
+      );
+    });
+  });
+
+  it("returns the existing review card on a retried create after the original leaves in_review", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
+      const idem = `loop-review|${original.identifier}|r${original.deliveryRound}`;
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        reviewOf: original.identifier,
+        reviewRound: original.deliveryRound,
+        idem,
+        actor: AGENT,
+      });
+
+      // The original moves on; a crashed loop retries the same idempotent
+      // create. The short-circuit must return the existing row before the
+      // marker guard re-checks the original's status/round.
+      commands.moveStatus({ id: original.id, to: "in_progress", actor: AGENT });
+      const retried = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        idem,
+        actor: AGENT,
+      });
+      assert.equal(retried.id, review.id);
     });
   });
 });

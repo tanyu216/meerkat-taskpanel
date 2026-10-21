@@ -58,6 +58,17 @@ describe("the review-card protocol", () => {
       const original = dataOf(
         ctx.run(["issue", "create", "--project", "demo", "--title", "Original", "--json"]),
       );
+      // A review card may only be created for an in_review original.
+      dataOf(ctx.run(["issue", "move", original.task.identifier, "in_progress", "--json"]));
+      dataOf(
+        ctx.run(["issue", "deliver", original.task.identifier, "--report-file", "-", "--json"], {
+          input: JSON.stringify({
+            conclusion: "delivered",
+            acceptance: [{ text: "a", status: "met" }],
+            evidence: [{ kind: "path", path: "x" }],
+          }),
+        }),
+      );
       const action = {
         ...ACTION,
         original_ref: original.task.identifier,

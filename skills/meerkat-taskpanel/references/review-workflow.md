@@ -156,7 +156,7 @@ loop closes last           review card → done (or canceled if the original was
 | `REPORT_ROUND_MISMATCH` | A report names a round other than the card's current one, or duplicates `(task, round)`. |
 | `ACCEPTANCE_FORBIDDEN` | The writer may not accept under the policy × scope matrix. |
 | `REVIEW_PENDING` | A human closes a top-level original with a current-round review card still open. |
-| `VALIDATION_FAILED` | `review_of` names another review card; `review_round` is not the original's current `delivery_round`; the review card is not `kind=task`; a malformed round. |
+| `VALIDATION_FAILED` | `review_of` names a card that is not `in_review`; `review_of` names another review card; `review_round` is not the original's current `delivery_round`; the review card is not `kind=task`; a malformed round. |
 | `INVALID_TRANSITION` | A review card cannot be reopened; `in_review → canceled` does not exist (use the two-hop cancel). |
 
 ## 8. Boundaries
@@ -166,5 +166,7 @@ loop closes last           review card → done (or canceled if the original was
 - Do not promote a review card to an epic, and do not derive an acceptance list on one.
 - A review card that somehow has a `parent` is treated as a **child** for acceptance (scope
   precedence), which is the conservative reading of both rules.
-- The board does not require the original to be `in_review` at review-card creation; the
-  reviewer's Step 0 is what refuses a stale target.
+- The original must be `in_review` at review-card creation (`VALIDATION_FAILED` otherwise).
+  Deliver first: `taskctl issue deliver <original> --report-file -`; then create the review
+  card for the original's current round. The reviewer's Step 0 still guards a target that
+  moved between dispatch and wake.

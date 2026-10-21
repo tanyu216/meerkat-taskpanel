@@ -298,6 +298,29 @@ function resolveReviewMarker(ctx, projectId, input, kind = TASK_KIND.TASK) {
     });
   }
 
+  // A review is evidence about a delivery. Creating one for a card that has not
+  // been delivered (or has already left review) lets the reviewer audit a state
+  // that does not exist, and `review_round` would describe a delivery that never
+  // happened. The loop only dispatches for `in_review` originals; this closes
+  // the race between its snapshot and the create.
+  if (original.status !== STATUS.IN_REVIEW) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message:
+        `review_of ${JSON.stringify(ref)} names ${original.identifier}, which is ${original.status}; ` +
+        "a review requires the original in in_review",
+      details: {
+        field: "review_of",
+        received: rawRef,
+        projectId,
+        original: original.identifier,
+        status: original.status,
+        expected: STATUS.IN_REVIEW,
+        deliveryRound: original.deliveryRound,
+      },
+      hint: { fix: "deliver the original first: taskctl issue deliver <ref> --report-file -" },
+    });
+  }
+
   let round = null;
   if (roundText !== "") {
     round = Number(roundText);
