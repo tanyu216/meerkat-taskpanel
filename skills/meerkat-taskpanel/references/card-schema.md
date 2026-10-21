@@ -183,6 +183,16 @@ removed; it is gone. The full audit trail is a separate board read
 (`GET /api/v1/tasks/:ref/activities`), not part of the card file.
 
 ```
+## Acceptance
+- <text>
+```
+The modern list (`meta.acceptance`, written by `issue create/update --acceptance`) is one plain
+bullet per criterion. An imported card's `meta.acceptance_legacy` keeps its checkbox form
+(`- [ ] <text>` / `- [x] <text>`); when both exist, the modern list wins and the legacy list is
+not merged. A checked box records what the importer's author intended, not what a delivery
+achieved.
+
+```
 ## Comments
 - <ts> · <kind> · <author> — <body>
 ```

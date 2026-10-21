@@ -186,6 +186,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   card always exported an empty section. The audit trail remains a separate board read
   (`GET /api/v1/tasks/:ref/activities`); historical `progress` rows are still there.
 
+### Fixed
+
+- **The markdown card's `## Acceptance` section now carries modern acceptance criteria.**
+  `issue create/update --acceptance` stores `meta.acceptance` (a string list), but the
+  exporter only read the imported `meta.acceptance_legacy` checkbox list, so a modern card
+  exported an empty section. Modern criteria now render as plain bullets, one per line; an
+  imported card's checkboxes are preserved, and the modern list wins when both exist (the
+  same precedence as `report`).
+
 ## [1.1.0] - 2026-10-20
 
 ### Added

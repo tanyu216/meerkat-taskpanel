@@ -17,6 +17,7 @@ import {
   parseReportBlock,
   parseSessionsBlock,
   renderAcceptanceBlock,
+  renderAcceptanceList,
   renderAttachmentsBlock,
   renderCommentsBlock,
   renderReportBlock,
@@ -111,6 +112,15 @@ describe("md/sections — acceptance", () => {
   it("keeps the checkbox items even when nothing else is parseable", () => {
     assert.deepEqual(parseAcceptanceBlock("just prose\nand more"), []);
     assert.deepEqual(parseAcceptanceBlock("- ordinary bullet"), []);
+  });
+
+  it("renders modern string items as plain bullets, with no invented checkbox state", () => {
+    assert.equal(
+      renderAcceptanceList(["cli works", "gate visible", 7]),
+      "- cli works\n- gate visible\n- 7",
+    );
+    assert.equal(renderAcceptanceList(["one line\nsecond line"]), "- one line\\nsecond line");
+    assert.equal(renderAcceptanceList([]), "");
   });
 });
 
