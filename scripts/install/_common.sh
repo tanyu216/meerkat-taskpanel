@@ -293,7 +293,7 @@ export_tp_env() {
       ;;
   esac
   # The scheduler's two clocks. Ping only prunes dead worker pids; continue is
-  # the bounded `继续` judgment turn that runs poll/patrol/workflow.
+  # the bounded `Continue` judgment turn that runs poll/patrol/workflow.
   TP_PING_INTERVAL="${MEERKAT_TASKPANEL_PING_INTERVAL:-60}"
   TP_CONTINUE_INTERVAL="${MEERKAT_TASKPANEL_CONTINUE_INTERVAL:-600}"
   TP_CONTINUE="${MEERKAT_TASKPANEL_CONTINUE:-yes}"

@@ -2,7 +2,7 @@
 #
 # ping every minute: drop registry entries whose worker pid is gone. No board
 # read, no claim, no LLM.
-# continue every {{CONTINUE_INTERVAL}}s: wake the host with a `继续` prompt; that
+# continue every {{CONTINUE_INTERVAL}}s: wake the host with a `Continue` prompt; that
 # turn runs patrol → workflow → poll. Logs append to {{LOG}}.
 #
 # Load with:  crontab <scheduling>/cron/meerkat-taskpanel.cron

@@ -296,7 +296,7 @@ _中文_: 存活检查
 _Avoid_: poll (it finds no work), heartbeat (that is the card's, not the process's)
 
 **Continue**:
-The low-frequency judgment clock. It wakes the host with a bounded `继续` prompt; that
+The low-frequency judgment clock. It wakes the host with a bounded `Continue` prompt; that
 turn runs the deterministic entries (patrol, workflow, poll). It is the one LLM turn the
 scheduler pays for per cadence.
 _中文_: 继续回合

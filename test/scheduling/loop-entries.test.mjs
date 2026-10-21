@@ -7,7 +7,7 @@
  *   * **ping is liveness only** — it prunes the registry and touches nothing
  *     else (a sentinel `--cli` proves no board call was made);
  *   * **continue is a judgment turn** — it starts the host with a bounded
- *     `继续` prompt, never goes through the wake glue, and a single-flight lock
+ *     `Continue` prompt, never goes through the wake glue, and a single-flight lock
  *     stops a second turn while one is still running.
  *
  * The deterministic entries are exercised in dry-run against a sentinel CLI:
@@ -206,7 +206,7 @@ describe("ping and continue entries", () => {
       "--dry-run",
     ], { TP_FAKE_CLAUDE: record, PATH: `${bin}:${process.env.PATH}` });
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stderr, /继续/);
+    assert.match(run.stderr, /Continue/);
     assert.match(run.stderr, /continue: would run: claude/);
     assert.equal(existsSync(join(dir, "continue.state.json")), false, "dry-run takes no lock");
   });
@@ -293,7 +293,7 @@ describe("continue spawn", () => {
     return false;
   }
 
-  it("starts the host with -p and a prompt that begins with 继续", () => {
+  it("starts the host with -p and a prompt that begins with Continue", () => {
     const dir = tempDir("tp-continue-spawn-");
     const fake = fakeClaude(dir);
     const state = join(dir, "state.json");
@@ -307,7 +307,7 @@ describe("continue spawn", () => {
     assert.ok(waitFor(fake.record), "the fake host was not started");
     const argv = readFileSync(fake.record, "utf8").split("\n");
     assert.equal(argv[0], "-p");
-    assert.ok(argv[1].startsWith("继续"), argv[1].slice(0, 40));
+    assert.ok(argv[1].startsWith("Continue"), argv[1].slice(0, 40));
     assert.doesNotMatch(argv[1], /--project\b|TP_PROJECT/);
     const held = loadContinueLock(lock);
     assert.ok(Number.isInteger(held.pid) && held.pid > 0, "the lock holds the child pid");

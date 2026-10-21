@@ -247,7 +247,7 @@ special integration for an external skills collection.
 **In short:** the loop is a **scheduler that runs outside the host**. It owns two clocks.
 Every **60 seconds** it **pings**: it drops worker-registry entries whose pid is gone — no
 board read and no model turn. Every **ten minutes** it runs a **continue** turn: it wakes
-the host with a bounded `继续` prompt, and that turn runs the loop's deterministic entries —
+the host with a bounded `Continue` prompt, and that turn runs the loop's deterministic entries —
 the notify-only SLA patrol (stale heartbeats, an unanswered confirmation gate, a delivery
 nobody reviewed, the rest of `PROTOCOL §⑮`), the workflow channel (the board computes the
 plan through `issue reconcile --workflow` — container rules, an independent reviewer per
@@ -266,8 +266,7 @@ cadence; `--continue-interval` is the lever. **To turn it on,** run
 `install.sh --target claude|codex|pi|opencode|cursor`: it installs the `meerkat-loop` skill and
 drops that host's launchd / systemd / cron units, then **prints the load command** — it
 never starts a daemon for you (it also asks once whether the supervisor may claim
-**unassigned** cards, default yes). OpenClaw needs no loop: its framework already carries
-one.
+**unassigned** cards, default yes).
 
 Claiming is not left to an agent's memory. A small **host-external scheduler**
 ([`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md), whose execution body is
@@ -280,8 +279,7 @@ continue prompt names them by absolute path.
 
 The loop ships as **its own skill** (`skills/meerkat-loop/`), and `install.sh` installs it
 for **every host except OpenClaw** (claude, codex, pi, opencode, cursor) — OpenClaw gets the
-board and nothing else, because the openclaw-team framework already runs an equivalent
-poll / patrol. Alongside the skill the
+board and nothing else; see [OpenClaw](#openclaw). Alongside the skill the
 installer drops per-host launchd / systemd / cron units and a wake-glue script, and prints
 the exact load command — it never enables a daemon for you. The installer also asks once
 whether the supervisor may claim **unassigned** cards (default yes) and remembers the

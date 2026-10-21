@@ -26,7 +26,7 @@ independent entries under `scripts/loop/`, and the continue turn invokes them.
 | | **ping** | **continue** |
 |---|---|---|
 | Cadence | 60 seconds | 600 seconds (10 minutes) |
-| Job | process liveness: prune worker registry entries whose pid is gone | wake the host with a bounded `继续` judgment turn |
+| Job | process liveness: prune worker registry entries whose pid is gone | wake the host with a bounded `Continue` judgment turn |
 | Reads | `supervisor.state.json` only | the scheduler reads nothing |
 | On a hit | — | the turn runs `patrol → workflow → poll` |
 | Cost | one small file read | one bounded LLM turn |
@@ -1270,7 +1270,7 @@ describes.
 - **Identity and parameters.** The units start the scheduler with `--agent <agent>`
   (`--agent-name`, default `$USER`), `--host <h>`, and one pass
   (`--ping-only --once` / `--continue-only --once`). The continue turn starts the
-  host's headless entry point directly with the bounded `继续` prompt — no glue, no
+  host's headless entry point directly with the bounded `Continue` prompt — no glue, no
   project directory. The workers it later wakes go through the wake glue
   (`<host-dir>/bin/wake-<host>.sh`), which runs the host's headless entry point
   non-interactively: `claude -p "<handoff>" [--resume <sid>]` /
@@ -1337,7 +1337,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--host claude\|codex\|pi` | `claude` | which worker to wake |
 | `--repo <path>` | this checkout — or, for a host-installed copy, the `MEERKAT_TASKPANEL_REPO` in the host config | repository root: what `--cli` is resolved from, and the fallback working directory |
 | `--ping-interval <sec>` | `60` | liveness clock: prune dead worker pids; no board read |
-| `--continue-interval <sec>` | `600` | judgment clock: wake the host for one `继续` turn |
+| `--continue-interval <sec>` | `600` | judgment clock: wake the host for one `Continue` turn |
 | `--max-concurrency <n>` | `8` | cap on simultaneously running workers |
 | `--claim-unassigned=yes\|no` | from host config → `yes` | also claim unassigned cards (the public pool) |
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |
@@ -1430,7 +1430,7 @@ launchd / systemd / cron  ──ping 60s──▶  supervisor --ping-only --once
                                             no board, no claim, no LLM
 
 launchd / systemd / cron  ──continue 600s──▶  supervisor --continue-only --once
-                                            claude -p "继续 …"   ← the judgment turn (no card, no project)
+                                            claude -p "Continue …"   ← the judgment turn (no card, no project)
                                                 ├─ loop/patrol.mjs    notify-only SLA
                                                 ├─ loop/workflow.mjs  apply board workflow plan (taskd)
                                                 └─ loop/poll.mjs

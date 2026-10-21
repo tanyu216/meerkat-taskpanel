@@ -768,7 +768,7 @@ export function buildContinuePrompt(input = {}) {
   const run = (script) => `${node} ${quoteArg(script)}${common === "" ? "" : ` ${common}`}`;
 
   return [
-    "继续 — Meerkat TaskPanel loop, judgment turn.",
+    "Continue — Meerkat TaskPanel loop, judgment turn.",
     "No card and no project directory: this is the loop's periodic turn, not a worker wake.",
     "",
     "Run in order, each one pass:",

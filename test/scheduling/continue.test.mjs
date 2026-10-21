@@ -2,7 +2,7 @@
  * The scheduler's continue turn — the pure half.
  *
  * The loop's deterministic entries (poll/patrol/workflow) are no longer their
- * own scheduling units. A low-frequency "继续" wake runs them instead, so the
+ * own scheduling units. A low-frequency "Continue" wake runs them instead, so the
  * prompt is load-bearing: it must name the entries by absolute path, run them
  * in the order that lets a fresh review card be claimed in the same turn, and
  * carry the board rules a headless host cannot infer.
@@ -87,7 +87,7 @@ describe("buildContinuePrompt", () => {
   });
 
   it("starts with the continue cue", () => {
-    assert.ok(prompt.startsWith("继续"), prompt.slice(0, 40));
+    assert.ok(prompt.startsWith("Continue"), prompt.slice(0, 40));
   });
 
   it("names every deterministic entry by absolute path", () => {
@@ -142,10 +142,10 @@ describe("buildContinuePrompt", () => {
 
 describe("planContinueInvocation", () => {
   it("takes the host's built-in headless form, not the glue", () => {
-    const plan = planContinueInvocation({ host: "claude", prompt: "继续", cwd: "/repo", nodePath: "/opt/node" });
+    const plan = planContinueInvocation({ host: "claude", prompt: "Continue", cwd: "/repo", nodePath: "/opt/node" });
     assert.deepEqual(plan, {
       command: "claude",
-      args: ["-p", "继续"],
+      args: ["-p", "Continue"],
       env: { TP_NODE: "/opt/node" },
       cwd: "/repo",
       via: "direct",
@@ -154,13 +154,13 @@ describe("planContinueInvocation", () => {
   });
 
   for (const [host, command, args] of [
-    ["codex", "codex", ["exec", "继续"]],
-    ["pi", "pi", ["--print", "继续"]],
-    ["opencode", "opencode", ["run", "继续"]],
-    ["cursor", "cursor-agent", ["-p", "继续"]],
+    ["codex", "codex", ["exec", "Continue"]],
+    ["pi", "pi", ["--print", "Continue"]],
+    ["opencode", "opencode", ["run", "Continue"]],
+    ["cursor", "cursor-agent", ["-p", "Continue"]],
   ]) {
     it(`uses ${command} for ${host}`, () => {
-      const plan = planContinueInvocation({ host, prompt: "继续", cwd: "/repo" });
+      const plan = planContinueInvocation({ host, prompt: "Continue", cwd: "/repo" });
       assert.equal(plan.command, command);
       assert.deepEqual(plan.args, args);
       assert.deepEqual(plan.env, {});
@@ -168,13 +168,13 @@ describe("planContinueInvocation", () => {
   }
 
   it("never carries a project identity", () => {
-    const plan = planContinueInvocation({ host: "claude", prompt: "继续", cwd: "/repo" });
+    const plan = planContinueInvocation({ host: "claude", prompt: "Continue", cwd: "/repo" });
     assert.equal(plan.env.TP_PROJECT, undefined);
     assert.equal(plan.env.TP_PROJECTS_JSON, undefined);
   });
 
   it("rejects a host it does not wire", () => {
-    assert.throws(() => planContinueInvocation({ host: "openclaw", prompt: "继续" }), /unknown host/);
+    assert.throws(() => planContinueInvocation({ host: "openclaw", prompt: "Continue" }), /unknown host/);
   });
 });
 

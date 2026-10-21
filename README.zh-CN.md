@@ -189,7 +189,7 @@ taskpanel 不内置任何针对外部 skills 集合的专门集成。
 
 **简言之**：这个循环是一个**活在宿主之外**的**调度器**，拥有两个时钟。
 **每 60 秒**做一次 **ping**：清掉 registry 中进程已退出的 worker 条目 —— 不读看板、不启动模型。
-**每十分钟**做一次 **continue** 回合：用有界的 `继续` 提示词唤醒宿主，由这一回合运行循环的
+**每十分钟**做一次 **continue** 回合：用有界的 `Continue` 提示词唤醒宿主，由这一回合运行循环的
 确定性入口 —— 只通知的 SLA 巡检（心跳过期、无人应答的确认门、没人排验收的交付，以及
 `PROTOCOL §⑮` 的其余各项）、工作流通道（看板通过 `issue reconcile --workflow` 计算计划：
 容器规则、为每笔交付派出独立审核员、应用结论；循环执行计划中的审核动作），以及**只有真正
@@ -203,7 +203,7 @@ SLA）的唯一路径。cron 无法承载长驻进程，仍按一个 continue �
 `--continue-interval` 是旋钮。**启用方式**：运行
 `install.sh --target claude|codex|pi|opencode|cursor` —— 它会安装 `meerkat-loop` skill、投放该宿主的
 launchd / systemd / cron 单元，并**打印加载命令**（绝不替你启动守护进程；安装时还会问一次
-是否允许认领**未分配**的卡，默认允许）。OpenClaw 无需这套循环：框架已自带一个。
+是否允许认领**未分配**的卡，默认允许）。
 
 认领不靠 Agent 的记忆。一个**宿主外部**的小型**调度器**
 （独立 skill [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md)，执行体为
@@ -213,8 +213,8 @@ ping 只读一个小 registry，$0；continue 每个周期产生一个有界模�
 确定性入口都是普通程序，可单独运行；continue 提示词用绝对路径点名它们。
 
 这个循环本身也是一个 skill（`skills/meerkat-loop/`），并且 `install.sh` **为除 OpenClaw 外的全部宿主
-安装它**（claude / codex / pi / opencode / cursor）；OpenClaw 只拿到看板、不拿 loop ——
-openclaw-team 框架已自带等价实现。除 skill 之外，
+安装它**（claude / codex / pi / opencode / cursor）；OpenClaw 只拿到看板、不拿 loop
+（原因见 [OpenClaw](#openclaw)）。除 skill 之外，
 安装器还会写入各宿主的 launchd / systemd / cron 调度单元与唤醒脚本，并**打印**加载
 命令 —— 绝不替你启用守护进程。安装时还会问一次是否允许认领**未分配**的卡（默认允许），
 并把答案记到 `<宿主目录>/meerkat-taskpanel.env`。loop skill 会声明它所需的 board

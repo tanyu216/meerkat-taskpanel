@@ -3,7 +3,7 @@
  * The host-external scheduler — the loop's two clocks.
  *
  *   * **ping** (60s) — prune worker pids that are gone. No board read, no LLM.
- *   * **continue** (600s) — wake the host with a bounded 继续 prompt; that turn
+ *   * **continue** (600s) — wake the host with a bounded Continue prompt; that turn
  *     runs `scripts/loop/patrol.mjs`, `workflow.mjs`, `poll.mjs`, in that order.
  *
  * The installed units are one-shot (`--ping-only --once` / `--continue-only

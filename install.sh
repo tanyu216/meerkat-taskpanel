@@ -118,7 +118,7 @@ Options:
                     pids from the registry: no board read, no LLM.
   --continue-interval <sec>
                     The judgment clock (default 600 = 10 minutes). It wakes the
-                    host with a bounded "继续" prompt; that turn runs the poll,
+                    host with a bounded "Continue" prompt; that turn runs the poll,
                     patrol and workflow entries.
   --continue=yes|no
                     Enable the continue turn (default yes). Persisted to the

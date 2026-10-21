@@ -520,7 +520,7 @@ export const USAGE = `Usage: node scripts/supervisor.mjs [options]
 The loop's scheduler. It owns two clocks and nothing else:
   ping       every ${DEFAULT_PING_SECONDS}s — prune dead worker pids; no board read, no LLM.
   continue   every ${DEFAULT_CONTINUE_SECONDS}s — wake the host agent with a bounded
-             "继续" prompt; that turn runs the poll, patrol and workflow entries.
+             "Continue" prompt; that turn runs the poll, patrol and workflow entries.
 
 --subscribe adds an optional event daemon beside those clocks: it holds one SSE
 connection and asks for a continue turn when a dispatch-relevant event arrives.
