@@ -26,8 +26,8 @@ The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/in
 The board owns the workflow decisions (`issue reconcile --workflow`); the loop executes the
 resulting plan. The host-external supervisor is a **skill of its own**
 (`skills/meerkat-loop/`), never installed for OpenClaw and **not** distributed through the
-marketplace: `install.sh --target claude|codex|pi` is its only path, and it carries no
-version of its own.
+marketplace: `install.sh --target claude|codex|pi|opencode|cursor` is its only path, and it
+carries no version of its own.
 
 ## How to work here
 

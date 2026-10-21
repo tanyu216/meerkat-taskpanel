@@ -38,3 +38,15 @@ cat <<'RULES'
 7. never preempt on conflict — on `VERSION_CONFLICT` or staleness re-read once, never blind-retry
 8. stay traceable — carry the session id on every write
 RULES
+
+# The per-repo issue-tracker check. It is the same instruction text every host
+# surface carries; the board skill owns it. A missing copy is not an error — an
+# older install, or a `--link` whose target moved, simply prints nothing here.
+# Once the repository is configured the check is silent; a session started in a
+# subdirectory still prints it, and the instruction's own git-root step settles
+# the rest.
+check="$(dirname "$shim")/../skills/meerkat-taskpanel/references/issue-tracker-check.md"
+if [ -r "$check" ] && [ ! -f "docs/agents/issue-tracker.md" ]; then
+  echo
+  cat "$check"
+fi

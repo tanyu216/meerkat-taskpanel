@@ -121,10 +121,10 @@ describe("supervisor: the scheduler and the identifiers", () => {
     assert.match(plist, /<string>com\.meerkat-taskpanel\.\{\{AGENT\}\}\.\{\{HOST\}\}\.ping<\/string>/);
   });
 
-  it("the three actions and the three hosts are the contract's, and openclaw is never one", () => {
+  it("the three actions and the five loop hosts are the contract's, and openclaw is never one", () => {
     assert.deepEqual([...ACTIONS], ["enable", "disable", "status"]);
     assert.deepEqual([...SCHEDULERS], ["auto", "launchd", "systemd", "cron"]);
-    assert.deepEqual([...LOOP_HOSTS], ["claude", "codex", "pi"]);
+    assert.deepEqual([...LOOP_HOSTS], ["claude", "codex", "pi", "opencode", "cursor"]);
     assert.ok(!LOOP_HOSTS.includes("openclaw"), "OpenClaw runs openclaw-team's own supervisor");
   });
 

@@ -14,6 +14,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `task_reopened` activity, starts a new delivery round, clears its archive and releases its
   idempotency key. `in_progress` is not a reopen target; review cards are refused (reopen the
   original). The board's drawer offers the action behind an 8-character reason prompt.
+- **The session-start issue-tracker check.** Every host now surfaces one shared instruction
+  (`skills/meerkat-taskpanel/references/issue-tracker-check.md`) that asks the agent, at
+  session start, to look for `docs/agents/issue-tracker.md` in the repository it is in and —
+  when it is missing — to run `setup-matt-pocock-skills` non-interactively and configure
+  meerkat-taskpanel (`taskctl`) as the repo's tracker for the Matt Pocock skill suite
+  (`/triage`, `/to-tickets`, …). Claude carries it through the installed `SessionStart`
+  hook, Codex through the `AGENTS.md` block, Pi through the extension's `context` callback,
+  OpenCode through the plugin's V1 transform / V2 session hook, and Cursor through a new
+  `hooks/sessionStart` script emitting `additional_context`. It is warn-and-continue, and
+  headless supervisor turns only warn: they never write repository files.
+- **`meerkat-loop` for OpenCode and Cursor.** The supervisor now ships to both hosts:
+  loop skill and body, scheduling units, and `wake-opencode.sh` / `wake-cursor.sh`.
+  `--host` and `--supervisor-hosts` accept `opencode` and `cursor`; OpenClaw remains
+  excluded. OpenCode's wake is `opencode run` (resume `--session`); Cursor's is
+  `cursor-agent -p` (resume `--resume <sid>`, `--continue`). The flag-level probe and a
+  real `-p` round trip (`--e2e`, gated on `CURSOR_API_KEY`) live in
+  `scripts/verify/host-resume-matrix.mjs`; `--wake-command` remains the escape hatch.
 - **One config file: `.env` at the program install root.** `taskd`, `taskctl` and the loop's
   SSE endpoint now read `<program root>/.env` (the checkout root, or the npm package root) for
   the board URL, the client token, the allow-list and the acceptance policy. Precedence is

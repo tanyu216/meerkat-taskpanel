@@ -412,11 +412,13 @@ Continuity across wakes comes from the **board**, not the prompt: the card's
 comments, reports and session record are durable, so a resumed conversation can
 re-attach to the same work. When a session id is known, the wake adds the host's
 own resume form: Claude resumes with `claude -p … --resume <sid>`, Codex with
-`codex exec resume <sid> <prompt>`, and Pi with `pi --print --session <sid>
-<prompt>`. These are the forms verified against the real CLIs (see
-`scripts/verify/host-resume-matrix.mjs`). opencode is **not** a supported
-`--host`, and its resume form was **not verified** (its CLI was not installed) —
-nothing is promised about it here.
+`codex exec resume <sid> <prompt>`, Pi with `pi --print --session <sid>
+<prompt>`, OpenCode with `opencode run --session <sid> <prompt>`, and Cursor with
+`cursor-agent -p --resume <sid> <prompt>`. The first three are verified against the real
+CLIs; OpenCode's and Cursor's shapes are recorded in `scripts/verify/host-resume-matrix.mjs`,
+which probes the real binary's help output when the CLI is installed. For Cursor, `--e2e`
+adds one real `-p` call when `CURSOR_API_KEY` is present; without the CLI or the key the
+probe SKIPs, and `--wake-command` remains the escape hatch.
 
 ## Where a worker runs
 
@@ -1026,23 +1028,20 @@ Prefer running the worker in a container or sandbox whose filesystem and network
 reach are already bounded: for a `-p`/`exec` turn, the process boundary *is* the
 permission boundary, and it does not depend on a human catching a prompt.
 
-## The three hosts: how each one is triggered
+## The five hosts: how each one is triggered
 
-Claude Code, Codex and Pi have no clock, and their wake surfaces differ. The
-supervisor's `--host` selects the wake command; the rest (scan, claim, patrol,
-registry) is identical.
+Claude Code, Codex, Pi, OpenCode and Cursor have no clock, and their wake surfaces
+differ. The supervisor's `--host` selects the wake command; the rest (scan, claim,
+patrol, registry) is identical.
 
 | Host | Wake command | Trigger / scheduling | Continuity |
 |---|---|---|---|
 | **Claude Code** | `claude -p "<handoff>"` (headless) | external: launchd / systemd / cron running `supervisor.mjs --ping-only --once` / `--continue-only --once`, or the scheduler's own two clocks | `claude -p … --resume <sid>` — resume the session that owns the card |
 | **Codex** | `codex exec "<handoff>"` | external: the same units, or Codex app automation (`intervalMinutes`, `quotaAware`, `model`, `reasoningEffort`) | resume the thread with `codex exec resume <sid> <prompt>`; carry `$CODEX_THREAD_ID` as `--session-id` |
 | **Pi** | `pi --print "<handoff>"` | external units + `wake-pi.sh` | resume with `pi --print --session <sid> <prompt>`; pass the session id through the handoff |
+| **OpenCode** | `opencode run "<handoff>"` | external units + `wake-opencode.sh` | resume with `opencode run --session <sid> <prompt>` (recorded in the flag matrix; the CLI was not run here) |
+| **Cursor** | `cursor-agent -p "<handoff>"` | external units + `wake-cursor.sh` | `cursor-agent -p --resume <sid> <prompt>` (documented flags; matrix probe SKIPs without the CLI) |
 | **OpenClaw** | *n/a — no self-scheduler* | install **openclaw-team**; its `poll`/`patrol` automations are this design | the framework keeps the id stable across resumes |
-
-(opencode is not a supported `--host`; its headless and resume forms were **not
-verified** — its CLI was not installed — so this table promises nothing about it. It is
-a supported `install.sh --target` — see [OpenCode](install.md#opencode) — but that
-installs the skill and the host config only, and never a supervisor: this table is why.)
 
 The wake command column is what the *host CLI* is called with. When the host's glue
 is installed, the supervisor starts **the glue** with that handoff and lets it set
@@ -1118,18 +1117,16 @@ and the env var are documented once in
 this section is the per-OS detail, the failure modes, and what an enabled daemon runs.
 
 The switch is `--supervisor=enable|disable|status` with
-`--supervisor-hosts claude,codex,pi` (which hosts; default: the loop hosts in `--target`)
-and `--scheduler auto|launchd|systemd|cron` (which mechanism; default `auto`). On
-`--target all`, `--supervisor=enable` enables **claude, codex and pi** — and only those
-(see [OpenClaw stays excluded](#openclaw-stays-excluded)). `--target all` also covers
-**opencode** now, which takes a profile and a skill copy but **no** loop: it is never among
-the supervisor hosts, and naming it in `--supervisor-hosts` is rejected (exit 2) — the glue
-those units start *is* the headless invocation, and OpenCode's is unverified
-(see [OpenCode](install.md#opencode)).
+`--supervisor-hosts claude,codex,pi,opencode,cursor` (which hosts; default: the loop hosts
+in `--target`) and `--scheduler auto|launchd|systemd|cron` (which mechanism; default
+`auto`). On `--target all`, `--supervisor=enable` enables **every non-OpenClaw loop host**
+(see [OpenClaw stays excluded](#openclaw-stays-excluded)). OpenCode and Cursor are among
+the loop hosts; Cursor's resume flag is still unverified, so its glue labels it and
+`--wake-command` is the escape hatch (see [Cursor](install.md#cursor)).
 
-Per-OS commands below are written for the Claude install (`~/.claude`); for Codex and Pi
-substitute `~/.codex` / `~/.agents` for the host directory and `codex` / `pi` for
-`--host`. `<agent>` is the `--agent-name` from the install (default `$USER`), and
+Per-OS commands below are written for the Claude install (`~/.claude`); for Codex, Pi,
+OpenCode and Cursor substitute `~/.codex` / `~/.agents` / `~/.config/opencode` / `~/.cursor`
+for the host directory and `codex` / `pi` / `opencode` / `cursor` for `--host`. `<agent>` is the `--agent-name` from the install (default `$USER`), and
 `<uid>` is `id -u`.
 
 ### macOS — launchd
@@ -1233,7 +1230,7 @@ cron's own minimal `PATH`, not yours.
 
 (The manual path above — `crontab <file>` — drops the same lines in *without* a marker
 block; the enable path is the one that wraps them. The `(~/.claude)` in the marker is the
-host directory, so the three hosts get three independent blocks.)
+host directory, so the five loop hosts get five independent blocks.)
 
 - **Enable** reads `crontab -l`, strips any existing `meerkat-taskpanel (~/.claude)` block,
   appends the fresh one, and writes it back with `crontab -`. Re-enabling **replaces**,

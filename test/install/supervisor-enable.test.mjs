@@ -231,6 +231,23 @@ describe("install.sh: the supervisor flag surface", () => {
     assert.deepEqual(loads(manager), [], "and nothing is loaded");
   });
 
+  it("accepts --supervisor-hosts opencode,cursor (dry run loads nothing)", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const run = runInstall(
+      [
+        "--target", "all", "--agent-name", "alice", "--prefix", home, "--dry-run",
+        "--supervisor=enable", "--supervisor-hosts", "opencode,cursor", "--scheduler=launchd",
+      ],
+      installEnv(home, manager),
+    );
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /supervisor: dry-run — would enable \(host=opencode,/);
+    assert.match(run.stdout, /supervisor: dry-run — would enable \(host=cursor,/);
+    assert.deepEqual(loads(manager), [], "a dry run asks no service manager");
+  });
+
   it("rejects an unknown --supervisor-hosts entry and an unknown --scheduler", () => {
     const home = makeTempDir();
     const manager = fakeManager();
@@ -688,8 +705,8 @@ describe("install.sh: --dry-run and per-host selection", () => {
     assert.equal(bootstraps.length, 3, "only claude's three units are loaded");
     for (const line of bootstraps) assert.ok(line.includes(join(".claude", "scheduling")), line);
 
-    // Every host is still installed — the selection is about the *action*, not the files.
-    for (const hostDir of [".claude", ".codex", ".agents"]) {
+    // Every loop host is still installed — the selection is about the *action*, not the files.
+    for (const hostDir of [".claude", ".codex", ".agents", ".config/opencode", ".cursor"]) {
       assert.ok(existsSync(join(home, hostDir, "skills", "meerkat-loop", "SKILL.md")), `${hostDir} loop skill`);
     }
   });

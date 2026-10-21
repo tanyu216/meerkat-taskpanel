@@ -6,14 +6,14 @@
 # Two skills are distributed, and each host takes the ones that fit it:
 #
 #   * `meerkat-taskpanel` — the board. Every host installs it (`install_skill`).
-#   * `meerkat-loop` — the host-external supervisor. claude, codex and pi install it
-#     (`install_loop_skill` + `install_scheduling`); **OpenClaw does not**, because the
+#   * `meerkat-loop` — the host-external supervisor. The five non-OpenClaw hosts install
+#     it (`install_loop_skill` + `install_scheduling`); **OpenClaw does not**, because the
 #     openclaw-team framework already ships a per-agent poll and a `task-patrol`, which
 #     is the same design (its cadence is the framework's own AUTOMATIONS.md, not a
 #     number restated here) — see `scripts/install/openclaw.sh` and docs/scheduling.md.
-#     **OpenCode and Cursor do not either**: their headless forms are unverified from
-#     here, so pointing an unattended daemon at them is a different risk class — see
-#     `scripts/install/opencode.sh` and `cursor.sh`.
+#     OpenCode's `opencode run` and Cursor's `cursor-agent -p` are wired as their headless
+#     forms; Cursor's **resume** flag is unverified and labelled, with `--wake-command` as
+#     the escape hatch — see `scripts/install/opencode.sh` and `cursor.sh`.
 #
 # Each host script sources this file and calls the pieces it needs. The two bundle hosts
 # (claude, codex) add the config / command / trigger helpers below; the skill-only hosts
@@ -188,6 +188,17 @@ resolve_host_cli_dir() {
   esac
 }
 
+# host_cli_name <host label> — the executable a host runs as.
+#
+# The label names the install target; the binary is not always the same word.
+# Cursor's CLI is `cursor-agent`, not `cursor`; every other host matches.
+host_cli_name() {
+  case "$1" in
+    cursor) printf '%s\n' "cursor-agent" ;;
+    *) printf '%s\n' "$1" ;;
+  esac
+}
+
 # loop_src — the loop skill's source, which owns the loop body and the loop's templates.
 #
 # The loop is a skill of its own (skills/meerkat-loop/): its execution body and the units /
@@ -244,6 +255,12 @@ export_tp_env() {
   TP_AGENT="$(agent_name)"
   TP_HUMAN="$(human_name)"
   TP_REPO="$(repo_root)"
+  # The session-start issue-tracker check. It is authored once, as a file in the
+  # board skill, so the install-time surfaces (the Claude hook, the Codex
+  # AGENTS.md block) and the plugin routes (pi / opencode / cursor) read the same
+  # text. A missing copy is not fatal: the hook and the snippet simply render
+  # nothing.
+  TP_ISSUE_TRACKER_CHECK="$(cat "$TP_REPO/skills/meerkat-taskpanel/references/issue-tracker-check.md" 2>/dev/null || true)"
   TP_SHIM="$(target_home)/$host_dir/bin/taskctl"
   TP_HOOK="$(target_home)/$host_dir/hooks/meerkat-taskpanel-session-start.sh"
   TP_TRIGGER="$(target_home)/$host_dir/meerkat-taskpanel-claim.sh"
@@ -345,7 +362,7 @@ export_tp_env() {
   # only where the values would actually be used. Where they are used, it is fatal: a unit
   # that renders an empty interpreter is the 127 this exists to remove.
   if TP_NODE="$(node "$(unit_path_helper)" node 2>/dev/null)"; then
-    TP_CLI_DIR="$(resolve_host_cli_dir "$label")"
+    TP_CLI_DIR="$(resolve_host_cli_dir "$(host_cli_name "$label")")"
     if [ -n "$TP_CLI_DIR" ]; then
       TP_UNIT_PATH_LAUNCHD="$(node "$(unit_path_helper)" path --scheduler launchd --cli-dir "$TP_CLI_DIR")"
       TP_UNIT_PATH_CRON="$(node "$(unit_path_helper)" path --scheduler cron --cli-dir "$TP_CLI_DIR")"
@@ -354,7 +371,7 @@ export_tp_env() {
       # Degrade loudly, never silently: the interpreter still resolves (that is `{{NODE}}`'s
       # job), but a woken worker would not — so *record* that, and let `install_scheduling`
       # say it, because only it knows whether this host gets units at all. A host with no
-      # supervisor (OpenClaw, OpenCode, Cursor) renders no unit and must not be warned about one.
+      # supervisor (OpenClaw) renders no unit and must not be warned about one.
       TP_UNIT_PATH_LAUNCHD="$(node "$(unit_path_helper)" path --scheduler launchd)"
       TP_UNIT_PATH_CRON="$(node "$(unit_path_helper)" path --scheduler cron)"
       TP_CLI_ON_PATH="0"
@@ -364,7 +381,7 @@ export_tp_env() {
     return 1
   fi
 
-  export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
+  export TP_AGENT TP_HUMAN TP_REPO TP_ISSUE_TRACKER_CHECK TP_SHIM TP_HOOK TP_TRIGGER
   export TP_HOST TP_HOST_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
   export TP_RECOVER_STALE TP_WORKFLOW TP_AUTO_ACCEPT_REVIEWS TP_REVIEWER TP_ACCEPTANCE_POLICY
   export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON

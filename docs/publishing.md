@@ -274,7 +274,7 @@ git merge-base --is-ancestor "$(git rev-parse v1.2.3^{commit})" origin/main \
 
 The loop used to be a second entry, sourced at a `plugins/loop` bundle that carried the loop
 skill and nothing else so it could be installed alone. That bundle is gone: `meerkat-loop`
-is installed by `install.sh --target claude|codex|pi`, and a marketplace install of the board
+is installed by `install.sh --target claude|codex|pi|opencode|cursor`, and a marketplace install of the board
 brings the loop with it (the shared tree is not filtered per entry).
 
 ```bash

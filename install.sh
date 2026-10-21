@@ -42,8 +42,9 @@
 #
 # Two skills are distributed, and they do not go to the same hosts:
 #
-#   meerkat-taskpanel  the board                    → claude, codex, openclaw, pi
-#   meerkat-loop       the host-external supervisor  → claude, codex, pi  (never openclaw)
+#   meerkat-taskpanel  the board                    → all six hosts
+#   meerkat-loop       the host-external supervisor  → claude, codex, pi, opencode, cursor
+#                                                     (never openclaw)
 #
 # OpenClaw is excluded from the loop on purpose: the openclaw-team framework already
 # ships an equivalent `poll` / `task-patrol`, so a second supervisor would only race the
@@ -131,12 +132,11 @@ Options:
                     Aliases: --enable-supervisor, --disable-supervisor,
                     --supervisor-status.
   --supervisor-hosts <list>
-                    Which loop hosts the action applies to: claude, codex or pi
-                    (default: the loop hosts in --target). 'openclaw' is rejected
-                    (exit 2) — it runs openclaw-team's own poll/patrol — and so are
-                    'opencode' and 'cursor', whose headless forms are unverified
-                    (exit 2). (Not --host: that already names the wake selector in
-                    scripts/supervisor.mjs.)
+                    Which loop hosts the action applies to: claude, codex, pi,
+                    opencode or cursor (default: the loop hosts in --target).
+                    'openclaw' is rejected (exit 2) — it runs openclaw-team's own
+                    poll/patrol. (Not --host: that already names the wake selector
+                    in scripts/supervisor.mjs.)
   --scheduler <m>   auto | launchd | systemd | cron   (default: auto — launchd on
                     macOS, systemd --user on Linux, cron elsewhere). Only one
                     mechanism may be loaded per host.
@@ -159,23 +159,22 @@ Destinations:
   cursor     <home>/.cursor/skills/meerkat-taskpanel
 
 Two skills, two distribution surfaces. The **board** skill goes to all six hosts. The
-**loop** skill (the host-external supervisor) goes to claude, codex and pi only:
+**loop** skill (the host-external supervisor) goes to the five non-OpenClaw hosts:
 
   claude     <home>/.claude/skills/meerkat-loop
   codex      <home>/.codex/skills/meerkat-loop
   pi         <home>/.agents/skills/meerkat-loop
+  opencode   <home>/.config/opencode/skills/meerkat-loop
+  cursor     <home>/.cursor/skills/meerkat-loop
   openclaw   — none, on purpose: the openclaw-team framework's poll / task-patrol
               automations already are this design (see docs/scheduling.md).
-  opencode   — none: its skills come from the plugin, and its headless form is not
-              verified, so no scheduling unit is wired for it (see docs/scheduling.md).
-  cursor     — none, for the same reason: the plugin delivers the skills, and Cursor's
-              headless form is not verified, so no unit is wired for it either.
 
 The loop is always **copied**, never symlinked: --link names the board skill only, or a
 symlinked loop would put the checkout back into the load path the split removes.
 
 The claim policy is written to <home>/<host>/meerkat-taskpanel.env for the hosts that
-build a supervisor (claude, codex, pi); OpenClaw installs openclaw-team instead.
+build a supervisor (claude, codex, pi, opencode, cursor); OpenClaw installs
+openclaw-team instead.
 
 The supervisor stays opt-in (--supervisor, above): without it, and without the
 MEERKAT_TASKPANEL_SUPERVISOR below, a plain install only prints the load command.
@@ -398,7 +397,7 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --supervisor-hosts)
-      [ "$#" -ge 2 ] || die "--supervisor-hosts requires a value (claude,codex,pi)"
+      [ "$#" -ge 2 ] || die "--supervisor-hosts requires a value (claude,codex,pi,opencode,cursor)"
       SUPERVISOR_HOSTS_FLAG="$2"
       shift 2
       ;;
@@ -594,14 +593,11 @@ if [ -n "$SUPERVISOR_HOSTS_FLAG" ]; then
     IFS=','
     case "$entry" in
       "") ;;
-      claude | codex | pi) SUPERVISOR_HOSTS="$SUPERVISOR_HOSTS $entry " ;;
+      claude | codex | pi | opencode | cursor) SUPERVISOR_HOSTS="$SUPERVISOR_HOSTS $entry " ;;
       openclaw)
         die "--supervisor-hosts openclaw: OpenClaw has no meerkat-loop supervisor to enable (it runs openclaw-team's own poll/patrol — see docs/scheduling.md)"
         ;;
-      opencode | cursor)
-        die "--supervisor-hosts $entry: neither OpenCode nor Cursor has a meerkat-loop supervisor to enable (their headless forms are unverified — see docs/scheduling.md)"
-        ;;
-      *) die "invalid --supervisor-hosts: $entry (expected claude|codex|pi)" ;;
+      *) die "invalid --supervisor-hosts: $entry (expected claude|codex|pi|opencode|cursor)" ;;
     esac
   done
   IFS="$OLD_IFS"
@@ -609,7 +605,7 @@ else
   SUPERVISOR_HOSTS=""
   for host in $HOSTS; do
     case "$host" in
-      claude | codex | pi) SUPERVISOR_HOSTS="$SUPERVISOR_HOSTS $host " ;;
+      claude | codex | pi | opencode | cursor) SUPERVISOR_HOSTS="$SUPERVISOR_HOSTS $host " ;;
     esac
   done
 fi

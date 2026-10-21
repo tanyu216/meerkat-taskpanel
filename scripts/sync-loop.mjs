@@ -119,6 +119,8 @@ export const LOOP_TEMPLATE_FILES = Object.freeze([
   "claude/wake-claude.sh",
   "codex/wake-codex.sh",
   "pi/wake-pi.sh",
+  "opencode/wake-opencode.sh",
+  "cursor/wake-cursor.sh",
   "host/meerkat-taskpanel.env",
 ]);
 

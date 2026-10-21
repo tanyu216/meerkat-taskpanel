@@ -447,6 +447,12 @@ export function candidateArgs(agent, claimUnassigned, recoverStale = false) {
  *   * **pi**     — `pi --print <prompt>` (`--print` is pi's non-interactive
  *     mode; pi has no `run` subcommand); resume a specific session with
  *     `pi --print --session <sid> <prompt>` (`--session <path|id>`).
+ *   * **opencode** — `opencode run <prompt>`; resume with
+ *     `opencode run --session <sid> <prompt>` (`--session`).
+ *   * **cursor** — `cursor-agent -p <prompt>`. The resume form
+ *     (`cursor-agent -p --resume <sid> <prompt>`) is **not yet verified**
+ *     against a real Cursor CLI; `--wake-command` is the documented escape
+ *     hatch for a host whose shape differs.
  *
  * These shapes are the ones verified against the real CLIs — the per-host
  * capability matrix in `scripts/verify/host-resume-matrix.mjs`. An explicit
@@ -472,11 +478,19 @@ export function wakeCommand(input = {}) {
       return resumeSid
         ? { command: "pi", args: ["--print", "--session", String(resumeSid), prompt] }
         : { command: "pi", args: ["--print", prompt] };
+    case "opencode":
+      return resumeSid
+        ? { command: "opencode", args: ["run", "--session", String(resumeSid), prompt] }
+        : { command: "opencode", args: ["run", prompt] };
+    case "cursor":
+      return resumeSid
+        ? { command: "cursor-agent", args: ["-p", "--resume", String(resumeSid), prompt] }
+        : { command: "cursor-agent", args: ["-p", prompt] };
     default:
       throw new DomainError("VALIDATION_FAILED", {
         message: `unknown host '${input.host}'`,
         details: { field: "host", value: input.host },
-        hint: { fix: "--host claude|codex|pi" },
+        hint: { fix: "--host claude|codex|pi|opencode|cursor" },
       });
   }
 }

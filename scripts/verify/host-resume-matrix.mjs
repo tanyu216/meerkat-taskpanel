@@ -5,7 +5,7 @@
  *   node scripts/verify/host-resume-matrix.mjs [options]
  *
  * Options:
- *   --host <h1,h2>       restrict to some of claude,codex,pi,opencode (default: all)
+ *   --host <h1,h2>       restrict to some of claude,codex,pi,opencode,cursor (default: all)
  *   --timeout <ms>       per-probe timeout (default 60000)
  *   --e2e                also run the "new session -> remember a marker -> resume reads it
  *                        back" round trip (needs working credentials; OFF by default)
@@ -35,15 +35,20 @@
  *   * src/foundation/scheduling.mjs#wakeCommand — the production consumer. It emits
  *     `claude -p [--resume <sid>]` / `codex exec [resume <sid>]` /
  *     `pi --print [--session <sid>]` (pi has no `run` subcommand — `--print` is its
- *     headless entry); this matrix is the evidence that those flags are real in the CLI
- *     versions we pin.
+ *     headless entry) / `opencode run [--session <sid>]` /
+ *     `cursor-agent -p [--resume <sid>]`; this matrix is the evidence that those flags
+ *     are real in the CLI versions we pin.
+ *
+ * A `null` dimension means the host does not offer that capability (Cursor has no fork
+ * flag); it renders as `➖` and is excluded from the row's pass/fail decision.
  *
  * EVIDENCE DISCIPLINE
  *   * Every probe runs in a throwaway HOME. Nothing touches the real ~/.claude, ~/.codex,
- *     ~/.pi, ~/.config/opencode.
+ *     ~/.pi, ~/.config/opencode, ~/.cursor.
  *   * `--e2e` copies ONLY the minimum provider config / auth into the throwaway home and
  *     deletes it afterwards. Credentials are never printed into stdout or evidence; the
  *     e2e fixtures below are generated literals ("MK-<HOST>-<rand>"), not secrets.
+ *     Cursor's e2e reads `CURSOR_API_KEY` from the environment and SKIPs without it.
  *   * A host whose CLI is absent is SKIPPED (blocked), not failed — safe to run anywhere.
  */
 
@@ -125,6 +130,23 @@ export const HOSTS = [
     },
     headless: "opencode run <prompt>",
   },
+  {
+    // Cursor's documented flag surface (`-p/--print`, `--resume [chatId]`,
+    // `--continue`, `--workspace`). It has no fork flag, so `fork: null` records
+    // "not offered" rather than inventing a capability. An absent CLI SKIPs.
+    host: "cursor",
+    bin: "cursor-agent",
+    dotDir: ".cursor",
+    configEnv: null,
+    help: [["--help"]],
+    dims: {
+      continueLast: /--continue\b/,
+      resumeById: /--resume\b/,
+      fork: null,
+      nonInteractive: /-p, --print\b/,
+    },
+    headless: "cursor-agent -p <prompt>",
+  },
 ];
 
 const DIM_LABELS = {
@@ -196,6 +218,9 @@ export function probeHost(host, timeoutMs) {
 
   const dims = {};
   for (const [key, re] of Object.entries(host.dims)) {
+    // `null` means the host does not offer this capability; it is neither a pass
+    // nor a failure, and it must not drag the whole row to PARTIAL.
+    if (re === null) continue;
     const m = text.match(re);
     const matched = m ? (text.split("\n").find((l) => re.test(l)) || "").trim() : null;
     dims[key] = {
@@ -222,14 +247,19 @@ const E2E_FIXTURES = {
   claude: [], // auth arrives via ANTHROPIC_* env
   codex: ["config.toml", "cc-switch-model-catalog.json"],
   pi: ["agent/auth.json", "agent/models-store.json"],
+  cursor: [], // auth arrives via CURSOR_API_KEY
 };
+
+/** The per-host dot-directory under an isolated HOME. */
+const E2E_DIRS = { claude: ".claude", codex: ".codex", pi: ".pi", opencode: ".config/opencode", cursor: ".cursor" };
 
 function isolatedHome(host) {
   const home = mkdtempSync(join(tmpdir(), `trm-e2e-${host}-`));
-  mkdirSync(join(home, host === "codex" ? ".codex" : host === "pi" ? ".pi" : ".claude"), { recursive: true });
+  const dir = E2E_DIRS[host] ?? ".claude";
+  mkdirSync(join(home, dir), { recursive: true });
   for (const rel of E2E_FIXTURES[host] ?? []) {
-    const src = join(homedir(), host === "pi" ? ".pi" : host === "codex" ? ".codex" : ".claude", rel);
-    const dst = join(home, host === "pi" ? ".pi" : host === "codex" ? ".codex" : ".claude", rel);
+    const src = join(homedir(), dir, rel);
+    const dst = join(home, dir, rel);
     if (existsSync(src)) {
       mkdirSync(dirname(dst), { recursive: true });
       copyFileSync(src, dst);
@@ -309,12 +339,38 @@ export function e2eHost(hostName, timeoutMs) {
       push("new session (pi --print)", a);
       const b = runIn("pi", ["--print", "--continue", RECALL], env, cwd, timeoutMs);
       push("continue-last (pi --print --continue)", b);
+    } else if (hostName === "cursor") {
+      // Cursor's headless auth is `CURSOR_API_KEY`; without one the turn would be
+      // refused upstream, so say so instead of spending a call.
+      if (!process.env.CURSOR_API_KEY) {
+        return { host: hostName, marker: mark, status: "blocked", reason: "CURSOR_API_KEY is not set", steps: [] };
+      }
+      const a = runIn("cursor-agent", ["-p", "--trust", "--output-format", "json", ASK(mark)], env, cwd, timeoutMs);
+      let sid = null;
+      try {
+        const parsed = JSON.parse(a.out);
+        sid = parsed.session_id ?? parsed.sessionId ?? null;
+      } catch {
+        /* non-JSON = refused turn */
+      }
+      push("new session (cursor-agent -p)", a, { sessionId: sid });
+      if (sid) {
+        push("resume-by-id (cursor-agent -p --resume <sid>)",
+          runIn("cursor-agent", ["-p", "--trust", "--resume", sid, "--output-format", "json", RECALL], env, cwd, timeoutMs));
+        push("continue-last (cursor-agent -p --continue)",
+          runIn("cursor-agent", ["-p", "--trust", "--continue", "--output-format", "json", RECALL], env, cwd, timeoutMs));
+      }
     } else {
       return { host: hostName, marker: mark, status: "blocked", reason: "no CLI (see flag-level probe)", steps: [] };
     }
 
     const recalled = steps.filter((s) => /resume-by-id|continue-last/.test(s.step));
-    const green = recalled.length > 0 && recalled.every((s) => s.readBack);
+    // Cursor's proof is the documented one-shot `-p` call; a resume is a bonus when
+    // the JSON output carries a session id. Every step that ran must read the marker.
+    const green =
+      hostName === "cursor"
+        ? steps.length > 0 && steps.every((s) => s.readBack)
+        : recalled.length > 0 && recalled.every((s) => s.readBack);
     const refused = steps.some((s) => s.rc !== 0 && !s.readBack && /4\d\d|forbidden|unauthor|not allowed|api key/i.test(s.excerpt));
     return {
       host: hostName,
@@ -378,7 +434,7 @@ function renderMatrix(rows) {
   const sep = `| --- | ${cols.map(() => "---").join(" | ")} |`;
   const body = rows.map((r) => {
     if (r.status === "SKIP") return `| ${r.host} | ${r.version ?? "n/a"} | ${cols.slice(1).map(() => "⚪ blocked").join(" | ")} |`;
-    const cells = Object.keys(DIM_LABELS).map((k) => (r.dims[k]?.ok ? "✅" : "❌"));
+    const cells = Object.keys(DIM_LABELS).map((k) => (!r.dims[k] ? "➖" : r.dims[k].ok ? "✅" : "❌"));
     return `| ${r.host} | ${r.version} | ${cells.join(" | ")} |`;
   });
   return [head, sep, ...body].join("\n");
@@ -402,7 +458,7 @@ async function main() {
     process.stdout.write(
       "Usage: node scripts/verify/host-resume-matrix.mjs [--host claude,codex] [--e2e] [--container]\n" +
         "       [--json] [--evidence-dir DIR]\n\n" +
-        "  Flag-level resume matrix for claude|codex|pi|opencode; --e2e adds marker round trips.\n",
+        "  Flag-level resume matrix for claude|codex|pi|opencode|cursor; --e2e adds marker round trips.\n",
     );
     return 0;
   }

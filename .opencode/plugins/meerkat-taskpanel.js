@@ -16,9 +16,11 @@
  *        form, and its `config.skills` is a flat array, which is how the V1 hook tells the
  *        two generations apart and stands down.
  *
- * Registration only. This plugin injects no bootstrap message: the board's session-start
- * briefing belongs to the install side (`install.sh` writes it for claude / codex / pi) and
- * is not wired for OpenCode yet.
+ * Registration plus one session-start injection: the per-repo issue-tracker check.
+ * The instruction is authored once, in the board skill, and injected into the
+ * first user message of a session (V1 `experimental.chat.messages.transform`,
+ * V2 `ctx.session.hook('context', ...)`). It is deduped by its own marker, so a
+ * compacted or resumed session never receives two copies.
  *
  * No dependencies — Node builtins only, plain JavaScript, so it loads on both generations
  * without any install step of its own.
@@ -28,7 +30,58 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const skillsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../skills");
+import { hasCheck, readIssueTrackerCheck } from "../../src/foundation/session-check.mjs";
+
+const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const skillsDir = path.resolve(packageRoot, "skills");
+const CHECK_TEXT = readIssueTrackerCheck(packageRoot);
+
+/** The text parts of one message, in either host's shape. */
+function partTexts(parts) {
+  return Array.isArray(parts) ? parts.map((part) => part?.text) : [];
+}
+
+/**
+ * V1 `experimental.chat.messages.transform` — messages carry `{ info, parts }`.
+ * A throw escaping this hook would disable the plugin, so it is contained.
+ */
+async function injectIntoTransformedMessages(_input, output) {
+  try {
+    if (!CHECK_TEXT) return;
+    const messages = Array.isArray(output?.messages) ? output.messages : [];
+    const firstUser = messages.find((message) => message?.info?.role === "user");
+    if (!firstUser) return;
+
+    const parts = Array.isArray(firstUser.parts) ? firstUser.parts : (firstUser.parts = []);
+    if (hasCheck(partTexts(parts))) return;
+    parts.unshift({ type: "text", text: CHECK_TEXT });
+  } catch (err) {
+    console.error("[meerkat-taskpanel] issue-tracker check (V1) skipped:", err);
+  }
+}
+
+/**
+ * V2 `ctx.session.hook('context', ...)` — messages carry `{ role, content }`.
+ * Same containment rule; same marker dedupe.
+ */
+async function injectIntoContext(event) {
+  try {
+    if (!CHECK_TEXT) return;
+    const messages = Array.isArray(event?.messages) ? event.messages : null;
+    if (!messages) return;
+
+    const firstUser = messages.find((message) => message?.role === "user");
+    if (firstUser) {
+      const content = Array.isArray(firstUser.content) ? firstUser.content : (firstUser.content = []);
+      if (hasCheck(partTexts(content))) return;
+      content.unshift({ type: "text", text: CHECK_TEXT });
+      return;
+    }
+    messages.push({ role: "user", content: [{ type: "text", text: CHECK_TEXT }] });
+  } catch (err) {
+    console.error("[meerkat-taskpanel] issue-tracker check (V2) skipped:", err);
+  }
+}
 
 /**
  * The `name` and `description` of one `SKILL.md`.
@@ -101,12 +154,31 @@ export const MeerkatTaskpanelPlugin = async () => ({
     config.skills.paths = config.skills.paths || [];
     if (!config.skills.paths.includes(skillsDir)) config.skills.paths.push(skillsDir);
   },
+
+  // The per-repo issue-tracker check, injected once into the session's first user
+  // message. Deduped by the instruction's own marker.
+  "experimental.chat.messages.transform": injectIntoTransformedMessages,
 });
 
 /** V2 setup — called by the V2 PluginSupervisor. */
 async function setup(ctx) {
-  // V1 also calls `default.setup`, with a context that has no skill domain. Stand down.
-  if (!ctx?.skill || typeof ctx.skill.transform !== "function") return;
+  const hasSkills = Boolean(ctx?.skill && typeof ctx.skill.transform === "function");
+  const hasSessions = Boolean(ctx?.session && typeof ctx.session.hook === "function");
+
+  // V1 also calls `default.setup`, with a context that has neither domain. Stand down.
+  if (!hasSkills && !hasSessions) return;
+
+  // The session-start check does not depend on skill registration, so a host
+  // whose skills are all rejected still gets it.
+  if (hasSessions) {
+    try {
+      await ctx.session.hook("context", injectIntoContext);
+    } catch (err) {
+      console.error("[meerkat-taskpanel] could not register the issue-tracker check:", err);
+    }
+  }
+
+  if (!hasSkills) return;
 
   const skills = readSkills();
   if (skills.length === 0) return;
