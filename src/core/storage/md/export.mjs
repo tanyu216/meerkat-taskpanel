@@ -29,10 +29,8 @@ import {
   joinSections,
   renderAcceptanceBlock,
   renderCommentsBlock,
-  renderProgressBlock,
   renderReportBlock,
   renderSessionsBlock,
-  splitProgressLine,
 } from "./sections.mjs";
 
 /**
@@ -187,12 +185,6 @@ export function renderCard(task, context) {
     "Acceptance",
     renderAcceptanceBlock(meta.acceptance_legacy ?? []),
   );
-
-  const progress = repos.activities
-    .list({ taskId: task.id, limit: 10_000 })
-    .filter((activity) => activity.event === "progress")
-    .map((activity) => activity.changes?.line ?? `${activity.createdAt} ${JSON.stringify(activity.changes ?? {})}`);
-  sections.set("Progress", renderProgressBlock(progress.map((line) => splitProgressLine(line))));
 
   sections.set(
     "Comments",

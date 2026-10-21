@@ -133,6 +133,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   canonical status; the inbound alias resolver and its tests were dead code since the
   markdown importer was removed. A stored `meta.legacy_status` is now inert, and a card that
   used a legacy word exports `todo` / `canceled`.
+- **The markdown card no longer carries `## Progress`.** It rendered only the imported
+  `progress` activity event, whose sole writer was the removed markdown importer, so a new
+  card always exported an empty section. The audit trail remains a separate board read
+  (`GET /api/v1/tasks/:ref/activities`); historical `progress` rows are still there.
 
 ## [1.1.0] - 2026-10-20
 

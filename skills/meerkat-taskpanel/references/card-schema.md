@@ -164,9 +164,14 @@ Published generated-form pattern:
 
 ## Body sections
 
-The body is `##` sections, canonical order **Background · Acceptance · Progress · Comments ·
-Sessions · Report**. The exporter writes exactly these six. Prose in `## Background` becomes
-the card's description.
+The body is `##` sections, canonical order **Background · Acceptance · Comments · Sessions ·
+Report**. The exporter writes exactly these five. Prose in `## Background` becomes the card's
+description.
+
+The card does **not** carry the activity trail. The old `## Progress` section rendered the
+imported `progress` activity event, which has had no writer since the markdown importer was
+removed; it is gone. The full audit trail is a separate board read
+(`GET /api/v1/tasks/:ref/activities`), not part of the card file.
 
 ```
 ## Comments
@@ -183,12 +188,6 @@ Newlines in `<body>` are escaped as `\n`.
 carries an empty value. Inside `goal`, a backslash is doubled, a newline becomes
 `\n`, a carriage return `\r`, and `·` becomes its Unicode escape (backslash-u00b7)
 — so the sentence can contain ` · ` without splitting the record.
-
-```
-## Progress
-- <ts> <text>
-```
-One line per progress note, order preserved; the timestamp is optional.
 
 ```
 ## Report

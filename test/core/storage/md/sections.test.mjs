@@ -14,15 +14,12 @@ import {
   joinSections,
   parseAcceptanceBlock,
   parseCommentsBlock,
-  parseProgressBlock,
   parseReportBlock,
   parseSessionsBlock,
   renderAcceptanceBlock,
   renderCommentsBlock,
-  renderProgressBlock,
   renderReportBlock,
   renderSessionsBlock,
-  splitProgressLine,
   splitSections,
   unescapeInline,
 } from "../../../../src/core/storage/md/sections.mjs";
@@ -49,8 +46,8 @@ describe("md/sections — splitting", () => {
   });
 
   it("trims blank lines around a section and treats a heading with nothing under it as empty", () => {
-    const { sections } = splitSections("## Progress\n\n\n## Sessions\n- x\n\n");
-    assert.equal(sections.get("Progress"), "");
+    const { sections } = splitSections("## Comments\n\n\n## Sessions\n- x\n\n");
+    assert.equal(sections.get("Comments"), "");
     assert.equal(sections.get("Sessions"), "- x");
   });
 
@@ -65,7 +62,6 @@ describe("md/sections — splitting", () => {
     assert.deepEqual(SECTION_ORDER, [
       "Background",
       "Acceptance",
-      "Progress",
       "Comments",
       "Sessions",
       "Report",
@@ -113,21 +109,6 @@ describe("md/sections — acceptance", () => {
   it("keeps the checkbox items even when nothing else is parseable", () => {
     assert.deepEqual(parseAcceptanceBlock("just prose\nand more"), []);
     assert.deepEqual(parseAcceptanceBlock("- ordinary bullet"), []);
-  });
-});
-
-describe("md/sections — progress", () => {
-  it("keeps one note per line and splits the timestamp off", () => {
-    const lines = parseProgressBlock("- 2026-10-08T00:00:00.000Z did a thing\n\n- plain note");
-    assert.deepEqual(lines, ["2026-10-08T00:00:00.000Z did a thing", "plain note"]);
-    assert.deepEqual(splitProgressLine(lines[0]), { ts: "2026-10-08T00:00:00.000Z", text: "did a thing" });
-    assert.deepEqual(splitProgressLine("no timestamp here"), { ts: "", text: "no timestamp here" });
-    assert.deepEqual(splitProgressLine(""), { ts: "", text: "" });
-    assert.equal(renderProgressBlock([{ ts: "", text: "no timestamp here" }]), "- no timestamp here");
-    assert.equal(
-      renderProgressBlock([{ ts: "2026-10-08T00:00:00.000Z", text: "did a thing" }]),
-      "- 2026-10-08T00:00:00.000Z did a thing",
-    );
   });
 });
 
