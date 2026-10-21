@@ -266,8 +266,7 @@ cadence; `--continue-interval` is the lever. **To turn it on,** run
 `install.sh --target claude|codex|pi|opencode|cursor`: it installs the `meerkat-loop` skill and
 drops that host's launchd / systemd / cron units, then **prints the load command** — it
 never starts a daemon for you (it also asks once whether the supervisor may claim
-**unassigned** cards, default yes). OpenClaw needs no loop: its framework already carries
-one.
+**unassigned** cards, default yes).
 
 Claiming is not left to an agent's memory. A small **host-external scheduler**
 ([`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md), whose execution body is
@@ -280,8 +279,7 @@ continue prompt names them by absolute path.
 
 The loop ships as **its own skill** (`skills/meerkat-loop/`), and `install.sh` installs it
 for **every host except OpenClaw** (claude, codex, pi, opencode, cursor) — OpenClaw gets the
-board and nothing else, because the openclaw-team framework already runs an equivalent
-poll / patrol. Alongside the skill the
+board and nothing else; see [OpenClaw](#openclaw). Alongside the skill the
 installer drops per-host launchd / systemd / cron units and a wake-glue script, and prints
 the exact load command — it never enables a daemon for you. The installer also asks once
 whether the supervisor may claim **unassigned** cards (default yes) and remembers the
