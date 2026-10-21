@@ -121,7 +121,7 @@ board.
   card is still open. Let the review finish (or cancel an abandoned review card) first.
 - **A held approval** — under `human-only`, an `APPROVE` leaves the original in `in_review`
   with `meta.review_verdict=approve` / `review_verdict_round`. Accept it with
-  `taskctl issue move <original> done` (or `issue deliver --to done`).
+  `taskctl issue move <original> done`.
 - **Cancel an abandoned review card** — a review card in `in_review` cannot go directly to
   `canceled`; the move is two hops: `in_review → in_progress → canceled`.
 - **Reopen the original, never the review card.** A review card is a loop artefact and cannot
