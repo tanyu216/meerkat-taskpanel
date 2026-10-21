@@ -632,6 +632,54 @@ describe("planWorkflowTick", () => {
     assert.equal(result.actions.length, 3);
     assert.equal(result.summary.dispatched, 3);
   });
+
+  it("reports a combined outcome+dispatch overflow once", () => {
+    const tasks = [
+      card(),
+      reviewCard(),
+      card({ identifier: "T-3", status_changed_at: "2026-10-19T09:00:00.000Z" }),
+      card({ identifier: "T-4", status_changed_at: "2026-10-19T10:00:00.000Z" }),
+    ];
+    const result = planWorkflowTick({
+      tasks,
+      verdicts: { "T-2": { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT } },
+      config: { ...CONFIG, maxActions: 2 },
+      now: NOW,
+    });
+    assert.equal(result.actions.length, 2);
+    assert.deepEqual(result.actions.map((action) => action.type), ["approve", "create_review"]);
+    assert.deepEqual(result.alerts.find((alert) => alert.type === "actions_capped"), {
+      type: "actions_capped",
+      cap: 2,
+      dropped: 1,
+      outcomes: 1,
+      dispatch: 2,
+      dedupKey: "actions_capped|2",
+    });
+    assert.equal(result.alerts.some((alert) => alert.type === "dispatch_capped"), false);
+    assert.equal(result.summary.actions, 2);
+    assert.equal(result.summary.alerts, result.alerts.length);
+  });
+
+  it("keeps dispatch_capped as a separate finding when dispatch alone overflows", () => {
+    const tasks = [
+      card(),
+      reviewCard(),
+      card({ identifier: "T-3", status_changed_at: "2026-10-19T09:00:00.000Z" }),
+      card({ identifier: "T-4", status_changed_at: "2026-10-19T10:00:00.000Z" }),
+      card({ identifier: "T-5", status_changed_at: "2026-10-19T11:00:00.000Z" }),
+    ];
+    const result = planWorkflowTick({
+      tasks,
+      verdicts: { "T-2": { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT } },
+      config: { ...CONFIG, maxActions: 2 },
+      now: NOW,
+    });
+    assert.equal(result.actions.length, 2);
+    assert.ok(result.alerts.some((alert) => alert.type === "dispatch_capped"));
+    assert.ok(result.alerts.some((alert) => alert.type === "actions_capped"));
+    assert.equal(result.summary.alerts, result.alerts.length);
+  });
 });
 
 describe("acceptance policy (human-only holds a top-level approval)", () => {

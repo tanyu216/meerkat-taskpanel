@@ -524,6 +524,7 @@ const WORKFLOW_NOTIFY_TYPES = new Set([
   "original_unseen",
   "original_unexpected_status",
   "review_stale_round",
+  "actions_capped",
 ]);
 
 function describeWorkflowAlert(alert) {

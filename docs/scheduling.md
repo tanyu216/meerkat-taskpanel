@@ -340,7 +340,9 @@ the container; with it, the container stays `in_progress` and names the child bl
   public pool; a reviewer that is also a worker keeps the ordinary lane.
 - **Bounded.** At most `--workflow-max-actions` (default 20) writes per pass. Reads are
   bounded by `--board-limit` (default 500), which also decides whether the snapshot is
-  truncated. A cap is logged.
+  truncated. When the combined outcome+dispatch slice drops work, the plan carries one
+  `actions_capped` (cap / dropped / outcomes / dispatch); `dispatch_capped` remains the
+  log-only dispatch-only overflow. A cap is logged.
 - **Fail-safe.** An unreadable verdict, an unseen original or a conflicting verdict
   (`done` + `REJECT`) produces an alert and **no write**; the review card stays put and the
   next pass retries. A round mismatch closes the review card (`close_review`, reason
@@ -357,10 +359,11 @@ the container; with it, the container stays `in_progress` and names the child bl
   verdict raises `verdict_unreadable` immediately; a review card that is not `in_review`
   (todo / in_progress / blocked / awaiting) older than `--review-aging-minutes` (default 60)
   raises `review_aging`.
-- **Notified only when actionable.** Standing state — no reviewer configured, a capped
-  pass, a review card the operator deliberately left for a human — is logged, not sent to
-  `--notify` on every period. Findings an operator can act on (including `review_aging`
-  and an unattributable verdict) are notified.
+- **Notified only when actionable.** Standing state — no reviewer configured, a
+  dispatch-only cap, a review card the operator deliberately left for a human — is logged,
+  not sent to `--notify` on every period. Findings an operator can act on (including
+  `review_aging`, an unattributable verdict and `actions_capped`) are notified; the ledger
+  suppresses repeats.
 - **One action failing never stops the rest**; the review card is always closed last, so
   every half-applied outcome is recoverable (`original done + APPROVE`,
   `rework_round` matching a rework in progress, …).

@@ -132,6 +132,10 @@ Rules that make it safe to run unattended:
   On a truncated board read, `original_unseen` carries `reason: board_truncated`
   and `undecidable: true` with its own ledger key: the original may sit below
   the read cap.
+- **A combined cap is reported** — when the outcome+dispatch slice drops work,
+  the plan carries `actions_capped` (cap / dropped / outcomes / dispatch) and it
+  is notified once per cap. `dispatch_capped` remains the log-only signal for a
+  dispatch-only overflow.
 - **The verdict is the reviewer's** — a report from anybody else is
   `review_report_not_by_reviewer` and is not applied.
 - **A silent reviewer is reported** — an `in_review` review card with an

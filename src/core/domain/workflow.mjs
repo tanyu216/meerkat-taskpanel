@@ -868,11 +868,29 @@ export function planWorkflowTick(input = {}) {
   const cap = Number.isFinite(config.maxActions) && config.maxActions >= 0
     ? config.maxActions
     : DEFAULT_WORKFLOW_MAX_ACTIONS;
-  const actions = [...outcomes.actions, ...dispatch.actions].slice(0, cap);
+  const planned = [...outcomes.actions, ...dispatch.actions];
+  const actions = planned.slice(0, cap);
+  const dropped = planned.length - actions.length;
+
+  const alerts = [...reconcile.alerts, ...outcomes.alerts, ...dispatch.alerts];
+  if (dropped > 0) {
+    // The combined slice is the one place work can disappear without a word.
+    // Keep `dispatch_capped` (log-only) for the dispatch-only overflow; this
+    // alert is the notified signal, keyed by the cap so a backlog change does
+    // not re-notify.
+    alerts.push({
+      type: "actions_capped",
+      cap,
+      dropped,
+      outcomes: outcomes.actions.length,
+      dispatch: dispatch.actions.length,
+      dedupKey: alertKey("actions_capped", cap),
+    });
+  }
 
   const count = (type) => actions.filter((action) => action.type === type).length;
   return {
-    alerts: [...reconcile.alerts, ...outcomes.alerts, ...dispatch.alerts],
+    alerts,
     actions,
     changes: reconcile.changes,
     summary: {
@@ -883,7 +901,7 @@ export function planWorkflowTick(input = {}) {
       dispatched: count("create_review"),
       closed: count("close_review") + count("cancel_review"),
       actions: actions.length,
-      alerts: reconcile.alerts.length + outcomes.alerts.length + dispatch.alerts.length,
+      alerts: alerts.length,
     },
   };
 }
