@@ -30,6 +30,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `--assignee-id` and `--include-archived`. It is read-only; an unknown ref is `NOT_FOUND`
   and an identifier used in two projects is refused (`VALIDATION_FAILED`) rather than
   guessed. `GET /api/v1/tasks` takes the same `review_of` query param.
+- **`taskctl export md <ref>` exports one card, to a directory or one file.** The positional
+  takes an id or identifier; with `--out <dir>` the card lands at `<dir>/<ID>.md`, and with
+  `--out <file.md>` it is written to exactly that path (the parent must exist). `--check`
+  compares only that card and keeps exit 3; `--project` cannot be combined with a ref. The
+  server still renders (`POST /api/v1/export` takes `ref`), so the markdown stays
+  byte-identical to the whole-board export. The CLI write path now applies the
+  `MD_GROWTH_FACTOR` (4×) guard before every overwrite — the core exporter had it, the real
+  path did not.
 - **An agent session records a one-sentence goal.** `taskctl session set <ref> --seg … --owner-kind …
   --goal "<one sentence>"` stores what that conversation is working on on the session row
   (migration 0028), so concurrent segments on one card each state their own. Omitting `--goal` on a

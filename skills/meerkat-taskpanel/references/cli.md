@@ -257,11 +257,19 @@ task's `source_path`, then a placeholder.
 
 | Command | Purpose |
 |---|---|
-| `export md [--out <dir>] [--project <id>] [--check] [--md]` | Write one markdown card per identifier. |
+| `export md [<ref>] [--out <dir\|file.md>] [--project <id>] [--check] [--md]` | Write markdown cards: every identifier into a directory, or only `<ref>` (id or identifier). With `<ref>`, a `--out` ending in `.md` that is not an existing directory names the file itself; otherwise it is a directory and the card lands at `<dir>/<ID>.md`. `--project` cannot be combined with `<ref>` (usage error, exit 2). |
 
-`--check` writes nothing and exits **3** when any card is missing or differs. The service
-renders and the CLI writes; `POST /api/v1/export` never touches a caller-named path. The file
-format is in [`card-schema.md`](card-schema.md).
+`--check` writes nothing and exits **3** when a card is missing or differs; with `<ref>` it
+checks only that card. A single-file target must already have a parent directory (exit 2 in
+both write and check mode). The service renders and the CLI writes; `POST /api/v1/export`
+never touches a caller-named path. Before overwriting an existing non-empty file the CLI
+applies the same `MD_GROWTH_FACTOR` (4×) guard as the core exporter: a rewrite that would grow
+the file past it is refused with `MD_GROWTH_GUARD` rather than silently replacing it — inspect
+the file and remove or rename it to accept the rewrite. The product is the card **store
+mirror** (frontmatter plus sections) used for round-tripping and CI checks, not a
+human-readable task detail: use `issue get <ref>` for prose and `issue get <ref> --json` for
+machines. The implicit spelling `export --md <ref>` cannot carry a ref; use `export md <ref>`.
+The file format is in [`card-schema.md`](card-schema.md).
 
 ### `token`
 

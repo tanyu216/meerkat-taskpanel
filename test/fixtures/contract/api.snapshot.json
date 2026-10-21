@@ -377,6 +377,9 @@
             },
             "project_id": {
               "type": "string"
+            },
+            "ref": {
+              "type": "string"
             }
           },
           "required": [],

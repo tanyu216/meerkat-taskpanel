@@ -275,7 +275,13 @@
       "commands": [
         {
           "name": "md",
-          "positionals": [],
+          "positionals": [
+            {
+              "name": "ref",
+              "required": false,
+              "summary": "Export only this task (id or identifier)."
+            }
+          ],
           "flags": [
             {
               "flag": "check",
@@ -296,7 +302,7 @@
             {
               "flag": "out",
               "as": "string",
-              "value": "<dir>",
+              "value": "<dir|file.md>",
               "required": false,
               "repeat": false,
               "short": null
