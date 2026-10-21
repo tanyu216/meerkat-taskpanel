@@ -40,7 +40,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DESIGN = resolve(HERE, "..");
 
-const INDEX_PATH = join(HERE, "index.html");
+/* T-20261015-025759's proposal pages were built from the pre-tab mother.
+   That mother now lives, frozen, in index-detail-mother.html: index.html
+   carries the adopted six-tab drawer (v4), so walking a proposal against it
+   would compare two different generations. The rounds' claim is unchanged —
+   a variant is the 2026-10-15 mother plus insertions. */
+const INDEX_PATH = join(HERE, "index-detail-mother.html");
 const FULL_PATH = join(HERE, "index-detail-full.html");
 const TABS_PATH = join(HERE, "index-detail-tabs.html");
 const COMPARE_PATH = join(HERE, "index-detail-compare.html");

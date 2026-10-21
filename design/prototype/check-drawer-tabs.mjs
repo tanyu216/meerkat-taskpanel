@@ -48,7 +48,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DESIGN = resolve(HERE, "..");
 
-const INDEX_PATH = join(HERE, "index.html");
+/* The proposal variants were built from the pre-tab mother. It is frozen in
+   index-detail-mother.html now that index.html carries the adopted six-tab
+   drawer; the walks below stay exactly as they were, against that mother. */
+const INDEX_PATH = join(HERE, "index-detail-mother.html");
+/* The live mother, for the promotion suite at the end of the static half. */
+const LIVE_PATH = join(HERE, "index.html");
 const BASE_PATH = join(HERE, "index-detail-tabs.html");
 const V2_PATH = join(HERE, "index-detail-tabs-v2.html");
 const V3_PATH = join(HERE, "index-detail-tabs-v3.html");
@@ -749,6 +754,56 @@ if (!v4) {
     "A8.7 the un-normalized insertion walk is expected to fail (the registered move is real)",
     !rawWalk.ok,
     `${rawWalk.matched}/${rawWalk.total} — the move reorders the blocked span`,
+  );
+}
+
+/* =====================================================================
+   PROMOTION SUITE — index.html now carries the adopted six-tab drawer.
+
+   The proposal walks above stay pinned to the frozen 2026-10-15 mother
+   (index-detail-mother.html); this suite pins the live mother instead, so
+   "the prototype shows the latest drawer" is a machine claim rather than a
+   reading of the diff.
+   ===================================================================== */
+
+suite("promotion");
+
+{
+  const live = readFileSync(LIVE_PATH, "utf8");
+  const liveTabs = [...live.matchAll(/<button[^>]*data-detail-tab="([^"]+)"/g)].map((m) => m[1]);
+  const livePanels = [...live.matchAll(/<div[^>]*data-detail-panel="([^"]+)"/g)].map((m) => m[1]);
+  const liveOrder = (live.match(/var ORDER = (\[[^\]]*\]);/) || [])[1];
+  check(
+    "P1.1 index.html has six tabs and six panels, both listed in ORDER6's order",
+    liveTabs.join(",") === ORDER6.join(",") && livePanels.join(",") === ORDER6.join(","),
+    `tabs=${liveTabs.join("/")} · panels=${livePanels.join("/")}`,
+  );
+  check(
+    "P1.2 index.html's tab script carries ORDER6 and defaults to Details",
+    liveOrder !== undefined && JSON.parse(liveOrder).join(",") === ORDER6.join(",") &&
+      /<button[^>]*data-detail-tab="details"[^>]*aria-selected="true"/.test(live),
+    `ORDER = ${liveOrder}`,
+  );
+
+  const liveDetails = panelSegment(live, "details", "<!-- /Details panel -->");
+  const liveSessions = panelSegment(live, "sessions", "<!-- /Sessions panel -->");
+  check(
+    "P1.3 the Agent-session section lives in the Sessions panel and not in Details",
+    !!liveDetails && !!liveSessions &&
+      liveSessions.includes("data-detail-agent-session") &&
+      !liveDetails.includes("data-detail-agent-session"),
+    `details has=${liveDetails ? liveDetails.includes("data-detail-agent-session") : "?"} · sessions has=${liveSessions ? liveSessions.includes("data-detail-agent-session") : "?"}`,
+  );
+  check(
+    "P1.4 the [hidden] display:none rule and the SAMPLE DATA markers rode along",
+    /\[hidden\][^{}]*\{[^}]*display:\s*none/.test(live) &&
+      (live.match(/SAMPLE DATA/g) || []).length >= 2,
+    `${(live.match(/SAMPLE DATA/g) || []).length} marker(s)`,
+  );
+  check(
+    "P1.5 the frozen mother is the pre-tab generation, so the two generations are distinguishable",
+    !/data-detail-tabs/.test(html) && live !== html,
+    `frozen mother ${html.split("\n").length} lines · live ${live.split("\n").length} lines`,
   );
 }
 
