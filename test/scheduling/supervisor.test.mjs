@@ -46,6 +46,10 @@ import { loadSlaLedger, readPeerLastOk, saveLastOk, saveSlaLedger } from "../../
 import { runPatrolTick, runPollTick, runWorkflowTick, spawnWorkerReal } from "../../scripts/loop/runners.mjs";
 import { resolveWakeDir } from "../../scripts/wake-cwd.mjs";
 import { PROJECT_DIR_CODES } from "../../src/foundation/project-dir.mjs";
+import { createCommands, createContext } from "../../src/core/commands/index.mjs";
+import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
+import { workflowToWire } from "../../src/foundation/wire.mjs";
+import { cleanupTempDirs, withBoard } from "../helpers/sqlite-fixture.mjs";
 
 /** A tiny collector standing in for a "spy" — records every call. */
 function spy(impl = () => undefined) {
@@ -1834,5 +1838,86 @@ describe("the scheduler's two clocks", () => {
     const opts = parseArgs(["--host", "claude", "--state", "/tmp/state.json"], ENV);
     assert.equal(opts.continueState, "/tmp/continue.state.json");
     assert.notEqual(opts.continueState, opts.state);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The plan → wire → runner seam
+// ---------------------------------------------------------------------------
+
+describe("the workflow plan survives the wire and executes", () => {
+  after(cleanupTempDirs);
+
+  const HUMAN = { kind: "human", id: "Terry" };
+  const WORKER = { kind: "agent", id: "linus" };
+  const REVIEWER = { kind: "agent", id: "jobs" };
+
+  const DELIVERY = {
+    conclusion: "The thing is done.",
+    acceptance: [{ text: "the thing works", status: "met" }],
+    evidence: [{ kind: "commit", sha: "abc1234" }],
+  };
+  const VERDICT = {
+    conclusion: "VERDICT: APPROVE",
+    acceptance: [{ text: "the evidence matches", status: "met" }],
+    evidence: [{ kind: "path", path: "src/thing.mjs" }],
+  };
+
+  it("carries a board plan through the wire and executes the approve", async () => {
+    await withBoard(async ({ db }) => {
+      const repos = createRepositories(db);
+      const ctx = createContext({ db, repos });
+      const commands = createCommands(ctx);
+
+      commands.createProject({ id: "proj", name: "Project", actor: HUMAN });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Do the thing",
+        assignee: "linus",
+        actor: HUMAN,
+      });
+      commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });
+      commands.deliver({ taskId: original.id, report: DELIVERY, actor: WORKER });
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review Do the thing",
+        assignee: "jobs",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        meta: { flow: "B" },
+        actor: HUMAN,
+      });
+      commands.moveStatus({ id: review.id, to: "in_progress", actor: REVIEWER });
+      commands.deliver({ taskId: review.id, report: VERDICT, actor: REVIEWER });
+
+      const plan = workflowToWire(commands.workflowTick({ reviewer: "jobs" }).workflow);
+      assert.equal(plan.actions[0]?.original_ref, original.identifier);
+      assert.equal(plan.actions[0]?.review_ref, review.identifier);
+
+      const order = [];
+      const result = await runWorkflowTick({
+        plan,
+        config: { workflow: true },
+        createReview: async () => ({ ok: true }),
+        createFixChild: async () => ({ ok: true }),
+        linkFixChild: async () => ({ ok: true }),
+        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
+        setMeta: async (ref) => (order.push(`meta:${ref}`), { ok: true }),
+        notify: () => {},
+        log: () => {},
+      });
+
+      assert.deepEqual(order, [
+        `comment:${original.identifier}:note`,
+        `meta:${original.identifier}`,
+        `move:${original.identifier}:done`,
+        `comment:${review.identifier}:note`,
+        `move:${review.identifier}:done`,
+      ]);
+      assert.equal(result.executed, 1);
+      assert.equal(result.failed, 0);
+    });
   });
 });
