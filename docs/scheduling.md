@@ -345,7 +345,9 @@ the container; with it, the container stays `in_progress` and names the child bl
   (`done` + `REJECT`) produces an alert and **no write**; the review card stays put and the
   next pass retries. A round mismatch closes the review card (`close_review`, reason
   `round_mismatch`) under the default auto-accept, and only alerts (`review_stale_round`)
-  when auto-accept is off. A truncated board read dispatches nothing.
+  when auto-accept is off. A truncated board read dispatches nothing; an `original_unseen`
+  found on that partial read is marked `reason: board_truncated` / `undecidable: true` (with
+  its own ledger key), because the original may sit below the read cap.
 - **The verdict must come from the reviewer.** The report's author is checked against the
   configured reviewer (else the review card's assignee), by id and display name. A report
   written by anybody else is `review_report_not_by_reviewer` and is not applied.

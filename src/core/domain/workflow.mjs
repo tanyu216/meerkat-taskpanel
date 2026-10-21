@@ -532,6 +532,7 @@ function reviewAction(task, ref, round, reviewer) {
  *   tasks?: object[],
  *   verdicts?: Record<string, {ok: boolean, verdict?: string, findings?: string, reason?: string, report?: object}>,
  *   config?: object,
+ *   boardTruncated?: boolean,
  *   now?: string|number,
  * }} input
  * @returns {{alerts: object[], actions: object[]}}
@@ -569,11 +570,19 @@ export function planReviewOutcomes(input = {}) {
     const originalRef = reviewOf(review);
     const original = byRef.get(originalRef);
     if (original === undefined) {
+      // On a truncated snapshot, "not in the snapshot" is not the same as
+      // "gone": the original may sit below the read cap. Keep the finding (an
+      // unknown must not become silence) but say it is undecidable, and use a
+      // distinct key so the exact state keeps its existing ledger entry.
+      const undecidable = input.boardTruncated === true;
       alerts.push({
         type: "original_unseen",
         review: reviewRef,
         original: originalRef,
-        dedupKey: alertKey("original_unseen", reviewRef, originalRef),
+        ...(undecidable ? { reason: "board_truncated", undecidable: true } : {}),
+        dedupKey: undecidable
+          ? alertKey("original_unseen", reviewRef, originalRef, "board_truncated")
+          : alertKey("original_unseen", reviewRef, originalRef),
       });
       continue;
     }
@@ -844,6 +853,7 @@ export function planWorkflowTick(input = {}) {
     tasks,
     verdicts: input.verdicts ?? {},
     config,
+    boardTruncated: input.boardTruncated === true,
     now: input.now ?? null,
   });
 

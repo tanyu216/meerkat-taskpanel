@@ -129,6 +129,9 @@ Rules that make it safe to run unattended:
   and is reviewed again.
 - **Fail-safe** — an unreadable verdict, unseen original, round mismatch or
   conflicting verdict produces an alert and **no write**; the next pass retries.
+  On a truncated board read, `original_unseen` carries `reason: board_truncated`
+  and `undecidable: true` with its own ledger key: the original may sit below
+  the read cap.
 - **The verdict is the reviewer's** — a report from anybody else is
   `review_report_not_by_reviewer` and is not applied.
 - **A silent reviewer is reported** — an `in_review` review card with an

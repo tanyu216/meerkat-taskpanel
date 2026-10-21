@@ -464,6 +464,38 @@ describe("planReviewOutcomes", () => {
     assert.deepEqual(result.alerts.map((alert) => alert.type), ["original_unseen"]);
   });
 
+  it("keeps original_unseen exact when the snapshot is complete", () => {
+    const [alert] = outcomes({ tasks: [reviewCard()], verdicts: { "T-2": approve }, config: CONFIG }).alerts;
+    assert.equal(alert.type, "original_unseen");
+    assert.equal(alert.reason, undefined);
+    assert.equal(alert.undecidable, undefined);
+    assert.equal(alert.dedupKey, "original_unseen|T-2|T-1");
+  });
+
+  it("marks original_unseen undecidable on a truncated snapshot", () => {
+    const [alert] = outcomes({
+      tasks: [reviewCard()],
+      verdicts: { "T-2": approve },
+      config: CONFIG,
+      boardTruncated: true,
+    }).alerts;
+    assert.equal(alert.type, "original_unseen");
+    assert.equal(alert.reason, "board_truncated");
+    assert.equal(alert.undecidable, true);
+    assert.notEqual(alert.dedupKey, "original_unseen|T-2|T-1");
+  });
+
+  it("forwards boardTruncated into outcomes", () => {
+    const tick = planWorkflowTick({
+      tasks: [reviewCard()],
+      config: CONFIG,
+      boardTruncated: true,
+    });
+    const alert = tick.alerts.find((entry) => entry.type === "original_unseen");
+    assert.equal(alert.reason, "board_truncated");
+    assert.equal(alert.undecidable, true);
+  });
+
   it("alerts on a conflicting verdict instead of acting on a done card", () => {
     const result = outcomes({ tasks: [card({ status: "done" }), reviewCard()], verdicts: { "T-2": reject }, config: CONFIG });
     assert.deepEqual(result.actions, []);
