@@ -3,11 +3,10 @@
  *
  * The export is the *canonical* card: a fixed key order and a fixed section
  * order, so an exported card is byte-identical no matter what the input looked
- * like. Two things are deliberately preserved from the input rather than
- * canonicalised:
- *
- *   * the legacy status word (`ready`/`failed`) — the author's own spelling;
- *   * unrecognised frontmatter keys, in their original order (`meta_json.legacy`).
+ * like. One thing is deliberately preserved from the input rather than
+ * canonicalised: unrecognised frontmatter keys, in their original order
+ * (`meta_json.legacy`). The status is always the canonical word — the old
+ * `ready`/`failed` aliases are gone.
  *
  * `target` is one of those unrecognised keys (O3): the board owns no project
  * directory, so an inbound `target:` is neither derived nor validated — it rides
@@ -26,15 +25,13 @@ import { join } from "node:path";
 import { MD_GROWTH_FACTOR } from "../../../foundation/constants.mjs";
 import { DomainError } from "../../../foundation/errors.mjs";
 import { serializeFrontmatter } from "./frontmatter.mjs";
-import { statusForExport } from "./legacy-status.mjs";
 import {
   joinSections,
   renderAcceptanceBlock,
+  renderAttachmentsBlock,
   renderCommentsBlock,
-  renderProgressBlock,
   renderReportBlock,
   renderSessionsBlock,
-  splitProgressLine,
 } from "./sections.mjs";
 
 /**
@@ -116,13 +113,12 @@ export function exportMd(input) {
 export function renderCard(task, context) {
   const { repos } = context;
   const meta = decodeMeta(task);
-  const legacyStatus = meta.legacy_status ?? null;
 
   const data = {
     id: task.identifier,
     title: task.title,
     assignee: labelOf(repos, "assignee", task.assigneeId) ?? "",
-    status: statusForExport(task.status, legacyStatus),
+    status: task.status,
     priority: task.priority,
     kind: task.kind,
     project: task.projectId,
@@ -191,12 +187,6 @@ export function renderCard(task, context) {
     renderAcceptanceBlock(meta.acceptance_legacy ?? []),
   );
 
-  const progress = repos.activities
-    .list({ taskId: task.id, limit: 10_000 })
-    .filter((activity) => activity.event === "progress")
-    .map((activity) => activity.changes?.line ?? `${activity.createdAt} ${JSON.stringify(activity.changes ?? {})}`);
-  sections.set("Progress", renderProgressBlock(progress.map((line) => splitProgressLine(line))));
-
   sections.set(
     "Comments",
     renderCommentsBlock(
@@ -226,6 +216,13 @@ export function renderCard(task, context) {
       })),
     ),
   );
+
+  // Only when the card has files: a card without attachments keeps the same
+  // five-section shape it had before this section existed.
+  const attachments = repos.attachments.listByTask(task.id);
+  if (attachments.length > 0) {
+    sections.set("Attachments", renderAttachmentsBlock(attachments));
+  }
 
   sections.set(
     "Report",

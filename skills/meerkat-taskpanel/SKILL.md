@@ -253,7 +253,10 @@ card to `done` yourself; a **child** card is closed by a non-human writer. See
 - **Stamp every write with your identity:** `--actor-kind <host> --session-id <id>`. The
   session id is what turns a card back into "which conversation did this", and lets a resumed
   session re-attach instead of starting over. `--actor-kind human` is reserved; a human write
-  uses `--as-human`.
+  uses `--as-human`. To know the id before the session starts, `taskctl session id <ref> --seg
+  <seg> --owner <name>` derives it without registering. With no board reachable,
+  [`scripts/session-id.mjs`](scripts/session-id.mjs) computes the same value from the resolved
+  task UUID (`--task-id`, from `issue get <ref> --json` → `data.task.id`).
 
 ## Owning the clock
 

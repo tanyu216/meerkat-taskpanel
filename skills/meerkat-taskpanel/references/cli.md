@@ -101,9 +101,9 @@ ask rather than guessing.
 | Command | Purpose |
 |---|---|
 | `issue create --project <id> --title <t> [--acceptance <text>]… [--assignee <text>] [--assignee-id <id>] [--assignee-kind <agent\|human>] [--reporter <text>] [--reporter-id <id>] [--reporter-kind <agent\|human>] [--description <md>] [--priority] [--kind task\|epic\|deploy] [--label <l>]… [--meta k=v]… [--target <t>] [--parent <ref>] [--status <s>] [--idem <key>] [--allow-dup] [--force-create] [--review-of <ref> [--review-round <n>]]` | Create a task. `--idem` is the creation idempotency key (a match returns the existing card). `--parent` fills the idempotency key's source slot and links nothing. |
-| `issue list [--project] [--status <s>]… [--assignee-id] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List tasks. `--order weight` is the assignee weight order (below); the default is board order. |
+| `issue list [--project] [--status <s>]… [--assignee-id] [--review-of <ref>] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List tasks. `--order weight` is the assignee weight order (below); the default is board order. `--review-of <ref>` returns the **review cards of** that card — not the card itself — across every round (`review_round` is on each returned card, so a caller selecting the current round filters on it). It combines with the other filters and is read-only. An unknown ref is `NOT_FOUND`; an identifier that exists in two projects is `VALIDATION_FAILED`. |
 | `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The claim read: `todo` cards that are auto-claimable (not an `epic`, not a `deploy`), every `depends_on` predecessor `done` (a `canceled` one also withholds). `--stale` adds the recovery pool (holder after 30 min, anyone after 6 h); `--include-unassigned` adds the public pool. Read-only; no `--limit`. |
-| `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
+| `issue get <id\|identifier>` | One task, plus `report_waivers[]` and `attachments[]` (`id`, `filename`, `content_type`, `size`, `kind`, `created_at`, `comment_id`). The human view adds an attachment table when the card has files. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]…` | Patch. `--status` is refused here on purpose. |
 | `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <word>]` | Move, subject to the delivery gate. `todo → in_progress` is a **claim**; a move to `done` is an **acceptance**. `done`/`canceled → todo` is the audited **reopen** and needs `--reason` (prefer `issue reopen`). `--awaiting-reason` is required for `awaiting`; `--blocked-reason` is optional. |
 | `issue reopen <ref> --reason "<why>"` | **Reopen a `done`/`canceled` card to `todo`.** Audited: the reason is required (≥ 8 characters) and recorded as `task_reopened`. Starts a new delivery round, clears the archive and releases the idem key. A review card is refused — reopen the original; the loop issues the next round's review. |
@@ -216,8 +216,16 @@ outside it is `ATTACHMENT_TYPE_UNSUPPORTED`. An unknown extension becomes
 | Command | Purpose |
 |---|---|
 | `session set <ref> --seg <seg> --owner-kind <name> [--owner] [--phase] [--pid] [--goal <text>] [--session <id>]` | Register a session (the id is derived from `task, owner, seg`, so a resume keeps it). `--owner-kind` is the owner's platform kind (e.g. `claude`, `codex`); `--goal` is one sentence saying what this session is for. Omit `--goal` on a re-registration to keep the recorded sentence. |
+| `session id <ref> --seg <seg> [--owner <name>] [--session <task-id>]` | Print the deterministic session id **without registering a session**. It is the value `session set` would write for the same `(task, owner, seg)`, so it can be handed to a host before it starts. `--owner` defaults to the caller's actor id, exactly as `session set` does; `--session` replaces the task fed to the derivation. It always derives — a global `--session-id` is ignored. Read-only: no session row and no card change; it still resolves the ref through the board, so `ensureBoard` may start `taskd` (use the script below, or `TASKD_NO_AUTOSTART=1`, for a strict offline read). |
 | `session close <ref> <session-id> [--failed]` | Close it. |
 | `session list <ref>` | List them, including each session's `goal`. |
+
+For a derivation that never touches the board, the skill ships
+[`scripts/session-id.mjs`](../scripts/session-id.mjs):
+`node scripts/session-id.mjs --task-id <uuid> --owner <name> --seg <seg>` prints the same id
+and does not start `taskd`. It cannot resolve an identifier to a UUID — pass the **resolved**
+`data.task.id` from `issue get <ref> --json`, not `PROJ-0007`; hashing the identifier produces
+an id `session set` will not match.
 
 ### `actors list` / `labels list`
 
@@ -249,11 +257,21 @@ task's `source_path`, then a placeholder.
 
 | Command | Purpose |
 |---|---|
-| `export md [--out <dir>] [--project <id>] [--check] [--md]` | Write one markdown card per identifier. |
+| `export md [<ref>] [--out <dir\|file.md>] [--project <id>] [--check] [--md]` | Write markdown cards: every identifier into a directory, or only `<ref>` (id or identifier). With `<ref>`, a `--out` ending in `.md` that is not an existing directory names the file itself; otherwise it is a directory and the card lands at `<dir>/<ID>.md`. `--project` cannot be combined with `<ref>` (usage error, exit 2). |
 
-`--check` writes nothing and exits **3** when any card is missing or differs. The service
-renders and the CLI writes; `POST /api/v1/export` never touches a caller-named path. The file
-format is in [`card-schema.md`](card-schema.md).
+`--check` writes nothing and exits **3** when a card is missing or differs; with `<ref>` it
+checks only that card. A single-file target must already have a parent directory (exit 2 in
+both write and check mode). The service renders and the CLI writes; `POST /api/v1/export`
+never touches a caller-named path. Before overwriting an existing non-empty file the CLI
+applies the same `MD_GROWTH_FACTOR` (4×) guard as the core exporter: a rewrite that would grow
+the file past it is refused with `MD_GROWTH_GUARD` rather than silently replacing it — inspect
+the file and remove or rename it to accept the rewrite. A card with attachments also carries
+an `## Attachments` section between `## Sessions` and `## Report` (one metadata line per file;
+the bytes stay on the board). The product is the card **store mirror** (frontmatter plus
+sections) used for round-tripping and CI checks, not a human-readable task detail: use
+`issue get <ref>` for prose and `issue get <ref> --json` for machines. The implicit spelling
+`export --md <ref>` cannot carry a ref; use `export md <ref>`. The file format is in
+[`card-schema.md`](card-schema.md).
 
 ### `token`
 

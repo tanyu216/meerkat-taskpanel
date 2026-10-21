@@ -100,6 +100,7 @@ describe("route-request.mjs — the live surface", () => {
       "order",
       "order_debug",
       "project_id",
+      "review_of",
       "status",
     ]);
 

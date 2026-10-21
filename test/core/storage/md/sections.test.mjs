@@ -14,15 +14,13 @@ import {
   joinSections,
   parseAcceptanceBlock,
   parseCommentsBlock,
-  parseProgressBlock,
   parseReportBlock,
   parseSessionsBlock,
   renderAcceptanceBlock,
+  renderAttachmentsBlock,
   renderCommentsBlock,
-  renderProgressBlock,
   renderReportBlock,
   renderSessionsBlock,
-  splitProgressLine,
   splitSections,
   unescapeInline,
 } from "../../../../src/core/storage/md/sections.mjs";
@@ -49,8 +47,8 @@ describe("md/sections — splitting", () => {
   });
 
   it("trims blank lines around a section and treats a heading with nothing under it as empty", () => {
-    const { sections } = splitSections("## Progress\n\n\n## Sessions\n- x\n\n");
-    assert.equal(sections.get("Progress"), "");
+    const { sections } = splitSections("## Comments\n\n\n## Sessions\n- x\n\n");
+    assert.equal(sections.get("Comments"), "");
     assert.equal(sections.get("Sessions"), "- x");
   });
 
@@ -65,9 +63,9 @@ describe("md/sections — splitting", () => {
     assert.deepEqual(SECTION_ORDER, [
       "Background",
       "Acceptance",
-      "Progress",
       "Comments",
       "Sessions",
+      "Attachments",
       "Report",
     ]);
     // Unknown sections are appended rather than dropped.
@@ -113,21 +111,6 @@ describe("md/sections — acceptance", () => {
   it("keeps the checkbox items even when nothing else is parseable", () => {
     assert.deepEqual(parseAcceptanceBlock("just prose\nand more"), []);
     assert.deepEqual(parseAcceptanceBlock("- ordinary bullet"), []);
-  });
-});
-
-describe("md/sections — progress", () => {
-  it("keeps one note per line and splits the timestamp off", () => {
-    const lines = parseProgressBlock("- 2026-10-08T00:00:00.000Z did a thing\n\n- plain note");
-    assert.deepEqual(lines, ["2026-10-08T00:00:00.000Z did a thing", "plain note"]);
-    assert.deepEqual(splitProgressLine(lines[0]), { ts: "2026-10-08T00:00:00.000Z", text: "did a thing" });
-    assert.deepEqual(splitProgressLine("no timestamp here"), { ts: "", text: "no timestamp here" });
-    assert.deepEqual(splitProgressLine(""), { ts: "", text: "" });
-    assert.equal(renderProgressBlock([{ ts: "", text: "no timestamp here" }]), "- no timestamp here");
-    assert.equal(
-      renderProgressBlock([{ ts: "2026-10-08T00:00:00.000Z", text: "did a thing" }]),
-      "- 2026-10-08T00:00:00.000Z did a thing",
-    );
   });
 });
 
@@ -297,6 +280,37 @@ describe("md/sections — sessions", () => {
     );
     assert.deepEqual(sessions.map((session) => session.seg), ["seg1"]);
     assert.equal(notices.length, 2);
+  });
+});
+
+describe("md/sections — attachments", () => {
+  it("renders one escaped field list per row, including comment_id when present", () => {
+    assert.equal(
+      renderAttachmentsBlock([
+        {
+          id: "att-1",
+          filename: "notes.txt",
+          contentType: "text/plain",
+          size: 12,
+          kind: "attachment",
+          commentId: null,
+          createdAt: "2026-10-08T00:00:00.000Z",
+        },
+        {
+          id: "att-2",
+          filename: "a · b\nc.txt",
+          contentType: "application/pdf",
+          size: 99,
+          kind: "attachment",
+          commentId: "c-1",
+          createdAt: "2026-10-09T00:00:00.000Z",
+        },
+      ]),
+      [
+        "- id:att-1 · filename:notes.txt · type:text/plain · size:12 · created_at:2026-10-08T00:00:00.000Z",
+        "- id:att-2 · filename:a \\u00b7 b\\nc.txt · type:application/pdf · size:99 · created_at:2026-10-09T00:00:00.000Z · comment_id:c-1",
+      ].join("\n"),
+    );
   });
 });
 

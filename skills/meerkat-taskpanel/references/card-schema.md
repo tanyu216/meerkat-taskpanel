@@ -24,7 +24,7 @@ Exactly these 23 keys, in this order. Anything else rides in `meta_json.legacy` 
 |---|---|---|
 | `id` | The card's board identifier. | Non-empty; stored verbatim as `tasks.identifier`. |
 | `title` | One-line summary. | Non-empty string. |
-| `status` | Where the card sits in the lifecycle. | One of the seven canonical words, or the author's legacy word for that state (`ready`, `failed`, `cancelled`, `in-review`, `in-progress`). |
+| `status` | Where the card sits in the lifecycle. | One of the canonical words (`backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`, plus the `awaiting` overlay). The old v1 words (`ready`, `failed`, and their spelling variants) are not accepted. |
 | `priority` | Urgency. | `low` · `medium` · `high` · `urgent`. |
 | `kind` | The card's role. | `task` · `epic` · `deploy`. |
 | `labels` | Free-form tags, shown in order. | Inline array. |
@@ -48,8 +48,7 @@ Exactly these 23 keys, in this order. Anything else rides in `meta_json.legacy` 
 
 ### The status machine
 
-- **The card carries the stored status**, except that a legacy word (`ready` / `failed`) is
-  written back when the card originally used one.
+- **The card carries the stored status**, always in its canonical spelling.
 - The card's status is data, not permission: `issue move` still enforces the transitions.
 
 ## blocked_reason — what a blocked card is waiting for
@@ -83,11 +82,97 @@ re-emitted on export. Keys riding this path today: `target` (an opaque per-card 
 `goal`, `review_of`, and a team's own bookkeeping (`git_rules`, `subsession_ids`, …).
 **Do not delete a key you do not recognise.**
 
+## Identifier syntax
+
+A card has two identifier notions, and they answer different questions.
+
+**What the board will store** (`isValidIdentifier`): 1–128 characters; the first character is
+`A`–`Z`, `a`–`z` or `0`–`9`; every later character is one of those or `.`, `_`, `-`. No
+spaces, slashes, or leading punctuation. Case is preserved, and identifiers are compared
+case-sensitively. This check is deliberately permissive: hand-written legacy cards
+(`T-20261008-230500-…`) import unchanged, so it accepts far more than the board itself mints.
+
+The executable storable pattern is:
+
+```text
+^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$
+```
+
+**What the board mints** for a new card: `<PREFIX>-<serial>`.
+
+- `serial` starts at 1 for each project and is left-padded with zeroes to **at least** four
+  digits. The width is a minimum, not a cap: serial `12345` yields `DEMO-12345`. There is no
+  overflow refusal.
+- The prefix is the project's declared `meta.prefix`, normalized, when it has one; otherwise
+  it is derived from the project id. Normalization is: trim surrounding whitespace, uppercase,
+  collapse every run of characters outside `A`–`Z` and `0`–`9` into a single `-`, then strip
+  leading and trailing `-`. A prefix may therefore contain digits and multiple `-` segments,
+  and it may start with a digit.
+- Unique per project, case-sensitively; not unique across projects. A bare identifier that
+  exists in more than one project is refused as ambiguous rather than guessed.
+
+A generated identifier matches this pattern (the serial is four or more digits):
+
+```text
+^[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4,}$
+```
+
+Use that pattern only to recognize identifiers the board **generated**. Stored identifiers may
+be legacy or custom and still pass `isValidIdentifier` without matching it; a parser that must
+read every card should accept the wider storable pattern.
+
+Length edge: the prefix normalizer has no length cap. A prefix long enough to push the whole
+generated identifier past 128 characters makes card creation fail `VALIDATION_FAILED`; not
+every prefix a project could ask for yields a valid generated identifier.
+
+Examples (the test suite re-derives each line):
+
+<!-- identifier-examples:begin -->
+valid DEMO-0001
+valid MEERKAT-TASKPANEL-0007
+valid DEMO-12345
+valid A.b_c-d
+valid T-20261008-230500-meerkat-taskpanel-m1
+invalid -leading-dash
+invalid .leading-dot
+invalid with space
+invalid with/slash
+<!-- identifier-examples:end -->
+
+Generated form:
+
+<!-- identifier-generated:begin -->
+demo => 1 => DEMO-0001
+demo => 12345 => DEMO-12345
+meerkat-taskpanel => 7 => MEERKAT-TASKPANEL-0007
+demo_x => 2 => DEMO-X-0002
+<!-- identifier-generated:end -->
+
+Prefix fold:
+
+<!-- identifier-prefix:begin -->
+meerkat-taskpanel => MEERKAT-TASKPANEL
+demo_x => DEMO-X
+--w_ -- => W
+<!-- identifier-prefix:end -->
+
+Published generated-form pattern:
+
+<!-- identifier-generated-regex:begin -->
+^[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4,}$
+<!-- identifier-generated-regex:end -->
+
 ## Body sections
 
-The body is `##` sections, canonical order **Background · Acceptance · Progress · Comments ·
-Sessions · Report**. The exporter writes exactly these six. Prose in `## Background` becomes
-the card's description.
+The body is `##` sections, canonical order **Background · Acceptance · Comments · Sessions ·
+Attachments (only when the card has files) · Report**. The exporter always writes the other
+five; `## Attachments` appears only when the card carries attachments. Prose in
+`## Background` becomes the card's description.
+
+The card does **not** carry the activity trail. The old `## Progress` section rendered the
+imported `progress` activity event, which has had no writer since the markdown importer was
+removed; it is gone. The full audit trail is a separate board read
+(`GET /api/v1/tasks/:ref/activities`), not part of the card file.
 
 ```
 ## Comments
@@ -106,10 +191,14 @@ carries an empty value. Inside `goal`, a backslash is doubled, a newline becomes
 — so the sentence can contain ` · ` without splitting the record.
 
 ```
-## Progress
-- <ts> <text>
+## Attachments
+- id:<uuid> · filename:<name> · type:<mime> · size:<bytes> · created_at:<ts>
 ```
-One line per progress note, order preserved; the timestamp is optional.
+One line per file, written only when the card has at least one. `comment_id:<id>` is appended
+when the file belongs to a comment. The filename and type are escaped the same way as a
+session's `goal` (backslash, newline, carriage return, `·`), so a hand-named file cannot
+inject a heading or split the record. The bytes are **not** in the card; they live on the
+board (`GET /api/v1/attachments/:id/content`).
 
 ```
 ## Report
@@ -140,8 +229,8 @@ report is `origin='import'` and never satisfies it.
 | Fixed key order and section order | An exported card is byte-identical however the input was written. |
 | Unknown keys re-emitted in place | A rewrite does not lose a team's own fields. |
 | A known key's unrecognised value re-emitted in place | Recognising a key never costs a card its wording. |
-| Legacy status word restored | A card that said `ready` exports `ready`. |
 | Optional keys written only when set | An existing card is not grown by a key it never had. |
+| Attachments section written only when present | A card without files keeps its five-section shape. |
 | Growth guard | A rewrite that would grow a card past the guard factor refuses. |
 
 Asymmetries: `assignee_kind` is not re-exported (it lives on the actor row); `meta_json` holds

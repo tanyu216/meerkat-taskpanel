@@ -15,7 +15,7 @@
 
 import { TASK_OPS } from "../../core/index.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
-import { reportToWire, taskToWire, workflowToWire } from "../../foundation/wire.mjs";
+import { attachmentToWire, reportToWire, taskToWire, workflowToWire } from "../../foundation/wire.mjs";
 import { bool, int, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
 import { lookupFor, resolveTask, taskPayload } from "../task-view.mjs";
 
@@ -36,6 +36,7 @@ const LIST_QUERY = shape({
   project_id: str(),
   status: REQUEST.statuses, // `?status=a&status=b` — a repeated query param
   assignee_id: str(),
+  review_of: str(), // a task ref; resolved below to the structural id
   include_archived: str(),
   limit: str(),
   offset: str(),
@@ -137,10 +138,16 @@ export function registerTaskRoutes(router, surface) {
 
   router.get("/api/v1/tasks", ({ query }) => {
     const statuses = query.getAll("status").filter((value) => value !== "");
+    // The filter names a card the caller has in hand, so it accepts either
+    // spelling. `requireAnyRef` refuses an identifier that exists in two
+    // projects rather than guessing, and a miss is `NOT_FOUND` — an empty page
+    // would read as "this card has no reviews".
+    const reviewOfRef = query.get("review_of");
     const filter = {
       ...(query.get("project_id") === null ? {} : { projectId: query.get("project_id") }),
       ...(statuses.length === 0 ? {} : { status: statuses.length === 1 ? statuses[0] : statuses }),
       ...(query.get("assignee_id") === null ? {} : { assigneeId: query.get("assignee_id") }),
+      ...(reviewOfRef === null ? {} : { reviewOfId: resolveTask(repos, reviewOfRef).id }),
       includeArchived: truthy(query.get("include_archived")),
       ...(intOrUndefined(query.get("limit")) === undefined ? {} : { limit: intOrUndefined(query.get("limit")) }),
       ...(intOrUndefined(query.get("offset")) === undefined ? {} : { offset: intOrUndefined(query.get("offset")) }),
@@ -250,7 +257,16 @@ export function registerTaskRoutes(router, surface) {
     return { candidates, ...(orderDebug === null ? {} : { order_debug: orderDebug }) };
   }, { query: CANDIDATES_QUERY });
 
-  router.get("/api/v1/tasks/:ref", ({ params }) => taskPayload(repos, resolveTask(repos, params.ref)));
+  router.get("/api/v1/tasks/:ref", ({ params }) => {
+    const task = resolveTask(repos, params.ref);
+    // The detail read carries the attachment metadata. The board list does not
+    // (an unbounded array on every card), and neither do mutation responses —
+    // `taskPayload` stays lean; this route composes the extra collection.
+    return {
+      ...taskPayload(repos, task),
+      attachments: repos.attachments.listByTask(task.id).map(attachmentToWire),
+    };
+  });
 
   router.patch("/api/v1/tasks/:ref", ({ params, body, actor }) => {
     const current = resolveTask(repos, params.ref);

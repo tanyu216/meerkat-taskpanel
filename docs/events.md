@@ -46,6 +46,10 @@ enforced by `test/contract/activity-events.test.mjs`:
 `task_heartbeat` is the only **wire noise**: it changes nothing a board renders, so
 `SSE_NOISE_EVENTS` filters it. Its cursor still advances, like every other row.
 
+The markdown card no longer renders a `## Progress` section: its only writer was the removed
+importer, so a fresh card always had an empty one. The `progress` rows that exist remain
+readable through the activity route; the card file is not the trail.
+
 ## Consumers
 
 ### The board store (`web/src/stores/board.js`)

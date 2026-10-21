@@ -1,11 +1,9 @@
 /**
  * The card body: `## Sections` and the little line formats inside them.
  *
- * The shapes mirror the team's existing cards exactly, because the migrator's
- * job is to read *those* files:
- *
- *   ## Progress
- *   - 2026-10-08T15:31:25.161Z did a thing
+ * The shapes are the card's canonical body. The export writes them; there is
+ * no importer in this tree (the one-off markdown importer was removed), so the
+ * parsers below are the test-facing inverse of each renderer.
  *
  *   ## Comments
  *   - 2026-10-08T15:43:04.955Z · decision · elon — text with \n escapes
@@ -15,7 +13,7 @@
  *
  *   ## Report           (or `### R2 · <ts> · <author>` per round)
  *
- * Everything here is pure text work; `import.mjs` turns it into rows.
+ * Everything here is pure text work.
  */
 
 import { DomainError } from "../../../foundation/errors.mjs";
@@ -25,9 +23,9 @@ import { ACCEPTANCE_STATUSES, EVIDENCE_KINDS } from "../../domain/enums.mjs";
 export const SECTION_ORDER = Object.freeze([
   "Background",
   "Acceptance",
-  "Progress",
   "Comments",
   "Sessions",
+  "Attachments",
   "Report",
 ]);
 
@@ -138,36 +136,6 @@ export function renderAcceptanceBlock(items) {
 }
 
 // ---------------------------------------------------------------------------
-// Progress
-// ---------------------------------------------------------------------------
-
-/** Each line is one progress note, order preserved. @param {string} text */
-export function parseProgressBlock(text) {
-  return String(text)
-    .split("\n")
-    .map((line) => line.replace(/^\s*-\s?/, "").trim())
-    .filter((line) => line !== "");
-}
-
-/**
- * @param {{ts: string, text: string}[]} entries
- */
-export function renderProgressBlock(entries) {
-  return entries.map((entry) => `- ${entry.ts === "" ? "" : `${entry.ts} `}${entry.text}`).join("\n");
-}
-
-/**
- * Split `- <ts> <text>`. Only a timestamp-shaped first token is treated as one,
- * so a note that happens to start with a word keeps all of its text.
- * @param {string} line
- */
-export function splitProgressLine(line) {
-  const match = /^(\d{4}-\d{2}-\d{2}T\S*)\s+(.*)$/.exec(line);
-  if (match === null) return { ts: "", text: line };
-  return { ts: match[1], text: match[2] };
-}
-
-// ---------------------------------------------------------------------------
 // Comments
 // ---------------------------------------------------------------------------
 
@@ -253,8 +221,11 @@ const SESSION_FIELDS = ["seg", "owner", "owner_kind", "id", "goal", "phase", "st
 const SESSION_ESCAPES = { "\\": "\\\\", "\n": "\\n", "\r": "\\r", "·": "\\u00b7" };
 const SESSION_UNESCAPES = { "\\\\": "\\", "\\n": "\n", "\\r": "\r", "\\u00b7": "·" };
 
-/** @param {string} text */
-function escapeSessionField(text) {
+/**
+ * Escape a value so it stays inside one ` · `-separated field.
+ * @param {string} text
+ */
+export function escapeField(text) {
   return String(text).replace(/[\\\n\r·]/g, (ch) => SESSION_ESCAPES[ch]);
 }
 
@@ -351,13 +322,45 @@ export function renderSessionsBlock(sessions) {
         `owner_kind:${session.ownerKind ?? session.owner_kind ?? ""}`,
         // The parser produces `id`; rows from the database produce `sessionId`.
         `id:${session.sessionId ?? session.id ?? ""}`,
-        `goal:${escapeSessionField(session.goal ?? "")}`,
+        `goal:${escapeField(session.goal ?? "")}`,
         `phase:${session.phase ?? ""}`,
         `status:${session.status}`,
         `pid:${session.pid ?? ""}`,
         session.ts,
       ].join(FIELD_SEP)}`,
     )
+    .join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Attachments
+// ---------------------------------------------------------------------------
+
+/**
+ * One ` · `-separated field list per attachment row.
+ *
+ * The filename is escaped with `escapeField` so a hand-named file cannot inject
+ * a heading, a new record, or split the line on ` · `. `comment_id` is appended
+ * only when the attachment belongs to a comment — the common case is a
+ * card-level file.
+ *
+ * @param {{id: string, filename: string, contentType?: string|null, size: number, commentId?: string|null, createdAt: string}[]} attachments
+ */
+export function renderAttachmentsBlock(attachments) {
+  return attachments
+    .map((attachment) => {
+      const fields = [
+        `id:${attachment.id}`,
+        `filename:${escapeField(attachment.filename)}`,
+        `type:${escapeField(attachment.contentType ?? "")}`,
+        `size:${attachment.size}`,
+        `created_at:${attachment.createdAt}`,
+      ];
+      if (attachment.commentId !== null && attachment.commentId !== undefined) {
+        fields.push(`comment_id:${attachment.commentId}`);
+      }
+      return `- ${fields.join(FIELD_SEP)}`;
+    })
     .join("\n");
 }
 

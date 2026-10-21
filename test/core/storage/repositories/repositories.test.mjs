@@ -70,6 +70,20 @@ function makeTask(repos, overrides = {}) {
   return repos.tasks.insert(task);
 }
 
+/**
+ * A review card. `normalizeTaskCreate` does not carry the structural marker
+ * (it is resolved by the service layer), so the normalized DTO is stamped
+ * before insert — which is exactly the shape 0025 stores.
+ */
+function makeReview(repos, { id, status, reviewOfId, reviewRound } = {}) {
+  const { identifier } = repos.projects.allocateIdentifier("proj");
+  const task = normalizeTaskCreate(
+    { title: "A review", ...(status === undefined ? {} : { status }) },
+    { now: TS, id: id ?? `task-${identifier}`, identifier, projectId: "proj" },
+  );
+  return repos.tasks.insert({ ...task, reviewOfId, reviewRound });
+}
+
 describe("repositories/projects", () => {
   it("creates, reads and patches a project", async () => {
     await board(({ repos, project }) => {
@@ -414,6 +428,32 @@ describe("repositories/tasks", () => {
       assert.deepEqual(repos.tasks.list({ status: ["done", "todo"], includeArchived: true }).map((t) => t.title).sort(), ["one", "two"]);
       assert.deepEqual(repos.tasks.list({ limit: 1 }).length, 1);
       assert.deepEqual(repos.tasks.list({ projectId: "nope" }), []);
+    });
+  });
+
+  it("filters the board read by the card being reviewed", async () => {
+    await board(({ repos }) => {
+      const original = makeTask(repos, { id: "original", title: "Original" });
+      const other = makeTask(repos, { id: "other", title: "Other" });
+
+      const live = makeReview(repos, { id: "review-live", reviewOfId: original.id, reviewRound: 1 });
+      const archived = makeReview(repos, {
+        id: "review-archived",
+        status: "done",
+        reviewOfId: original.id,
+        reviewRound: 2,
+      });
+      makeReview(repos, { id: "review-other", reviewOfId: other.id, reviewRound: 1 });
+      repos.tasks.archive({ id: archived.id, now: TS2 });
+
+      assert.deepEqual(repos.tasks.list({ reviewOfId: original.id }).map((task) => task.id), [live.id]);
+      assert.deepEqual(
+        repos.tasks.list({ reviewOfId: original.id, includeArchived: true }).map((task) => task.id).sort(),
+        [archived.id, live.id].sort(),
+      );
+      assert.deepEqual(repos.tasks.list({ reviewOfId: original.id, status: "todo" }).map((task) => task.id), [live.id]);
+      assert.deepEqual(repos.tasks.list({ reviewOfId: original.id, limit: 0 }), []);
+      assert.deepEqual(repos.tasks.list({ reviewOfId: "nope" }), []);
     });
   });
 });

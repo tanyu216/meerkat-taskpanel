@@ -8,6 +8,7 @@
  */
 
 import { sessionId as deriveSessionId } from "../../foundation/ids.mjs";
+import { usageError } from "../../foundation/transport/errors.mjs";
 import { table } from "../output/human.mjs";
 
 export const COMMANDS = [
@@ -41,6 +42,50 @@ export const COMMANDS = [
         goal: ctx.flags.goal,
       });
       return { data: { session }, human: `session ${session.id} ${session.status} (seg ${session.seg}, owner ${session.owner})` };
+    },
+  },
+
+  {
+    name: "id",
+    summary: "Derive the deterministic session id without registering a session.",
+    usage: "session id <id|identifier> --seg <seg> [--owner <name>] [--session <task-id>]",
+    positionals: [{ name: "ref", summary: "Task id or identifier." }],
+    flags: [
+      { flag: "seg", key: "seg", as: "string", value: "<seg>", required: true },
+      { flag: "owner", key: "owner", as: "string", value: "<name>" },
+      { flag: "session", key: "sessionRef", as: "string", value: "<task-id>", summary: "Task id used to derive the session id (defaults to the resolved one)." },
+    ],
+    async run(ctx) {
+      // Read-only: the task is resolved, the id is derived, and nothing is
+      // registered. The derivation itself is `session set`'s, so a caller can
+      // pass this value to a host and still land on the same row.
+      if (typeof ctx.flags.seg !== "string" || ctx.flags.seg.trim() === "") {
+        throw usageError("session id: --seg is required and must not be empty", {
+          fix: "pass the segment name, e.g. --seg s1",
+        });
+      }
+      const owner = ctx.flags.owner ?? ctx.actor.id;
+      if (typeof owner !== "string" || owner.trim() === "") {
+        throw usageError("session id: --owner must not be empty", { fix: "pass --owner <name>" });
+      }
+      const task = (await ctx.client.get(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`)).task;
+      // `--session` replaces the task fed to the derivation, exactly as it does
+      // for `session set`; `--session-id` is deliberately ignored — this command
+      // answers "what does the board derive", not "what did you configure".
+      const derivedFrom = ctx.flags.sessionRef ?? task.id;
+      const sessionId = deriveSessionId(derivedFrom, owner, ctx.flags.seg);
+      return {
+        data: {
+          session_id: sessionId,
+          task_id: task.id,
+          task_identifier: task.identifier,
+          derived_from: derivedFrom,
+          owner,
+          seg: ctx.flags.seg,
+        },
+        // Bare on stdout so `SID=$(taskctl session id …)` works without jq.
+        human: sessionId,
+      };
     },
   },
 

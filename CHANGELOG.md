@@ -9,6 +9,42 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Card details carry the attachment list.** The single-card read
+  (`GET /api/v1/tasks/:ref`, `taskctl issue get <ref>`) now returns `attachments[]` with the
+  same metadata as `attachment list`; the human `issue get` prints an attachment table. The
+  markdown card gains an `## Attachments` section between Sessions and Report, written only
+  when the card has files, so a card without attachments keeps its five-section shape. The
+  board list and mutation responses stay lean; bytes remain on the board and are not in the
+  card.
+- **The identifier syntax is published in the installed skill.** `references/card-schema.md`
+  now states both tiers: the permissive storable pattern (`isValidIdentifier`: 1–128
+  characters, `[A-Za-z0-9][A-Za-z0-9._-]*`) and the generated shape `<PREFIX>-<serial>`
+  (serial from 1, zero-padded to at least four digits, no overflow cap), plus the prefix fold
+  and a copyable generated-form regex. A test re-derives every example against the code, so
+  the page cannot drift.
+- **`taskctl session id` derives a session id without registering one.** The id is exactly
+  what `session set` writes for the same `(task, owner, seg)` — same namespace, same
+  NUL-joined name — so a caller can hand it to a host as `--session-id` before the session
+  exists. The command is read-only (a GET and a local derivation; no session row) and always
+  derives: a global `--session-id` is ignored. The skill also ships
+  `scripts/session-id.mjs`, a self-contained offline derivation for when the board is not
+  running; it takes the resolved task UUID (`issue get --json` → `data.task.id`). Parity is
+  pinned by a vector matrix against `src/foundation/ids.mjs`, including the namespace and the
+  RFC 4122 test vector.
+- **`taskctl issue list --review-of <ref>` filters to a card's review cards.** The read side of
+  the 0025 review marker now has the filter the acceptance flow needs: the reviews of the
+  named card (id or identifier), across every round, combinable with `--project`, `--status`,
+  `--assignee-id` and `--include-archived`. It is read-only; an unknown ref is `NOT_FOUND`
+  and an identifier used in two projects is refused (`VALIDATION_FAILED`) rather than
+  guessed. `GET /api/v1/tasks` takes the same `review_of` query param.
+- **`taskctl export md <ref>` exports one card, to a directory or one file.** The positional
+  takes an id or identifier; with `--out <dir>` the card lands at `<dir>/<ID>.md`, and with
+  `--out <file.md>` it is written to exactly that path (the parent must exist). `--check`
+  compares only that card and keeps exit 3; `--project` cannot be combined with a ref. The
+  server still renders (`POST /api/v1/export` takes `ref`), so the markdown stays
+  byte-identical to the whole-board export. The CLI write path now applies the
+  `MD_GROWTH_FACTOR` (4×) guard before every overwrite — the core exporter had it, the real
+  path did not.
 - **An agent session records a one-sentence goal.** `taskctl session set <ref> --seg … --owner-kind …
   --goal "<one sentence>"` stores what that conversation is working on on the session row
   (migration 0028), so concurrent segments on one card each state their own. Omitting `--goal` on a
@@ -111,6 +147,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Per-card delivery reports (`taskctl report`, `--report-file`, `report_waived`, rollup) are
   unchanged. An existing host install keeps the old files until it is re-installed with
   `--force`.
+
+### Changed
+
+- **The `ready`/`failed` status aliases are removed.** The markdown export always writes the
+  canonical status; the inbound alias resolver and its tests were dead code since the
+  markdown importer was removed. A stored `meta.legacy_status` is now inert, and a card that
+  used a legacy word exports `todo` / `canceled`.
+- **The markdown card no longer carries `## Progress`.** It rendered only the imported
+  `progress` activity event, whose sole writer was the removed markdown importer, so a new
+  card always exported an empty section. The audit trail remains a separate board read
+  (`GET /api/v1/tasks/:ref/activities`); historical `progress` rows are still there.
 
 ## [1.1.0] - 2026-10-20
 

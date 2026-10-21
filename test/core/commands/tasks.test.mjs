@@ -255,6 +255,30 @@ describe("commands/tasks — create and update", () => {
       assert.equal(updated.meta.rework_round, "2", "the loop's write survives");
     });
   });
+
+  it("lists the cards that review one card, through both order modes", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        actor: AGENT,
+      });
+      commands.createTask({ projectId: "proj", title: "Unrelated", actor: AGENT });
+
+      assert.deepEqual(
+        commands.listTasks({ reviewOfId: original.id }).map((task) => task.id),
+        [review.id],
+      );
+
+      const ordered = commands.listOrderedTasks({ reviewOfId: original.id, order: "weight" });
+      assert.deepEqual(ordered.tasks.map((task) => task.id), [review.id]);
+      assert.deepEqual(ordered.orderDebug.map((entry) => entry.id), [review.id]);
+    });
+  });
 });
 
 describe("commands/tasks — an epic with children cannot be downgraded", () => {

@@ -1,5 +1,5 @@
 /**
- * The markdown exporter: file layout, the canonical card, and the status word.
+ * The markdown exporter: file layout, the canonical card, and its sections.
  */
 
 import assert from "node:assert/strict";
@@ -9,7 +9,6 @@ import { after, describe, it } from "node:test";
 
 import { createCommands, createContext } from "../../../../src/core/commands/index.mjs";
 import { exportMd, renderCard } from "../../../../src/core/storage/md/export.mjs";
-import { statusForExport } from "../../../../src/core/storage/md/legacy-status.mjs";
 import { createRepositories } from "../../../../src/core/storage/repositories/index.mjs";
 import { TS, cleanupTempDirs, createTempBoard, makeTempDir } from "../../../helpers/sqlite-fixture.mjs";
 
@@ -38,7 +37,7 @@ describe("md/export — rendering", () => {
     }
   });
 
-  it("renders a task with nothing in it as a card with six empty sections", async () => {
+  it("renders a task with nothing in it as a card with five empty sections", async () => {
     const board = await createTempBoard();
     const repos = createRepositories(board.db);
     try {
@@ -46,7 +45,7 @@ describe("md/export — rendering", () => {
       const ctx = createContext({ db: board.db, repos, clock: () => TS });
       createCommands(ctx).createTask({ projectId: "proj", title: "Bare", actor: { kind: "agent", id: "linus" } });
       const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
-      for (const name of ["Background", "Acceptance", "Progress", "Comments", "Sessions", "Report"]) {
+      for (const name of ["Background", "Acceptance", "Comments", "Sessions", "Report"]) {
         assert.match(card, new RegExp(`^## ${name}$`, "m"), name);
       }
       assert.match(card, /^assignee: ""$/m);
@@ -84,13 +83,88 @@ describe("md/export — rendering", () => {
       board.close();
     }
   });
-});
 
-describe("md/legacy-status — the word written back", () => {
-  it("keeps the author's word when the card carried one", () => {
-    assert.equal(statusForExport("todo", "ready"), "ready");
-    assert.equal(statusForExport("canceled", "failed"), "failed");
-    assert.equal(statusForExport("done", null), "done");
-    assert.equal(statusForExport("done", undefined), "done");
+  it("writes the canonical status even when the card stored a legacy word", async () => {
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    try {
+      repos.projects.create({ id: "proj", name: "P", now: TS });
+      const ctx = createContext({ db: board.db, repos, clock: () => TS });
+      createCommands(ctx).createTask({
+        projectId: "proj",
+        title: "Legacy",
+        meta: { legacy_status: "ready" },
+        actor: { kind: "agent", id: "linus" },
+      });
+
+      const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
+      assert.match(card, /^status: todo$/m);
+      assert.doesNotMatch(card, /^status: ready$/m);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("renders an Attachments section only when the card has attachments", async () => {
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    try {
+      repos.projects.create({ id: "proj", name: "P", now: TS });
+      const ctx = createContext({ db: board.db, repos, clock: () => TS });
+      const task = createCommands(ctx).createTask({
+        projectId: "proj",
+        title: "With a file",
+        actor: { kind: "agent", id: "linus" },
+      });
+
+      const without = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
+      assert.doesNotMatch(without, /^## Attachments$/m);
+
+      repos.attachments.insert({
+        taskId: task.id,
+        filename: "notes.txt",
+        contentType: "text/plain",
+        size: 5,
+        kind: "attachment",
+        createdAt: TS,
+      });
+
+      const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
+      assert.match(card, /^## Attachments$/m);
+      assert.match(card, /filename:notes\.txt/);
+      assert.ok(card.indexOf("## Sessions") < card.indexOf("## Attachments"));
+      assert.ok(card.indexOf("## Attachments") < card.indexOf("## Report"));
+    } finally {
+      board.close();
+    }
+  });
+
+  it("does not render a Progress section, even when historical progress rows exist", async () => {
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    try {
+      repos.projects.create({ id: "proj", name: "P", now: TS });
+      const ctx = createContext({ db: board.db, repos, clock: () => TS });
+      const task = createCommands(ctx).createTask({
+        projectId: "proj",
+        title: "With progress",
+        actor: { kind: "agent", id: "linus" },
+      });
+      repos.activities.append({
+        taskId: task.id,
+        actorKind: "system",
+        actorId: "md-import",
+        event: "progress",
+        changes: { line: "started the schema" },
+        createdAt: TS,
+      });
+
+      const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
+      assert.doesNotMatch(card, /^## Progress$/m);
+      assert.doesNotMatch(card, /started the schema/);
+    } finally {
+      board.close();
+    }
   });
 });
+

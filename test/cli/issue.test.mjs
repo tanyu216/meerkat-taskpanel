@@ -6,11 +6,12 @@
  */
 
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { cleanupTempDirs, dataOf, errorOf, withCli } from "./helpers/cli-harness.mjs";
+import { cleanupTempDirs, dataOf, errorOf, makeTempDir, withCli } from "./helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);
 
@@ -97,6 +98,27 @@ describe("cli/issue — create, list, get", () => {
       const missing = run(["issue", "get", "NOPE-9999", "--json"]);
       assert.equal(missing.status, 1);
       assert.equal(JSON.parse(missing.stdout).error.code, "NOT_FOUND");
+    });
+  });
+
+  it("gets the card's attachments in both output shapes", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      assert.deepEqual(dataOf(run(["issue", "get", "DEMO-0001", "--json"])).attachments, []);
+
+      const dir = makeTempDir();
+      const file = join(dir, "notes.txt");
+      writeFileSync(file, "hello", "utf8");
+      const added = dataOf(run(["attachment", "add", "DEMO-0001", "--file", file, "--json"]));
+
+      const got = dataOf(run(["issue", "get", "DEMO-0001", "--json"]));
+      assert.equal(got.attachments.length, 1);
+      assert.equal(got.attachments[0].id, added.attachment.id);
+      assert.equal(got.attachments[0].filename, "notes.txt");
+
+      const human = run(["issue", "get", "DEMO-0001"]);
+      assert.match(human.stdout, /notes\.txt/);
+      assert.match(human.stdout, /5 B/);
     });
   });
 
@@ -293,6 +315,45 @@ describe("cli/issue — every flag the command declares", () => {
       dataOf(run(["issue", "move", "DEMO-0001", "canceled", "--json"]));
       dataOf(run(["issue", "archive", "DEMO-0001", "--days", "0", "--json"]));
       assert.equal(dataOf(run(["issue", "list", "--include-archived", "--json"])).tasks.length, 1);
+    });
+  });
+
+  it("list filters by the card being reviewed", async () => {
+    await board(async ({ run }) => {
+      const original = createIssue(run);
+      const review = createIssue(run, [
+        "--title", "Review",
+        "--review-of", "DEMO-0001",
+        "--review-round", "1",
+        "--assignee", "linus",
+      ]);
+      createIssue(run, ["--title", "Unrelated"]);
+
+      const byIdentifier = dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--json"]));
+      assert.deepEqual(byIdentifier.tasks.map((task) => task.identifier), [review.task.identifier]);
+
+      const byId = dataOf(run(["issue", "list", "--review-of", original.task.id, "--json"]));
+      assert.deepEqual(byId.tasks.map((task) => task.identifier), [review.task.identifier]);
+
+      const byAssignee = dataOf(
+        run(["issue", "list", "--review-of", "DEMO-0001", "--assignee-id", review.task.assignee.id, "--json"]),
+      );
+      assert.deepEqual(byAssignee.tasks.map((task) => task.identifier), [review.task.identifier]);
+
+      const byStatus = dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--status", "done", "--json"]));
+      assert.deepEqual(byStatus.tasks, []);
+
+      dataOf(run(["issue", "move", review.task.identifier, "canceled", "--json"]));
+      dataOf(run(["issue", "archive", review.task.identifier, "--days", "0", "--json"]));
+      assert.equal(dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--json"])).tasks.length, 0);
+      assert.equal(
+        dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--include-archived", "--json"])).tasks.length,
+        1,
+      );
+
+      const missing = run(["issue", "list", "--review-of", "NOPE-9999", "--json"]);
+      assert.equal(missing.status, 1);
+      assert.equal(errorOf(missing).code, "NOT_FOUND");
     });
   });
 

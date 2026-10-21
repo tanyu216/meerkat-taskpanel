@@ -377,6 +377,9 @@
             },
             "project_id": {
               "type": "string"
+            },
+            "ref": {
+              "type": "string"
             }
           },
           "required": [],
@@ -552,6 +555,9 @@
               "type": "string"
             },
             "project_id": {
+              "type": "string"
+            },
+            "review_of": {
               "type": "string"
             },
             "status": {
