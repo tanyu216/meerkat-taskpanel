@@ -37,7 +37,8 @@ until opened.
 
 | Path | What it is |
 |---|---|
-| `index.html` | the prototype — every block as static HTML with `data-*` hooks |
+| `index.html` | the prototype — every block as static HTML with `data-*` hooks. Its drawer is the **six-tab** design (Details / Activity / Reports / Acceptance / Leftovers / Sessions), and the tab script is inline at the end of the document (I23; `app.js` is unchanged) |
+| `index-detail-mother.html` | **frozen** 2026-10-15 mother, kept only as the baseline the `index-detail-full/tabs/v2/v3/v4` proposal pages were built from; `check-detail-views.mjs` and `check-drawer-tabs.mjs` walk against it so those rounds' claims stay testable. Not a product screen, not linked from `index.html` |
 | `tw.css` | **build output** (Tailwind + daisyUI compiled). Do not edit by hand. |
 | `src/input.css` | the Tailwind build entry: `@theme` tokens, daisyUI themes, app components |
 | `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14), R5's label control (I15), R9's light-dismiss rule (I16), R10's board empty state (I17) and drawer auto-save (I18), R11's status filter (I19), R12x's activity feed (I21), and R13's assignee narrowing (I20 — **R13 修订 withdrew I22 and the clear it named**) |
@@ -199,6 +200,7 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I19 | Status filter (R11) | the bar's second dropdown and its only multi-select: a press toggles one of the seven first-class statuses in or out of the set, `all` clears it, and the pass re-runs. The chosen set is OR inside the field, AND against the other filters | `[data-filter-status]` → `data-filter-status-value` → `[data-filter-status-summary]` / `[data-filter-status-text]` · `[data-filter-status-option]` → `data-status-value` |
 | I20 | Roster assignee pick (R11 ②, rewritten by R13 修订) | a press on a name in Active agents writes that name into the assignee control — **exactly** the move of choosing it in the bar's dropdown, and nothing else: no view switch, no status write, no menu, no toast, no `✕`. The name in force wears a capsule; pressing it again changes nothing (a dropdown does not close itself on a repeat pick), so the one removal path is the control's own `Assignee: All` row | `[data-agents-presence]` → `[data-agent-assignee]` → `[data-filter-assignee]` (value) + one `applyFilters()` + `[data-assignee-item]` → `data-assignee-active` |
 | I21 | Activity view (R12x) | the sidebar's third destination opens B26 — a press routes through `setView()`, the feed narrows from three controls, the unread number is shared by the sidebar pill and the feed boundary, `Mark all read` clears it, a row's open button lands on B09, and `j`/`k` walk the visible rows | `[data-nav-item="activity"]` → `[data-activity-view]` · `[data-activity-filter]` · `[data-activity-mark-read]` · `[data-activity-open]` · `[data-activity-more]` |
+| I23 | Detail-drawer tabs | the drawer body is split by information role — **Details** / **Activity** / **Reports** / **Acceptance** / **Leftovers** / **Sessions**. Details is the resting face; a press selects a tab, `←`/`→` cycle the visible tabs, `Home`/`End` jump to the ends, and the selected tab owns `aria-selected="true"` + `tabindex="0"` while every other panel is `hidden`. **Sessions** is the session trail and exists only when the card has session rows (its body's children are the switch) | `[data-detail-tabs][role="tablist"]` → `[data-detail-tab]` → `[data-detail-panel]` · `[data-detail-agent-session-body]` |
 **I22 is withdrawn.** R13's *Assignee clear* was the `✕` beside the assignee control that took a given name back out of the filter; **R13 修订 (Terry 2026-10-13, 决定甲)** removed the control, its three rules and its key, so the row is gone from this table rather than left dangling. What it used to do — clear a given name and nothing else — is now the assignee control's own `Assignee: All` row, which already had a seat (`filters.assignee.all`). The name the select grows on demand (`[data-assignee-filter-option]`) and the capsule (`[data-assignee-item]` → `data-assignee-active`) both survive, and both moved into **I20**.
 
 The footer's three rows act directly — none of them opens a dialog except the settings
@@ -476,7 +478,7 @@ alternative.
 |---|---|
 | `01-board-1512.png` | default board (MeerkatTaskPanel project, 12 of 18 cards) |
 | `02-board-wide.png` | full 7-column board at 2600px — status coverage proof |
-| `03-drawer-agent.png` | drawer for an agent task: session block + GFM description |
+| `03-drawer-agent.png` | drawer for an agent task: the six-tab strip with **Sessions** selected — the session trail (platform badges, owner / seg / phase, relative timestamps, `Resume` on the running row) |
 | `04-drawer-human.png` | drawer for a human task |
 | `05-dark-theme.png` | dark theme (re-shot with the theme cell in its `Dark` state) |
 | `06-list-view.png` | list view with the skeleton rows |
@@ -712,8 +714,9 @@ assignee table in [BLOCKS.md](../BLOCKS.md#assignee-model).
   the full set — switch to a project with no cards to see the empty-column states.
 - **Comment lists are representative.** A card's `data-comments` number is the total
   count; the drawer renders a sample of the thread rather than the whole count.
-- **The drawer's session block is read-only.** `Resume` is wired to a toast — the
-  prototype has no transport to resume anything with, by design.
+- **The drawer's session block is read-only and lives in the Sessions tab.** `Resume` is
+  wired to a toast — the prototype has no transport to resume anything with, by design —
+  and the tab itself is data-driven: a card with no session rows hides it.
 - **The activity view is a design integration, not the product's own feed.** R12x moved
   `design/activity/` into the board, which is why the block inventory now carries B26; the
   feed's numbers are still the design's sample and its clock is a fixed instant, not

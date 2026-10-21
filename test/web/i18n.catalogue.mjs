@@ -20,8 +20,8 @@
  *   `%s` placeholders  252 keys carry none, 17 carry one, 2 carry two — and the
  *                       histogram is identical for en and zh, key for key (no
  *                       prototype-only key carries a placeholder)
- *   data-i18n* hooks    849 in `design/prototype/index.html`:
- *                         543 `data-i18n=`
+ *   data-i18n* hooks    851 in `design/prototype/index.html`:
+ *                         545 `data-i18n=`
  *                         193 `data-i18n-arg=`
  *                          85 `data-i18n-aria-label=`
  *                          19 `data-i18n-title=`
@@ -54,7 +54,7 @@
  * Its header now quotes **626 `data-i18n*` hooks** and **282 catalogue keys** —
  * its own line reads "522 `data-i18n` plus 104 `placeholder` / `aria-label` /
  * `title` variants", so it counts four of the five attributes and leaves the 193
- * `data-i18n-arg` seats out. Measured over all five, the document carries 849;
+ * `data-i18n-arg` seats out. Measured over all five, the document carries 851;
  * and its key count no longer agrees either — the 282 it states is one design
  * round behind the 288 `app.js` now holds (T-20261014-212017-3 added the
  * drawer's six edit keys). Earlier rounds were wrong on both, which is the

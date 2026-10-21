@@ -7,6 +7,91 @@
     <title data-i18n="app.title">MeerkatTaskPanel — Board</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="stylesheet" href="tw.css" />
+    <!-- =====================================================================
+         T-20261015-025759 · 抽屉内按信息角色分轴（Tab）· 已并入母本
+         本页就是母本：六 tab —— Details / Activity / Reports / Acceptance /
+         Leftovers / Sessions。Sessions 在末位且数据驱动：卡片没有会话行时，
+         tab 与面板一起隐藏。默认停 Details，与并入前的默认面等价。
+         2026-10-15 的旧母本冻结在 index-detail-mother.html，供详情页提案的
+         机检（check-detail-views / check-drawer-tabs）继续按原口径成立。
+         共享 tw.css / vendor/* / app.js 未改一字节。
+         ================================================================== -->
+    <style>
+      /* ---- report 家族样式（两方案共用同一批样例，样式也共用） ----
+         只读现有 token：本文件不新增任何自定义属性、不引入任何颜色字面量。 */
+      .td-dv-report {
+        padding: 10px 12px;
+        border: 1px solid var(--color-td-line);
+        border-radius: var(--r-md);
+        background-color: var(--color-td-sunken);
+      }
+      .td-dv-report + .td-dv-report { margin-top: 8px; }
+      .td-dv-report-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      /* the round chip sits on the sunken report card, so it reads as a chip by
+         taking the surface colour and a stronger edge — not by a new token. */
+      .td-dv-round {
+        font-family: var(--font-mono);
+        color: var(--color-td-ink);
+        background-color: var(--color-td-surface);
+        border-color: var(--color-td-line-strong);
+      }
+      .td-dv-author { font-size: 12px; font-weight: 500; color: var(--color-td-ink); }
+      .td-dv-kind { font-size: 11px; color: var(--color-td-ink-3); }
+      .td-dv-ts { margin-left: auto; font-size: 11px; color: var(--color-td-ink-3); }
+      .td-dv-conclusion { margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-td-ink-2); }
+      .td-dv-latest { padding-left: 10px; border-left: 2px solid var(--color-td-accent); }
+      .td-dv-note { margin: 8px 0 0; font-size: 11px; color: var(--color-td-ink-3); }
+      .td-dv-list { margin: 0; padding: 0; list-style: none; }
+      .td-dv-item { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; }
+      .td-dv-item + .td-dv-item { border-top: 1px solid var(--color-td-line); }
+      .td-dv-mark {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+        margin-top: 2px;
+        color: var(--color-td-ink-3);
+        border: 1px solid var(--color-td-line-strong);
+        border-radius: 3px;
+      }
+      .td-dv-mark[data-acceptance-status="met"] { color: var(--color-td-success); border-color: var(--color-td-success); }
+      .td-dv-mark[data-acceptance-status="partial"] { color: var(--color-td-warning); border-color: var(--color-td-warning); }
+      .td-dv-tick { width: 9px; height: 9px; }
+      .td-dv-text { font-size: 13px; line-height: 1.5; color: var(--color-td-ink-2); }
+      .td-dv-empty { font-size: 12px; line-height: 1.5; color: var(--color-td-ink-3); font-style: italic; }
+      .td-dv-round-mono { flex: none; width: 52px; font-size: 11px; color: var(--color-td-ink-3); }
+
+      /* ---- Tab 条：抽屉体内顶部，save-state 区之后、Details 面板之前 ----
+         结构用 daisyUI 的 .tabs / .tab；下方两条只加选中态的着色
+         （按钮自身在 daisyUI 里已是 position:relative，下划线用 ::after）。 */
+      .td-dv-tabs {
+        border-bottom: 1px solid var(--color-td-line);
+        margin-bottom: 4px;
+      }
+      .td-dv-tab { font-size: 12px; }
+      .tabs.td-dv-tabs > .tab.td-dv-tab[hidden] { display: none; }
+      .tabs.td-dv-tabs > .tab.td-dv-tab[aria-selected="true"] { color: var(--color-td-accent); }
+      .tabs.td-dv-tabs > .tab.td-dv-tab[aria-selected="true"]::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: 2px;
+        background-color: var(--color-td-accent);
+      }
+      .td-dv-panel { outline: none; }
+      .td-dv-panel:focus-visible { outline: 2px solid var(--color-td-focus); outline-offset: 2px; }
+    </style>
+
   </head>
   <body>
     <!-- =====================================================================
@@ -3464,6 +3549,26 @@
              touch, so the fallback string is inlined as the no-JS floor. -->
         <span data-detail-save data-save-state="idle" hidden></span>
         <span class="td-save-error" data-detail-save-error hidden role="alert">Couldn’t save — try again.</span>
+
+        <!-- =================================================================
+             T-20261015-025759 · 方案二 · Tab 组（按信息角色分轴）
+             Details / Activity / Reports / Acceptance / Leftovers / Sessions。
+             Sessions 是末位 tab，卡片没有会话行时连同面板一起隐藏。
+             默认停 Details，因此默认面与并入前的抽屉等价。
+             键盘：←/→ 循环、Home/End 首尾；aria-selected 与面板 hidden 由同一函数写。
+             ============================================================== -->
+        <div class="tabs td-dv-tabs" data-detail-tabs role="tablist" aria-label="Task detail sections">
+          <button type="button" class="tab td-dv-tab" role="tab" id="td-dv-tab-details" data-detail-tab="details" aria-controls="td-dv-panel-details" aria-selected="true" tabindex="0">Details</button>
+          <button type="button" class="tab td-dv-tab" role="tab" id="td-dv-tab-activity" data-detail-tab="activity" aria-controls="td-dv-panel-activity" aria-selected="false" tabindex="-1">Activity</button>
+          <button type="button" class="tab td-dv-tab" role="tab" id="td-dv-tab-reports" data-detail-tab="reports" aria-controls="td-dv-panel-reports" aria-selected="false" tabindex="-1">Reports</button>
+          <button type="button" class="tab td-dv-tab" role="tab" id="td-dv-tab-acceptance" data-detail-tab="acceptance" aria-controls="td-dv-panel-acceptance" aria-selected="false" tabindex="-1">Acceptance</button>
+          <button type="button" class="tab td-dv-tab" role="tab" id="td-dv-tab-leftovers" data-detail-tab="leftovers" aria-controls="td-dv-panel-leftovers" aria-selected="false" tabindex="-1">Leftovers</button>
+          <button type="button" class="tab td-dv-tab" role="tab" id="td-dv-tab-sessions" data-detail-tab="sessions" aria-controls="td-dv-panel-sessions" aria-selected="false" tabindex="-1">Sessions</button>
+        </div>
+
+        <!-- T-20261015-025759 · 方案二 · Details 面板开始（包住既有 7 区，它们原样未改） -->
+        <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-details" data-detail-panel="details" aria-labelledby="td-dv-tab-details" tabindex="0">
+
         <section class="td-section">
           <h3 class="td-section-title" data-i18n="drawer.properties">Properties</h3>
           <div class="td-props" data-detail-props>
@@ -3772,24 +3877,6 @@
           </div>
         </section>
 
-        <section class="td-section" data-detail-agent-session>
-          <h3 class="td-section-title" data-i18n="drawer.session">Agent session</h3>
-          <div data-detail-agent-session-body>
-            <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2">
-              <span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span>
-              <span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span>
-              <button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">
-                Resume
-              </button>
-            </div>
-            <div class="mt-2 flex items-center gap-2">
-              <span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span>
-              <span class="td-copy" data-agent-session-id>sess_claude_01HQ8ZM4K2</span>
-            </div>
-            </div>
-          </div>
-        </section>
 
         <section class="td-section" data-detail-attachments-section data-detail-save-field="attachments">
           <div class="td-section-head">
@@ -3823,6 +3910,10 @@
           </div>
         </section>
 
+
+        </div><!-- /Details panel -->
+
+        <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-activity" data-detail-panel="activity" aria-labelledby="td-dv-tab-activity" tabindex="0" hidden>
         <section class="td-section">
           <h3 class="td-section-title" data-i18n="drawer.comments">Comments</h3>
           <div data-detail-comments>
@@ -3902,6 +3993,93 @@
             </div>
           </div>
         </section>
+        </div><!-- /Activity panel -->
+        <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-reports" data-detail-panel="reports" aria-labelledby="td-dv-tab-reports" tabindex="0" hidden>
+          <section class="td-section" data-dv-tab-block="reports">
+            <h3 class="td-section-title">Reports</h3>
+          <div class="td-dv-reports">
+            <!-- SAMPLE DATA · 实现卡需接 GET /api/v1/tasks/:ref/reports -->
+            <article class="td-dv-report" data-dv-round="1">
+              <div class="td-dv-report-head">
+                <span class="badge badge-sm td-chip td-dv-round">round 1</span>
+                <span class="td-dv-author td-mono">jobs</span>
+                <span class="td-dv-kind">agent</span>
+                <span class="td-dv-ts td-mono" title="2026-10-07 14:30">2026-10-07 14:30</span>
+              </div>
+              <p class="td-dv-conclusion">Board navigation is keyboard-only; card move verified by keyboard.</p>
+            </article>
+            <article class="td-dv-report" data-dv-round="2">
+              <div class="td-dv-report-head">
+                <span class="badge badge-sm td-chip td-dv-round">round 2</span>
+                <span class="td-dv-author td-mono">jobs</span>
+                <span class="td-dv-kind">agent</span>
+                <span class="td-dv-ts td-mono" title="2026-10-08 09:12">2026-10-08 09:12</span>
+              </div>
+              <p class="td-dv-conclusion">Roving tabindex landed; move announce is the only open item.</p>
+            </article>
+          </div>
+          </section>
+        </div>
+
+        <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-acceptance" data-detail-panel="acceptance" aria-labelledby="td-dv-tab-acceptance" tabindex="0" hidden>
+          <section class="td-section" data-dv-tab-block="acceptance">
+            <h3 class="td-section-title">Acceptance</h3>
+          <ul class="td-dv-list">
+            <!-- SAMPLE DATA · 实现卡需接 GET /api/v1/tasks/:ref/reports -->
+            <li class="td-dv-item">
+              <span class="td-dv-mark" data-acceptance-status="met" role="img" aria-label="Met"><svg class="td-dv-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 13l4.5 4.5L19 7" /></svg></span>
+              <span class="td-dv-text">Tab reaches every column</span>
+            </li>
+            <li class="td-dv-item">
+              <span class="td-dv-mark" data-acceptance-status="met" role="img" aria-label="Met"><svg class="td-dv-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 13l4.5 4.5L19 7" /></svg></span>
+              <span class="td-dv-text">Space picks up a card</span>
+            </li>
+            <li class="td-dv-item">
+              <span class="td-dv-mark" data-acceptance-status="partial" role="img" aria-label="Partial"><svg class="td-dv-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 12h12" /></svg></span>
+              <span class="td-dv-text">Esc cancels the move</span>
+            </li>
+          </ul>
+          </section>
+        </div>
+
+        <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-leftovers" data-detail-panel="leftovers" aria-labelledby="td-dv-tab-leftovers" tabindex="0" hidden>
+          <section class="td-section" data-dv-tab-block="leftovers">
+            <h3 class="td-section-title">Leftovers</h3>
+          <ul class="td-dv-list">
+            <!-- SAMPLE DATA · 实现卡需接 GET /api/v1/tasks/:ref/reports -->
+            <li class="td-dv-item" data-dv-leftover-round="1">
+              <span class="td-dv-round-mono td-mono">round 1</span>
+              <span class="td-dv-text">Screen-reader announcement for column change not yet authored.</span>
+            </li>
+            <li class="td-dv-item" data-dv-leftover-round="2" data-dv-leftover-empty="true">
+              <span class="td-dv-round-mono td-mono">round 2</span>
+              <span class="td-dv-empty">No leftovers — this round closed with nothing outstanding.</span>
+            </li>
+          </ul>
+          </section>
+        </div>
+        <!-- SAMPLE DATA · 实现卡需接 GET /api/v1/tasks/:ref/sessions -->
+        <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-sessions" data-detail-panel="sessions" aria-labelledby="td-dv-tab-sessions" tabindex="0" hidden>
+        <section class="td-section" data-detail-agent-session>
+          <h3 class="td-section-title" data-i18n="drawer.session">Agent session</h3>
+          <div data-detail-agent-session-body>
+            <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2">
+              <span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span>
+              <span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span>
+              <button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">
+                Resume
+              </button>
+            </div>
+            <div class="mt-2 flex items-center gap-2">
+              <span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span>
+              <span class="td-copy" data-agent-session-id>sess_claude_01HQ8ZM4K2</span>
+            </div>
+            </div>
+          </div>
+        </section>
+        </div><!-- /Sessions panel -->
+
       </div>
     </aside>
 
@@ -5351,10 +5529,52 @@ status: todo → in_progress (x2)
             <li><span class="td-check" data-checked="false"></span><span>Revision keyed cache</span></li>
           </ul>
         </div>
+        <!-- SAMPLE DATA · 实现卡需接 GET /api/v1/tasks/:ref/sessions -->
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
             <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="codex">codex</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform codex</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_codex_01HQ8ZM4K2R8</span></div>
+            <div class="mt-2 flex items-center gap-2" style="flex-wrap: wrap" data-session-status="running" data-session-ts="2026-10-18T09:40:00Z" data-session-owner="turing" data-session-seg="3" data-session-phase="implement">
+              <span class="badge badge-xs">Running</span>
+              <span class="text-xs text-td-ink-3">owner <span class="font-medium td-mono">turing</span></span>
+              <span class="text-xs text-td-ink-3">seg 3</span>
+              <span class="text-xs text-td-ink-3">phase implement</span>
+              <span class="td-activity-ts">4m ago</span>
+            </div>
+          </div>
+          <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2">
+              <span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span>
+              <span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span>
+            </div>
+            <div class="mt-2 flex items-center gap-2">
+              <span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span>
+              <span class="td-copy" data-agent-session-id>sess_claude_01HQ18W7T4M2</span>
+            </div>
+            <div class="mt-2 flex items-center gap-2" style="flex-wrap: wrap" data-session-status="closed" data-session-ts="2026-10-18T08:30:00Z" data-session-owner="linus" data-session-seg="2" data-session-phase="review">
+              <span class="badge badge-xs">Closed</span>
+              <span class="text-xs text-td-ink-3">owner <span class="font-medium td-mono">linus</span></span>
+              <span class="text-xs text-td-ink-3">seg 2</span>
+              <span class="text-xs text-td-ink-3">phase review</span>
+              <span class="td-activity-ts">1h ago</span>
+            </div>
+          </div>
+          <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2">
+              <span class="badge badge-xs td-agent-badge" data-agent-platform="openclaw">openclaw</span>
+              <span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform openclaw</span>
+            </div>
+            <div class="mt-2 flex items-center gap-2">
+              <span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span>
+              <span class="td-copy" data-agent-session-id>sess_openclaw_01HQ17P2R8K9</span>
+            </div>
+            <div class="mt-2 flex items-center gap-2" style="flex-wrap: wrap" data-session-status="failed" data-session-ts="2026-10-18T06:15:00Z" data-session-owner="jobs" data-session-seg="1" data-session-phase="implement">
+              <span class="badge badge-xs">Failed</span>
+              <span class="text-xs text-td-ink-3">owner <span class="font-medium td-mono">jobs</span></span>
+              <span class="text-xs text-td-ink-3">seg 1</span>
+              <span class="text-xs text-td-ink-3">phase implement</span>
+              <span class="td-activity-ts">3h ago</span>
+            </div>
           </div>
         </div>
         <div data-slot="comments">
@@ -5597,5 +5817,101 @@ status: todo → in_progress (x2)
     <script src="vendor/markdown-lite.js"></script>
     <script src="vendor/highlight-lite.js"></script>
     <script src="app.js"></script>
+    <!-- =====================================================================
+         T-20261015-025759 · 抽屉 Tab 切换（roving tabindex）· 已并入母本
+         ---------------------------------------------------------------------
+         需求 F：本脚本不写 location.hash、不调 pushState/replaceState、不新增路由。
+         切换 Tab 不移动抽屉焦点：点击时焦点留在被点的 tab（不主动 trigger），
+         只有←/→/Home/End 按 WAI-ARIA 的 roving tabindex 把焦点带到新选中的 tab。
+         ================================================================== -->
+    <script>
+      (function ($) {
+        "use strict";
+
+        /* The sixth tab is the session trail. Its visibility is data-driven:
+           app.js empties [data-detail-agent-session-body] and copies the card
+           template's [data-slot="agent-session"] children; a card with no
+           session leaves the body empty, and the tab goes with it. ORDER is the
+           canonical order; visibleOrder() filters it by the hidden property.
+           需求 F：本脚本不写 location.hash、不调 pushState/replaceState、不新增路由。 */
+        var ORDER = ["details", "activity", "reports", "acceptance", "leftovers", "sessions"];
+
+        function visibleOrder() {
+          return ORDER.filter(function (name) {
+            var $tab = $('[data-detail-tab="' + name + '"]');
+            return $tab.length === 1 && !$tab.prop("hidden");
+          });
+        }
+
+        function select(name, moveFocus) {
+          var names = visibleOrder();
+          if (names.indexOf(name) === -1) return;
+          $("[data-detail-tabs]")
+            .find("[data-detail-tab]")
+            .each(function () {
+              var $tab = $(this);
+              var on = $tab.attr("data-detail-tab") === name;
+              $tab.attr("aria-selected", on ? "true" : "false");
+              $tab.attr("tabindex", on ? "0" : "-1");
+              if (on && moveFocus) $tab.trigger("focus");
+            });
+          $("[data-detail-panel]").each(function () {
+            var $panel = $(this);
+            $panel.prop("hidden", $panel.attr("data-detail-panel") !== name);
+          });
+        }
+
+        function syncSessionTab() {
+          var hasSessions = $("[data-detail-agent-session-body]").children().length > 0;
+          var $tab = $('[data-detail-tab="sessions"]');
+          var $panel = $('[data-detail-panel="sessions"]');
+          var selected = $('[data-detail-tab][aria-selected="true"]').attr("data-detail-tab");
+          var focusWasInSessions =
+            document.activeElement === $tab.get(0) ||
+            $.contains($panel.get(0), document.activeElement);
+          $tab.prop("hidden", !hasSessions);
+          if (!hasSessions) $panel.prop("hidden", true);
+          var names = visibleOrder();
+          if (selected && names.indexOf(selected) === -1) {
+            select("details", focusWasInSessions);
+          }
+        }
+
+        /* 默认停第一页（Details），与现状等价。 */
+        select("details", false);
+        syncSessionTab();
+
+        $("[data-detail-tabs]").on("click", "[data-detail-tab]", function () {
+          select($(this).attr("data-detail-tab"), false);
+        });
+
+        $("[data-detail-tabs]").on("keydown", "[data-detail-tab]", function (event) {
+          var names = visibleOrder();
+          var index = names.indexOf($(this).attr("data-detail-tab"));
+          if (index === -1) return;
+          var next = null;
+          if (event.key === "ArrowRight") next = (index + 1) % names.length;
+          else if (event.key === "ArrowLeft") next = (index - 1 + names.length) % names.length;
+          else if (event.key === "Home") next = 0;
+          else if (event.key === "End") next = names.length - 1;
+          if (next === null) return;
+          event.preventDefault();
+          select(names[next], true);
+        });
+
+        /* app.js owns openDetail and has no hook. The body is emptied and then
+           refilled on every card open, so a childList observer sees every
+           change; the section's hidden attribute is the belt-and-braces signal.
+           Nothing here mutates the observed nodes, so the observer cannot loop. */
+        var body = $("[data-detail-agent-session-body]").get(0);
+        if (body && typeof MutationObserver === "function") {
+          new MutationObserver(syncSessionTab).observe(body, { childList: true });
+        }
+        var section = $("[data-detail-agent-session]").get(0);
+        if (section && typeof MutationObserver === "function") {
+          new MutationObserver(syncSessionTab).observe(section, { attributes: true, attributeFilter: ["hidden"] });
+        }
+      })(jQuery);
+    </script>
   </body>
 </html>

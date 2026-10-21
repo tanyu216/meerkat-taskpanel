@@ -12,8 +12,8 @@
  * BLOCKS.md's header contradicts its own body and the shipped DOM. The two claims
  * `STALE_PROSE_COUNTS` keeps — "**252** `data-i18n*` hooks" and "**198** catalogue
  * keys" — were already wrong when they were written; measured today against
- * `design/prototype/index.html` and `design/prototype/app.js`, the document carries **849**
- * `data-i18n*` attributes (543 `data-i18n` + 193 `-arg` + 85 `-aria-label` +
+ * `design/prototype/index.html` and `design/prototype/app.js`, the document carries **851**
+ * `data-i18n*` attributes (545 `data-i18n` + 193 `-arg` + 85 `-aria-label` +
  * 19 `-title` + 9 `-placeholder`) and the prototype's `MESSAGES` holds **288 keys per
  * language** (en = 288, zh = 288, exact parity; the shipped extraction drops the 17
  * prototype-only keys, so it ships 271). Only the

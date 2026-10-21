@@ -3295,8 +3295,8 @@ const CONSISTENCY_ITEMS = [
 export const STALE_PROSE_COUNTS = Object.freeze([
   Object.freeze({
     claim: "252 `data-i18n*` hooks",
-    measured: 849,
-    detail: "543 `data-i18n` + 193 `-arg` + 85 `-aria-label` + 19 `-title` + 9 `-placeholder`",
+    measured: 851,
+    detail: "545 `data-i18n` + 193 `-arg` + 85 `-aria-label` + 19 `-title` + 9 `-placeholder`",
     verdict: "stale",
   }),
   Object.freeze({
