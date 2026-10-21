@@ -253,6 +253,11 @@ describe("loop skill: SKILL.md", () => {
     assert.match(operation, /MEERKAT_TASKPANEL_REPO/);
     assert.match(operation, /remaining checkout dependency/);
   });
+
+  it("documents the workflow alert ledger flag", () => {
+    const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
+    assert.match(operation, /--workflow-ledger/);
+  });
 });
 
 describe("loop skill: the board gate", () => {
@@ -397,6 +402,18 @@ describe("board skill: references resolve where the skill is installed", () => {
     const text = read("SKILL.md");
     assert.match(text, /meerkat-loop/);
     assert.equal(text.includes("scripts/supervisor.mjs]("), false, "no relative link to the executor");
+  });
+
+  it("teaches the review workflow in the main prompt, not only in a reference", () => {
+    const text = read("SKILL.md");
+    assert.match(text, /review_of_id/, "the structural review marker is named");
+    assert.match(text, /VERDICT/, "the verdict line is named");
+    assert.match(text, /flow B/i, "the flow vocabulary is present");
+    assert.match(
+      text,
+      /references\/review-workflow\.md/,
+      "the main prompt links the full protocol",
+    );
   });
 });
 

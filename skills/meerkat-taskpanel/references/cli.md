@@ -434,9 +434,18 @@ taskctl issue create --project PROJ --title "Review PROJ-0007" \
 ```
 
 `--review-of` takes an identifier or an id; `--review-round` is a positive integer and requires
-`--review-of`. The board resolves both, stores `review_of_id` / `review_round`, and mirrors
-`meta.review_of` / `meta.review_round` itself. One review card per
-`(original, delivery round)`; the loop's idempotency key is `loop-review|<ref>|r<round>`.
+`--review-of`. When given, `--review-round` must equal the original's **current**
+`delivery_round`; omit it only for a legacy round-agnostic review. The board resolves both,
+stores `review_of_id` / `review_round`, and mirrors `meta.review_of` / `meta.review_round`
+itself. One review card per `(original, delivery round)`; the loop's idempotency key is
+`loop-review|<ref>|r<round>`.
+
+Three creation invariants (`VALIDATION_FAILED`): `review_of` may not name another review
+card; `review_round` may not be stale or future; and a review card must be `kind=task` (an
+epic cannot be claimed, so an epic review card would never be woken). Detection is structural
+— `review_of_id` first, `meta.review_of` only as the legacy fallback — never the `review`
+label. A review card in `in_review` cannot be moved directly to `canceled`; cancel it with
+`in_review → in_progress → canceled`.
 
 ## reconcile --workflow — the board's workflow plan
 
@@ -450,7 +459,9 @@ taskctl issue reconcile --workflow --reviewer jobs --auto-accept-reviews yes \
 truncated snapshot still applies outcomes but dispatches nothing. The actions
 (`create_review`, `approve`, `approve_hold`, `reject_task`, `reject_epic`,
 `reject_task_finish`, `close_review`, `cancel_review`) are decisions — the board writes none of
-them; the loop executes them and closes the review card last. The rules are in
+them; the loop executes them and closes the review card last. A `cancel_review` on a review
+card still in `in_review` is a two-hop move (`in_review → in_progress → canceled`), never
+`done`. The rules are in
 [`status-lifecycle.md`](status-lifecycle.md#11-the-boards-workflow-decisions).
 
 ## `--json`

@@ -38,6 +38,13 @@ printed at startup for diagnostics only.
 | `both` (default) | close | close | close |
 | `agent-only` | close | close | close |
 
+A review card is closed by the loop (`taskd`) or a human under `human-only` /
+`both`; under `agent-only` a human cannot close one, because the board's review
+scope allows only a non-human writer. The board skill's
+`references/review-workflow.md` is the semantic authority for the review card,
+the two rounds and the policy matrix; this skill describes **when** the loop
+dispatches and **how** it executes the plan.
+
 A held approval is idempotent: `review_verdict=approve` +
 `review_verdict_round` means a second pass rewrites neither the comment nor the
 marker. A worker always stops at `in_review`; review cards are never held.
