@@ -180,3 +180,105 @@ describe("commands/workflowTick — the board's plan", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// 0031 — project reviewers and auto-accept in the board snapshot
+// ---------------------------------------------------------------------------
+
+describe("commands/workflowTick — 0031", () => {
+  function deliverPlain(commands, projectId = "proj") {
+    const task = commands.createTask({
+      projectId,
+      title: "Do the thing",
+      assignee: "linus",
+      actor: HUMAN,
+    });
+    commands.moveStatus({ id: task.id, to: "in_progress", actor: WORKER });
+    commands.deliver({ taskId: task.id, report: DELIVERY, actor: WORKER });
+    return task;
+  }
+
+  it("uses a project's reviewer override in the dispatch action", async () => {
+    await board(({ commands }) => {
+      commands.createProject({
+        id: "p2",
+        name: "P2",
+        reviewPolicy: "required",
+        reviewer: "bob",
+        actor: HUMAN,
+      });
+      const task = commands.createTask({
+        projectId: "p2",
+        title: "Needs review",
+        assignee: "linus",
+        actor: HUMAN,
+      });
+      assert.equal(task.reviewRequired, 1);
+      commands.moveStatus({ id: task.id, to: "in_progress", actor: WORKER });
+      commands.deliver({ taskId: task.id, report: DELIVERY, actor: WORKER });
+
+      const result = commands.workflowTick({ reviewer: "jobs" });
+      const dispatch = result.workflow.actions.find((action) => action.type === "create_review");
+      assert.ok(dispatch, "the required card is dispatched");
+      assert.equal(dispatch.reviewer, "bob");
+    });
+  });
+
+  it("keeps an archived project's reviewer — its in-flight cards still dispatch", async () => {
+    await board(({ db, commands }) => {
+      commands.createProject({
+        id: "p2",
+        name: "P2",
+        reviewPolicy: "required",
+        reviewer: "bob",
+        actor: HUMAN,
+      });
+      const task = commands.createTask({
+        projectId: "p2",
+        title: "Needs review",
+        assignee: "linus",
+        actor: HUMAN,
+      });
+      // Archive the project after the card exists: the board must still read
+      // the override, or the card dispatches to the global reviewer instead.
+      db.prepare("UPDATE projects SET archived_at = ? WHERE id = ?").run(
+        "2026-10-19T10:00:00.000Z",
+        "p2",
+      );
+      commands.moveStatus({ id: task.id, to: "in_progress", actor: WORKER });
+      commands.deliver({ taskId: task.id, report: DELIVERY, actor: WORKER });
+
+      const result = commands.workflowTick({ reviewer: "jobs" });
+      const dispatch = result.workflow.actions.find((action) => action.type === "create_review");
+      assert.ok(dispatch);
+      assert.equal(dispatch.reviewer, "bob");
+    });
+  });
+
+  it("plans an auto_accept for a delivered card that needs no review", async () => {
+    await board(({ commands }) => {
+      const task = deliverPlain(commands);
+      const result = commands.workflowTick({ reviewer: "jobs" });
+      const action = result.workflow.actions.find((item) => item.type === "auto_accept");
+      assert.ok(action);
+      assert.equal(action.originalRef, task.identifier);
+      assert.equal(action.acceptedBy, "loop-auto");
+      assert.equal(result.workflow.summary.autoAccepted, 1);
+    });
+  });
+
+  it("leaves a human-only top-level card for the human", async () => {
+    await board(
+      ({ commands }) => {
+        const task = deliverPlain(commands);
+        const result = commands.workflowTick({ reviewer: "jobs" });
+        assert.equal(result.workflow.actions.some((item) => item.type === "auto_accept"), false);
+        const skipped = result.workflow.alerts.find((alert) => alert.type === "auto_accept_skipped");
+        assert.ok(skipped);
+        assert.equal(skipped.original, task.identifier);
+        assert.equal(skipped.reason, "human_only");
+      },
+      { acceptancePolicy: "human-only" },
+    );
+  });
+});

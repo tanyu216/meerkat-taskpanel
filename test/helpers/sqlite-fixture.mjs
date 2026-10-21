@@ -249,6 +249,9 @@ export function insertTask(db, overrides = {}) {
     // schema is asked first (the same rule the columns above follow).
     ["review_of_id", row.review_of_id ?? null],
     ["review_round", row.review_round ?? null],
+    // 0031 — the creation-time snapshot. A legacy board has no such column, so
+    // it is schema-probed like the rest; a review card is inserted at 0.
+    ["review_required", row.review_required ?? 0],
     // 0005 — carried explicitly so a migration test can seed the JSON a
     // backfill reads. Absent before 0005, hence the schema probe.
     ["meta_json", row.meta_json ?? "{}"],

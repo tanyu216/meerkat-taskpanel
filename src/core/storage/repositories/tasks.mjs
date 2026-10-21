@@ -324,6 +324,45 @@ export function createTasksRepository(db) {
     },
 
     /**
+     * Rewrite the `review_required` decision, under the same version CAS as any
+     * other write. Kept out of `PATCHABLE` on purpose: the generic update path
+     * must not be able to change an acceptance-relevant decision without the
+     * command layer's audit (`review_override`).
+     *
+     * @param {{id: string, value: boolean|0|1, ifVersion?: number, now: string}} input
+     * @returns {object} the updated Task DTO
+     */
+    setReviewRequired(input) {
+      const { id, value, ifVersion, now } = input;
+      const where = ["id = ?"];
+      const whereValues = [id];
+      if (ifVersion !== undefined) {
+        where.push("version = ?");
+        whereValues.push(ifVersion);
+      }
+
+      return transaction(
+        db,
+        () => {
+          let info;
+          try {
+            info = db
+              .prepare(
+                `UPDATE tasks SET review_required = ?, version = version + 1, updated_at = ? ` +
+                  `WHERE ${where.join(" AND ")}`,
+              )
+              .run(value === true || Number(value) === 1 ? 1 : 0, now, ...whereValues);
+          } catch (err) {
+            throw mapSqliteError(err, { op: "tasks.setReviewRequired", table: "tasks" });
+          }
+          if (Number(info.changes) === 0) throw lostUpdate(db, id, ifVersion);
+          return requireTask(id);
+        },
+        { op: "tasks.setReviewRequired" },
+      );
+    },
+
+    /**
      * Claim a `todo` task. Returns `{claimed: false}` when the CAS found nothing
      * — the caller decides why, via `domain/claim.mjs#explainLostClaim`.
      *

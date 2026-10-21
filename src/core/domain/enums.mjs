@@ -139,6 +139,35 @@ export const TASK_KIND = Object.freeze({
   DEPLOY: "deploy",
 });
 
+/**
+ * A project's **review policy** — whether a card created in that project must
+ * carry an independent review before it can be accepted.
+ *
+ *   * `required` — every ordinary card is born `review_required`;
+ *   * `optional` — the creator decides per card (the default);
+ *   * `off` — no card is born requiring review.
+ *
+ * This is deliberately **not** the board's acceptance policy (`human-only` /
+ * `both` / `agent-only`, in `foundation/constants.mjs`): the review policy says
+ * *whether* an independent review is needed, the acceptance policy says *who*
+ * may close the card. The two are orthogonal.
+ *
+ * The matching `CHECK` is added by 0031 via `ALTER TABLE … ADD COLUMN`, which
+ * the SQL-parity reader does not see (the `blocked_reason` precedent above), so
+ * `projects.review_policy` is deliberately absent from `SQL_ENUM_SETS`.
+ */
+export const REVIEW_POLICIES = Object.freeze(["required", "optional", "off"]);
+
+/** The policy a project gets when it does not state one. */
+export const DEFAULT_REVIEW_POLICY = "optional";
+
+/** Named access, so a rule never depends on positional order. */
+export const REVIEW_POLICY = Object.freeze({
+  REQUIRED: "required",
+  OPTIONAL: "optional",
+  OFF: "off",
+});
+
 /** Relation types. */
 export const RELATION_TYPES = Object.freeze(["parent", "blocks", "related"]);
 export const RELATION_TYPE = Object.freeze({
@@ -245,6 +274,10 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "report_written",
   "task_delivered",
   "report_waived",
+  // A card's review requirement was changed after creation (an agent escalating
+  // it, or a human waiving it with a reason). The card column is the decision;
+  // this event is the audit trail for changing that decision.
+  "review_override",
   // The container's own start: a child entered the work and the board moved
   // its epic `todo → in_progress` (an automated move, never a claim).
   "epic_auto_start",

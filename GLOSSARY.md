@@ -187,6 +187,35 @@ writer. Acceptance is a separate act from delivery, and the board refuses the sh
 _中文_: 验收权限
 _Avoid_: approver role, reviewer (the reviewer reports; it does not accept)
 
+**Review policy**:
+A project's default answer to "does a card need an independent review?" — `required`,
+`optional` (the default) or `off`. It is **not** acceptance authority: the review policy
+decides whether a review card is created, the acceptance policy decides who may close the
+card. A project's `reviewer` optionally overrides the deployment reviewer.
+_中文_: 审核策略
+_Avoid_: acceptance policy, review gate
+
+**Review-required marker**:
+The per-card `review_required` decision, resolved at creation from the project's review
+policy (and, in an `optional` project, from the creator's explicit choice) and stored as a
+snapshot. Dispatch, auto-accept and the `done` gate read this marker, never the project's
+current policy. A review card is always `0`.
+_中文_: 审核标记
+_Avoid_: project policy (that is the default, not the decision)
+
+**Effective reviewer**:
+The reviewer a card's review card is assigned to: `project.reviewer` when the project sets
+one, otherwise the deployment reviewer (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / host
+config). The loop merges every project reviewer into its scan/wake set.
+_中文_: 实际审核人
+
+**Auto-accept**:
+The loop's `auto_accept` action for a delivered card whose `review_required` is `0`: it writes
+`meta.accepted_by=loop-auto` and moves the card `in_review → done` when the board's acceptance
+policy allows `taskd` to close that scope. Under `human-only` a top-level card is left for the
+human; a child still auto-accepts. It is distinct from closing a review card.
+_中文_: 自动验收
+
 **Report**:
 The record of what was delivered — a conclusion, the acceptance items and their verdicts,
 and at least one piece of evidence. A report is evidence of work, not a promise of it.
@@ -318,9 +347,10 @@ _Avoid_: audit, sweep, health check; do not call the whole loop "the patrol"
 
 **Workflow**:
 The board's workflow decisions (`issue reconcile --workflow`: reconcile containers, review
-outcomes, review dispatch) and the loop's execution of that plan. The board decides; the
-loop creates the review card, applies the verdict and closes the review card as `taskd`.
-It is not scheduled; the continue turn runs it after patrol.
+outcomes, auto-accept and review dispatch) and the loop's execution of that plan. The board
+decides; the loop creates the review card, applies the verdict, auto-accepts a no-review
+delivery and closes the review card as `taskd`. It is not scheduled; the continue turn runs
+it after patrol.
 _中文_: 工作流通道
 _Avoid_: workflow engine, pipeline; SLA alerts are not part of it
 
@@ -331,13 +361,15 @@ report. Creation also stamps the immutable structural marker (`review_of_id`,
 `review_round`), which is what the acceptance gate reads; `meta.review_of` /
 `meta.review_round` are its readable mirror and are canonicalized from the columns on
 update. It is not a `kind` of its own, and it reaches `done` through `in_review` like every
-other card.
+other card. Its `review_required` is always `0` (flow B is never reviewed again), enforced by
+the resolver and a database trigger.
 _中文_: 审核卡
 _Avoid_: review task kind, acceptance card, approval
 
 **Reviewer**:
-The independent agent a review card is assigned to. It reads the original's evidence and
-reports a verdict; it moves no card. The loop is the acceptor.
+The independent agent a review card is assigned to — the project's `reviewer` when it sets
+one, otherwise the deployment reviewer. It reads the original's evidence and reports a
+verdict; it moves no card. The loop is the acceptor.
 _中文_: 审核员
 _Avoid_: approver, acceptor, QA
 

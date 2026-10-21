@@ -369,6 +369,29 @@ export async function runWorkflowTick(deps) {
           await step(createReview, "create_review", action);
           break;
 
+        // 0031 — the card does not require an independent review, and `taskd`
+        // may complete it under the board's acceptance policy. The marker is
+        // written first so a crash between it and the move is recoverable
+        // without a duplicate comment (`held`).
+        case "auto_accept": {
+          if (typeof action.accepted_by !== "string" || action.accepted_by === "") {
+            throw new Error("auto_accept action is missing accepted_by");
+          }
+          if (action.held !== true) {
+            await step(setMeta, "setMeta", action.original_ref, {
+              accepted_by: action.accepted_by,
+              accepted_round: String(action.round),
+              auto_accepted: "1",
+            });
+            await step(comment, "comment", action.original_ref, {
+              kind: "note",
+              body: `Auto-accepted after delivery round ${action.round}: this card does not require review.`,
+            });
+          }
+          await step(move, "move", action.original_ref, "done");
+          break;
+        }
+
         case "approve":
           if (typeof action.accepted_by !== "string" || action.accepted_by === "") {
             throw new Error("approve action is missing accepted_by");
@@ -527,6 +550,8 @@ function describeWorkflowAction(action) {
   switch (action.type) {
     case "create_review":
       return `create review ${action.idem} for ${action.original_ref}`;
+    case "auto_accept":
+      return `auto-accept ${action.original_ref} (round ${action.round})`;
     case "approve":
       return `approve ${action.original_ref} (round ${action.round}) and close ${action.review_ref}`;
     case "approve_hold":
@@ -586,9 +611,18 @@ export function spawnWorkerReal(opts, config, log) {
     // `review_of`, so the decision needs no second read; the agent-name fallback
     // keeps an older projection (one written before those fields existed) working
     // for a dedicated reviewer.
-    const reviewer = config.reviewer ?? null;
+    // 0031 — the reviewer set is the deployment reviewer plus every project
+    // override. `reviewerWorkers` is the subset that is also a worker, so a
+    // reviewer-worker keeps the normal worker lane. An older config that only
+    // carries `reviewer` still works.
+    const reviewers = Array.isArray(config.reviewers) && config.reviewers.length > 0
+      ? config.reviewers
+      : config.reviewer === null || config.reviewer === undefined
+        ? []
+        : [config.reviewer];
+    const reviewerWorkers = Array.isArray(config.reviewerWorkers) ? config.reviewerWorkers : [];
     const dedicatedReviewer =
-      reviewer !== null && config.reviewerIsWorker !== true && action.agent === reviewer;
+      reviewers.includes(action.agent) && !reviewerWorkers.includes(action.agent);
     const isReview = (typeof card?.review_of === "string" && card.review_of !== "") || dedicatedReviewer;
     const prompt = isReview
       ? buildReviewHandoff({ card: card ?? { identifier: action.identifier }, agent: action.agent, host: opts.host })
@@ -596,7 +630,7 @@ export function spawnWorkerReal(opts, config, log) {
           card: card ?? { identifier: action.identifier },
           agent: action.agent,
           host: opts.host,
-          review: reviewer !== null,
+          review: reviewers.includes(action.agent),
         });
     // The parsed field is `opts.glue`; there is no `gluePath`.
     const invocation = planWakeInvocation({

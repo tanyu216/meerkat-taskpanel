@@ -234,8 +234,13 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.equal(run.status, 0, run.stderr);
     const args = calls(record);
     assert.ok(args.length > 0, "poll must scan");
-    assert.ok(args[0].includes("candidates"), "the first read is `issue candidates`");
-    assert.equal(args[0][args[0].indexOf("candidates") - 1], "issue");
+    assert.ok(
+      args.some((call) => call.includes("project") && call[call.indexOf("project") + 1] === "list"),
+      "the project reviewer overrides are read before the scan",
+    );
+    const candidateCall = args.find((call) => call.includes("candidates"));
+    assert.ok(candidateCall, "the scan is `issue candidates`");
+    assert.equal(candidateCall[candidateCall.indexOf("candidates") - 1], "issue");
     assert.equal(existsSync(join(dirname(record), "state.json")), false, "dry-run writes no registry");
   });
 
@@ -258,25 +263,28 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     // It is still said out loud at startup, which is the only thing it is for.
     assert.match(run.stderr, /acceptance=both \(advisory\)/, "the advisory policy is stated");
     const args = calls(record);
-    assert.equal(args.length, 1, "one board call: the board computes the plan");
-    const call = args[0];
-    assert.ok(call.includes("issue") && call.includes("reconcile"), JSON.stringify(call));
+    assert.ok(
+      args.some((call) => call.includes("project") && call[call.indexOf("project") + 1] === "list"),
+      "the required-project reviewer promise is checked before reconcile",
+    );
+    const callsToReconcile = args.filter((call) => call.includes("issue") && call.includes("reconcile"));
+    assert.equal(callsToReconcile.length, 1, "one plan read: the board computes the plan");
+    const call = callsToReconcile[0];
     assert.ok(call.includes("--workflow"), JSON.stringify(call));
     assert.ok(call.includes("--dry-run"), JSON.stringify(call));
   });
 
-  it("workflow warns when agent-only meets auto-accept off", () => {
+  it("workflow refuses agent-only with auto-accept off", () => {
     const { run } = runWithSentinel("workflow.mjs", [
       "--acceptance", "agent-only", "--auto-accept-reviews=no",
     ]);
-    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.status, 2, run.stderr);
     assert.match(
       run.stderr,
       /acceptance=agent-only with auto_accept_reviews=no/,
       "the conflict is named",
     );
-    assert.match(run.stderr, /authoritative/, "the board's plan is named as the authority");
-    assert.match(run.stderr, /review cards/, "the consequence is named");
+    assert.match(run.stderr, /auto_accept_reviews=yes/, "the repair is named");
   });
 
   it("workflow does not warn for agent-only with auto-accept on", () => {

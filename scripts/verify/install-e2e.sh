@@ -83,9 +83,13 @@ step "taskctl project create"
 node "$CLI" project create --id demo --name "E2E Demo"
 
 step "taskctl issue create"
+# `optional` is the default project policy, and this actor is non-human, so the
+# review decision is explicit. `no` keeps the card on the delivery-gate path this
+# script is about; a `yes` here would dispatch a review card first.
 CREATE_JSON="$(node "$CLI" --json issue create \
   --project demo \
   --title "Install e2e card" \
+  --review no \
   --acceptance "the delivery gate refuses an empty report" \
   --label e2e \
   --assignee "$AGENT_ID")"

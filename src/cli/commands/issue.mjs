@@ -35,9 +35,24 @@ function taskHuman(task, extra) {
     ["assignee", task.assignee === null ? "-" : `${task.assignee.display_name}#${task.assignee.id}`],
     ["reporter", task.reporter === null ? "-" : `${task.reporter.display_name}#${task.reporter.id}`],
     ["delivery_round", task.delivery_round],
+    ["review_required", task.review_required === true ? "yes" : "no"],
     ["version", task.version],
     ...extra,
   ]);
+}
+
+/**
+ * `--review yes|no` → boolean. The wire declares a boolean; the yes/no spelling
+ * exists only at this surface, so the conversion (and its usage error) lives
+ * here rather than in the service.
+ */
+function reviewFlag(command, value) {
+  if (value === undefined) return undefined;
+  if (value === "yes") return true;
+  if (value === "no") return false;
+  throw usageError(`${command}: --review takes yes or no`, {
+    fix: "pass --review yes, or --review no",
+  });
 }
 
 export const COMMANDS = [
@@ -45,7 +60,7 @@ export const COMMANDS = [
     name: "create",
     summary: "Create a task.",
     op: TASK_OPS.create,
-    usage: "issue create --project <id> --title <text> [--assignee <name>]",
+    usage: "issue create --project <id> --title <text> [--review yes|no] [--assignee <name>]",
     positionals: [],
     // The flags and the body are both projected from the command's input
     // declaration (`core/commands/tasks-input.mjs`), so neither is a second
@@ -57,6 +72,7 @@ export const COMMANDS = [
       // the card's `meta` (`--target` because the board owns no project
       // directory, so `target` is not a top-level create field). `projectBody`
       // does that folding; the idempotency key reads `target` back from there.
+      const reviewRequired = reviewFlag("issue create", flags.reviewRequired);
       const payload = await ctx.client.post("/api/v1/tasks", projectBody(TASK_OPS.create, {
         project_id: flags.project,
         title: flags.title,
@@ -77,6 +93,7 @@ export const COMMANDS = [
         idem: flags.idem,
         allow_dup: flags.allowDup === true,
         target: flags.target,
+        review_required: reviewRequired,
         review_of: flags.reviewOf,
         review_round: flags.reviewRound,
         parent: flags.parent,
@@ -199,13 +216,22 @@ export const COMMANDS = [
 
   {
     name: "update",
-    summary: "Update a task's title, description, priority, labels, metadata or acceptance list.",
+    summary:
+      "Update a task's title, description, priority, labels, metadata, acceptance list or review decision.",
     op: TASK_OPS.update,
-    usage: "issue update <id|identifier> [--title <text>] [--acceptance <text>]…",
+    usage:
+      'issue update <id|identifier> [--title <text>] [--acceptance <text>]… ' +
+      '[--review yes|no [--reason "<why>"]]',
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: projectFlags(TASK_OPS.update),
     async run(ctx) {
       const flags = ctx.flags;
+      const reviewRequired = reviewFlag("issue update", flags.reviewRequired);
+      if (flags.reason !== undefined && reviewRequired !== false) {
+        throw usageError("issue update: --reason is only used with --review no", {
+          fix: "pass --review no --reason \"<why>\" to waive a required review",
+        });
+      }
       // Every field is offered; `projectBody` drops the ones the caller did not
       // pass, so "nothing to update" stays measurable below.
       const body = projectBody(TASK_OPS.update, {
@@ -216,13 +242,15 @@ export const COMMANDS = [
         labels: flags.labels,
         meta: metaOf(flags),
         acceptance: flags.acceptance,
+        review_required: reviewRequired,
+        reason: flags.reason,
       });
       if (Object.keys(body).length === 0) {
         // Refuse locally: a round trip that changes nothing is never what was meant.
         return {
           data: null,
           human: "",
-          warnings: ["nothing to update: pass at least one of --title/--description/--priority/--kind/--label/--meta/--acceptance"],
+          warnings: ["nothing to update: pass at least one of --title/--description/--priority/--kind/--label/--meta/--acceptance/--review"],
         };
       }
       const payload = await ctx.client.patch(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`, body);

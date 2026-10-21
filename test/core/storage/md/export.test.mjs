@@ -221,3 +221,36 @@ describe("md/export — rendering", () => {
   });
 });
 
+
+describe("md/export — 0031 review decision", () => {
+  it("emits review_required: yes only when the card requires review", async () => {
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    try {
+      const ctx = createContext({ db: board.db, repos, clock: () => TS });
+      const commands = createCommands(ctx);
+      commands.createProject({
+        id: "req",
+        name: "Required",
+        reviewPolicy: "required",
+        actor: { kind: "human", id: "T" },
+      });
+      const required = commands.createTask({
+        projectId: "req",
+        title: "Reviewed",
+        actor: { kind: "agent", id: "linus" },
+      });
+      commands.createProject({ id: "proj", name: "P", actor: { kind: "human", id: "T" } });
+      const plain = commands.createTask({
+        projectId: "proj",
+        title: "Plain",
+        actor: { kind: "agent", id: "linus" },
+      });
+
+      assert.match(renderCard(required, { repos }), /^review_required: yes$/m);
+      assert.doesNotMatch(renderCard(plain, { repos }), /^review_required:/m);
+    } finally {
+      board.close();
+    }
+  });
+});

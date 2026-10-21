@@ -85,7 +85,9 @@ export const COMMANDS = [
   {
     name: "create",
     summary: "Create a project.",
-    usage: "project create --id <id> --name <name> [--meta k=v]…",
+    usage:
+      "project create --id <id> --name <name> [--review-policy required|optional|off] " +
+      "[--reviewer <agent>] [--meta k=v]…",
     positionals: [],
     flags: [
       { flag: "id", key: "id", as: "string", value: "<id>", required: true, summary: "Project id; also the identifier prefix (must be unique across projects after normalization)." },
@@ -93,6 +95,20 @@ export const COMMANDS = [
       { flag: "meta", key: "meta", as: "kv", summary: "Repeatable key=value metadata." },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
+      {
+        flag: "review-policy",
+        key: "reviewPolicy",
+        as: "string",
+        value: "<required|optional|off>",
+        summary: "Whether cards created here need an independent review (default: optional).",
+      },
+      {
+        flag: "reviewer",
+        key: "reviewer",
+        as: "string",
+        value: "<agent>",
+        summary: "Reviewer for this project; empty uses the deployment-level reviewer.",
+      },
     ],
     async run(ctx) {
       const { project } = await ctx.client.post("/api/v1/projects", {
@@ -101,24 +117,42 @@ export const COMMANDS = [
         labels: ctx.flags.labels,
         meta: metaOf(ctx.flags),
         readme: ctx.flags.readme,
+        review_policy: ctx.flags.reviewPolicy,
+        reviewer: ctx.flags.reviewer,
       });
       return {
         data: { project },
-        human: `created project ${project.id}  ${project.name}`,
+        human: `created project ${project.id}  ${project.name}  review=${project.review_policy}`,
       };
     },
   },
 
   {
     name: "update",
-    summary: "Update a project's name, labels, metadata or readme.",
-    usage: "project update <id> [--name <name>] [--meta k=v]…",
+    summary: "Update a project's name, labels, metadata, readme, review policy or reviewer.",
+    usage:
+      "project update <id> [--name <name>] [--review-policy required|optional|off] " +
+      "[--reviewer <agent>] [--meta k=v]…",
     positionals: [{ name: "id", summary: "Project id." }],
     flags: [
       { flag: "name", key: "name", as: "string", value: "<name>" },
       { flag: "meta", key: "meta", as: "kv" },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
+      {
+        flag: "review-policy",
+        key: "reviewPolicy",
+        as: "string",
+        value: "<required|optional|off>",
+        summary: "Change the project default; it affects future cards only.",
+      },
+      {
+        flag: "reviewer",
+        key: "reviewer",
+        as: "string",
+        value: "<agent>",
+        summary: "Set this project's reviewer; pass an empty value to fall back to the deployment one.",
+      },
     ],
     async run(ctx) {
       const body = {};
@@ -126,8 +160,13 @@ export const COMMANDS = [
       if (ctx.flags.meta !== undefined) body.meta = ctx.flags.meta;
       if (ctx.flags.labels !== undefined) body.labels = ctx.flags.labels;
       if (ctx.flags.readme !== undefined) body.readme = ctx.flags.readme;
+      if (ctx.flags.reviewPolicy !== undefined) body.review_policy = ctx.flags.reviewPolicy;
+      if (ctx.flags.reviewer !== undefined) body.reviewer = ctx.flags.reviewer;
       const { project } = await ctx.client.patch(`/api/v1/projects/${ctx.args.id}`, body);
-      return { data: { project }, human: `updated project ${project.id}` };
+      return {
+        data: { project },
+        human: `updated project ${project.id}  review=${project.review_policy}`,
+      };
     },
   },
 
@@ -143,7 +182,10 @@ export const COMMANDS = [
       });
       const human = projects.length === 0
         ? "no projects"
-        : table(["id", "name"], projects.map((p) => [p.id, p.name]));
+        : table(
+            ["id", "name", "review", "reviewer"],
+            projects.map((p) => [p.id, p.name, p.review_policy, p.reviewer ?? "-"]),
+          );
       return { data: { projects }, human };
     },
   },

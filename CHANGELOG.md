@@ -9,6 +9,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Per-project review policy and per-card review decision (migration `0031`).** A project
+  now carries `review_policy` (`required` / `optional` / `off`, default `optional`) and an
+  optional `reviewer` override; a card carries a `review_required` snapshot resolved at
+  creation (`required` marks every ordinary card, `off` marks none, `optional` asks the
+  creator; a `deploy` card is always marked, and a review card is always `0`). Review
+  dispatch and the `done` gate read the card snapshot, never the project's current policy.
+  A card at `0` is auto-accepted by the loop (`meta.accepted_by=loop-auto`) when the board's
+  acceptance policy allows `taskd` to close its scope; under `human-only` a top-level card
+  still waits for a human. The reviewer is `project.reviewer ??` the deployment reviewer;
+  the loop merges every project reviewer into its scan/wake set and refuses to start when a
+  `required` project has none, or when `agent-only` meets `auto-accept-reviews=no`. New
+  surfaces: `project create/update --review-policy` / `--reviewer`, `issue create/update
+  --review` (a non-human creator must state it in an `optional` project), and the markdown
+  export's conditional `review_required: yes` key. `autoAcceptReviews` now gates only the
+  review card's own close, not the no-review auto-accept path.
 - **SLA is computed by the board and configured in `.env`.** The six card/board
   inspection rows of `docs/sla.md` now move server-side: `src/core/commands/sla.mjs`
   computes them from the board's own facts and the effective `TASKD_SLA_*` table,

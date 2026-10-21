@@ -12,7 +12,10 @@
 | **B** | A review card that carries a `VERDICT:` report for a flow-A card. | The loop, when it dispatches: `meta.flow=B`. |
 
 - A flow-A card that reaches `in_review` is dispatched to the configured reviewer as a
-  review card.
+  review card **when its `review_required` snapshot is 1**. A card at 0 is not dispatched; the
+  loop auto-accepts it (see §6). The snapshot is taken at creation from the project's
+  `review_policy` (`required` / `optional` / `off`) and is never re-derived from the project
+  later.
 - A flow-B card is **never dispatched for review again**. A delivery on a review card is the
   end of the chain, not a new review target.
 - `meta.flow` is a loop convention, not the review-card predicate: an absent value is A
@@ -27,6 +30,10 @@ A review card is an ordinary `kind=task` card. Its identity is two **immutable c
 |---|---|
 | `review_of_id` | The internal id of the card it audits. |
 | `review_round` | The original's `delivery_round` this review audits. |
+
+A review card is always `review_required = 0`: it is flow B and is never reviewed again. The
+creation resolver forces it, and a DB trigger refuses an INSERT/UPDATE that would mark a
+review card as requiring its own review.
 
 The board also mirrors them into `meta.review_of` (the original's identifier) and
 `meta.review_round` (the integer round) so the loop and the SLA patrol can match on the wire.
@@ -94,6 +101,12 @@ is racing the acceptor.
 
 ## 4. Acceptance policy and scope
 
+**Review policy is not acceptance policy.** `projects.review_policy` says whether a card needs
+an independent review; the board's acceptance policy says who may close it. They are
+orthogonal. The reviewer for a dispatched card is `project.reviewer ?? the deployment
+reviewer` (the loop's `--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / host config), and the
+review card's assignee records the one actually used.
+
 `done` is the board's acceptance act. The board's **policy** and the card's **scope** decide
 who may perform it; the full matrix is in
 [`status-lifecycle.md §7`](status-lifecycle.md#7-acceptance-policy--scope). In agent terms:
@@ -143,6 +156,13 @@ loop applies               APPROVE → accept / hold; REJECT → rework round N+
 loop closes last           review card → done (or canceled if the original was canceled)
 ```
 
+When the card's `review_required` is 0, steps 2–5 do not run. The board's plan emits
+`auto_accept` instead; the loop writes `meta.accepted_by=loop-auto` and moves the original
+`in_review → done`. Under `human-only` a **top-level** card is left for the human
+(`auto_accept_skipped`, reason `human_only`); a child card still auto-accepts because a human
+never closes a child. The loop's `autoAcceptReviews` flag does not gate this path — it only
+controls whether the loop closes a review card.
+
 - **APPROVE** — under `both` / `agent-only` (or a child card) the loop writes
   `meta.accepted_by=loop-review` and moves the original `in_review → done`. Under
   `human-only` + a top-level original it holds.
@@ -162,6 +182,8 @@ loop closes last           review card → done (or canceled if the original was
 | `REPORT_ROUND_MISMATCH` | A report names a round other than the card's current one, or duplicates `(task, round)`. |
 | `ACCEPTANCE_FORBIDDEN` | The writer may not accept under the policy × scope matrix. |
 | `REVIEW_PENDING` | A human closes a top-level original with a current-round review card still open. |
+| `REVIEW_REQUIRED` | A card whose `review_required` is 1 is moved to `done` without a current-round review card that reached the reviewer. The escape is an audited human waiver (`issue update <ref> --review no --reason "<why>"`) or a new review. |
+| `REVIEW_CARD_MARKER_INVALID` | A write tried to set `review_required = 1` on a review card. |
 | `VALIDATION_FAILED` | `review_of` names a card that is not `in_review`; `review_of` names another review card; `review_round` is not the original's current `delivery_round`; the review card is not `kind=task`; a malformed round. |
 | `INVALID_TRANSITION` | A review card cannot be reopened; `in_review → canceled` does not exist (use the two-hop cancel). |
 

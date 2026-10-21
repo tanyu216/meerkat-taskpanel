@@ -21,11 +21,18 @@ The continue turn runs three deterministic entries, in this order:
    file lives on this host. No alert moves a card, and no LLM turn starts by
    default.
 2. **workflow** — the write channel. The **board** computes the plan
-   (`issue reconcile --workflow`) and the **loop** applies its review actions:
-   for each delivery (`in_review` card, flow A) dispatch an independent
+   (`issue reconcile --workflow`) and the **loop** applies it. For a flow-A
+   delivery whose `review_required` snapshot is 1, dispatch an independent
    reviewer, apply the reviewer's `VERDICT:` report to the original, and close
-   the review card last. On by default; `--workflow=no` disables it, and
-   `--reviewer` is required for dispatch.
+   the review card last. A card at 0 is not dispatched: the plan emits
+   `auto_accept` and the loop closes the original directly (`loop-auto`).
+   On by default; `--workflow=no` disables it.
+   The reviewer is `project.reviewer ??` the deployment reviewer
+   (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / host config). A `required`
+   project with no effective reviewer fails the loop at startup, and
+   `agent-only` + `autoAcceptReviews=no` is refused for the same reason.
+   `autoAcceptReviews` only controls whether the loop closes a **review card**;
+   it does not gate auto-accepting a no-review original.
 3. **poll** — scan, atomically claim, wake one worker. Runs last so a review
    card dispatched in this turn can be claimed immediately.
 
@@ -43,7 +50,9 @@ printed at startup for diagnostics only.
 
 A review card is closed by the loop (`taskd`) or a human under `human-only` /
 `both`; under `agent-only` a human cannot close one, because the board's review
-scope allows only a non-human writer. The board skill's
+scope allows only a non-human writer. A **no-review** top-level card under
+`human-only` is left for the human (`auto_accept_skipped`, reason `human_only`);
+a child is auto-accepted in every policy. The board skill's
 `references/review-workflow.md` is the semantic authority for the review card,
 the two rounds and the policy matrix; this skill describes **when** the loop
 dispatches and **how** it executes the plan.

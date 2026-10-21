@@ -50,6 +50,30 @@ export function reviewCreateArgs(action) {
 }
 
 /**
+ * Read every project's reviewer override (0031).
+ *
+ * The loop uses this at start-up to merge project reviewers into its scan/wake
+ * set and to fail fast when a `required` project has no effective reviewer. It
+ * is a board read, so a failure is returned rather than thrown; the caller
+ * decides whether it can continue (the workflow pass cannot enforce the
+ * required-project promise without it).
+ *
+ * @param {object} opts
+ * @param {(message: string) => void} log
+ * @returns {{ok: boolean, projects: object[], error?: string}}
+ */
+export function readProjectReviewers(opts, log) {
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, projects: [], error: "no agent configured" };
+  const read = runCli(opts, agent, ["project", "list"]);
+  if (!read.ok) {
+    log(`project list failed: ${read.error}`);
+    return { ok: false, projects: [], error: read.error };
+  }
+  return { ok: true, projects: Array.isArray(read.data?.projects) ? read.data.projects : [] };
+}
+
+/**
  * Read the board — the legacy stale-heartbeat patrol's input. The SLA rows come
  * from `sla list` (the board computes them); this one read is what the older
  * `{stale: […]}` envelope still uses, and its shape is a published consumer
@@ -257,6 +281,11 @@ export async function runWorkflowPass(opts, config, log) {
           action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
         }`,
         ...(action.assignee_id === null ? [] : ["--assignee-id", String(action.assignee_id)]),
+        // 0031 — the loop creates as a non-human actor, so an optional project
+        // requires an explicit decision. Inherit the original epic's marker
+        // (the board puts it on the action); an older board without the field
+        // defaults to "no" for a rework child.
+        "--review", action.review_required === true ? "yes" : "no",
         "--meta", `rework_of=${action.original_ref}`,
         "--meta", `rework_round=${action.rework_round}`,
         "--target", `rework:${action.original_ref}:r${action.rework_round}`,

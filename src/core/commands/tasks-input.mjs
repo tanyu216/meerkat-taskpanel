@@ -124,6 +124,9 @@ const CREATE = Object.freeze([
   both("idem"),
   both("allow_dup", { type: BOOLEAN }),
   sugar("target", "meta.target"),
+  // 0031 — the per-card review decision. On an optional project an agent must
+  // state it; a human/UI caller may omit it (default: no review).
+  both("review_required", { type: BOOLEAN }),
   both("review_of"),
   both("review_round", { type: INTEGER }),
   both("parent"),
@@ -146,6 +149,10 @@ const UPDATE = Object.freeze([
   both("labels", { repeat: true }),
   both("meta", { type: OBJECT }),
   both("acceptance", { repeat: true }),
+  // 0031 — the controlled review-decision override. `reason` is required by the
+  // command layer only when a human waives a required review.
+  both("review_required", { type: BOOLEAN }),
+  both("reason"),
   wireOnly("if_version", { type: INTEGER }),
   wireOnly("assignee"),
   wireOnly("reporter"),

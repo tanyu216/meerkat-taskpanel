@@ -85,6 +85,14 @@ export const SPELLING = Object.freeze({
       value: "<t>",
       summary: "The card's target — stored in its meta; also the idempotency key's target slot.",
     },
+    review_required: {
+      flag: "review",
+      as: "string",
+      value: "<yes|no>",
+      summary:
+        "Whether this card needs an independent review. Required projects decide for you; " +
+        "optional projects require an agent to state it.",
+    },
     review_of: {
       value: "<id>",
       summary: "Mark this card as a review of that card (identifier or id); resolved and stamped at creation.",
@@ -103,6 +111,15 @@ export const SPELLING = Object.freeze({
     labels: { flag: "label", value: "<label>" },
     meta: { as: "kv" },
     acceptance: { value: "<text>" },
+    review_required: {
+      flag: "review",
+      as: "string",
+      value: "<yes|no>",
+      summary:
+        "Change the review decision. Any agent may escalate no→yes; only a human may waive " +
+        "yes→no, and a waiver needs --reason.",
+    },
+    reason: { value: "<why>", summary: "Why a required review is being waived (audited; ≥8 characters)." },
   }),
   [TASK_OPS.move]: Object.freeze({
     // `to` is the command's second positional, not a flag: the CLI reads it as

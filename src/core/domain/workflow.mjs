@@ -36,7 +36,11 @@ import {
   DEFAULT_REVIEW_AGING_MS,
   DEFAULT_WORKFLOW_MAX_ACTIONS,
   LOOP_ACCEPTOR,
+  LOOP_AUTO_ACCEPTOR,
+  TASKD_KIND,
 } from "../../foundation/constants.mjs";
+import { reviewRequiredOf } from "./review-policy.mjs";
+import { acceptanceAllows, acceptanceScopeOf } from "./status.mjs";
 
 // The two workflow defaults are shared with the loop's config resolver, so they
 // live in `foundation/constants.mjs` — one number, both sides. Re-exported here
@@ -60,14 +64,56 @@ function isTopLevel(task) {
   return task?.parent_id === null || task?.parent_id === undefined;
 }
 
+/**
+ * Does this card's own snapshot say it needs an independent review?
+ *
+ * This is the **only** input to dispatch/auto-accept. It never re-reads the
+ * project policy: the card's decision was taken at creation and is stable.
+ *
+ * @param {object} task a wire task
+ * @returns {boolean}
+ */
+export function reviewRequired(task) {
+  return reviewRequiredOf(task?.review_required);
+}
+
+/** The acceptance scope of a wire task (child > review > top-level). */
+function scopeOf(task) {
+  return acceptanceScopeOf({
+    hasParent: task?.parent_id !== null && task?.parent_id !== undefined,
+    reviewCard: isReviewCard(task),
+  });
+}
+
+/**
+ * The reviewer for this card: the project's override when it has one, else the
+ * deployment-level reviewer passed in the reconcile request.
+ *
+ * @param {object} task a wire task
+ * @param {{reviewer?: string|null, projectReviewers?: object|Map<string,string>|null}} [config]
+ * @returns {string|null}
+ */
+function effectiveReviewerFor(task, config) {
+  const projectReviewers = config?.projectReviewers;
+  const projectId = task?.project_id;
+  let override = null;
+  if (projectReviewers && projectId !== undefined && projectId !== null) {
+    override =
+      typeof projectReviewers.get === "function"
+        ? nonEmpty(projectReviewers.get(projectId))
+        : nonEmpty(projectReviewers[projectId]);
+  }
+  return override ?? nonEmpty(config?.reviewer);
+}
+
 /** How long a childless epic may exist before `empty_epic` is worth a notice. */
 export const EMPTY_EPIC_GRACE_MS = 30 * 60_000;
 
 /** The `meta.flow` a worker card runs (and the only flow reviewed here). */
 export const WORK_FLOW = "A";
 
-/** The `meta.accepted_by` marker an automated acceptance writes. */
-export { LOOP_ACCEPTOR };
+/** The `meta.accepted_by` markers an automated acceptance writes. */
+export { LOOP_ACCEPTOR, LOOP_AUTO_ACCEPTOR };
 
 /** The most evidence a verdict's findings may carry into a comment. */
 export const FINDINGS_MAX_CHARS = 4_000;
@@ -379,7 +425,6 @@ export function classifyReconcileActions(actions, input = {}) {
 export function planReviewDispatch(input = {}) {
   const tasks = Array.isArray(input.tasks) ? input.tasks : [];
   const config = input.config ?? {};
-  const reviewer = nonEmpty(config.reviewer);
   const maxActions = Number.isFinite(config.maxActions) && config.maxActions >= 0
     ? config.maxActions
     : DEFAULT_WORKFLOW_MAX_ACTIONS;
@@ -388,18 +433,6 @@ export function planReviewDispatch(input = {}) {
   if (input.boardTruncated === true) {
     return {
       alerts: [{ type: "dispatch_skipped", reason: "board_truncated" }],
-      actions: [],
-    };
-  }
-  if (reviewer === null) {
-    // Not configured is not an error: the deployment runs reconcile/outcomes
-    // only. It is said once, so a board full of unreviewed deliveries is not a
-    // silent surprise.
-    const waiting = tasks.filter(
-      (task) => task?.status === "in_review" && !isReviewCard(task) && flowOf(task) === WORK_FLOW,
-    );
-    return {
-      alerts: waiting.length === 0 ? [] : [{ type: "dispatch_skipped", reason: "reviewer_not_configured", waiting: waiting.length }],
       actions: [],
     };
   }
@@ -415,12 +448,28 @@ export function planReviewDispatch(input = {}) {
 
   const candidates = [];
   const alerts = [];
+  /** project id → required cards waiting for a reviewer (no global early return:
+   *  some projects may carry their own override). */
+  const unconfigured = new Map();
+
   for (const task of tasks) {
     if (task?.status !== "in_review") continue;
     if (isReviewCard(task)) continue;
     if (flowOf(task) !== WORK_FLOW) continue;
+    // The card's own decision is the gate. A project's `off` policy is not
+    // consulted here: a card created before the policy changed keeps its
+    // snapshot, and a manual review card on a `0` card is handled by its own
+    // review card's outcome, not by dispatch.
+    if (!reviewRequired(task)) continue;
     const ref = String(task.identifier ?? "");
     if (ref === "" || skip.has(ref)) continue;
+
+    const reviewer = effectiveReviewerFor(task, config);
+    if (reviewer === null) {
+      const project = String(task.project_id ?? "");
+      unconfigured.set(project, (unconfigured.get(project) ?? 0) + 1);
+      continue;
+    }
 
     if (isSelfReview(task, reviewer)) {
       alerts.push({
@@ -452,7 +501,20 @@ export function planReviewDispatch(input = {}) {
     }
     // Every covering review is terminal (`canceled`); the card should be reviewed
     // again, and the terminal row no longer holds the idempotency key.
-    candidates.push({ task, ref, round });
+    candidates.push({ task, ref, round, reviewer });
+  }
+
+  if (unconfigured.size > 0) {
+    let waiting = 0;
+    const projects = [];
+    for (const [project, count] of unconfigured) {
+      waiting += count;
+      projects.push({ project: project === "" ? null : project, waiting: count });
+    }
+    // Not configured is not an error: the deployment runs reconcile/outcomes
+    // only. It is said once, with the projects that are waiting, so a board with
+    // a `required` project and no reviewer is not a silent surprise.
+    alerts.push({ type: "dispatch_skipped", reason: "reviewer_not_configured", waiting, projects });
   }
 
   candidates.sort(
@@ -462,7 +524,7 @@ export function planReviewDispatch(input = {}) {
   );
 
   const actions = [];
-  for (const { task, ref, round } of candidates.slice(0, maxActions)) {
+  for (const { task, ref, round, reviewer } of candidates.slice(0, maxActions)) {
     actions.push(reviewAction(task, ref, round, reviewer));
   }
   if (candidates.length > actions.length) {
@@ -688,10 +750,13 @@ export function planReviewOutcomes(input = {}) {
     // The verdict must come from the card's own reviewer. The board has no
     // per-agent ACL, so this is the loop's half of the separation: a report
     // written by anybody else is not a verdict, whatever it says.
+    // The review card's assignee is the effective reviewer (the dispatch action
+    // set it from `project.reviewer ?? global`). The global value is only a
+    // fallback for a card created before per-project overrides existed.
     const expectedReviewer =
-      nonEmpty(input.config?.reviewer)
-      ?? nonEmpty(review.assignee?.display_name)
-      ?? nonEmpty(review.assignee_id);
+      nonEmpty(review.assignee?.display_name)
+      ?? nonEmpty(review.assignee_id)
+      ?? nonEmpty(input.config?.reviewer);
     if (expectedReviewer !== null && !reportAuthorMatches(verdict.report, expectedReviewer)) {
       alerts.push({
         type: "review_report_not_by_reviewer",
@@ -715,7 +780,11 @@ export function planReviewOutcomes(input = {}) {
         // `human-only` + a top-level original: the loop records the verdict and
         // stops. The human decides; the review card is still closed here so the
         // human's own acceptance is not blocked by a review they already read.
-        const hold = policy === "human-only" && isTopLevel(original);
+        // The hold is exactly "taskd may not complete this card under the board's
+        // acceptance policy". Reusing `acceptanceAllows` keeps the review outcome
+        // plan and the acceptance guard on one matrix: `human-only` + top-level
+        // holds; a child (and `both`/`agent-only`) does not.
+        const hold = !acceptanceAllows(TASKD_KIND, policy, scopeOf(original));
         // The marker is written with the round the original is on now; a crash
         // after the marker but before the review card's close is recovered on
         // the next pass. The board decides that here so the loop's executor
@@ -751,6 +820,9 @@ export function planReviewOutcomes(input = {}) {
           projectId: original.project_id ?? null,
           assigneeId: original.assignee_id ?? null,
           originalTitle: String(original.title ?? ""),
+          // The rework child inherits the container's review decision; the loop
+          // passes it as `--review yes|no` (a non-human creator must state it).
+          reviewRequired: reviewRequired(original),
           findings,
           closeReview,
         });
@@ -817,13 +889,134 @@ export function planReviewOutcomes(input = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Auto-accept: cards that do not require a review
+// ---------------------------------------------------------------------------
+
+/**
+ * Decide which `in_review` cards can be closed directly because they do not
+ * require an independent review.
+ *
+ * This is the "no review needed" half of the 0031 model. It is deliberately
+ * separate from `autoAcceptReviews`: that flag only controls whether the loop
+ * closes a **review card**; whether a no-review original may be completed is
+ * decided by the board's acceptance policy, exactly as it is for any other
+ * `done` write. The loop executes the plan as `taskd`.
+ *
+ * Guards:
+ *
+ *   * a truncated board read accepts nothing — "there is no open review card"
+ *     cannot be proven over an incomplete snapshot;
+ *   * only flow-A, non-review, `review_required = 0` cards;
+ *   * a current-round review card that is **not canceled** blocks — a human or
+ *     the loop put the card into review on purpose, so the review outcome owns
+ *     it. A canceled review released the key and does not block;
+ *   * `taskd` must be allowed to accept this scope under the board policy
+ *     (`acceptanceAllows`); `human-only` + top-level waits for a human;
+ *   * `held` recovers a crash after the marker was written but before the move.
+ *
+ * @param {{
+ *   tasks?: object[],
+ *   config?: object,
+ *   boardTruncated?: boolean,
+ *   skipRefs?: Set<string>|string[],
+ * }} input
+ * @returns {{alerts: object[], actions: object[]}}
+ */
+export function planAutoAccept(input = {}) {
+  const tasks = Array.isArray(input.tasks) ? input.tasks : [];
+  const config = input.config ?? {};
+  const maxActions =
+    Number.isFinite(config.maxActions) && config.maxActions >= 0
+      ? config.maxActions
+      : DEFAULT_WORKFLOW_MAX_ACTIONS;
+  const skip = input.skipRefs instanceof Set ? input.skipRefs : new Set(input.skipRefs ?? []);
+
+  if (input.boardTruncated === true) {
+    return {
+      alerts: [{ type: "auto_accept_skipped", reason: "board_truncated" }],
+      actions: [],
+    };
+  }
+
+  const policy = acceptancePolicyOf(config);
+  const reviewsByOriginal = new Map();
+  for (const task of tasks) {
+    if (!isReviewCard(task)) continue;
+    const ref = reviewOf(task);
+    const list = reviewsByOriginal.get(ref) ?? [];
+    list.push(task);
+    reviewsByOriginal.set(ref, list);
+  }
+
+  const candidates = [];
+  const alerts = [];
+  for (const task of tasks) {
+    if (task?.status !== "in_review") continue;
+    if (isReviewCard(task)) continue;
+    if (flowOf(task) !== WORK_FLOW) continue;
+    if (reviewRequired(task)) continue;
+
+    const ref = String(task.identifier ?? "");
+    if (ref === "" || skip.has(ref)) continue;
+
+    const round = roundOf(task);
+    const reviews = (reviewsByOriginal.get(ref) ?? []).filter((review) => {
+      const audited = reviewRoundOf(review);
+      return audited === null || audited === round;
+    });
+    // A review card that is not canceled is a deliberate review of this round.
+    // Let its outcome (or a human) finish the card; auto-accepting over it would
+    // defeat the review someone asked for.
+    if (reviews.some((review) => review?.status !== "canceled")) continue;
+
+    if (!acceptanceAllows(TASKD_KIND, policy, scopeOf(task))) {
+      alerts.push({
+        type: "auto_accept_skipped",
+        reason: "human_only",
+        original: ref,
+        dedupKey: alertKey("auto_accept_skipped", ref, "human_only"),
+      });
+      continue;
+    }
+
+    const held =
+      nonEmpty(task?.meta?.accepted_by) !== null &&
+      String(task?.meta?.accepted_round ?? "") === String(round);
+    candidates.push({ task, ref, round, held });
+  }
+
+  candidates.sort(
+    (a, b) =>
+      String(a.task.status_changed_at ?? "").localeCompare(String(b.task.status_changed_at ?? "")) ||
+      a.ref.localeCompare(b.ref),
+  );
+
+  const actions = candidates.slice(0, maxActions).map(({ ref, round, held }) => ({
+    type: "auto_accept",
+    originalRef: ref,
+    round,
+    acceptedBy: LOOP_AUTO_ACCEPTOR,
+    held,
+  }));
+  if (candidates.length > actions.length) {
+    alerts.push({
+      type: "auto_accept_capped",
+      remaining: candidates.length - actions.length,
+      cap: maxActions,
+    });
+  }
+  return { alerts, actions };
+}
+
+// ---------------------------------------------------------------------------
 // The pass
 // ---------------------------------------------------------------------------
 
 /**
  * The whole workflow decision for one tick: reconcile notices, then outcomes,
- * then dispatch — and dispatch is told what outcomes already handled, so a card
- * approved in this same pass is not immediately re-dispatched.
+ * then auto-accept, then dispatch — and dispatch is told what outcomes and
+ * auto-accept already handled, so a card approved in this same pass is not
+ * immediately re-dispatched.
  *
  * @param {{
  *   tasks?: object[],
@@ -857,7 +1050,16 @@ export function planWorkflowTick(input = {}) {
     now: input.now ?? null,
   });
 
-  const handled = new Set(outcomes.actions.map((action) => action.originalRef));
+  const autoAcceptPlan = planAutoAccept({
+    tasks,
+    config,
+    boardTruncated: input.boardTruncated === true,
+    skipRefs: new Set(outcomes.actions.map((action) => action.originalRef)),
+  });
+
+  const handled = new Set(
+    [...outcomes.actions, ...autoAcceptPlan.actions].map((action) => action.originalRef),
+  );
   const dispatch = planReviewDispatch({
     tasks,
     config,
@@ -868,11 +1070,16 @@ export function planWorkflowTick(input = {}) {
   const cap = Number.isFinite(config.maxActions) && config.maxActions >= 0
     ? config.maxActions
     : DEFAULT_WORKFLOW_MAX_ACTIONS;
-  const planned = [...outcomes.actions, ...dispatch.actions];
+  const planned = [...outcomes.actions, ...autoAcceptPlan.actions, ...dispatch.actions];
   const actions = planned.slice(0, cap);
   const dropped = planned.length - actions.length;
 
-  const alerts = [...reconcile.alerts, ...outcomes.alerts, ...dispatch.alerts];
+  const alerts = [
+    ...reconcile.alerts,
+    ...outcomes.alerts,
+    ...autoAcceptPlan.alerts,
+    ...dispatch.alerts,
+  ];
   if (dropped > 0) {
     // The combined slice is the one place work can disappear without a word.
     // Keep `dispatch_capped` (log-only) for the dispatch-only overflow; this
@@ -883,6 +1090,7 @@ export function planWorkflowTick(input = {}) {
       cap,
       dropped,
       outcomes: outcomes.actions.length,
+      autoAccept: autoAcceptPlan.actions.length,
       dispatch: dispatch.actions.length,
       dedupKey: alertKey("actions_capped", cap),
     });
@@ -892,11 +1100,11 @@ export function planWorkflowTick(input = {}) {
   // with auto-accept off the loop never closes one either, so they accumulate
   // until somebody notices. State the conflict while a card is actually stuck.
   const policy = acceptancePolicyOf(config);
-  const autoAccept = config.autoAcceptReviews !== false;
+  const autoAcceptReviews = config.autoAcceptReviews !== false;
   const openReviews = tasks.filter(
     (task) => isReviewCard(task) && task?.status === "in_review",
   ).length;
-  if (policy === "agent-only" && !autoAccept && openReviews > 0) {
+  if (policy === "agent-only" && !autoAcceptReviews && openReviews > 0) {
     alerts.push({
       type: "review_cards_unclosable",
       reason: "agent_only_without_auto_accept",
@@ -918,6 +1126,7 @@ export function planWorkflowTick(input = {}) {
       held: count("approve_hold"),
       rejected: count("reject_task") + count("reject_task_finish") + count("reject_epic"),
       dispatched: count("create_review"),
+      autoAccepted: count("auto_accept"),
       closed: count("close_review") + count("cancel_review"),
       actions: actions.length,
       alerts: alerts.length,

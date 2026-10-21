@@ -234,8 +234,22 @@ card to `done` yourself; a **child** card is closed by a non-human writer. See
 [`references/status-lifecycle.md`](references/status-lifecycle.md#7-acceptance-policy--scope).
 
 A delivery is not the end of the flow: the board dispatches an independent review card for a
-flow-A `in_review` card, applies the reviewer's `VERDICT:`, and accepts or returns it. Under
-`human-only` a top-level `APPROVE` is **held** for a human instead of closing.
+flow-A `in_review` card **when that card's `review_required` snapshot says so**, applies the
+reviewer's `VERDICT:`, and accepts or returns it. Under `human-only` a top-level `APPROVE` is
+**held** for a human instead of closing.
+
+The decision is per card, taken at creation from the project's `review_policy`:
+
+- `required` marks every ordinary card; `off` marks none; `optional` asks the creator.
+- In an `optional` project an **agent** must pass `--review yes|no` on `issue create`; the
+  UI/a human caller may omit it and gets no review. A `deploy` card is always marked.
+- A no-review delivery is auto-accepted by the loop under `both`/`agent-only`; under
+  `human-only` a human still accepts it. The loop's `autoAcceptReviews` flag only controls
+  **review-card** closure, not this path.
+- A human may waive a required review with
+  `taskctl issue update <ref> --review no --reason "<why>"` (no open current-round review).
+  Any actor may escalate with `--review yes`. Both are audited as `review_override`.
+- A review card itself is always `review_required = 0`; it is never reviewed again.
 
 ## When the card is a review card (flow B)
 

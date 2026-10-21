@@ -39,6 +39,8 @@ const PLANNED = [
   "domain/claim.mjs",
   "domain/invariants.mjs",
   "domain/workflow.mjs",
+  // 0031 — the per-project review policy: vocabulary, resolution, the marker.
+  "domain/review-policy.mjs",
   "domain/index.mjs",
   "storage/paths.mjs",
   "storage/driver.mjs",

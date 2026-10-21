@@ -21,6 +21,8 @@
 
 import { DomainError } from "../../foundation/errors.mjs";
 import { acceptanceScopeOf, assertAcceptanceAuthority, isTerminalStatus } from "../domain/status.mjs";
+import { reviewRequiredOf } from "../domain/review-policy.mjs";
+import { parseReviewVerdict } from "../domain/workflow.mjs";
 import { STATUS } from "../domain/enums.mjs";
 
 /**
@@ -56,6 +58,71 @@ export function assertAcceptance(ctx, task, actor) {
 }
 
 /**
+ * Does a card that says `review_required` have the evidence it promised?
+ *
+ * The evidence is a **current-round** review card with an `APPROVE` verdict.
+ * An open review that already carries the verdict passes here: the loop's
+ * protocol is to move the original first and close the review card last. The
+ * human/top-level pending check that follows still makes a human wait for the
+ * card to be closed, because a human should not accept over an open review.
+ *
+ * A review card itself is never held to this rule (it is flow B and is forced to
+ * `review_required = 0`), but the guard is repeated here so a raw row cannot
+ * produce a chain.
+ *
+ * @param {object} ctx
+ * @param {object} task
+ */
+export function assertReviewEvidence(ctx, task) {
+  if (task.reviewOfId !== null && task.reviewOfId !== undefined) return true;
+
+  const reviews = currentRoundReviews(ctx, task);
+  const approved = reviews.some((review) => {
+    if (review.status !== "in_review" && review.status !== "done") return false;
+    const verdict = parseReviewVerdict(
+      ctx.repos.reports.listByTask(review.id),
+      review.deliveryRound ?? null,
+    );
+    return verdict.ok === true && verdict.verdict === "APPROVE";
+  });
+  if (approved) return true;
+
+  const open = reviews.filter((review) => !isTerminalStatus(review.status));
+  if (open.length > 0) {
+    throw new DomainError("REVIEW_PENDING", {
+      message:
+        `${task.identifier} still has ${open.length} open review card(s) for delivery round ` +
+        `${task.deliveryRound}: ${open.map((review) => review.identifier).join(", ")}`,
+      details: {
+        taskId: task.id,
+        identifier: task.identifier,
+        round: task.deliveryRound,
+        pending: open.map((review) => ({ identifier: review.identifier, status: review.status })),
+      },
+      hint: {
+        fix: "let the review finish, or cancel an abandoned review card",
+      },
+    });
+  }
+
+  throw new DomainError("REVIEW_REQUIRED", {
+    message:
+      `${task.identifier} requires an approved review for delivery round ${task.deliveryRound}`,
+    details: {
+      taskId: task.id,
+      identifier: task.identifier,
+      round: task.deliveryRound,
+      reviewRequired: true,
+    },
+    hint: {
+      fix:
+        "let the loop dispatch a review, or a human may waive it: " +
+        'taskctl issue update <ref> --review no --reason "<why>"',
+    },
+  });
+}
+
+/**
  * Refuse a human closing a top-level original whose current-round review cards
  * are still open.
  *
@@ -68,6 +135,12 @@ export function assertAcceptance(ctx, task, actor) {
  * @param {{kind?: string, id?: string}} actor
  */
 export function assertReviewReady(ctx, task, actor) {
+  // 0031 — the card's own decision. This applies to every writer: a required
+  // card cannot reach done without an approved review, whatever the acceptance
+  // policy says. The human-only pending check below is a second, independent
+  // rule about an open review that a human is about to close.
+  if (reviewRequiredOf(task.reviewRequired)) assertReviewEvidence(ctx, task);
+
   if (String(actor?.kind ?? "") !== "human") return true;
   if (acceptanceScopeFor(ctx, task) !== "top_level") return true;
 

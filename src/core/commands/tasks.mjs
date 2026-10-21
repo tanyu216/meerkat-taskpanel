@@ -36,6 +36,7 @@ import {
   WAIVER_MIN_REASON_CHARS,
 } from "../domain/delivery-gate.mjs";
 import { assertTransition, isReopen, isTerminalStatus } from "../domain/status.mjs";
+import { resolveReviewRequired, reviewRequiredOf } from "../domain/review-policy.mjs";
 import { assertAwaitingReason } from "../domain/awaiting.mjs";
 import { normalizeBlockedReason } from "../domain/blocked-reason.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
@@ -45,7 +46,12 @@ import { assertEpicDowngradeAllowed } from "../domain/relation.mjs";
 import { normalizeLabelName } from "../domain/labels.mjs";
 import { normalizeName } from "../domain/dictionary.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
-import { assertAcceptance, assertChildrenTerminal, assertReviewReady } from "./acceptance.mjs";
+import {
+  assertAcceptance,
+  assertChildrenTerminal,
+  assertReviewReady,
+  currentRoundReviews,
+} from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
 import { addComment } from "./comments.mjs";
 import { resolveActorId, resolveAssignment } from "./dictionary.mjs";
@@ -185,6 +191,17 @@ export function createTask(ctx, input) {
       candidate.reviewRound = marker.reviewRound;
       if (marker.reviewOfId !== null) candidate.meta = mirrorReviewMeta(candidate.meta, marker);
 
+      // 0031 — the per-card review decision. The project row is the default; a
+      // review card is forced to 0; a deploy card is forced to 1. The result is
+      // the snapshot every later dispatch/acceptance decision reads.
+      candidate.reviewRequired = resolveReviewRequired({
+        policy: project.reviewPolicy,
+        requested: input.reviewRequired,
+        reviewCard: marker.reviewOfId !== null,
+        kind: candidate.kind,
+        requireDecision: input.requireReviewDecision === true,
+      });
+
       let task;
       try {
         task = ctx.repos.tasks.insert(candidate);
@@ -210,6 +227,8 @@ export function createTask(ctx, input) {
           identifier: task.identifier,
           status: task.status,
           priority: task.priority,
+          review_required: task.reviewRequired,
+          review_policy: project.reviewPolicy ?? "optional",
           ...(task.idem === null ? {} : { idem: task.idem }),
           ...(dictionaryAudit.length > 0 ? { dictionaries: dictionaryAudit } : {}),
           ...(labelAudit.length > 0 ? { labels: labelAudit } : {}),
@@ -409,12 +428,138 @@ function canonicalReviewMeta(repos, current, meta) {
 }
 
 /**
+ * A review waiver is an audited exception, like a report waiver or a takeover:
+ * the reason is what a reader needs to understand why a required check was
+ * skipped.
+ *
+ * @param {unknown} reason
+ * @returns {string}
+ */
+function assertReviewOverrideReason(reason) {
+  const text = typeof reason === "string" ? reason.trim() : "";
+  if (text.length < WAIVER_MIN_REASON_CHARS) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `waiving a required review needs --reason with at least ${WAIVER_MIN_REASON_CHARS} characters`,
+      details: {
+        field: "reason",
+        received: typeof reason === "string" ? reason : null,
+        minLength: WAIVER_MIN_REASON_CHARS,
+      },
+      hint: { fix: 'e.g. --reason "documentation-only change; no independent reviewer is needed"' },
+    });
+  }
+  return text;
+}
+
+/**
+ * Apply the controlled `review_required` change.
+ *
+ * Asymmetric on purpose:
+ *
+ *   * `false → true` — any writer may escalate; it only adds a review.
+ *   * `true → false` — a human only, with a reason, and only when no current
+ *     round review card is still open. An agent must not be able to waive the
+ *     check on its own work.
+ *
+ * Review cards and terminal cards are refused. The generic `updateCas` path
+ * cannot reach this column (`reviewRequired` is not in `PATCHABLE`), so an
+ * override always leaves this one activity row.
+ *
  * @param {object} ctx
- * @param {{id: string, ifVersion?: number, patch?: object, actor: object, assignee?: string, reporter?: string, forceCreate?: boolean}} input
+ * @param {{task: object, value: boolean, reason?: string, actor: object, now: string, ifVersion?: number}} input
+ * @returns {object} the current task when the value did not change
+ */
+function applyReviewOverride(ctx, input) {
+  const { task, value, reason, actor, now, ifVersion } = input;
+  if (task.reviewOfId !== null && task.reviewOfId !== undefined) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: "a review card's review_required marker cannot be changed",
+      details: { field: "review_required", taskId: task.id, reviewOfId: task.reviewOfId },
+    });
+  }
+  if (isTerminalStatus(task.status)) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `cannot change review_required on a ${task.status} card`,
+      details: { field: "review_required", status: task.status },
+    });
+  }
+
+  const currentValue = reviewRequiredOf(task.reviewRequired);
+  if (value === currentValue) return task;
+
+  let waiverReason = null;
+  if (value === true) {
+    const project = ctx.repos.projects.get(task.projectId);
+    if (project?.reviewPolicy === "off") {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: "this project has review off; a card cannot opt in",
+        details: {
+          field: "review_required",
+          projectId: task.projectId,
+          policy: project.reviewPolicy,
+        },
+      });
+    }
+  } else {
+    if (actor.kind !== "human") {
+      throw new DomainError("ACCEPTANCE_FORBIDDEN", {
+        message: "only a human may waive a card's required review",
+        details: { field: "review_required", actorKind: actor.kind, actorId: actor.id },
+        hint: { fix: "a human can run this with --as-human, or let the review finish" },
+      });
+    }
+    waiverReason = assertReviewOverrideReason(reason);
+    const open = currentRoundReviews(ctx, task).filter((review) => !isTerminalStatus(review.status));
+    if (open.length > 0) {
+      throw new DomainError("REVIEW_PENDING", {
+        message:
+          `${task.identifier} still has an open review for its current delivery round; ` +
+          "close or cancel it first",
+        details: {
+          taskId: task.id,
+          identifier: task.identifier,
+          round: task.deliveryRound,
+          pending: open.map((review) => ({ identifier: review.identifier, status: review.status })),
+        },
+      });
+    }
+  }
+
+  const updated = ctx.repos.tasks.setReviewRequired({
+    id: task.id,
+    value,
+    ifVersion,
+    now,
+  });
+  ctx.repos.activities.append({
+    taskId: updated.id,
+    actorKind: actor.kind,
+    actorId: actor.id,
+    event: "review_override",
+    changes: {
+      from: currentValue,
+      to: value,
+      ...(waiverReason === null ? {} : { reason: waiverReason }),
+    },
+    createdAt: now,
+  });
+  return updated;
+}
+
+/**
+ * @param {object} ctx
+ * @param {{id: string, ifVersion?: number, patch?: object, actor: object, assignee?: string, reporter?: string, forceCreate?: boolean, reviewRequired?: boolean, reason?: string}} input
  */
 export function updateTask(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
+  if (input.reviewRequired !== undefined && typeof input.reviewRequired !== "boolean") {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `review_required must be a boolean (got ${JSON.stringify(input.reviewRequired)})`,
+      details: { field: "review_required", received: input.reviewRequired },
+    });
+  }
+  const reviewTarget = input.reviewRequired;
   const base = input.patch ?? {};
   // An assignee change is a patch in its own right, so the payload may be empty
   // as long as *something* ends up changing (checked once the dictionary has
@@ -464,10 +609,10 @@ export function updateTask(ctx, input) {
         patch.meta = canonicalReviewMeta(ctx.repos, current, patch.meta);
       }
 
-      if (Object.keys(patch).length === 0) {
+      if (Object.keys(patch).length === 0 && reviewTarget === undefined) {
         throw new DomainError("VALIDATION_FAILED", {
-          message: "nothing to update: pass a patch or an assignee/reporter",
-          details: { allowed: ["title", "description", "priority", "kind", "labels", "assignee", "reporter"] },
+          message: "nothing to update: pass a patch, an assignee/reporter, or --review",
+          details: { allowed: ["title", "description", "priority", "kind", "labels", "assignee", "reporter", "review_required"] },
         });
       }
 
@@ -478,14 +623,34 @@ export function updateTask(ctx, input) {
         assertEpicDowngradeAllowed(current, patch.kind, ctx.repos.relations.listChildren(input.id));
       }
 
-      const task = ctx.repos.tasks.updateCas({
+      // The controlled review decision is a separate write with its own audit
+      // row. Doing it first means the generic patch's CAS runs against the
+      // returned version, so the two writes cannot be split by another writer.
+      let task = current;
+      let overrideApplied = false;
+      if (reviewTarget !== undefined) {
+        task = applyReviewOverride(ctx, {
+          task: current,
+          value: reviewTarget,
+          reason: input.reason,
+          actor,
+          now,
+          ifVersion: input.ifVersion,
+        });
+        overrideApplied = task !== current;
+      }
+      if (Object.keys(patch).length === 0) return task;
+
+      const updated = ctx.repos.tasks.updateCas({
         id: input.id,
-        ifVersion: input.ifVersion,
+        // A no-op override must not weaken the caller's CAS: use the returned
+        // version only when the override actually wrote.
+        ifVersion: overrideApplied ? task.version : input.ifVersion,
         patch,
         now,
       });
       ctx.repos.activities.append({
-        taskId: task.id,
+        taskId: updated.id,
         actorKind: actor.kind,
         actorId: actor.id,
         event: "task_updated",
@@ -496,7 +661,7 @@ export function updateTask(ctx, input) {
         },
         createdAt: now,
       });
-      return task;
+      return updated;
     },
     { op: "tasks.update" },
   );

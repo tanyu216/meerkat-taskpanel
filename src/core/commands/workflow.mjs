@@ -85,12 +85,22 @@ export function workflowTick(ctx, input = {}) {
       ? input.reviewer.trim()
       : null;
 
+  // 0031 — a project may override the deployment-level reviewer. Read every
+  // project (archived included: it can still own in-flight cards) so dispatch
+  // can resolve `project.reviewer ?? global` from the snapshot alone.
+  const projectReviewers = Object.fromEntries(
+    ctx.repos.projects
+      .list({ includeArchived: true })
+      .map((project) => [project.id, project.reviewer ?? null]),
+  );
+
   const workflow = planWorkflowTick({
     tasks,
     verdicts,
     reconcileActions: reconcile.actions,
     config: {
       reviewer,
+      projectReviewers,
       autoAcceptReviews: input.autoAcceptReviews,
       reviewAgingMs: input.reviewAgingMs,
       maxActions: input.maxActions,

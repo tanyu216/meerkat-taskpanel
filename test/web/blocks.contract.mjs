@@ -1884,13 +1884,15 @@ const BLOCKS = [
       // `data-i18n` attributes, one per label row"; since T-20261014-212017-4 the
       // grid also *contains* the status and priority menus, whose option labels
       // are seats too, so the seat count is the grid's own arithmetic over the
-      // design's own vocabulary: **8 property labels + 7 status options + 5
-      // priority options = 20**. That is a domain-fixed multiplicity of the kind
+      // design's own vocabulary: **9 property labels + 7 status options + 5
+      // priority options = 21**. That is a domain-fixed multiplicity of the kind
       // this file's header allows (7 statuses ⇒ 7 columns, 3 editor modes), and
       // it is a stronger statement than the old one: the grid holds exactly
-      // these seats and nothing else. A sixth priority or an eighth property row
-      // reds here, which is what the row-per-label rule meant all along.
-      { kind: "count", selector: "[data-i18n]", within: "[data-detail-props]", equals: 20 },
+      // these seats and nothing else. The ninth label is 0031's Review row —
+      // a read-only property, labelled like its eight neighbours. A sixth
+      // priority or a tenth property row reds here, which is what the
+      // row-per-label rule meant all along.
+      { kind: "count", selector: "[data-i18n]", within: "[data-detail-props]", equals: 21 },
       // R14 D32/D37/D38 (A13/A14/A15) — *where* each body hook rides: the
       // description hook is on the content container (`div.td-gfm`), the four
       // stream hooks are on a `div`, and the session hook is on the `section`
@@ -1955,6 +1957,7 @@ const BLOCKS = [
       "[data-create-task-description]",
       "[data-create-task-priority]",
       "[data-create-task-project]",
+      "[data-create-task-review-hint]",
       "[data-create-task-status]",
       "[data-modal-close]",
     ],
@@ -2037,6 +2040,8 @@ const BLOCKS = [
       "[data-create-project-form]",
       "[data-create-project-name]",
       "[data-create-project-prefix]",
+      "[data-create-project-review-policy]",
+      "[data-create-project-reviewer]",
       "[data-modal-close]",
     ],
     states: [],

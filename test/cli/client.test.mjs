@@ -118,7 +118,9 @@ describe("shared/transport/http — over a real board", () => {
       url,
       method: "POST",
       path: "/api/v1/tasks",
-      body: { project_id: "c1", title: "T" },
+      // 0031 — an agent creating a card in an `optional` project states the
+      // review decision; this test is about headers, so it says "no review".
+      body: { project_id: "c1", title: "T", review_required: false },
       actor: { kind: "agent", id: "linus" },
     });
     const commented = await requestJson({

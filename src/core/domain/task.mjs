@@ -70,6 +70,9 @@ export const TASK_COLUMNS = Object.freeze([
   // it audits. Written once at creation; the trigger refuses every later change.
   "review_of_id",
   "review_round",
+  // 0031 — the card's review decision (0/1). A snapshot taken at creation; the
+  // dispatch/auto-accept/done gates read this, never the project policy.
+  "review_required",
 ]);
 
 const ISO_MILLIS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -336,6 +339,10 @@ export function normalizeTaskCreate(input, context) {
     // reference (the importer stamps its own after resolving).
     reviewOfId: null,
     reviewRound: null,
+    // 0031 — the decision snapshot. `createTask` resolves it after the review
+    // marker (a review card is forced to 0); a direct/importer write gets the
+    // conservative 0 here and must set it itself if the card needs review.
+    reviewRequired: 0,
     version: 1,
     idem: normalizeIdem(input.idem),
     createdAt: now,
@@ -489,6 +496,8 @@ const CAMEL = {
   // 0025 — the review marker's structural half.
   review_of_id: "reviewOfId",
   review_round: "reviewRound",
+  // 0031 — the card's review decision snapshot.
+  review_required: "reviewRequired",
 };
 
 /**

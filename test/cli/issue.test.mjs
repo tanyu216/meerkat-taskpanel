@@ -1252,3 +1252,63 @@ describe("cli/issue — `issue reopen` (done/canceled → todo)", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// 0031 — the per-card review decision
+// ---------------------------------------------------------------------------
+
+describe("cli/issue — review decision (0031)", () => {
+  it("carries an explicit --review yes|no on create", async () => {
+    await board(async ({ run }) => {
+      const yes = createIssue(run, ["--review", "yes"]);
+      assert.equal(yes.task.review_required, true);
+      const no = createIssue(run, ["--review", "no"]);
+      assert.equal(no.task.review_required, false);
+    });
+  });
+
+  it("refuses an agent's omission in an optional project", async () => {
+    await board(async ({ run }) => {
+      const result = run([
+        "issue", "create", "--project", "demo", "--title", "decide",
+        "--actor-kind", "agent", "--json",
+      ]);
+      assert.equal(result.status, 1);
+      assert.equal(errorOf(result).code, "VALIDATION_FAILED");
+      assert.equal(errorOf(result).details?.field, "review_required");
+    });
+  });
+
+  it("escalates and waives through issue update", async () => {
+    await board(async ({ run }) => {
+      const created = createIssue(run);
+      assert.equal(created.task.review_required, false);
+
+      const escalated = dataOf(run(["issue", "update", created.task.identifier, "--review", "yes", "--json"]));
+      assert.equal(escalated.task.review_required, true);
+
+      const missingReason = run(["issue", "update", created.task.identifier, "--review", "no", "--json"]);
+      assert.equal(missingReason.status, 1);
+      assert.equal(errorOf(missingReason).code, "VALIDATION_FAILED");
+
+      const waived = dataOf(
+        run([
+          "issue", "update", created.task.identifier, "--review", "no",
+          "--reason", "documentation only", "--json",
+        ]),
+      );
+      assert.equal(waived.task.review_required, false);
+    });
+  });
+
+  it("refuses an opt-out in a required project", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "req", "--name", "Required", "--review-policy", "required", "--json"]);
+      const result = run([
+        "issue", "create", "--project", "req", "--title", "no", "--review", "no", "--json",
+      ]);
+      assert.equal(result.status, 1);
+      assert.equal(errorOf(result).code, "VALIDATION_FAILED");
+    });
+  });
+});

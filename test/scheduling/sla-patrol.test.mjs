@@ -938,14 +938,16 @@ describe("leader_stalled", () => {
 
   it("does not count the loop's own automated acceptance as leader activity", () => {
     // The workflow pass writes `meta.accepted_by = "loop-review"` when it closes
-    // a card after a verdict. Counting that `done` would let the loop's own
-    // activity mask a stalled leader — so the marker is excluded, and the same
-    // card *without* it still proves the control case.
+    // a card after a verdict, or `"loop-auto"` when it auto-accepts a card that
+    // needs no review. Counting either `done` would let the loop's own activity
+    // mask a stalled leader — so both markers are excluded, and the same card
+    // *without* one still proves the control case.
     const stale = blocked("T-1", "2026-09-01T04:00:00.000Z");
     const accepted = (meta) =>
       card({ identifier: "T-2", status: "done", created_at: "2026-09-01T04:00:00.000Z", status_changed_at: ago(1), meta });
 
     assert.equal(hasStalled(plan([stale, accepted({ accepted_by: "loop-review" })])), true);
+    assert.equal(hasStalled(plan([stale, accepted({ accepted_by: "loop-auto" })])), true);
     assert.equal(hasStalled(plan([stale, accepted({})])), false, "a leader's own done still resets the clock");
   });
 

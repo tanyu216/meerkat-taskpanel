@@ -1226,6 +1226,64 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.equal(notify.calls[0][0].error, "approve action is missing accepted_by");
   });
 
+  describe("auto_accept — a card whose review_required snapshot is 0", () => {
+    const autoAccept = (overrides = {}) => ({
+      type: "auto_accept",
+      original_ref: "T-3",
+      round: 2,
+      accepted_by: "loop-auto",
+      held: false,
+      ...overrides,
+    });
+
+    it("marks the acceptor, comments, then moves the original to done", async () => {
+      const order = [];
+      const result = await runWorkflowTick(
+        baseDeps({
+          plan: { alerts: [], changes: [], summary: { auto_accepted: 1 }, actions: [autoAccept()] },
+          setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+          comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
+          move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+        }),
+      );
+      assert.deepEqual(order, [
+        'meta:T-3:{"accepted_by":"loop-auto","accepted_round":"2","auto_accepted":"1"}',
+        "comment:T-3:note",
+        "move:T-3:done",
+      ]);
+      assert.equal(result.executed, 1);
+      assert.equal(result.failed, 0);
+    });
+
+    it("skips the marker and the comment when the board says the card is already held", async () => {
+      const order = [];
+      await runWorkflowTick(
+        baseDeps({
+          plan: { alerts: [], changes: [], summary: {}, actions: [autoAccept({ held: true })] },
+          setMeta: async (ref) => (order.push(`meta:${ref}`), { ok: true }),
+          comment: async (ref) => (order.push(`comment:${ref}`), { ok: true }),
+          move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+        }),
+      );
+      assert.deepEqual(order, ["move:T-3:done"], "a recovery pass finishes the move only");
+    });
+
+    it("fails the action — and moves nothing — when accepted_by is missing", async () => {
+      const notify = spy();
+      const move = spy(async () => ({ ok: true }));
+      const result = await runWorkflowTick(
+        baseDeps({
+          plan: { alerts: [], changes: [], summary: {}, actions: [autoAccept({ accepted_by: undefined })] },
+          notify,
+          move,
+        }),
+      );
+      assert.equal(result.failed, 1);
+      assert.equal(move.count(), 0);
+      assert.equal(notify.calls[0][0].error, "auto_accept action is missing accepted_by");
+    });
+  });
+
   it("notifies a workflow alert once per state, not once per pass", async () => {
     const notify = spy();
     const plan = {

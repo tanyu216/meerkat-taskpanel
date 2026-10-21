@@ -63,6 +63,16 @@ const relationOptions = taskRoster;
 const canSubmit = computed(() => form.title.trim() !== "" && form.project_id);
 
 /**
+ * 0031 — the task's review decision is derived by the server from the selected
+ * project's policy. The dialog only shows what that means; it deliberately adds
+ * no ninth routing field (B10's column is the eight `design/BLOCKS.md` names).
+ */
+const selectedProject = computed(
+  () => board.projects.find((project) => project.id === form.project_id) ?? null,
+);
+const reviewPolicy = computed(() => selectedProject.value?.review_policy ?? "optional");
+
+/**
  * The status control is a `<details>` dropdown rather than a native `<select>`:
  * an `<option>` cannot hold the board's coloured `.td-status-dot`, and the
  * point of the field is to state the stage the way every other status read-out
@@ -236,6 +246,14 @@ async function submit() {
                 <option v-for="project in board.projects" :key="project.id" :value="project.id">{{ project.name }}</option>
               </select>
             </label>
+            <p
+              v-if="selectedProject"
+              class="text-[11px] text-(--brand-text-3) -mt-2 mb-3"
+              data-create-task-review-hint
+              :data-review-policy="reviewPolicy"
+            >
+              {{ $t(`createTask.reviewHint.${reviewPolicy}`) }}
+            </p>
 
             <div class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.status">{{ $t("createTask.field.status") }}</span>

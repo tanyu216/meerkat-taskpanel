@@ -97,11 +97,19 @@ describe("storage/migrations — 0023 moves the kind onto the record", () => {
       }
       // Appended, like `blocked_reason` before them, so nothing that reads `tasks`
       // positionally has to be re-taught where a column sits. 0025 appends its
-      // two review-marker columns *after* these, so the three this suite owns are
-      // the tail only when the later migration's pair is counted.
+      // two review-marker columns *after* these, and 0031 its `review_required`
+      // marker, so the three this suite owns are the tail only when the later
+      // migrations' three columns are counted.
       assert.deepEqual(
-        tasks.slice(-5).map((c) => c.name),
-        ["assignee_kind", "reporter_kind", "claimed_kind", "review_of_id", "review_round"],
+        tasks.slice(-6).map((c) => c.name),
+        [
+          "assignee_kind",
+          "reporter_kind",
+          "claimed_kind",
+          "review_of_id",
+          "review_round",
+          "review_required",
+        ],
       );
     } finally {
       board.close();

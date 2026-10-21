@@ -66,6 +66,21 @@ export const ERROR_CODES = Object.freeze({
     409,
     "This card still has an open review for its current delivery round; close or cancel it first.",
   ),
+  // The card's own review_required snapshot says it needs an independent review,
+  // but no approving review exists for the current round. Raised by the service
+  // layer *and* (coarsely, as "a review card exists") by migration 0031's
+  // trigger; see `0031_review_policy.sql`.
+  REVIEW_REQUIRED: spec(409, "This card requires an approved review for its current delivery round.", {
+    fix:
+      "let the loop dispatch a review, or a human may waive the requirement: " +
+      'taskctl issue update <ref> --review no --reason "<why>"',
+  }),
+  // A review card is flow B. Marking it as needing its own review would create an
+  // endless chain; the column is forced to 0 by the resolver and the trigger.
+  REVIEW_CARD_MARKER_INVALID: spec(
+    409,
+    "A review card can never be marked as requiring its own review.",
+  ),
   // A card may not enter `in_review`/`done` while one of its children is still
   // in flight. Manual and automatic paths apply the same rule.
   CHILDREN_OPEN: spec(409, "This card still has non-terminal child cards."),
@@ -218,6 +233,9 @@ export const DB_RAISE_CODES = Object.freeze([
   // 0025 / 0026
   "REVIEW_OF_IMMUTABLE",
   "CHILDREN_OPEN",
+  // 0031 — the review-required done gate and the review-card marker invariant.
+  "REVIEW_REQUIRED",
+  "REVIEW_CARD_MARKER_INVALID",
 ]);
 
 /** Codes produced by mapping SQLite failures (constraints, and lock contention). */

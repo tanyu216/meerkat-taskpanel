@@ -666,6 +666,18 @@ export const DEFAULT_ACCEPTANCE_POLICY = "both";
 export const LOOP_ACCEPTOR = "loop-review";
 
 /**
+ * The `meta.accepted_by` marker an automatic acceptance writes when the card did
+ * **not** need an independent review (`review_required = 0`) and the loop closed
+ * it directly after delivery. Kept distinct from `LOOP_ACCEPTOR` so the SLA
+ * patrol and the activity trail can tell "a review approved this" from "no
+ * review was required".
+ */
+export const LOOP_AUTO_ACCEPTOR = "loop-auto";
+
+/** Every marker an automated (non-human) acceptance may write. */
+export const AUTOMATED_ACCEPTORS = Object.freeze([LOOP_ACCEPTOR, LOOP_AUTO_ACCEPTOR]);
+
+/**
  * Default cap on cards read in one pass — the loop's patrol/board read and the
  * board's workflow snapshot share it.
  *

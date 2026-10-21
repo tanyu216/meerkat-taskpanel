@@ -24,21 +24,26 @@ import { describe, it } from "node:test";
 import {
   EMPTY_EPIC_GRACE_MS,
   LOOP_ACCEPTOR,
+  LOOP_AUTO_ACCEPTOR,
   classifyReconcileActions,
   flowOf,
   isReviewCard,
   isSelfReview,
   parseReviewVerdict,
+  planAutoAccept,
   planReviewDispatch,
   planReviewOutcomes,
   planReviewOutcomes as outcomes,
   planWorkflowTick,
   reviewIdemKey,
   reviewOf,
+  reviewRequired,
   reviewRoundOf,
   reworkIdemKey,
   roundOf,
 } from "../../../src/core/domain/workflow.mjs";
+import { acceptanceAllows, acceptanceScopeOf } from "../../../src/core/domain/status.mjs";
+import { TASKD_KIND } from "../../../src/foundation/constants.mjs";
 
 const NOW = "2026-10-19T10:00:00.000Z";
 
@@ -56,6 +61,10 @@ function card(fields = {}) {
     delivery_round: 1,
     status_changed_at: "2026-10-19T09:00:00.000Z",
     created_at: "2026-10-18T09:00:00.000Z",
+    // Most fixtures describe a card that is dispatched for review. A test for
+    // the no-review path sets `review_required: false` explicitly.
+    review_required: true,
+    parent_id: null,
     meta: {},
     ...fields,
   };
@@ -69,6 +78,7 @@ function reviewCard(fields = {}) {
     delivery_round: 0,
     assignee_id: "agent-jobs",
     assignee: { id: "agent-jobs", display_name: "jobs", kind: "agent" },
+    review_required: false,
     meta: { review_of: "T-1", flow: "B", review_round: 1 },
     ...fields,
   });
@@ -344,7 +354,14 @@ describe("planReviewDispatch", () => {
   it("reports an unconfigured reviewer once, with the size of the backlog", () => {
     const result = planReviewDispatch({ tasks: [card()], config: { ...CONFIG, reviewer: null } });
     assert.deepEqual(result.actions, []);
-    assert.deepEqual(result.alerts, [{ type: "dispatch_skipped", reason: "reviewer_not_configured", waiting: 1 }]);
+    assert.deepEqual(result.alerts, [
+      {
+        type: "dispatch_skipped",
+        reason: "reviewer_not_configured",
+        waiting: 1,
+        projects: [{ project: "proj", waiting: 1 }],
+      },
+    ]);
     assert.deepEqual(planReviewDispatch({ tasks: [], config: { ...CONFIG, reviewer: null } }).alerts, []);
   });
 
@@ -604,6 +621,7 @@ describe("planWorkflowTick", () => {
       held: 0,
       rejected: 0,
       dispatched: 0,
+      autoAccepted: 0,
       closed: 0,
       actions: 1,
       alerts: 0,
@@ -653,6 +671,7 @@ describe("planWorkflowTick", () => {
       cap: 2,
       dropped: 1,
       outcomes: 1,
+      autoAccept: 0,
       dispatch: 2,
       dedupKey: "actions_capped|2",
     });
@@ -834,5 +853,214 @@ describe("workflow alert dedup keys", () => {
     assert.equal(one.dedupKey, same.dedupKey);
     assert.equal(two.dedupKey, reversed.dedupKey);
     assert.notEqual(one.dedupKey, two.dedupKey);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 0031 — review decision, per-project reviewer, auto-accept
+// ---------------------------------------------------------------------------
+
+describe("planReviewDispatch — review_required and project reviewers", () => {
+  it("skips a card that does not require review", () => {
+    const result = planReviewDispatch({
+      tasks: [card({ review_required: false })],
+      config: CONFIG,
+    });
+    assert.deepEqual(result.actions, []);
+    assert.deepEqual(result.alerts, []);
+  });
+
+  it("resolves project.reviewer ?? the deployment reviewer per card", () => {
+    const result = planReviewDispatch({
+      tasks: [
+        card({ identifier: "T-1", project_id: "p1" }),
+        card({ identifier: "T-2", project_id: "p2" }),
+        card({ identifier: "T-3", project_id: "p3" }),
+      ],
+      config: {
+        ...CONFIG,
+        reviewer: "jobs",
+        projectReviewers: { p1: "alice", p2: " " },
+      },
+    });
+    const byRef = Object.fromEntries(result.actions.map((action) => [action.originalRef, action.reviewer]));
+    assert.equal(byRef["T-1"], "alice", "the project override wins");
+    assert.equal(byRef["T-2"], "jobs", "a blank override falls back to the deployment reviewer");
+    assert.equal(byRef["T-3"], "jobs");
+  });
+
+  it("aggregates the unconfigured-reviewer alert by project", () => {
+    const result = planReviewDispatch({
+      tasks: [
+        card({ identifier: "T-1", project_id: "p1" }),
+        card({ identifier: "T-2", project_id: "p1" }),
+        card({ identifier: "T-3", project_id: "p2" }),
+      ],
+      config: { ...CONFIG, reviewer: null, projectReviewers: { p2: "bob" } },
+    });
+    assert.deepEqual(result.alerts, [
+      {
+        type: "dispatch_skipped",
+        reason: "reviewer_not_configured",
+        waiting: 2,
+        projects: [{ project: "p1", waiting: 2 }],
+      },
+    ]);
+    assert.deepEqual(result.actions.map((action) => action.originalRef), ["T-3"]);
+  });
+
+  it("uses the effective reviewer for the self-review guard", () => {
+    const result = planReviewDispatch({
+      tasks: [card({ identifier: "T-1", project_id: "p1" })],
+      config: { ...CONFIG, reviewer: "jobs", projectReviewers: { p1: "linus" } },
+    });
+    assert.deepEqual(result.actions, []);
+    assert.equal(result.alerts[0].type, "self_review_not_independent");
+    assert.equal(result.alerts[0].reviewer, "linus");
+  });
+
+  it("reads the decision from the integer column too", () => {
+    assert.equal(reviewRequired({ review_required: true }), true);
+    assert.equal(reviewRequired({ review_required: 1 }), true);
+    assert.equal(reviewRequired({ review_required: 0 }), false);
+    assert.equal(reviewRequired({}), false);
+  });
+});
+
+describe("planAutoAccept — no review required", () => {
+  const autoCard = (fields = {}) =>
+    card({ review_required: false, status: "in_review", ...fields });
+
+  it("auto-accepts a delivered card that does not require review", () => {
+    const result = planAutoAccept({ tasks: [autoCard()], config: { ...CONFIG, acceptancePolicy: "both" } });
+    assert.deepEqual(result.actions, [
+      {
+        type: "auto_accept",
+        originalRef: "T-1",
+        round: 1,
+        acceptedBy: LOOP_AUTO_ACCEPTOR,
+        held: false,
+      },
+    ]);
+    assert.deepEqual(result.alerts, []);
+  });
+
+  it("never auto-accepts a card that requires review", () => {
+    const result = planAutoAccept({
+      tasks: [card({ review_required: true })],
+      config: { ...CONFIG, acceptancePolicy: "both" },
+    });
+    assert.deepEqual(result.actions, []);
+  });
+
+  it("lets an active review block, and a canceled review release, the card", () => {
+    const active = planAutoAccept({
+      tasks: [autoCard(), reviewCard({ status: "in_review" })],
+      config: { ...CONFIG, acceptancePolicy: "both" },
+    });
+    assert.deepEqual(active.actions, []);
+
+    const canceled = planAutoAccept({
+      tasks: [autoCard(), reviewCard({ status: "canceled" })],
+      config: { ...CONFIG, acceptancePolicy: "both" },
+    });
+    assert.deepEqual(canceled.actions.map((action) => action.type), ["auto_accept"]);
+  });
+
+  it("skips a human-only top-level card, but still accepts a child", () => {
+    const top = planAutoAccept({
+      tasks: [autoCard()],
+      config: { ...CONFIG, acceptancePolicy: "human-only" },
+    });
+    assert.deepEqual(top.actions, []);
+    assert.equal(top.alerts[0].type, "auto_accept_skipped");
+    assert.equal(top.alerts[0].reason, "human_only");
+
+    const child = planAutoAccept({
+      tasks: [autoCard({ parent_id: "E-1" })],
+      config: { ...CONFIG, acceptancePolicy: "human-only" },
+    });
+    assert.deepEqual(child.actions.map((action) => action.type), ["auto_accept"]);
+  });
+
+  it("is not gated by autoAcceptReviews (that flag closes review cards)", () => {
+    const result = planAutoAccept({
+      tasks: [autoCard()],
+      config: { ...CONFIG, acceptancePolicy: "both", autoAcceptReviews: false },
+    });
+    assert.deepEqual(result.actions.map((action) => action.type), ["auto_accept"]);
+  });
+
+  it("marks a crash-recovery marker as held", () => {
+    const result = planAutoAccept({
+      tasks: [
+        autoCard({
+          meta: { accepted_by: LOOP_AUTO_ACCEPTOR, accepted_round: "1" },
+        }),
+      ],
+      config: { ...CONFIG, acceptancePolicy: "both" },
+    });
+    assert.equal(result.actions[0].held, true);
+  });
+
+  it("accepts nothing on a truncated board", () => {
+    const result = planAutoAccept({
+      tasks: [autoCard()],
+      config: { ...CONFIG, acceptancePolicy: "both" },
+      boardTruncated: true,
+    });
+    assert.deepEqual(result.actions, []);
+    assert.deepEqual(result.alerts, [{ type: "auto_accept_skipped", reason: "board_truncated" }]);
+  });
+
+  it("excludes review cards and flow-B cards", () => {
+    const result = planAutoAccept({
+      tasks: [reviewCard({ status: "in_review", review_required: false })],
+      config: { ...CONFIG, acceptancePolicy: "both" },
+    });
+    assert.deepEqual(result.actions, []);
+  });
+
+  it("lets exactly the scopes acceptanceAllows names for taskd — one matrix, not two", () => {
+    // The auto-accept gate and the board's own `assertAcceptance` must agree on
+    // who may accept. If one grows a special case the other lacks, a card the
+    // planner releases is refused at the write, or one it holds is writable.
+    for (const policy of ["human-only", "both", "agent-only"]) {
+      for (const parent_id of [null, "E-1"]) {
+        const task = autoCard({ parent_id });
+        const scope = acceptanceScopeOf({ hasParent: parent_id !== null, reviewCard: false });
+        const planned = planAutoAccept({
+          tasks: [task],
+          config: { ...CONFIG, acceptancePolicy: policy },
+        });
+        assert.equal(
+          planned.actions.length === 1,
+          acceptanceAllows(TASKD_KIND, policy, scope),
+          `policy=${policy} parent=${parent_id}: plan and assertAcceptance disagree`,
+        );
+      }
+    }
+  });
+});
+
+describe("planWorkflowTick — auto-accept ordering", () => {
+  it("runs auto-accept after outcomes and before dispatch, and reports the count", () => {
+    const result = planWorkflowTick({
+      tasks: [card({ identifier: "T-1", review_required: false })],
+      config: { ...CONFIG, acceptancePolicy: "both" },
+      now: NOW,
+    });
+    assert.deepEqual(types(result), ["auto_accept"]);
+    assert.equal(result.summary.autoAccepted, 1);
+    assert.equal(result.summary.dispatched, 0);
+  });
+
+  it("does not dispatch a card that auto-accept already handled", () => {
+    const result = planWorkflowTick({
+      tasks: [card({ identifier: "T-1", review_required: false })],
+      config: { ...CONFIG, acceptancePolicy: "both" },
+      now: NOW,
+    });
+    assert.deepEqual(result.actions.map((action) => action.type), ["auto_accept"]);
   });
 });

@@ -88,7 +88,7 @@ A pair on the whitelist can still be refused; the target decides which guard app
 | `in_review` | The **delivery gate**: a `delivery` report for the current `delivery_round`, or an audited waiver for that round (§4). Every child must be terminal (`CHILDREN_OPEN`). |
 | `blocked` | `--blocked-reason` is **optional**. Entering `blocked` does not bump the round; **`in_review → blocked` does**. |
 | `awaiting` | Only `in_progress → awaiting`, naming `--awaiting-reason E1`…`E5`. Leaving clears the reason. `awaiting → blocked`/`in_review`/`done` are forbidden. |
-| `done` | Only from `in_review` — **acceptance**, so the gate is not re-consulted. The writer must be allowed by policy and scope (§7); every child must be terminal (`CHILDREN_OPEN`). A human closing a top-level card needs the current round's review cards resolved (`REVIEW_PENDING`). |
+| `done` | Only from `in_review` — **acceptance**, so the delivery gate is not re-consulted. The writer must be allowed by policy and scope (§7); every child must be terminal (`CHILDREN_OPEN`). A card whose `review_required` is 1 needs a current-round APPROVE review (`REVIEW_REQUIRED`; the DB trigger checks that a review card reached the reviewer). A human closing a top-level card also needs the current round's review cards resolved (`REVIEW_PENDING`). |
 | `canceled` | From `backlog`, `todo`, `in_progress`, `awaiting` or `blocked` — **never directly from `in_review`**. Terminal. |
 
 ### The order the guards run
@@ -105,7 +105,9 @@ The first refusal wins, so the error you see is stable:
 6. for `todo → in_progress`: the claim gate (`not_assignee`, `EXECUTION_ACTIVE`,
    `CLAIM_LOST`, `not_claimable`);
 7. for `in_review`: the delivery gate (`REPORT_REQUIRED`);
-8. for `done`: the human/top-level review check (`REVIEW_PENDING`);
+8. for `done`: the card's own `review_required` evidence check (`REVIEW_REQUIRED` when there is
+   no current-round review, `REVIEW_PENDING` when one is still open), then the human/top-level
+   open-review check (`REVIEW_PENDING`);
 9. the compare-and-swap write (`VERSION_CONFLICT` on a stale `--if-version`).
 
 Database triggers re-check the hard invariants afterwards; this order is what a `taskctl`
@@ -219,6 +221,14 @@ scope.
 
 Scope precedence is **`hasParent` > review marker > `top_level`**.
 
+**Review policy is a separate axis.** `review_required=1` adds a precondition (a current-round
+APPROVE review) but does not change who may close the card. `projects.review_policy`
+(`required` / `optional` / `off`, default `optional`) sets the snapshot at creation; a later
+project change does not rewrite it. A card at `review_required=0` skips the review card and is
+auto-accepted by the loop when `taskd` may accept its scope; under `human-only` a top-level
+card still waits for a human, while a child still auto-accepts. The loop's
+`--auto-accept-reviews` flag only controls closing review cards, not this path.
+
 - A worker agent delivers to `in_review` and **does not close a top-level card** under the
   default policy (`ACCEPTANCE_FORBIDDEN`).
 - A **child** card is the opposite: only a non-human writer may close it.
@@ -262,7 +272,9 @@ The markdown importer is the exception: it writes history directly, importing
 | `REPORT_REQUIRED` | 422 | Entering `in_review` without a current-round report or waiver; creating in `in_review`/`done`. |
 | `ACCEPTANCE_FORBIDDEN` | 409 | The writer may not move the card to `done` under the policy/scope matrix. |
 | `CHILDREN_OPEN` | 409 | `in_review` or `done` while a child is non-terminal. |
-| `REVIEW_PENDING` | 409 | A human closing a top-level card with current-round review cards still open. |
+| `REVIEW_PENDING` | 409 | A human closing a top-level card with current-round review cards still open; or a `review_required` card whose current-round review has no APPROVE verdict yet. |
+| `REVIEW_REQUIRED` | 409 | A `review_required` card reaching `done` with no current-round review card. A human may waive it with `issue update <ref> --review no --reason "<why>"`. |
+| `REVIEW_CARD_MARKER_INVALID` | 409 | A write tried to set `review_required = 1` on a review card (flow B). |
 | `VALIDATION_FAILED` | 400 | Unknown status; create in `in_progress`/`awaiting`; an epic's illegal initial status; an unknown `awaiting_reason`/`blocked_reason`; a malformed waiver; a `review_of` whose original is not `in_review`; a `review_of` that names a review card; a `review_round` that is not the original's current `delivery_round`; a review card that is not `kind=task`; a `parent` edge with a review card on either end. |
 | `VERSION_CONFLICT` | 409 | `--if-version` does not match the card's version. |
 | `EXECUTION_ACTIVE` | 409 | Another actor holds a fresh claim, or a non-holder sends a heartbeat. |

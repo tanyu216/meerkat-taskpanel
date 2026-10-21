@@ -46,6 +46,7 @@ export const ERROR_TEXT_KEYS = Object.freeze({
   // when they close a card too early; the sentence names the repair.
   ACCEPTANCE_FORBIDDEN: "error.acceptanceForbidden",
   REVIEW_PENDING: "error.reviewPending",
+  REVIEW_REQUIRED: "error.reviewRequired",
   CHILDREN_OPEN: "error.childrenOpen",
   // The routing lock and the two states a claim can be refused from.
   not_assignee: "error.notAssignee",
@@ -126,6 +127,7 @@ const TAKES_REF = new Set([
   "error.claimOnBacklog",
   "error.acceptanceForbidden",
   "error.reviewPending",
+  "error.reviewRequired",
   "error.childrenOpen",
 ]);
 

@@ -25,6 +25,10 @@
 
 import { DomainError } from "../../foundation/errors.mjs";
 import { PROJECT_PREFIX_META_KEY, identifierPrefix, projectPrefix } from "../../foundation/ids.mjs";
+import {
+  assertReviewPolicy,
+  normalizeReviewer,
+} from "../domain/review-policy.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 
@@ -153,6 +157,8 @@ function withoutPrefix(meta) {
  */
 export function createProject(ctx, input) {
   const actor = actorOf(input.actor ?? { kind: "human", id: "local" });
+  const reviewPolicy = assertReviewPolicy(input.reviewPolicy ?? "optional", "review_policy");
+  const reviewer = normalizeReviewer(input.reviewer);
   return transaction(
     ctx.db,
     () => {
@@ -181,13 +187,23 @@ export function createProject(ctx, input) {
       const meta = declared === undefined
         ? input.meta
         : { ...(input.meta ?? {}), [PROJECT_PREFIX_META_KEY]: prefix };
-      const project = ctx.repos.projects.create({ ...input, meta, now: ctx.now() });
+      const project = ctx.repos.projects.create({
+        ...input,
+        meta,
+        reviewPolicy,
+        reviewer,
+        now: ctx.now(),
+      });
       ctx.repos.activities.append({
         taskId: null,
         actorKind: actor.kind,
         actorId: actor.id,
         event: "project_created",
-        changes: { project: project.id },
+        changes: {
+          project: project.id,
+          review_policy: reviewPolicy,
+          ...(reviewer === null ? {} : { reviewer }),
+        },
         createdAt: ctx.now(),
       });
       return project;
@@ -202,6 +218,12 @@ export function createProject(ctx, input) {
  */
 export function updateProject(ctx, input) {
   const patch = { ...input.patch };
+  if (patch.reviewPolicy !== undefined) {
+    patch.reviewPolicy = assertReviewPolicy(patch.reviewPolicy, "review_policy");
+  }
+  if (patch.reviewer !== undefined) {
+    patch.reviewer = normalizeReviewer(patch.reviewer);
+  }
   if (patch.meta !== undefined) {
     // The stored prefix survives whatever the patch carried (M6).
     // The slot is read from the row, not from the patch — including when the

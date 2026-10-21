@@ -17,7 +17,7 @@ key: |                     # literal block — newlines kept
 
 ## Field reference
 
-Exactly these 23 keys, in this order. Anything else rides in `meta_json.legacy` — see
+Exactly these 24 keys, in this order. Anything else rides in `meta_json.legacy` — see
 §Unknown keys are preserved.
 
 | Key | Meaning | Values & rules |
@@ -27,6 +27,7 @@ Exactly these 23 keys, in this order. Anything else rides in `meta_json.legacy` 
 | `status` | Where the card sits in the lifecycle. | One of the canonical words (`backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`, plus the `awaiting` overlay). The old v1 words (`ready`, `failed`, and their spelling variants) are not accepted. |
 | `priority` | Urgency. | `low` · `medium` · `high` · `urgent`. |
 | `kind` | The card's role. | `task` · `epic` · `deploy`. |
+| `review_required` | Whether this card needs an independent review before `done`. | `yes`; **absent** means it does not. A review card (flow B) never carries it. |
 | `labels` | Free-form tags, shown in order. | Inline array. |
 | `project` | The board project. | Its id. |
 | `assignee` | Who is on the hook. | A dictionary name; empty ⇒ unassigned. |

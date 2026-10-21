@@ -110,6 +110,17 @@ describe("contract/liveness — every non-terminal status can reach canceled", (
     }
   });
 
+  it("a review-required card can leave in_review without passing the review gate", () => {
+    // 0031's `REVIEW_REQUIRED` gate blocks exactly one edge: `in_review → done`.
+    // Reaching `done` needs a current-round review (or a human waiver), but no
+    // reviewer being configured must still be recoverable: rework and cancel
+    // are the same exits they were before the gate existed.
+    const exits = allowedTargets("in_review");
+    assert.ok(exits.includes("in_progress"), "rework needs no reviewer");
+    assert.ok(exits.includes("blocked"), "a blocker found at review time needs none either");
+    assert.ok(reachable("in_review", null).has("canceled"), "cancellation is not gated");
+  });
+
   it("the acceptance policy decides writers, never reachability", () => {
     // The policy changes *who* may take the `done` edge, not whether the state
     // machine has it: `in_review → done` is present under all three policies.

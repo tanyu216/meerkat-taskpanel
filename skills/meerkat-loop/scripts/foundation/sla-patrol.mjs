@@ -54,7 +54,7 @@
  * `sla-config.mjs`, which is also the `TASKD_SLA_*` parser.
  */
 
-import { LOOP_ACCEPTOR } from "./constants.mjs";
+import { AUTOMATED_ACCEPTORS, LOOP_ACCEPTOR } from "./constants.mjs";
 import {
   DEFAULT_SLA_ROWS,
   LEADER_LOOKBACK_DAYS,
@@ -1228,9 +1228,13 @@ function boardContext(cards, trails, options = {}) {
     // `done` is a leader-only transition (task-interface §4), so no author test
     // can narrow it further: the transition itself is the attribution. The one
     // exception is the loop's own automated acceptance: a `done` the workflow
-    // pass wrote carries `meta.accepted_by = "loop-review"`, and counting it
-    // would let the loop mask a stalled leader indefinitely.
-    if (card?.status === "done" && card?.meta?.accepted_by !== LOOP_ACCEPTOR) {
+    // pass wrote carries `meta.accepted_by = "loop-review"` (after a verdict) or
+    // `"loop-auto"` (no review was required), and counting it would let the loop
+    // mask a stalled leader indefinitely.
+    if (
+      card?.status === "done" &&
+      !AUTOMATED_ACCEPTORS.includes(card?.meta?.accepted_by)
+    ) {
       note(instant(card?.status_changed_at), "status_changed_at", "frontmatter");
     }
 

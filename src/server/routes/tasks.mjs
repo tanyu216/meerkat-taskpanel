@@ -14,6 +14,7 @@
  */
 
 import { TASK_OPS } from "../../core/index.mjs";
+import { HUMAN_KIND } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { attachmentToWire, reportToWire, taskToWire, workflowToWire } from "../../foundation/wire.mjs";
 import { bool, int, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
@@ -200,6 +201,10 @@ export function registerTaskRoutes(router, surface) {
       // so a re-submitted create is a no-op, not a second card.
       idem: body.idem,
       allowDup: body.allow_dup === true,
+      reviewRequired: body.review_required,
+      // An agent must state the decision in an optional project; the UI (whose
+      // requests arrive as the human actor) may omit it and gets "no review".
+      requireReviewDecision: actor.kind !== HUMAN_KIND,
       reviewOf: body.review_of,
       reviewRound: body.review_round,
       parent: body.parent,
@@ -305,6 +310,8 @@ export function registerTaskRoutes(router, surface) {
       assignee: body.assignee,
       reporter: body.reporter,
       forceCreate: body.force_create === true,
+      reviewRequired: body.review_required,
+      reason: body.reason,
       actor,
     });
     return taskPayload(repos, task);

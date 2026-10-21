@@ -49,6 +49,9 @@ export const CARD_KEY_ORDER = Object.freeze([
   "status",
   "priority",
   "kind",
+  // 0031 — emitted only when the card requires review; absence means "not
+  // required", so a card that never needs one does not grow a line.
+  "review_required",
   "labels",
   "project",
   "target",
@@ -137,6 +140,12 @@ export function renderCard(task, context) {
     heartbeat_at: task.heartbeatAt ?? "",
     blocked_at: task.blockedAt ?? "",
   };
+  // 0031 — only a card that requires review carries the key. Absence is "not
+  // required"; writing `no` on every card would grow every golden by a line for
+  // the default state.
+  if (task.reviewRequired === 1 || task.reviewRequired === true) {
+    data.review_required = "yes";
+  }
   // 0023 — the three reference kinds, each written **only when it says something**
   // the reader could not otherwise know. Writing an empty key would grow every
   // card that never carried one by a line and break the byte-for-byte goldens:

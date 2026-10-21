@@ -237,7 +237,7 @@ turn after patrol.
 The board computes one plan through `issue reconcile --workflow` (see
 [`status-lifecycle.md`](../skills/meerkat-taskpanel/references/status-lifecycle.md#11-the-boards-workflow-decisions) —
 provenance: `src/core/domain/workflow.mjs`). The loop never re-derives a decision. The
-plan has three parts, in this order:
+plan has four parts, in this order:
 
 1. **reconcile.** The board replays the container rules
    (`src/core/commands/rollup.mjs`) and returns the classified changes and notices.
@@ -247,9 +247,17 @@ plan has three parts, in this order:
    `no_child_done` and `dangling_child_edge` are notified, naming the blocking children.
 2. **outcomes.** The plan says what each readable verdict means for the card it audits
    (below); the loop applies it.
-3. **dispatch.** For every flow-A card still in `in_review`, create a review card for the
-   configured reviewer — one per `(original, delivery round)`, with the deterministic
-   idempotency key `loop-review|<ref>|r<round>`.
+3. **auto-accept.** For every flow-A card in `in_review` whose `review_required` snapshot is
+   `0`, and with no current-round review card (a canceled one does not block), the plan emits
+   `auto_accept`. The loop writes `meta.accepted_by=loop-auto` and moves the card
+   `in_review → done`. It does this only when `taskd` may accept that scope under the board's
+   acceptance policy (`acceptanceAllows`): a `human-only` **top-level** card is left for the
+   human (`auto_accept_skipped`), while a child still auto-accepts. `--auto-accept-reviews`
+   does **not** gate this path — it only controls closing review cards.
+4. **dispatch.** For every flow-A card in `in_review` whose `review_required` snapshot is `1`,
+   create a review card for the effective reviewer — one per `(original, delivery round)`,
+   with the deterministic idempotency key `loop-review|<ref>|r<round>`. The effective reviewer
+   is `project.reviewer ??` the deployment reviewer (the reconcile request's `--reviewer`).
 
 ### The review card, and who closes it
 
@@ -287,7 +295,12 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
   comments the findings, writes `meta.rework_round`, and moves it back to rework. Only
   after that does it close the review card.
 - `--auto-accept-reviews=no` is the escape hatch: the verdict is still applied, but the
-  review card is left in `in_review` for a human to accept.
+  review card is left in `in_review` for a human to accept. It does **not** gate the
+  auto-accept path for a no-review original. Under `agent-only` a human cannot close a review
+  card, so `agent-only` + `no` is refused at startup.
+- A `required` project with no effective reviewer is also refused at startup: the loop reads
+  `project list` and computes `project.reviewer ?? the deployment reviewer` for each required
+  project. The board still reports `reviewer_not_configured` per project at runtime.
 
 Why not let the reviewer close its own card (or skip the card entirely)? A reviewer that
 both produces the verdict and accepts it is not a second pair of eyes, and a card is the
@@ -357,8 +370,9 @@ the container; with it, the container stays `in_progress` and names the child bl
   found on that partial read is marked `reason: board_truncated` / `undecidable: true` (with
   its own ledger key), because the original may sit below the read cap.
 - **The verdict must come from the reviewer.** The report's author is checked against the
-  configured reviewer (else the review card's assignee), by id and display name. A report
-  written by anybody else is `review_report_not_by_reviewer` and is not applied.
+  review card's assignee — the effective reviewer recorded at dispatch — with the deployment
+  reviewer as the fallback, by id and display name. A report written by anybody else is
+  `review_report_not_by_reviewer` and is not applied.
 - **A silent reviewer is not silent forever.** An **open** review card suppresses the
   original's `acceptance_card_creation` row, so a reviewer that is never woken would
   otherwise have no watcher at all. A review card in `in_review` whose report has no readable
@@ -398,8 +412,9 @@ the container; with it, the container stays `in_progress` and names the child bl
 | Setting | Flag | Env / host config | Default |
 |---|---|---|---|
 | workflow channel | `--workflow=yes\|no` | `MEERKAT_TASKPANEL_WORKFLOW` | `yes` |
-| reviewer | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | unset |
+| reviewer (deployment default) | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | unset |
 | close the review card | `--auto-accept-reviews=yes\|no` | `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS` | `yes` |
+| project reviewer override | `project create/update --reviewer <agent>` | — | `null` (use the deployment reviewer) |
 | writes per pass | `--workflow-max-actions <n>` | `MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS` | `20` |
 | silent-review threshold | `--review-aging-minutes <n>` | `MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES` | `60` |
 | who may close a task | `--acceptance <policy>` | `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` | `both` |
@@ -407,8 +422,14 @@ the container; with it, the container stays `in_progress` and names the child bl
 
 Precedence is flag → environment → host config → default, the same as the claim policy.
 `workflow` gates the whole channel; `auto-accept-reviews` gates only the review card's own
-close; the reviewer gates only **dispatch** — outcomes still run without one, so reviews
-already in flight can finish after a deployment removes its reviewer.
+close (not the no-review auto-accept path); the reviewer gates only **dispatch** — outcomes
+still run without one, so reviews already in flight can finish after a deployment removes its
+reviewer.
+
+The effective reviewer for a card is `projects.reviewer ??` the deployment reviewer. The loop
+reads `project list` at startup to merge every project reviewer into its scan/wake set, and
+refuses to start when a `required` project has no effective reviewer or when
+`agent-only` meets `auto-accept-reviews=no`.
 
 `acceptance` is the loop's **copy** of the board's policy; the board is authoritative
 (the install-root `.env`, seeded by `install.sh` and re-read on every acceptance decision).

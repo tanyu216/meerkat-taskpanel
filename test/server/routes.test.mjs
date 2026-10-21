@@ -1478,3 +1478,112 @@ describe("server/requests — query-string coercions", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// 0031 — project review policy, reviewer override, task decision
+// ---------------------------------------------------------------------------
+
+describe("server/routes — review policy (0031)", () => {
+  const AGENT = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "agent-a" }) };
+
+  it("round-trips a project's review policy and reviewer", async () => {
+    const created = dataOf(
+      await call("POST", "/api/v1/projects", {
+        id: "flow-req",
+        name: "Flow Required",
+        review_policy: "required",
+        reviewer: "jobs",
+      }),
+    );
+    assert.equal(created.project.review_policy, "required");
+    assert.equal(created.project.reviewer, "jobs");
+
+    const updated = dataOf(
+      await call("PATCH", "/api/v1/projects/flow-req", {
+        review_policy: "off",
+        reviewer: "",
+      }),
+    );
+    assert.equal(updated.project.review_policy, "off");
+    assert.equal(updated.project.reviewer, null);
+  });
+
+  it("refuses an unknown review policy", async () => {
+    const result = await call("POST", "/api/v1/projects", {
+      id: "flow-bad",
+      name: "Bad",
+      review_policy: "sometimes",
+    });
+    assert.equal(result.status, 400);
+    assert.equal(result.body.error.code, "VALIDATION_FAILED");
+  });
+
+  it("derives the task decision from the project, and requires an agent to state it", async () => {
+    dataOf(
+      await call("POST", "/api/v1/projects", {
+        id: "flow-required",
+        name: "Required",
+        review_policy: "required",
+      }),
+    );
+    const required = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "flow-required",
+        title: "required card",
+      }),
+    );
+    assert.equal(required.task.review_required, true);
+
+    dataOf(
+      await call("POST", "/api/v1/projects", {
+        id: "flow-optional",
+        name: "Optional",
+        review_policy: "optional",
+      }),
+    );
+    const omitted = await call(
+      "POST",
+      "/api/v1/tasks",
+      { project_id: "flow-optional", title: "agent omitted" },
+      AGENT,
+    );
+    assert.equal(omitted.status, 400);
+    assert.equal(omitted.body.error.code, "VALIDATION_FAILED");
+    assert.equal(omitted.body.error.details?.field, "review_required");
+
+    const stated = dataOf(
+      await call(
+        "POST",
+        "/api/v1/tasks",
+        { project_id: "flow-optional", title: "agent stated", review_required: true },
+        AGENT,
+      ),
+    );
+    assert.equal(stated.task.review_required, true);
+  });
+
+  it("plans an auto_accept for a delivered card in an off project", async () => {
+    dataOf(
+      await call("POST", "/api/v1/projects", {
+        id: "flow-off",
+        name: "Off",
+        review_policy: "off",
+      }),
+    );
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "flow-off", title: "no review" }),
+    );
+    assert.equal(created.task.review_required, false);
+    const delivered = await deliverCard(created.task.identifier);
+    assert.equal(delivered.task.status, "in_review");
+
+    const plan = dataOf(
+      await call("POST", "/api/v1/tasks/reconcile", { workflow: true, reviewer: "jobs" }),
+    );
+    const action = plan.workflow.actions.find(
+      (item) => item.type === "auto_accept" && item.original_ref === created.task.identifier,
+    );
+    assert.ok(action, JSON.stringify(plan.workflow.actions));
+    assert.equal(action.accepted_by, "loop-auto");
+  });
+});

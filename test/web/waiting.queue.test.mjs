@@ -172,6 +172,14 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
     assert.deepEqual(waitIds(tasks, "agent-only"), []);
   });
 
+  it("still queues a no-review card for a human under human-only", () => {
+    // 0031: the review decision does not remove the human's acceptance work on
+    // a human-only board. A no-review card has no review rows, so the
+    // `every` over an empty set releases it to the human.
+    assert.deepEqual(waitIds([delivered("1", { review_required: false })], "human-only"), ["1"]);
+    assert.deepEqual(waitIds([delivered("1", { review_required: false })], "agent-only"), []);
+  });
+
   it("hides a card whose current-round review is still open, and shows it once resolved", () => {
     for (const status of ["todo", "in_progress", "in_review", "blocked", "awaiting"]) {
       const original = delivered("1");

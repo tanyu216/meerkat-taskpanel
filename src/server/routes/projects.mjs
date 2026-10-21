@@ -21,7 +21,7 @@
 
 import { orderDebugEntry, rankProjects } from "../../foundation/project-order.mjs";
 import { projectToWire } from "../../foundation/wire.mjs";
-import { arr, obj, shape, str, truthy } from "../requests.mjs";
+import { REQUEST, arr, obj, shape, str, truthy } from "../requests.mjs";
 
 // Declared request schemas — the shape the contract snapshot freezes
 // (`routes[].request`). See `src/server/requests.mjs` for the vocabulary and the
@@ -37,6 +37,8 @@ const CREATE_BODY = shape({
   labels: arr(str()),
   meta: obj(),
   readme: str(),
+  review_policy: REQUEST.reviewPolicy,
+  reviewer: str(),
 });
 
 /** `PATCH /api/v1/projects/:id` — a partial update (`meta` merges, F-C3's sibling rule). */
@@ -45,6 +47,8 @@ const PATCH_BODY = shape({
   labels: arr(str()),
   readme: str(),
   meta: obj(),
+  review_policy: REQUEST.reviewPolicy,
+  reviewer: str(),
 });
 
 /** `PUT /api/v1/projects/:id/readme` — the whole document replaces whatever was there. */
@@ -83,6 +87,8 @@ export function registerProjectRoutes(router, surface) {
       labels: body.labels,
       meta: body.meta,
       readme: body.readme,
+      reviewPolicy: body.review_policy,
+      reviewer: body.reviewer,
       actor,
     });
     return { project: projectToWire(project) };
@@ -102,6 +108,8 @@ export function registerProjectRoutes(router, surface) {
     if (body.name !== undefined) patch.name = body.name;
     if (body.labels !== undefined) patch.labels = body.labels;
     if (body.readme !== undefined) patch.readme = body.readme;
+    if (body.review_policy !== undefined) patch.reviewPolicy = body.review_policy;
+    if (body.reviewer !== undefined) patch.reviewer = body.reviewer;
     // `--meta k=v` merges, for the same reason it does on a task: a flag is a
     // delta, not a replacement document.
     if (body.meta !== undefined) {

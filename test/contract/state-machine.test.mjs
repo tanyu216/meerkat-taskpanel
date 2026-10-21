@@ -263,6 +263,85 @@ describe("contract/state-machine — delivery rounds (F3)", () => {
   });
 });
 
+describe("contract/state-machine — the review-required done gate (0031)", () => {
+  /**
+   * A card at `in_review` carrying the 0031 snapshot, plus the review cards it
+   * has produced. The DB trigger is the machine floor: it demands that a
+   * current-round review *exists and has been entered*; whether that review
+   * approved is the JS rule (`REVIEW_PENDING`), stated as such.
+   */
+  function reviewable(db, { reviewRequired = 1, reviews = [] } = {}) {
+    insertProject(db);
+    insertTask(db, {
+      id: "orig",
+      identifier: "PROJ-0001",
+      status: "in_review",
+      review_required: reviewRequired,
+    });
+    reviews.forEach((review, index) => {
+      insertTask(db, {
+        id: `rev-${index}`,
+        identifier: `PROJ-REV-${index + 1}`,
+        status: review.status ?? "in_review",
+        review_of_id: "orig",
+        review_round: review.round ?? 1,
+      });
+    });
+    return "orig";
+  }
+
+  it("refuses done when the card requires review and no review exists", async () => {
+    await withBoard(({ db }) => {
+      assert.equal(move(db, reviewable(db), "done"), "REVIEW_REQUIRED");
+    });
+  });
+
+  it("allows done when the card does not require review", async () => {
+    await withBoard(({ db }) => {
+      assert.equal(move(db, reviewable(db, { reviewRequired: 0 }), "done"), "NO_ERROR");
+    });
+  });
+
+  it("accepts a current-round review that has been entered or finished", async () => {
+    await withBoard(({ db }) => {
+      assert.equal(move(db, reviewable(db, { reviews: [{ status: "in_review" }] }), "done"), "NO_ERROR");
+    });
+    await withBoard(({ db }) => {
+      assert.equal(move(db, reviewable(db, { reviews: [{ status: "done" }] }), "done"), "NO_ERROR");
+    });
+  });
+
+  it("does not accept a canceled review, or one from an earlier round", async () => {
+    await withBoard(({ db }) => {
+      assert.equal(move(db, reviewable(db, { reviews: [{ status: "canceled" }] }), "done"), "REVIEW_REQUIRED");
+    });
+    await withBoard(({ db }) => {
+      // The original is on delivery round 1; a review stamped round 2 is history.
+      assert.equal(move(db, reviewable(db, { reviews: [{ round: 2 }] }), "done"), "REVIEW_REQUIRED");
+    });
+  });
+
+  it("refuses to let a review card itself require review", async () => {
+    await withBoard(({ db }) => {
+      insertProject(db);
+      insertTask(db, { id: "orig2", identifier: "PROJ-0002", status: "in_review" });
+      assert.equal(
+        reasonCode(() =>
+          insertTask(db, {
+            id: "rev2",
+            identifier: "PROJ-0003",
+            status: "in_review",
+            review_of_id: "orig2",
+            review_round: 1,
+            review_required: 1,
+          }),
+        ),
+        "REVIEW_CARD_MARKER_INVALID",
+      );
+    });
+  });
+});
+
 describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
   it("has in_progress → awaiting as the only entry, down both paths", async () => {
     await withBoard(({ db }) => {

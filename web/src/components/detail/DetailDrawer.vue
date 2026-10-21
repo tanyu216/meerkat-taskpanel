@@ -1338,6 +1338,14 @@ function copyId() {
             <span class="td-mono" data-detail-project-label>{{ projectLabel }}</span>
           </button>
 
+          <!-- 0031 — the card's review decision. Read-only: the decision is set
+               at creation and changed through the audited `--review` override,
+               not by a drawer edit. -->
+          <span class="td-prop-label" data-i18n="review.label">{{ $t("review.label") }}</span>
+          <span class="td-prop-value" data-detail-review-required :data-review-required="task?.review_required === true ? 'true' : 'false'">
+            {{ task?.review_required === true ? $t("review.required") : $t("review.optional") }}
+          </span>
+
           <span class="td-prop-label" data-i18n="prop.labels">{{ $t("prop.labels") }}</span>
           <!-- R14 B16/D27 — the labels row's **root** is the value box itself
                (`.td-prop-value.td-prop-combo`): the row's 28px measure and its

@@ -181,3 +181,31 @@ describe("cli/project — the identifier prefix (C-PREFIX-1)", () => {
     });
   });
 });
+
+describe("cli/project — review policy and reviewer (0031)", () => {
+  it("creates and updates the review policy and reviewer", async () => {
+    await withCli(async ({ run }) => {
+      const created = dataOf(
+        run([
+          "project", "create", "--id", "flow", "--name", "Flow",
+          "--review-policy", "required", "--reviewer", "jobs", "--json",
+        ]),
+      );
+      assert.equal(created.project.review_policy, "required");
+      assert.equal(created.project.reviewer, "jobs");
+
+      const updated = dataOf(
+        run(["project", "update", "flow", "--review-policy", "off", "--reviewer", "", "--json"]),
+      );
+      assert.equal(updated.project.review_policy, "off");
+      assert.equal(updated.project.reviewer, null);
+
+      const invalid = run([
+        "project", "create", "--id", "bad", "--name", "Bad",
+        "--review-policy", "sometimes", "--json",
+      ]);
+      assert.equal(invalid.status, 1);
+      assert.equal(JSON.parse(invalid.stdout).error.code, "VALIDATION_FAILED");
+    });
+  });
+});

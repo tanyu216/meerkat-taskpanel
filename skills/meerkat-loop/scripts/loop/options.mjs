@@ -391,6 +391,38 @@ export function buildScanAgents(opts, workflow, reviewerIsWorker) {
 }
 
 /**
+ * Merge the deployment reviewer with the project-level overrides (0031).
+ *
+ * `resolveLoopConfig` is synchronous and has no board access; the async entries
+ * (poll/workflow/patrol) read `project list` and call this to get the effective
+ * reviewer set. A reviewer that is also a worker stays in the worker lane and
+ * is not scanned twice.
+ *
+ * @param {object} opts
+ * @param {{reviewer: string|null}} config
+ * @param {string[]} projectReviewers
+ * @returns {{reviewers: string[], reviewerWorkers: string[], scanAgents: string[]}}
+ */
+export function mergeReviewerSets(opts, config, projectReviewers = []) {
+  const workers = Array.isArray(opts.agents) ? opts.agents : [];
+  const reviewers = [];
+  const add = (value) => {
+    if (typeof value !== "string") return;
+    const name = value.trim();
+    if (name !== "" && !reviewers.includes(name)) reviewers.push(name);
+  };
+  add(config?.reviewer);
+  for (const reviewer of Array.isArray(projectReviewers) ? projectReviewers : []) add(reviewer);
+
+  const reviewerWorkers = reviewers.filter((reviewer) => workers.includes(reviewer));
+  const scanAgents = [
+    ...workers,
+    ...reviewers.filter((reviewer) => !workers.includes(reviewer)),
+  ];
+  return { reviewers, reviewerWorkers, scanAgents };
+}
+
+/**
  * Resolve the policies every entry shares, from the same flag/env/config
  * precedence the original supervisor used.
  *

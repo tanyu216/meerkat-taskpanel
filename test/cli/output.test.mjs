@@ -121,7 +121,22 @@ describe("cli/wire — the JSON vocabulary", () => {
   it("projects the other entities with the same naming rule", () => {
     assert.deepEqual(
       projectToWire({ id: "p", name: "P", labels: [], meta: {}, readme: null, archivedAt: null, createdAt: "t", updatedAt: "t" }),
-      { id: "p", name: "P", prefix: "P", labels: [], meta: {}, readme: null, task_count: null, archived_at: null, created_at: "t", updated_at: "t" },
+      {
+        id: "p",
+        name: "P",
+        prefix: "P",
+        labels: [],
+        meta: {},
+        readme: null,
+        task_count: null,
+        // 0031 — the review policy defaults to `optional`; no project override
+        // means the deployment reviewer applies, so `reviewer` is null.
+        review_policy: "optional",
+        reviewer: null,
+        archived_at: null,
+        created_at: "t",
+        updated_at: "t",
+      },
     );
 
     // The sidebar badge's number: served with the list, so it is `null` — not 0 —

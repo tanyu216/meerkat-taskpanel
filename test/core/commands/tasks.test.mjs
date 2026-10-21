@@ -2988,3 +2988,197 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// 0031 — the per-card review decision
+// ---------------------------------------------------------------------------
+
+describe("commands/tasks — review decision (0031)", () => {
+  const TASKD = { kind: "taskd", id: "board" };
+
+  /** Create, claim and deliver a card; returns the delivered in_review row. */
+  function deliverOne(commands, projectId, title, actor = AGENT) {
+    const task = commands.createTask({ projectId, title, actor });
+    commands.claim({ id: task.id, actor });
+    return commands.deliver({ taskId: task.id, report: report(), actor }).task;
+  }
+
+  it("resolves required / optional / off at creation", async () => {
+    await board(async ({ commands }) => {
+      commands.createProject({ id: "req", name: "Required", reviewPolicy: "required", actor: HUMAN });
+      commands.createProject({ id: "off", name: "Off", reviewPolicy: "off", actor: HUMAN });
+
+      assert.equal(commands.createTask({ projectId: "req", title: "r", actor: AGENT }).reviewRequired, 1);
+      assert.equal(commands.createTask({ projectId: "off", title: "o", actor: AGENT }).reviewRequired, 0);
+      assert.equal(commands.createTask({ projectId: "proj", title: "d", actor: AGENT }).reviewRequired, 0);
+      assert.equal(
+        commands.createTask({ projectId: "proj", title: "y", actor: AGENT, reviewRequired: true }).reviewRequired,
+        1,
+      );
+      assert.throws(
+        () => commands.createTask({ projectId: "req", title: "no", actor: AGENT, reviewRequired: false }),
+        (err) => err.code === "VALIDATION_FAILED",
+      );
+      assert.throws(
+        () => commands.createTask({ projectId: "off", title: "yes", actor: AGENT, reviewRequired: true }),
+        (err) => err.code === "VALIDATION_FAILED",
+      );
+    });
+  });
+
+  it("refuses an agent's omission in an optional project", async () => {
+    await board(async ({ commands }) => {
+      assert.throws(
+        () =>
+          commands.createTask({
+            projectId: "proj",
+            title: "decide",
+            actor: AGENT,
+            requireReviewDecision: true,
+          }),
+        (err) => err.code === "VALIDATION_FAILED" && err.details?.field === "review_required",
+      );
+      // A human/UI caller may omit it and gets the default.
+      assert.equal(
+        commands.createTask({ projectId: "proj", title: "human", actor: HUMAN, requireReviewDecision: false })
+          .reviewRequired,
+        0,
+      );
+    });
+  });
+
+  it("forces a review card to 0 and refuses an opt-in", async () => {
+    await board(async ({ commands }) => {
+      const original = deliverOne(commands, "proj", "original");
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "review",
+        reviewOf: original.identifier,
+        reviewRound: original.deliveryRound,
+        actor: AGENT,
+      });
+      assert.equal(review.reviewRequired, 0);
+      assert.throws(
+        () =>
+          commands.createTask({
+            projectId: "proj",
+            title: "review two",
+            reviewOf: original.identifier,
+            reviewRound: original.deliveryRound,
+            actor: AGENT,
+            reviewRequired: true,
+            // Bypass the creation idempotency guard (the first review card is
+            // non-terminal and already holds the derived key) so the resolver
+            // is the thing that refuses.
+            allowDup: true,
+          }),
+        (err) => err.code === "VALIDATION_FAILED",
+      );
+    });
+  });
+
+  it("requires an approved current-round review before done", async () => {
+    await board(async ({ commands }) => {
+      commands.createProject({ id: "req", name: "Required", reviewPolicy: "required", actor: HUMAN });
+      const original = deliverOne(commands, "req", "original");
+      assert.equal(original.reviewRequired, 1);
+
+      assert.throws(
+        () => commands.moveStatus({ id: original.id, to: "done", actor: TASKD }),
+        (err) => err.code === "REVIEW_REQUIRED",
+      );
+
+      const review = commands.createTask({
+        projectId: "req",
+        title: "review",
+        reviewOf: original.identifier,
+        reviewRound: original.deliveryRound,
+        actor: AGENT,
+      });
+      assert.equal(review.reviewRequired, 0, "a review card never requires its own review");
+      commands.claim({ id: review.id, actor: AGENT });
+      commands.deliver({
+        taskId: review.id,
+        report: report({ conclusion: "VERDICT: APPROVE\nlooks good" }),
+        actor: AGENT,
+      });
+
+      const done = commands.moveStatus({ id: original.id, to: "done", actor: TASKD });
+      assert.equal(done.status, "done");
+    });
+  });
+
+  it("lets a human waive with a reason, and refuses an agent", async () => {
+    await board(async ({ db, commands }) => {
+      commands.createProject({ id: "req", name: "Required", reviewPolicy: "required", actor: HUMAN });
+      const original = deliverOne(commands, "req", "original");
+
+      assert.throws(
+        () =>
+          commands.updateTask({
+            id: original.id,
+            reviewRequired: false,
+            reason: "documentation only",
+            actor: AGENT,
+          }),
+        (err) => err.code === "ACCEPTANCE_FORBIDDEN",
+      );
+      assert.throws(
+        () => commands.updateTask({ id: original.id, reviewRequired: false, actor: HUMAN }),
+        (err) => err.code === "VALIDATION_FAILED",
+      );
+
+      const waived = commands.updateTask({
+        id: original.id,
+        reviewRequired: false,
+        reason: "documentation only",
+        actor: HUMAN,
+      });
+      assert.equal(waived.reviewRequired, 0);
+      assert.ok(activitiesFor(db, original.id).includes("review_override"));
+      assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: HUMAN }).status, "done");
+    });
+  });
+
+  it("refuses a waiver while a current-round review is open", async () => {
+    await board(async ({ commands }) => {
+      commands.createProject({ id: "req", name: "Required", reviewPolicy: "required", actor: HUMAN });
+      const original = deliverOne(commands, "req", "original");
+      commands.createTask({
+        projectId: "req",
+        title: "review",
+        reviewOf: original.identifier,
+        reviewRound: original.deliveryRound,
+        actor: AGENT,
+      });
+      assert.throws(
+        () =>
+          commands.updateTask({
+            id: original.id,
+            reviewRequired: false,
+            reason: "please skip",
+            actor: HUMAN,
+          }),
+        (err) => err.code === "REVIEW_PENDING",
+      );
+    });
+  });
+
+  it("lets an agent escalate and refuses an escalation in an off project", async () => {
+    await board(async ({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "escalate", actor: AGENT });
+      assert.equal(task.reviewRequired, 0);
+      assert.equal(
+        commands.updateTask({ id: task.id, reviewRequired: true, actor: AGENT }).reviewRequired,
+        1,
+      );
+
+      commands.createProject({ id: "off", name: "Off", reviewPolicy: "off", actor: HUMAN });
+      const off = commands.createTask({ projectId: "off", title: "off", actor: AGENT });
+      assert.throws(
+        () => commands.updateTask({ id: off.id, reviewRequired: true, actor: AGENT }),
+        (err) => err.code === "VALIDATION_FAILED",
+      );
+    });
+  });
+});

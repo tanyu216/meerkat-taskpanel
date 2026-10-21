@@ -11,8 +11,9 @@ import { existsSync } from "node:fs";
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 import { candidateArgs, pruneRegistry } from "../../src/foundation/scheduling.mjs";
 
+import { readProjectReviewers } from "./board.mjs";
 import { runEntry } from "./entry.mjs";
-import { resolveLoopConfig } from "./options.mjs";
+import { mergeReviewerSets, resolveLoopConfig } from "./options.mjs";
 import { runPollTick, spawnWorkerReal } from "./runners.mjs";
 import {
   createLogger,
@@ -31,18 +32,33 @@ import {
  */
 export async function runOnce(opts, env = process.env) {
   const log = createLogger(opts);
-  const { config, reviewerIsWorker, scanAgents } = resolveLoopConfig(opts, env);
+  const { config } = resolveLoopConfig(opts, env);
+
+  // 0031 — project-level reviewer overrides join the deployment reviewer in the
+  // scan/wake set. A failed read falls back to the global reviewer (the board
+  // itself still resolves the effective reviewer per card).
+  const projectRead = readProjectReviewers(opts, log);
+  const projectReviewers = projectRead.ok
+    ? projectRead.projects
+        .map((project) => project.reviewer)
+        .filter((reviewer) => typeof reviewer === "string" && reviewer.trim() !== "")
+    : [];
+  const merged = mergeReviewerSets(opts, config, projectReviewers);
+  config.reviewers = merged.reviewers;
+  config.reviewerWorkers = merged.reviewerWorkers;
+  const agents = merged.scanAgents;
 
   const registry = opts.dryRun
     ? { version: 1, running: {} }
     : pruneRegistry(loadRegistry(opts.state), isProcessAlive);
 
   const deps = {
-    agents: scanAgents,
+    agents,
     registry,
     config,
     readCandidates: (agent, { claimUnassigned: pool }) => {
-      const dedicatedReviewer = config.reviewer !== null && agent === config.reviewer && !reviewerIsWorker;
+      const dedicatedReviewer =
+        merged.reviewers.includes(agent) && !merged.reviewerWorkers.includes(agent);
       // A dedicated reviewer never takes the public pool, and only sees review
       // cards: handing it an ordinary card would be a self-review waiting to
       // happen.
@@ -76,7 +92,7 @@ export async function runOnce(opts, env = process.env) {
   const gluePresent = opts.glue !== null && existsSync(opts.glue);
   const wakeForm = opts.wakeCommand === null ? `glue=${gluePresent ? opts.glue : "none"}` : `wake_command=${opts.wakeCommand}`;
   log(
-    `tick: host=${opts.host} agents=${opts.agents.join(",")} claim_unassigned=${config.claimUnassigned ? "yes" : "no"} ` +
+    `tick: host=${opts.host} agents=${agents.join(",")} claim_unassigned=${config.claimUnassigned ? "yes" : "no"} ` +
       `recover_stale=${config.recoverStale ? "yes" : "no"} ` +
       `${wakeForm} projects_json=${opts.projectsJson}${opts.dryRun ? " (dry-run)" : ""}`,
   );

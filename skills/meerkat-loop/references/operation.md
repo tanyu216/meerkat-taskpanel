@@ -77,8 +77,8 @@ Precedence: flag > process env > host config > default.
 | `--claim-unassigned=yes\|no` | yes | also claim the public pool |
 | `--recover-stale=yes\|no` | yes | also claim stale `in_progress` (same holder 30 min, anyone 6 h) |
 | `--workflow=yes\|no` | yes | run the workflow pass; off means the loop writes no card |
-| `--reviewer <agent>` | unset | the independent reviewer; unset disables dispatch, while verdicts in flight still apply |
-| `--auto-accept-reviews=yes\|no` | yes | close a review card after applying its verdict; `no` leaves it for a human |
+| `--reviewer <agent>` | unset | the deployment reviewer. A project's `reviewer` overrides it; unset disables dispatch for projects without one, and a `required` project with no effective reviewer fails startup. Verdicts in flight still apply. |
+| `--auto-accept-reviews=yes\|no` | yes | close a **review card** after applying its verdict; `no` leaves it for a human. It does not gate auto-accepting a no-review original. `agent-only` + `no` is refused at startup (nobody could close a review card). |
 | `--acceptance <policy>` | `both` | `human-only` \| `both` \| `agent-only`; **advisory**, the board decides |
 | `--workflow-max-actions <n>` | 20 | writes per workflow pass |
 | `--review-aging-minutes <n>` | 60 | report a review card with no readable verdict this long |
@@ -96,15 +96,26 @@ Precedence: flag > process env > host config > default.
 
 The SLA rows are notify-only. The workflow pass is the only path that writes a
 card, and the board decides what it writes: one plan from `issue
-reconcile --workflow` (container reconcile, review outcomes, dispatch), which
-the loop then executes.
+reconcile --workflow` (container reconcile, review outcomes, auto-accept,
+dispatch), which the loop then executes.
 
-A flow-A delivery that lands in `in_review` is dispatched to the configured
-reviewer as a **review card**: an ordinary `kind=task` card with
-`meta.review_of=<original>`, `meta.flow=B`, `meta.review_round=<round>` and the
-label `review`. Detection reads the structural `review_of_id`, never the label.
-Poll wakes the reviewer through the normal atomic claim; a dedicated reviewer
-sees only review cards and never the public pool.
+A flow-A delivery that lands in `in_review` **whose `review_required` snapshot
+is 1** is dispatched to the configured reviewer as a **review card**: an
+ordinary `kind=task` card with `meta.review_of=<original>`, `meta.flow=B`,
+`meta.review_round=<round>` and the label `review`. Detection reads the
+structural `review_of_id`, never the label. The reviewer is
+`project.reviewer ??` the deployment reviewer. Poll wakes every configured
+reviewer through the normal atomic claim; a dedicated reviewer sees only review
+cards and never the public pool.
+
+A card at `review_required = 0` gets no review card. The board's plan carries
+`auto_accept`; the loop writes `meta.accepted_by=loop-auto` /
+`accepted_round` / `auto_accepted=1`, comments, and moves the original
+`in_review → done`. It does this only when `taskd` may accept the card's scope
+under the board policy; under `human-only` a top-level card is left for the
+human (`auto_accept_skipped`, reason `human_only`), while a child still
+auto-accepts. `autoAcceptReviews` does not gate this path — it only controls
+whether the loop closes a review card.
 
 The reviewer reads the original's description, every acceptance item, the
 current round's report, the comment trail and (for an epic) its children. Its
@@ -132,10 +143,10 @@ Rules that make it safe to run unattended:
   On a truncated board read, `original_unseen` carries `reason: board_truncated`
   and `undecidable: true` with its own ledger key: the original may sit below
   the read cap.
-- **A combined cap is reported** — when the outcome+dispatch slice drops work,
-  the plan carries `actions_capped` (cap / dropped / outcomes / dispatch) and it
-  is notified once per cap. `dispatch_capped` remains the log-only signal for a
-  dispatch-only overflow.
+- **A combined cap is reported** — when the outcome+auto-accept+dispatch slice
+  drops work, the plan carries `actions_capped` (cap / dropped / outcomes /
+  auto_accept / dispatch) and it is notified once per cap. `dispatch_capped`
+  remains the log-only signal for a dispatch-only overflow.
 - **The verdict is the reviewer's** — a report from anybody else is
   `review_report_not_by_reviewer` and is not applied.
 - **A silent reviewer is reported** — an `in_review` review card with an

@@ -238,6 +238,11 @@ const PROBE_PROJECT = {
   // integer on every row the list route serves; only a projection with no count
   // supplied (the local `taskctl project` read) emits `null`.
   taskCount: 1,
+  // Populated so the frozen types are `string` (review_policy) and `string`
+  // (reviewer) rather than `null`; a project with no override emits null, which
+  // the client treats as "use the deployment reviewer".
+  reviewPolicy: "required",
+  reviewer: "probe",
   archivedAt: "probe",
   createdAt: "probe",
   updatedAt: "probe",
@@ -327,6 +332,9 @@ const PROBE_TASK = Object.freeze({
   status: "probe",
   priority: "probe",
   kind: "probe",
+  // The DB column is INTEGER 0/1; the wire field is a boolean, so the probe is
+  // `true` and the snapshot freezes `boolean`, not `number`.
+  reviewRequired: true,
   sortOrder: 1,
   assigneeId: "probe-assignee",
   reporterId: "probe-reporter",
@@ -401,9 +409,16 @@ export function collectWire() {
         acceptedBy: "loop-review",
         held: false,
       },
+      {
+        type: "auto_accept",
+        originalRef: "T-3",
+        round: 1,
+        acceptedBy: "loop-auto",
+        held: false,
+      },
     ],
     changes: [{ epic: "E-1", action: "close", reason: "all_children_terminal" }],
-    summary: { approved: 1, actions: 1, alerts: 1 },
+    summary: { approved: 1, actions: 2, alerts: 1, autoAccepted: 1 },
   });
   const shapes = {
     activity: activityToWire(PROBE_ACTIVITY),
@@ -432,6 +447,22 @@ export function collectWire() {
   out.push({ shape: "task.reporter", fields: fieldTypes(task.reporter) });
   out.push({ shape: "task.report_waiver", fields: fieldTypes(task.report_waiver) });
   out.push({ shape: "workflow_plan.action", fields: fieldTypes(workflow.actions[0]) });
+  out.push({
+    shape: "workflow_plan.action_auto_accept",
+    fields: fieldTypes(
+      workflowToWire({
+        actions: [
+          {
+            type: "auto_accept",
+            originalRef: "T-3",
+            round: 1,
+            acceptedBy: "loop-auto",
+            held: false,
+          },
+        ],
+      }).actions[0],
+    ),
+  });
   out.push({
     shape: "workflow_plan.action_create",
     fields: fieldTypes(
@@ -469,6 +500,7 @@ export function collectWire() {
             assigneeId: "agent-1",
             originalTitle: "Epic",
             findings: "…",
+            reviewRequired: true,
             closeReview: true,
           },
         ],

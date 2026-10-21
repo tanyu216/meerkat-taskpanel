@@ -201,11 +201,19 @@
       "http": 413
     },
     {
+      "code": "REVIEW_CARD_MARKER_INVALID",
+      "http": 409
+    },
+    {
       "code": "REVIEW_OF_IMMUTABLE",
       "http": 409
     },
     {
       "code": "REVIEW_PENDING",
+      "http": 409
+    },
+    {
+      "code": "REVIEW_REQUIRED",
       "http": 409
     },
     {
@@ -458,6 +466,17 @@
             },
             "readme": {
               "type": "string"
+            },
+            "review_policy": {
+              "enum": [
+                "off",
+                "optional",
+                "required"
+              ],
+              "type": "string"
+            },
+            "reviewer": {
+              "type": "string"
             }
           },
           "required": [],
@@ -494,6 +513,17 @@
               "type": "string"
             },
             "readme": {
+              "type": "string"
+            },
+            "review_policy": {
+              "enum": [
+                "off",
+                "optional",
+                "required"
+              ],
+              "type": "string"
+            },
+            "reviewer": {
               "type": "string"
             }
           },
@@ -686,6 +716,9 @@
             "review_of": {
               "type": "string"
             },
+            "review_required": {
+              "type": "boolean"
+            },
             "review_round": {
               "type": "integer"
             },
@@ -777,8 +810,14 @@
               ],
               "type": "string"
             },
+            "reason": {
+              "type": "string"
+            },
             "reporter": {
               "type": "string"
+            },
+            "review_required": {
+              "type": "boolean"
             },
             "title": {
               "type": "string"
@@ -1436,6 +1475,8 @@
         "name": "string",
         "prefix": "string",
         "readme": "string",
+        "review_policy": "string",
+        "reviewer": "string",
         "task_count": "number",
         "updated_at": "string"
       },
@@ -1569,6 +1610,7 @@
         "reporter_id": "string",
         "reporter_kind": "null",
         "review_of_id": "null",
+        "review_required": "boolean",
         "review_round": "null",
         "sort_order": "number",
         "source_path": "string",
@@ -1638,6 +1680,16 @@
     },
     {
       "fields": {
+        "accepted_by": "string",
+        "held": "boolean",
+        "original_ref": "string",
+        "round": "number",
+        "type": "string"
+      },
+      "shape": "workflow_plan.action_auto_accept"
+    },
+    {
+      "fields": {
         "acceptance": "array",
         "description": "string",
         "idem": "string",
@@ -1660,6 +1712,7 @@
         "original_title": "string",
         "project_id": "string",
         "review_ref": "string",
+        "review_required": "boolean",
         "review_status": "string",
         "rework_round": "number",
         "round": "number",
@@ -1687,7 +1740,8 @@
       "fields": {
         "actions": "number",
         "alerts": "number",
-        "approved": "number"
+        "approved": "number",
+        "auto_accepted": "number"
       },
       "shape": "workflow_plan.summary"
     }
