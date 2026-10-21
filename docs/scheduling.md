@@ -367,10 +367,14 @@ the container; with it, the container stays `in_progress` and names the child bl
   pass may not yet see the review card and can emit one `acceptance_card_creation` notice;
   the next tick suppresses it (for that round only — see below). The reverse ordering
   would delay every dispatch by a tick for no benefit.
-- **Round-aware suppression.** `acceptance_card_creation` is silenced by a review card for
-  the **same delivery round**, or by a legacy review card with no `review_round` (the
-  conservative reading). A review card from a previous round does not silence a fresh
-  delivery, which is what makes the rejection → rework → re-review loop work.
+- **Round-aware suppression.** `acceptance_card_creation` is silenced by an **open** review
+  card for the **same delivery round**, or by a legacy open review card with no
+  `review_round` (the conservative reading). A review card from a previous round does not
+  silence a fresh delivery, which is what makes the rejection → rework → re-review loop work.
+  A **closed** review card does not silence it either: a `done` one turns the row into the
+  acceptance reminder (the verdict landed, the original still waits), and a `canceled` one
+  leaves the standard "create a review card" action. A closed review must never be the
+  original's only watcher.
 
 ### Configuration
 

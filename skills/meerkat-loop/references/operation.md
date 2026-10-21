@@ -132,7 +132,8 @@ Rules that make it safe to run unattended:
   `review_report_not_by_reviewer` and is not applied.
 - **A silent reviewer is reported** — no readable verdict within
   `--review-aging-minutes` raises `review_aging`. The original's SLA row is
-  suppressed while the review card exists, so this is its only watcher.
+  suppressed while an **open** review card exists; a closed review card leaves
+  the row as the original's watcher, so a canceled or done review cannot hide it.
 - **The board enforces acceptance** — a refused writer gets
   `ACCEPTANCE_FORBIDDEN`; the loop leaves the review card in place and retries.
 - **The review card is closed last** — a crash between the original's move and
