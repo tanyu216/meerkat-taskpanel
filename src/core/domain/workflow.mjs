@@ -212,7 +212,8 @@ const VERDICT_LINE = /^VERDICT\s*:\s*(APPROVE|REJECT)\b/i;
  * reviewer writes its findings once, where the worker will read them.
  *
  * @param {object[]} reports reports for the review card, round-ascending
- * @param {number|null} round the round the review audits; `null` reads the latest
+ * @param {number|null} round the round the review card's report is stamped with
+ *   (its own `delivery_round`), not the round it audits; `null` reads the latest
  * @returns {{ok: true, verdict: "APPROVE"|"REJECT", findings: string, report: object}
  *   | {ok: false, reason: "no_report"|"no_verdict"}}
  */

@@ -88,6 +88,44 @@ describe("commands/workflowTick — the board's plan", () => {
     });
   });
 
+  it("applies a verdict on a review that audits a later delivery round", async () => {
+    await board(({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Do the thing again",
+        assignee: "linus",
+        actor: HUMAN,
+      });
+      commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });
+      commands.deliver({ taskId: original.id, report: DELIVERY, actor: WORKER });
+      // A rework leaves in_review for in_progress, which starts round 2.
+      commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });
+      commands.deliver({ taskId: original.id, report: DELIVERY, actor: WORKER });
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review round 2",
+        assignee: "jobs",
+        reviewOf: original.identifier,
+        reviewRound: 2,
+        meta: { flow: "B" },
+        actor: HUMAN,
+      });
+      commands.moveStatus({ id: review.id, to: "in_progress", actor: REVIEWER });
+      commands.deliver({ taskId: review.id, report: VERDICT, actor: REVIEWER });
+
+      // The review card's own round is 1; the round it audits is 2. The
+      // verdict report is stamped with the card's own round.
+      assert.equal(commands.getTask({ id: review.id }).deliveryRound, 1);
+      assert.equal(commands.listReports({ taskId: review.id })[0].round, 1);
+
+      const result = commands.workflowTick({ reviewer: "jobs" });
+      assert.deepEqual(result.workflow.alerts, []);
+      assert.equal(result.workflow.actions[0]?.type, "approve");
+      assert.equal(result.workflow.summary.approved, 1);
+    });
+  });
+
   it("uses the board's acceptance policy, not a loop-supplied one", async () => {
     await board(
       ({ commands }) => {
