@@ -340,12 +340,16 @@ the container; with it, the container stays `in_progress` and names the child bl
   public pool; a reviewer that is also a worker keeps the ordinary lane.
 - **Bounded.** At most `--workflow-max-actions` (default 20) writes per pass. Reads are
   bounded by `--board-limit` (default 500), which also decides whether the snapshot is
-  truncated. A cap is logged.
+  truncated. When the combined outcome+dispatch slice drops work, the plan carries one
+  `actions_capped` (cap / dropped / outcomes / dispatch); `dispatch_capped` remains the
+  log-only dispatch-only overflow. A cap is logged.
 - **Fail-safe.** An unreadable verdict, an unseen original or a conflicting verdict
   (`done` + `REJECT`) produces an alert and **no write**; the review card stays put and the
   next pass retries. A round mismatch closes the review card (`close_review`, reason
   `round_mismatch`) under the default auto-accept, and only alerts (`review_stale_round`)
-  when auto-accept is off. A truncated board read dispatches nothing.
+  when auto-accept is off. A truncated board read dispatches nothing; an `original_unseen`
+  found on that partial read is marked `reason: board_truncated` / `undecidable: true` (with
+  its own ledger key), because the original may sit below the read cap.
 - **The verdict must come from the reviewer.** The report's author is checked against the
   configured reviewer (else the review card's assignee), by id and display name. A report
   written by anybody else is `review_report_not_by_reviewer` and is not applied.
@@ -355,10 +359,12 @@ the container; with it, the container stays `in_progress` and names the child bl
   verdict raises `verdict_unreadable` immediately; a review card that is not `in_review`
   (todo / in_progress / blocked / awaiting) older than `--review-aging-minutes` (default 60)
   raises `review_aging`.
-- **Notified only when actionable.** Standing state — no reviewer configured, a capped
-  pass, a review card the operator deliberately left for a human — is logged, not sent to
-  `--notify` on every period. Findings an operator can act on (including `review_aging`
-  and an unattributable verdict) are notified.
+- **Notified only when actionable.** Standing state — no reviewer configured, a
+  dispatch-only cap, a review card the operator deliberately left for a human — is logged,
+  not sent to `--notify` on every period. Findings an operator can act on (including
+  `review_aging`, an unattributable verdict, `actions_capped` and
+  `review_cards_unclosable`) are notified; the ledger suppresses repeats, keyed to the state
+  rather than the clock.
 - **One action failing never stops the rest**; the review card is always closed last, so
   every half-applied outcome is recoverable (`original done + APPROVE`,
   `rework_round` matching a rework in progress, …).
@@ -405,6 +411,13 @@ Under `human-only` the loop records a top-level `APPROVE` as a comment plus
 the original `in_review` for a human; the marker makes the hold idempotent. Child cards and
 review cards are still closed by the loop. Under `agent-only` the board only requires a
 non-human writer — which agent applies the verdict is the deployment's business.
+
+`agent-only` + `--auto-accept-reviews=no` is a dead configuration for review cards: a human
+cannot close them and the loop will not, so they accumulate. The board reports it per open
+card as `review_cards_unclosable` (`reason: agent_only_without_auto_accept`, `reviews`, one
+ledger key), so it notifies once rather than every pass; the loop warns at startup whether or
+not a card is stuck. The fix is to turn auto-accept on or let a non-human writer close the
+card — the board's plan stays authoritative either way.
 
 ## Continuity: a fresh handoff, not a resumed pile
 

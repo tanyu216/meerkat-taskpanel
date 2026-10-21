@@ -1282,6 +1282,58 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.equal(notify.count(), 2);
   });
 
+  it("notifies actions_capped once per cap", async () => {
+    const notify = spy();
+    const plan = {
+      alerts: [
+        {
+          type: "actions_capped",
+          cap: 2,
+          dropped: 1,
+          outcomes: 1,
+          dispatch: 2,
+          dedup_key: "actions_capped|2",
+        },
+      ],
+      changes: [],
+      actions: [],
+      summary: {},
+    };
+    const first = await runWorkflowTick(
+      baseDeps({ plan, notify, ledger: emptySlaLedger(), now: () => "2026-10-22T10:00:00.000Z" }),
+    );
+    await runWorkflowTick(
+      baseDeps({ plan, notify, ledger: first.ledger, now: () => "2026-10-22T10:10:00.000Z" }),
+    );
+    assert.equal(notify.count(), 1);
+  });
+
+  it("notifies review_cards_unclosable once, then suppresses it", async () => {
+    const notify = spy();
+    const plan = {
+      alerts: [
+        {
+          type: "review_cards_unclosable",
+          reason: "agent_only_without_auto_accept",
+          policy: "agent-only",
+          autoAcceptReviews: false,
+          reviews: 2,
+          dedup_key: "review_cards_unclosable|agent-only|auto_accept_off",
+        },
+      ],
+      changes: [],
+      actions: [],
+      summary: {},
+    };
+    const first = await runWorkflowTick(
+      baseDeps({ plan, notify, ledger: emptySlaLedger(), now: () => "2026-10-22T10:00:00.000Z" }),
+    );
+    await runWorkflowTick(
+      baseDeps({ plan, notify, ledger: first.ledger, now: () => "2026-10-22T10:10:00.000Z" }),
+    );
+    assert.equal(notify.count(), 1);
+  });
+
   it("dedupes workflow_action_failed by action, ref and error", async () => {
     const notify = spy();
     const failing = { type: "create_review", original_ref: "T-1" };

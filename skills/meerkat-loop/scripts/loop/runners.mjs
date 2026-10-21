@@ -512,6 +512,8 @@ export async function runWorkflowTick(deps) {
  * Alerts worth a notification. The rest are log-only standing state
  * (`dispatch_skipped`, `dispatch_capped`, `review_awaiting_human_acceptance`):
  * a tick cannot resolve them, so notifying would repeat every period.
+ * A state-based alert may still notify once when the ledger keys it to the
+ * state rather than the clock (`actions_capped`, `review_cards_unclosable`).
  */
 const WORKFLOW_NOTIFY_TYPES = new Set([
   "reconcile",
@@ -524,6 +526,8 @@ const WORKFLOW_NOTIFY_TYPES = new Set([
   "original_unseen",
   "original_unexpected_status",
   "review_stale_round",
+  "actions_capped",
+  "review_cards_unclosable",
 ]);
 
 function describeWorkflowAlert(alert) {

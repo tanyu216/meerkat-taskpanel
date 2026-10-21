@@ -129,6 +129,13 @@ Rules that make it safe to run unattended:
   and is reviewed again.
 - **Fail-safe** — an unreadable verdict, unseen original, round mismatch or
   conflicting verdict produces an alert and **no write**; the next pass retries.
+  On a truncated board read, `original_unseen` carries `reason: board_truncated`
+  and `undecidable: true` with its own ledger key: the original may sit below
+  the read cap.
+- **A combined cap is reported** — when the outcome+dispatch slice drops work,
+  the plan carries `actions_capped` (cap / dropped / outcomes / dispatch) and it
+  is notified once per cap. `dispatch_capped` remains the log-only signal for a
+  dispatch-only overflow.
 - **The verdict is the reviewer's** — a report from anybody else is
   `review_report_not_by_reviewer` and is not applied.
 - **A silent reviewer is reported** — an `in_review` review card with an
@@ -139,6 +146,11 @@ Rules that make it safe to run unattended:
   original's watcher, so a canceled or done review cannot hide it.
 - **The board enforces acceptance** — a refused writer gets
   `ACCEPTANCE_FORBIDDEN`; the loop leaves the review card in place and retries.
+- **A dead configuration is named** — `acceptance=agent-only` with
+  `auto_accept_reviews=no` leaves review cards with no writer who may close them.
+  The board reports each open one as `review_cards_unclosable` (notified once per
+  ledger key) and the loop prints a startup warning; the fix is auto-accept on or
+  a non-human writer.
 - **The review card is closed last** — a crash between the original's move and
   the card's close is recovered next pass.
 - **A canceled review card ends `canceled`** — from `in_review` it takes the

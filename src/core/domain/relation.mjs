@@ -187,6 +187,38 @@ export function wouldCreateCycle(edges, parent, child) {
  *        `assertBlockEdgeAllowed` uses for `parentEdges`.
  * @throws {DomainError} with the same reason code the DB trigger raises
  */
+/**
+ * A review card is a loop artefact, not a work item. A `parent` edge on either
+ * end silently changes what the card means: the child scope outranks the review
+ * marker for acceptance, the card starts blocking container close, and its
+ * verdict can enter the rollup as child evidence. Refuse the edge outright.
+ *
+ * Pure: takes the two Task DTOs, not a repository.
+ *
+ * @param {{source: object, target: object}} input
+ * @returns {true}
+ * @throws {DomainError} VALIDATION_FAILED with `details.field = "source"|"target"`
+ */
+export function assertParentEdgeHasNoReviewCard({ source, target }) {
+  for (const [task, field] of [[source, "source"], [target, "target"]]) {
+    const structural = task?.reviewOfId !== null && task?.reviewOfId !== undefined;
+    const legacy = typeof task?.meta?.review_of === "string" && task.meta.review_of.trim() !== "";
+    if (!structural && !legacy) continue;
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `a review card cannot be a parent or a child (${task.identifier ?? task.id})`,
+      details: {
+        field,
+        type: "parent",
+        taskId: task.id,
+        identifier: task.identifier,
+        reviewOf: task.reviewOfId ?? task.meta?.review_of ?? null,
+      },
+      hint: { fix: "attach the parent edge to the original work card, not to its review card" },
+    });
+  }
+  return true;
+}
+
 export function assertParentEdgeAllowed(edge, context) {
   const { edges, projectOf, parent } = context;
 

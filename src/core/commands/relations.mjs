@@ -8,7 +8,13 @@
 
 import { DomainError } from "../../foundation/errors.mjs";
 import { RELATION_TYPE } from "../domain/enums.mjs";
-import { assertBlockEdgeAllowed, assertParentEdgeAllowed, normalizeRelation, parentChainOf } from "../domain/relation.mjs";
+import {
+  assertBlockEdgeAllowed,
+  assertParentEdgeAllowed,
+  assertParentEdgeHasNoReviewCard,
+  normalizeRelation,
+  parentChainOf,
+} from "../domain/relation.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 import { advanceContainer } from "./rollup.mjs";
@@ -32,6 +38,13 @@ export function addRelation(ctx, input) {
       const source = loadTask(ctx, input.source);
       const target = loadTask(ctx, input.target);
       const edge = normalizeRelation({ type: input.type, source: source.id, target: target.id });
+
+      // A review card is never a work item. This is identity, not shape, so it
+      // is checked before (and outside) the `force` block: `--force` may skip a
+      // graph-shape check, never the meaning of the card.
+      if (edge.type === "parent") {
+        assertParentEdgeHasNoReviewCard({ source, target });
+      }
 
       // The `blocks` graph is read here as well, and for the same reason the
       // `blocks` guard below reads the parent chain: the two orders together are

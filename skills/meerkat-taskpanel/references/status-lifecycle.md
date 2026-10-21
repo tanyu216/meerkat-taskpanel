@@ -235,6 +235,8 @@ Scope precedence is **`hasParent` > review marker > `top_level`**.
   the original `in_review`; the human accepts it with `issue move <original> done`.
 - Under `agent-only`, a **human cannot close a review card** (the review scope allows only a
   non-human writer), even though review cards are human-closable under `both` / `human-only`.
+  Paired with `--auto-accept-reviews=no` nobody closes them: the board raises
+  `review_cards_unclosable` for each open card and the loop warns at startup.
 
 ## 8. Creating a card in a status
 
@@ -261,7 +263,7 @@ The markdown importer is the exception: it writes history directly, importing
 | `ACCEPTANCE_FORBIDDEN` | 409 | The writer may not move the card to `done` under the policy/scope matrix. |
 | `CHILDREN_OPEN` | 409 | `in_review` or `done` while a child is non-terminal. |
 | `REVIEW_PENDING` | 409 | A human closing a top-level card with current-round review cards still open. |
-| `VALIDATION_FAILED` | 400 | Unknown status; create in `in_progress`/`awaiting`; an epic's illegal initial status; an unknown `awaiting_reason`/`blocked_reason`; a malformed waiver; a `review_of` that names a review card; a `review_round` that is not the original's current `delivery_round`; a review card that is not `kind=task`. |
+| `VALIDATION_FAILED` | 400 | Unknown status; create in `in_progress`/`awaiting`; an epic's illegal initial status; an unknown `awaiting_reason`/`blocked_reason`; a malformed waiver; a `review_of` whose original is not `in_review`; a `review_of` that names a review card; a `review_round` that is not the original's current `delivery_round`; a review card that is not `kind=task`; a `parent` edge with a review card on either end. |
 | `VERSION_CONFLICT` | 409 | `--if-version` does not match the card's version. |
 | `EXECUTION_ACTIVE` | 409 | Another actor holds a fresh claim, or a non-holder sends a heartbeat. |
 | `CLAIM_LOST` | 409 | The claim's compare-and-swap lost a race. |

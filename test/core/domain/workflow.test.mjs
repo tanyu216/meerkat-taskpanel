@@ -464,6 +464,38 @@ describe("planReviewOutcomes", () => {
     assert.deepEqual(result.alerts.map((alert) => alert.type), ["original_unseen"]);
   });
 
+  it("keeps original_unseen exact when the snapshot is complete", () => {
+    const [alert] = outcomes({ tasks: [reviewCard()], verdicts: { "T-2": approve }, config: CONFIG }).alerts;
+    assert.equal(alert.type, "original_unseen");
+    assert.equal(alert.reason, undefined);
+    assert.equal(alert.undecidable, undefined);
+    assert.equal(alert.dedupKey, "original_unseen|T-2|T-1");
+  });
+
+  it("marks original_unseen undecidable on a truncated snapshot", () => {
+    const [alert] = outcomes({
+      tasks: [reviewCard()],
+      verdicts: { "T-2": approve },
+      config: CONFIG,
+      boardTruncated: true,
+    }).alerts;
+    assert.equal(alert.type, "original_unseen");
+    assert.equal(alert.reason, "board_truncated");
+    assert.equal(alert.undecidable, true);
+    assert.notEqual(alert.dedupKey, "original_unseen|T-2|T-1");
+  });
+
+  it("forwards boardTruncated into outcomes", () => {
+    const tick = planWorkflowTick({
+      tasks: [reviewCard()],
+      config: CONFIG,
+      boardTruncated: true,
+    });
+    const alert = tick.alerts.find((entry) => entry.type === "original_unseen");
+    assert.equal(alert.reason, "board_truncated");
+    assert.equal(alert.undecidable, true);
+  });
+
   it("alerts on a conflicting verdict instead of acting on a done card", () => {
     const result = outcomes({ tasks: [card({ status: "done" }), reviewCard()], verdicts: { "T-2": reject }, config: CONFIG });
     assert.deepEqual(result.actions, []);
@@ -599,6 +631,94 @@ describe("planWorkflowTick", () => {
     const result = planWorkflowTick({ tasks, config: { ...CONFIG, maxActions: 3 }, now: NOW });
     assert.equal(result.actions.length, 3);
     assert.equal(result.summary.dispatched, 3);
+  });
+
+  it("reports a combined outcome+dispatch overflow once", () => {
+    const tasks = [
+      card(),
+      reviewCard(),
+      card({ identifier: "T-3", status_changed_at: "2026-10-19T09:00:00.000Z" }),
+      card({ identifier: "T-4", status_changed_at: "2026-10-19T10:00:00.000Z" }),
+    ];
+    const result = planWorkflowTick({
+      tasks,
+      verdicts: { "T-2": { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT } },
+      config: { ...CONFIG, maxActions: 2 },
+      now: NOW,
+    });
+    assert.equal(result.actions.length, 2);
+    assert.deepEqual(result.actions.map((action) => action.type), ["approve", "create_review"]);
+    assert.deepEqual(result.alerts.find((alert) => alert.type === "actions_capped"), {
+      type: "actions_capped",
+      cap: 2,
+      dropped: 1,
+      outcomes: 1,
+      dispatch: 2,
+      dedupKey: "actions_capped|2",
+    });
+    assert.equal(result.alerts.some((alert) => alert.type === "dispatch_capped"), false);
+    assert.equal(result.summary.actions, 2);
+    assert.equal(result.summary.alerts, result.alerts.length);
+  });
+
+  it("keeps dispatch_capped as a separate finding when dispatch alone overflows", () => {
+    const tasks = [
+      card(),
+      reviewCard(),
+      card({ identifier: "T-3", status_changed_at: "2026-10-19T09:00:00.000Z" }),
+      card({ identifier: "T-4", status_changed_at: "2026-10-19T10:00:00.000Z" }),
+      card({ identifier: "T-5", status_changed_at: "2026-10-19T11:00:00.000Z" }),
+    ];
+    const result = planWorkflowTick({
+      tasks,
+      verdicts: { "T-2": { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT } },
+      config: { ...CONFIG, maxActions: 2 },
+      now: NOW,
+    });
+    assert.equal(result.actions.length, 2);
+    assert.ok(result.alerts.some((alert) => alert.type === "dispatch_capped"));
+    assert.ok(result.alerts.some((alert) => alert.type === "actions_capped"));
+    assert.equal(result.summary.alerts, result.alerts.length);
+  });
+
+  it("warns when agent-only cannot close review cards", () => {
+    const result = planWorkflowTick({
+      tasks: [card(), reviewCard()],
+      verdicts: {},
+      config: { ...CONFIG, acceptancePolicy: "agent-only", autoAcceptReviews: false },
+      now: NOW,
+    });
+    assert.deepEqual(result.alerts.find((alert) => alert.type === "review_cards_unclosable"), {
+      type: "review_cards_unclosable",
+      reason: "agent_only_without_auto_accept",
+      policy: "agent-only",
+      autoAcceptReviews: false,
+      reviews: 1,
+      dedupKey: "review_cards_unclosable|agent-only|auto_accept_off",
+    });
+  });
+
+  it("does not warn for other policies, auto-accept on, or no open review", () => {
+    for (const config of [
+      { ...CONFIG, acceptancePolicy: "both", autoAcceptReviews: false },
+      { ...CONFIG, acceptancePolicy: "human-only", autoAcceptReviews: false },
+      { ...CONFIG, acceptancePolicy: "agent-only", autoAcceptReviews: true },
+    ]) {
+      const result = planWorkflowTick({ tasks: [card(), reviewCard()], verdicts: {}, config, now: NOW });
+      assert.equal(
+        result.alerts.some((alert) => alert.type === "review_cards_unclosable"),
+        false,
+        JSON.stringify(config),
+      );
+    }
+
+    const closed = planWorkflowTick({
+      tasks: [card(), reviewCard({ status: "done" })],
+      verdicts: {},
+      config: { ...CONFIG, acceptancePolicy: "agent-only", autoAcceptReviews: false },
+      now: NOW,
+    });
+    assert.equal(closed.alerts.some((alert) => alert.type === "review_cards_unclosable"), false);
   });
 });
 

@@ -54,6 +54,20 @@ const dataOf = (result) => {
   return result.body.data;
 };
 
+/** Put a card in `in_review`; a review card may only be created for one. */
+async function deliverCard(ref) {
+  dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }));
+  return dataOf(
+    await call("POST", `/api/v1/tasks/${ref}/deliver`, {
+      report: {
+        conclusion: "delivered",
+        acceptance: [{ text: "a", status: "met" }],
+        evidence: [{ kind: "path", path: "x" }],
+      },
+    }),
+  );
+}
+
 describe("server/routes — health and meta", () => {
   it("keeps the /health contract the compose healthcheck depends on", async () => {
     const result = await call("GET", "/health");
@@ -1245,6 +1259,7 @@ describe("server/routes — the acceptance wire (M6)", () => {
         target: child.id,
       }),
     );
+    await deliverCard(child.identifier);
     const review = dataOf(
       await call("POST", "/api/v1/tasks", {
         project_id: "demo",
@@ -1281,6 +1296,7 @@ describe("server/routes — the acceptance wire (M6)", () => {
         allow_dup: true,
       }),
     ).task;
+    await deliverCard(original.identifier);
     const review = dataOf(
       await call("POST", "/api/v1/tasks", {
         project_id: "demo",
@@ -1383,6 +1399,7 @@ describe("server/routes — the review filter", () => {
     original = dataOf(
       await call("POST", "/api/v1/tasks", { project_id: "revfilter", title: "Original" }),
     ).task;
+    await deliverCard(original.identifier);
     review = dataOf(
       await call("POST", "/api/v1/tasks", {
         project_id: "revfilter",

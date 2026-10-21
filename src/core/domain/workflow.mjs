@@ -532,6 +532,7 @@ function reviewAction(task, ref, round, reviewer) {
  *   tasks?: object[],
  *   verdicts?: Record<string, {ok: boolean, verdict?: string, findings?: string, reason?: string, report?: object}>,
  *   config?: object,
+ *   boardTruncated?: boolean,
  *   now?: string|number,
  * }} input
  * @returns {{alerts: object[], actions: object[]}}
@@ -569,11 +570,19 @@ export function planReviewOutcomes(input = {}) {
     const originalRef = reviewOf(review);
     const original = byRef.get(originalRef);
     if (original === undefined) {
+      // On a truncated snapshot, "not in the snapshot" is not the same as
+      // "gone": the original may sit below the read cap. Keep the finding (an
+      // unknown must not become silence) but say it is undecidable, and use a
+      // distinct key so the exact state keeps its existing ledger entry.
+      const undecidable = input.boardTruncated === true;
       alerts.push({
         type: "original_unseen",
         review: reviewRef,
         original: originalRef,
-        dedupKey: alertKey("original_unseen", reviewRef, originalRef),
+        ...(undecidable ? { reason: "board_truncated", undecidable: true } : {}),
+        dedupKey: undecidable
+          ? alertKey("original_unseen", reviewRef, originalRef, "board_truncated")
+          : alertKey("original_unseen", reviewRef, originalRef),
       });
       continue;
     }
@@ -844,6 +853,7 @@ export function planWorkflowTick(input = {}) {
     tasks,
     verdicts: input.verdicts ?? {},
     config,
+    boardTruncated: input.boardTruncated === true,
     now: input.now ?? null,
   });
 
@@ -858,11 +868,48 @@ export function planWorkflowTick(input = {}) {
   const cap = Number.isFinite(config.maxActions) && config.maxActions >= 0
     ? config.maxActions
     : DEFAULT_WORKFLOW_MAX_ACTIONS;
-  const actions = [...outcomes.actions, ...dispatch.actions].slice(0, cap);
+  const planned = [...outcomes.actions, ...dispatch.actions];
+  const actions = planned.slice(0, cap);
+  const dropped = planned.length - actions.length;
+
+  const alerts = [...reconcile.alerts, ...outcomes.alerts, ...dispatch.alerts];
+  if (dropped > 0) {
+    // The combined slice is the one place work can disappear without a word.
+    // Keep `dispatch_capped` (log-only) for the dispatch-only overflow; this
+    // alert is the notified signal, keyed by the cap so a backlog change does
+    // not re-notify.
+    alerts.push({
+      type: "actions_capped",
+      cap,
+      dropped,
+      outcomes: outcomes.actions.length,
+      dispatch: dispatch.actions.length,
+      dedupKey: alertKey("actions_capped", cap),
+    });
+  }
+
+  // Under `agent-only` a review card needs a non-human writer to reach `done`;
+  // with auto-accept off the loop never closes one either, so they accumulate
+  // until somebody notices. State the conflict while a card is actually stuck.
+  const policy = acceptancePolicyOf(config);
+  const autoAccept = config.autoAcceptReviews !== false;
+  const openReviews = tasks.filter(
+    (task) => isReviewCard(task) && task?.status === "in_review",
+  ).length;
+  if (policy === "agent-only" && !autoAccept && openReviews > 0) {
+    alerts.push({
+      type: "review_cards_unclosable",
+      reason: "agent_only_without_auto_accept",
+      policy,
+      autoAcceptReviews: false,
+      reviews: openReviews,
+      dedupKey: alertKey("review_cards_unclosable", policy, "auto_accept_off"),
+    });
+  }
 
   const count = (type) => actions.filter((action) => action.type === type).length;
   return {
-    alerts: [...reconcile.alerts, ...outcomes.alerts, ...dispatch.alerts],
+    alerts,
     actions,
     changes: reconcile.changes,
     summary: {
@@ -873,7 +920,7 @@ export function planWorkflowTick(input = {}) {
       dispatched: count("create_review"),
       closed: count("close_review") + count("cancel_review"),
       actions: actions.length,
-      alerts: reconcile.alerts.length + outcomes.alerts.length + dispatch.alerts.length,
+      alerts: alerts.length,
     },
   };
 }

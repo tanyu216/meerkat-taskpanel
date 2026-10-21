@@ -137,6 +137,21 @@ describe("commands/dictionary — no management surface (V8)", () => {
 });
 
 describe("commands/relations", () => {
+  /** A review card for a delivered original, so the phase-1 creation guard passes. */
+  const makeReview = (commands) => {
+    const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+    commands.claim({ id: original.id, actor: AGENT });
+    commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
+    return commands.createTask({
+      projectId: "proj",
+      title: "Review",
+      allowDup: true,
+      reviewOf: original.identifier,
+      reviewRound: original.deliveryRound,
+      actor: AGENT,
+    });
+  };
+
   it("adds a parent edge, checking the epic rule first", async () => {
     await board(({ db, commands }) => {
       const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
@@ -247,6 +262,56 @@ describe("commands/relations", () => {
       commands.addRelation({ type: "parent", source: "PROJ-0001", target: child.identifier, actor: AGENT });
       const graph = commands.listRelations({ taskId: child.identifier });
       assert.deepEqual(graph.ancestors.map((a) => a.identifier), [epic.identifier]);
+    });
+  });
+
+  it("refuses a parent edge whose child is a review card", async () => {
+    await board(({ commands }) => {
+      const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
+      const review = makeReview(commands);
+      assert.throws(
+        () => commands.addRelation({ type: "parent", source: epic.id, target: review.id, actor: AGENT }),
+        (err) =>
+          err.code === "VALIDATION_FAILED" &&
+          err.details.field === "target" &&
+          err.details.type === "parent" &&
+          err.details.identifier === review.identifier,
+      );
+    });
+  });
+
+  it("refuses the same review-child edge even with force", async () => {
+    await board(({ commands }) => {
+      const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
+      const review = makeReview(commands);
+      assert.throws(
+        () =>
+          commands.addRelation({
+            type: "parent",
+            source: epic.id,
+            target: review.id,
+            actor: AGENT,
+            force: true,
+          }),
+        (err) => err.code === "VALIDATION_FAILED" && err.details.field === "target",
+      );
+    });
+  });
+
+  it("refuses a parent edge whose source is a review card promoted to epic", async () => {
+    await board(({ commands }) => {
+      const review = makeReview(commands);
+      commands.updateTask({ id: review.id, patch: { kind: "epic" }, actor: AGENT });
+      const child = commands.createTask({
+        projectId: "proj",
+        title: "Child",
+        allowDup: true,
+        actor: AGENT,
+      });
+      assert.throws(
+        () => commands.addRelation({ type: "parent", source: review.id, target: child.id, actor: AGENT }),
+        (err) => err.code === "VALIDATION_FAILED" && err.details.field === "source",
+      );
     });
   });
 });

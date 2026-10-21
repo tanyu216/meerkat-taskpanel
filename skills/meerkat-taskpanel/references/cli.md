@@ -166,8 +166,9 @@ taskctl relation add PROJ-0007 --type parent --target PROJ-0008
 ```
 
 Only an `epic` may be a parent (`VALIDATION_FAILED`, `details.field: kind`, until promoted).
-An epic cannot be claimed, so a card that must end up `in_progress` is claimed first and
-promoted after. `todo → in_review` is the epic's own edge. The promotion is an ordinary patch
+Neither end of a `parent` edge may be a review card (`VALIDATION_FAILED`,
+`details.field: source|target`), even with `--force`. An epic cannot be claimed, so a card
+that must end up `in_progress` is claimed first and promoted after. `todo → in_review` is the epic's own edge. The promotion is an ordinary patch
 (status, claim, heartbeat and delivery round stay put) and leaves no comment — write the split
 down yourself. An epic that still has children cannot be downgraded to `task`. The board
 starts and closes the container; see
@@ -441,11 +442,12 @@ stores `review_of_id` / `review_round`, and mirrors `meta.review_of` / `meta.rev
 itself. One review card per `(original, delivery round)`; the loop's idempotency key is
 `loop-review|<ref>|r<round>`.
 
-Three creation invariants (`VALIDATION_FAILED`): `review_of` may not name another review
-card; `review_round` may not be stale or future; and a review card must be `kind=task` (an
-epic cannot be claimed, so an epic review card would never be woken). Detection is structural
-— `review_of_id` first, `meta.review_of` only as the legacy fallback — never the `review`
-label. A review card in `in_review` cannot be moved directly to `canceled`; cancel it with
+Four creation invariants (`VALIDATION_FAILED`): `review_of` must name a card that is
+`in_review` (deliver the original first); `review_of` may not name another review card;
+`review_round` may not be stale or future; and a review card must be `kind=task` (an epic
+cannot be claimed, so an epic review card would never be woken). Detection is structural —
+`review_of_id` first, `meta.review_of` only as the legacy fallback — never the `review` label.
+A review card in `in_review` cannot be moved directly to `canceled`; cancel it with
 `in_review → in_progress → canceled`.
 
 ## reconcile --workflow — the board's workflow plan

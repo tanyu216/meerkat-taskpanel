@@ -26,6 +26,20 @@ async function board(fn) {
 const createIssue = (run, extra = []) =>
   dataOf(run(["issue", "create", "--project", "demo", "--title", "Ship M2", ...extra, "--json"]));
 
+/** Put a card in `in_review`; a review card may only be created for one. */
+const deliverIssue = (run, ref) => {
+  dataOf(run(["issue", "move", ref, "in_progress", "--json"]));
+  return dataOf(
+    run(["issue", "deliver", ref, "--report-file", "-", "--json"], {
+      input: JSON.stringify({
+        conclusion: "delivered",
+        acceptance: [{ text: "a", status: "met" }],
+        evidence: [{ kind: "path", path: "x" }],
+      }),
+    }),
+  );
+};
+
 describe("cli/issue — create, list, get", () => {
   it("creates a task with acceptance criteria and a free-text assignee", async () => {
     await board(async ({ run }) => {
@@ -50,6 +64,7 @@ describe("cli/issue — create, list, get", () => {
   it("create accepts --review-of and --review-round end to end", async () => {
     await board(async ({ run }) => {
       const original = createIssue(run, ["--title", "Original"]);
+      deliverIssue(run, original.task.identifier);
       const review = createIssue(run, [
         "--title", "Review",
         "--review-of", original.task.identifier,
@@ -321,6 +336,7 @@ describe("cli/issue — every flag the command declares", () => {
   it("list filters by the card being reviewed", async () => {
     await board(async ({ run }) => {
       const original = createIssue(run);
+      deliverIssue(run, original.task.identifier);
       const review = createIssue(run, [
         "--title", "Review",
         "--review-of", "DEMO-0001",
@@ -1057,8 +1073,10 @@ describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
 
   it("cannot skip in_review: a review card goes in_progress → in_review → done", async () => {
     await board(async ({ run }) => {
-      // 0025 resolves `review_of` to a real card at creation.
+      // 0025 resolves `review_of` to a real card at creation; the original must
+      // be in_review first.
       const original = createIssue(run, ["--title", "Original"]);
+      deliverIssue(run, original.task.identifier);
       const review = createIssue(run, [
         "--title", `Review ${original.task.identifier}`,
         "--meta", `review_of=${original.task.identifier}`,

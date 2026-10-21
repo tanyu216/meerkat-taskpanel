@@ -115,6 +115,12 @@ move and handle `ACCEPTANCE_FORBIDDEN` — its `details` carry `policy` and `sco
 `--acceptance` flag is an **advisory local copy** for diagnostics; it never overrides the
 board.
 
+`agent-only` combined with `--auto-accept-reviews=no` leaves review cards with no writer who
+may close them: a human is refused and the loop deliberately does not close them. The board
+reports each open card as `review_cards_unclosable` and the loop warns at startup. If a card
+must be closed on such a board, a **non-human** writer (the loop with auto-accept on, or
+another agent) has to do it.
+
 ## 5. The human's side
 
 - **`REVIEW_PENDING`** — a human closing a top-level original while a **current-round** review
@@ -156,7 +162,7 @@ loop closes last           review card → done (or canceled if the original was
 | `REPORT_ROUND_MISMATCH` | A report names a round other than the card's current one, or duplicates `(task, round)`. |
 | `ACCEPTANCE_FORBIDDEN` | The writer may not accept under the policy × scope matrix. |
 | `REVIEW_PENDING` | A human closes a top-level original with a current-round review card still open. |
-| `VALIDATION_FAILED` | `review_of` names another review card; `review_round` is not the original's current `delivery_round`; the review card is not `kind=task`; a malformed round. |
+| `VALIDATION_FAILED` | `review_of` names a card that is not `in_review`; `review_of` names another review card; `review_round` is not the original's current `delivery_round`; the review card is not `kind=task`; a malformed round. |
 | `INVALID_TRANSITION` | A review card cannot be reopened; `in_review → canceled` does not exist (use the two-hop cancel). |
 
 ## 8. Boundaries
@@ -164,7 +170,11 @@ loop closes last           review card → done (or canceled if the original was
 - A review card is a normal task: it is claimable, heartbeat-able, and delivered like any
   other card. It is special only in what its report must contain and in who may close it.
 - Do not promote a review card to an epic, and do not derive an acceptance list on one.
-- A review card that somehow has a `parent` is treated as a **child** for acceptance (scope
-  precedence), which is the conservative reading of both rules.
-- The board does not require the original to be `in_review` at review-card creation; the
-  reviewer's Step 0 is what refuses a stale target.
+- A `parent` edge is refused when either end is a review card (`VALIDATION_FAILED`,
+  `details.field = source|target`, `details.type = parent`), even with `--force`. Attach the
+  edge to the original work card instead. Existing edges are not repaired; raw repository
+  writes remain a bypass.
+- The original must be `in_review` at review-card creation (`VALIDATION_FAILED` otherwise).
+  Deliver first: `taskctl issue deliver <original> --report-file -`; then create the review
+  card for the original's current round. The reviewer's Step 0 still guards a target that
+  moved between dispatch and wake.
