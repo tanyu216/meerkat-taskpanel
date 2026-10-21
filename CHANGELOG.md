@@ -127,6 +127,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the `--json` machine contract) moved into `SKILL.md`. The loop still depends on the board
   skill; the board skill no longer depends on the loop.
 
+### Changed
+
+- **The `ready`/`failed` status aliases are removed.** The markdown export always writes the
+  canonical status; the inbound alias resolver and its tests were dead code since the
+  markdown importer was removed. A stored `meta.legacy_status` is now inert, and a card that
+  used a legacy word exports `todo` / `canceled`.
+
 ## [1.1.0] - 2026-10-20
 
 ### Added

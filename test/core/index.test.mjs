@@ -60,7 +60,6 @@ const PLANNED = [
   "storage/repositories/index.mjs",
   "storage/md/frontmatter.mjs",
   "storage/md/sections.mjs",
-  "storage/md/legacy-status.mjs",
   "storage/md/export.mjs",
   "storage/secrets/token-store.mjs",
   "storage/secrets/runtime-pointer.mjs",

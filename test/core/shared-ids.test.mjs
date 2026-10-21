@@ -1,18 +1,11 @@
 /**
  * Step 2 side quest: the shared helpers the domain needs but cannot host
- * (`node:crypto` ids), the v1 ↔ core status aliases, and the gate's repair hint.
+ * (`node:crypto` ids) and the gate's repair hint.
  */
 
 import assert from "node:assert/strict";
 import test, { describe, it } from "node:test";
 
-import {
-  CORE_TO_LEGACY_STATUS,
-  LEGACY_TO_CORE_STATUS,
-  exportStatusValue,
-  isCanonical,
-  resolveStatus,
-} from "../../src/foundation/status-alias.mjs";
 import { deliverCommandHint } from "../../src/foundation/deliver-hint.mjs";
 import {
   contentHash,
@@ -79,46 +72,6 @@ describe("shared/ids", () => {
     const cyclic = {};
     cyclic.self = cyclic;
     assert.throws(() => stableStringify(cyclic), TypeError);
-  });
-});
-
-describe("shared/status-alias", () => {
-  it("maps the two v1 words and remembers the original spelling", () => {
-    assert.deepEqual(LEGACY_TO_CORE_STATUS.ready, "todo");
-    assert.deepEqual(LEGACY_TO_CORE_STATUS.failed, "canceled");
-    assert.deepEqual(resolveStatus("ready"), { ok: true, status: "todo", legacyStatus: "ready" });
-    assert.deepEqual(resolveStatus("failed"), { ok: true, status: "canceled", legacyStatus: "failed" });
-    assert.deepEqual(resolveStatus(" Ready "), { ok: true, status: "todo", legacyStatus: "Ready" });
-  });
-
-  it("passes canonical values through without inventing a legacy value", () => {
-    assert.deepEqual(resolveStatus("in_review"), {
-      ok: true,
-      status: "in_review",
-      legacyStatus: null,
-    });
-    assert.deepEqual(resolveStatus("IN_PROGRESS"), {
-      ok: true,
-      status: "in_progress",
-      legacyStatus: "IN_PROGRESS",
-    });
-    assert.deepEqual(CORE_TO_LEGACY_STATUS, { todo: "ready", canceled: "failed" });
-  });
-
-  it("rejects values that are neither canonical nor aliases", () => {
-    for (const bad of ["", "  ", "shipped", null, 7, {}]) {
-      assert.deepEqual(resolveStatus(bad), { ok: false, raw: bad });
-    }
-    assert.equal(isCanonical("failed"), false);
-    assert.equal(isCanonical("canceled"), true);
-  });
-
-  it("restores the legacy word on export so cards round-trip", () => {
-    assert.equal(exportStatusValue("todo", "ready"), "ready");
-    assert.equal(exportStatusValue("todo", null), "todo");
-    assert.equal(exportStatusValue("canceled", "failed"), "failed");
-    assert.equal(exportStatusValue("todo", "   "), "todo");
-    assert.equal(exportStatusValue("in_review"), "in_review");
   });
 });
 

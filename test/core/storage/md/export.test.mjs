@@ -9,7 +9,6 @@ import { after, describe, it } from "node:test";
 
 import { createCommands, createContext } from "../../../../src/core/commands/index.mjs";
 import { exportMd, renderCard } from "../../../../src/core/storage/md/export.mjs";
-import { statusForExport } from "../../../../src/core/storage/md/legacy-status.mjs";
 import { createRepositories } from "../../../../src/core/storage/repositories/index.mjs";
 import { TS, cleanupTempDirs, createTempBoard, makeTempDir } from "../../../helpers/sqlite-fixture.mjs";
 
@@ -84,13 +83,26 @@ describe("md/export — rendering", () => {
       board.close();
     }
   });
-});
 
-describe("md/legacy-status — the word written back", () => {
-  it("keeps the author's word when the card carried one", () => {
-    assert.equal(statusForExport("todo", "ready"), "ready");
-    assert.equal(statusForExport("canceled", "failed"), "failed");
-    assert.equal(statusForExport("done", null), "done");
-    assert.equal(statusForExport("done", undefined), "done");
+  it("writes the canonical status even when the card stored a legacy word", async () => {
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    try {
+      repos.projects.create({ id: "proj", name: "P", now: TS });
+      const ctx = createContext({ db: board.db, repos, clock: () => TS });
+      createCommands(ctx).createTask({
+        projectId: "proj",
+        title: "Legacy",
+        meta: { legacy_status: "ready" },
+        actor: { kind: "agent", id: "linus" },
+      });
+
+      const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
+      assert.match(card, /^status: todo$/m);
+      assert.doesNotMatch(card, /^status: ready$/m);
+    } finally {
+      board.close();
+    }
   });
 });
+

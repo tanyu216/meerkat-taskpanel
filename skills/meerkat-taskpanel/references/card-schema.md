@@ -24,7 +24,7 @@ Exactly these 23 keys, in this order. Anything else rides in `meta_json.legacy` 
 |---|---|---|
 | `id` | The card's board identifier. | Non-empty; stored verbatim as `tasks.identifier`. |
 | `title` | One-line summary. | Non-empty string. |
-| `status` | Where the card sits in the lifecycle. | One of the seven canonical words, or the author's legacy word for that state (`ready`, `failed`, `cancelled`, `in-review`, `in-progress`). |
+| `status` | Where the card sits in the lifecycle. | One of the canonical words (`backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`, plus the `awaiting` overlay). The old v1 words (`ready`, `failed`, and their spelling variants) are not accepted. |
 | `priority` | Urgency. | `low` · `medium` · `high` · `urgent`. |
 | `kind` | The card's role. | `task` · `epic` · `deploy`. |
 | `labels` | Free-form tags, shown in order. | Inline array. |
@@ -48,8 +48,7 @@ Exactly these 23 keys, in this order. Anything else rides in `meta_json.legacy` 
 
 ### The status machine
 
-- **The card carries the stored status**, except that a legacy word (`ready` / `failed`) is
-  written back when the card originally used one.
+- **The card carries the stored status**, always in its canonical spelling.
 - The card's status is data, not permission: `issue move` still enforces the transitions.
 
 ## blocked_reason — what a blocked card is waiting for
@@ -220,7 +219,6 @@ report is `origin='import'` and never satisfies it.
 | Fixed key order and section order | An exported card is byte-identical however the input was written. |
 | Unknown keys re-emitted in place | A rewrite does not lose a team's own fields. |
 | A known key's unrecognised value re-emitted in place | Recognising a key never costs a card its wording. |
-| Legacy status word restored | A card that said `ready` exports `ready`. |
 | Optional keys written only when set | An existing card is not grown by a key it never had. |
 | Growth guard | A rewrite that would grow a card past the guard factor refuses. |
 

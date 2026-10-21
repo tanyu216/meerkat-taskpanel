@@ -25,9 +25,6 @@ in-progress card that has stopped to ask a human a question, displayed under `in
   not a reopen target: a reopened card has no claim holder and must be claimed again.
   Review cards are refused — reopen the card they review, and the loop issues the next round's
   review.
-- **Read aliases exist in the card file only.** `ready→todo`, `failed`/`cancelled→canceled`,
-  `in-review→in_review`, `in-progress→in_progress`; the command surface rejects them
-  (`VALIDATION_FAILED`). See `card-schema.md`.
 - `kind` changes one thing: an **`epic`** has one extra edge (`todo → in_review`) and is never
   claimable. A **`deploy`** card follows the ordinary `task` table — claimable, but never
   offered by `issue candidates`.
