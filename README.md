@@ -249,7 +249,7 @@ Every **60 seconds** it **pings**: it drops worker-registry entries whose pid is
 board read and no model turn. Every **ten minutes** it runs a **continue** turn: it wakes
 the host with a bounded `Continue` prompt, and that turn runs the loop's deterministic entries —
 the notify-only SLA patrol (stale heartbeats, an unanswered confirmation gate, a delivery
-nobody reviewed, the rest of `PROTOCOL §⑮`), the workflow channel (the board computes the
+nobody reviewed, the rest of the SLA contract (`docs/sla.md`)), the workflow channel (the board computes the
 plan through `issue reconcile --workflow` — container rules, an independent reviewer per
 delivery, the verdict applied; the loop executes the plan's review actions), and the poll
 that claims a card and wakes a worker **only when the claim succeeded** ($0 on an empty

@@ -849,7 +849,7 @@ describe("runPatrolTick (injected deps)", () => {
     assert.equal(spawnPatrol.count(), 1);
   });
 
-  // The heartbeat row is the ONE `PROTOCOL §⑮` row the SLA pass deliberately
+  // The heartbeat row is the ONE contract row the SLA pass deliberately
   // does not re-emit (`SLA_ROWS.heartbeat_stale.coveredBy`): the legacy alert
   // below is a published consumer contract, and a second notification for the
   // same condition would be a regression dressed up as coverage.

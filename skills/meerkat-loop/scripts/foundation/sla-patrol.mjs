@@ -1,5 +1,5 @@
 /**
- * The SLA patrol — `PROTOCOL §⑮`'s wait rows as a *pure* decision.
+ * The SLA patrol — the wait rows of `docs/sla.md` §2 as a *pure* decision.
  *
  * The loop's patrol used to watch exactly one row of the SLA table: an
  * `in_progress` card whose heartbeat went stale. That is one of six rows, and
@@ -7,8 +7,7 @@
  * cron) were both blind to the other five — a card parked on the leader, a
  * delivery nobody ever accepted, an unanswered confirmation gate, a defect
  * whose fix card was never created. This module is the loop's half of the fix,
- * written against the shared contract
- * (`team/guides/sla-inspection-contract.md`, "C1"): the **same alert tuple**,
+ * written against this repository's own SLA contract (`docs/sla.md`): the **same alert tuple**,
  * the **same tier ladder**, the **same de-duplication key** and the **same
  * working-hours basis** as the peer mechanism, so the two can never label one
  * card differently.
@@ -17,14 +16,14 @@
  *
  *   * **notify-only.** Every alert carries `target: "leader"` and there is no
  *     code path here that writes a card. The releasability hint says "this card
- *     *looks* releasable"; releasing it stays the leader's act (`§⑦`).
+ *     *looks* releasable"; releasing it stays the leader's act (`docs/sla.md` §7).
  *   * **zero-cost idle.** Nothing crossing a tier produces no alert at all, so
  *     a quiet board costs no notification and no model turn.
  *   * **fail-safe, never false-green.** An unreadable origin alerts (at `warn`,
  *     with no threshold) rather than staying quiet, and an undecidable
  *     open/closed predicate is treated as **open**.
  *
- * Thresholds are *not* invented here: `SLA_ROWS` carries `PROTOCOL §⑮`'s
+ * Thresholds are *not* invented here: `SLA_ROWS` carries `docs/sla.md` §2's
  * published limits next to a reference string, which is the runtime mapping
  * table the contract requires (§2, hook H6). `L` = the row's normal limit, `F` =
  * its further timeout, `P` = this mechanism's own period. `warn` is `L − P`
@@ -62,10 +61,10 @@ export const PEER_MECHANISM = "openclaw-cron";
 
 /**
  * The peer's own cadence, in minutes — **a mechanism parameter, never an SLA
- * number** (§2). The peer (`sla-scan`) registers itself at 15 min, which its own
- * card pinned so that `warn = L − P` stays inside the tightest `§⑮` limit
- * (`heartbeat_stale`, 30 min); taking the same number here is what makes the two
- * mechanisms' derived liveness bounds comparable at all.
+ * number** (§2). The fallback is 15 min — the same cadence the deployment's
+ * peer is expected to run at — which keeps `warn = L − P` inside the tightest
+ * limit (`heartbeat_stale`, 30 min). A peer that declares its own cadence in its
+ * last-ok marker overrides it, so the derived liveness bounds stay comparable.
  */
 export const PEER_PERIOD_MIN = 15;
 
@@ -177,26 +176,26 @@ function intOrNull(value) {
   return null;
 }
 
-/** `blocked_reason` values the contract gives **no** `§⑮` row (gap G-3). */
+/** `blocked_reason` values the contract gives **no** row (gap G-3). */
 const VISIBILITY_ONLY_BLOCK_REASONS = new Set(["dependency", "external", "resource"]);
 
 /**
- * The `PROTOCOL §⑮` runtime mapping table.
+ * The `docs/sla.md` runtime mapping table.
  *
  * One entry per published row **plus** the two the contract adds or preserves:
  * `inspector_liveness` is carried for completeness even though this mechanism
- * does not emit it (the peer's marker does not exist on this board yet), and
- * `heartbeat_stale` is carried because the loop already covers it — through the
- * *existing* stale alert, which is a published consumer contract and must not
- * be re-shaped (§10.4). `coveredBy` says which code path emits each row, so
- * "is row X covered?" is answered by the table rather than by reading around.
+ * does not emit it unless a peer marker is configured, and `heartbeat_stale` is
+ * carried because the loop already covers it — through the *existing* stale
+ * alert, which is a published consumer contract and must not be re-shaped
+ * (§10.4). `coveredBy` says which code path emits each row, so "is row X
+ * covered?" is answered by the table rather than by reading around.
  *
- * Values are `PROTOCOL §⑮`'s, referenced — never re-derived, never invented.
+ * Values are `docs/sla.md` §2's, referenced — never re-derived, never invented.
  */
 export const SLA_ROWS = Object.freeze({
   blocked_clarification: Object.freeze({
-    ref: "PROTOCOL §⑮ · blocked awaiting the leader's clarification",
-    thresholdRef: "PROTOCOL §⑮ · blocked awaiting the leader's clarification · Normal limit",
+    ref: "docs/sla.md §2 · blocked_clarification · blocked awaiting the leader's clarification",
+    thresholdRef: "docs/sla.md §2 · blocked_clarification · Normal limit (L)",
     limitMin: 120,
     furtherMin: 1440,
     warnLead: true,
@@ -205,80 +204,80 @@ export const SLA_ROWS = Object.freeze({
     action: "the leader must clarify / revise / reassign this card",
   }),
   confirmation_gate: Object.freeze({
-    ref: "PROTOCOL §⑮ · Confirmation gate awaiting review (§⑭)",
-    thresholdRef: "PROTOCOL §⑮ · Confirmation gate awaiting review (§⑭) · Normal limit",
+    ref: "docs/sla.md §2 · confirmation_gate · Confirmation gate awaiting review",
+    thresholdRef: "docs/sla.md §2 · confirmation_gate · Normal limit (L)",
     limitMin: 240,
     furtherMin: 1440,
     warnLead: true,
     origin: "gate_at",
     coveredBy: "sla-patrol",
-    action: "the leader must review the confirmation request (§⑭)",
+    action: "the leader must review the confirmation request",
   }),
   defect_card_creation: Object.freeze({
-    ref: "PROTOCOL §⑮ · Defect fix card creation (§⑨)",
-    thresholdRef: "PROTOCOL §⑮ · Defect fix card creation (§⑨) · Normal limit",
+    ref: "docs/sla.md §2 · defect_card_creation · Defect fix card creation",
+    thresholdRef: "docs/sla.md §2 · defect_card_creation · Normal limit (L)",
     limitMin: 1440,
     furtherMin: 2880,
     warnLead: true,
     origin: "trail_event",
     coveredBy: "sla-patrol",
-    action: "the leader must create the defect fix card and dispatch it (§⑨)",
+    action: "the leader must create the defect fix card and dispatch it",
   }),
   acceptance_card_creation: Object.freeze({
-    ref: "PROTOCOL §⑮ · Product/UX acceptance queued (§⑨.1)",
-    thresholdRef: "PROTOCOL §⑮ · Product/UX acceptance queued (§⑨.1) · Normal limit",
+    ref: "docs/sla.md §2 · acceptance_card_creation · Product/UX acceptance queued",
+    thresholdRef: "docs/sla.md §2 · acceptance_card_creation · Normal limit (L)",
     limitMin: 1440,
     furtherMin: 2880,
     warnLead: true,
     origin: "status_changed_at",
     coveredBy: "sla-patrol",
-    action: "the leader must create the acceptance review card and dispatch it (§⑨.1)",
+    action: "the leader must create the acceptance review card and dispatch it",
   }),
   heartbeat_stale: Object.freeze({
-    ref: "PROTOCOL §⑮ · Worker heartbeat stale (§①)",
-    thresholdRef: "PROTOCOL §⑮ · Worker heartbeat stale (§①) · Normal limit",
+    ref: "docs/sla.md §2 · heartbeat_stale · Worker heartbeat stale",
+    thresholdRef: "docs/sla.md §2 · heartbeat_stale · Normal limit (L)",
     limitMin: CLAIM_STALE_SAME_MS / MS_PER_MINUTE,
     furtherMin: CLAIM_STALE_ANY_MS / MS_PER_MINUTE,
     warnLead: true,
     origin: "heartbeat_at",
     // The legacy `stale` / `heartbeat-unreadable` alert keeps its published
-    // envelope, untouched — but it is **not** the SLA channel (§10.4, "F4"): a
-    // row that never emits the §4 tuple cannot take part in the shared ledger,
-    // so the peer's identical finding would be notified twice. Both go out; this
+    // envelope, untouched — but it is **not** the SLA channel (§10.4): a row
+    // that never emits the §4 tuple cannot take part in the shared ledger, so
+    // the peer's identical finding would be notified twice. Both go out; this
     // is the half the ledger can de-duplicate across mechanisms.
     coveredBy: "sla-patrol+legacy-stale-alert",
     action: "the same assignee may re-claim; past the further bound any agent may claim and report",
   }),
   leader_stalled: Object.freeze({
-    ref: "PROTOCOL §⑮ · Leader patrol stalled",
-    thresholdRef: "PROTOCOL §⑮ · Leader patrol stalled · Normal limit",
+    ref: "docs/sla.md §2 · leader_stalled · Leader patrol stalled",
+    thresholdRef: "docs/sla.md §2 · leader_stalled · Normal limit (L)",
     limitMin: 60,
     furtherMin: 360,
-    // §5.2 rule 5: this row's published bound is already a "no action for"
-    // bound, so the `−P` lead is deliberately NOT applied and there is no
-    // `overdue` state — only `warn` (at `L`) and `escalate` (at `F`).
+    // §5.2: this row's published bound is already a "no action for" bound, so
+    // the `−P` lead is deliberately NOT applied and there is no `overdue`
+    // state — only `warn` (at `L`) and `escalate` (at `F`).
     warnLead: false,
     origin: "trail_event",
     coveredBy: "sla-patrol",
     action: "the leader should be reminded that no leader action is observable on the board",
   }),
   inspector_liveness: Object.freeze({
-    ref: "shared contract §5.3 · inspector liveness (not a PROTOCOL §⑮ row)",
+    ref: "docs/sla.md §10 · inspector_liveness · mutual watchdog",
     thresholdRef: null,
     limitMin: null,
     furtherMin: null,
     warnLead: false,
     origin: "unverifiable",
     // Emitted when the deployment points the pass at the peer's last-successful-
-    // run marker (§8.4). The peer's marker has not landed yet, so an unwired
-    // deployment registers that as an explicit dependency instead of alarming
-    // every period — see `inspectorLivenessDetection` and `planSlaPatrol`.
+    // run marker (§5.3). An unwired deployment registers that as an explicit
+    // dependency instead of alarming every period — see
+    // `inspectorLivenessDetection` and `planSlaPatrol`.
     coveredBy: "sla-patrol",
     action: "tell the leader that one of the two inspectors is not running",
   }),
 });
 
-/** A `PROTOCOL §⑮`-stamped constant, for the drift check and for error messages. */
+/** A `docs/sla.md`-stamped constant, for the drift check and for error messages. */
 export function slaRowRef(row) {
   return SLA_ROWS[row]?.ref ?? null;
 }
@@ -344,7 +343,7 @@ export function trailReadCandidates(cards, input = {}) {
   for (const card of Array.isArray(cards) ? cards : []) {
     const id = String(card?.identifier ?? card?.id ?? "");
     if (id === "") continue;
-    // A finished card owes no defect fix card on this board (`§⑨` step 1 parks
+    // A finished card owes no defect fix card on this board (`§6.3` step 1 parks
     // the origin card in `blocked` / `canceled`), so it is not read at all —
     // otherwise every archived card would be fetched on every pass forever.
     if (card?.status === "done") continue;
@@ -459,7 +458,7 @@ export function addWorkingMinutes(from, minutes) {
  *
  *   * `warn`     ⇔ `T ≥ L − P` (clamped at 0) — "到点提醒", **no breach**
  *   * `overdue`  ⇔ `T ≥ L`
- *   * `escalate` ⇔ `T ≥ F`, where `§⑮` publishes a further bound
+ *   * `escalate` ⇔ `T ≥ F`, where the contract publishes a further bound
  *
  * `leader_stalled` is exempt from the `−P` lead and never reports `overdue`
  * (§5.2 rule 5).
@@ -503,14 +502,14 @@ function commentAt(comment) {
   return instant(comment?.created_at);
 }
 
-/** The proposed stable `§⑭` marker for a confirmation request (gap G-5). */
+/** The stable `§11` marker for a confirmation request (gap G-5). */
 const CONFIRM_MARKER = /\[confirm-request\]/i;
 const MD_PATH = /\.(md|markdown)\b/i;
 const CONFIRM_WORD = /(确认|confirm)/i;
 const OPEN_ITEMS = /(open item|open question|待决|未决|决策|decision)/i;
 
 /**
- * Does this comment look like the `§⑭` "send back to the leader" request — a
+ * Does this comment look like the `§6.2` "send back to the leader" request — a
  * doc/plan path, a confirmation ask, and the open items? The contract's priority
  * 2, used **only** because the stable marker is not standard yet; the marker
  * alone (priority 1) is exact, and matching this shape sets `confidence: "low"`.
@@ -588,7 +587,7 @@ export function trailAnsweredAfter(trail, since) {
  * The board snapshot carries only the *current* `assignee`, so a pre-emit read
  * can never show that it changed; the trail is the only machine-readable change
  * channel, and both mechanisms read **the same one** — the substantive-change
- * entries, written by the leader (a reassignment is the leader's act, §⑪). The
+ * entries, written by the leader (a reassignment is the leader's act, §7.4). The
  * body then has to say it *is* a reassignment: a card can be `change`d a dozen
  * times for other reasons, and reporting each of those as "the assignee moved"
  * would be a false hint rather than a fail-safe one — a releasability hint is a
@@ -657,7 +656,7 @@ function hasBugLabel(card) {
 }
 
 /**
- * A fix card that references the origin card. Both halves of the `§⑨`
+ * A fix card that references the origin card. Both halves of the `§6.3`
  * convention are required — the `category:bug` label **and** a structural
  * reference back — because either alone is guesswork.
  */
@@ -751,7 +750,7 @@ function blockedDetection(card, trail, context) {
   }
 
   const spec = SLA_ROWS.blocked_clarification;
-  // `dependency` / `external` / `resource` have **no** `§⑮` row (gap G-3), so
+  // `dependency` / `external` / `resource` have **no** contract row (gap G-3), so
   // they get visibility without a due point rather than an invented limit.
   const noThreshold = visibilityOnly || origin.kind === "unverifiable";
   const openPredicate = origin.kind === "unverifiable" ? "unverifiable" : "blocked";
@@ -766,14 +765,14 @@ function blockedDetection(card, trail, context) {
     blockedReason: reason,
     openPredicate,
     action: visibilityOnly
-      ? `${spec.action} — blocked on ${reason}; no PROTOCOL §⑮ limit applies, visibility only`
+      ? `${spec.action} — blocked on ${reason}; no contract limit applies, visibility only`
       : spec.action,
     evidence: evidenceOf(card, noThreshold ? null : spec.thresholdRef, openPredicate),
   };
 }
 
 /**
- * The `confirmation gate awaiting review` row (§⑭).
+ * The `confirmation gate awaiting review` row (§6.2).
  *
  * Trigger and origin both come from the gate request, not from the card's age:
  * a card with no detectable request has no gate, and the row stays silent. An
@@ -809,7 +808,7 @@ function confirmDetection(card, trail) {
 }
 
 /**
- * The `defect fix card creation` row (§⑨).
+ * The `defect fix card creation` row (§6.3).
  *
  * Trigger: a defect is recorded on the card (a `kind=defect` trail entry — the
  * defect ticket itself lives in the Report, which carries no timestamp, so the
@@ -864,7 +863,7 @@ function defectDetection(card, trail, context) {
 }
 
 /**
- * The `product/UX acceptance queued` row (§⑨.1 tail).
+ * The `product/UX acceptance queued` row (§6.4).
  *
  * Applies to **flow A** only; an absent `flow` is treated as A (fail-safe). The
  * wait starts when the card entered delivery (`in_review`) and is open while no
@@ -1096,7 +1095,7 @@ export function inspectorLivenessDetection(input = {}) {
   return {
     row: "inspector_liveness",
     origin: { kind: "trail_event", at: new Date(lastOk).toISOString(), source: "mechanism-marker", confidence: "high" },
-    // No §⑮ row ⇒ no due point: `warn` is the only tier this can ever reach
+    // No contract row ⇒ no due point: `warn` is the only tier this can ever reach
     // (§5.3), which is why the threshold is null rather than a guessed bound.
     thresholdMin: null,
     thresholdRef: null,
@@ -1215,7 +1214,7 @@ function boardContext(cards, trails, options = {}) {
     if (TERMINAL_STATUSES.includes(card?.status)) {
       for (const id of idsOf(card)) terminalRefs.add(id);
     }
-    // Creating a card is the leader's act (§⑩: the sole dispatcher) — and it is
+    // Creating a card is the leader's act (§6.3: the sole dispatcher) — and it is
     // attributed like every other leader event: by who did it.
     if (createdByLeader(card)) note(instant(card?.created_at), "created_at", "frontmatter");
     // `done` is a leader-only transition (task-interface §4), so no author test
@@ -1242,7 +1241,7 @@ function boardContext(cards, trails, options = {}) {
 /**
  * Decide the SLA patrol over the board.
  *
- * One entry per **(card, `§⑮` row)** at its highest newly-crossed tier. A card
+ * One entry per **(card, contract row)** at its highest newly-crossed tier. A card
  * still inside its lead contributes nothing at all — that is the zero-cost-idle
  * property, and it is a property of this function rather than of how the runner
  * chooses to log.

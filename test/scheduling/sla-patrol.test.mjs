@@ -1,6 +1,7 @@
 /**
- * The SLA patrol (`PROTOCOL §⑮`), the loop's half of the shared inspection
- * contract (`team/guides/sla-inspection-contract.md`, "C1").
+ * The SLA patrol — the loop's half of the repository's own SLA contract
+ * (`docs/sla.md`), which is the single source of truth for the thresholds,
+ * the tier ladder, the working-hours basis and the de-duplication rules.
  *
  * What is asserted here, and why each one is a counter-proof rather than a
  * smoke test:
@@ -19,12 +20,15 @@
  *   * **fail-safe** — an unreadable origin alerts instead of going green, and a
  *     dropped candidate is always reported.
  *
- * Pure: no clock of its own, no board, no filesystem.
+ * The decision tests are pure: no clock of its own, no board, no filesystem.
+ * The one exception is the contract-document test at the end, which reads
+ * `docs/sla.md` so the prose and `SLA_ROWS` cannot drift apart.
  *
  * Run with: node --test
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
@@ -33,6 +37,7 @@ import {
   PEER_LIVENESS_K,
   PEER_PERIOD_MIN,
   SLA_ROWS,
+  WORKING_WINDOW,
   addWorkingMinutes,
   alertIdFor,
   blockedReasonOf,
@@ -135,6 +140,18 @@ describe("elapsedWorkingMinutes (the measurement basis, §6.4)", () => {
     assert.equal(a, 120);
   });
 
+  it("pins the window and counts every calendar day — there is no weekend calendar", () => {
+    // The contract is deliberately daily: 09:00–23:00 in Asia/Shanghai, every
+    // day of the week. 2026-10-17 is a Saturday; 10:00 → 12:00 local counts.
+    assert.deepEqual(WORKING_WINDOW, {
+      zone: "Asia/Shanghai",
+      offsetMinutes: 480,
+      startHour: 9,
+      endHour: 23,
+    });
+    assert.equal(elapsedWorkingMinutes("2026-10-17T02:00:00.000Z", "2026-10-17T04:00:00.000Z"), 120);
+  });
+
   it("returns null for an unreadable origin — the caller must not read that as fresh", () => {
     assert.equal(elapsedWorkingMinutes(null, NOW), null);
     assert.equal(elapsedWorkingMinutes("not-a-date", NOW), null);
@@ -165,13 +182,14 @@ describe("addWorkingMinutes (display-only due_at, §4 #13)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Thresholds — the runtime mapping table carries PROTOCOL §⑮, never a new number
+// Thresholds — the runtime mapping table carries docs/sla.md, never a new number
 // ---------------------------------------------------------------------------
 
-describe("SLA_ROWS (the §⑮ runtime mapping table, hook H6)", () => {
-  it("pins every published limit to its §⑮ value, with the reference beside it", () => {
-    // These are PROTOCOL §⑮'s numbers, transcribed once, here, with the row they
-    // come from. If L1 ever moves one, this test is where the drift shows up.
+describe("SLA_ROWS (the docs/sla.md runtime mapping table, hook H6)", () => {
+  it("pins every published limit to its contract value, with the reference beside it", () => {
+    // These are docs/sla.md §2's numbers, transcribed once, here, with the row
+    // they come from. If the contract ever moves one, this test is where the
+    // drift shows up.
     const published = {
       blocked_clarification: [120, 1440],
       confirmation_gate: [240, 1440],
@@ -183,10 +201,17 @@ describe("SLA_ROWS (the §⑮ runtime mapping table, hook H6)", () => {
     for (const [row, [limit, further]] of Object.entries(published)) {
       assert.equal(SLA_ROWS[row].limitMin, limit, `${row} normal limit`);
       assert.equal(SLA_ROWS[row].furtherMin, further, `${row} further timeout`);
-      assert.match(SLA_ROWS[row].ref, /^PROTOCOL §⑮/);
-      assert.match(SLA_ROWS[row].thresholdRef, /^PROTOCOL §⑮/);
-      assert.doesNotMatch(SLA_ROWS[row].ref, /:\d+/, "no line-number anchors (§⑥.1 #11)");
+      assert.match(SLA_ROWS[row].ref, /^docs\/sla\.md §/);
+      assert.match(SLA_ROWS[row].thresholdRef, /^docs\/sla\.md §/);
+      assert.doesNotMatch(SLA_ROWS[row].ref, /:\d+/, "no line-number anchors (§4)");
     }
+  });
+
+  it("names no external document anywhere in the table", () => {
+    assert.doesNotMatch(
+      JSON.stringify(SLA_ROWS),
+      /PROTOCOL|§⑮|sla-inspection-contract|team\/guides/,
+    );
   });
 
   it("says which code path covers each row, including the rows it does not emit", () => {
@@ -201,9 +226,24 @@ describe("SLA_ROWS (the §⑮ runtime mapping table, hook H6)", () => {
     }
   });
 
-  it("exposes the §⑮ stamp for a row, and nothing for an unknown one", () => {
-    assert.match(slaRowRef("blocked_clarification"), /PROTOCOL §⑮/);
+  it("exposes the in-repo contract stamp for a row, and nothing for an unknown one", () => {
+    assert.match(slaRowRef("blocked_clarification"), /^docs\/sla\.md §/);
     assert.equal(slaRowRef("nonsense"), null);
+  });
+
+  it("keeps docs/sla.md in step with the table", () => {
+    // The document is the human contract; this is the machine check that it
+    // still carries every row and every published number.
+    const doc = readFileSync(new URL("../../docs/sla.md", import.meta.url), "utf8");
+    for (const [row, spec] of Object.entries(SLA_ROWS)) {
+      assert.ok(doc.includes(row), `docs/sla.md names ${row}`);
+      if (spec.limitMin !== null) {
+        assert.match(doc, new RegExp(`\\b${spec.limitMin}\\b`), `${row} normal limit ${spec.limitMin}`);
+      }
+      if (spec.furtherMin !== null) {
+        assert.match(doc, new RegExp(`\\b${spec.furtherMin}\\b`), `${row} further bound ${spec.furtherMin}`);
+      }
+    }
   });
 });
 
@@ -227,7 +267,7 @@ describe("tierFor (the shared ladder, §5.2)", () => {
     assert.equal(tierFor("leader_stalled", 360, 5), "escalate");
   });
 
-  it("has no tier at all for a row with no §⑮ threshold", () => {
+  it("has no tier at all for a row with no contract threshold", () => {
     assert.equal(tierFor("inspector_liveness", 9999, 5), null);
     assert.equal(tierFor("nonsense", 9999, 5), null);
   });
@@ -298,7 +338,7 @@ describe("blocked_clarification", () => {
     assert.notEqual(result.alerts[0].threshold_min, null, "absence must not silence the row");
   });
 
-  it("gives dependency / external / resource visibility without inventing a §⑮ limit (gap G-3)", () => {
+  it("gives dependency / external / resource visibility without inventing a contract limit (gap G-3)", () => {
     for (const reason of ["dependency", "external", "resource"]) {
       const result = plan([card({ status: "blocked", blocked_at: ago(116), meta: { blocked_reason: reason } })]);
       assert.equal(result.alerts.length, 1, reason);
@@ -400,7 +440,7 @@ describe("confirmation_gate", () => {
     assert.deepEqual(result.alerts, []);
   });
 
-  it("matches the §⑭ request shape only when all three parts are present, at confidence low", () => {
+  it("matches the §6.2 request shape only when all three parts are present, at confidence low", () => {
     assert.equal(looksLikeConfirmRequest("docs/plan.md — 请确认，open items: 2"), true);
     assert.equal(looksLikeConfirmRequest("docs/plan.md — looks good"), false, "no confirmation ask");
     assert.equal(looksLikeConfirmRequest("确认了，open items 2"), false, "no document path");
@@ -545,7 +585,7 @@ describe("inspector_liveness (the mutual watchdog, §5.3 / §8.4 / F3)", () => {
     const alert = livenessAlert(live({ peerLastOkAt: ago(BOUND_MIN + 1) }));
     assert.ok(alert, "a peer marker older than k × P_peer is a silent inspector");
     assert.equal(alert.severity, "warn");
-    assert.equal(alert.threshold_min, null, "no PROTOCOL §⑮ row ⇒ no invented threshold");
+    assert.equal(alert.threshold_min, null, "no contract row ⇒ no invented threshold");
     assert.equal(alert.confidence, "high", "the marker's own timestamp is exact");
     assert.equal(alert.target, "leader");
     assert.equal(alert.evidence.peer, "openclaw-cron");
@@ -728,7 +768,7 @@ describe("leader_stalled", () => {
     assert.equal(hasStalled(result), false);
   });
 
-  it("escalates past the §⑮.1 stall bound", () => {
+  it("escalates past the §5.2 stall bound", () => {
     const result = plan([blocked("T-1", "2026-10-01T04:00:00.000Z")]);
     const alert = result.alerts.find((entry) => entry.sla_row === "leader_stalled");
     assert.equal(alert.severity, "escalate");
@@ -861,9 +901,9 @@ describe("the shared tuple (§4) and the safe-operation envelope (§9)", () => {
     assert.equal(JSON.stringify(result.alerts).includes("operator"), false);
   });
 
-  it("names the §⑮ row it derives from, never a line anchor", () => {
+  it("names the contract row it derives from, never a line anchor", () => {
     for (const alert of plan([card({ status: "blocked", blocked_at: ago(130) })]).alerts) {
-      assert.match(alert.sla_ref, /^PROTOCOL §⑮/);
+      assert.match(alert.sla_ref, /^docs\/sla\.md §/);
       assert.doesNotMatch(alert.sla_ref, /:\d/);
     }
   });

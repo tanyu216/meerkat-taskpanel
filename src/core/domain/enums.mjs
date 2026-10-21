@@ -63,7 +63,7 @@ export const AWAITING_REASONS = Object.freeze(["E1", "E2", "E3", "E4", "E5"]);
  * (a timestamp) cannot say; it is not a severity and not an explanation, because
  * those are read from the comment trail.
  *
- * The vocabulary is the SLA-inspection contract's (`§7`), which both the board
+ * The vocabulary is `docs/sla.md` §6.1's, which both the board
  * and the two inspection mechanisms share — the board must not invent its own
  * spelling for a value the inspectors switch on:
  *

@@ -191,7 +191,7 @@ taskpanel 不内置任何针对外部 skills 集合的专门集成。
 **每 60 秒**做一次 **ping**：清掉 registry 中进程已退出的 worker 条目 —— 不读看板、不启动模型。
 **每十分钟**做一次 **continue** 回合：用有界的 `Continue` 提示词唤醒宿主，由这一回合运行循环的
 确定性入口 —— 只通知的 SLA 巡检（心跳过期、无人应答的确认门、没人排验收的交付，以及
-`PROTOCOL §⑮` 的其余各项）、工作流通道（看板通过 `issue reconcile --workflow` 计算计划：
+SLA 契约（`docs/sla.md`）的其余各项）、工作流通道（看板通过 `issue reconcile --workflow` 计算计划：
 容器规则、为每笔交付派出独立审核员、应用结论；循环执行计划中的审核动作），以及**只有真正
 认领成功**才唤醒 worker 的 poll（空扫描 $0）。SLA 的每一条都是**发给 leader 的通知**，绝不
 对卡动手；工作流入口执行看板的计划（`--reviewer` 启用派发，`--workflow=no` 整条通道关闭）。
