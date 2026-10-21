@@ -10,7 +10,7 @@ The loop runs when no agent is looking. Its scheduler owns two clocks:
 | Clock | Cadence | Job |
 |---|---|---|
 | **ping** | 60s | prune registry entries whose pid is gone. No board read, no claim, no LLM |
-| **continue** | 600s | wake the host with a bounded `继续` prompt; that turn runs the entries below |
+| **continue** | 600s | wake the host with a bounded `Continue` prompt; that turn runs the entries below |
 
 The continue turn runs three deterministic entries, in this order:
 

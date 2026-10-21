@@ -214,7 +214,7 @@ supervisor: enabled (host=claude, scheduler=launchd, units=com.meerkat-taskpanel
 to disable:  install.sh --supervisor=disable --supervisor-hosts claude
 ```
 
-Enabling installs the two clocks described above: a $0 ping and one bounded `继续`
+Enabling installs the two clocks described above: a $0 ping and one bounded `Continue`
 judgment turn per continue cadence. Inside that turn the poll is still the $0 local
 scan, and a worker turn still starts only when a claim succeeded (see
 [`scheduling.md §The cost gate`](scheduling.md#the-cost-gate-a-worker-turn-starts-only-on-fire)).
@@ -408,7 +408,7 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <ho
 | `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the host config. Unset (the default) disables **dispatch** only; a delivery then waits for a human to accept it. |
 | `--auto-accept-reviews=yes\|no` | Let the loop close a review card after applying its verdict. Persisted; default `yes`. `no` is the escape hatch: the verdict is still applied, but the review card stays in `in_review` for a human. |
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |
-| `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the host with a bounded `继续` prompt; that turn runs poll, patrol and workflow. |
+| `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the host with a bounded `Continue` prompt; that turn runs poll, patrol and workflow. |
 | `--continue=yes\|no` | Enable the continue turn. Persisted to the host config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
 | `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints the per-host load state and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
 | `--supervisor-hosts <list>` | Which loop hosts the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}` (default: the loop hosts present in `--target`). Deliberately **not** a `--host` flag: `--host` already means the **wake** selector in `scripts/supervisor.mjs`, so reusing the name here would collide. `openclaw` is **rejected** (reason on stderr, exit 2). |

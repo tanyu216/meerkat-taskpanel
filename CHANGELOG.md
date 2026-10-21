@@ -50,6 +50,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The continue prompt opens in English.** The loop's periodic judgment turn now starts with
+  `Continue — Meerkat TaskPanel loop, judgment turn.` rather than `继续`; the scheduled units,
+  the skill text and the docs quote the new cue. Behaviour is unchanged: the host reads the
+  prompt as text, not as a keyword.
 - **Breaking: an agent session's `backend` is now `owner_kind`.** The column, the wire field, the
   `session set` flag (`--backend` → `--owner-kind`) and the markdown `## Sessions` field all use the
   one spelling; migration 0029 renames the column in place (`RENAME COLUMN`, no rebuild). The value

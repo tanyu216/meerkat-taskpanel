@@ -2,7 +2,7 @@
 /**
  * The continue entry — the scheduler's periodic judgment turn.
  *
- * Builds a bounded prompt beginning with 继续 and starts the host agent. The
+ * Builds a bounded prompt beginning with Continue and starts the host agent. The
  * prompt runs patrol → workflow → poll; poll is last so a review card
  * dispatched in this turn can be claimed immediately. A lock makes the turn
  * single-flight across processes.

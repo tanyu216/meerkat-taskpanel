@@ -247,7 +247,7 @@ special integration for an external skills collection.
 **In short:** the loop is a **scheduler that runs outside the host**. It owns two clocks.
 Every **60 seconds** it **pings**: it drops worker-registry entries whose pid is gone — no
 board read and no model turn. Every **ten minutes** it runs a **continue** turn: it wakes
-the host with a bounded `继续` prompt, and that turn runs the loop's deterministic entries —
+the host with a bounded `Continue` prompt, and that turn runs the loop's deterministic entries —
 the notify-only SLA patrol (stale heartbeats, an unanswered confirmation gate, a delivery
 nobody reviewed, the rest of `PROTOCOL §⑮`), the workflow channel (the board computes the
 plan through `issue reconcile --workflow` — container rules, an independent reviewer per
