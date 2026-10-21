@@ -158,6 +158,7 @@ flag("--dry-run", (opts) => { opts.dryRun = true; }, "switch");
 flag("--log", (opts, value) => { opts.log = value; });
 flag("--state", (opts, value) => { opts.state = value; });
 flag("--sla-ledger", (opts, value) => { opts.slaLedger = value; });
+flag("--workflow-ledger", (opts, value) => { opts.workflowLedger = value; });
 flag("--sla-leader", (opts, value) => { opts.slaLeader = value; });
 flag("--sla-last-ok", (opts, value) => { opts.slaLastOk = value; });
 flag("--sla-peer", (opts, value) => { opts.slaPeer = value; });
@@ -188,6 +189,7 @@ function statePaths(state) {
   return {
     continueState: join(dir, "continue.state.json"),
     slaLedger: join(dir, "sla-ledger.json"),
+    workflowLedger: join(dir, "workflow-ledger.json"),
     slaLastOk: join(dir, "loop-patrol-last-ok.json"),
   };
 }
@@ -232,6 +234,7 @@ function defaultOptions(env) {
     log: null,
     state: null,
     slaLedger: null,
+    workflowLedger: null,
     slaLeader: null,
     slaLastOk: null,
     slaPeer: null,
@@ -296,6 +299,7 @@ export function parseArgs(argv, env = process.env) {
   const beside = statePaths(opts.state);
   opts.continueState ??= beside.continueState;
   opts.slaLedger ??= beside.slaLedger;
+  opts.workflowLedger ??= beside.workflowLedger;
   opts.slaLastOk ??= beside.slaLastOk;
   opts.slaLeader ??= env.MEERKAT_TASKPANEL_SLA_LEADER ?? null;
   opts.slaPeer ??= env.MEERKAT_TASKPANEL_SLA_PEER ?? null;
@@ -476,6 +480,7 @@ export function loopCommandArgs(opts) {
     glue: paths.glue,
     projectsJson: paths.projectsJson,
     slaLedger: beside.slaLedger,
+    workflowLedger: beside.workflowLedger,
     slaLastOk: beside.slaLastOk,
   };
   for (const [flag, key] of [
@@ -485,6 +490,7 @@ export function loopCommandArgs(opts) {
     ["--glue", "glue"],
     ["--projects-json", "projectsJson"],
     ["--sla-ledger", "slaLedger"],
+    ["--workflow-ledger", "workflowLedger"],
     ["--sla-last-ok", "slaLastOk"],
   ]) {
     if (opts[key] !== defaults[key]) add(flag, opts[key]);
@@ -580,6 +586,7 @@ Options:
   --log <path>              Append log lines here (default: <home>/<host-dir>/meerkat-taskpanel/supervisor.log).
   --state <path>            Worker registry (default: <home>/<host-dir>/meerkat-taskpanel/supervisor.state.json).
   --sla-ledger <path>       SLA de-duplication ledger (default: a sibling of --state).
+  --workflow-ledger <path>  Workflow alert de-duplication ledger (default: a sibling of --state).
   --sla-leader <id>         The author id the leader writes under (default: human decisions).
   --sla-last-ok <path>      This mechanism's last-successful-run marker.
   --sla-peer <path>         The peer inspector's last-ok marker.

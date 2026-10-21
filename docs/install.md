@@ -407,6 +407,7 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <ho
 | `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — ask the board for the workflow plan (`issue reconcile --workflow`) and apply its review actions. Persisted to the host config; default `yes`. `no` means the loop writes no card at all. |
 | `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the host config. Unset (the default) disables **dispatch** only; a delivery then waits for a human to accept it. |
 | `--auto-accept-reviews=yes\|no` | Let the loop close a review card after applying its verdict. Persisted; default `yes`. `no` is the escape hatch: the verdict is still applied, but the review card stays in `in_review` for a human. |
+| `--workflow-ledger <path>` | The workflow alert de-duplication ledger, a sibling of `--state` by default. A repeated finding is notified once per state; an unreadable ledger suppresses nothing. |
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |
 | `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the host with a bounded `Continue` prompt; that turn runs poll, patrol and workflow. |
 | `--continue=yes\|no` | Enable the continue turn. Persisted to the host config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |

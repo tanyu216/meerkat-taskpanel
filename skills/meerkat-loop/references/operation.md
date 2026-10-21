@@ -82,6 +82,7 @@ Precedence: flag > process env > host config > default.
 | `--acceptance <policy>` | `both` | `human-only` \| `both` \| `agent-only`; **advisory**, the board decides |
 | `--workflow-max-actions <n>` | 20 | writes per workflow pass |
 | `--review-aging-minutes <n>` | 60 | report a review card with no readable verdict this long |
+| `--workflow-ledger <path>` | beside `--state` | workflow alert de-duplication ledger; an unreadable one suppresses nothing |
 | `--subscribe` | off | run the SSE daemon; launchd/systemd only |
 | `--event-continue=yes\|no` | yes | let events wake a continue turn |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |

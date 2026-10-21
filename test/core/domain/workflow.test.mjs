@@ -662,3 +662,57 @@ describe("acceptance policy (human-only holds a top-level approval)", () => {
     assert.equal(result.actions[0].closeReview, false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// De-duplication keys
+// ---------------------------------------------------------------------------
+
+describe("workflow alert dedup keys", () => {
+  const unreadable = (verdicts = {}) =>
+    outcomes({
+      tasks: [card(), reviewCard()],
+      verdicts,
+      config: CONFIG,
+      now: NOW,
+    }).alerts.find((alert) => alert.type === "verdict_unreadable");
+
+  it("is stable for the same state", () => {
+    assert.equal(unreadable().dedupKey, unreadable().dedupKey);
+  });
+
+  it("changes when the unreadable reason changes", () => {
+    const missing = unreadable();
+    const noVerdict = unreadable({ "T-2": { ok: false, reason: "no_verdict" } });
+    assert.notEqual(missing.dedupKey, noVerdict.dedupKey);
+  });
+
+  it("changes when the review card's status or audited round changes", () => {
+    const aging = (status, round) =>
+      outcomes({
+        tasks: [
+          card({ delivery_round: round }),
+          reviewCard({ status, meta: { review_of: "T-1", flow: "B", review_round: round } }),
+        ],
+        verdicts: {},
+        config: CONFIG,
+        now: "2026-10-23T10:00:00.000Z",
+      }).alerts.find((alert) => alert.type === "review_aging");
+    assert.ok(aging("todo", 1));
+    assert.notEqual(aging("todo", 1).dedupKey, aging("blocked", 1).dedupKey);
+    assert.notEqual(aging("todo", 1).dedupKey, aging("todo", 2).dedupKey);
+  });
+
+  it("keys a reconcile alert by its blocking set, order-insensitively", () => {
+    const reconcile = (blocking) =>
+      classifyReconcileActions([
+        { epic: "E-1", reason: "no_delivery_evidence", action: "none", blocking },
+      ]).alerts[0];
+    const one = reconcile([{ identifier: "T-1" }]);
+    const same = reconcile([{ identifier: "T-1" }]);
+    const two = reconcile([{ identifier: "T-1" }, { identifier: "T-2" }]);
+    const reversed = reconcile([{ identifier: "T-2" }, { identifier: "T-1" }]);
+    assert.equal(one.dedupKey, same.dedupKey);
+    assert.equal(two.dedupKey, reversed.dedupKey);
+    assert.notEqual(one.dedupKey, two.dedupKey);
+  });
+});

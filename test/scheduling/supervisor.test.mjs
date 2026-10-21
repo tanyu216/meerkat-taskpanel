@@ -1225,6 +1225,106 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.equal(result.failed, 1);
     assert.equal(notify.calls[0][0].error, "approve action is missing accepted_by");
   });
+
+  it("notifies a workflow alert once per state, not once per pass", async () => {
+    const notify = spy();
+    const plan = {
+      alerts: [
+        {
+          type: "verdict_unreadable",
+          review: "T-2",
+          original: "T-1",
+          reason: "no_report",
+          dedup_key: "verdict_unreadable|T-2|no_report",
+        },
+      ],
+      changes: [],
+      actions: [],
+      summary: {},
+    };
+    const first = await runWorkflowTick(
+      baseDeps({ plan, notify, ledger: emptySlaLedger(), now: () => "2026-10-22T10:00:00.000Z" }),
+    );
+    assert.deepEqual(notify.calls.map(([alert]) => alert.type), ["verdict_unreadable"]);
+
+    await runWorkflowTick(
+      baseDeps({ plan, notify, ledger: first.ledger, now: () => "2026-10-22T10:10:00.000Z" }),
+    );
+    assert.equal(notify.count(), 1, "the same state is suppressed on the next pass");
+    assert.equal(Object.keys(first.ledger.seen).length, 1);
+  });
+
+  it("re-notifies when the alert's state changes", async () => {
+    const notify = spy();
+    const alert = (reason) => ({
+      type: "verdict_unreadable",
+      review: "T-2",
+      original: "T-1",
+      reason,
+      dedup_key: `verdict_unreadable|T-2|${reason}`,
+    });
+    const first = await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [alert("no_report")], changes: [], actions: [], summary: {} },
+        notify,
+        ledger: emptySlaLedger(),
+        now: () => "2026-10-22T10:00:00.000Z",
+      }),
+    );
+    await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [alert("no_verdict")], changes: [], actions: [], summary: {} },
+        notify,
+        ledger: first.ledger,
+        now: () => "2026-10-22T10:10:00.000Z",
+      }),
+    );
+    assert.equal(notify.count(), 2);
+  });
+
+  it("dedupes workflow_action_failed by action, ref and error", async () => {
+    const notify = spy();
+    const failing = { type: "create_review", original_ref: "T-1" };
+    const createReview = async () => ({ ok: false, error: "board busy" });
+    const first = await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [], changes: [], actions: [failing], summary: {} },
+        createReview,
+        notify,
+        ledger: emptySlaLedger(),
+        now: () => "2026-10-22T10:00:00.000Z",
+      }),
+    );
+    await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [], changes: [], actions: [failing], summary: {} },
+        createReview,
+        notify,
+        ledger: first.ledger,
+        now: () => "2026-10-22T10:10:00.000Z",
+      }),
+    );
+    assert.equal(notify.count(), 1, "the same failure is not repeated");
+  });
+
+  it("fails open when the ledger is unreadable", async () => {
+    const notify = spy();
+    await runWorkflowTick(
+      baseDeps({
+        plan: {
+          alerts: [
+            { type: "verdict_unreadable", review: "T-2", dedup_key: "verdict_unreadable|T-2|no_report" },
+          ],
+          changes: [],
+          actions: [],
+          summary: {},
+        },
+        notify,
+        ledger: { version: 1, seen: null },
+      }),
+    );
+    assert.equal(notify.count(), 1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1284,6 +1384,19 @@ describe("parseArgs — the wake surface", () => {
     const moved = parseArgs(["--host", "claude", "--once", "--state", "/tmp/state.json"], ENV);
     assert.equal(moved.slaLedger, "/tmp/sla-ledger.json", "one directory remembers everything");
     assert.equal(parseArgs(["--host", "claude", "--once", "--sla-ledger=/tmp/l.json"], ENV).slaLedger, "/tmp/l.json");
+  });
+
+  it("defaults the workflow ledger beside the state file, and follows a custom one", () => {
+    assert.equal(
+      parseArgs(["--host", "claude", "--once"], ENV).workflowLedger,
+      "/home/alice/.claude/meerkat-taskpanel/workflow-ledger.json",
+    );
+    const moved = parseArgs(["--host", "claude", "--once", "--state", "/tmp/state.json"], ENV);
+    assert.equal(moved.workflowLedger, "/tmp/workflow-ledger.json");
+    assert.equal(
+      parseArgs(["--host", "claude", "--once", "--workflow-ledger=/tmp/w.json"], ENV).workflowLedger,
+      "/tmp/w.json",
+    );
   });
 
   it("bounds the two reads the SLA pass makes", () => {

@@ -386,6 +386,7 @@ the container; with it, the container stays `in_progress` and names the child bl
 | writes per pass | `--workflow-max-actions <n>` | `MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS` | `20` |
 | silent-review threshold | `--review-aging-minutes <n>` | `MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES` | `60` |
 | who may close a task | `--acceptance <policy>` | `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` | `both` |
+| workflow alert ledger | `--workflow-ledger <path>` | — | `workflow-ledger.json` beside `--state` |
 
 Precedence is flag → environment → host config → default, the same as the claim policy.
 `workflow` gates the whole channel; `auto-accept-reviews` gates only the review card's own
@@ -1363,6 +1364,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--log <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.log` | where the tick log appends |
 | `--state <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 | `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
+| `--workflow-ledger <path>` | `workflow-ledger.json` beside `--state` | the workflow alert de-duplication ledger; an unreadable one suppresses nothing |
 | `--sla-leader <id>` | from `$MEERKAT_TASKPANEL_SLA_LEADER`, else unset | the author id the leader writes under, for the `leader_stalled` attribution set; unset ⇒ the board's own decision authority (`author_kind = "human"`). Set the **same** identity on both mechanisms |
 | `--sla-last-ok <path>` | `loop-patrol-last-ok.json` beside `--state` | where this mechanism publishes its own last-successful-run marker for the peer's watchdog |
 | `--sla-peer <path>` | from `$MEERKAT_TASKPANEL_SLA_PEER`, else unset | the peer inspector's last-ok marker; a marker older than `3 × 15min` raises `inspector_liveness`. Unset ⇒ the peer's half is a registered dependency and nothing alarms |
