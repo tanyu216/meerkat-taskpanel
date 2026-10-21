@@ -451,6 +451,57 @@ describe("confirmation_gate", () => {
     assert.equal(alert.severity, "overdue", "250 minutes of a 240-minute limit");
   });
 
+  it("fires on a confirm_request comment, at high confidence", () => {
+    const result = plan(
+      [card({ status: "in_progress", status_changed_at: ago(300) })],
+      { trails: { "T-1": [{ kind: "confirm_request", created_at: ago(250), author_kind: "agent", author_id: "linus" }] } },
+    );
+    const alert = result.alerts.find((entry) => entry.sla_row === "confirmation_gate");
+    assert.ok(alert);
+    assert.equal(alert.measure_start_at, ago(250));
+    assert.equal(alert.measure_start_source, "comments");
+    assert.equal(alert.confidence, "high");
+  });
+
+  it("prefers a confirm_request entry over a later legacy body marker", () => {
+    // The formal kind is the current channel; the body marker is a fallback for
+    // deployments that have not adopted it. Priority, not recency, decides.
+    const result = plan(
+      [card({ status: "in_progress", status_changed_at: ago(300) })],
+      {
+        trails: {
+          "T-1": [
+            { kind: "confirm_request", created_at: ago(250), author_kind: "agent", author_id: "linus" },
+            { kind: "note", created_at: ago(200), body: "docs/plan.md [confirm-request]" },
+          ],
+        },
+      },
+    );
+    assert.equal(
+      result.alerts.find((entry) => entry.sla_row === "confirmation_gate").measure_start_at,
+      ago(250),
+      "the formal kind wins even though the marker is newer",
+    );
+  });
+
+  it("takes the latest entry within one channel", () => {
+    const result = plan(
+      [card({ status: "in_progress", status_changed_at: ago(600) })],
+      {
+        trails: {
+          "T-1": [
+            { kind: "confirm_request", created_at: ago(500), author_kind: "agent", author_id: "linus" },
+            { kind: "confirm_request", created_at: ago(300), author_kind: "agent", author_id: "linus" },
+          ],
+        },
+      },
+    );
+    assert.equal(
+      result.alerts.find((entry) => entry.sla_row === "confirmation_gate").measure_start_at,
+      ago(300),
+    );
+  });
+
   it("stays silent when the card carries no confirmation request at all", () => {
     const result = plan([card({ status: "in_progress", status_changed_at: ago(600) })]);
     assert.deepEqual(result.alerts, []);
@@ -838,6 +889,12 @@ describe("leader_stalled", () => {
       assert.equal(hasStalled(silent), true, `${kind}: the quiet board stalls`);
       assert.equal(hasStalled(active), false, `${kind}: a leader's ${kind} resets the clock`);
     }
+  });
+
+  it("does not count a worker's confirm_request as leader activity", () => {
+    const stale = blocked("T-1", "2026-09-01T04:00:00.000Z");
+    const result = plan([stale], { trails: { "T-1": [comment("confirm_request", ago(1), WORKER)] } });
+    assert.equal(hasStalled(result), true, "a request is not a leader action");
   });
 
   it("does not count the loop's own automated acceptance as leader activity", () => {

@@ -42,6 +42,24 @@ describe("cli/comment", () => {
     });
   });
 
+  it("accepts the confirm_request kind", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
+
+      const added = dataOf(run([
+        "comment", "add", "DEMO-0001",
+        "--body", "docs/plan.md is ready — please confirm the open items",
+        "--kind", "confirm_request",
+        "--json",
+      ]));
+      assert.equal(added.comment.kind, "confirm_request");
+
+      const filtered = dataOf(run(["comment", "list", "DEMO-0001", "--kind", "confirm_request", "--json"]));
+      assert.equal(filtered.comments.length, 1);
+    });
+  });
+
   it("reads the body from stdin, and records the agent that wrote it", async () => {
     await withCli(async ({ run }) => {
       run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);

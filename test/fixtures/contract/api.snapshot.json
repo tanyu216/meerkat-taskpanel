@@ -908,6 +908,7 @@
               "enum": [
                 "change",
                 "confirm",
+                "confirm_request",
                 "decision",
                 "defect",
                 "discuss",
@@ -941,6 +942,7 @@
               "enum": [
                 "change",
                 "confirm",
+                "confirm_request",
                 "decision",
                 "defect",
                 "discuss",

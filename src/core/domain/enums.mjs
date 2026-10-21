@@ -152,6 +152,9 @@ export const COMMENT_KINDS = Object.freeze([
   "discuss",
   "decision",
   "confirm",
+  // `confirm_request` is a *request*, not a decision: it opens a confirmation
+  // gate (`docs/sla.md` §11). It is deliberately absent from DECISION_KINDS.
+  "confirm_request",
   "change",
   "note",
   "defect",

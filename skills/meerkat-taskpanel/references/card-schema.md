@@ -178,7 +178,7 @@ removed; it is gone. The full audit trail is a separate board read
 ## Comments
 - <ts> · <kind> · <author> — <body>
 ```
-`<kind>` is a closed enum: `discuss` · `decision` · `confirm` · `change` · `note` · `defect`.
+`<kind>` is a closed enum: `discuss` · `decision` · `confirm` · `confirm_request` · `change` · `note` · `defect`.
 Newlines in `<body>` are escaped as `\n`.
 
 ```

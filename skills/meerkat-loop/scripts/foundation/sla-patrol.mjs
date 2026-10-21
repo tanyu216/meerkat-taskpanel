@@ -545,7 +545,10 @@ function commentAt(comment) {
   return instant(comment?.created_at);
 }
 
-/** The stable `§11` marker for a confirmation request (gap G-5). */
+/** The formal comment kind that opens a confirmation gate (`docs/sla.md` §11). */
+export const CONFIRM_REQUEST_KIND = "confirm_request";
+
+/** The legacy body marker, kept as a fallback for deployments without the kind. */
 const CONFIRM_MARKER = /\[confirm-request\]/i;
 const MD_PATH = /\.(md|markdown)\b/i;
 const CONFIRM_WORD = /(确认|confirm)/i;
@@ -565,11 +568,12 @@ export function looksLikeConfirmRequest(body) {
 /**
  * The latest confirmation request on a card, or `null` when there is none.
  *
- * Priority order (§6.3-A): an explicit gate-start field (forward-compatible, no
- * such field exists today), then the `[confirm-request]` marker, then the
- * request shape. **No detectable request means no trigger** — the row is about
- * an *unanswered request*, not about a card's age, and inventing a gate would
- * alert on every card on the board.
+ * Priority order (§6.2): an explicit gate-start field (forward-compatible),
+ * then a `confirm_request` comment, then the legacy `[confirm-request]` marker,
+ * then the prose shape. Within one channel the latest `created_at` wins.
+ * **No detectable request means no trigger** — the row is about an *unanswered
+ * request*, not about a card's age, and inventing a gate would alert on every
+ * card on the board.
  *
  * @returns {{at: string|number, source: string, confidence: "high"|"low"}|null}
  */
@@ -577,20 +581,32 @@ export function findConfirmRequest(card, trail) {
   const explicit = card?.meta?.gate_at;
   if (instant(explicit) !== null) return { at: explicit, source: "frontmatter", confidence: "high" };
 
+  const latest = (current, comment) => {
+    if (comment === null) return current;
+    const at = commentAt(comment);
+    if (current === null) return comment;
+    return at > (commentAt(current) ?? -Infinity) ? comment : current;
+  };
+
+  let kindEntry = null;
   let marker = null;
   let shaped = null;
   for (const comment of commentsOf(trail)) {
-    const at = commentAt(comment);
-    if (at === null) continue;
-    if (CONFIRM_MARKER.test(String(comment?.body ?? ""))) marker = comment;
-    else if (looksLikeConfirmRequest(comment?.body)) shaped = comment;
+    if (commentAt(comment) === null) continue;
+    if (comment?.kind === CONFIRM_REQUEST_KIND) {
+      kindEntry = latest(kindEntry, comment);
+    } else if (CONFIRM_MARKER.test(String(comment?.body ?? ""))) {
+      marker = latest(marker, comment);
+    } else if (looksLikeConfirmRequest(comment?.body)) {
+      shaped = latest(shaped, comment);
+    }
   }
-  const found = marker ?? shaped;
+  const found = kindEntry ?? marker ?? shaped;
   if (found === null) return null;
   return {
     at: found.created_at,
     source: "comments",
-    confidence: marker === null ? "low" : "high",
+    confidence: kindEntry === null && marker === null ? "low" : "high",
   };
 }
 

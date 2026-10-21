@@ -178,7 +178,7 @@ starts and closes the container; see
 | Command | Purpose |
 |---|---|
 | `comment list <ref> [--kind <kind>] [--limit <n>]` | Oldest first. |
-| `comment add <ref> --body <text> [--kind discuss\|decision\|confirm\|change\|note\|defect] [--file <path\|->]` | Append. |
+| `comment add <ref> --body <text> [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect] [--file <path\|->]` | Append. |
 
 Append-only: there is no edit and no delete, by design. A `decision` / `change` comment is what
 a reviewer reads later.

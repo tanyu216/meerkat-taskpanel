@@ -86,7 +86,8 @@ _Avoid_: severity, importance
 
 **Comment**:
 An append-only note on a card, written by an actor and typed by intent (`discuss`,
-`decision`, `confirm`, `change`, `note`, `defect`). Comments are never edited or deleted.
+`decision`, `confirm`, `confirm_request`, `change`, `note`, `defect`). Comments are never
+edited or deleted.
 _中文_: 评论
 _Avoid_: message, post, reply
 

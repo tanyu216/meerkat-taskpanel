@@ -8,7 +8,7 @@
 
 import { table } from "../output/human.mjs";
 
-const KINDS = ["discuss", "decision", "confirm", "change", "note", "defect"];
+const KINDS = ["discuss", "decision", "confirm", "confirm_request", "change", "note", "defect"];
 
 export const COMMANDS = [
   {
@@ -48,7 +48,7 @@ export const COMMANDS = [
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: [
       { flag: "body", key: "body", as: "string", value: "<text>", required: true },
-      { flag: "kind", key: "kind", as: "string", value: "<kind>", summary: `${KINDS.join("|")} (default: discuss)` },
+      { flag: "kind", key: "kind", as: "string", value: "<kind>", summary: `${KINDS.join("|")} (default: note)` },
       { flag: "file", key: "file", as: "string", value: "<path|->", summary: "Read the body from a file or stdin." },
     ],
     async run(ctx) {
