@@ -296,6 +296,45 @@ describe("cli/issue — every flag the command declares", () => {
     });
   });
 
+  it("list filters by the card being reviewed", async () => {
+    await board(async ({ run }) => {
+      const original = createIssue(run);
+      const review = createIssue(run, [
+        "--title", "Review",
+        "--review-of", "DEMO-0001",
+        "--review-round", "1",
+        "--assignee", "linus",
+      ]);
+      createIssue(run, ["--title", "Unrelated"]);
+
+      const byIdentifier = dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--json"]));
+      assert.deepEqual(byIdentifier.tasks.map((task) => task.identifier), [review.task.identifier]);
+
+      const byId = dataOf(run(["issue", "list", "--review-of", original.task.id, "--json"]));
+      assert.deepEqual(byId.tasks.map((task) => task.identifier), [review.task.identifier]);
+
+      const byAssignee = dataOf(
+        run(["issue", "list", "--review-of", "DEMO-0001", "--assignee-id", review.task.assignee.id, "--json"]),
+      );
+      assert.deepEqual(byAssignee.tasks.map((task) => task.identifier), [review.task.identifier]);
+
+      const byStatus = dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--status", "done", "--json"]));
+      assert.deepEqual(byStatus.tasks, []);
+
+      dataOf(run(["issue", "move", review.task.identifier, "canceled", "--json"]));
+      dataOf(run(["issue", "archive", review.task.identifier, "--days", "0", "--json"]));
+      assert.equal(dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--json"])).tasks.length, 0);
+      assert.equal(
+        dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--include-archived", "--json"])).tasks.length,
+        1,
+      );
+
+      const missing = run(["issue", "list", "--review-of", "NOPE-9999", "--json"]);
+      assert.equal(missing.status, 1);
+      assert.equal(errorOf(missing).code, "NOT_FOUND");
+    });
+  });
+
   it("move and assign accept if_version and force-create", async () => {
     await board(async ({ run }) => {
       createIssue(run);

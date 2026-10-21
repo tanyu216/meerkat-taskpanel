@@ -24,6 +24,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   running; it takes the resolved task UUID (`issue get --json` → `data.task.id`). Parity is
   pinned by a vector matrix against `src/foundation/ids.mjs`, including the namespace and the
   RFC 4122 test vector.
+- **`taskctl issue list --review-of <ref>` filters to a card's review cards.** The read side of
+  the 0025 review marker now has the filter the acceptance flow needs: the reviews of the
+  named card (id or identifier), across every round, combinable with `--project`, `--status`,
+  `--assignee-id` and `--include-archived`. It is read-only; an unknown ref is `NOT_FOUND`
+  and an identifier used in two projects is refused (`VALIDATION_FAILED`) rather than
+  guessed. `GET /api/v1/tasks` takes the same `review_of` query param.
 - **An agent session records a one-sentence goal.** `taskctl session set <ref> --seg … --owner-kind …
   --goal "<one sentence>"` stores what that conversation is working on on the session row
   (migration 0028), so concurrent segments on one card each state their own. Omitting `--goal` on a

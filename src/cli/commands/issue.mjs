@@ -87,12 +87,13 @@ export const COMMANDS = [
   {
     name: "list",
     summary: "List tasks.",
-    usage: "issue list [--project <id>] [--status <status>]… [--limit <n>] [--order board|weight] [--order-debug]",
+    usage: "issue list [--project <id>] [--status <status>]… [--assignee-id <id>] [--review-of <ref>] [--limit <n>] [--order board|weight] [--order-debug]",
     positionals: [],
     flags: [
       { flag: "project", key: "project", as: "string", value: "<id>" },
       { flag: "status", key: "statuses", as: "string", value: "<status>", repeat: true },
       { flag: "assignee-id", key: "assigneeId", as: "string", value: "<id>" },
+      { flag: "review-of", key: "reviewOf", as: "string", value: "<ref>", summary: "Only the cards that review this task (id or identifier), across every round." },
       { flag: "limit", key: "limit", as: "number", value: "<n>" },
       { flag: "include-archived", key: "includeArchived", as: "boolean" },
       { flag: "order", key: "order", as: "string", value: "board|weight", summary: "`weight` = the assignee weight order (C-WEIGHT-1); the default is the board's own deterministic order." },
@@ -104,6 +105,7 @@ export const COMMANDS = [
           project_id: ctx.flags.project,
           status: ctx.flags.statuses,
           assignee_id: ctx.flags.assigneeId,
+          review_of: ctx.flags.reviewOf,
           limit: ctx.flags.limit,
           include_archived: ctx.flags.includeArchived === true ? "1" : undefined,
           order: ctx.flags.order,

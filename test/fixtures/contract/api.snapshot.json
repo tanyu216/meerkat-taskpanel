@@ -554,6 +554,9 @@
             "project_id": {
               "type": "string"
             },
+            "review_of": {
+              "type": "string"
+            },
             "status": {
               "items": {
                 "enum": [

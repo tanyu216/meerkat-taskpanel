@@ -1038,7 +1038,7 @@ export function archive(ctx, input) {
  * tests it.
  *
  * @param {object} ctx
- * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], includeArchived?: boolean, limit?: number, offset?: number, order?: string, orderDebug?: boolean}} [filter]
+ * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], reviewOfId?: string, includeArchived?: boolean, limit?: number, offset?: number, order?: string, orderDebug?: boolean}} [filter]
  */
 export function listTasks(ctx, filter = {}) {
   return readOrdered(ctx, filter).tasks;

@@ -1298,6 +1298,78 @@ describe("server/routes — the acceptance wire (M6)", () => {
   });
 });
 
+describe("server/routes — the review filter", () => {
+  let original;
+  let review;
+
+  before(async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "revfilter", name: "Review filter" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "revfilter2", name: "Review filter two" }));
+    original = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "revfilter", title: "Original" }),
+    ).task;
+    review = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "revfilter",
+        title: "Review",
+        review_of: original.identifier,
+        review_round: 1,
+        assignee: "linus",
+      }),
+    ).task;
+    dataOf(await call("POST", "/api/v1/tasks", { project_id: "revfilter", title: "Unrelated" }));
+  });
+
+  it("returns the review cards by identifier and by uuid", async () => {
+    const byIdentifier = dataOf(
+      await call("GET", `/api/v1/tasks?review_of=${encodeURIComponent(original.identifier)}`),
+    );
+    assert.deepEqual(byIdentifier.tasks.map((task) => task.identifier), [review.identifier]);
+
+    const byId = dataOf(await call("GET", `/api/v1/tasks?review_of=${original.id}`));
+    assert.deepEqual(byId.tasks.map((task) => task.identifier), [review.identifier]);
+  });
+
+  it("intersects with the other list filters", async () => {
+    const scoped = dataOf(
+      await call(
+        "GET",
+        `/api/v1/tasks?review_of=${original.id}&project_id=revfilter&status=todo&assignee_id=${review.assignee.id}`,
+      ),
+    );
+    assert.deepEqual(scoped.tasks.map((task) => task.identifier), [review.identifier]);
+
+    const empty = dataOf(await call("GET", `/api/v1/tasks?review_of=${original.id}&status=done`));
+    assert.deepEqual(empty.tasks, []);
+  });
+
+  it("reports a missing ref, and refuses an ambiguous identifier", async () => {
+    for (const ref of ["NOPE-9999", ""]) {
+      const result = await call("GET", `/api/v1/tasks?review_of=${encodeURIComponent(ref)}`);
+      assert.equal(result.status, 404, JSON.stringify(result.body));
+      assert.equal(result.body.error.code, "NOT_FOUND");
+    }
+
+    dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "revfilter",
+        title: "Ambiguous one",
+        identifier: "AMBIG-7777",
+      }),
+    );
+    dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "revfilter2",
+        title: "Ambiguous two",
+        identifier: "AMBIG-7777",
+      }),
+    );
+    const ambiguous = await call("GET", "/api/v1/tasks?review_of=AMBIG-7777");
+    assert.equal(ambiguous.status, 400, JSON.stringify(ambiguous.body));
+    assert.equal(ambiguous.body.error.code, "VALIDATION_FAILED");
+  });
+});
+
 describe("server/requests — query-string coercions", () => {
   it("reads the liberal boolean vocabulary", () => {
     for (const word of ["1", "true", "yes", "on"]) assert.equal(truthy(word), true, word);

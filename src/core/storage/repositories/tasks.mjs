@@ -222,7 +222,11 @@ export function createTasksRepository(db) {
      * needs before it paginates: sorting a page and slicing it is how you get a
      * beautifully ordered wrong page.
      *
-     * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
+     * `reviewOfId` is the structural half of 0025's review marker: the cards
+     * whose `review_of_id` points at that row (the review cards, not the card
+     * being reviewed). The partial index `ix_tasks_review_of` serves it.
+     *
+     * @param {{projectId?: string, kind?: string, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, reviewOfId?: string, includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
      */
     list(filter = {}) {
       const clauses = [];
@@ -253,6 +257,10 @@ export function createTasksRepository(db) {
       }
       if (filter.unassignedOnly === true) {
         clauses.push("(assignee_id IS NULL OR assignee_id = '')");
+      }
+      if (filter.reviewOfId !== undefined) {
+        clauses.push("review_of_id = ?");
+        values.push(filter.reviewOfId);
       }
       if (!filter.includeArchived) clauses.push("archived_at IS NULL");
 

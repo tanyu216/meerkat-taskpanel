@@ -758,6 +758,14 @@
               "short": null
             },
             {
+              "flag": "review-of",
+              "as": "string",
+              "value": "<ref>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "status",
               "as": "string",
               "value": "<status>",
