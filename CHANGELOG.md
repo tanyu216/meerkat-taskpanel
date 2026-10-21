@@ -188,6 +188,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The review workflow is tightened and no longer silently loses state.** A review card
+  whose original re-delivered (round ≥ 2) now applies its verdict: the planner parsed the
+  original's `review_round` instead of the review card's own delivery round, so every later
+  round read as `verdict_unreadable`. `issue create --review-of` now requires the original to
+  be `in_review` (a retried create still returns the existing card), and a `parent` relation
+  refuses a review card on either end (`VALIDATION_FAILED`, `details.field = source|target`,
+  not bypassable with `--force`) because a review child inherits child acceptance scope and
+  breaks the original's rollup. A truncated board read marks `original_unseen`
+  `reason: board_truncated` / `undecidable: true` under its own ledger key instead of
+  implying the original is gone; the combined `maxActions` slice reports `actions_capped`
+  (cap / dropped / outcomes / dispatch, notified once) rather than dropping work silently;
+  and `agent-only` with `--auto-accept-reviews=no` raises `review_cards_unclosable` for each
+  open review card plus a loop startup warning, since neither a human nor the loop may close
+  them. `references/review-workflow.md` documents both flows, the verdict protocol and these
+  refusals.
 - **The markdown card's `## Acceptance` section now carries modern acceptance criteria.**
   `issue create/update --acceptance` stores `meta.acceptance` (a string list), but the
   exporter only read the imported `meta.acceptance_legacy` checkbox list, so a modern card
