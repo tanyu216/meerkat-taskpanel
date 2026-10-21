@@ -1,28 +1,21 @@
 /**
- * The loop's event subscriber: what it dispatches, how it coalesces, where it
- * connects, and that a refused turn is retried rather than dropped.
+ * The loop's event subscriber: what it dispatches, how it coalesces, how it
+ * reconnects, and that a refused turn is retried rather than dropped.
+ *
+ * The transport itself is injected: `streamEvents` stands where the spawned
+ * `taskctl events tail` would be, so these tests stay deterministic.
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import test, { after, describe, it } from "node:test";
+import { describe, it } from "node:test";
 
-import { resolveEventEndpoint } from "../../scripts/loop/endpoint.mjs";
-import { advanceCursor, classify } from "../../scripts/loop/event-rules.mjs";
-import { createDispatchScheduler, runSubscribe } from "../../scripts/loop/subscribe.mjs";
-
-const tempDirs = [];
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
-
-function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), "meerkat-subscribe-"));
-  tempDirs.push(dir);
-  return dir;
-}
+import {
+  advanceCursor,
+  classify,
+  createDispatchScheduler,
+  nextBackoff,
+  runSubscribe,
+} from "../../scripts/loop/subscribe.mjs";
 
 const activity = (event, overrides = {}) => ({
   event,
@@ -133,6 +126,8 @@ describe("loop/subscribe — event rules", () => {
     assert.equal(advanceCursor(5, { id: "9" }), 9);
     assert.equal(advanceCursor(5, { id: null }), 5);
     assert.equal(advanceCursor(5, { id: "nope" }), 5);
+    // `streamCli` delivers a numeric id.
+    assert.equal(advanceCursor(5, { id: 7 }), 7);
   });
 });
 
@@ -265,91 +260,44 @@ describe("loop/subscribe — coalescing", () => {
   });
 });
 
-describe("loop/subscribe — endpoint resolution", () => {
-  it("reads the pointer and the token file", () => {
-    const dir = tempDir();
-    const tokenFile = join(dir, "token");
-    writeFileSync(tokenFile, `td_${"a".repeat(64)}\n`);
-    const pointerPath = join(dir, "runtime.json");
-    writeFileSync(pointerPath, JSON.stringify({ url: "http://127.0.0.1:9999/", tokenFile, dataDir: dir }));
-    const endpoint = resolveEventEndpoint(
-      { repo: dir, token: null },
-      { TASKD_RUNTIME_POINTER: pointerPath, TASKD_DATA_DIR: dir },
-    );
-    assert.equal(endpoint.url, "http://127.0.0.1:9999");
-    assert.equal(endpoint.token, `td_${"a".repeat(64)}`);
+describe("loop/subscribe — the reconnect ladder", () => {
+  it("goes 1s, 2s, 4s … capped at 30s", () => {
+    let delay = 0;
+    const ladder = [];
+    for (let i = 0; i < 8; i += 1) {
+      delay = nextBackoff(delay);
+      ladder.push(delay);
+    }
+    assert.deepEqual(ladder, [1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000]);
   });
 
-  it("returns null when there is no pointer", () => {
-    const dir = tempDir();
-    assert.equal(
-      resolveEventEndpoint({ repo: dir, token: null }, { TASKD_RUNTIME_POINTER: join(dir, "missing.json") }),
-      null,
+  it("resets after a shutdown and advances after idle/eof/error", async () => {
+    const controller = new AbortController();
+    const sleeps = [];
+    const reasons = ["shutdown", "idle", "eof", "error", "aborted"];
+    let call = 0;
+    await runSubscribe(
+      { agents: ["linus"] },
+      {},
+      {
+        controller,
+        dispatchEnabled: false,
+        loopConfig: { continueEnabled: false, eventContinueEnabled: false },
+        log: () => {},
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+        streamEvents: async () => {
+          const reason = reasons[call] ?? "aborted";
+          call += 1;
+          if (reason === "aborted") controller.abort();
+          return { reason, error: reason === "error" ? new Error("boom") : null };
+        },
+        runContinue: async () => {},
+      },
     );
-  });
-
-  it("keeps going when the token file is corrupt", () => {
-    const dir = tempDir();
-    const tokenFile = join(dir, "token");
-    writeFileSync(tokenFile, "not-a-token\n");
-    const pointerPath = join(dir, "runtime.json");
-    writeFileSync(pointerPath, JSON.stringify({ url: "http://127.0.0.1:9999", tokenFile, dataDir: dir }));
-    const endpoint = resolveEventEndpoint(
-      { repo: dir, token: null },
-      { TASKD_RUNTIME_POINTER: pointerPath, TASKD_DATA_DIR: dir },
-    );
-    assert.equal(endpoint.token, null);
-  });
-
-  it("lets an explicit --token win", () => {
-    const dir = tempDir();
-    const pointerPath = join(dir, "runtime.json");
-    writeFileSync(pointerPath, JSON.stringify({ url: "http://127.0.0.1:9999", dataDir: dir }));
-    const endpoint = resolveEventEndpoint(
-      { repo: dir, token: "td_flag" },
-      { TASKD_RUNTIME_POINTER: pointerPath, TASKD_DATA_DIR: dir },
-    );
-    assert.equal(endpoint.token, "td_flag");
-  });
-
-  it("prefers --url > TASKD_URL > the pointer", () => {
-    const dir = tempDir();
-    const pointerPath = join(dir, "runtime.json");
-    writeFileSync(pointerPath, JSON.stringify({ url: "http://127.0.0.1:9999", dataDir: dir }));
-    const env = { TASKD_URL: "http://remote.example:9600", TASKD_RUNTIME_POINTER: pointerPath, TASKD_DATA_DIR: dir };
-    assert.equal(resolveEventEndpoint({ repo: dir, token: null }, env).url, "http://remote.example:9600");
-    assert.equal(
-      resolveEventEndpoint({ repo: dir, url: "http://flag.example:9527", token: null }, env).url,
-      "http://flag.example:9527",
-    );
-  });
-
-  it("reads the URL and an inline token from the install-root .env", () => {
-    const dir = tempDir();
-    const token = `td_${"b".repeat(64)}`;
-    const envFile = join(dir, ".env");
-    writeFileSync(envFile, `TASKD_URL=http://from-file.example:9600\nTASKD_TOKEN=${token}\n`, { mode: 0o600 });
-    const endpoint = resolveEventEndpoint(
-      { repo: dir, token: null },
-      { MEERKAT_TASKPANEL_ENV_FILE: envFile, TASKD_RUNTIME_POINTER: join(dir, "missing.json"), TASKD_DATA_DIR: dir },
-    );
-    assert.equal(endpoint.url, "http://from-file.example:9600");
-    assert.equal(endpoint.token, token);
-  });
-
-  it("surfaces a broken explicitly configured token file", () => {
-    const dir = tempDir();
-    const envFile = join(dir, ".env");
-    // A URL is needed for the resolver to reach the token step at all.
-    writeFileSync(envFile, "TASKD_URL=http://127.0.0.1:9999\nTASKD_TOKEN_FILE=missing\n", { mode: 0o600 });
-    assert.throws(
-      () =>
-        resolveEventEndpoint(
-          { repo: dir, token: null },
-          { MEERKAT_TASKPANEL_ENV_FILE: envFile, TASKD_RUNTIME_POINTER: join(dir, "missing.json"), TASKD_DATA_DIR: dir },
-        ),
-      (err) => err.code === "CONFIG_FILE_INVALID" && err.details.source === "config",
-    );
+    // shutdown resets to 1s; idle 2s; eof 4s; error 8s; aborted stops before sleeping.
+    assert.deepEqual(sleeps, [1000, 2000, 4000, 8000]);
   });
 });
 
@@ -371,13 +319,11 @@ describe("loop/subscribe — the process loop", () => {
         dispatchEnabled: true,
         loopConfig: { continueEnabled: true, eventContinueEnabled: true },
         log: () => {},
-        resolveEventEndpoint: () => ({ url: "http://board", token: null }),
-        connectSse: async ({ onOpen, onFrame }) => {
+        streamEvents: async ({ onOpen, onEvent }) => {
           onOpen();
-          onFrame({
-            id: "1",
-            event: "message",
-            data: JSON.stringify({ event: "task_created", actor_kind: "human", actor_id: "terry" }),
+          onEvent({
+            id: 1,
+            data: { event: "task_created", actor_kind: "human", actor_id: "terry" },
           });
           await new Promise((resolve) => setTimeout(resolve, 20));
           controller.abort();
@@ -402,12 +348,10 @@ describe("loop/subscribe — the process loop", () => {
         dispatchEnabled: false,
         loopConfig: { continueEnabled: true, eventContinueEnabled: false },
         log: () => {},
-        resolveEventEndpoint: () => ({ url: "http://board", token: null }),
-        connectSse: async ({ onFrame }) => {
-          onFrame({
-            id: "1",
-            event: "message",
-            data: JSON.stringify({ event: "task_created", actor_kind: "human", actor_id: "terry" }),
+        streamEvents: async ({ onEvent }) => {
+          onEvent({
+            id: 1,
+            data: { event: "task_created", actor_kind: "human", actor_id: "terry" },
           });
           await new Promise((resolve) => setTimeout(resolve, 10));
           controller.abort();

@@ -10,7 +10,7 @@
  * Node builtins only; no network, no dependencies.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
   closeSync,
@@ -24,6 +24,7 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
+import { EVENT_STREAM_LINE } from "../foundation/constants.mjs";
 import { pruneRegistry } from "../foundation/scheduling.mjs";
 import { emptySlaLedger } from "../foundation/sla-patrol.mjs";
 
@@ -75,12 +76,18 @@ export function saveRegistry(path, registry) {
  * acceptance is attributable. `--env-file` and `--url` are forwarded; the token
  * rides in the child environment, never argv.
  */
-export function runCli(opts, agent, args, { input = null, actorKind = null } = {}) {
-  // Identity is required on every CLI call now. The loop's host (claude/codex/pi)
-  // is the platform for its agent actions; the board's own workflow pass names
-  // `system` explicitly. A caller that forgot gets the host, never `human`.
+/**
+ * The argv and environment for one `taskctl` call.
+ *
+ * Identity is required on every CLI call: the loop's host (claude/codex/pi) is
+ * the platform for its agent actions; the board's own workflow pass names
+ * `system` explicitly. A caller that forgot gets the host, never `human`.
+ * A token never goes on argv (it would be visible in `ps`).
+ */
+export function cliInvocation(opts, agent, args, { actorKind = null } = {}) {
   const kind = actorKind ?? opts.host ?? "system";
-  const globals = [
+  const argv = [
+    opts.cli,
     "--json",
     "--agent",
     agent,
@@ -88,15 +95,19 @@ export function runCli(opts, agent, args, { input = null, actorKind = null } = {
     kind,
     ...(opts.envFile ? ["--env-file", opts.envFile] : []),
     ...(opts.url ? ["--url", opts.url] : []),
+    ...args,
   ];
-  // A token never goes on argv (it would be visible in `ps`); the child reads
-  // it from its environment.
-  const childEnv = { ...process.env };
-  if (opts.token) childEnv.TASKD_TOKEN = opts.token;
-  const run = spawnSync(process.execPath, [opts.cli, ...globals, ...args], {
+  const env = { ...process.env };
+  if (opts.token) env.TASKD_TOKEN = opts.token;
+  return { argv, env };
+}
+
+export function runCli(opts, agent, args, { input = null, actorKind = null } = {}) {
+  const { argv, env } = cliInvocation(opts, agent, args, { actorKind });
+  const run = spawnSync(process.execPath, argv, {
     encoding: "utf8",
     input,
-    env: childEnv,
+    env,
   });
   if (run.error) return { ok: false, error: run.error.message };
   try {
@@ -105,6 +116,184 @@ export function runCli(opts, agent, args, { input = null, actorKind = null } = {
   } catch {
     return { ok: false, error: (run.stderr ?? "").trim() || `exit ${run.status}` };
   }
+}
+
+/**
+ * Run a streaming `taskctl` command (`events tail`) and consume its NDJSON.
+ *
+ * The child is a normal `taskctl` process: it resolves the board, the token and
+ * `.env` itself, so the loop carries no transport code. `TASKD_NO_AUTOSTART=1`
+ * keeps the subscriber's old semantics — a missing board is a reason to
+ * reconnect, not to start `taskd` from a timer.
+ *
+ * The returned reason is one of `open|eof|shutdown|idle|aborted|error`; the
+ * caller owns the reconnect ladder. A failure *before* the stream opens arrives
+ * as a multi-line `{ok:false,error}` document, which cannot be line-parsed — it
+ * is recovered from the whole stdout tail on close.
+ *
+ * @param {object} opts
+ * @param {string} agent
+ * @param {string[]} args
+ * @param {{
+ *   signal?: AbortSignal|null,
+ *   onOpen?: (() => void)|null,
+ *   onEvent?: ((event: {id: number|null, data: object}) => void)|null,
+ *   spawnFn?: Function,
+ *   killGraceMs?: number,
+ *   maxLineBytes?: number,
+ *   log?: (line: string) => void,
+ * }} [hooks]
+ * @returns {Promise<{reason: string, error?: object|Error|null, data?: object|null,
+ *   exitCode: number|null, stderr: string}>}
+ */
+export function streamCli(opts, agent, args, hooks = {}) {
+  const {
+    signal = null,
+    onOpen = null,
+    onEvent = null,
+    spawnFn = spawn,
+    killGraceMs = 2_000,
+    maxLineBytes = 1024 * 1024,
+    log = () => {},
+  } = hooks;
+
+  const { argv, env } = cliInvocation(opts, agent, args);
+  env.TASKD_NO_AUTOSTART = "1";
+
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawnFn(process.execPath, argv, { stdio: ["ignore", "pipe", "pipe"], env });
+    } catch (error) {
+      resolve({ reason: "error", error, exitCode: null, stderr: "" });
+      return;
+    }
+
+    let pending = "";
+    let stdoutTail = "";
+    let stderrTail = "";
+    let terminal = null;
+    let settled = false;
+    let killTimer = null;
+
+    function onAbort() {
+      child.kill("SIGTERM");
+      killTimer = setTimeout(() => child.kill("SIGKILL"), Math.max(1, killGraceMs));
+      if (typeof killTimer.unref === "function") killTimer.unref();
+    }
+
+    const finish = (outcome) => {
+      if (settled) return;
+      settled = true;
+      if (killTimer !== null) clearTimeout(killTimer);
+      signal?.removeEventListener("abort", onAbort);
+      resolve(outcome);
+    };
+
+    const handleLine = (line) => {
+      if (line.trim() === "") return;
+      let record;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        // A pre-open failure's pretty-printed envelope is not NDJSON; the close
+        // handler recovers its message from the whole stdout tail.
+        return;
+      }
+      switch (record?.type) {
+        case EVENT_STREAM_LINE.OPEN:
+          onOpen?.();
+          break;
+        case EVENT_STREAM_LINE.EVENT:
+          onEvent?.({ id: Number.isFinite(record.id) ? record.id : null, data: record.data });
+          break;
+        case EVENT_STREAM_LINE.SHUTDOWN:
+          terminal = { reason: "shutdown", data: record.data ?? null };
+          break;
+        case EVENT_STREAM_LINE.IDLE:
+          terminal = { reason: "idle", data: record.data ?? null };
+          break;
+        case EVENT_STREAM_LINE.EOF:
+          terminal = { reason: "eof", data: null };
+          break;
+        case EVENT_STREAM_LINE.ERROR:
+          terminal = { reason: "error", error: record.data ?? null };
+          break;
+        default:
+          log(`stream: ignoring an unknown line type ${JSON.stringify(record?.type)}`);
+      }
+    };
+
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => {
+      pending += chunk;
+      stdoutTail = `${stdoutTail}${chunk}`.slice(-65_536);
+      if (pending.length > maxLineBytes) {
+        terminal = {
+          reason: "error",
+          error: { code: "CLI_IO", message: `a stream line exceeded ${maxLineBytes} bytes` },
+        };
+        pending = "";
+        child.kill("SIGTERM");
+        return;
+      }
+      let newline = pending.indexOf("\n");
+      while (newline !== -1) {
+        const line = pending.slice(0, newline).replace(/\r$/, "");
+        pending = pending.slice(newline + 1);
+        handleLine(line);
+        newline = pending.indexOf("\n");
+      }
+    });
+
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk) => {
+      stderrTail = `${stderrTail}${chunk}`.slice(-8_192);
+    });
+
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener("abort", onAbort, { once: true });
+
+    child.on("error", (error) => {
+      finish({ reason: "error", error, exitCode: null, stderr: stderrTail });
+    });
+
+    child.on("close", (code) => {
+      if (pending.trim() !== "") handleLine(pending.replace(/\r$/, ""));
+      pending = "";
+      if (signal?.aborted) {
+        finish({ reason: "aborted", exitCode: code, stderr: stderrTail });
+        return;
+      }
+      if (terminal !== null) {
+        finish({
+          reason: terminal.reason,
+          error: terminal.error ?? null,
+          data: terminal.data ?? null,
+          exitCode: code,
+          stderr: stderrTail,
+        });
+        return;
+      }
+      if (code === 0) {
+        finish({ reason: "eof", error: null, data: null, exitCode: 0, stderr: stderrTail });
+        return;
+      }
+      let message = null;
+      try {
+        const document = JSON.parse(stdoutTail.trim());
+        if (document?.ok === false) message = document.error?.message ?? null;
+      } catch {
+        // Not the envelope either; fall back to stderr.
+      }
+      finish({
+        reason: "error",
+        error: new Error(message ?? (stderrTail.trim() || `taskctl exited ${code}`)),
+        exitCode: code,
+        stderr: stderrTail,
+      });
+    });
+  });
 }
 
 /** An append fd for the log, or `null` when it cannot be opened. Never throws. */

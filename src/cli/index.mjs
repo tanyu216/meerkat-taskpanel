@@ -25,7 +25,7 @@ import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, VERSION } from "../foundation/consta
 import { loadEnvFile } from "../foundation/env-config.mjs";
 import { DomainError } from "../foundation/errors.mjs";
 import { isSupportedNode, unsupportedNodeMessage } from "../foundation/node-version.mjs";
-import { redactText } from "../foundation/redact.mjs";
+import { redactDeep, redactText } from "../foundation/redact.mjs";
 import { repoRoot } from "../foundation/runtime-locator.mjs";
 import { ACTOR_ENV_KEYS, resolveActor } from "../foundation/transport/actor.mjs";
 import { parseArgv } from "./argv.mjs";
@@ -81,6 +81,7 @@ export function createContext(parsed, options) {
     cwd = process.cwd(),
     stdin = () => readStdin(),
     readFile = (file) => readFileSync(file, "utf8"),
+    out = () => {},
   } = options;
   const identity = resolveActor({ flags: parsed.flags, env });
   return {
@@ -94,6 +95,12 @@ export function createContext(parsed, options) {
     readStdin: stdin,
     readFile,
     identity,
+    /**
+     * One NDJSON record for a streaming command. Redacted on the way out, like
+     * every other byte the CLI writes; a streaming command returns
+     * `{streamed: true}` so the dispatcher does not add an envelope.
+     */
+    emit: (record) => out(`${JSON.stringify(redactDeep(record))}\n`),
   };
 }
 
@@ -214,11 +221,15 @@ export async function run(argv, io) {
       client,
       env: effectiveEnv,
       cwd: io.cwd ?? process.cwd(),
+      out,
       ...(io.stdin === undefined ? {} : { stdin: io.stdin }),
       ...(io.readFile === undefined ? {} : { readFile: io.readFile }),
     });
 
     const result = await parsed.command.run(ctx);
+    // A streaming command owns stdout for its whole lifetime and has already
+    // written its terminal line; adding an envelope here would corrupt it.
+    if (result?.streamed === true) return result.exit ?? CLI_EXIT.OK;
     renderResult(
       { ...result, data: { ...(result.data ?? {}), token_source: source } },
       { json, out, err },

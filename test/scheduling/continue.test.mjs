@@ -72,16 +72,12 @@ describe("quoteArg", () => {
 });
 
 describe("buildContinuePrompt", () => {
-  const scripts = {
-    poll: "/opt/loop/scripts/loop/poll.mjs",
-    patrol: "/opt/loop/scripts/loop/patrol.mjs",
-    workflow: "/opt/loop/scripts/loop/workflow.mjs",
-  };
+  const passesScript = "/opt/loop/scripts/loop/passes.mjs";
   const prompt = buildContinuePrompt({
     host: "claude",
     agent: "alice",
     nodePath: "/opt/node/bin/node",
-    scripts,
+    passesScript,
     commonArgs: ["--host", "claude", "--agent", "alice"],
     continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
   });
@@ -90,16 +86,16 @@ describe("buildContinuePrompt", () => {
     assert.ok(prompt.startsWith("Continue"), prompt.slice(0, 40));
   });
 
-  it("names every deterministic entry by absolute path", () => {
-    for (const script of Object.values(scripts)) {
-      assert.ok(prompt.includes(script), `missing ${script}`);
+  it("names every deterministic pass by absolute path", () => {
+    for (const pass of ["patrol", "workflow", "poll"]) {
+      assert.ok(prompt.includes(`${passesScript} ${pass}`), `missing ${pass}`);
     }
   });
 
   it("runs patrol, then workflow, then poll", () => {
-    const patrol = prompt.indexOf(scripts.patrol);
-    const workflow = prompt.indexOf(scripts.workflow);
-    const poll = prompt.indexOf(scripts.poll);
+    const patrol = prompt.indexOf(`${passesScript} patrol`);
+    const workflow = prompt.indexOf(`${passesScript} workflow`);
+    const poll = prompt.indexOf(`${passesScript} poll`);
     assert.ok(patrol !== -1 && workflow !== -1 && poll !== -1);
     assert.ok(patrol < workflow && workflow < poll, "a dispatched review must be claimable this turn");
   });
@@ -121,22 +117,16 @@ describe("buildContinuePrompt", () => {
     assert.ok(prompt.length < 6000, `prompt is ${prompt.length} chars`);
   });
 
-  it("quotes an entry path that contains a space", () => {
+  it("quotes a passes path that contains a space", () => {
     const spaced = buildContinuePrompt({
-      ...{
-        host: "claude",
-        agent: "alice",
-        nodePath: "/opt/node/bin/node",
-        commonArgs: [],
-        continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
-      },
-      scripts: {
-        poll: "/tmp/my loop/poll.mjs",
-        patrol: "/tmp/my loop/patrol.mjs",
-        workflow: "/tmp/my loop/workflow.mjs",
-      },
+      host: "claude",
+      agent: "alice",
+      nodePath: "/opt/node/bin/node",
+      commonArgs: [],
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      passesScript: "/tmp/my loop/passes.mjs",
     });
-    assert.ok(spaced.includes("'/tmp/my loop/poll.mjs'"));
+    assert.ok(spaced.includes("'/tmp/my loop/passes.mjs' poll"));
   });
 });
 

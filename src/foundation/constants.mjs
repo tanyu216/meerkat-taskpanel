@@ -423,6 +423,28 @@ export const SSE_REPLAY_LIMIT = 500;
 export const SSE_NOISE_EVENTS = Object.freeze(["task_heartbeat"]);
 
 /**
+ * The one **named** SSE frame: the server's notice that it is ending the stream
+ * on purpose. A named frame is invisible to `onmessage`, which is the point —
+ * it is not an activity and must never be mistaken for one.
+ */
+export const SSE_SHUTDOWN_EVENT = "shutdown";
+
+/**
+ * The terminal/control line types `taskctl events tail` writes as NDJSON.
+ *
+ * Shared with the loop's `streamCli` so the producer and the consumer cannot
+ * drift on a string literal.
+ */
+export const EVENT_STREAM_LINE = Object.freeze({
+  OPEN: "open",
+  EVENT: "event",
+  IDLE: "idle",
+  SHUTDOWN: "shutdown",
+  EOF: "eof",
+  ERROR: "error",
+});
+
+/**
  * How long the loop's SSE subscriber tolerates a silent stream before it
  * reconnects. Three missed 15 s heartbeats is a dead connection, not a quiet
  * board.

@@ -4,7 +4,7 @@
  *
  *   * **ping** (60s) — prune worker pids that are gone. No board read, no LLM.
  *   * **continue** (600s) — wake the host with a bounded Continue prompt; that turn
- *     runs `scripts/loop/patrol.mjs`, `workflow.mjs`, `poll.mjs`, in that order.
+ *     runs `scripts/loop/passes.mjs patrol|workflow|poll`, in that order.
  *
  * The installed units are one-shot (`--ping-only --once` / `--continue-only
  * --once`); daemon mode is for a hand-run supervisor. A bare `--once` runs the
@@ -23,11 +23,10 @@ import { existsSync } from "node:fs";
 
 import { isEntryPoint } from "../src/foundation/entry-guard.mjs";
 
-import * as continueEntry from "./loop/continue.mjs";
-import * as patrolEntry from "./loop/patrol.mjs";
-import * as pollEntry from "./loop/poll.mjs";
+import * as passesEntry from "./loop/passes.mjs";
 import * as subscribeEntry from "./loop/subscribe.mjs";
 import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./loop/options.mjs";
+import { runContinueOnce } from "./loop/runners.mjs";
 import { createLogger, isProcessAlive, loadRegistry, runPingTick, saveRegistry } from "./loop/runtime.mjs";
 
 /**
@@ -92,7 +91,7 @@ async function runDaemon(opts, env, log) {
       if (inFlight) return;
       inFlight = true;
       try {
-        await continueEntry.runOnce(opts, env);
+        await runContinueOnce(opts, env);
       } catch (err) {
         log(`continue error: ${err.message}`);
       } finally {
@@ -147,13 +146,13 @@ export async function main(argv, env = process.env) {
     case "ping":
       return runPingOnce(opts, log);
     case "continue":
-      return continueEntry.runOnce(opts, env);
+      return runContinueOnce(opts, env);
     case "patrol":
-      return patrolEntry.runOnce(opts, env);
+      return passesEntry.runPatrolOnce(opts, env);
     case "poll":
       // Only a bare `--once` reaches this branch; the new units never use it.
       log("mode: bare --once runs the legacy poll pass; new units use --ping-only/--continue-only");
-      return pollEntry.runOnce(opts, env);
+      return passesEntry.runPollOnce(opts, env);
     case "subscribe":
       return subscribeEntry.runOnce(opts, env);
     default:

@@ -56,7 +56,7 @@ export const PATROL_STALE_MS = CLAIM_STALE_SAME_MS;
 
 /**
  * Quote one argv element for a shell command line. The continue prompt embeds
- * the deterministic entries' argv, so a path with a space must survive a copy
+ * the deterministic passes' argv, so a path with a space must survive a copy
  * into a shell unchanged.
  *
  * @param {unknown} value
@@ -754,7 +754,7 @@ export function buildReviewHandoff(input) {
  *   host?: string,
  *   agent?: string,
  *   nodePath?: string|null,
- *   scripts?: {poll?: string, patrol?: string, workflow?: string},
+ *   passesScript?: string,
  *   commonArgs?: string[],
  *   continueIntervalSeconds?: number,
  * }} [input]
@@ -764,22 +764,22 @@ export function buildContinuePrompt(input = {}) {
   const node = quoteArg(input.nodePath ?? "node");
   const agent = String(input.agent ?? "agent");
   const host = String(input.host ?? "claude");
-  const scripts = input.scripts ?? {};
+  const script = quoteArg(input.passesScript ?? "passes.mjs");
   const common = (input.commonArgs ?? []).map(quoteArg).join(" ");
   const minutes = Math.max(
     1,
     Math.round((input.continueIntervalSeconds ?? DEFAULT_CONTINUE_SECONDS) / 60),
   );
-  const run = (script) => `${node} ${quoteArg(script)}${common === "" ? "" : ` ${common}`}`;
+  const run = (pass) => `${node} ${script} ${pass}${common === "" ? "" : ` ${common}`}`;
 
   return [
     "Continue — Meerkat TaskPanel loop, judgment turn.",
     "No card and no project directory: this is the loop's periodic turn, not a worker wake.",
     "",
     "Run in order, each one pass:",
-    `  1) ${run(scripts.patrol)}   # notify-only SLA; never moves a card`,
-    `  2) ${run(scripts.workflow)}   # apply the board's workflow plan (issue reconcile --workflow)`,
-    `  3) ${run(scripts.poll)}   # scan → atomic claim → wake a worker`,
+    `  1) ${run("patrol")}   # notify-only SLA; never moves a card`,
+    `  2) ${run("workflow")}   # apply the board's workflow plan (issue reconcile --workflow)`,
+    `  3) ${run("poll")}   # scan → atomic claim → wake a worker`,
     "",
     `You may claim a ready card yourself (\`taskctl issue claim <ref> --agent ${agent}\`)`,
     "when judgment says it must start now; never claim work you will not start.",

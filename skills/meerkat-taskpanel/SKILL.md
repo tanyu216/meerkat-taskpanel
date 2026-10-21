@@ -361,6 +361,10 @@ resolution rules, the validation codes and re-install behaviour:
   creation gate, refusal codes, the board's workflow decisions.
 - [`references/cli.md`](references/cli.md) — every command and flag, global options, exit
   codes, the delivery gate, the `--json` envelope.
+- [`references/capabilities.md`](references/capabilities.md) — the capability subset a
+  supervisor binds to: exact `taskctl` invocations, the JSON keys each read consumes, and
+  the `events tail` NDJSON contract. Decisions live in the supervisor skill; this is the
+  "how".
 - [`references/card-schema.md`](references/card-schema.md) — the markdown card: frontmatter
   keys, body sections, round-trip rules (`taskctl export md`).
 - [`references/projects-json.md`](references/projects-json.md) — the local project ↔

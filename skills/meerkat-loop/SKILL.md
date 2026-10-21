@@ -12,16 +12,15 @@ The loop runs when no agent is looking. Its scheduler owns two clocks:
 | **ping** | 60s | prune registry entries whose pid is gone. No board read, no claim, no LLM |
 | **continue** | 600s | wake the host with a bounded `Continue` prompt; that turn runs the entries below |
 
-The continue turn runs three deterministic entries, in this order:
+The continue turn runs three deterministic passes, in this order:
 
-1. **patrol** — notify-only SLA pass. The board computes the SLA rows
-   (`taskctl sla list`); the loop de-duplicates them, re-reads a survivor
-   (`taskctl sla get <ref>`) and notifies the leader. It also emits the legacy
-   stale-heartbeat alerts and the peer-inspector liveness row, whose marker
-   file lives on this host. No alert moves a card, and no LLM turn starts by
-   default.
-2. **workflow** — the write channel. The **board** computes the plan
-   (`issue reconcile --workflow`) and the **loop** applies it. For a flow-A
+1. **patrol** — notify-only SLA pass. The board computes the SLA rows; the loop
+   de-duplicates them, re-reads a survivor and notifies the leader. It also
+   emits the legacy stale-heartbeat alerts and the peer-inspector liveness row,
+   whose marker file lives on this host. No alert moves a card, and no LLM turn
+   starts by default.
+2. **workflow** — the write channel. The **board** computes the plan and the
+   **loop** applies it. For a flow-A
    delivery whose `review_required` snapshot is 1, dispatch an independent
    reviewer, apply the reviewer's `VERDICT:` report to the original, and close
    the review card last. A card at 0 is not dispatched: the plan emits
@@ -35,6 +34,11 @@ The continue turn runs three deterministic entries, in this order:
    it does not gate auto-accepting a no-review original.
 3. **poll** — scan, atomically claim, wake one worker. Runs last so a review
    card dispatched in this turn can be claimed immediately.
+
+The exact `taskctl` invocations and the JSON keys each pass reads are the board
+skill's capability contract: `meerkat-taskpanel`, `references/capabilities.md`.
+This skill records only the decisions — when to patrol, dispatch, claim, wake or
+notify.
 
 ### Who may close
 
@@ -63,10 +67,11 @@ marker. A worker always stops at `in_review`; review cards are never held.
 
 ### Event subscriber (optional)
 
-On launchd/systemd, `--subscribe` holds one SSE connection and asks for a
-continue turn when a dispatch-relevant event arrives. The continue clock remains
-the fallback and the only path for time-based work. Cron cannot host a
-long-lived process.
+On launchd/systemd, `--subscribe` follows the board's event stream through
+`taskctl events tail` and asks for a continue turn when a dispatch-relevant event
+arrives. The loop carries no HTTP code of its own: board discovery, the token and
+the stream all belong to the CLI. The continue clock remains the fallback and the
+only path for time-based work. Cron cannot host a long-lived process.
 
 ## Required board interface
 
@@ -74,9 +79,10 @@ long-lived process.
 requires: board task-interface v1   — board release >= 1.1.0
 ```
 
-The loop drives the board through `taskctl` (`issue candidates`, `issue move`,
-`issue list`, `issue reconcile --workflow`). `task-interface v1` first shipped
-in board 1.0.0; the board-side workflow plan landed in 1.1.0.
+The loop drives the board only through `taskctl` — the capability subset is the
+board skill's `references/capabilities.md` (including `events tail` for the live
+stream; the loop never calls the HTTP API). `task-interface v1` first shipped in
+board 1.0.0; the board-side workflow plan landed in 1.1.0.
 
 Gate check before pointing a loop at a board:
 
@@ -117,7 +123,7 @@ manifest.txt              the execution body's file list (generated)
 scripts/board-check.mjs   the interface gate (authored)
 scripts/supervisor.mjs    the scheduler (generated)
 scripts/wake-cwd.mjs      the wake glue's resolver (generated)
-scripts/loop/*.mjs        the deterministic entries (generated)
+scripts/loop/*.mjs        the passes, subscriber and their seams (generated)
 scripts/foundation/**     modules the execution body imports (generated)
 templates/                units, wake glue, host config (generated)
 ```

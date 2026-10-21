@@ -13,7 +13,7 @@
  * one seam, below the CLI surface rather than inside it.
  */
 
-import { requestJson, withQuery } from "./http.mjs";
+import { requestJson, requestStream, withQuery } from "./http.mjs";
 
 /**
  * @param {{
@@ -77,5 +77,24 @@ export function createBoardClient(options) {
     delete: (path, extra) => call("DELETE", path, extra),
     /** Escape hatch for the rare call that is not CRUD-shaped. */
     call,
+    /**
+     * A streaming read (`text/event-stream`). Resolves once the response headers
+     * arrive; the returned async generator yields decoded chunks. It carries the
+     * same token / actor / session as `call`, so a stream is authenticated by the
+     * same seam.
+     */
+    stream: (path, extra = {}) =>
+      requestStream({
+        url,
+        path: withQuery(path, extra.query),
+        token,
+        actor,
+        session,
+        seg,
+        ...(extra.idleMs === undefined ? {} : { idleMs: extra.idleMs }),
+        ...(extra.responseTimeoutMs === undefined ? {} : { responseTimeoutMs: extra.responseTimeoutMs }),
+        ...(extra.signal === undefined ? {} : { signal: extra.signal }),
+        ...(fetchFn === undefined ? {} : { fetchFn }),
+      }),
   };
 }

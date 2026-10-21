@@ -196,8 +196,9 @@ describe("cli/commands — the registry", () => {
       // needed a writer and the CLI is the board's second front door. It sits
       // beside `relation` because both are per-card edge/sidecar writes.
       // `sla` is the board's computed SLA read — the loop patrol's transport
-      // and a read-only surface for a human.
-      ["project", "issue", "comment", "relation", "attachment", "session", "actors", "labels", "report", "export", "token", "sla"],
+      // and a read-only surface for a human. `events` is the live activity
+      // stream the loop's subscriber consumes; it is the one NDJSON command.
+      ["project", "issue", "comment", "relation", "attachment", "session", "actors", "labels", "report", "export", "token", "sla", "events"],
     );
     for (const { group, command } of allCommands()) {
       assert.equal(

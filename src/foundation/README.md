@@ -18,7 +18,7 @@ dependency direction is `core/cli/server → foundation`, never the reverse.
 | `runtime-locator.mjs` | `resolveEnvFilePath`, `repoRoot` — the install root and the env-file path |
 
 `loadEnvFile` is called by the entry points only (`src/cli/index.mjs#run`,
-`src/server/main.mjs`, `scripts/loop/endpoint.mjs`); library callers receive the parsed
+`src/server/main.mjs`); library callers receive the parsed
 values explicitly, so embedding the engine never reads a developer's `.env`.
 
 ## `transport/**`

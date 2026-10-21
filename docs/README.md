@@ -11,7 +11,7 @@ Documentation for Meerkat TaskPanel.
 | [migration.md](migration.md) | The append-only SQL schema gate, and the note recording the MCP integration's removal. |
 | [projects.md](projects.md) | What a project is, how its id becomes the identifier prefix, and why that prefix must be unique across projects. |
 | [contract.md](contract.md) | The contract snapshots — the HTTP API (routes, error codes, wire fields) and the CLI surface (`taskctl` commands, flags, envelope keys): what each freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
-| [scheduling.md](scheduling.md) | The ping/continue scheduler, the deterministic loop entries, the fire-only cost gate, the atomic-claim dispatch, the event subscriber, the three-host trigger differences, and why OpenClaw uses openclaw-team instead. |
+| [scheduling.md](scheduling.md) | The ping/continue scheduler, the deterministic loop passes, the fire-only cost gate, the atomic-claim dispatch, the event subscriber, the three-host trigger differences, and why OpenClaw uses openclaw-team instead. |
 | [sla.md](sla.md) | The in-repo SLA contract: the threshold table, the tier ladder, the working-hours basis, the alert tuple, de-duplication, the pre-emit re-check and the peer-inspector interop. |
 | [events.md](events.md) | The live stream's event catalogue: every activity, its writer and payload, which surface consumes it, the feed's admission policy, the loop's dispatch whitelist, and the actor-kind rule. |
 | [web-local-first.md](web-local-first.md) | The board frontend is loopback-only: why a remote browser gets 401 (no token injection) and what implementing it would take. |

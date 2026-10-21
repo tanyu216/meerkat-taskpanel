@@ -28,8 +28,9 @@ detecting drift, readable without a board. Run `taskctl <group> --help` or
 
 ## Configuration (`.env`)
 
-One install-root file, `<program root>/.env`, is read by `taskctl`, `taskd` and the loop's SSE
-subscriber. The process environment wins key by key; CLI flags win over both.
+One install-root file, `<program root>/.env`, is read by `taskctl` and `taskd` (the loop reads
+it through its `taskctl` children). The process environment wins key by key; CLI flags win over
+both.
 
 - **Path:** `--env-file <path>` > `$MEERKAT_TASKPANEL_ENV_FILE` > `<program root>/.env`.
   A file named with `--env-file` that does not exist is an error; a missing
@@ -299,6 +300,36 @@ defaults to the board's `TASKD_SLA_PERIOD_SECONDS` (300). `--leader` names the a
 the leader writes under; the default is the board's human decision authority. The
 published table is visible at `GET /api/v1/sla` and under `/meta` → `capabilities.sla`.
 
+### `events`
+
+The board's live activity stream — a cursor over `task_activities`, not an event bus.
+Read-only; it moves no card.
+
+| Command | Purpose |
+|---|---|
+| `events tail [--after <rev>] [--idle <ms>]` | Stream activities as **newline-delimited JSON** until the stream ends. |
+
+`--after` replays activities newer than that board revision, then streams (the resume
+cursor). `--idle` ends the stream after that many milliseconds with no bytes; the default is
+45000 (three missed heartbeats), and `0` disables the timer. The server's heartbeat is 15 s.
+
+**This is the one command whose output is not the `{ok,data}` envelope.** Each line is one
+JSON object:
+
+```json
+{"type":"open"}
+{"type":"event","id":12,"data":{"event":"task_created","task_id":"…","revision":12,…}}
+{"type":"idle","data":{"idle_ms":45000}}
+{"type":"shutdown","data":{"reason":"server_shutdown"}}
+{"type":"eof"}
+{"type":"error","data":{"code":"CLI_IO","message":"…"}}
+```
+
+`open` is written once the board has answered; `event.id` is the cursor to pass back as
+`--after`. `idle`, `shutdown` and `eof` exit 0; `error` exits 1. A failure **before** the
+stream opens (unreachable board, auth refusal, a bad `--after`) is still the normal
+`{ok,false}` error document with a nonzero exit — no `open` line is written.
+
 ## Editing a card: status, priority, description, attachments, dependencies
 
 The drawer's five edits do not share one shape: two are a single flag, one is a **move**, one
@@ -516,6 +547,9 @@ verbatim:
 ```
 
 Bind scripts to `error.code` and `error.hint.command`, never to the prose.
+
+`events tail` is the exception: it writes newline-delimited records (see [`events`](#events)),
+not this envelope. Every other command, including `sla list`, answers one document.
 
 ## Notes
 

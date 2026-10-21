@@ -27,7 +27,7 @@
  */
 
 import { currentRevision } from "../core/index.mjs";
-import { SSE_HEARTBEAT_MS, SSE_NOISE_EVENTS, SSE_POLL_MS, SSE_REPLAY_LIMIT, SSE_RETRY_MS } from "../foundation/constants.mjs";
+import { SSE_HEARTBEAT_MS, SSE_NOISE_EVENTS, SSE_POLL_MS, SSE_REPLAY_LIMIT, SSE_RETRY_MS, SSE_SHUTDOWN_EVENT } from "../foundation/constants.mjs";
 import { DomainError } from "../foundation/errors.mjs";
 import { activityToWire } from "../foundation/wire.mjs";
 
@@ -59,7 +59,7 @@ export function formatEvent(activity) {
  * it by name; a client that does not is unaffected. It carries no `id:`, so a
  * client cannot advance its cursor past events it has not seen.
  */
-export const SSE_SHUTDOWN_EVENT = "shutdown";
+export { SSE_SHUTDOWN_EVENT };
 
 /** @param {string} reason */
 export function formatShutdown(reason) {
