@@ -530,6 +530,35 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/sla",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "card": {
+              "type": "string"
+            },
+            "leader": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "string"
+            },
+            "period": {
+              "type": "string"
+            },
+            "trail_limit": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/tasks",
       "request": {
         "body": null,
@@ -1465,6 +1494,48 @@
         "ts": "string"
       },
       "shape": "session"
+    },
+    {
+      "fields": {
+        "action": "string",
+        "alert_id": "string",
+        "blocked_reason": "string",
+        "card_id": "string",
+        "confidence": "string",
+        "dedup_key": "string",
+        "due_at": "string",
+        "elapsed_basis": "string",
+        "elapsed_working_min": "number",
+        "evidence": "object",
+        "first_seen": "string",
+        "last_seen": "string",
+        "measure_start_at": "string",
+        "measure_start_kind": "string",
+        "measure_start_source": "string",
+        "mechanism": "string",
+        "mechanism_host": "string",
+        "notify": "string",
+        "observed_by": "array",
+        "releasable": "boolean",
+        "releasable_basis": "string",
+        "severity": "string",
+        "sla_ref": "string",
+        "sla_row": "string",
+        "target": "string",
+        "threshold_min": "number"
+      },
+      "shape": "sla_alert"
+    },
+    {
+      "fields": {
+        "leader_lookback_days": "number",
+        "peer_liveness_k": "number",
+        "peer_period_min": "number",
+        "period_seconds": "number",
+        "rows": "object",
+        "version": "number"
+      },
+      "shape": "sla_config"
     },
     {
       "fields": {

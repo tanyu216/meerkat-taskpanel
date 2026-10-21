@@ -48,10 +48,19 @@
  *     because "a silent inspector reads exactly like a healthy board".
  *
  * Pure: no `node:` specifiers, no clock of its own (`now` is always an input),
- * no filesystem. `scripts/supervisor.mjs` owns the I/O half.
+ * no filesystem. The board owns the reading half (`src/core/commands/sla.mjs`
+ * behind `GET /api/v1/sla`); the loop keeps the de-duplication ledger, the
+ * pre-emit re-read and the notification. The defaults table lives in
+ * `sla-config.mjs`, which is also the `TASKD_SLA_*` parser.
  */
 
-import { CLAIM_STALE_ANY_MS, CLAIM_STALE_SAME_MS, LOOP_ACCEPTOR } from "./constants.mjs";
+import { LOOP_ACCEPTOR } from "./constants.mjs";
+import {
+  DEFAULT_SLA_ROWS,
+  LEADER_LOOKBACK_DAYS,
+  PEER_LIVENESS_K,
+  PEER_PERIOD_MIN,
+} from "./sla-config.mjs";
 
 /** This mechanism's identity in the shared tuple (§4 #21). */
 export const MECHANISM = "loop-patrol";
@@ -59,32 +68,9 @@ export const MECHANISM = "loop-patrol";
 /** The other half of the mutual watchdog (§8.4) — the openclaw-side cron inspector. */
 export const PEER_MECHANISM = "openclaw-cron";
 
-/**
- * The peer's own cadence, in minutes — **a mechanism parameter, never an SLA
- * number** (§2). The fallback is 15 min — the same cadence the deployment's
- * peer is expected to run at — which keeps `warn = L − P` inside the tightest
- * limit (`heartbeat_stale`, 30 min). A peer that declares its own cadence in its
- * last-ok marker overrides it, so the derived liveness bounds stay comparable.
- */
-export const PEER_PERIOD_MIN = 15;
-
-/**
- * How many of the peer's own periods it may miss before it counts as down
- * (§5.3: `peer_stale ⇔ now − peer.last_ok > k × P_peer`). A small integer: one
- * missed period is a scheduling hiccup, three is a stopped inspector.
- */
-export const PEER_LIVENESS_K = 3;
-
-/**
- * The leader's action lookback, in days (a mechanism parameter, §6.3-D).
- *
- * A board whose whole history is older than this shows *no* leader event to the
- * inspector, and the contract's answer there is not silence: the row is emitted
- * with `confidence: "low"` and the origin recorded as unverifiable — "an
- * inspector that has never seen the leader act must say so rather than stay
- * quiet".
- */
-export const LEADER_LOOKBACK_DAYS = 7;
+// The mechanism parameters now live in `sla-config.mjs` (the board reads them
+// too); re-exported here so the loop's existing imports keep working.
+export { LEADER_LOOKBACK_DAYS, PEER_LIVENESS_K, PEER_PERIOD_MIN };
 
 /**
  * The comment kinds the contract counts as a leader's *action* (§6.3-D set (a)).
@@ -223,106 +209,19 @@ function intOrNull(value) {
 const VISIBILITY_ONLY_BLOCK_REASONS = new Set(["dependency", "external", "resource"]);
 
 /**
- * The `docs/sla.md` runtime mapping table.
+ * The `docs/sla.md` §2 runtime mapping table — the **defaults**.
  *
- * One entry per published row **plus** the two the contract adds or preserves:
- * `inspector_liveness` is carried for completeness even though this mechanism
- * does not emit it unless a peer marker is configured, and `heartbeat_stale` is
- * carried because the loop already covers it — through the *existing* stale
- * alert, which is a published consumer contract and must not be re-shaped
- * (§10.4). `coveredBy` says which code path emits each row, so "is row X
- * covered?" is answered by the table rather than by reading around.
- *
- * Values are `docs/sla.md` §2's, referenced — never re-derived, never invented.
+ * The table itself lives in `sla-config.mjs` (the board reads it for
+ * `GET /api/v1/sla`); re-exported here under its historical name so the
+ * contract tests and the document-drift check keep one source. An install's
+ * `TASKD_SLA_*` overrides produce an effective table via
+ * `sla-config.mjs#applySlaOverrides`; this constant stays the contract's.
  */
-export const SLA_ROWS = Object.freeze({
-  blocked_clarification: Object.freeze({
-    ref: "docs/sla.md §2 · blocked_clarification · blocked awaiting the leader's clarification",
-    thresholdRef: "docs/sla.md §2 · blocked_clarification · Normal limit (L)",
-    limitMin: 120,
-    furtherMin: 1440,
-    warnLead: true,
-    origin: "blocked_at",
-    coveredBy: "sla-patrol",
-    action: "the leader must clarify / revise / reassign this card",
-  }),
-  confirmation_gate: Object.freeze({
-    ref: "docs/sla.md §2 · confirmation_gate · Confirmation gate awaiting review",
-    thresholdRef: "docs/sla.md §2 · confirmation_gate · Normal limit (L)",
-    limitMin: 240,
-    furtherMin: 1440,
-    warnLead: true,
-    origin: "gate_at",
-    coveredBy: "sla-patrol",
-    action: "the leader must review the confirmation request",
-  }),
-  defect_card_creation: Object.freeze({
-    ref: "docs/sla.md §2 · defect_card_creation · Defect fix card creation",
-    thresholdRef: "docs/sla.md §2 · defect_card_creation · Normal limit (L)",
-    limitMin: 1440,
-    furtherMin: 2880,
-    warnLead: true,
-    origin: "trail_event",
-    coveredBy: "sla-patrol",
-    action: "the leader must create the defect fix card and dispatch it",
-  }),
-  acceptance_card_creation: Object.freeze({
-    ref: "docs/sla.md §2 · acceptance_card_creation · Product/UX acceptance queued",
-    thresholdRef: "docs/sla.md §2 · acceptance_card_creation · Normal limit (L)",
-    limitMin: 1440,
-    furtherMin: 2880,
-    warnLead: true,
-    origin: "status_changed_at",
-    coveredBy: "sla-patrol",
-    action: "the leader must create the acceptance review card and dispatch it",
-  }),
-  heartbeat_stale: Object.freeze({
-    ref: "docs/sla.md §2 · heartbeat_stale · Worker heartbeat stale",
-    thresholdRef: "docs/sla.md §2 · heartbeat_stale · Normal limit (L)",
-    limitMin: CLAIM_STALE_SAME_MS / MS_PER_MINUTE,
-    furtherMin: CLAIM_STALE_ANY_MS / MS_PER_MINUTE,
-    warnLead: true,
-    origin: "heartbeat_at",
-    // The legacy `stale` / `heartbeat-unreadable` alert keeps its published
-    // envelope, untouched — but it is **not** the SLA channel (§10.4): a row
-    // that never emits the §4 tuple cannot take part in the shared ledger, so
-    // the peer's identical finding would be notified twice. Both go out; this
-    // is the half the ledger can de-duplicate across mechanisms.
-    coveredBy: "sla-patrol+legacy-stale-alert",
-    action: "the same assignee may re-claim; past the further bound any agent may claim and report",
-  }),
-  leader_stalled: Object.freeze({
-    ref: "docs/sla.md §2 · leader_stalled · Leader patrol stalled",
-    thresholdRef: "docs/sla.md §2 · leader_stalled · Normal limit (L)",
-    limitMin: 60,
-    furtherMin: 360,
-    // §5.2: this row's published bound is already a "no action for" bound, so
-    // the `−P` lead is deliberately NOT applied and there is no `overdue`
-    // state — only `warn` (at `L`) and `escalate` (at `F`).
-    warnLead: false,
-    origin: "trail_event",
-    coveredBy: "sla-patrol",
-    action: "the leader should be reminded that no leader action is observable on the board",
-  }),
-  inspector_liveness: Object.freeze({
-    ref: "docs/sla.md §10 · inspector_liveness · mutual watchdog",
-    thresholdRef: null,
-    limitMin: null,
-    furtherMin: null,
-    warnLead: false,
-    origin: "unverifiable",
-    // Emitted when the deployment points the pass at the peer's last-successful-
-    // run marker (§5.3). An unwired deployment registers that as an explicit
-    // dependency instead of alarming every period — see
-    // `inspectorLivenessDetection` and `planSlaPatrol`.
-    coveredBy: "sla-patrol",
-    action: "tell the leader that one of the two inspectors is not running",
-  }),
-});
+export const SLA_ROWS = DEFAULT_SLA_ROWS;
 
 /** A `docs/sla.md`-stamped constant, for the drift check and for error messages. */
-export function slaRowRef(row) {
-  return SLA_ROWS[row]?.ref ?? null;
+export function slaRowRef(row, rows = SLA_ROWS) {
+  return rows[row]?.ref ?? null;
 }
 
 /**
@@ -331,10 +230,11 @@ export function slaRowRef(row) {
  *
  * @param {string} row
  * @param {number} periodSeconds this mechanism's own period
+ * @param {Record<string, object>} [rows] the effective table (defaults: `SLA_ROWS`)
  * @returns {number|null}
  */
-export function warnLeadMinutes(row, periodSeconds) {
-  const spec = SLA_ROWS[row];
+export function warnLeadMinutes(row, periodSeconds, rows = SLA_ROWS) {
+  const spec = rows[row];
   if (spec === undefined || spec.limitMin === null) return null;
   if (!spec.warnLead) return spec.limitMin;
   const periodMin = Number.isFinite(periodSeconds) && periodSeconds > 0 ? periodSeconds / 60 : 0;
@@ -379,9 +279,10 @@ export const DEFAULT_TRAIL_LIMIT = 200;
 export function trailReadCandidates(cards, input = {}) {
   const now = input.now;
   const periodSeconds = input.periodSeconds;
-  const blockedLead = warnLeadMinutes("blocked_clarification", periodSeconds);
-  const gateLead = warnLeadMinutes("confirmation_gate", periodSeconds);
-  const defectLead = warnLeadMinutes("defect_card_creation", periodSeconds);
+  const rows = input.rows ?? SLA_ROWS;
+  const blockedLead = warnLeadMinutes("blocked_clarification", periodSeconds, rows);
+  const gateLead = warnLeadMinutes("confirmation_gate", periodSeconds, rows);
+  const defectLead = warnLeadMinutes("defect_card_creation", periodSeconds, rows);
   const out = [];
   for (const card of Array.isArray(cards) ? cards : []) {
     const id = String(card?.identifier ?? card?.id ?? "");
@@ -509,10 +410,11 @@ export function addWorkingMinutes(from, minutes) {
  * @param {string} row a key of `SLA_ROWS`
  * @param {number|null} elapsedMin
  * @param {number} periodMin this mechanism's own period
+ * @param {Record<string, object>} [rows] the effective table (defaults: `SLA_ROWS`)
  * @returns {"warn"|"overdue"|"escalate"|null}
  */
-export function tierFor(row, elapsedMin, periodMin) {
-  const spec = SLA_ROWS[row];
+export function tierFor(row, elapsedMin, periodMin, rows = SLA_ROWS) {
+  const spec = rows[row];
   if (spec === undefined || spec.limitMin === null) return null;
   if (!Number.isFinite(elapsedMin) || elapsedMin < 0) return null;
   const period = Number.isFinite(periodMin) && periodMin > 0 ? periodMin : 0;
@@ -819,7 +721,7 @@ function blockedDetection(card, trail, context) {
     }
   }
 
-  const spec = SLA_ROWS.blocked_clarification;
+  const spec = context.rows.blocked_clarification;
   // `dependency` / `external` / `resource` have **no** contract row (gap G-3), so
   // they get visibility without a due point rather than an invented limit.
   const noThreshold = visibilityOnly || origin.kind === "unverifiable";
@@ -854,7 +756,7 @@ function confirmDetection(card, trail, context) {
   if (request === null) return null;
   if (confirmAnsweredAfter(trail, request.at, context.leaderId ?? null)) return null;
 
-  const spec = SLA_ROWS.confirmation_gate;
+  const spec = context.rows.confirmation_gate;
   const at = instant(request.at) === null ? null : request.at;
   const origin = at !== null
     ? { kind: "gate_at", at, source: request.source, confidence: request.confidence }
@@ -909,7 +811,7 @@ function defectDetection(card, trail, context) {
   const undecidable = context.boardTruncated === true;
   const openPredicate = undecidable ? "no_fix_card_undecidable" : "no_fix_card";
 
-  const spec = SLA_ROWS.defect_card_creation;
+  const spec = context.rows.defect_card_creation;
   return {
     row: "defect_card_creation",
     origin: {
@@ -964,7 +866,7 @@ function acceptanceDetection(card, context) {
   });
 
   const changedAt = instant(card?.status_changed_at) === null ? null : card.status_changed_at;
-  const spec = SLA_ROWS.acceptance_card_creation;
+  const spec = context.rows.acceptance_card_creation;
   // A capped board read can hide the review card that would have closed this
   // wait. The row is still reported — an unknown must not become silence — but
   // it says the predicate was undecidable instead of claiming "no review card".
@@ -1022,7 +924,7 @@ function acceptanceDetection(card, context) {
  */
 function leaderStalledDetection(context) {
   if (!context.pendingLeaderWork) return null;
-  const spec = SLA_ROWS.leader_stalled;
+  const spec = context.rows.leader_stalled;
   const anchor = context.anchorCard ?? {};
   const event = context.leaderEvent;
   if (event === null) {
@@ -1077,9 +979,9 @@ function leaderStalledDetection(context) {
  * `measure_start_kind: "unverifiable"` and no threshold, mirroring the legacy
  * `heartbeat-unreadable` alert rather than replacing it.
  */
-function heartbeatStaleDetection(card) {
+function heartbeatStaleDetection(card, context) {
   if (card?.status !== "in_progress") return null;
-  const spec = SLA_ROWS.heartbeat_stale;
+  const spec = context.rows.heartbeat_stale;
   const hb = instant(card?.heartbeat_at);
   if (hb === null) {
     return {
@@ -1135,7 +1037,7 @@ function heartbeatStaleDetection(card) {
  * @returns {{row: string, origin: object, ...}|null}
  */
 export function inspectorLivenessDetection(input = {}) {
-  const spec = SLA_ROWS.inspector_liveness;
+  const spec = (input.rows ?? SLA_ROWS).inspector_liveness;
   const k = Number.isFinite(input.k) && input.k > 0 ? input.k : PEER_LIVENESS_K;
   const peerPeriod = Number.isFinite(input.peerPeriodMinutes) && input.peerPeriodMinutes > 0
     ? input.peerPeriodMinutes
@@ -1341,7 +1243,97 @@ function boardContext(cards, trails, options = {}) {
     }
   }
 
-  return { cards, reviewOfRefs, doneReviewRefs, terminalRefs, leaderEvent, leaderId, boardTruncated: truncated };
+  return {
+    cards,
+    reviewOfRefs,
+    doneReviewRefs,
+    terminalRefs,
+    leaderEvent,
+    leaderId,
+    boardTruncated: truncated,
+    rows: options.rows ?? SLA_ROWS,
+  };
+}
+
+/**
+ * Assemble one §4 alert tuple from a detection.
+ *
+ * Extracted so the mechanism that computes the six card/board rows (the board)
+ * and the mechanism that computes the peer-liveness row (the loop) build the
+ * same 26-field object. Returns `null` when the wait is still inside its lead —
+ * a quiet card is not a candidate at all (§9.4).
+ *
+ * @param {{
+ *   id: string, detection: object, rows?: object, periodMin?: number,
+ *   mechanism?: string, mechanismHost?: string|null, now: string|number,
+ * }} input
+ * @returns {object|null}
+ */
+export function buildSlaAlert(input) {
+  const {
+    id,
+    detection,
+    rows = SLA_ROWS,
+    periodMin = 0,
+    mechanism = MECHANISM,
+    mechanismHost = null,
+    now,
+  } = input;
+  // The elapsed value is computed here, once per detection, so every row
+  // shares one working-hours function rather than each detector carrying its
+  // own idea of "how long".
+  const elapsed = elapsedWorkingMinutes(detection.origin.at, now);
+  // A row with no threshold has no due point, so its only tier is `warn`
+  // (§5.3 / §6.5 / §7.4): visibility without a verdict, never a silent drop.
+  const tier = detection.thresholdMin === null
+    ? "warn"
+    : tierFor(detection.row, elapsed, periodMin, rows);
+  // Inside its lead: not a candidate at all, so it is neither an alert nor a
+  // *drop* — `dropped` is for candidates the pre-emit re-check removed (§10.1),
+  // and filling it with a line per quiet card every tick would bury them.
+  if (tier === null) return null;
+
+  const measureStartAt = detection.origin.at === null
+    ? null
+    : new Date(instant(detection.origin.at)).toISOString();
+  const alertId = alertIdFor(id, detection.row, tier);
+  const spec = rows[detection.row] ?? SLA_ROWS[detection.row];
+  const action = detection.releasable
+    ? `${detection.action} — releasable hint: ${detection.releasableBasis} (the leader decides; the inspector never moves a card)`
+    : detection.action;
+  return {
+    alert_id: alertId,
+    dedup_key: dedupKeyFor(alertId, measureStartAt),
+    card_id: id,
+    sla_row: detection.row,
+    sla_ref: spec.ref,
+    severity: tier,
+    measure_start_kind: detection.origin.kind,
+    measure_start_at: measureStartAt,
+    measure_start_source: detection.origin.source,
+    elapsed_working_min: elapsed === null ? null : Math.round(elapsed * 1000) / 1000,
+    elapsed_basis: "working_hours",
+    threshold_min: detection.thresholdMin,
+    due_at: detection.thresholdMin === null
+      ? null
+      : addWorkingMinutes(measureStartAt, detection.thresholdMin),
+    action,
+    target: "leader",
+    notify: tier === "escalate" ? "immediate" : "digest",
+    releasable: detection.releasable,
+    releasable_basis: detection.releasableBasis,
+    blocked_reason: detection.blockedReason ?? null,
+    confidence: detection.origin.confidence,
+    mechanism,
+    mechanism_host: mechanismHost,
+    // The ledger owns these three (§8.3): a plan on its own has not been
+    // observed yet, so the runner overwrites them from the recorded entry
+    // before the tuple goes out.
+    first_seen: measureStartAt,
+    last_seen: null,
+    observed_by: [mechanism],
+    evidence: detection.evidence ?? null,
+  };
 }
 
 /**
@@ -1377,11 +1369,13 @@ export function planSlaPatrol(input = {}) {
   const mechanism = input.mechanism ?? MECHANISM;
   const mechanismHost = input.mechanismHost ?? null;
   const periodMin = Number.isFinite(input.periodSeconds) ? input.periodSeconds / 60 : 0;
+  const rows = input.rows ?? SLA_ROWS;
   const context = boardContext(cards, trails, {
     leaderId: input.leaderId ?? null,
     lookbackDays: input.lookbackDays,
     boardTruncated: input.boardTruncated,
     now,
+    rows,
   });
 
   const detections = [];
@@ -1394,7 +1388,7 @@ export function planSlaPatrol(input = {}) {
       confirmDetection(card, trail, context),
       defectDetection(card, trail, context),
       acceptanceDetection(card, context),
-      heartbeatStaleDetection(card),
+      heartbeatStaleDetection(card, context),
     ];
     for (const entry of found) {
       if (entry !== null) detections.push({ card, id, ...entry });
@@ -1429,133 +1423,26 @@ export function planSlaPatrol(input = {}) {
     k: input.peerLivenessK,
     peerPeriodMinutes: input.peerPeriodMinutes,
     peerRequired: input.peerRequired,
+    rows,
   });
   if (liveness !== null) detections.push({ card: null, id: BOARD_CARD_ID, ...liveness });
 
   const alerts = [];
   for (const entry of detections) {
-    // The elapsed value is computed here, once per detection, so every row
-    // shares one working-hours function rather than each detector carrying its
-    // own idea of "how long".
-    const elapsed = elapsedWorkingMinutes(entry.origin.at, now);
-    // A row with no threshold has no due point, so its only tier is `warn`
-    // (§5.3 / §6.5 / §7.4): visibility without a verdict, never a silent drop.
-    const tier = entry.thresholdMin === null ? "warn" : tierFor(entry.row, elapsed, periodMin);
-    // Inside its lead: not a candidate at all, so it is neither an alert nor a
-    // *drop* — `dropped` is for candidates the pre-emit re-check removed (§10.1),
-    // and filling it with a line per quiet card every tick would bury them.
-    if (tier === null) continue;
-    const measureStartAt = entry.origin.at === null ? null : new Date(instant(entry.origin.at)).toISOString();
-    const alertId = alertIdFor(entry.id, entry.row, tier);
-    const spec = SLA_ROWS[entry.row];
-    const action = entry.releasable
-      ? `${entry.action} — releasable hint: ${entry.releasableBasis} (the leader decides; the inspector never moves a card)`
-      : entry.action;
-    alerts.push({
-      alert_id: alertId,
-      dedup_key: dedupKeyFor(alertId, measureStartAt),
-      card_id: entry.id,
-      sla_row: entry.row,
-      sla_ref: spec.ref,
-      severity: tier,
-      measure_start_kind: entry.origin.kind,
-      measure_start_at: measureStartAt,
-      measure_start_source: entry.origin.source,
-      elapsed_working_min: elapsed === null ? null : Math.round(elapsed * 1000) / 1000,
-      elapsed_basis: "working_hours",
-      threshold_min: entry.thresholdMin,
-      due_at: entry.thresholdMin === null ? null : addWorkingMinutes(measureStartAt, entry.thresholdMin),
-      action,
-      target: "leader",
-      notify: tier === "escalate" ? "immediate" : "digest",
-      releasable: entry.releasable,
-      releasable_basis: entry.releasableBasis,
-      blocked_reason: entry.blockedReason ?? null,
-      confidence: entry.origin.confidence,
+    const alert = buildSlaAlert({
+      id: entry.id,
+      detection: entry,
+      rows,
+      periodMin,
       mechanism,
-      mechanism_host: mechanismHost,
-      // The ledger owns these three (§8.3): a plan on its own has not been
-      // observed yet, so the runner overwrites them from the recorded entry
-      // before the tuple goes out.
-      first_seen: measureStartAt,
-      last_seen: null,
-      observed_by: [mechanism],
-      evidence: entry.evidence ?? null,
+      mechanismHost,
+      now,
     });
+    if (alert !== null) alerts.push(alert);
   }
 
   alerts.sort((a, b) => (a.card_id === b.card_id ? a.sla_row.localeCompare(b.sla_row) : a.card_id.localeCompare(b.card_id)));
   return { alerts };
-}
-
-// ---------------------------------------------------------------------------
-// Pre-emit re-check (§9.6)
-// ---------------------------------------------------------------------------
-
-/**
- * Does an alert survive a live second look at the card?
- *
- * The scan above works from a board snapshot that may already be a few seconds
- * old; the contract requires the survivor set to be re-checked against the
- * card's *current* state immediately before the notification goes out, and the
- * two to share one decision rule. The rule restated here is deliberately the
- * narrow, structural half of each detector — the half a fresh single-card read
- * can answer:
- *
- *   * `blocked_clarification` — the card must still be `blocked`;
- *   * `confirmation_gate` — a request must still be the card's latest word;
- *   * `defect_card_creation` — the card must still not be closed out;
- *   * `acceptance_card_creation` — the card must still be `in_review`;
- *   * `heartbeat_stale` — the card must still be `in_progress` (the live read
- *     cannot see the heartbeat's age, but it *can* see the card having left the
- *     only status this row applies to, and that alone is grounds to drop);
- *   * `leader_stalled` — nothing: the live read cannot see the rest of the board,
- *     so a single-card re-check has no evidence either way;
- *   * `inspector_liveness` — nothing, for the same reason: the peer's marker is
- *     not on the card the re-check reads.
- *
- * A drop is always *returned*, never swallowed — the existing patrol's
- * "绝不静默丢弃" discipline.
- *
- * @param {object} alert a tuple from `planSlaPatrol`
- * @param {object|null} liveCard the card as re-read now (`null` when gone)
- * @returns {{ok: true}|{ok: false, reason: string}}
- */
-export function stillQualifies(alert, liveCard, live = {}) {
-  if (liveCard === null || liveCard === undefined) {
-    return { ok: false, reason: `live_status:${liveCard === undefined ? "missing" : "gone"}` };
-  }
-  const status = liveCard?.status ?? null;
-  switch (alert?.sla_row) {
-    case "blocked_clarification":
-      return status === "blocked" ? { ok: true } : { ok: false, reason: `live_status:${status}` };
-    case "confirmation_gate": {
-      // A gate lives on a card still being worked. Whether it has been *answered*
-      // is a trail fact the single-card read cannot see, so the caller may pass
-      // the trail it re-read; without one, only the status is decidable here.
-      if (status === "blocked" || status === "done" || status === "canceled") {
-        return { ok: false, reason: `live_status:${status}` };
-      }
-      if (
-        Array.isArray(live?.trail)
-        && confirmAnsweredAfter(live.trail, alert.measure_start_at, live.leaderId ?? null)
-      ) {
-        return { ok: false, reason: "gate_answered" };
-      }
-      return { ok: true };
-    }
-    case "defect_card_creation":
-      return status === "done" ? { ok: false, reason: "live_status:done" } : { ok: true };
-    case "acceptance_card_creation":
-      return status === "in_review" ? { ok: true } : { ok: false, reason: `live_status:${status}` };
-    case "heartbeat_stale":
-      return status === "in_progress" ? { ok: true } : { ok: false, reason: `live_status:${status}` };
-    case "leader_stalled":
-    case "inspector_liveness":
-      return { ok: true };
-    default:
-      return { ok: true };
-  }
 }
 
 // ---------------------------------------------------------------------------

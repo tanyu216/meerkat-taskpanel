@@ -31,7 +31,6 @@ import {
 } from "../foundation/scheduling.mjs";
 import {
   DEFAULT_TRAIL_LIMIT,
-  LEADER_LOOKBACK_DAYS,
   PEER_LIVENESS_K,
   PEER_MECHANISM,
   PEER_PERIOD_MIN,
@@ -124,7 +123,13 @@ flag("--poll-interval", (opts, value) => {
 flag("--continue-interval", (opts, value) => { opts.continueInterval = number("--continue-interval", value); });
 flag("--continue", (opts, value) => { opts.continue = value; });
 flag("--continue-state", (opts, value) => { opts.continueState = value; });
-flag("--patrol-interval", (opts, value) => { opts.patrolInterval = number("--patrol-interval", value); });
+flag("--patrol-interval", (opts, value) => {
+  opts.patrolInterval = number("--patrol-interval", value);
+  // The default is also 300, so the value alone cannot say whether this was the
+  // operator's explicit choice. Without the marker a supervisor invoked with
+  // `--patrol-interval 300` could not override a board configured with 600.
+  opts.patrolIntervalExplicit = true;
+});
 flag("--max-concurrency", (opts, value) => { opts.maxConcurrency = number("--max-concurrency", value); });
 flag("--claim-unassigned", (opts, value) => { opts.claimUnassigned = value; });
 flag("--assignee-only", (opts) => { opts.claimUnassigned = "no"; }, "switch");
@@ -205,6 +210,7 @@ function defaultOptions(env) {
     continue: undefined,
     continueState: null,
     patrolInterval: DEFAULT_PATROL_SECONDS, // the SLA measurement period, not a schedule
+    patrolIntervalExplicit: false, // true only when `--patrol-interval` was given
     maxConcurrency: DEFAULT_MAX_CONCURRENCY,
     claimUnassigned: undefined,
     recoverStale: undefined,
@@ -238,7 +244,6 @@ function defaultOptions(env) {
     slaLeader: null,
     slaLastOk: null,
     slaPeer: null,
-    slaLookbackDays: null,
     boardLimit: DEFAULT_BOARD_LIMIT,
     trailLimit: DEFAULT_TRAIL_LIMIT,
     config: null,
@@ -303,7 +308,6 @@ export function parseArgs(argv, env = process.env) {
   opts.slaLastOk ??= beside.slaLastOk;
   opts.slaLeader ??= env.MEERKAT_TASKPANEL_SLA_LEADER ?? null;
   opts.slaPeer ??= env.MEERKAT_TASKPANEL_SLA_PEER ?? null;
-  opts.slaLookbackDays ??= LEADER_LOOKBACK_DAYS;
   opts.config ??= paths.config;
   opts.configFile = readConfigFile(opts.config);
   // Cadences follow the same precedence as every other policy: flag > env >
@@ -513,7 +517,9 @@ export function loopCommandArgs(opts) {
   ]) {
     add(flag, value);
   }
-  if (opts.patrolInterval !== DEFAULT_PATROL_SECONDS) add("--patrol-interval", opts.patrolInterval);
+  if (opts.patrolIntervalExplicit === true || opts.patrolInterval !== DEFAULT_PATROL_SECONDS) {
+    add("--patrol-interval", opts.patrolInterval);
+  }
   if (opts.boardLimit !== DEFAULT_BOARD_LIMIT) add("--board-limit", opts.boardLimit);
   if (opts.trailLimit !== DEFAULT_TRAIL_LIMIT) add("--trail-limit", opts.trailLimit);
   if (opts.maxConcurrency !== DEFAULT_MAX_CONCURRENCY) add("--max-concurrency", opts.maxConcurrency);
@@ -565,8 +571,9 @@ Options:
   --event-continue=yes|no   Let events wake a continue turn (default: yes).
   --event-continue-min-ms <ms>
                             At most one event-triggered turn per interval (default: 60000).
-  --patrol-interval <sec>   SLA measurement period (default: ${DEFAULT_PATROL_SECONDS}); it no
-                            longer schedules anything.
+  --patrol-interval <sec>   SLA measurement period P (default: the board's
+                            TASKD_SLA_PERIOD_SECONDS, else ${DEFAULT_PATROL_SECONDS}). It no longer
+                            schedules anything; an explicit value overrides the board.
   --max-concurrency <n>     Max concurrent workers (default: ${DEFAULT_MAX_CONCURRENCY}).
   --claim-unassigned=yes|no Also claim unassigned cards (default: yes).
   --assignee-only           Alias for --claim-unassigned=no.
@@ -587,11 +594,14 @@ Options:
   --state <path>            Worker registry (default: <home>/<host-dir>/meerkat-taskpanel/supervisor.state.json).
   --sla-ledger <path>       SLA de-duplication ledger (default: a sibling of --state).
   --workflow-ledger <path>  Workflow alert de-duplication ledger (default: a sibling of --state).
-  --sla-leader <id>         The author id the leader writes under (default: human decisions).
+  --sla-leader <id>         The author id the leader writes under (default: the board's human
+                            decision authority). Passed to sla list|get.
   --sla-last-ok <path>      This mechanism's last-successful-run marker.
-  --sla-peer <path>         The peer inspector's last-ok marker.
-  --board-limit <n>         Max cards read per pass (default: ${DEFAULT_BOARD_LIMIT}).
-  --trail-limit <n>         Max comment trails read per pass (default: ${DEFAULT_TRAIL_LIMIT}).
+  --sla-peer <path>         The peer inspector's last-ok marker (a local file; the board cannot
+                            see it, so this one row is computed here).
+  --board-limit <n>         Max cards per read (default: ${DEFAULT_BOARD_LIMIT}); passed to sla list.
+  --trail-limit <n>         Max comment trails per SLA read (default: ${DEFAULT_TRAIL_LIMIT}); passed
+                            to sla list.
   --config <path>           Host config (default: <home>/<host-dir>/meerkat-taskpanel.env).
   --home <path>             Home the defaults are resolved against (default: $HOME).
   --cli <path>              taskctl entry (default: <repo>/src/cli/index.mjs).

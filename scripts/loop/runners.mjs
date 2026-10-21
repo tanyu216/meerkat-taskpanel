@@ -20,11 +20,12 @@ import {
   BOARD_CARD_ID,
   MECHANISM,
   partitionSlaAlerts,
-  planSlaPatrol,
   recordSlaAlerts,
-  stillQualifies,
 } from "../../src/foundation/sla-patrol.mjs";
 import { openAppendFd } from "./runtime.mjs";
+
+/** Rows about the board, not one card — a single-card re-read cannot decide them. */
+const BOARD_LEVEL_ROWS = new Set(["leader_stalled", "inspector_liveness"]);
 
 /**
  * One poll pass.
@@ -122,48 +123,46 @@ export async function runPatrolTick(deps) {
 }
 
 /**
- * One SLA patrol pass.
+ * One SLA notification pass.
  *
- * The order is load-bearing: plan → drop already-notified keys → re-read the
- * survivors live (a card that just moved must not alert) → notify, *then*
- * record. Writing the ledger before the send would suppress an alert that was
- * never delivered. Nothing here writes a card or starts an LLM.
+ * The board computes the candidates (`GET /api/v1/sla`); this half owns the
+ * order that must not move: drop already-notified keys → re-read the survivors
+ * live (a card that just moved must not alert) → notify, *then* record.
+ * Writing the ledger before the send would suppress an alert that was never
+ * delivered. Nothing here writes a card or starts an LLM.
+ *
+ * The re-read is the board's own computation for one card (`taskctl sla get`),
+ * so the rule that produced the alert and the rule that keeps it are the same
+ * code — §9.6 asks for one decision rule, not a second restatement. The row is
+ * matched by **`(card, row)`**, not `dedup_key`: a tier promotion during the
+ * re-read keeps the row open and the next pass emits the new key.
  *
  * @param {{
- *   cards: object[],
- *   trails: Record<string, object[]>,
+ *   alerts: object[],
  *   ledger: object,
- *   periodSeconds: number,
- *   mechanismHost: string|null,
- *   leaderId?: string|null,
- *   boardTruncated?: boolean,
- *   peerLastOkAt?: string|number|null,
- *   peerRequired?: boolean,
- *   recheck: (cardId: string) => Promise<{checked: boolean, card?: object|null}>,
+ *   recheck: (cardId: string) => Promise<{checked: boolean, alerts?: object[]}>,
  *   notify: (alert: object) => void,
  *   now: () => string,
  *   log: (line: string) => void,
+ *   mechanism?: string,
+ *   mechanismHost?: string|null,
  * }} deps
  */
-export async function runSlaPatrolTick(deps) {
-  const { cards, trails, ledger, periodSeconds, mechanismHost, recheck, notify, now, log } = deps;
-  const { recheckTrail = null } = deps;
+export async function notifySlaAlerts(deps) {
+  const { ledger, recheck, notify, now, log } = deps;
+  const mechanism = deps.mechanism ?? MECHANISM;
+  const mechanismHost = deps.mechanismHost ?? null;
   const stamp = now();
-  const planned = planSlaPatrol({
-    cards,
-    trails,
-    now: stamp,
-    periodSeconds,
-    mechanismHost: mechanismHost ?? null,
-    leaderId: deps.leaderId ?? null,
-    boardTruncated: deps.boardTruncated === true,
-    peerLastOkAt: deps.peerLastOkAt ?? null,
-    peerPeriodMinutes: deps.peerPeriodMinutes ?? null,
-    peerRequired: deps.peerRequired === true,
-    lookbackDays: deps.lookbackDays,
-  });
+  // The board computed the rows; the *mechanism* that delivers them is this
+  // loop. Stamp identity here so the ledger's `observed_by` and the peer's
+  // view name the actual notifier, not the board.
+  const alerts = (Array.isArray(deps.alerts) ? deps.alerts : []).map((alert) => ({
+    ...alert,
+    mechanism,
+    mechanism_host: mechanismHost,
+  }));
 
-  const { notify: fresh, suppressed } = partitionSlaAlerts(planned.alerts, ledger);
+  const { notify: fresh, suppressed } = partitionSlaAlerts(alerts, ledger);
   for (const alert of suppressed) {
     log(`patrol: sla ${alert.alert_id} (${alert.severity}) already notified — suppressed`);
   }
@@ -171,42 +170,31 @@ export async function runSlaPatrolTick(deps) {
   const dropped = [];
   const survivors = [];
   for (const alert of fresh) {
-    // A board-level row (`leader_stalled`, `inspector_liveness`) names no card,
-    // so there is nothing to re-read — and asking the provider for the sentinel
-    // would log a failure that is not one. §9.6's second look is about *card*
-    // rows; these go straight through, which is also what §9.3 requires when a
-    // re-check cannot be performed.
-    if (alert.card_id === BOARD_CARD_ID) {
+    // A board-level row (`leader_stalled`, `inspector_liveness`) is not about
+    // one card, so there is nothing a single-card read can decide — and asking
+    // the provider for the sentinel would log a failure that is not one.
+    // `leader_stalled` is anchored on a real card for display, but the row is
+    // still board-level: re-reading that card cannot say whether the leader is
+    // stalled. §9.6's second look is about *card* rows; these go straight
+    // through, which is also what §9.3 requires when a re-check cannot run.
+    if (alert.card_id === BOARD_CARD_ID || BOARD_LEVEL_ROWS.has(alert.sla_row)) {
       survivors.push(alert);
       continue;
     }
     const live = await recheck(alert.card_id);
     // A re-check that could not run must never be able to silence a real alert
     // (§9.3): an unverifiable card is notified, not dropped. Only a *successful*
-    // read that shows the card has moved is grounds for a drop.
-    if (live?.checked !== true) {
+    // read that no longer contains the row is grounds for a drop.
+    if (live?.checked !== true || !Array.isArray(live.alerts)) {
       log(`patrol: re-check unavailable for ${alert.card_id} — notifying anyway`);
       survivors.push(alert);
       continue;
     }
-    const liveCard = live.card ?? null;
-    let verdict = stillQualifies(alert, liveCard);
-    // A gate's "answered" state is a trail fact the single-card read cannot see.
-    // Only a fresh gate alert pays for the second read; a failed one keeps the
-    // alert (§9.3 — an unreadable check must never silence a real one).
-    if (verdict.ok && alert.sla_row === "confirmation_gate" && typeof recheckTrail === "function") {
-      const trailRead = await recheckTrail(alert.card_id);
-      if (trailRead?.checked === true) {
-        verdict = stillQualifies(alert, liveCard, {
-          trail: trailRead.trail,
-          leaderId: deps.leaderId ?? null,
-        });
-      } else {
-        log(`patrol: live trail re-check unavailable for ${alert.card_id} — notifying anyway`);
-      }
-    }
-    if (verdict.ok) survivors.push(alert);
-    else dropped.push({ card_id: alert.card_id, sla_row: alert.sla_row, reason: verdict.reason });
+    const stillOpen = live.alerts.some(
+      (row) => row.card_id === alert.card_id && row.sla_row === alert.sla_row,
+    );
+    if (stillOpen) survivors.push(alert);
+    else dropped.push({ card_id: alert.card_id, sla_row: alert.sla_row, reason: `recheck:${alert.sla_row}:not_open` });
   }
   for (const drop of dropped) {
     log(`patrol: dropped ${drop.card_id} ${drop.sla_row} (${drop.reason})`);

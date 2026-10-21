@@ -214,28 +214,35 @@ describe("cli/imports — the loop consumes the toolkit, it does not implement i
     assert.deepEqual(violations, []);
   });
 
-  it("src/core, src/cli and src/server never import the loop's policy modules", () => {
-    // `scheduling.mjs` (the loop's clocks/wake) and `sla-patrol.mjs` (the SLA
-    // rules) are loop policy. They may live under `shared/` so the loop payload
-    // can vendor them, but the board must not depend on them: that would make
-    // the toolkit import its own orchestrator.
-    const files = [
+  it("the board imports the SLA engine only through its one command, and never the loop's clocks", () => {
+    // `scheduling.mjs` (the loop's clocks/wake) stays loop policy for every
+    // board module. `sla-patrol.mjs` changed sides: the board *computes* the
+    // SLA rows now (`GET /api/v1/sla`), so `src/core` and `src/server` may
+    // import it — but `src/cli` is a thin HTTP client and must not, and one
+    // core module is the single entry. Keeping the set explicit means a new
+    // caller has to say so here.
+    const boardFiles = [
       ...filesUnder("src/core"),
       ...filesUnder("src/cli"),
       ...filesUnder("src/server"),
     ];
-    const loopPolicy = new Set(["src/foundation/scheduling.mjs", "src/foundation/sla-patrol.mjs"]);
-
     const violations = [];
-    for (const file of files) {
+    const slaImporters = [];
+    for (const file of boardFiles) {
+      const rel = file.slice(ROOT.length + 1);
       for (const specifier of importedSpecifiers(readSource(file))) {
         const target = specifierTarget(file, specifier);
-        if (target !== null && loopPolicy.has(target)) {
-          violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
+        if (target === "src/foundation/scheduling.mjs") {
+          violations.push(`${rel} imports ${specifier}`);
+        }
+        if (target === "src/foundation/sla-patrol.mjs") {
+          slaImporters.push(rel);
+          if (rel.startsWith("src/cli/")) violations.push(`${rel} imports ${specifier}`);
         }
       }
     }
     assert.deepEqual(violations, []);
+    assert.deepEqual(slaImporters, ["src/core/commands/sla.mjs"]);
   });
 
   it("src/foundation imports nothing from src/core, src/cli or src/server", () => {

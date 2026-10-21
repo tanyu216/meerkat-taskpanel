@@ -386,8 +386,9 @@ describe("route-request.mjs — the CLI", () => {
     // loopback-only GET + PUT /api/v1/access pair.
     // 37 since the claim/reclaim verb added POST /tasks/:ref/claim — the one
     // claim path that is not a status transition (`in_progress → in_progress`);
-    // 38 since reopen added POST /tasks/:ref/reopen.
-    assert.match(result.stdout, /route-request: OK — 38 routes/);
+    // 38 since reopen added POST /tasks/:ref/reopen; 39 since the board's SLA
+    // read added GET /api/v1/sla.
+    assert.match(result.stdout, /route-request: OK — 39 routes/);
     // Nine since the reopen verb declared `tasks.reopen` beside the eight
     // commands that already projected their input.
     assert.match(result.stdout, /9 command inputs paired/);

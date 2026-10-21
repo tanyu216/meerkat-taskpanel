@@ -375,6 +375,11 @@ keys it has into `.env`.
 `MEERKAT_TASKPANEL_ENV_FILE` points the installer and both binaries at a different file (a
 read-only package root, a container, or the test suite).
 
+The SLA thresholds are seeded as a **commented** block in the same `.env` (every
+`TASKD_SLA_*` key with its default). Uncomment a line to override it: `taskd` validates the
+table and publishes it on `GET /api/v1/sla`, and the loop reads it on the next patrol pass —
+no restart and no per-host copy. See [`sla.md §2.1`](sla.md#21-install-level-overrides).
+
 `--reviewer` (or `MEERKAT_TASKPANEL_REVIEWER`) is what turns review dispatch on. With it
 unset the supervisor still reconciles containers and applies verdicts already in flight —
 it simply creates no new review cards, and deliveries wait for a human.

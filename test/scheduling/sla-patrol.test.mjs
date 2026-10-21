@@ -52,12 +52,13 @@ import {
   pruneSlaLedger,
   recordSlaAlerts,
   slaRowRef,
-  stillQualifies,
   tierFor,
   trailReadCandidates,
   warnLeadMinutes,
+  buildSlaAlert,
 } from "../../src/foundation/sla-patrol.mjs";
-import { runSlaPatrolTick } from "../../scripts/loop/runners.mjs";
+import { applySlaOverrides } from "../../src/foundation/sla-config.mjs";
+import { notifySlaAlerts } from "../../scripts/loop/runners.mjs";
 
 /**
  * A fixed clock inside the Asia/Shanghai working window (18:00 local), placed
@@ -1087,50 +1088,161 @@ describe("the shared tuple (§4) and the safe-operation envelope (§9)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Pre-emit re-check (§9.6)
+// The tuple builder and the pre-emit re-check (§4, §9.6)
 // ---------------------------------------------------------------------------
 
-describe("stillQualifies (one shared decision rule for scan and re-check)", () => {
-  const alert = plan([card({ status: "blocked", blocked_at: ago(130) })]).alerts[0];
-
-  it("keeps a card that is still blocked", () => {
-    assert.deepEqual(stillQualifies(alert, { status: "blocked" }), { ok: true });
+describe("buildSlaAlert (one tuple builder for every mechanism)", () => {
+  const detection = (overrides = {}) => ({
+    row: "blocked_clarification",
+    origin: { kind: "blocked_at", at: ago(130), source: "frontmatter", confidence: "high" },
+    thresholdMin: SLA_ROWS.blocked_clarification.limitMin,
+    visibilityOnly: false,
+    releasable: false,
+    releasableBasis: null,
+    blockedReason: "clarify",
+    openPredicate: "blocked",
+    action: "the leader must clarify",
+    evidence: {},
+    ...overrides,
   });
 
-  it("drops a card that moved on, with a reason", () => {
-    assert.deepEqual(stillQualifies(alert, { status: "done" }), { ok: false, reason: "live_status:done" });
-    assert.deepEqual(stillQualifies(alert, null), { ok: false, reason: "live_status:gone" });
+  it("builds the shared tuple from a detection", () => {
+    const alert = buildSlaAlert({
+      id: "T-1",
+      detection: detection(),
+      periodMin: 5,
+      mechanism: "taskd",
+      mechanismHost: null,
+      now: NOW,
+    });
+    assert.equal(alert.card_id, "T-1");
+    assert.equal(alert.sla_row, "blocked_clarification");
+    assert.equal(alert.severity, "overdue");
+    assert.equal(alert.threshold_min, 120);
+    assert.equal(alert.mechanism, "taskd");
+    assert.equal(alert.target, "leader");
+    assert.equal(alert.notify, "digest");
+    assert.equal(typeof alert.due_at, "string");
   });
 
-  it("drops an acceptance wait whose card left in_review", () => {
-    const acceptance = plan([card({ status: "in_review", status_changed_at: "2026-10-01T04:00:00.000Z" })]).alerts
-      .find((entry) => entry.sla_row === "acceptance_card_creation");
-    assert.equal(stillQualifies(acceptance, { status: "done" }).ok, false);
-    assert.equal(stillQualifies(acceptance, { status: "in_review" }).ok, true);
-  });
-
-  it("drops a gate the leader has since answered, from the live trail read", () => {
-    const gate = plan([card({ status: "in_progress", status_changed_at: ago(300), meta: { gate_at: ago(300) } })])
-      .alerts.find((entry) => entry.sla_row === "confirmation_gate");
-    assert.ok(gate);
-    const open = [{ kind: "confirm_request", created_at: ago(300) }];
-    assert.equal(stillQualifies(gate, { status: "in_progress" }, { trail: open }).ok, true);
-
-    const answered = [
-      ...open,
-      { kind: "confirm", created_at: ago(10), author_kind: "human", author_id: "local" },
-    ];
-    assert.deepEqual(
-      stillQualifies(gate, { status: "in_progress" }, { trail: answered, leaderId: null }),
-      { ok: false, reason: "gate_answered" },
+  it("returns null inside the lead — a quiet card is not a candidate", () => {
+    assert.equal(
+      buildSlaAlert({
+        id: "T-1",
+        detection: detection({
+          origin: { kind: "blocked_at", at: ago(10), source: "frontmatter", confidence: "high" },
+        }),
+        periodMin: 5,
+        mechanism: "taskd",
+        now: NOW,
+      }),
+      null,
     );
+  });
 
-    // A worker's confirmation does not close the leader's gate.
-    const worker = [
-      ...open,
-      { kind: "confirm", created_at: ago(10), author_kind: "agent", author_id: "linus" },
-    ];
-    assert.equal(stillQualifies(gate, { status: "in_progress" }, { trail: worker }).ok, true);
+  it("carries a no-threshold row at warn", () => {
+    const alert = buildSlaAlert({
+      id: BOARD_CARD_ID,
+      detection: detection({ row: "inspector_liveness", thresholdMin: null, action: "tell the leader" }),
+      periodMin: 5,
+      mechanism: "taskd",
+      now: NOW,
+    });
+    assert.equal(alert.severity, "warn");
+    assert.equal(alert.threshold_min, null);
+    assert.equal(alert.due_at, null);
+    assert.equal(alert.notify, "digest");
+  });
+});
+
+describe("the single-card re-computation (the pre-emit rule, §9.6)", () => {
+  it("reports a row while the card still matches", () => {
+    const { alerts } = plan([card({ status: "blocked", blocked_at: ago(130) })]);
+    assert.equal(alerts.some((a) => a.sla_row === "blocked_clarification"), true);
+  });
+
+  it("reports nothing once the card moved on", () => {
+    const { alerts } = plan([card({ status: "in_progress", status_changed_at: ago(5) })]);
+    assert.equal(alerts.some((a) => a.sla_row === "blocked_clarification"), false);
+  });
+
+  it("drops a gate the live trail shows answered", () => {
+    const { alerts } = plan(
+      [card({ status: "in_progress", status_changed_at: ago(300), meta: { gate_at: ago(300) } })],
+      {
+        trails: {
+          "T-1": [
+            { kind: "confirm_request", created_at: ago(300) },
+            { kind: "confirm", created_at: ago(10), author_kind: "human", author_id: "local" },
+          ],
+        },
+      },
+    );
+    assert.equal(alerts.some((a) => a.sla_row === "confirmation_gate"), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The effective table (`TASKD_SLA_*` overrides)
+// ---------------------------------------------------------------------------
+
+describe("an effective rows table", () => {
+  const rows = applySlaOverrides(SLA_ROWS, {
+    blocked_clarification: { limitMin: 60, furtherMin: 120 },
+    confirmation_gate: { limitMin: 30, furtherMin: 60 },
+    defect_card_creation: { limitMin: 60, furtherMin: 120 },
+    acceptance_card_creation: { limitMin: 60, furtherMin: 120 },
+    heartbeat_stale: { limitMin: 5, furtherMin: 10 },
+    leader_stalled: { limitMin: 10, furtherMin: 20 },
+  });
+
+  it("changes the verdicts the engine reports, keeping the prose", () => {
+    const { alerts } = plan([card({ status: "blocked", blocked_at: ago(70) })], { rows });
+    const blocked = alerts.find((a) => a.sla_row === "blocked_clarification");
+    assert.equal(blocked.threshold_min, 60);
+    assert.equal(blocked.severity, "overdue");
+    assert.equal(blocked.sla_ref, SLA_ROWS.blocked_clarification.ref);
+    assert.equal(tierFor("blocked_clarification", 55, 5, rows), "warn");
+    assert.equal(tierFor("blocked_clarification", 55, 5), null);
+    assert.equal(warnLeadMinutes("blocked_clarification", 300, rows), 55);
+    assert.equal(warnLeadMinutes("blocked_clarification", 300), 115);
+  });
+
+  it("changes which trails are read", () => {
+    const fresh = [card({ status: "in_progress", status_changed_at: ago(56) })];
+    assert.deepEqual(
+      trailReadCandidates(fresh, { now: NOW, periodSeconds: 300, rows }),
+      ["T-1"],
+    );
+    assert.deepEqual(trailReadCandidates(fresh, { now: NOW, periodSeconds: 300 }), []);
+  });
+
+  it("reaches every detector", () => {
+    const heartbeat = plan([card({ status: "in_progress", heartbeat_at: ago(6) })], { rows }).alerts
+      .find((a) => a.sla_row === "heartbeat_stale");
+    assert.equal(heartbeat.threshold_min, 5);
+
+    const acceptance = plan([card({ status: "in_review", status_changed_at: ago(70) })], { rows }).alerts
+      .find((a) => a.sla_row === "acceptance_card_creation");
+    assert.equal(acceptance.threshold_min, 60);
+
+    const defect = plan(
+      [card({ status: "blocked", blocked_at: ago(70) })],
+      { rows, trails: { "T-1": [{ kind: "defect", created_at: ago(70) }] } },
+    ).alerts.find((a) => a.sla_row === "defect_card_creation");
+    assert.equal(defect.threshold_min, 60);
+
+    const gate = plan(
+      [card({ status: "in_progress", status_changed_at: ago(40), meta: { gate_at: ago(40) } })],
+      { rows },
+    ).alerts.find((a) => a.sla_row === "confirmation_gate");
+    assert.equal(gate.threshold_min, 30);
+
+    const stalled = plan(
+      [card({ status: "blocked", blocked_at: ago(70), created_at: ago(100) })],
+      { rows },
+    ).alerts.find((a) => a.sla_row === "leader_stalled");
+    assert.equal(stalled.threshold_min, 10);
   });
 });
 
@@ -1244,122 +1356,82 @@ function spy(impl = () => undefined) {
   return fn;
 }
 
-const runnerDeps = (overrides = {}) => ({
-  cards: [],
-  trails: {},
+/** The candidates the board would return for these cards. */
+function alertsFor(cards, extra = {}) {
+  return planSlaPatrol({
+    cards,
+    trails: {},
+    now: NOW,
+    periodSeconds: PERIOD_SECONDS,
+    mechanism: "taskd",
+    mechanismHost: null,
+    ...extra,
+  }).alerts;
+}
+
+/** The loop's notification half, with its I/O injected. */
+const notifyDeps = (overrides = {}) => ({
+  alerts: [],
   ledger: emptySlaLedger(),
-  periodSeconds: PERIOD_SECONDS,
-  mechanismHost: "claude/linus",
-  recheck: async () => ({ checked: true, card: null }),
+  recheck: async () => ({ checked: true, alerts: [] }),
   notify: () => {},
   now: () => NOW,
   log: () => {},
   ...overrides,
 });
 
-describe("runSlaPatrolTick (injected deps)", () => {
-  it("notifies nothing on an idle board — and re-checks nothing either", async () => {
+describe("notifySlaAlerts (the loop's half)", () => {
+  it("notifies nothing on an empty board — and re-checks nothing either", async () => {
     const notify = spy();
-    const recheck = spy(async () => ({ checked: true, card: null }));
-    const result = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "in_progress", status_changed_at: ago(5) })],
-      notify,
-      recheck,
-    }));
+    const recheck = spy(async () => ({ checked: true, alerts: [] }));
+    const result = await notifySlaAlerts(notifyDeps({ alerts: [], notify, recheck }));
     assert.equal(result.alerts.length, 0);
     assert.equal(notify.count(), 0, "zero-cost idle");
     assert.equal(recheck.count(), 0, "no candidate ⇒ no extra read");
   });
 
-  it("forwards the peer's declared period to the planner", async () => {
-    const deps = (peerPeriodMinutes) => runnerDeps({
-      peerLastOkAt: ago(80),
-      peerPeriodMinutes,
-      recheck: async () => ({ checked: true, card: null }),
-    });
-    const fallback = await runSlaPatrolTick(deps(15));
-    assert.equal(fallback.alerts.length, 1);
-    assert.equal(fallback.alerts[0].sla_row, "inspector_liveness");
-
-    const declared = await runSlaPatrolTick(deps(30));
-    assert.deepEqual(declared.alerts, [], "80 minutes is inside a declared 30-minute peer's 3× bound");
-  });
-
-  it("re-reads the trail for a fresh gate alert and drops it when answered", async () => {
+  it("re-checks before it notifies, and keeps a row the board still reports", async () => {
+    const alerts = alertsFor([card({ status: "blocked", blocked_at: ago(130) })]);
     const notify = spy();
-    const recheckTrail = spy(async () => ({
-      checked: true,
-      trail: [
-        { kind: "confirm_request", created_at: ago(300) },
-        { kind: "confirm", created_at: ago(10), author_kind: "human", author_id: "local" },
-      ],
-    }));
-    const result = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "in_progress", status_changed_at: ago(300), meta: { gate_at: ago(300) } })],
-      notify,
-      recheck: async () => ({ checked: true, card: { status: "in_progress" } }),
-      recheckTrail,
-    }));
-    assert.equal(recheckTrail.count(), 1);
-    assert.equal(result.alerts.length, 0);
-    assert.ok(result.dropped.some((drop) => drop.reason === "gate_answered"));
-    assert.equal(notify.count(), 0);
-  });
-
-  it("keeps a gate alert when the live trail read fails", async () => {
-    const notify = spy();
-    const result = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "in_progress", status_changed_at: ago(300), meta: { gate_at: ago(300) } })],
-      notify,
-      recheck: async () => ({ checked: true, card: { status: "in_progress" } }),
-      recheckTrail: async () => ({ checked: false }),
-    }));
-    assert.equal(result.alerts.length, 1);
-    assert.equal(notify.count(), 1);
-  });
-
-  it("does not read a trail for a non-gate row", async () => {
-    const recheckTrail = spy(async () => ({ checked: true, trail: [] }));
-    const result = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "blocked", blocked_at: ago(130) })],
-      recheck: async () => ({ checked: true, card: { status: "blocked" } }),
-      recheckTrail,
-    }));
-    assert.equal(result.alerts.length, 1);
-    assert.equal(recheckTrail.count(), 0);
-  });
-
-  it("re-checks before it notifies, and keeps the alert when the card is unchanged", async () => {
-    const notify = spy();
-    const recheck = spy(async () => ({ checked: true, card: { status: "blocked" } }));
-    const result = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "blocked", blocked_at: ago(130) })],
-      notify,
-      recheck,
-    }));
+    const recheck = spy(async () => ({ checked: true, alerts }));
+    const result = await notifySlaAlerts(notifyDeps({ alerts, notify, recheck }));
     assert.equal(result.alerts.length, 1);
     assert.equal(recheck.count(), 1);
     assert.equal(notify.count(), 1);
   });
 
-  it("drops a candidate whose card moved on, and says why", async () => {
+  it("drops a candidate the fresh computation no longer reports, and says why", async () => {
+    const alerts = alertsFor([card({ status: "blocked", blocked_at: ago(130) })]);
     const notify = spy();
-    const result = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "blocked", blocked_at: ago(130) })],
+    const result = await notifySlaAlerts(notifyDeps({
+      alerts,
       notify,
-      recheck: async () => ({ checked: true, card: { status: "in_progress" } }),
+      recheck: async () => ({ checked: true, alerts: [] }),
     }));
     assert.equal(result.alerts.length, 0);
     assert.equal(notify.count(), 0);
-    assert.deepEqual(result.dropped.filter((drop) => drop.reason.startsWith("live_status")), [
-      { card_id: "T-1", sla_row: "blocked_clarification", reason: "live_status:in_progress" },
+    assert.deepEqual(result.dropped, [
+      { card_id: "T-1", sla_row: "blocked_clarification", reason: "recheck:blocked_clarification:not_open" },
     ]);
   });
 
+  it("keeps a row that is still open at a *different* tier", async () => {
+    // The re-check matches (card, row), not the dedup key: a promotion during
+    // the read keeps the row open, and the next pass emits the new key.
+    const alerts = alertsFor([card({ status: "blocked", blocked_at: ago(130) })]);
+    const promoted = alerts.map((alert) => ({ ...alert, severity: "escalate" }));
+    const result = await notifySlaAlerts(notifyDeps({
+      alerts,
+      recheck: async () => ({ checked: true, alerts: promoted }),
+    }));
+    assert.equal(result.alerts.length, 1);
+  });
+
   it("notifies anyway when the re-check cannot run (a failed read must not silence an alert)", async () => {
+    const alerts = alertsFor([card({ status: "blocked", blocked_at: ago(130) })]);
     const notify = spy();
-    const result = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "blocked", blocked_at: ago(130) })],
+    const result = await notifySlaAlerts(notifyDeps({
+      alerts,
       notify,
       recheck: async () => ({ checked: false }),
     }));
@@ -1368,16 +1440,10 @@ describe("runSlaPatrolTick (injected deps)", () => {
   });
 
   it("suppresses a repeat without reading the card again, and records it in the ledger", async () => {
-    const recheck = spy(async () => ({ checked: true, card: { status: "blocked" } }));
-    const first = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "blocked", blocked_at: ago(130) })],
-      recheck,
-    }));
-    const second = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "blocked", blocked_at: ago(130) })],
-      ledger: first.ledger,
-      recheck,
-    }));
+    const alerts = alertsFor([card({ status: "blocked", blocked_at: ago(130) })]);
+    const recheck = spy(async () => ({ checked: true, alerts }));
+    const first = await notifySlaAlerts(notifyDeps({ alerts, recheck }));
+    const second = await notifySlaAlerts(notifyDeps({ alerts, ledger: first.ledger, recheck }));
     assert.equal(first.alerts.length, 1);
     assert.equal(second.alerts.length, 0);
     assert.equal(second.suppressed.length, 1);
@@ -1385,45 +1451,42 @@ describe("runSlaPatrolTick (injected deps)", () => {
   });
 
   it("does not re-read a card for a board-level row — there is no card to read", async () => {
-    // `leader_stalled` and `inspector_liveness` name the board, not a card. Asking
-    // the provider for the sentinel would be a read that cannot succeed and a log
-    // line that reports a failure that is not one; the row goes straight out,
-    // which is also what §9.3 requires of a re-check that cannot be performed.
+    const alerts = alertsFor(
+      [card({ status: "blocked", blocked_at: ago(130), created_at: ago(200) })],
+      { peerLastOkAt: ago(1_000), peerRequired: true },
+    );
+    assert.ok(alerts.some((alert) => alert.sla_row === "leader_stalled"));
+    assert.ok(alerts.some((alert) => alert.sla_row === "inspector_liveness"));
+
     const asked = [];
-    const result = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "blocked", blocked_at: ago(130), created_at: ago(200) })],
-      peerLastOkAt: ago(1_000),
-      peerRequired: true,
+    const result = await notifySlaAlerts(notifyDeps({
+      alerts,
       recheck: async (cardId) => {
         asked.push(cardId);
-        return { checked: true, card: { status: "blocked" } };
+        return { checked: true, alerts };
       },
     }));
-    const liveness = result.alerts.find((a) => a.sla_row === "inspector_liveness");
-    assert.equal(liveness.card_id, BOARD_CARD_ID);
-    // The card rows are re-read (the leader_stalled row is anchored on a real
-    // card); the sentinel never is.
-    assert.deepEqual(asked, ["T-1", "T-1"]);
+    assert.equal(result.alerts.length, alerts.length);
+    // Only the card row is re-read: `leader_stalled` is anchored on a real card
+    // for display but is still board-level, and the sentinel is never asked for.
+    assert.deepEqual(asked, ["T-1"]);
     assert.equal(asked.includes(BOARD_CARD_ID), false, "the provider is never asked for a card that does not exist");
   });
 
   it("starts no LLM turn and moves no card", async () => {
-    const result = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "blocked", blocked_at: ago(130) })],
-      recheck: async () => ({ checked: true, card: { status: "blocked" } }),
-    }));
+    const alerts = alertsFor([card({ status: "blocked", blocked_at: ago(130) })]);
+    const result = await notifySlaAlerts(notifyDeps({ alerts, recheck: async () => ({ checked: true, alerts }) }));
     assert.equal(result.spawns, 0);
     assert.equal(result.mechanism, MECHANISM);
     for (const alert of result.alerts) assert.equal(alert.target, "leader");
   });
 
   it("carries the ledger's first_seen / last_seen / observed_by into the emitted tuple", async () => {
-    const result = await runSlaPatrolTick(runnerDeps({
-      cards: [card({ status: "blocked", blocked_at: ago(130) })],
-      recheck: async () => ({ checked: true, card: { status: "blocked" } }),
-    }));
+    const alerts = alertsFor([card({ status: "blocked", blocked_at: ago(130) })]);
+    const result = await notifySlaAlerts(notifyDeps({ alerts, recheck: async () => ({ checked: true, alerts }) }));
     const alert = result.alerts[0];
     assert.equal(alert.last_seen, NOW);
     assert.deepEqual(alert.observed_by, [MECHANISM]);
   });
 });
+

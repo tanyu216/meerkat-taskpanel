@@ -83,6 +83,72 @@ export const ENV_FILE_FILENAME = ".env";
 /** The URL a fresh install seeds into `.env`; a default value, not a code fallback. */
 export const DEFAULT_BOARD_URL = "http://localhost:9527";
 
+// ---------------------------------------------------------------------------
+// SLA configuration (`docs/sla.md` §2)
+// ---------------------------------------------------------------------------
+
+/**
+ * The SLA measurement period, seconds — the deployment default (`P`). The
+ * loop's `--patrol-interval` overrides it per pass; it schedules nothing.
+ */
+export const DEFAULT_PATROL_SECONDS = 300;
+
+/**
+ * Every `TASKD_SLA_*` key, grouped the way the contract's table is: one
+ * `limit`/`further` pair per limited row, plus the mechanism's own parameters.
+ *
+ * Declared here, **before** `CLIENT_CONFIG_KEYS`, because that allowlist is
+ * built from `SLA_ENV_KEY_LIST` and an ESM constant cannot be read before its
+ * declaration. `src/foundation/sla-config.mjs` owns parsing and defaults.
+ */
+export const SLA_ENV_KEYS = Object.freeze({
+  periodSeconds: "TASKD_SLA_PERIOD_SECONDS",
+  leaderLookbackDays: "TASKD_SLA_LEADER_LOOKBACK_DAYS",
+  peerPeriodMin: "TASKD_SLA_PEER_PERIOD_MIN",
+  peerLivenessK: "TASKD_SLA_PEER_LIVENESS_K",
+  rows: Object.freeze({
+    blocked_clarification: Object.freeze({
+      limitMin: "TASKD_SLA_BLOCKED_CLARIFICATION_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_BLOCKED_CLARIFICATION_FURTHER_MIN",
+    }),
+    confirmation_gate: Object.freeze({
+      limitMin: "TASKD_SLA_CONFIRMATION_GATE_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_CONFIRMATION_GATE_FURTHER_MIN",
+    }),
+    defect_card_creation: Object.freeze({
+      limitMin: "TASKD_SLA_DEFECT_CARD_CREATION_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_DEFECT_CARD_CREATION_FURTHER_MIN",
+    }),
+    acceptance_card_creation: Object.freeze({
+      limitMin: "TASKD_SLA_ACCEPTANCE_CARD_CREATION_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_ACCEPTANCE_CARD_CREATION_FURTHER_MIN",
+    }),
+    heartbeat_stale: Object.freeze({
+      limitMin: "TASKD_SLA_HEARTBEAT_STALE_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_HEARTBEAT_STALE_FURTHER_MIN",
+    }),
+    leader_stalled: Object.freeze({
+      limitMin: "TASKD_SLA_LEADER_STALLED_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_LEADER_STALLED_FURTHER_MIN",
+    }),
+  }),
+});
+
+/** The rows that carry a configurable threshold pair. */
+export const SLA_ROW_KEYS = Object.freeze(Object.keys(SLA_ENV_KEYS.rows));
+
+/** Every SLA key, flat — what the `.env` allowlist and the template use. */
+export const SLA_ENV_KEY_LIST = Object.freeze([
+  SLA_ENV_KEYS.periodSeconds,
+  SLA_ENV_KEYS.leaderLookbackDays,
+  SLA_ENV_KEYS.peerPeriodMin,
+  SLA_ENV_KEYS.peerLivenessK,
+  ...SLA_ROW_KEYS.flatMap((row) => [
+    SLA_ENV_KEYS.rows[row].limitMin,
+    SLA_ENV_KEYS.rows[row].furtherMin,
+  ]),
+]);
+
 /**
  * Keys `.env` may carry. Anything else in our namespaces is a typo; keys
  * outside them (Vite's `VITE_*`, `NODE_ENV`, …) are ignored and never merged.
@@ -105,6 +171,7 @@ export const CLIENT_CONFIG_KEYS = Object.freeze([
   "TASKCTL_AGENT",
   "TASKCTL_HUMAN",
   "MEERKAT_TASKPANEL_PROJECTS_JSON",
+  ...SLA_ENV_KEY_LIST,
 ]);
 
 /** Namespaces that belong to this project; an unknown key in one is an error. */

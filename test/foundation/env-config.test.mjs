@@ -246,3 +246,60 @@ describe("parseEnvConfig", () => {
     assert.deepEqual([...parseEnvConfig("A=1\nB=2\n").keys()], ["A", "B"]);
   });
 });
+
+describe("the TASKD_SLA_* keys", () => {
+  it("accepts the documented keys and keeps their values", () => {
+    const root = tempDir();
+    writeEnv(
+      root,
+      [
+        "TASKD_SLA_PERIOD_SECONDS=600",
+        "TASKD_SLA_BLOCKED_CLARIFICATION_LIMIT_MIN=60",
+        "TASKD_SLA_BLOCKED_CLARIFICATION_FURTHER_MIN=120",
+      ].join("\n"),
+    );
+    const config = loadEnvFile({ root, env: {} });
+    assert.equal(config.vars.get("TASKD_SLA_PERIOD_SECONDS"), "600");
+    assert.equal(config.vars.get("TASKD_SLA_BLOCKED_CLARIFICATION_LIMIT_MIN"), "60");
+  });
+
+  it("refuses a malformed, out-of-range or empty value by key", () => {
+    for (const line of [
+      "TASKD_SLA_PERIOD_SECONDS=abc",
+      "TASKD_SLA_PERIOD_SECONDS=0",
+      "TASKD_SLA_PERIOD_SECONDS=-5",
+      "TASKD_SLA_PERIOD_SECONDS=12.5",
+      "TASKD_SLA_PERIOD_SECONDS=",
+    ]) {
+      const root = tempDir();
+      writeEnv(root, `${line}\n`);
+      assert.throws(
+        () => loadEnvFile({ root, env: {} }),
+        (err) => err.code === "CONFIG_FILE_INVALID" && err.details.key === "TASKD_SLA_PERIOD_SECONDS",
+        line,
+      );
+    }
+  });
+
+  it("refuses a further bound below the normal limit, even when only one side is set", () => {
+    const root = tempDir();
+    writeEnv(root, "TASKD_SLA_BLOCKED_CLARIFICATION_FURTHER_MIN=119\n");
+    assert.throws(
+      () => loadEnvFile({ root, env: {} }),
+      (err) => err.code === "CONFIG_FILE_INVALID" && err.details.row === "blocked_clarification",
+    );
+  });
+
+  it("still refuses an unknown key in the SLA namespace", () => {
+    const root = tempDir();
+    writeEnv(root, "TASKD_SLA_NOPE=1\n");
+    assert.throws(() => loadEnvFile({ root, env: {} }), /unknown configuration key/);
+  });
+
+  it("does not validate a process-environment value at load time (the board read does)", () => {
+    const root = tempDir();
+    writeEnv(root, "TASKD_URL=http://localhost:9527\n");
+    const config = loadEnvFile({ root, env: { TASKD_SLA_PERIOD_SECONDS: "abc" } });
+    assert.equal(config.env.TASKD_SLA_PERIOD_SECONDS, "abc");
+  });
+});

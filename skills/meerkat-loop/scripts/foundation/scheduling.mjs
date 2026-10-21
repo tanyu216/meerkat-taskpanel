@@ -24,6 +24,7 @@ import {
   ACCEPTANCE_POLICIES,
   CLAIM_STALE_SAME_MS,
   DEFAULT_ACCEPTANCE_POLICY,
+  DEFAULT_PATROL_SECONDS,
   DEFAULT_REVIEW_AGING_MS,
   DEFAULT_WORKFLOW_MAX_ACTIONS,
 } from "./constants.mjs";
@@ -32,8 +33,12 @@ import { DomainError } from "./errors.mjs";
 
 /** Default cap on concurrently running workers. */
 export const DEFAULT_MAX_CONCURRENCY = 8;
-/** The SLA measurement period, seconds — no longer a scheduling cadence. */
-export const DEFAULT_PATROL_SECONDS = 300;
+/**
+ * The SLA measurement period, seconds — no longer a scheduling cadence.
+ * Defined once in `constants.mjs` (the board's SLA config reads it too) and
+ * re-exported here so the loop's existing import path keeps working.
+ */
+export { DEFAULT_PATROL_SECONDS };
 /**
  * Default ping cadence, seconds — the scheduler's liveness clock. Ping only
  * prunes dead worker pids from the registry; it never reads the board.

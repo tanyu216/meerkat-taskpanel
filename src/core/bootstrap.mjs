@@ -15,7 +15,9 @@
  * alike, which is why it is the only place that knows all of the above.
  */
 
+import { readConfigFileVars } from "../foundation/env-config.mjs";
 import { DomainError } from "../foundation/errors.mjs";
+import { readSlaConfig } from "../foundation/sla-config.mjs";
 import { createAcceptancePolicy } from "./acceptance-policy.mjs";
 import { createCommands, createContext } from "./commands/index.mjs";
 import { closeDatabase, openDatabase, sqliteVersion } from "./storage/driver.mjs";
@@ -144,7 +146,24 @@ export async function openBoard(options = {}) {
     // its key.
     ...(options.acceptancePolicy === undefined ? {} : { acceptancePolicy: options.acceptancePolicy }),
   });
-  const ctx = createContext({ db, repos, acceptancePolicy, ...(clock === undefined ? {} : { clock }), ...(idFactory === undefined ? {} : { idFactory }), logger });
+  // The SLA table is board configuration too. Like the acceptance policy it is
+  // re-read per call, so a hand edit (or a re-install) applies to the next
+  // `GET /api/v1/sla` without restarting `taskd`. A named env file wins; an
+  // embedder that passes parsed values instead gets those.
+  const slaConfig = () =>
+    readSlaConfig({
+      env: processEnv ?? env,
+      envVars: envFile ? readConfigFileVars(envFile) : (envVars ?? new Map()),
+    });
+  const ctx = createContext({
+    db,
+    repos,
+    acceptancePolicy,
+    slaConfig,
+    ...(clock === undefined ? {} : { clock }),
+    ...(idFactory === undefined ? {} : { idFactory }),
+    logger,
+  });
   const commands = createCommands(ctx);
 
   return {

@@ -16,23 +16,27 @@ writing channel.
   second inspector; its marker is read through `--sla-peer` as an optional
   interoperability channel (`openclaw-cron` is the constant this repository names).
   Nothing in this document depends on that peer running.
-- **Pure decision, thin I/O.** `planSlaPatrol` decides from a board snapshot and
-  the trails it is given; `scripts/loop/` owns the reads, the notification and the
-  ledger.
+- **The board computes, the loop notifies.** `planSlaPatrol` is a pure decision
+  over a board snapshot and the trails it is given. The **board** owns the read:
+  `src/core/commands/sla.mjs` builds the six card/board rows and exposes them as
+  `GET /api/v1/sla` (`taskctl sla list|get` is its CLI face). The **loop** owns
+  the de-duplication ledger, the pre-emit re-read and the notification.
+  `inspector_liveness` stays with the loop, because it watches a marker file on
+  the loop's host that the board cannot see.
 - **Invariants.** notify-only; zero-cost idle (no alert below the warn lead);
   fail-safe, never false-green (an unreadable origin alerts instead of staying
   quiet; an undecidable open/closed predicate counts as open).
 
 ## 2. Mechanism parameters and the threshold table
 
-| Parameter | Value | Meaning |
-|---|---:|---|
-| `PEER_PERIOD_MIN` | 15 | fallback cadence for a peer inspector that does not declare one |
-| `PEER_LIVENESS_K` | 3 | missed peer periods before `inspector_liveness` fires |
-| `LEADER_LOOKBACK_DAYS` | 7 | how far back a leader event can be called "recent" |
-| `--patrol-interval` (`P`) | 300 s | this mechanism's measurement period; it schedules nothing |
+| Parameter | Default | `.env` key | Meaning |
+|---|---:|---|---|
+| `PEER_PERIOD_MIN` | 15 | `TASKD_SLA_PEER_PERIOD_MIN` | fallback cadence for a peer inspector that does not declare one |
+| `PEER_LIVENESS_K` | 3 | `TASKD_SLA_PEER_LIVENESS_K` | missed peer periods before `inspector_liveness` fires |
+| `LEADER_LOOKBACK_DAYS` | 7 | `TASKD_SLA_LEADER_LOOKBACK_DAYS` | how far back a leader event can be called "recent" |
+| `P` | 300 s | `TASKD_SLA_PERIOD_SECONDS` | the measurement period; it schedules nothing |
 
-`L` = normal limit, `F` = further timeout, `P` = this mechanism's period. All
+`L` = normal limit, `F` = further timeout, `P` = the measurement period. All
 values are **working minutes**.
 
 | Row | L | F | Warn lead | Origin | Covered by |
@@ -45,11 +49,57 @@ values are **working minutes**.
 | `leader_stalled` | 60 | 360 | `L` (no lead) | `trail_event` | `sla-patrol` |
 | `inspector_liveness` | — | — | `k × P_peer` | peer marker | `sla-patrol` |
 
-The table is a **transcription**: `SLA_ROWS` in `src/foundation/sla-patrol.mjs`
-carries the same numbers next to a reference string, and
-`test/scheduling/sla-patrol.test.mjs` pins both sides so the document and the code
-cannot drift apart. Changing a number is a contract change: update the table, the
-constant and the test together.
+The table is a **transcription**: `DEFAULT_SLA_ROWS` in
+`src/foundation/sla-config.mjs` (re-exported as `SLA_ROWS` by
+`src/foundation/sla-patrol.mjs`) carries the same numbers next to a reference
+string, and `test/scheduling/sla-patrol.test.mjs` pins both sides so the document
+and the code cannot drift apart. Changing a **default** is a contract change:
+update the table, the constant and the test together.
+
+### 2.1 Install-level overrides
+
+The published numbers are the **defaults**. A deployment may override any of the
+six limited rows' `L` and `F` (`TASKD_SLA_<ROW>_LIMIT_MIN` /
+`TASKD_SLA_<ROW>_FURTHER_MIN`) plus the four mechanism parameters, in the
+install-root `.env`:
+
+```text
+TASKD_SLA_PERIOD_SECONDS=300
+TASKD_SLA_LEADER_LOOKBACK_DAYS=7
+TASKD_SLA_PEER_PERIOD_MIN=15
+TASKD_SLA_PEER_LIVENESS_K=3
+TASKD_SLA_BLOCKED_CLARIFICATION_LIMIT_MIN=120
+TASKD_SLA_BLOCKED_CLARIFICATION_FURTHER_MIN=1440
+TASKD_SLA_CONFIRMATION_GATE_LIMIT_MIN=240
+TASKD_SLA_CONFIRMATION_GATE_FURTHER_MIN=1440
+TASKD_SLA_DEFECT_CARD_CREATION_LIMIT_MIN=1440
+TASKD_SLA_DEFECT_CARD_CREATION_FURTHER_MIN=2880
+TASKD_SLA_ACCEPTANCE_CARD_CREATION_LIMIT_MIN=1440
+TASKD_SLA_ACCEPTANCE_CARD_CREATION_FURTHER_MIN=2880
+TASKD_SLA_HEARTBEAT_STALE_LIMIT_MIN=30
+TASKD_SLA_HEARTBEAT_STALE_FURTHER_MIN=360
+TASKD_SLA_LEADER_STALLED_LIMIT_MIN=60
+TASKD_SLA_LEADER_STALLED_FURTHER_MIN=360
+```
+
+- **Precedence per key**: process environment → install-root `.env` → default.
+- **Validation**: every value is a non-negative integer with a per-key range; the
+  effective `F ≥ L` (a further bound below its normal limit would escalate before
+  it is overdue). An invalid `.env` value stops `taskd` with
+  `CONFIG_FILE_INVALID`; an invalid process value is reported by the SLA read and
+  by `/meta` without stopping the board.
+- **Delivery**: the board re-reads the file per request and publishes the effective
+  table at `GET /api/v1/sla` (and `/meta` → `capabilities.sla`). The loop's patrol
+  reads it on every pass; a hand edit applies without a restart.
+- **`P` per call**: `--patrol-interval` is the mechanism's own measurement period
+  and overrides the deployment's `TASKD_SLA_PERIOD_SECONDS` for that pass, so two
+  inspectors with different cadences still share one `L`/`F` table while each
+  computes its own `warn = L − P`. A period ≥ `L` clamps the lead to 0 (every
+  pass reports that row).
+- **`heartbeat_stale` is alerting only.** Its defaults mirror
+  `CLAIM_STALE_SAME_MS` / `CLAIM_STALE_ANY_MS`, but an override changes when the
+  alert fires, **not** when a claim becomes re-claimable; the two are independent
+  by design.
 
 `leader_stalled` is deliberately exempt from the `−P` lead and never reports
 `overdue`: its published bound is already a "no action for" bound.
@@ -219,25 +269,23 @@ most one duplicate notification.
 
 ## 9. Pre-emit re-check and safe operation
 
-Immediately before notifying, a surviving card row is re-read and re-checked with
-the same structural rule the detector uses:
-
-| Row | Re-check |
-|---|---|
-| `blocked_clarification` | must still be `blocked` |
-| `confirmation_gate` | must still be in a working status; a `confirm_request` alert additionally re-reads the trail and drops if a leader `confirm` answered it |
-| `defect_card_creation` | must not be `done` |
-| `acceptance_card_creation` | must still be `in_review` |
-| `heartbeat_stale` | must still be `in_progress` |
-| `leader_stalled`, `inspector_liveness` | no card row; no re-read |
+Immediately before notifying, the loop asks the board for the surviving card's
+rows again (`taskctl sla get <ref>`, i.e. `GET /api/v1/sla?card=<ref>`). The board
+runs the **same** detectors, so this is one decision rule rather than a second
+restatement. A row still absent from the fresh response is dropped; the row is
+matched by `(card, row)`, not by the de-duplication key, because a promotion
+during the re-read keeps the row open (the next pass emits the new key).
 
 A re-check that cannot run lets the alert through. A drop is always reported with a
-reason, never swallowed. A board-level row never asks the provider for the `board`
-sentinel.
+reason (`recheck:<row>:not_open`), never swallowed. A board-level row
+(`leader_stalled`, `inspector_liveness`) is not about one card and is never
+re-read; `leader_stalled` is anchored on a real card for display, but the anchor
+cannot answer whether the leader is stalled.
 
-Bounded reads: one board read (`--board-limit`, default 500), trails only for cards
-old enough for a trail-derived row to fire (`--trail-limit`, default 200), and one
-live card read per surviving card alert. A capped read is always logged; it never
+Bounded reads move with the computation: the board reads one snapshot
+(`?limit`, default 500), trails only for cards old enough for a trail-derived row
+to fire (`?trail_limit`, default 200), and one card's rows per surviving alert.
+A capped read is always reported (`board_truncated` / `trails_truncated`); it never
 looks like a quiet board.
 
 ## 10. Peer interoperability
@@ -257,6 +305,11 @@ A reader takes `last_ok` (or `lastOk`) and `cadence_period_min`; a missing, zero
 non-numeric cadence falls back to `PEER_PERIOD_MIN` (15). The ledger file is the
 `{version, seen}` object of §8. These two files are the whole interoperability
 surface; no external document is needed to read them.
+
+A peer may also consume `GET /api/v1/sla` instead of re-implementing the table:
+the response carries the effective configuration and the same §4 tuples. The
+marker and ledger formats are unchanged either way, so a peer that keeps its own
+implementation still interoperates through the tuple and the ledger.
 
 `--sla-leader` must name the same **actor id** on both mechanisms. A display name is
 not an id; the patrol logs a warning when the configured value only matches a display
@@ -280,7 +333,12 @@ kind; a `confirm_request` entry wins over either. Within one channel the latest
 
 ## 12. Non-goals
 
-- No threshold is configurable per host; changing one is a contract change.
+- There is no **per-host** override. The install-root `.env` is the one
+  install-wide override, read by the board and published on the API; changing a
+  **default** remains a contract change.
 - No weekend or holiday calendar.
-- The patrol never writes a card, starts an LLM turn, or accepts a delivery.
+- The board computes the rows; it never notifies, writes a card, starts an LLM
+  turn, or accepts a delivery. The patrol never writes a card.
 - The legacy `{stale: […]}` envelope is not re-shaped.
+- `inspector_liveness` is not computed by the board: it watches a marker file on
+  the loop's host.

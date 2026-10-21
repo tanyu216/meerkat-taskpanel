@@ -283,6 +283,22 @@ sections) used for round-tripping and CI checks, not a human-readable task detai
 
 Prints `td_****` and the token file; `--show` prints the value and says what it just did.
 
+### `sla`
+
+The board's computed SLA rows (`docs/sla.md`): one alert tuple per open wait, with its
+tier (`warn` / `overdue` / `escalate`), elapsed working minutes and threshold. Read-only;
+it moves no card.
+
+| Command | Purpose |
+|---|---|
+| `sla list [--period <sec>] [--leader <id>] [--limit <n>] [--trail-limit <n>]` | Every open SLA row on the board. |
+| `sla get <id\|identifier> [--period <sec>] [--leader <id>]` | One card's rows — the pre-emit re-read before a notification. |
+
+`--period` sets the mechanism's measurement period for this call (`warn = L − P`); it
+defaults to the board's `TASKD_SLA_PERIOD_SECONDS` (300). `--leader` names the actor id
+the leader writes under; the default is the board's human decision authority. The
+published table is visible at `GET /api/v1/sla` and under `/meta` → `capabilities.sla`.
+
 ## Editing a card: status, priority, description, attachments, dependencies
 
 The drawer's five edits do not share one shape: two are a single flag, one is a **move**, one

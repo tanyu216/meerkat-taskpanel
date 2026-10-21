@@ -42,6 +42,7 @@ import {
   TASK_ORDER_CAPABILITY,
   VERSION,
 } from "../foundation/constants.mjs";
+import { slaConfigToWire } from "../foundation/wire.mjs";
 import { allowListFrom, readAccessConfig } from "./access-config.mjs";
 import { authorize } from "./auth.mjs";
 import { shape, str } from "./requests.mjs";
@@ -56,6 +57,7 @@ import { registerLabelRoutes } from "./routes/labels.mjs";
 import { registerProjectRoutes } from "./routes/projects.mjs";
 import { registerRelationRoutes } from "./routes/relations.mjs";
 import { registerSessionRoutes } from "./routes/sessions.mjs";
+import { registerSlaRoutes } from "./routes/sla.mjs";
 import { registerTaskRoutes } from "./routes/tasks.mjs";
 import { registerTokenRoutes } from "./routes/token.mjs";
 import { openEventStream, revisionFromRequest } from "./sse.mjs";
@@ -113,6 +115,7 @@ export function registerApiRoutes(router, surface) {
   registerCommentRoutes(router, surface);
   registerRelationRoutes(router, surface);
   registerSessionRoutes(router, surface);
+  registerSlaRoutes(router, surface);
   registerDictionaryRoutes(router, surface);
   registerLabelRoutes(router, surface);
   registerExportRoutes(router, surface);
@@ -313,6 +316,11 @@ export async function createTaskd(options = {}) {
       // unreadable policy reports `policy: null` here while every acceptance
       // write still fails closed (`ACCESS_CONFIG_INVALID`).
       acceptance: acceptanceCapability(board),
+      // The effective SLA table (`GET /api/v1/sla` publishes the same values
+      // with the alerts). A client feature-detects the configured thresholds
+      // instead of assuming the defaults; an unreadable table reports `error`
+      // here while the SLA read itself fails closed.
+      sla: slaCapability(board),
     },
   }));
 
@@ -561,6 +569,27 @@ function acceptanceCapability(board) {
     return { policy: board.ctx.acceptancePolicy() };
   } catch (err) {
     return { policy: null, error: err?.code ?? "ACCESS_CONFIG_INVALID" };
+  }
+}
+
+/**
+ * The `/meta` view of the SLA table.
+ *
+ * Read through the board's own resolver, so `/meta` reports exactly the table
+ * `GET /api/v1/sla` would compute with (process env → install-root `.env` →
+ * defaults), re-read per request. A malformed value reports `error` here
+ * instead of failing the whole meta read; the SLA read is where it fails
+ * closed.
+ */
+function slaCapability(board) {
+  try {
+    return slaConfigToWire(board.ctx.slaConfig());
+  } catch (err) {
+    return {
+      version: 1,
+      error: err?.code ?? "CONFIG_FILE_INVALID",
+      message: err?.message ?? "invalid SLA configuration",
+    };
   }
 }
 

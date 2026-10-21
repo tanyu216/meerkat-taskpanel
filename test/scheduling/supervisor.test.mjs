@@ -41,7 +41,7 @@ import {
   wakeCommand,
 } from "../../src/foundation/scheduling.mjs";
 import { emptySlaLedger, planSlaPatrol } from "../../src/foundation/sla-patrol.mjs";
-import { defaultRepo, parseArgs, selectMode } from "../../scripts/loop/options.mjs";
+import { defaultRepo, loopCommandArgs, parseArgs, selectMode } from "../../scripts/loop/options.mjs";
 import { loadSlaLedger, readPeerLastOk, readPeerMarker, saveLastOk, saveSlaLedger } from "../../scripts/loop/runtime.mjs";
 import { notifyReal, runPatrolTick, runPollTick, runWorkflowTick, spawnWorkerReal } from "../../scripts/loop/runners.mjs";
 import { resolveWakeDir } from "../../scripts/wake-cwd.mjs";
@@ -1575,6 +1575,22 @@ describe("parseArgs — the SLA attribution and liveness surface", () => {
     });
     assert.equal(opts.slaLeader, "elon");
     assert.equal(opts.slaPeer, "/team/.sla-scan-state.json");
+  });
+
+  it("remembers that --patrol-interval was explicit, even at the default", () => {
+    // The default is 300 too; without the marker a supervisor invoked with
+    // `--patrol-interval 300` could not override a board configured with 600,
+    // and the serialized child argv would drop the flag.
+    const implicit = parseArgs(["--home", "/tmp/home"], {});
+    assert.equal(implicit.patrolInterval, 300);
+    assert.equal(implicit.patrolIntervalExplicit, false);
+    assert.equal(loopCommandArgs(implicit).includes("--patrol-interval"), false);
+
+    const explicit = parseArgs(["--home", "/tmp/home", "--patrol-interval", "300"], {});
+    assert.equal(explicit.patrolIntervalExplicit, true);
+    const args = loopCommandArgs(explicit);
+    assert.ok(args.includes("--patrol-interval"), args.join(" "));
+    assert.equal(args[args.indexOf("--patrol-interval") + 1], "300");
   });
 });
 

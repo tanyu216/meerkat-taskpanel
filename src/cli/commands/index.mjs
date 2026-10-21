@@ -7,7 +7,8 @@
  *
  * The groups are the card's vocabulary (§A1): `project`, `issue`, `comment`,
  * `relation`, `attachment`, `session`, `actors`, `labels`, `report`,
- * `export`, `token`. `attachment` is T-20261014-212017-4's: the drawer's file
+ * `export`, `token`, plus `sla` — the board's computed SLA read, which is also
+ * the loop patrol's transport. `attachment` is T-20261014-212017-4's: the drawer's file
  * surface needed a writer, and the CLI is the board's second front door.
  * Note what is *not* here: `actors add`, `actors rm`, `actors rename`.
  * The dictionary has no management surface by design, so those are not "not
@@ -25,6 +26,7 @@ import { COMMANDS as projectCommands } from "./project.mjs";
 import { COMMANDS as relationCommands } from "./relation.mjs";
 import { COMMANDS as reportCommands } from "./report.mjs";
 import { COMMANDS as sessionCommands } from "./session.mjs";
+import { COMMANDS as slaCommands } from "./sla.mjs";
 import { COMMANDS as tokenCommands } from "./token.mjs";
 
 export const groups = Object.freeze([
@@ -48,6 +50,7 @@ export const groups = Object.freeze([
     defaultCommand: "md",
   },
   { name: "token", summary: "The board's access token.", commands: tokenCommands },
+  { name: "sla", summary: "The board's computed SLA rows (read-only).", commands: slaCommands },
 ]);
 
 export const registry = Object.freeze({ globals: GLOBAL_FLAGS, groups });

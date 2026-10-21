@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 
 import { loadEnvFile } from "../../src/foundation/env-config.mjs";
+import { slaEnvDefaults } from "../../src/foundation/sla-config.mjs";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -80,6 +81,21 @@ describe("install.sh: the install-root .env", () => {
     const config = loadEnvFile({ flag: envFile, env: {} });
     assert.equal(config.present, true);
     assert.equal(config.vars.get("TASKD_URL"), "http://localhost:9527");
+  });
+
+  it("lists every SLA key with its default, commented out and inert", () => {
+    const home = makeTempDir();
+    const dataDir = makeTempDir();
+    const envFile = join(dataDir, ".env");
+    assert.equal(install(home, dataDir, envFile).status, 0);
+    const text = readFileSync(envFile, "utf8");
+    const defaults = slaEnvDefaults();
+    for (const [key, value] of Object.entries(defaults)) {
+      assert.match(text, new RegExp(`^# ${key}=${value}$`, "m"), key);
+    }
+    // Commented means the loader sees none of them: the code defaults apply.
+    const config = loadEnvFile({ flag: envFile, env: {} });
+    assert.equal([...config.vars.keys()].some((key) => key.startsWith("TASKD_SLA_")), false);
   });
 
   it("does not write the checkout when the override names another path", () => {

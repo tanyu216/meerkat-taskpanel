@@ -8,13 +8,14 @@
 
 import { TASKD_KIND } from "../../src/foundation/constants.mjs";
 import {
+  BOARD_CARD_ID,
   MECHANISM,
-  leaderAttributionWarning,
+  buildSlaAlert,
+  inspectorLivenessDetection,
   pruneSlaLedger,
-  trailReadCandidates,
 } from "../../src/foundation/sla-patrol.mjs";
 
-import { runSlaPatrolTick, runWorkflowTick, notifyReal } from "./runners.mjs";
+import { notifySlaAlerts, runWorkflowTick, notifyReal } from "./runners.mjs";
 import {
   loadSlaLedger,
   readPeerMarker,
@@ -22,9 +23,6 @@ import {
   saveLastOk,
   saveSlaLedger,
 } from "./runtime.mjs";
-
-/** How many comments of one card a trail read asks for. */
-const COMMENTS_PER_CARD = 200;
 
 /**
  * The `issue create` argv for one review card.
@@ -52,10 +50,10 @@ export function reviewCreateArgs(action) {
 }
 
 /**
- * Read the board — patrol's input. One unfiltered read: the SLA rows span
- * `blocked`, `in_review` and `in_progress`, and the acceptance row needs the
- * whole set. `truncated` travels with the data: a read exactly at the cap may
- * have been cut off, and one row's predicate is negative over the whole board.
+ * Read the board — the legacy stale-heartbeat patrol's input. The SLA rows come
+ * from `sla list` (the board computes them); this one read is what the older
+ * `{stale: […]}` envelope still uses, and its shape is a published consumer
+ * contract.
  */
 export function readBoard(opts, log) {
   const read = runCli(opts, opts.agents[0], ["issue", "list", "--limit", String(opts.boardLimit)]);
@@ -67,69 +65,102 @@ export function readBoard(opts, log) {
   return { ...read, truncated: tasks.length >= opts.boardLimit };
 }
 
-/** One card's comment trail, or `null` when it could not be read. */
-export function readTrail(opts, log, identifier) {
-  const read = runCli(opts, opts.agents[0], ["comment", "list", identifier, "--limit", String(COMMENTS_PER_CARD)]);
-  if (!read.ok) {
-    log(`patrol: comment read failed for ${identifier}: ${read.error}`);
-    return null;
-  }
-  return read.data.comments ?? [];
+/** The shared flag projection for the two SLA reads. */
+function slaArgs(opts, periodSeconds) {
+  const args = [];
+  // An explicit flag overrides the board's own `TASKD_SLA_PERIOD_SECONDS`; the
+  // default omits it, so two inspectors with different cadences stay comparable
+  // through the board's configured period.
+  if (opts.patrolIntervalExplicit === true) args.push("--period", String(periodSeconds));
+  if (opts.slaLeader !== null) args.push("--leader", opts.slaLeader);
+  return args;
 }
 
-/** A candidate's live state for the pre-emit re-check; `checked:false` ⇒ unverifiable. */
-export function readLiveCard(opts, log, identifier) {
-  const read = runCli(opts, opts.agents[0], ["issue", "get", identifier]);
-  if (!read.ok) {
-    log(`patrol: live re-check failed for ${identifier}: ${read.error}`);
-    return { checked: false };
-  }
-  return { checked: true, card: read.data.task ?? null };
+/** Every open SLA row the board computes. */
+export function readSlaAlerts(opts, periodSeconds = opts.patrolInterval) {
+  return runCli(opts, opts.agents[0], [
+    "sla",
+    "list",
+    ...slaArgs(opts, periodSeconds),
+    "--limit",
+    String(opts.boardLimit),
+    "--trail-limit",
+    String(opts.trailLimit),
+  ]);
+}
+
+/** One card's rows — the pre-emit re-read. */
+export function readSlaCard(opts, ref, periodSeconds = opts.patrolInterval) {
+  return runCli(opts, opts.agents[0], ["sla", "get", ref, ...slaArgs(opts, periodSeconds)]);
 }
 
 /**
- * The SLA half of a patrol pass: read the trails the rows need, decide, re-check
- * the candidates, notify, and remember what was notified.
+ * The SLA half of a patrol pass: ask the board for the rows, add this
+ * mechanism's own peer-liveness row, let `notifySlaAlerts` de-duplicate and
+ * re-check, then remember what went out.
+ *
+ * The board computes; the loop delivers. `inspector_liveness` is the one row
+ * that stays here, because it watches a marker file on this host — the board
+ * cannot see it. Its parameters still come from the board's published config.
+ *
+ * A failed read is **not** a silent skip: the caller turns this into a failed
+ * patrol (exit 1), which is the visible signal a silent inspector must produce.
  */
-export async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncated = false } = {}) {
-  const wanted = trailReadCandidates(tasks, { now: new Date().toISOString(), periodSeconds });
-  const trails = {};
-  const budget = Math.max(0, opts.trailLimit);
-  const selected = wanted.slice(0, budget);
-  if (wanted.length > selected.length) {
-    // Never silent: a capped pass says so rather than looking like a quiet board.
-    log(`patrol: trail reads capped at ${budget} — ${wanted.length - selected.length} card(s) not inspected this pass`);
+export async function runSlaPass(opts, log, periodSeconds = opts.patrolInterval) {
+  const read = readSlaAlerts(opts, periodSeconds);
+  if (!read.ok) {
+    log(`patrol: SLA read failed: ${read.error}`);
+    return { ok: false };
   }
-  let trailFailures = 0;
-  for (const identifier of selected) {
-    const trail = readTrail(opts, log, identifier);
-    if (trail === null) trailFailures += 1;
-    else trails[identifier] = trail;
+  const payload = read.data ?? {};
+  const config = payload.config ?? {};
+  const boardPeriod = Number.isFinite(config.period_seconds) && config.period_seconds > 0
+    ? config.period_seconds
+    : periodSeconds;
+  const alerts = Array.isArray(payload.alerts) ? [...payload.alerts] : [];
+  if (!Array.isArray(payload.alerts)) {
+    log("patrol: the board published no sla alerts — treating this pass as empty");
+  }
+  if (payload.board_truncated === true) {
+    log("patrol: the board snapshot was capped — a negative row predicate may be undecidable");
+  }
+  if (payload.trails_truncated === true) {
+    log("patrol: the board capped its trail reads — some trail-derived rows may be unverified");
+  }
+  for (const warning of Array.isArray(payload.warnings) ? payload.warnings : []) {
+    log(`patrol: ${warning}`);
   }
 
-  // No peer path means the peer is not installed: record a dependency, not an alarm.
+  const now = new Date().toISOString();
   const peer = opts.slaPeer === null ? null : readPeerMarker(opts.slaPeer);
-
-  // The attribution compares ids; a configured display name would never match.
-  const warning = leaderAttributionWarning(opts.slaLeader, tasks, trails);
-  if (warning !== null) log(`patrol: ${warning}`);
-
-  const result = await runSlaPatrolTick({
-    cards: tasks,
-    trails,
-    ledger: loadSlaLedger(opts.slaLedger),
-    periodSeconds,
-    mechanismHost: `${opts.host}/${opts.agents[0]}`,
-    leaderId: opts.slaLeader,
-    boardTruncated,
+  const liveness = inspectorLivenessDetection({
     peerLastOkAt: peer?.lastOk ?? null,
-    peerPeriodMinutes: peer?.periodMinutes ?? null,
+    now,
+    k: config.peer_liveness_k,
+    peerPeriodMinutes: peer?.periodMinutes ?? config.peer_period_min,
     peerRequired: opts.slaPeer !== null,
-    lookbackDays: opts.slaLookbackDays,
-    recheck: (identifier) => Promise.resolve(readLiveCard(opts, log, identifier)),
-    recheckTrail: (identifier) => {
-      const trail = readTrail(opts, log, identifier);
-      return trail === null ? { checked: false } : { checked: true, trail };
+  });
+  if (liveness !== null) {
+    const alert = buildSlaAlert({
+      id: BOARD_CARD_ID,
+      detection: liveness,
+      periodMin: boardPeriod / 60,
+      mechanism: MECHANISM,
+      mechanismHost: `${opts.host}/${opts.agents[0]}`,
+      now,
+    });
+    if (alert !== null) alerts.push(alert);
+  }
+
+  const result = await notifySlaAlerts({
+    alerts,
+    ledger: loadSlaLedger(opts.slaLedger),
+    mechanism: MECHANISM,
+    mechanismHost: `${opts.host}/${opts.agents[0]}`,
+    recheck: (ref) => {
+      const live = readSlaCard(opts, ref, boardPeriod);
+      if (!live.ok) return { checked: false };
+      return { checked: true, alerts: Array.isArray(live.data?.alerts) ? live.data.alerts : [] };
     },
     notify: opts.dryRun ? () => {} : notifyReal(opts, log),
     now: () => new Date().toISOString(),
@@ -143,13 +174,14 @@ export async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncat
       log(`patrol: could not persist the SLA ledger (${err.message}) — a duplicate is possible, a lost alert is not`);
     }
     // Written after the pass, so it means "a pass completed". A failed write is
-    // logged, never fatal — the peer's watchdog is what notices.
+    // logged, never fatal — the peer's watchdog is what notices. The period is
+    // the *effective* one (the board may have configured it).
     try {
       saveLastOk(opts.slaLastOk, {
         mechanism: MECHANISM,
         at: new Date().toISOString(),
         host: `${opts.host}/${opts.agents[0]}`,
-        periodSeconds,
+        periodSeconds: boardPeriod,
       });
     } catch (err) {
       log(`patrol: could not publish the liveness marker (${err.message}) — the peer's watchdog may report this mechanism silent`);
@@ -157,10 +189,10 @@ export async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncat
   }
   log(
     `patrol: sla ${result.alerts.length} alert(s), ${result.suppressed.length} suppressed, ` +
-      `${result.dropped.length} dropped, ${trailFailures} trail read(s) failed` +
+      `${result.dropped.length} dropped` +
       `${opts.slaPeer === null ? " [liveness: peer marker not configured — registered as a dependency]" : ""}`,
   );
-  return result;
+  return { ok: true, ...result };
 }
 
 /**

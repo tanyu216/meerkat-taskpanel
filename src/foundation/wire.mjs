@@ -14,6 +14,7 @@
  */
 
 import { projectPrefix } from "./ids.mjs";
+import { slaToWire } from "./sla-config.mjs";
 
 /** Assignee/reporter ids are meaningless on their own; this is what resolves them. */
 export const NO_LOOKUP = () => null;
@@ -223,6 +224,58 @@ export function commentToWire(comment, options = {}) {
     version: comment.version,
     created_at: comment.createdAt,
   };
+}
+
+/**
+ * The §4 alert tuple, projected explicitly so the API contract freezes every
+ * field a notification consumer binds to.
+ *
+ * The engine already builds snake_case tuples; this is the one place that says
+ * *which* fields are the public shape (and keeps a future internal rename from
+ * silently changing the wire).
+ *
+ * @param {object|null} alert
+ */
+export function slaAlertToWire(alert) {
+  if (alert === null || alert === undefined) return null;
+  return {
+    alert_id: alert.alert_id,
+    dedup_key: alert.dedup_key,
+    card_id: alert.card_id,
+    sla_row: alert.sla_row,
+    sla_ref: alert.sla_ref,
+    severity: alert.severity,
+    measure_start_kind: alert.measure_start_kind,
+    measure_start_at: alert.measure_start_at,
+    measure_start_source: alert.measure_start_source,
+    elapsed_working_min: alert.elapsed_working_min,
+    elapsed_basis: alert.elapsed_basis,
+    threshold_min: alert.threshold_min,
+    due_at: alert.due_at,
+    action: alert.action,
+    target: alert.target,
+    notify: alert.notify,
+    releasable: alert.releasable,
+    releasable_basis: alert.releasable_basis,
+    blocked_reason: alert.blocked_reason,
+    confidence: alert.confidence,
+    mechanism: alert.mechanism,
+    mechanism_host: alert.mechanism_host,
+    first_seen: alert.first_seen,
+    last_seen: alert.last_seen,
+    observed_by: Array.isArray(alert.observed_by) ? alert.observed_by : [],
+    evidence: alert.evidence ?? null,
+  };
+}
+
+/**
+ * The effective SLA configuration, as `GET /api/v1/sla` and
+ * `/meta.capabilities.sla` publish it. Only numbers cross the wire.
+ *
+ * @param {object} config
+ */
+export function slaConfigToWire(config) {
+  return slaToWire(config);
 }
 
 /** @param {object} relation a core Relation DTO */

@@ -1463,6 +1463,77 @@
       ]
     },
     {
+      "name": "sla",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "get",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "period",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "period",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "token",
       "default_command": null,
       "commands": [

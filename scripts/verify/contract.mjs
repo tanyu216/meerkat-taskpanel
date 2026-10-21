@@ -77,9 +77,12 @@ import {
   relationToWire,
   reportToWire,
   sessionToWire,
+  slaAlertToWire,
+  slaConfigToWire,
   taskToWire,
   workflowToWire,
 } from "../../src/foundation/wire.mjs";
+import { DEFAULT_SLA_CONFIG } from "../../src/foundation/sla-config.mjs";
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 /** Repository root, resolved from this file (`scripts/verify/`). */
@@ -264,6 +267,36 @@ const PROBE_REPORT = {
   createdAt: "probe",
 };
 
+/** One SLA alert tuple with every field populated, so the shape is complete. */
+const PROBE_SLA_ALERT = Object.freeze({
+  alert_id: "probe",
+  dedup_key: "probe",
+  card_id: "probe",
+  sla_row: "probe",
+  sla_ref: "probe",
+  severity: "probe",
+  measure_start_kind: "probe",
+  measure_start_at: "probe",
+  measure_start_source: "probe",
+  elapsed_working_min: 1,
+  elapsed_basis: "probe",
+  threshold_min: 1,
+  due_at: "probe",
+  action: "probe",
+  target: "probe",
+  notify: "probe",
+  releasable: false,
+  releasable_basis: "probe",
+  blocked_reason: "probe",
+  confidence: "probe",
+  mechanism: "probe",
+  mechanism_host: "probe",
+  first_seen: "probe",
+  last_seen: "probe",
+  observed_by: ["probe"],
+  evidence: { status: "probe" },
+});
+
 const PROBE_SESSION = {
   id: "probe",
   taskId: "probe",
@@ -381,6 +414,8 @@ export function collectWire() {
     relation: relationToWire(PROBE_RELATION),
     report,
     session: sessionToWire(PROBE_SESSION),
+    sla_alert: slaAlertToWire(PROBE_SLA_ALERT),
+    sla_config: slaConfigToWire(DEFAULT_SLA_CONFIG),
     task,
     workflow_plan: workflow,
   };

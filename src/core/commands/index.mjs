@@ -15,6 +15,7 @@ import * as projects from "./projects.mjs";
 import * as relations from "./relations.mjs";
 import * as reports from "./reports.mjs";
 import * as rollup from "./rollup.mjs";
+import * as sla from "./sla.mjs";
 import * as tasks from "./tasks.mjs";
 import * as workflow from "./workflow.mjs";
 
@@ -57,6 +58,9 @@ export function createCommands(ctx) {
     // The board's workflow decisions (commands/workflow.mjs): reconcile, then
     // the review outcomes/dispatch plan the loop executes. No review writes.
     workflowTick: (input) => workflow.workflowTick(ctx, input),
+    // The SLA read (`docs/sla.md`): the six card/board rows over the board's
+    // own facts and the effective `TASKD_SLA_*` table. Read-only.
+    slaSnapshot: (input) => sla.slaSnapshot(ctx, input),
 
     // reports ----------------------------------------------------------------
     writeReport: (input) => reports.writeReport(ctx, input),

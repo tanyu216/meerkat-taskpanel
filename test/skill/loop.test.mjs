@@ -108,6 +108,7 @@ describe("loop skill: the generated payload", () => {
       "scripts/wake-cwd.mjs",
       "scripts/foundation/scheduling.mjs",
       "scripts/foundation/sla-patrol.mjs",
+      "scripts/foundation/sla-config.mjs",
       "scripts/foundation/env-config.mjs",
       "scripts/foundation/constants.mjs",
       "scripts/foundation/errors.mjs",

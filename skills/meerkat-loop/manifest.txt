@@ -7,6 +7,7 @@ scripts/foundation/project-dir.mjs
 scripts/foundation/redact.mjs
 scripts/foundation/runtime-locator.mjs
 scripts/foundation/scheduling.mjs
+scripts/foundation/sla-config.mjs
 scripts/foundation/sla-patrol.mjs
 scripts/foundation/transport/autostart.mjs
 scripts/foundation/transport/board-url.mjs

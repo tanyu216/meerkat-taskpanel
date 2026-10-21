@@ -243,7 +243,11 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     const { run, record, dir } = runWithSentinel("patrol.mjs");
     assert.equal(run.status, 0, run.stderr);
     const args = calls(record);
-    assert.ok(args.some((call) => call.join(" ").includes("issue list ")), "patrol reads the board");
+    assert.ok(args.some((call) => call.join(" ").includes("issue list ")), "the legacy stale read");
+    assert.ok(
+      args.some((call) => call.includes("sla") && call.includes("list")),
+      "the SLA rows come from the board's `sla list`",
+    );
     assert.equal(existsSync(join(dir, "state.json")), false);
   });
 

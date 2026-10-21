@@ -76,6 +76,8 @@ const PLANNED = [
   "commands/relations.mjs",
   "commands/rollup.mjs",
   "commands/workflow.mjs",
+  // The board's SLA read (`docs/sla.md`): the six card/board rows.
+  "commands/sla.mjs",
   "commands/dictionary.mjs",
   "commands/labels.mjs",
   "commands/agent-sessions.mjs",

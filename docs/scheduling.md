@@ -157,11 +157,17 @@ What that means concretely:
   `severity`, `measure_start_at`, `threshold_min`, `due_at`, `action`, `target`,
   `evidence`, … A field means the same thing on both mechanisms, so the two can
   never label one card differently.
-- **Thresholds are the contract's, referenced.** `SLA_ROWS` in
-  `src/foundation/sla-patrol.mjs` is the runtime mapping table: every limit sits next
-  to the row it came from. `warn` is `L − P` (the mechanism's own period before
-  the published limit — 到点提醒, not a breach), `overdue` is `L`, `escalate` is
-  the published further timeout.
+- **The board computes; the loop notifies.** `planSlaPatrol` is still the one
+  decision, but it runs in the board (`GET /api/v1/sla`, `taskctl sla list|get`).
+  The loop's patrol reads those rows, de-duplicates them against its ledger,
+  re-reads a survivor (`sla get <ref>`) and notifies. `inspector_liveness` is the
+  one row the loop computes itself, because the peer marker is a file on its host.
+- **Thresholds are the contract's defaults, overridable install-wide.** The
+  table is `DEFAULT_SLA_ROWS` in `src/foundation/sla-config.mjs`; every limit
+  sits next to the row it came from. `warn` is `L − P` (the mechanism's own
+  period before the limit — 到点提醒, not a breach), `overdue` is `L`, `escalate`
+  is the further bound. `TASKD_SLA_*` in the install-root `.env` overrides them;
+  the board validates the table and publishes it (`docs/sla.md` §2.1).
 - **Working hours, not wall clock.** `T` accumulates only inside the
   Asia/Shanghai 09:00–23:00 window, off-hours rolled over — a card blocked at the
   end of a working day cannot be "overdue" overnight, and a host in another

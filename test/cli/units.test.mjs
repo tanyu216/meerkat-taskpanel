@@ -195,7 +195,9 @@ describe("cli/commands — the registry", () => {
       // `attachment` is T-20261014-212017-4's group: the drawer's file surface
       // needed a writer and the CLI is the board's second front door. It sits
       // beside `relation` because both are per-card edge/sidecar writes.
-      ["project", "issue", "comment", "relation", "attachment", "session", "actors", "labels", "report", "export", "token"],
+      // `sla` is the board's computed SLA read — the loop patrol's transport
+      // and a read-only surface for a human.
+      ["project", "issue", "comment", "relation", "attachment", "session", "actors", "labels", "report", "export", "token", "sla"],
     );
     for (const { group, command } of allCommands()) {
       assert.equal(

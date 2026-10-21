@@ -39,6 +39,7 @@ import {
 } from "./constants.mjs";
 import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
+import { isSlaEnvKey, parseSlaEnvValue, readSlaConfig } from "./sla-config.mjs";
 import { resolveEnvFilePath } from "./runtime-locator.mjs";
 import { normalizeBoardUrl } from "./transport/board-url.mjs";
 import { isTokenShape } from "./transport/token.mjs";
@@ -108,8 +109,37 @@ export function parseEnvConfig(text) {
   return parseEnvText(clean, { quoteMinLength: 2 });
 }
 
+/**
+ * Re-read one `KEY=VALUE` map from an env file, leniently.
+ *
+ * A per-request resolver (the SLA policy) needs the file's values *now* — a
+ * hand edit must apply without restarting `taskd` — but must not repeat the
+ * strict startup pre-scan on every request: a malformed line added by hand
+ * costs that request, not the process. A missing file is an empty map; an
+ * unreadable one is still an error.
+ *
+ * @param {string|null} envFile
+ * @returns {Map<string,string>}
+ */
+export function readConfigFileVars(envFile) {
+  if (typeof envFile !== "string" || envFile === "") return new Map();
+  let text;
+  try {
+    text = readFileSync(envFile, "utf8");
+  } catch (err) {
+    if (err?.code === "ENOENT") return new Map();
+    throw configError(`cannot read the configuration file: ${err?.message ?? String(err)}`, {
+      file: envFile,
+    });
+  }
+  return parseEnvText(text, { quoteMinLength: 2 });
+}
+
 /** @param {string} key @param {string} value */
 function validateValue(key, value) {
+  // `TASKD_SLA_*` values are integers with per-key ranges; `sla-config.mjs`
+  // owns the rules, and raises `CONFIG_FILE_INVALID` with the key in `details`.
+  if (isSlaEnvKey(key)) return String(parseSlaEnvValue(key, value));
   switch (key) {
     case URL_ENV:
       return normalizeBoardUrl(value);
@@ -179,6 +209,9 @@ function validateVars(raw) {
       keys: [TOKEN_ENV, TOKEN_FILE_ENV],
     });
   }
+  // Cross-field SLA rules (a further bound below its normal limit) need the
+  // whole file at once; per-key range checks ran in `validateValue` above.
+  readSlaConfig({ envVars: vars });
   return vars;
 }
 

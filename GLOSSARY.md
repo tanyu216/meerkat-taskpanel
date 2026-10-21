@@ -373,7 +373,8 @@ _Avoid_: sort order (a different, stored value), ranking
 
 **SLA row**:
 One named rule the patrol checks — a stale heartbeat, a stalled leader, an overdue
-confirmation — each with its own threshold and its own repair.
+confirmation — each with its own threshold and its own repair. The board computes
+the row; the patrol delivers it.
 _Avoid_: rule, check, metric
 
 **Alert tuple**:

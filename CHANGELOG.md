@@ -9,6 +9,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **SLA is computed by the board and configured in `.env`.** The six card/board
+  inspection rows of `docs/sla.md` now move server-side: `src/core/commands/sla.mjs`
+  computes them from the board's own facts and the effective `TASKD_SLA_*` table,
+  and `GET /api/v1/sla` publishes them (`taskctl sla list|get` is the CLI face).
+  Sixteen keys in the install-root `.env` override the documented defaults — the
+  per-row normal limit and further bound, the measurement period, the leader
+  lookback and the peer-liveness parameters — validated as integers with
+  `F ≥ L` and re-read per request, so a hand edit applies without a restart.
+  The loop's patrol now only de-duplicates, re-reads a survivor
+  (`sla get <ref>`), notifies, and keeps `inspector_liveness` (whose marker file
+  lives on its host). The board may import `foundation/sla-patrol.mjs` through
+  that one command; `src/cli` still may not (`test/cli/imports.test.mjs`).
 - **The SLA contract is in the repository, and a confirmation request has a kind.**
   `docs/sla.md` is now the single source of truth for the threshold table, the tier ladder,
   the 09:00–23:00 Asia/Shanghai working-hours basis, the 26-field alert tuple, the

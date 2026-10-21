@@ -55,10 +55,10 @@ export async function runOnce(opts, env = process.env) {
   });
   log(`patrol: ${patrol.alerts.length} alert(s), ${patrol.spawns} LLM turn(s)`);
 
-  await runSlaPass(opts, log, tasks, opts.patrolInterval, {
-    boardTruncated: read.truncated === true,
-  });
-  return 0;
+  const sla = await runSlaPass(opts, log, opts.patrolInterval);
+  // A failed SLA read is a failed pass: the alternative is a patrol that looks
+  // quiet because it never asked. The legacy heartbeat alerts above already ran.
+  return sla.ok ? 0 : 1;
 }
 
 /**

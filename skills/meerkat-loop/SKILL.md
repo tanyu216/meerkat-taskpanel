@@ -14,9 +14,12 @@ The loop runs when no agent is looking. Its scheduler owns two clocks:
 
 The continue turn runs three deterministic entries, in this order:
 
-1. **patrol** — notify-only SLA pass. Escalates stale claims, unreadable
-   heartbeats and the rest of the timeout table. No alert moves a card, and no
-   LLM turn starts by default.
+1. **patrol** — notify-only SLA pass. The board computes the SLA rows
+   (`taskctl sla list`); the loop de-duplicates them, re-reads a survivor
+   (`taskctl sla get <ref>`) and notifies the leader. It also emits the legacy
+   stale-heartbeat alerts and the peer-inspector liveness row, whose marker
+   file lives on this host. No alert moves a card, and no LLM turn starts by
+   default.
 2. **workflow** — the write channel. The **board** computes the plan
    (`issue reconcile --workflow`) and the **loop** applies its review actions:
    for each delivery (`in_review` card, flow A) dispatch an independent

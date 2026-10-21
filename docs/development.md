@@ -39,10 +39,17 @@ nothing imports from `cli` or `server`; `foundation` imports nothing from `src/`
 
 The loop is an **orchestrator, not a co-owner**. `scripts/loop/**`, the supervisor and
 `scripts/wake-cwd.mjs` may import `foundation/` but never `src/core|cli|server`; the board may
-not import the loop's policy modules (`foundation/scheduling.mjs`, `foundation/sla-patrol.mjs`); and
-no shipped skill imports `src/core|cli|server` at all — an installed skill and a checkout are
-not co-located, so such an import would resolve here and fail on a host. All three directions
-are asserted by `test/cli/imports.test.mjs`.
+not import the loop's clocks/wake policy (`foundation/scheduling.mjs`); and no shipped skill
+imports `src/core|cli|server` at all — an installed skill and a checkout are not co-located,
+so such an import would resolve here and fail on a host. All three directions are asserted by
+`test/cli/imports.test.mjs`.
+
+SLA is the one surface that moved sides. The board now **computes** the inspection rows
+(`foundation/sla-patrol.mjs` via `core/commands/sla.mjs`, published as `GET /api/v1/sla`), so
+`src/core` and `src/server` may import the engine — through that one command, which the
+import test names explicitly. `src/cli` remains a thin HTTP client and must not. The loop
+keeps the de-duplication ledger, the pre-emit re-read and the notification, plus
+`inspector_liveness` (a marker file on the loop's host).
 
 The ownership rule behind them: a rule that decides **what state is legal or required**
 belongs to the board; a rule that decides **when to act, whom to involve, or where to wake**
@@ -246,6 +253,7 @@ Security-relevant environment variables:
 | `TASKD_TOKEN_FILE` | a token file the client reads (`TASKD_TOKEN` outranks it) |
 | `MEERKAT_TASKPANEL_ENV_FILE` | selects the config file; not a secret |
 | `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS` | label housekeeping (§4.4) |
+| `TASKD_SLA_*` | the SLA policy table (`docs/sla.md` §2.1): per-row `LIMIT_MIN`/`FURTHER_MIN`, `PERIOD_SECONDS`, `LEADER_LOOKBACK_DAYS`, `PEER_PERIOD_MIN`, `PEER_LIVENESS_K`. Validated as integers with `F ≥ L`; published by `GET /api/v1/sla` and `/meta` → `capabilities.sla`, re-read per request |
 
 ### One writer per data directory
 

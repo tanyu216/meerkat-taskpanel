@@ -18,7 +18,7 @@ by an explicit snapshot update; drift is a failure, not a warning.
 |---|---|---|
 | `routes` | `registerApiRoutes` in `src/server/index.mjs` (the same function `createTaskd` calls), plus the endpoints served outside the JSON router (`/health`, `/meta`, `/api/v1/events`, attachment bytes) | `METHOD /path`, and the route's **declared request schema** (`{query, body}`) down to `type`, `enum`, `items`, `anyOf`, `properties`, `required` and `additionalProperties` — recursively |
 | `errors` | `ERROR_CODES` in `src/foundation/errors.mjs` | the code and its HTTP status |
-| `wire` | every `*ToWire` projection in `src/foundation/wire.mjs` | the name **and JSON type** of every field each shape emits, including the nested `task.assignee` / `task.reporter` / `task.report_waiver` |
+| `wire` | every `*ToWire` projection in `src/foundation/wire.mjs` | the name **and JSON type** of every field each shape emits, including the nested `task.assignee` / `task.reporter` / `task.report_waiver`, and the `sla_alert` / `sla_config` shapes `GET /api/v1/sla` publishes |
 
 The config-file codes `CONFIG_FILE_INVALID` and `CONFIG_FILE_INSECURE` are in the
 same `errors` table, and `--env-file` is a frozen global CLI flag. A change to either

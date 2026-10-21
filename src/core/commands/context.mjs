@@ -10,12 +10,13 @@
 import { TASKD_KIND } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { newId } from "../../foundation/ids.mjs";
+import { DEFAULT_SLA_CONFIG } from "../../foundation/sla-config.mjs";
 import { isActorKind } from "../domain/enums.mjs";
 import { DEFAULT_ACCEPTANCE_POLICY } from "../domain/status.mjs";
 import { toIsoMillis } from "../domain/task.mjs";
 
 /**
- * @param {{db: import('node:sqlite').DatabaseSync, repos: object, clock?: () => Date|string, idFactory?: () => string, logger?: Function, acceptancePolicy?: () => string}} input
+ * @param {{db: import('node:sqlite').DatabaseSync, repos: object, clock?: () => Date|string, idFactory?: () => string, logger?: Function, acceptancePolicy?: () => string, slaConfig?: () => object}} input
  */
 export function createContext(input) {
   const { db, repos, clock, idFactory = newId, logger } = input;
@@ -33,12 +34,19 @@ export function createContext(input) {
       details: { hasDb: db !== undefined, hasRepos: repos !== undefined },
     });
   }
+  // The SLA policy resolver — re-read per call for the same reason as the
+  // acceptance policy: a hand edit to `.env` must apply without a restart.
+  // A context built without one (tests, embedding callers) runs the defaults.
+  const slaConfig =
+    typeof input.slaConfig === "function" ? input.slaConfig : () => DEFAULT_SLA_CONFIG;
   return {
     db,
     repos,
     logger,
     /** The acceptance policy in force for the next acceptance decision. */
     acceptancePolicy,
+    /** The effective SLA table in force for the next SLA read. */
+    slaConfig,
     /** The one clock in the process. Always an ISO-8601 UTC millisecond string. */
     now() {
       return clock === undefined ? new Date().toISOString() : toIsoMillis(clock(), "clock");

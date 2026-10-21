@@ -203,7 +203,8 @@ nothing), `--skip-node-check` (bypass the Node >= 22 check).
 
 **Configuration is one file.** `taskctl` and `taskd` read `.env` at the program install root
 (the checkout root, or the npm package root) for the board URL, the client token, the
-allow-list and the acceptance policy. The process environment wins key by key and a CLI flag
+allow-list, the acceptance policy and the SLA thresholds (`TASKD_SLA_*`, validated by the
+board and published on `GET /api/v1/sla`). The process environment wins key by key and a CLI flag
 wins over both; `--env-file <path>` or `MEERKAT_TASKPANEL_ENV_FILE` selects another file.
 `install.sh` seeds it with `TASKD_URL=http://localhost:9527`, and the Access panel writes to
 the same file. Every `taskctl` command also needs an identity: `--actor-kind claude` (or
