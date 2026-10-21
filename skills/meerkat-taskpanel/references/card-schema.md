@@ -83,6 +83,86 @@ re-emitted on export. Keys riding this path today: `target` (an opaque per-card 
 `goal`, `review_of`, and a team's own bookkeeping (`git_rules`, `subsession_ids`, …).
 **Do not delete a key you do not recognise.**
 
+## Identifier syntax
+
+A card has two identifier notions, and they answer different questions.
+
+**What the board will store** (`isValidIdentifier`): 1–128 characters; the first character is
+`A`–`Z`, `a`–`z` or `0`–`9`; every later character is one of those or `.`, `_`, `-`. No
+spaces, slashes, or leading punctuation. Case is preserved, and identifiers are compared
+case-sensitively. This check is deliberately permissive: hand-written legacy cards
+(`T-20261008-230500-…`) import unchanged, so it accepts far more than the board itself mints.
+
+The executable storable pattern is:
+
+```text
+^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$
+```
+
+**What the board mints** for a new card: `<PREFIX>-<serial>`.
+
+- `serial` starts at 1 for each project and is left-padded with zeroes to **at least** four
+  digits. The width is a minimum, not a cap: serial `12345` yields `DEMO-12345`. There is no
+  overflow refusal.
+- The prefix is the project's declared `meta.prefix`, normalized, when it has one; otherwise
+  it is derived from the project id. Normalization is: trim surrounding whitespace, uppercase,
+  collapse every run of characters outside `A`–`Z` and `0`–`9` into a single `-`, then strip
+  leading and trailing `-`. A prefix may therefore contain digits and multiple `-` segments,
+  and it may start with a digit.
+- Unique per project, case-sensitively; not unique across projects. A bare identifier that
+  exists in more than one project is refused as ambiguous rather than guessed.
+
+A generated identifier matches this pattern (the serial is four or more digits):
+
+```text
+^[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4,}$
+```
+
+Use that pattern only to recognize identifiers the board **generated**. Stored identifiers may
+be legacy or custom and still pass `isValidIdentifier` without matching it; a parser that must
+read every card should accept the wider storable pattern.
+
+Length edge: the prefix normalizer has no length cap. A prefix long enough to push the whole
+generated identifier past 128 characters makes card creation fail `VALIDATION_FAILED`; not
+every prefix a project could ask for yields a valid generated identifier.
+
+Examples (the test suite re-derives each line):
+
+<!-- identifier-examples:begin -->
+valid DEMO-0001
+valid MEERKAT-TASKPANEL-0007
+valid DEMO-12345
+valid A.b_c-d
+valid T-20261008-230500-meerkat-taskpanel-m1
+invalid -leading-dash
+invalid .leading-dot
+invalid with space
+invalid with/slash
+<!-- identifier-examples:end -->
+
+Generated form:
+
+<!-- identifier-generated:begin -->
+demo => 1 => DEMO-0001
+demo => 12345 => DEMO-12345
+meerkat-taskpanel => 7 => MEERKAT-TASKPANEL-0007
+demo_x => 2 => DEMO-X-0002
+<!-- identifier-generated:end -->
+
+Prefix fold:
+
+<!-- identifier-prefix:begin -->
+meerkat-taskpanel => MEERKAT-TASKPANEL
+demo_x => DEMO-X
+--w_ -- => W
+<!-- identifier-prefix:end -->
+
+Published generated-form pattern:
+
+<!-- identifier-generated-regex:begin -->
+^[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4,}$
+<!-- identifier-generated-regex:end -->
+
 ## Body sections
 
 The body is `##` sections, canonical order **Background · Acceptance · Progress · Comments ·

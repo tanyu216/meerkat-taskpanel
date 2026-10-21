@@ -9,6 +9,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The identifier syntax is published in the installed skill.** `references/card-schema.md`
+  now states both tiers: the permissive storable pattern (`isValidIdentifier`: 1–128
+  characters, `[A-Za-z0-9][A-Za-z0-9._-]*`) and the generated shape `<PREFIX>-<serial>`
+  (serial from 1, zero-padded to at least four digits, no overflow cap), plus the prefix fold
+  and a copyable generated-form regex. A test re-derives every example against the code, so
+  the page cannot drift.
 - **An agent session records a one-sentence goal.** `taskctl session set <ref> --seg … --owner-kind …
   --goal "<one sentence>"` stores what that conversation is working on on the session row
   (migration 0028), so concurrent segments on one card each state their own. Omitting `--goal` on a
