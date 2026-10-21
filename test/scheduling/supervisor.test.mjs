@@ -1144,6 +1144,33 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.deepEqual(move.calls.map(([ref, to]) => `${ref}:${to}`), ["T-2:done", "T-3:canceled"]);
   });
 
+  it("cancels an in-review review card through in_progress, never done", async () => {
+    const order = [];
+    await runWorkflowTick(
+      baseDeps({
+        plan: {
+          alerts: [],
+          changes: [],
+          summary: {},
+          actions: [
+            { type: "cancel_review", review_status: "in_review", review_ref: "T-3", reason: "original_canceled", close_review: true },
+            { type: "cancel_review", review_status: "in_progress", review_ref: "T-4", reason: "original_canceled", close_review: true },
+          ],
+        },
+        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
+        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+      }),
+    );
+    assert.deepEqual(order, [
+      "comment:T-3:note",
+      "move:T-3:in_progress",
+      "move:T-3:canceled",
+      "comment:T-4:note",
+      "move:T-4:canceled",
+    ]);
+    assert.equal(order.includes("move:T-3:done"), false, "a canceled review is never recorded as accepted");
+  });
+
   it("notifies only findings, not standing-state alerts", async () => {
     const notify = spy();
     const logs = [];

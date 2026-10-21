@@ -313,6 +313,10 @@ The fail-safe rules are part of the decision:
 
 `approve` actions carry `acceptedBy: loop-review`; `approve_hold` actions carry `held`.
 
+A `cancel_review` on a review card that is still `in_review` is a two-hop move
+(`in_review → in_progress → canceled`): the whitelist has no direct
+`in_review → canceled` edge, and a canceled review is never recorded as `done`.
+
 ## 12. Choosing a status
 
 - Not released → `backlog`. Released, not started → `todo`. Working → `in_progress` (a claim).

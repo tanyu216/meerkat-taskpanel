@@ -302,8 +302,10 @@ export async function runWorkflowTick(deps) {
     return result;
   };
 
-  // Closing the review card is the last write of every outcome. A card that
-  // never started can only be `canceled`; one awaiting acceptance becomes `done`.
+  // Closing the review card is the last write of every outcome. A cancel is a
+  // two-hop move when the card is `in_review`: the state machine has no direct
+  // `in_review → canceled` edge. `close_review` still ends `done`, because that
+  // is the only terminal an `in_review` card can reach directly.
   const closeReviewCard = async (action, note) => {
     if (action.close_review === false) {
       log(`workflow: review ${action.review_ref} left in_review for human acceptance`);
@@ -313,8 +315,13 @@ export async function runWorkflowTick(deps) {
     const status =
       action.review_status ?? (action.type === "cancel_review" ? "canceled" : "in_review");
     if (status === "done" || status === "canceled") return;
+    if (note !== null) await step(comment, "comment", action.review_ref, { kind: "note", body: note });
     if (status === "in_review") {
-      if (note !== null) await step(comment, "comment", action.review_ref, { kind: "note", body: note });
+      if (action.type === "cancel_review") {
+        await step(move, "move", action.review_ref, "in_progress");
+        await step(move, "move", action.review_ref, "canceled");
+        return;
+      }
       await step(move, "move", action.review_ref, "done");
       return;
     }

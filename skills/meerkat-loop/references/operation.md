@@ -137,6 +137,9 @@ Rules that make it safe to run unattended:
   `ACCEPTANCE_FORBIDDEN`; the loop leaves the review card in place and retries.
 - **The review card is closed last** — a crash between the original's move and
   the card's close is recovered next pass.
+- **A canceled review card ends `canceled`** — from `in_review` it takes the
+  two-hop `in_review → in_progress → canceled`; the loop never records a
+  canceled review as `done`.
 - **A truncated board read dispatches nothing**, and a reviewer equal to the
   card's own assignee is refused (`self_review_not_independent`).
 
