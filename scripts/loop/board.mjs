@@ -7,12 +7,17 @@
  */
 
 import { TASKD_KIND } from "../../src/foundation/constants.mjs";
-import { MECHANISM, pruneSlaLedger, trailReadCandidates } from "../../src/foundation/sla-patrol.mjs";
+import {
+  MECHANISM,
+  leaderAttributionWarning,
+  pruneSlaLedger,
+  trailReadCandidates,
+} from "../../src/foundation/sla-patrol.mjs";
 
 import { runSlaPatrolTick, runWorkflowTick, notifyReal } from "./runners.mjs";
 import {
   loadSlaLedger,
-  readPeerLastOk,
+  readPeerMarker,
   runCli,
   saveLastOk,
   saveSlaLedger,
@@ -103,7 +108,11 @@ export async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncat
   }
 
   // No peer path means the peer is not installed: record a dependency, not an alarm.
-  const peerLastOkAt = opts.slaPeer === null ? null : readPeerLastOk(opts.slaPeer);
+  const peer = opts.slaPeer === null ? null : readPeerMarker(opts.slaPeer);
+
+  // The attribution compares ids; a configured display name would never match.
+  const warning = leaderAttributionWarning(opts.slaLeader, tasks, trails);
+  if (warning !== null) log(`patrol: ${warning}`);
 
   const result = await runSlaPatrolTick({
     cards: tasks,
@@ -113,10 +122,15 @@ export async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncat
     mechanismHost: `${opts.host}/${opts.agents[0]}`,
     leaderId: opts.slaLeader,
     boardTruncated,
-    peerLastOkAt,
+    peerLastOkAt: peer?.lastOk ?? null,
+    peerPeriodMinutes: peer?.periodMinutes ?? null,
     peerRequired: opts.slaPeer !== null,
     lookbackDays: opts.slaLookbackDays,
     recheck: (identifier) => Promise.resolve(readLiveCard(opts, log, identifier)),
+    recheckTrail: (identifier) => {
+      const trail = readTrail(opts, log, identifier);
+      return trail === null ? { checked: false } : { checked: true, trail };
+    },
     notify: opts.dryRun ? () => {} : notifyReal(opts, log),
     now: () => new Date().toISOString(),
     log,

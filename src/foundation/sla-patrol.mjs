@@ -136,6 +136,49 @@ export function isLeaderTrailEntry(comment, leaderId = null) {
   return String(comment?.author_kind ?? "").trim() === LEADER_AUTHOR_KIND;
 }
 
+/**
+ * A configuration hint for `--sla-leader`, or `null` when the configured value
+ * looks usable.
+ *
+ * The attribution test compares **actor ids**, never display names. A deployment
+ * that passes a person's name gets a board on which no leader event is ever
+ * observed — and `leader_stalled` then fires on every pass with leader-owed
+ * work, which reads like a board problem rather than a typo. This function is a
+ * pure observation: it changes no attribution result, it only lets the runner
+ * say what it sees.
+ *
+ * @param {string|null} leaderId
+ * @param {object[]} cards
+ * @param {Record<string, object[]>} trails
+ * @returns {string|null}
+ */
+export function leaderAttributionWarning(leaderId, cards, trails) {
+  const wanted = String(leaderId ?? "").trim();
+  if (wanted === "") return null;
+
+  let idHit = false;
+  let displayNameHit = false;
+  const see = (id, displayName) => {
+    if (String(id ?? "").trim() === wanted) idHit = true;
+    if (String(displayName ?? "").trim() === wanted) displayNameHit = true;
+  };
+
+  for (const card of Array.isArray(cards) ? cards : []) {
+    see(card?.reporter?.id, card?.reporter?.display_name);
+  }
+  for (const trail of Object.values(trails ?? {})) {
+    for (const comment of commentsOf(trail)) {
+      see(comment?.author?.id ?? comment?.author_id, comment?.author?.display_name);
+    }
+  }
+
+  if (idHit) return null;
+  if (displayNameHit) {
+    return `--sla-leader "${wanted}" matches a display name, not an actor id; the attribution test compares ids — use the actor's id.`;
+  }
+  return `--sla-leader "${wanted}" matches no author on this board; if the leader writes as an agent, check the id (a display name will never match).`;
+}
+
 /** The reassignment shape the `assignee_changed` basis reads (§7.4, "F7"). */
 const REASSIGN_SHAPE = /改派|reassign|assignee\s*[:=]/i;
 
@@ -551,11 +594,18 @@ export function findConfirmRequest(card, trail) {
   };
 }
 
-/** Has the gate been answered since `since`? A later `kind=confirm` entry closes it. */
-export function confirmAnsweredAfter(trail, since) {
+/**
+ * Has the gate been answered since `since`? A later **leader-authored**
+ * `kind=confirm` entry closes it. A worker's confirmation does not: the gate is
+ * the leader's to answer, and letting any worker close it would be a false-green.
+ */
+export function confirmAnsweredAfter(trail, since, leaderId = null) {
   const bound = instant(since);
   if (bound === null) return false;
-  return commentsOf(trail).some((comment) => comment?.kind === "confirm" && (commentAt(comment) ?? -Infinity) > bound);
+  return commentsOf(trail).some((comment) =>
+    comment?.kind === "confirm"
+    && (commentAt(comment) ?? -Infinity) > bound
+    && isLeaderTrailEntry(comment, leaderId));
 }
 
 /** The earliest `kind=defect` trail entry's timestamp, or `null`. */
@@ -570,13 +620,17 @@ export function firstDefectEntryAt(trail) {
   return earliest;
 }
 
-/** A trail entry that answers a blocked card (a newer `change`/`confirm` entry). */
-export function trailAnsweredAfter(trail, since) {
+/**
+ * A trail entry that answers a blocked card: a newer leader-authored
+ * `change` / `confirm` / `decision`. The author test is the same one the stall
+ * clock uses — a worker narrating its own progress is not the leader answering.
+ */
+export function trailAnsweredAfter(trail, since, leaderId = null) {
   const bound = instant(since);
   if (bound === null) return false;
   return commentsOf(trail).some((comment) => {
-    if (comment?.kind !== "change" && comment?.kind !== "confirm") return false;
-    return (commentAt(comment) ?? -Infinity) > bound;
+    if ((commentAt(comment) ?? -Infinity) <= bound) return false;
+    return isLeaderTrailEntry(comment, leaderId);
   });
 }
 
@@ -732,7 +786,7 @@ function blockedDetection(card, trail, context) {
   let releasable = false;
   let releasableBasis = null;
   if (reason === null || reason === "clarify" || reason === "decision") {
-    if (blockedAt !== null && trailAnsweredAfter(trail, blockedAt)) {
+    if (blockedAt !== null && trailAnsweredAfter(trail, blockedAt, context.leaderId ?? null)) {
       releasable = true;
       releasableBasis = "clarification_trail_after_block";
     }
@@ -779,10 +833,10 @@ function blockedDetection(card, trail, context) {
  * unreadable request timestamp falls back to `status_changed_at` with
  * `confidence: "low"` — the admissible direction again.
  */
-function confirmDetection(card, trail) {
+function confirmDetection(card, trail, context) {
   const request = findConfirmRequest(card, trail);
   if (request === null) return null;
-  if (confirmAnsweredAfter(trail, request.at)) return null;
+  if (confirmAnsweredAfter(trail, request.at, context.leaderId ?? null)) return null;
 
   const spec = SLA_ROWS.confirmation_gate;
   const at = instant(request.at) === null ? null : request.at;
@@ -887,9 +941,19 @@ function acceptanceDetection(card, context) {
 
   const changedAt = instant(card?.status_changed_at) === null ? null : card.status_changed_at;
   const spec = SLA_ROWS.acceptance_card_creation;
+  // A capped board read can hide the review card that would have closed this
+  // wait. The row is still reported — an unknown must not become silence — but
+  // it says the predicate was undecidable instead of claiming "no review card".
+  const undecidable = context.boardTruncated === true;
   const origin = changedAt !== null
-    ? { kind: "status_changed_at", at: changedAt, source: "frontmatter", confidence: "high" }
+    ? {
+        kind: "status_changed_at",
+        at: changedAt,
+        source: "frontmatter",
+        confidence: undecidable ? "low" : "high",
+      }
     : { kind: "unverifiable", at: null, source: "missing", confidence: "low" };
+  const openPredicate = undecidable ? "no_review_card_undecidable" : "no_review_card";
 
   return {
     row: "acceptance_card_creation",
@@ -900,9 +964,11 @@ function acceptanceDetection(card, context) {
     releasable: false,
     releasableBasis: null,
     blockedReason: blockedReasonOf(card),
-    openPredicate: "no_review_card",
-    action: spec.action,
-    evidence: evidenceOf(card, spec.thresholdRef, "no_review_card"),
+    openPredicate,
+    action: undecidable
+      ? `${spec.action} — the board read was incomplete, so the review-card check could not be decided; the wait is treated as open`
+      : spec.action,
+    evidence: evidenceOf(card, spec.thresholdRef, openPredicate),
   };
 }
 
@@ -1285,7 +1351,7 @@ export function planSlaPatrol(input = {}) {
     const trail = trails[id] ?? [];
     const found = [
       blockedDetection(card, trail, context),
-      confirmDetection(card, trail),
+      confirmDetection(card, trail, context),
       defectDetection(card, trail, context),
       acceptanceDetection(card, context),
       heartbeatStaleDetection(card),
@@ -1415,7 +1481,7 @@ export function planSlaPatrol(input = {}) {
  * @param {object|null} liveCard the card as re-read now (`null` when gone)
  * @returns {{ok: true}|{ok: false, reason: string}}
  */
-export function stillQualifies(alert, liveCard) {
+export function stillQualifies(alert, liveCard, live = {}) {
   if (liveCard === null || liveCard === undefined) {
     return { ok: false, reason: `live_status:${liveCard === undefined ? "missing" : "gone"}` };
   }
@@ -1423,14 +1489,21 @@ export function stillQualifies(alert, liveCard) {
   switch (alert?.sla_row) {
     case "blocked_clarification":
       return status === "blocked" ? { ok: true } : { ok: false, reason: `live_status:${status}` };
-    case "confirmation_gate":
+    case "confirmation_gate": {
       // A gate lives on a card still being worked. Whether it has been *answered*
-      // is a trail fact a single-card read cannot see, so only the card's leaving
-      // the working states is decidable here — and a card that stopped being
-      // worked no longer owes the leader a review.
-      return status === "blocked" || status === "done" || status === "canceled"
-        ? { ok: false, reason: `live_status:${status}` }
-        : { ok: true };
+      // is a trail fact the single-card read cannot see, so the caller may pass
+      // the trail it re-read; without one, only the status is decidable here.
+      if (status === "blocked" || status === "done" || status === "canceled") {
+        return { ok: false, reason: `live_status:${status}` };
+      }
+      if (
+        Array.isArray(live?.trail)
+        && confirmAnsweredAfter(live.trail, alert.measure_start_at, live.leaderId ?? null)
+      ) {
+        return { ok: false, reason: "gate_answered" };
+      }
+      return { ok: true };
+    }
     case "defect_card_creation":
       return status === "done" ? { ok: false, reason: "live_status:done" } : { ok: true };
     case "acceptance_card_creation":
