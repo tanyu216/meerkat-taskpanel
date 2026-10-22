@@ -157,21 +157,24 @@ taskctl issue get <ref> --json     # acceptance[] (the snapshot), meta, descript
 - **The snapshot is empty but `meta.acceptance` / `meta.acceptance_legacy` is not** — a
   grandfathered card. Its list renders as a seed with no frozen baseline; append it as above
   and the next round freezes it.
-- **All three are empty** — before writing code, derive **1–6 concrete, externally checkable**
-  items (usually 2–6; never pad) from the title, description, labels and comments, then
-  persist them once:
+- **All three are empty** — a mechanical derivation is still an acceptance decision. Do it
+  only when the project session's handoff pre-authorized it for this card; then derive
+  **1–6 concrete, externally checkable** items (usually 2–6; never pad) from the title,
+  description, labels and comments, and persist them once with a `note` (never a decision
+  kind):
 
 ```bash
 taskctl issue update <ref> --acceptance "…" --acceptance "…" \
   --meta acceptance_derived=yes
-taskctl comment add <ref> --kind change \
-  --body "acceptance list derived at claim: 1) … 2) …"
+taskctl comment add <ref> --kind note \
+  --body "acceptance list derived at claim (pre-authorized): 1) … 2) …"
 ```
 
-Never derive on an **epic** (its acceptance is its children) or on a **review card**. If the
-card is too thin to yield checkable items, do not invent them:
-`issue move <ref> awaiting --awaiting-reason E2`. Say in the delivery report that the list was
-derived when it was.
+Without that pre-authorization, write an agent `question` comment describing the proposed
+items and stop; the project session decides. Never derive on an **epic** (its acceptance is
+its children) or on a **review card**. If the card is too thin to yield checkable items, say
+so in the question rather than inventing them; the project session decides whether to
+escalate `E2`. Say in the delivery report that the list was derived when it was.
 
 The report must **cover the snapshot**: every item appears by text; `met` or `not_applicable`
 (with a non-empty note) pass, `partial` / `not_met` block `done`. A report item you add beyond
@@ -189,18 +192,24 @@ taskctl report template <ref>                       # fill the TODO lines
 taskctl issue deliver <ref> --report-file -         # report + in_review, one transaction
 ```
 
-Then stop: acceptance is somebody else's act. If the card is a container, promote it before
-splitting and work one child; if it already delivered its current-round report, do **not**
-promote it. Rollup evidence is the children's, not the container's.
+Then stop: acceptance is somebody else's act. If the card is a container, work one child (the
+split belongs to the project session); if it already delivered its current-round report, it
+must **not** be promoted. Rollup evidence is the children's, not the container's.
 
-## When the card is a container (promote it to an epic)
+## When the card is a container (a scope decision)
 
 A card filed from the web UI is always a `task`; an epic exists only where someone named one.
-When the card holds several deliverables, make it the container **before** working any of them:
+Promoting and splitting a card is a scope decision, so it belongs to the project session
+(and an out-of-scope expansion to the human, `E1`). A worker that finds several independent
+deliverables writes an agent `question` comment describing the pieces, keeps the card
+`in_progress`, and stops.
+
+The decision-maker makes the container **before** any child work starts, and records the
+split with a `note`:
 
 ```bash
 taskctl issue update <ref> --kind epic
-taskctl comment add <ref> --kind change --body "split into N cards: …"
+taskctl comment add <ref> --kind note --body "split into N cards: …"
 taskctl issue create --project <p> --title "…" --target <t> --acceptance "…"
 taskctl relation add <ref> --type parent --target <child>     # <ref> is the parent
 ```

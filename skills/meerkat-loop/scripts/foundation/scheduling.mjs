@@ -711,7 +711,7 @@ export function buildHandoff(input) {
     "  comment and stop. Changing an existing acceptance item is E2 and goes to the",
     "  project session/human.",
     `    taskctl issue update <card> --acceptance "..." --acceptance "..." --meta acceptance_derived=yes <flags>`,
-    `    taskctl comment add <card> --kind change --body "acceptance list derived at claim: 1) ..." <flags>`,
+    `    taskctl comment add <card> --kind note --body "acceptance list derived at claim (pre-authorized): 1) ..." <flags>`,
     `  Comments: taskctl comment list <card> --limit 200 --json <flags>`,
     "  Too thin to yield checkable items, or blocked on a decision? Do not enter awaiting",
     "  yourself: add an agent question comment on the card, keep it in_progress, and stop.",

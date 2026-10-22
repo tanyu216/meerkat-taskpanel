@@ -68,11 +68,13 @@ const REVIEW_INPUT = {
 describe("handoffs without a role stay byte-identical", () => {
   it("keeps the worker handoff unchanged by the role layer", () => {
     // Re-pinned when the worker's epic-split / acceptance / awaiting text became
-    // question-first (the decision ladder). With no role input the role renderer
+    // question-first (the decision ladder), and again when the pre-authorized
+    // derivation record moved from `--kind change` to `--kind note` so a subagent
+    // never writes a decision kind. With no role input the role renderer
     // contributes nothing; this hash is the post-rewrite base.
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "d848d1066c23fe236194b5e58a4c9d446b1526b6e6982a04f05b3b598870bf32",
+      "1b23b68ed63ddd0e30f80fd94947d8959607da7e796efe96e0645ba4085531bf",
     );
   });
 
