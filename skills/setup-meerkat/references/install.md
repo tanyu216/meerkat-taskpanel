@@ -19,10 +19,12 @@ and loop config name it.
 
 | Intent | Invocation |
 |---|---|
-| local server + Claude | `bash install.sh --target claude,server` |
-| Claude only, remote board | `bash install.sh --target claude --no-automation` |
-| all actor kinds + server | `bash install.sh --target all` |
-| server only | `bash install.sh --target server` |
+| local server + Claude | `bash <checkout>/install.sh --target claude,server` |
+| Claude only, remote board | `bash <checkout>/install.sh --target claude --no-automation` |
+| all actor kinds + server | `bash <checkout>/install.sh --target all` |
+| server only | `bash <checkout>/install.sh --target server` |
+
+`<checkout>` is the detected source tree (or the cloned cache), not the user's project.
 
 `--no-automation` skips the machine-wide taskd guard (and Codex automation). It is the
 remote-board path: do not load a local keepalive behind a remote URL.

@@ -21,9 +21,10 @@ One idempotent pass over the things a working Meerkat TaskPanel deployment needs
 This skill is **command-only** (`disable-model-invocation: true`). It installs software
 and writes files, so it never runs unless the user asks for it.
 
-In the commands below, `<skill-dir>` is the directory containing this `SKILL.md`. Run the
-bundled scripts from there (or by absolute path); the current working directory is the
-user's project, not the skill.
+In the commands below, `<skill-dir>` is the directory containing this `SKILL.md` and
+`<checkout>` is the detected source tree. Run the bundled scripts and `install.sh` by
+absolute path; the current working directory is the user's project, not the skill or the
+checkout.
 
 ## Modes
 
@@ -87,9 +88,9 @@ node <skill-dir>/scripts/configure-env.mjs --file <env-file> --key TASKD_URL --v
 Then show the plan with the installer's own dry run, and only then run it:
 
 ```bash
-bash install.sh --target claude,server --agent-name <name> --dry-run
+bash <checkout>/install.sh --target claude,server --agent-name <name> --dry-run
 # local board: the same without --dry-run
-# remote board: bash install.sh --target claude --no-automation
+# remote board: bash <checkout>/install.sh --target claude --no-automation
 ```
 
 - **Local + reachable**: skip the server install; do not restart what is healthy.
