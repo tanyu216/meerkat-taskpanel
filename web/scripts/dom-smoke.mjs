@@ -1748,6 +1748,27 @@ export async function run() {
     await page.waitForTimeout(150);
     const langAfterEn = await page.evaluate(() => document.documentElement.getAttribute("lang"));
 
+    // P1 — a card that stopped for a human opens where the question and the
+    // comment box are. The composer sits above the newest-first list, and the
+    // hint states what submitting does on this card.
+    await page.click('[data-card][data-identifier="TD-13"] [data-card-title]');
+    await page.waitForTimeout(200);
+    const awaitingDrawer = await page.evaluate(() => ({
+      selected: [...document.querySelectorAll("[data-detail-tab]")]
+        .filter((tab) => tab.getAttribute("aria-selected") === "true")
+        .map((tab) => tab.getAttribute("data-detail-tab")),
+      formFirst: document.querySelector("[data-detail-comments]")?.firstElementChild?.matches("[data-comment-form]") ?? false,
+      hint: document.querySelector("[data-detail-comments] [data-i18n='drawer.commentHintAwaiting']")?.textContent?.trim() ?? "",
+    }));
+    drawerTabsCheck(
+      awaitingDrawer.selected.join(",") === "activity",
+      `an awaiting card opens on ${awaitingDrawer.selected.join("/")}, expected activity`,
+    );
+    drawerTabsCheck(awaitingDrawer.formFirst, "the comment form must sit above the comment list");
+    drawerTabsCheck(/Submitting answers/.test(awaitingDrawer.hint), `awaiting hint ${JSON.stringify(awaitingDrawer.hint)}`);
+    await page.click("[data-detail-close]");
+    await page.waitForTimeout(150);
+
     // ---- R6 · the eight findings, checked in the browser ---------------------
     //
     // Three of the contract's checks are relations rather than values — which
