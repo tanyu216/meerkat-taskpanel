@@ -3182,3 +3182,315 @@ describe("commands/tasks — review decision (0031)", () => {
     });
   });
 });
+
+describe("commands/tasks — acceptance snapshot (0032)", () => {
+  it("seeds the frozen baseline from meta.acceptance, legacy text, and the 60-item cap", async () => {
+    await board(async ({ commands }) => {
+      const modern = commands.createTask({
+        projectId: "proj",
+        title: "modern",
+        meta: { acceptance: [" a ", "b", "A", ""] },
+        actor: AGENT,
+      });
+      assert.deepEqual(modern.acceptance, ["a", "b"]);
+      assert.equal(modern.acceptanceRevision, 1);
+
+      const legacy = commands.createTask({
+        projectId: "proj",
+        title: "legacy",
+        meta: {
+          acceptance_legacy: [
+            { text: "old one", checked: true },
+            { text: "old two", checked: false },
+          ],
+        },
+        actor: AGENT,
+      });
+      assert.deepEqual(legacy.acceptance, ["old one", "old two"]);
+      assert.equal(legacy.acceptanceRevision, 1);
+
+      const capped = commands.createTask({
+        projectId: "proj",
+        title: "capped",
+        meta: { acceptance: Array.from({ length: 70 }, (_, i) => `item ${i}`) },
+        actor: AGENT,
+      });
+      assert.equal(capped.acceptance.length, 60);
+
+      const plain = commands.createTask({ projectId: "proj", title: "plain", actor: AGENT });
+      assert.deepEqual(plain.acceptance, []);
+      assert.equal(plain.acceptanceRevision, 0);
+    });
+  });
+
+  it("seeds an empty snapshot at claim from a meta value written outside the command", async () => {
+    await board(async ({ db, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "derived at claim", actor: AGENT });
+      db.prepare("UPDATE tasks SET meta_json = ? WHERE id = ?").run(
+        JSON.stringify({ acceptance: ["derived one", "derived two"] }),
+        task.id,
+      );
+      const claimed = commands.claim({ id: task.id, actor: AGENT }).task;
+      assert.deepEqual(claimed.acceptance, ["derived one", "derived two"]);
+      assert.equal(claimed.acceptanceRevision, 1);
+    });
+  });
+
+  it("appends idempotently, and lets only a human prune with a reason and the current revision", async () => {
+    await board(async ({ db, commands }) => {
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "baseline",
+        meta: { acceptance: ["a"] },
+        actor: AGENT,
+      });
+      const appended = commands.updateTask({ id: task.id, acceptance: ["a", "b"], actor: AGENT });
+      assert.deepEqual(appended.acceptance, ["a", "b"]);
+      assert.equal(appended.acceptanceRevision, 2);
+      assert.ok(activitiesFor(db, task.id).includes("acceptance_changed"));
+
+      assert.throws(
+        () => commands.updateTask({ id: task.id, acceptance: ["b"], actor: AGENT }),
+        (err) => err.code === "VALIDATION_FAILED",
+        "a no-op append is not a write",
+      );
+
+      assert.throws(
+        () =>
+          commands.updateTask({
+            id: task.id,
+            acceptanceDrop: ["a"],
+            reason: "the operator narrowed the scope",
+            actor: AGENT,
+          }),
+        (err) => err.code === "ACCEPTANCE_PRUNE_FORBIDDEN",
+      );
+
+      assert.throws(
+        () =>
+          commands.updateTask({
+            id: task.id,
+            acceptanceDrop: ["a"],
+            reason: "short",
+            actor: HUMAN,
+          }),
+        (err) => err.code === "VALIDATION_FAILED",
+      );
+
+      const pruned = commands.updateTask({
+        id: task.id,
+        acceptanceDrop: ["a"],
+        reason: "the operator narrowed the scope",
+        acceptanceRevision: appended.acceptanceRevision,
+        actor: HUMAN,
+      });
+      assert.deepEqual(pruned.acceptance, ["b"]);
+      assert.equal(pruned.acceptanceRevision, 3);
+      assert.ok(activitiesFor(db, task.id).includes("acceptance_pruned"));
+
+      assert.throws(
+        () =>
+          commands.updateTask({
+            id: task.id,
+            acceptanceDrop: ["b"],
+            reason: "the operator narrowed the scope",
+            acceptanceRevision: 1,
+            actor: HUMAN,
+          }),
+        (err) => err.code === "ACCEPTANCE_STALE_REVISION",
+      );
+
+      commands.claim({ id: task.id, actor: AGENT });
+      commands.deliver({
+        taskId: task.id,
+        report: report({ acceptance: [{ text: "b", status: "met" }] }),
+        actor: AGENT,
+      });
+      assert.throws(
+        () => commands.updateTask({ id: task.id, acceptance: ["c"], actor: AGENT }),
+        (err) => err.code === "ACCEPTANCE_LOCKED",
+      );
+    });
+  });
+
+  it("refuses done until the current-round report covers the baseline", async () => {
+    await board(async ({ commands }) => {
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "gate",
+        meta: { acceptance: ["a", "b"] },
+        actor: AGENT,
+      });
+      commands.claim({ id: task.id, actor: AGENT });
+      commands.deliver({
+        taskId: task.id,
+        report: report({ acceptance: [{ text: "a", status: "met" }] }),
+        actor: AGENT,
+      });
+
+      assert.throws(
+        () => commands.moveStatus({ id: task.id, to: "done", actor: HUMAN }),
+        (err) => err.code === "ACCEPTANCE_INCOMPLETE" && err.details.missing[0].text === "b",
+      );
+      const preflight = commands.canMove({ taskId: task.id, to: "done" });
+      assert.equal(preflight.ok, false);
+      assert.equal(preflight.reason, "ACCEPTANCE_INCOMPLETE");
+
+      // A rework starts a new round, so a complete report can be written.
+      commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
+      commands.deliver({
+        taskId: task.id,
+        report: report({
+          acceptance: [
+            { text: "a", status: "met" },
+            { text: "b", status: "met" },
+          ],
+        }),
+        actor: AGENT,
+      });
+      commands.moveStatus({ id: task.id, to: "done", actor: HUMAN });
+      assert.equal(commands.getTask({ id: task.id }).status, "done");
+    });
+  });
+
+  it("blocks partial/not_met, accepts a noted not_applicable, and refuses a bare one at delivery", async () => {
+    await board(async ({ commands }) => {
+      const partial = commands.createTask({
+        projectId: "proj",
+        title: "partial",
+        meta: { acceptance: ["a"] },
+        actor: AGENT,
+      });
+      commands.claim({ id: partial.id, actor: AGENT });
+      commands.deliver({
+        taskId: partial.id,
+        report: report({
+          acceptance: [{ text: "a", status: "partial" }],
+          leftovers: "the remaining part is scheduled next round",
+        }),
+        actor: AGENT,
+      });
+      assert.throws(
+        () => commands.moveStatus({ id: partial.id, to: "done", actor: HUMAN }),
+        (err) => err.code === "ACCEPTANCE_INCOMPLETE" && err.details.blocking[0].status === "partial",
+      );
+
+      const notApplicable = commands.createTask({
+        projectId: "proj",
+        title: "not applicable",
+        meta: { acceptance: ["a"] },
+        actor: AGENT,
+      });
+      commands.claim({ id: notApplicable.id, actor: AGENT });
+      assert.throws(
+        () =>
+          commands.deliver({
+            taskId: notApplicable.id,
+            report: report({ acceptance: [{ text: "a", status: "not_applicable" }] }),
+            actor: AGENT,
+          }),
+        (err) => err.code === "REPORT_NOT_APPLICABLE_NOTE",
+      );
+      commands.deliver({
+        taskId: notApplicable.id,
+        report: report({
+          acceptance: [{ text: "a", status: "not_applicable", note: "canceled by the operator" }],
+        }),
+        actor: AGENT,
+      });
+      commands.moveStatus({ id: notApplicable.id, to: "done", actor: HUMAN });
+      assert.equal(commands.getTask({ id: notApplicable.id }).status, "done");
+    });
+  });
+
+  it("keeps an empty baseline vacuous, but a waiver does not satisfy a non-empty one", async () => {
+    await board(async ({ commands }) => {
+      const empty = commands.createTask({ projectId: "proj", title: "empty", actor: AGENT });
+      commands.claim({ id: empty.id, actor: AGENT });
+      commands.moveStatus({
+        id: empty.id,
+        to: "in_review",
+        noReport: true,
+        reason: "delivered under an audited waiver",
+        actor: AGENT,
+      });
+      commands.moveStatus({ id: empty.id, to: "done", actor: HUMAN });
+      assert.equal(commands.getTask({ id: empty.id }).status, "done");
+
+      const waived = commands.createTask({
+        projectId: "proj",
+        title: "waived",
+        meta: { acceptance: ["a"] },
+        actor: AGENT,
+      });
+      commands.claim({ id: waived.id, actor: AGENT });
+      commands.moveStatus({
+        id: waived.id,
+        to: "in_review",
+        noReport: true,
+        reason: "delivered under an audited waiver",
+        actor: AGENT,
+      });
+      assert.throws(
+        () => commands.moveStatus({ id: waived.id, to: "done", actor: HUMAN }),
+        (err) => err.code === "ACCEPTANCE_UNVERIFIED" && err.details.waived === true,
+      );
+
+      // The repair is a current-round report in the same round.
+      commands.writeReport({
+        taskId: waived.id,
+        report: report({ acceptance: [{ text: "a", status: "met" }] }),
+        actor: AGENT,
+      });
+      commands.moveStatus({ id: waived.id, to: "done", actor: HUMAN });
+      assert.equal(commands.getTask({ id: waived.id }).status, "done");
+    });
+  });
+
+  it("requires an APPROVE report to cover the original's baseline", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "reviewed",
+        meta: { acceptance: ["a", "b"] },
+        reviewRequired: true,
+        actor: AGENT,
+      });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({
+        taskId: original.id,
+        report: report({
+          acceptance: [
+            { text: "a", status: "met" },
+            { text: "b", status: "met" },
+          ],
+        }),
+        actor: AGENT,
+      });
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "review",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        actor: AGENT,
+      });
+      assert.deepEqual(review.acceptance, [], "this fixture's review card has no copied baseline");
+      commands.claim({ id: review.id, actor: AGENT });
+      commands.deliver({
+        taskId: review.id,
+        report: report({
+          conclusion: "VERDICT: APPROVE\n\nEverything checked; b has no evidence.",
+          acceptance: [{ text: "a", status: "met" }],
+        }),
+        actor: AGENT,
+      });
+      commands.moveStatus({ id: review.id, to: "done", actor: HUMAN });
+
+      assert.throws(
+        () => commands.moveStatus({ id: original.id, to: "done", actor: HUMAN }),
+        (err) => err.code === "ACCEPTANCE_INCOMPLETE" && err.details.source === "review",
+      );
+    });
+  });
+});

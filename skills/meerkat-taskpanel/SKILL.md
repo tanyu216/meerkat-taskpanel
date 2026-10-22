@@ -77,7 +77,9 @@ A legal edge can still be refused. Seven rules decide it:
 2. **`done` is acceptance, and only from `in_review`.** Under the default policy an agent is
    refused (`ACCEPTANCE_FORBIDDEN`) on a **top-level** card; a **child** card is the opposite —
    only a non-human writer closes it. A human closing a top-level card needs the current
-   round's review cards resolved (`REVIEW_PENDING`).
+   round's review cards resolved (`REVIEW_PENDING`). And a card with a non-empty **acceptance
+   baseline** is refused (`ACCEPTANCE_INCOMPLETE` / `ACCEPTANCE_UNVERIFIED`) until the current
+   round's report covers every item — details in §"Read the acceptance list before you work".
 3. **`awaiting` has one entrance and two exits.** Only `in_progress → awaiting`, naming
    `E1`–`E5`; only `awaiting → in_progress` (a human replied) or `awaiting → canceled`. It
    cannot reach `in_review` or `done`.
@@ -131,21 +133,28 @@ round — and only the holder may send it. A claim you stop pulsing reads as aba
 
 ### Read the acceptance list before you work
 
-`issue get <ref>` prints a fixed field table — identifier, title, status, priority, kind,
-assignee, reporter, delivery_round, review_required, version, plus any waiver rows and an
-attachment table. It does **not** print the description, labels, meta or acceptance list; read
-the JSON:
+`issue get <ref>` prints the whole card: identifier, title, status, priority, kind, labels,
+assignee, reporter, claimed_by, heartbeat_at, delivery_round, review_required, review_of,
+review_round, parent, awaiting_reason, acceptance_revision, the numbered acceptance list, meta
+(JSON), the description, version — plus any waiver rows and an attachment table. `--json`
+carries the same fields.
+
+The list you work to is the **frozen snapshot** (`acceptance` on the wire, `acceptance_json`
+in the database). `meta.acceptance` is only the seed it was copied from — the gate never reads
+it:
 
 ```bash
-taskctl issue get <ref> --json     # description, labels, meta.acceptance, meta.acceptance_legacy
+taskctl issue get <ref> --json     # acceptance[] (the snapshot), meta, description, labels
 ```
 
-- **`meta.acceptance` is non-empty** — that is the list you work to. Do not rewrite it. A
-  reviewer's rejection may add an item: re-send the whole existing list plus the new one.
-- **`meta.acceptance_legacy` is non-empty** (an imported card) — use it as-is; the checkboxes
-  are the author's intent, not evidence. If more items are needed, ask:
-  `issue move <ref> awaiting --awaiting-reason E2`.
-- **Both are empty** — before writing code, derive **1–6 concrete, externally checkable**
+- **The snapshot is non-empty** — that is the list you work to. It is frozen: **append** with
+  `issue update <ref> --acceptance "…"`, never replace or remove. Removal is a human-only,
+  audited prune (`--drop-acceptance --reason`, ≥ 8 characters). Once the card is `in_review`
+  the baseline is locked; a wrong baseline means rework, which starts a new round.
+- **The snapshot is empty but `meta.acceptance` / `meta.acceptance_legacy` is not** — a
+  grandfathered card. Its list renders as a seed with no frozen baseline; append it as above
+  and the next round freezes it.
+- **All three are empty** — before writing code, derive **1–6 concrete, externally checkable**
   items (usually 2–6; never pad) from the title, description, labels and comments, then
   persist them once:
 
@@ -161,12 +170,17 @@ card is too thin to yield checkable items, do not invent them:
 `issue move <ref> awaiting --awaiting-reason E2`. Say in the delivery report that the list was
 derived when it was.
 
+The report must **cover the snapshot**: every item appears by text; `met` or `not_applicable`
+(with a non-empty note) pass, `partial` / `not_met` block `done`. A report item you add beyond
+the baseline blocks too if it is `partial` / `not_met`. An imported checkbox list freezes as
+plain items — a tick on the card is the author's intent, not this delivery's evidence.
+
 ## One card, end to end
 
 ```bash
 taskctl issue candidates --assignee <me>            # read: what may I claim?
 taskctl issue move <ref> in_progress                # claim exactly one
-taskctl issue get <ref> --json                      # description + acceptance list
+taskctl issue get <ref> --json                      # description + acceptance snapshot
 taskctl issue heartbeat <ref>                       # keep the claim fresh
 taskctl report template <ref>                       # fill the TODO lines
 taskctl issue deliver <ref> --report-file -         # report + in_review, one transaction

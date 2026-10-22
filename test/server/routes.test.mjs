@@ -284,11 +284,12 @@ describe("server/routes — tasks, the gate and deliver", () => {
     assert.equal(again.body.error.code, "INVALID_TRANSITION");
   });
 
-  it("merges --acceptance into meta without clobbering the rest", async () => {
+  it("appends --acceptance to the frozen baseline without clobbering meta", async () => {
     const updated = dataOf(
       await call("PATCH", `/api/v1/tasks/${identifier}`, { acceptance: ["a", "b"], title: "Ship M2 (final)" }),
     );
-    assert.deepEqual(updated.task.meta.acceptance, ["a", "b"]);
+    assert.deepEqual(updated.task.acceptance, ["cli works", "gate visible", "a", "b"]);
+    assert.deepEqual(updated.task.meta.acceptance, ["cli works", "gate visible"]);
     assert.equal(updated.task.title, "Ship M2 (final)");
   });
 });

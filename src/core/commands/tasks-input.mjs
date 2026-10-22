@@ -149,6 +149,10 @@ const UPDATE = Object.freeze([
   both("labels", { repeat: true }),
   both("meta", { type: OBJECT }),
   both("acceptance", { repeat: true }),
+  // 0032 — a human's audited prune of the frozen baseline. `acceptance_revision`
+  // is the optimistic lock; `reason` is the audit row the DB trigger reads.
+  both("acceptance_drop", { repeat: true }),
+  both("acceptance_revision", { type: INTEGER }),
   // 0031 — the controlled review-decision override. `reason` is required by the
   // command layer only when a human waives a required review.
   both("review_required", { type: BOOLEAN }),
@@ -167,6 +171,9 @@ const MOVE = Object.freeze([
   both("reason"),
   both("awaiting_reason"),
   both("blocked_reason"),
+  // 0034 — the question a worker asks when it stops in `awaiting`. Written as a
+  // `question` comment in the same transaction as the move.
+  both("question"),
 ]);
 
 /**

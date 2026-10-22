@@ -83,12 +83,23 @@ describe("domain/report — acceptance", () => {
     ]);
   });
 
-  it("accepts all four statuses, including not_applicable", () => {
-    for (const status of ["met", "partial", "not_met", "not_applicable"]) {
+  it("accepts the four statuses; not_applicable needs a note", () => {
+    for (const status of ["met", "partial", "not_met"]) {
       const report = good({ acceptance: [{ text: "x", status }] });
       if (status === "partial" || status === "not_met") report.leftovers = "still open";
       assert.equal(validateReport(report, CONTEXT).ok, true, status);
     }
+    assert.equal(
+      validateReport(good({ acceptance: [{ text: "x", status: "not_applicable" }] }), CONTEXT).ok,
+      false,
+    );
+    assert.equal(
+      validateReport(
+        good({ acceptance: [{ text: "x", status: "not_applicable", note: "canceled by the operator" }] }),
+        CONTEXT,
+      ).ok,
+      true,
+    );
   });
 
   it("rejects more than the item cap", () => {

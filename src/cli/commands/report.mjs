@@ -53,18 +53,29 @@ export function parseReport(raw) {
  */
 export function acceptanceFrom(task) {
   const meta = task.meta ?? {};
-  const modern = Array.isArray(meta.acceptance) ? meta.acceptance : null;
-  if (modern !== null && modern.length > 0) {
+  // 0032 — the frozen snapshot is the authority. The meta list is only a seed
+  // (and the fallback for a grandfathered card whose snapshot is still empty).
+  const snapshot = Array.isArray(task.acceptance) ? task.acceptance : null;
+  if (snapshot !== null && snapshot.length > 0) {
     return {
-      items: modern.map((text) => ({ text: String(text), status: "not_met", note: "TODO: met / partial / not_met" })),
-      source: "meta.acceptance",
-      // The marker is a flag, not a verdict (see `meta.epic_triage=off`): it
-      // says the worker derived the list when the card had none, so the report
-      // is still evidence against items the acceptor may want to re-check.
+      items: snapshot.map((text) => ({ text: String(text), status: "not_met", note: "TODO: met / partial / not_met" })),
+      source: "acceptance_json",
+      // The marker is a flag, not a verdict: it says the worker derived the list
+      // at claim, so the reviewer may want to re-check its coverage.
       warning:
         meta.acceptance_derived === "yes"
           ? "these acceptance items were derived at claim (meta.acceptance_derived=yes); make sure your report answers each one"
           : null,
+    };
+  }
+
+  const modern = Array.isArray(meta.acceptance) ? meta.acceptance : null;
+  if (modern !== null && modern.length > 0) {
+    return {
+      items: modern.map((text) => ({ text: String(text), status: "not_met", note: "TODO: met / partial / not_met" })),
+      source: "meta.acceptance (no frozen baseline)",
+      warning:
+        "this card has no frozen acceptance baseline; meta.acceptance is a seed and the card is treated as vacuously covered until it is reworked",
     };
   }
 

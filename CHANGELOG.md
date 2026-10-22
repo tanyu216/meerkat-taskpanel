@@ -9,6 +9,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The acceptance baseline is frozen, and `done` must cover it (migration `0032`).** A card
+  now carries `acceptance_json` + `acceptance_revision`, seeded once at creation (or first
+  claim) from `meta.acceptance` / the imported checkbox texts and never read from writable
+  meta again. The list can be appended to (`issue update --acceptance`); only a human may
+  remove an item, with `--drop-acceptance --reason` recorded as `acceptance_pruned`. The DB
+  refuses any rewrite that does not bump the revision (`ACCEPTANCE_SNAPSHOT_IMMUTABLE`) and
+  any `not_applicable` report item without a note (`REPORT_NOT_APPLICABLE_NOTE`). Moving to
+  `done` now requires the current round's delivery report to cover the baseline
+  (`ACCEPTANCE_UNVERIFIED` / `ACCEPTANCE_INCOMPLETE`); `met` and `not_applicable` pass,
+  `partial` / `not_met` block, and a waiver no longer satisfies acceptance. A review
+  `APPROVE` is checked against the original's baseline, and the auto-accept planner reads the
+  report so it never plans a refusal. The task wire gains `acceptance[]` /
+  `acceptance_revision`, the PATCH body gains `acceptance_drop` / `acceptance_revision`, and
+  the markdown export prefers the snapshot while fixing the long-standing lost `meta.target`
+  and emitting the delivery/review/waiver facts.
 - **Per-project review policy and per-card review decision (migration `0031`).** A project
   now carries `review_policy` (`required` / `optional` / `off`, default `optional`) and an
   optional `reviewer` override; a card carries a `review_required` snapshot resolved at

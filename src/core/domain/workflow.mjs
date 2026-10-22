@@ -40,6 +40,7 @@ import {
   TASKD_KIND,
 } from "../../foundation/constants.mjs";
 import { reviewRequiredOf } from "./review-policy.mjs";
+import { coverageOf } from "./acceptance.mjs";
 import { acceptanceAllows, acceptanceScopeOf } from "./status.mjs";
 
 // The two workflow defaults are shared with the loop's config resolver, so they
@@ -567,12 +568,30 @@ function reviewAction(task, ref, round, reviewer) {
       "Do not move the original card, and do not move this review card either. The",
       "loop applies the verdict and closes this card after reading your report.",
     ].join("\n"),
+    // 0032 — the review card's own baseline is the original's frozen baseline plus
+    // the generic review checklist, so the reviewer answers each criterion by name
+    // and the review report can be checked against both. The original is capped at
+    // 60 items and the checklist adds at most 3, inside the review card's 64 cap.
     acceptance: [
-      "Every acceptance item on the original card has an explicit conclusion",
-      "The delivery report is consistent with its evidence anchors",
-      "The comment trail has no unresolved decision/defect entry",
+      ...(Array.isArray(task.acceptance) ? task.acceptance.slice(0, 60) : []),
+      ...reviewChecklist(task, ref),
     ],
   };
+}
+
+/** The generic items a review report must also answer. */
+function reviewChecklist(task, ref) {
+  if (task.kind === "epic") {
+    return [
+      `Every child of ${ref} has an explicit conclusion in the rollup report`,
+      "The rollup report is consistent with its evidence anchors",
+      "The comment trail has no unresolved decision/defect entry",
+    ];
+  }
+  return [
+    "The delivery report is consistent with its evidence anchors",
+    "The comment trail has no unresolved decision/defect entry",
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -777,6 +796,34 @@ export function planReviewOutcomes(input = {}) {
 
     if (original.status === "in_review") {
       if (verdict.verdict === "APPROVE") {
+        // 0032 — an APPROVE over a report that does not answer every baseline
+        // criterion is not an approval. The write gate would refuse it; deciding
+        // it here keeps the refusal out of the failed-action noise.
+        const baseline = Array.isArray(original.acceptance) ? original.acceptance : [];
+        if (baseline.length > 0) {
+          const coverage = coverageOf({
+            baseline,
+            reportItems: verdict.report?.acceptance ?? [],
+            includeExtras: true,
+          });
+          if (!coverage.ok) {
+            const key = [
+              ...coverage.missing.map((item) => item.key),
+              ...coverage.blocking.map((item) => `${item.key}:${item.status}`),
+            ]
+              .sort()
+              .join("|");
+            alerts.push({
+              type: "verdict_incomplete",
+              review: reviewRef,
+              original: originalRef,
+              missing: coverage.missing.map((item) => item.text),
+              blocking: coverage.blocking.map((item) => item.text),
+              dedupKey: alertKey("verdict_incomplete", reviewRef, key),
+            });
+            continue;
+          }
+        }
         // `human-only` + a top-level original: the loop records the verdict and
         // stops. The human decides; the review card is still closed here so the
         // human's own acceptance is not blocked by a review they already read.
@@ -979,6 +1026,46 @@ export function planAutoAccept(input = {}) {
       continue;
     }
 
+    // 0032 — an empty baseline is vacuous (no report needed); a non-empty one
+    // is covered only by a current-round delivery report. This is the planner's
+    // copy of the write gate, so a broken delivery produces one standing alert
+    // rather than a failed action every tick.
+    const baseline = Array.isArray(task.acceptance) ? task.acceptance : [];
+    if (baseline.length > 0) {
+      const report = input.reportsByRef?.[ref] ?? null;
+      if (report === null) {
+        alerts.push({
+          type: "auto_accept_skipped",
+          reason: "acceptance_unverified",
+          original: ref,
+          dedupKey: alertKey("auto_accept_skipped", ref, "acceptance_unverified"),
+        });
+        continue;
+      }
+      const coverage = coverageOf({
+        baseline,
+        reportItems: report.acceptance ?? [],
+        includeExtras: true,
+      });
+      if (!coverage.ok) {
+        const key = [
+          ...coverage.missing.map((item) => item.key),
+          ...coverage.blocking.map((item) => `${item.key}:${item.status}`),
+        ]
+          .sort()
+          .join("|");
+        alerts.push({
+          type: "auto_accept_skipped",
+          reason: "acceptance_incomplete",
+          original: ref,
+          missing: coverage.missing.map((item) => item.text),
+          blocking: coverage.blocking.map((item) => item.text),
+          dedupKey: alertKey("auto_accept_skipped", ref, "acceptance_incomplete", key),
+        });
+        continue;
+      }
+    }
+
     const held =
       nonEmpty(task?.meta?.accepted_by) !== null &&
       String(task?.meta?.accepted_round ?? "") === String(round);
@@ -1045,6 +1132,7 @@ export function planWorkflowTick(input = {}) {
   const outcomes = planReviewOutcomes({
     tasks,
     verdicts: input.verdicts ?? {},
+    reportsByRef: input.reportsByRef ?? {},
     config,
     boardTruncated: input.boardTruncated === true,
     now: input.now ?? null,
@@ -1052,6 +1140,7 @@ export function planWorkflowTick(input = {}) {
 
   const autoAcceptPlan = planAutoAccept({
     tasks,
+    reportsByRef: input.reportsByRef ?? {},
     config,
     boardTruncated: input.boardTruncated === true,
     skipRefs: new Set(outcomes.actions.map((action) => action.originalRef)),

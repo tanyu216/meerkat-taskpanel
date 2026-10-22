@@ -15,7 +15,12 @@ import { STATUS } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
 import { assertTransition, isTerminalStatus } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
-import { assertAcceptance, assertChildrenTerminal, assertReviewReady } from "./acceptance.mjs";
+import {
+  assertAcceptance,
+  assertAcceptanceCoverage,
+  assertChildrenTerminal,
+  assertReviewReady,
+} from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
 import { insertDeliveryReport } from "./delivery-report.mjs";
 import { resolveActorId } from "./dictionary.mjs";
@@ -151,6 +156,9 @@ export function deliver(ctx, input) {
       if (to === STATUS.DONE) assertReviewReady(ctx, task, actor);
 
       if (waived) {
+        // A waiver excuses the *delivery* gate, never the acceptance gate: a
+        // non-empty baseline still needs a current-round report before done.
+        if (to === STATUS.DONE) assertAcceptanceCoverage(ctx, task);
         const waiver = { round: task.deliveryRound, reason: waiverReason, at: now };
         const moved = ctx.repos.tasks.moveCas({ id: task.id, ifVersion: input.ifVersion, to, now, waiver });
         ctx.repos.activities.append({
@@ -182,6 +190,10 @@ export function deliver(ctx, input) {
           now,
         },
       );
+      // The prepared row is not in the repository yet, so the gate is given it
+      // directly; if it fails, the transaction rolls back and no report is left
+      // behind.
+      if (to === STATUS.DONE) assertAcceptanceCoverage(ctx, task, { report: prepared });
       const report = insertDeliveryReport(ctx, {
         taskId: task.id,
         prepared,

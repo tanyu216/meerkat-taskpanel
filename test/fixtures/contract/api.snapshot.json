@@ -5,6 +5,30 @@
       "http": 409
     },
     {
+      "code": "ACCEPTANCE_INCOMPLETE",
+      "http": 409
+    },
+    {
+      "code": "ACCEPTANCE_LOCKED",
+      "http": 409
+    },
+    {
+      "code": "ACCEPTANCE_PRUNE_FORBIDDEN",
+      "http": 409
+    },
+    {
+      "code": "ACCEPTANCE_SNAPSHOT_IMMUTABLE",
+      "http": 409
+    },
+    {
+      "code": "ACCEPTANCE_STALE_REVISION",
+      "http": 409
+    },
+    {
+      "code": "ACCEPTANCE_UNVERIFIED",
+      "http": 409
+    },
+    {
       "code": "ACCESS_CONFIG_INVALID",
       "http": 500
     },
@@ -182,6 +206,10 @@
     },
     {
       "code": "REPORT_INVALID",
+      "http": 422
+    },
+    {
+      "code": "REPORT_NOT_APPLICABLE_NOTE",
       "http": 422
     },
     {
@@ -772,6 +800,15 @@
               },
               "type": "array"
             },
+            "acceptance_drop": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "acceptance_revision": {
+              "type": "integer"
+            },
             "assignee": {
               "type": "string"
             },
@@ -1135,6 +1172,9 @@
             },
             "no_report": {
               "type": "boolean"
+            },
+            "question": {
+              "type": "string"
             },
             "reason": {
               "type": "string"
@@ -1580,6 +1620,8 @@
     },
     {
       "fields": {
+        "acceptance": "array",
+        "acceptance_revision": "number",
         "agent_session": "string",
         "archived_at": "string",
         "assignee": "object",

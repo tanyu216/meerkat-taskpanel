@@ -113,6 +113,10 @@ export function taskToWire(task, options = {}) {
   }
   out.labels = Array.isArray(task.labels) ? task.labels : [];
   out.meta = task.meta ?? {};
+  // 0032 — the frozen baseline, not `meta.acceptance`. The revision is the
+  // optimistic lock a prune sends back.
+  out.acceptance = Array.isArray(task.acceptance) ? task.acceptance : [];
+  out.acceptance_revision = Number(task.acceptanceRevision ?? 0);
   // 0031 — the decision snapshot is stored as 0/1 and exposed as a boolean: the
   // request declarations use `bool()`, and a reader should not have to know the
   // storage type.

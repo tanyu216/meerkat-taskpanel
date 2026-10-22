@@ -88,6 +88,9 @@ const EXPECTED_TRIGGERS = [
   "tr_tasks_review_card_not_required",
   "tr_tasks_review_card_not_required_update",
   "tr_tasks_review_required_done",
+  // 0032 — the frozen acceptance baseline and its audited prune.
+  "tr_tasks_acceptance_prune_audited",
+  "tr_tasks_acceptance_revision",
   "tr_rev_tasks_ins",
   "tr_rev_tasks_upd",
   "tr_rev_tasks_del",
@@ -128,7 +131,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -269,9 +272,12 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         "tr_rel_block_chain",
         "tr_rel_block_cycle",
         "tr_rel_parent_block_pair",
+        "tr_reports_not_applicable_note",
         "tr_rev_actors_del",
         "tr_rev_actors_ins",
         "tr_rev_actors_upd",
+        "tr_tasks_acceptance_prune_audited",
+        "tr_tasks_acceptance_revision",
         "tr_tasks_children_terminal",
         "tr_tasks_reopen_state",
         "tr_tasks_review_card_not_required",

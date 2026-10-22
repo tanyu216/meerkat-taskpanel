@@ -120,6 +120,19 @@ export function validateReport(input, context = {}) {
       if (item.note !== undefined && typeof item.note !== "string") {
         issues.push({ path: `${at}.note`, message: "note must be a string" });
       }
+      // 0032 — `not_applicable` is a verdict, not a shrug. The DB trigger
+      // (0032) enforces the same rule on a raw insert; this is the friendly
+      // service-layer half.
+      if (
+        item.status === "not_applicable" &&
+        (typeof item.note !== "string" || item.note.trim() === "")
+      ) {
+        issues.push({
+          path: at,
+          code: "not_applicable_note",
+          message: "not_applicable needs a note saying why",
+        });
+      }
     });
   }
 
@@ -372,7 +385,8 @@ export function normalizeReportCreate(input, context) {
 
   const result = validateReport(input, { taskRound, maxBytes, maxItems });
   if (!result.ok) {
-    throw new DomainError("REPORT_INVALID", {
+    const noteIssue = result.issues.some((issue) => issue.code === "not_applicable_note");
+    throw new DomainError(noteIssue ? "REPORT_NOT_APPLICABLE_NOTE" : "REPORT_INVALID", {
       message: `report rejected: ${result.issues.map((i) => `${i.path}: ${i.message}`).join("; ")}`,
       details: { issues: result.issues, taskRound },
       hint: { fix: "every acceptance item needs a status, and at least one evidence anchor is required" },
@@ -446,7 +460,8 @@ export function normalizeImportedReport(input, context) {
 
   const result = validateReport(input, { taskRound, maxBytes, maxItems, allowEmpty: true });
   if (!result.ok) {
-    throw new DomainError("REPORT_INVALID", {
+    const noteIssue = result.issues.some((issue) => issue.code === "not_applicable_note");
+    throw new DomainError(noteIssue ? "REPORT_NOT_APPLICABLE_NOTE" : "REPORT_INVALID", {
       message: `imported report rejected: ${result.issues.map((i) => `${i.path}: ${i.message}`).join("; ")}`,
       details: { issues: result.issues, taskRound },
     });

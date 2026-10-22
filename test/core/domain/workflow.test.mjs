@@ -274,7 +274,34 @@ describe("planReviewDispatch", () => {
     assert.match(action.title, /^Review T-1: /);
     assert.match(action.description, /VERDICT: APPROVE/);
     assert.match(action.description, /Do not move the original card/);
-    assert.equal(action.acceptance.length, 3);
+    assert.deepEqual(action.acceptance, [
+      "The delivery report is consistent with its evidence anchors",
+      "The comment trail has no unresolved decision/defect entry",
+    ]);
+  });
+
+  it("carries the original's frozen baseline into the review card's own baseline", () => {
+    const result = planReviewDispatch({
+      tasks: [card({ acceptance: ["cli works", "gate visible"] })],
+      config: CONFIG,
+    });
+    assert.deepEqual(result.actions[0].acceptance, [
+      "cli works",
+      "gate visible",
+      "The delivery report is consistent with its evidence anchors",
+      "The comment trail has no unresolved decision/defect entry",
+    ]);
+  });
+
+  it("uses the three-item checklist on an epic, where the children stand in for the list", () => {
+    const result = planReviewDispatch({
+      tasks: [card({ kind: "epic", acceptance: ["container goal"] })],
+      config: CONFIG,
+    });
+    const action = result.actions[0];
+    assert.equal(action.acceptance[0], "container goal");
+    assert.match(action.acceptance[1], /Every child of T-1/);
+    assert.equal(action.acceptance.length, 4);
   });
 
   it("tells the reviewer when the original's acceptance list was worker-derived", () => {
@@ -282,7 +309,7 @@ describe("planReviewDispatch", () => {
     assert.match(action.description, /acceptance_derived/);
     assert.match(action.description, /narrowed/);
     assert.match(action.description, /REJECT/);
-    assert.equal(action.acceptance.length, 3, "the generic review checklist is unchanged");
+    assert.equal(action.acceptance.length, 2, "the generic review checklist is unchanged");
   });
 
   it("never reviews a review card, a flow-B card, or a card not in review", () => {
@@ -402,6 +429,22 @@ describe("planReviewOutcomes", () => {
       { type: "approve", reviewStatus: "in_review", reviewRef: "T-2", originalRef: "T-1", round: 1, closeReview: true, acceptedBy: LOOP_ACCEPTOR },
     ]);
     assert.deepEqual(result.alerts, []);
+  });
+
+  it("does not approve when the verdict's report misses a baseline criterion", () => {
+    const original = card({ acceptance: ["a", "b"] });
+    const verdict = {
+      ...approve,
+      report: { ...REVIEWER_REPORT, acceptance: [{ text: "a", status: "met" }] },
+    };
+    const result = planReviewOutcomes({
+      tasks: [original, reviewCard()],
+      verdicts: { "T-2": verdict },
+      config: CONFIG,
+    });
+    assert.deepEqual(result.actions, []);
+    assert.equal(result.alerts[0].type, "verdict_incomplete");
+    assert.deepEqual(result.alerts[0].missing, ["b"]);
   });
 
   it("rejects a task through in_review → in_progress → todo, carrying the findings", () => {
@@ -1040,6 +1083,39 @@ describe("planAutoAccept — no review required", () => {
         );
       }
     }
+  });
+
+  it("requires a current-round report to cover a non-empty baseline", () => {
+    const baseline = ["a", "b"];
+    const noReport = planAutoAccept({
+      tasks: [autoCard({ acceptance: baseline })],
+      config: { ...CONFIG, acceptancePolicy: "both" },
+    });
+    assert.deepEqual(noReport.actions, []);
+    assert.equal(noReport.alerts[0].reason, "acceptance_unverified");
+
+    const incomplete = planAutoAccept({
+      tasks: [autoCard({ acceptance: baseline })],
+      reportsByRef: { "T-1": { acceptance: [{ text: "a", status: "met" }] } },
+      config: { ...CONFIG, acceptancePolicy: "both" },
+    });
+    assert.deepEqual(incomplete.actions, []);
+    assert.equal(incomplete.alerts[0].reason, "acceptance_incomplete");
+    assert.deepEqual(incomplete.alerts[0].missing, ["b"]);
+
+    const complete = planAutoAccept({
+      tasks: [autoCard({ acceptance: baseline })],
+      reportsByRef: {
+        "T-1": {
+          acceptance: [
+            { text: "a", status: "met" },
+            { text: "b", status: "met" },
+          ],
+        },
+      },
+      config: { ...CONFIG, acceptancePolicy: "both" },
+    });
+    assert.deepEqual(complete.actions.map((action) => action.type), ["auto_accept"]);
   });
 });
 

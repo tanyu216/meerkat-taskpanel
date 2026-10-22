@@ -13,6 +13,7 @@ import { ARCHIVE_AFTER_DAYS, HEARTBEAT_FRESH_MS, IDENTIFIER_PATTERN, LABEL_MAX_L
 import { DomainError } from "../../foundation/errors.mjs";
 import { identifierPrefix } from "../../foundation/ids.mjs";
 import { AWAITING_REASONS, STATUS, STATUSES, TASK_KINDS } from "./enums.mjs";
+import { acceptanceFromJson } from "./acceptance.mjs";
 import { normalizeBlockedReason } from "./blocked-reason.mjs";
 import { normalizeIdem } from "./idem.mjs";
 import { parsePriority } from "./priority.mjs";
@@ -73,6 +74,10 @@ export const TASK_COLUMNS = Object.freeze([
   // 0031 — the card's review decision (0/1). A snapshot taken at creation; the
   // dispatch/auto-accept/done gates read this, never the project policy.
   "review_required",
+  // 0032 — the frozen acceptance baseline and its audit/optimistic-lock
+  // counter. Seeded once, then only appended (or pruned by an audited human).
+  "acceptance_json",
+  "acceptance_revision",
 ]);
 
 const ISO_MILLIS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -343,6 +348,10 @@ export function normalizeTaskCreate(input, context) {
     // marker (a review card is forced to 0); a direct/importer write gets the
     // conservative 0 here and must set it itself if the card needs review.
     reviewRequired: 0,
+    // 0032 — the acceptance baseline. `createTask` seeds it from the card's
+    // meta (or the review action's list); a direct write starts empty.
+    acceptance: [],
+    acceptanceRevision: 0,
     version: 1,
     idem: normalizeIdem(input.idem),
     createdAt: now,
@@ -498,6 +507,9 @@ const CAMEL = {
   review_round: "reviewRound",
   // 0031 — the card's review decision snapshot.
   review_required: "reviewRequired",
+  // 0032 — the frozen acceptance baseline and its revision.
+  acceptance_json: "acceptance",
+  acceptance_revision: "acceptanceRevision",
 };
 
 /**
@@ -513,6 +525,10 @@ export function taskFromRow(row) {
   }
   task.labels = normalizeLabels(row.labels ?? "[]");
   task.meta = decodeJsonObject(row.meta_json);
+  // The column is the JSON text; the DTO carries the parsed list. `acceptance`
+  // is the frozen baseline, never `meta.acceptance`.
+  task.acceptance = acceptanceFromJson(row.acceptance_json);
+  task.acceptanceRevision = Number(row.acceptance_revision ?? 0);
   return task;
 }
 

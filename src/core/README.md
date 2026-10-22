@@ -26,6 +26,14 @@ Rules that are enforced, not just documented:
   one;
 * the delivery gate is a database trigger *and* a domain check, and the two are
   tested against each other (`test/contract/`);
+* the **acceptance baseline** is a column, not writable meta: `tasks.acceptance_json` +
+  `acceptance_revision` (0032) are seeded once from `meta.acceptance` / the imported
+  checkboxes, can only be appended to (a human may prune an item with an audited reason),
+  and are locked once the card is `in_review`. `done` requires the current round's report to
+  cover it (`domain/acceptance.mjs#coverageOf`, `commands/acceptance.mjs`), a review
+  `APPROVE` requires the review report to cover the original's, and the auto-accept planner
+  reads the same report so it never plans an acceptance the write gate would refuse. The DB
+  trigger (`tr_tasks_acceptance_revision`) refuses a revision-less rewrite at the source;
 * the **workflow decisions** are the board's: `domain/workflow.mjs` is pure (reconcile
   classification, review outcomes, review dispatch), and `commands/workflow.mjs` assembles
   a bounded board snapshot for it. `issue reconcile --workflow` exposes the plan; the loop

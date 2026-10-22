@@ -626,7 +626,8 @@ describe("board skill: the acceptance list rule", () => {
     assert.match(text, /issue get <ref> --json/);
     assert.match(text, /acceptance_derived=yes/);
     assert.match(text, /1[–-]6/);
-    assert.match(text, /do not rewrite/i);
+    assert.match(text, /frozen/);
+    assert.match(text, /never replace or remove/i);
   });
 
   it("says an epic's acceptance is its children", () => {

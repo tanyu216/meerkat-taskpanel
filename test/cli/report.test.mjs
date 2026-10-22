@@ -31,7 +31,7 @@ describe("cli/report template", () => {
     await boardWithIssue(
       async ({ run }) => {
         const data = dataOf(run(["report", "template", "DEMO-0001", "--commit", "dcd7d15", "--json"]));
-        assert.equal(data.acceptance_source, "meta.acceptance");
+        assert.equal(data.acceptance_source, "acceptance_json");
         assert.deepEqual(
           data.report.acceptance.map((item) => [item.text, item.status]),
           [["cli works", "not_met"], ["gate visible", "not_met"]],
@@ -44,10 +44,10 @@ describe("cli/report template", () => {
   });
 
   it("flags a worker-derived acceptance list without treating it as evidence", () => {
-    const derived = acceptanceFrom({ meta: { acceptance: ["a", "b"], acceptance_derived: "yes" } });
-    assert.equal(derived.source, "meta.acceptance");
+    const derived = acceptanceFrom({ acceptance: ["a", "b"], meta: { acceptance_derived: "yes" } });
+    assert.equal(derived.source, "acceptance_json");
     assert.match(derived.warning, /derived at claim/);
-    const human = acceptanceFrom({ meta: { acceptance: ["a"] } });
+    const human = acceptanceFrom({ acceptance: ["a"], meta: {} });
     assert.equal(human.warning, null);
   });
 
@@ -87,9 +87,10 @@ describe("cli/report template", () => {
     ]);
     assert.match(legacy.warning, /not evidence/);
 
-    // Modern `meta.acceptance` wins over the legacy list.
+    // Modern `meta.acceptance` wins over the legacy list; with no frozen
+    // snapshot it is a seed, and the template says so.
     const modern = acceptanceFrom({ meta: { acceptance: ["a"], acceptance_legacy: [{ text: "b" }] } });
-    assert.equal(modern.source, "meta.acceptance");
+    assert.equal(modern.source, "meta.acceptance (no frozen baseline)");
     assert.deepEqual(modern.items.map((i) => i.text), ["a"]);
 
     for (const task of [{ meta: {} }, { meta: { acceptance: [] } }, { meta: { acceptance_legacy: [] } }]) {

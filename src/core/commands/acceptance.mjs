@@ -23,6 +23,7 @@ import { DomainError } from "../../foundation/errors.mjs";
 import { acceptanceScopeOf, assertAcceptanceAuthority, isTerminalStatus } from "../domain/status.mjs";
 import { reviewRequiredOf } from "../domain/review-policy.mjs";
 import { parseReviewVerdict } from "../domain/workflow.mjs";
+import { coverageOf } from "../domain/acceptance.mjs";
 import { STATUS } from "../domain/enums.mjs";
 
 /**
@@ -58,6 +59,101 @@ export function assertAcceptance(ctx, task, actor) {
 }
 
 /**
+ * Does the current-round delivery report cover the card's frozen baseline?
+ *
+ * This is the 0032 acceptance gate. A review card is exempt here — its evidence
+ * is the APPROVE report checked by {@link assertReviewEvidence}. A card with an
+ * empty baseline is vacuously covered (the migration grandfather and the
+ * "creator wrote no criteria" case); the guarantee is that a non-empty baseline
+ * can never be shortened, not that every card must have one.
+ *
+ * `deliver(to: done)` passes the report it is about to insert, because that row
+ * does not exist in the repository yet; every other caller reads the current
+ * round from the repository.
+ *
+ * @param {object} ctx
+ * @param {object} task
+ * @param {{report?: object}} [options]
+ */
+export function assertAcceptanceCoverage(ctx, task, options = {}) {
+  if (task.reviewOfId !== null && task.reviewOfId !== undefined) return true;
+  // An empty baseline is vacuously covered — the migration grandfather and the
+  // "the creator wrote no criteria" case. It needs no report: the guarantee is
+  // that a non-empty baseline cannot be shortened, not that every card has one.
+  if (!Array.isArray(task.acceptance) || task.acceptance.length === 0) return true;
+
+  const supplied = options.report !== undefined && options.report !== null;
+  const report = supplied ? options.report : deliveryReportFor(ctx, task);
+  if (report === null) {
+    throw new DomainError("ACCEPTANCE_UNVERIFIED", {
+      message:
+        `${task.identifier} has an acceptance baseline but no delivery report for round ` +
+        `${task.deliveryRound}`,
+      details: {
+        taskId: task.id,
+        identifier: task.identifier,
+        round: task.deliveryRound,
+        waived:
+          task.reportWaiverRound !== null &&
+          task.reportWaiverRound !== undefined &&
+          Number(task.reportWaiverRound) === Number(task.deliveryRound),
+      },
+      hint: {
+        fix:
+          "write the current round's report (taskctl report write <ref> --report-file -); " +
+          "a --no-report waiver is not acceptance evidence",
+      },
+    });
+  }
+
+  assertCoverageOrThrow({
+    task,
+    baseline: task.acceptance,
+    reportItems: report.acceptance,
+    source: "delivery",
+  });
+  return true;
+}
+
+/** The current-round delivery report, or `null` when none (or only an import). */
+function deliveryReportFor(ctx, task) {
+  const report = ctx.repos.reports.latestForRound(task.id, task.deliveryRound);
+  return report !== null && report !== undefined && report.origin === "delivery" ? report : null;
+}
+
+/** The coverage arithmetic + the refusal. Shared by the delivery and review gates. */
+function assertCoverageOrThrow({ task, baseline, reportItems, source, review = null }) {
+  const coverage = coverageOf({ baseline, reportItems, includeExtras: true });
+  if (coverage.ok) return;
+  const reviewRef =
+    review === null ? null : { identifier: review.identifier, status: review.status };
+  const parts = [];
+  if (coverage.missing.length > 0) parts.push(`${coverage.missing.length} missing`);
+  if (coverage.blocking.length > 0) parts.push(`${coverage.blocking.length} blocking`);
+  throw new DomainError("ACCEPTANCE_INCOMPLETE", {
+    message:
+      `${task.identifier}: ${parts.join(", ")} acceptance item(s) for delivery round ` +
+      `${task.deliveryRound}`,
+    details: {
+      taskId: task.id,
+      identifier: task.identifier,
+      source,
+      round: task.deliveryRound,
+      ...(reviewRef === null ? {} : { review: reviewRef }),
+      missing: coverage.missing,
+      blocking: coverage.blocking,
+      extra: coverage.extra,
+    },
+    hint: {
+      fix:
+        source === "review"
+          ? "the review report must answer every baseline criterion; REJECT instead of approving an incomplete report"
+          : "answer every baseline criterion with met/not_applicable (not_applicable needs a note)",
+    },
+  });
+}
+
+/**
  * Does a card that says `review_required` have the evidence it promised?
  *
  * The evidence is a **current-round** review card with an `APPROVE` verdict.
@@ -77,15 +173,43 @@ export function assertReviewEvidence(ctx, task) {
   if (task.reviewOfId !== null && task.reviewOfId !== undefined) return true;
 
   const reviews = currentRoundReviews(ctx, task);
-  const approved = reviews.some((review) => {
-    if (review.status !== "in_review" && review.status !== "done") return false;
+  let approvedReview = null;
+  let approvedVerdict = null;
+  for (const review of reviews) {
+    if (review.status !== "in_review" && review.status !== "done") continue;
     const verdict = parseReviewVerdict(
       ctx.repos.reports.listByTask(review.id),
       review.deliveryRound ?? null,
     );
-    return verdict.ok === true && verdict.verdict === "APPROVE";
-  });
-  if (approved) return true;
+    if (verdict.ok === true && verdict.verdict === "APPROVE") {
+      approvedReview = review;
+      approvedVerdict = verdict;
+      break;
+    }
+  }
+  if (approvedVerdict !== null) {
+    // 0032 — an APPROVE is only evidence when its report answers every criterion
+    // of the original (and of the review card's own copied baseline). A reviewer
+    // that writes `VERDICT: APPROVE` over a report that never mentions half the
+    // baseline has not accepted the work.
+    assertCoverageOrThrow({
+      task,
+      baseline: task.acceptance,
+      reportItems: approvedVerdict.report?.acceptance,
+      source: "review",
+      review: approvedReview,
+    });
+    if (approvedReview !== null) {
+      assertCoverageOrThrow({
+        task: approvedReview,
+        baseline: approvedReview.acceptance,
+        reportItems: approvedVerdict.report?.acceptance,
+        source: "review",
+        review: approvedReview,
+      });
+    }
+    return true;
+  }
 
   const open = reviews.filter((review) => !isTerminalStatus(review.status));
   if (open.length > 0) {

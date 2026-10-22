@@ -98,7 +98,7 @@ A pair on the whitelist can still be refused; the target decides which guard app
 | `in_review` | The **delivery gate**: a `delivery` report for the current `delivery_round`, or an audited waiver for that round (§4). Every child must be terminal (`CHILDREN_OPEN`). |
 | `blocked` | `--blocked-reason` is **optional**. Entering `blocked` does not bump the round; **`in_review → blocked` does**. |
 | `awaiting` | Only `in_progress → awaiting`, naming `--awaiting-reason E1`…`E5`. Leaving clears the reason. `awaiting → blocked`/`in_review`/`done` are forbidden. |
-| `done` | Only from `in_review` — **acceptance**, so the delivery gate is not re-consulted. The writer must be allowed by policy and scope (§7); every child must be terminal (`CHILDREN_OPEN`). A card whose `review_required` is 1 needs a current-round APPROVE review (`REVIEW_REQUIRED`; the DB trigger checks that a review card reached the reviewer). A human closing a top-level card also needs the current round's review cards resolved (`REVIEW_PENDING`). |
+| `done` | Only from `in_review` — **acceptance**, so the delivery gate is not re-consulted. The writer must be allowed by policy and scope (§7); every child must be terminal (`CHILDREN_OPEN`). A card whose `review_required` is 1 needs a current-round APPROVE review (`REVIEW_REQUIRED`; the DB trigger checks that a review card reached the reviewer). A human closing a top-level card also needs the current round's review cards resolved (`REVIEW_PENDING`). A non-empty **acceptance baseline** must be covered by the current round's report (`ACCEPTANCE_UNVERIFIED` / `ACCEPTANCE_INCOMPLETE`, §4a). |
 | `canceled` | From `backlog`, `todo`, `in_progress`, `awaiting` or `blocked` — **never directly from `in_review`**. Terminal. |
 
 ### The order the guards run
@@ -112,6 +112,8 @@ The first refusal wins, so the error you see is stable:
    refusal;
 4. for `done`: acceptance authority (`ACCEPTANCE_FORBIDDEN`);
 5. for `in_review` and `done`: children terminal (`CHILDREN_OPEN`);
+5a. for `done`: acceptance **coverage** (`ACCEPTANCE_UNVERIFIED` when the round has no report,
+   `ACCEPTANCE_INCOMPLETE` when an item is missing or blocking) — §4a;
 6. for `todo → in_progress`: the claim gate (`not_assignee`, `EXECUTION_ACTIVE`,
    `CLAIM_LOST`, `not_claimable`);
 7. for `in_review`: the delivery gate (`REPORT_REQUIRED`);
@@ -164,6 +166,41 @@ REPORT_REQUIRED: cannot move PROJ-0007 to in_review: no report for delivery roun
 try: taskctl issue deliver PROJ-0007 --report-file -
   or: taskctl issue move PROJ-0007 in_review --no-report --reason "<why this is audited>"
 ```
+
+## 4a. The acceptance baseline
+
+Each card carries a frozen acceptance baseline: `tasks.acceptance_json` (`acceptance[]` on the
+wire) plus a monotonically increasing `acceptance_revision`. `meta.acceptance` is only the
+**seed** — `create` and the first claim copy it (and the imported `acceptance_legacy` texts)
+into the snapshot; the gates never read meta.
+
+- **Append only.** `issue update <ref> --acceptance "…"` appends; duplicates (normalized text)
+  are ignored. There is no replace. Removing an item is a **human-only audited prune**:
+  `--drop-acceptance "…" --reason "<why>"` (≥ 8 characters, recorded as `acceptance_pruned`),
+  optionally guarded by `--acceptance-revision <n>` (`ACCEPTANCE_STALE_REVISION` on a stale
+  read).
+- **Locked once delivered.** `in_review` and the terminal states refuse any snapshot change
+  (`ACCEPTANCE_LOCKED`); rework first. A `done`/`canceled` reopen does not change the baseline.
+- **The DB enforces the same rules**: any rewrite must bump `acceptance_revision` exactly once
+  (`ACCEPTANCE_SNAPSHOT_IMMUTABLE`), and a removed/rewritten old item needs an
+  `acceptance_pruned` activity with a reason (`ACCEPTANCE_PRUNE_FORBIDDEN` in the app;
+  the trigger raises the same `ACCEPTANCE_SNAPSHOT_IMMUTABLE`).
+- **The gate.** Moving to `done` reads the current round's `delivery` report and checks it
+  against the snapshot. No report → `ACCEPTANCE_UNVERIFIED` (a `--no-report` waiver excuses
+  the delivery gate, not acceptance). Every baseline item must appear; `met` and
+  `not_applicable` (with a non-empty note) pass, `partial` / `not_met` block. A report item
+  **beyond** the baseline also blocks if it is `partial` / `not_met` — the report itself says
+  work is unfinished. Empty baseline → vacuous, allowed: the rule is "once non-empty, it
+  cannot be shortened", not "every card must have criteria".
+- **Reviews.** An `APPROVE` on a review card is checked against the original's snapshot (and
+  the review card's own) before it can close anything; see
+  [`review-workflow.md`](review-workflow.md).
+- **Epics.** A container's own snapshot is informational; its acceptance fact is the current
+  round's rollup over its children (§6).
+
+The engine guarantees coverage of the written baseline. It cannot guarantee that the baseline
+itself covers everything in the description — that stays the reviewer's judgement, which is
+why `meta.acceptance_derived = "yes"` is still a prompt to audit the list.
 
 ## 5. Claims and heartbeats
 

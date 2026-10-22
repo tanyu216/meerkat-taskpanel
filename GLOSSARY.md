@@ -184,6 +184,7 @@ The board policy and card scope that decide who may move a card into `done`. Und
 default `both`, a human or the board (`taskd`) closes a **top-level** card, and a worker
 agent may not accept its own; a **child** card is the opposite, closed only by a non-human
 writer. Acceptance is a separate act from delivery, and the board refuses the shortcut.
+Authority decides *who*; the acceptance baseline decides *whether* the evidence suffices.
 _中文_: 验收权限
 _Avoid_: approver role, reviewer (the reviewer reports; it does not accept)
 
@@ -234,6 +235,15 @@ list, its worker may derive one at claim; `meta.acceptance_derived=yes` records 
 independent acceptor still has to audit its coverage.
 _中文_: 验收
 _Avoid_: criterion, requirement, DoD
+
+**Acceptance baseline**:
+The card's frozen acceptance list (`acceptance_json` + `acceptance_revision`), seeded once
+from `meta.acceptance` / the imported checkboxes. It can be appended to and only a human may
+prune an item (audited), so it cannot silently shrink under the work. `done` requires the
+current round's report to cover it; a review `APPROVE` requires the review report to cover the
+original's.
+_中文_: 验收基线
+_Avoid_: checklist, TODO list, meta.acceptance
 
 **Evidence**:
 A concrete pointer supporting a report — a commit, a path, a command or a coverage figure.

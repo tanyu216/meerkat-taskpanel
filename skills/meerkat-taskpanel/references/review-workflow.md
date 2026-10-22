@@ -76,11 +76,20 @@ What the loop does next depends on why the target moved:
 
 ### Read
 
-- the original's description and every acceptance item (`meta.acceptance` /
-  `meta.acceptance_legacy`);
+- the original's description and every acceptance item — the **frozen snapshot** (`acceptance`
+  in `issue get --json`); `meta.acceptance` / `meta.acceptance_legacy` only fill in for a
+  grandfathered card whose snapshot was never seeded;
 - the current round's delivery report and its evidence anchors;
 - the comment trail, looking for unresolved decision / defect entries;
 - for an epic: the rollup report and each child's state.
+
+An `APPROVE` is checked against the baseline before it can close anything: the review report
+must cover **every item of the original's snapshot** (and the review card's own snapshot,
+which is the original's list plus the generic review items). `met` and `not_applicable` (with
+a non-empty note) pass; a missing item, `partial` or `not_met` refuses with
+`ACCEPTANCE_INCOMPLETE` and the original stays `in_review`. A `REJECT` is never checked for
+coverage — `partial` / `not_met` is its normal shape. If the baseline itself is wrong, rework
+the original (a new round re-freezes it); a reviewer cannot edit it.
 
 If the original carries `meta.acceptance_derived = "yes"`, its acceptance list was derived by
 the worker at claim time. Check that it covers every requirement in the description and

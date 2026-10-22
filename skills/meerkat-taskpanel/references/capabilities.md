@@ -94,15 +94,18 @@ The plan is snake_case (`workflowToWire`). Action `type`s the loop executes:
 
 | `type` | Meaning |
 |---|---|
-| `create_review` | create the review card (`original_ref`, `project_id`, `reviewer`, `round`, `idem`, `target`, `title`, `description`, `acceptance[]`) |
+| `create_review` | create the review card (`original_ref`, `project_id`, `reviewer`, `round`, `idem`, `target`, `title`, `description`, `acceptance[]`). `acceptance[]` is the original's frozen baseline followed by the generic review items (2 for a card, 3 for an epic), and becomes the review card's own frozen baseline |
 | `auto_accept` | close a no-review original (`original_ref`, `accepted_by`, `round`) |
 | `approve` / `approve_hold` | apply an APPROVE verdict; `_hold` leaves a top-level original `in_review` under `human-only` |
 | `reject_task` / `reject_epic` / `reject_task_finish` | apply a REJECT verdict; the epic form also creates a fix child |
 | `close_review` / `cancel_review` | close the review card last |
 
-Alert `type`s include `original_unseen`, `verdict_unreadable`, `review_aging`,
-`actions_capped`, `dispatch_capped`, `self_review_not_independent`, and the
-`review_cards_unclosable` startup warning. Each carries a `dedup_key`.
+Alert `type`s include `original_unseen`, `verdict_unreadable`, `verdict_incomplete`,
+`acceptance_incomplete`, `acceptance_unverified`, `review_aging`, `actions_capped`,
+`dispatch_capped`, `self_review_not_independent`, and the `review_cards_unclosable` startup
+warning. Each carries a `dedup_key`. The three acceptance/verdict alerts are log-only: the
+planner declines to plan an action the write gate would refuse, rather than producing one
+failure per tick.
 
 ## 7. Workflow writes
 
@@ -119,7 +122,10 @@ All writes use `--actor-kind taskd` and are idempotent by their key.
 | comment | `comment add <ref> --kind note\|change --body <text>` | `ok` only |
 
 `issue meta` **merges**; `issue update --meta` replaces the whole object and would
-erase the acceptance list, target and review keys. Use `issue meta`.
+erase `target` and the review keys. Use `issue meta`. The acceptance baseline no longer
+lives in meta (0032): it is a column, immune to `--meta`, and a **changed**
+`meta.acceptance` / `meta.acceptance_legacy` is refused (`VALIDATION_FAILED`) — append with
+`issue update --acceptance`, prune only as a human with `--drop-acceptance --reason`.
 
 ## 8. Live stream — `events tail`
 

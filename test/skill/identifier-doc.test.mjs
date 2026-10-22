@@ -130,11 +130,11 @@ describe("card-schema.md — identifier syntax", () => {
     const keys = [...table.matchAll(/^\|\s*`([a-z_]+)`\s*\|/gm)].map((match) => match[1]);
 
     // `target` has a reserved slot in CARD_KEY_ORDER so a legacy key keeps its
-    // historical position, but it is not one of the 24 card keys the table
+    // historical position, but it is not one of the 41 card keys the table
     // documents (the page says so under "Unknown keys are preserved").
     const documented = CARD_KEY_ORDER.filter((key) => key !== "target");
-    assert.equal(documented.length, 24, "CARD_KEY_ORDER minus target must be the 24 documented keys");
-    assert.equal(keys.length, documented.length, "the table must still document 24 keys");
+    assert.equal(documented.length, 41, "CARD_KEY_ORDER minus target must be the 41 documented keys");
+    assert.equal(keys.length, documented.length, "the table must still document 41 keys");
     assert.deepEqual([...keys].sort(), [...documented].sort());
     assert.deepEqual([keys[0], keys.at(-1)], ["id", "notify_leader"]);
 

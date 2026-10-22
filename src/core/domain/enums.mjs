@@ -274,6 +274,10 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "report_written",
   "task_delivered",
   "report_waived",
+  // 0032 — the frozen acceptance baseline: a successful append, and the audited
+  // prune a human performs with a reason.
+  "acceptance_changed",
+  "acceptance_pruned",
   // A card's review requirement was changed after creation (an agent escalating
   // it, or a human waiving it with a reason). The card column is the decision;
   // this event is the audit trail for changing that decision.

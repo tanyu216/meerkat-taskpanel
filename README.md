@@ -68,6 +68,9 @@ the [Highlights](#highlights) below describe.
 2. **A delivery gate with evidence.** A card can only reach `in_review` with a report for the
    *current* delivery round, enforced in the database as well as the app layer. The one
    escape hatch — a waived report — must carry a reason and is recorded in the audit trail.
+   `done` then checks the report against the card's **frozen acceptance baseline**: every
+   criterion must be met (or explicitly not applicable, with a note); a baseline can be
+   appended to but not quietly shortened, and a review `APPROVE` must cover it too.
 3. **Dependencies and epics as first-class edges.** `depends_on` links form a DAG, so
    independent work runs in parallel and dependent work waits; parent/child links roll a
    subtree's progress up into its epic.

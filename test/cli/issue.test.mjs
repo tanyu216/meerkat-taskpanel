@@ -120,6 +120,48 @@ describe("cli/issue — create, list, get", () => {
     });
   });
 
+  it("shows the whole card in the human read — title, labels, meta, description, snapshot", async () => {
+    await board(async ({ run }) => {
+      createIssue(run, [
+        "--acceptance", "cli works",
+        "--acceptance", "gate visible",
+        "--label", "infra",
+        "--label", "m2",
+        "--description", "The long story.",
+        "--meta", "team=panel",
+        "--target", "repo-a",
+      ]);
+
+      const human = run(["issue", "get", "DEMO-0001"]);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /^title\s+Ship M2$/m);
+      assert.match(human.stdout, /^labels\s+infra, m2$/m);
+      assert.match(human.stdout, /^description\s+The long story\.$/m);
+      assert.match(human.stdout, /^acceptance\s+1\) cli works; 2\) gate visible$/m);
+      assert.match(human.stdout, /^acceptance_revision\s+1$/m);
+      assert.match(human.stdout, /^parent\s+-$/m);
+      assert.match(human.stdout, /^awaiting_reason\s+-$/m);
+      assert.match(human.stdout, /^review_of\s+-$/m);
+      const metaLine = human.stdout.split("\n").find((line) => line.startsWith("meta"));
+      assert.ok(metaLine !== undefined, "meta is printed");
+      assert.match(metaLine, /"team":"panel"/);
+      assert.match(metaLine, /"target":"repo-a"/);
+    });
+  });
+
+  it("prints the reviewed card's identifier, not its internal id", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      deliverIssue(run, "DEMO-0001");
+      createIssue(run, ["--review-of", "DEMO-0001", "--review-round", "1"]);
+
+      const human = run(["issue", "get", "DEMO-0002"]);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /^review_of\s+DEMO-0001$/m);
+      assert.match(human.stdout, /^review_round\s+1$/m);
+    });
+  });
+
   it("gets the card's attachments in both output shapes", async () => {
     await board(async ({ run }) => {
       createIssue(run);
@@ -163,11 +205,11 @@ describe("cli/issue — update, move, assign, archive", () => {
       createIssue(run);
 
       const updated = dataOf(run(["issue", "update", "DEMO-0001", "--acceptance", "a", "--acceptance", "b", "--json"]));
-      assert.deepEqual(updated.task.meta.acceptance, ["a", "b"]);
+      assert.deepEqual(updated.task.acceptance, ["a", "b"], "the frozen baseline is the authority");
 
       const merged = dataOf(run(["issue", "update", "DEMO-0001", "--meta", "team=panel", "--json"]));
       assert.equal(merged.task.meta.team, "panel");
-      assert.deepEqual(merged.task.meta.acceptance, ["a", "b"], "meta merge keeps what was there");
+      assert.deepEqual(merged.task.acceptance, ["a", "b"], "a meta merge keeps the baseline");
 
       const nothing = run(["issue", "update", "DEMO-0001"]);
       assert.equal(nothing.status, 0, "nothing to do is not an error");
@@ -190,7 +232,7 @@ describe("cli/issue — update, move, assign, archive", () => {
       );
 
       assert.equal(updated.task.status, "in_progress");
-      assert.deepEqual(updated.task.meta.acceptance, ["a", "b"]);
+      assert.deepEqual(updated.task.acceptance, ["a", "b"]);
       assert.equal(updated.task.meta.acceptance_derived, "yes");
       assert.equal(updated.task.meta.target, "src/x");
       assert.equal(updated.task.meta.epic_triage, "off");

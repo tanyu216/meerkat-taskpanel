@@ -311,7 +311,8 @@ export async function runWorkflowPass(opts, config, log) {
     },
     setMeta: (ref, meta) => {
       // `issue meta` merges. `issue update --meta` replaces the whole object,
-      // which would erase the card's acceptance list, target and review keys.
+      // which would erase the target and review keys (the acceptance baseline is
+      // a column since 0032, immune to --meta).
       const read = invoke([
         "issue", "meta", ref,
         ...Object.entries(meta).flatMap(([key, value]) => ["--meta", `${key}=${value}`]),
