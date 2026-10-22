@@ -24,6 +24,7 @@ import { existsSync } from "node:fs";
 import { isEntryPoint } from "../src/foundation/entry-guard.mjs";
 
 import * as passesEntry from "./loop/passes.mjs";
+import { runSession } from "./loop/session.mjs";
 import * as subscribeEntry from "./loop/subscribe.mjs";
 import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./loop/options.mjs";
 import { runContinueOnce } from "./loop/runners.mjs";
@@ -155,6 +156,15 @@ export async function main(argv, env = process.env) {
       return passesEntry.runPollOnce(opts, env);
     case "subscribe":
       return subscribeEntry.runOnce(opts, env);
+    case "session": {
+      // The resident pool is long-lived. A signal closes it cleanly; the
+      // service manager is responsible for restarting the process.
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      process.once("SIGTERM", abort);
+      process.once("SIGINT", abort);
+      return runSession(opts, { log, signal: controller.signal });
+    }
     default:
       return runDaemon(opts, env, log);
   }

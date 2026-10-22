@@ -1,16 +1,24 @@
 ---
 name: meerkat-loop
-description: The host-external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping and a 10-minute continue turn that wakes the host to run the notify-only SLA patrol, the board's review workflow, and the atomic claim-and-wake poll. Installs launchd / systemd / cron units and the per-host wake glue for claude, codex, pi, opencode and cursor; OpenClaw is excluded.
+description: The host-external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation plus one project session per target directory. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the project session spawns the worker/reviewer subagent in the project directory. Installs launchd / systemd / cron units and the per-host wake glue for claude, codex, pi, opencode and cursor; OpenClaw is excluded.
+disable-model-invocation: true
 ---
 
 # Meerkat Loop
 
-The loop runs when no agent is looking. Its scheduler owns two clocks:
+The loop runs when no agent is looking. Its scheduler owns two clocks and — in its
+default resident shape — a long-lived **session pool**:
 
-| Clock | Cadence | Job |
+| Part | Cadence | Job |
 |---|---|---|
 | **ping** | 60s | prune registry entries whose pid is gone. No board read, no claim, no LLM |
-| **continue** | 600s | wake the host with a bounded `Continue` prompt; that turn runs the entries below |
+| **continue** | 600s | hand the control session a bounded `/meerkat-loop` continue prompt (or run it one-shot when no pool is live); that turn runs the entries below |
+| **session** (`--session`) | long-lived | one control conversation plus one project conversation per target directory; routes each handoff to the project session, which spawns the worker/reviewer subagent in that directory |
+
+A subagent inherits the **launch cwd** of the session that spawns it, so one
+board-wide session cannot serve two project directories. That is why the pool keeps
+one project session per directory. Without a live pool, poll claims nothing and only
+patrol and workflow run — see `references/operation.md` §No resident pool.
 
 The continue turn runs three deterministic passes, in this order:
 
@@ -32,13 +40,35 @@ The continue turn runs three deterministic passes, in this order:
    `agent-only` + `autoAcceptReviews=no` is refused for the same reason.
    `autoAcceptReviews` only controls whether the loop closes a **review card**;
    it does not gate auto-accepting a no-review original.
-3. **poll** — scan, atomically claim, wake one worker. Runs last so a review
-   card dispatched in this turn can be claimed immediately.
+3. **poll** — scan, atomically claim, **enqueue the handoff**. It never spawns a
+   worker: the resident project session does, as a subagent that inherits the
+   project directory. Runs last so a review card dispatched in this turn can be
+   claimed immediately. At the concurrency cap, or with no project directory for
+   the card, nothing is claimed.
 
 The exact `taskctl` invocations and the JSON keys each pass reads are the board
 skill's capability contract: `meerkat-taskpanel`, `references/capabilities.md`.
 This skill records only the decisions — when to patrol, dispatch, claim, wake or
 notify.
+
+### Invocation
+
+This skill is **command-only**. Its frontmatter sets `disable-model-invocation: true`, so
+the model never sees it in its skill list and never loads it from a keyword or description
+match; only an explicit invocation runs it:
+
+```text
+/meerkat-loop
+```
+
+The text after the command is the turn's instruction, not a subcommand. The supervisor's
+continue turn passes `/meerkat-loop Continue — …`; the rest of that prompt (the three
+passes, with absolute entry paths) is appended as the turn's input. There is no
+argument placeholder, no subcommand and no argument parsing.
+
+`install.sh` copies the skill to `<host>/skills/meerkat-loop/`, so the bare
+`/meerkat-loop` resolves there. On a host that does not expand slash commands, the prefix
+stays literal text and the rest of the prompt still carries the work.
 
 ### Who may close
 

@@ -117,18 +117,22 @@ Options:
                     The liveness clock (default 60). It only prunes dead worker
                     pids from the registry: no board read, no LLM.
   --continue-interval <sec>
-                    The judgment clock (default 600 = 10 minutes). It wakes the
-                    host with a bounded "Continue" prompt; that turn runs the poll,
-                    patrol and workflow entries.
+                    The judgment clock (default 600 = 10 minutes). It hands the
+                    resident control session a bounded "/meerkat-loop Continue"
+                    prompt (or runs it one-shot when no pool is live); that turn
+                    runs the poll, patrol and workflow entries.
   --continue=yes|no
                     Enable the continue turn (default yes). Persisted to the
                     host config; `no` keeps the ping clock but discovers no work
                     until a human runs the poll entry.
   --supervisor=enable|disable|status
                     Opt in to the supervisor daemon: load / unload / report the
-                    loop units the install just wrote. There is no silent default
-                    — a plain install still only prints the load command — and on
-                    a TTY with no flag the one-time question defaults to NO.
+                    loop units the install just wrote — the resident session pool
+                    (the dispatcher), the ping and continue clocks, and the event
+                    subscriber. There is no silent default — a plain install still
+                    only prints the load command — and on a TTY with no flag the
+                    one-time question defaults to NO. Without the session unit the
+                    loop runs patrol + workflow only and dispatches no worker.
                     Aliases: --enable-supervisor, --disable-supervisor,
                     --supervisor-status.
   --supervisor-hosts <list>

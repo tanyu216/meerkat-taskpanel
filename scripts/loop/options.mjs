@@ -23,6 +23,7 @@ import {
   DEFAULT_PATROL_SECONDS,
   DEFAULT_PING_SECONDS,
   parseEnvFile,
+  parseYesNo,
   resolveClaimUnassigned,
   resolveContinueEnabled,
   resolveRecoverStale,
@@ -110,6 +111,26 @@ function number(name, raw) {
   return value;
 }
 
+/** First valid non-negative integer among flag > env > config, else fallback. */
+function resolveNonNegative(input, fallback) {
+  for (const value of [input.flag, input.env, input.file]) {
+    if (value === undefined || value === null || value === "") continue;
+    const parsed = typeof value === "number" ? value : Number.parseInt(String(value).trim(), 10);
+    if (Number.isInteger(parsed) && parsed >= 0) return parsed;
+  }
+  return fallback;
+}
+
+/** First valid positive integer among flag > env > config, else fallback. */
+function resolvePositive(input, fallback) {
+  for (const value of [input.flag, input.env, input.file]) {
+    if (value === undefined || value === null || value === "") continue;
+    const parsed = typeof value === "number" ? value : Number.parseInt(String(value).trim(), 10);
+    if (Number.isInteger(parsed) && parsed > 0) return parsed;
+  }
+  return fallback;
+}
+
 flag("--agent", (opts, value) => opts.agents.push(...list(value)));
 flag("--host", (opts, value) => { opts.host = value; });
 flag("--repo", (opts, value) => { opts.repo = resolve(value); });
@@ -123,6 +144,20 @@ flag("--poll-interval", (opts, value) => {
 flag("--continue-interval", (opts, value) => { opts.continueInterval = number("--continue-interval", value); });
 flag("--continue", (opts, value) => { opts.continue = value; });
 flag("--continue-state", (opts, value) => { opts.continueState = value; });
+flag("--session", (opts) => { opts.session = true; }, "switch");
+flag("--resident", (opts, value) => { opts.resident = value; });
+flag("--session-state", (opts, value) => { opts.sessionState = resolve(value); });
+flag("--session-max-age", (opts, value) => { opts.sessionMaxAge = number("--session-max-age", value); });
+flag("--session-turn-timeout", (opts, value) => { opts.sessionTurnTimeout = number("--session-turn-timeout", value); });
+flag("--session-poll-ms", (opts, value) => { opts.sessionPollMs = number("--session-poll-ms", value); });
+flag("--session-pool-max", (opts, value) => { opts.sessionPoolMax = number("--session-pool-max", value); });
+flag("--project-concurrency", (opts, value) => { opts.projectConcurrency = number("--project-concurrency", value); });
+flag("--project-idle-ms", (opts, value) => { opts.projectIdleMs = number("--project-idle-ms", value); });
+flag("--allow-all-tools", (opts) => { opts.allowAllTools = true; }, "switch");
+flag("--allow-all-tools-reason", (opts, value) => { opts.allowAllToolsReason = value; });
+flag("--subagent-background", (opts, value) => {
+  opts.subagentBackground = value === undefined ? true : /^(yes|true|1|y|on)$/i.test(value);
+}, "toggle");
 flag("--patrol-interval", (opts, value) => {
   opts.patrolInterval = number("--patrol-interval", value);
   // The default is also 300, so the value alone cannot say whether this was the
@@ -177,7 +212,7 @@ flag("--projects-json", (opts, value) => { opts.projectsJson = value; });
 flag("--wake-command", (opts, value) => { opts.wakeCommand = value; });
 
 /** Host-local files derived from `--home` and `--host`. */
-function hostPaths(home, host) {
+export function hostPaths(home, host) {
   const dir = join(home, HOST_DIRS[host]);
   return {
     log: join(dir, "meerkat-taskpanel", "supervisor.log"),
@@ -185,6 +220,11 @@ function hostPaths(home, host) {
     config: join(dir, "meerkat-taskpanel.env"),
     glue: join(dir, "bin", `wake-${host}.sh`),
     projectsJson: join(dir, "skills", "meerkat-taskpanel", "projects.json"),
+    // The two skills the resident sessions need: the loop expands
+    // `/meerkat-loop` in the control session; project subagents use the board
+    // skill. Checked at `--session` start, never assumed.
+    loopSkill: join(dir, "skills", "meerkat-loop"),
+    boardSkill: join(dir, "skills", "meerkat-taskpanel"),
   };
 }
 
@@ -209,6 +249,18 @@ function defaultOptions(env) {
     continueInterval: undefined, // resolved below: flag > env > host config > 600
     continue: undefined,
     continueState: null,
+    session: false,
+    resident: "auto",
+    sessionState: null,
+    sessionMaxAge: undefined,
+    sessionTurnTimeout: undefined,
+    sessionPollMs: undefined,
+    sessionPoolMax: undefined,
+    projectConcurrency: undefined,
+    projectIdleMs: undefined,
+    allowAllTools: false,
+    allowAllToolsReason: null,
+    subagentBackground: false,
     patrolInterval: DEFAULT_PATROL_SECONDS, // the SLA measurement period, not a schedule
     patrolIntervalExplicit: false, // true only when `--patrol-interval` was given
     maxConcurrency: DEFAULT_MAX_CONCURRENCY,
@@ -325,6 +377,94 @@ export function parseArgs(argv, env = process.env) {
     file: opts.configFile.MEERKAT_TASKPANEL_CONTINUE_INTERVAL,
     fallback: DEFAULT_CONTINUE_SECONDS,
   });
+  // The resident pool. State files sit beside --state; `--session-state` names
+  // the sessions file itself, for an operator who needs it elsewhere.
+  opts.sessionState ??= join(dirname(opts.state), "sessions.state.json");
+  opts.sessionMaxAgeMs =
+    resolveNonNegative(
+      {
+        flag: opts.sessionMaxAge,
+        env: env.MEERKAT_TASKPANEL_SESSION_MAX_AGE,
+        file: opts.configFile.MEERKAT_TASKPANEL_SESSION_MAX_AGE,
+      },
+      24 * 60 * 60,
+    ) * 1000;
+  opts.sessionTurnTimeoutMs =
+    resolveIntervalSeconds({
+      flag: opts.sessionTurnTimeout,
+      env: env.MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT,
+      file: opts.configFile.MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT,
+      fallback: 30 * 60,
+    }) * 1000;
+  opts.sessionPollMs = Math.max(
+    50,
+    resolveNonNegative(
+      {
+        flag: opts.sessionPollMs,
+        env: env.MEERKAT_TASKPANEL_SESSION_POLL_MS,
+        file: opts.configFile.MEERKAT_TASKPANEL_SESSION_POLL_MS,
+      },
+      1000,
+    ),
+  );
+  opts.sessionPoolMax = Math.max(
+    1,
+    resolvePositive(
+      {
+        flag: opts.sessionPoolMax,
+        env: env.MEERKAT_TASKPANEL_SESSION_POOL_MAX,
+        file: opts.configFile.MEERKAT_TASKPANEL_SESSION_POOL_MAX,
+      },
+      8,
+    ),
+  );
+  opts.projectConcurrency = Math.max(
+    1,
+    resolvePositive(
+      {
+        flag: opts.projectConcurrency,
+        env: env.MEERKAT_TASKPANEL_PROJECT_CONCURRENCY,
+        file: opts.configFile.MEERKAT_TASKPANEL_PROJECT_CONCURRENCY,
+      },
+      opts.maxConcurrency,
+    ),
+  );
+  opts.projectIdleMs = resolveNonNegative(
+    {
+      flag: opts.projectIdleMs,
+      env: env.MEERKAT_TASKPANEL_PROJECT_IDLE_MS,
+      file: opts.configFile.MEERKAT_TASKPANEL_PROJECT_IDLE_MS,
+    },
+    30 * 60 * 1000,
+  );
+  const resident = String(opts.resident ?? "auto").trim().toLowerCase();
+  if (resident !== "auto" && resident !== "no") throw new Error("--resident must be auto or no");
+  opts.resident = resident;
+  const allowAll =
+    parseYesNo(opts.allowAllTools === true ? "yes" : undefined) ??
+    parseYesNo(env.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS) ??
+    parseYesNo(opts.configFile.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS) ??
+    false;
+  opts.allowAllTools = allowAll;
+  if (allowAll) {
+    opts.allowAllToolsReason = String(
+      opts.allowAllToolsReason ??
+        env.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON ??
+        opts.configFile.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON ??
+        "",
+    ).trim();
+    if (opts.allowAllToolsReason === "") {
+      throw new Error(
+        '--allow-all-tools requires --allow-all-tools-reason "<who authorized it and why>"',
+      );
+    }
+  }
+  const background =
+    parseYesNo(opts.subagentBackground === true ? "yes" : undefined) ??
+    parseYesNo(env.MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND) ??
+    parseYesNo(opts.configFile.MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND) ??
+    false;
+  opts.subagentBackground = background === true;
   opts.repo ??= defaultRepo(opts.config);
   opts.cli ??= join(opts.repo, "src", "cli", "index.mjs");
   opts.glue ??= paths.glue;
@@ -346,9 +486,17 @@ export function parseArgs(argv, env = process.env) {
  * (`--ping-only` / `--continue-only`).
  *
  * @param {object} opts
- * @returns {"ping"|"continue"|"patrol"|"poll"|"subscribe"|null}
+ * @returns {"ping"|"continue"|"patrol"|"poll"|"subscribe"|"session"|null}
  */
 export function selectMode(opts) {
+  if (opts.session) {
+    if (opts.once || opts.pingOnly || opts.continueOnly || opts.patrolOnly || opts.subscribe || opts.dryRun) {
+      throw new Error(
+        "--session is a daemon mode; it cannot be combined with --once, --dry-run, --subscribe or another selector",
+      );
+    }
+    return "session";
+  }
   if (opts.subscribe) {
     if (opts.once || opts.pingOnly || opts.continueOnly || opts.patrolOnly) {
       throw new Error("--subscribe is a daemon mode; it cannot be combined with --once or another selector");
@@ -556,15 +704,29 @@ export function loopCommandArgs(opts) {
   if (opts.trailLimit !== DEFAULT_TRAIL_LIMIT) add("--trail-limit", opts.trailLimit);
   if (opts.maxConcurrency !== DEFAULT_MAX_CONCURRENCY) add("--max-concurrency", opts.maxConcurrency);
   if (opts.patrolLlm) args.push("--patrol-llm");
+  // The resident settings the child `passes.mjs` re-reads: it must ask
+  // `poolStatus()` about the *same* state file, and `--resident=no` must reach
+  // the poll that would otherwise claim.
+  const sessionDefault = join(dirname(opts.state), "sessions.state.json");
+  if (opts.resident === "no") add("--resident", "no");
+  if (opts.sessionState !== sessionDefault) add("--session-state", opts.sessionState);
+  if (opts.projectConcurrency !== opts.maxConcurrency) {
+    add("--project-concurrency", opts.projectConcurrency);
+  }
   return args;
 }
 
 export const USAGE = `Usage: node scripts/supervisor.mjs [options]
 
-The loop's scheduler. It owns two clocks and nothing else:
+The loop's scheduler. In its default resident shape it owns a session pool:
+  session    long-lived — one control conversation (cwd = this checkout) plus one
+             project conversation per target directory; a project session spawns
+             the worker/reviewer subagent, which inherits that directory.
+It also owns two clocks:
   ping       every ${DEFAULT_PING_SECONDS}s — prune dead worker pids; no board read, no LLM.
-  continue   every ${DEFAULT_CONTINUE_SECONDS}s — wake the host agent with a bounded
+  continue   every ${DEFAULT_CONTINUE_SECONDS}s — hand the control session a bounded
              "Continue" prompt; that turn runs the poll, patrol and workflow entries.
+             With no resident pool it runs patrol + workflow one-shot and claims nothing.
 
 --subscribe adds an optional event daemon beside those clocks: it holds one SSE
 connection and asks for a continue turn when a dispatch-relevant event arrives.
@@ -580,6 +742,24 @@ Options:
   --continue-interval <sec> Judgment clock (default: ${DEFAULT_CONTINUE_SECONDS} = 10 minutes).
   --continue=yes|no         Enable the continue turn (default: yes).
   --continue-state <path>   Continue lock (default: continue.state.json beside --state).
+  --session                 Run the resident session pool: one control session
+                            plus one project session per target directory. The
+                            project session spawns worker/reviewer subagents.
+                            launchd/systemd only; cannot be combined with --once.
+  --resident=auto|no        Use a live resident pool for continue (default: auto);
+                            no forces the one-shot fallback with poll skipped.
+  --session-state <path>    Sessions state file (default: sessions.state.json beside --state).
+  --session-max-age <sec>   Fresh conversation after this age (default: 86400; 0 = never).
+  --session-turn-timeout <sec> Per-turn cap (default: 1800).
+  --session-poll-ms <ms>    Queue poll interval (default: 1000).
+  --session-pool-max <n>    Max project sessions (default: 8).
+  --project-concurrency <n> Max live subagents per project (default: --max-concurrency).
+  --project-idle-ms <ms>    Close an idle project session after this (default: 1800000).
+  --subagent-background=yes|no  Project sessions spawn background subagents (default: no).
+  --allow-all-tools         Enable every host tool. Requires --allow-all-tools-reason;
+                            the session runs with the operator's full OS permissions.
+  --allow-all-tools-reason <text>
+                            Who authorized full tool access, and why.
   --once                    Run one pass and exit. With no selector this is the
                             LEGACY poll pass; new units pass --ping-only or
                             --continue-only.
@@ -645,5 +825,6 @@ Options:
 The deterministic passes are also runnable on their own:
   node scripts/loop/passes.mjs patrol     notify-only SLA rows (${PEER_MECHANISM}; peer watchdog ${PEER_LIVENESS_K}x${PEER_PERIOD_MIN}min)
   node scripts/loop/passes.mjs workflow   apply the board's workflow plan
-  node scripts/loop/passes.mjs poll       scan → atomic claim → wake a worker`;
+  node scripts/loop/passes.mjs poll       scan → atomic claim → enqueue the handoff;
+                                          a resident project session spawns the subagent`;
 

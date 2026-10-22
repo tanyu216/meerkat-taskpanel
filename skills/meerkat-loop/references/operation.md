@@ -11,10 +11,10 @@ For `<host>` = `~/.claude`, `~/.codex`, `~/.agents`, `~/.config/opencode` or `~/
 |---|---|---|
 | loop skill | `<host>/skills/meerkat-loop/` | always **copied**, never symlinked |
 | execution body | `<host>/meerkat-taskpanel/scripts/…` and `scripts/foundation/…` | the copy the units run; closure in the skill's `manifest.txt` |
-| units | `<host>/scheduling/{launchd,systemd,cron}/` | ping 60s, continue 600s. Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the host CLI |
-| wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` / `opencode run` / `cursor-agent -p` |
-| host config | `<host>/meerkat-taskpanel.env` | claim policy, stale recovery, `MEERKAT_TASKPANEL_REPO`, workflow answers |
-| runtime | `<host>/meerkat-taskpanel/{supervisor.log,supervisor.state.json}` | tick log and worker registry |
+| units | `<host>/scheduling/{launchd,systemd,cron}/` | the resident pool (`session`), ping 60s, continue 600s, and the optional event subscriber. Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the host CLI |
+| wake glue | `<host>/bin/wake-<host>.sh` | legacy one-shot wakes only: resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` / `opencode run` / `cursor-agent -p` |
+| host config | `<host>/meerkat-taskpanel.env` | claim policy, stale recovery, `MEERKAT_TASKPANEL_REPO`, workflow answers, the pool's knobs, and the full-tool-access opt-in |
+| runtime | `<host>/meerkat-taskpanel/{supervisor.log,supervisor.state.json,sessions.state.json,subagents.state.json}` | tick log, legacy worker registry, pool sessions + heartbeat, subagent ledger |
 
 `--link` applies to the board skill only: a symlinked loop body would
 reintroduce the checkout dependency the copied body exists to remove.
@@ -26,11 +26,12 @@ flag below runs them.
 
 ```bash
 # macOS
+launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.session.plist # the pool
 launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist   # and .continue.plist
 # Linux user units
 mkdir -p ~/.config/systemd/user && cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
-systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer
-# Anywhere
+systemctl --user enable --now meerkat-taskpanel-session.service meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer
+# Anywhere — no pool: patrol + workflow only, no worker dispatch
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
@@ -48,6 +49,7 @@ deleting the checkout does not require a reload.
 ## Run by hand
 
 ```bash
+node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --session
 node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice
 node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --ping-only --once
 node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --continue-only --once
@@ -83,6 +85,17 @@ Precedence: flag > process env > host config > default.
 | `--workflow-max-actions <n>` | 20 | writes per workflow pass |
 | `--review-aging-minutes <n>` | 60 | report a review card with no readable verdict this long |
 | `--workflow-ledger <path>` | beside `--state` | workflow alert de-duplication ledger; an unreadable one suppresses nothing |
+| `--session` | — | run the resident session pool (control + one project session per target directory); this is a daemon mode |
+| `--resident=auto\|no` | auto | use a live pool for continue; `no` never dispatches workers |
+| `--session-state <path>` | beside `--state` | pool state file (`sessions.state.json`) |
+| `--session-max-age <sec>` | 86400 | fresh conversation after this age; 0 = never |
+| `--session-turn-timeout <sec>` | 1800 | one host turn |
+| `--session-poll-ms <ms>` | 1000 | queue poll interval |
+| `--session-pool-max <n>` | 8 | project sessions held open |
+| `--project-concurrency <n>` | `--max-concurrency` | live subagents per project |
+| `--project-idle-ms <ms>` | 1800000 | close an idle project session (keeps its session id) |
+| `--subagent-background=yes\|no` | no | project sessions spawn background subagents |
+| `--allow-all-tools` | off | full host tool access; requires `--allow-all-tools-reason "<who authorized it and why>"` |
 | `--subscribe` | off | run the event subscriber (`taskctl events tail`); launchd/systemd only |
 | `--event-continue=yes\|no` | yes | let events wake a continue turn |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
@@ -91,6 +104,23 @@ Precedence: flag > process env > host config > default.
 
 `--once` with no selector runs the legacy poll pass; installed units use
 `--ping-only` / `--continue-only`. `--patrol-only` remains for legacy units.
+
+## No resident pool
+
+Poll is the only claim path, and the project session is the only dispatcher, so the
+loop refuses to claim when the pool is not live (`sessions.state.json`: pid alive
+and heartbeat younger than 60s) or when `--resident=no` is set:
+
+- `poll` claims nothing, scans nothing, logs why, and emits one `--notify` alert per
+  cadence (`kind: no_resident`);
+- a one-shot continue turn runs **patrol + workflow only** — the prompt omits poll;
+- `patrol --patrol-llm=yes` degrades to notify-only;
+- `workflow` runs, and review cards accumulate until the pool returns.
+
+That is the cron shape, and the shape on a host whose CLI lacks the resident
+protocol. Start the session unit to get dispatch. All five hosts have an adapter:
+Claude Code (stream-json), Codex (app-server threads), Pi (`--mode rpc`),
+OpenCode (`serve`, one per directory), Cursor (ACP).
 
 ## The workflow channel
 
@@ -174,6 +204,21 @@ A wake is non-interactive, so the worker must run under a pre-declared boundary
 **no** permission bypass (no `--dangerously-skip-permissions`, no Codex
 approval bypass). Enabling one is a deliberate act that needs written
 authorization and must be documented at the point of use.
+
+The resident pool keeps role allowlists by default (control: read + `taskctl` +
+`node`; reviewer: read/search + `taskctl` + `git`; worker: the same plus
+edit/write). Full tool access is the documented opt-in:
+
+```bash
+# host config, not a unit flag:
+MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes
+MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON="<who authorized it and why>"
+```
+
+The reason is required and recorded in `--supervisor=status`. With it, every
+control, project and subagent session runs with the installing user's full OS
+permissions; the project directory is a working directory, **not** an isolation
+boundary.
 
 ## Compatibility
 

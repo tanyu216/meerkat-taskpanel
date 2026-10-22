@@ -300,8 +300,10 @@ Full protocol, the two-round model and the acceptance-policy behaviour:
 ## Owning the clock
 
 The board runs no timer. On a host with the loop installed, the `meerkat-loop` skill owns the
-scheduler — do not add a second poller or schedule its entries yourself. A host or service
-that owns its own timer drives the board directly; one tick is:
+scheduler — do not add a second poller or schedule its entries yourself. The loop's resident
+session pool claims a card and hands it to a project session, which spawns the worker/reviewer
+subagent in the project directory; a card is never claimed for a process that does not exist.
+A host or service that owns its own timer drives the board directly; one tick is:
 
 ```bash
 taskctl --json issue candidates --assignee <agent> --include-unassigned --stale

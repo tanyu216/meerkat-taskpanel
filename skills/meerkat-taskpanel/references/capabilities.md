@@ -52,7 +52,8 @@ review card; a dedicated reviewer is given only those.
 
 `issue claim` is the one claim path: it claims a ready `todo` card and performs
 the stale re-claim/takeover that the transition table cannot express. A refused
-claim never wakes a worker.
+claim never enqueues a handoff — and the handoff is only produced by the resident
+pool, so a claim made without a pool starts no worker.
 
 ## 4. Board read — `issue list`
 

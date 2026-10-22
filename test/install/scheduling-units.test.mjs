@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { after, describe, it } from "node:test";
@@ -51,11 +51,13 @@ function scheduledPaths(home, hostDir, host) {
     pingPlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist"),
     continuePlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.continue.plist"),
     subscribePlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.subscribe.plist"),
+    sessionPlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.session.plist"),
     pingService: join(base, "scheduling", "systemd", "meerkat-taskpanel-ping.service"),
     pingTimer: join(base, "scheduling", "systemd", "meerkat-taskpanel-ping.timer"),
     continueService: join(base, "scheduling", "systemd", "meerkat-taskpanel-continue.service"),
     continueTimer: join(base, "scheduling", "systemd", "meerkat-taskpanel-continue.timer"),
     subscribeService: join(base, "scheduling", "systemd", "meerkat-taskpanel-subscribe.service"),
+    sessionService: join(base, "scheduling", "systemd", "meerkat-taskpanel-session.service"),
     cron: join(base, "scheduling", "cron", "meerkat-taskpanel.cron"),
     wake: join(base, "bin", `wake-${host}.sh`),
   };
@@ -146,6 +148,14 @@ describe("install.sh: scheduling units", () => {
     assert.match(subscribePlist, /<key>KeepAlive<\/key>\s*<true\/>/);
     assert.doesNotMatch(subscribePlist, /<key>StartInterval<\/key>/, "a daemon has no interval");
 
+    // The resident session pool: another daemon, and the loop's dispatcher.
+    const sessionPlist = readFileSync(paths.sessionPlist, "utf8");
+    assert.ok(sessionPlist.includes("--session"), "the pool runs the session daemon mode");
+    assert.ok(sessionPlist.includes(supervisorPath), "the pool names the host's supervisor copy");
+    assert.match(sessionPlist, /<key>KeepAlive<\/key>\s*<true\/>/);
+    assert.doesNotMatch(sessionPlist, /<key>StartInterval<\/key>/, "a daemon has no interval");
+    assert.doesNotMatch(sessionPlist, /--allow-all-tools/, "full tool access is opt-in through the config");
+
     // systemd — oneshot services driven by timers, plus the subscriber service.
     assert.match(readFileSync(paths.pingTimer, "utf8"), /OnUnitActiveSec=60s/);
     assert.match(readFileSync(paths.continueTimer, "utf8"), /OnUnitActiveSec=600s/);
@@ -155,6 +165,11 @@ describe("install.sh: scheduling units", () => {
     assert.ok(subscribeService.includes("--subscribe"));
     assert.match(subscribeService, /Type=simple/);
     assert.match(subscribeService, /Restart=always/);
+    const sessionService = readFileSync(paths.sessionService, "utf8");
+    assert.ok(sessionService.includes("--session"));
+    assert.match(sessionService, /Type=simple/);
+    assert.match(sessionService, /Restart=always/);
+    assert.doesNotMatch(sessionService, /--allow-all-tools/);
 
     // cron — a 1-minute ping line and a 10-minute continue line.
     const cron = readFileSync(paths.cron, "utf8");
@@ -194,9 +209,68 @@ describe("install.sh: scheduling units", () => {
     assert.ok(wake.includes("claude -p"), "wake-claude must drive headless claude");
     assert.ok(wake.includes("--resume"), "wake-claude must support --resume <sid>");
     assert.ok(!wake.includes("{{"), "templates must be rendered");
+    // Full tool access is never a default; the glue reads the host config's
+    // authorization instead of carrying a bypass of its own.
+    assert.ok(wake.includes("MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS"), wake);
+    assert.ok(wake.includes("bypassPermissions"), "the opt-in must reach the CLI when enabled");
+    assert.equal(
+      /^\s*exec claude .*--dangerously-skip-permissions/m.test(wake),
+      false,
+      "no unconditional bypass",
+    );
 
     // The exact load command is printed, not run.
     assert.match(run.stdout + run.stderr, /launchctl|systemctl|crontab/);
+  });
+
+  it("the wake glue applies full tool access only when the host config authorizes it", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], installEnv(home, bin));
+    assert.equal(run.status, 0, run.stderr);
+
+    const project = join(home, "project");
+    mkdirSync(project, { recursive: true });
+    writeFileSync(
+      join(home, ".claude", "skills", "meerkat-taskpanel", "projects.json"),
+      JSON.stringify({ projects: [{ project: "P", local_path: project }] }),
+    );
+    const record = join(home, "wake-argv.json");
+    const fake = join(bin, "claude");
+    writeFileSync(fake, `#!/bin/sh\nprintf '%s\\n' "$@" > "${record}"\n`, "utf8");
+    chmodSync(fake, 0o755);
+
+    const env = {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      TP_PROJECT: "P",
+      TP_NODE: process.execPath,
+    };
+    const first = spawnSync("bash", [join(home, ".claude", "bin", "wake-claude.sh"), "handoff"], {
+      encoding: "utf8",
+      env,
+    });
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(
+      readFileSync(record, "utf8").includes("bypassPermissions"),
+      false,
+      "no bypass without the host config's authorization",
+    );
+
+    writeFileSync(
+      join(home, ".claude", "meerkat-taskpanel.env"),
+      `${readFileSync(join(home, ".claude", "meerkat-taskpanel.env"), "utf8")}` +
+        "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes\nMEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON=operator authorized unattended runs\n",
+    );
+    const second = spawnSync("bash", [join(home, ".claude", "bin", "wake-claude.sh"), "handoff"], {
+      encoding: "utf8",
+      env,
+    });
+    assert.equal(second.status, 0, second.stderr);
+    const argv = readFileSync(record, "utf8").split("\n");
+    assert.equal(argv[argv.indexOf("--permission-mode") + 1], "bypassPermissions");
+    assert.match(second.stderr, /authorized by: operator authorized unattended runs/);
   });
 
   it("copies the loop body into the host, so a loaded unit outlives the checkout", async () => {
@@ -518,8 +592,8 @@ describe("install.sh: the loop skill's distribution", () => {
     assert.equal(run.status, 0, run.stderr);
 
     const glue = readFileSync(join(home, ".cursor", "bin", "wake-cursor.sh"), "utf8");
-    assert.match(glue, /exec cursor-agent -p "\$prompt"/);
-    assert.match(glue, /exec cursor-agent -p --resume "\$sid" "\$prompt"/);
+    assert.match(glue, /exec cursor-agent -p \$\{allow_flag:\+--force\} "\$prompt"/);
+    assert.match(glue, /exec cursor-agent -p \$\{allow_flag:\+--force\} --resume "\$sid" "\$prompt"/);
     assert.match(glue, /CURSOR_API_KEY/, "the real-CLI probe must be named, with its credential gate");
   });
 

@@ -127,9 +127,9 @@ version control.
 |---|---|---|
 | loop skill | `<host>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`manifest.txt` + `scripts/`, including `scripts/foundation/`), the unit/wake/config templates it is deployed with, and the authored board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
 | loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../scripts/foundation/**` | a **copy** of the scheduler, the deterministic passes, the glue's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `manifest.txt` |
-| launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{ping,continue}.plist` | `StartInterval` 60 / 600 |
-| systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{ping,continue}.{service,timer}` | 60s / 600s timers |
-| cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue |
+| launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist` | `KeepAlive` for the resident pool and the event subscriber; `StartInterval` 60 / 600 for the two clocks |
+| systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{session,ping,continue,subscribe}.{service,timer}` | `Type=simple` + `Restart=always` for the pool and subscriber; 60s / 600s timers for the clocks |
+| cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue — **no pool**: no worker dispatch |
 
 Each unit names the **absolute `node`** that rendered it and carries a **`PATH`** holding
 the host CLI's directory and node's ahead of the scheduler's own default. Neither is
@@ -139,9 +139,10 @@ worker's own tool tree, resolve on that same set. If the host CLI is not on `PAT
 install time, the installer says so and renders node's directory alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the directory a worker for the card's project runs in (`local_path`, else `run_dir`) from the board skill's `projects.json` via the host-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
-| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW`, `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS`, `MEERKAT_TASKPANEL_REVIEWER` and `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY`, and the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE` |
+| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW`, `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS`, `MEERKAT_TASKPANEL_REVIEWER` and `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY`, the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE`, and the pool's `MEERKAT_TASKPANEL_RESIDENT`, `..._SESSION_MAX_AGE`, `..._SESSION_TURN_TIMEOUT`, `..._SESSION_POLL_MS`, `..._SESSION_POOL_MAX`, `..._PROJECT_CONCURRENCY`, `..._PROJECT_IDLE_MS` and `..._SUBAGENT_BACKGROUND`. Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
 | log (runtime) | `<host>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
-| state (runtime) | `<host>/meerkat-taskpanel/supervisor.state.json` | the running registry |
+| state (runtime) | `<host>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
+| state (runtime) | `<host>/meerkat-taskpanel/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
 
 `<host>` is `~/.claude`, `~/.codex` or `~/.agents`. **OpenClaw gets none of these, and no
 `meerkat-loop` skill** — it installs the board skill only and uses the
@@ -153,11 +154,12 @@ install stops here (nothing is loaded for you):
 
 ```bash
 # macOS
+launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.session.plist  # the resident pool
 launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist    # and .continue.plist + .subscribe.plist
 # Linux (user units)
 mkdir -p ~/.config/systemd/user && cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
-systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service
-# Anywhere
+systemctl --user enable --now meerkat-taskpanel-session.service meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service
+# Anywhere — no long-lived process, so patrol + workflow only (no worker dispatch)
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
@@ -210,14 +212,17 @@ always wins: with it, `--supervisor=enable` prints the exact commands it would r
 changes nothing. On success the installer reports what it enabled **and how to stop it**:
 
 ```text
-supervisor: enabled (host=claude, scheduler=launchd, units=com.meerkat-taskpanel.<agent>.claude.ping,.continue,.subscribe)
+supervisor: enabled (host=claude, scheduler=launchd, units=com.meerkat-taskpanel.<agent>.claude.session,.ping,.continue,.subscribe)
 to disable:  install.sh --supervisor=disable --supervisor-hosts claude
 ```
 
-Enabling installs the two clocks described above: a $0 ping and one bounded `Continue`
-judgment turn per continue cadence. Inside that turn the poll is still the $0 local
-scan, and a worker turn still starts only when a claim succeeded (see
+Enabling installs the resident pool plus the two clocks: a long-lived `--session`
+manager, a $0 ping, and one bounded `Continue` judgment turn per continue cadence
+that the pool runs in its control session. Inside that turn the poll is still the
+$0 local scan; it claims and enqueues, and the project session spawns the
+subagent — so a worker turn still starts only when a claim succeeded (see
 [`scheduling.md §The cost gate`](scheduling.md#the-cost-gate-a-worker-turn-starts-only-on-fire)).
+A cron install has no pool; it runs the clocks only, and dispatch stays paused.
 
 The exact per-OS commands, their failure modes, and the `loginctl enable-linger` caveat are
 in [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in).

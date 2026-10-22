@@ -245,25 +245,27 @@ special integration for an external skills collection.
 
 ### Scheduling: ping & continue
 
-**In short:** the loop is a **scheduler that runs outside the host**. It owns two clocks.
-Every **60 seconds** it **pings**: it drops worker-registry entries whose pid is gone — no
-board read and no model turn. Every **ten minutes** it runs a **continue** turn: it wakes
-the host with a bounded `Continue` prompt, and that turn runs the loop's deterministic entries —
-the notify-only SLA patrol (stale heartbeats, an unanswered confirmation gate, a delivery
-nobody reviewed, the rest of the SLA contract (`docs/sla.md`)), the workflow channel (the board computes the
-plan through `issue reconcile --workflow` — container rules, an independent reviewer per
-delivery, the verdict applied; the loop executes the plan's review actions), and the poll
-that claims a card and wakes a worker **only when the claim succeeded** ($0 on an empty
-scan). The SLA rows are **notifications to the leader**, never actions on a card; the
-workflow entry executes the board's plan (`--reviewer` enables dispatch; `--workflow=no`
-turns it off). Claude Code
-and Codex have **no timers of their own**, so the loop sits *outside* them and only ever
-wakes the worker (`claude -p`, `codex exec`, `pi --print`). On launchd/systemd the optional
-**subscribe daemon** holds one SSE connection and asks for a continue turn when a
-dispatch-relevant board event arrives, so discovery is event-driven; the continue cadence
-remains the fallback and the only path for time-based work (stale claims, review aging, SLA).
-On cron — which cannot host a long-lived process — discovery stays within one continue
-cadence; `--continue-interval` is the lever. **To turn it on,** run
+**In short:** the loop is a **scheduler that runs outside the host**. It owns two clocks
+and a **resident session pool**. Every **60 seconds** it **pings**: it drops worker-registry
+entries whose pid is gone — no board read and no model turn. Every **ten minutes** it enqueues
+a **continue** turn for the pool's control session, and that turn runs the loop's deterministic
+entries — the notify-only SLA patrol (stale heartbeats, an unanswered confirmation gate, a
+delivery nobody reviewed, the rest of the SLA contract (`docs/sla.md`)), the workflow channel
+(the board computes the plan through `issue reconcile --workflow` — container rules, an
+independent reviewer per delivery, the verdict applied; the loop executes the plan's review
+actions), and the poll that claims a card and **enqueues the handoff** ($0 on an empty scan).
+The pool keeps **one project session per target directory**; that session spawns the
+worker/reviewer as a **subagent**, which inherits the project directory as its cwd — so the
+first model turn starts only after a successful claim, and it starts where the work lives.
+The SLA rows are **notifications to the leader**, never actions on a card; the workflow entry
+executes the board's plan (`--reviewer` enables dispatch; `--workflow=no` turns it off).
+Claude Code and Codex have **no timers of their own**, so the loop sits *outside* them. On
+launchd/systemd the optional **subscribe daemon** holds one SSE connection and asks for a
+continue turn when a dispatch-relevant board event arrives, so discovery is event-driven; the
+continue cadence remains the fallback and the only path for time-based work (stale claims,
+review aging, SLA). On cron — which cannot host a long-lived process — there is no pool:
+patrol and workflow still run, but poll claims nothing and worker dispatch is paused;
+`--continue-interval` is the discovery lever. **To turn it on,** run
 `install.sh --target claude|codex|pi|opencode|cursor`: it installs the `meerkat-loop` skill and
 drops that host's launchd / systemd / cron units, then **prints the load command** — it
 never starts a daemon for you (it also asks once whether the supervisor may claim
@@ -271,12 +273,12 @@ never starts a daemon for you (it also asks once whether the supervisor may clai
 
 Claiming is not left to an agent's memory. A small **host-external scheduler**
 ([`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md), whose execution body is
-[`scripts/supervisor.mjs`](scripts/supervisor.mjs) plus `scripts/loop/`) runs the two
-clocks. The ping is one small registry read, $0. The continue turn is one bounded LLM
-turn per cadence; inside it, the poll is still the deterministic cost gate — a worker turn
+[`scripts/supervisor.mjs`](scripts/supervisor.mjs) plus `scripts/loop/`) runs the pool and
+the two clocks. The ping is one small registry read, $0. The continue turn is one bounded LLM
+turn per cadence; inside it, the poll is still the deterministic cost gate — a subagent turn
 starts **only** when a card was actually claimed (the atomic claim is the single dispatch
-source). The deterministic entries are ordinary programs, runnable by hand, and the
-continue prompt names them by absolute path.
+source). The deterministic entries are ordinary programs, runnable by hand, and the continue
+prompt names them by absolute path.
 
 The loop ships as **its own skill** (`skills/meerkat-loop/`), and `install.sh` installs it
 for **every host except OpenClaw** (claude, codex, pi, opencode, cursor) — OpenClaw gets the

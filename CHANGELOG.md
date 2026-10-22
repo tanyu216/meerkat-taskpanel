@@ -123,6 +123,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The loop is resident: a session pool dispatches subagents, and poll only
+  claims and enqueues.** `supervisor.mjs --session` (the new `session` unit) owns a
+  long-lived control session in the taskpanel checkout plus **one project session
+  per target directory**; the project session spawns the worker/reviewer as a
+  subagent, which inherits the project directory as its cwd. Poll resolves the
+  card's project directory through `projects.json` **before** claiming it, claims
+  atomically, and writes the handoff to `cards.pending.json`; it no longer starts a
+  host process. The durable queues (continue, cards), the subagent ledger, resume
+  and native reattach, per-project and global concurrency, idle eviction and a 24 h
+  session max-age are all new. With no live pool — cron, a stopped session unit,
+  `--resident=no` — poll claims nothing, one `--notify` alert per cadence says so,
+  and the one-shot continue turn runs patrol + workflow only. The loop skill is now
+  **command-only** (`disable-model-invocation: true`): the continue prompt begins
+  with `/meerkat-loop Continue — …`. New flags/config: `--session`,
+  `--resident`, `--session-*`, `--project-concurrency`, `--project-idle-ms`,
+  `--subagent-background`, and the authorized full-tool-access opt-in
+  `--allow-all-tools` + `--allow-all-tools-reason` (off by default; the reason is
+  required, and the project directory is not an isolation boundary). The legacy
+  glue/`--wake-command` path remains for manual and old installations. Resident
+  adapters ship for all five hosts — Claude Code stream-json, Codex app-server
+  threads, Pi `--mode rpc`, OpenCode `serve` (one per directory), Cursor ACP. See
+  `docs/scheduling.md` §The resident session pool.
 - **The external protocol document's name is gone from the tree.** The remaining external
   section anchors have been rewritten to the product's own sources: creation idempotency to
   `src/core/README.md`, SLA thresholds to `docs/sla.md` §2/§3, relation caps to

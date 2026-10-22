@@ -676,11 +676,13 @@ install_scheduling() {
   emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.ping.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist"
   emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.continue.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.continue.plist"
   emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.subscribe.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.subscribe.plist"
+  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.session.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.session.plist"
   emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.service" "$TP_SCHED/systemd/meerkat-taskpanel-ping.service"
   emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.timer" "$TP_SCHED/systemd/meerkat-taskpanel-ping.timer"
   emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.service" "$TP_SCHED/systemd/meerkat-taskpanel-continue.service"
   emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.timer" "$TP_SCHED/systemd/meerkat-taskpanel-continue.timer"
   emit_loop_file "scheduling/systemd/meerkat-taskpanel-subscribe.service" "$TP_SCHED/systemd/meerkat-taskpanel-subscribe.service"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-session.service" "$TP_SCHED/systemd/meerkat-taskpanel-session.service"
   emit_loop_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
   emit_loop_file "$TP_HOST/wake-$TP_HOST.sh" "$TP_WAKE" --exec
 

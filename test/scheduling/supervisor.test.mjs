@@ -531,7 +531,19 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /--actor-kind claude/);
     assert.match(text, /--session-id sid-9/);
     assert.match(text, /report/i);
-    assert.ok(text.length < 2500, "the handoff must be bounded");
+    assert.ok(text.length < 2800, "the handoff must be bounded");
+  });
+
+  it("places the worker in the project session and says the claim is already taken", () => {
+    const text = buildHandoff({
+      card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
+      agent: "alice",
+      host: "claude",
+    });
+    assert.match(text, /^You are a worker subagent of the P1 project session/);
+    assert.match(text, /working directory is this project's directory/);
+    assert.match(text, /never touch another project's paths/);
+    assert.match(text, /already claimed this card for you: do not claim it again/);
   });
 
   it("truncates an absurdly long title so the handoff stays bounded", () => {
@@ -540,7 +552,7 @@ describe("buildHandoff (pure)", () => {
       agent: "alice",
       host: "codex",
     });
-    assert.ok(text.length < 2500);
+    assert.ok(text.length < 2800);
   });
 
   it("carries the epic-triage step, and says an epic is never claimed", () => {
@@ -582,7 +594,7 @@ describe("buildHandoff (pure)", () => {
       host: "claude",
       sessionId: "550e8400-e29b-41d4-a716-446655440000",
     });
-    assert.ok(text.length < 2500, `the handoff must be bounded (was ${text.length})`);
+    assert.ok(text.length < 2800, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("points the worker at the reviewer when one is configured", () => {
@@ -594,6 +606,15 @@ describe("buildHandoff (pure)", () => {
     });
     assert.match(text, /the loop dispatches an independent reviewer/);
     assert.match(text, /do not move it to done yourself/);
+  });
+
+  it("does not carry the continue command prefix", () => {
+    const text = buildHandoff({
+      card: { identifier: "T-1", title: "x", project: "P1" },
+      agent: "alice",
+      host: "claude",
+    });
+    assert.equal(text.includes("/meerkat-loop"), false);
   });
 });
 
@@ -609,7 +630,13 @@ describe("buildReviewHandoff (pure)", () => {
     assert.match(text, /Card under review: T-1 \(round 3\)/);
     assert.match(text, /--agent jobs/);
     assert.match(text, /--actor-kind claude/);
-    assert.ok(text.length < 2500, "the handoff must be bounded");
+    assert.ok(text.length < 2800, "the handoff must be bounded");
+  });
+
+  it("is a reviewer subagent in the project session, with the claim already taken", () => {
+    assert.match(text, /^You are a reviewer subagent of the <project id> project session/);
+    assert.match(text, /already claimed this review card for you: do not claim it again/);
+    assert.match(text, /heartbeat only this review card/);
   });
 
   it("checks review_not_ready before reading anything else", () => {
@@ -638,6 +665,10 @@ describe("buildReviewHandoff (pure)", () => {
   it("moves nothing — the loop is the acceptor", () => {
     assert.match(text, /Do not move\s+the card under review and do not move this review card/);
     assert.match(text, /the loop applies the verdict and\s+closes this card/);
+  });
+
+  it("does not carry the continue command prefix", () => {
+    assert.equal(text.includes("/meerkat-loop"), false);
   });
 });
 
@@ -1650,6 +1681,27 @@ describe("parseArgs — the SLA attribution and liveness surface", () => {
     assert.ok(args.includes("--patrol-interval"), args.join(" "));
     assert.equal(args[args.indexOf("--patrol-interval") + 1], "300");
   });
+
+  it("carries the resident settings the child passes re-read", () => {
+    // The control turn's `passes.mjs poll` asks `poolStatus()` about the same
+    // state file, so a moved one or `--resident=no` must travel in the prompt.
+    const plain = loopCommandArgs(parseArgs(["--home", "/tmp/home"], {}));
+    assert.equal(plain.includes("--resident"), false, "auto is the default");
+    assert.equal(plain.includes("--session-state"), false, "the default path is derived");
+
+    const noResident = loopCommandArgs(parseArgs(["--home", "/tmp/home", "--resident=no"], {}));
+    assert.equal(noResident[noResident.indexOf("--resident") + 1], "no");
+
+    const moved = loopCommandArgs(
+      parseArgs(["--home", "/tmp/home", "--state", "/tmp/s.json", "--session-state", "/tmp/x/sessions.json"], {}),
+    );
+    assert.equal(moved[moved.indexOf("--session-state") + 1], "/tmp/x/sessions.json");
+
+    const perProject = loopCommandArgs(
+      parseArgs(["--home", "/tmp/home", "--max-concurrency", "8", "--project-concurrency", "3"], {}),
+    );
+    assert.equal(perProject[perProject.indexOf("--project-concurrency") + 1], "3");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2109,6 +2161,133 @@ describe("the scheduler's two clocks", () => {
     const opts = parseArgs(["--host", "claude", "--state", "/tmp/state.json"], ENV);
     assert.equal(opts.continueState, "/tmp/continue.state.json");
     assert.notEqual(opts.continueState, opts.state);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The resident session pool surface
+// ---------------------------------------------------------------------------
+
+describe("the resident session pool surface", () => {
+  const ENV = { HOME: "/home/alice" };
+
+  it("selects session mode, and refuses a one-shot selector beside it", () => {
+    const opts = parseArgs(["--host", "claude", "--session"], ENV);
+    assert.equal(selectMode(opts), "session");
+    for (const extra of [["--once"], ["--dry-run"], ["--subscribe"], ["--ping-only", "--once"]]) {
+      assert.throws(
+        () => selectMode(parseArgs(["--host", "claude", "--session", ...extra], ENV)),
+        /daemon mode/,
+        `--session beside ${extra.join(" ")} was accepted`,
+      );
+    }
+  });
+
+  it("defaults the pool to the documented capacities and windows", () => {
+    const opts = parseArgs(["--host", "claude", "--session"], ENV);
+    assert.equal(opts.resident, "auto");
+    assert.equal(opts.sessionMaxAgeMs, 24 * 60 * 60 * 1000);
+    assert.equal(opts.sessionTurnTimeoutMs, 30 * 60 * 1000);
+    assert.equal(opts.sessionPollMs, 1_000);
+    assert.equal(opts.sessionPoolMax, 8);
+    assert.equal(opts.projectIdleMs, 30 * 60 * 1000);
+    assert.equal(opts.projectConcurrency, opts.maxConcurrency, "a project is not capped below the pool by default");
+    assert.equal(opts.sessionState, join(dirname(opts.state), "sessions.state.json"));
+    assert.equal(opts.allowAllTools, false, "full tool access is opt-in");
+    assert.equal(opts.subagentBackground, false);
+  });
+
+  it("takes the pool knobs from flags, environment and the host config", () => {
+    const flagged = parseArgs(
+      [
+        "--host", "claude", "--session",
+        "--session-state", "/tmp/sessions.json",
+        "--session-max-age", "3600",
+        "--session-turn-timeout", "90",
+        "--session-poll-ms", "250",
+        "--session-pool-max", "3",
+        "--project-concurrency", "2",
+        "--project-idle-ms", "60000",
+      ],
+      ENV,
+    );
+    assert.equal(flagged.sessionState, "/tmp/sessions.json");
+    assert.equal(flagged.sessionMaxAgeMs, 3_600_000);
+    assert.equal(flagged.sessionTurnTimeoutMs, 90_000);
+    assert.equal(flagged.sessionPollMs, 250);
+    assert.equal(flagged.sessionPoolMax, 3);
+    assert.equal(flagged.projectConcurrency, 2);
+    assert.equal(flagged.projectIdleMs, 60_000);
+
+    const fromEnv = parseArgs(["--host", "claude", "--session"], {
+      ...ENV,
+      MEERKAT_TASKPANEL_SESSION_MAX_AGE: "120",
+      MEERKAT_TASKPANEL_SESSION_POOL_MAX: "4",
+      MEERKAT_TASKPANEL_PROJECT_IDLE_MS: "5000",
+    });
+    assert.equal(fromEnv.sessionMaxAgeMs, 120_000);
+    assert.equal(fromEnv.sessionPoolMax, 4);
+    assert.equal(fromEnv.projectIdleMs, 5_000);
+
+    const dir = mkdtempSync(join(tmpdir(), "tp-session-opts-"));
+    try {
+      const config = join(dir, "meerkat-taskpanel.env");
+      writeFileSync(config, "MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT=45\nMEERKAT_TASKPANEL_PROJECT_CONCURRENCY=2\n");
+      const opts = parseArgs(["--host", "claude", "--session", "--config", config], ENV);
+      assert.equal(opts.sessionTurnTimeoutMs, 45_000);
+      assert.equal(opts.projectConcurrency, 2);
+      // A flag still beats the host config.
+      const overriding = parseArgs(
+        ["--host", "claude", "--session", "--config", config, "--session-turn-timeout", "75"],
+        ENV,
+      );
+      assert.equal(overriding.sessionTurnTimeoutMs, 75_000);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a zero max-age as the documented 'never'", () => {
+    assert.equal(parseArgs(["--host", "claude", "--session", "--session-max-age", "0"], ENV).sessionMaxAgeMs, 0);
+  });
+
+  it("accepts --resident=auto|no and rejects anything else", () => {
+    assert.equal(parseArgs(["--host", "claude", "--resident=no"], ENV).resident, "no");
+    assert.equal(parseArgs(["--host", "claude", "--resident=auto"], ENV).resident, "auto");
+    assert.throws(() => parseArgs(["--host", "claude", "--resident=maybe"], ENV), /auto or no/);
+  });
+
+  it("requires a recorded authorization for full tool access", () => {
+    assert.throws(
+      () => parseArgs(["--host", "claude", "--session", "--allow-all-tools"], ENV),
+      /--allow-all-tools-reason/,
+    );
+    const authorized = parseArgs(
+      ["--host", "claude", "--session", "--allow-all-tools", "--allow-all-tools-reason", "operator authorized unattended runs"],
+      ENV,
+    );
+    assert.equal(authorized.allowAllTools, true);
+    assert.equal(authorized.allowAllToolsReason, "operator authorized unattended runs");
+
+    const fromEnv = parseArgs(["--host", "claude"], {
+      ...ENV,
+      MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS: "yes",
+      MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON: "fleet policy",
+    });
+    assert.equal(fromEnv.allowAllTools, true);
+    assert.equal(fromEnv.allowAllToolsReason, "fleet policy");
+  });
+
+  it("turns on background subagents from the flag or the environment", () => {
+    assert.equal(parseArgs(["--host", "claude", "--subagent-background"], ENV).subagentBackground, true);
+    assert.equal(
+      parseArgs(["--host", "claude"], { ...ENV, MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND: "yes" }).subagentBackground,
+      true,
+    );
+    assert.equal(
+      parseArgs(["--host", "claude", "--subagent-background=no"], ENV).subagentBackground,
+      false,
+    );
   });
 });
 

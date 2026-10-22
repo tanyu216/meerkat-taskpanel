@@ -27,6 +27,7 @@ import {
   recordSlaAlerts,
 } from "../../src/foundation/sla-patrol.mjs";
 import { loopCommandArgs, resolveLoopConfig } from "./options.mjs";
+import { enqueueContinue } from "./queue.mjs";
 import {
   acquireContinueLock,
   createLogger,
@@ -35,12 +36,19 @@ import {
   recordContinuePid,
   releaseContinueLock,
 } from "./runtime.mjs";
+import { poolStatus } from "./session.mjs";
 
 /** Rows about the board, not one card — a single-card re-read cannot decide them. */
 const BOARD_LEVEL_ROWS = new Set(["leader_stalled", "inspector_liveness"]);
 
 /**
  * One poll pass.
+ *
+ * `dispatch` is the side effect of a successful claim. In the resident model it
+ * writes the card queue (the project session spawns the subagent); the legacy
+ * direct wake still spawns a host process. `admit` and `limit` are the claim
+ * budget: a card beyond the pool's capacity is deferred **before** it is
+ * claimed, so the board never shows a claim that has nowhere to run.
  *
  * @param {{
  *   agents: string[],
@@ -49,12 +57,29 @@ const BOARD_LEVEL_ROWS = new Set(["leader_stalled", "inspector_liveness"]);
  *   readCandidates: (agent: string, opts: {claimUnassigned: boolean}) => Promise<object[]>,
  *   claim: (identifier: string, agent: string) => Promise<{ok: boolean, error?: string}>,
  *   spawnWorker: (action: object, card: object|undefined) => Promise<{ok: boolean, pid?: number, error?: string}>,
+ *   dispatch?: (action: object, card: object|undefined) => Promise<{ok: boolean, pid?: number, error?: string}>,
+ *   admit?: (action: object, card: object|undefined) => {ok: boolean, why?: string},
+ *   limit?: number,
+ *   verb?: string,
  *   now: () => string,
  *   log: (line: string) => void,
  * }} deps
  */
 export async function runPollTick(deps) {
-  const { agents, registry, config, readCandidates, claim, spawnWorker, now, log } = deps;
+  const {
+    agents,
+    registry,
+    config,
+    readCandidates,
+    claim,
+    spawnWorker,
+    dispatch = spawnWorker,
+    admit = null,
+    limit = Number.POSITIVE_INFINITY,
+    verb = "woke",
+    now,
+    log,
+  } = deps;
 
   const candidates = [];
   for (const agent of agents) {
@@ -70,10 +95,26 @@ export async function runPollTick(deps) {
   let claimed = 0;
   let conflicts = 0;
   let failed = 0;
+  let deferred = 0;
 
   for (const action of actions) {
     if (action.type === "skip") {
       log(`skip ${action.identifier} (${action.why})`);
+      continue;
+    }
+    if (claimed >= limit) {
+      deferred += 1;
+      log(`defer ${action.identifier} (claim budget exhausted)`);
+      continue;
+    }
+
+    const card = cardById.get(action.identifier);
+    // The claim budget is checked **before** the claim: a card with no place to
+    // run must stay `todo`, where the next turn can offer it again.
+    const admitted = admit === null ? { ok: true } : admit(action, card);
+    if (admitted?.ok !== true) {
+      deferred += 1;
+      log(`defer ${action.identifier} (${admitted?.why ?? "not admitted"})`);
       continue;
     }
 
@@ -81,26 +122,30 @@ export async function runPollTick(deps) {
     const verdict = await claim(action.identifier, action.agent);
     if (!verdict?.ok) {
       conflicts += 1;
-      log(`claim refused ${action.identifier} (${verdict?.error ?? "conflict"}) — not waking`);
+      log(`claim refused ${action.identifier} (${verdict?.error ?? "conflict"}) — not dispatching`);
       continue;
     }
     claimed += 1;
 
-    const outcome = await spawnWorker(action, cardById.get(action.identifier));
+    const outcome = await dispatch(action, card);
     if (!outcome?.ok) {
-      // Honest failure: a card we could not wake is not "running".
+      // Honest failure: a card we could not dispatch is not "running".
       failed += 1;
-      log(`wake failed ${action.identifier}: ${outcome?.error ?? "unknown error"}`);
+      log(`${verb} failed ${action.identifier}: ${outcome?.error ?? "unknown error"}`);
       continue;
     }
     spawned += 1;
     if (outcome.pid !== undefined && outcome.pid !== null) {
       registry.running[action.identifier] = { agent: action.agent, pid: outcome.pid, startedAt: now() };
     }
-    log(`woke ${action.identifier} for ${action.agent} (${action.reason})${outcome.pid ? ` pid ${outcome.pid}` : " [dry-run]"}`);
+    log(
+      `${verb} ${action.identifier} for ${action.agent} (${action.reason})` +
+        `${outcome.pid ? ` pid ${outcome.pid}` : ""}` +
+        `${outcome.queued === true ? " [queued]" : ""}${outcome.dryRun === true ? " [dry-run]" : ""}`,
+    );
   }
 
-  return { actions, spawned, claimed, conflicts, failed };
+  return { actions, spawned, claimed, conflicts, failed, deferred };
 }
 
 /**
@@ -617,33 +662,48 @@ function spawnDetached(invocation, stderrFd) {
   });
 }
 
+/**
+ * The handoff a claim produces — reviewer or worker. Shared by the resident
+ * card queue and the legacy direct wake, so both routes say the same thing.
+ *
+ * @param {object} opts
+ * @param {object} config
+ * @param {{identifier: string, agent: string}} action
+ * @param {object|undefined} card the candidate projection
+ * @returns {{isReview: boolean, role: "worker"|"reviewer", handoff: string}}
+ */
+export function wakeHandoff(opts, config, action, card) {
+  // A review card takes the reviewer handoff. The candidate projection carries
+  // `review_of`, so the decision needs no second read; the agent-name fallback
+  // keeps an older projection (one written before those fields existed) working
+  // for a dedicated reviewer.
+  // 0031 — the reviewer set is the deployment reviewer plus every project
+  // override. `reviewerWorkers` is the subset that is also a worker, so a
+  // reviewer-worker keeps the normal worker lane. An older config that only
+  // carries `reviewer` still works.
+  const reviewers = Array.isArray(config.reviewers) && config.reviewers.length > 0
+    ? config.reviewers
+    : config.reviewer === null || config.reviewer === undefined
+      ? []
+      : [config.reviewer];
+  const reviewerWorkers = Array.isArray(config.reviewerWorkers) ? config.reviewerWorkers : [];
+  const dedicatedReviewer =
+    reviewers.includes(action.agent) && !reviewerWorkers.includes(action.agent);
+  const isReview = (typeof card?.review_of === "string" && card.review_of !== "") || dedicatedReviewer;
+  const handoff = isReview
+    ? buildReviewHandoff({ card: card ?? { identifier: action.identifier }, agent: action.agent, host: opts.host })
+    : buildHandoff({
+        card: card ?? { identifier: action.identifier },
+        agent: action.agent,
+        host: opts.host,
+        review: reviewers.includes(action.agent),
+      });
+  return { isReview, role: isReview ? "reviewer" : "worker", handoff };
+}
+
 export function spawnWorkerReal(opts, config, log) {
   return (action, card) => {
-    // A review card takes the reviewer handoff. The candidate projection carries
-    // `review_of`, so the decision needs no second read; the agent-name fallback
-    // keeps an older projection (one written before those fields existed) working
-    // for a dedicated reviewer.
-    // 0031 — the reviewer set is the deployment reviewer plus every project
-    // override. `reviewerWorkers` is the subset that is also a worker, so a
-    // reviewer-worker keeps the normal worker lane. An older config that only
-    // carries `reviewer` still works.
-    const reviewers = Array.isArray(config.reviewers) && config.reviewers.length > 0
-      ? config.reviewers
-      : config.reviewer === null || config.reviewer === undefined
-        ? []
-        : [config.reviewer];
-    const reviewerWorkers = Array.isArray(config.reviewerWorkers) ? config.reviewerWorkers : [];
-    const dedicatedReviewer =
-      reviewers.includes(action.agent) && !reviewerWorkers.includes(action.agent);
-    const isReview = (typeof card?.review_of === "string" && card.review_of !== "") || dedicatedReviewer;
-    const prompt = isReview
-      ? buildReviewHandoff({ card: card ?? { identifier: action.identifier }, agent: action.agent, host: opts.host })
-      : buildHandoff({
-          card: card ?? { identifier: action.identifier },
-          agent: action.agent,
-          host: opts.host,
-          review: reviewers.includes(action.agent),
-        });
+    const { handoff: prompt } = wakeHandoff(opts, config, action, card);
     // The parsed field is `opts.glue`; there is no `gluePath`.
     const invocation = planWakeInvocation({
       host: opts.host,
@@ -667,6 +727,27 @@ export function spawnWorkerReal(opts, config, log) {
 
 /** A notify command may hang; the pass must not hang with it. */
 export const NOTIFY_TIMEOUT_MS = 10_000;
+
+/**
+ * The one alert a cadence emits when no resident pool can dispatch: poll claims
+ * nothing and worker/reviewer dispatch is paused. The caller runs once per
+ * cadence, so this is "at most one per cadence" without a dedupe file.
+ *
+ * @param {object} opts
+ * @param {(line: string) => void} log
+ * @param {{reason?: string|null}} pool
+ * @param {(alert: object) => void} [notify]
+ */
+export function notifyNoResident(opts, log, pool, notify = notifyReal(opts, log)) {
+  notify({
+    kind: "no_resident",
+    severity: "warning",
+    host: opts.host,
+    reason: pool?.reason ?? "unknown",
+    message: "no resident session pool — worker/reviewer dispatch is paused; poll skipped",
+    at: new Date().toISOString(),
+  });
+}
 
 export function notifyReal(opts, log, { timeoutMs = NOTIFY_TIMEOUT_MS } = {}) {
   return (alert) => {
@@ -740,6 +821,37 @@ export async function runContinue(opts, deps = {}) {
   }
 
   const here = dirname(fileURLToPath(import.meta.url));
+  const pool = (deps.poolStatus ?? poolStatus)({ opts, isAlive, now });
+  const stateDir = dirname(String(opts.state));
+
+  // The resident pool owns the continue turn: this process only queues it, and
+  // the control session runs `patrol → workflow → poll` in its own conversation.
+  if (pool.live) {
+    if (opts.dryRun) {
+      log(`continue: would enqueue for the resident control session (${pool.file})`);
+      return 0;
+    }
+    const queued = enqueueContinue(stateDir, { reason: "timer" });
+    if (!queued.ok) {
+      log(`continue: could not enqueue the control turn: ${queued.error}`);
+      return 1;
+    }
+    log(`continue: enqueued for the resident control session${queued.coalesced ? " (coalesced)" : ""}`);
+    return 0;
+  }
+
+  // No resident pool: the one-shot turn still runs what it can — patrol and
+  // workflow — but it claims nothing. Poll is left out of the prompt entirely,
+  // because the cards it would claim could not be dispatched to a project
+  // session. One alert per cadence is the operator's signal to start the pool.
+  log(
+    `continue: no resident session pool (${pool.reason ?? "unknown"}) — ` +
+      "patrol + workflow only; worker/reviewer dispatch paused",
+  );
+  if (!opts.dryRun) {
+    notifyNoResident(opts, log, pool, deps.notify ?? notifyReal(opts, log));
+  }
+
   const prompt = buildContinuePrompt({
     host: opts.host,
     agent: opts.agents[0],
@@ -747,6 +859,7 @@ export async function runContinue(opts, deps = {}) {
     passesScript: join(here, "passes.mjs"),
     commonArgs: loopCommandArgs(opts),
     continueIntervalSeconds: opts.continueInterval,
+    includePoll: false,
   });
   const invocation = planContinueInvocation({
     host: opts.host,

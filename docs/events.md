@@ -94,9 +94,10 @@ vocabulary and a generic “recorded an event” fallback for an unknown one.
 ### The loop subscriber (`scripts/loop/subscribe.mjs`)
 
 Optional, launchd/systemd only. It consumes `taskctl events tail` (NDJSON) and turns a
-**signal** into one continue turn; it never claims, moves or wakes by itself. That keeps replay and
-duplicate frames harmless — the continue turn rescans board state, and the claim CAS plus
-the worker registry are the dispatch authorities.
+**signal** into one continue turn (enqueued for the resident control session when a pool is
+live, a one-shot turn otherwise); it never claims, moves or wakes by itself. That keeps replay and
+duplicate frames harmless — the continue turn rescans board state, the claim CAS decides the
+winner, and the card queue plus the subagent ledger are the dispatch authorities.
 
 Dispatch whitelist: `task_created`, `task_updated` (only when `fields` intersects
 `assigneeId`, `assigneeKind`, `kind`, `labels`, `meta`), `task_moved`, `task_delivered`,

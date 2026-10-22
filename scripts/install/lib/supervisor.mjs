@@ -47,16 +47,28 @@ export const SYSTEMD_UNITS = Object.freeze([
   "meerkat-taskpanel-continue.service",
   "meerkat-taskpanel-continue.timer",
   "meerkat-taskpanel-subscribe.service",
+  "meerkat-taskpanel-session.service",
 ]);
 /** The timers `enable --now` / `disable --now` act on. */
 export const SYSTEMD_TIMERS = Object.freeze([
   "meerkat-taskpanel-ping.timer",
   "meerkat-taskpanel-continue.timer",
 ]);
-/** The long-lived service beside the two timers (the event subscriber). */
-export const SYSTEMD_SERVICES = Object.freeze(["meerkat-taskpanel-subscribe.service"]);
-/** The loop's two clocks plus the optional event daemon, in write order. */
-export const KINDS = Object.freeze(["ping", "continue", "subscribe"]);
+/**
+ * The long-lived services beside the two timers: the resident session pool (the
+ * dispatcher) and the optional event subscriber.
+ */
+export const SYSTEMD_SERVICES = Object.freeze([
+  "meerkat-taskpanel-session.service",
+  "meerkat-taskpanel-subscribe.service",
+]);
+/**
+ * The loop's resident pool, its two clocks and the optional event daemon, in
+ * write/bootstrap order. The pool comes first: the continue turn enqueues its
+ * judgment turn for the pool, and a timer that fires before the pool exists
+ * would fall back to "no resident — dispatch paused".
+ */
+export const KINDS = Object.freeze(["session", "ping", "continue", "subscribe"]);
 /**
  * The topology this installer used to ship. `enable` takes these down before it
  * loads the new units, because a loaded launchd/systemd job does not notice its
@@ -74,6 +86,87 @@ export const LEGACY_SYSTEMD_TIMERS = Object.freeze([
   "meerkat-taskpanel-poll.timer",
   "meerkat-taskpanel-patrol.timer",
 ]);
+
+/** Is `pid` a live process? `EPERM` means it exists and belongs to someone else. */
+function pidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err?.code === "EPERM";
+  }
+}
+
+/** One `KEY=value` from the host config, or `null`. */
+function hostConfigValue(path, key) {
+  try {
+    const lines = readFileSync(path, "utf8").split("\n");
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index].trim();
+      if (!line.startsWith(`${key}=`)) continue;
+      return line.slice(key.length + 1).trim();
+    }
+  } catch {
+    // No config file yet.
+  }
+  return null;
+}
+
+/**
+ * The resident pool's runtime state, for `--supervisor=status`. Best effort: a
+ * missing or unreadable file reads as "not running", never as a failure.
+ *
+ * @param {string} stateDir the directory holding `sessions.state.json` etc.
+ * @param {{isAlive?: (pid: number) => boolean, now?: () => number}} [options]
+ * @returns {{live: boolean, pid: number|null, heartbeatAgeMs: number|null, liveSubagents: number,
+ *            cardsQueued: number, continueQueued: boolean, reason: string}}
+ */
+export function poolReport(stateDir, options = {}) {
+  const isAlive = options.isAlive ?? pidAlive;
+  const now = options.now ?? Date.now;
+  const readJson = (name) => {
+    try {
+      return JSON.parse(readFileSync(join(stateDir, name), "utf8"));
+    } catch {
+      return null;
+    }
+  };
+  const sessions = readJson("sessions.state.json");
+  const ledger = readJson("subagents.state.json");
+  const cards = readJson("cards.pending.json");
+  const pendingContinue = readJson("continue.pending.json");
+  const liveSubagents = Array.isArray(ledger?.subagents)
+    ? ledger.subagents.filter((row) => row?.status === "running" || row?.status === "spawned").length
+    : 0;
+  const cardsQueued = Array.isArray(cards?.cards)
+    ? cards.cards.filter((row) => row?.status === "pending" || row?.status === "processing").length
+    : 0;
+  const continueQueued = pendingContinue !== null;
+  const pid = Number.isInteger(sessions?.poolPid) ? sessions.poolPid : null;
+  const beat = Date.parse(String(sessions?.heartbeatAt ?? ""));
+  const heartbeatAgeMs = Number.isFinite(beat) ? Math.max(0, now() - beat) : null;
+  if (pid === null || !isAlive(pid)) {
+    return {
+      live: false,
+      pid,
+      heartbeatAgeMs,
+      liveSubagents,
+      cardsQueued,
+      continueQueued,
+      reason: pid === null ? "no session state" : `pool pid ${pid} is gone`,
+    };
+  }
+  return {
+    live: true,
+    pid,
+    heartbeatAgeMs,
+    liveSubagents,
+    cardsQueued,
+    continueQueued,
+    reason: "",
+  };
+}
 
 /**
  * The launchd label / systemd-name stem for one host — `com.meerkat-taskpanel.<agent>.<host>`.
@@ -136,6 +229,7 @@ export function supervisorPaths(options) {
     supervisor: join(hostBase, "meerkat-taskpanel", "scripts", "supervisor.mjs"),
     log: join(hostBase, "meerkat-taskpanel", "supervisor.log"),
     state: join(hostBase, "meerkat-taskpanel", "supervisor.state.json"),
+    config: join(hostBase, "meerkat-taskpanel.env"),
     launchd: KINDS.map((kind) => ({
       kind,
       label: supervisorLabel(options.agent, options.host, kind),
@@ -294,7 +388,7 @@ export function launchdMechanism({ paths, uid, run }) {
 
   return {
     name: "launchd",
-    unitsReport: `${supervisorBase(paths.agent, paths.host)}.ping,.continue,.subscribe`,
+    unitsReport: `${supervisorBase(paths.agent, paths.host)}.session,.ping,.continue,.subscribe`,
 
     plan() {
       return [
@@ -606,6 +700,24 @@ export function runSupervisorAction(options) {
             "re-run --supervisor=enable to migrate to ping/continue",
         );
       }
+    }
+    // The resident pool is a *runtime* fact, not a load state: say whether it is
+    // actually alive and what it is carrying.
+    const pool = poolReport(dirname(paths.state), { now: options.now });
+    const detail = pool.live
+      ? `pid ${pool.pid}, ${pool.liveSubagents} live subagent(s), ${pool.cardsQueued} card(s) queued` +
+        `${pool.continueQueued ? ", continue queued" : ""}` +
+        `${pool.heartbeatAgeMs === null ? "" : `, heartbeat ${Math.round(pool.heartbeatAgeMs / 1000)}s`}`
+      : pool.reason;
+    log(`supervisor:   session: ${pool.live ? "running" : "not running"} (${detail})`);
+    // The full-access opt-in is an authorization, so status states it — and who
+    // recorded it — rather than leaving a bypass invisible.
+    const allowAll = String(hostConfigValue(paths.config, "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS") ?? "").toLowerCase();
+    if (allowAll === "yes" || allowAll === "true" || allowAll === "1") {
+      const reason = hostConfigValue(paths.config, "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON") ?? "unrecorded";
+      log(`supervisor:   tools: all enabled (authorized by: ${reason}) — the project directory is not an isolation boundary`);
+    } else {
+      log("supervisor:   tools: role allowlists (full access is off)");
     }
     return 0;
   }

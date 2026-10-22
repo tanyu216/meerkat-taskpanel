@@ -1,12 +1,25 @@
 # Scheduling & continue
 
 How a board gets worked **continuously** when the host that does the work has no
-clock: a liveness ping, a periodic judgment turn, the atomic claim, the wake, and
-the notify-only patrol that catches what the scan misses. The scheduler lives
-**outside** the host — `scripts/supervisor.mjs`, which `install.sh` copies into the
-host out of the **[`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill** — and
-the host is only ever the worker that gets woken. The deterministic passes live
-under `scripts/loop/` and are run by the continue turn.
+clock: a liveness ping, a periodic judgment turn, the atomic claim, the resident
+session that spawns the worker, and the notify-only patrol that catches what the
+scan misses. The scheduler lives **outside** the host — `scripts/supervisor.mjs`,
+which `install.sh` copies into the host out of the
+**[`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill** — and the host is only
+ever the worker that gets woken. The deterministic passes live under
+`scripts/loop/` and are run by the continue turn.
+
+There are two execution shapes, and the same supervisor serves both:
+
+- **resident** (default on launchd/systemd): `--session` runs a long-lived *session
+  pool* — one control conversation that runs the continue turn, plus one *project
+  session* per target directory whose subagents do the work. Poll claims a card and
+  **enqueues** the handoff; the pool spawns the worker/reviewer as a subagent of the
+  project session, so it inherits the project directory as its cwd.
+- **one-shot** (cron, or a host with no session service): each continue cadence
+  starts one host process for the judgment turn. With no resident pool, poll claims
+  nothing and worker/reviewer dispatch is paused — see
+  [No resident pool: what still runs](#no-resident-pool-what-still-runs).
 
 The loop is a skill of its own, and it is distributed as one: `claude`, `codex` and `pi`
 install it, and OpenClaw deliberately does not (see
@@ -23,14 +36,14 @@ The supervisor is a **scheduler**. It owns two clocks and performs no board I/O
 of its own. The deterministic work — poll, patrol, workflow — lives in
 independent entries under `scripts/loop/`, and the continue turn invokes them.
 
-| | **ping** | **continue** |
-|---|---|---|
-| Cadence | 60 seconds | 600 seconds (10 minutes) |
-| Job | process liveness: prune worker registry entries whose pid is gone | wake the host with a bounded `Continue` judgment turn |
-| Reads | `supervisor.state.json` only | the scheduler reads nothing |
-| On a hit | — | the turn runs `patrol → workflow → poll` |
-| Cost | one small file read | one bounded LLM turn |
-| Why it exists | a dead worker must not pin a concurrency slot | the loop's work needs a turn that can judge, claim and dispatch |
+| | **ping** | **continue** | **session** |
+|---|---|---|---|
+| Cadence | 60 seconds | 600 seconds (10 minutes) | long-lived |
+| Job | process liveness: prune worker registry entries whose pid is gone | enqueue the bounded `/meerkat-loop Continue` turn for the control session (or run it one-shot when no pool is live) | hold the control and project conversations; route queued handoffs to project sessions |
+| Reads | `supervisor.state.json` only | the scheduler reads nothing | the queues, the ledger, `sessions.state.json` |
+| On a hit | — | the control turn runs `patrol → workflow → poll` | poll claims + enqueues; the project session spawns the subagent |
+| Cost | one small file read | one bounded LLM turn | one host conversation per active project |
+| Why it exists | a dead worker must not pin a concurrency slot | the loop's work needs a turn that can judge, claim and dispatch | a subagent inherits its parent session's cwd, so a project needs its own session |
 
 The split is deliberate. A 60-second clock that read the board would be a poll
 again; a 10-minute clock that ran the entries itself would keep the loop's
@@ -47,14 +60,76 @@ The deterministic passes are **not scheduled individually**:
 
 | Entry | Job | Writes |
 |---|---|---|
-| `scripts/loop/passes.mjs poll` | scan → atomic claim → wake a worker | claims and wakes |
-| `scripts/loop/passes.mjs patrol` | heartbeat alerts + SLA rows | nothing (notify only) |
+| `scripts/loop/passes.mjs poll` | scan → atomic claim → **enqueue the handoff** | claims, card queue |
+| `scripts/loop/passes.mjs patrol` | heartbeat alerts + SLA rows | card queue only with `--patrol-llm=yes` |
 | `scripts/loop/passes.mjs workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `taskd` |
 
 The continue prompt runs them in the order **patrol → workflow → poll**: the
 workflow pass dispatches a review card, and the poll that follows in the same
-turn can claim and wake its reviewer immediately. Polling first would delay that
-review by a whole cadence.
+turn can enqueue its reviewer immediately. Polling first would delay that review
+by a whole cadence.
+
+## The resident session pool
+
+A subagent inherits the **launch cwd of the session that spawns it**; a main
+session that `cd`s later does not move its subagents. Claude Code's Agent tool
+also ignores a per-call `cwd`. One board-wide session therefore cannot give two
+projects two directories — so the pool keeps **one project session per target
+directory**, each launched in that directory, and the subagents it spawns are
+already where they belong.
+
+```text
+session service (supervisor --session)
+├── control session        cwd = the taskpanel checkout
+│     /meerkat-loop Continue → patrol → workflow → poll
+│     poll: claim on the board, write the handoff to cards.pending.json
+└── project session        cwd = <project target_dir>   (one per directory)
+      batch prompt → spawn one worker/reviewer subagent per card
+      worker/reviewer inherit the project directory
+```
+
+- **Control session** — runs the judgment turn; it never spawns a worker and never
+  works a card itself. Poll only claims and enqueues.
+- **Project sessions** — created on demand from the host-local
+  `projects.json` (`local_path ?? run_dir`, through the same `resolveWakeDir` the
+  glue uses). A card whose project is unmapped or names no directory is **deferred
+  before the claim**, so the board never shows a claim that has nowhere to run.
+  The batch prompt tells the session to spawn one subagent per card and return
+  without working them.
+- **Ledger** (`subagents.state.json`) — the application-level record of each
+  subagent: `sessionKey` (the project directory), host, subagent id, role, card,
+  status. It is written from the host's events, never parsed out of a transcript.
+- **Resume** — the control and project sessions resume by session id. Subagents do
+  not: on start the pool sends a re-attach prompt (native reattach where the host
+  supports it — Claude `SendMessage`, Codex child `thread/resume`, Pi subagent
+  resume, OpenCode child session, Cursor `agentId`), and anything that cannot be
+  reattached is marked stale and left to the board's claim recovery.
+- **Capacity** — `--session-pool-max` (8), `--project-concurrency`
+  (default `--max-concurrency`) and `--max-concurrency` bound the pool. Poll's
+  claim budget is `max-concurrency − live subagents − queued cards`; at zero it
+  claims nothing and says so. An idle project session closes after
+  `--project-idle-ms` (30 min) and keeps its session id; every session gets a
+  fresh conversation after `--session-max-age` (24 h).
+- **One lock** — a second `--session` on the same state directory is refused
+  (`session.lock`). The pool writes a heartbeat every 15 s so a pass in another
+  process can tell "busy" from "gone".
+
+### No resident pool: what still runs
+
+The pool is the only dispatcher, so without it a claim has nowhere to go. The
+fallback is deliberately smaller rather than silently degraded:
+
+| Piece | Without a resident pool |
+|---|---|
+| `poll` | **claims nothing**, scans nothing, logs why; one `--notify` alert per cadence (`kind: no_resident`) |
+| one-shot continue | runs **patrol + workflow only** — the prompt omits poll entirely |
+| `patrol --patrol-llm=yes` | notify-only; no LLM turn |
+| `workflow` | runs; review cards accumulate and are claimed once the pool is back |
+
+This is the cron shape: cron cannot host a long-lived process, so a cron install
+runs ping + a one-shot continue and **cannot dispatch worker/reviewer subagents**.
+A host with a session service gets the full loop. `--resident=no` forces the
+fallback even when a pool is running.
 
 ## The cost gate: a worker turn starts only on fire
 
@@ -65,14 +140,21 @@ that is not ready. So the scan is a **plain CLI process** —
 
 ```
 poll entry
- ├─ scan        taskctl issue candidates …        → no candidates? stop. 0 workers spawned
- └─ candidates? ├─ claim  taskctl issue claim …   → refused? stop. no worker
-                └─ wake   claude -p "<handoff>" / codex exec  ← the only thing that costs tokens
+ ├─ resident?  sessions.state.json: pool pid + fresh heartbeat → no? claim nothing, alert once
+ ├─ scan       taskctl issue candidates …        → no candidates? stop. 0 handoffs
+ ├─ budget     max-concurrency − live − queued   → 0? defer, claim nothing
+ ├─ admit      project → target_dir + per-project cap → no directory? defer before the claim
+ ├─ claim      taskctl issue claim …             → refused? stop. no handoff
+ └─ enqueue    cards.pending.json (handoff, target_dir, role)
+                     ↓
+                project session (cwd = target_dir) → one subagent per card  ← the tokens
 ```
 
 The continue turn itself is the one LLM turn the scheduler pays for, once per
 cadence, whether or not the board has work: it is the loop's judgment turn.
-Inside it, the poll entry is still the deterministic cost gate above.
+Inside it, the poll entry is still the deterministic cost gate above. The project
+session's turn — one per batch of handoffs for a directory, not one per card — is
+the second cost, and it buys a subagent that starts in the right directory.
 `--dry-run` prints the plan and starts neither a claim nor a worker.
 
 ## Atomic claim = the single dispatch source
@@ -105,20 +187,23 @@ registry so it never consumes a concurrency slot.
 ### Idempotent wake + a concurrency cap
 
 Waking must be safe to repeat, or a re-run of a tick (or an overlapping cron
-line) double-starts work. Two guards:
+line) double-starts work. Guards:
 
-- **De-dup by card.** The supervisor keeps a small registry of running cards
-  (`--state`, default `<host-dir>/meerkat-taskpanel/supervisor.state.json`: card →
-  `{agent, pid, startedAt}`). A card already in the registry is never woken
-  again; a card offered twice in one tick (the public pool, read by every agent)
-  is claimed once.
-- **Cap by count.** New wakes per tick are limited to
-  `--max-concurrency − running` (default 8). A full fleet skips candidates rather
-  than piling up.
-- **Crash recovery.** The **ping** clock prunes the registry of pids that are
-  gone every 60 seconds, so a crashed worker releases its slot instead of
-  pinning it forever. The poll entry also prunes at start-up, as a backstop for
-  a host whose ping unit is not loaded.
+- **De-dup by card.** In the resident path the card queue coalesces a
+  `(card, role)` pair that is still pending or processing; a card offered twice
+  in one tick (the public pool, read by every agent) is claimed once. The legacy
+  one-shot path keeps the process registry (`supervisor.state.json`: card →
+  `{agent, pid, startedAt}`) for operators who still use it.
+- **Cap by count.** Poll's claim budget is
+  `max-concurrency − live subagents − queued cards` (default 8), and each project
+  directory has its own cap (`--project-concurrency`). A full fleet defers
+  candidates rather than piling up handoffs.
+- **Crash recovery.** The **ping** clock prunes the legacy registry of pids that
+  are gone every 60 seconds. The resident path releases a slot from the ledger:
+  a subagent whose card is no longer claimed, or whose record outlives the turn
+  timeout, is marked stale and its slot freed; a stalled queue entry is
+  requeued up to three attempts, then failed and left to the board's stale-claim
+  recovery.
 
 ## Fresh heartbeat is a no-op; a broken one is never silent
 
@@ -449,14 +534,17 @@ card — the board's plan stays authoritative either way.
 ## Continuity: a fresh handoff, not a resumed pile
 
 Every wake hands the worker a **bounded, fresh handoff** built by
-`buildHandoff()`: the card id and title, the acceptance-list step (read the card with
+`buildHandoff()`: the card id and title, that it is a subagent of the project
+session and already holds the claim (heartbeat, do not re-claim), the working
+directory it inherits, the acceptance-list step (read the card with
 `issue get --json`, work to an existing list, or derive one and persist it with
 `meta.acceptance_derived=yes`), the exact `taskctl` commands to read and deliver it, and
 the attribution flags `--agent <name> --actor-kind <host> --session-id <id>`. The handoff
-is capped at **under 2500 characters** (a test pins it, including a maximum title and a
+is capped at **under 2800 characters** (a test pins it, including a maximum title and a
 UUID session id) so a wake never drags an unbounded context into the model. It names no
-directory: the board holds none (O3), and the working directory is the host's
-business — see [Where a worker runs](#where-a-worker-runs).
+directory path: the board holds none (O3), the project session's cwd **is** the
+directory, and the subagent inherits it — see
+[Where a worker runs](#where-a-worker-runs).
 
 Continuity across wakes comes from the **board**, not the prompt: the card's
 comments, reports and session record are durable, so a resumed conversation can
@@ -478,27 +566,29 @@ checkout supplies. The board cannot say which directory that is (it holds no
 directories, O3), and neither can the supervisor: it knows a project **identity** and
 nothing else.
 
-So the directory is resolved **by the host, locally**, in the one piece of the chain
-that lives on the host: the wake glue.
+So the directory is resolved **by the host, locally**, against `projects.json`
+beside the skill (`references/projects-json.md`) as `local_path ?? run_dir`,
+**validated** (absolute, exists, is a directory).
 
-- The supervisor starts the worker *through* the glue
+- **Resident (default).** Poll resolves the candidate's project before claiming it
+  and writes the result into the queue entry as `target_dir`; the pool launches the
+  project session in that directory, and the subagent inherits it. If the project
+  is unmapped or names no directory, the card is **deferred before the claim** —
+  it stays `todo`, where the next turn can offer it again, and the log says why.
+- **Legacy one-shot wake.** The supervisor starts the worker *through* the glue
   (`<host-dir>/bin/wake-<host>.sh`) when one is installed, handing it the card's
-  project identity in `TP_PROJECT` and the map path in `TP_PROJECTS_JSON`.
-- The glue resolves that identity against the host-local `projects.json` beside the
-  skill (`references/projects-json.md`) as `local_path ?? run_dir`, **validates** the
-  result (absolute, exists, is a directory), `cd`s into it, and only then execs the
-  host CLI.
-- **If it cannot resolve, it refuses the wake** (exit 3, reason on stderr) and the
-  card stays unwoken. There is no fallback directory: a session that runs in the
-  wrong checkout produces confident, misplaced work, which is worse than no session.
-  An entry that deliberately names **no** directory is one of the ways to have no
-  answer here — the map allows it, but a worker still needs somewhere to start.
-- With **no glue installed**, the supervisor falls back to the host CLI directly,
+  project identity in `TP_PROJECT` and the map path in `TP_PROJECTS_JSON`. The
+  glue resolves the same way, `cd`s into the directory, and only then execs the
+  host CLI. If it cannot resolve it **refuses the wake** (exit 3, reason on
+  stderr) and the card stays unwoken. There is no fallback directory: a session
+  that runs in the wrong checkout produces confident, misplaced work, which is
+  worse than no session.
+- With **no glue installed**, the legacy path falls back to the host CLI directly,
   pins it to `--repo`, and logs an explicit warning that no target directory was
-  resolved. That fallback is visible on every tick — never silent.
-- An explicit **`--wake-command`** outranks both: an operator who supplies their
-  own wake command chose it deliberately, so it is used verbatim (and still handed
-  `TP_PROJECT` / `TP_PROJECTS_JSON` / `TP_NODE` if it wants them).
+  resolved. An explicit **`--wake-command`** outranks both.
+- The resident path never uses the glue, `--wake-command` or the CLI fallback.
+  Those remain for old installations and manual wakes; the units this installer
+  writes do not call them.
 
 The same map answers the interactive question: `taskctl project dir <project>` prints
 a project's registered directory, reports that the entry names none, or exits non-zero
@@ -511,13 +601,13 @@ timers** — their hooks fire only on session events. So the loop lives outside:
 
 | Option | Shape |
 |---|---|
-| `scripts/supervisor.mjs` (this repo) | the scheduler: `--ping-only --once` / `--continue-only --once` for cron/launchd/systemd, or its own two clocks |
+| `scripts/supervisor.mjs` (this repo) | the scheduler: `--ping-only --once` / `--continue-only --once` for cron, `--session` for the resident pool, or its own daemon clocks |
 | the host-installed copy | what `install.sh` deploys, out of the [`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill: the body is copied under `<host-dir>/meerkat-taskpanel/`, and the scheduling units name *that* path |
 | the local `taskd` process | a natural home for the same loop in a future milestone |
 | [openclaw-team](https://github.com/tanyu216/openclaw-team) | on OpenClaw, the framework *is* the supervisor |
 
-The host is just a worker: the poll entry claims on the board, then starts the
-host's own headless entry point.
+The host is just a worker: the poll entry claims on the board, then the resident
+project session spawns the host's subagent in the project directory.
 
 ### What the loop's units run with
 
@@ -1005,11 +1095,14 @@ this checkout:
 ```text
 <home>/<host-dir>/meerkat-taskpanel/
 ├── scripts/supervisor.mjs        the scheduler the units run
-├── scripts/loop/*.mjs            the deterministic passes (patrol / workflow / poll) and the subscriber
+├── scripts/loop/*.mjs            the deterministic passes (patrol / workflow / poll), the subscriber,
+│                                 the resident pool (session.mjs), its queues + ledger, and the host adapters
 ├── scripts/wake-cwd.mjs          what the wake glue calls to resolve a card's directory
 ├── scripts/foundation/*.mjs      the modules those import
 ├── supervisor.log                runtime
-└── supervisor.state.json         runtime
+├── supervisor.state.json         runtime (legacy worker registry)
+├── sessions.state.json           runtime (resident pool: pids, session ids, heartbeat)
+└── subagents.state.json          runtime (ledger: subagent id → project, role, card, status)
 ```
 
 The `scripts/` + `scripts/foundation/` shape is load-bearing: `supervisor.mjs` imports
@@ -1079,6 +1172,36 @@ Prefer running the worker in a container or sandbox whose filesystem and network
 reach are already bounded: for a `-p`/`exec` turn, the process boundary *is* the
 permission boundary, and it does not depend on a human catching a prompt.
 
+### The resident pool's default, and the authorized opt-out
+
+The session pool keeps the same rule. By default each role runs under its own
+allowlist:
+
+| Role | Tools (Claude adapter, default) |
+|---|---|
+| control | `Read`, `Bash(taskctl *)`, `Bash(node *)` |
+| reviewer | `Read`, `Grep`, `Glob`, `Bash(taskctl *)`, `Bash(git *)` |
+| worker | `Read`, `Edit`, `Write`, `Grep`, `Glob`, `Bash(taskctl *)`, `Bash(node *)`, `Bash(git *)` |
+
+An operator who needs unattended runs that edit and execute without prompts can
+opt into **full tool access** — `--allow-all-tools`, or, for the installed
+service, the host config:
+
+```bash
+MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes
+MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON="<who authorized it and why>"
+```
+
+The reason is **required**; `--allow-all-tools` without it is a startup error. With
+it the Claude adapter runs `--permission-mode bypassPermissions`, and the control,
+project and subagent sessions alike have the installing user's full OS
+permissions. **The project directory is not an isolation boundary** — cwd is
+where the work happens, not a sandbox. Other hosts use their own equivalent
+(Codex approvals off + full-access sandbox, Cursor `agent` mode + permissions
+allow, OpenCode allow-all rules, Pi auto-approve) when their resident adapter
+lands. The flag is printed in `--supervisor=status`, and the installed units
+never carry it: the config file is where the authorization is recorded.
+
 ## The five hosts: how each one is triggered
 
 Claude Code, Codex, Pi, OpenCode and Cursor have no clock, and their wake surfaces
@@ -1094,9 +1217,31 @@ patrol, registry) is identical.
 | **Cursor** | `cursor-agent -p "<handoff>"` | external units + `wake-cursor.sh` | `cursor-agent -p --resume <sid> <prompt>` (documented flags; matrix probe SKIPs without the CLI) |
 | **OpenClaw** | *n/a — no self-scheduler* | install **openclaw-team**; its `poll`/`patrol` automations are this design | the framework keeps the id stable across resumes |
 
-The wake command column is what the *host CLI* is called with. When the host's glue
-is installed, the supervisor starts **the glue** with that handoff and lets it set
-the working directory first — see [Where a worker runs](#where-a-worker-runs).
+The wake command column is what the *host CLI* is called with on the legacy
+one-shot path. When the host's glue is installed, the supervisor starts **the
+glue** with that handoff and lets it set the working directory first — see
+[Where a worker runs](#where-a-worker-runs).
+
+**Resident adapters:** the pool ships one per host, each on that host's native
+persistent protocol.
+
+| Host | Resident form | Session identity | Subagent handle |
+|---|---|---|---|
+| Claude Code | one `claude -p --input-format stream-json --output-format stream-json` process per session | `--resume <session_id>` | Agent tool's `agentId`; reattach with `SendMessage` |
+| Codex | one `codex app-server --listen stdio://`; one **thread** per session | `thread/resume` | child thread (`receiverThreadIds`) |
+| Pi | one `pi --mode rpc` process per session | `--session-id <id>` | the subagent package's `agentId` |
+| OpenCode | one `opencode serve` **per directory** (its API has no per-session cwd) | `GET /session/:id` + the stored id | child session id |
+| Cursor | one `cursor-agent acp`; one `session/new {cwd}` per session | `session/load` | `agentId` in a task update |
+
+Claude, Codex and Pi are verified against the real CLIs (Codex's app-server
+schema is pinned by `codex app-server generate-json-schema`); OpenCode and Cursor
+are written to their published protocol and covered by fake-transport tests —
+`node scripts/verify/host-session-matrix.mjs` is the host-only probe. A host whose
+CLI lacks the resident protocol (an old Cursor without ACP) keeps the one-shot
+path: patrol + workflow run, dispatch is paused. The seam is host-agnostic by
+design — an adapter implements `openSession({cwd, sessionId, role}) →
+{send, interrupt, close}` in `scripts/loop/hosts/`, and the pool manager never
+names a CLI.
 
 Installers also install the **loop skill** itself, at `<host-dir>/skills/meerkat-loop/` —
 the payload the units and glues are rendered from, and the operator's documentation for
@@ -1108,13 +1253,19 @@ command** — they never enable a daemon or run `crontab` for you:
 
 ```bash
 # macOS
+launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.session.plist  # the pool
 launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist   # and .continue.plist + .subscribe.plist
 # Linux (user units)
 mkdir -p ~/.config/systemd/user && cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
-systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service
-# Anywhere
+systemctl --user enable --now meerkat-taskpanel-session.service meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service
+# Anywhere (no long-lived process: patrol + workflow only, no worker dispatch)
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
+
+The `.session` unit is the **resident pool** — one manager, a control session and
+one project session per target directory. It is the only unit that can dispatch a
+worker; without it the continue turn still runs patrol and workflow, and poll
+stops at "no resident pool".
 
 The `.subscribe` unit is the **event daemon**. launchd (`KeepAlive`) and systemd
 (`Type=simple`, `Restart=always`) follow the board's event stream through
@@ -1182,11 +1333,12 @@ for the host directory and `codex` / `pi` / `opencode` / `cursor` for `--host`. 
 
 ### macOS — launchd
 
-The installer already wrote both units
-(`<host-dir>/scheduling/launchd/com.meerkat-taskpanel.{ping,continue}.plist`); enabling means
-bootstrapping them, one per unit:
+The installer already wrote the units
+(`<host-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist`);
+enabling means bootstrapping them, one per unit — the pool first:
 
 ```bash
+launchctl bootstrap gui/$(id -u) ~/.claude/scheduling/launchd/com.meerkat-taskpanel.session.plist
 launchctl bootstrap gui/$(id -u) ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist
 launchctl bootstrap gui/$(id -u) ~/.claude/scheduling/launchd/com.meerkat-taskpanel.continue.plist
 launchctl bootstrap gui/$(id -u) ~/.claude/scheduling/launchd/com.meerkat-taskpanel.subscribe.plist
@@ -1196,11 +1348,13 @@ launchctl bootstrap gui/$(id -u) ~/.claude/scheduling/launchd/com.meerkat-taskpa
 reboot). Where `bootstrap` is unavailable (older macOS), the legacy fallback is
 `launchctl load -w <plist>` (`-w` = persist across reboot).
 
-**Disable** — by label, both units:
+**Disable** — by label, every unit:
 
 ```bash
+launchctl bootout gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.session
 launchctl bootout gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.ping
 launchctl bootout gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.continue
+launchctl bootout gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.subscribe
 ```
 
 (legacy fallback: `launchctl unload -w <plist>`).
@@ -1236,9 +1390,9 @@ systemctl --user daemon-reload
 **Enable / disable / status:**
 
 ```bash
-systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service
-systemctl --user disable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer
-systemctl --user is-enabled meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer   # add is-active for "running now"
+systemctl --user enable --now meerkat-taskpanel-session.service meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service
+systemctl --user disable --now meerkat-taskpanel-session.service meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer
+systemctl --user is-enabled meerkat-taskpanel-session.service meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer   # add is-active for "running now"
 ```
 
 **The headless caveat: lingering.** A `systemd --user` manager is torn down when the user's

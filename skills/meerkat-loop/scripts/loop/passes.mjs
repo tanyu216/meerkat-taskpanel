@@ -4,7 +4,7 @@
  *
  *   node scripts/loop/passes.mjs patrol      notify-only SLA; never moves a card
  *   node scripts/loop/passes.mjs workflow    apply the board's workflow plan
- *   node scripts/loop/passes.mjs poll        scan → atomic claim → wake a worker
+ *   node scripts/loop/passes.mjs poll        scan → atomic claim → enqueue the handoff
  *
  * They are one file because they share one contract: parse the same flags, then
  * run one pass. The order (`patrol → workflow → poll`) belongs to the continue
@@ -14,14 +14,23 @@
  * Each `run*Once` is exported for the tests; the process entry is `main`.
  */
 
-import { existsSync } from "node:fs";
+import { dirname } from "node:path";
 
+import { resolveWakeDir } from "../wake-cwd.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import { candidateArgs, pruneRegistry } from "../foundation/scheduling.mjs";
 
 import { readBoard, readProjectReviewers, runSlaPass, runWorkflowPass } from "./board.mjs";
+import { liveSubagents, readLedger } from "./ledger.mjs";
 import { mergeReviewerSets, parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
-import { notifyReal, runPatrolTick, runPollTick, spawnWorkerReal } from "./runners.mjs";
+import { enqueueCard, readCards } from "./queue.mjs";
+import {
+  notifyNoResident,
+  notifyReal,
+  runPatrolTick,
+  runPollTick,
+  wakeHandoff,
+} from "./runners.mjs";
 import {
   createLogger,
   isProcessAlive,
@@ -29,12 +38,13 @@ import {
   runCli,
   saveRegistry,
 } from "./runtime.mjs";
+import { poolStatus } from "./session.mjs";
 
 const PASS_USAGE = `Usage: node scripts/loop/passes.mjs <patrol|workflow|poll> [options]
 
   patrol     the notify-only SLA pass; no alert moves a card
   workflow   apply the board's workflow plan (issue reconcile --workflow)
-  poll       scan → atomic claim → wake one worker per accepted claim
+  poll       scan → atomic claim → enqueue the handoff for a project session
 
 Options are the loop's shared flags; run \`node scripts/supervisor.mjs --help\` for the list.
 `;
@@ -72,10 +82,96 @@ async function runEntry(name, argv, env, run, validate = null) {
 }
 
 /**
- * One poll pass: scan, atomically claim, wake one worker per accepted claim.
+ * Project admission for a poll claim.
  *
- * An empty board scans nothing and spawns nothing; a refused claim never wakes
- * a worker. `--recover-stale` also offers stale `in_progress` claims.
+ * Resolves the candidate's `project` to a directory through the host-local map
+ * **before** the board is claimed, and enforces the per-project cap. A card whose
+ * project is unmapped, names no directory, or has no free project slot is
+ * deferred — it stays `todo`, where the next turn can offer it again.
+ *
+ * @param {{
+ *   opts: object,
+ *   projectConcurrency: number,
+ *   liveByDir?: Map<string, number>,
+ *   queuedByDir?: Map<string, number>,
+ * }} input
+ * @returns {{
+ *   admit: (action: object, card: object|undefined) => {ok: boolean, why?: string},
+ *   dirFor: (identifier: string) => string|null,
+ * }}
+ */
+export function createProjectAdmission(input) {
+  const { opts, projectConcurrency } = input;
+  const liveByDir = input.liveByDir ?? new Map();
+  const queuedByDir = input.queuedByDir ?? new Map();
+  const admittedDirs = new Map();
+  const claimedByDir = new Map();
+
+  return {
+    admit(action, card) {
+      const project = typeof card?.project === "string" ? card.project.trim() : "";
+      if (project === "") return { ok: false, why: "the card names no project" };
+      const resolved = resolveWakeDir({ project, projectsJson: opts.projectsJson });
+      if (resolved.ok !== true) {
+        const first = String(resolved.message ?? "").split("\n")[0];
+        return { ok: false, why: `${resolved.code}: ${first}` };
+      }
+      const used =
+        (liveByDir.get(resolved.dir) ?? 0) +
+        (queuedByDir.get(resolved.dir) ?? 0) +
+        (claimedByDir.get(resolved.dir) ?? 0);
+      if (used >= projectConcurrency) {
+        return { ok: false, why: `project ${project} is at its concurrency cap` };
+      }
+      admittedDirs.set(action.identifier, resolved.dir);
+      claimedByDir.set(resolved.dir, (claimedByDir.get(resolved.dir) ?? 0) + 1);
+      return { ok: true };
+    },
+    dirFor(identifier) {
+      return admittedDirs.get(identifier) ?? null;
+    },
+  };
+}
+
+/**
+ * The resident dispatch: write one claimed card's handoff into the card queue.
+ * The pool manager takes it from there; this process never starts a host.
+ *
+ * @param {{opts: object, config: object, stateDir: string, admission: {dirFor: (id: string) => string|null}}} input
+ * @returns {(action: object, card: object|undefined) => Promise<{ok: boolean, pid?: null, queued?: boolean, dryRun?: boolean, error?: string}>}
+ */
+export function createQueueDispatch(input) {
+  const { opts, config, stateDir, admission } = input;
+  return async (action, card) => {
+    if (opts.dryRun) return { ok: true, pid: null, dryRun: true };
+    const dir = admission.dirFor(action.identifier);
+    if (dir === null) return { ok: false, error: "no admitted project directory" };
+    const { role, handoff } = wakeHandoff(opts, config, action, card);
+    const queued = enqueueCard(stateDir, {
+      card: action.identifier,
+      role,
+      agent: action.agent,
+      project: card?.project ?? null,
+      target_dir: dir,
+      handoff,
+    });
+    if (!queued.ok) return { ok: false, error: queued.error };
+    return { ok: true, pid: null, queued: !queued.coalesced };
+  };
+}
+
+/**
+ * One poll pass: scan, atomically claim, enqueue the handoff.
+ *
+ * **Poll never spawns.** It claims on the board and writes the handoff to the
+ * card queue; a resident project session (one per target directory) takes the
+ * handoff and spawns the worker/reviewer subagent in that directory. Without a
+ * live pool there is nowhere to send the handoff, so this pass claims **nothing**
+ * and alerts once — a claimed card that cannot run is worse than an untouched
+ * one.
+ *
+ * An empty board scans nothing; a refused claim never enqueues. `--recover-stale`
+ * also offers stale `in_progress` claims.
  *
  * @param {object} opts
  * @param {NodeJS.ProcessEnv} [env]
@@ -84,6 +180,7 @@ async function runEntry(name, argv, env, run, validate = null) {
 export async function runPollOnce(opts, env = process.env) {
   const log = createLogger(opts);
   const { config } = resolveLoopConfig(opts, env);
+  const stateDir = dirname(String(opts.state));
 
   // 0031 — project-level reviewer overrides join the deployment reviewer in the
   // scan/wake set. A failed read falls back to the global reviewer (the board
@@ -99,15 +196,54 @@ export async function runPollOnce(opts, env = process.env) {
   config.reviewerWorkers = merged.reviewerWorkers;
   const agents = merged.scanAgents;
 
+  const pool = poolStatus({ opts, isAlive: isProcessAlive });
+  if (!pool.live) {
+    log(`poll: skipped — no resident session pool (${pool.reason ?? "unknown"}); 0 cards claimed`);
+    if (!opts.dryRun) notifyNoResident(opts, log, pool);
+    return 0;
+  }
+
   const registry = opts.dryRun
     ? { version: 1, running: {} }
     : pruneRegistry(loadRegistry(opts.state), isProcessAlive);
+
+  // The claim budget: what the pool can actually run. Live subagents and cards
+  // already queued both occupy a slot, so neither is claimed twice.
+  const live = liveSubagents(readLedger(stateDir).value);
+  // `dispatched` is already a live subagent in the ledger; counting it here too
+  // would charge a background subagent twice against the budget.
+  const queued = readCards(stateDir).value.cards.filter(
+    (card) => card.status === "pending" || card.status === "processing",
+  );
+  const maxConcurrency = Number(opts.maxConcurrency ?? 8);
+  const projectConcurrency = Number(opts.projectConcurrency ?? maxConcurrency);
+  const countBy = (rows, key) => {
+    const counts = new Map();
+    for (const row of rows) {
+      const value = String(row?.[key] ?? "");
+      if (value !== "") counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    return counts;
+  };
+  const liveByDir = countBy(live, "sessionKey");
+  const queuedByDir = countBy(queued, "target_dir");
+  const budget = Math.max(0, maxConcurrency - live.length - queued.length);
+  if (budget === 0) {
+    log(
+      `poll: claim budget is 0 (${live.length} live subagent(s), ${queued.length} queued card(s), ` +
+        `cap ${maxConcurrency}) — nothing claimed`,
+    );
+    return 0;
+  }
+
+  const admission = createProjectAdmission({ opts, projectConcurrency, liveByDir, queuedByDir });
+  const dispatch = createQueueDispatch({ opts, config, stateDir, admission });
 
   const deps = {
     agents,
     registry,
     config,
-    readCandidates: (agent, { claimUnassigned: pool }) => {
+    readCandidates: (agent, { claimUnassigned: claimPool }) => {
       const dedicatedReviewer =
         merged.reviewers.includes(agent) && !merged.reviewerWorkers.includes(agent);
       // A dedicated reviewer never takes the public pool, and only sees review
@@ -116,7 +252,7 @@ export async function runPollOnce(opts, env = process.env) {
       const read = runCli(
         opts,
         agent,
-        candidateArgs(agent, dedicatedReviewer ? false : pool, config.recoverStale),
+        candidateArgs(agent, dedicatedReviewer ? false : claimPool, config.recoverStale),
       );
       if (!read.ok) {
         log(`scan failed for ${agent}: ${read.error}`);
@@ -134,26 +270,26 @@ export async function runPollOnce(opts, env = process.env) {
       const claimed = runCli(opts, agent, ["issue", "claim", identifier], { actorKind: opts.host });
       return claimed.ok ? { ok: true } : { ok: false, error: claimed.error };
     },
-    spawnWorker: opts.dryRun ? async () => ({ ok: true, pid: null }) : spawnWorkerReal(opts, config, log),
+    dispatch,
+    admit: admission.admit,
+    limit: budget,
+    verb: "enqueued",
     now: () => new Date().toISOString(),
     log,
   };
 
-  // Say it up front, every tick: whether a wake can resolve a target directory.
-  const gluePresent = opts.glue !== null && existsSync(opts.glue);
-  const wakeForm = opts.wakeCommand === null ? `glue=${gluePresent ? opts.glue : "none"}` : `wake_command=${opts.wakeCommand}`;
   log(
     `tick: host=${opts.host} agents=${agents.join(",")} claim_unassigned=${config.claimUnassigned ? "yes" : "no"} ` +
-      `recover_stale=${config.recoverStale ? "yes" : "no"} ` +
-      `${wakeForm} projects_json=${opts.projectsJson}${opts.dryRun ? " (dry-run)" : ""}`,
+      `recover_stale=${config.recoverStale ? "yes" : "no"} pool=resident ` +
+      `budget=${budget} projects_json=${opts.projectsJson}${opts.dryRun ? " (dry-run)" : ""}`,
   );
-  if (!gluePresent && opts.wakeCommand === null && !opts.dryRun) {
-    log(`warning: no wake glue at ${opts.glue} — workers will run in ${opts.repo} without a project target directory`);
-  }
 
   const poll = await runPollTick(deps);
   if (!opts.dryRun) saveRegistry(opts.state, registry);
-  log(`poll: ${poll.actions.length} action(s), ${poll.spawned} woke, ${poll.conflicts} refused, ${poll.failed} failed`);
+  log(
+    `poll: ${poll.actions.length} action(s), ${poll.spawned} enqueued, ${poll.deferred} deferred, ` +
+      `${poll.conflicts} refused, ${poll.failed} failed`,
+  );
   return poll.failed > 0 ? 1 : 0;
 }
 
@@ -187,11 +323,48 @@ export async function runPatrolOnce(opts, env = process.env) {
     config,
     spawnPatrol: async (alert) => {
       if (opts.dryRun) return { ok: false };
-      const card = { identifier: alert.identifier };
-      return spawnWorkerReal(opts, config, log)(
-        { identifier: alert.identifier, agent: alert.agent ?? opts.agents[0] },
-        card,
-      );
+      // The LLM lane needs a resident project session to run in. Without one the
+      // alert stays notify-only — no card is claimed, no process is started.
+      const pool = poolStatus({ opts, isAlive: isProcessAlive });
+      if (!pool.live) {
+        log(`patrol: ${alert.identifier} — no resident session pool; notify-only, no LLM turn`);
+        return { ok: false };
+      }
+      const task = tasks.find((entry) => entry.identifier === alert.identifier) ?? null;
+      const project = typeof task?.project === "string" ? task.project.trim() : "";
+      if (project === "") {
+        log(`patrol: ${alert.identifier} — the card names no project; notify-only, no LLM turn`);
+        return { ok: false };
+      }
+      const resolved = resolveWakeDir({ project, projectsJson: opts.projectsJson });
+      if (resolved.ok !== true) {
+        const first = String(resolved.message ?? "").split("\n")[0];
+        log(`patrol: ${alert.identifier} — ${resolved.code}: ${first}; notify-only, no LLM turn`);
+        return { ok: false };
+      }
+      const action = { identifier: alert.identifier, agent: alert.agent ?? opts.agents[0] };
+      const claimed = runCli(opts, action.agent, ["issue", "claim", alert.identifier], {
+        actorKind: opts.host,
+      });
+      if (!claimed.ok) {
+        log(`patrol: claim refused ${alert.identifier} (${claimed.error ?? "conflict"}) — not dispatching`);
+        return { ok: false };
+      }
+      const { role, handoff } = wakeHandoff(opts, config, action, task ?? { identifier: alert.identifier });
+      const queued = enqueueCard(dirname(String(opts.state)), {
+        card: alert.identifier,
+        role,
+        agent: action.agent,
+        project,
+        target_dir: resolved.dir,
+        handoff,
+      });
+      if (!queued.ok) {
+        log(`patrol: could not enqueue ${alert.identifier}: ${queued.error}`);
+        return { ok: false };
+      }
+      log(`patrol: enqueued ${alert.identifier} for ${action.agent} in ${resolved.dir}`);
+      return { ok: true };
     },
     notify: opts.dryRun ? () => {} : notifyReal(opts, log),
     now: () => new Date().toISOString(),

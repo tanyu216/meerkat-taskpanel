@@ -32,6 +32,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 
+import { createProjectAdmission, createQueueDispatch } from "../../scripts/loop/passes.mjs";
+import { readCards } from "../../scripts/loop/queue.mjs";
 import {
   acquireContinueLock,
   loadContinueLock,
@@ -67,6 +69,21 @@ function sentinelCli(dir) {
     "utf8",
   );
   return { script, record };
+}
+
+/** A state file that says "the pool manager is alive and beating". */
+function writeLivePool(dir, extra = {}) {
+  writeFileSync(
+    join(dir, "sessions.state.json"),
+    JSON.stringify({
+      version: 1,
+      poolPid: process.pid,
+      heartbeatAt: new Date().toISOString(),
+      control: { pid: process.pid, sessionId: "sid-control" },
+      projects: {},
+      ...extra,
+    }),
+  );
 }
 
 function calls(record) {
@@ -222,7 +239,7 @@ describe("ping and continue entries", () => {
       "--dry-run",
     ], { TP_FAKE_CLAUDE: record, PATH: `${bin}:${process.env.PATH}` });
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stderr, /Continue/);
+    assert.match(run.stderr, /supervisor: \/meerkat-loop Continue/);
     assert.match(run.stderr, /continue: would run: claude/);
     assert.equal(existsSync(join(dir, "continue.state.json")), false, "dry-run takes no lock");
   });
@@ -233,8 +250,9 @@ describe("ping and continue entries", () => {
 // ---------------------------------------------------------------------------
 
 describe("deterministic entries (dry-run, sentinel CLI)", () => {
-  function runWithSentinel(pass, extra = []) {
+  function runWithSentinel(pass, extra = [], { livePool = false } = {}) {
     const dir = tempDir(`tp-entry-${pass}-`);
+    if (livePool) writeLivePool(dir);
     const { script, record } = sentinelCli(dir);
     const run = runEntry("passes.mjs", [
       "--host", "claude", "--agent", "alice", "--dry-run",
@@ -245,8 +263,8 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     return { run, record, dir };
   }
 
-  it("poll scans candidates and writes nothing", () => {
-    const { run, record } = runWithSentinel("poll");
+  it("poll scans candidates and writes nothing while the pool is resident", () => {
+    const { run, record } = runWithSentinel("poll", [], { livePool: true });
     assert.equal(run.status, 0, run.stderr);
     const args = calls(record);
     assert.ok(args.length > 0, "poll must scan");
@@ -258,6 +276,19 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.ok(candidateCall, "the scan is `issue candidates`");
     assert.equal(candidateCall[candidateCall.indexOf("candidates") - 1], "issue");
     assert.equal(existsSync(join(dirname(record), "state.json")), false, "dry-run writes no registry");
+  });
+
+  it("poll claims nothing at all without a resident pool", () => {
+    const { run, record, dir } = runWithSentinel("poll");
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stderr, /no resident session pool/);
+    const args = calls(record);
+    assert.equal(
+      args.some((call) => call.includes("candidates")),
+      false,
+      "no scan, so no card can be claimed",
+    );
+    assert.equal(existsSync(join(dir, "cards.pending.json")), false);
   });
 
   it("patrol reads the board and the SLA rows, and writes nothing", () => {
@@ -320,6 +351,129 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
 // Continue — the spawn path
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// The resident poll dispatch — admit, then enqueue
+// ---------------------------------------------------------------------------
+
+describe("the resident poll dispatch", () => {
+  function fixture(concurrency = 2) {
+    const dir = tempDir("tp-poll-dispatch-");
+    const app = join(dir, "app");
+    mkdirSync(app, { recursive: true });
+    const projectsJson = join(dir, "projects.json");
+    writeFileSync(projectsJson, JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
+    const opts = { projectsJson, host: "claude", dryRun: false };
+    return { dir, app, projectsJson, opts, concurrency };
+  }
+
+  it("writes the worker handoff with the resolved project directory", async () => {
+    const f = fixture();
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency });
+    const action = { identifier: "T-1", agent: "alice", reason: "ready" };
+    const card = { identifier: "T-1", project: "P", title: "do it" };
+    assert.equal(admission.admit(action, card).ok, true);
+    const dispatch = createQueueDispatch({
+      opts: f.opts,
+      config: { reviewers: [] },
+      stateDir: f.dir,
+      admission,
+    });
+    const outcome = await dispatch(action, card);
+    assert.equal(outcome.ok, true);
+    assert.equal(outcome.queued, true);
+    const [entry] = readCards(f.dir).value.cards;
+    assert.equal(entry.card, "T-1");
+    assert.equal(entry.role, "worker");
+    assert.equal(entry.agent, "alice");
+    assert.equal(entry.target_dir, f.app);
+    assert.match(entry.handoff, /^You are a worker subagent of the P project session/);
+    assert.equal(entry.handoff.includes("/meerkat-loop"), false, "a handoff is not a continue turn");
+  });
+
+  it("routes a review card to the reviewer handoff in the same directory", async () => {
+    const f = fixture();
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency });
+    const action = { identifier: "T-2", agent: "jobs", reason: "ready" };
+    const card = { identifier: "T-2", project: "P", review_of: "T-1", review_round: 1 };
+    assert.equal(admission.admit(action, card).ok, true);
+    const dispatch = createQueueDispatch({
+      opts: f.opts,
+      config: { reviewers: ["jobs"], reviewerWorkers: [] },
+      stateDir: f.dir,
+      admission,
+    });
+    assert.equal((await dispatch(action, card)).ok, true);
+    const [entry] = readCards(f.dir).value.cards;
+    assert.equal(entry.role, "reviewer");
+    assert.equal(entry.target_dir, f.app);
+    assert.match(entry.handoff, /^You are a reviewer subagent of the P project session/);
+  });
+
+  it("defers an unmapped project before the claim", () => {
+    const f = fixture();
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency });
+    const verdict = admission.admit(
+      { identifier: "T-3", agent: "alice" },
+      { identifier: "T-3", project: "other" },
+    );
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.why, /UNMAPPED|no local directory/);
+    assert.equal(admission.dirFor("T-3"), null, "nothing was admitted");
+  });
+
+  it("defers a card that names no project", () => {
+    const f = fixture();
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency });
+    const verdict = admission.admit({ identifier: "T-4", agent: "alice" }, { identifier: "T-4" });
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.why, /no project/);
+  });
+
+  it("counts live and queued work against the per-project cap", () => {
+    const f = fixture();
+    const full = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: 1,
+      liveByDir: new Map([[f.app, 1]]),
+    });
+    const verdict = full.admit({ identifier: "T-5", agent: "alice" }, { identifier: "T-5", project: "P" });
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.why, /concurrency cap/);
+
+    const queued = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: 1,
+      queuedByDir: new Map([[f.app, 1]]),
+    });
+    assert.equal(
+      queued.admit({ identifier: "T-6", agent: "alice" }, { identifier: "T-6", project: "P" }).ok,
+      false,
+    );
+  });
+
+  it("admits at most the project cap within one pass", () => {
+    const f = fixture();
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: 1 });
+    const card = (id) => ({ identifier: id, project: "P" });
+    assert.equal(admission.admit(card("T-7"), card("T-7")).ok, true);
+    assert.equal(admission.admit(card("T-8"), card("T-8")).ok, false);
+  });
+
+  it("writes nothing in dry-run", async () => {
+    const f = fixture();
+    const opts = { ...f.opts, dryRun: true };
+    const admission = createProjectAdmission({ opts, projectConcurrency: f.concurrency });
+    const action = { identifier: "T-9", agent: "alice" };
+    const card = { identifier: "T-9", project: "P" };
+    admission.admit(action, card);
+    const dispatch = createQueueDispatch({ opts, config: {}, stateDir: f.dir, admission });
+    const outcome = await dispatch(action, card);
+    assert.equal(outcome.ok, true);
+    assert.equal(outcome.dryRun, true);
+    assert.equal(readCards(f.dir).value.cards.length, 0);
+  });
+});
+
 describe("continue spawn", () => {
   function fakeClaude(dir) {
     const bin = join(dir, "bin");
@@ -341,7 +495,7 @@ describe("continue spawn", () => {
     return false;
   }
 
-  it("starts the host with -p and a prompt that begins with Continue", () => {
+  it("starts the host with -p and a prompt that begins with /meerkat-loop", () => {
     const dir = tempDir("tp-continue-spawn-");
     const fake = fakeClaude(dir);
     const state = join(dir, "state.json");
@@ -354,11 +508,71 @@ describe("continue spawn", () => {
     assert.equal(run.status, 0, run.stderr);
     assert.ok(waitFor(fake.record), "the fake host was not started");
     const argv = readFileSync(fake.record, "utf8").split("\n");
+    const text = argv.slice(1).join("\n");
     assert.equal(argv[0], "-p");
-    assert.ok(argv[1].startsWith("Continue"), argv[1].slice(0, 40));
-    assert.doesNotMatch(argv[1], /--project\b|TP_PROJECT/);
+    assert.ok(argv[1].startsWith("/meerkat-loop Continue"), argv[1].slice(0, 48));
+    assert.doesNotMatch(text, /--project\b|TP_PROJECT/);
+    // No pool: the turn runs patrol + workflow only, and says why.
+    assert.doesNotMatch(text, /passes\.mjs poll/);
+    assert.match(text, /No resident session pool is running/);
     const held = loadContinueLock(lock);
     assert.ok(Number.isInteger(held.pid) && held.pid > 0, "the lock holds the child pid");
+  });
+
+  it("enqueues the turn for a resident pool instead of spawning a host", () => {
+    const dir = tempDir("tp-continue-resident-");
+    const fake = fakeClaude(dir);
+    writeLivePool(dir);
+    const run = runSupervisor(["--continue-only", "--once",
+      "--host", "claude", "--agent", "alice",
+      "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      "--continue-state", join(dir, "continue.state.json"),
+    ], fake.env);
+    assert.equal(run.status, 0, run.stderr);
+    const pending = JSON.parse(readFileSync(join(dir, "continue.pending.json"), "utf8"));
+    assert.equal(pending.reason, "timer");
+    assert.equal(existsSync(fake.record), false, "the one-shot process must not start a host");
+    assert.equal(existsSync(join(dir, "continue.state.json")), false, "no spawn lock is taken");
+  });
+
+  it("treats --resident=no as no pool even when the state file looks live", () => {
+    const dir = tempDir("tp-continue-resident-no-");
+    const fake = fakeClaude(dir);
+    writeLivePool(dir);
+    const run = runSupervisor(["--continue-only", "--once", "--resident=no",
+      "--host", "claude", "--agent", "alice",
+      "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      "--continue-state", join(dir, "continue.state.json"),
+    ], fake.env);
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(existsSync(join(dir, "continue.pending.json")), false, "nothing is queued");
+    assert.ok(waitFor(fake.record), "the fallback one-shot turn still runs");
+  });
+
+  it("notifies once per cadence that dispatch is paused", () => {
+    const dir = tempDir("tp-continue-notify-");
+    const fake = fakeClaude(dir);
+    const out = join(dir, "notify.json");
+    const notifier = join(dir, "notify.mjs");
+    writeFileSync(
+      notifier,
+      [
+        'import { readFileSync, writeFileSync } from "node:fs";',
+        'writeFileSync(process.env.TP_NOTIFY_OUT, readFileSync(0, "utf8"));',
+      ].join("\n"),
+      "utf8",
+    );
+    const run = runSupervisor(["--continue-only", "--once",
+      "--host", "claude", "--agent", "alice",
+      "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      "--continue-state", join(dir, "continue.state.json"),
+      "--notify", `${process.execPath} ${notifier}`,
+    ], { ...fake.env, TP_NOTIFY_OUT: out });
+    assert.equal(run.status, 0, run.stderr);
+    const alert = JSON.parse(readFileSync(out, "utf8"));
+    assert.equal(alert.kind, "no_resident");
+    assert.match(alert.message, /dispatch is paused/);
+    assert.match(alert.reason, /no session state/);
   });
 
   it("skips while a live turn holds the lock", () => {

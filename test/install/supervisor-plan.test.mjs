@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-import { ACTIONS, LOOP_HOSTS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, resolveScheduler, stripBlock, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
+import { ACTIONS, LOOP_HOSTS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, poolReport, resolveScheduler, stripBlock, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
 
 const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-plan-" });
 
@@ -139,12 +139,14 @@ describe("supervisor: the scheduler and the identifiers", () => {
     assert.deepEqual(
       paths.launchd.map((unit) => unit.plist),
       [
+        "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.session.plist",
         "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist",
         "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.continue.plist",
         "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.subscribe.plist",
       ],
     );
     assert.deepEqual(paths.launchd.map((unit) => unit.label), [
+      "com.meerkat-taskpanel.alice.claude.session",
       "com.meerkat-taskpanel.alice.claude.ping",
       "com.meerkat-taskpanel.alice.claude.continue",
       "com.meerkat-taskpanel.alice.claude.subscribe",
@@ -303,6 +305,42 @@ describe("supervisor: the docs and the implementation agree", () => {
     }
   });
 
+  it("reports the resident pool's runtime state, best effort", () => {
+    const dir = makeTempDir();
+    assert.deepEqual(
+      { live: poolReport(dir).live, reason: poolReport(dir).reason },
+      { live: false, reason: "no session state" },
+    );
+
+    const now = Date.parse("2026-01-01T00:00:00.000Z");
+    writeFileSync(
+      join(dir, "sessions.state.json"),
+      JSON.stringify({ version: 1, poolPid: 4242, heartbeatAt: new Date(now - 3_000).toISOString() }),
+    );
+    writeFileSync(
+      join(dir, "subagents.state.json"),
+      JSON.stringify({
+        version: 1,
+        subagents: [{ subagentId: "a-1", status: "running" }, { subagentId: "a-2", status: "completed" }],
+      }),
+    );
+    writeFileSync(
+      join(dir, "cards.pending.json"),
+      JSON.stringify({ version: 1, cards: [{ id: "T-1-worker", status: "pending" }] }),
+    );
+    writeFileSync(join(dir, "continue.pending.json"), JSON.stringify({ version: 1, reason: "timer" }));
+
+    const live = poolReport(dir, { isAlive: () => true, now: () => now });
+    assert.equal(live.live, true);
+    assert.equal(live.pid, 4242);
+    assert.equal(live.heartbeatAgeMs, 3_000);
+    assert.equal(live.liveSubagents, 1, "only a running subagent occupies a slot");
+    assert.equal(live.cardsQueued, 1);
+    assert.equal(live.continueQueued, true);
+
+    assert.equal(poolReport(dir, { isAlive: () => false, now: () => now }).live, false);
+  });
+
   it("the enable report the docs print is the one the launchd plan produces", () => {
     // The doc's example (`docs/install.md` §Enabling the supervisor (opt-in)) is written
     // with `<agent>` as a placeholder; filling it in must give exactly the string the
@@ -311,7 +349,7 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.notEqual(documented, null, "the enable report must be quoted in docs/install.md");
     assert.equal(
       documented[1].replace("<agent>", "alice"),
-      `${supervisorBase("alice", "claude")}.ping,.continue,.subscribe`,
+      `${supervisorBase("alice", "claude")}.session,.ping,.continue,.subscribe`,
       "the documented units= is the one the plan reports",
     );
   });
@@ -321,7 +359,7 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.ok(scheduling.includes("launchctl bootstrap gui/$(id -u)"), "launchd bootstrap");
     assert.ok(scheduling.includes("launchctl bootout gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.ping"), "launchd bootout");
     assert.ok(
-      scheduling.includes("systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service"),
+      scheduling.includes("systemctl --user enable --now meerkat-taskpanel-session.service meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service"),
       "systemd enable",
     );
     assert.ok(scheduling.includes("loginctl enable-linger"), "the lingering remedy");

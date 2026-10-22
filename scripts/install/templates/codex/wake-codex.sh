@@ -39,8 +39,20 @@ esac
 cd "$cwd"
 echo "wake-codex: working directory $cwd" >&2
 
+# Full tool access is the documented opt-in, recorded in the host config beside
+# this script (never a default). The reason is printed so the bypass is visible.
+allow_all="$(sed -n 's/^MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=//p' "$(dirname "$0")/../meerkat-taskpanel.env" 2>/dev/null | tail -1)"
+allow_reason="$(sed -n 's/^MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON=//p' "$(dirname "$0")/../meerkat-taskpanel.env" 2>/dev/null | tail -1)"
+allow_flag=""
+case "$allow_all" in
+  yes | YES | true | 1)
+    allow_flag="1"
+    echo "wake-codex: full tool access enabled (authorized by: ${allow_reason:-unrecorded})" >&2
+    ;;
+esac
+
 if [ -n "$sid" ]; then
-  exec codex exec resume "$sid" "$prompt"
+  exec codex exec ${allow_flag:+--dangerously-bypass-approvals-and-sandbox} resume "$sid" "$prompt"
 fi
 
-exec codex exec "$prompt"
+exec codex exec ${allow_flag:+--dangerously-bypass-approvals-and-sandbox} "$prompt"

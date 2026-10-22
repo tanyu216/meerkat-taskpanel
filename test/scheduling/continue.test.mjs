@@ -82,8 +82,9 @@ describe("buildContinuePrompt", () => {
     continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
   });
 
-  it("starts with the continue cue", () => {
-    assert.ok(prompt.startsWith("Continue"), prompt.slice(0, 40));
+  it("starts with the command-only loop skill, then the continue cue", () => {
+    assert.ok(prompt.startsWith("/meerkat-loop "), prompt.slice(0, 48));
+    assert.match(prompt, /^\/meerkat-loop Continue\b/);
   });
 
   it("names every deterministic pass by absolute path", () => {
@@ -106,11 +107,16 @@ describe("buildContinuePrompt", () => {
     assert.doesNotMatch(prompt, /--resume\b/);
   });
 
-  it("states the acceptance boundary and the claim permission", () => {
+  it("states the acceptance boundary and keeps poll to claim-and-enqueue", () => {
     assert.match(prompt, /Never move a card to done/);
     assert.match(prompt, /reviewer moves nothing/i);
     assert.match(prompt, /Stop work at in_review/);
-    assert.match(prompt, /may claim a ready card yourself/);
+    // The resident model: the control turn hands off; it never spawns or works.
+    assert.match(prompt, /Poll only claims and enqueues/);
+    assert.match(prompt, /never spawns a worker or reviewer/);
+    assert.match(prompt, /spawns the subagent in the\s+project directory/);
+    assert.doesNotMatch(prompt, /wake a worker/);
+    assert.doesNotMatch(prompt, /claim a ready card yourself/);
   });
 
   it("stays bounded", () => {
@@ -127,6 +133,45 @@ describe("buildContinuePrompt", () => {
       passesScript: "/tmp/my loop/passes.mjs",
     });
     assert.ok(spaced.includes("'/tmp/my loop/passes.mjs' poll"));
+  });
+
+  it("omits poll entirely when no resident pool is running", () => {
+    const fallback = buildContinuePrompt({
+      host: "claude",
+      agent: "alice",
+      nodePath: "/opt/node/bin/node",
+      passesScript,
+      commonArgs: [],
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      includePoll: false,
+    });
+    assert.ok(fallback.startsWith("/meerkat-loop "), "the command prefix survives the fallback");
+    // The fallback still runs the two passes it can run…
+    assert.ok(fallback.includes(`${passesScript} patrol`));
+    assert.ok(fallback.includes(`${passesScript} workflow`));
+    // …and never names the poll entry.
+    assert.ok(!fallback.includes(`${passesScript} poll`), "poll must not be named");
+    assert.match(fallback, /claims no card/);
+    assert.match(fallback, /dispatch is paused/);
+    assert.match(fallback, /review cards accumulate/);
+    assert.ok(fallback.length < prompt.length, "the fallback is the shorter turn");
+  });
+
+  it("carries the prefix into every host's headless form", () => {
+    for (const host of ["claude", "codex", "pi", "opencode", "cursor"]) {
+      const p = buildContinuePrompt({
+        host,
+        agent: "alice",
+        passesScript,
+        commonArgs: [],
+        continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      });
+      const plan = planContinueInvocation({ host, prompt: p });
+      assert.ok(
+        String(plan.args.at(-1)).startsWith("/meerkat-loop "),
+        `${host}: ${plan.args.join(" ")}`,
+      );
+    }
   });
 });
 

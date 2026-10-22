@@ -188,29 +188,32 @@ taskpanel 不内置任何针对外部 skills 集合的专门集成。
 
 ### 调度：ping 与 continue
 
-**简言之**：这个循环是一个**活在宿主之外**的**调度器**，拥有两个时钟。
+**简言之**：这个循环是一个**活在宿主之外**的**调度器**，拥有两个时钟和一个**常驻会话池**。
 **每 60 秒**做一次 **ping**：清掉 registry 中进程已退出的 worker 条目 —— 不读看板、不启动模型。
-**每十分钟**做一次 **continue** 回合：用有界的 `Continue` 提示词唤醒宿主，由这一回合运行循环的
+**每十分钟**把一次 **continue** 回合放进会话池控制会话的队列，由这一回合运行循环的
 确定性入口 —— 只通知的 SLA 巡检（心跳过期、无人应答的确认门、没人排验收的交付，以及
 SLA 契约（`docs/sla.md`）的其余各项）、工作流通道（看板通过 `issue reconcile --workflow` 计算计划：
-容器规则、为每笔交付派出独立审核员、应用结论；循环执行计划中的审核动作），以及**只有真正
-认领成功**才唤醒 worker 的 poll（空扫描 $0）。SLA 的每一条都是**发给 leader 的通知**，绝不
-对卡动手；工作流入口执行看板的计划（`--reviewer` 启用派发，`--workflow=no` 整条通道关闭）。
+容器规则、为每笔交付派出独立审核员、应用结论；循环执行计划中的审核动作），以及认领成功
+后**只写交接队列**的 poll（空扫描 $0）。会话池为**每个项目目录保留一个项目会话**，
+由它把 worker/reviewer 作为**子代理**启动 —— 子代理继承项目目录作为 cwd，
+因此第一个模型回合只在认领成功后开始，而且一开始就在工作该在的目录里。
+SLA 的每一条都是**发给 leader 的通知**，绝不对卡动手；工作流入口执行看板的计划
+（`--reviewer` 启用派发，`--workflow=no` 整条通道关闭）。
 Claude Code 与 Codex **本身没有定时器**，因此循环活在它们
-**之外**，被唤醒的只是 worker（`claude -p`、`codex exec`、`pi --print`）。在 launchd/systemd
+**之外**。在 launchd/systemd
 上，可选的 **subscribe 守护进程**保持一条 SSE 连接，收到可派发事件时请求一个 continue 回合，
 因此工作发现是事件驱动的；continue 周期仍是兜底，也是基于时间的检查（过期认领、审核老化、
-SLA）的唯一路径。cron 无法承载长驻进程，仍按一个 continue 周期发现工作；
-`--continue-interval` 是旋钮。**启用方式**：运行
+SLA）的唯一路径。cron 无法承载长驻进程，因此没有会话池：巡检与工作流照常运行，
+但 poll 不再认领，worker 派发暂停；`--continue-interval` 是发现节奏的旋钮。**启用方式**：运行
 `install.sh --target claude|codex|pi|opencode|cursor` —— 它会安装 `meerkat-loop` skill、投放该宿主的
 launchd / systemd / cron 单元，并**打印加载命令**（绝不替你启动守护进程；安装时还会问一次
 是否允许认领**未分配**的卡，默认允许）。
 
 认领不靠 Agent 的记忆。一个**宿主外部**的小型**调度器**
 （独立 skill [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md)，执行体为
-[`scripts/supervisor.mjs`](scripts/supervisor.mjs) 与 `scripts/loop/`）运行两个时钟：
+[`scripts/supervisor.mjs`](scripts/supervisor.mjs) 与 `scripts/loop/`）运行会话池和两个时钟：
 ping 只读一个小 registry，$0；continue 每个周期产生一个有界模型回合，回合内的 poll 仍是
-确定性的成本闸门 —— **只有真正认领到卡**才启动 worker 回合（原子认领是唯一的派单源）。
+确定性的成本闸门 —— **只有真正认领到卡**才启动子代理回合（原子认领是唯一的派单源）。
 确定性入口都是普通程序，可单独运行；continue 提示词用绝对路径点名它们。
 
 这个循环本身也是一个 skill（`skills/meerkat-loop/`），并且 `install.sh` **为除 OpenClaw 外的全部宿主

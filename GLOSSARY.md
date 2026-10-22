@@ -315,9 +315,45 @@ its own and does not appear in the board's wire surface.
 **Supervisor**:
 The host-external **scheduler**. It owns two clocks — ping and continue — and performs no
 board I/O of its own. It runs outside the agent host, but it is neither the board service
-nor an agent itself.
+nor an agent itself. In its resident shape it also runs the **session pool**.
 _中文_: 监督进程（调度器）
 _Avoid_: daemon (that is the board service), cron; and do not call it the thing that polls
+
+**Session pool**:
+The supervisor's long-lived `--session` manager: one **control session** in the taskpanel
+checkout, plus one **project session** per target directory. It owns the queues, the
+ledger, concurrency, idle eviction and resume. It is started by the session unit and it
+is the only thing that can dispatch a worker.
+_中文_: 常驻会话池
+_Avoid_: worker pool, daemon, agent team
+
+**Control session**:
+The board-wide conversation inside the pool whose cwd is the taskpanel checkout. It runs
+the `/meerkat-loop Continue` turn (patrol, workflow, poll). It never spawns a worker and
+never works a card itself.
+_中文_: 控制会话
+_Avoid_: supervisor session, main agent
+
+**Project session**:
+The per-project conversation inside the pool, launched with the project's target directory
+as its cwd. It receives a batch of claimed handoffs and spawns one worker/reviewer
+**subagent** per card, which inherits that directory. It does not work the cards itself.
+_中文_: 项目会话
+_Avoid_: worker, project agent, runner
+
+**Subagent**:
+A worker or reviewer started by a project session through the host's own subagent
+mechanism. It is not a separate supervisor process, and it inherits its parent session's
+cwd rather than being handed one.
+_中文_: 子代理
+_Avoid_: worker process, child session (that is a host API term), thread
+
+**Resident**:
+The loop's default shape: a live session pool that can claim and dispatch. Without it —
+cron, a stopped session unit, `--resident=no` — poll claims nothing and only patrol and
+workflow run. "Resident" describes the pool, not the board service.
+_中文_: 常驻
+_Avoid_: always-on, online, running
 
 **Ping**:
 The high-frequency liveness clock. It prunes worker-registry entries whose pid is gone:
@@ -326,15 +362,18 @@ _中文_: 存活检查
 _Avoid_: poll (it finds no work), heartbeat (that is the card's, not the process's)
 
 **Continue**:
-The low-frequency judgment clock. It wakes the host with a bounded `Continue` prompt; that
+The low-frequency judgment clock. It hands the resident control session a bounded
+`/meerkat-loop Continue` prompt (or starts a one-shot turn when no pool is live); that
 turn runs the deterministic entries (patrol, workflow, poll). It is the one LLM turn the
 scheduler pays for per cadence.
 _中文_: 继续回合
 _Avoid_: patrol (patrol is one of the entries the turn runs), wake (a wake is for a card)
 
 **Poll**:
-The deterministic entry that scans for new claimable work, claims atomically and wakes a
-worker. It is **not scheduled**; the continue turn runs it, and a human can run it too.
+The deterministic entry that scans for new claimable work, claims atomically and writes
+the handoff to the card queue. It does **not** spawn a worker: the project session does
+that. It is **not scheduled**; the continue turn runs it, and a human can run it too.
+Without a resident pool it claims nothing.
 _中文_: 轮询
 _Avoid_: tick, scan, sweep; do not call the scheduler's ping clock a poll
 
@@ -382,16 +421,33 @@ _Avoid_: planning, decomposition, estimation
 
 **Wake**:
 Starting one worker, once, with a bounded prompt. A wake is dispatched only for work the
-loop actually claimed, and it is idempotent.
+loop actually claimed, and it is idempotent. In the resident shape the wake is a project
+session spawning a subagent; the legacy one-shot shape starts a host process through the
+glue.
 _中文_: 唤醒
 _Avoid_: spawn, launch, trigger
 
 **Handoff**:
 The fresh, bounded briefing a wake gives a worker — the card, the exact commands to run,
-and the identity to record. It is deliberately built new each time rather than resumed, and
-it names no workspace.
+the identity to record, and the statement that the claim is already held. It is
+deliberately built new each time rather than resumed, and it names no workspace path: the
+project session's cwd is the project directory.
 _中文_: 交接
 _Avoid_: prompt, context, briefing
+
+**Card queue**:
+The durable file the poll entry writes a claimed handoff into (`cards.pending.json`), and
+the project session reads from. Distinct cards are never merged; a handoff is removed only
+after its subagent is recorded in the ledger.
+_中文_: 交接队列
+_Avoid_: job queue, work queue
+
+**Ledger**:
+The supervisor's own record of live subagents (`subagents.state.json`): project directory,
+host, subagent id, role, card and status. It is written from host events, never parsed
+from a transcript, and it is what frees a concurrency slot and drives reattach.
+_中文_: 子代理台账
+_Avoid_: registry (that is the legacy one-shot process registry), log
 
 **Tier**:
 A card's hard ordering band within the assignee weight order — movable, stalled, or with

@@ -50,6 +50,14 @@ export const DEFAULT_PING_SECONDS = 60;
  * deterministic poll, patrol and workflow entries.
  */
 export const DEFAULT_CONTINUE_SECONDS = 600; // 10 minutes
+
+/**
+ * The command-only loop skill's slash command. A continue turn starts with it,
+ * so a host that expands slash commands loads `meerkat-loop` before the model
+ * runs; the rest of the prompt is the turn's instruction. Kept beside the
+ * prompt builder so a skill rename cannot drift from the command.
+ */
+export const LOOP_SKILL_COMMAND = "/meerkat-loop";
 /** A claim older than this is "stale" for patrol (same-holder recovery window). */
 export const PATROL_STALE_MS = CLAIM_STALE_SAME_MS;
 
@@ -640,8 +648,10 @@ export function buildHandoff(input) {
     ? "stop at in_review — the loop dispatches an independent reviewer; do not move it to done yourself."
     : "stop at in_review — a human accepts to done.";
   return [
-    `You have been woken by the Meerkat TaskPanel supervisor to work one card: ${ref}.`,
+    `You are a worker subagent of the ${project} project session — one card: ${ref}.`,
     `Title: ${title}`,
+    `Your working directory is this project's directory; never touch another project's paths.`,
+    "The loop already claimed this card for you: do not claim it again — heartbeat it to keep the claim.",
     "",
     `Flags (substitute <flags>): ${flags}`,
     "",
@@ -694,13 +704,16 @@ export function buildReviewHandoff(input) {
   const ref = card.identifier;
   const original = card.review_of ?? "<card under review>";
   const round = card.review_round ?? "the round recorded on the review card";
+  const project = card.project ?? "<project id>";
   const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.host}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
   const flags = attribution.join(" ");
   return [
-    `You have been woken by the Meerkat TaskPanel supervisor to review one delivered card.`,
+    `You are a reviewer subagent of the ${project} project session — one delivered card.`,
     `Review card: ${ref}`,
     `Card under review: ${original} (round ${round})`,
+    `Your working directory is this project's directory; never touch another project's paths.`,
+    "The loop already claimed this review card for you: do not claim it again.",
     "",
     "Step 0 — the review_not_ready check; do it before reading anything else:",
     `  taskctl issue get ${original} --json ${flags}`,
@@ -727,7 +740,7 @@ export function buildReviewHandoff(input) {
     "The report's FIRST line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.",
     "Put the findings after that line and in `leftovers`.",
     "",
-    "Rules: claim and heartbeat only this review card, never the card under review. Do not move",
+    "Rules: heartbeat only this review card, never the card under review. Do not move",
     "the card under review and do not move this review card: the loop applies the verdict and",
     "closes this card. Carry the attribution flags above on every write.",
   ].join("\n");
@@ -742,13 +755,25 @@ export function buildReviewHandoff(input) {
  * board rules that must not be broken — because a headless host may run it
  * without the loop skill loaded.
  *
- * Order is **patrol → workflow → poll**: the workflow pass dispatches a review
- * card, and the poll that follows in the same turn can claim and wake its
- * reviewer immediately; polling first would delay that review by a whole
- * cadence.
+ * The prompt begins with `/meerkat-loop`, the loop skill's command-only slash
+ * command (`disable-model-invocation: true`). A host that expands slash commands
+ * loads the skill first; a host that does not still receives the whole turn,
+ * because the body stays self-contained. There is no subcommand and no
+ * `$ARGUMENTS` placeholder.
  *
- * It names no card and no project directory on purpose. A continue turn is
- * not a worker wake, and the board holds no project directory to name.
+ * Order is **patrol → workflow → poll**: the workflow pass dispatches a review
+ * card, and the poll that follows in the same turn can enqueue its reviewer
+ * immediately; polling first would delay that review by a whole cadence.
+ *
+ * Poll only **claims and enqueues**. The handoff is taken from the queue by a
+ * resident *project session* — one per target directory — which spawns the
+ * worker/reviewer subagent with the project directory as cwd. The control turn
+ * never spawns a subagent and never works a card itself.
+ *
+ * When no session pool is resident, `includePoll: false` yields the fallback:
+ * patrol and workflow only, no claim, dispatch paused. It names no card and no
+ * project directory either way — a continue turn is not a worker wake, and the
+ * board holds no project directory to name.
  *
  * @param {{
  *   host?: string,
@@ -757,6 +782,7 @@ export function buildReviewHandoff(input) {
  *   passesScript?: string,
  *   commonArgs?: string[],
  *   continueIntervalSeconds?: number,
+ *   includePoll?: boolean,
  * }} [input]
  * @returns {string}
  */
@@ -766,30 +792,48 @@ export function buildContinuePrompt(input = {}) {
   const host = String(input.host ?? "claude");
   const script = quoteArg(input.passesScript ?? "passes.mjs");
   const common = (input.commonArgs ?? []).map(quoteArg).join(" ");
+  const includePoll = input.includePoll !== false;
   const minutes = Math.max(
     1,
     Math.round((input.continueIntervalSeconds ?? DEFAULT_CONTINUE_SECONDS) / 60),
   );
   const run = (pass) => `${node} ${script} ${pass}${common === "" ? "" : ` ${common}`}`;
 
-  return [
-    "Continue — Meerkat TaskPanel loop, judgment turn.",
+  const lines = [
+    `${LOOP_SKILL_COMMAND} Continue — Meerkat TaskPanel loop, judgment turn.`,
     "No card and no project directory: this is the loop's periodic turn, not a worker wake.",
     "",
     "Run in order, each one pass:",
     `  1) ${run("patrol")}   # notify-only SLA; never moves a card`,
     `  2) ${run("workflow")}   # apply the board's workflow plan (issue reconcile --workflow)`,
-    `  3) ${run("poll")}   # scan → atomic claim → wake a worker`,
-    "",
-    `You may claim a ready card yourself (\`taskctl issue claim <ref> --agent ${agent}\`)`,
-    "when judgment says it must start now; never claim work you will not start.",
+  ];
+
+  if (includePoll) {
+    lines.push(
+      `  3) ${run("poll")}   # scan → atomic claim (as ${agent}) → enqueue the handoff`,
+      "",
+      "Poll only claims and enqueues: it never spawns a worker or reviewer. A resident",
+      "project session takes the handoff from the queue and spawns the subagent in the",
+      "project directory. Do not claim a card outside poll, and do not work one yourself.",
+    );
+  } else {
+    lines.push(
+      "",
+      "No resident session pool is running, so this turn claims no card: poll is skipped",
+      "and worker/reviewer dispatch is paused. Let review cards accumulate — the pool",
+      "claims them once it is back.",
+    );
+  }
+
+  lines.push(
     "",
     "Rules:",
     "- Never move a card to done. in_review → done is the board's acceptance, applied by the loop as taskd.",
     "- A reviewer moves nothing; it delivers a VERDICT report on its review card.",
     "- Stop work at in_review: deliver a report, do not self-accept.",
-    "- Keep this turn bounded: start workers and return; do not wait for them.",
+    "- Keep this turn bounded: hand off and return; do not wait for a worker.",
     "- At the concurrency cap, leave the card for the next turn.",
     `- Host: ${host}. This turn repeats every ${minutes} minute${minutes === 1 ? "" : "s"}.`,
-  ].join("\n");
+  );
+  return lines.join("\n");
 }

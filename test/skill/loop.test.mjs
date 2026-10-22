@@ -37,6 +37,7 @@ import {
 } from "../../scripts/sync-loop.mjs";
 import { resolveSkillSource } from "../../scripts/sync-skills.mjs";
 import { readFrontmatterField } from "../../scripts/verify/lib/frontmatter.mjs";
+import { LOOP_SKILL_COMMAND } from "../../src/foundation/scheduling.mjs";
 import {
   ALLOWED_TRANSITIONS,
   EPIC_ONLY_TRANSITIONS,
@@ -214,6 +215,20 @@ describe("loop skill: SKILL.md", () => {
     assert.equal(readFrontmatterField(text, "name"), LOOP_SKILL_NAME);
     const description = readFrontmatterField(text, "description");
     assert.ok(typeof description === "string" && description.length >= 20, "description must be substantial");
+  });
+
+  it("is command-only: the model may not invoke it by description", () => {
+    assert.equal(readFrontmatterField(text, "disable-model-invocation"), "true");
+  });
+
+  it("documents explicit invocation and takes no argument placeholder", () => {
+    assert.match(text, /^#{2,3} Invocation$/m);
+    assert.match(text, /\/meerkat-loop/);
+    assert.equal(text.includes("$ARGUMENTS"), false);
+  });
+
+  it("points the continue prompt at this skill's command", () => {
+    assert.equal(LOOP_SKILL_COMMAND, `/${LOOP_SKILL_NAME}`);
   });
 
   it("declares the board interface it requires", () => {
