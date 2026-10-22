@@ -180,9 +180,11 @@ MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing
 MEERKAT_TASKPANEL_REVIEWER=Reviewer
 ```
 
-Use `configure-env.mjs`; a different existing value is a conflict, not an overwrite.
-Without `MEERKAT_TASKPANEL_AGENTS` the loop scans only its default agent and a role card
-is never claimed.
+Use `configure-env.mjs`; a different existing value is a conflict, not an overwrite. Get
+an explicit yes for each key before writing it: an empty installer default (for example
+`MEERKAT_TASKPANEL_REVIEWER=`) is **not** consent, and `--force` is never implied by an
+empty value — ask before replacing it. Without `MEERKAT_TASKPANEL_AGENTS` the loop scans
+only its default agent and a role card is never claimed.
 
 Native agent definitions are written for Claude (`.claude/agents/<name>.md`) and Codex
 (`.codex/agents/<name>.toml`), globally or in the project. Other actor kinds are skipped
