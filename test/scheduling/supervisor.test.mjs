@@ -41,7 +41,7 @@ import {
   wakeCommand,
 } from "../../src/foundation/scheduling.mjs";
 import { emptySlaLedger, planSlaPatrol } from "../../src/foundation/sla-patrol.mjs";
-import { defaultRepo, loopCommandArgs, parseArgs, selectMode } from "../../scripts/loop/options.mjs";
+import { agentPaths, defaultRepo, loopCommandArgs, parseArgs, selectMode } from "../../scripts/loop/options.mjs";
 import { loadSlaLedger, readPeerLastOk, readPeerMarker, saveLastOk, saveSlaLedger } from "../../scripts/loop/runtime.mjs";
 import { notifyReal, runPatrolTick, runPollTick, runWorkflowTick, spawnWorkerReal } from "../../scripts/loop/runners.mjs";
 import { resolveWakeDir } from "../../scripts/wake-cwd.mjs";
@@ -570,21 +570,26 @@ describe("buildHandoff (pure)", () => {
     assert.ok(text.length < 3900, `the handoff must be bounded (was ${text.length})`);
   });
 
-  it("carries the epic-triage step, and says an epic is never claimed", () => {
+  it("asks the project session before splitting an epic, rather than promoting it", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
       agent: "alice",
       actorKind: "claude",
     });
     assert.match(text, /Step 0/);
-    assert.match(text, /--kind epic/);
-    assert.match(text, /an epic is never claimed/);
-    assert.match(text, /relation add T-1 --type parent/);
+    // The decision ladder: a subagent does not decide a split (or a scope
+    // expansion) itself; it asks the project session, which may escalate E1.
+    assert.match(text, /Do not promote or split yourself/);
+    assert.match(text, /add an agent question/);
+    assert.match(text, /keep the card in_progress/);
+    assert.match(text, /scope expansion is E1/);
     assert.match(text, /meta\.epic_triage=off/);
+    assert.doesNotMatch(text, /--kind epic/);
+    assert.doesNotMatch(text, /relation add T-1 --type parent/);
     assert.match(text, /stop at in_review — a human accepts to done/, "the default has no reviewer");
   });
 
-  it("sets the acceptance list before work and never rewrites an existing one", () => {
+  it("sets the acceptance list before work and escalates questions to the project session", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
       agent: "alice",
@@ -600,9 +605,12 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /meta\.acceptance is only/);
     assert.match(text, /append, never replace or remove/i);
     assert.match(text, /acceptance_derived=yes/);
-    // 0034 — asking is how a worker stops; the answer re-queues the card.
-    assert.match(text, /--awaiting-reason E2 --question/);
-    assert.match(text, /ASK AND STOP/);
+    // The worker no longer enters awaiting itself: it asks the project session,
+    // which answers or escalates E1-E5 to the human.
+    assert.match(text, /add an agent question comment/);
+    assert.match(text, /Do not enter awaiting/);
+    assert.match(text, /E1-E5/);
+    assert.doesNotMatch(text, /--awaiting-reason/);
   });
 
   it("stays bounded with a maximum title and a UUID session id", () => {
@@ -2497,5 +2505,63 @@ describe("the workflow plan survives the wire and executes", () => {
       assert.equal(result.executed, 1);
       assert.equal(result.failed, 0);
     });
+  });
+});
+
+describe("parseArgs — the team scan set and roles root", () => {
+  it("takes MEERKAT_TASKPANEL_AGENTS from the environment", () => {
+    const opts = parseArgs(
+      ["--actor-kind", "claude", "--home", "/tmp/tp-team-home"],
+      { HOME: "/tmp/tp-team-home", MEERKAT_TASKPANEL_AGENTS: "Jobs, Linus turing" },
+    );
+    assert.deepEqual(opts.agents, ["Jobs", "Linus", "turing"]);
+  });
+
+  it("takes the list from the agent config, and the environment still wins", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-team-"));
+    try {
+      const config = join(dir, "meerkat-taskpanel.env");
+      writeFileSync(config, "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus\n", "utf8");
+      const fromFile = parseArgs(
+        ["--actor-kind", "claude", "--home", dir, "--config", config],
+        { HOME: dir },
+      );
+      assert.deepEqual(fromFile.agents, ["Jobs", "Linus"]);
+      const fromEnv = parseArgs(
+        ["--actor-kind", "claude", "--home", dir, "--config", config],
+        { HOME: dir, MEERKAT_TASKPANEL_AGENTS: "Turing" },
+      );
+      assert.deepEqual(fromEnv.agents, ["Turing"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps explicit --agent flags above the configured list", () => {
+    const opts = parseArgs(
+      ["--actor-kind", "claude", "--home", "/h", "--agent", "alice"],
+      { MEERKAT_TASKPANEL_AGENTS: "Jobs,Linus" },
+    );
+    assert.deepEqual(opts.agents, ["alice"]);
+  });
+
+  it("resolves --roles-dir and MEERKAT_TASKPANEL_ROLES_DIR", () => {
+    const flag = parseArgs(
+      ["--actor-kind", "claude", "--home", "/h", "--roles-dir", "/team"],
+      {},
+    );
+    assert.equal(flag.rolesDir, "/team");
+    const env = parseArgs(
+      ["--actor-kind", "claude", "--home", "/h"],
+      { MEERKAT_TASKPANEL_ROLES_DIR: "/env-team" },
+    );
+    assert.equal(env.rolesDir, "/env-team");
+  });
+
+  it("exposes the loop-skill and body roles paths for every actor kind", () => {
+    const paths = agentPaths("/home/alice", "pi");
+    assert.equal(paths.loopRoles, "/home/alice/.agents/skills/meerkat-loop/roles");
+    assert.equal(paths.bodyRoles, "/home/alice/.agents/meerkat-taskpanel/roles");
+    assert.equal(agentPaths("/home/alice", "opencode").loopRoles, "/home/alice/.config/opencode/skills/meerkat-loop/roles");
   });
 });

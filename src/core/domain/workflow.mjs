@@ -595,9 +595,20 @@ function reviewAction(task, ref, round, reviewer) {
       "Read the original card, its description and every acceptance item, the delivery",
       `report(s) for round ${round}, the full comment trail, and — for an epic — the`,
       "child cards and the rollup report.",
-      "If the original's meta.acceptance_derived is \"yes\", its acceptance list was",
-      "derived by the worker at claim: check it covers every requirement in the",
-      "description and comments. A narrowed list is grounds for REJECT.",
+      "",
+      "Reference material:",
+      "- The original's frozen acceptance snapshot is the source of truth.",
+      `- The original's process directory .meerkat/${ref}/: card.md (the brief),`,
+      "  plan.md (the worker's plan), notes, evidence, report drafts, attachments.",
+      "- This review card's process directory .meerkat/<review-ref>/.",
+      "- The current-round delivery report and the full comment trail.",
+      "",
+      "Omission check: every requirement in the description, comments and plan.md must",
+      "map to an acceptance item and to evidence, or be explicitly deferred with a",
+      "recorded decision. A narrowed acceptance list, an unexplained deviation",
+      "from plan.md, or a missing requirement is grounds for VERDICT: REJECT.",
+      "If plan.md does not exist, say so and fall back to the description and",
+      "acceptance snapshot; absence alone is not a reject.",
       "",
       "Then deliver a report on THIS review card whose FIRST LINE is exactly:",
       "  VERDICT: APPROVE",
@@ -612,27 +623,44 @@ function reviewAction(task, ref, round, reviewer) {
     ].join("\n"),
     // 0032 — the review card's own baseline is the original's frozen baseline plus
     // the generic review checklist, so the reviewer answers each criterion by name
-    // and the review report can be checked against both. The original is capped at
-    // 60 items and the checklist adds at most 3, inside the review card's 64 cap.
-    acceptance: [
-      ...(Array.isArray(task.acceptance) ? task.acceptance.slice(0, 60) : []),
-      ...reviewChecklist(task, ref),
-    ],
+    // and the review report can be checked against both. The checklist grows as the
+    // review contract grows, so cap the copied original dynamically: the original
+    // baseline is checked separately by assertReviewEvidence, and the review card
+    // itself stays inside the board's 64-item cap.
+    acceptance: reviewAcceptance(task, ref),
   };
+}
+
+/** The review card's own baseline: the original's snapshot + the review checklist. */
+function reviewAcceptance(task, ref) {
+  const checklist = reviewChecklist(task, ref);
+  const originalCap = Math.max(0, 64 - checklist.length);
+  return [
+    ...(Array.isArray(task.acceptance) ? task.acceptance.slice(0, originalCap) : []),
+    ...checklist,
+  ];
 }
 
 /** The generic items a review report must also answer. */
 function reviewChecklist(task, ref) {
+  /** Requirements and plan coverage are the reviewer's omission check. */
+  const coverage = [
+    "Every requirement in the original description, comments and plan is covered by an acceptance item or explicitly deferred with a recorded decision",
+    `The delivery matches .meerkat/${ref}/plan.md, or every deviation is recorded and justified`,
+  ];
   if (task.kind === "epic") {
     return [
       `Every child of ${ref} has an explicit conclusion in the rollup report`,
       "The rollup report is consistent with its evidence anchors",
       "The comment trail has no unresolved decision/defect entry",
+      ...coverage,
+      "Every child's scope and plan are reflected in the rollup, with no child omitted",
     ];
   }
   return [
     "The delivery report is consistent with its evidence anchors",
     "The comment trail has no unresolved decision/defect entry",
+    ...coverage,
   ];
 }
 

@@ -69,7 +69,8 @@ Precedence: flag > process env > agent config > default.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--agent <name>` | `$TASKCTL_AGENT` → `$USER` | agent(s) to work for; repeatable / comma-separated |
+| `--agent <name>` | `MEERKAT_TASKPANEL_AGENTS` → `$TASKCTL_AGENT` → `$USER` | agent(s) to work for; repeatable / comma-separated |
+| `--roles-dir <path>` | project `.meerkat/roles`, then the loop skill's `roles/` | optional team roles root; see “Team roles” |
 | `--actor-kind claude\|codex\|pi\|opencode\|cursor` | `claude` | which worker to wake |
 | `--repo <path>` | `MEERKAT_TASKPANEL_REPO`, else this checkout | where `--cli` resolves from; fallback cwd |
 | `--ping-interval <sec>` | 60 | liveness clock |
@@ -90,7 +91,7 @@ Precedence: flag > process env > agent config > default.
 | `--session-state <path>` | beside `--state` | pool state file (`sessions.state.json`) |
 | `--session-max-age <sec>` | 86400 | fresh conversation after this age; 0 = never |
 | `--session-turn-timeout <sec>` | 1800 | one agent turn; must be **1200–7199** (≥ 2× the 10-minute heartbeat window, < the ledger's 2-hour reap) |
-| `--opened-by human\|supervisor` | supervisor | who started this loop: a supervisor escalates questions to the board; a human-opened session may ask its own operator first |
+| `--opened-by human\|supervisor` | supervisor | who started this loop: a supervisor escalates questions to the board; a human-opened session may ask its own operator first and records the answer with `--as-human` |
 | `--session-poll-ms <ms>` | 1000 | queue poll interval |
 | `--session-pool-max <n>` | 8 | project sessions held open |
 | `--project-concurrency <n>` | `--max-concurrency` | live subagents per project |
@@ -170,6 +171,7 @@ The loop gives each dispatched card one directory under the project's working di
 ```text
 .meerkat/<identifier>/
   card.md          exported by the loop; read-only to agents
+  plan.md          the worker's plan: goals, steps, risks, acceptance mapping
   …                notes, logs, evidence, report drafts, downloaded attachments
 ```
 
@@ -204,6 +206,48 @@ interval (`CARD_REFRESH_MIN_MS`) and a failed refresh only logs and keeps the pr
 The queue row carries the event UUID (`task_id`) and `review_of`/`review_round` so this
 mapping needs no board read. Rows written before this convention have no `task_id` and are
 not refreshed until they are enqueued again.
+
+**The plan file.** Workers maintain `plan.md` beside the brief and update it as they learn;
+the reviewer reads it and treats an unexplained deviation as grounds for `VERDICT: REJECT`.
+A missing plan is not itself a failure: the reviewer falls back to the description and the
+frozen acceptance snapshot. The board holds no directory (O3); this is a loop convention
+under the project's own working directory.
+
+## Team roles (optional)
+
+A team is an optional roles root authored by `setup-meerkat`; `install.sh` never ships one.
+The loop reads `manifest.json` there and adds two layers:
+
+1. **Routing** — the role named by the card's assignee (`Jobs`, `Linus`, `Turing`,
+   `Reviewer`) supplies the responsibilities and boundaries.
+2. **Workflow** — the handoff carries the role's workflow path (and the self-check path);
+   the spawned subagent reads them before acting.
+
+Precedence is whole-manifest: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, then
+`<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`, then
+`<agent-dir>/meerkat-taskpanel/roles/`. A malformed manifest warns and degrades to no
+role; it never wedges a tick. With no roles root the prompts are unchanged.
+
+`setup-meerkat` writes the team's board names to `MEERKAT_TASKPANEL_AGENTS` in the agent
+config. Without that list the loop scans only its default agent, so a role card is never
+claimed. A role may also be listed explicitly with repeated `--agent` flags.
+
+`install.sh --force` replaces the loop skill directory, including an installed `roles/`;
+re-run `/setup-meerkat` after a forced reinstall.
+
+## Questions and decision rights
+
+The ladder is **subagent → main session → human**; the full policy is
+`references/decision-policy.md`. A subagent never decides an unauthorized question: it
+writes an agent `question` comment, keeps the card `in_progress`, and stops. The project
+session answers what it can with a `note` (then reattaches the subagent or moves the card
+to `todo`), or escalates E1-E5 to the human with
+`issue move <ref> awaiting --awaiting-reason E1..E5 --question "…"`.
+
+Only a human `decision` / `confirm` / `change` comment auto-resumes an awaiting card. The
+loop never writes a decision kind for its own answer, and never uses `--as-human` except
+to record what the human actually said in a human-opened conversation (`--opened-by
+human`). With `--opened-by supervisor` the question stays on the board for the human.
 
 ## The workflow channel
 

@@ -36,7 +36,10 @@ The board owns the workflow decisions (`issue reconcile --workflow`); the loop e
 resulting plan. The external supervisor is a **skill of its own**
 (`skills/meerkat-loop/`), never installed for OpenClaw and **not** distributed through the
 marketplace: `install.sh --target claude|codex|pi|opencode|cursor` is its only path, and it
-carries no version of its own.
+carries no version of its own. The third skill, **`setup-meerkat`**
+(`skills/setup-meerkat/`), is the user-invoked `/setup-meerkat` install/repair and team-setup
+command; `install.sh --target claude` copies it, the shared bundle carries it for the other
+kinds.
 
 ## How to work here
 
@@ -131,7 +134,8 @@ meerkat-taskpanel/
 ├── src/server/             # taskd: auth + CIDR, router, routes/, sse, static, writer lock, graceful stop
 ├── src/foundation/             # DTOs, constants, errors, pure helpers + the taskd transport seam
 ├── web/                    # Vue 3 + Vite board frontend (own lockfile) -> web/dist, served by taskd
-├── skills/                 # the two skills: meerkat-taskpanel (board), meerkat-loop (supervisor)
+├── skills/                 # the three skills: meerkat-taskpanel (board), meerkat-loop (supervisor),
+│                           #   setup-meerkat (install/repair + team setup; Claude-only copy)
 ├── .claude-plugin/ .pi/ .opencode/ .cursor-plugin/   # harness markers; the plugin root IS the repo root
 ├── design/                 # DESIGN / BLOCKS, the interactive prototype/, brand/, assets/, fidelity-rNN.md
 ├── scripts/                # build, install/, sync-skills + sync-loop, supervisor, verify/{manifests,skill,
@@ -173,7 +177,9 @@ the release workflow stages the image's build there before `npm pack`.
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
 - **The skills are generated, never hand-edited.** Author only under `skills/meerkat-taskpanel/`
   and the loop's hand-written surface (`skills/meerkat-loop/`: `SKILL.md`, `references/`,
-  `scripts/board-check.mjs`). The loop's `manifest.txt` + `scripts/` (except the gate) +
+  `scripts/board-check.mjs`). `skills/setup-meerkat/` is authored whole (it is standalone and
+  generates nothing); `node scripts/sync-skills.mjs --check` does not touch it. The loop's
+  `manifest.txt` + `scripts/` (except the gate) +
   `src/` + `templates/` are generated from `scripts/supervisor.mjs`, `scripts/loop/`,
   `scripts/wake-cwd.mjs`, `src/foundation/` and
   `scripts/install/templates/` (the workflow decisions live in

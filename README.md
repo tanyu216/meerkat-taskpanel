@@ -134,7 +134,8 @@ meerkat-taskpanel/
 │   ├── server/                   #   local HTTP API + SSE
 │   └── foundation/               #   DTOs / constants / pure helpers
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
-├── skills/                       # the two skills: meerkat-taskpanel (board), meerkat-loop (supervisor)
+├── skills/                       # the three skills: meerkat-taskpanel (board), meerkat-loop (supervisor),
+│                                 #   setup-meerkat (install/repair + team setup; Claude-only copy)
 ├── .claude-plugin/               # marketplace + the board plugin manifest (plugin root = the repo root)
 ├── .pi/                          # the Pi extension (declared by package.json's `pi` field)
 ├── .opencode/                    # the OpenCode plugin (reads the one skills/ tree in place)
@@ -233,6 +234,13 @@ is its supported route — see [`docs/install.md`](docs/install.md#openclaw).
 The `meerkat-loop` supervisor skill is **not** distributed through the marketplace: it is
 installed by `install.sh --target claude|codex|pi|opencode|cursor`, and it never reaches
 OpenClaw.
+
+The third skill, **`setup-meerkat`**, is the `/setup-meerkat` command: it detects what is
+installed, repairs what is missing, offers the Matt Pocock issue-tracker integration, and
+installs an optional Jobs/Linus/Turing plus reviewer team (role workflows, native agent
+definitions, and the plan-file / omission-check conventions). `install.sh --target claude`
+copies it to `~/.claude/skills/setup-meerkat`; the shared bundle still exposes it for the
+other agent kinds.
 
 Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the
 agent's board identity, default `$USER` — must equal its assignee; re-running with a new

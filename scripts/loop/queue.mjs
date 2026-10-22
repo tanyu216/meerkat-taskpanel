@@ -243,6 +243,9 @@ export function enqueueCard(stateDir, card) {
     ...card,
     id: card.id ?? `${card.card}-${card.role ?? "worker"}`,
     role: card.role ?? "worker",
+    // The board identity selected for this handoff (Jobs/Linus/Turing). It is
+    // additive metadata: the dedupe key stays (card, role).
+    agent_role: card.agent_role ?? null,
     // The subscriber maps an event's UUID back to this row; keep the shape
     // stable even for a legacy caller that knows no UUID.
     task_id: card.task_id ?? null,

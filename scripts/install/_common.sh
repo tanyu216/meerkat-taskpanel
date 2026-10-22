@@ -3,7 +3,7 @@
 # Shared implementation for the per-agent-kind installers
 # (claude / openclaw / codex / pi / opencode / cursor).
 #
-# Two skills are distributed, and each agent kind takes the ones that fit it:
+# Three skills are distributed, and each agent kind takes the ones that fit it:
 #
 #   * `meerkat-taskpanel` — the board. Every agent kind installs it (`install_skill`).
 #   * `meerkat-loop` — the external supervisor. The five non-OpenClaw agent kinds install
@@ -14,6 +14,9 @@
 #     OpenCode's `opencode run` and Cursor's `cursor-agent -p` are wired as their headless
 #     forms; Cursor's **resume** flag is unverified and labelled, with `--wake-command` as
 #     the escape hatch — see `scripts/install/opencode.sh` and `cursor.sh`.
+#   * `setup-meerkat` — the install/repair and team-setup command. **Only the Claude
+#     bundle copies it** (`claude.sh`); the repository bundle and marketplace still carry
+#     it for the other kinds, but the bash installer does not copy it there.
 #
 # Each agent-kind script sources this file and calls the pieces it needs. The two bundle agent kinds
 # (claude, codex) add the config / command / trigger helpers below; the skill-only agent kinds
@@ -209,9 +212,11 @@ agent_cli_name() {
 # and verified, not a second reading of the same inputs.
 loop_src() { printf '%s\n' "$(repo_root)/skills/meerkat-loop"; }
 
-# board_skill_name / loop_skill_name — the two skills this installer distributes.
+# board_skill_name / loop_skill_name / setup_skill_name — the skills this installer
+# distributes. The setup skill is copied only for the Claude bundle (see claude.sh).
 board_skill_name() { printf '%s\n' "meerkat-taskpanel"; }
 loop_skill_name() { printf '%s\n' "meerkat-loop"; }
+setup_skill_name() { printf '%s\n' "setup-meerkat"; }
 
 # agent_name — the identity written into the agent bundle.
 #

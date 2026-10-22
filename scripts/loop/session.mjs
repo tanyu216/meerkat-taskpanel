@@ -19,9 +19,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { cardFileRel } from "../../src/foundation/card-brief.mjs";
+import { loadRoles } from "../../src/foundation/roles.mjs";
 import { buildContinuePrompt } from "../../src/foundation/scheduling.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths, loopCommandArgs } from "./options.mjs";
+
+/** Role warnings are configuration noise; say each one once per process. */
+const loggedRoleWarnings = new Set();
 import {
   claimCards,
   claimContinue,
@@ -174,18 +178,42 @@ export function poolStatus(input = {}) {
   return { live: true, reason: null, file, poolPid, control, projects, heartbeatAgeMs: Math.max(0, age) };
 }
 
-/** @param {object[]} cards */
-export function buildProjectBatchPrompt(cards) {
+/**
+ * @param {object[]} cards
+ * @param {{roles?: object[]}|null} [roleSet] the effective team, when one exists
+ */
+export function buildProjectBatchPrompt(cards, roleSet = null) {
   const first = cards[0] ?? {};
   const project = String(first.project ?? "the project");
   const dir = String(first.target_dir ?? "");
+  const roles = Array.isArray(roleSet?.roles) ? roleSet.roles : [];
+  const roleFor = (agent) =>
+    roles.find((role) => role.agent.toLowerCase() === String(agent ?? "").toLowerCase()) ?? null;
+  const named = [];
+  for (const card of cards) {
+    if (!card.agent_role) continue;
+    const role = roleFor(card.agent_role);
+    if (role && !named.some((entry) => entry.agent === role.agent)) named.push(role);
+  }
+
   const lines = [
     `You are the project session for ${project} at ${dir}.`,
     "",
     "Claimed cards in this batch:",
   ];
+  if (named.length > 0) {
+    lines.push("", "Named role agents (when the actor kind supports them):");
+    for (const role of named) {
+      lines.push(`  ${role.agent} — spawn as "${role.nativeAgent}" and pass the handoff verbatim.`);
+    }
+    lines.push(
+      "If a named agent is unavailable, spawn the default subagent; the handoff carries the",
+      "role workflow it must read.",
+    );
+  }
   cards.forEach((card, index) => {
-    lines.push(`  ${index + 1}) ${card.card} (${card.role ?? "worker"}) handoff:`);
+    const roleSuffix = card.agent_role ? ` role ${card.agent_role}` : "";
+    lines.push(`  ${index + 1}) ${card.card} (${card.role ?? "worker"})${roleSuffix} handoff:`);
     for (const line of String(card.handoff ?? "").split("\n")) lines.push(`     ${line}`);
   });
   lines.push(
@@ -193,6 +221,11 @@ export function buildProjectBatchPrompt(cards) {
     "Spawn one subagent per card using the agent kind's subagent mechanism, passing the handoff",
     "text verbatim. Do not work the cards yourself. Do not move cards. Return after",
     "spawning; record each subagent's agent/session id.",
+    "",
+    "Subagent questions: read agent-authored `question` comments on in_progress cards.",
+    "Answer a question you can decide with a note, then reattach the subagent or move the card",
+    "to todo; if you cannot decide, escalate E1-E5 to the human with awaiting. Never write a",
+    "decision kind and never use --as-human for your own decision.",
   );
   return lines.join("\n");
 }
@@ -429,6 +462,12 @@ export function createSessionPool(input = {}) {
     if (claimed.request === null) return { ok: true, skipped: "already claimed" };
     const entry = await ensureSession("control", { cwd: opts.repo ?? process.cwd(), role: "control" });
     entry.busy = true;
+    const agentFiles = agentPaths(opts.home, opts.actorKind);
+    const roleSet = opts.roles ?? loadRoles({
+      explicitDir: opts.rolesDir ?? null,
+      loopSkillDir: agentFiles.loopSkill,
+      stateDir: agentFiles.loopBody,
+    });
     const prompt = buildContinuePrompt({
       actorKind: opts.actorKind,
       agent: Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : "agent",
@@ -437,6 +476,7 @@ export function createSessionPool(input = {}) {
       commonArgs: loopCommandArgs(opts),
       continueIntervalSeconds: opts.continueInterval,
       openedBy: opts.openedBy,
+      decisionPolicy: roleSet.decisionPolicy,
     });
     let outcome;
     try {
@@ -524,11 +564,25 @@ export function createSessionPool(input = {}) {
         if (!claimed.ok) log(`session: card claim failed: ${claimed.error}`);
         continue;
       }
+      const paths = agentPaths(opts.home, opts.actorKind);
+      const roleSet = loadRoles({
+        explicitDir: opts.rolesDir ?? null,
+        projectDir: dir,
+        loopSkillDir: paths.loopSkill,
+        stateDir: paths.loopBody,
+      });
+      for (const warning of roleSet.warnings) {
+        if (loggedRoleWarnings.has(warning)) continue;
+        loggedRoleWarnings.add(warning);
+        log(`roles: ${warning}`);
+      }
       entry.batch = { cards: claimed.cards, ids: [] };
       entry.busy = true;
       let outcome;
       try {
-        outcome = await entry.handle.send(buildProjectBatchPrompt(claimed.cards), { timeoutMs: turnTimeoutMs });
+        outcome = await entry.handle.send(buildProjectBatchPrompt(claimed.cards, roleSet), {
+          timeoutMs: turnTimeoutMs,
+        });
       } finally {
         entry.busy = false;
         entry.lastUsedAt = nowIso(now);
@@ -560,6 +614,7 @@ export function createSessionPool(input = {}) {
           actorKind: opts.actorKind,
           subagentId,
           role: card.role ?? "worker",
+          agentRole: card.agent_role ?? null,
           card: card.card,
           type: "subagent",
           status: opts.subagentBackground === true ? "running" : "completed",

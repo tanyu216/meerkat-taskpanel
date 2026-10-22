@@ -79,17 +79,21 @@ What the loop does next depends on why the target moved:
 - the original's description and every acceptance item — the **frozen snapshot** (`acceptance`
   in `issue get --json`); `meta.acceptance` / `meta.acceptance_legacy` only fill in for a
   grandfathered card whose snapshot was never seeded;
+- `.meerkat/<original>/card.md` (the authoritative brief) and `.meerkat/<original>/plan.md`
+  (the worker's plan, if it exists), plus the notes, evidence, report drafts and attachments
+  in that directory;
 - the current round's delivery report and its evidence anchors;
 - the comment trail, looking for unresolved decision / defect entries;
 - for an epic: the rollup report and each child's state.
 
 An `APPROVE` is checked against the baseline before it can close anything: the review report
 must cover **every item of the original's snapshot** (and the review card's own snapshot,
-which is the original's list plus the generic review items). `met` and `not_applicable` (with
-a non-empty note) pass; a missing item, `partial` or `not_met` refuses with
-`ACCEPTANCE_INCOMPLETE` and the original stays `in_review`. A `REJECT` is never checked for
-coverage — `partial` / `not_met` is its normal shape. If the baseline itself is wrong, rework
-the original (a new round re-freezes it); a reviewer cannot edit it.
+which is the original's list plus the generic review items — including the requirement,
+plan-file and omission items). `met` and `not_applicable` (with a non-empty note) pass; a
+missing item, `partial` or `not_met` refuses with `ACCEPTANCE_INCOMPLETE` and the original
+stays `in_review`. A `REJECT` is never checked for coverage — `partial` / `not_met` is its
+normal shape. If the baseline itself is wrong, rework the original (a new round re-freezes
+it); a reviewer cannot edit it.
 
 For an **epic**, the rollup is the delivery. An `APPROVE` additionally needs the epic's
 current-round rollup (`is_rollup = 1`) to still match its children: every child appears by
@@ -98,10 +102,14 @@ least one child is `done`. A missing rollup is `rollup_unverified`; a stale one 
 `rollup_stale` (both are log-only alerts; the loop plans no approval). The repair is a
 rework of the epic, which starts a new round and a fresh rollup.
 
-If the original carries `meta.acceptance_derived = "yes"`, its acceptance list was derived by
-the worker at claim time. Check that it covers every requirement in the description and
-comments; a list that narrows the card is grounds for `VERDICT: REJECT`. For an epic, check
-that the children cover the epic's description.
+The omission check is unconditional: every requirement in the description, comments and plan
+must map to an acceptance item and to evidence, or be explicitly deferred with a recorded
+decision. A narrowed acceptance list, an unexplained deviation from `plan.md`, or a missing
+requirement is grounds for `VERDICT: REJECT`. If `plan.md` does not exist, say so and fall back
+to the description and acceptance snapshot; absence alone is not a reject. For an epic, check
+that the children cover the epic's description and that no child is omitted from the rollup.
+`meta.acceptance_derived = "yes"` is a flag to audit the list closely, not the only case that
+needs the check.
 
 ### Deliver
 

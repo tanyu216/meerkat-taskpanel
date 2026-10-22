@@ -1,6 +1,6 @@
 # Installation
 
-Meerkat TaskPanel ships as **a local server**, **two Agent Skills** and **one plugin root**
+Meerkat TaskPanel ships as **a local server**, **three Agent Skills** and **one plugin root**
 — the repository itself, which every harness reads in place:
 
 - **`meerkat-taskpanel`** (`skills/meerkat-taskpanel/`) — the board. Installed for all six
@@ -10,6 +10,11 @@ Meerkat TaskPanel ships as **a local server**, **two Agent Skills** and **one pl
   (claude, codex, pi, opencode, cursor); OpenClaw gets the board on its own, because the
   openclaw-team framework already runs an equivalent poll / patrol (see
   [`scheduling.md`](scheduling.md#openclaw-do-not-build-a-supervisor)).
+- **`setup-meerkat`** (`skills/setup-meerkat/`) — the user-invoked `/setup-meerkat`
+  command: it detects what is installed, repairs what is missing, offers the Matt Pocock
+  issue-tracker integration, and installs an optional Jobs/Linus/Turing plus reviewer
+  team. The bash installer copies it **with the Claude bundle only**; the repository
+  bundle and marketplace still carry it for the other agent kinds.
 
 > **"Actor kind" and "agent".** An **actor kind** is the application that runs the agent — Claude
 > Code, OpenClaw, Codex, Pi / Agent Skills, OpenCode or Cursor: the values `--target` takes.
@@ -37,8 +42,10 @@ There are three layers, and it is worth keeping them straight:
    it; it prints the command and you run it once. The repository root *is* the board's
    plugin root (`.claude-plugin/plugin.json`), which is what lets every harness share the
    one `skills/` tree instead of receiving a copy. The marketplace has a single entry —
-   `meerkat-taskpanel`, sourced at `./`. `meerkat-loop` is **not** a marketplace plugin: it
-   is installed by `install.sh`, and only for the five non-OpenClaw agents.
+   `meerkat-taskpanel`, sourced at `./`. `meerkat-loop` and `setup-meerkat` are **not**
+   separate marketplace plugins: the root bundle carries them from the same tree, and
+   `install.sh` copies them into an agent's skill directory (the loop for the five
+   non-OpenClaw agents, the setup command for Claude).
 
 > **Status: the engine has landed in full.** The skill is discoverable, the `taskctl`
 > commands it describes are implemented, and the board backend (`src/server/`, HTTP + SSE)
@@ -139,6 +146,11 @@ match the assignee the board uses for it; it defaults to `$USER`.
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `~/.agents/skills/meerkat-loop` | `.` — the root `package.json`'s `pi` field |
 | OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | `~/.config/opencode/skills/meerkat-loop` | `.opencode/plugins/` (in-process registration) |
 | Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | `~/.cursor/skills/meerkat-loop` | `.` — the repository root (`.cursor-plugin/plugin.json`) |
+
+The **setup skill** is an extra row with no column of its own: `install.sh --target claude`
+copies `setup-meerkat` to `~/.claude/skills/setup-meerkat`, and no other target copies it.
+The repository bundle and marketplace still expose it, so another agent kind can read it in
+place; the bash installer just does not put a second copy on disk for them.
 
 The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists a single
 plugin, `./` (the board); Codex reads the same marketplace manifest, which is why it has no
@@ -607,6 +619,7 @@ claude plugin uninstall meerkat-loop@meerkat-taskpanel-marketplace   # if you in
 claude plugin uninstall meerkat-taskpanel@meerkat-taskpanel-marketplace
 claude plugin marketplace remove meerkat-taskpanel-marketplace
 rm -rf ~/.claude/skills/meerkat-taskpanel ~/.claude/skills/meerkat-loop \
+       ~/.claude/skills/setup-meerkat \
        ~/.claude/commands/{board,claim,deliver}.md \
        ~/.claude/hooks/meerkat-taskpanel-session-start.sh ~/.claude/bin/taskctl \
        ~/.claude/bin/wake-claude.sh \
@@ -844,7 +857,7 @@ rm -rf ~/.cursor/skills/meerkat-taskpanel ~/.cursor/skills/meerkat-loop \
 
 `.cursor-plugin/plugin.json` declares `"skills": "./skills/"` — the repository's one
 `skills/` tree, read in place, so Cursor needs no `skills/` directory of its own. Like
-OpenCode, Cursor registers a *directory*, so both skills arrive together.
+OpenCode, Cursor registers a *directory*, so all three skills arrive together.
 
 **What the probe proves.** The flag shape is probed by
 `scripts/verify/kind-resume-matrix.mjs --actor-kind cursor` (plus `--e2e` for a real `-p` call

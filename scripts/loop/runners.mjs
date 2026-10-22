@@ -7,7 +7,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, existsSync } from "node:fs";
+import { closeSync, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,7 +26,8 @@ import {
   partitionSlaAlerts,
   recordSlaAlerts,
 } from "../../src/foundation/sla-patrol.mjs";
-import { loopCommandArgs, resolveLoopConfig } from "./options.mjs";
+import { loadRoles, selectReviewerRole, selectRole } from "../../src/foundation/roles.mjs";
+import { agentPaths, loopCommandArgs, resolveLoopConfig } from "./options.mjs";
 import { enqueueContinue } from "./queue.mjs";
 import {
   acquireContinueLock,
@@ -695,9 +696,10 @@ function spawnDetached(invocation, stderrFd) {
  * @param {object} config
  * @param {{identifier: string, agent: string}} action
  * @param {object|undefined} card the candidate projection
- * @returns {{isReview: boolean, role: "worker"|"reviewer", handoff: string}}
+ * @param {{projectDir?: string|null}} [context]
+ * @returns {{isReview: boolean, role: "worker"|"reviewer", agentRole: string|null, roleWarnings: string[], handoff: string}}
  */
-export function wakeHandoff(opts, config, action, card) {
+export function wakeHandoff(opts, config, action, card, context = {}) {
   // A review card takes the reviewer handoff. The candidate projection carries
   // `review_of`, so the decision needs no second read; the agent-name fallback
   // keeps an older projection (one written before those fields existed) working
@@ -715,15 +717,70 @@ export function wakeHandoff(opts, config, action, card) {
   const dedicatedReviewer =
     reviewers.includes(action.agent) && !reviewerWorkers.includes(action.agent);
   const isReview = (typeof card?.review_of === "string" && card.review_of !== "") || dedicatedReviewer;
+
+  // The role layer is optional. `opts.roles` is the injected/preloaded form the
+  // tests use; production reads the effective root each dispatch (the files are
+  // small, and a workflow edit must not need a pool restart). A broken manifest
+  // degrades to no role, never an exception.
+  const paths = typeof opts.home === "string" && typeof opts.actorKind === "string"
+    ? agentPaths(opts.home, opts.actorKind)
+    : null;
+  const roleSet = opts.roles ?? loadRoles({
+    explicitDir: opts.rolesDir ?? null,
+    projectDir: context.projectDir ?? null,
+    loopSkillDir: paths?.loopSkill ?? null,
+    stateDir: paths?.loopBody ?? null,
+  });
+  const role = isReview
+    ? selectReviewerRole(roleSet, action.agent)
+    : selectRole(roleSet, action.agent, "worker");
+  const decisionPolicyPath = roleSet?.decisionPolicy?.path ?? null;
+
   const handoff = isReview
-    ? buildReviewHandoff({ card: card ?? { identifier: action.identifier }, agent: action.agent, actorKind: opts.actorKind })
+    ? buildReviewHandoff({
+        card: card ?? { identifier: action.identifier },
+        agent: action.agent,
+        actorKind: opts.actorKind,
+        role,
+        roleWorkflowPath: role?.workflows?.reviewer ?? null,
+        reviewerPrompt: readRoleText(role?.reviewerPrompt),
+        reviewerPromptPath: role?.reviewerPrompt ?? null,
+        decisionPolicyPath,
+      })
     : buildHandoff({
         card: card ?? { identifier: action.identifier },
         agent: action.agent,
         actorKind: opts.actorKind,
         review: reviewers.includes(action.agent),
+        role,
+        roleWorkflowPath: role?.workflows?.worker ?? null,
+        selfCheckPath: role?.selfCheck ?? null,
+        decisionPolicyPath,
       });
-  return { isReview, role: isReview ? "reviewer" : "worker", handoff };
+  // Only claim the role as the card's named agent when the manifest actually names
+  // this assignee. A fallback reviewer role still guides the handoff, but spawning
+  // the default subagent is correct when the assignee is a custom name.
+  const agentRole =
+    role && role.agent.toLowerCase() === String(action.agent ?? "").toLowerCase()
+      ? role.agent
+      : null;
+  return {
+    isReview,
+    role: isReview ? "reviewer" : "worker",
+    agentRole,
+    roleWarnings: roleSet?.warnings ?? [],
+    handoff,
+  };
+}
+
+/** Read a validated role file; a race with an editor degrades to no text. */
+function readRoleText(path) {
+  if (typeof path !== "string" || path === "") return null;
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
 }
 
 export function spawnWorkerReal(opts, config, log) {
@@ -877,6 +934,12 @@ export async function runContinue(opts, deps = {}) {
     notifyNoResident(opts, log, pool, deps.notify ?? notifyReal(opts, log));
   }
 
+  const agentFiles = agentPaths(opts.home, opts.actorKind);
+  const roleSet = opts.roles ?? loadRoles({
+    explicitDir: opts.rolesDir ?? null,
+    loopSkillDir: agentFiles.loopSkill,
+    stateDir: agentFiles.loopBody,
+  });
   const prompt = buildContinuePrompt({
     actorKind: opts.actorKind,
     agent: opts.agents[0],
@@ -885,6 +948,7 @@ export async function runContinue(opts, deps = {}) {
     commonArgs: loopCommandArgs(opts),
     continueIntervalSeconds: opts.continueInterval,
     openedBy: opts.openedBy,
+    decisionPolicy: roleSet.decisionPolicy,
     includePoll: false,
   });
   const invocation = planContinueInvocation({

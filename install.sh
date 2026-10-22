@@ -41,11 +41,14 @@
 # (Codex) — merge-style and idempotently. It needs no agent CLI to do so, so it behaves
 # the same on a bare machine and inside the verification container.
 #
-# Two skills are distributed, and they do not go to the same agent kinds:
+# Three skills are distributed, and they do not go to the same agent kinds:
 #
 #   meerkat-taskpanel  the board                    → all six agent kinds
 #   meerkat-loop       the external supervisor  → claude, codex, pi, opencode, cursor
 #                                                     (never openclaw)
+#   setup-meerkat      install/repair + team setup  → the Claude bundle only
+#                                                     (the bundle/marketplace still
+#                                                      carries it for other kinds)
 #
 # OpenClaw is excluded from the loop on purpose: the openclaw-team framework already
 # ships an equivalent `poll` / `task-patrol`, so a second supervisor would only race the
@@ -170,8 +173,9 @@ Destinations:
   opencode   <home>/.config/opencode/skills/meerkat-taskpanel
   cursor     <home>/.cursor/skills/meerkat-taskpanel
 
-Two skills, two distribution surfaces. The **board** skill goes to all six agent kinds. The
-**loop** skill (the external supervisor) goes to the five non-OpenClaw agent kinds:
+The **board** and **loop** skills share two distribution surfaces. The board skill goes
+to all six agent kinds; the loop skill (the external supervisor) goes to the five
+non-OpenClaw agent kinds:
 
   claude     <home>/.claude/skills/meerkat-loop
   codex      <home>/.codex/skills/meerkat-loop
@@ -181,8 +185,16 @@ Two skills, two distribution surfaces. The **board** skill goes to all six agent
   openclaw   — none, on purpose: the openclaw-team framework's poll / task-patrol
               automations already are this design (see docs/scheduling.md).
 
-The loop is always **copied**, never symlinked: --link names the board skill only, or a
-symlinked loop would put the checkout back into the load path the split removes.
+The **setup** skill (`/setup-meerkat`, install/repair plus the optional team) is copied
+with the Claude bundle only:
+
+  claude     <home>/.claude/skills/setup-meerkat
+  other      — not copied by this installer; the repository bundle and marketplace
+              still carry it for the other agent kinds.
+
+The loop and setup skills are always **copied**, never symlinked: --link names the board
+skill only, or a symlinked loop would put the checkout back into the load path the split
+removes.
 
 The claim policy is written to <home>/<agent-dir>/meerkat-taskpanel.env for the agent kinds that
 build a supervisor (claude, codex, pi, opencode, cursor); OpenClaw installs

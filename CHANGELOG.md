@@ -9,6 +9,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`/setup-meerkat`, an optional team, and a narrower decision ladder.** A third skill,
+  `skills/setup-meerkat/`, is a user-invoked install/repair command: it detects the server,
+  `taskctl`, the board/loop skills and the supervisor without writing anything, installs what
+  is missing (checkout, one `npx` attempt, then a shallow clone), offers the Matt Pocock
+  issue-tracker integration without overwriting an unrelated tracker, and installs an
+  optional team — **Jobs** (product design), **Linus** (architecture and implementation),
+  **Turing** (acceptance) and a separate **Reviewer**. The role names are ordinary board
+  agent names; `kind == human` writes still use the configured human name. `install.sh
+  --target claude` copies the skill to `~/.claude/skills/setup-meerkat`; the shared bundle
+  and marketplace carry it for the other agent kinds. The loop gains an **optional** roles
+  loader (project `.meerkat/roles` > the loop skill's `roles/` > the legacy state dir) with
+  two layers — the handoff carries the role's responsibilities, the subagent reads its
+  workflow and self-check — a `--roles-dir` flag, and `MEERKAT_TASKPANEL_AGENTS` scanning.
+  Every worker is told to maintain `.meerkat/<id>/plan.md`. A subagent no longer decides an
+  unauthorized question: it writes an agent `question` comment and stops; the project
+  session answers operationally with a `note` + reattach/requeue, or escalates E1–E5 to the
+  human with `awaiting`. Only a human decision resumes an awaiting card. Review cards now
+  carry the original acceptance snapshot **plus** requirement-coverage and plan-deviation
+  checks (dynamic 64-item cap), and the review prompt requires an omission check: a
+  missing requirement or an unexplained deviation from `plan.md` is grounds for `REJECT`.
+  With no roles root, every handoff is byte-identical to before.
 - **A worker can ask, and the answer re-queues it (migration `0034`).** `comments.kind` gains
   `question`; an agent entering `awaiting` must supply `issue move … --question "…"` (or
   already have an unanswered question), which is written as a `question` comment in the same
