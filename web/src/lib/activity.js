@@ -65,7 +65,7 @@ export function relativeTime(iso, now = Date.now()) {
 export function activityLine(activity) {
   const event = activity?.event ?? "";
   if (ACTIVITY_SENTENCES[event]) return { sentence: ACTIVITY_SENTENCES[event] };
-  if (event === "task_moved" || event === "task_reopened") {
+  if (event === "task_moved" || event === "task_reopened" || event === "task_resumed") {
     const { from, to } = activity?.changes ?? {};
     if (from && to) return { text: `status: ${from} → ${to}` };
   }

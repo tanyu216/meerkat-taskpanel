@@ -84,6 +84,11 @@ describe("web/activity — the row sentence", () => {
     assert.deepEqual(activityLine({ event: "task_moved", changes: { from: "backlog", to: "todo" } }), {
       text: "status: backlog → todo",
     });
+    // A human answer resumes the card in the same transaction; the trail reads
+    // as the transition, not as the generic "recorded an event".
+    assert.deepEqual(activityLine({ event: "task_resumed", changes: { from: "awaiting", to: "todo" } }), {
+      text: "status: awaiting → todo",
+    });
   });
 
   it("uses a generic sentence for an event it does not know, never a raw identifier", () => {

@@ -25,7 +25,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Every worker is told to maintain `.meerkat/<id>/plan.md`. A subagent no longer decides an
   unauthorized question: it writes an agent `question` comment and stops; the project
   session answers operationally with a `note` + reattach/requeue, or escalates E1–E5 to the
-  human with `awaiting`. Only a human decision resumes an awaiting card. Review cards now
+  human with `awaiting`. Any human comment resumes an awaiting card, whatever its kind
+  (the resumed worker judges its content). Review cards now
   carry the original acceptance snapshot **plus** requirement-coverage and plan-deviation
   checks (dynamic 64-item cap), and the review prompt requires an omission check: a
   missing requirement or an unexplained deviation from `plan.md` is grounds for `REJECT`.
@@ -35,8 +36,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   already have an unanswered question), which is written as a `question` comment in the same
   transaction (`QUESTION_REQUIRED` otherwise; a human may park silently). `awaiting → todo`
   becomes a legal edge — not a reopen, so the delivery round does not move and the claim is
-  released — and a human's `decision` / `confirm` / `change` comment moves the card there
-  automatically (a `note` answer needs an explicit move). The waiting payload is now the
+  released — and **any human comment** moves the card there automatically (the resumed
+  worker judges its content; a `decision` kind remains the I5 record). The waiting payload is now the
   newest `question` (falling back to the newest human comment), mirrored in `web/`. The loop
   gains `--opened-by human|supervisor` and a waiting-questions section in the continue
   prompt, and the turn/ledger/heartbeat clocks are stated as one contract: the turn must be
@@ -365,6 +366,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   exported an empty section. Modern criteria now render as plain bullets, one per line; an
   imported card's checkboxes are preserved, and the modern list wins when both exist (the
   same precedence as `report`).
+
+### Changed
+
+- **Any human comment now resumes an `awaiting` card.** The board no longer requires a
+  `decision` / `confirm` / `change` kind to re-queue it: a human's reply from the board's
+  comment box, the CLI or the API moves the card back to `todo` in the same transaction,
+  whatever its kind. The board does not read the text — the resumed worker judges from the
+  content whether the answer is a complete decision (approve, reject, or still incomplete),
+  and an incomplete answer asks again and returns the card to `awaiting`. `decision` /
+  `confirm` / `change` remain the explicit I5 record a reviewer reads; the loop still never
+  writes a decision kind or uses `--as-human` for its own answer. A team's own
+  `.meerkat/roles/decision-policy.md` overrides the shipped default and must be updated
+  separately.
 
 ## [1.1.0] - 2026-10-20
 

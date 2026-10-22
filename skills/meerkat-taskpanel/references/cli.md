@@ -220,10 +220,11 @@ starts and closes the container; see
 | Command | Purpose |
 |---|---|
 | `comment list <ref> [--kind <kind>] [--limit <n>]` | Oldest first. |
-| `comment add <ref> --body <text> [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect\|question] [--file <path\|->]` | Append. A `question` + `awaiting` E2 is how an agent asks a human; a human's `decision`/`confirm`/`change` on an `awaiting` card moves it back to `todo` in the same transaction. |
+| `comment add <ref> --body <text> [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect\|question] [--file <path\|->]` | Append. A `question` + `awaiting` E2 is how an agent asks a human; **any human comment** on an `awaiting` card moves it back to `todo` in the same transaction, whatever its kind. |
 
 Append-only: there is no edit and no delete, by design. A `decision` / `change` comment is what
-a reviewer reads later.
+a reviewer reads later as the explicit record; the resume itself is decided by the comment's
+content, not its kind.
 
 ### `relation`
 
@@ -508,8 +509,10 @@ Without the flag the CLI refuses as a usage error (exit 2); the service refuses 
 value with `VALIDATION_FAILED` (`details.field` = `awaiting_reason`). The reason is stamped on
 the card while it is `awaiting` and cleared on exit. `awaiting → in_progress` means a human
 replied — a resume, not a rework; `awaiting → canceled` is allowed; `blocked`/`in_review`/
-`done` are not. Read the set with `issue list --status awaiting`; the web board's **waiting**
-view is the same set.
+`done` are not. **Any human comment re-queues the card to `todo`**, whatever its kind: the
+board does not read the text, and the resumed worker judges from its content whether the
+answer is a complete decision (an incomplete one asks again and returns to `awaiting`). Read
+the set with `issue list --status awaiting`; the web board's **waiting** view is the same set.
 
 ## The `blocked` state — what the card is waiting for
 

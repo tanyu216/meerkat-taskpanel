@@ -182,9 +182,9 @@ and `~/.claude/bin/taskctl`. **Codex** writes `~/.codex/AGENTS.md` (a claim-firs
 (Their shims are the same file described above — every agent kind gets one.)
 
 The kind is not decoration. It is what the board reads to tell a person from an agent:
-a human's `decision` is what goes on the record (I5), what resumes an `awaiting` card, and
-what the patrol counts as the leader acting. A shim that set only the name recorded every
-agent write as a human's.
+a human's comment resumes an `awaiting` card (any kind), and a `decision` / `confirm` /
+`change` is what goes on the record (I5) and what the patrol counts as the leader acting.
+A shim that set only the name recorded every agent write as a human's.
 
 `--as-human` is the other direction — the one write an agent makes in the user's voice,
 signing with `TASKCTL_HUMAN` instead of itself. `--actor-kind human` is refused: it is the

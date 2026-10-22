@@ -213,7 +213,8 @@ with a warning; their layer-2 workflow still reaches them through the handoff.
   `TASKCTL_HUMAN`. Never use it for a role's own view.
 - The ladder is **subagent → main session → human**. A subagent asks with an agent
   `question` comment and stops; the project session decides what it can, or escalates
-  E1-E5. Only a human decision resumes an awaiting card.
+  E1-E5. Any human comment resumes an awaiting card, whatever its kind; the resumed worker
+  judges from its content whether it is a complete decision.
 - The reviewer never enters awaiting; insufficient evidence is a `VERDICT: REJECT`.
 
 ## Files

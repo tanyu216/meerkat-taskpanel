@@ -244,10 +244,13 @@ session answers what it can with a `note` (then reattaches the subagent or moves
 to `todo`), or escalates E1-E5 to the human with
 `issue move <ref> awaiting --awaiting-reason E1..E5 --question "…"`.
 
-Only a human `decision` / `confirm` / `change` comment auto-resumes an awaiting card. The
-loop never writes a decision kind for its own answer, and never uses `--as-human` except
-to record what the human actually said in a human-opened conversation (`--opened-by
-human`). With `--opened-by supervisor` the question stays on the board for the human.
+Any human comment auto-resumes an awaiting card — the kind does not matter and the board
+does not read it. Approve, reject and direction are judged from the content by the resumed
+worker; an incomplete or ambiguous answer is not consent, and the card goes back to
+`awaiting` for another human comment. The loop never writes a decision kind for its own
+answer, and never uses `--as-human` except to record what the human actually said in a
+human-opened conversation (`--opened-by human`). With `--opened-by supervisor` the question
+stays on the board for the human.
 
 ## The workflow channel
 

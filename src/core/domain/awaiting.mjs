@@ -22,6 +22,14 @@
  *      `author_kind === "human"` test is the whole point and is explicit rather
  *      than implied.
  *
+ *      The comment's **kind is not consulted**: any human comment answers the
+ *      question and re-queues the card. Whether that answer is a complete
+ *      decision — approve, reject, or still incomplete — is judged from its
+ *      content by the loop, whose worker reads it when the card is claimed; the
+ *      board deliberately does not read prose for consent. A `decision` /
+ *      `confirm` / `change` kind remains the I5 record (`comment.mjs`), not the
+ *      resume gate.
+ *
  * What this module deliberately does **not** do: persist anything, and take a
  * lock. The cursor is the loop's own watermark (design §2.3: "the loop cursor
  * `?after=<revision>` … the 'already consumed' test persisted"); this is the
@@ -34,7 +42,6 @@
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
-import { DECISION_KINDS } from "./comment.mjs";
 import { AWAITING_REASONS, STATUS } from "./enums.mjs";
 
 export { AWAITING_REASONS };
@@ -99,10 +106,10 @@ export function latestQuestion(comments) {
 /**
  * Is there a human comment after `question`?
  *
- * Any human comment counts as having answered (the plan's rule): `decision` /
- * `confirm` / `change` resume the card automatically, while a `note` /
- * `discuss` is an answer the control session must act on with an explicit move.
- * A question with no later human comment is still open.
+ * Any human comment counts as having answered (the plan's rule): the board
+ * re-queues the card on it, whatever its kind, and the resumed worker judges
+ * from the content whether the answer is a complete decision. A question with
+ * no later human comment is still open.
  *
  * @param {object[]} comments
  * @param {object|null} question
@@ -196,13 +203,14 @@ export function isConsumed(cursor, commentId) {
  *     * the newest comment on the card is written by a **human**
  *       (`author_kind === "human"` — an agent comment is just a comment, and it
  *       neither satisfies the payload nor resumes the card, §2.3);
- *     * that comment is a **decision** (`decision` / `confirm` / `change`). A
- *       human `note` or `discuss` is an answer too, but the control session
- *       answers with it explicitly and then moves the card; the board does not
- *       invent consent from prose (0034);
  *     * that comment is **strictly after the cursor**, so the same comment can
  *       never resume the card twice — the second read returns `resume: false`
  *       with the cursor unmoved (the idempotence the card's F2 asks for).
+ *
+ *   The comment's kind is deliberately **not** a condition: any human comment
+ *   is an answer, and whether it is a complete decision is judged from its
+ *   content by the loop. `decision` / `confirm` / `change` are the I5 record,
+ *   not the resume gate.
  *
  *   `nextCursor` is always safe to persist: it only advances when a resume is
  *   decided, so a rejected comment cannot silently swallow a later one.
@@ -228,11 +236,8 @@ export function resumeDecision(input = {}) {
   if (!isHumanComment(newest)) {
     return { resume: false, reason: "not_human", ...settled };
   }
-  if (!DECISION_KINDS.includes(newest.kind)) {
-    return { resume: false, reason: "not_a_decision", comment: newest, nextCursor: cursor };
-  }
   if (isConsumed(cursor, newest.id)) {
     return { resume: false, reason: "already_consumed", comment: newest, nextCursor: cursor };
   }
-  return { resume: true, reason: "human_decision", comment: newest, nextCursor: newest.id ?? cursor };
+  return { resume: true, reason: "human_answer", comment: newest, nextCursor: newest.id ?? cursor };
 }

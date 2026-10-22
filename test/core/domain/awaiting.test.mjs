@@ -34,8 +34,8 @@ import { DomainError } from "../../../src/foundation/errors.mjs";
 const human = (id, body = "请问这一版的范围可以确认吗？后面还有一句。", extra = {}) => ({
   id,
   body,
-  // 0034 — a human comment resumes the card only when it is a decision.
-  kind: "decision",
+  // The kind is the I5 record, not the resume gate: any human comment answers.
+  kind: "discuss",
   authorKind: "human",
   authorId: "terry",
   createdAt: "2026-10-12T00:00:00.000Z",
@@ -135,7 +135,7 @@ describe("domain/awaiting — resume is human-only and idempotent (card D/F2)", 
     const comments = [human("h1")];
     const first = resumeDecision({ task: { status: "awaiting" }, comments, cursor: null });
     assert.equal(first.resume, true);
-    assert.equal(first.reason, "human_decision");
+    assert.equal(first.reason, "human_answer");
     assert.equal(first.nextCursor, "h1");
 
     // The replay: same board, the cursor the caller persisted.
@@ -158,35 +158,35 @@ describe("domain/awaiting — resume is human-only and idempotent (card D/F2)", 
     assert.equal(decision.nextCursor, "h3");
   });
 
-  it("resumes only on a human *decision*, not on a human note (0034)", () => {
-    for (const kind of ["decision", "confirm", "change"]) {
+  it("resumes on any human comment, whatever its kind", () => {
+    for (const kind of ["decision", "confirm", "change", "note", "discuss", "question", "confirm_request", "defect"]) {
       const decision = resumeDecision({
         task: { status: "awaiting" },
-        comments: [question("q1"), human("h2", "ok", { kind })],
+        comments: [question("q1"), human("h2", "an answer", { kind })],
         cursor: null,
       });
       assert.equal(decision.resume, true, kind);
-    }
-    for (const kind of ["note", "discuss", "question", "confirm_request", "defect"]) {
-      const decision = resumeDecision({
-        task: { status: "awaiting" },
-        comments: [question("q1"), human("h2", "an answer-ish note", { kind })],
-        cursor: null,
-      });
-      assert.equal(decision.resume, false, kind);
-      assert.equal(decision.reason, "not_a_decision");
-      // The cursor does not move: a note must not swallow a later decision.
-      assert.equal(decision.nextCursor, null);
+      assert.equal(decision.reason, "human_answer", kind);
+      assert.equal(decision.comment.id, "h2", kind);
+      assert.equal(decision.nextCursor, "h2", kind);
     }
     // An agent may not answer at all, whatever the kind.
+    const forged = { ...agent("a1", "I decided"), kind: "decision" };
+    const decision = resumeDecision({
+      task: { status: "awaiting" },
+      comments: [question("q1"), forged],
+      cursor: null,
+    });
+    assert.equal(decision.resume, false);
+    assert.equal(decision.reason, "not_human");
+    // The newest human comment is still the one judged.
     assert.equal(
       resumeDecision({
         task: { status: "awaiting" },
-        comments: [agent("a1", "I decided"), human("h2", "", { kind: "decision" })],
+        comments: [agent("a1", "I decided"), human("h2", "ok", { kind: "decision" })],
         cursor: null,
       }).comment.id,
       "h2",
-      "the newest comment is still the one judged",
     );
   });
 

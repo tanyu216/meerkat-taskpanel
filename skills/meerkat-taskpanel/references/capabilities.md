@@ -142,16 +142,18 @@ A worker that cannot proceed asks and stops:
 taskctl issue move <ref> awaiting --awaiting-reason E2 --question "what you need to know" <attribution>
 ```
 
-The move and the `question` comment are one transaction. A human answers with a
-`decision` / `confirm` / `change` comment, and the board moves the card to `todo` in the same
-transaction — the asking subagent is gone, so only the queue can dispatch the next one. A
-human `note` / `discuss` is an answer too, but the control session records it and moves the
-card explicitly; the loop never writes a decision kind. The card's `awaiting_reason` stays the
-category (`E1`–`E5`); the question is the payload (`waitingPayload`, the newest `question`).
+The move and the `question` comment are one transaction. **Any human comment** answers it —
+whatever its kind — and the board moves the card to `todo` in the same transaction (the
+asking subagent is gone, so only the queue can dispatch the next one). The board does not
+read the text: the resumed worker judges from its content whether it is a complete decision
+(approve, reject, or ask again), and the loop never writes a decision kind. A `decision` /
+`confirm` / `change` kind is the explicit I5 record, not the resume gate. The card's
+`awaiting_reason` stays the category (`E1`–`E5`); the question is the payload
+(`waitingPayload`, the newest `question`).
 
 Who answers what the loop cannot: `--opened-by human` means the control turn may ask its own
 operator in that conversation; the default (`supervisor`, for systemd/launchd/cron) leaves the
-card `awaiting` for the human's decision comment.
+card `awaiting` for the human's comment.
 
 ### The subagent's file surface
 

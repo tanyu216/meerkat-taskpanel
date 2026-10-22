@@ -97,6 +97,6 @@ The manifest is written last; existing different files are conflicts unless `--f
 The team's `decision-policy.md` (or the loop default) defines the ladder
 **subagent → main session → human**. A subagent never decides an unauthorized question;
 it writes an agent `question` comment and stops. The project session answers with a
-`note` and reattaches/requeues, or escalates E1-E5 to the human. Only a human
-`decision`/`confirm`/`change` resumes an awaiting card; the loop never writes a decision
-kind and never uses `--as-human` for its own answer.
+`note` and reattaches/requeues, or escalates E1-E5 to the human. Any human comment resumes
+an awaiting card, whatever its kind (the resumed worker judges its content); the loop never
+writes a decision kind and never uses `--as-human` for its own answer.

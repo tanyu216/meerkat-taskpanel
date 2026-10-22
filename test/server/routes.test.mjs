@@ -516,6 +516,38 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
     assert.equal(added.comment.author.kind, "agent", "the ref carries the actor's kind");
   });
 
+  it("re-queues an awaiting card on any human comment, including the UI's discuss kind", async () => {
+    const linus = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "linus" }) };
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Any human answer",
+        assignee: "linus",
+        assignee_kind: "agent",
+        review_required: false,
+        allow_dup: true,
+      }, linus),
+    );
+    const ref = created.task.identifier;
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }, linus));
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, {
+      to: "awaiting",
+      awaiting_reason: "E2",
+      question: "which schema?",
+    }, linus));
+
+    // No actor header: `actorFromRequest` treats the browser as the local human.
+    const added = dataOf(
+      await call("POST", `/api/v1/tasks/${ref}/comments`, { body: "use v2", kind: "discuss" }),
+    );
+    assert.equal(added.comment.author_kind, "human");
+
+    const after = dataOf(await call("GET", `/api/v1/tasks/${ref}`));
+    assert.equal(after.task.status, "todo");
+    assert.equal(after.task.claimed_by, null);
+    assert.equal(after.task.awaiting_reason, null);
+  });
+
   it("adds, lists and removes a relation", async () => {
     // Only an `epic` may be a parent (§4.2), so the fixture is an epic + a child.
     sibling = dataOf(

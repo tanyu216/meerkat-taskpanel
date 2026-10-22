@@ -717,8 +717,10 @@ export function buildHandoff(input) {
     "  yourself: add an agent question comment on the card, keep it in_progress, and stop.",
     "  The project session answers, or escalates to the human with E1-E5.",
     `    taskctl comment add <card> --kind question --body "Decision needed: ..." <flags>`,
-    "  Then stop. Do not wait in this conversation: read the newest project/human answer",
-    "  when the card is claimed again and continue from it.",
+    "  Then stop. Do not wait: on re-claim read the newest human comment. Any human",
+    "  comment auto-resumes awaiting; approve/reject is its content, not its kind. An",
+    "  incomplete or ambiguous answer is not consent — ask again. A rejection means",
+    "  revise or stop; never re-submit the rejected proposal.",
     "  Review asks for more: append, never replace. Ask the project session, do not migrate.",
     "",
     `Keep the claim alive (<=10 minutes): taskctl issue heartbeat <card> <flags>`,
@@ -925,10 +927,11 @@ export function buildContinuePrompt(input = {}) {
   // The decision ladder. A subagent never decides an unauthorized question: it
   // records an agent `question` comment on an in_progress card and stops. The
   // main session decides what it can (operational or plan/acceptance-internal)
-  // with a note, or escalates E1-E5 to the human via `awaiting`. Only a human
-  // decision resumes an awaiting card; the loop's own answer is never a decision
-  // kind and never `--as-human` (except when recording what the human said in a
-  // human-opened conversation).
+  // with a note, or escalates E1-E5 to the human via `awaiting`. Any human
+  // comment resumes an awaiting card; the board does not read it, and whether it
+  // is a complete decision is judged from its content by the resumed worker. The
+  // loop's own answer is never a decision kind and never `--as-human` (except
+  // when recording what the human said in a human-opened conversation).
   const openedBy = input.openedBy === "human" ? "human" : "supervisor";
   lines.push(
     "",
@@ -943,16 +946,22 @@ export function buildContinuePrompt(input = {}) {
     "  For an agent question you can decide (operational or within the plan/acceptance):",
     '    taskctl comment add <ref> --kind note --body "decision: ... (why)"',
     "    taskctl issue move <ref> todo        # re-claim with the answer in the trail",
-    "  A note does NOT auto-resume an awaiting card; the move does.",
+    "  Your own note does NOT resume an awaiting card; the move does.",
+    "  A HUMAN comment of any kind resumes it automatically — the board does not read it.",
     "  For E1-E5 (scope, acceptance, design/aesthetic, security/data, architecture) or",
     "  anything you cannot decide, do not answer: escalate with the question format:",
     '    taskctl issue move <ref> awaiting --awaiting-reason E1..E5 --question "Decision needed: ...; Options: ...; Recommendation: ...; Why the main session cannot decide: ..."',
     "  Never write decision/confirm/change for your own decision.",
-    "  A human decision/confirm/change is the only thing that auto-resumes an awaiting card.",
+    "  Approve/reject/direction come from the human comment's content. A rejection is an",
+    "  answer: apply its direction; never re-dispatch the rejected work unchanged.",
+    "  If the answer is incomplete or ambiguous, the resumed worker asks; move the card",
+    "  back to awaiting with a NEW question (QUESTION_REQUIRED forces one).",
     openedBy === "human"
-      ? "  When the human answers in this conversation, record it with --as-human and the appropriate decision kind; the board re-queues the card. If they only give a note, record a note and move the card to todo."
-      : "  The human answers on the board with a decision comment; the board re-queues it automatically.",
-    "  Do not re-answer a question that already has a later human comment.",
+      ? "  When the human answers in this conversation, record it with --as-human; any kind re-queues the card."
+      : "  The human answers on the board with a comment; any kind re-queues it automatically.",
+    "  A human comment after an agent question on an in_progress card is an answer too:",
+    "  act on it and move the card to todo (or reattach a live worker).",
+    "  Do not answer a question a later human comment already answered.",
     ...(input.decisionPolicy ? ["", ...renderDecisionPolicySummary(input.decisionPolicy)] : []),
     "",
     "Rules:",

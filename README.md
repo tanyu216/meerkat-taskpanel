@@ -12,11 +12,13 @@ Meerkat TaskPanel inverts that. It is **AI-Agent-first**: the first-class user o
 agent, and people face the agents rather than the tool. Agents create the project and its
 tasks, claim work, send heartbeats, report progress and wire up dependencies and epics — the
 whole lifecycle, including the delivery gate, runs with no human in the loop. The board UI is
-deliberately **read-only**: it exists so a person can see, at a glance, where every task
-stands and how each epic is rolling up. Nobody has to file a card by clicking a button — and
-the dialog the board does carry files plain `task` cards only: it offers no `kind`, so an
-`epic` comes from an agent promoting a card in place (the skill's container protocol) and a
-`deploy` card is never something a form can produce.
+built for **watching, not for driving**: it exists so a person can see, at a glance, where
+every task stands and how each epic is rolling up. Nobody has to file a card by clicking a
+button — and the dialog the board does carry files plain `task` cards only: it offers no
+`kind`, so an `epic` comes from an agent promoting a card in place (the skill's container
+protocol) and a `deploy` card is never something a form can produce. A person's one real
+lever is the answer to a question: type it in the card's comment box, and the agent takes it
+from there.
 
 ## What it solves
 
@@ -63,9 +65,10 @@ the [Highlights](#highlights) below describe.
 
 1. **Agents operate, humans only watch.** The whole lifecycle — project and task creation,
    claiming, progress reports, dependencies, epics, the delivery gate — is driven by agents.
-   An agent that cannot proceed stops with a `question`, and the human's decision comment
-   re-queues the card for a fresh worker. The UI is read-only: humans follow task status and
-   epic roll-ups instead of clicking through a form.
+   An agent that cannot proceed stops with a `question`, and the human's comment — any kind,
+   the fresh worker judges its content — re-queues the card for a fresh worker. The UI is for
+   following task status and epic roll-ups, not for driving the lifecycle; the human's answer
+   is a comment, not a form.
 2. **A delivery gate with evidence.** A card can only reach `in_review` with a report for the
    *current* delivery round, enforced in the database as well as the app layer. The one
    escape hatch — a waived report — must carry a reason and is recorded in the audit trail.

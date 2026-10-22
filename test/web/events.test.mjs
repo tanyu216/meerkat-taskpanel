@@ -62,6 +62,7 @@ describe("web/events — the refresh map", () => {
     assert.equal(taskEventNeedsRefresh("task_updated"), true);
     assert.equal(taskEventNeedsRefresh("task_moved"), true);
     assert.equal(taskEventNeedsRefresh("task_reopened"), true);
+    assert.equal(taskEventNeedsRefresh("task_resumed"), true, "a human answer re-queues the card");
     assert.equal(taskEventNeedsRefresh("comment_added"), false);
     assert.equal(taskEventNeedsRefresh("attachment_added"), false);
     assert.equal(taskEventNeedsRefresh("project_updated"), false);
@@ -80,7 +81,7 @@ describe("web/events — the refresh map", () => {
   });
 
   it("invalidates the waiting payload only when the question can change", () => {
-    for (const event of ["comment_added", "task_moved", "task_reopened", "task_updated", "task_created", "task_archived"]) {
+    for (const event of ["comment_added", "task_moved", "task_reopened", "task_resumed", "task_updated", "task_created", "task_archived"]) {
       assert.equal(invalidatesWaitingPayload(event), true, event);
     }
     for (const event of ["relation_added", "session_closed", "attachment_added", "project_updated"]) {
@@ -97,6 +98,7 @@ describe("web/events — the refresh map", () => {
 
   it("knows its own vocabulary but does not pretend to know another", () => {
     assert.equal(isKnownEvent("task_created"), true);
+    assert.equal(isKnownEvent("task_resumed"), true, "a resume is not an unknown-event warning");
     assert.equal(isKnownEvent("attachment_added"), true);
     assert.equal(isKnownEvent("brand_new_event"), false);
   });

@@ -32,8 +32,9 @@ migrations, dependencies/licenses, destructive or irreversible operations, relea
 cross-project changes, budget/time/concurrency policy, team changes, conflicting
 requirements, and anything the main session cannot decide.
 
-Escalate with the question format and a named E-code; only a human `decision` / `confirm`
-/ `change` resumes the card.
+Escalate with the question format and a named E-code; any human comment resumes the card,
+whatever its kind. The board does not read it — judge from its content whether it is a
+complete decision, and ask again if it is not.
 
 ## The reviewer
 

@@ -144,6 +144,7 @@ export function renderDecisionPolicySummary(policy) {
     "escalates E1-E5 (scope, acceptance, design/aesthetic, security/data, architecture)",
     "and anything it cannot decide to the human. The loop answers with a note (never a",
     "decision kind) and an explicit move, or leaves an E1-E5 card awaiting for the human.",
+    "Any human comment resumes an awaiting card; the resumed worker judges its content",
     path ? `Full policy: ${path}` : "Full policy: the installed loop skill's references/decision-policy.md",
     "A card in a project whose .meerkat/roles/decision-policy.md exists uses that file instead.",
   ];

@@ -356,7 +356,7 @@ describe("commands/comments", () => {
     });
   });
 
-  it("a human decision answers an awaiting question and re-queues the card", async () => {
+  it("any human comment answers an awaiting question and re-queues the card", async () => {
     await board(({ db, commands }) => {
       const task = commands.createTask({
         projectId: "proj",
@@ -375,12 +375,8 @@ describe("commands/comments", () => {
       });
       assert.equal(commands.getTask({ id: task.id }).status, "awaiting");
 
-      // A human *note* is an answer but not a decision: the board leaves it be.
-      commands.addComment({ taskId: task.id, body: "probably v2", kind: "note", actor: HUMAN });
-      assert.equal(commands.getTask({ id: task.id }).status, "awaiting");
-
-      // A decision resumes the card — to the **queue**, claim released, round unchanged.
-      commands.addComment({ taskId: task.id, body: "v2, confirmed", kind: "confirm", actor: HUMAN });
+      // Any human comment is the answer now — the kind is not consulted.
+      commands.addComment({ taskId: task.id, body: "probably v2", kind: "discuss", actor: HUMAN });
       const resumed = commands.getTask({ id: task.id });
       assert.equal(resumed.status, "todo");
       assert.equal(resumed.claimedBy, null);
@@ -394,6 +390,22 @@ describe("commands/comments", () => {
       assert.deepEqual(
         commands.listCandidates({ assignee: "linus" }).map((candidate) => candidate.id),
         [task.id],
+      );
+
+      // A later human comment on the now-todo card adds no second resume.
+      commands.addComment({ taskId: task.id, body: "and one more thing", kind: "note", actor: HUMAN });
+      assert.equal(commands.getTask({ id: task.id }).status, "todo");
+      assert.equal(
+        db.prepare("SELECT COUNT(*) n FROM task_activities WHERE event = 'task_resumed'").get().n,
+        1,
+      );
+
+      // Re-escalation: the earlier question now has a later human comment, so an
+      // agent entering awaiting must supply a NEW question.
+      commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
+      assert.throws(
+        () => commands.moveStatus({ id: task.id, to: "awaiting", awaitingReason: "E2", actor: AGENT }),
+        (err) => err.code === "QUESTION_REQUIRED",
       );
     });
   });

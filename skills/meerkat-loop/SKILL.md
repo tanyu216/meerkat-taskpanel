@@ -159,9 +159,11 @@ The ladder is **subagent → main session → human** (details:
 `references/decision-policy.md`). A subagent never decides an unauthorized question: it
 writes an agent `question` comment, keeps the card `in_progress`, and stops. The project
 session answers with a `note` (then reattaches or moves the card to `todo`), or escalates
-E1-E5 to the human with `awaiting`. Only a human `decision` / `confirm` / `change` resumes
-an awaiting card. The loop never writes a decision kind for its own answer and never uses
-`--as-human` except to record what the human actually said in a human-opened conversation.
+E1-E5 to the human with `awaiting`. Any human comment resumes an awaiting card, whatever
+its kind; the board does not read it, and the resumed worker judges from its content
+whether it is a complete decision (ask again if not). The loop never writes a decision kind
+for its own answer and never uses `--as-human` except to record what the human actually said
+in a human-opened conversation.
 
 ## Required board interface
 

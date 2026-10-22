@@ -53,14 +53,13 @@ export function addComment(ctx, input) {
         createdAt: now,
       });
 
-      // 0034 — a human's decision answers an `awaiting` question. The board
-      // moves the card back to the **queue** in this same transaction: the
-      // asking worker is a one-shot subagent, already gone, so only `todo` gets
-      // it dispatched again. The comment is passed directly rather than re-read,
-      // so a `created_at` tie cannot pick the wrong "newest".
-      //
-      // A `note` / `discuss` from a human is an answer too, but not a decision:
-      // the control session records it and moves the card explicitly.
+      // 0034 — a human's answer ends an `awaiting` episode. Any human comment
+      // is an answer, whatever its kind: the board does not read the text and
+      // does not judge whether it is a complete decision (the resumed worker
+      // does). The card moves back to the **queue** in this same transaction:
+      // the asking worker is a one-shot subagent, already gone, so only `todo`
+      // gets it dispatched again. The comment is passed directly rather than
+      // re-read, so a `created_at` tie cannot pick the wrong "newest".
       if (task.status === STATUS.AWAITING) {
         const decision = resumeDecision({ task, newest: stored });
         if (decision.resume) {

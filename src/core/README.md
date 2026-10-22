@@ -43,10 +43,11 @@ Rules that are enforced, not just documented:
   (`domain/acceptance.mjs#rollupGapOf`) is read by the sweep and by the workflow planner;
 * **questions** (0034) are comments, not a column: an agent entering `awaiting` writes a
   `question` comment in the same transaction (`QUESTION_REQUIRED` if it has neither a
-  `--question` nor an unanswered one), and a human `decision` / `confirm` / `change` comment
-  re-queues the card to `todo` in the same transaction (`commands/comments.mjs`,
-  `domain/awaiting.mjs#resumeDecision`). `awaiting → todo` is a whitelist edge, not a reopen:
-  the round does not move, the claim is released, and a fresh worker is dispatched;
+  `--question` nor an unanswered one), and **any human comment** re-queues the card to `todo`
+  in the same transaction (`commands/comments.mjs`, `domain/awaiting.mjs#resumeDecision`).
+  The board does not read the text: whether the answer is a complete decision is judged by the
+  loop's worker, which asks again if it is not. `awaiting → todo` is a whitelist edge, not a
+  reopen: the round does not move, the claim is released, and a fresh worker is dispatched;
 * the **workflow decisions** are the board's: `domain/workflow.mjs` is pure (reconcile
   classification, review outcomes, review dispatch), and `commands/workflow.mjs` assembles
   a bounded board snapshot for it. `issue reconcile --workflow` exposes the plan; the loop

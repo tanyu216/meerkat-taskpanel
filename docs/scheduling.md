@@ -626,8 +626,9 @@ inlined at the start of the review handoff. Every role is told to write and main
 **Decisions.** A subagent does not decide an unauthorized question: it writes an agent
 `question` comment on the `in_progress` card and stops. The project session answers
 operationally with a `note` (and reattaches or requeues), or escalates to the human with
-`issue move <ref> awaiting --awaiting-reason E1..E5`; only a human decision resumes an
-awaiting card. The ladder is the loop's `references/decision-policy.md`, overridable per
+`issue move <ref> awaiting --awaiting-reason E1..E5`; any human comment resumes an awaiting
+card, whatever its kind, and the resumed worker judges from its content whether it is a
+complete decision. The ladder is the loop's `references/decision-policy.md`, overridable per
 team.
 
 The scan set is still explicit: write `MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing` (and

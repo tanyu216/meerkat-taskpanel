@@ -4,8 +4,10 @@ This is the loop's default question policy. A team installed by `setup-meerkat` 
 ship `decision-policy.md` in its roles root; the project-level copy
 (`.meerkat/roles/decision-policy.md`) wins over the global one, and either wins over
 this file. The policy is prompt guidance, not a board gate: the board still enforces
-the one invariant that matters — **only a human `decision` / `confirm` / `change`
-comment resumes an `awaiting` card**.
+the one invariant that matters — **only a human comment resumes an `awaiting` card**.
+The kind does not matter (a note, a discuss, a question are all answers); the board
+does not read the text. Whether the answer is a complete decision — approve, reject, or
+still incomplete — is judged from its content by the resumed worker, not by the board.
 
 ## The ladder
 
@@ -90,11 +92,14 @@ E-code.
   then answer the subagent or `taskctl issue move <ref> todo`.
 - Human escalation:
   `taskctl issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."`.
-- Human answer: `taskctl comment add <ref> --kind decision|confirm|change --as-human ...`;
-  the board auto-requeues the card.
+- Human answer: `taskctl comment add <ref> --kind <any> --as-human ...`; the board
+  auto-requeues the card. On the board itself the human types in the drawer's comment box
+  and submits — the UI sends `discuss`, and that is an answer too. A `decision` /
+  `confirm` / `change` kind is the explicit record marker a reviewer can query; the
+  resume itself no longer depends on it.
 
 `--as-human` signs the fixed local human name (`TASKCTL_HUMAN`). It is the one way to
 record what the human said; it is never the loop's own voice. In a human-opened loop
 (`--opened-by human`), the control session may ask its operator in the conversation and
 then record the answer with `--as-human`; a supervisor-opened loop leaves the card on the
-board for the human's decision comment.
+board for the human's comment.

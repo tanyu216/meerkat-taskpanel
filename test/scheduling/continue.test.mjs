@@ -121,23 +121,23 @@ describe("buildContinuePrompt", () => {
 
   it("carries the question ladder and escalates where the loop was opened (0034)", () => {
     // The ladder: subagent -> main session -> human. The main session answers
-    // what it can with a note + explicit move; E1-E5 stays for a human decision.
+    // what it can with a note + explicit move; E1-E5 stays for a human comment.
     assert.match(prompt, /Questions and decision rights/);
     assert.match(prompt, /issue list --status in_progress/);
     assert.match(prompt, /issue list --status awaiting/);
     assert.match(prompt, /comment list <ref> --kind question/);
     assert.match(prompt, /comment add <ref> --kind note/);
     assert.match(prompt, /issue move <ref> todo/);
-    assert.match(prompt, /note does NOT auto-resume/);
+    assert.match(prompt, /A HUMAN comment of any kind resumes/);
     assert.match(prompt, /Never write decision\/confirm\/change/);
     assert.match(prompt, /E1-E5/);
     assert.match(prompt, /--awaiting-reason E1\.\.E5/);
     assert.match(prompt, /Why the main session cannot decide/);
-    assert.match(prompt, /Do not re-answer a question that already has a later human comment/);
+    assert.match(prompt, /Do not answer a question a later human comment already answered/);
     // The default origin is a supervisor: an unanswerable question stays on the
-    // board for a human's decision comment.
-    assert.match(prompt, /The human answers on the board with a decision comment/);
-    assert.match(prompt, /board re-queues it automatically/);
+    // board for a human's comment.
+    assert.match(prompt, /The human answers on the board with a comment/);
+    assert.match(prompt, /re-queues it automatically/);
     assert.doesNotMatch(prompt, /ask the human in this conversation/);
 
     const openedByHuman = buildContinuePrompt({

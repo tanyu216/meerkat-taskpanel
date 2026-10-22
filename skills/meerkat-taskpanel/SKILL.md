@@ -83,9 +83,9 @@ A legal edge can still be refused. Seven rules decide it:
 3. **`awaiting` has one entrance and three exits.** Only `in_progress → awaiting`, naming
    `E1`–`E5`; an **agent** must also ask a `question` in the same move (`--question`, or an
    earlier unanswered one on the card). The exits are `awaiting → in_progress` (a live worker
-   is resumed), `awaiting → todo` (the worker stopped; an answer re-queues the card for a
-   fresh one — the round does not move) and `awaiting → canceled`. It cannot reach
-   `in_review` or `done`.
+   is resumed), `awaiting → todo` (the worker stopped; **any human comment** re-queues the
+   card for a fresh one, whatever its kind — the round does not move) and `awaiting →
+   canceled`. It cannot reach `in_review` or `done`.
 4. **`blocked` is not `awaiting`.** `--blocked-reason` is optional and cleared on exit.
    `in_review → blocked` is a rework and starts a new round; `blocked → in_review` is a legal
    delivery edge.
