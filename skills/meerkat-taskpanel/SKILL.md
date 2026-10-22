@@ -1,6 +1,6 @@
 ---
 name: meerkat-taskpanel
-description: Coordinate work across an AI Agent team using a shared local task board. Use when an agent or a human needs to create and track tasks, move them through a status workflow, assign owners, comment on a decision, edit a task's description or its priority, link parent/child and blocking relations, record which agent session is working on what, deliver a task with a report, or export the board as markdown. Runs the local `taskctl` CLI; no network required.
+description: Coordinate work across an AI Agent team using a shared local kanban task board (Meerkat TaskPanel). Use when an agent or a human needs to claim a card, find what to work on next, groom the backlog, create and track cards, move work through a status workflow, assign owners, comment on a decision, edit a card's description or priority, link parent/child (epic) and blocking relations, record which agent session is working on what, deliver a card with a report, run or respond to an independent review, ask a human a question (awaiting), or export the board as markdown. Runs the local `taskctl` CLI; no external services required.
 ---
 
 # Meerkat TaskPanel
@@ -160,6 +160,21 @@ Never derive on an **epic** (its acceptance is its children) or on a **review ca
 card is too thin to yield checkable items, do not invent them:
 `issue move <ref> awaiting --awaiting-reason E2`. Say in the delivery report that the list was
 derived when it was.
+
+## One card, end to end
+
+```bash
+taskctl issue candidates --assignee <me>            # read: what may I claim?
+taskctl issue move <ref> in_progress                # claim exactly one
+taskctl issue get <ref> --json                      # description + acceptance list
+taskctl issue heartbeat <ref>                       # keep the claim fresh
+taskctl report template <ref>                       # fill the TODO lines
+taskctl issue deliver <ref> --report-file -         # report + in_review, one transaction
+```
+
+Then stop: acceptance is somebody else's act. If the card is a container, promote it before
+splitting and work one child; if it already delivered its current-round report, do **not**
+promote it. Rollup evidence is the children's, not the container's.
 
 ## When the card is a container (promote it to an epic)
 
@@ -330,8 +345,8 @@ one entry per project:
 ```json
 {
   "projects": [
-    { "local_path": "/Users/you/code/meerkat-taskpanel", "project": "TaskPanel" },
-    { "run_dir": "/Users/you/ops-inbox", "project": "Ops" },
+    { "project": "TaskPanel", "local_path": "/Users/you/code/meerkat-taskpanel" },
+    { "project": "Ops", "run_dir": "/Users/you/ops-inbox" },
     { "project": "Community" }
   ]
 }

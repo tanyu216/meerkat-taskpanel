@@ -26,13 +26,13 @@
  *   5. `taskctl` on `PATH`        — a CLI installed for the host, checkout or not
  *   6. none of the above          — a clear, actionable refusal (below), never a stack
  *
- * Rungs 1–3 are the checkout rungs, most explicit first. **Rung 4 is why this ladder has
- * six rungs**: the shim is the only `taskctl` that arrives with the caller's identity
- * already pinned (`--agent <name> --actor-kind <host>`), so it is preferred over a bare
- * `PATH` CLI — which is the only rung that cannot say *which* board engine it will find,
- * nor what kind the write will be recorded as. Rung 4 is checked *after* the checkout
- * rungs and not before them: an explicit root, and a checkout this file is lying in, are
- * both more specific than a wrapper written at install time.
+ * Rungs 1–3 are the checkout rungs, most explicit first. **Rung 4 is why the ladder has
+ * five resolution rungs plus a refusal**: the shim is the only `taskctl` that arrives with
+ * the caller's identity already pinned (`--agent <name> --actor-kind <host>`), so it is
+ * preferred over a bare `PATH` CLI — which is the only rung that cannot say *which* board
+ * engine it will find, nor what kind the write will be recorded as. Rung 4 is checked
+ * *after* the checkout rungs and not before them: an explicit root, and a checkout this
+ * file is lying in, are both more specific than a wrapper written at install time.
  *
  * No business logic lives here: the CLI is spawned with the caller's arguments, stdio is
  * piped through, and the exit code is propagated.

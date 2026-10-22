@@ -177,9 +177,9 @@ controls whether the loop closes a review card.
 - **APPROVE** — under `both` / `agent-only` (or a child card) the loop writes
   `meta.accepted_by=loop-review` and moves the original `in_review → done`. Under
   `human-only` + a top-level original it holds.
-- **REJECT on a task** — the loop comments the findings, writes `meta.rework_round` and moves
-  the original `in_review → in_progress → todo`. It is re-claimed and re-delivered on the new
-  round.
+- **REJECT on a work card** — the loop comments the findings, writes `meta.rework_round` and
+  moves the original `in_review → in_progress → todo`. It is re-claimed and re-delivered on
+  the new round.
 - **REJECT on an epic** — the loop creates and links a **fix child** first, then reopens the
   container to `in_progress`; the open child stops `reconcile` from re-closing the container.
 - **One action failing never stops the rest**, and the review card is closed last, so a crash
@@ -200,7 +200,7 @@ controls whether the loop closes a review card.
 
 ## 8. Boundaries
 
-- A review card is a normal task: it is claimable, heartbeat-able, and delivered like any
+- A review card is an ordinary card of kind `task`: it is claimable, heartbeat-able, and delivered like any
   other card. It is special only in what its report must contain and in who may close it.
 - Do not promote a review card to an epic, and do not derive an acceptance list on one.
 - A `parent` edge is refused when either end is a review card (`VALIDATION_FAILED`,

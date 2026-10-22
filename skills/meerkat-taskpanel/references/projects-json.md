@@ -29,9 +29,9 @@ empty, blank or not a string is a **failure**, not a reason to fall through.
 ```json
 {
   "projects": [
-    { "local_path": "/Users/you/code/meerkat-taskpanel", "project": "TaskPanel" },
-    { "local_path": "/Users/you/code/reporting", "project": "reporting" },
-    { "run_dir": "/Users/you/ops-inbox", "project": "Ops" },
+    { "project": "TaskPanel", "local_path": "/Users/you/code/meerkat-taskpanel" },
+    { "project": "reporting", "local_path": "/Users/you/code/reporting" },
+    { "project": "Ops", "run_dir": "/Users/you/ops-inbox" },
     { "project": "Community" }
   ]
 }
