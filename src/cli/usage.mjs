@@ -26,23 +26,32 @@ export function flagSynopsis(spec) {
   return `${short}--${spec.flag} ${spec.value ?? "<value>"}`;
 }
 
-/** `taskctl issue deliver <id> [options]` */
+/**
+ * `taskctl issue deliver <id> [options]`, or `taskctl status [options]` for a
+ * top-level command (`group === null`).
+ */
 export function commandSynopsis(group, command) {
   const slots = (command.positionals ?? []).map((slot) =>
     slot.required === false ? `[<${slot.name}>]` : `<${slot.name}>`,
   );
-  return [CLI_NAME, group.name, command.name, ...slots, "[options]"].join(" ");
+  return [CLI_NAME, ...(group === null ? [] : [group.name]), command.name, ...slots, "[options]"].join(" ");
 }
 
-/** The top-level help: every group, every command, and the global flags. */
+/** The top-level help: bare commands, every group, and the global flags. */
 export function topLevelUsage(registry) {
   const lines = [
-    `Usage: ${CLI_NAME} <group> <command> [options]`,
+    `Usage: ${CLI_NAME} <command> [options] | ${CLI_NAME} <group> <command> [options]`,
     "",
     "Task management board for AI Agent teams.",
-    "",
-    "Groups:",
   ];
+  const bare = registry.topLevel ?? [];
+  if (bare.length > 0) {
+    lines.push("", "Commands:");
+    for (const command of bare) {
+      lines.push(`  ${command.name.padEnd(12)} ${command.summary}`);
+    }
+  }
+  lines.push("", "Groups:");
   for (const group of registry.groups) {
     const names = group.commands.map((command) => command.name).join(", ");
     lines.push(`  ${group.name.padEnd(12)} ${group.summary}`);

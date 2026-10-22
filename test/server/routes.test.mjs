@@ -1652,3 +1652,93 @@ describe("server/routes — review policy (0031)", () => {
     assert.equal(action.accepted_by, "loop-auto");
   });
 });
+
+describe("server/routes — the board read's filters (GET /api/v1/tasks)", () => {
+  /** One project whose cards differ on exactly one filter each. */
+  async function filterBoard() {
+    dataOf(await call("POST", "/api/v1/projects", { id: "flt", name: "Filters" }));
+    // Only an epic may be a parent (`tr_rel_parent_epic`).
+    const parent = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "flt", title: "Parent", kind: "epic" }),
+    ).task;
+    const child = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "flt",
+        title: "Child",
+        labels: ["ui", "api"],
+        meta: { target: "app", flow: "review", count: 3 },
+      }),
+    ).task;
+    const other = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "flt",
+        title: "Other",
+        labels: ["api"],
+        meta: { target: "lib" },
+      }),
+    ).task;
+    dataOf(
+      await call("POST", `/api/v1/tasks/${parent.identifier}/relations`, {
+        type: "parent",
+        target: child.identifier,
+      }),
+    );
+    return { parent, child, other };
+  }
+
+  const ids = (data) => data.tasks.map((task) => task.id).sort();
+
+  it("filters by parent, kind, label, target and meta, and combines them", async () => {
+    const { parent, child, other } = await filterBoard();
+
+    assert.deepEqual(ids(dataOf(await call("GET", `/api/v1/tasks?project_id=flt&parent=${parent.identifier}`))), [child.id]);
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&kind=task"))), [child.id, other.id].sort());
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&kind=epic"))), [parent.id]);
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&label=ui"))), [child.id]);
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&label=ui&label=api"))), [child.id]);
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&label=ui&label=nope"))), []);
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&target=lib"))), [other.id]);
+    // `count` is stored as a JSON number; the comparison is textual, so the
+    // caller's `3` matches it.
+    assert.deepEqual(
+      ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&meta=flow%3Dreview&meta=count%3D3"))),
+      [child.id],
+    );
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&meta=flow%3Dnope"))), []);
+  });
+
+  it("resolves --assignee through the dictionary, and refuses it beside assignee_id", async () => {
+    await call("POST", "/api/v1/tasks", {
+      project_id: "flt",
+      title: "Assigned",
+      assignee: "grace",
+      assignee_kind: "agent",
+    });
+    assert.equal(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&assignee=grace")).tasks.length, 1);
+    // An unknown name is the empty scope, never "no filter".
+    assert.deepEqual(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&assignee=nobody")).tasks, []);
+
+    const both = await call("GET", "/api/v1/tasks?project_id=flt&assignee=grace&assignee_id=abc");
+    assert.equal(both.status, 400);
+    assert.equal(both.body.error.code, "VALIDATION_FAILED");
+  });
+
+  it("refuses an unknown kind and a malformed meta pair", async () => {
+    const kind = await call("GET", "/api/v1/tasks?kind=nope");
+    assert.equal(kind.status, 400);
+    assert.equal(kind.body.error.code, "VALIDATION_FAILED");
+
+    const meta = await call("GET", "/api/v1/tasks?meta=naked");
+    assert.equal(meta.status, 400);
+    assert.equal(meta.body.error.code, "VALIDATION_FAILED");
+    assert.equal(meta.body.error.details.field, "meta");
+  });
+
+  it("keeps the filter under the limit: the page is filtered, not truncated first", async () => {
+    // `limit=1` after the filter must still find the matching card even though a
+    // non-matching card sorts first in the board order.
+    const filtered = dataOf(await call("GET", "/api/v1/tasks?project_id=flt&target=lib&limit=1"));
+    assert.equal(filtered.tasks.length, 1);
+    assert.equal(filtered.tasks[0].meta.target, "lib");
+  });
+});

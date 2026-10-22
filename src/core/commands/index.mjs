@@ -50,6 +50,9 @@ export function createCommands(ctx) {
     listOrderedTasks: (filter) => tasks.listOrderedTasks(ctx, filter),
     listCandidates: (input) => tasks.listCandidates(ctx, input),
     listOrderedCandidates: (input) => tasks.listOrderedCandidates(ctx, input),
+    // A free-text assignee → the dictionary ids it names (the board read's
+    // `--assignee` filter; an unknown name is the empty scope, not no filter).
+    resolveAssigneeIds: (name) => tasks.assigneeIdsFor(ctx, name),
     getTask: (input) => ctx.repos.tasks.get(input.id ?? input.taskId),
     getTaskByIdentifier: (input) => ctx.repos.tasks.findByIdentifierAnyProject(input.identifier),
     // The container backstop: replay the epic start/close rules over the board

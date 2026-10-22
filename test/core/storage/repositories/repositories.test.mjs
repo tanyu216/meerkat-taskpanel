@@ -431,6 +431,44 @@ describe("repositories/tasks", () => {
     });
   });
 
+  it("pushes the parent/label/target/meta filters into the read", async () => {
+    await board(({ repos }) => {
+      const parent = makeTask(repos, { id: "parent", title: "Parent", kind: "epic" });
+      const child = makeTask(repos, {
+        id: "child",
+        title: "Child",
+        labels: ["ui", "api"],
+        meta: { target: "app", flow: "review", count: 3 },
+      });
+      const other = makeTask(repos, {
+        id: "other",
+        title: "Other",
+        labels: ["api"],
+        meta: { target: "lib" },
+      });
+      repos.relations.insert({ type: "parent", source: parent.id, target: child.id, now: TS });
+
+      const ids = (filter) => repos.tasks.list(filter).map((task) => task.id).sort();
+      assert.deepEqual(ids({ parentId: parent.id }), ["child"]);
+      assert.deepEqual(ids({ labels: ["ui"] }), ["child"]);
+      assert.deepEqual(ids({ labels: ["ui", "api"] }), ["child"]);
+      assert.deepEqual(ids({ labels: ["ui", "nope"] }), []);
+      assert.deepEqual(ids({ target: "lib" }), ["other"]);
+      // A JSON number is compared as text, so the caller's `"3"` matches it.
+      assert.deepEqual(ids({ metaEquals: [{ key: "count", value: "3" }] }), ["child"]);
+      assert.deepEqual(
+        ids({ metaEquals: [{ key: "flow", value: "review" }, { key: "target", value: "app" }] }),
+        ["child"],
+      );
+      assert.deepEqual(ids({ metaEquals: [{ key: "flow", value: "nope" }] }), []);
+      // Pushed down: the filter survives `limit`, rather than trimming a page —
+      // and `limit: null` (the weight order's "whole scoped set") filters too.
+      assert.deepEqual(repos.tasks.list({ labels: ["api"], limit: 1 }).length, 1);
+      assert.deepEqual(ids({ labels: ["api"], limit: null }), ["child", "other"]);
+      assert.deepEqual(ids({ kind: "task" }), ["child", "other"].sort());
+    });
+  });
+
   it("filters the board read by the card being reviewed", async () => {
     await board(({ repos }) => {
       const original = makeTask(repos, { id: "original", title: "Original" });
@@ -506,6 +544,21 @@ describe("repositories/relations", () => {
       assert.equal(repos.relations.listByTask(a.id).length, 1);
       assert.deepEqual(repos.relations.countByTask(b.id), { children: 0, blockers: 1 });
       assert.equal(repos.relations.get(999), null);
+    });
+  });
+
+  it("names the open predecessors of one card, and drops the done ones", async () => {
+    await board(({ repos }) => {
+      const open = makeTask(repos, { id: "open" });
+      const done = makeTask(repos, { id: "done", status: "done" });
+      const blocked = makeTask(repos, { id: "blocked" });
+      repos.relations.insert({ type: "blocks", source: open.id, target: blocked.id, now: TS });
+      repos.relations.insert({ type: "blocks", source: done.id, target: blocked.id, now: TS });
+
+      assert.deepEqual(repos.relations.listOpenBlockers(blocked.id), [
+        { id: open.id, identifier: open.identifier, status: "todo" },
+      ]);
+      assert.deepEqual(repos.relations.listOpenBlockers(open.id), [], "the other direction is not a predecessor");
     });
   });
 });

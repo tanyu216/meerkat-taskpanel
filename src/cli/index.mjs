@@ -10,6 +10,9 @@
  *   1. **parse** — `argv.mjs`, which refuses anything malformed as `CLI_USAGE`;
  *   2. **answer `--help` / `--version`** — before any board is contacted, so
  *      help works on a machine with no board and no data directory;
+ *   2b. **answer a local command** (`status`) — it reads the runtime pointer, so
+ *      it needs no identity, no token and no board, and must work when the board
+ *      is down;
  *   3. **connect** — resolve the token, find or start the board, build a client;
  *   4. **run and render** — the command's result through `output/`, which is the
  *      only place that writes to stdout/stderr.
@@ -148,6 +151,36 @@ export async function run(argv, io) {
     else if (parsed.group !== null) out(groupUsage(parsed.group));
     else out(topLevelUsage(registry));
     return CLI_EXIT.OK;
+  }
+
+  // A **local** command (`status`) reports the client's own view of the board.
+  // It runs before the identity check and before any board is contacted: there
+  // is no write to attribute and no token to resolve, and a command whose whole
+  // job is "is the board up?" must be able to answer when it is not. It gets a
+  // minimal context — deliberately not `createContext`, which resolves an actor
+  // and would make `status` require `--actor-kind`.
+  if (parsed.command?.local === true) {
+    try {
+      const config = loadEnvFile({
+        flag: parsed.flags.envFile ?? null,
+        env,
+        cwd: io.cwd ?? process.cwd(),
+        root: repoRoot(),
+      });
+      const local = {
+        flags: parsed.flags,
+        env: config.env,
+        cwd: io.cwd ?? process.cwd(),
+        readFile: io.readFile ?? ((file) => readFileSync(file, "utf8")),
+        out,
+      };
+      const result = await parsed.command.run(local);
+      renderResult(result, { json, out, err });
+      return result.exit ?? CLI_EXIT.OK;
+    } catch (failure) {
+      renderFailure(failure, { json, out, err });
+      return exitCodeFor(failure);
+    }
   }
 
   try {

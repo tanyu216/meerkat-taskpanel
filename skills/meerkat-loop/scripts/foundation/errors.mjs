@@ -128,6 +128,15 @@ export const ERROR_CODES = Object.freeze({
   ),
   // An epic is a grouping card: it carries no work, so nothing may claim it.
   not_claimable: spec(409, "Epics are grouping cards and cannot be claimed."),
+  // `issue claim --check-blockers` (opt-in): the default claim trusts the
+  // caller's own read of the dependency graph, and this is the refusal a caller
+  // asks the board to re-derive for it. It is a domain fact (the live `blocks`
+  // edges), not a row constraint, so no trigger raises it.
+  BLOCKED_BY_PREDECESSOR: spec(
+    409,
+    "A card this one depends on is not done yet.",
+    { fix: "wait for the predecessors (or drop their `blocks` edges) before claiming" },
+  ),
 
   // ---- Creation idempotency (T-20261009-175500-idem-meerkat-taskpanel) ---------------
   // Raised when the partial unique index is the one that refuses a write, i.e.
@@ -322,6 +331,9 @@ export const JS_ONLY_CODES = Object.freeze([
   "EXECUTION_STATE_CORRUPT",
   "not_assignee",
   "not_claimable",
+  // The `--check-blockers` re-read walks the live `blocks` edges; a trigger
+  // cannot express "every predecessor is done" without duplicating the graph.
+  "BLOCKED_BY_PREDECESSOR",
   "DICTIONARY_AMBIGUOUS",
   "DICTIONARY_INVALID",
   "MIGRATION_CHECKSUM_MISMATCH",

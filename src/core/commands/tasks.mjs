@@ -927,7 +927,7 @@ function stealCommentBody(task, verdict, actor, reason) {
  * @returns {{task: object, reused: boolean, stole: boolean}}
  */
 function performClaim(ctx, input) {
-  const { current, actor, now, allowSteal, reason, ifVersion } = input;
+  const { current, actor, now, allowSteal, reason, ifVersion, checkBlockers } = input;
   // 0032 — a worker may have written its derived baseline just before claiming.
   // Seed it once, then re-read: the seed bumps `version`, so the claim CAS must
   // use the new row rather than the caller's pre-seed `ifVersion`.
@@ -968,6 +968,25 @@ function performClaim(ctx, input) {
     // A second claim by the same actor is not an error and not an event:
     // returning the existing claim keeps agents from piling up activity rows.
     return { task, reused: true, stole: false };
+  }
+
+  // `--check-blockers` (opt-in): the board re-derives the dependency read the
+  // caller would otherwise do itself. It runs only when a claim is actually
+  // being taken — a `reuse` above is the same holder asking again, and a card
+  // already in flight is not refused for a predecessor that opened afterwards.
+  if (checkBlockers === true) {
+    const blockers = ctx.repos.relations.listOpenBlockers(task.id);
+    if (blockers.length > 0) {
+      throw new DomainError("BLOCKED_BY_PREDECESSOR", {
+        message: `${task.identifier} is blocked by ${blockers.map((blocker) => blocker.identifier).join(", ")}`,
+        details: {
+          taskId: task.id,
+          identifier: task.identifier,
+          blockers,
+        },
+        hint: { fix: "wait for the predecessors to reach done, or remove their `blocks` edges" },
+      });
+    }
   }
 
   // `--allow-steal` must say why. A >6h reclaim is audited too but needs no
@@ -1089,6 +1108,7 @@ export function claim(ctx, input) {
         allowSteal: input.allowSteal,
         reason: input.reason,
         ifVersion: input.ifVersion,
+        checkBlockers: input.checkBlockers === true,
       });
     },
     { op: "tasks.claim" },
@@ -1709,6 +1729,20 @@ function orderedCandidates(ctx, input = {}) {
     orderDebug:
       byWeight === null ? null : found.map(({ task, reason }) => ({ ...taskOrderDebugEntry(byWeight.get(task.id)), reason })),
   };
+}
+
+/**
+ * The actor ids a free-text assignee names — the public half of
+ * `assigneeEntryIds`, for the board read's `--assignee` filter. An unknown name
+ * resolves to `[]`, which the repository reads as the empty scope (`1 = 0`)
+ * rather than as "no filter".
+ *
+ * @param {object} ctx
+ * @param {string} assignee
+ * @returns {string[]}
+ */
+export function assigneeIdsFor(ctx, assignee) {
+  return assigneeEntryIds(ctx, assignee);
 }
 
 /**

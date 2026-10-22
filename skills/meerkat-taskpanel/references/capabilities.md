@@ -59,6 +59,12 @@ the stale re-claim/takeover that the transition table cannot express. A refused
 claim never enqueues a handoff — and the handoff is only produced by the resident
 pool, so a claim made without a pool starts no worker.
 
+Claim does **not** re-read the dependency graph by default: the candidate scan
+already withholds blocked cards, so a caller that trusts its own scan pays
+nothing. `issue claim <ref> --check-blockers` opts into the board's re-read and
+refuses with `BLOCKED_BY_PREDECESSOR` (409) when a `blocks` predecessor is not
+`done`; the error's `details.blockers[]` names them.
+
 ## 4. Board read — `issue list`
 
 | Invocation | Keys read | Consumer |
@@ -67,6 +73,12 @@ pool, so a claim made without a pool starts no worker.
 
 The patrol reads `identifier`, `status`, `heartbeat_at`, `claimed_by_actor`,
 `assignee`. Truncation is inferred when `tasks.length >= board-limit`.
+
+The same read takes scope filters without a second request: `--parent <ref>`,
+`--kind`, `--label` (repeatable), `--target`, `--meta k=v` (repeatable) and
+`--assignee <name>`. They are applied in SQL before `--limit`, so a narrow read
+never truncates the card it was looking for. `--meta flow=<x>` is the generic
+way to scope on a team's own key.
 
 ## 5. SLA rows — `sla list` / `sla get`
 

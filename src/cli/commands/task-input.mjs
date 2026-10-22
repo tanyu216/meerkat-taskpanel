@@ -157,6 +157,13 @@ export const SPELLING = Object.freeze({
   [TASK_OPS.reopen]: Object.freeze({
     reason: { value: "<why>", summary: "Why the card is being reopened (audited; at least 8 characters)." },
   }),
+  [TASK_OPS.claim]: Object.freeze({
+    check_blockers: {
+      summary:
+        "Re-read this card's `blocks` predecessors before claiming; refuse with BLOCKED_BY_PREDECESSOR " +
+        "when one is not done. Off by default: the poll already withholds blocked cards.",
+    },
+  }),
   [TASK_OPS.deliver]: Object.freeze({
     // The flag carries a path; the body carries the parsed object. Reading and
     // parsing is the command's job, so only the spelling changes here.

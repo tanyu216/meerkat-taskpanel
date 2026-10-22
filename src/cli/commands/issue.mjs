@@ -125,12 +125,18 @@ export const COMMANDS = [
   {
     name: "list",
     summary: "List tasks.",
-    usage: "issue list [--project <id>] [--status <status>]… [--assignee-id <id>] [--review-of <ref>] [--limit <n>] [--order board|weight] [--order-debug]",
+    usage: "issue list [--project <id>] [--status <status>]… [--assignee <name>|--assignee-id <id>] [--parent <ref>] [--kind <kind>] [--label <label>]… [--target <value>] [--meta <key>=<value>]… [--review-of <ref>] [--limit <n>] [--order board|weight] [--order-debug]",
     positionals: [],
     flags: [
       { flag: "project", key: "project", as: "string", value: "<id>" },
       { flag: "status", key: "statuses", as: "string", value: "<status>", repeat: true },
-      { flag: "assignee-id", key: "assigneeId", as: "string", value: "<id>" },
+      { flag: "assignee", key: "assignee", as: "string", value: "<name>", summary: "Resolved against the dictionary; an unknown name matches nothing (not everything)." },
+      { flag: "assignee-id", key: "assigneeId", as: "string", value: "<id>", summary: "The structural spelling of --assignee; the two are refused together." },
+      { flag: "parent", key: "parent", as: "string", value: "<ref>", summary: "Only the child cards of that parent (id or identifier)." },
+      { flag: "kind", key: "kind", as: "string", value: "<kind>", summary: "task|epic|deploy; an unknown kind is a VALIDATION_FAILED, not an empty page." },
+      { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true, summary: "Exact display name; repeatable, every label must be present." },
+      { flag: "target", key: "target", as: "string", value: "<value>", summary: "The card's `meta.target`, compared as text." },
+      { flag: "meta", key: "meta", as: "string", value: "<key>=<value>", repeat: true, summary: "Filter on the card's meta; repeatable, every pair must hold. The key must match [A-Za-z0-9_.-]+." },
       { flag: "review-of", key: "reviewOf", as: "string", value: "<ref>", summary: "Only the cards that review this task (id or identifier), across every round." },
       { flag: "limit", key: "limit", as: "number", value: "<n>" },
       { flag: "include-archived", key: "includeArchived", as: "boolean" },
@@ -142,7 +148,13 @@ export const COMMANDS = [
         query: {
           project_id: ctx.flags.project,
           status: ctx.flags.statuses,
+          assignee: ctx.flags.assignee,
           assignee_id: ctx.flags.assigneeId,
+          parent: ctx.flags.parent,
+          kind: ctx.flags.kind,
+          label: ctx.flags.labels,
+          target: ctx.flags.target,
+          meta: ctx.flags.meta,
           review_of: ctx.flags.reviewOf,
           limit: ctx.flags.limit,
           include_archived: ctx.flags.includeArchived === true ? "1" : undefined,
@@ -401,7 +413,7 @@ export const COMMANDS = [
     name: "claim",
     summary: "Claim a card — including a stale in_progress claim (reuse, re-claim or takeover).",
     op: TASK_OPS.claim,
-    usage: 'issue claim <id|identifier> [--allow-steal --reason "<why>"]',
+    usage: 'issue claim <id|identifier> [--check-blockers] [--allow-steal --reason "<why>"]',
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: projectFlags(TASK_OPS.claim),
     async run(ctx) {
@@ -419,6 +431,7 @@ export const COMMANDS = [
           if_version: ctx.flags.ifVersion,
           allow_steal: allowSteal,
           reason: ctx.flags.reason,
+          check_blockers: ctx.flags.checkBlockers === true,
         }),
       );
       // `reuse` is not an error: the same holder asking again keeps the claim.

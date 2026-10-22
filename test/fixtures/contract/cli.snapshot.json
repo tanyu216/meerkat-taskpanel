@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "envelope": {
     "error": [
       "error",
@@ -19,6 +19,19 @@
     "version_data": [
       "schema_version",
       "version"
+    ],
+    "status_data": [
+      "runtime",
+      "schema_version",
+      "version"
+    ],
+    "status_runtime": [
+      "data_dir",
+      "note",
+      "pid",
+      "pointer",
+      "running",
+      "url"
     ]
   },
   "globals": [
@@ -109,6 +122,13 @@
       "required": false,
       "repeat": false,
       "short": null
+    }
+  ],
+  "top_level": [
+    {
+      "name": "status",
+      "positionals": [],
+      "flags": []
     }
   ],
   "groups": [
@@ -504,6 +524,14 @@
               "short": null
             },
             {
+              "flag": "check-blockers",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "reason",
               "as": "string",
               "value": null,
@@ -771,6 +799,14 @@
           "positionals": [],
           "flags": [
             {
+              "flag": "assignee",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "assignee-id",
               "as": "string",
               "value": "<id>",
@@ -787,11 +823,35 @@
               "short": null
             },
             {
+              "flag": "kind",
+              "as": "string",
+              "value": "<kind>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "label",
+              "as": "string",
+              "value": "<label>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
               "flag": "limit",
               "as": "number",
               "value": "<n>",
               "required": false,
               "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "meta",
+              "as": "string",
+              "value": "<key>=<value>",
+              "required": false,
+              "repeat": true,
               "short": null
             },
             {
@@ -806,6 +866,14 @@
               "flag": "order-debug",
               "as": "boolean",
               "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "parent",
+              "as": "string",
+              "value": "<ref>",
               "required": false,
               "repeat": false,
               "short": null
@@ -832,6 +900,14 @@
               "value": "<status>",
               "required": false,
               "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "target",
+              "as": "string",
+              "value": "<value>",
+              "required": false,
+              "repeat": false,
               "short": null
             }
           ]

@@ -28,6 +28,7 @@ import { COMMANDS as relationCommands } from "./relation.mjs";
 import { COMMANDS as reportCommands } from "./report.mjs";
 import { COMMANDS as sessionCommands } from "./session.mjs";
 import { COMMANDS as slaCommands } from "./sla.mjs";
+import { COMMANDS as statusCommands } from "./status.mjs";
 import { COMMANDS as tokenCommands } from "./token.mjs";
 
 export const groups = Object.freeze([
@@ -59,9 +60,33 @@ export const groups = Object.freeze([
   },
 ]);
 
-export const registry = Object.freeze({ globals: GLOBAL_FLAGS, groups });
+/**
+ * Commands that are one word, not `group command`.
+ *
+ * `status` belongs here because it reads the *client's* view of the board (the
+ * runtime pointer) without talking to it — there is no group it would honestly
+ * sit inside, and inventing one (`taskd`) would name the server process for a
+ * read the server never sees. The parser matches this list before `groups`, so a
+ * name may not appear in both; the registry test pins that.
+ */
+export const topLevel = Object.freeze([...statusCommands]);
 
-/** Every registered command, flattened — what the registry/help tests walk. */
+export const registry = Object.freeze({ globals: GLOBAL_FLAGS, groups, topLevel });
+
+/**
+ * Every registered command, flattened — what the registry/help tests walk.
+ *
+ * A top-level command carries `group: null`. `commandPath` is how help and flag
+ * checks spell either shape as one string.
+ */
 export function allCommands() {
-  return groups.flatMap((group) => group.commands.map((command) => ({ group, command })));
+  return [
+    ...topLevel.map((command) => ({ group: null, command })),
+    ...groups.flatMap((group) => group.commands.map((command) => ({ group, command }))),
+  ];
+}
+
+/** `taskctl status` / `taskctl issue get` — the spelling shared by both shapes. */
+export function commandPath(group, command) {
+  return group === null ? command.name : `${group.name} ${command.name}`;
 }

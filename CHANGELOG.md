@@ -24,6 +24,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The board read takes scope filters, and a claim can re-check its dependencies.**
+  `issue list` (and `GET /api/v1/tasks`) accepts `--parent <ref>`, `--kind`, `--label`
+  (repeatable, exact display name), `--target` (the card's `meta.target`), `--meta k=v`
+  (repeatable, every pair must hold) and `--assignee <name>`. All of them are pushed into
+  SQL before `LIMIT`, so a narrow read cannot truncate the card it wanted; `--assignee` and
+  `--assignee-id` are refused together, and an unknown assignee matches nothing rather than
+  everything. `issue claim --check-blockers` is the opt-in dependency re-read: the default
+  claim is unchanged (the candidate scan already withholds blocked cards), and with the flag
+  an open `blocks` predecessor refuses the claim with the new `BLOCKED_BY_PREDECESSOR` (409),
+  naming the predecessors in `details.blockers[]`.
+
+- **`taskctl status` reports the board this client talks to.** A top-level, **local** read
+  (`status [--url <url>] [--json]`): it reads the runtime pointer, probes `/health`, and
+  prints `{runtime: {pointer, data_dir, pid, url, running, note}, version, schema_version}`.
+  It needs no `--actor-kind`, resolves no token, never autostarts, and exits 0 when the board
+  is down — "not running" is the answer it was asked for. `--url` is a pin; the pointer is
+  not consulted behind it. The CLI contract snapshot grows a `top_level` section (schema 2)
+  and freezes the `status` payload keys.
+
 - **Sessions record opaque host observations, and can be read/closed across cards (migration
   `0036`).** `agent_sessions.meta_json` stores a free-form object the board never interprets;
   `session set --meta k=v` writes it (a re-registration merges the supplied keys), and the
