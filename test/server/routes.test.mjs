@@ -562,12 +562,15 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
         owner_kind: "claude",
         session_id: "d144dea1-f923-5ed8-8e6e-6e889abf76e5",
         goal: "ship the drawer ordering",
+        meta: { harness: "claude" },
       }),
     );
     assert.equal(registered.session.status, "running");
     assert.equal(registered.session.goal, "ship the drawer ordering");
+    assert.deepEqual(registered.session.meta, { harness: "claude" });
 
-    // A re-registration that omits the goal keeps the one already recorded.
+    // A re-registration that omits the goal keeps the one already recorded; a
+    // partial meta merges into the recorded object.
     dataOf(
       await call("POST", `/api/v1/tasks/${REF}/sessions`, {
         seg: "seg2",
@@ -575,6 +578,7 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
         owner_kind: "claude",
         session_id: "d144dea1-f923-5ed8-8e6e-6e889abf76e5",
         phase: "verify",
+        meta: { thread_id: "t1" },
       }),
     );
 
@@ -582,11 +586,32 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
     assert.equal(listed.sessions.length, 1);
     assert.equal(listed.sessions[0].goal, "ship the drawer ordering");
     assert.equal(listed.sessions[0].phase, "verify");
+    assert.deepEqual(listed.sessions[0].meta, { harness: "claude", thread_id: "t1" });
 
     const closed = dataOf(
       await call("POST", `/api/v1/tasks/${REF}/sessions/${registered.session.id}/close`, {}),
     );
     assert.equal(closed.session.status, "closed");
+
+    // The natural-key close, and the board-wide read. A second session makes
+    // the owner filter non-vacuous.
+    const second = dataOf(
+      await call("POST", `/api/v1/tasks/${REF}/sessions`, {
+        seg: "seg3",
+        owner: "linus",
+        owner_kind: "codex",
+        session_id: "c0ffee00-0000-5000-8000-000000000003",
+      }),
+    );
+    const closedByKey = dataOf(
+      await call("POST", `/api/v1/tasks/${REF}/sessions/close`, { seg: "seg3", owner: "linus" }),
+    );
+    assert.equal(closedByKey.session.id, second.session.id);
+    assert.equal(closedByKey.session.status, "closed");
+
+    const boardWide = dataOf(await call("GET", "/api/v1/sessions?owner=linus"));
+    assert.deepEqual(boardWide.sessions.map((s) => s.id).sort(), [registered.session.id, second.session.id].sort());
+    assert.equal((await call("GET", "/api/v1/sessions")).body.error.code, "VALIDATION_FAILED");
   });
 
   it("reads the dictionary, and offers no way to write it", async () => {

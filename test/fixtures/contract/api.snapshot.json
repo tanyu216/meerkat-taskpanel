@@ -604,6 +604,37 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/sessions",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "limit": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "owner_kind": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "closed",
+                "failed",
+                "running"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/sla",
       "request": {
         "body": null,
@@ -1312,6 +1343,9 @@
             "goal": {
               "type": "string"
             },
+            "meta": {
+              "type": "object"
+            },
             "owner": {
               "type": "string"
             },
@@ -1352,6 +1386,34 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "status": {
+              "enum": [
+                "closed",
+                "failed",
+                "running"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/sessions/close",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "owner": {
+              "type": "string"
+            },
+            "seg": {
+              "type": "string"
+            },
             "status": {
               "enum": [
                 "closed",
@@ -1583,6 +1645,7 @@
       "fields": {
         "goal": "string",
         "id": "string",
+        "meta": "object",
         "owner": "string",
         "owner_kind": "string",
         "phase": "string",

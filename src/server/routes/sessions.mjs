@@ -7,7 +7,7 @@
  */
 
 import { sessionToWire } from "../../foundation/wire.mjs";
-import { int, REQUEST, shape, str } from "../requests.mjs";
+import { int, intOrUndefined, obj, REQUEST, shape, str } from "../requests.mjs";
 import { resolveTask } from "../task-view.mjs";
 
 // Declared request schemas, frozen by the contract snapshot (`routes[].request`)
@@ -23,14 +23,36 @@ const REGISTER_BODY = shape({
   pid: int(),
   status: REQUEST.sessionStatus,
   goal: str(),
+  meta: obj(),
 });
 
 /** `POST /api/v1/tasks/:ref/sessions/:sessionId/close` — `status` defaults to `closed`. */
 const CLOSE_BODY = shape({ status: REQUEST.sessionStatus });
 
+/** `POST /api/v1/tasks/:ref/sessions/close` — close by the natural key. */
+const CLOSE_BY_KEY_BODY = shape({ seg: str(), owner: str(), status: REQUEST.sessionStatus });
+
+/** `GET /api/v1/sessions` — the board-wide read; at least one filter is required. */
+const LIST_QUERY = shape({
+  owner: str(),
+  owner_kind: str(),
+  status: REQUEST.sessionStatus,
+  limit: str(),
+});
+
 /** @param {object} router @param {{board: object}} surface */
 export function registerSessionRoutes(router, surface) {
   const { commands, repos } = surface.board;
+
+  router.get("/api/v1/sessions", ({ query }) => {
+    const sessions = commands.listSessions({
+      ...(query.get("owner") === null ? {} : { owner: query.get("owner") }),
+      ...(query.get("owner_kind") === null ? {} : { ownerKind: query.get("owner_kind") }),
+      ...(query.get("status") === null ? {} : { status: query.get("status") }),
+      ...(intOrUndefined(query.get("limit")) === undefined ? {} : { limit: intOrUndefined(query.get("limit")) }),
+    });
+    return { sessions: sessions.map(sessionToWire) };
+  }, { query: LIST_QUERY });
 
   router.get("/api/v1/tasks/:ref/sessions", ({ params }) => {
     const task = resolveTask(repos, params.ref);
@@ -49,10 +71,23 @@ export function registerSessionRoutes(router, surface) {
       pid: body.pid,
       status: body.status,
       goal: body.goal,
+      meta: body.meta,
       actor,
     });
     return { session: sessionToWire(registered) };
   }, { body: REGISTER_BODY });
+
+  router.post("/api/v1/tasks/:ref/sessions/close", ({ params, body, actor }) => {
+    const task = resolveTask(repos, params.ref);
+    const closed = commands.closeSession({
+      taskId: task.id,
+      seg: body.seg,
+      owner: body.owner ?? actor?.id,
+      status: body.status,
+      actor,
+    });
+    return { session: sessionToWire(closed) };
+  }, { body: CLOSE_BY_KEY_BODY });
 
   router.post("/api/v1/tasks/:ref/sessions/:sessionId/close", ({ params, body, actor }) => {
     resolveTask(repos, params.ref);

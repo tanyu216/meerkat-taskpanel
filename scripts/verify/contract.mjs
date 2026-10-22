@@ -314,6 +314,7 @@ const PROBE_SESSION = {
   status: "probe",
   ts: "probe",
   goal: "probe",
+  meta: { probe: true },
 };
 
 /**

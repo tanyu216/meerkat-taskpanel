@@ -339,6 +339,9 @@ export function sessionToWire(session) {
     status: session.status,
     ts: session.ts,
     goal: session.goal ?? "",
+    // 0036 — opaque host observations (harness, thread id, log path). The board
+    // stores and returns them verbatim; it does not interpret the keys.
+    meta: session.meta ?? {},
   };
 }
 

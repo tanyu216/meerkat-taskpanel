@@ -23,20 +23,29 @@ describe("cli/session", () => {
       const registered = dataOf(
         run([
           "session", "set", "DEMO-0001", "--seg", "seg2", "--owner-kind", "claude", "--owner", "linus",
-          "--goal", "ship the drawer ordering", "--json",
+          "--goal", "ship the drawer ordering",
+          "--meta", "harness=claude", "--meta", "thread_id=t1",
+          "--json",
         ]),
       );
       assert.equal(registered.session.seg, "seg2");
       assert.equal(registered.session.owner, "linus");
       assert.equal(registered.session.status, "running");
       assert.equal(registered.session.goal, "ship the drawer ordering");
+      assert.deepEqual(registered.session.meta, { harness: "claude", thread_id: "t1" });
 
-      // Re-registering without --goal keeps the sentence already recorded.
-      run(["session", "set", "DEMO-0001", "--seg", "seg2", "--owner-kind", "claude", "--owner", "linus", "--json"]);
+      // Re-registering without --goal keeps the sentence already recorded; a
+      // partial --meta merges into the recorded object.
+      run([
+        "session", "set", "DEMO-0001", "--seg", "seg2", "--owner-kind", "claude", "--owner", "linus",
+        "--meta", "log=/tmp/t1.log",
+        "--json",
+      ]);
 
       const listed = dataOf(run(["session", "list", "DEMO-0001", "--json"]));
       assert.equal(listed.sessions.length, 1);
       assert.equal(listed.sessions[0].goal, "ship the drawer ordering");
+      assert.deepEqual(listed.sessions[0].meta, { harness: "claude", thread_id: "t1", log: "/tmp/t1.log" });
       assert.match(run(["session", "list", "DEMO-0001"]).stdout, /seg2\s+linus\s+claude\s+running/);
       assert.match(run(["session", "list", "DEMO-0001"]).stdout, /ship the drawer ordering/);
 
@@ -46,6 +55,57 @@ describe("cli/session", () => {
         run(["session", "set", "DEMO-0001", "--seg", "seg3", "--owner-kind", "codex", "--json"]),
       );
       assert.equal(dataOf(run(["session", "close", "DEMO-0001", failed.session.id, "--failed", "--json"])).session.status, "failed");
+    });
+  });
+
+  it("closes a session by its (task, seg, owner) key, and refuses an ambiguous close", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
+
+      const registered = dataOf(
+        run(["session", "set", "DEMO-0001", "--seg", "s1", "--owner-kind", "claude", "--owner", "linus", "--json"]),
+      );
+      const closed = dataOf(
+        run(["session", "close", "DEMO-0001", "--seg", "s1", "--owner", "linus", "--json"]),
+      );
+      assert.equal(closed.session.id, registered.session.id);
+      assert.equal(closed.session.status, "closed");
+
+      // Exactly one identity: a row id and --seg together is ambiguous.
+      const both = run(["session", "close", "DEMO-0001", registered.session.id, "--seg", "s1"]);
+      assert.equal(both.status, 2);
+      assert.match(both.stderr, /exactly one/);
+
+      // Neither is the same mistake, one argument apart.
+      const neither = run(["session", "close", "DEMO-0001"]);
+      assert.equal(neither.status, 2);
+      assert.match(neither.stderr, /exactly one/);
+
+      const missing = run(["session", "close", "DEMO-0001", "--seg", "nope", "--owner", "linus", "--json"]);
+      assert.equal(missing.status, 1);
+      assert.equal(JSON.parse(missing.stdout).error.code, "NOT_FOUND");
+    });
+  });
+
+  it("lists the board's sessions by owner/status, and refuses an unbounded read", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
+      run(["issue", "create", "--project", "demo", "--title", "U", "--json"]);
+      run(["session", "set", "DEMO-0001", "--seg", "s1", "--owner-kind", "claude", "--owner", "linus", "--json"]);
+      run(["session", "set", "DEMO-0002", "--seg", "s1", "--owner-kind", "codex", "--owner", "terry", "--json"]);
+
+      const byOwner = dataOf(run(["session", "list", "--owner", "linus", "--json"]));
+      assert.equal(byOwner.sessions.length, 1);
+      assert.equal(byOwner.sessions[0].owner, "linus");
+
+      const running = dataOf(run(["session", "list", "--status", "running", "--json"]));
+      assert.equal(running.sessions.length, 2);
+
+      const unbounded = run(["session", "list"]);
+      assert.equal(unbounded.status, 2);
+      assert.match(unbounded.stderr, /--owner/);
     });
   });
 

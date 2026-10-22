@@ -1461,7 +1461,8 @@
             },
             {
               "name": "sessionId",
-              "summary": "Session row id."
+              "summary": "Session row id; omit when using --seg.",
+              "required": false
             }
           ],
           "flags": [
@@ -1469,6 +1470,22 @@
               "flag": "failed",
               "as": "boolean",
               "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "owner",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "seg",
+              "as": "string",
+              "value": "<seg>",
               "required": false,
               "repeat": false,
               "short": null
@@ -1515,10 +1532,44 @@
           "positionals": [
             {
               "name": "ref",
-              "summary": "Task id or identifier."
+              "summary": "Task id or identifier; omit for the board-wide read.",
+              "required": false
             }
           ],
-          "flags": []
+          "flags": [
+            {
+              "flag": "limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "owner",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "owner-kind",
+              "as": "string",
+              "value": "<kind>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "status",
+              "as": "string",
+              "value": "<status>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
         },
         {
           "name": "set",
@@ -1533,6 +1584,14 @@
               "flag": "goal",
               "as": "string",
               "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "meta",
+              "as": "kv",
+              "value": null,
               "required": false,
               "repeat": false,
               "short": null
