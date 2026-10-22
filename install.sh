@@ -86,12 +86,12 @@ Install the Meerkat TaskPanel skills into one or more agent kinds, and
 the server runtime tree.
 
 Options:
-  --target <agent>  claude | openclaw | codex | pi | opencode | cursor | server | all
+  --target <agent-kind>  claude | openclaw | codex | pi | opencode | cursor | server | all
                     (default: all — every agent above plus the server)
                     A comma-separated list is also accepted (claude,codex).
                     `server` materializes the runtime at <home>/.meerkat-taskpanel
                     and provides bin/taskd + bin/taskctl.
-  --no-server       Install the agent skills only, leaving the server out
+  --no-server       Install the agent-kind skills only, leaving the server out
   --prefix <home>   Install relative to <home> instead of $HOME
   --agent-name <n>  Agent identity written into the agent bundle (default: $USER)
   --no-automation   Skip the Codex claim trigger and scheduling units
@@ -234,7 +234,7 @@ die() {
 # it dies, so an install says what it did (`enabled`, or `installed … not loaded`
 # with the command that would) and how to stop it. A machine with no user service
 # manager — a container, say — reports the second form instead of failing the
-# install: the agent skills are installed either way, and the operator gets the one
+# install: the agent-kind skills are installed either way, and the operator gets the one
 # command that finishes the job. Never fatal, so it cannot mask an agent-kind failure.
 install_taskd_guard() {
   # Automation off means this guard is off too, whichever way it was said. `NO_AUTOMATION`
@@ -490,7 +490,7 @@ fi
 TARGETS=""
 add_target() {
   # `--no-server` drops the server from whichever selection contributed it (`all`
-  # includes it), leaving the agent skills — the source form of the npm flag.
+  # includes it), leaving the agent-kind skills — the source form of the npm flag.
   if [ "$1" = "server" ] && [ -n "$NO_SERVER" ]; then return 0; fi
   case "$TARGETS" in
     *" $1 "*) return 0 ;;
@@ -544,7 +544,7 @@ NO_AUTOMATION="${NO_AUTOMATION:-${MEERKAT_TASKPANEL_NO_AUTOMATION:-}}"
 SKIP_WEB_BUILD="${SKIP_WEB_BUILD:-${MEERKAT_TASKPANEL_SKIP_WEB_BUILD:-}}"
 
 # The server target is the runtime tree at <home>/.meerkat-taskpanel. When it is
-# selected, the agent skills must drive *that* tree, not the checkout/package they
+# selected, the agent-kind skills must drive *that* tree, not the checkout/package they
 # were copied from; agent-only installs leave both defaults alone.
 SERVER_ROOT="$TARGET_HOME/.meerkat-taskpanel"
 HAS_KIND_TARGET=0

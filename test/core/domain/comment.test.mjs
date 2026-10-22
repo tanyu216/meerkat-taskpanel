@@ -42,7 +42,7 @@ describe("domain/comment — create", () => {
     });
     assert.throws(() => create({ kind: "shout" }), (err) => err.details.allowed.length === 7);
     // The *comment* kind is a closed vocabulary; the **author**'s is not. A kind
-    // is `human`, or the platform an agent runs on, or whatever a host calls
+    // is `human`, or the platform an agent runs on, or whatever an actor kind calls
     // itself — the column has no CHECK (`0018` dropped it) and neither does this.
     // What is refused is a blank one, because that reads as neither.
     assert.equal(create({ author: { kind: "claude", id: "x" } }).authorKind, "claude");

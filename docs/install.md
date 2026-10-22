@@ -53,12 +53,12 @@ the same tree, the same launchers and the same config file.
 ### npm / npx (preferred)
 
 ```bash
-npx meerkat-taskpanel                                    # server + taskctl + every agent skill
+npx meerkat-taskpanel                                    # server + taskctl + every agent-kind skill
 npm install -g meerkat-taskpanel                         # or install the package globally …
 meerkat-taskpanel install                                # … and run the installer whenever needed
 npx meerkat-taskpanel install --target server            # server runtime + taskctl only
 npx meerkat-taskpanel install --target claude,server,pi  # server + those two agents
-npx meerkat-taskpanel install --no-server                # agent skills only
+npx meerkat-taskpanel install --no-server                # agent-kind skills only
 ```
 
 With no subcommand, `install` is assumed. The wrapper ships inside the package, so `npx`
@@ -71,7 +71,7 @@ serves its UI with no build step.
 ```bash
 bash install.sh --target all                # server + the skill for every agent (the default)
 bash install.sh --target claude,server,pi   # server + those two agents
-bash install.sh --target all --no-server    # the agent skills, no server
+bash install.sh --target all --no-server    # the agent-kind skills, no server
 bash install.sh --target server             # server runtime + taskctl only
 bash install.sh --target claude             # one agent, no server
 ```
@@ -101,7 +101,7 @@ The tree is self-locating: `src/` resolves `.env`, `.data` and `web/dist` from i
 position, so `bin/taskd` and `bin/taskctl` work from any directory and with no environment
 variables. Add `~/.meerkat-taskpanel/bin` to `PATH`, or use `npm install -g`.
 
-When the server is installed alongside agent skills (the default, and every npm/npx
+When the server is installed alongside agent-kind skills (the default, and every npm/npx
 install), the agent shim and loop config (`MEERKAT_TASKPANEL_REPO`,
 `MEERKAT_TASKPANEL_ENV_FILE`) point at this tree, never at the npx cache or the checkout,
 and the `taskd` guard's unit runs the tree's `src/server/main.mjs` with
@@ -115,10 +115,10 @@ under `src/` (it still never touches `.env` or `.data`); `--dry-run` writes noth
 ### Upgrading and removing
 
 Upgrade by running the installer again (`--force` to refresh managed files). To remove,
-delete the agent skill directories listed below and the tree itself; **keep `.data/` if you
+delete the agent-kind skill directories listed below and the tree itself; **keep `.data/` if you
 want the board**: `rm -rf ~/.meerkat-taskpanel` deletes the database with it.
 
-## Quick start (agent skills)
+## Quick start (agent-kind skills)
 
 ```bash
 bash install.sh --target all --agent-name "$USER"   # everything; full bundle for claude+codex
@@ -211,10 +211,10 @@ version control.
 | cron | `<agent-dir>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue — **no pool**: no worker dispatch |
 
 Each unit names the **absolute `node`** that rendered it and carries a **`PATH`** holding
-the agent kind CLI's directory and node's ahead of the scheduler's own default. Neither is
+the agent CLI's directory and node's ahead of the scheduler's own default. Neither is
 optional: a scheduler starts a unit with a minimal `PATH` that holds no nvm and no Homebrew
 directory, so `/usr/bin/env node` is exit 127 — and the wake glue's `exec claude`, and the
-worker's own tool tree, resolve on that same set. If the agent kind CLI is not on `PATH` at
+worker's own tool tree, resolve on that same set. If the agent CLI is not on `PATH` at
 install time, the installer says so and renders node's directory alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
 | wake glue | `<agent-dir>/bin/wake-<actor-kind>.sh` | resolves the directory a worker for the card's project runs in (`local_path`, else `run_dir`) from the board skill's `projects.json` via the agent-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
@@ -310,7 +310,7 @@ in [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-t
 An enable that the OS refuses — a `launchctl bootstrap` with no GUI session, a
 `systemctl --user` with no D-Bus — is **reported, not disguised**: the install prints
 `supervisor: not enabled (…)` with the reason and the exact command to run by hand, and
-still exits 0, because the agent kind's skills are installed either way and an OS-level refusal
+still exits 0, because the agent's skills are installed either way and an OS-level refusal
 is not something `--force` fixes.
 
 
@@ -388,7 +388,7 @@ re-install for a *different* board is refused rather than silently re-pointing t
 only guard (on Linux, systemd reads `~/.config/systemd/user/meerkat-taskpanel-taskd.service`
 and that file is the guard). The refusal names both boards, leaves the unit alone, and is
 the install's one non-zero guard outcome — **exit 3**, which `install.sh` reports and then
-carries on from (the agent skills are installed either way, and the install's own exit status
+carries on from (the agent-kind skills are installed either way, and the install's own exit status
 is unchanged). `--force` is how you re-point it deliberately:
 
 ```text
@@ -497,8 +497,8 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|server|all] [--pre
 
 | Flag | Effect |
 |---|---|
-| `--target <agent>` | Which agent(s) to install for, or `server` for the runtime tree. Default `all` — every agent plus the server. Repeatable, and a comma-separated list (`--target claude,server,pi`) works too. `--no-server` removes the server from whatever the selection resolves to. |
-| `--no-server` | Install the agent skills only, leaving the runtime tree out (`--target all --no-server` is the old `all`). |
+| `--target <agent-kind>` | Which agent kind(s) to install for, or `server` for the runtime tree. Default `all` — every agent plus the server. Repeatable, and a comma-separated list (`--target claude,server,pi`) works too. `--no-server` removes the server from whatever the selection resolves to. |
+| `--no-server` | Install the agent-kind skills only, leaving the runtime tree out (`--target all --no-server` is the old `all`). |
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`; the server tree lands at `<home>/.meerkat-taskpanel`. |
 | `--skip-web-build` | Never try to build `web/dist`. A server install without a prebuilt `web/dist` is then API-only (with a warning) instead of building it. |
 | `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `$USER`). Must equal the board assignee for the agent to claim cards. |

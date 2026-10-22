@@ -953,7 +953,7 @@ not serving is reported as such, with the log to read:
 taskd guard: loaded (com.meerkat-taskpanel.taskd, pid 17388); /health did not answer within 10000ms — read <dataDir>/logs/taskd.log
 ```
 
-Neither line fails the install (the agent skills are installed either way), but only the
+Neither line fails the install (the agent-kind skills are installed either way), but only the
 first one claims the guard works.
 
 A **second board** is where the install has to be careful, because the guard is one per

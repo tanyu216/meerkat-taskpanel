@@ -125,7 +125,7 @@ export const DOMAINS = Object.freeze({
   ASSIGNEE_KIND: Object.freeze(["human", "agent"]),
   /**
    * The agent platforms the board renders (B03/B07/B16/B22/C07). The original
-   * four hosts plus the five the roster may name today; each carries an official
+   * four agent kinds plus the five the roster may name today; each carries an official
    * brand colour in the sidebar (`--brand-agent-*` in `tokens.css`).
    */
   PLATFORM: Object.freeze([

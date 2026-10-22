@@ -2,7 +2,7 @@
 /**
  * Contract check for the plugin manifests.
  *
- * Each host has its own conventional manifest location and its own required keys:
+ * Each agent kind has its own conventional manifest location and its own required keys:
  *   .claude-plugin/plugin.json                    (the board plugin; root = repo root)
  *   .cursor-plugin/plugin.json                    (Cursor's marker for the same root)
  *   package.json                                  (the `pi` field — Pi has no manifest of

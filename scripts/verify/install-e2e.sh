@@ -3,7 +3,7 @@
 # Install + first-run end-to-end, run *inside* the container.
 #
 # Where `docker/verify-in-container.sh` proves the repository is healthy, this
-# script proves a *fresh machine* can use it: it installs the skill into all four
+# script proves a *fresh machine* can use it: it installs the skill into all six
 # agent kinds with a throwaway HOME, then drives the real `taskctl` through its real
 # `taskd` — create a project, create a card, get refused by the delivery gate,
 # satisfy the gate with a report, and read the dictionaries back.

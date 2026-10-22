@@ -170,8 +170,8 @@ meerkat-taskpanel install
 
 # Narrow the install:
 npx meerkat-taskpanel install --target server            # server + taskctl only
-npx meerkat-taskpanel install --target claude,server,pi  # server + those two agents
-npx meerkat-taskpanel install --no-server                # agent skills only
+npx meerkat-taskpanel install --target claude,server,pi  # server + those two agent kinds
+npx meerkat-taskpanel install --no-server                # agent-kind skills only
 ```
 
 The installer materializes the runtime at `~/.meerkat-taskpanel/` — `src/`, the built
@@ -186,12 +186,12 @@ The same installer runs from the repository, without npm:
 
 ```bash
 bash install.sh --target all              # server + the skill for every agent kind
-bash install.sh --target claude,server,pi # server + those two agents
-bash install.sh --target all --no-server  # agent skills only
+bash install.sh --target claude,server,pi # server + those two agent kinds
+bash install.sh --target all --no-server  # agent-kind skills only
 bash install.sh --target server           # server + taskctl only
 ```
 
-## Agent install details
+## Agent-kind install details
 
 ```bash
 bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all
@@ -210,7 +210,7 @@ config key at its existing value, and prints `left unchanged — use --force to 
 `--force` is the only way to overwrite. The `Bundle` column is the per-agent manifest that
 the agent's own plugin system consumes — registering it needs that agent's CLI, so
 `install.sh` only prints the command; see
-[`docs/install.md`](docs/install.md#per-agent-kind-steps) for the exact one per agent.
+[`docs/install.md`](docs/install.md#per-agent-kind-steps) for the exact one per agent kind.
 
 | Agent | `--target` | Skill directory | Bundle |
 |---|---|---|---|

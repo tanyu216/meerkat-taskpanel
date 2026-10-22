@@ -13,7 +13,7 @@ sources of truth are [docs/development.md](docs/development.md) (layout and comm
 ## The one rule that shapes everything else
 
 **Verification runs inside Docker, not on your host.** Everything that *runs* — unit,
-integration and end-to-end tests, starting or serving the app, the CLI, host skill installs,
+integration and end-to-end tests, starting or serving the app, the CLI, agent skill installs,
 migration rehearsals — runs in the container:
 
 ```sh

@@ -2,7 +2,7 @@
  * The offline session-id derivation the board skill ships.
  *
  * `scripts/session-id.mjs` exists so a caller can compute the deterministic id
- * **before** a host starts and without touching `taskd`. That is only safe if it
+ * **before** an agent starts and without touching `taskd`. That is only safe if it
  * is byte-for-byte the board's own algorithm — same namespace, same NUL-joined
  * name, same RFC 4122 v5 bits. Every case here compares it to
  * `src/foundation/ids.mjs`, which is the authority.

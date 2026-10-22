@@ -5,7 +5,7 @@
  *
  * What must not appear in our own writes is a vague role word. `system` names no
  * platform, and `agent` names a category ("not the human") rather than a
- * writer. The schema keeps the column open on purpose — a host may call itself
+ * writer. The schema keeps the column open on purpose — an agent kind may call itself
  * anything — so this is a **repository** rule, enforced statically, not a
  * runtime vocabulary.
  *

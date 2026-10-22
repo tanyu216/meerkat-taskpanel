@@ -5,7 +5,7 @@
  * `description`), so this stays a hand-rolled line reader — pulling in a YAML parser
  * would break the project's zero-dependency / offline constraint.
  *
- * Lives in its own module (rather than inside `profiles.mjs`) because both the host
+ * Lives in its own module (rather than inside `profiles.mjs`) because both the agent-kind
  * profile checks and the bundle inspector read frontmatter; a shared import keeps
  * `profiles.mjs -> bundle.mjs -> frontmatter.mjs` acyclic.
  */

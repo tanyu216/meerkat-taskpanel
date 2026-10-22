@@ -3,11 +3,11 @@
  * `meerkat-taskpanel` — the npm/npx installer.
  *
  * This is a thin translation layer, not a second installer: it computes the
- * installed server root, points the host installs at it, and runs the same
+ * installed server root, points the agent installs at it, and runs the same
  * `install.sh` a source checkout uses. `server`, `taskctl` and the skills all
  * come from the package that was just downloaded.
  *
- *   npx meerkat-taskpanel                 # server + taskctl + every agent skill
+ *   npx meerkat-taskpanel                 # server + taskctl + every agent-kind skill
  *   npx meerkat-taskpanel install --target server
  *   npx meerkat-taskpanel install --target claude,server,pi
  *   npx meerkat-taskpanel install --no-server
@@ -25,12 +25,12 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const USAGE = `Usage: meerkat-taskpanel [install] [options]
 
 Installs the board server at <home>/.meerkat-taskpanel, the taskctl/taskd
-launchers, and the agent skills. Run through npx or a global npm install.
+launchers, and the agent-kind skills. Run through npx or a global npm install.
 
 Options:
-  --target <list>     agents to install (claude,openclaw,codex,pi,opencode,cursor),
+  --target <list>     agent kinds to install (claude,openclaw,codex,pi,opencode,cursor),
                       "server", or "all" (default: every agent + the server)
-  --no-server         install only the agent skills
+  --no-server         install only the agent-kind skills
   --prefix <home>     install under <home> instead of $HOME
   --force             refresh drifted managed files (never .env or .data)
   --dry-run           print every path; write nothing
@@ -126,7 +126,7 @@ async function main(argv) {
 
   const env = { ...process.env };
   if (plan.server) {
-    // The program the host skills drive is the installed tree, not the npx
+    // The program the agent-kind skills drive is the installed tree, not the npx
     // cache. One `.env` for the whole install; the tree owns `.data`.
     env.MEERKAT_TASKPANEL_REPO = serverRoot;
     env.MEERKAT_TASKPANEL_ENV_FILE = join(serverRoot, ".env");

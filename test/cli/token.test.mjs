@@ -181,7 +181,7 @@ describe("cli/actor", () => {
   });
 
   it("refuses a session id with no kind", () => {
-    // A session id comes from a host, so a write carrying one is an agent's. With
+    // A session id comes from an agent kind, so a write carrying one is an agent's. With
     // no kind the only thing left to record is `human` — and that would put an
     // agent's write on the record as a person's.
     assert.throws(
@@ -216,8 +216,8 @@ describe("cli/actor", () => {
         USER: "tanyu",
       },
     });
-    assert.equal(resolved.actor.id, "linus", "two agents on one host must not collapse onto $USER");
-    assert.equal(resolved.actor.kind, "claude", "the kind is what the host declared");
+    assert.equal(resolved.actor.id, "linus", "two agents on one agent kind must not collapse onto $USER");
+    assert.equal(resolved.actor.kind, "claude", "the kind is what the agent kind declared");
     assert.notEqual(resolved.actor.id, "sid");
     assert.notEqual(resolved.actor.id, "claude");
     assert.notEqual(resolved.actor.id, "tanyu");
@@ -254,13 +254,13 @@ describe("cli/actor", () => {
       resolveActor({ flags: {}, env: { TASKCTL_AGENT: "linus", USER: "tanyu" } }).actor.id,
       "linus",
     );
-    // The configured human is the last name before the OS user, so a host that
+    // The configured human is the last name before the OS user, so an agent kind that
     // has one does not fall through to whatever the shell happens to say.
     assert.equal(resolveActor({ flags: {}, env: { TASKCTL_HUMAN: "Terry" } }).actor.id, "Terry");
   });
 
   it("does not let an agent inherit the human's name as its id", () => {
-    // `TASKCTL_HUMAN` names the person, not a role. Two agents sharing one host
+    // `TASKCTL_HUMAN` names the person, not a role. Two agents sharing one agent kind
     // (jobs / linus / turing) must not both be recorded as that person when they
     // forget `--agent`; they fall through to the OS user or "local".
     const resolved = resolveActor({

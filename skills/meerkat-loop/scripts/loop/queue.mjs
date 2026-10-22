@@ -291,7 +291,7 @@ export function claimCards(stateDir, options = {}) {
 /**
  * Mark a successful batch as dispatched. In synchronous-subagent mode the pool
  * manager completes these immediately; in background mode they stay here until
- * the host reports each subagent stopped.
+ * the agent reports each subagent stopped.
  *
  * @param {string} stateDir
  * @param {string[]} ids

@@ -770,7 +770,7 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
     evidence: [{ kind: "commit", sha: "dcd7d15" }],
   };
   // Rule 8: every write carries the agent's attribution, so the claim below is
-  // made *by* the card's assignee rather than by whatever actor the host defaulted to.
+  // made *by* the card's assignee rather than by whatever actor the agent defaulted to.
   const AS = ["--agent", "linus"];
   const forLinus = ["--assignee", "linus", "--assignee-kind", "agent", ...AS];
 

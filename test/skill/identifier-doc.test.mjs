@@ -1,7 +1,7 @@
 /**
  * The identifier contract, as the installed skill states it.
  *
- * `references/card-schema.md` is the page a host actually receives. Its
+ * `references/card-schema.md` is the page an agent kind actually receives. Its
  * identifier section has to agree with the code in three places, or a team
  * parsing board references silently drifts from the board:
  *

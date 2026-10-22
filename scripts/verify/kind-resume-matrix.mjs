@@ -5,7 +5,7 @@
  *   node scripts/verify/kind-resume-matrix.mjs [options]
  *
  * Options:
- *   --actor-kind <k1,k2>       restrict to some actor kinds (claude,codex,pi,opencode,cursor (default: all)
+ *   --actor-kind <k1,k2>       restrict to a subset of claude,codex,pi,opencode,cursor (default: all)
  *   --timeout <ms>       per-probe timeout (default 60000)
  *   --e2e                also run the "new session -> remember a marker -> resume reads it
  *                        back" round trip (needs working credentials; OFF by default)

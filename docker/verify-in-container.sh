@@ -10,9 +10,10 @@
 #   npm run verify:docker:container        # when already inside the image
 #
 # Each step prints a `== ... ==` header. Any failure exits non-zero immediately.
-# Nothing here reaches the network: the project is dependency-free. Two steps install
-# into throwaway homes — the agent-kind skill profiles, and the install + first-run
-# end-to-end, which additionally drives the real `taskctl` against a real `taskd`.
+# Nothing here reaches the network: the project is dependency-free. Three steps install
+# into throwaway homes — the agent-kind skill profiles, the server install, and the
+# install + first-run end-to-end, which additionally drives the real `taskctl` against a
+# real `taskd`.
 
 set -euo pipefail
 

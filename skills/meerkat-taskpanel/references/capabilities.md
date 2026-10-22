@@ -18,7 +18,7 @@ contract behind `scripts/loop/board.mjs` and `scripts/loop/passes.mjs` in the
 taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] <group> <command> …
 ```
 
-- `--actor-kind` is required. The loop uses the host platform (`claude`, `codex`,
+- `--actor-kind` is required. The loop uses the actor kind (`claude`, `codex`,
   `pi`, `opencode`, `cursor`) for reads and claims, and `taskd` for the workflow
   writes so an automated acceptance is attributable to the board, not a human.
 - The token rides in `TASKD_TOKEN` in the child environment, never on argv.
@@ -82,7 +82,7 @@ An alert carries `card_id`, `sla_row`, `severity`, `elapsed_working_min`,
 only when the operator stated it; otherwise the board's configured period wins.
 
 `inspector_liveness` is appended **locally** from the peer marker — the board
-cannot see the other host's file.
+cannot see the other agent kind's file.
 
 ## 6. Workflow plan — `issue reconcile --workflow`
 
