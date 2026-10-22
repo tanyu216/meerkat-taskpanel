@@ -36,14 +36,20 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { registry } from "../../src/cli/commands/index.mjs";
+import { STATUS_RUNTIME_PROBE, statusPayload } from "../../src/cli/commands/status.mjs";
 import { versionPayload } from "../../src/cli/index.mjs";
 import { errorEnvelope, successEnvelope } from "../../src/cli/output/json.mjs";
 import { DomainError } from "../../src/foundation/errors.mjs";
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 export const ROOT = resolve(import.meta.dirname, "../..");
-/** The snapshot layout generation — bumped only by a breaking layout change. */
-export const SNAPSHOT_SCHEMA = 1;
+/**
+ * The snapshot layout generation — bumped only by a breaking layout change.
+ *
+ * 2: `top_level` (bare commands such as `taskctl status`) and the frozen
+ * `status_data` / `status_runtime` payload keys.
+ */
+export const SNAPSHOT_SCHEMA = 2;
 export const SNAPSHOT_FILE = "test/fixtures/contract/cli.snapshot.json";
 
 const byName = (a, b) => a.name.localeCompare(b.name);
@@ -87,8 +93,13 @@ export function buildSnapshot() {
       error_fields: Object.keys(errorProbe.error).sort(),
       success: Object.keys(successEnvelope({})).sort(),
       version_data: Object.keys(versionPayload()).sort(),
+      // `taskctl status --json` is the client's runtime read; its data shape is
+      // frozen here so `runtime.{…}` cannot drift under a script.
+      status_data: Object.keys(statusPayload(STATUS_RUNTIME_PROBE)).sort(),
+      status_runtime: Object.keys(STATUS_RUNTIME_PROBE).sort(),
     },
     globals: registry.globals.map(flagShape).sort(byFlag),
+    top_level: (registry.topLevel ?? []).map(commandShape).sort(byName),
     groups: registry.groups
       .map((group) => ({
         name: group.name,
@@ -165,14 +176,16 @@ function describeValue(value) {
 
 /** A one-line summary of a snapshot, for the success line. */
 export function describeSnapshot(snapshot) {
-  const commands = snapshot.groups.reduce((n, group) => n + group.commands.length, 0);
+  const bare = snapshot.top_level ?? [];
+  const commands = snapshot.groups.reduce((n, group) => n + group.commands.length, 0) + bare.length;
   const flags =
     snapshot.globals.length +
     snapshot.groups.reduce(
       (n, group) => n + group.commands.reduce((m, command) => m + command.flags.length, 0),
       0,
-    );
-  return `${snapshot.groups.length} groups, ${commands} commands, ${flags} flags`;
+    ) +
+    bare.reduce((m, command) => m + command.flags.length, 0);
+  return `${snapshot.groups.length} groups, ${bare.length} bare commands, ${commands} commands, ${flags} flags`;
 }
 
 /**

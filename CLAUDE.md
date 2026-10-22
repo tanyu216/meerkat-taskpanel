@@ -240,8 +240,9 @@ authoritative home, because the container image drops `design/`.
   both `taskd` and `taskctl`; the process environment wins key by key and CLI flags win above
   both. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects another path. The old
   `<dataDir>/taskd.env` is no longer read (hard switch). Identity (`--actor-kind`) is required
-  on every command except `--help` / `--version`; `--agent` names the role and is not a
-  shared-file key. The install root is the **running program's** root: the checkout, `/app`
+  on every command that talks to the board, except `--help` / `--version` and the local read
+  `taskctl status` (it reads the runtime pointer, never the board); `--agent` names the role
+  and is not a shared-file key. The install root is the **running program's** root: the checkout, `/app`
   in the image, or `~/.meerkat-taskpanel` for an installed tree. On a combined install
   (`--target all`, which includes the server, or npm/npx) the agent shims and loop config
   name the installed tree (`MEERKAT_TASKPANEL_REPO`, `MEERKAT_TASKPANEL_ENV_FILE`) — never

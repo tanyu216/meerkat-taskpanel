@@ -379,6 +379,46 @@ describe("cli/issue — every flag the command declares", () => {
     });
   });
 
+  it("list pushes parent, kind, label, target and meta filters through to the board", async () => {
+    await board(async ({ run }) => {
+      // Only an epic may be a parent (`tr_rel_parent_epic`).
+      const parent = createIssue(run, ["--title", "Parent", "--kind", "epic"]);
+      const child = createIssue(run, [
+        "--title", "Child",
+        "--label", "ui",
+        "--meta", "flow=review",
+        "--target", "app",
+      ]);
+      const other = createIssue(run, ["--title", "Other", "--label", "api", "--assignee", "grace"]);
+      dataOf(
+        run(["relation", "add", parent.task.identifier, "--type", "parent", "--target", child.task.identifier, "--json"]),
+      );
+
+      const refs = (result) => result.tasks.map((task) => task.identifier);
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--parent", parent.task.identifier, "--json"]))), [child.task.identifier]);
+      assert.deepEqual(
+        refs(dataOf(run(["issue", "list", "--kind", "task", "--json"]))).sort(),
+        [child.task.identifier, other.task.identifier].sort(),
+      );
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--kind", "epic", "--json"]))), [parent.task.identifier]);
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--label", "ui", "--json"]))), [child.task.identifier]);
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--label", "ui", "--label", "api", "--json"]))), []);
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--target", "app", "--json"]))), [child.task.identifier]);
+      assert.deepEqual(
+        refs(dataOf(run(["issue", "list", "--meta", "flow=review", "--json"]))),
+        [child.task.identifier],
+      );
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--meta", "flow=nope", "--json"]))), []);
+      // The dictionary spelling of the assignee filter, not the id one.
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--assignee", "grace", "--json"]))), [other.task.identifier]);
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--assignee", "nobody", "--json"]))), []);
+
+      const both = run(["issue", "list", "--assignee", "grace", "--assignee-id", "x", "--json"]);
+      assert.equal(both.status, 1);
+      assert.equal(errorOf(both).code, "VALIDATION_FAILED");
+    });
+  });
+
   it("list filters by the card being reviewed", async () => {
     await board(async ({ run }) => {
       const original = createIssue(run);
@@ -1411,6 +1451,31 @@ describe("cli/issue — asking a question in awaiting (0034)", () => {
       assert.equal(after.task.status, "todo");
       assert.equal(after.task.delivery_round, 1, "an answer is not a reopen");
       assert.equal(after.task.claimed_by, null, "the dormant claim is released");
+    });
+  });
+});
+
+describe("cli/issue — claim --check-blockers (opt-in dependency re-read)", () => {
+  it("is off by default, and refuses a blocked card when asked", async () => {
+    await board(async ({ run }) => {
+      const blocker = createIssue(run, ["--title", "Blocker"]);
+      const blocked = createIssue(run, ["--title", "Blocked"]);
+      const ready = createIssue(run, ["--title", "Ready"]);
+      dataOf(
+        run(["relation", "add", blocker.task.identifier, "--type", "blocks", "--target", blocked.task.identifier, "--json"]),
+      );
+
+      // Default: unchanged — the claim goes through, because the poll already
+      // withholds blocked cards and the caller owns the move path.
+      const trusted = dataOf(run(["issue", "claim", ready.task.identifier, "--json"]));
+      assert.equal(trusted.task.status, "in_progress");
+
+      const refused = run(["issue", "claim", blocked.task.identifier, "--check-blockers", "--json"]);
+      assert.equal(refused.status, 1);
+      const error = errorOf(refused);
+      assert.equal(error.code, "BLOCKED_BY_PREDECESSOR");
+      assert.deepEqual(error.details.blockers.map((entry) => entry.identifier), [blocker.task.identifier]);
+      assert.equal(dataOf(run(["issue", "get", blocked.task.identifier, "--json"])).task.status, "todo");
     });
   });
 });

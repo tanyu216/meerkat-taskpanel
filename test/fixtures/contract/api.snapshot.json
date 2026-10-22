@@ -45,6 +45,10 @@
       "http": 422
     },
     {
+      "code": "BLOCKED_BY_PREDECESSOR",
+      "http": 409
+    },
+    {
       "code": "BOARD_ALREADY_RUNNING",
       "http": 409
     },
@@ -670,14 +674,32 @@
         "query": {
           "additionalProperties": true,
           "properties": {
+            "assignee": {
+              "type": "string"
+            },
             "assignee_id": {
               "type": "string"
             },
             "include_archived": {
               "type": "string"
             },
+            "kind": {
+              "type": "string"
+            },
+            "label": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "limit": {
               "type": "string"
+            },
+            "meta": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             },
             "offset": {
               "type": "string"
@@ -686,6 +708,9 @@
               "type": "string"
             },
             "order_debug": {
+              "type": "string"
+            },
+            "parent": {
               "type": "string"
             },
             "project_id": {
@@ -709,6 +734,9 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "target": {
+              "type": "string"
             }
           },
           "required": [],
@@ -1030,6 +1058,9 @@
           "additionalProperties": true,
           "properties": {
             "allow_steal": {
+              "type": "boolean"
+            },
+            "check_blockers": {
               "type": "boolean"
             },
             "if_version": {

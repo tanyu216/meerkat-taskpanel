@@ -226,7 +226,15 @@ export function createTasksRepository(db) {
      * whose `review_of_id` points at that row (the review cards, not the card
      * being reviewed). The partial index `ix_tasks_review_of` serves it.
      *
-     * @param {{projectId?: string, kind?: string, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, reviewOfId?: string, includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
+     * `parentId`, `labels`, `target` and `metaEquals` are the CLI's `issue list`
+     * filters, pushed here (never read into JS and filtered there) so they hold
+     * under `LIMIT`/`OFFSET` as well. `labels` matches the **exact display name**
+     * stored in the JSON column; `target` reads `meta.target`; `metaEquals` is a
+     * list of `{key, value}` compared as text. `json_valid` guards a meta column
+     * that a hand-edited row left malformed, so the read degrades to no match
+     * rather than raising.
+     *
+     * @param {{projectId?: string, kind?: string, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, reviewOfId?: string, parentId?: string, labels?: string[], target?: string, metaEquals?: {key: string, value: string}[], includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
      */
     list(filter = {}) {
       const clauses = [];
@@ -261,6 +269,37 @@ export function createTasksRepository(db) {
       if (filter.reviewOfId !== undefined) {
         clauses.push("review_of_id = ?");
         values.push(filter.reviewOfId);
+      }
+      // `--parent`: the parent edge points from the parent (source) at the child
+      // (target) — `repositories/relations.mjs` normalises it that way.
+      if (filter.parentId !== undefined) {
+        clauses.push(
+          `EXISTS (SELECT 1 FROM task_relations r
+                    WHERE r.relation_type = 'parent'
+                      AND r.target_task_id = tasks.id
+                      AND r.source_task_id = ?)`,
+        );
+        values.push(filter.parentId);
+      }
+      // `tasks.labels` is a JSON array of display names (`domain/task.mjs`), not
+      // a join table; each requested label is one more AND-ed EXISTS.
+      for (const label of filter.labels ?? []) {
+        clauses.push("EXISTS (SELECT 1 FROM json_each(tasks.labels) WHERE json_each.value = ?)");
+        values.push(label);
+      }
+      // `target` lives in the card's opaque meta (`meta.target`), so it is read
+      // out of the JSON column and compared as text — a card that wrote it as a
+      // number still matches the string the caller typed.
+      if (filter.target !== undefined) {
+        clauses.push(`json_valid(tasks.meta_json) AND CAST(json_extract(tasks.meta_json, '$.target') AS TEXT) = ?`);
+        values.push(filter.target);
+      }
+      // `--meta k=v`, repeated; every pair must hold (AND). The path is a bound
+      // parameter, never interpolated — the caller's key whitelist keeps it a
+      // well-formed top-level path.
+      for (const { key, value } of filter.metaEquals ?? []) {
+        clauses.push("json_valid(tasks.meta_json) AND CAST(json_extract(tasks.meta_json, ?) AS TEXT) = ?");
+        values.push(`$."${key}"`, value);
       }
       if (!filter.includeArchived) clauses.push("archived_at IS NULL");
 

@@ -13,11 +13,11 @@
  * answer with a task too.
  */
 
-import { TASK_OPS } from "../../core/index.mjs";
+import { TASK_KINDS, TASK_OPS } from "../../core/index.mjs";
 import { HUMAN_KIND } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { attachmentToWire, reportToWire, taskToWire, workflowToWire } from "../../foundation/wire.mjs";
-import { bool, int, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
+import { arr, bool, int, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
 import { lookupFor, resolveTask, taskPayload } from "../task-view.mjs";
 
 // Declared request schemas — what the contract snapshot freezes
@@ -37,13 +37,48 @@ const LIST_QUERY = shape({
   project_id: str(),
   status: REQUEST.statuses, // `?status=a&status=b` — a repeated query param
   assignee_id: str(),
+  // `assignee` is a free-text name resolved against the dictionary; it and
+  // `assignee_id` are two spellings of the same filter and are refused together.
+  assignee: str(),
   review_of: str(), // a task ref; resolved below to the structural id
+  parent: str(), // a task ref; the child cards of that parent
+  kind: str(),
+  label: arr(str()), // repeated: every label must be present (exact display name)
+  target: str(), // meta.target, compared as text
+  meta: arr(str()), // repeated `key=value`; every pair must hold
   include_archived: str(),
   limit: str(),
   offset: str(),
   order: str(),
   order_debug: str(),
 });
+
+/** A `--meta` key the JSON path can name as one top-level property. */
+const META_KEY = /^[A-Za-z0-9_.-]+$/;
+
+/**
+ * `?meta=key=value` pairs → `{key, value}`.
+ *
+ * The key whitelist keeps the JSON path well-formed (the path is a *bound
+ * parameter*, never interpolated, so this is about correctness, not injection).
+ * A value may itself contain `=`; only the first one splits.
+ *
+ * @param {string[]} pairs
+ * @returns {{key: string, value: string}[]}
+ */
+function parseMetaFilters(pairs) {
+  return pairs.map((pair) => {
+    const at = pair.indexOf("=");
+    const key = at === -1 ? "" : pair.slice(0, at);
+    if (key === "" || !META_KEY.test(key)) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: `meta filter ${JSON.stringify(pair)} is not key=value with a [A-Za-z0-9_.-] key`,
+        details: { field: "meta", received: pair },
+      });
+    }
+    return { key, value: pair.slice(at + 1) };
+  });
+}
 
 /** `GET /api/v1/tasks/candidates` — `assignee` is the one field the route insists on. */
 const CANDIDATES_QUERY = shape(
@@ -144,11 +179,40 @@ export function registerTaskRoutes(router, surface) {
     // projects rather than guessing, and a miss is `NOT_FOUND` — an empty page
     // would read as "this card has no reviews".
     const reviewOfRef = query.get("review_of");
+    const parentRef = query.get("parent");
+    const labels = query.getAll("label").filter((value) => value !== "");
+    // Two spellings of one filter. Accepting both would silently pick one; the
+    // caller has to say which scope it means.
+    const assigneeName = query.get("assignee");
+    const assigneeId = query.get("assignee_id");
+    if (assigneeName !== null && assigneeId !== null) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: "assignee and assignee_id are two spellings of one filter; send one",
+        details: { fields: ["assignee", "assignee_id"] },
+      });
+    }
+    // An unknown kind is a caller mistake, not an empty page — the declaration
+    // states the vocabulary but does not enforce it.
+    const kind = query.get("kind");
+    if (kind !== null && !TASK_KINDS.includes(kind)) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: `unknown kind ${JSON.stringify(kind)}`,
+        details: { field: "kind", received: kind, allowed: TASK_KINDS },
+      });
+    }
     const filter = {
       ...(query.get("project_id") === null ? {} : { projectId: query.get("project_id") }),
       ...(statuses.length === 0 ? {} : { status: statuses.length === 1 ? statuses[0] : statuses }),
-      ...(query.get("assignee_id") === null ? {} : { assigneeId: query.get("assignee_id") }),
+      ...(assigneeId === null ? {} : { assigneeId }),
+      // A name resolves to every dictionary entry it matches; no match is the
+      // empty scope (`assigneeId: []` reads as `1 = 0`), never "no filter".
+      ...(assigneeName === null ? {} : { assigneeId: commands.resolveAssigneeIds(assigneeName) }),
+      ...(kind === null ? {} : { kind }),
+      ...(labels.length === 0 ? {} : { labels }),
+      ...(query.get("target") === null ? {} : { target: query.get("target") }),
+      ...(query.getAll("meta").length === 0 ? {} : { metaEquals: parseMetaFilters(query.getAll("meta")) }),
       ...(reviewOfRef === null ? {} : { reviewOfId: resolveTask(repos, reviewOfRef).id }),
+      ...(parentRef === null ? {} : { parentId: resolveTask(repos, parentRef).id }),
       includeArchived: truthy(query.get("include_archived")),
       ...(intOrUndefined(query.get("limit")) === undefined ? {} : { limit: intOrUndefined(query.get("limit")) }),
       ...(intOrUndefined(query.get("offset")) === undefined ? {} : { offset: intOrUndefined(query.get("offset")) }),
@@ -364,6 +428,7 @@ export function registerTaskRoutes(router, surface) {
       ifVersion: body.if_version,
       allowSteal: body.allow_steal === true,
       reason: body.reason,
+      checkBlockers: body.check_blockers === true,
       actor,
     });
     return {

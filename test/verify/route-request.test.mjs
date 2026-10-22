@@ -93,15 +93,21 @@ describe("route-request.mjs — the live surface", () => {
 
     const list = extractReads(byKey.get("GET /api/v1/tasks").handler);
     assert.deepEqual(list.query, [
+      "assignee",
       "assignee_id",
       "include_archived",
+      "kind",
+      "label",
       "limit",
+      "meta",
       "offset",
       "order",
       "order_debug",
+      "parent",
       "project_id",
       "review_of",
       "status",
+      "target",
     ]);
 
     // The query/body split is real: nothing reads a body on a GET, and the one route that

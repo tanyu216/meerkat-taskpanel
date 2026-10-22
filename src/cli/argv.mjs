@@ -31,6 +31,7 @@ export const BOOLEAN_FLAGS = Object.freeze(
     "include-archived",
     "stale",
     "quiet",
+    "check-blockers",
   ]),
 );
 
@@ -41,7 +42,7 @@ export const GLOBAL_FLAGS = Object.freeze([
   { flag: "token", key: "token", as: "string", value: "<token>", summary: "Access token (never echoed)." },
   { flag: "env-file", key: "envFile", as: "string", value: "<path>", summary: "Config file (default: <install root>/.env; env: MEERKAT_TASKPANEL_ENV_FILE)." },
   { flag: "if-version", key: "ifVersion", as: "number", value: "<n>", summary: "Optimistic-concurrency guard." },
-  { flag: "actor-kind", key: "actorKind", as: "string", value: "<name>", summary: "The platform writing (claude|codex|…); required on every command except --help/--version. `human` is reserved; use --as-human." },
+  { flag: "actor-kind", key: "actorKind", as: "string", value: "<name>", summary: "The platform writing (claude|codex|…); required on every command that talks to the board — local reads (`status`) and --help/--version need none. `human` is reserved; use --as-human." },
   { flag: "as-human", key: "asHuman", as: "boolean", summary: "Write as the configured human, not as yourself." },
   { flag: "session-id", key: "sessionId", as: "string", value: "<id>", summary: "Agent session identifier." },
   { flag: "agent", key: "agent", as: "string", value: "<name>", summary: "Actor id recorded on writes — a role or person (jobs, linus, turing, …)." },
@@ -193,7 +194,7 @@ export function bindFlags(tokenized, specs, where, helpTarget, options = {}) {
  * Full parse: registry lookup, globals, command flags, positionals.
  *
  * @param {string[]} argv
- * @param {{groups: object[]}} registry
+ * @param {{groups: object[], topLevel?: object[]}} registry
  * @returns {{flags: object, group: object|null, command: object|null, commandArgs: object, positionals: string[], wantedHelp: boolean, version: boolean}}
  */
 export function parseArgv(argv, registry) {
@@ -206,6 +207,44 @@ export function parseArgv(argv, registry) {
 
   if (groupName === undefined) {
     return helpResult(globals, null, null, [], wantsVersion);
+  }
+
+  // A **top-level command** is one word, not a group and a verb (`taskctl
+  // status`). It is matched before the group lookup because it is not a group:
+  // there is no namespace to put it inside. The registry test pins that the two
+  // namespaces never collide, so the order is a formality — but it is also what
+  // makes `taskctl status --help` a command page and not "unknown group".
+  const topLevel = (registry.topLevel ?? []).find((entry) => entry.name === groupName);
+  if (topLevel !== undefined) {
+    if (globals.help === true) {
+      return helpResult(globals, null, topLevel, rest, wantsVersion);
+    }
+    const bound = bindFlags(flags, [...GLOBAL_FLAGS, ...(topLevel.flags ?? [])], topLevel.name, topLevel.name);
+    const slots = topLevel.positionals ?? [];
+    const required = slots.filter((slot) => slot.required !== false).length;
+    if (rest.length < required) {
+      throw usageError(`${topLevel.name}: missing argument <${slots[rest.length]?.name ?? "…"}>`, {
+        fix: `usage: taskctl ${topLevel.usage ?? topLevel.name}`,
+      });
+    }
+    if (rest.length > slots.length) {
+      throw usageError(`${topLevel.name}: unexpected argument ${JSON.stringify(rest[slots.length])}`, {
+        fix: `usage: taskctl ${topLevel.usage ?? topLevel.name}`,
+      });
+    }
+    const commandArgs = {};
+    slots.forEach((slot, index) => {
+      if (rest[index] !== undefined) commandArgs[slot.name] = rest[index];
+    });
+    return {
+      flags: bound,
+      group: null,
+      command: topLevel,
+      commandArgs,
+      positionals: rest,
+      wantedHelp: false,
+      version: wantsVersion,
+    };
   }
 
   const group = registry.groups.find((entry) => entry.name === groupName);

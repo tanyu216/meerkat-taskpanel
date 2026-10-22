@@ -18,7 +18,7 @@ import test, { after, describe, it } from "node:test";
 
 import { createContext, readStdin, run, wantsJson } from "../../src/cli/index.mjs";
 import { COMMANDS as tokenCommands } from "../../src/cli/commands/token.mjs";
-import { allCommands, groups, registry } from "../../src/cli/commands/index.mjs";
+import { allCommands, commandPath, groups, registry, topLevel } from "../../src/cli/commands/index.mjs";
 import { actorLabel, fields, table, taskLine } from "../../src/cli/output/human.mjs";
 import { commandSynopsis, flagSynopsis, commandUsage, groupUsage, topLevelUsage, versionLine } from "../../src/cli/usage.mjs";
 import { CONTRACT_SCHEMA_VERSION, VERSION } from "../../src/foundation/constants.mjs";
@@ -202,15 +202,27 @@ describe("cli/commands — the registry", () => {
     );
     for (const { group, command } of allCommands()) {
       assert.equal(
-        /^(add|rm|remove|rename|create|delete|set)$/.test(command.name) && /actors|labels/.test(group.name),
+        /^(add|rm|remove|rename|create|delete|set)$/.test(command.name) && /actors|labels/.test(group?.name ?? ""),
         false,
       );
     }
   });
 
+  it("keeps top-level commands out of every group, and their names unique", () => {
+    // `taskctl status` is one word: it must not be a group, and the parser's
+    // group lookup must never shadow it (or the reverse).
+    const groupNames = new Set(groups.map((group) => group.name));
+    const names = topLevel.map((command) => command.name);
+    for (const name of names) {
+      assert.equal(groupNames.has(name), false, `${name} is both a top-level command and a group`);
+    }
+    assert.equal(new Set(names).size, names.length, "a top-level name repeats");
+  });
+
   it("has a run handler and a summary for every command", () => {
     for (const { group, command } of allCommands()) {
-      assert.equal(typeof command.run, "function", `${group.name} ${command.name} has no run()`);
+      const path = commandPath(group, command);
+      assert.equal(typeof command.run, "function", `${path} has no run()`);
       assert.equal(typeof command.summary, "string");
       assert.ok(command.summary.length > 0);
       assert.equal(typeof command.usage, "string");
@@ -220,9 +232,10 @@ describe("cli/commands — the registry", () => {
   it("never lets a command redeclare a global flag", () => {
     const globalNames = new Set(registry.globals.map((spec) => spec.flag));
     for (const { group, command } of allCommands()) {
+      const path = commandPath(group, command);
       for (const spec of command.flags ?? []) {
-        assert.equal(globalNames.has(spec.flag), false, `${group.name} ${command.name} redeclares --${spec.flag}`);
-        assert.equal(typeof spec.key, "string", `${group.name} ${command.name} --${spec.flag} has no key`);
+        assert.equal(globalNames.has(spec.flag), false, `${path} redeclares --${spec.flag}`);
+        assert.equal(typeof spec.key, "string", `${path} --${spec.flag} has no key`);
       }
     }
   });
@@ -230,7 +243,7 @@ describe("cli/commands — the registry", () => {
   it("declares each flag at most once per command", () => {
     for (const { group, command } of allCommands()) {
       const names = (command.flags ?? []).map((spec) => spec.flag);
-      assert.equal(new Set(names).size, names.length, `${group.name} ${command.name} repeats a flag`);
+      assert.equal(new Set(names).size, names.length, `${commandPath(group, command)} repeats a flag`);
     }
   });
 });

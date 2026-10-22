@@ -200,6 +200,10 @@ const CLAIM = Object.freeze([
   both("allow_steal", { type: BOOLEAN }),
   both("reason"),
   both("if_version", { type: INTEGER }),
+  // Opt-in: re-derive the `blocks` predecessors before taking the claim. The
+  // default claim trusts the caller's own read (the poll already withholds
+  // blocked cards), and `issue move … in_progress` stays the caller's business.
+  both("check_blockers", { type: BOOLEAN }),
 ]);
 
 const DELIVER = Object.freeze([

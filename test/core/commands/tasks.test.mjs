@@ -1225,6 +1225,44 @@ describe("commands/tasks — claim and heartbeat", () => {
     });
   });
 
+  it("re-checks the dependency graph only when `checkBlockers` asks", async () => {
+    await board(async ({ db, commands }) => {
+      // Two cards with an open `blocks` predecessor, and one whose predecessor
+      // is already done — the same read, two answers.
+      insertTask(db, { id: "blocker-open", identifier: "PROJ-0090", title: "Blocker (open)" });
+      const trusted = commands.createTask({ projectId: "proj", title: "Trusted", actor: AGENT });
+      const guarded = commands.createTask({ projectId: "proj", title: "Guarded", actor: AGENT });
+      commands.addRelation({ type: "blocks", source: "PROJ-0090", target: trusted.identifier, actor: AGENT });
+      commands.addRelation({ type: "blocks", source: "PROJ-0090", target: guarded.identifier, actor: AGENT });
+
+      // The default claim is unchanged: the poll withholds blocked cards, and
+      // `issue move … in_progress` stays the caller's own responsibility.
+      assert.equal(commands.claim({ id: trusted.id, actor: AGENT }).task.status, "in_progress");
+
+      const before = revision(db);
+      assert.throws(
+        () => commands.claim({ id: guarded.id, actor: AGENT, checkBlockers: true }),
+        (err) => {
+          assert.equal(err.code, "BLOCKED_BY_PREDECESSOR");
+          assert.equal(err.http, 409);
+          assert.deepEqual(
+            err.details.blockers.map((entry) => entry.identifier),
+            ["PROJ-0090"],
+          );
+          return true;
+        },
+      );
+      assert.equal(revision(db), before, "a refused claim writes nothing");
+      assert.equal(commands.getTask({ id: guarded.id }).status, "todo");
+
+      // A predecessor that is already done is not a blocker.
+      insertTask(db, { id: "blocker-done", identifier: "PROJ-0091", title: "Blocker (done)", status: "done" });
+      const ready = commands.createTask({ projectId: "proj", title: "Ready", actor: AGENT });
+      commands.addRelation({ type: "blocks", source: "PROJ-0091", target: ready.identifier, actor: AGENT });
+      assert.equal(commands.claim({ id: ready.id, actor: AGENT, checkBlockers: true }).task.status, "in_progress");
+    });
+  });
+
   it("reports a corrupt execution state instead of guesswork (I2)", async () => {
     await board(async ({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });

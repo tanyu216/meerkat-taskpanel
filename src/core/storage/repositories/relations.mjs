@@ -233,6 +233,31 @@ export function createRelationsRepository(db) {
     },
 
     /**
+     * The `blocks` predecessors of one card that are not `done` yet.
+     *
+     * `openEdgeCounts` answers "how many" for a whole page; this answers "which"
+     * for one card, which is what a refusal has to name. Same direction: the
+     * edge's *source* blocks its *target*.
+     *
+     * @param {string} taskId
+     * @returns {{id: string, identifier: string, status: string}[]}
+     */
+    listOpenBlockers(taskId) {
+      return db
+        .prepare(
+          `SELECT src.id, src.identifier, src.status
+             FROM task_relations r
+             JOIN tasks src ON src.id = r.source_task_id
+            WHERE r.relation_type = 'blocks'
+              AND r.target_task_id = ?
+              AND src.status <> 'done'
+            ORDER BY src.created_at ASC, src.identifier ASC`,
+        )
+        .all(taskId)
+        .map((row) => ({ id: row.id, identifier: row.identifier, status: row.status }));
+    },
+
+    /**
      * Relation counts per task, for the board rollup.
      * @param {string} taskId
      */
