@@ -1,3 +1,4 @@
+scripts/foundation/card-brief.mjs
 scripts/foundation/constants.mjs
 scripts/foundation/entry-guard.mjs
 scripts/foundation/env-file.mjs
@@ -9,6 +10,7 @@ scripts/foundation/scheduling.mjs
 scripts/foundation/sla-config.mjs
 scripts/foundation/sla-patrol.mjs
 scripts/loop/board.mjs
+scripts/loop/card-file.mjs
 scripts/loop/host-session.mjs
 scripts/loop/hosts/claude.mjs
 scripts/loop/hosts/codex.mjs

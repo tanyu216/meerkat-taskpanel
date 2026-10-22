@@ -21,6 +21,7 @@ import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 import { candidateArgs, pruneRegistry } from "../../src/foundation/scheduling.mjs";
 
 import { readBoard, readProjectReviewers, runSlaPass, runWorkflowPass } from "./board.mjs";
+import { exportCardFile } from "./card-file.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { mergeReviewerSets, parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
 import { enqueueCard, readCards } from "./queue.mjs";
@@ -94,6 +95,8 @@ async function runEntry(name, argv, env, run, validate = null) {
  *   projectConcurrency: number,
  *   liveByDir?: Map<string, number>,
  *   queuedByDir?: Map<string, number>,
+ *   exportCard?: Function,
+ *   log?: (line: string) => void,
  * }} input
  * @returns {{
  *   admit: (action: object, card: object|undefined) => {ok: boolean, why?: string},
@@ -104,6 +107,8 @@ export function createProjectAdmission(input) {
   const { opts, projectConcurrency } = input;
   const liveByDir = input.liveByDir ?? new Map();
   const queuedByDir = input.queuedByDir ?? new Map();
+  const exportCard = input.exportCard ?? exportCardFile;
+  const log = input.log ?? (() => {});
   const admittedDirs = new Map();
   const claimedByDir = new Map();
 
@@ -123,6 +128,39 @@ export function createProjectAdmission(input) {
       if (used >= projectConcurrency) {
         return { ok: false, why: `project ${project} is at its concurrency cap` };
       }
+
+      // The brief is the gate: a card whose working files cannot be written must
+      // stay `todo`, never become a claim that has nowhere to run. The export is
+      // before the claim, so this is the same "defer, do not claim" path as an
+      // unmapped project. It is deliberately before `admittedDirs.set` too.
+      if (opts.dryRun !== true) {
+        const exported = exportCard({
+          opts,
+          agent: action.agent,
+          targetDir: resolved.dir,
+          identifier: action.identifier,
+          log,
+        });
+        if (exported?.ok !== true) {
+          return { ok: false, why: `card brief export failed: ${exported?.error ?? "unknown error"}` };
+        }
+        if (typeof card?.review_of === "string" && card.review_of.trim() !== "") {
+          const original = exportCard({
+            opts,
+            agent: action.agent,
+            targetDir: resolved.dir,
+            identifier: card.review_of.trim(),
+            log,
+          });
+          if (original?.ok !== true) {
+            log(
+              `admit ${action.identifier}: original brief ${card.review_of} not exported: ` +
+                `${original?.error ?? "unknown error"}`,
+            );
+          }
+        }
+      }
+
       admittedDirs.set(action.identifier, resolved.dir);
       claimedByDir.set(resolved.dir, (claimedByDir.get(resolved.dir) ?? 0) + 1);
       return { ok: true };
@@ -137,11 +175,20 @@ export function createProjectAdmission(input) {
  * The resident dispatch: write one claimed card's handoff into the card queue.
  * The pool manager takes it from there; this process never starts a host.
  *
- * @param {{opts: object, config: object, stateDir: string, admission: {dirFor: (id: string) => string|null}}} input
+ * @param {{
+ *   opts: object,
+ *   config: object,
+ *   stateDir: string,
+ *   admission: {dirFor: (id: string) => string|null},
+ *   exportCard?: Function,
+ *   log?: (line: string) => void,
+ * }} input
  * @returns {(action: object, card: object|undefined) => Promise<{ok: boolean, pid?: null, queued?: boolean, dryRun?: boolean, error?: string}>}
  */
 export function createQueueDispatch(input) {
   const { opts, config, stateDir, admission } = input;
+  const exportCard = input.exportCard ?? exportCardFile;
+  const log = input.log ?? (() => {});
   return async (action, card) => {
     if (opts.dryRun) return { ok: true, pid: null, dryRun: true };
     const dir = admission.dirFor(action.identifier);
@@ -154,8 +201,30 @@ export function createQueueDispatch(input) {
       project: card?.project ?? null,
       target_dir: dir,
       handoff,
+      // The subscriber maps an event's `task_id` (UUID) back to the card; the
+      // identifier alone is not in the event. A review row also keeps its
+      // original's brief fresh.
+      task_id: card?.id ?? null,
+      review_of: card?.review_of ?? null,
+      review_round: card?.review_round ?? null,
     });
     if (!queued.ok) return { ok: false, error: queued.error };
+
+    // The pre-claim export is the gate; this refresh is the accurate snapshot.
+    // A failure here is not fatal: the pre-claim brief already exists.
+    const refreshed = exportCard({
+      opts,
+      agent: action.agent,
+      targetDir: dir,
+      identifier: action.identifier,
+      log,
+    });
+    if (refreshed?.ok !== true) {
+      log(
+        `dispatch ${action.identifier}: post-claim brief refresh failed: ` +
+          `${refreshed?.error ?? "unknown error"}`,
+      );
+    }
     return { ok: true, pid: null, queued: !queued.coalesced };
   };
 }
@@ -236,8 +305,14 @@ export async function runPollOnce(opts, env = process.env) {
     return 0;
   }
 
-  const admission = createProjectAdmission({ opts, projectConcurrency, liveByDir, queuedByDir });
-  const dispatch = createQueueDispatch({ opts, config, stateDir, admission });
+  const admission = createProjectAdmission({
+    opts,
+    projectConcurrency,
+    liveByDir,
+    queuedByDir,
+    log,
+  });
+  const dispatch = createQueueDispatch({ opts, config, stateDir, admission, log });
 
   const deps = {
     agents,
@@ -343,6 +418,25 @@ export async function runPatrolOnce(opts, env = process.env) {
         return { ok: false };
       }
       const action = { identifier: alert.identifier, agent: alert.agent ?? opts.agents[0] };
+
+      // Same gate as poll: a card with no writable brief is not claimed.
+      if (opts.dryRun !== true) {
+        const exported = exportCardFile({
+          opts,
+          agent: action.agent,
+          targetDir: resolved.dir,
+          identifier: alert.identifier,
+          log,
+        });
+        if (!exported.ok) {
+          log(
+            `patrol: ${alert.identifier} — card brief export failed: ${exported.error}; ` +
+              "notify-only, no LLM turn",
+          );
+          return { ok: false };
+        }
+      }
+
       const claimed = runCli(opts, action.agent, ["issue", "claim", alert.identifier], {
         actorKind: opts.host,
       });
@@ -358,6 +452,9 @@ export async function runPatrolOnce(opts, env = process.env) {
         project,
         target_dir: resolved.dir,
         handoff,
+        task_id: task?.id ?? null,
+        review_of: task?.meta?.review_of ?? null,
+        review_round: task?.meta?.review_round ?? null,
       });
       if (!queued.ok) {
         log(`patrol: could not enqueue ${alert.identifier}: ${queued.error}`);

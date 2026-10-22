@@ -319,6 +319,8 @@ describe("session pool", () => {
     assert.ok(project, "the project session was opened for reattach");
     assert.match(project.prompts[0], /a-old/);
     assert.match(project.prompts[0], /Reattach/);
+    assert.match(project.prompts[0], /re-read \.meerkat\/T-9\/card\.md before continuing/);
+    assert.match(project.prompts[0], /never edit it/);
     await pool.stop();
   });
 

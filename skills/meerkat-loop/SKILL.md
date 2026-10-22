@@ -40,11 +40,12 @@ The continue turn runs three deterministic passes, in this order:
    `agent-only` + `autoAcceptReviews=no` is refused for the same reason.
    `autoAcceptReviews` only controls whether the loop closes a **review card**;
    it does not gate auto-accepting a no-review original.
-3. **poll** — scan, atomically claim, **enqueue the handoff**. It never spawns a
-   worker: the resident project session does, as a subagent that inherits the
-   project directory. Runs last so a review card dispatched in this turn can be
-   claimed immediately. At the concurrency cap, or with no project directory for
-   the card, nothing is claimed.
+3. **poll** — scan, **export the card brief**, atomically claim, **enqueue the
+   handoff**. It never spawns a worker: the resident project session does, as a
+   subagent that inherits the project directory. Runs last so a review card
+   dispatched in this turn can be claimed immediately. At the concurrency cap,
+   with no project directory for the card, or when the brief cannot be written,
+   nothing is claimed.
 
 The exact `taskctl` invocations and the JSON keys each pass reads are the board
 skill's capability contract: `meerkat-taskpanel`, `references/capabilities.md`.
@@ -105,6 +106,32 @@ On launchd/systemd, `--subscribe` follows the board's event stream through
 arrives. The loop carries no HTTP code of its own: board discovery, the token and
 the stream all belong to the CLI. The continue clock remains the fallback and the
 only path for time-based work. Cron cannot host a long-lived process.
+
+### Task process directory (`.meerkat/`)
+
+Every task the loop dispatches gets one directory under the project's working directory —
+the resolved `target_dir` (`local_path ?? run_dir`), which is also the subagent's cwd:
+
+```text
+.meerkat/<identifier>/
+  card.md          the board card, exported by the loop (read-only)
+  …                the subagent's notes, logs, evidence, report drafts, attachments
+```
+
+- **Before the claim**, poll exports the card with
+  `taskctl export md <identifier> --out <target_dir>/.meerkat/<identifier>/card.md`
+  (a temp file plus an atomic rename). A failed export **defers the card unclaimed**: a
+  claim with no brief has nowhere to run. Patrol's optional LLM lane does the same.
+- `card.md` is the **authoritative brief** handed to the subagent and re-read on resume.
+  It is machine-generated: **never edit it**. Only the loop overwrites it, through
+  `taskctl export md`. It is a snapshot; `taskctl issue get <ref> --json` remains the live
+  state and the source of the `version` a write needs.
+- Other process files — including **downloaded attachments** — go in the same directory.
+  A download is `taskctl attachment list <ref> --json`, then
+  `taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>`.
+- `--subscribe` follows board events and **batch-refreshes** the briefs of active cards
+  (comments and reports included), debounced and rate-limited. A failed refresh leaves the
+  previous brief in place.
 
 ## Required board interface
 

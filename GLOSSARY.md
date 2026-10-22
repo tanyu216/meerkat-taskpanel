@@ -430,13 +430,23 @@ _Avoid_: spawn, launch, trigger
 **Handoff**:
 The fresh, bounded briefing a wake gives a worker — the card, the exact commands to run,
 the identity to record, and the statement that the claim is already held. It is
-deliberately built new each time rather than resumed, and it names no workspace path: the
-project session's cwd is the project directory.
+deliberately built new each time rather than resumed. It names the task's **process
+directory** (`.meerkat/<identifier>/`), relative to the project session's cwd, and points
+at the exported `card.md` inside it.
 _中文_: 交接
 _Avoid_: prompt, context, briefing
 
+**Card brief**:
+The loop's export of one card at `.meerkat/<identifier>/card.md`, under the project's
+working directory. It is the authoritative snapshot a worker or reviewer is handed; it is
+generated only by `taskctl export md` (atomic temp + rename), and an agent never edits it.
+The same directory holds the task's other process data — notes, logs, evidence, report
+drafts and downloaded attachments.
+_中文_: 卡片 brief / 任务过程目录
+_Avoid_: workspace, scratch dir, card copy
+
 **Card queue**:
-The durable file the poll entry writes a claimed handoff into (`cards.pending.json`), and
+The durable file the poll entry writes a claimed handoff into (`cards.queue.json`), and
 the project session reads from. Distinct cards are never merged; a handoff is removed only
 after its subagent is recorded in the ledger.
 _中文_: 交接队列

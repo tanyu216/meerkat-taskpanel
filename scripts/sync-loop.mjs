@@ -90,6 +90,7 @@ export const LOOP_BODY_ROOTS = Object.freeze([
   "scripts/loop/board.mjs",
   "scripts/loop/passes.mjs",
   "scripts/loop/subscribe.mjs",
+  "scripts/loop/card-file.mjs",
   "scripts/loop/queue.mjs",
   "scripts/loop/ledger.mjs",
   "scripts/loop/host-session.mjs",

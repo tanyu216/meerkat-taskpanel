@@ -101,7 +101,9 @@ describe("loop skill: the generated payload", () => {
       "scripts/loop/board.mjs",
       "scripts/loop/passes.mjs",
       "scripts/loop/subscribe.mjs",
+      "scripts/loop/card-file.mjs",
       "scripts/wake-cwd.mjs",
+      "scripts/foundation/card-brief.mjs",
       "scripts/foundation/scheduling.mjs",
       "scripts/foundation/sla-patrol.mjs",
       "scripts/foundation/sla-config.mjs",
@@ -262,6 +264,28 @@ describe("loop skill: SKILL.md", () => {
   it("documents the workflow alert ledger flag", () => {
     const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
     assert.match(operation, /--workflow-ledger/);
+  });
+
+  it("documents the task process directory and the read-only card brief", () => {
+    assert.match(text, /\.meerkat\/<identifier>\//);
+    assert.match(text, /authoritative brief/);
+    assert.match(text, /never edit it/i);
+    assert.match(text, /taskctl export md/);
+    assert.match(text, /taskctl attachment download/);
+
+    const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
+    assert.match(operation, /Export before claim/);
+    assert.match(operation, /refreshes the briefs/);
+    assert.match(operation, /deferred\s+\*\*unclaimed\*\*|deferred\nunclaimed|deferred/);
+  });
+
+  it("names the attachment download command in the board skill's CLI reference", () => {
+    const cli = readFileSync(
+      join(ROOT, "skills", "meerkat-taskpanel", "references", "cli.md"),
+      "utf8",
+    );
+    assert.match(cli, /attachment download <attachment-id> --out <file>/);
+    assert.match(cli, /--out \.meerkat\/PROJ-0007\/shot\.png/);
   });
 });
 

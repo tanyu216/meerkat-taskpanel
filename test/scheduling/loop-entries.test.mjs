@@ -34,6 +34,7 @@ import { after, describe, it } from "node:test";
 
 import { createProjectAdmission, createQueueDispatch } from "../../scripts/loop/passes.mjs";
 import { readCards } from "../../scripts/loop/queue.mjs";
+import { runPollTick } from "../../scripts/loop/runners.mjs";
 import {
   acquireContinueLock,
   loadContinueLock,
@@ -363,20 +364,24 @@ describe("the resident poll dispatch", () => {
     const projectsJson = join(dir, "projects.json");
     writeFileSync(projectsJson, JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
     const opts = { projectsJson, host: "claude", dryRun: false };
-    return { dir, app, projectsJson, opts, concurrency };
+    // Admission exports the card brief before the claim; these cases are about
+    // admission/dispatch, so the exporter is a stub (no board call).
+    const exportCard = () => ({ ok: true });
+    return { dir, app, projectsJson, opts, concurrency, exportCard };
   }
 
   it("writes the worker handoff with the resolved project directory", async () => {
     const f = fixture();
-    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency });
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency, exportCard: f.exportCard });
     const action = { identifier: "T-1", agent: "alice", reason: "ready" };
-    const card = { identifier: "T-1", project: "P", title: "do it" };
+    const card = { id: "uuid-1", identifier: "T-1", project: "P", title: "do it" };
     assert.equal(admission.admit(action, card).ok, true);
     const dispatch = createQueueDispatch({
       opts: f.opts,
       config: { reviewers: [] },
       stateDir: f.dir,
       admission,
+      exportCard: f.exportCard,
     });
     const outcome = await dispatch(action, card);
     assert.equal(outcome.ok, true);
@@ -386,32 +391,59 @@ describe("the resident poll dispatch", () => {
     assert.equal(entry.role, "worker");
     assert.equal(entry.agent, "alice");
     assert.equal(entry.target_dir, f.app);
+    assert.equal(entry.task_id, "uuid-1", "the subscriber locates the row by UUID");
+    assert.equal(entry.review_of, null);
+    assert.equal(entry.review_round, null);
     assert.match(entry.handoff, /^You are a worker subagent of the P project session/);
+    assert.match(entry.handoff, /\.meerkat\/T-1\/card\.md/);
     assert.equal(entry.handoff.includes("/meerkat-loop"), false, "a handoff is not a continue turn");
   });
 
-  it("routes a review card to the reviewer handoff in the same directory", async () => {
+  it("routes a review card to the reviewer handoff and exports both briefs", async () => {
     const f = fixture();
-    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency });
+    const exported = [];
+    const exportCard = (input) => {
+      exported.push(input.identifier);
+      return { ok: true };
+    };
+    const admission = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: f.concurrency,
+      exportCard,
+    });
     const action = { identifier: "T-2", agent: "jobs", reason: "ready" };
-    const card = { identifier: "T-2", project: "P", review_of: "T-1", review_round: 1 };
+    const card = {
+      id: "uuid-2",
+      identifier: "T-2",
+      project: "P",
+      review_of: "T-1",
+      review_round: 1,
+    };
     assert.equal(admission.admit(action, card).ok, true);
+    assert.deepEqual(exported, ["T-2", "T-1"], "the review card gates, the original follows");
     const dispatch = createQueueDispatch({
       opts: f.opts,
       config: { reviewers: ["jobs"], reviewerWorkers: [] },
       stateDir: f.dir,
       admission,
+      exportCard,
     });
     assert.equal((await dispatch(action, card)).ok, true);
     const [entry] = readCards(f.dir).value.cards;
     assert.equal(entry.role, "reviewer");
     assert.equal(entry.target_dir, f.app);
+    assert.equal(entry.task_id, "uuid-2");
+    assert.equal(entry.review_of, "T-1");
+    assert.equal(entry.review_round, 1);
     assert.match(entry.handoff, /^You are a reviewer subagent of the P project session/);
+    assert.match(entry.handoff, /Review brief: \.meerkat\/T-2\/card\.md/);
+    assert.match(entry.handoff, /Original brief: \.meerkat\/T-1\/card\.md/);
+    assert.deepEqual(exported, ["T-2", "T-1", "T-2"], "the claim refreshes the review card");
   });
 
   it("defers an unmapped project before the claim", () => {
     const f = fixture();
-    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency });
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency, exportCard: f.exportCard });
     const verdict = admission.admit(
       { identifier: "T-3", agent: "alice" },
       { identifier: "T-3", project: "other" },
@@ -423,7 +455,7 @@ describe("the resident poll dispatch", () => {
 
   it("defers a card that names no project", () => {
     const f = fixture();
-    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency });
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency, exportCard: f.exportCard });
     const verdict = admission.admit({ identifier: "T-4", agent: "alice" }, { identifier: "T-4" });
     assert.equal(verdict.ok, false);
     assert.match(verdict.why, /no project/);
@@ -431,10 +463,16 @@ describe("the resident poll dispatch", () => {
 
   it("counts live and queued work against the per-project cap", () => {
     const f = fixture();
+    const exported = [];
+    const exportCard = (input) => {
+      exported.push(input.identifier);
+      return { ok: true };
+    };
     const full = createProjectAdmission({
       opts: f.opts,
       projectConcurrency: 1,
       liveByDir: new Map([[f.app, 1]]),
+      exportCard,
     });
     const verdict = full.admit({ identifier: "T-5", agent: "alice" }, { identifier: "T-5", project: "P" });
     assert.equal(verdict.ok, false);
@@ -444,29 +482,105 @@ describe("the resident poll dispatch", () => {
       opts: f.opts,
       projectConcurrency: 1,
       queuedByDir: new Map([[f.app, 1]]),
+      exportCard,
     });
     assert.equal(
       queued.admit({ identifier: "T-6", agent: "alice" }, { identifier: "T-6", project: "P" }).ok,
       false,
     );
+    assert.deepEqual(exported, [], "a card at its cap is not exported");
   });
 
   it("admits at most the project cap within one pass", () => {
     const f = fixture();
-    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: 1 });
+    const admission = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: 1,
+      exportCard: f.exportCard,
+    });
     const card = (id) => ({ identifier: id, project: "P" });
     assert.equal(admission.admit(card("T-7"), card("T-7")).ok, true);
     assert.equal(admission.admit(card("T-8"), card("T-8")).ok, false);
   });
 
+  it("exports the brief before the claim, and defers unclaimed if it fails", async () => {
+    const f = fixture();
+    const order = [];
+    const admission = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: f.concurrency,
+      exportCard: ({ identifier }) => {
+        order.push(`export:${identifier}`);
+        return { ok: true };
+      },
+    });
+    const card = { id: "uuid-1", identifier: "T-1", project: "P", title: "do it" };
+    const result = await runPollTick({
+      agents: ["alice"],
+      registry: { running: {} },
+      config: {},
+      readCandidates: () => [{ ...card, agent: "alice", reason: "ready" }],
+      claim: async () => {
+        order.push("claim");
+        return { ok: true };
+      },
+      dispatch: async () => {
+        order.push("dispatch");
+        return { ok: true };
+      },
+      admit: admission.admit,
+      now: () => "2026-10-22T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.equal(result.claimed, 1);
+    assert.deepEqual(order, ["export:T-1", "claim", "dispatch"]);
+
+    const failed = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: f.concurrency,
+      exportCard: () => ({ ok: false, error: "disk full" }),
+    });
+    const touched = [];
+    const second = await runPollTick({
+      agents: ["alice"],
+      registry: { running: {} },
+      config: {},
+      readCandidates: () => [{ ...card, identifier: "T-9", agent: "alice" }],
+      claim: async (id) => {
+        touched.push(id);
+        return { ok: true };
+      },
+      dispatch: async () => {
+        touched.push("dispatch");
+        return { ok: true };
+      },
+      admit: failed.admit,
+      now: () => "2026-10-22T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.equal(second.deferred, 1);
+    assert.equal(second.claimed, 0);
+    assert.deepEqual(touched, [], "no claim and no dispatch");
+    assert.equal(failed.dirFor("T-9"), null, "nothing was admitted");
+  });
+
   it("writes nothing in dry-run", async () => {
     const f = fixture();
     const opts = { ...f.opts, dryRun: true };
-    const admission = createProjectAdmission({ opts, projectConcurrency: f.concurrency });
+    const exportCalls = [];
+    const admission = createProjectAdmission({
+      opts,
+      projectConcurrency: f.concurrency,
+      exportCard: (input) => {
+        exportCalls.push(input.identifier);
+        return { ok: true };
+      },
+    });
     const action = { identifier: "T-9", agent: "alice" };
     const card = { identifier: "T-9", project: "P" };
     admission.admit(action, card);
-    const dispatch = createQueueDispatch({ opts, config: {}, stateDir: f.dir, admission });
+    assert.deepEqual(exportCalls, [], "dry-run writes no brief");
+    const dispatch = createQueueDispatch({ opts, config: {}, stateDir: f.dir, admission, exportCard: f.exportCard });
     const outcome = await dispatch(action, card);
     assert.equal(outcome.ok, true);
     assert.equal(outcome.dryRun, true);

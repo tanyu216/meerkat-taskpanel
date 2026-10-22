@@ -124,6 +124,19 @@ describe("card queue", () => {
     assert.equal(readCards(dir).value.cards.length, 3);
   });
 
+  it("records the event UUID and review fields, normalizing absent ones to null", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, { ...card("T-1"), task_id: "uuid-1", review_of: "T-0", review_round: 2 });
+    enqueueCard(dir, card("T-2"));
+    const [a, b] = readCards(dir).value.cards;
+    assert.equal(a.task_id, "uuid-1");
+    assert.equal(a.review_of, "T-0");
+    assert.equal(a.review_round, 2);
+    assert.equal(b.task_id, null);
+    assert.equal(b.review_of, null);
+    assert.equal(b.review_round, null);
+  });
+
   it("claims a bounded batch and completes it", (t) => {
     const dir = dirFor(t);
     for (const ref of ["T-1", "T-2", "T-3"]) enqueueCard(dir, card(ref));

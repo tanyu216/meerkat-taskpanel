@@ -20,6 +20,7 @@
  * `errors.mjs` (both pure) are used here.
  */
 
+import { cardDirRel, cardFileRel } from "./card-brief.mjs";
 import {
   ACCEPTANCE_POLICIES,
   CLAIM_STALE_SAME_MS,
@@ -634,8 +635,12 @@ export function planContinueInvocation(input = {}) {
  * deliverables is promoted to `epic` and split into children *before* any work
  * starts; a card with one deliverable proceeds untouched.
  *
- * The handoff names no workspace (O3): a card carries no board-owned directory,
- * so the wake must not hand one to the worker.
+ * The handoff names the task's **process directory** (`.meerkat/<identifier>/`),
+ * relative to the project session's cwd. `card.md` is the loop's authoritative
+ * export of the card; it is read-only, and every other process file — notes,
+ * logs, evidence, downloaded attachments — belongs in the same directory. The
+ * board still owns no directory (O3): this is the loop's convention under the
+ * worker's own cwd, resolved host-locally.
  *
  * @param {{card?: object, agent: string, host: string, sessionId?: string|null, review?: boolean}} input
  * @returns {string}
@@ -651,16 +656,23 @@ export function buildHandoff(input) {
   const acceptanceRule = input.review === true
     ? "stop at in_review — the loop dispatches an independent reviewer; do not move it to done yourself."
     : "stop at in_review — a human accepts to done.";
+  const brief = cardFileRel(ref);
+  const processDir = cardDirRel(ref);
   return [
     `You are a worker subagent of the ${project} project session — one card: ${ref}.`,
     `Title: ${title}`,
+    `Task brief: ${brief} — exported by the loop; read it first, it is authoritative for this card.`,
+    "The brief was exported just before the claim, so its status/assignee may lag one step; the loop already holds the claim.",
+    `Never edit ${brief}: the loop overwrites it from the board. Put your process files (notes, logs, evidence, report drafts) under ${processDir}/.`,
+    `Download attachments into that directory: taskctl attachment list ${ref} --json, then taskctl attachment download <attachment-id> --out ${processDir}/<filename>.`,
     `Your working directory is this project's directory; never touch another project's paths.`,
     "The loop already claimed this card for you: do not claim it again — heartbeat it to keep the claim.",
     "",
     `Flags (substitute <flags>): ${flags}`,
     "",
-    "Step 0 — container check. Read the card first:",
-    `  taskctl issue get ${ref} --json <flags>    # description, labels, meta`,
+    "Step 0 — container check. Read the brief first, then the live card:",
+    `  ${brief}    # description, acceptance, comments, sessions, attachments, report`,
+    `  taskctl issue get ${ref} --json <flags>    # live status and the version writes need`,
     "  Several deliverables? Promote and split FIRST:",
     `    taskctl issue update ${ref} --kind epic <flags>`,
     `    taskctl issue move ${ref} todo <flags>      # an epic is never claimed; release this wake claim`,
@@ -683,8 +695,9 @@ export function buildHandoff(input) {
     "  Review asks for more: append, never replace. legacy: ask via E2, do not migrate.",
     "",
     `Keep the claim alive (<=10 minutes): taskctl issue heartbeat <card> <flags>`,
-    `Deliver with a report: taskctl issue deliver <card> --report-file - <flags>`,
+    `Deliver with a report (a draft may live under ${processDir}/report.md): taskctl issue deliver <card> --report-file - <flags>`,
     "Rules: after a split, the heartbeat and delivery apply to the claimed CHILD, not the epic.",
+    `On resume, re-read ${brief} before acting; never edit it.`,
     `${acceptanceRule} Carry the flags above on every write.`,
   ].join("\n");
 }
@@ -712,10 +725,20 @@ export function buildReviewHandoff(input) {
   const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.host}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
   const flags = attribution.join(" ");
+  const brief = cardFileRel(ref);
+  const processDir = cardDirRel(ref);
+  const originalRef = typeof card.review_of === "string" && card.review_of.trim() !== ""
+    ? card.review_of.trim()
+    : null;
+  const originalBrief = originalRef === null ? null : cardFileRel(originalRef);
   return [
     `You are a reviewer subagent of the ${project} project session — one delivered card.`,
     `Review card: ${ref}`,
     `Card under review: ${original} (round ${round})`,
+    `Review brief: ${brief} — exported by the loop; read it after the live check, it is authoritative.`,
+    ...(originalBrief === null ? [] : [`Original brief: ${originalBrief} (when present; also authoritative).`]),
+    `Never edit a card.md: the loop overwrites it from the board. Put your process files (notes, logs, evidence, report drafts) under ${processDir}/.`,
+    `Download attachments into that card's own directory (this card: ${processDir}/): taskctl attachment list <ref> --json, then taskctl attachment download <attachment-id> --out ${processDir}/<filename>.`,
     `Your working directory is this project's directory; never touch another project's paths.`,
     "The loop already claimed this review card for you: do not claim it again.",
     "",
@@ -725,7 +748,7 @@ export function buildReviewHandoff(input) {
     `    taskctl comment add ${ref} --kind note --body "review target is no longer in_review / the round changed" ${flags}`,
     "    and stop. Do not deliver a verdict; the loop will close this review card.",
     "",
-    "Read:",
+    `Read (start with ${brief}; taskctl is the live view):`,
     `  taskctl issue get ${ref} --json ${flags}`,
     `  taskctl report list ${original} ${flags}`,
     `  taskctl comment list ${original} --limit 200 --json ${flags}`,
@@ -744,6 +767,7 @@ export function buildReviewHandoff(input) {
     "The report's FIRST line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.",
     "Put the findings after that line and in `leftovers`.",
     "",
+    `On resume, re-read ${brief} before acting; never edit it.`,
     "Rules: heartbeat only this review card, never the card under review. Do not move",
     "the card under review and do not move this review card: the loop applies the verdict and",
     "closes this card. Carry the attribution flags above on every write.",

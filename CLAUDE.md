@@ -134,8 +134,11 @@ meerkat-taskpanel/
 └── .githooks/              # pre-commit / pre-push / pre-tag — offline gates (see below)
 ```
 
-`dist/`, `.data/`, `node_modules/` and `coverage/` are build/runtime output — gitignored,
-never committed. Mind the two different `dist` trees: `dist/` is the **npm release tree**
+`dist/`, `.data/`, `node_modules/`, `coverage/` and `.meerkat/` are build/runtime output —
+gitignored, never committed. `.meerkat/<identifier>/` is the loop's per-task process
+directory under a project's working directory: `card.md` (exported by `taskctl export md`,
+never hand-edited), the subagent's notes/evidence, and downloaded attachments. Mind the two
+different `dist` trees: `dist/` is the **npm release tree**
 that `scripts/build.mjs` writes (and a stale M0 `dist/web/.gitkeep` placeholder lives there);
 the **hosted frontend root** is `web/dist`, the static build of `web/` that `taskd` serves
 (`STATIC_DIR_REL`). They are not the same directory.

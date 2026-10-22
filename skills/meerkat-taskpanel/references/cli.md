@@ -245,13 +245,15 @@ app-layer checks.
 |---|---|
 | `attachment add <ref> --file <path> [--name <filename>] [--content-type <type>]` | Upload a file: metadata row first, then bytes. |
 | `attachment list <ref>` | `id`, `filename`, `size`, `type`. Empty reads `no attachments`. |
+| `attachment download <attachment-id> --out <file>` | Write the stored bytes to `--out` (parent must exist). |
 | `attachment remove <attachment-id>` | Remove a file **for good**: row and bytes, one transaction. |
 
 `add` reads the file from your disk (`CLI_IO` when it cannot) and refuses one over **64 MiB**
 (`ATTACHMENT_TOO_LARGE`) before opening a socket. The content type is a closed set; a type
 outside it is `ATTACHMENT_TYPE_UNSUPPORTED`. An unknown extension becomes
-`application/octet-stream`. **Download has no command** — the bytes are a plain
-`GET /api/v1/attachments/:id/content`.
+`application/octet-stream`. `download` carries the same identity as every other command and
+writes the bytes verbatim; a missing parent directory is `CLI_USAGE`, and an attachment with
+no stored bytes is the board's `NOT_FOUND`.
 
 ### `session`
 
@@ -380,7 +382,7 @@ is a **two-request upload**, and one is an indirection through relations.
 | **`status`** | a **move** — `PATCH {status}` is refused (`INVALID_TRANSITION`) | `issue move <ref> <status>`; `issue update` has no `--status` |
 | **`priority`** | `PATCH /api/v1/tasks/:ref {"priority": …}` | `issue update <ref> --priority <p>` |
 | **`description`** (markdown) | `PATCH {"description": …}`, opaque text | `issue update <ref> --description <md>` |
-| **attachments** | rows plus bytes | `attachment add` / `list` / `remove`; **download is API-only** |
+| **attachments** | rows plus bytes | `attachment add` / `list` / `download` / `remove` |
 | **`depends_on`** | carried by a `blocks` relation | `relation add` / `remove` / `list`, direction reversed |
 
 ### `status` — a move, never a patch
@@ -418,14 +420,17 @@ taskctl issue update PROJ-0007 --description ""    # clears the field
 ```bash
 taskctl attachment add PROJ-0007 --file ./shot.png
 taskctl attachment list PROJ-0007
+# In a loop task, downloads belong in the card's process directory:
+taskctl attachment download 3f1c9a2e-… --out .meerkat/PROJ-0007/shot.png
 taskctl attachment remove 3f1c9a2e-…               # the id `list` prints
-curl -sO http://127.0.0.1:7788/api/v1/attachments/3f1c9a2e-…/content   # download: API only
 ```
 
 Upload mints the metadata row, then stores the bytes — a row whose `PUT` never arrives answers
 an honest `404` on download. Removal deletes the row and the bytes in one transaction; it is
 **not recoverable**. An attachment id must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`.
 `--meta attachments=…` stores literal text, not an array; it is not a channel into this table.
+Loop convention: `card.md` and every downloaded attachment for a task live under
+`.meerkat/<identifier>/`; see the loop skill's card-brief section.
 
 ### `depends_on` — a `blocks` edge, written the other way round
 
