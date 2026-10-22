@@ -1,0 +1,156 @@
+#!/usr/bin/env node
+/**
+ * `meerkat-taskpanel` — the npm/npx installer.
+ *
+ * This is a thin translation layer, not a second installer: it computes the
+ * installed server root, points the host installs at it, and runs the same
+ * `install.sh` a source checkout uses. `server`, `taskctl` and the skills all
+ * come from the package that was just downloaded.
+ *
+ *   npx meerkat-taskpanel                 # server + taskctl + all host skills
+ *   npx meerkat-taskpanel install --target server
+ *   npx meerkat-taskpanel install --target claude,codex
+ *   npx meerkat-taskpanel install --no-server
+ */
+
+import { spawnSync } from "node:child_process";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+const USAGE = `Usage: meerkat-taskpanel [install] [options]
+
+Installs the board server at <home>/.meerkat-taskpanel, the taskctl/taskd
+launchers, and the agent skills. Run through npx or a global npm install.
+
+Options:
+  --target <list>     hosts to install (claude,openclaw,codex,pi,opencode,cursor,all)
+                      or "server"; default: server + all hosts
+  --no-server         install only the host skills
+  --prefix <home>     install under <home> instead of $HOME
+  --force             refresh drifted managed files (never .env or .data)
+  --dry-run           print every path; write nothing
+  --skip-web-build    never try to build web/dist (API-only if absent)
+  -h, --help          this page
+`;
+
+function parse(argv) {
+  const out = {
+    command: null,
+    targets: null,
+    noServer: false,
+    prefix: null,
+    force: false,
+    dryRun: false,
+    skipWebBuild: false,
+    help: false,
+  };
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "-h" || arg === "--help") out.help = true;
+    else if (arg === "--target") out.targets = argv[++i] ?? null;
+    else if (arg.startsWith("--target=")) out.targets = arg.slice(9);
+    else if (arg === "--no-server") out.noServer = true;
+    else if (arg === "--prefix") out.prefix = argv[++i] ?? null;
+    else if (arg.startsWith("--prefix=")) out.prefix = arg.slice(9);
+    else if (arg === "--force") out.force = true;
+    else if (arg === "--dry-run") out.dryRun = true;
+    else if (arg === "--skip-web-build") out.skipWebBuild = true;
+    else if (out.command === null) out.command = arg;
+    else throw new Error(`unknown option: ${arg}`);
+  }
+  return out;
+}
+
+/** Split/normalise a comma target list, preserving order and dropping blanks. */
+export function splitTargets(value) {
+  return String(value ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
+}
+
+/**
+ * The `--target` value the wrapper hands to install.sh.
+ *
+ * The server is first when selected: the host shims/config point at
+ * `<server_root>`, so the tree must exist before the host scripts run.
+ *
+ * @param {{targets?: string|null, noServer?: boolean}} options
+ * @returns {{targets: string, server: boolean}}
+ */
+export function planTargets(options) {
+  const explicit = options.targets !== null && options.targets !== undefined;
+  const requested = explicit ? splitTargets(options.targets) : ["all"];
+  if (explicit && requested.length === 0) throw new Error("no targets selected");
+  const hasServer = requested.includes("server");
+  if (options.noServer && hasServer) {
+    throw new Error("--no-server cannot be combined with a server target");
+  }
+  const hosts = requested.filter((entry) => entry !== "server");
+  const server = !options.noServer;
+  const list = server ? ["server", ...hosts] : hosts;
+  if (list.length === 0) throw new Error("no targets selected");
+  return { targets: list.join(","), server };
+}
+
+async function main(argv) {
+  const args = parse(argv);
+  if (args.help) {
+    process.stdout.write(USAGE);
+    return 0;
+  }
+  if (args.command !== null && args.command !== "install") {
+    process.stderr.write(`meerkat-taskpanel: unknown command: ${args.command}\n`);
+    return 2;
+  }
+
+  let plan;
+  try {
+    plan = planTargets(args);
+  } catch (err) {
+    process.stderr.write(`meerkat-taskpanel: ${err.message}\n`);
+    return 2;
+  }
+
+  const home = resolve(args.prefix ?? process.env.MEERKAT_TASKPANEL_TARGET_HOME ?? homedir());
+  const serverRoot = join(home, ".meerkat-taskpanel");
+
+  const env = { ...process.env };
+  if (plan.server) {
+    // The program the host skills drive is the installed tree, not the npx
+    // cache. One `.env` for the whole install; the tree owns `.data`.
+    env.MEERKAT_TASKPANEL_REPO = serverRoot;
+    env.MEERKAT_TASKPANEL_ENV_FILE = join(serverRoot, ".env");
+  }
+
+  const installArgs = [join(ROOT, "install.sh"), "--target", plan.targets, "--prefix", home];
+  if (args.force) installArgs.push("--force");
+  if (args.dryRun) installArgs.push("--dry-run");
+  if (args.skipWebBuild) installArgs.push("--skip-web-build");
+
+  const run = spawnSync("bash", installArgs, { stdio: "inherit", env });
+  if (run.error) {
+    process.stderr.write(`meerkat-taskpanel: cannot run the installer: ${run.error.message}\n`);
+    return 1;
+  }
+  if (run.status !== 0) return run.status ?? 1;
+
+  if (plan.server && !args.dryRun) {
+    process.stdout.write(
+      `\nInstalled under ${serverRoot}\n` +
+        `  taskd:   ${join(serverRoot, "bin", "taskd")}\n` +
+        `  taskctl: ${join(serverRoot, "bin", "taskctl")}\n` +
+        `Add ${join(serverRoot, "bin")} to PATH, or use \`npm install -g meerkat-taskpanel\`.\n`,
+    );
+  }
+  return 0;
+}
+
+if (isEntryPoint(import.meta.url)) {
+  main(process.argv.slice(2)).then((code) => process.exit(code));
+}

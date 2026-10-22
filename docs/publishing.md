@@ -79,10 +79,30 @@ confirm.
 ## 2. npm
 
 The published tarball's contents are decided by the `files` whitelist in the root
-`package.json` — `src/`, `skills/`, `scripts/`, `docs/`, `install.sh`, `CHANGELOG.md`,
-`LICENSE` and the two READMEs. `web/`, `dist/` and the test/CI directories are **not** in it
-(the hosted board is a separate build; see
-[development.md](development.md#two-build-layers-engine-and-web)).
+`package.json` — `src/`, `skills/`, `scripts/`, `docs/`, `install.sh`, `web/dist`,
+`CHANGELOG.md`, `LICENSE` and the two READMEs. `web/dist` (the **built** frontend, produced
+by the image's `webbuild` stage) is included so the package is a runnable board; the rest of
+`web/`, `dist/` and the test/CI directories are **not**. See
+[development.md](development.md#two-build-layers-engine-and-web).
+
+> **`web/dist` needs `web/.npmignore`.** npm's packlist reads `.npmignore` in a directory
+> *instead of* `.gitignore`, and a `files` entry does not override either — verified against
+> npm itself. `web/.gitignore` ignores `dist/` (it is build output), so `web/.npmignore` must
+> stay present and must ignore nothing; without it `npm pack` silently ships no frontend and
+> the package would install an API-only server while every whitelist check still passed.
+> `test/verify/pack-manifest.test.mjs` pins both halves.
+
+The package is the **distribution**, not only a source drop. It declares three bins —
+`meerkat-taskpanel` (the installer), `taskctl` and `taskd` — so after a publish:
+
+```bash
+npx meerkat-taskpanel                      # install server + taskctl + host skills
+npm install -g meerkat-taskpanel           # taskctl / taskd / the installer on PATH
+```
+
+The installer materializes the runtime at `~/.meerkat-taskpanel` and never runs from inside
+the npx cache; see [install.md § Install methods](install.md#install-methods). Because the
+tarball carries `web/dist`, that install needs no build step and no network.
 
 **Precondition — already enabled.** The root manifest is publishable: it carries no
 `private` flag (the flag that makes `npm publish` refuse with `EPRIVATE`), and its
@@ -92,9 +112,10 @@ package, and it does run the `prepare` lifecycle script.
 
 **Not yet a live surface.** What gates a publish is registry state, not the manifest: the
 package **name** must be one you control and the **version** must not exist yet. The
-unscoped name `meerkat-taskpanel` is already taken on the public registry by an unrelated
-package, so a real `npm publish` is refused today and a release needs a name decision
-first — most likely a scope, which the `publishConfig.access` above already covers.
+unscoped name `meerkat-taskpanel` is this project's (the maintainer confirmed the
+ownership), so a publish needs no name decision; it is still refused until the release
+bump's version is free and the publishing machine is authenticated. `npx
+meerkat-taskpanel` becomes usable only once that publish has happened.
 
 Self-check — dry-run only; nothing below uploads anything:
 
@@ -137,8 +158,9 @@ and it is not evidence about any release published before then.
 
 The release pipeline is **tag-driven**: `.github/workflows/release.yml` runs on
 `push` of a tag matching `v*`. It re-runs the checks, builds the release tree
-(`node scripts/build.mjs`), packages and verifies the npm tarball, generates the SBOM, and
-opens a GitHub Release **draft** carrying both artifacts. It does **not** publish anywhere
+(`node scripts/build.mjs`), copies the image's built `web/dist` into the packaging tree so the
+tarball carries a runnable frontend, packages and verifies the npm tarball, generates the
+SBOM, and opens a GitHub Release **draft** carrying both artifacts. It does **not** publish anywhere
 automatically — the draft is for a human to review and publish, and the workflow holds no
 credential that could publish.
 

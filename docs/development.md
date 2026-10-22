@@ -242,6 +242,24 @@ writes it 0600. An inline `TASKD_TOKEN` requires that mode. The old
 `<dataDir>/taskd.env` is **no longer read** — this is a hard switch; move its
 keys into `.env`.
 
+**Which program root?** `.env` and `.data` resolve from the program that is running, so there
+are three roots in play and they are not interchangeable:
+
+| Root | Produced by | `.env` / `.data` |
+|---|---|---|
+| the checkout | `git clone` | `<checkout>/.env`, `<checkout>/.data` |
+| the container | `docker build` (program at `/app`) | `/app/.env`, `/app/.data` (the compose volume) |
+| the installed tree | `npx meerkat-taskpanel` or `install.sh --target server` | `~/.meerkat-taskpanel/.env`, `~/.meerkat-taskpanel/.data` |
+
+The installed tree is a copy of `src/**` plus the built `web/dist`, materialized by
+`scripts/install/lib/server-install.mjs`; `scripts/install/server.sh` is the shell entry, and
+the npm wrapper `scripts/install/cli.mjs` only translates flags and points a combined host
+install at the tree. `bin/taskd` and `bin/taskctl` are thin launchers that exec the tree's own
+`src/server/main.mjs` / `src/cli/index.mjs`, so the npx cache can be pruned and the checkout
+can move without disturbing an installed board. This is separate from `dist/`: that is the
+npm **release tree** written by `scripts/build.mjs`, while the tarball's runnable frontend is
+`web/dist` (see [publishing.md](publishing.md#2-npm)).
+
 Security-relevant environment variables:
 
 | Variable | Meaning |

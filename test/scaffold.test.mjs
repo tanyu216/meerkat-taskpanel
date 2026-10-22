@@ -164,13 +164,26 @@ describe("skill definition", () => {
 });
 
 describe("package manifest", () => {
-  it("exposes bin.taskctl and engines.node >= 22", async () => {
+  it("exposes the installer, taskctl and taskd as bins, and ships web/dist", async () => {
     const pkg = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
 
     assert.equal(pkg.type, "module");
     assert.ok(pkg.bin, "package.json must declare a bin");
-    assert.equal(pkg.bin.taskctl, "./src/cli/index.mjs");
-    assert.ok(existsSync(join(ROOT, pkg.bin.taskctl)), "bin target must exist");
+    for (const [name, target] of [
+      ["meerkat-taskpanel", "./scripts/install/cli.mjs"],
+      ["taskctl", "./src/cli/index.mjs"],
+      ["taskd", "./src/server/main.mjs"],
+    ]) {
+      assert.equal(pkg.bin[name], target, `bin.${name}`);
+      const entry = join(ROOT, target);
+      assert.ok(existsSync(entry), `bin.${name} target must exist`);
+      assert.match(readFileSync(entry, "utf8"), /^#!\/usr\/bin\/env node\n/, `bin.${name} needs a shebang`);
+      assert.ok(
+        (statSync(entry).mode & 0o111) !== 0,
+        `bin.${name} must be executable (\`chmod +x\`)`,
+      );
+    }
+    assert.ok(pkg.files.includes("web/dist"), "the packaged server needs the built frontend");
 
     const range = String(pkg.engines?.node ?? "");
     const major = Number(range.match(/\d+/)?.[0]);
@@ -199,7 +212,7 @@ describe("install.sh", () => {
   it("documents every --target value and supports --dry-run", async () => {
     const script = await readFile(join(ROOT, "install.sh"), "utf8");
 
-    for (const target of ["claude", "openclaw", "codex", "pi", "opencode", "cursor", "all"]) {
+    for (const target of ["claude", "openclaw", "codex", "pi", "opencode", "cursor", "server", "all"]) {
       assert.ok(script.includes(target), `install.sh must mention target "${target}"`);
     }
 
@@ -231,6 +244,28 @@ describe("install.sh", () => {
     }
     assert.equal(existsSync(join(fakeHome, ".claude")), false, "dry run must not write");
     assert.equal(existsSync(join(fakeHome, ".agents")), false, "dry run must not write");
+  });
+
+  it("--target server --dry-run prints the runtime tree and creates nothing", async () => {
+    const fakeHome = await makeTempDir();
+    const run = spawnSync(
+      "bash",
+      [join(ROOT, "install.sh"), "--target", "server", "--dry-run", "--skip-node-check", "--skip-web-build"],
+      {
+        cwd: ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          MEERKAT_TASKPANEL_TARGET_HOME: fakeHome,
+          MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+        },
+      },
+    );
+    assert.equal(run.status, 0, run.stderr);
+    const tree = join(fakeHome, ".meerkat-taskpanel");
+    assert.ok(run.stdout.includes(tree), "dry run must print the server root");
+    assert.ok(run.stdout.includes(join(tree, "bin", "taskd")), "dry run must print the launchers");
+    assert.equal(existsSync(tree), false, "dry run must not write the tree");
   });
 
   it("installs into a temp home and re-installs idempotently", async () => {

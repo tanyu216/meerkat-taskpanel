@@ -11,7 +11,9 @@
     "access": "public"
   },
   "bin": {
-    "taskctl": "./src/cli/index.mjs"
+    "meerkat-taskpanel": "./scripts/install/cli.mjs",
+    "taskctl": "./src/cli/index.mjs",
+    "taskd": "./src/server/main.mjs"
   },
   "engines": {
     "node": ">=22"
@@ -27,6 +29,7 @@
   "files": [
     "src",
     "skills",
+    "web/dist",
     ".claude-plugin",
     ".pi",
     ".opencode",

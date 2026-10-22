@@ -59,10 +59,12 @@ jobs:
       - name: Extract web/dist from the webbuild stage
         run: |
           cid="$(docker create meerkat-taskpanel:webbuild)"
-          docker cp "$cid:/app/web/dist" ./web-dist
+          # Put the build where the `files` whitelist expects it: the npm
+          # tarball is the installable server, so it must carry the frontend.
+          docker cp "$cid:/app/web/dist" ./web/dist
           docker rm "$cid"
-          test -f ./web-dist/index.html
-          echo "web/dist: $(find ./web-dist -type f | wc -l) files"
+          test -f ./web/dist/index.html
+          echo "web/dist: $(find ./web/dist -type f | wc -l) files"
 
       - name: Build the verification image (same tag as check.yml)
         run: docker build -f docker/Dockerfile -t meerkat-taskpanel:verify .

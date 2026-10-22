@@ -12,7 +12,13 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
@@ -87,6 +93,74 @@ describe("install.sh: targets", () => {
     const run = runInstall(["--target", "emacs"]);
     assert.equal(run.status, 2);
     assert.match(run.stderr, /invalid --target: emacs/);
+    assert.match(run.stderr, /server/, "the expected list names server");
+  });
+
+  it("installs the runtime tree for --target server and no host", () => {
+    const home = makeTempDir();
+    const run = runInstall(
+      ["--target", "server", "--prefix", home],
+      { MEERKAT_TASKPANEL_SKIP_WEB_BUILD: "1" },
+    );
+
+    assert.equal(run.status, 0, run.stderr);
+    const tree = join(home, ".meerkat-taskpanel");
+    assert.ok(existsSync(join(tree, "src", "server", "main.mjs")));
+    assert.ok(existsSync(join(tree, "src", "core", "storage", "migrations", "0001_core_tables.sql")));
+    assert.ok(existsSync(join(tree, "bin", "taskd")));
+    assert.ok(existsSync(join(tree, "bin", "taskctl")));
+    assert.ok(existsSync(join(tree, ".env")));
+    assert.ok(existsSync(join(tree, ".data")));
+    assert.match(run.stdout, new RegExp(`OK   server — ${tree.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    for (const hostDir of [".claude", ".openclaw", ".codex", ".agents", ".config/opencode", ".cursor"]) {
+      assert.equal(existsSync(join(home, hostDir)), false, `${hostDir} must not be installed`);
+    }
+  });
+
+  it("--target server,claude is server-first and points the host shim at the tree", () => {
+    const home = makeTempDir();
+    const run = runInstall(
+      ["--target", "server,claude", "--prefix", home],
+      { MEERKAT_TASKPANEL_SKIP_WEB_BUILD: "1" },
+    );
+    assert.equal(run.status, 0, run.stderr);
+    const tree = join(home, ".meerkat-taskpanel");
+
+    const serverAt = run.stdout.indexOf("OK   server");
+    const claudeAt = run.stdout.indexOf("OK   claude");
+    assert.ok(serverAt !== -1 && claudeAt !== -1);
+    assert.ok(serverAt < claudeAt, "the server must be materialized before the host");
+
+    const shim = readFileSync(join(home, ".claude", "bin", "taskctl"), "utf8");
+    assert.ok(shim.includes(join(tree, "src", "cli", "index.mjs")), "the shim drives the installed tree");
+    const config = readFileSync(join(home, ".claude", "meerkat-taskpanel.env"), "utf8");
+    assert.match(config, new RegExp(`MEERKAT_TASKPANEL_REPO=${tree.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.match(readFileSync(join(tree, ".env"), "utf8"), /TASKD_ACCEPTANCE_POLICY=both/);
+  });
+
+  it("--target all stays host-only and never creates the server tree", () => {
+    const home = makeTempDir();
+    const run = runInstall(["--target", "all", "--prefix", home]);
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(existsSync(join(home, ".meerkat-taskpanel")), false);
+  });
+
+  it("--target server --link warns and still copies a real directory", () => {
+    const home = makeTempDir();
+    const run = runInstall(
+      ["--target", "server", "--prefix", home, "--link"],
+      { MEERKAT_TASKPANEL_SKIP_WEB_BUILD: "1" },
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stderr, /--link does not apply to the server target/);
+    const tree = join(home, ".meerkat-taskpanel");
+    assert.equal(lstatSync(tree).isSymbolicLink(), false);
+  });
+
+  it("rejects --supervisor-hosts server with a usage error", () => {
+    const run = runInstall(["--target", "server", "--supervisor-hosts", "server", "--dry-run"]);
+    assert.equal(run.status, 2);
+    assert.match(run.stderr, /--supervisor-hosts server/);
   });
 });
 

@@ -54,6 +54,9 @@ bash install.sh --target all --dry-run
 step "skill install profiles (all six hosts, throwaway home)"
 node scripts/verify/profiles.mjs
 
+step "server install (npm/npx + source, throwaway home; tree + launchers + /health)"
+node scripts/verify/server-install.mjs
+
 step "host runtime claim path (offline mock harness: hook / trigger / wake scripts)"
 node scripts/verify/host-runtime.mjs
 

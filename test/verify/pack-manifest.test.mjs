@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { gzipSync } from "node:zlib";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
@@ -75,6 +75,7 @@ function buildTarball(files) {
 const FILES_WHITELIST = [
   "src",
   "skills",
+  "web/dist",
   "plugins",
   ".claude-plugin",
   ".pi",
@@ -157,12 +158,12 @@ describe("pack-manifest — checkManifest", () => {
 
   it("reports a file outside the whitelist", () => {
     const entries = parseTar(
-      maybeGunzip(goodTarball([{ path: "package/web/dist/index.html", body: "<!doctype html>" }])),
+      maybeGunzip(goodTarball([{ path: "package/test/leak.test.mjs", body: "// test\n" }])),
     );
     const result = checkManifest(entries, PACKAGE_JSON);
     assert.equal(result.ok, false);
     assert.deepEqual(result.missing, []);
-    assert.deepEqual(result.leaked, ["web/dist/index.html"]);
+    assert.deepEqual(result.leaked, ["test/leak.test.mjs"]);
   });
 
   it("always allows package.json, README, LICENSE even when `files` omits them", () => {
@@ -208,5 +209,24 @@ describe("pack-manifest — the CLI", () => {
     const result = runCli([file]);
     assert.equal(result.status, 2);
     assert.match(result.stderr, /cannot read/);
+  });
+});
+
+describe("pack-manifest — web/dist survives npm pack", () => {
+  // npm's packlist reads `.npmignore` in a directory *instead of* `.gitignore`, and a `files`
+  // whitelist entry does not override either — verified against npm's own packlist. `web/`
+  // gitignores `dist/` because it is build output, so without a nested `.npmignore` the
+  // published tarball would carry no frontend and `npx meerkat-taskpanel` would install an
+  // API-only server while every check above still passed.
+  it("keeps a nested .npmignore that ignores nothing", async () => {
+    const gitignore = await readFile(join(ROOT, "web", ".gitignore"), "utf8");
+    assert.match(gitignore, /^dist\/$/m, "web/.gitignore ignores the build output");
+
+    const npmignore = await readFile(join(ROOT, "web", ".npmignore"), "utf8");
+    const active = npmignore
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("#"));
+    assert.deepEqual(active, [], "web/.npmignore must not ignore anything — web/dist has to reach the tarball");
   });
 });

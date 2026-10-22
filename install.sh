@@ -7,15 +7,17 @@
 # through MEERKAT_TASKPANEL_* environment variables.
 #
 # Usage:
-#   install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <home>]
+#   install.sh [--target claude|openclaw|codex|pi|opencode|cursor|server|all] [--prefix <home>]
 #              [--agent-name <name>] [--no-automation]
 #              [--claim-unassigned=yes|no] [--assignee-only]
 #              [--supervisor=enable|disable|status] [--supervisor-hosts <list>]
 #              [--scheduler auto|launchd|systemd|cron]
-#              [--link] [--force] [--dry-run] [--skip-node-check] [-h|--help]
+#              [--link] [--force] [--dry-run] [--skip-node-check] [--skip-web-build] [-h|--help]
 #
 # `--target` also accepts a comma-separated list (e.g. `--target claude,codex`).
-# Default target is "all".
+# Default target is "all" (the six hosts). `server` materializes the runtime tree at
+# <home>/.meerkat-taskpanel; `all` does not include it, so a full install is
+# `--target all,server`.
 #
 # It also asks (when stdin is a TTY and no flag was given) whether the supervisor
 # may claim **unassigned** cards, and persists the answer as
@@ -74,17 +76,22 @@ LINK=""
 FORCE=""
 DRY_RUN=""
 SKIP_NODE_CHECK=""
+SKIP_WEB_BUILD=""
 
 usage() {
   cat <<'EOF'
 Usage: install.sh [options]
 
-Install the Meerkat TaskPanel skills into one or more agent hosts.
+Install the Meerkat TaskPanel skills into one or more agent hosts, and
+optionally the server runtime tree.
 
 Options:
-  --target <host>   claude | openclaw | codex | pi | opencode | cursor | all
+  --target <host>   claude | openclaw | codex | pi | opencode | cursor | server | all
                     (default: all)
                     A comma-separated list is also accepted (claude,codex).
+                    `server` materializes the runtime at <home>/.meerkat-taskpanel
+                    and provides bin/taskd + bin/taskctl; it is NOT part of `all`.
+                    Use `--target all,server` for a full source install.
   --prefix <home>   Install relative to <home> instead of $HOME
   --agent-name <n>  Agent identity written into the host bundle (default: $USER)
   --no-automation   Skip the Codex claim trigger and scheduling units
@@ -145,8 +152,9 @@ Options:
                     macOS, systemd --user on Linux, cron elsewhere). Only one
                     mechanism may be loaded per host.
   --link            Symlink the skill instead of copying it (board skill only)
-  --force           Overwrite an existing installation
+  --force           Overwrite an existing installation (never .env or .data)
   --dry-run         Print the destination paths and change nothing
+  --skip-web-build  Never try to build web/dist; a server install is API-only if absent
   --skip-node-check Do not require Node (bypass the >= 22 runtime check)
   -h, --help        Show this help
 
@@ -249,7 +257,14 @@ install_taskd_guard() {
 
   force_flag=""
   [ -n "$FORCE" ] && force_flag="--force"
-  node "$ROOT/scripts/install/lib/taskd-guard.mjs" install --prefix "$TARGET_HOME" $force_flag
+  if [ "$SERVER_INSTALLED" = "1" ]; then
+    # The keepalive runs the installed tree, and pins its data dir so the
+    # one-guard-per-machine comparison sees a distinct board.
+    node "$ROOT/scripts/install/lib/taskd-guard.mjs" install --prefix "$TARGET_HOME" \
+      --root "$SERVER_ROOT" --data-dir "$SERVER_ROOT/.data" $force_flag
+  else
+    node "$ROOT/scripts/install/lib/taskd-guard.mjs" install --prefix "$TARGET_HOME" $force_flag
+  fi
 }
 
 while [ "$#" -gt 0 ]; do
@@ -434,6 +449,10 @@ while [ "$#" -gt 0 ]; do
       SKIP_NODE_CHECK="1"
       shift
       ;;
+    --skip-web-build)
+      SKIP_WEB_BUILD="1"
+      shift
+      ;;
     -h | --help)
       usage
       exit 0
@@ -488,11 +507,11 @@ for raw in $TARGET; do
       add_host opencode
       add_host cursor
       ;;
-    claude | openclaw | codex | pi | opencode | cursor)
+    claude | openclaw | codex | pi | opencode | cursor | server)
       add_host "$entry"
       ;;
     *)
-      die "invalid --target: $entry (expected claude|openclaw|codex|pi|opencode|cursor|all)"
+      die "invalid --target: $entry (expected claude|openclaw|codex|pi|opencode|cursor|server|all)"
       ;;
   esac
 done
@@ -509,6 +528,34 @@ DRY_RUN="${DRY_RUN:-${MEERKAT_TASKPANEL_DRY_RUN:-}}"
 # bypass would skip nothing. (The pre-rename TASKPANEL_NO_AUTOMATION needs no line here:
 # `_common.sh` still normalises it inside each host installer.)
 NO_AUTOMATION="${NO_AUTOMATION:-${MEERKAT_TASKPANEL_NO_AUTOMATION:-}}"
+SKIP_WEB_BUILD="${SKIP_WEB_BUILD:-${MEERKAT_TASKPANEL_SKIP_WEB_BUILD:-}}"
+
+# The server target is the runtime tree at <home>/.meerkat-taskpanel. When it is
+# selected, the host skills must drive *that* tree, not the checkout/package they
+# were copied from; host-only installs leave both defaults alone.
+SERVER_ROOT="$TARGET_HOME/.meerkat-taskpanel"
+HAS_HOST_TARGET=0
+SERVER_SELECTED=0
+SERVER_INSTALLED=""
+for host in $HOSTS; do
+  if [ "$host" = "server" ]; then
+    SERVER_SELECTED=1
+  else
+    HAS_HOST_TARGET=1
+  fi
+done
+
+if [ "$SERVER_SELECTED" = "1" ]; then
+  # server first: the host shims and loop config name the tree, so it must exist
+  # before any host installer writes them.
+  OLD_HOSTS="$HOSTS"
+  HOSTS=" server "
+  for host in $OLD_HOSTS; do
+    [ "$host" = "server" ] || HOSTS="$HOSTS$host "
+  done
+  export MEERKAT_TASKPANEL_REPO="$SERVER_ROOT"
+  export MEERKAT_TASKPANEL_ENV_FILE="$SERVER_ROOT/.env"
+fi
 
 # Resolve the "allow claiming unassigned tasks?" policy (per-host config default).
 # An explicit flag wins; else the environment; else ask on a TTY (default yes) —
@@ -601,6 +648,9 @@ if [ -n "$SUPERVISOR_HOSTS_FLAG" ]; then
       openclaw)
         die "--supervisor-hosts openclaw: OpenClaw has no meerkat-loop supervisor to enable (it runs openclaw-team's own poll/patrol — see docs/scheduling.md)"
         ;;
+      server)
+        die "--supervisor-hosts server: the server target has no meerkat-loop supervisor (the taskd guard is separate)"
+        ;;
       *) die "invalid --supervisor-hosts: $entry (expected claude|codex|pi|opencode|cursor)" ;;
     esac
   done
@@ -624,9 +674,13 @@ if [ -n "$DRY_RUN" ]; then
   echo "install.sh: dry run — no files will be changed"
 fi
 
-# One install-root config file, shared by taskd and taskctl. Called once, not per
-# host; never overwrites an existing file (it may hold a token).
-seed_env_file
+# One config file for the hosts. Called once, not per host; never overwrites an
+# existing file (it may hold a token). A server-only install lets server.sh seed
+# the tree's own `.env`; a full install seeds that same path via the exported
+# MEERKAT_TASKPANEL_ENV_FILE above.
+if [ "$HAS_HOST_TARGET" = "1" ]; then
+  seed_env_file
+fi
 
 status=0
 summary=""
@@ -669,9 +723,16 @@ FAIL $host — installer not found"
       MEERKAT_TASKPANEL_FORCE="$FORCE" \
       MEERKAT_TASKPANEL_DRY_RUN="$DRY_RUN" \
       MEERKAT_TASKPANEL_SKIP_NODE_CHECK="1" \
+      MEERKAT_TASKPANEL_SKIP_WEB_BUILD="$SKIP_WEB_BUILD" \
       bash "$installer"; then
-    summary="$summary
+    if [ "$host" = "server" ]; then
+      SERVER_INSTALLED=1
+      summary="$summary
+OK   server — $SERVER_ROOT"
+    else
+      summary="$summary
 OK   $host — $TARGET_HOME"
+    fi
   else
     summary="$summary
 FAIL $host — see the message above (re-run with --force to overwrite an existing install)"
@@ -717,10 +778,14 @@ if [ "$ACCEPTANCE" = "agent-only" ]; then
   fi
 fi
 
+acceptance_env=()
+if [ -n "${MEERKAT_TASKPANEL_ENV_FILE:-}" ]; then
+  acceptance_env=(--env-file "$MEERKAT_TASKPANEL_ENV_FILE")
+fi
 if [ -n "$DRY_RUN" ]; then
-  echo "install.sh: would write TASKD_ACCEPTANCE_POLICY=$ACCEPTANCE to the install-root .env"
+  echo "install.sh: would write TASKD_ACCEPTANCE_POLICY=$ACCEPTANCE to ${MEERKAT_TASKPANEL_ENV_FILE:-the install-root .env}"
 else
-  if ! node "$ROOT/scripts/install/lib/acceptance.mjs" write --policy "$ACCEPTANCE"; then
+  if ! node "$ROOT/scripts/install/lib/acceptance.mjs" write --policy "$ACCEPTANCE" ${acceptance_env[@]+"${acceptance_env[@]}"}; then
     echo "install.sh: could not write the board's acceptance policy (see above)" >&2
     status=1
   fi

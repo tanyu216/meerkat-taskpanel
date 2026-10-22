@@ -121,8 +121,8 @@ meerkat-taskpanel/
 ├── README.md / README.zh-CN.md   # docs (English default, Chinese mirror)
 ├── CHANGELOG.md / CONTRIBUTING.md
 ├── LICENSE / PRIVACY.md
-├── package.json                  # workspace root, bin(taskctl), scripts
-├── install.sh                    # install dispatcher: --target claude|openclaw|codex|pi|opencode|cursor|all
+├── package.json                  # workspace root, bin(meerkat-taskpanel/taskctl/taskd), scripts
+├── install.sh                    # install dispatcher: --target claude|openclaw|codex|pi|opencode|cursor|server|all
 ├── src/                          # engineering source
 │   ├── core/                     #   domain model / SQLite repo / state machine / invariants / md export
 │   ├── cli/                      #   taskctl (CLI entry)
@@ -158,13 +158,47 @@ meerkat-taskpanel/
   when the frontend is built. The shipped artefact is the static `web/dist` that `taskd`
   serves; nothing from that toolchain reaches the runtime.
 
-## Install
+## Quick install (npm/npx)
 
 ```bash
-bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|all
+# Server + taskctl + all six host skills, in one command.
+npx meerkat-taskpanel
+
+# Or install the package globally, then run its installer whenever needed.
+npm install -g meerkat-taskpanel
+meerkat-taskpanel install
+
+# Narrow the install:
+npx meerkat-taskpanel install --target server         # server + taskctl only
+npx meerkat-taskpanel install --target claude,codex   # server + those hosts
+npx meerkat-taskpanel install --no-server             # host skills only
 ```
 
-Default target is `all`. The dispatcher forwards to `scripts/install/<host>.sh`, which
+The installer materializes the runtime at `~/.meerkat-taskpanel/` — `src/`, the built
+`web/dist`, `bin/taskd`, `bin/taskctl`, one `.env` and `.data`. Add
+`~/.meerkat-taskpanel/bin` to `PATH`, or use the global npm install. `npx` needs the
+package to be published; `--prefix <home>` relocates the tree, and `--force` /
+`--dry-run` behave as in the source installer.
+
+### From a source checkout
+
+The same installer runs from the repository, without npm:
+
+```bash
+bash install.sh --target all,server   # server + the six host skills
+bash install.sh --target server       # server + taskctl only
+bash install.sh --target all          # host skills only (no server)
+```
+
+## Host install details
+
+```bash
+bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all
+```
+
+Default target is `all` (the six hosts); the server runtime is the separate `server`
+target — combine them as `all,server` for a full source install. The dispatcher forwards to
+`scripts/install/<host>.sh`, which
 installs the skill into each host's skill directory — and, for **Claude Code** and
 **Codex**, the rest of the host bundle: the host config
 (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude) or a claim

@@ -84,7 +84,7 @@ meerkat-taskpanel/
 ├── CHANGELOG.md / CONTRIBUTING.md
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # 工作区根 + bin(taskctl) + scripts
-├── install.sh                    # 安装分发器：--target claude|openclaw|codex|pi|opencode|cursor|all
+├── install.sh                    # 安装分发器：--target claude|openclaw|codex|pi|opencode|cursor|server|all
 ├── src/                          # 工程源码
 │   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量 / md 导出
 │   ├── cli/                      #   taskctl（CLI 出口）
@@ -117,13 +117,45 @@ meerkat-taskpanel/
   在构建前端时从随仓库提交的 `web/.vendor/npm-cache` 离线安装。交付产物是 `taskd` 所
   提供的静态 `web/dist`；该工具链不会进入运行时。
 
-## 安装
+## 快速安装（npm/npx）
 
 ```bash
-bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|all
+# 一条命令：server + taskctl + 六个 host 的 skills
+npx meerkat-taskpanel
+
+# 或全局安装，之后随时运行安装器
+npm install -g meerkat-taskpanel
+meerkat-taskpanel install
+
+# 缩小范围
+npx meerkat-taskpanel install --target server         # 只装 server + taskctl
+npx meerkat-taskpanel install --target claude,codex   # server + 指定 host
+npx meerkat-taskpanel install --no-server             # 只装 host skills
 ```
 
-默认 target 为 `all`。分发器转发到 `scripts/install/<host>.sh`，把 skill 安装到各宿主的
+安装器会把运行时 materialize 到 `~/.meerkat-taskpanel/`：`src/`、构建好的 `web/dist`、
+`bin/taskd`、`bin/taskctl`、一份 `.env` 与 `.data`。把 `~/.meerkat-taskpanel/bin` 加入
+`PATH`，或使用全局 npm 安装。`npx` 需要包已发布；`--prefix <home>` 可改安装根，
+`--force` / `--dry-run` 与源码安装一致。
+
+### 从源码 checkout 安装
+
+同一个安装器也可直接从仓库运行，不依赖 npm：
+
+```bash
+bash install.sh --target all,server   # server + 六个 host 的 skills
+bash install.sh --target server       # 只装 server + taskctl
+bash install.sh --target all          # 只装 host skills（不装 server）
+```
+
+## 安装（宿主细节）
+
+```bash
+bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all
+```
+
+默认 target 为 `all`（六个 host）；server 运行时是独立的 `server` target，需要全量源码安装时
+写成 `all,server`。分发器转发到 `scripts/install/<host>.sh`，把 skill 安装到各宿主的
 skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 的其余部分：
 宿主配置（`~/.claude/settings.json` / `~/.codex/AGENTS.md`）、slash 命令（Claude）或认领
 触发脚本（Codex），以及固定身份用的 `taskctl` 包装脚本。所有 bundle 写入均为**合并式且

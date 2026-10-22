@@ -9,6 +9,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The package is the distribution: `npx meerkat-taskpanel` installs the server, `taskctl`
+  and the host skills.** The root manifest now declares `meerkat-taskpanel` (the installer),
+  `taskd` and `taskctl` as bins, and its `files` whitelist carries the built `web/dist`, so
+  the published tarball is a runnable board rather than a source drop; the release workflow
+  stages the image's build there before `npm pack`. `npx meerkat-taskpanel` (or
+  `meerkat-taskpanel install`) defaults to `--target server,all`: it materializes the runtime
+  at `~/.meerkat-taskpanel` — `src/**`, `web/dist`, `bin/taskd`, `bin/taskctl`, a `.env` and
+  `.data` — then installs the six host skills. `--target server`, `--target claude,codex`,
+  `--no-server`, `--prefix`, `--force`, `--dry-run` and `--skip-web-build` narrow or steer it.
+  The tree is self-locating: the launchers exec the tree's own `src/`, so it survives the
+  checkout moving or the npx cache being pruned, and a combined install points the host
+  shims, loop config and `taskd` guard unit (`TASKD_DATA_DIR` pinned) at it instead of the
+  checkout. Both entry points share one materializer (`scripts/install/lib/server-install.mjs`,
+  invoked by `scripts/install/server.sh`); the source path adds `install.sh --target server`
+  and `--target all,server`, and `all` alone still means the six hosts. `.env` and `.data` are
+  never overwritten, pruned or deleted — not even by `--force`. A container-only
+  `scripts/verify/server-install.mjs` step installs through both entry points into throwaway
+  homes and proves the installed `bin/taskd` answers `/health`. Docs, both READMEs and
+  `docs/publishing.md`'s stale "name is taken" / "no `web/` in the tarball" claims are updated.
 - **Per-project review policy and per-card review decision (migration `0031`).** A project
   now carries `review_policy` (`required` / `optional` / `off`, default `optional`) and an
   optional `reviewer` override; a card carries a `review_required` snapshot resolved at

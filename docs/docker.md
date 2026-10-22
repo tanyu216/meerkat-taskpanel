@@ -21,6 +21,14 @@ pinned by the committed `web/package-lock.json` and restored **offline** from th
 committed at `web/.vendor/npm-cache`, and only the static `web/dist` crosses into the
 runtime image. See [The web build stage](#the-web-build-stage).
 
+**Docker is not the distribution path.** The user-facing install is `npx meerkat-taskpanel`
+(or `install.sh --target server`) on the user's own machine, which materializes the runtime
+at `~/.meerkat-taskpanel` — see [install.md § Install methods](install.md#install-methods).
+The container keeps its own layout (`/app`, with `/app/.data` as the compose volume) and the
+install tree never enters the image. What the container gate checks is the *installer*: step
+8 below runs both entry points against a throwaway home, the same rule as every other
+install.
+
 ## Prerequisites
 
 | Requirement | Notes |
@@ -302,6 +310,7 @@ check belongs. Its steps, in order:
 
 | Step | Command |
 |---|---|
+| 0 | `node scripts/verify/web-dist.mjs --require=bundle` (frontend coverage verdict) |
 | 1 | `node --test` |
 | 2 | `npm run test:coverage` (the line/branch/function floors) |
 | 3 | `npm run check` (skill sync, manifests, skill definition, tests) |
@@ -309,16 +318,21 @@ check belongs. Its steps, in order:
 | 5 | `node scripts/verify/route-request.mjs` (declared request schema vs handler reads) |
 | 6 | `bash install.sh --target all --dry-run` |
 | 7 | `node scripts/verify/profiles.mjs` (every host, throwaway home) |
-| 8 | `node scripts/verify/host-runtime.mjs` (offline host-runtime harness) |
-| 9 | `bash scripts/verify/install-e2e.sh` (install + first-run end-to-end) |
+| 8 | `node scripts/verify/server-install.mjs` (npm/npx and source server install, launchers, `/health`) |
+| 9 | `node scripts/verify/host-runtime.mjs` (offline host-runtime harness) |
+| 10 | `bash scripts/verify/install-e2e.sh` (install + first-run end-to-end) |
 
 Each step prints an `== ... ==` header and the script aborts on the first failure.
 
-> Steps 7 and 9 are the two that install into throwaway homes. Step 9 is the deepest —
-> it also drives the real `taskctl` against a real `taskd` — and it is the reason
-> `npm run verify:docker` and the CI `docker` job can no longer disagree: it used to live
-> only in CI, as a separate `docker run` *after* this script, so the two tracks diverged
-> and the local command could be green while CI was red. See [CI](#ci).
+> Steps 7, 8 and 10 install into throwaway homes. Step 8 materializes the server tree at a
+> temporary `--prefix`, drives both entry points (`scripts/install/cli.mjs`, which is what
+> `npx` runs, and `install.sh --target server`), and finally starts the installed
+> `bin/taskd` on an ephemeral port to prove `/health` — so it is container-only, because it
+> starts a real board. Step 10 is the deepest — it also drives the real `taskctl` against a
+> real `taskd` — and it is the reason `npm run verify:docker` and the CI `docker` job can no
+> longer disagree: it used to live only in CI, as a separate `docker run` *after* this
+> script, so the two tracks diverged and the local command could be green while CI was red.
+> See [CI](#ci).
 
 ## Profiles
 

@@ -154,9 +154,12 @@ function templatesRoot() {
  */
 export function guardPaths(options = {}) {
   const prefix = resolve(options.prefix ?? homedir());
-  const root = options.repoRoot ?? repoRoot();
+  // `root` is the program tree the unit runs. The default is this checkout (or
+  // npm package); a server install passes the materialized tree instead.
+  const root = resolve(options.root ?? options.repoRoot ?? repoRoot());
   const env = options.env ?? process.env;
-  const dataDir = resolveDataDir({ env });
+  const explicitDataDir = typeof options.dataDir === "string" && options.dataDir.trim() !== "";
+  const dataDir = explicitDataDir ? resolve(options.dataDir) : resolveDataDir({ env });
   const node = resolve(options.node ?? process.execPath);
 
   return {
@@ -164,6 +167,10 @@ export function guardPaths(options = {}) {
     root,
     env,
     dataDir,
+    // An explicit data dir is written into the unit: it is what makes the
+    // installed tree's guard distinguishable from an unpinned checkout guard in
+    // the one-guard-per-machine comparison.
+    pinDataDir: explicitDataDir,
     node,
     nodeDir: dirname(node),
     serverEntry: join(root, "src", "server", "main.mjs"),
@@ -211,9 +218,12 @@ export function unitEnv(options = {}) {
   const env = options.env ?? process.env;
   const entries = [];
 
-  const dataDir = env[DATA_DIR_ENV];
+  // A pinned data dir is written even when the operator's environment did not
+  // set one: it is the installed tree's board, not the default board.
+  const pinned = options.pinDataDir === true ? options.dataDir : null;
+  const dataDir = pinned ?? env[DATA_DIR_ENV];
   if (typeof dataDir === "string" && dataDir.trim() !== "") {
-    entries.push([DATA_DIR_ENV, resolve(options.dataDir ?? resolveDataDir({ env }))]);
+    entries.push([DATA_DIR_ENV, resolve(pinned ?? options.dataDir ?? resolveDataDir({ env }))]);
   }
   const pointer = env[RUNTIME_POINTER_ENV];
   if (typeof pointer === "string" && pointer.trim() !== "") {
@@ -249,7 +259,12 @@ export function plistEnvBlock(entries) {
  * @returns {Record<string, string>}
  */
 export function unitVars(paths) {
-  const injected = unitEnv({ env: paths.env, dataDir: paths.dataDir, pointerFile: paths.pointerFile });
+  const injected = unitEnv({
+    env: paths.env,
+    dataDir: paths.dataDir,
+    pointerFile: paths.pointerFile,
+    pinDataDir: paths.pinDataDir,
+  });
   return {
     NODE: paths.node,
     SERVER_ENTRY: paths.serverEntry,
@@ -787,11 +802,13 @@ function waitForPid(plan, run, budgetMs) {
   }
 }
 
-const USAGE = `Usage: node scripts/install/lib/taskd-guard.mjs install --prefix <dir> [--force]
+const USAGE = `Usage: node scripts/install/lib/taskd-guard.mjs install --prefix <dir> [--root <tree>] [--data-dir <dir>] [--force]
 
 Writes the taskd keepalive unit (launchd + systemd) under
 <dir>/taskpanel/scheduling/, then loads this platform's one, waits for its
 board to answer /health, and reports what happened.
+--root names the program tree the unit runs (default: this checkout);
+--data-dir pins TASKD_DATA_DIR in the unit (used by --target server).
 Called by install.sh; not meant to be run by hand.
 
 Exit 0 even when the unit could not be loaded (the report says so, and the
@@ -812,12 +829,26 @@ async function main() {
   }
 
   let prefix = null;
+  let root = null;
+  let dataDir = null;
   let force = false;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--prefix") {
       prefix = argv[++i];
       if (prefix === undefined) {
         process.stderr.write("taskd-guard: --prefix requires a value\n");
+        return 2;
+      }
+    } else if (argv[i] === "--root") {
+      root = argv[++i];
+      if (root === undefined) {
+        process.stderr.write("taskd-guard: --root requires a value\n");
+        return 2;
+      }
+    } else if (argv[i] === "--data-dir") {
+      dataDir = argv[++i];
+      if (dataDir === undefined) {
+        process.stderr.write("taskd-guard: --data-dir requires a value\n");
         return 2;
       }
     } else if (argv[i] === "--force") {
@@ -836,7 +867,7 @@ async function main() {
   // first — so it leaves the subcommand with a code of its own (`exitCode`). `install.sh`
   // already treats a non-zero guard step as non-fatal (it prints the line above and
   // carries on, `install.sh:488-495`), which keeps this out of the install's own status.
-  return exitCode(await installGuard({ prefix, force }));
+  return exitCode(await installGuard({ prefix, force, root, dataDir }));
 }
 
 /**

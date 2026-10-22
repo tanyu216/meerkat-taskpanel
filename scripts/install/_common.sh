@@ -254,7 +254,10 @@ export_tp_env() {
   label="$2"
   TP_AGENT="$(agent_name)"
   TP_HUMAN="$(human_name)"
-  TP_REPO="$(repo_root)"
+  # A full server install materializes the runtime tree; the host shims and the
+  # loop must drive *that* tree, not the npm cache / checkout they were copied
+  # from. Host-only installs leave the override unset and keep the old behavior.
+  TP_REPO="${MEERKAT_TASKPANEL_REPO:-$(repo_root)}"
   TP_SHIM="$(target_home)/$host_dir/bin/taskctl"
   TP_HOOK="$(target_home)/$host_dir/hooks/meerkat-taskpanel-session-start.sh"
   TP_TRIGGER="$(target_home)/$host_dir/meerkat-taskpanel-claim.sh"
@@ -742,16 +745,20 @@ ensure_env_key() {
 # `MEERKAT_TASKPANEL_ENV_FILE` overrides the path (tests, containers, a read-only
 # package root).
 seed_env_file() {
-  env_file="${MEERKAT_TASKPANEL_ENV_FILE:-$ROOT/.env}"
+  if [ "$#" -ge 1 ] && [ -n "$1" ]; then
+    env_file="$1"
+  else
+    env_file="${MEERKAT_TASKPANEL_ENV_FILE:-$(repo_root)/.env}"
+  fi
   case "$env_file" in
     /*) ;;
-    *) env_file="$ROOT/$env_file" ;;
+    *) env_file="$(repo_root)/$env_file" ;;
   esac
-  template="$ROOT/scripts/install/templates/env.example"
+  template="$(repo_root)/scripts/install/templates/env.example"
 
   # The old board file is no longer read (hard switch). Say so, but do not touch
   # it: a human may still want to move its keys by hand.
-  legacy_dir="${TASKD_DATA_DIR:-$ROOT/.data}"
+  legacy_dir="${TASKD_DATA_DIR:-$(repo_root)/.data}"
   if [ -f "$legacy_dir/taskd.env" ]; then
     echo "install.sh: note: $legacy_dir/taskd.env is no longer read; move its keys into $env_file" >&2
   fi

@@ -902,6 +902,7 @@ describe("static: verify-in-container.sh", () => {
     assert.match(text, /npm run check/);
     assert.match(text, /install\.sh --target all --dry-run/);
     assert.match(text, /scripts\/verify\/profiles\.mjs/);
+    assert.match(text, /^node scripts\/verify\/server-install\.mjs$/m);
   });
 
   it("runs the install + first-run end-to-end, so local and CI cover the same ground", async () => {

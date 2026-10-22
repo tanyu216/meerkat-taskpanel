@@ -1,7 +1,7 @@
 # Installation
 
-Meerkat TaskPanel ships as **two Agent Skills** and **one plugin root** — the repository
-itself, which every harness reads in place:
+Meerkat TaskPanel ships as **a local server**, **two Agent Skills** and **one plugin root**
+— the repository itself, which every harness reads in place:
 
 - **`meerkat-taskpanel`** (`skills/meerkat-taskpanel/`) — the board. Installed for all six
   hosts.
@@ -39,7 +39,77 @@ There are three layers, and it is worth keeping them straight:
 > plus the `web/` frontend are in place. See `CLAUDE.md` for what is still planned (the
 > Epic view and iteration management).
 
-## Quick start
+## Install methods
+
+Two entry points drive **one** materializer, so an npm install and a source install produce
+the same tree, the same launchers and the same config file.
+
+### npm / npx (preferred)
+
+```bash
+npx meerkat-taskpanel                                  # server + taskctl + all six host skills
+npm install -g meerkat-taskpanel                       # or install the package globally …
+meerkat-taskpanel install                              # … and run the installer whenever needed
+npx meerkat-taskpanel install --target server          # server runtime + taskctl only
+npx meerkat-taskpanel install --target claude,codex    # server + those hosts
+npx meerkat-taskpanel install --no-server              # host skills only
+```
+
+With no subcommand, `install` is assumed. The wrapper ships inside the package, so `npx`
+needs `meerkat-taskpanel` to be published (see [`publishing.md`](publishing.md)) — it fetches
+nothing else. The published tarball carries the built `web/dist`, so the installed board
+serves its UI with no build step.
+
+### From a source checkout
+
+```bash
+bash install.sh --target all,server   # server + the six host skills
+bash install.sh --target server       # server runtime + taskctl only
+bash install.sh --target all          # the six host skills, no server
+bash install.sh --target claude       # one host, no server
+```
+
+`all` never implies `server`; combine them as `all,server`. From a checkout, `web/dist` is
+copied if present; if it is absent and `web/node_modules` exists the installer builds it;
+otherwise it warns and installs an API-only server (it never runs `npm ci`).
+
+### The server tree
+
+The server target materializes a self-contained runtime at `<home>/.meerkat-taskpanel`
+(`<home>` is `$HOME`, or `--prefix`):
+
+```text
+~/.meerkat-taskpanel/
+├── src/**                # the whole program, migrations included
+├── web/dist/**           # the built board (API-only if it could not be produced)
+├── package.json
+├── bin/taskd             # 0755 launcher: exec node <tree>/src/server/main.mjs
+├── bin/taskctl           # 0755 launcher: exec node <tree>/src/cli/index.mjs
+├── .env                  # 0600, seeded from the template; never overwritten
+└── .data/                # 0700, the SQLite board; never deleted
+```
+
+The tree is self-locating: `src/` resolves `.env`, `.data` and `web/dist` from its own
+position, so `bin/taskd` and `bin/taskctl` work from any directory and with no environment
+variables. Add `~/.meerkat-taskpanel/bin` to `PATH`, or use `npm install -g`.
+
+When the server is installed alongside host skills, the host shim and loop config
+(`MEERKAT_TASKPANEL_REPO`, `MEERKAT_TASKPANEL_ENV_FILE`) point at this tree, never at the
+npx cache or the checkout, and the `taskd` guard's unit runs the tree's
+`src/server/main.mjs` with `TASKD_DATA_DIR=<tree>/.data`. A host-only install is unchanged:
+it keeps pointing at the checkout.
+
+The installer is **idempotent**: a re-run exits 0 and leaves `.env` and `.data` byte-for-byte
+alone; `src/` and the launchers are refreshed. `--force` additionally prunes stale files
+under `src/` (it still never touches `.env` or `.data`); `--dry-run` writes nothing.
+
+### Upgrading and removing
+
+Upgrade by running the installer again (`--force` to refresh managed files). To remove,
+delete the host skill directories listed below and the tree itself; **keep `.data/` if you
+want the board**: `rm -rf ~/.meerkat-taskpanel` deletes the database with it.
+
+## Quick start (host skills)
 
 ```bash
 bash install.sh --target all --agent-name "$USER"   # skill everywhere; full bundle for claude+codex
@@ -291,6 +361,16 @@ Neither line fails the install. The unit names the **absolute** node that ran th
 so a node that lives only under nvm or Homebrew still starts the server — see
 [`scheduling.md § The taskd guard (keepalive)`](scheduling.md#the-taskd-guard-keepalive).
 
+**Which program the unit runs.** With the server target selected (`--target server` /
+`all,server`, and always for an npm/npx install), the unit runs the installed tree's
+`src/server/main.mjs` with `TASKD_DATA_DIR=<home>/.meerkat-taskpanel/.data` pinned in its
+environment — so the guarded board is the installed one, not whatever checkout you happened
+to install from, and it keeps working after the checkout moves or the npx cache is pruned.
+Without the server target the unit runs the checkout's `src/server/main.mjs` and leaves the
+data directory to the normal config chain. A unit written for one layout does not match the
+other, so re-pointing a host-only install at a server install (or back) is a deliberate
+`--force`.
+
 **A second board does not inherit the guard.** The guard is one per machine
 ([`scheduling.md § One guard per machine`](scheduling.md#one-guard-per-machine)), so a
 re-install for a *different* board is refused rather than silently re-pointing the machine's
@@ -394,20 +474,21 @@ is the full contract.
 ## install.sh reference
 
 ```text
-install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <home>]
+install.sh [--target claude|openclaw|codex|pi|opencode|cursor|server|all] [--prefix <home>]
            [--agent-name <name>] [--no-automation]
            [--claim-unassigned=yes|no] [--assignee-only] [--recover-stale=yes|no]
            [--workflow=yes|no] [--reviewer <agent>] [--auto-accept-reviews=yes|no]
            [--ping-interval <sec>] [--continue-interval <sec>] [--continue=yes|no]
            [--supervisor=enable|disable|status] [--supervisor-hosts <list>]
            [--scheduler auto|launchd|systemd|cron]
-           [--link] [--force] [--dry-run] [--skip-node-check] [-h|--help]
+           [--link] [--force] [--dry-run] [--skip-node-check] [--skip-web-build] [-h|--help]
 ```
 
 | Flag | Effect |
 |---|---|
-| `--target <host>` | Which host(s) to install for. Default `all`. Repeatable, and a comma-separated list (`--target claude,codex`) works too. |
-| `--prefix <home>` | Install relative to `<home>` instead of `$HOME`. |
+| `--target <host>` | Which host(s) to install for. Default `all` (the six hosts). Repeatable, and a comma-separated list (`--target claude,codex`) works too. `server` selects the runtime tree instead of a host — `all` does not include it, so a full source install is `--target all,server`. |
+| `--prefix <home>` | Install relative to `<home>` instead of `$HOME`; the server tree lands at `<home>/.meerkat-taskpanel`. |
+| `--skip-web-build` | Never try to build `web/dist`. A server install without a prebuilt `web/dist` is then API-only (with a warning) instead of building it. |
 | `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `$USER`). Must equal the board assignee for the agent to claim cards. |
 | `--no-automation` | Skip **all** Codex automation — the claim trigger *and* the scheduling units — **and** the `taskd` keepalive guard; the Claude/OpenClaw/Pi skill bundles are otherwise unaffected. |
 | `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each host installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
@@ -424,7 +505,7 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <ho
 | `--supervisor-hosts <list>` | Which loop hosts the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}` (default: the loop hosts present in `--target`). Deliberately **not** a `--host` flag: `--host` already means the **wake** selector in `scripts/supervisor.mjs`, so reusing the name here would collide. `openclaw` is **rejected** (reason on stderr, exit 2). |
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per host — see [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in). |
 | `MEERKAT_TASKPANEL_SUPERVISOR=enable\|disable\|status` | The non-interactive form of `--supervisor` (an explicit flag wins) — the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`. |
-| `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied, because the loop's whole point is that its execution body does not live in a checkout. |
+| `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied, because the loop's whole point is that its execution body does not live in a checkout. For `--target server` it only warns: the runtime tree is always copied, because it must survive the checkout and the npx cache. |
 | `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags. |
 | `--dry-run` | Print every path that would be written/changed and change nothing. |
 | `--skip-node-check` | Skip the Node version check (see below). |
@@ -479,6 +560,8 @@ bash install.sh --target all --dry-run                 # preview
 bash install.sh --target claude --link --force         # development install
 bash install.sh --target all --prefix /tmp/tp-home     # isolated home (testing)
 bash install.sh --target all --supervisor=enable       # opt in: install + load the supervisor
+bash install.sh --target all,server                    # full install: runtime tree + skills
+bash install.sh --target server --skip-web-build       # API-only server, no frontend build
 ```
 
 ## Per-host steps

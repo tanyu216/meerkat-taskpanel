@@ -81,6 +81,11 @@ before(() => {
     env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1" },
   });
   assert.equal(install.status, 0, install.stderr);
+  assert.equal(
+    existsSync(join(home, ".meerkat-taskpanel")),
+    false,
+    "--target all is host-only; the server tree needs an explicit server target",
+  );
 
   // A `taskctl` that records its argv and exits with whatever `FAKE_TASKCTL_EXIT` says —
   // shell builtins only, so it runs on a `PATH` that holds nothing else.

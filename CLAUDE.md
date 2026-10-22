@@ -22,6 +22,14 @@ board HTTP API + SSE; `web/` is the Vue 3 + Vite frontend that builds to `web/di
 served by `taskd`. Still planned: the **epic view** and **iteration management** — the
 roadmap lives in `README.md` / `README.zh-CN.md`.
 
+**Distribution:** `npx meerkat-taskpanel` (or `install.sh --target server|all,server` from a
+checkout) materializes the runtime at `~/.meerkat-taskpanel` — `src/`, the built `web/dist`,
+`bin/taskd`, `bin/taskctl`, one `.env` and `.data` — and, by default, installs the six host
+skills too; `all` alone never includes the server. The npm tarball therefore carries the
+built `web/dist`, and the tree is self-locating (the launchers exec the tree's own `src/`),
+so it survives the checkout moving or the npx cache being pruned. The Docker image is
+unchanged and keeps `/app/.data`. `docs/install.md` is the reference.
+
 The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/install.md`).
 The board owns the workflow decisions (`issue reconcile --workflow`); the loop executes the
 resulting plan. The host-external supervisor is a **skill of its own**
@@ -105,7 +113,8 @@ node scripts/verify/contract.mjs             # API contract snapshot; --update r
 node scripts/verify/cli-contract.mjs         # CLI surface snapshot (commands/flags/envelope); --update
 node scripts/verify/route-request.mjs        # declared request schema vs what the handler reads; --print
 node src/server/main.mjs                     # start taskd directly (taskctl also auto-starts it)
-bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|all   # --prefix --link --force --dry-run
+bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all   # --prefix --link --force --dry-run --skip-web-build
+npx meerkat-taskpanel [install] [--target …] [--no-server] [--prefix <home>]   # server + skills; defaults to server,all
 ```
 
 `test:coverage` gates `src/core/**`, `src/foundation/**`, `src/cli/**` and `src/server/**`; the
@@ -141,7 +150,9 @@ never hand-edited), the subagent's notes/evidence, and downloaded attachments. M
 different `dist` trees: `dist/` is the **npm release tree**
 that `scripts/build.mjs` writes (and a stale M0 `dist/web/.gitkeep` placeholder lives there);
 the **hosted frontend root** is `web/dist`, the static build of `web/` that `taskd` serves
-(`STATIC_DIR_REL`). They are not the same directory.
+(`STATIC_DIR_REL`). They are not the same directory. `web/dist` is gitignored yet **in the
+npm `files` whitelist** — the published tarball is a runnable board, not a source drop, and
+the release workflow stages the image's build there before `npm pack`.
 
 ## Constraints / MUST-follow rules
 
@@ -223,7 +234,16 @@ authoritative home, because the container image drops `design/`.
   both. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects another path. The old
   `<dataDir>/taskd.env` is no longer read (hard switch). Identity (`--actor-kind`) is required
   on every command except `--help` / `--version`; `--agent` names the role and is not a
-  shared-file key.
+  shared-file key. The install root is the **running program's** root: the checkout, `/app`
+  in the image, or `~/.meerkat-taskpanel` for an installed tree. On a combined install
+  (`--target all,server` or npm/npx) the host shims and loop config name the installed tree
+  (`MEERKAT_TASKPANEL_REPO`, `MEERKAT_TASKPANEL_ENV_FILE`) — never the checkout and never the
+  npx cache; host-only installs keep pointing at the checkout.
+- **The `taskd` guard follows the same root.** Selecting the server target writes
+  `ExecStart` = `<node> <home>/.meerkat-taskpanel/src/server/main.mjs` and pins
+  `TASKD_DATA_DIR=<home>/.meerkat-taskpanel/.data` in the unit; without it the unit runs the
+  checkout's entry. One guard per machine, and switching layout is a deliberate `--force`
+  (a mismatched unit is refused with exit 3, non-fatal).
 - **The loop speaks only `taskctl`.** `scripts/loop/**` and `scripts/supervisor.mjs` never call
   the board's HTTP API directly — the live event stream is `taskctl events tail`, not `fetch`,
   and the loop carries no board discovery or token code. Board capability detail (invocations,
