@@ -173,6 +173,20 @@ describe("detect.mjs — read-only discovery", () => {
     assert.equal(result.body.mattPocock.tracker.unrelated, true);
   });
 
+  it("warns about an unspecified board address", (t) => {
+    const home = temp(t);
+    const project = temp(t);
+    const result = runJson(
+      t,
+      DETECT,
+      ["--home", home, "--project", project, "--url", "http://0.0.0.0:19527", "--no-network"],
+      { cwd: project, env: { HOME: home, PATH: temp(t) } },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.body.server.class, "remote");
+    assert.match(result.body.warnings.join("\n"), /unspecified address/);
+  });
+
   it("recognises a tracker that already mentions taskpanel", (t) => {
     const home = temp(t);
     const project = temp(t);

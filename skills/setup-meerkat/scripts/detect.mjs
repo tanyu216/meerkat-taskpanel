@@ -453,6 +453,10 @@ async function main(argv) {
   if (!roles.global.present && !roles.project.present && !roles.explicit.present) missing.push("roles");
 
   const warnings = [];
+  const hostname = new URL(resolved.url).hostname.toLowerCase();
+  if (hostname === "0.0.0.0" || hostname === "[::]" || hostname === "::") {
+    warnings.push("the board URL uses an unspecified address (0.0.0.0 / ::); use the machine's LAN address or a hostname");
+  }
   if (!human.configured) warnings.push("the fixed human name is not configured; --as-human would fall back to the OS user");
   if (opts.network && loopback && !health.reachable) warnings.push("the board is configured loopback but is not reachable; a local taskd may need to start");
   if (opts.network && !loopback && !health.reachable) warnings.push("the remote board is unreachable; do not fall back to localhost without the operator");
