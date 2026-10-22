@@ -29,6 +29,7 @@ const metaOf = (flags) => flags.meta;
 function taskHuman(task, extra) {
   return fields([
     ["identifier", task.identifier],
+    ["title", task.title],
     ["status", task.status],
     ["priority", task.priority],
     ["kind", task.kind],
