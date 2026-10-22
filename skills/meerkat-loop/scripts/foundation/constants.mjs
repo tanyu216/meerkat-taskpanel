@@ -657,8 +657,8 @@ export const HUMAN_KIND = "human";
  * The board's own platform name.
  *
  * `taskd` is a concrete writer, not a role: it names the process that performs
- * the board's housekeeping (rollup, the label GC, the markdown importer) and
- * the automation that applies an acceptance verdict. It is the value
+ * the board's housekeeping (rollup, the label GC) and the automation that
+ * applies an acceptance verdict. It is the value
  * `HUMAN_KIND`'s documentation has always pointed at — "or `taskd` for the board
  * itself" — and the one the `system` placeholder in older rows is replaced by.
  *

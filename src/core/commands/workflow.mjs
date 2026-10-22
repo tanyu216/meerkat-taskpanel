@@ -73,7 +73,7 @@ export function workflowTick(ctx, input = {}) {
     const ref = String(card.identifier ?? "");
     if (ref === "") continue;
     const report = ctx.repos.reports.latestForRound(snapshot[i].id, snapshot[i].deliveryRound);
-    if (report === null || report === undefined || report.origin !== "delivery") continue;
+    if (report === null || report === undefined) continue;
     reportsByRef[ref] = reportToWire(report, { lookup });
   }
 

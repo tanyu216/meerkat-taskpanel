@@ -113,7 +113,7 @@ export function assertAcceptanceCoverage(ctx, task, options = {}) {
       },
       hint: {
         fix:
-          "write the current round's report (taskctl report write <ref> --report-file -); " +
+          "write the current round's report (taskctl issue deliver <ref> --report-file -); " +
           "a --no-report waiver is not acceptance evidence",
       },
     });
@@ -128,10 +128,9 @@ export function assertAcceptanceCoverage(ctx, task, options = {}) {
   return true;
 }
 
-/** The current-round delivery report, or `null` when none (or only an import). */
+/** The current-round report, or `null` when there is none (0035: any row counts). */
 function deliveryReportFor(ctx, task) {
-  const report = ctx.repos.reports.latestForRound(task.id, task.deliveryRound);
-  return report !== null && report !== undefined && report.origin === "delivery" ? report : null;
+  return ctx.repos.reports.latestForRound(task.id, task.deliveryRound) ?? null;
 }
 
 /** The coverage arithmetic + the refusal. Shared by the delivery and review gates. */

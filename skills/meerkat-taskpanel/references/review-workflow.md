@@ -213,7 +213,7 @@ controls whether the loop closes a review card.
 
 | Code | When |
 |---|---|
-| `REPORT_REQUIRED` | A move to `in_review` without a delivery report for the current round (or the audited waiver). Creating a card in `in_review` / `done`. |
+| `REPORT_REQUIRED` | A move to `in_review` without a report for the current round (or the audited waiver). Creating a card in `in_review` / `done`. |
 | `REPORT_ROUND_MISMATCH` | A report names a round other than the card's current one, or duplicates `(task, round)`. |
 | `ACCEPTANCE_FORBIDDEN` | The writer may not accept under the policy × scope matrix. |
 | `REVIEW_PENDING` | A human closes a top-level original with a current-round review card still open. |

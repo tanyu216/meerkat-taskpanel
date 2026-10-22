@@ -109,10 +109,10 @@ function seedAttributionBoard(db) {
   insComment.run("c4", "t3", "nobody knows them yet", "note", "human", "  loCAL ", "[]", TS);
 
   const insReport = db.prepare(
-    "INSERT INTO task_reports(task_id, round, conclusion, acceptance_json, evidence_json, author_kind, author_id, created_at, origin) VALUES (?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO task_reports(task_id, round, conclusion, acceptance_json, evidence_json, author_kind, author_id, created_at) VALUES (?,?,?,?,?,?,?,?)",
   );
-  insReport.run("t1", 1, "done", "[]", "[]", "human", "Terry", TS, "import");
-  insReport.run("t2", 1, "done", "[]", "[]", "agent", "unknown", TS, "import");
+  insReport.run("t1", 1, "done", "[]", "[]", "human", "Terry", TS);
+  insReport.run("t2", 1, "done", "[]", "[]", "agent", "unknown", TS);
 }
 
 /** The actor a value was back-filled into, by the value's `norm`. */
@@ -134,7 +134,7 @@ describe("storage/migrations — 0020 gives the attribution columns a reference"
       seedAttributionBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035"]);
 
       // 1 — the back-fill. Four keys that were free strings with no actor row:
       //     `linus` (reused), plus `local`, `terry` and `unknown` (created). The

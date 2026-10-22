@@ -544,11 +544,10 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
 
       const reports = db
         .prepare(
-          "SELECT round, origin, is_rollup, author_kind, acceptance_json, evidence_json FROM task_reports WHERE task_id = ?",
+          "SELECT round, is_rollup, author_kind, acceptance_json, evidence_json FROM task_reports WHERE task_id = ?",
         )
         .all(epic.id);
       assert.equal(reports.length, 1, "the board wrote exactly one rollup report");
-      assert.equal(reports[0].origin, "delivery");
       assert.equal(reports[0].is_rollup, 1, "0033 — the board's report is the rollup");
       assert.equal(reports[0].author_kind, "taskd", "the board wrote it, not the last agent");
       assert.equal(reports[0].round, 1);
@@ -703,8 +702,8 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       commands.addRelation({ type: "parent", source: epic, target: child, actor: AGENT });
       db.prepare(
         `INSERT INTO task_reports(task_id, round, conclusion, acceptance_json, evidence_json,
-                                  author_kind, author_id, created_at, origin, is_rollup)
-         VALUES (?, 1, ?, ?, ?, ?, ?, ?, 'delivery', 0)`,
+                                  author_kind, author_id, created_at, is_rollup)
+         VALUES (?, 1, ?, ?, ?, ?, ?, ?, 0)`,
       ).run(
         epic,
         "rollup",

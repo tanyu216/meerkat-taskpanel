@@ -320,7 +320,6 @@ export function renderCard(task, context) {
         evidence: report.evidence,
         leftovers: report.leftovers,
         isRollup: report.isRollup === true,
-        origin: report.origin,
       })),
     ),
   );

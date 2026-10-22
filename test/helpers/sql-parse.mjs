@@ -81,7 +81,21 @@ function readSchema(sql) {
         checks.push({
           entry,
           column: m[1].toLowerCase().split(".").pop(),
-          literals: [...m[2].matchAll(/'([^']*)'/g)].map((x) => x[1]),
+          literals: m[2]
+            .split(",")
+            .map((token) => token.trim())
+            .filter((token) => token !== "")
+            .map((token) => {
+              if (token.startsWith("'") && token.endsWith("'")) return token.slice(1, -1);
+              // 0033/0035 — `is_rollup IN (0, 1)` is a numeric storage flag, not
+              // a word vocabulary. Reading it keeps the parity check honest,
+              // instead of silently treating the set as empty.
+              const numeric = Number(token);
+              if (!Number.isFinite(numeric)) {
+                throw new Error(`sql-parse: cannot read the IN literal ${JSON.stringify(token)}`);
+              }
+              return numeric;
+            }),
         });
       }
       continue;

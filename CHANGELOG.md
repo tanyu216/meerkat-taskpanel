@@ -7,6 +7,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Reports are reports: report provenance is no longer recorded (migration `0035`).**
+  `task_reports.origin` (`delivery` | `import`) is gone. The board records a report and
+  enforces its shape — a non-empty conclusion, one report per round, `deliver`/`writeReport`
+  validating the payload — but it no longer tries to decide whether the writer was the
+  worker, a backfill or an importer; that judgement belongs to the team consuming the report.
+  The delivery gate now accepts any report for the card's current delivery round (an epic
+  still requires its current-round rollup marker). Consequences: `taskctl report list` /
+  the report wire never had `origin`, and still do not; the markdown export stops writing
+  `origin: import` (old cards that carry the line are parsed and the line is ignored); the
+  acceptance refusal hint now points at `taskctl issue deliver` instead of a nonexistent
+  `report write` command. The migration rebuilds `task_reports` to drop the column,
+  preserving every row.
+
 ### Added
 
 - **`/setup-meerkat`, an optional team, and a narrower decision ladder.** A third skill,

@@ -53,7 +53,6 @@ export const REPORT_COLUMNS = Object.freeze([
   "author_id",
   "source_seq",
   "created_at",
-  "origin",
   // 0033 — an epic's rollup marker. `validateReport` never reads it: the writer
   // decides it from the card's kind, so a payload cannot forge one.
   "is_rollup",
@@ -523,7 +522,6 @@ const CAMEL = {
   author_id: "authorId",
   source_seq: "sourceSeq",
   created_at: "createdAt",
-  origin: "origin",
   is_rollup: "isRollup",
 };
 
