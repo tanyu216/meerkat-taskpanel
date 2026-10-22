@@ -128,6 +128,54 @@ export const COMMANDS = [
   },
 
   {
+    name: "ensure",
+    summary: "Create a project if it does not exist; leave an existing one untouched.",
+    usage:
+      "project ensure <id> [--name <name>] [--review-policy required|optional|off] " +
+      "[--reviewer <agent>] [--meta k=v]… [--label <label>]… [--readme <text>]",
+    positionals: [{ name: "id", summary: "Project id." }],
+    flags: [
+      { flag: "name", key: "name", as: "string", value: "<name>", summary: "Required only when the project does not exist yet." },
+      { flag: "meta", key: "meta", as: "kv", summary: "Repeatable key=value metadata (used only on creation)." },
+      { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
+      { flag: "readme", key: "readme", as: "string", value: "<text>" },
+      {
+        flag: "review-policy",
+        key: "reviewPolicy",
+        as: "string",
+        value: "<required|optional|off>",
+        summary: "Review policy for a newly created project (default: optional).",
+      },
+      {
+        flag: "reviewer",
+        key: "reviewer",
+        as: "string",
+        value: "<agent>",
+        summary: "Reviewer for a newly created project; empty uses the deployment-level reviewer.",
+      },
+    ],
+    async run(ctx) {
+      const { project, created } = await ctx.client.put(
+        `/api/v1/projects/${encodeURIComponent(ctx.args.id)}`,
+        {
+          name: ctx.flags.name,
+          labels: ctx.flags.labels,
+          meta: metaOf(ctx.flags),
+          readme: ctx.flags.readme,
+          review_policy: ctx.flags.reviewPolicy,
+          reviewer: ctx.flags.reviewer,
+        },
+      );
+      return {
+        data: { project, created },
+        human: created
+          ? `created project ${project.id}  ${project.name}  review=${project.review_policy}`
+          : `project ${project.id} already exists  ${project.name}`,
+      };
+    },
+  },
+
+  {
     name: "update",
     summary: "Update a project's name, labels, metadata, readme, review policy or reviewer.",
     usage:

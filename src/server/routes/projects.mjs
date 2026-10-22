@@ -41,6 +41,16 @@ const CREATE_BODY = shape({
   reviewer: str(),
 });
 
+/** `PUT /api/v1/projects/:id` — create if absent; an existing row is untouched. */
+const ENSURE_BODY = shape({
+  name: str(),
+  labels: arr(str()),
+  meta: obj(),
+  readme: str(),
+  review_policy: REQUEST.reviewPolicy,
+  reviewer: str(),
+});
+
 /** `PATCH /api/v1/projects/:id` — a partial update (`meta` merges, F-C3's sibling rule). */
 const PATCH_BODY = shape({
   name: str(),
@@ -93,6 +103,26 @@ export function registerProjectRoutes(router, surface) {
     });
     return { project: projectToWire(project) };
   }, { body: CREATE_BODY });
+
+  router.put("/api/v1/projects/:id", ({ params, body, actor }) => {
+    const { project, created } = commands.ensureProject({
+      id: params.id,
+      name: body.name,
+      labels: body.labels,
+      meta: body.meta,
+      readme: body.readme,
+      reviewPolicy: body.review_policy,
+      reviewer: body.reviewer,
+      actor,
+    });
+    // Same badge number as the list route, so an ensure response and a later
+    // list entry cannot disagree about how many tasks the project owns.
+    const counts = repos.projects.taskCountByProject(params.id);
+    return {
+      project: projectToWire({ ...project, taskCount: counts.get(project.id) ?? 0 }),
+      created,
+    };
+  }, { body: ENSURE_BODY });
 
   router.get("/api/v1/projects/:id", ({ params }) => {
     const project = commands.getProject({ id: params.id });

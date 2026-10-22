@@ -1945,8 +1945,10 @@ describe("commands/tasks — listCandidates (poll read)", () => {
       assert.deepEqual(
         Object.keys(candidates[0]).sort(),
         [
+          "created_at",
           "id",
           "identifier",
+          "meta",
           "priority",
           "project",
           "reason",
@@ -1954,10 +1956,14 @@ describe("commands/tasks — listCandidates (poll read)", () => {
           "review_round",
           "sort",
           "status",
+          "target",
           "title",
         ],
-        "exactly the card's fields plus reason — no `target`, the board owns no directory (O3)",
+        "the poll read: the card's fields, its opaque meta, and `reason`",
       );
+      assert.equal(candidates[0].target, null, "no meta.target on this card");
+      assert.deepEqual(candidates[0].meta, {}, "the card's meta is projected whole");
+      assert.equal(typeof candidates[0].created_at, "string", "the poll can read age without a get");
       assert.equal(candidates[0].review_of, null, "a normal card carries no review target");
       assert.equal(candidates[0].review_round, null);
       assert.equal(candidates[0].status, "todo", "the canonical status, never the ready alias");

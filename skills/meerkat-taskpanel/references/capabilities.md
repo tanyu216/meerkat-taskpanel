@@ -51,8 +51,11 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 | `issue claim <identifier>` | only `ok` / `error` | poll's claim |
 
 Candidate tuple: `id`, `identifier`, `title`, `status`, `priority`, `project`,
-`sort`, `reason`, `review_of`, `review_round`. `review_of` is non-null only for a
-review card; a dedicated reviewer is given only those.
+`sort`, `created_at`, `target`, `meta`, `reason`, `review_of`, `review_round`.
+`target` is the card's own `meta.target` (not a project directory); `meta` is
+projected whole as the escape hatch for a consumer's own keys, so a poll does not
+need an `issue get` per candidate. `review_of` is non-null only for a review
+card; a dedicated reviewer is given only those.
 
 `issue claim` is the one claim path: it claims a ready `todo` card and performs
 the stale re-claim/takeover that the transition table cannot express. A refused

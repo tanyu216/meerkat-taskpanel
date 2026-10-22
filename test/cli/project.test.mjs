@@ -44,6 +44,40 @@ describe("cli/project", () => {
     });
   });
 
+  it("ensures idempotently: creates once, then returns the existing project untouched", async () => {
+    await withCli(async ({ run }) => {
+      const first = dataOf(run([
+        "project", "ensure", "demo",
+        "--name", "Demo",
+        "--meta", "team=panel",
+        "--json",
+      ]));
+      assert.equal(first.created, true);
+      assert.equal(first.project.id, "demo");
+      assert.equal(first.project.name, "Demo");
+      assert.deepEqual(first.project.meta, { team: "panel" });
+
+      // The second call is a read: a different name/meta is ignored.
+      const second = dataOf(run([
+        "project", "ensure", "demo",
+        "--name", "Renamed",
+        "--meta", "team=other",
+        "--json",
+      ]));
+      assert.equal(second.created, false);
+      assert.equal(second.project.name, "Demo", "an existing project is not updated");
+      assert.deepEqual(second.project.meta, { team: "panel" });
+
+      // No name is needed when the project already exists.
+      const bare = dataOf(run(["project", "ensure", "demo", "--json"]));
+      assert.equal(bare.created, false);
+      assert.equal(bare.project.name, "Demo");
+
+      const listed = dataOf(run(["project", "list", "--json"]));
+      assert.deepEqual(listed.projects.map((p) => p.id), ["demo"], "one row, not two");
+    });
+  });
+
   it("no longer accepts --workspace-path (O3: the board holds no directory)", async () => {
     await withCli(async ({ run }) => {
       const result = run([

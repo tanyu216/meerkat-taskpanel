@@ -618,6 +618,29 @@ describe("commands/delivery-report — the one delivery-shaped insert", () => {
   });
 });
 
+describe("commands/projects — ensure", () => {
+  it("creates once, then returns the existing row untouched", async () => {
+    await board(async ({ commands, repos }) => {
+      const first = commands.ensureProject({ id: "ensured", name: "Ensured", meta: { team: "panel" }, actor: HUMAN });
+      assert.equal(first.created, true);
+      assert.equal(first.project.name, "Ensured");
+      assert.deepEqual(first.project.meta, { team: "panel" });
+
+      // The second call is a read: a different name and meta are ignored.
+      const second = commands.ensureProject({
+        id: "ensured",
+        name: "Renamed",
+        meta: { team: "other" },
+        actor: HUMAN,
+      });
+      assert.equal(second.created, false);
+      assert.equal(second.project.name, "Ensured");
+      assert.deepEqual(second.project.meta, { team: "panel" });
+      assert.equal(repos.projects.list().filter((p) => p.id === "ensured").length, 1);
+    });
+  });
+});
+
 describe("commands — timestamps come from the context clock", () => {
   it("never reads the wall clock directly", async () => {
     let calls = 0;

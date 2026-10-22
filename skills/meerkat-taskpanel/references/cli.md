@@ -108,6 +108,7 @@ not a failure; `note` says why (no pointer, or a stale pid).
 | Command | Purpose |
 |---|---|
 | `project create --id <id> --name <n> [--review-policy required\|optional\|off] [--reviewer <agent>] [--meta k=v]… [--label <l>]… [--readme <text>]` | Create a project. The id becomes the identifier prefix (`demo` → `DEMO-0001`). `--review-policy` (default `optional`) decides whether cards created here need an independent review; `--reviewer` overrides the deployment reviewer for this project. |
+| `project ensure <id> [--name <n>] [--review-policy required\|optional\|off] [--reviewer <agent>] [--meta k=v]… [--label <l>]… [--readme <text>]` | Create the project if its id is absent; if it exists, return it **untouched** (`created:false`). `--name` is needed only on creation. This is the idempotent form of `project create`; it never updates an existing row. |
 | `project update <id> [--name] [--review-policy required\|optional\|off] [--reviewer <agent>] [--meta k=v]… [--label]… [--readme]` | Update it. `--meta` **merges**. A policy change affects future cards only; in-flight cards keep their `review_required` snapshot. |
 | `project list [--include-archived]` | List projects. |
 | `project dir <id> [--projects-json <path>]` | Print the local directory work happens in, resolved from `projects.json` (`$MEERKAT_TASKPANEL_PROJECTS_JSON` picks another map): the entry's `local_path`, else `run_dir`. An entry naming no directory succeeds and says so. Exits non-zero only when no entry is registered, or the path is relative, missing, not a directory, or blank. |
@@ -229,7 +230,7 @@ starts and closes the container; see
 | Command | Purpose |
 |---|---|
 | `comment list <ref> [--kind <kind>] [--limit <n>]` | Newest first (the CLI asks for `order=desc`, so `--limit` takes the newest N). |
-| `comment add <ref> --body <text> [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect\|question] [--file <path\|->]` | Append. A `question` + `awaiting` E2 is how an agent asks a human; **any human comment** on an `awaiting` card moves it back to `todo` in the same transaction, whatever its kind. |
+| `comment add <ref> --body <text> [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect\|question] [--file <path\|->] [--ref <kind:id>]…` | Append. `--ref` is repeatable and stored as the comment's wire `refs` (plain strings; `kind:id` is the convention). A `question` + `awaiting` E2 is how an agent asks a human; **any human comment** on an `awaiting` card moves it back to `todo` in the same transaction, whatever its kind. |
 
 Append-only: there is no edit and no delete, by design. A `decision` / `change` comment is what
 a reviewer reads later as the explicit record; the resume itself is decided by the comment's

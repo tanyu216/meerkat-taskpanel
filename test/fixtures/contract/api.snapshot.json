@@ -582,6 +582,46 @@
       }
     },
     {
+      "method": "PUT",
+      "path": "/api/v1/projects/:id",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "meta": {
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "readme": {
+              "type": "string"
+            },
+            "review_policy": {
+              "enum": [
+                "off",
+                "optional",
+                "required"
+              ],
+              "type": "string"
+            },
+            "reviewer": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
       "method": "GET",
       "path": "/api/v1/projects/:id/readme",
       "request": {

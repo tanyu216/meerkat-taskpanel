@@ -395,8 +395,9 @@ describe("route-request.mjs — the CLI", () => {
     // 38 since reopen added POST /tasks/:ref/reopen; 39 since the board's SLA
     // read added GET /api/v1/sla; 41 since the session surface gained the
     // board-wide GET /api/v1/sessions and the natural-key
-    // POST /tasks/:ref/sessions/close.
-    assert.match(result.stdout, /route-request: OK — 41 routes/);
+    // POST /tasks/:ref/sessions/close; 42 since project ensure added
+    // PUT /api/v1/projects/:id.
+    assert.match(result.stdout, /route-request: OK — 42 routes/);
     // Nine since the reopen verb declared `tasks.reopen` beside the eight
     // commands that already projected their input.
     assert.match(result.stdout, /9 command inputs paired/);

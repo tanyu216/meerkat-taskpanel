@@ -213,6 +213,34 @@ export function createProject(ctx, input) {
 }
 
 /**
+ * Create a project if its id is absent, or return the existing row untouched.
+ *
+ * "Ensure" is the idempotent form of `createProject`: the second call is a
+ * read, not an update. Nothing about an existing project changes — its name,
+ * labels, meta, readme and review policy are the caller's earlier decisions,
+ * not this call's. A race that reaches `createProject` after another writer
+ * created the same id surfaces as `ID_CONFLICT`; it is read back as "already
+ * existed" rather than leaking a conflict to an idempotent caller.
+ *
+ * @param {object} ctx
+ * @param {{id: string, name: string, labels?: string[], meta?: object, readme?: string|null, reviewPolicy?: string, reviewer?: string|null, actor?: object}} input
+ * @returns {{project: object, created: boolean}}
+ */
+export function ensureProject(ctx, input) {
+  const existing = getProject(ctx, { id: input.id });
+  if (existing !== null && existing !== undefined) return { project: existing, created: false };
+  try {
+    return { project: createProject(ctx, input), created: true };
+  } catch (err) {
+    if (err instanceof DomainError && err.code === "ID_CONFLICT") {
+      const project = getProject(ctx, { id: input.id });
+      if (project !== null && project !== undefined) return { project, created: false };
+    }
+    throw err;
+  }
+}
+
+/**
  * @param {object} ctx
  * @param {{id: string, patch: {name?: string, labels?: string[], meta?: object, readme?: string|null}, actor?: object}} input
  */

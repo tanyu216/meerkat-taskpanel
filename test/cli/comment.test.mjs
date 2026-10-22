@@ -58,6 +58,22 @@ describe("cli/comment", () => {
     });
   });
 
+  it("attaches repeatable --ref values to the comment's wire refs", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
+
+      const added = dataOf(run([
+        "comment", "add", "DEMO-0001",
+        "--body", "see the two anchors",
+        "--ref", "issue:DEMO-0002",
+        "--ref", "commit:abc1234",
+        "--json",
+      ]));
+      assert.deepEqual(added.comment.refs, ["issue:DEMO-0002", "commit:abc1234"]);
+    });
+  });
+
   it("accepts the confirm_request kind", async () => {
     await withCli(async ({ run }) => {
       run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
