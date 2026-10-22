@@ -263,7 +263,7 @@ function defaultOptions(env) {
     subagentBackground: false,
     patrolInterval: DEFAULT_PATROL_SECONDS, // the SLA measurement period, not a schedule
     patrolIntervalExplicit: false, // true only when `--patrol-interval` was given
-    maxConcurrency: DEFAULT_MAX_CONCURRENCY,
+    maxConcurrency: undefined, // resolved below: flag > env > host config > 8
     claimUnassigned: undefined,
     recoverStale: undefined,
     workflow: undefined,
@@ -362,6 +362,17 @@ export function parseArgs(argv, env = process.env) {
   opts.slaPeer ??= env.MEERKAT_TASKPANEL_SLA_PEER ?? null;
   opts.config ??= paths.config;
   opts.configFile = readConfigFile(opts.config);
+  // One concurrency cap for the whole fleet of subagents: workers and reviewers
+  // share it and compete for the slots by demand. Zero is meaningful ("claim
+  // nothing"), so this uses the non-negative resolver.
+  opts.maxConcurrency = resolveNonNegative(
+    {
+      flag: opts.maxConcurrency,
+      env: env.MEERKAT_TASKPANEL_MAX_CONCURRENCY,
+      file: opts.configFile.MEERKAT_TASKPANEL_MAX_CONCURRENCY,
+    },
+    DEFAULT_MAX_CONCURRENCY,
+  );
   // Cadences follow the same precedence as every other policy: flag > env >
   // the host config the installer wrote > default. Invalid values are ignored,
   // never allowed to wedge a clock.
@@ -702,7 +713,9 @@ export function loopCommandArgs(opts) {
   }
   if (opts.boardLimit !== DEFAULT_BOARD_LIMIT) add("--board-limit", opts.boardLimit);
   if (opts.trailLimit !== DEFAULT_TRAIL_LIMIT) add("--trail-limit", opts.trailLimit);
-  if (opts.maxConcurrency !== DEFAULT_MAX_CONCURRENCY) add("--max-concurrency", opts.maxConcurrency);
+  // Always carry the resolved value: the child poll must not re-resolve the cap
+  // from an env or host config that differs from the one this process used.
+  add("--max-concurrency", opts.maxConcurrency);
   if (opts.patrolLlm) args.push("--patrol-llm");
   // The resident settings the child `passes.mjs` re-reads: it must ask
   // `poolStatus()` about the *same* state file, and `--resident=no` must reach
@@ -786,7 +799,10 @@ Options:
   --patrol-interval <sec>   SLA measurement period P (default: the board's
                             TASKD_SLA_PERIOD_SECONDS, else ${DEFAULT_PATROL_SECONDS}). It no longer
                             schedules anything; an explicit value overrides the board.
-  --max-concurrency <n>     Max concurrent workers (default: ${DEFAULT_MAX_CONCURRENCY}).
+  --max-concurrency <n>     Max concurrent subagents. Workers and reviewers share
+                            this cap and compete for slots by demand; no per-role
+                            reservation (default: ${DEFAULT_MAX_CONCURRENCY}; at 8 the nominal
+                            working set is 6 workers + 2 reviewers).
   --claim-unassigned=yes|no Also claim unassigned cards (default: yes).
   --assignee-only           Alias for --claim-unassigned=no.
   --recover-stale=yes|no    Also recover stale in_progress claims (default: yes).

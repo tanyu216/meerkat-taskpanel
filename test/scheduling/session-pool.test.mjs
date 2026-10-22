@@ -162,6 +162,44 @@ describe("session pool", () => {
     await pool.stop();
   });
 
+  it("shares one budget between workers and reviewers", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    // Background mode keeps both subagents live, so the remaining cards have no slot.
+    const pool = createSessionPool({
+      opts: optsFor(f, { maxConcurrency: 2, subagentBackground: true }),
+      hostPool: fake,
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "W-1", f.app, "worker"));
+    enqueueCard(join(f.dir), card(f, "R-1", f.app, "reviewer"));
+    enqueueCard(join(f.dir), card(f, "W-2", f.api, "worker"));
+    enqueueCard(join(f.dir), card(f, "R-2", f.api, "reviewer"));
+    await pool.tick();
+    const cards = readCards(f.dir).value.cards;
+    const dispatched = cards.filter((entry) => entry.status === "dispatched").map((entry) => entry.card);
+    assert.deepEqual(dispatched.sort(), ["R-1", "W-1"], "workers and reviewers compete for the same slots");
+    assert.equal(cards.filter((entry) => entry.status === "pending").length, 2);
+    await pool.stop();
+  });
+
+  it("lets reviewers consume the whole cap", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f, { maxConcurrency: 1, subagentBackground: true }),
+      hostPool: fake,
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "R-1", f.app, "reviewer"));
+    await pool.tick();
+    const cards = readCards(f.dir).value.cards;
+    assert.equal(cards.filter((entry) => entry.status === "dispatched").length, 1);
+    await pool.stop();
+  });
+
   it("respects the per-project concurrency cap", async (t) => {
     const f = fixture(t);
     const fake = fakePool();

@@ -19,7 +19,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2288,6 +2288,73 @@ describe("the resident session pool surface", () => {
       parseArgs(["--host", "claude", "--subagent-background=no"], ENV).subagentBackground,
       false,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The concurrency cap: one total, shared by workers and reviewers
+// ---------------------------------------------------------------------------
+
+describe("the concurrency cap", () => {
+  const ENV = { HOME: "/home/alice" };
+
+  it("defaults to the documented total, with no per-role split", () => {
+    const opts = parseArgs(["--host", "claude"], ENV);
+    assert.equal(opts.maxConcurrency, DEFAULT_MAX_CONCURRENCY);
+    assert.equal(opts.projectConcurrency, DEFAULT_MAX_CONCURRENCY);
+    assert.equal(opts.maxWorkers, undefined, "there is no per-role cap");
+    assert.equal(opts.maxReviewers, undefined, "there is no per-role cap");
+  });
+
+  it("takes the cap from flag > environment > host config, then the default", () => {
+    const fromEnv = parseArgs(["--host", "claude"], {
+      ...ENV,
+      MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5",
+    });
+    assert.equal(fromEnv.maxConcurrency, 5);
+    assert.equal(fromEnv.projectConcurrency, 5, "a project is not capped below the resolved total");
+
+    const dir = mkdtempSync(join(tmpdir(), "tp-concurrency-"));
+    try {
+      mkdirSync(join(dir, ".claude"), { recursive: true });
+      writeFileSync(join(dir, ".claude", "meerkat-taskpanel.env"), "MEERKAT_TASKPANEL_MAX_CONCURRENCY=4\n");
+      const fromFile = parseArgs(["--host", "claude", "--home", dir], {});
+      assert.equal(fromFile.maxConcurrency, 4);
+
+      const envWins = parseArgs(["--host", "claude", "--home", dir], {
+        MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5",
+      });
+      assert.equal(envWins.maxConcurrency, 5);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+
+    const flagged = parseArgs(["--host", "claude", "--max-concurrency", "2"], {
+      ...ENV,
+      MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5",
+    });
+    assert.equal(flagged.maxConcurrency, 2);
+  });
+
+  it("keeps zero as 'claim nothing'", () => {
+    assert.equal(parseArgs(["--host", "claude", "--max-concurrency", "0"], ENV).maxConcurrency, 0);
+  });
+
+  it("carries the resolved cap into the child poll even when it equals the default", () => {
+    // The parent resolved 8 (the flag beats the env); the child must be told 8
+    // rather than re-reading the environment and resolving 5.
+    const args = loopCommandArgs(
+      parseArgs(["--host", "claude", "--max-concurrency", "8"], {
+        ...ENV,
+        MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5",
+      }),
+    );
+    assert.equal(args[args.indexOf("--max-concurrency") + 1], "8");
+
+    const fromEnv = loopCommandArgs(
+      parseArgs(["--host", "claude"], { ...ENV, MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5" }),
+    );
+    assert.equal(fromEnv[fromEnv.indexOf("--max-concurrency") + 1], "5");
   });
 });
 

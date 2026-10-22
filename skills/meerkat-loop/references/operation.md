@@ -75,7 +75,7 @@ Precedence: flag > process env > host config > default.
 | `--ping-interval <sec>` | 60 | liveness clock |
 | `--continue-interval <sec>` | 600 | judgment clock |
 | `--continue=yes\|no` | yes | enable the continue turn |
-| `--max-concurrency <n>` | 8 | simultaneous workers |
+| `--max-concurrency <n>` | 8 | simultaneous subagents — workers and reviewers share the budget; the split follows demand, with no per-role reservation |
 | `--claim-unassigned=yes\|no` | yes | also claim the public pool |
 | `--recover-stale=yes\|no` | yes | also claim stale `in_progress` (same holder 30 min, anyone 6 h) |
 | `--workflow=yes\|no` | yes | run the workflow pass; off means the loop writes no card |

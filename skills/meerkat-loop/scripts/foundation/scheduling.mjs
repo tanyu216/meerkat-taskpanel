@@ -31,7 +31,11 @@ import {
 import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
 
-/** Default cap on concurrently running workers. */
+/**
+ * Default cap on concurrently running subagents — workers and reviewers share it.
+ * The loop reserves no slots per role: demand decides the split (at 8 the nominal
+ * steady state is 6 workers + 2 reviewers, not a guarantee).
+ */
 export const DEFAULT_MAX_CONCURRENCY = 8;
 /**
  * The SLA measurement period, seconds — no longer a scheduling cadence.

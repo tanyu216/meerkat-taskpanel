@@ -123,6 +123,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The concurrency cap is one demand-driven budget.** `--max-concurrency` (default
+  8) now reads from the host config (`MEERKAT_TASKPANEL_MAX_CONCURRENCY`) as well as
+  the flag and environment, so an installed unit can be tuned without re-rendering
+  it. Workers and reviewers share the same budget and compete for slots by demand —
+  there is no per-role reservation, and at 8 the 6-worker/2-reviewer mix is a nominal
+  steady state, not a guarantee. The resolved value always travels into the child
+  poll, so a continue turn cannot re-resolve a different cap.
 - **The loop is resident: a session pool dispatches subagents, and poll only
   claims and enqueues.** `supervisor.mjs --session` (the new `session` unit) owns a
   long-lived control session in the taskpanel checkout plus **one project session

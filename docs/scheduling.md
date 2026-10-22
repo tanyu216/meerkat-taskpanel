@@ -107,7 +107,12 @@ session service (supervisor --session)
 - **Capacity** — `--session-pool-max` (8), `--project-concurrency`
   (default `--max-concurrency`) and `--max-concurrency` bound the pool. Poll's
   claim budget is `max-concurrency − live subagents − queued cards`; at zero it
-  claims nothing and says so. An idle project session closes after
+  claims nothing and says so. `--max-concurrency` is **one cap for all
+  subagents**: workers and reviewers share it and compete for slots by demand —
+  the loop reserves no slots per role, so a review backlog may take the whole cap
+  (at the default 8, 6 workers + 2 reviewers is the nominal steady state, not a
+  guarantee). A card spanning more target directories than `--session-pool-max`
+  meets the project-session pool first. An idle project session closes after
   `--project-idle-ms` (30 min) and keeps its session id; every session gets a
   fresh conversation after `--session-max-age` (24 h).
 - **One lock** — a second `--session` on the same state directory is refused
@@ -196,8 +201,10 @@ line) double-starts work. Guards:
   `{agent, pid, startedAt}`) for operators who still use it.
 - **Cap by count.** Poll's claim budget is
   `max-concurrency − live subagents − queued cards` (default 8), and each project
-  directory has its own cap (`--project-concurrency`). A full fleet defers
-  candidates rather than piling up handoffs.
+  directory has its own cap (`--project-concurrency`). Workers and reviewers draw
+  from the same budget — there is no per-role reservation; whichever cards are
+  offered first take the slots. A full fleet defers candidates rather than piling
+  up handoffs.
 - **Crash recovery.** The **ping** clock prunes the legacy registry of pids that
   are gone every 60 seconds. The resident path releases a slot from the ledger:
   a subagent whose card is no longer claimed, or whose record outlives the turn
@@ -1550,7 +1557,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--repo <path>` | this checkout — or, for a host-installed copy, the `MEERKAT_TASKPANEL_REPO` in the host config | repository root: what `--cli` is resolved from, and the fallback working directory |
 | `--ping-interval <sec>` | `60` | liveness clock: prune dead worker pids; no board read |
 | `--continue-interval <sec>` | `600` | judgment clock: wake the host for one `Continue` turn |
-| `--max-concurrency <n>` | `8` | cap on simultaneously running workers |
+| `--max-concurrency <n>` | `8` | cap on simultaneously running subagents; workers and reviewers share it and the split follows demand (no per-role reservation) |
 | `--claim-unassigned=yes\|no` | from host config → `yes` | also claim unassigned cards (the public pool) |
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |
 | `--recover-stale=yes\|no` | from host config → `yes` | also claim stale `in_progress` cards: the same holder after 30 min, any agent after 6 h |
@@ -1577,7 +1584,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--sla-peer <path>` | from `$MEERKAT_TASKPANEL_SLA_PEER`, else unset | the peer inspector's last-ok marker; a marker older than `3 × P_peer` raises `inspector_liveness`, where `P_peer` is the cadence the marker declares (fallback 15min). Unset ⇒ the peer's half is a registered dependency and nothing alarms |
 | `--board-limit <n>` | `500` | max cards read in one patrol pass |
 | `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
-| `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config: the claim default, and (for a host copy) `MEERKAT_TASKPANEL_REPO` |
+| `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config: the claim default, the concurrency cap (`MEERKAT_TASKPANEL_MAX_CONCURRENCY`), and (for a host copy) `MEERKAT_TASKPANEL_REPO` |
 | `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber's `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
 | `--home <path>` | `$HOME` | base for those defaults |
 | `--glue <path>` | `<home>/<host-dir>/bin/wake-<host>.sh` | the wake glue that resolves the project directory and starts the worker ([Where a worker runs](#where-a-worker-runs)) |
