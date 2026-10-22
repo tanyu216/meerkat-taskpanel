@@ -444,7 +444,7 @@ describe("md/export — 0032 snapshot and workflow facts", () => {
 });
 
 describe("md/export — 0033 rollups", () => {
-  it("marks a rollup report and keeps each child's ref, and marks an imported row", async () => {
+  it("marks a rollup report and keeps each child's ref", async () => {
     const board = await createTempBoard();
     const repos = createRepositories(board.db);
     const agent = { kind: "agent", id: "linus" };
@@ -470,23 +470,23 @@ describe("md/export — 0033 rollups", () => {
       commands.moveStatus({ id: child.id, to: "done", actor: agent });
       assert.equal(commands.getTask({ id: epic.id }).status, "in_review", "the board rolled up");
 
-      // An imported narrative on the same epic is history, and says so.
+      // A backfilled narrative on the same epic is just another report (0035).
       const authorId = board.db
         .prepare("SELECT id FROM actors WHERE normalized_name = ?")
         .get("linus").id;
       board.db
         .prepare(
           `INSERT INTO task_reports(task_id, round, conclusion, acceptance_json, evidence_json,
-                                    author_kind, author_id, created_at, origin, is_rollup)
-           VALUES (?, 2, ?, '[]', '[]', 'agent', ?, ?, 'import', 0)`,
+                                    author_kind, author_id, created_at, is_rollup)
+           VALUES (?, 2, ?, '[]', '[]', 'agent', ?, ?, 0)`,
         )
-        .run(epic.id, "An imported narrative.", authorId, TS);
+        .run(epic.id, "A backfilled narrative.", authorId, TS);
 
       const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
       assert.match(card, /^rollup: yes$/m);
       assert.match(card, new RegExp(`^- \\[met\\] ${child.identifier} Child \\(done\\) · ref: ${child.identifier}$`, "m"));
-      assert.match(card, /^origin: import$/m);
-      assert.match(card, /An imported narrative\./);
+      assert.doesNotMatch(card, /^origin: /m, "0035 removed the provenance marker");
+      assert.match(card, /A backfilled narrative\./);
 
       // A plain card's report never grows the marker.
       const plain = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0002"), { repos });

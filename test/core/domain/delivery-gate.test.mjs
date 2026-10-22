@@ -38,6 +38,26 @@ describe("domain/delivery-gate", () => {
     );
   });
 
+  it("counts any current-round report, whatever its provenance (0035)", () => {
+    // The board records reports; it does not adjudicate who wrote one. `origin`
+    // is gone, so a row that a pre-0035 board would have called `import` is a
+    // report like any other. The object below still carries the old key on
+    // purpose: an extra property must be ignored, not filtered on.
+    assert.deepEqual(
+      checkDeliveryGate({ task, reports: [{ round: 1, origin: "import" }], to: "in_review" }),
+      { ok: true },
+    );
+    assert.deepEqual(
+      checkDeliveryGate({
+        task: { ...task, kind: "epic" },
+        reports: [{ round: 1, origin: "import", isRollup: true }],
+        to: "in_review",
+      }),
+      { ok: true },
+      "an epic still needs its rollup, but not a particular writer",
+    );
+  });
+
   it("refuses an empty report list and a round that is not the current one (F3)", () => {
     const empty = checkDeliveryGate({ task, reports: [], to: "in_review" });
     assert.equal(empty.ok, false);

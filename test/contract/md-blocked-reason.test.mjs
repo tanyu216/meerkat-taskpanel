@@ -121,7 +121,8 @@ describe("blocked_reason — the card field (0016)", () => {
     // side — the assertion above covered the pairing instead. `0019` rebuilds
     // `tasks` and declares `blocked_reason` in the `CREATE TABLE` body, where the
     // reader *does* see it, so the vocabulary is now declared in `SQL_ENUM_SETS`
-    // and compared **both** ways (the `0018`/`REPORT_ORIGINS` precedent).
+    // and compared **both** ways (the `0018` actor-kind precedent; 0035 later
+    // removed the `origin` set that comment used to name).
     assert.equal(Object.hasOwn(SQL_ENUM_SETS, "tasks.blocked_reason"), true);
   });
 

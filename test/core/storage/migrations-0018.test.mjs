@@ -93,7 +93,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       const up = applyMigrations(board.db);
       // 0018 is the last file in the set today; when a later migration lands this
       // list grows by one, as the 0013/0015 suites' equivalents did.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035"]);
       assert.deepEqual(up.skipped.slice(-2), ["0016", "0017"]);
 
       // 1 — the enumeration is gone from both tables, and nothing replaced it.
@@ -331,7 +331,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
     // `assignees.kind`, `reporters.kind` — are gone entirely under `0019`, which
     // drops the columns and merges the two tables, so they are no longer usable as
     // "still declared" witnesses.)
-    for (const key of ["tasks.status", "comments.kind", "task_reports.origin"]) {
+    for (const key of ["tasks.status", "comments.kind", "agent_sessions.status"]) {
       assert.equal(Object.hasOwn(SQL_ENUM_SETS, key), true, `${key} must still be declared`);
     }
   });

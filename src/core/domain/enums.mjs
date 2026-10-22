@@ -247,22 +247,15 @@ export const EVIDENCE_KINDS = Object.freeze(["commit", "path", "command", "cover
 /** Attachment kinds. */
 export const ATTACHMENT_KINDS = Object.freeze(["inline", "attachment"]);
 
+/**
+ * `task_reports.is_rollup` (0033) — a 0/1 storage marker, not a word set. 0035
+ * declares it in a `CREATE TABLE` body (the rebuild), so the SQL-parity reader
+ * sees it; this is the JS side of that CHECK.
+ */
+export const REPORT_ROLLUP_MARKERS = Object.freeze([0, 1]);
+
 /** Agent session lifecycle. */
 export const SESSION_STATUSES = Object.freeze(["running", "closed", "failed"]);
-
-/**
- * Who wrote a report (0008). The delivery path writes `delivery`; the markdown
- * importer writes `import`, because an imported narrative is history and must
- * never satisfy the delivery gate.
- *
- * Declared here for the first time by `0018`: the constraint was added by
- * `ALTER TABLE … ADD COLUMN`, which the SQL-parity reader does not see, so the
- * value set had no JS side to be compared against. `0018` rebuilds the table and
- * the constraint moves into a `CREATE TABLE` body — where the reader *does* see
- * it, and would report it as "a CHECK in SQL that nothing declares" if this were
- * not here.
- */
-export const REPORT_ORIGINS = Object.freeze(["delivery", "import"]);
 
 /** Activity event names written to `task_activities`. */
 export const ACTIVITY_EVENTS = Object.freeze([
@@ -335,12 +328,13 @@ export const SQL_ENUM_SETS = Object.freeze({
   // `0019` rebuilds `tasks` and moves `blocked_reason`'s `CHECK` (0016, added by
   // `ALTER TABLE … ADD COLUMN`, invisible to the SQL-parity reader) into the
   // `CREATE TABLE` body, where the reader *does* see it. Declaring its literals
-  // here is what keeps the two sides paired — exactly the `0018`/`REPORT_ORIGINS`
-  // precedent. `BLOCKED_REASONS` above owns the vocabulary.
+  // here is what keeps the two sides paired — the same `0018` rule that once
+  // covered `task_reports.origin` before 0035 removed it. `BLOCKED_REASONS`
+  // above owns the vocabulary.
   "tasks.blocked_reason": BLOCKED_REASONS,
   "task_relations.relation_type": RELATION_TYPES,
   "comments.kind": COMMENT_KINDS,
   "attachments.kind": ATTACHMENT_KINDS,
   "agent_sessions.status": SESSION_STATUSES,
-  "task_reports.origin": REPORT_ORIGINS,
+  "task_reports.is_rollup": REPORT_ROLLUP_MARKERS,
 });

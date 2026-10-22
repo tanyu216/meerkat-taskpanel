@@ -233,11 +233,6 @@ and at least one piece of evidence. A report is evidence of work, not a promise 
 _中文_: 报告
 _Avoid_: summary, update, status
 
-**Report origin**:
-Whether a report was written on the delivery path (`delivery`) or imported from an older
-source (`import`). Only a delivery report opens the gate.
-_Avoid_: source, channel
-
 **Acceptance**:
 A stated condition for a card being done, together with whether it was met, partially met,
 not met, or not applicable. It is what a report is evidence against. When a card carries no

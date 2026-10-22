@@ -288,7 +288,7 @@ as the task write: an exact or unique prefix match is reused; several matches ar
 
 | Command | Purpose |
 |---|---|
-| `report list <ref> [--round <n>]` | A card's delivery reports (round, author, conclusion), newest last. This is how a reviewer reads the report it audits. |
+| `report list <ref> [--round <n>]` | A card's reports (round, author, conclusion), newest last. This is how a reviewer reads the report it audits. |
 | `report template <ref> [--commit <sha>] [--path <p>]… [--command <cmd:exit>]… [--coverage <pct[@scope]>]…` | Print a report to fill in. On an **epic** the template is a rollup: it reads the card's children and emits one `ref`-carrying item per child (`done` → `not_met` until you confirm it, `canceled` → `not_applicable` with a TODO note), and reports `acceptance_source: "children (rollup)"`. |
 
 The template is built from the card's **frozen baseline** (`tasks.acceptance_json`, printed as

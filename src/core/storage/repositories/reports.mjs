@@ -27,10 +27,6 @@ function toRow(report) {
     author_id: report.authorId,
     source_seq: report.sourceSeq ?? null,
     created_at: report.createdAt,
-    // Rows predating 0008 (and any prepared report that does not say) are a
-    // delivery — the column's own DEFAULT, restated so the repository never
-    // depends on it silently.
-    origin: report.origin ?? "delivery",
     // 0033 — only an epic's delivery report is a rollup; the writer sets this
     // from the card's kind, never from a caller-supplied payload field.
     is_rollup: report.isRollup === true ? 1 : 0,
@@ -101,22 +97,22 @@ export function createReportsRepository(db) {
     },
 
     /**
-     * Every report row's round **and** origin — what the delivery gate needs.
+     * Every report row's round **and** rollup marker — what the delivery gate
+     * needs.
      *
-     * Deliberately unfiltered: the gate (domain) decides which origins count, so
-     * the importer's history rows stay visible to it rather than being hidden by
-     * the query. A caller that only wants delivery rounds filters on `origin`.
+     * A light projection rather than full rows: the gate only asks whether the
+     * current round has one (and, for an epic, whether it is the rollup). 0035
+     * removed the provenance filter, so there is no origin to carry.
      *
      * @param {string} taskId
-     * @returns {{round: number, origin: string, isRollup: boolean}[]}
+     * @returns {{round: number, isRollup: boolean}[]}
      */
     listGateReports(taskId) {
       return db
-        .prepare("SELECT round, origin, is_rollup FROM task_reports WHERE task_id = ? ORDER BY round ASC")
+        .prepare("SELECT round, is_rollup FROM task_reports WHERE task_id = ? ORDER BY round ASC")
         .all(taskId)
         .map((row) => ({
           round: Number(row.round),
-          origin: String(row.origin),
           isRollup: Number(row.is_rollup ?? 0) === 1,
         }));
     },

@@ -644,9 +644,10 @@ function rollupEvidence(ctx, children) {
   const seen = new Set();
   for (const child of children) {
     const reports = ctx.repos.reports.listByTask(child.id);
-    // `listByTask` is round-ascending: the last delivery report is the one the
-    // current round was accepted on.
-    const latest = [...reports].reverse().find((report) => report.origin === "delivery");
+    // `listByTask` is round-ascending: the last report is the one the current
+    // round was accepted on. 0035 removed the provenance filter, so the newest
+    // row is the evidence.
+    const latest = reports.at(-1);
     if (latest === undefined || latest === null) continue;
     for (const anchor of latest.evidence?.items ?? []) {
       const key = JSON.stringify(anchor);
@@ -665,10 +666,11 @@ function rollupEvidence(ctx, children) {
 /**
  * The epic's rollup for its **current** round, or `null`.
  *
- * "Rollup" is structural: a `delivery` row carrying `is_rollup`. The round is the
+ * "Rollup" is structural: a row carrying `is_rollup` (0033). The round is the
  * epic's current `delivery_round`, so a rework (`in_review → in_progress`, which
  * bumps the round) makes the previous rollup history automatically — no
- * invalidation write, no clock.
+ * invalidation write, no clock. 0035 removed the provenance filter; who wrote
+ * the row does not matter.
  *
  * @param {object} ctx
  * @param {object} epic
@@ -680,12 +682,7 @@ export function currentRollup(ctx, epic) {
   return (
     [...reports]
       .reverse()
-      .find(
-        (report) =>
-          report.round === epic.deliveryRound &&
-          report.origin === "delivery" &&
-          report.isRollup === true,
-      ) ?? null
+      .find((report) => report.round === epic.deliveryRound && report.isRollup === true) ?? null
   );
 }
 

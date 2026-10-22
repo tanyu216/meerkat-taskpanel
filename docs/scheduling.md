@@ -420,7 +420,7 @@ or `done` (`REPORT_REQUIRED` — there is no evidence yet). So the only question
 applies the last transition**. The answer here is the **loop**, not the reviewer:
 
 - the reviewer reads the original with `issue get --json` (the human form omits the
-  description and the list), its acceptance list, the current round's delivery report, the
+  description and the list), its acceptance list, the current round's report, the
   comment trail and (for an epic) the rollup and children. If the original carries
   `meta.acceptance_derived=yes`, it checks the list covers the description and comments — a
   list that narrows the card is grounds for `REJECT`. It delivers a report whose first line

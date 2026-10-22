@@ -575,7 +575,7 @@ describe("commands/attachments — the write half of the attachment surface", ()
 });
 
 describe("commands/delivery-report — the one delivery-shaped insert", () => {
-  it("stamps origin=delivery and threads seg/sessionId through", async () => {
+  it("threads seg/sessionId through (0035 removed the origin stamp)", async () => {
     await board(({ ctx, repos, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "x", actor: AGENT });
       // `task_reports.author_id` references `actors(id)` (0020), so the author
@@ -592,7 +592,7 @@ describe("commands/delivery-report — the one delivery-shaped insert", () => {
         seg: "s1",
         sessionId: "sess",
       });
-      assert.equal(withSession.origin, "delivery");
+      assert.equal(withSession.origin, undefined, "0035 removed the provenance field");
       assert.equal(withSession.taskId, task.id);
       assert.equal(withSession.seg, "s1");
       assert.equal(withSession.sessionId, "sess");
@@ -600,7 +600,6 @@ describe("commands/delivery-report — the one delivery-shaped insert", () => {
       // One report per (task, round), so the no-session half gets its own card.
       const other = commands.createTask({ projectId: "proj", title: "y", actor: AGENT });
       const bare = insertDeliveryReport(ctx, { taskId: other.id, prepared });
-      assert.equal(bare.origin, "delivery");
       assert.equal(bare.seg, null);
       assert.equal(bare.sessionId, null);
     });

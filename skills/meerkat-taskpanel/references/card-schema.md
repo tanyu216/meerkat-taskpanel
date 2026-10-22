@@ -261,8 +261,8 @@ evidence:
 leftovers: <what is still open>
 ```
 Acceptance status is `met` · `partial` · `not_met` · `not_applicable`. Evidence is a **closed**
-set. A report that satisfies the delivery gate is `origin='delivery'`; an imported historical
-report is `origin='import'` and never satisfies it.
+set. Any report for the card's current delivery round satisfies the gate; the board does not
+record who wrote it (0035 removed the old `origin` marker).
 
 ## Export rules
 

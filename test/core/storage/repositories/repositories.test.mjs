@@ -614,7 +614,7 @@ describe("repositories/reports", () => {
       assert.equal(rollup.isRollup, true, "the DTO reads the integer back as a boolean");
       assert.equal(repos.reports.get(rollup.id).isRollup, true);
       assert.deepEqual(repos.reports.listGateReports(epic.id), [
-        { round: 1, origin: "delivery", isRollup: true },
+        { round: 1, isRollup: true },
       ]);
 
       // A plain card's report is never a rollup, and the DB refuses a forged

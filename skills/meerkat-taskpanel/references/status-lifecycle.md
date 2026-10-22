@@ -139,8 +139,8 @@ caller sees.
 A card may not enter `in_review` without evidence **for the current delivery round** — a
 report counts only for the round it was written in.
 
-- A report with `origin: "delivery"` for the card's current `delivery_round`. Imported reports
-  (`origin: "import"`) are history; they never open the gate.
+- A report for the card's current `delivery_round`. Every report counts; 0035 removed the
+  `origin` distinction between a live delivery and imported history.
 - The escape hatch is the **audited waiver**: `--no-report --reason "<why>"` on a move to
   `in_review` (or on `issue deliver`). The reason needs at least **8 characters** after
   trimming; the waiver is stamped on the task row, recorded as a `report_waived` activity and
@@ -332,9 +332,6 @@ card still waits for a human, while a child still auto-accepts. The loop's
 | `awaiting` | `VALIDATION_FAILED` — a card is not born waiting |
 | `in_review`, `done` | `REPORT_REQUIRED` — there is no evidence yet |
 | an `epic` in anything but `backlog` / `todo` | `VALIDATION_FAILED` |
-
-The markdown importer is the exception: it writes history directly, importing
-`in_review`/`done` cards. Imported reports never satisfy a later delivery gate.
 
 ## 9. Refusals
 

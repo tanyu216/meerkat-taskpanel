@@ -47,11 +47,11 @@ function before0033() {
 }
 
 /** A report row with the 0033 marker, on a board that has the column. */
-function insertMarkedReport(db, { taskId, round = 1, origin = "delivery", isRollup = 1 }) {
+function insertMarkedReport(db, { taskId, round = 1, isRollup = 1 }) {
   db.prepare(
     `INSERT INTO task_reports(task_id, round, conclusion, acceptance_json, evidence_json,
-                              author_kind, author_id, created_at, origin, is_rollup)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                              author_kind, author_id, created_at, is_rollup)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     taskId,
     round,
@@ -61,7 +61,6 @@ function insertMarkedReport(db, { taskId, round = 1, origin = "delivery", isRoll
     "system",
     ensureActor(db, "taskd", "system"),
     TS,
-    origin,
     isRollup,
   );
 }
@@ -104,7 +103,7 @@ describe("storage/migrations — 0033 rollup reports", () => {
       applyMigrations(board.db, { dir: before0033() });
       seed(board.db);
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0033", "0034"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0033", "0034", "0035"]);
 
       const rows = board.db
         .prepare("SELECT task_id, is_rollup FROM task_reports ORDER BY task_id")
@@ -116,7 +115,7 @@ describe("storage/migrations — 0033 rollup reports", () => {
     }
   });
 
-  it("refuses a rollup marker on an ordinary card or an imported report", async () => {
+  it("refuses a rollup marker on an ordinary card", async () => {
     const board = await createTempBoard({ migrate: false });
     try {
       applyMigrations(board.db, { dir: before0033() });
@@ -127,10 +126,8 @@ describe("storage/migrations — 0033 rollup reports", () => {
         () => insertMarkedReport(board.db, { taskId: "task-1", round: 2 }),
         (err) => String(err.message).includes("ROLLUP_INVALID"),
       );
-      assert.throws(
-        () => insertMarkedReport(board.db, { taskId: "epic-1", round: 2, origin: "import" }),
-        (err) => String(err.message).includes("ROLLUP_INVALID"),
-      );
+      // 0035 removed provenance: a rollup is structural, not a writer's badge,
+      // so the only question left is whether the card is an epic.
       assert.doesNotThrow(() => insertMarkedReport(board.db, { taskId: "epic-1", round: 2 }));
 
       // The column is an INTEGER 0/1; a forged value is a CHECK failure.

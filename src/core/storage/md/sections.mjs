@@ -443,7 +443,6 @@ function parseReportBody(block, options = {}) {
   let leftovers = "";
   let mode = "conclusion";
   let isRollup = null;
-  let origin = null;
 
   for (const entry of block.lines) {
     const text = typeof entry === "string" ? entry : entry.text;
@@ -455,8 +454,10 @@ function parseReportBody(block, options = {}) {
       isRollup = true;
       continue;
     }
+    // 0035 removed report provenance, but cards exported before it still carry
+    // this line. Swallow it instead of reading it as conclusion prose; it is not
+    // reproduced on the next export.
     if (mode === "conclusion" && trimmed === "origin: import") {
-      origin = "import";
       continue;
     }
     if (SUB_BLOCK.test(trimmed)) {
@@ -516,7 +517,6 @@ function parseReportBody(block, options = {}) {
     // Only when the block carried the marker, so an old card round-trips to the
     // same object it parsed from.
     ...(isRollup === null ? {} : { isRollup }),
-    ...(origin === null ? {} : { origin }),
     notices: blockNotices,
   };
 }
@@ -572,11 +572,10 @@ export function renderReportBlock(reports) {
   for (const report of reports) {
     chunks.push(`### R${report.round} · ${report.ts} · ${report.authorId}`);
     chunks.push("");
-    // 0033 — the two facts a reader cannot infer from the content. `origin` is
-    // written only for an imported narrative (the row the delivery gate ignores).
+    // 0033 — the one fact a reader cannot infer from the content. (0035 removed
+    // `origin`; an old card's line is parsed and ignored, never re-emitted.)
     if (report.isRollup === true) chunks.push("rollup: yes");
-    if (report.origin === "import") chunks.push("origin: import");
-    if (report.isRollup === true || report.origin === "import") chunks.push("");
+    if (report.isRollup === true) chunks.push("");
     if (report.conclusion.trim() !== "") {
       chunks.push(report.conclusion.trim());
       chunks.push("");

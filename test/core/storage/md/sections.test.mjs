@@ -409,14 +409,13 @@ describe("md/sections — report", () => {
     ]);
   });
 
-  it("round-trips a rollup: marker, child refs, and the imported-origin line", () => {
+  it("round-trips a rollup: marker and child refs", () => {
     const reports = [
       {
         round: 2,
         ts: "2026-10-08T02:00:00.000Z",
         authorId: "taskd",
         isRollup: true,
-        origin: "import",
         conclusion: "Rollup.",
         acceptance: [
           { text: "PROJ-0001 One (done)", status: "met", ref: "PROJ-0001" },
@@ -427,14 +426,23 @@ describe("md/sections — report", () => {
       },
     ];
     const rendered = renderReportBlock(reports);
-    assert.match(rendered, /^### R2 · .*\n\nrollup: yes\norigin: import\n\nRollup\./);
+    assert.match(rendered, /^### R2 · .*\n\nrollup: yes\n\nRollup\./);
+    assert.doesNotMatch(rendered, /^origin: /m, "0035 removed the provenance marker");
     assert.match(rendered, /- \[met\] PROJ-0001 One \(done\) · ref: PROJ-0001/);
     assert.match(rendered, /- \[not_applicable\] PROJ-0002 Two \(canceled\) · ref: PROJ-0002 — scope dropped/);
 
     const [back] = parseReportBlock(rendered);
     assert.equal(back.isRollup, true);
-    assert.equal(back.origin, "import");
+    assert.equal(back.origin, undefined);
     assert.deepEqual(back.acceptance, reports[0].acceptance);
+  });
+
+  it("swallows a legacy `origin: import` line instead of reading it as prose", () => {
+    // Cards exported before 0035 still carry the line. It is not reproduced, and
+    // it must not leak into the conclusion on the way in.
+    const [back] = parseReportBlock("### R1 · 2026-10-08T00:00:00.000Z · taskd\n\norigin: import\n\nHistory.\n");
+    assert.equal(back.conclusion, "History.");
+    assert.equal(back.origin, undefined);
   });
 
   it("keeps the marker absent when the block carries none", () => {
