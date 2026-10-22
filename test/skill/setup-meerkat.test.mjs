@@ -326,6 +326,27 @@ describe("install-roles.mjs — project scope", () => {
     assert.doesNotMatch(reviewerPrompt, /--agent Reviewer/);
   });
 
+  it("rewrites cross-references in the manifest when another role is renamed", (t) => {
+    const home = temp(t);
+    const project = temp(t);
+    const result = runJson(
+      t,
+      INSTALL,
+      [
+        "--scope", "project", "--project", project, "--home", home,
+        "--role", "jobs", "--role", "linus", "--agent", "linus=Bob",
+      ],
+      { cwd: project },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const manifest = JSON.parse(readFileSync(join(project, ".meerkat", "roles", "manifest.json"), "utf8"));
+    const jobs = manifest.roles.find((role) => role.id === "jobs");
+    assert.ok(jobs.responsibilities.some((line) => line.includes("Bob")));
+    assert.equal(jobs.responsibilities.some((line) => /\bLinus\b/.test(line)), false);
+    const linus = manifest.roles.find((role) => role.id === "linus");
+    assert.equal(linus.agent, "Bob");
+  });
+
   it("rejects a workflow that escapes the team root", (t) => {
     const source = temp(t);
     const roles = join(source, ".meerkat", "roles");

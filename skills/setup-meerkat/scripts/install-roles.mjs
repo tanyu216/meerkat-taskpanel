@@ -268,6 +268,15 @@ function main(argv) {
     return 1;
   }
 
+  // A rename must reach the copied prose, not just the manifest's `agent` field:
+  // a role file that still says `--agent Jobs` would contradict the handoff.
+  const originalAgent = new Map(team.roles.map((role) => [role.id, role.agent]));
+  const renames = selected
+    .map((role) => [originalAgent.get(role.id), role.agent])
+    .filter(([before, after]) => before && after && before !== after);
+  const replaceAgentNames = (text) =>
+    renames.reduce((out, [before, after]) => out.split(before).join(after), text);
+
   // The manifest is written last, with only the selected roles and any renames.
   const manifest = JSON.parse(JSON.stringify(team.manifest));
   manifest.roles = (manifest.roles ?? [])
@@ -278,6 +287,12 @@ function main(argv) {
       if (opts.reviewer && isReviewerRole(selected.find((entry) => entry.id === role.id) ?? {})) {
         copy.agent = opts.reviewer;
       }
+      if (typeof copy.title === "string") copy.title = replaceAgentNames(copy.title);
+      if (typeof copy.summary === "string") copy.summary = replaceAgentNames(copy.summary);
+      if (Array.isArray(copy.responsibilities)) {
+        copy.responsibilities = copy.responsibilities.map(replaceAgentNames);
+      }
+      if (Array.isArray(copy.boundaries)) copy.boundaries = copy.boundaries.map(replaceAgentNames);
       return copy;
     });
 
@@ -311,9 +326,6 @@ function main(argv) {
     errors: [],
   };
 
-  const originalAgent = new Map(team.roles.map((role) => [role.id, role.agent]));
-  const renamedAgent = new Map(selected.map((role) => [role.id, role.agent]));
-
   let conflict = false;
   for (const rel of files) {
     if (rel === "manifest.json") continue;
@@ -325,13 +337,7 @@ function main(argv) {
       report.warnings.push(`cannot read ${rel}: ${err instanceof Error ? err.message : String(err)}`);
       continue;
     }
-    // A renamed role's own files must speak its new board name; the handoff
-    // flags are authoritative, but a hard-coded `--agent Jobs` would contradict
-    // them. Only the role's directory is rewritten — the team policy is shared.
-    const roleId = rel.split("/")[0];
-    const before = originalAgent.get(roleId);
-    const after = renamedAgent.get(roleId);
-    if (before && after && before !== after) text = text.split(before).join(after);
+    if (renames.length > 0) text = replaceAgentNames(text);
     const action = placeText(join(targetRoot, rel), text, opts);
     if (action.action === "conflict") conflict = true;
     report.files.push({ path: join(targetRoot, rel), action: action.action });
@@ -362,7 +368,9 @@ function main(argv) {
         projectDir: opts.scope === "project" ? opts.project : null,
       });
       if (target === null) continue;
-      const text = renderTemplate(loadTemplate(source, kind), role, installedWorkflow, installedSelf);
+      const text = replaceAgentNames(
+        renderTemplate(loadTemplate(source, kind), role, installedWorkflow, installedSelf),
+      );
       const action = placeText(target, text, opts);
       if (action.action === "conflict") conflict = true;
       report.agentDefs.push({ path: target, action: action.action, kind });
