@@ -2,6 +2,16 @@
 
 > One card's state model. `cli.md` is the command surface; `card-schema.md` is the card file.
 
+**Contents:** [1. Vocabulary](#1-the-vocabulary) · [2. Whitelist](#2-the-whitelist) ·
+[3. Guards](#3-the-guard-on-each-edge) ·
+[4. Delivery gate](#4-the-delivery-gate-and-the-delivery-round) ·
+[5. Claims](#5-claims-and-heartbeats) · [6. Containers](#6-containers-epic) ·
+[7. Acceptance](#7-acceptance-policy--scope) ·
+[8. Creating](#8-creating-a-card-in-a-status) · [9. Refusals](#9-refusals) ·
+[10. Enforced vs practice](#10-what-is-enforced-and-what-is-practice) ·
+[11. Workflow decisions](#11-the-boards-workflow-decisions) ·
+[12. Choosing a status](#12-choosing-a-status)
+
 ## 1. The vocabulary
 
 A card has **eight stored status words**, but only **seven are stages** — the board's columns:

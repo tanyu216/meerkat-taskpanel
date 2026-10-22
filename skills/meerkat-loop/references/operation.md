@@ -102,6 +102,45 @@ Precedence: flag > process env > host config > default.
 | `--sla-peer <path>` | unset | peer inspector's last-ok marker; unset registers a dependency, not an alarm |
 | `--notify <cmd>` | — | run `<cmd>` with each alert as JSON on stdin |
 
+Configuration and transport:
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--url <url>` | `TASKD_URL` (env or install-root `.env`), then the runtime pointer | board address |
+| `--env-file <path>` | `MEERKAT_TASKPANEL_ENV_FILE`, then `<repo>/.env` | config file for the loop's `taskctl` children |
+| `--token <token>` | `$TASKD_TOKEN` / `TASKD_TOKEN_FILE` / pointer tokenFile | board token; prefer the env or file form |
+| `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config the installer writes |
+| `--projects-json <path>` | beside the board skill, or `MEERKAT_TASKPANEL_PROJECTS_JSON` | host-local project map handed to the glue |
+| `--home <path>` | `$HOME` | root the defaults resolve against |
+| `--cli <path>` | `<repo>/src/cli/index.mjs` | `taskctl` entry |
+| `--glue <path>` | `<home>/<host-dir>/bin/wake-<host>.sh` | wake glue |
+| `--wake-command <cmd>` | — | your own wake command instead of the built-in host form |
+
+Selectors, state and internals:
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--once` | — | run one pass and exit; no selector means the legacy poll pass |
+| `--ping-only` / `--continue-only` / `--patrol-only` | — | the selector for `--once` |
+| `--continue-state <path>` | `continue.state.json` beside `--state` | continue lock |
+| `--log <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.log` | append log lines |
+| `--state <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.state.json` | worker registry |
+| `--sla-ledger <path>` | sibling of `--state` | SLA de-duplication ledger |
+| `--sla-leader <id>` | the board's human decision authority | author id passed to `sla list` / `sla get` |
+| `--sla-last-ok <path>` | — | this mechanism's last-successful-run marker |
+| `--board-limit <n>` | 500 | max cards per read |
+| `--trail-limit <n>` | 200 | max comment trails per SLA read |
+| `--patrol-interval <sec>` | the board's `TASKD_SLA_PERIOD_SECONDS`, else 300 | SLA measurement period |
+| `--patrol-llm=yes\|no` | no | allow patrol to start an LLM turn |
+| `--sse-idle-ms <ms>` | 45000 | reconnect after this much stream silence |
+| `--event-debounce-ms <ms>` | 300 | coalesce a burst of events |
+| `--event-debounce-max-ms <ms>` | 2000 | never delay the first pending event past this |
+| `--event-continue-min-ms <ms>` | 60000 | at most one event-triggered turn per interval |
+
+`--poll-interval` is the deprecated alias of `--ping-interval`; `--acceptance-policy` is the
+alias of `--acceptance`; `--assignee-only` is `--claim-unassigned=no`;
+`--allow-all-tools-reason` is required with `--allow-all-tools`.
+
 `--once` with no selector runs the legacy poll pass; installed units use
 `--ping-only` / `--continue-only`. `--patrol-only` remains for legacy units.
 
@@ -144,58 +183,34 @@ the human (`auto_accept_skipped`, reason `human_only`), while a child still
 auto-accepts. `autoAcceptReviews` does not gate this path — it only controls
 whether the loop closes a review card.
 
-The reviewer reads the original's description, every acceptance item, the
-current round's report, the comment trail and (for an epic) its children. Its
-report on the review card must start with `VERDICT: APPROVE` or `VERDICT:
-REJECT`. If the original carries `meta.acceptance_derived=yes`, the reviewer
-checks that the list covers every requirement in the description and comment
-trail; a narrowed list is grounds for `REJECT`.
-
-The reviewer moves nothing. The loop is the acceptor:
-
-| Verdict | The loop does |
-|---|---|
-| `APPROVE` (`both` / `agent-only`, or any child card) | record the acceptance on the original, move `in_review → done`; close the review card |
-| `APPROVE` (`human-only`, top-level original) | **hold**: record the verdict on the original; close the review card — the original stays `in_review` for the human |
-| `REJECT` on a task | findings as a `kind=change` comment, start a new rework round, `in_review → in_progress → todo`; close the review card |
-| `REJECT` on an epic | **first** create and link a fix child, then comment and reopen `in_review → in_progress`; the child stops the board's reconcile from re-closing the container |
-
-Rules that make it safe to run unattended:
+What keeps it safe to run unattended:
 
 - **One review card per (original, delivery round)** — idempotency key
   `loop-review|<ref>|r<round>`. A re-delivery after a rejection is a new round
   and is reviewed again.
-- **Fail-safe** — an unreadable verdict, unseen original, round mismatch or
-  conflicting verdict produces an alert and **no write**; the next pass retries.
-  On a truncated board read, `original_unseen` carries `reason: board_truncated`
-  and `undecidable: true` with its own ledger key: the original may sit below
-  the read cap.
-- **A combined cap is reported** — when the outcome+auto-accept+dispatch slice
-  drops work, the plan carries `actions_capped` (cap / dropped / outcomes /
-  auto_accept / dispatch) and it is notified once per cap. `dispatch_capped`
-  remains the log-only signal for a dispatch-only overflow.
-- **The verdict is the reviewer's** — a report from anybody else is
-  `review_report_not_by_reviewer` and is not applied.
-- **A silent reviewer is reported** — an `in_review` review card with an
-  unreadable verdict raises `verdict_unreadable`; a review card that is not
-  `in_review` and has no readable verdict raises `review_aging` after
-  `--review-aging-minutes`. The original's SLA row is suppressed while an
-  **open** review card exists; a closed review card leaves the row as the
-  original's watcher, so a canceled or done review cannot hide it.
-- **The board enforces acceptance** — a refused writer gets
-  `ACCEPTANCE_FORBIDDEN`; the loop leaves the review card in place and retries.
-- **A dead configuration is named** — `acceptance=agent-only` with
-  `auto_accept_reviews=no` leaves review cards with no writer who may close them.
-  The board reports each open one as `review_cards_unclosable` (notified once per
-  ledger key) and the loop prints a startup warning; the fix is auto-accept on or
-  a non-human writer.
 - **The review card is closed last** — a crash between the original's move and
   the card's close is recovered next pass.
-- **A canceled review card ends `canceled`** — from `in_review` it takes the
-  two-hop `in_review → in_progress → canceled`; the loop never records a
-  canceled review as `done`.
 - **A truncated board read dispatches nothing**, and a reviewer equal to the
   card's own assignee is refused (`self_review_not_independent`).
+- **A canceled review card ends `canceled`** — the two-hop
+  `in_review → in_progress → canceled`; it is never recorded as `done`.
+- **A dead configuration is named** — `agent-only` with
+  `auto_accept_reviews=no` leaves review cards with no writer who may close
+  them; the board reports each open one as `review_cards_unclosable` and the
+  loop warns at startup.
+
+Operational alerts: `original_unseen` (`board_truncated` when the read is
+capped), `verdict_unreadable`, `review_aging`, `review_report_not_by_reviewer`,
+`review_stale_round`, `actions_capped` / `dispatch_capped`. An unreadable
+verdict, unseen original, round mismatch or conflicting verdict produces an
+alert and **no write**; the next pass retries.
+
+The verdict contract and the loop's action per verdict are the board skill's
+`references/review-workflow.md` §6; the agent-facing protocol is §3. The reviewer reads the
+original's description, every acceptance item, the current round's report, the
+comment trail and (for an epic) its children, and writes `VERDICT: APPROVE` or
+`VERDICT: REJECT` on the review card. The reviewer moves nothing; the loop is
+the acceptor.
 
 ## Headless permission boundary
 
