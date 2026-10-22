@@ -172,7 +172,7 @@ function defaultRun(command, args) {
  * Work out the command that asks a board what it is.
  *
  * Precedence: `--cli` (verbatim) → `--repo` → `$MEERKAT_TASKPANEL_REPO` (the key the
- * installer records in the host config) → `taskctl` on `PATH`.
+ * installer records in the agent config) → `taskctl` on `PATH`.
  *
  * @param {{cli?: string|null, repo?: string|null, env?: Record<string, string|undefined>, node?: string}} options
  * @returns {{command: string, args: string[]}}

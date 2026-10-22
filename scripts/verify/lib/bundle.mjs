@@ -1,17 +1,17 @@
 /**
  * Offline plugin-bundle and marketplace inspector.
  *
- * The container image ships Node and the repository only — none of the four host CLIs
+ * The container image ships Node and the repository only — none of the four agent CLIs
  * (`claude`, `codex`, `openclaw`, `pi`) and no network to install them (see
  * ARCHITECTURE §9.1: verification runs isolated, offline). So the container cannot ask
  * the OpenClaw CLI "do you recognize this bundle?".
  *
  * This module answers that question *offline* by reproducing the detection contract the
- * hosts actually apply, with the rules transcribed from the OpenClaw CLI that ships on
+ * agent kinds actually apply, with the rules transcribed from the OpenClaw CLI that ships on
  * the developer host (`openclaw 2026.9.8`, `dist/bundle-manifest-*.mjs`
  * `detectBundleManifestFormat` / `loadBundleManifest`, documented in
- * `docs/plugins/bundles.md` § "Detection precedence"). The host-CLI run is the
- * supplementary cross-check (`scripts/verify/host-cli.mjs`); this is what CI and the
+ * `docs/plugins/bundles.md` § "Detection precedence"). The agent-CLI run is the
+ * supplementary cross-check (`scripts/verify/kind-cli.mjs`); this is what CI and the
  * container assert on.
  *
  * Detection precedence (OpenClaw):
@@ -60,19 +60,19 @@ export const CLAUDE_DEFAULT_ROOTS = [
 ];
 
 /**
- * What each shipped host bundle is expected to look like. `dir` is repository-relative.
+ * What each shipped agent-kind bundle is expected to look like. `dir` is repository-relative.
  * `openclawFormat` is what OpenClaw's detector reports for that directory.
  *
  * @type {Record<string, {dir: string, manifest: string, openclawKind: string, openclawFormat: string}>}
  */
-export const HOST_BUNDLES = {
+export const KIND_BUNDLES = {
   // The repository root IS the board's plugin root. `.claude-plugin/plugin.json` is the
   // board manifest and the root marketplace resolves `meerkat-taskpanel` to `./`, so
   // Claude Code, Codex and OpenClaw all install the very same bundle. Codex and OpenClaw
   // ship no marker of their own, which is why their rows name the Claude manifest.
   //
-  // `openclawFormat` is what the detector reports for the row's `dir` — not what the host
-  // calls itself. Five hosts share this one directory, and the root carries two client
+  // `openclawFormat` is what the detector reports for the row's `dir` — not what the agent kind
+  // calls itself. Five agent kinds share this one directory, and the root carries two client
   // markers (`.cursor-plugin/` and `.claude-plugin/`), so OpenClaw's precedence picks
   // cursor for all five. Measured: adding the Cursor marker changes exactly one line of
   // `openclaw plugins inspect` — `Bundle format: claude` → `cursor` — while

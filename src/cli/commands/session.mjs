@@ -58,7 +58,7 @@ export const COMMANDS = [
     async run(ctx) {
       // Read-only: the task is resolved, the id is derived, and nothing is
       // registered. The derivation itself is `session set`'s, so a caller can
-      // pass this value to a host and still land on the same row.
+      // pass this value to an agent and still land on the same row.
       if (typeof ctx.flags.seg !== "string" || ctx.flags.seg.trim() === "") {
         throw usageError("session id: --seg is required and must not be empty", {
           fix: "pass the segment name, e.g. --seg s1",

@@ -1,7 +1,7 @@
 /**
  * The Pi extension — how Pi finds the board skill without a copy of it.
  *
- * Pi is a Shape-B host: it loads a JS/TS module that exposes lifecycle callbacks, and it
+ * Pi is a Shape-B agent kind: it loads a JS/TS module that exposes lifecycle callbacks, and it
  * runs the module *as written*. The root `package.json` declares both halves under `pi`:
  *
  *   "pi": { "skills": ["./skills"], "extensions": ["./.pi/extensions/meerkat-taskpanel.ts"] }

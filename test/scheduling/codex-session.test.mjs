@@ -19,7 +19,7 @@ import {
   threadResumeParams,
   threadStartParams,
   turnStartParams,
-} from "../../scripts/loop/hosts/codex.mjs";
+} from "../../scripts/loop/actor-kinds/codex.mjs";
 
 const FAKE = `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
@@ -195,7 +195,7 @@ describe("codex resident session", () => {
     assert.match(outcome.error, /timed out/);
   });
 
-  it("reports a missing host binary instead of hanging", async (t) => {
+  it("reports a missing agent binary instead of hanging", async (t) => {
     const f = fixture(t);
     const pool = createCodexPool({ opts: {}, bin: join(f.dir, "missing"), log: f.log });
     t.after(() => pool.close());

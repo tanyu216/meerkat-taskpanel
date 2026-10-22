@@ -10,7 +10,7 @@
  * container's profile check (`scripts/verify/profiles.mjs`) installs with
  * `MEERKAT_TASKPANEL_LINK=1`, i.e. a *symlink*, which puts the checkout back next to the
  * wrapper and hides exactly the defect this file exists for. A copied install used to die
- * inside Node with `Cannot find module '<home>/<host>/src/cli/index.mjs'`
+ * inside Node with `Cannot find module '<home>/<agent-dir>/src/cli/index.mjs'`
  * (T-20261014-214002) — a path the user never had, reported as a crash rather than as a
  * condition of the deployment.
  *
@@ -48,7 +48,7 @@ const WRAPPER = join("scripts", "run.mjs");
 
 /**
  * The six hosts the board skill is distributed to, and the dot-directory each one's skill
- * lands in. These are `docker/profiles/<host>.yml`'s `target_dir`s — the same destinations
+ * lands in. These are `docker/profiles/<agent-dir>.yml`'s `target_dir`s — the same destinations
  * `scripts/verify/profiles.mjs` asserts — restated here because this file drives the
  * installs itself.
  */
@@ -78,9 +78,17 @@ before(() => {
   const install = spawnSync("bash", [join(ROOT, "install.sh"), "--target", "all", "--prefix", home], {
     cwd: ROOT,
     encoding: "utf8",
-    env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1" },
+    env: {
+      ...process.env,
+      MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+      MEERKAT_TASKPANEL_SKIP_WEB_BUILD: "1",
+    },
   });
   assert.equal(install.status, 0, install.stderr);
+  assert.ok(
+    existsSync(join(home, ".meerkat-taskpanel", "src", "cli", "index.mjs")),
+    "--target all is the full install: the server tree comes with the agent skills",
+  );
 
   // A `taskctl` that records its argv and exits with whatever `FAKE_TASKCTL_EXIT` says —
   // shell builtins only, so it runs on a `PATH` that holds nothing else.
@@ -103,7 +111,7 @@ function runWrapper(dir, args, env) {
   return spawnSync(NODE, [join(installedDir(dir), WRAPPER), ...args], { encoding: "utf8", env });
 }
 
-/** Run the wrapper of a bare copy, i.e. with no `<host>/bin/taskctl` beside it. */
+/** Run the wrapper of a bare copy, i.e. with no `<agent-dir>/bin/taskctl` beside it. */
 function runBare(dir, args, env) {
   return spawnSync(NODE, [join(bareCopy(dir), WRAPPER), ...args], { encoding: "utf8", env });
 }
@@ -136,7 +144,7 @@ const CRASH = /MODULE_NOT_FOUND|Cannot find module|ERR_MODULE_NOT_FOUND|\n\s+at 
  * mutates the object, and the injected variable changes no assertion (T-20261015-051046).
  *
  * **An empty `PATH` is no longer "no CLI reachable".** `install.sh` writes a `taskctl`
- * shim at `<host>/bin/taskctl`, and the wrapper prefers it (it is the one `taskctl` that
+ * shim at `<agent-dir>/bin/taskctl`, and the wrapper prefers it (it is the one `taskctl` that
  * carries the caller's identity) — a rung found by *path*, not by `PATH`. So the legs that
  * want nothing reachable, and the leg that wants a `PATH` CLI to answer, run a **bare
  * copy** instead: see `bareCopy`.
@@ -174,9 +182,9 @@ describe("the installed skill is a copy, not a link", () => {
   });
 
   it("writes a taskctl shim for every host — the rung that carries the identity", () => {
-    // The shim is what pins `--agent <name> --actor-kind <host>` on every call, and a host
+    // The shim is what pins `--agent <name> --actor-kind <agent-dir>` on every call, and a host
     // without one records its writes with no kind — which the board reads as a person's.
-    // `docs/install.md` promises it for every host, not only the two bundle hosts.
+    // `docs/install.md` promises it for every host, not only the two bundle agent kinds.
     for (const { host, dir } of HOSTS) {
       const shim = join(home, dir, "bin", "taskctl");
       assert.ok(existsSync(shim), `${host}: the shim must be installed at ${shim}`);
@@ -255,7 +263,7 @@ for (const { host, dir } of HOSTS) {
     });
 
     it("runs the CLI of a checkout named by MEERKAT_TASKPANEL_REPO", () => {
-      // The key install.sh records in the host config, and the one the loop's
+      // The key install.sh records in the agent config, and the one the loop's
       // board-check.mjs resolves through — same vocabulary, deliberately.
       const run = runWrapper(dir, ["--version"], { PATH: "", MEERKAT_TASKPANEL_REPO: ROOT });
       assert.equal(run.status, 0, `stderr: ${run.stderr}`);

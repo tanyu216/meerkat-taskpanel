@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { createPiPool, sessionArgs } from "../../scripts/loop/hosts/pi.mjs";
+import { createPiPool, sessionArgs } from "../../scripts/loop/actor-kinds/pi.mjs";
 
 const FAKE = `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";

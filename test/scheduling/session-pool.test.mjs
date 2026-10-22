@@ -3,7 +3,7 @@
  * target directory, card routing by cwd, concurrency, idle eviction, resume and
  * reattach.
  *
- * The host pool is a fake in-process seam; the real Claude adapter has its own
+ * The kind pool is a fake in-process seam; the real Claude adapter has its own
  * integration test.
  *
  * Run with: node --test
@@ -42,7 +42,7 @@ function optsFor(f, overrides = {}) {
     log: join(f.dir, "log"),
     repo: join(f.dir, "repo"),
     home: f.dir,
-    host: "claude",
+    actorKind: "claude",
     agents: ["alice"],
     continueInterval: 600,
     maxConcurrency: 8,
@@ -121,7 +121,7 @@ describe("session pool", () => {
         return { ids: [] };
       },
     });
-    const pool = createSessionPool({ opts: optsFor(f), log: (line) => lines.push(line), hostPool: fake });
+    const pool = createSessionPool({ opts: optsFor(f), log: (line) => lines.push(line), kindPool: fake });
     t.after(() => pool.stop());
     assert.equal((await pool.start()).ok, true);
     enqueueContinue(join(f.dir), { reason: "timer" });
@@ -149,7 +149,7 @@ describe("session pool", () => {
     // card must wait for a slot.
     const pool = createSessionPool({
       opts: optsFor(f, { maxConcurrency: 1, subagentBackground: true }),
-      hostPool: fake,
+      kindPool: fake,
     });
     t.after(() => pool.stop());
     await pool.start();
@@ -168,7 +168,7 @@ describe("session pool", () => {
     // Background mode keeps both subagents live, so the remaining cards have no slot.
     const pool = createSessionPool({
       opts: optsFor(f, { maxConcurrency: 2, subagentBackground: true }),
-      hostPool: fake,
+      kindPool: fake,
     });
     t.after(() => pool.stop());
     await pool.start();
@@ -189,7 +189,7 @@ describe("session pool", () => {
     const fake = fakePool();
     const pool = createSessionPool({
       opts: optsFor(f, { maxConcurrency: 1, subagentBackground: true }),
-      hostPool: fake,
+      kindPool: fake,
     });
     t.after(() => pool.stop());
     await pool.start();
@@ -205,7 +205,7 @@ describe("session pool", () => {
     const fake = fakePool();
     const pool = createSessionPool({
       opts: optsFor(f, { projectConcurrency: 1 }),
-      hostPool: fake,
+      kindPool: fake,
     });
     t.after(() => pool.stop());
     await pool.start();
@@ -224,7 +224,7 @@ describe("session pool", () => {
     const fake = fakePool({
       behavior: ({ prompt }) => (prompt.startsWith("/meerkat-loop") ? { ids: [] } : fail ? { ok: false, error: "boom" } : {}),
     });
-    const pool = createSessionPool({ opts: optsFor(f), hostPool: fake });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
     t.after(() => pool.stop());
     await pool.start();
     enqueueCard(join(f.dir), card(f, "T-1", f.app));
@@ -249,7 +249,7 @@ describe("session pool", () => {
     const fake = fakePool();
     const pool = createSessionPool({
       opts: optsFor(f, { projectIdleMs: 1000 }),
-      hostPool: fake,
+      kindPool: fake,
       now: () => clock,
     });
     t.after(() => pool.stop());
@@ -277,7 +277,7 @@ describe("session pool", () => {
     const fake = fakePool();
     const pool = createSessionPool({
       opts: optsFor(f, { sessionMaxAgeMs: 1000 }),
-      hostPool: fake,
+      kindPool: fake,
       now: () => clock,
     });
     t.after(() => pool.stop());
@@ -299,7 +299,7 @@ describe("session pool", () => {
     const f = fixture(t);
     writeLedger(f.dir, upsertSubagent({ subagents: [] }, {
       sessionKey: f.app,
-      host: "claude",
+      actorKind: "claude",
       subagentId: "a-old",
       card: "T-9",
       role: "worker",
@@ -310,7 +310,7 @@ describe("session pool", () => {
     const fake = fakePool();
     const pool = createSessionPool({
       opts: optsFor(f),
-      hostPool: fake,
+      kindPool: fake,
       now: () => Date.parse("2026-01-01T00:01:00.000Z"),
     });
     t.after(() => pool.stop());
@@ -326,8 +326,8 @@ describe("session pool", () => {
 
   it("refuses a second pool on the same state directory", async (t) => {
     const f = fixture(t);
-    const first = createSessionPool({ opts: optsFor(f), hostPool: fakePool() });
-    const second = createSessionPool({ opts: optsFor(f), hostPool: fakePool() });
+    const first = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    const second = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
     t.after(async () => {
       await first.stop();
       await second.stop();
@@ -345,7 +345,7 @@ describe("session pool", () => {
     writeFileSync(join(home, ".claude", "skills", "meerkat-loop", "SKILL.md"), "---\nname: x\n---\n");
     const lines = [];
     const code = await runSession(
-      { ...optsFor(f), home, host: "claude" },
+      { ...optsFor(f), home, actorKind: "claude" },
       { log: (line) => lines.push(line) },
     );
     assert.equal(code, 2);
@@ -364,8 +364,8 @@ describe("session pool", () => {
     const controller = new AbortController();
     controller.abort();
     const code = await runSession(
-      { ...optsFor(f), home, host: "claude" },
-      { log: () => {}, hostPool: fakePool(), signal: controller.signal },
+      { ...optsFor(f), home, actorKind: "claude" },
+      { log: () => {}, kindPool: fakePool(), signal: controller.signal },
     );
     assert.equal(code, 0);
     assert.equal(existsSync(join(f.dir, "session.lock")), false, "the lock is released");

@@ -20,7 +20,7 @@
  *
  * When `web/dist` is absent the build-dependent checks **skip with a printed
  * reason** (the "absent tool ⇒ SKIP, never FAIL" precedent from
- * `scripts/verify/host-cli.mjs`); the CSS checks only need the source and always
+ * `scripts/verify/kind-cli.mjs`); the CSS checks only need the source and always
  * run.
  */
 

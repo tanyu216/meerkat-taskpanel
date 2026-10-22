@@ -24,7 +24,7 @@ import test, { after, describe, it } from "node:test";
 
 import { MiniYamlError, parseMiniYaml } from "../scripts/verify/lib/mini-yaml.mjs";
 import {
-  PROFILE_HOSTS,
+  PROFILE_KINDS,
   REQUIRED_PROFILE_FIELDS,
   buildChecks,
   loadProfiles,
@@ -77,12 +77,12 @@ describe("mini-yaml", () => {
   });
 
   it("skips blank lines and # comments", () => {
-    const doc = ["# profile for claude", "", "host: claude", "   # indented comment", "label: Claude Code", ""].join("\n");
-    assert.deepEqual(parseMiniYaml(doc), { host: "claude", label: "Claude Code" });
+    const doc = ["# profile for claude", "", "actor_kind: claude", "   # indented comment", "label: Claude Code", ""].join("\n");
+    assert.deepEqual(parseMiniYaml(doc), { actor_kind: "claude", label: "Claude Code" });
   });
 
   it("trims whitespace around key and value", () => {
-    assert.deepEqual(parseMiniYaml("   host   :    claude   "), { host: "claude" });
+    assert.deepEqual(parseMiniYaml("   actor_kind   :    claude   "), { actor_kind: "claude" });
     assert.deepEqual(parseMiniYaml("key:value"), { key: "value" });
   });
 
@@ -98,7 +98,7 @@ describe("mini-yaml", () => {
   });
 
   it("lets a later duplicate key override an earlier one", () => {
-    assert.deepEqual(parseMiniYaml("host: claude\nhost: openclaw"), { host: "openclaw" });
+    assert.deepEqual(parseMiniYaml("actor_kind: claude\nactor_kind: openclaw"), { actor_kind: "openclaw" });
   });
 
   it("keeps colons that appear inside a value", () => {
@@ -109,7 +109,7 @@ describe("mini-yaml", () => {
 
   it("throws a MiniYamlError carrying the line number for an illegal line", () => {
     assert.throws(
-      () => parseMiniYaml("host: claude\nnot a mapping\n"),
+      () => parseMiniYaml("actor_kind: claude\nnot a mapping\n"),
       (err) => {
         assert.ok(err instanceof MiniYamlError, "expected a MiniYamlError");
         assert.equal(err.line, 2);
@@ -130,10 +130,10 @@ describe("mini-yaml", () => {
 
 describe("profiles: loadProfiles", () => {
   it("parses every shipped profile with the expected fields", async () => {
-    const { hosts, profiles, errors } = await loadProfiles(join(ROOT, "docker", "profiles"));
+    const { kinds, profiles, errors } = await loadProfiles(join(ROOT, "docker", "profiles"));
 
     assert.deepEqual(errors, []);
-    assert.deepEqual(hosts.slice().sort(), [...PROFILE_HOSTS].sort());
+    assert.deepEqual(kinds.slice().sort(), [...PROFILE_KINDS].sort());
 
     const expected = {
       claude: { dir: ".claude/skills/meerkat-taskpanel", installer: "scripts/install/claude.sh" },
@@ -144,15 +144,15 @@ describe("profiles: loadProfiles", () => {
       cursor: { dir: ".cursor/skills/meerkat-taskpanel", installer: "scripts/install/cursor.sh" },
     };
 
-    for (const host of PROFILE_HOSTS) {
-      const profile = profiles[host];
-      assert.ok(profile, `missing profile for ${host}`);
-      assert.equal(profile.host, host, `${host}: host must match the file name`);
-      assert.equal(profile.target_dir, expected[host].dir, `${host}: target_dir`);
-      assert.equal(profile.installer, expected[host].installer, `${host}: installer`);
-      assert.equal(profile.skill_entry, "SKILL.md", `${host}: skill_entry`);
-      assert.equal(profile.wrapper, "scripts/run.mjs", `${host}: wrapper`);
-      assert.ok(profile.label.length > 0, `${host}: label must be non-empty`);
+    for (const kind of PROFILE_KINDS) {
+      const profile = profiles[kind];
+      assert.ok(profile, `missing profile for ${kind}`);
+      assert.equal(profile.actor_kind, kind, `${kind}: actor_kind must match the file name`);
+      assert.equal(profile.target_dir, expected[kind].dir, `${kind}: target_dir`);
+      assert.equal(profile.installer, expected[kind].installer, `${kind}: installer`);
+      assert.equal(profile.skill_entry, "SKILL.md", `${kind}: skill_entry`);
+      assert.equal(profile.wrapper, "scripts/run.mjs", `${kind}: wrapper`);
+      assert.ok(profile.label.length > 0, `${kind}: label must be non-empty`);
     }
   });
 
@@ -160,7 +160,7 @@ describe("profiles: loadProfiles", () => {
     const dir = await makeTempDir();
     await writeFile(
       join(dir, "claude.yml"),
-      "host: claude\nlabel: Claude Code\ninstaller: scripts/install/claude.sh\ntarget_dir: .claude/skills/meerkat-taskpanel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n",
+      "actor_kind: claude\nlabel: Claude Code\ninstaller: scripts/install/claude.sh\ntarget_dir: .claude/skills/meerkat-taskpanel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n",
     );
 
     const { errors } = await loadProfiles(dir);
@@ -171,37 +171,37 @@ describe("profiles: loadProfiles", () => {
     );
   });
 
-  it("reports a host/file name mismatch and missing fields", async () => {
+  it("reports an actor-kind/file name mismatch and missing fields", async () => {
     const dir = await makeTempDir();
     const base = "label: X\ninstaller: scripts/install/claude.sh\ntarget_dir: .claude/skills/meerkat-taskpanel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n";
-    await writeFile(join(dir, "claude.yml"), `host: openclaw\n${base}`);
-    await writeFile(join(dir, "openclaw.yml"), "host: openclaw\nlabel: OpenClaw\n");
-    await writeFile(join(dir, "codex.yml"), `host: codex\n${base}`);
-    await writeFile(join(dir, "pi.yml"), `host: pi\n${base}`);
+    await writeFile(join(dir, "claude.yml"), `actor_kind: openclaw\n${base}`);
+    await writeFile(join(dir, "openclaw.yml"), "actor_kind: openclaw\nlabel: OpenClaw\n");
+    await writeFile(join(dir, "codex.yml"), `actor_kind: codex\n${base}`);
+    await writeFile(join(dir, "pi.yml"), `actor_kind: pi\n${base}`);
 
     const { errors } = await loadProfiles(dir);
-    assert.ok(errors.some((e) => /claude/.test(e) && /host/.test(e)), `expected host mismatch error: ${errors.join(" | ")}`);
+    assert.ok(errors.some((e) => /claude/.test(e) && /actor_kind/.test(e)), `expected actor_kind mismatch error: ${errors.join(" | ")}`);
     assert.ok(errors.some((e) => /openclaw/.test(e) && /wrapper/.test(e)), `expected missing field error: ${errors.join(" | ")}`);
   });
 
   it("surfaces a YAML syntax error instead of throwing", async () => {
     const dir = await makeTempDir();
-    await writeFile(join(dir, "claude.yml"), "host claude\n");
+    await writeFile(join(dir, "claude.yml"), "actor_kind claude\n");
     const { errors } = await loadProfiles(dir);
     assert.ok(errors.some((e) => /line 1/.test(e)), `expected a line-numbered parse error: ${errors.join(" | ")}`);
   });
 
-  it("rejects a profile file for an unknown host", async () => {
+  it("rejects a profile file for an unknown actor kind", async () => {
     const dir = await makeTempDir();
-    await writeFile(join(dir, "emacs.yml"), "host: emacs\n");
+    await writeFile(join(dir, "emacs.yml"), "actor_kind: emacs\n");
     const { errors } = await loadProfiles(dir);
     assert.ok(errors.some((e) => e.includes("unknown profile: emacs")), `expected an unknown-profile error: ${errors.join(" | ")}`);
   });
 
   it("reports an unreadable profiles directory instead of throwing", async () => {
-    const { profiles, hosts, errors } = await loadProfiles(join(ROOT, "docker", "profiles", "does-not-exist"));
+    const { profiles, kinds, errors } = await loadProfiles(join(ROOT, "docker", "profiles", "does-not-exist"));
     assert.deepEqual(profiles, {});
-    assert.deepEqual(hosts, []);
+    assert.deepEqual(kinds, []);
     assert.equal(errors.length, 1);
     assert.match(errors[0], /not readable/);
   });
@@ -237,12 +237,12 @@ describe("profiles: buildChecks", () => {
 
   it("emits the required assertions", async () => {
     const { profiles } = await loadProfiles(join(ROOT, "docker", "profiles"));
-    for (const host of PROFILE_HOSTS) {
-      const checks = buildChecks(profiles[host], { home: "/tmp/h", root: "/repo" });
+    for (const kind of PROFILE_KINDS) {
+      const checks = buildChecks(profiles[kind], { home: "/tmp/h", root: "/repo" });
       const kinds = checks.assertions.map((a) => a.kind);
-      assert.ok(kinds.includes("pathExists"), `${host}: pathExists`);
-      assert.ok(kinds.includes("skillFrontmatter"), `${host}: skillFrontmatter`);
-      assert.ok(kinds.includes("wrapperVersion"), `${host}: wrapperVersion`);
+      assert.ok(kinds.includes("pathExists"), `${kind}: pathExists`);
+      assert.ok(kinds.includes("skillFrontmatter"), `${kind}: skillFrontmatter`);
+      assert.ok(kinds.includes("wrapperVersion"), `${kind}: wrapperVersion`);
 
       const frontmatter = checks.assertions.find((a) => a.kind === "skillFrontmatter");
       assert.equal(frontmatter.field, "name");
@@ -270,7 +270,7 @@ describe("profiles: buildChecks", () => {
 });
 
 describe("profiles: runProfiles", () => {
-  it("installs every host into a throwaway home and verifies it", async () => {
+  it("installs every agent kind into a throwaway home and verifies it", async () => {
     const home = await makeTempDir("meerkat-taskpanel-home-");
     const result = await runProfiles({
       home,
@@ -280,17 +280,17 @@ describe("profiles: runProfiles", () => {
     });
 
     assert.equal(result.ok, true, `runProfiles failed: ${JSON.stringify(result.results, null, 2)}`);
-    assert.equal(result.results.length, PROFILE_HOSTS.length);
+    assert.equal(result.results.length, PROFILE_KINDS.length);
 
     for (const entry of result.results) {
-      assert.equal(entry.ok, true, `${entry.host} failed: ${entry.error ?? ""}`);
-      assert.ok(existsSync(join(home, entry.profile.target_dir, "SKILL.md")), `${entry.host}: SKILL.md installed`);
+      assert.equal(entry.ok, true, `${entry.kind} failed: ${entry.error ?? ""}`);
+      assert.ok(existsSync(join(home, entry.profile.target_dir, "SKILL.md")), `${entry.kind}: SKILL.md installed`);
     }
 
     // Every install was confined to the injected home.
     for (const entry of result.results) {
       assert.equal(entry.home, home);
-      assert.ok(entry.dest.startsWith(home), `${entry.host}: dest escaped the injected home`);
+      assert.ok(entry.dest.startsWith(home), `${entry.kind}: dest escaped the injected home`);
     }
   });
 
@@ -298,12 +298,12 @@ describe("profiles: runProfiles", () => {
     const home = await makeTempDir("meerkat-taskpanel-home-");
     const dir = await makeTempDir();
     const base = "target_dir: .claude/skills/meerkat-taskpanel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n";
-    await writeFile(join(dir, "claude.yml"), `host: claude\nlabel: Claude Code\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
-    await writeFile(join(dir, "openclaw.yml"), `host: openclaw\nlabel: OpenClaw\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
-    await writeFile(join(dir, "codex.yml"), `host: codex\nlabel: Codex\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
-    await writeFile(join(dir, "pi.yml"), `host: pi\nlabel: Pi\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
-    await writeFile(join(dir, "opencode.yml"), `host: opencode\nlabel: OpenCode\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
-    await writeFile(join(dir, "cursor.yml"), `host: cursor\nlabel: Cursor\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
+    await writeFile(join(dir, "claude.yml"), `actor_kind: claude\nlabel: Claude Code\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
+    await writeFile(join(dir, "openclaw.yml"), `actor_kind: openclaw\nlabel: OpenClaw\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
+    await writeFile(join(dir, "codex.yml"), `actor_kind: codex\nlabel: Codex\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
+    await writeFile(join(dir, "pi.yml"), `actor_kind: pi\nlabel: Pi\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
+    await writeFile(join(dir, "opencode.yml"), `actor_kind: opencode\nlabel: OpenCode\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
+    await writeFile(join(dir, "cursor.yml"), `actor_kind: cursor\nlabel: Cursor\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
 
     const result = await runProfiles({ home, profilesDir: dir, root: ROOT, quiet: true });
     assert.equal(result.ok, false);
@@ -902,6 +902,7 @@ describe("static: verify-in-container.sh", () => {
     assert.match(text, /npm run check/);
     assert.match(text, /install\.sh --target all --dry-run/);
     assert.match(text, /scripts\/verify\/profiles\.mjs/);
+    assert.match(text, /^node scripts\/verify\/server-install\.mjs$/m);
   });
 
   it("runs the install + first-run end-to-end, so local and CI cover the same ground", async () => {
@@ -1015,9 +1016,9 @@ describe("static: install-e2e.sh identity", () => {
 });
 
 describe("static: profiles and docs", () => {
-  it("ships one profile per host", () => {
-    for (const host of PROFILE_HOSTS) {
-      assert.ok(existsSync(join(ROOT, "docker", "profiles", `${host}.yml`)), `docker/profiles/${host}.yml must exist`);
+  it("ships one profile per agent kind", () => {
+    for (const kind of PROFILE_KINDS) {
+      assert.ok(existsSync(join(ROOT, "docker", "profiles", `${kind}.yml`)), `docker/profiles/${kind}.yml must exist`);
     }
   });
 
@@ -1059,6 +1060,6 @@ describe("static: CI workflow", () => {
 
 describe("static: REQUIRED_PROFILE_FIELDS", () => {
   it("lists the flat profile schema", () => {
-    assert.deepEqual(REQUIRED_PROFILE_FIELDS, ["host", "label", "installer", "target_dir", "skill_entry", "wrapper"]);
+    assert.deepEqual(REQUIRED_PROFILE_FIELDS, ["actor_kind", "label", "installer", "target_dir", "skill_entry", "wrapper"]);
   });
 });

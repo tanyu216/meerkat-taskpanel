@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * The host-only probe for the resident session adapters.
+ * The agent-kind probe for the resident session adapters.
  *
- * The container has none of the host CLIs, so the adapters' *protocol* claims
+ * The container has none of the agent CLIs, so the adapters' *protocol* claims
  * can only be checked on a machine that has them. This script starts each
  * available CLI on its native protocol and performs the handshake the adapter
  * performs — no model turn, no card, no board:
@@ -14,11 +14,11 @@
  *   opencode `serve` must answer `GET /session` (per-directory server design)
  *   cursor   `cursor-agent acp` must answer `initialize`
  *
- * A host whose CLI is missing is SKIPped. Exit 0 when every available host
+ * An agent kind whose CLI is missing is SKIPped. Exit 0 when every available agent kind
  * answered, 1 when one did not, 3 when nothing could be probed at all.
  *
  * Usage:
- *   node scripts/verify/host-session-matrix.mjs [--host claude,codex,pi,opencode,cursor]
+ *   node scripts/verify/kind-session-matrix.mjs [--actor-kind claude,codex,pi,opencode,cursor]
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -27,9 +27,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
-import { freePort } from "../loop/hosts/opencode.mjs";
+import { freePort } from "../loop/actor-kinds/opencode.mjs";
 
-export const HOSTS = Object.freeze(["claude", "codex", "pi", "opencode", "cursor"]);
+export const KINDS = Object.freeze(["claude", "codex", "pi", "opencode", "cursor"]);
 
 const TIMEOUT_MS = 20_000;
 
@@ -214,35 +214,35 @@ const PROBES = Object.freeze({
 });
 
 /**
- * @param {{hosts?: string[], log?: (line: string) => void}} [input]
+ * @param {{kinds?: string[], log?: (line: string) => void}} [input]
  * @returns {Promise<{exitCode: number, results: Record<string, object>}>}
  */
 export async function runMatrix(input = {}) {
   const log = input.log ?? ((line) => process.stdout.write(`${line}\n`));
-  const hosts = input.hosts ?? [...HOSTS];
+  const kinds = input.kinds ?? [...KINDS];
   const results = {};
   let failures = 0;
   let passes = 0;
   let skips = 0;
-  for (const host of hosts) {
-    const probe = PROBES[host];
+  for (const kind of kinds) {
+    const probe = PROBES[kind];
     if (probe === undefined) {
-      log(`${host}: FAIL (unknown host)`);
+      log(`${kind}: FAIL (unknown actor kind)`);
       failures += 1;
-      results[host] = { ok: false, error: "unknown host" };
+      results[kind] = { ok: false, error: "unknown actor kind" };
       continue;
     }
     const result = await probe();
-    results[host] = result;
+    results[kind] = result;
     if (result.ok) {
       passes += 1;
-      log(`${host}: OK (${result.detail ?? "handshake answered"})`);
+      log(`${kind}: OK (${result.detail ?? "handshake answered"})`);
     } else if (result.skipped) {
       skips += 1;
-      log(`${host}: SKIP (${result.error})`);
+      log(`${kind}: SKIP (${result.error})`);
     } else {
       failures += 1;
-      log(`${host}: FAIL (${result.error})`);
+      log(`${kind}: FAIL (${result.error})`);
     }
   }
   const exitCode = failures > 0 ? 1 : passes === 0 ? 3 : 0;
@@ -251,28 +251,28 @@ export async function runMatrix(input = {}) {
 
 /** @param {string[]} argv */
 export function parseArgs(argv) {
-  let hosts = [...HOSTS];
+  let kinds = [...KINDS];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--host" || arg === "--hosts") {
+    if (arg === "--actor-kind" || arg === "--actor-kinds") {
       const value = argv[++index];
       if (value === undefined) throw new Error(`${arg} requires a value`);
-      hosts = value.split(",").map((name) => name.trim()).filter(Boolean);
-    } else if (arg.startsWith("--host=") || arg.startsWith("--hosts=")) {
-      hosts = arg.slice(arg.indexOf("=") + 1).split(",").map((name) => name.trim()).filter(Boolean);
+      kinds = value.split(",").map((name) => name.trim()).filter(Boolean);
+    } else if (arg.startsWith("--actor-kind=") || arg.startsWith("--actor-kinds=")) {
+      kinds = arg.slice(arg.indexOf("=") + 1).split(",").map((name) => name.trim()).filter(Boolean);
     } else if (arg === "-h" || arg === "--help") {
-      return { help: true, hosts };
+      return { help: true, kinds };
     } else {
       throw new Error(`unknown option: ${arg}`);
     }
   }
-  return { help: false, hosts };
+  return { help: false, kinds };
 }
 
-const USAGE = `Usage: node scripts/verify/host-session-matrix.mjs [--host claude,codex,pi,opencode,cursor]
+const USAGE = `Usage: node scripts/verify/kind-session-matrix.mjs [--actor-kind claude,codex,pi,opencode,cursor]
 
-Probes each installed host CLI on the resident session protocol the loop uses.
-No model turn is made. Exit 0 = every available host answered, 1 = a failure,
+Probes each installed agent CLI on the resident session protocol the loop uses.
+No model turn is made. Exit 0 = every available agent kind answered, 1 = a failure,
 3 = nothing could be probed (no CLI installed).
 `;
 
@@ -281,12 +281,12 @@ if (isEntryPoint(import.meta.url)) {
   try {
     options = parseArgs(process.argv.slice(2));
   } catch (err) {
-    process.stderr.write(`host-session-matrix: ${err.message}\n`);
+    process.stderr.write(`kind-session-matrix: ${err.message}\n`);
     process.exit(2);
   }
   if (options.help) {
     process.stdout.write(USAGE);
     process.exit(0);
   }
-  runMatrix({ hosts: options.hosts }).then(({ exitCode }) => process.exit(exitCode));
+  runMatrix({ kinds: options.kinds }).then(({ exitCode }) => process.exit(exitCode));
 }

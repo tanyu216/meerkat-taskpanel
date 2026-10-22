@@ -2,7 +2,7 @@
 /**
  * `wake-cwd` — the directory a woken worker must run in.
  *
- * The board holds no project directory; the host-local map (`projects.json`,
+ * The board holds no project directory; the agent-local map (`projects.json`,
  * beside the installed skill) does. This helper answers with an absolute
  * directory for the glue to `cd` into, and fails loudly rather than guessing:
  * no directory on stdout, exit 3, the reason on stderr.
@@ -23,7 +23,7 @@ import { isEntryPoint } from "../src/foundation/entry-guard.mjs";
 const USAGE = `Usage: node scripts/wake-cwd.mjs --project <identity> [--projects-json <path>]
 
 Print the absolute directory a worker for a board project identity must run in,
-resolved from the host-local project map (projects.json): the entry's
+resolved from the agent-local project map (projects.json): the entry's
 \`local_path\`, or its \`run_dir\` launch pad when it has no directory of its own.
 Exits 3 — printing why — rather than guessing a directory when the project is
 not mapped, or when its entry names no directory at all (a worker needs a cwd).

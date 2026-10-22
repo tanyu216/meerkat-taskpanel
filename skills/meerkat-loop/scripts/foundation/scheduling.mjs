@@ -1,5 +1,5 @@
 /**
- * The scheduling policy — the *decision* half of the host-external supervisor.
+ * The scheduling policy — the *decision* half of the external supervisor.
  *
  * A supervisor tick has two halves that must not be tangled: what to do (this
  * file, pure) and doing it (spawning `claude -p` / `codex exec`, reading the
@@ -51,14 +51,14 @@ export { DEFAULT_PATROL_SECONDS };
 export const DEFAULT_PING_SECONDS = 60;
 /**
  * Default continue cadence, seconds — the scheduler's judgment clock. A
- * continue turn wakes the host agent with a bounded prompt; that turn runs the
+ * continue turn wakes the agent with a bounded prompt; that turn runs the
  * deterministic poll, patrol and workflow entries.
  */
 export const DEFAULT_CONTINUE_SECONDS = 600; // 10 minutes
 
 /**
  * The command-only loop skill's slash command. A continue turn starts with it,
- * so a host that expands slash commands loads `meerkat-loop` before the model
+ * so an agent kind that expands slash commands loads `meerkat-loop` before the model
  * runs; the rest of the prompt is the turn's instruction. Kept beside the
  * prompt builder so a skill rename cannot drift from the command.
  */
@@ -115,7 +115,7 @@ export function parseEnvFile(text) {
 /**
  * The effective `claim_unassigned` policy.
  *
- * Precedence is **flag > environment > installer's host config file > default
+ * Precedence is **flag > environment > installer's agent config file > default
  * on** — the operator's most explicit statement wins, and the installer's saved
  * choice is only a default. An unrecognised value is ignored (never an error):
  * a stray `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=maybe` must not wedge the poll.
@@ -129,7 +129,7 @@ export function resolveClaimUnassigned(input = {}) {
   const fromEnv = parseYesNo(input.env);
   if (fromEnv !== null) return fromEnv;
   const file = input.file ?? null;
-  // legacy-name-compat: a host config written before the rename carries the old key.
+  // legacy-name-compat: an agent config written before the rename carries the old key.
   const fromFile = parseYesNo(
     file === null
       ? undefined
@@ -148,7 +148,7 @@ export function resolveClaimUnassigned(input = {}) {
  * that should never take over somebody else's card runs with `no`.
  *
  * Precedence is the same as `resolveClaimUnassigned`: **flag > environment >
- * installer's host config > default on**.
+ * installer's agent config > default on**.
  *
  * @param {{flag?: unknown, env?: unknown, file?: Record<string, string>|null}} [input]
  * @returns {boolean}
@@ -165,10 +165,10 @@ export function resolveRecoverStale(input = {}) {
 }
 
 /**
- * Whether the scheduler wakes the host's periodic judgment turn.
+ * Whether the scheduler wakes the agent's periodic judgment turn.
  *
  * Precedence is the same as `resolveClaimUnassigned`: **flag > environment >
- * installer's host config > default on**. Turning it off leaves the ping clock
+ * installer's agent config > default on**. Turning it off leaves the ping clock
  * running (worker liveness) but discovers no new work until a human runs the
  * poll entry.
  *
@@ -187,7 +187,7 @@ export function resolveContinueEnabled(input = {}) {
 }
 
 /**
- * A positive cadence in seconds. `file` is the *value* read from the host
+ * A positive cadence in seconds. `file` is the *value* read from the agent config
  * config (not the whole map); invalid values are ignored rather than allowed
  * to wedge a clock.
  *
@@ -216,7 +216,7 @@ export const DEFAULT_REVIEW_AGING_MINUTES = DEFAULT_REVIEW_AGING_MS / 60_000;
 /**
  * The workflow sub-pass's configuration.
  *
- * Same precedence as `resolveClaimUnassigned` — **flag > environment > host
+ * Same precedence as `resolveClaimUnassigned` — **flag > environment > agent config
  * config file > default** — and the same tolerance: an unrecognised yes/no word
  * is ignored rather than treated as `false`, so a stray value cannot silently
  * disable the channel. The two booleans mean different things:
@@ -276,7 +276,7 @@ export function resolveWorkflowConfig(input = {}) {
       firstYesNo(flags.workflow, env.MEERKAT_TASKPANEL_WORKFLOW, file.MEERKAT_TASKPANEL_WORKFLOW) ?? true,
     // The board's acceptance policy, as the loop remembers it. Advisory: the
     // board decides in the plan (`approve` vs `approve_hold`), and the loop
-    // executes that decision. This copy is kept for diagnostics and for host
+    // executes that decision. This copy is kept for diagnostics and for agent
     // configs written by older installers. An unrecognised value falls back to
     // the default rather than wedging the loop.
     acceptancePolicy: firstAcceptancePolicy(
@@ -465,9 +465,9 @@ export function candidateArgs(agent, claimUnassigned, recoverStale = false) {
 }
 
 /**
- * The wake argv for a host. Claude, Codex and Pi have no timers, so the loop
- * lives outside them, waking each host's own **headless** entry point — and,
- * when a session id is known, that host's own **resume** form:
+ * The wake argv for an agent kind. Claude, Codex and Pi have no timers, so the loop
+ * lives outside them, waking each agent kind's own **headless** entry point — and,
+ * when a session id is known, that agent kind's own **resume** form:
  *
  *   * **claude** — `claude -p <prompt>`; resume with `--resume <sid>`.
  *   * **codex**  — `codex exec <prompt>`; resume the thread with
@@ -481,13 +481,13 @@ export function candidateArgs(agent, claimUnassigned, recoverStale = false) {
  *   * **cursor** — `cursor-agent -p <prompt>`. The resume form
  *     (`cursor-agent -p --resume <sid> <prompt>`) is **not yet verified**
  *     against a real Cursor CLI; `--wake-command` is the documented escape
- *     hatch for a host whose shape differs.
+ *     hatch for an agent kind whose shape differs.
  *
- * These shapes are the ones verified against the real CLIs — the per-host
- * capability matrix in `scripts/verify/host-resume-matrix.mjs`. An explicit
+ * These shapes are the ones verified against the real CLIs — the per-agent-kind
+ * capability matrix in `scripts/verify/kind-resume-matrix.mjs`. An explicit
  * `wakeCommand` override lets an installer or a user plug in their own glue.
  *
- * @param {{host?: string, prompt: string, resumeSid?: string|null, wakeCommand?: string|null}} input
+ * @param {{actorKind?: string, prompt: string, resumeSid?: string|null, wakeCommand?: string|null}} input
  * @returns {{command: string, args: string[]}}
  */
 export function wakeCommand(input = {}) {
@@ -496,7 +496,7 @@ export function wakeCommand(input = {}) {
   if (input.wakeCommand) {
     return { command: String(input.wakeCommand), args: resumeSid ? [prompt, "--resume", String(resumeSid)] : [prompt] };
   }
-  switch (input.host) {
+  switch (input.actorKind) {
     case "claude":
       return { command: "claude", args: resumeSid ? ["-p", prompt, "--resume", String(resumeSid)] : ["-p", prompt] };
     case "codex":
@@ -517,9 +517,9 @@ export function wakeCommand(input = {}) {
         : { command: "cursor-agent", args: ["-p", prompt] };
     default:
       throw new DomainError("VALIDATION_FAILED", {
-        message: `unknown host '${input.host}'`,
-        details: { field: "host", value: input.host },
-        hint: { fix: "--host claude|codex|pi|opencode|cursor" },
+        message: `unknown agent kind '${input.actorKind}'`,
+        details: { field: "actorKind", value: input.actorKind },
+        hint: { fix: "--actor-kind claude|codex|pi|opencode|cursor" },
       });
   }
 }
@@ -529,26 +529,26 @@ export function wakeCommand(input = {}) {
  *
  * The supervisor knows a card's board **project identity** and nothing about
  * directories: the board holds none (O3). So the directory is not decided here.
- * It is decided by the host's own wake glue, which reads the host-local
+ * It is decided by the agent kind's own wake glue, which reads the local
  * `projects.json` and `cd`s into the directory it names for the card's project —
- * `local_path`, else `run_dir` — before exec'ing the host CLI (R1).
+ * `local_path`, else `run_dir` — before exec'ing the agent CLI (R1).
  *
  * Three shapes follow from that, in the order an operator's intent wins:
  *
  *   * **an explicit wake command** (`--wake-command`) — the operator's own glue,
  *     used verbatim: `<cmd> <handoff> [sid]`. It is the documented escape hatch
- *     for a host this repo does not wire, so nothing here second-guesses it.
+ *     for an agent kind this repo does not wire, so nothing here second-guesses it.
  *   * **glue installed** — spawn `bash <glue> <handoff> [sid]`, handing the
  *     project identity along in the environment (`TP_PROJECT`). The glue sets
  *     the working directory; if it cannot, it refuses the wake and the card
  *     stays unwoken rather than running in the wrong checkout.
- *   * **no glue** — the supervisor falls back to the host CLI directly, pinned
+ *   * **no glue** — the supervisor falls back to the agent CLI directly, pinned
  *     to `cwd` (the `--repo` root) and flagged with an explicit `warning`: the
  *     honest "no target directory was resolved for this wake" case, never a
  *     silent one.
  *
  * @param {{
- *   host: string,
+ *   actorKind: string,
  *   prompt: string,
  *   resumeSid?: string|null,
  *   wakeCommand?: string|null,
@@ -567,7 +567,7 @@ export function planWakeInvocation(input = {}) {
   const cwd = input.cwd ?? null;
 
   // The identity travels in the environment, not in argv: the glue's argv is a
-  // fixed `[handoff, sid?]` shape the host-resume matrix already pins.
+  // fixed `[handoff, sid?]` shape the kind-resume matrix already pins.
   const env = {};
   if (input.project !== undefined && input.project !== null && String(input.project) !== "") {
     env.TP_PROJECT = String(input.project);
@@ -585,7 +585,7 @@ export function planWakeInvocation(input = {}) {
   // The operator's own wake command comes first: an explicit choice is never
   // overridden by a default, and it is never second-guessed with a warning.
   if (input.wakeCommand) {
-    const override = wakeCommand({ host: input.host, prompt, resumeSid, wakeCommand: input.wakeCommand });
+    const override = wakeCommand({ actorKind: input.actorKind, prompt, resumeSid, wakeCommand: input.wakeCommand });
     return { ...override, env, cwd, via: "override" };
   }
 
@@ -601,7 +601,7 @@ export function planWakeInvocation(input = {}) {
   }
 
   return {
-    ...wakeCommand({ host: input.host, prompt, resumeSid }),
+    ...wakeCommand({ actorKind: input.actorKind, prompt, resumeSid }),
     env,
     cwd,
     via: "direct",
@@ -615,13 +615,13 @@ export function planWakeInvocation(input = {}) {
  * What the scheduler spawns for one **continue** turn.
  *
  * A continue turn is not a card wake: it has no card, no project identity and
- * no session to resume. So it always takes the host's built-in headless form
+ * no session to resume. So it always takes the agent kind's built-in headless form
  * and never the wake glue — the glue exists to resolve a card's project target
  * directory, and `wake-cwd.mjs` refuses an empty project rather than guessing
  * one. `TP_NODE` is still carried so a nested glue (started by the workers the
  * turn wakes) finds the interpreter this scheduler is running on.
  *
- * @param {{host: string, prompt: string, cwd?: string|null, nodePath?: string|null}} input
+ * @param {{actorKind: string, prompt: string, cwd?: string|null, nodePath?: string|null}} input
  * @returns {{command: string, args: string[], env: Record<string,string>, cwd: string|null, via: "direct"}}
  */
 export function planContinueInvocation(input = {}) {
@@ -631,7 +631,7 @@ export function planContinueInvocation(input = {}) {
   if (input.nodePath !== undefined && input.nodePath !== null && String(input.nodePath) !== "") {
     env.TP_NODE = String(input.nodePath);
   }
-  return { ...wakeCommand({ host: input.host, prompt }), env, cwd, via: "direct" };
+  return { ...wakeCommand({ actorKind: input.actorKind, prompt }), env, cwd, via: "direct" };
 }
 
 /**
@@ -651,9 +651,9 @@ export function planContinueInvocation(input = {}) {
  * export of the card; it is read-only, and every other process file — notes,
  * logs, evidence, downloaded attachments — belongs in the same directory. The
  * board still owns no directory (O3): this is the loop's convention under the
- * worker's own cwd, resolved host-locally.
+ * worker's own cwd, resolved locally.
  *
- * @param {{card?: object, agent: string, host: string, sessionId?: string|null, review?: boolean}} input
+ * @param {{card?: object, agent: string, actorKind: string, sessionId?: string|null, review?: boolean}} input
  * @returns {string}
  */
 export function buildHandoff(input) {
@@ -661,7 +661,7 @@ export function buildHandoff(input) {
   const title = String(card.title ?? "").slice(0, 300);
   const ref = card.identifier;
   const project = card.project ?? "<project id>";
-  const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.host}`];
+  const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.actorKind}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
   const flags = attribution.join(" ");
   const acceptanceRule = input.review === true
@@ -728,7 +728,7 @@ export function buildHandoff(input) {
  * have moved between the dispatch and the wake, and a verdict on a card that is
  * no longer delivered is worse than no verdict at all.
  *
- * @param {{card?: object, agent: string, host: string, sessionId?: string|null}} input
+ * @param {{card?: object, agent: string, actorKind: string, sessionId?: string|null}} input
  * @returns {string}
  */
 export function buildReviewHandoff(input) {
@@ -737,7 +737,7 @@ export function buildReviewHandoff(input) {
   const original = card.review_of ?? "<card under review>";
   const round = card.review_round ?? "the round recorded on the review card";
   const project = card.project ?? "<project id>";
-  const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.host}`];
+  const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.actorKind}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
   const flags = attribution.join(" ");
   const brief = cardFileRel(ref);
@@ -797,12 +797,12 @@ export function buildReviewHandoff(input) {
  * The loop's deterministic work is no longer scheduled as its own units: this
  * turn is where poll, patrol and workflow are invoked. The prompt is therefore
  * self-contained — absolute entry paths, the order to run them in, and the
- * board rules that must not be broken — because a headless host may run it
+ * board rules that must not be broken — because a headless agent may run it
  * without the loop skill loaded.
  *
  * The prompt begins with `/meerkat-loop`, the loop skill's command-only slash
- * command (`disable-model-invocation: true`). A host that expands slash commands
- * loads the skill first; a host that does not still receives the whole turn,
+ * command (`disable-model-invocation: true`). An agent kind that expands slash commands
+ * loads the skill first; one that does not still receives the whole turn,
  * because the body stays self-contained. There is no subcommand and no
  * `$ARGUMENTS` placeholder.
  *
@@ -821,7 +821,7 @@ export function buildReviewHandoff(input) {
  * board holds no project directory to name.
  *
  * @param {{
- *   host?: string,
+ *   actorKind?: string,
  *   agent?: string,
  *   nodePath?: string|null,
  *   passesScript?: string,
@@ -834,7 +834,7 @@ export function buildReviewHandoff(input) {
 export function buildContinuePrompt(input = {}) {
   const node = quoteArg(input.nodePath ?? "node");
   const agent = String(input.agent ?? "agent");
-  const host = String(input.host ?? "claude");
+  const actorKind = String(input.actorKind ?? "claude");
   const script = quoteArg(input.passesScript ?? "passes.mjs");
   const common = (input.commonArgs ?? []).map(quoteArg).join(" ");
   const includePoll = input.includePoll !== false;
@@ -899,7 +899,7 @@ export function buildContinuePrompt(input = {}) {
     "- Stop work at in_review: deliver a report, do not self-accept.",
     "- Keep this turn bounded: hand off and return; do not wait for a worker.",
     "- At the concurrency cap, leave the card for the next turn.",
-    `- Host: ${host}. This turn repeats every ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+    `- Actor kind: ${actorKind}. This turn repeats every ${minutes} minute${minutes === 1 ? "" : "s"}.`,
   );
   return lines.join("\n");
 }

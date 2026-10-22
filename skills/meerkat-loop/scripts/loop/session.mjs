@@ -1,5 +1,5 @@
 /**
- * The resident session pool — the loop's long-lived host conversations.
+ * The resident session pool — the loop's long-lived agent conversations.
  *
  * One **control** session runs the board-wide continue turn (cwd = the
  * taskpanel checkout). One **project** session per `target_dir` runs the
@@ -20,8 +20,8 @@ import { fileURLToPath } from "node:url";
 
 import { cardFileRel } from "../foundation/card-brief.mjs";
 import { buildContinuePrompt } from "../foundation/scheduling.mjs";
-import { createHostPool } from "./host-session.mjs";
-import { hostPaths, loopCommandArgs } from "./options.mjs";
+import { createKindPool } from "./kind-session.mjs";
+import { agentPaths, loopCommandArgs } from "./options.mjs";
 import {
   claimCards,
   claimContinue,
@@ -190,7 +190,7 @@ export function buildProjectBatchPrompt(cards) {
   });
   lines.push(
     "",
-    "Spawn one subagent per card using the host's subagent mechanism, passing the handoff",
+    "Spawn one subagent per card using the agent kind's subagent mechanism, passing the handoff",
     "text verbatim. Do not work the cards yourself. Do not move cards. Return after",
     "spawning; record each subagent's agent/session id.",
   );
@@ -214,7 +214,7 @@ export function buildReattachPrompt(input) {
   }
   lines.push(
     "",
-    "Reattach each one with the host's native mechanism (Claude: SendMessage with the agent",
+    "Reattach each one with the agent kind's native mechanism (Claude: SendMessage with the agent",
     "id; Codex: thread/resume; Pi: subagent resume; OpenCode: resume the child session;",
     "Cursor: pass the agentId back to the subagent task). Verify side effects before",
     "continuing. If a handle cannot be reattached, say so; do not repeat work blindly.",
@@ -229,7 +229,7 @@ export function buildReattachPrompt(input) {
  * @param {{
  *   opts: object,
  *   log?: (line: string) => void,
- *   hostPool?: object,
+ *   kindPool?: object,
  *   now?: () => number,
  *   isAlive?: (pid: number) => boolean,
  * }} input
@@ -254,14 +254,14 @@ export function createSessionPool(input = {}) {
   if (stateRead.error !== null) log(`session: ${stateRead.error} — starting from empty state`);
   let ledger = readLedger(stateDir).value;
   let control = null;
-  let hostPool = input.hostPool ?? null;
+  let kindPool = input.kindPool ?? null;
   let started = false;
 
-  const getHostPool = () => {
-    if (hostPool === null) {
-      hostPool = createHostPool({ host: opts.host, opts, log, onEvent: handleEvent });
+  const getKindPool = () => {
+    if (kindPool === null) {
+      kindPool = createKindPool({ actorKind: opts.actorKind, opts, log, onEvent: handleEvent });
     }
-    return hostPool;
+    return kindPool;
   };
 
   const persistState = () => {
@@ -269,7 +269,7 @@ export function createSessionPool(input = {}) {
     for (const [key, entry] of sessions) {
       if (key === "control") continue;
       projects[key] = {
-        host: opts.host ?? "claude",
+        actorKind: opts.actorKind ?? "claude",
         cwd: entry.cwd,
         sessionId: entry.handle.sessionId ?? entry.sessionId ?? null,
         pid: entry.handle.pid ?? null,
@@ -282,13 +282,13 @@ export function createSessionPool(input = {}) {
     const controlEntry = sessions.get("control") ?? null;
     const next = {
       version: 1,
-      // The pool manager's own pid, not a host child's: an orphaned host process
+      // The pool manager's own pid, not an agent child's: an orphaned agent process
       // would otherwise keep answering "resident" after its manager died.
       poolPid: process.pid,
       heartbeatAt: nowIso(now),
       control: controlEntry
         ? {
-            host: opts.host ?? "claude",
+            actorKind: opts.actorKind ?? "claude",
             cwd: controlEntry.cwd,
             sessionId: controlEntry.handle.sessionId ?? controlEntry.sessionId ?? null,
             pid: controlEntry.handle.pid ?? null,
@@ -329,7 +329,7 @@ export function createSessionPool(input = {}) {
         : storedAge < sessionMaxAgeMs
           ? stored?.sessionId ?? null
           : null;
-    const handle = getHostPool().openSession({ cwd: options.cwd, sessionId: resumeId, role: options.role });
+    const handle = getKindPool().openSession({ cwd: options.cwd, sessionId: resumeId, role: options.role });
     const entry = {
       key,
       cwd: options.cwd,
@@ -430,7 +430,7 @@ export function createSessionPool(input = {}) {
     const entry = await ensureSession("control", { cwd: opts.repo ?? process.cwd(), role: "control" });
     entry.busy = true;
     const prompt = buildContinuePrompt({
-      host: opts.host,
+      actorKind: opts.actorKind,
       agent: Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : "agent",
       nodePath: process.execPath,
       passesScript: join(here, "passes.mjs"),
@@ -557,7 +557,7 @@ export function createSessionPool(input = {}) {
         matched += 1;
         ledger = upsertSubagent(ledger, {
           sessionKey: dir,
-          host: opts.host,
+          actorKind: opts.actorKind,
           subagentId,
           role: card.role ?? "worker",
           card: card.card,
@@ -573,7 +573,7 @@ export function createSessionPool(input = {}) {
       for (const extra of ids.slice(claimed.cards.length)) {
         ledger = upsertSubagent(ledger, {
           sessionKey: dir,
-          host: opts.host,
+          actorKind: opts.actorKind,
           subagentId: extra,
           status: opts.subagentBackground === true ? "running" : "completed",
         });
@@ -702,9 +702,9 @@ export function createSessionPool(input = {}) {
     },
     async stop() {
       started = false;
-      if (hostPool !== null) {
+      if (kindPool !== null) {
         try {
-          await hostPool.close();
+          await kindPool.close();
         } catch (err) {
           log(`session: pool close failed: ${err.message}`);
         }
@@ -756,25 +756,25 @@ export function createSessionPool(input = {}) {
  * use; production passes only `opts`.
  *
  * @param {object} opts
- * @param {{log?: (line: string) => void, hostPool?: object, now?: () => number, isAlive?: (pid: number) => boolean, signal?: AbortSignal}} [deps]
+ * @param {{log?: (line: string) => void, kindPool?: object, now?: () => number, isAlive?: (pid: number) => boolean, signal?: AbortSignal}} [deps]
  */
 export async function runSession(opts, deps = {}) {
   const log = deps.log ?? (() => {});
   // The resident sessions load skills by name: the control session expands
   // `/meerkat-loop`, and a project subagent uses the board skill. A missing
   // install is a hard error, not a session that silently cannot work.
-  const paths = hostPaths(opts.home ?? homedir(), opts.host ?? "claude");
+  const paths = agentPaths(opts.home ?? homedir(), opts.actorKind ?? "claude");
   const missing = [paths.loopSkill, paths.boardSkill].filter(
     (dir) => !existsSync(join(dir, "SKILL.md")),
   );
   if (missing.length > 0) {
     log(
       `session: missing skill(s): ${missing.join(", ")} — run ` +
-        `\`install.sh --target ${opts.host ?? "claude"}\` first`,
+        `\`install.sh --target ${opts.actorKind ?? "claude"}\` first`,
     );
     return 2;
   }
-  const pool = createSessionPool({ opts, log, hostPool: deps.hostPool, now: deps.now, isAlive: deps.isAlive });
+  const pool = createSessionPool({ opts, log, kindPool: deps.kindPool, now: deps.now, isAlive: deps.isAlive });
   const started = await pool.start();
   if (!started.ok) {
     log(`session: ${started.error}`);

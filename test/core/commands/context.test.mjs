@@ -79,7 +79,7 @@ describe("commands/context", () => {
     assert.throws(() => actorOf("linus"), (err) => err.details.field === "actor.kind");
     assert.throws(() => actorOf({ kind: "claude" }), (err) => err.details.field === "actor.id");
     assert.throws(() => actorOf({ kind: "claude", id: "  " }), (err) => err.details.field === "actor.id");
-    // A kind is open — `human`, a platform, or whatever a host calls itself — so
+    // A kind is open — `human`, a platform, or whatever an actor kind calls itself — so
     // an unfamiliar one is the caller's to name. Only a *blank* one is refused,
     // because that reads as neither.
     assert.deepEqual(actorOf({ kind: "claude", id: "linus" }), { kind: "claude", id: "linus" });

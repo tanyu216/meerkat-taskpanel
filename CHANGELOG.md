@@ -49,6 +49,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `acceptance_revision`, the PATCH body gains `acceptance_drop` / `acceptance_revision`, and
   the markdown export prefers the snapshot while fixing the long-standing lost `meta.target`
   and emitting the delivery/review/waiver facts.
+
+- **The package is the distribution: `npx meerkat-taskpanel` installs the server, `taskctl`
+  and the skill for every supported agent kind.** The root manifest now declares
+  `meerkat-taskpanel` (the installer), `taskd` and `taskctl` as bins, and its `files`
+  whitelist carries the built `web/dist`, so the published tarball is a runnable board rather
+  than a source drop; the release workflow stages the image's build there before `npm pack`.
+  `--target all` is the default and means **every agent plus the server**: the installer
+  materializes the runtime at `~/.meerkat-taskpanel` — `src/**`, `web/dist`, `bin/taskd`,
+  `bin/taskctl`, a `.env` and `.data` — and installs the skill for all six agent kinds. Narrow it with
+  `--no-server` (agent skills only), `--target server`, or an explicit list such as
+  `--target claude,server,pi`; `--prefix`, `--force`, `--dry-run` and `--skip-web-build`
+  steer it. The tree is self-locating: the launchers exec the tree's own `src/`, so it
+  survives the checkout moving or the npx cache being pruned, and a combined install points
+  the agent shims, loop config and `taskd` guard unit (`TASKD_DATA_DIR` pinned) at it instead
+  of the checkout. Both entry points share one materializer
+  (`scripts/install/lib/server-install.mjs`, invoked by `scripts/install/server.sh`). `.env`
+  and `.data` are never overwritten, pruned or deleted — not even by `--force`. A
+  container-only `scripts/verify/server-install.mjs` step installs through both entry points
+  into throwaway homes and proves the installed `bin/taskd` answers `/health`. Docs, both
+  READMEs and `docs/publishing.md`'s stale "name is taken" / "no `web/` in the tarball"
+  claims are updated.
+
 - **Per-project review policy and per-card review decision (migration `0031`).** A project
   now carries `review_policy` (`required` / `optional` / `off`, default `optional`) and an
   optional `reviewer` override; a card carries a `review_required` snapshot resolved at
@@ -162,6 +184,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `TASKCTL_HUMAN`. `--actor-kind human` is still refused; a human write uses `--as-human`.
 
 ### Changed
+
+- **BREAKING: the platform vocabulary is now `kind` / `actor kind`, and "host" means only
+  the machine.** An application value (`claude`, `codex`, `pi`, `opencode`, `openclaw`,
+  `cursor`) is an **actor kind** — the same word records use (`author_kind`, `owner_kind`)
+  and the CLI already takes on `--actor-kind`. An **agent** remains the recorded identity
+  (`--agent jobs|linus|turing`, `--agent-name`); it does not name the application. Every
+  former "host" surface follows: `supervisor.mjs --host` → `--actor-kind`,
+  `install.sh --supervisor-hosts` → `--supervisor-actor-kinds`, `scripts/loop/hosts/` →
+  `scripts/loop/actor-kinds/`, `TP_HOST`/`{{HOST}}` → `TP_ACTOR_KIND`/`{{ACTOR_KIND}}`,
+  the profile key `host:` → `actor_kind:`, and the verify tools `host-cli`/`host-runtime`/
+  `host-resume-matrix`/`host-session-matrix` → `kind-*`. The SLA alert field
+  `mechanism_host` becomes `mechanism_actor` (its value is `<kind>/<agent>`). No aliases are
+  kept: re-run `install.sh --force` and reload the scheduling units, because the rendered
+  launchd labels / systemd descriptions and the `--host` argv changed with it. Upgrades also
+  ignore the old `host:` session state and `mechanism_host` last-ok key; nothing migrates
+  them. Docs and both READMEs now say **agent kind** and reserve "host" for the machine.
 
 - **The concurrency cap is one demand-driven budget.** `--max-concurrency` (default
   8) now reads from the host config (`MEERKAT_TASKPANEL_MAX_CONCURRENCY`) as well as

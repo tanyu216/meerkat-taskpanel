@@ -281,9 +281,27 @@ describe("taskd guard: rendering", () => {
     assert.equal(paths.systemdUnit, join(prefix, "taskpanel", "scheduling", "systemd", TASKD_UNIT));
     assert.equal(paths.serverEntry, join(ROOT, "src", "server", "main.mjs"));
     assert.equal(paths.logFile, join(dataDir, "logs", "taskd.log"));
-    for (const hostDir of [".claude", ".codex", ".openclaw", ".agents"]) {
-      assert.ok(!paths.launchdUnit.includes(join(prefix, hostDir)), `never under ${hostDir}/`);
+    for (const agentDir of [".claude", ".codex", ".openclaw", ".agents"]) {
+      assert.ok(!paths.launchdUnit.includes(join(prefix, agentDir)), `never under ${agentDir}/`);
     }
+  });
+
+  it("points at the installed tree and pins its data dir when asked", () => {
+    const prefix = makeTempDir();
+    const tree = makeTempDir();
+    const dataDir = join(tree, ".data");
+    const paths = guardPaths({ prefix, root: tree, dataDir });
+
+    assert.equal(paths.serverEntry, join(tree, "src", "server", "main.mjs"));
+    assert.equal(paths.logFile, join(dataDir, "logs", "taskd.log"));
+    assert.equal(paths.pinDataDir, true);
+    assert.match(unitVars(paths).ENV_SYSTEMD, new RegExp(`TASKD_DATA_DIR=${escapeRegExp(dataDir)}`));
+
+    // The default guard is still unpinned and names this checkout.
+    const plain = guardPaths({ prefix, env: {} });
+    assert.equal(plain.pinDataDir, false);
+    assert.equal(plain.serverEntry, join(ROOT, "src", "server", "main.mjs"));
+    assert.deepEqual(unitEnv({ env: {}, dataDir: plain.dataDir, pinDataDir: plain.pinDataDir }), []);
   });
 
   it("the interpreter is this node, absolute — not a name to be looked up", () => {

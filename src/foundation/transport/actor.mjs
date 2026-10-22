@@ -28,14 +28,14 @@
  * the alternative (a precedence rule between two env vars) cannot tell a
  * transcript from a claim.
  *
- * **A session with no kind is a usage error.** A session id is emitted by a host,
+ * **A session with no kind is a usage error.** A session id is emitted by an agent kind,
  * so a write carrying one is an agent's write; with no kind there is nothing left
- * to record but `human`, which would be a lie with consequences. Hosts pass both
+ * to record but `human`, which would be a lie with consequences. Agent kinds pass both
  * (`--actor-kind claude --session-id …`).
  *
- * The id must be stable and name-like: two agents sharing one host must not
+ * The id must be stable and name-like: two agents sharing one agent kind must not
  * collapse onto the same `$USER`, and a `--session-id` must not shadow the
- * `$TASKCTL_AGENT` the host named.
+ * `$TASKCTL_AGENT` the agent kind named.
  *
  * Pure. It lives in `src/foundation` (extracted from `src/cli`) so the derivation
  * sits below the CLI surface rather than inside it.
@@ -46,7 +46,7 @@ import { DomainError } from "../errors.mjs";
 
 /**
  * Env fallbacks. `kind` says who is writing; `agent` and `human` name the two
- * identities a host may configure; `session` is attribution.
+ * identities an agent kind may configure; `session` is attribution.
  */
 export const ACTOR_ENV_KEYS = Object.freeze({
   agent: "TASKCTL_AGENT",
@@ -90,7 +90,7 @@ export function resolveActor(input = {}) {
   const asHuman = flags.asHuman === true;
   const kind = asHuman ? HUMAN_KIND : (declared ?? HUMAN_KIND);
   // `TASKCTL_HUMAN` names the person, not a role. An agent that forgets
-  // `--agent` must not inherit it as its own id — two roles sharing one host
+  // `--agent` must not inherit it as its own id — two roles sharing one agent kind
   // would both be recorded as the human. Only a human write takes that name;
   // an agent falls through to its configured agent name or the OS user.
   const id = kind === HUMAN_KIND

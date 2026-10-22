@@ -14,7 +14,7 @@
 import { spawn } from "node:child_process";
 
 import { extractAgentIds } from "../ledger.mjs";
-import { lineSplitter, writeJsonLine } from "../host-session.mjs";
+import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
 export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
@@ -265,7 +265,7 @@ class ClaudeSession {
 export function createClaudePool(input) {
   const sessions = new Set();
   return {
-    host: "claude",
+    actorKind: "claude",
     /**
      * @param {{cwd: string, sessionId?: string|null, role?: string}} options
      */

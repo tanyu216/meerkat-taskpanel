@@ -1,7 +1,7 @@
 /**
  * Meerkat TaskPanel plugin for OpenCode.
  *
- * OpenCode is a *directory-granular* host: it is handed a skills directory, not a list of
+ * OpenCode is a *directory-granular* agent kind: it is handed a skills directory, not a list of
  * skill names, so pointing it at the repository's own `skills/` gives it both the board
  * skill and the loop skill. Nothing is copied — the directory is resolved from this file's
  * own location, so it follows the package wherever OpenCode fetched it.
@@ -34,7 +34,7 @@ const skillsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
  * The `name` and `description` of one `SKILL.md`.
  *
  * Deliberately a small reader rather than a YAML parser: it handles the two fields this
- * plugin hands to the host, including a quoted value and the block-scalar form
+ * plugin hands to the agent, including a quoted value and the block-scalar form
  * (`description: >` followed by indented lines) the skills actually use.
  *
  * @param {string} file absolute path to a SKILL.md
@@ -112,14 +112,14 @@ async function setup(ctx) {
   if (skills.length === 0) return;
 
   await ctx.skill.transform((draft) => {
-    // `draft.add()` decodes against the host's Skill.Info schema and throws synchronously
+    // `draft.add()` decodes against the agent's Skill.Info schema and throws synchronously
     // on a mismatch — and a throw escaping this callback hard-disables the whole plugin.
     // Contain a rejected payload to its own skill.
     for (const skill of skills) {
       try {
         draft.add(skill);
       } catch (err) {
-        console.error(`[meerkat-taskpanel] skill "${skill.id}" rejected by host, skipping:`, err);
+        console.error(`[meerkat-taskpanel] skill "${skill.id}" rejected by the agent, skipping:`, err);
       }
     }
   });

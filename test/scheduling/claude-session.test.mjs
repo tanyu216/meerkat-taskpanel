@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { allowedToolsFor, createClaudePool, sessionArgs } from "../../scripts/loop/hosts/claude.mjs";
+import { allowedToolsFor, createClaudePool, sessionArgs } from "../../scripts/loop/actor-kinds/claude.mjs";
 
 const FAKE = `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
@@ -152,7 +152,7 @@ describe("claude resident session", () => {
     await session.close();
   });
 
-  it("reports a missing host binary instead of hanging", async (t) => {
+  it("reports a missing agent binary instead of hanging", async (t) => {
     const f = fixture(t);
     const pool = createClaudePool({ opts: {}, bin: join(f.dir, "missing"), log: f.log });
     t.after(() => pool.close());

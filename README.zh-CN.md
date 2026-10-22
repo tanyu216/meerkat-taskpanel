@@ -24,7 +24,7 @@ Meerkat TaskPanel 就是回答这些问题的记录：
 
 Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题是 **Agent 之间的任务协作** —— 拆分工作、声明依赖、交接结果；而对围绕它们的人来说，它把这种协作变成**可可视化、可追溯**的东西，而不是锁在模型的上下文里。真正干这些事的机制 —— 只增不改的审计轨迹、一等公民的依赖与 epic 关系、可续接的会话 —— 正是下方[亮点](#亮点)所描述的。
 
-> **状态：引擎已整体落地 —— 核心引擎、`taskctl` CLI 与其本地 `taskd`、六宿主安装器、
+> **状态：引擎已整体落地 —— 核心引擎、`taskctl` CLI 与其本地 `taskd`、六个 agent kind 的安装器、
 > 以及完整的看板后端与 `web/` 前端。**
 > `src/core/` 已包含领域模型、SQLite 存储与迁移、用例与 `openBoard()`；`src/cli/` +
 > `src/server/` 提供了真实的 `taskctl` 命令面，以及 CLI 会在回环地址上自动启动的本地
@@ -70,7 +70,7 @@ Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题
 
 Meerkat TaskPanel 是三层薄结构，依赖方向始终向内：`src/cli`、`src/server` 是入口，
 `src/core` 持有领域模型、SQLite 存储与用例，`src/foundation` 是它们共享的 DTO 与辅助函数。
-完整目录树见 [仓库结构](#仓库结构)；想为自己的宿主安装 skill/插件，见 [安装](#安装)。
+完整目录树见 [仓库结构](#仓库结构)；想为自己的 agent kind 安装 skill/插件，见 [安装](#安装)。
 
 ## 截图
 
@@ -88,7 +88,7 @@ meerkat-taskpanel/
 ├── CHANGELOG.md / CONTRIBUTING.md
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # 工作区根 + bin(taskctl) + scripts
-├── install.sh                    # 安装分发器：--target claude|openclaw|codex|pi|opencode|cursor|all
+├── install.sh                    # 安装分发器：--target claude|openclaw|codex|pi|opencode|cursor|server|all
 ├── src/                          # 工程源码
 │   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量 / md 导出
 │   ├── cli/                      #   taskctl（CLI 出口）
@@ -121,23 +121,57 @@ meerkat-taskpanel/
   在构建前端时从随仓库提交的 `web/.vendor/npm-cache` 离线安装。交付产物是 `taskd` 所
   提供的静态 `web/dist`；该工具链不会进入运行时。
 
-## 安装
+## 快速安装（npm/npx）
 
 ```bash
-bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|all
+# 一条命令：server + taskctl + 每个 agent kind 的 skill
+npx meerkat-taskpanel
+
+# 或全局安装，之后随时运行安装器
+npm install -g meerkat-taskpanel
+meerkat-taskpanel install
+
+# 缩小范围
+npx meerkat-taskpanel install --target server            # 只装 server + taskctl
+npx meerkat-taskpanel install --target claude,server,pi  # server + 这两个 agent kind
+npx meerkat-taskpanel install --no-server                # 只装 agent kind 的 skills
 ```
 
-默认 target 为 `all`。分发器转发到 `scripts/install/<host>.sh`，把 skill 安装到各宿主的
-skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 的其余部分：
-宿主配置（`~/.claude/settings.json` / `~/.codex/AGENTS.md`）、slash 命令（Claude）或认领
+安装器会把运行时 materialize 到 `~/.meerkat-taskpanel/`：`src/`、构建好的 `web/dist`、
+`bin/taskd`、`bin/taskctl`、一份 `.env` 与 `.data`。把 `~/.meerkat-taskpanel/bin` 加入
+`PATH`，或使用全局 npm 安装。`npx` 需要包已发布；`--prefix <home>` 可改安装根，
+`--force` / `--dry-run` 与源码安装一致。
+
+### 从源码 checkout 安装
+
+同一个安装器也可直接从仓库运行，不依赖 npm：
+
+```bash
+bash install.sh --target all              # server + 每个 agent kind 的 skill
+bash install.sh --target claude,server,pi # server + 这两个 agent kind
+bash install.sh --target all --no-server  # 只装 agent kind 的 skills
+bash install.sh --target server           # 只装 server + taskctl
+```
+
+## 安装（agent kind 细节）
+
+```bash
+bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all
+```
+
+`all` 是默认值：下面每个 agent kind **加上** server 运行时。`--no-server` 去掉 server；
+逗号列表（`--target claude,server,pi`）只装列出的目标。分发器转发到
+`scripts/install/<actor-kind>.sh`（安装脚本按 agent kind 命名），把 skill 安装到各 agent 的
+skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署 agent bundle 的其余部分：
+agent 配置（`~/.claude/settings.json` / `~/.codex/AGENTS.md`）、slash 命令（Claude）或认领
 触发脚本（Codex），以及固定身份用的 `taskctl` 包装脚本。所有 bundle 写入均为**合并式且
 幂等**：重复安装**退出码为 0**，受管文件与配置键一律保留旧值，并打印
 `left unchanged — use --force to overwrite` 提示 —— 唯有 `--force` 才会覆盖。
-`Bundle` 列是该宿主自身插件系统消费的清单文件 —— 注册它需要对应宿主的 CLI，因此
-`install.sh` 只打印命令，不代为执行；每个宿主的具体命令见
-[`docs/install.md`](docs/install.md#per-host-steps)。
+`Bundle` 列是该 agent kind 自身插件系统消费的清单文件 —— 注册它需要对应 agent kind 的 CLI，因此
+`install.sh` 只打印命令，不代为执行；每个 agent kind 的具体命令见
+[`docs/install.md`](docs/install.md#per-agent-kind-steps)。
 
-| 宿主 | `--target` | Skill 落点 | Bundle |
+| Agent | `--target` | Skill 落点 | Bundle |
 |---|---|---|---|
 | Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `.claude-plugin/plugin.json`（插件根 = 仓根） |
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | 同一个仓根 bundle |
@@ -171,14 +205,14 @@ OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的�
 
 ## 实践指南
 
-安装 skill 只需一行；把看板用好则是一套习惯。所有宿主共享同一条**八条规则**内核：
+安装 skill 只需一行；把看板用好则是一套习惯。所有 agent kind 共享同一条**八条规则**内核：
 **认领优先**（先 `issue candidates --assignee <我>`，再 `issue move <ref> in_progress`）；
 **只领该领的**（非本人 / `backlog` 未授权 / `epic` / 部署卡（`kind: deploy` —— poll 从不出让，由人工
 或 leader 显式派发）/ `depends_on` 未满足 ⇒ 不领）；
 **一次一卡**；**心跳新鲜**（看板把认领视为存活 10 分钟，`issue heartbeat <ref>` 就是续期命令，
 看板不会代你续期）；**交付带报告**（交付门禁）；
 **自评≠验收**（Agent 只到 `in_review`；由循环应用审核员结论、或由人验收 `done`；Agent 自己移入 `done` 会被 `ACCEPTANCE_FORBIDDEN` 拒绝）；**冲突不抢占**（重读一次，
-仍可领才重试）；**可追溯**（携带会话 id）。宿主之间的差异，只在**由谁来执行这些规则**。
+仍可领才重试）；**可追溯**（携带会话 id）。agent kind 之间的差异，只在**由谁来执行这些规则**。
 
 ### Matt Pocock 工程类 skills
 
@@ -192,7 +226,7 @@ taskpanel 不内置任何针对外部 skills 集合的专门集成。
 
 ### 调度：ping 与 continue
 
-**简言之**：这个循环是一个**活在宿主之外**的**调度器**，拥有两个时钟和一个**常驻会话池**。
+**简言之**：这个循环是一个**活在 agent 应用之外**的**调度器**，拥有两个时钟和一个**常驻会话池**。
 **每 60 秒**做一次 **ping**：清掉 registry 中进程已退出的 worker 条目 —— 不读看板、不启动模型。
 **每十分钟**把一次 **continue** 回合放进会话池控制会话的队列，由这一回合运行循环的
 确定性入口 —— 只通知的 SLA 巡检（心跳过期、无人应答的确认门、没人排验收的交付，以及
@@ -209,31 +243,31 @@ Claude Code 与 Codex **本身没有定时器**，因此循环活在它们
 因此工作发现是事件驱动的；continue 周期仍是兜底，也是基于时间的检查（过期认领、审核老化、
 SLA）的唯一路径。cron 无法承载长驻进程，因此没有会话池：巡检与工作流照常运行，
 但 poll 不再认领，worker 派发暂停；`--continue-interval` 是发现节奏的旋钮。**启用方式**：运行
-`install.sh --target claude|codex|pi|opencode|cursor` —— 它会安装 `meerkat-loop` skill、投放该宿主的
+`install.sh --target claude|codex|pi|opencode|cursor` —— 它会安装 `meerkat-loop` skill、投放该 agent kind 的
 launchd / systemd / cron 单元，并**打印加载命令**（绝不替你启动守护进程；安装时还会问一次
 是否允许认领**未分配**的卡，默认允许）。
 
-认领不靠 Agent 的记忆。一个**宿主外部**的小型**调度器**
+认领不靠 Agent 的记忆。一个**外部**的小型**调度器**
 （独立 skill [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md)，执行体为
 [`scripts/supervisor.mjs`](scripts/supervisor.mjs) 与 `scripts/loop/`）运行会话池和两个时钟：
 ping 只读一个小 registry，$0；continue 每个周期产生一个有界模型回合，回合内的 poll 仍是
 确定性的成本闸门 —— **只有真正认领到卡**才启动子代理回合（原子认领是唯一的派单源）。
 确定性入口都是普通程序，可单独运行；continue 提示词用绝对路径点名它们。
 
-这个循环本身也是一个 skill（`skills/meerkat-loop/`），并且 `install.sh` **为除 OpenClaw 外的全部宿主
+这个循环本身也是一个 skill（`skills/meerkat-loop/`），并且 `install.sh` **为除 OpenClaw 外的全部 agent kind
 安装它**（claude / codex / pi / opencode / cursor）；OpenClaw 只拿到看板、不拿 loop
 （原因见 [OpenClaw](#openclaw)）。除 skill 之外，
-安装器还会写入各宿主的 launchd / systemd / cron 调度单元与唤醒脚本，并**打印**加载
+安装器还会写入各 agent kind 的 launchd / systemd / cron 调度单元与唤醒脚本，并**打印**加载
 命令 —— 绝不替你启用守护进程。安装时还会问一次是否允许认领**未分配**的卡（默认允许），
-并把答案记到 `<宿主目录>/meerkat-taskpanel.env`。loop skill 会声明它所需的 board
+并把答案记到 `<agent-dir>/meerkat-taskpanel.env`。loop skill 会声明它所需的 board
 `task-interface` 版本，并由 `scripts/board-check.mjs` 对着看板自己的 `--version --json` 强制执行；
 完整设计 —— 两个时钟、仅触发才计费的成本闸门、
-幂等唤醒、并发上限、失效兜底，以及五个非 OpenClaw 宿主的触发差异 —— 见
+幂等唤醒、并发上限、失效兜底，以及五个非 OpenClaw agent kind 的触发差异 —— 见
 [`docs/scheduling.md`](docs/scheduling.md)。
 
 ### OpenClaw
 
-OpenClaw 是唯一**由框架代你执行规则**的宿主，也是唯一**不构建自家监督进程**的宿主 ——
+OpenClaw 是唯一**由框架代你执行规则**的 agent kind，也是唯一**不构建自家监督进程**的 agent kind ——
 它的 `poll`/`patrol` 自动化本就是
 [`docs/scheduling.md`](docs/scheduling.md) 描述的这套设计。因此 OpenClaw 这条路分三层，
 按你真正的需要取用：
@@ -259,7 +293,7 @@ OpenClaw 是唯一**由框架代你执行规则**的宿主，也是唯一**不�
 
 Meerkat TaskPanel 是默认的任务提供方（传 `--no-meerkat-taskpanel` 可换用自家看板）；框架的 poll 与看板的
 `issue candidates` 在认领 / 候选判定上保持同步，这正是亮点 8 的意义。派单由调度器完成，
-因此八条规则由框架而非每个 Agent 各自落实 —— 这是与下方各宿主**并列的一条路线，而非唯一路线**：
+因此八条规则由框架而非每个 Agent 各自落实 —— 这是与下方各 agent kind**并列的一条路线，而非唯一路线**：
 Claude Code、Codex 与 `pi` 都直接操作同一块看板。
 
 ### Claude Code
@@ -268,7 +302,7 @@ Claude Code、Codex 与 `pi` 都直接操作同一块看板。
 `~/.claude/settings.json`（新增 `env.TASKCTL_AGENT` 与一个 `SessionStart` hook —— 启动看板并
 列出你的待领卡）、安装 `~/.claude/commands/{board,claim,deliver}.md`，并随包提供注入
 `--agent <名>` 的 `taskctl` 包装脚本。随后用 `taskctl` 驱动
-看板，并在每次写入时带上宿主与会话 —— `--agent-platform claude --session-id <id>` —— 让卡的
+看板，并在每次写入时带上 actor kind 与会话 —— `--actor-kind claude --session-id <id>` —— 让卡的
 轨迹指回动手的那段对话。Claude Code **本身没有定时器**，因此规则 1 的认领由外部驱动：
 [监督进程](#调度ping-与-continue)唤醒一个 `claude -p` 无头会话（用 `--resume <sid>` 续接同一会话），
 你也可以从 SessionStart hook 或 slash 命令手动触发。
@@ -283,7 +317,7 @@ claim-first 片段、写入可调度的认领触发脚本 `~/.codex/meerkat-task
 `codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
 
 面向 agent 的指南 —— claim-first、状态模型、交付门与看板 workflow —— 在 skill 内：
-[`skills/meerkat-taskpanel/SKILL.md`](skills/meerkat-taskpanel/SKILL.md)；各宿主的安装与触发细节见
+[`skills/meerkat-taskpanel/SKILL.md`](skills/meerkat-taskpanel/SKILL.md)；各 agent kind 的安装与触发细节见
 [`docs/install.md`](docs/install.md)。
 
 ## 开发
@@ -314,7 +348,7 @@ PR 流程，以及 CI 强制执行的约定。贡献以 MIT 许可落库。
 |---|---|---|
 | **引擎** | `src/core/` —— 领域模型、SQLite 存储与迁移、状态机、下沉到数据库触发器的各项不变量、`openBoard()` | *已落地* |
 | **CLI 与本地服务** | `src/cli/` —— 对齐 `task-interface v1` 的 `taskctl` 命令面，以及 CLI 自动启动的回环 `taskd` | *已落地* |
-| **安装器** | `install.sh` + `scripts/install/<host>.sh` —— 六个宿主目标，幂等且合并式写入 | *已落地* |
+| **安装器** | `install.sh` + `scripts/install/<actor-kind>.sh` —— 六个 agent kind 目标外加 `server` 运行时，幂等且合并式写入 | *已落地* |
 | **md 导出** | `src/core/storage/md/` —— `taskctl export md` 为每张卡写一份规范 markdown | *已落地* |
 | **看板 API 与前端** | `src/server/` —— 完整的看板 HTTP API 及其 SSE 流；`web/` —— 构建到 `web/dist` 的 Vue 3 看板 | *已落地* |
 | **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合 | *（规划中）* |

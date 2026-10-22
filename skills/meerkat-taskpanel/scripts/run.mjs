@@ -3,7 +3,7 @@
  * Thin wrapper that runs the Meerkat TaskPanel CLI from the skill.
  *
  * A skill directory is distributed **on its own**: `install.sh` copies `SKILL.md`,
- * `references/` and `scripts/` into a host's skill directory, and nothing else — in
+ * `references/` and `scripts/` into an agent's skill directory, and nothing else — in
  * particular not the taskpanel checkout they were authored in. So the CLI this file
  * drives cannot be assumed to sit three levels up, and a wrapper that only knew how to
  * look there failed *outside* the checkout: from
@@ -17,18 +17,18 @@
  * rung that would have worked:
  *
  *   1. `$MEERKAT_TASKPANEL_ROOT`  — an explicit root, the user's own override
- *   2. `$MEERKAT_TASKPANEL_REPO`  — the key `install.sh` records in the host config, and
+ *   2. `$MEERKAT_TASKPANEL_REPO`  — the key `install.sh` records in the agent config, and
  *                                   the one the loop's `board-check.mjs` resolves through
  *                                   (same vocabulary, deliberately)
  *   3. this file's own checkout   — `here/../../..`, the rung that works in a checkout
- *   4. **the host's own shim**    — `<host>/bin/taskctl`, the `taskctl` wrapper
+ *   4. **the agent's own shim**   — `<agent-dir>/bin/taskctl`, the `taskctl` wrapper
  *                                   `install.sh` writes beside this skill
- *   5. `taskctl` on `PATH`        — a CLI installed for the host, checkout or not
+ *   5. `taskctl` on `PATH`        — a CLI installed for the agent kind, checkout or not
  *   6. none of the above          — a clear, actionable refusal (below), never a stack
  *
  * Rungs 1–3 are the checkout rungs, most explicit first. **Rung 4 is why the ladder has
  * five resolution rungs plus a refusal**: the shim is the only `taskctl` that arrives with
- * the caller's identity already pinned (`--agent <name> --actor-kind <host>`), so it is
+ * the caller's identity already pinned (`--agent <name> --actor-kind <kind>`), so it is
  * preferred over a bare `PATH` CLI — which is the only rung that cannot say *which* board
  * engine it will find, nor what kind the write will be recorded as. Rung 4 is checked
  * *after* the checkout rungs and not before them: an explicit root, and a checkout this
@@ -119,8 +119,8 @@ function findOnPath(env, name) {
 /**
  * The `taskctl` shim `install.sh` writes **beside this skill**, or `null`.
  *
- * A skill is installed at `<host>/skills/meerkat-taskpanel/`, and the shim at
- * `<host>/bin/taskctl` — the same `here/../../..` walk that lands on the host directory.
+ * A skill is installed at `<agent-dir>/skills/meerkat-taskpanel/`, and the shim at
+ * `<agent-dir>/bin/taskctl` — the same `here/../../..` walk that lands on the agent directory.
  * It is the one `taskctl` that carries the caller's identity, so the ladder prefers it
  * over a bare `PATH` CLI.
  *
@@ -151,7 +151,7 @@ function resolveTarget(env) {
     if (isFile(cli)) return { kind: "checkout", command: process.execPath, args: [cli] };
   }
 
-  // The host's own shim — the rung that carries the identity. See the ladder above for
+  // The agent's own shim — the rung that carries the identity. See the ladder above for
   // why it sits here and not above the checkout rungs.
   const shim = shimBesideSkill();
   if (shim !== null) return { kind: "shim", command: shim, args: [] };
@@ -176,9 +176,9 @@ function refusal(roots) {
     "This skill ships only SKILL.md, references/ and scripts/ — it does not carry the taskpanel source tree.",
     "looked for it at:",
     ...roots.map(({ origin, root }) => `  - ${origin}: ${join(root, CLI_REL)}`),
-    `  - this host's shim: ${join(resolve(here, "..", "..", ".."), "bin", CLI_NAME)}`,
+    `  - this agent's shim: ${join(resolve(here, "..", "..", ".."), "bin", CLI_NAME)}`,
     `  - PATH: no executable \`${CLI_NAME}\` on it`,
-    `try: install the CLI and put it on your PATH — bash <taskpanel-checkout>/install.sh --target <host>`,
+    `try: install the CLI and put it on your PATH — bash <taskpanel-checkout>/install.sh --target <agent-kind>`,
     `  or: name the checkout here — MEERKAT_TASKPANEL_ROOT=<taskpanel-checkout> node ${join("scripts", "run.mjs")} …`,
     `  or: run the checkout's own copy — node <taskpanel-checkout>/${join("skills", "meerkat-taskpanel", "scripts", "run.mjs")} …`,
     "note: nothing else changes — whichever you pick makes this wrapper work as documented.",

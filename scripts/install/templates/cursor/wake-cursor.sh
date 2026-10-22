@@ -6,12 +6,12 @@
 #   wake-cursor.sh "<handoff>" <sid>      # resume session <sid>
 #
 # Both forms are Cursor's documented surface: `-p/--print` (headless),
-# `--resume [chatId]` and `--continue`. `scripts/verify/host-resume-matrix.mjs
-# --host cursor --e2e` probes them against the real CLI when CURSOR_API_KEY is
+# `--resume [chatId]` and `--continue`. `scripts/verify/kind-resume-matrix.mjs
+# --actor-kind cursor --e2e` probes them against the real CLI when CURSOR_API_KEY is
 # set; without that key the probe SKIPs. If your build differs, point the
 # supervisor's `--wake-command` at your own glue.
 #
-# A worker must run in the card's project directory, and only this host-local
+# A worker must run in the card's project directory, and only this agent-local
 # glue can resolve it. Inputs (set by the supervisor):
 #   TP_PROJECT        the card's board project identity
 #   TP_PROJECTS_JSON  the local project map (default: beside the installed skill)
@@ -42,7 +42,7 @@ cd "$cwd"
 echo "wake-cursor: working directory $cwd" >&2
 
 # Full tool access is an opt-in of the *resident* session pool (`--session`),
-# where the operator records an authorization in the host config. This legacy
+# where the operator records an authorization in the agent config. This legacy
 # one-shot glue stays inside the no-default-bypass rule: it never adds one.
 if [ -n "$sid" ]; then
   exec cursor-agent -p --resume "$sid" "$prompt"

@@ -1,5 +1,5 @@
 /**
- * The Cursor row of the host-resume matrix.
+ * The Cursor row of the kind-resume matrix.
  *
  * `cursor-agent` is handled the same way as claude / codex / pi / opencode: a
  * supplementary, host-side probe that SKIPs when the CLI is absent. The flag
@@ -12,10 +12,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { HOSTS, e2eHost } from "../../scripts/verify/host-resume-matrix.mjs";
+import { KINDS, e2eKind } from "../../scripts/verify/kind-resume-matrix.mjs";
 
-describe("host-resume-matrix — the cursor row", () => {
-  const cursor = HOSTS.find((h) => h.host === "cursor");
+describe("kind-resume-matrix — the cursor row", () => {
+  const cursor = KINDS.find((k) => k.actorKind === "cursor");
 
   it("is part of the same host table as the other CLIs", () => {
     assert.ok(cursor, "cursor must be probed by the same matrix");
@@ -34,7 +34,7 @@ describe("host-resume-matrix — the cursor row", () => {
     const saved = process.env.CURSOR_API_KEY;
     delete process.env.CURSOR_API_KEY;
     try {
-      const result = e2eHost("cursor", 1_000);
+      const result = e2eKind("cursor", 1_000);
       assert.equal(result.status, "blocked");
       assert.match(result.reason, /CURSOR_API_KEY/);
       assert.deepEqual(result.steps, []);

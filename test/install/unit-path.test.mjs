@@ -291,8 +291,8 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
     const loop = join(home, ".claude", "meerkat-taskpanel");
     const expected = [
       `PATH=${unitPath(NODE_DIR, { cliDir: bin, scheduler: "cron" })}`,
-      `* * * * * ${NODE} ${loop}/scripts/supervisor.mjs --host claude --agent alice --ping-only --once --log ${loop}/supervisor.log --state ${loop}/supervisor.state.json >/dev/null 2>&1`,
-      `*/10 * * * * ${NODE} ${loop}/scripts/supervisor.mjs --host claude --agent alice --continue-only --once --log ${loop}/supervisor.log --state ${loop}/supervisor.state.json >/dev/null 2>&1`,
+      `* * * * * ${NODE} ${loop}/scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once --log ${loop}/supervisor.log --state ${loop}/supervisor.state.json >/dev/null 2>&1`,
+      `*/10 * * * * ${NODE} ${loop}/scripts/supervisor.mjs --actor-kind claude --agent alice --continue-only --once --log ${loop}/supervisor.log --state ${loop}/supervisor.state.json >/dev/null 2>&1`,
     ];
 
     const dry = runInstall(

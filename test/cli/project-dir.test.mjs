@@ -2,7 +2,7 @@
  * `taskctl project dir` — resolving a project to its local directory, and
  * asking instead of guessing when there is none.
  *
- * The board holds no directory (O3). The answer lives in the host-local
+ * The board holds no directory (O3). The answer lives in the agent-local
  * `projects.json` beside the skill, and the command is the CLI's door to it:
  * a registered project prints its directory, an entry that names none prints
  * `dir: null` (a project may legitimately have no local directory), and a

@@ -5,8 +5,8 @@
  * The board's `session set` derives the same value from `(task, owner, seg)`:
  * an RFC 4122 v5 UUID over the NUL-joined inputs under
  * `SESSION_ID_NAMESPACE`. That is how a resumed conversation keeps its id.
- * A caller that must know the id *before* it starts a host — to pass it as the
- * host's `--session-id` — needs the derivation without the round trip, so this
+ * A caller that must know the id *before* it starts an agent — to pass it as the
+ * agent's `--session-id` — needs the derivation without the round trip, so this
  * script carries it.
  *
  * This file ships on its own (the installed skill has no `src/` tree), so the

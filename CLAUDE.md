@@ -14,7 +14,7 @@ database (Node's built-in `node:sqlite`) — no external services. Node **>= 22*
 **zero runtime dependencies**, MIT, public repo.
 
 **Status (honest):** the engine has landed in full — the core engine, the `taskctl` CLI and
-its local `taskd`, the six-host installers, and the board HTTP API + SSE plus the `web/`
+its local `taskd`, the six-agent-kind installers, and the board HTTP API + SSE plus the `web/`
 frontend. `src/core/` has the domain model, SQLite storage
 + migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl` command surface
 and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` is the
@@ -22,9 +22,18 @@ board HTTP API + SSE; `web/` is the Vue 3 + Vite frontend that builds to `web/di
 served by `taskd`. Still planned: the **epic view** and **iteration management** — the
 roadmap lives in `README.md` / `README.zh-CN.md`.
 
+**Distribution:** `npx meerkat-taskpanel` (or `install.sh --target all` from a checkout)
+materializes the runtime at `~/.meerkat-taskpanel` — `src/`, the built `web/dist`,
+`bin/taskd`, `bin/taskctl`, one `.env` and `.data` — and installs the skill for every
+supported agent kind. `all` is the default and includes the server; `--no-server` (or an explicit
+comma list such as `--target claude,server,pi`) narrows it. The npm tarball therefore carries
+the built `web/dist`, and the tree is self-locating (the launchers exec the tree's own
+`src/`), so it survives the checkout moving or the npx cache being pruned. The Docker image
+is unchanged and keeps `/app/.data`. `docs/install.md` is the reference.
+
 The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/install.md`).
 The board owns the workflow decisions (`issue reconcile --workflow`); the loop executes the
-resulting plan. The host-external supervisor is a **skill of its own**
+resulting plan. The external supervisor is a **skill of its own**
 (`skills/meerkat-loop/`), never installed for OpenClaw and **not** distributed through the
 marketplace: `install.sh --target claude|codex|pi|opencode|cursor` is its only path, and it
 carries no version of its own.
@@ -105,7 +114,8 @@ node scripts/verify/contract.mjs             # API contract snapshot; --update r
 node scripts/verify/cli-contract.mjs         # CLI surface snapshot (commands/flags/envelope); --update
 node scripts/verify/route-request.mjs        # declared request schema vs what the handler reads; --print
 node src/server/main.mjs                     # start taskd directly (taskctl also auto-starts it)
-bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|all   # --prefix --link --force --dry-run
+bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all   # --prefix --link --force --dry-run --skip-web-build
+npx meerkat-taskpanel [install] [--target …] [--no-server] [--prefix <home>]   # defaults to all: server + every agent
 ```
 
 `test:coverage` gates `src/core/**`, `src/foundation/**`, `src/cli/**` and `src/server/**`; the
@@ -141,12 +151,14 @@ never hand-edited), the subagent's notes/evidence, and downloaded attachments. M
 different `dist` trees: `dist/` is the **npm release tree**
 that `scripts/build.mjs` writes (and a stale M0 `dist/web/.gitkeep` placeholder lives there);
 the **hosted frontend root** is `web/dist`, the static build of `web/` that `taskd` serves
-(`STATIC_DIR_REL`). They are not the same directory.
+(`STATIC_DIR_REL`). They are not the same directory. `web/dist` is gitignored yet **in the
+npm `files` whitelist** — the published tarball is a runnable board, not a source drop, and
+the release workflow stages the image's build there before `npm pack`.
 
 ## Constraints / MUST-follow rules
 
 - **Verification runs inside Docker, not on the host.** Everything that *runs* — tests,
-  starting or serving the app, the CLI, host skill installs, plugin installs, migration
+  starting or serving the app, the CLI, agent skill installs, plugin installs, migration
   rehearsals — runs in the container (`npm run verify:docker`, `docker/verify-in-container.sh`).
   Host-allowed (static/pure only, per `docs/docker.md` §Host-allowed checks): `node --test`,
   `node --check`, the `scripts/verify/*` checkers, `git` and file inspection, prototype
@@ -223,7 +235,16 @@ authoritative home, because the container image drops `design/`.
   both. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects another path. The old
   `<dataDir>/taskd.env` is no longer read (hard switch). Identity (`--actor-kind`) is required
   on every command except `--help` / `--version`; `--agent` names the role and is not a
-  shared-file key.
+  shared-file key. The install root is the **running program's** root: the checkout, `/app`
+  in the image, or `~/.meerkat-taskpanel` for an installed tree. On a combined install
+  (`--target all`, which includes the server, or npm/npx) the agent shims and loop config
+  name the installed tree (`MEERKAT_TASKPANEL_REPO`, `MEERKAT_TASKPANEL_ENV_FILE`) — never
+  the checkout and never the npx cache; `--no-server` installs keep pointing at the checkout.
+- **The `taskd` guard follows the same root.** Selecting the server target writes
+  `ExecStart` = `<node> <home>/.meerkat-taskpanel/src/server/main.mjs` and pins
+  `TASKD_DATA_DIR=<home>/.meerkat-taskpanel/.data` in the unit; without it the unit runs the
+  checkout's entry. One guard per machine, and switching layout is a deliberate `--force`
+  (a mismatched unit is refused with exit 3, non-fatal).
 - **The loop speaks only `taskctl`.** `scripts/loop/**` and `scripts/supervisor.mjs` never call
   the board's HTTP API directly — the live event stream is `taskctl events tail`, not `fetch`,
   and the loop carries no board discovery or token code. Board capability detail (invocations,

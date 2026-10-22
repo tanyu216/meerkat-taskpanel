@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 /**
- * Host runtime claim-path verification — the offline mock harness.
+ * Agent-kind runtime claim-path verification — the offline mock harness.
  *
  * `scripts/verify/profiles.mjs` proves the *install* landed (skill paths, frontmatter,
  * wrapper, detector contract). It never runs what the install *generated*. This probe
  * closes that gap: it drives the generated runtime glue — the Claude SessionStart hook,
- * the Codex claim trigger, and each host's `wake-*.sh` — against **fake host CLIs and a
+ * the Codex claim trigger, and each agent kind's `wake-*.sh` — against **fake agent CLIs and a
  * fake `taskctl` shim**, so the "trigger → claim → wake" path is executed and asserted
  * without a real `claude` / `codex` / `pi`, a board, or a network.
  *
- *   node scripts/verify/host-runtime.mjs [--home <dir>] [--host <host>] [--quiet]
+ *   node scripts/verify/kind-runtime.mjs [--home <dir>] [--actor-kind <kind>] [--quiet]
  *
  * How it works (all throwaway, never `$HOME`):
  *
  *   1. a temp *prefix* is the install root and the `HOME` of every spawned process;
- *   2. `install.sh --target <host> --prefix <tmp> --agent-name alice --skip-node-check`
+ *   2. `install.sh --target <actor-kind> --prefix <tmp> --agent-name alice --skip-node-check`
  *      generates the real bundle from the real templates;
  *   3. the generated `taskctl` shim is replaced by a *canned* shim (the board boundary),
  *      and fake `claude` / `codex` / `pi` / `opencode` / `cursor-agent` executables are
@@ -26,8 +26,8 @@
  * Deterministic and offline by construction: no clock, no randomness, no sockets — the
  * only nondeterminism is the temp dir, which `--home` pins for byte-identical re-runs.
  *
- * What is *not* covered here (honest boundary): the real host CLIs' own behaviour (see
- * the supplementary `scripts/verify/host-cli.mjs`, which skips when a CLI is absent) and
+ * What is *not* covered here (honest boundary): the real agent CLIs' own behaviour (see
+ * the supplementary `scripts/verify/kind-cli.mjs`, which skips when a CLI is absent) and
  * the real board's claim semantics (`docker/verify-in-container.sh` +
  * `scripts/verify/install-e2e.sh` drive the real `taskctl`/`taskd`). This probe pins the
  * *generated shell glue* between them.
@@ -49,8 +49,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /** agent name every install is rendered with; the shim / hook must carry it. */
 const AGENT = "alice";
 
-/** Host → {dot-dir, has detection of which generated forms exist}. */
-const HOSTS = {
+/** Actor kind → {dot-dir, has detection of which generated forms exist}. */
+const KINDS = {
   claude: { dir: ".claude", hook: ".claude/hooks/meerkat-taskpanel-session-start.sh", trigger: null, wake: ".claude/bin/wake-claude.sh", shim: ".claude/bin/taskctl", cli: "claude" },
   codex: { dir: ".codex", hook: null, trigger: ".codex/meerkat-taskpanel-claim.sh", wake: ".codex/bin/wake-codex.sh", shim: ".codex/bin/taskctl", cli: "codex" },
   pi: { dir: ".agents", hook: null, trigger: null, wake: ".agents/bin/wake-pi.sh", shim: ".agents/bin/taskctl", cli: "pi" },
@@ -59,12 +59,12 @@ const HOSTS = {
 };
 
 /**
- * The canned board shim. Replaces `<home>/<host>/bin/taskctl` after install: it records
+ * The canned board shim. Replaces `<home>/<agent-dir>/bin/taskctl` after install: it records
  * every argv and answers `issue list` / `issue candidates` from env, so a scenario can
  * put the trigger in front of a held card, a foreign held card, or an empty pool.
  */
 const FAKE_SHIM = `#!/usr/bin/env node
-// Canned taskctl shim written by scripts/verify/host-runtime.mjs — not the real shim.
+// Canned taskctl shim written by scripts/verify/kind-runtime.mjs — not the real shim.
 import { appendFileSync } from "node:fs";
 const argv = process.argv.slice(2);
 if (process.env.FAKE_SHIM_LOG) appendFileSync(process.env.FAKE_SHIM_LOG, JSON.stringify(argv) + "\\n");
@@ -83,16 +83,16 @@ if (argv.includes("list")) {
 `;
 
 /**
- * A fake host CLI: records {bin, argv, cwd} and exits 0 — the wake boundary.
+ * A fake agent CLI: records {bin, argv, cwd} and exits 0 — the wake boundary.
  * `cwd` is recorded because it is now load-bearing: the wake glue must `cd` into
  * the card's project target directory before it execs this.
  */
 const FAKE_CLI = `#!/usr/bin/env node
-// Fake host CLI written by scripts/verify/host-runtime.mjs — records argv+cwd, exits 0.
+// Fake agent CLI written by scripts/verify/kind-runtime.mjs — records argv+cwd, exits 0.
 import { appendFileSync } from "node:fs";
 import { basename } from "node:path";
-if (process.env.FAKE_HOST_LOG) {
-  appendFileSync(process.env.FAKE_HOST_LOG, JSON.stringify({ bin: basename(process.argv[1]), argv: process.argv.slice(2), cwd: process.cwd() }) + "\\n");
+if (process.env.FAKE_KIND_LOG) {
+  appendFileSync(process.env.FAKE_KIND_LOG, JSON.stringify({ bin: basename(process.argv[1]), argv: process.argv.slice(2), cwd: process.cwd() }) + "\\n");
 }
 process.exit(0);
 `;
@@ -165,12 +165,12 @@ function freshLog(name) {
 }
 
 // ---------------------------------------------------------------------------
-// Install bring-up (once per run, per selected host)
+// Install bring-up (once per run, per selected agent kind)
 // ---------------------------------------------------------------------------
 
-function installHost(host) {
+function installKind(kind) {
   const res = run(
-    [join(ROOT, "install.sh"), "--target", host, "--prefix", ctx.home, "--agent-name", AGENT, "--skip-node-check"],
+    [join(ROOT, "install.sh"), "--target", kind, "--prefix", ctx.home, "--agent-name", AGENT, "--skip-node-check"],
     {
       env: {
         MEERKAT_TASKPANEL_TARGET_HOME: ctx.home,
@@ -182,10 +182,10 @@ function installHost(host) {
     },
   );
   if (res.status !== 0) {
-    throw new Error(`install.sh --target ${host} exited ${res.status}\n${res.stdout}\n${res.stderr}`);
+    throw new Error(`install.sh --target ${kind} exited ${res.status}\n${res.stdout}\n${res.stderr}`);
   }
   // Swap in the canned shim at the boundary the generated glue actually calls.
-  const spec = HOSTS[host];
+  const spec = KINDS[kind];
   if (spec.shim) {
     const shimPath = join(ctx.home, spec.shim);
     mkdirSync(dirname(shimPath), { recursive: true });
@@ -199,16 +199,16 @@ function installHost(host) {
 // ---------------------------------------------------------------------------
 
 /** Every wake script: the no-prompt guard, the resolved working directory, then argv. */
-function checkWake(host) {
-  const spec = HOSTS[host];
-  const section = `wake (${host})`;
+function checkWake(kind) {
+  const spec = KINDS[kind];
+  const section = `wake (${kind})`;
   const wakePath = join(ctx.home, spec.wake);
-  const log = freshLog(`wake-${host}`);
+  const log = freshLog(`wake-${kind}`);
 
   // The map the glue resolves from: its own default (`../skills/…` beside the
   // installed `bin/`), and a real directory to point the worker at.
   const mapPath = join(ctx.home, spec.dir, "skills", "meerkat-taskpanel", "projects.json");
-  const target = join(ctx.tmp, `target-${host}`);
+  const target = join(ctx.tmp, `target-${kind}`);
   mkdirSync(target, { recursive: true });
   const PROJECT = "TaskPanel";
   const writeMap = (entries) => {
@@ -224,13 +224,13 @@ function checkWake(host) {
     return null;
   }, spec.wake);
 
-  check(section, "no prompt → exit 2, host CLI never invoked", () => {
+  check(section, "no prompt → exit 2, agent CLI never invoked", () => {
     writeFileSync(log, "");
-    const res = run(["bash", wakePath], { env: { FAKE_HOST_LOG: log } });
+    const res = run(["bash", wakePath], { env: { FAKE_KIND_LOG: log } });
     if (res.status !== 2) return `exit ${res.status} (want 2); stderr=${JSON.stringify(res.stderr)}`;
     if (!/handoff prompt is required/.test(res.stderr)) return `stderr did not name the missing prompt: ${JSON.stringify(res.stderr)}`;
     const calls = readJsonl(log);
-    if (calls.length) return `host CLI was invoked ${calls.length} time(s) without a prompt: ${JSON.stringify(calls)}`;
+    if (calls.length) return `agent CLI was invoked ${calls.length} time(s) without a prompt: ${JSON.stringify(calls)}`;
     return null;
   }, "exit 2");
 
@@ -239,11 +239,11 @@ function checkWake(host) {
     writeFileSync(log, "");
     // Only TP_PROJECT is set: the map path is the glue's own default, so this
     // also proves the glue finds the map beside the skill it was installed with.
-    const res = run(["bash", wakePath, prompt], { env: { FAKE_HOST_LOG: log, TP_PROJECT: PROJECT } });
+    const res = run(["bash", wakePath, prompt], { env: { FAKE_KIND_LOG: log, TP_PROJECT: PROJECT } });
     if (res.status !== 0) return `exit ${res.status}; stderr=${JSON.stringify(res.stderr)}`;
     const calls = readJsonl(log);
-    if (calls.length !== 1) return `want 1 host-CLI call, got ${calls.length}: ${JSON.stringify(calls)}`;
-    const want = wakeCommand({ host, prompt });
+    if (calls.length !== 1) return `want 1 agent-CLI call, got ${calls.length}: ${JSON.stringify(calls)}`;
+    const want = wakeCommand({ actorKind: kind, prompt });
     if (calls[0].bin !== want.command) return `invoked ${calls[0].bin}, expected ${want.command}`;
     if (JSON.stringify(calls[0].argv) !== JSON.stringify(want.args)) {
       return `argv ${JSON.stringify(calls[0].argv)} != wakeCommand().args ${JSON.stringify(want.args)}`;
@@ -256,11 +256,11 @@ function checkWake(host) {
       return `ran in ${calls[0].cwd}, expected the mapped ${target}`;
     }
     return null;
-  }, `${spec.cli} ${wakeCommand({ host, prompt: "…" }).args.join(" ")} in the mapped directory`);
+  }, `${spec.cli} ${wakeCommand({ actorKind: kind, prompt: "…" }).args.join(" ")} in the mapped directory`);
 
   check(section, "unmapped project → exit 3, no worker started (no silent fallback)", () => {
     writeFileSync(log, "");
-    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_HOST_LOG: log, TP_PROJECT: "ghost" } });
+    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_KIND_LOG: log, TP_PROJECT: "ghost" } });
     if (res.status !== 3) return `exit ${res.status} (want 3); stderr=${JSON.stringify(res.stderr)}`;
     if (!/no local directory is registered for project ghost/.test(res.stderr)) {
       return `stderr did not name the unresolvable project: ${JSON.stringify(res.stderr)}`;
@@ -272,15 +272,15 @@ function checkWake(host) {
 
   check(section, "bad target directory (gone / not a directory) → exit 3, no worker started", () => {
     const prompt = "do T-1";
-    writeFileSync(join(ctx.tmp, `file-${host}`), "a file, not a directory\n");
+    writeFileSync(join(ctx.tmp, `file-${kind}`), "a file, not a directory\n");
     const probes = [
       [join(ctx.tmp, "not-there"), /does not exist/],
-      [join(ctx.tmp, `file-${host}`), /is not a directory/],
+      [join(ctx.tmp, `file-${kind}`), /is not a directory/],
     ];
     for (const [local_path, expected] of probes) {
       writeMap([{ project: PROJECT, local_path }]);
       writeFileSync(log, "");
-      const res = run(["bash", wakePath, prompt], { env: { FAKE_HOST_LOG: log, TP_PROJECT: PROJECT } });
+      const res = run(["bash", wakePath, prompt], { env: { FAKE_KIND_LOG: log, TP_PROJECT: PROJECT } });
       if (res.status !== 3) return `${local_path}: exit ${res.status} (want 3); stderr=${JSON.stringify(res.stderr)}`;
       if (!expected.test(res.stderr)) return `${local_path}: stderr did not match ${expected}: ${JSON.stringify(res.stderr)}`;
       const calls = readJsonl(log);
@@ -296,7 +296,7 @@ function checkWake(host) {
     // wake refuses — and refuses with its own reason, not the unmapped one.
     writeMap([{ project: PROJECT, kind: "ops" }]);
     writeFileSync(log, "");
-    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_HOST_LOG: log, TP_PROJECT: PROJECT } });
+    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_KIND_LOG: log, TP_PROJECT: PROJECT } });
     writeMap([{ project: PROJECT, local_path: target }]);
     if (res.status !== 3) return `exit ${res.status} (want 3); stderr=${JSON.stringify(res.stderr)}`;
     if (!/no usable directory for project/.test(res.stderr)) {
@@ -308,20 +308,20 @@ function checkWake(host) {
   }, "exit 3");
 
   check(section, "run_dir-only entry → exit 0, worker runs in the launch directory", () => {
-    const launch = join(ctx.tmp, `launch-${host}`);
+    const launch = join(ctx.tmp, `launch-${kind}`);
     mkdirSync(launch, { recursive: true });
     writeMap([{ project: PROJECT, run_dir: launch }]);
     writeFileSync(log, "");
-    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_HOST_LOG: log, TP_PROJECT: PROJECT } });
+    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_KIND_LOG: log, TP_PROJECT: PROJECT } });
     writeMap([{ project: PROJECT, local_path: target }]);
     if (res.status !== 0) return `exit ${res.status}; stderr=${JSON.stringify(res.stderr)}`;
     const calls = readJsonl(log);
-    if (calls.length !== 1) return `want 1 host-CLI call, got ${calls.length}: ${JSON.stringify(calls)}`;
+    if (calls.length !== 1) return `want 1 agent-CLI call, got ${calls.length}: ${JSON.stringify(calls)}`;
     if (realpathSync(calls[0].cwd) !== realpathSync(launch)) {
       return `ran in ${calls[0].cwd}, expected the launch directory ${launch}`;
     }
     return null;
-  }, `exit 0 in ${join(ctx.tmp, `launch-${host}`)}`);
+  }, `exit 0 in ${join(ctx.tmp, `launch-${kind}`)}`);
 
   check(section, "no permission-bypass flag in any executed command", () => {
     // Comment lines are dropped first: the scripts *document* the boundary by naming the
@@ -340,13 +340,13 @@ function checkWake(host) {
 /** Claude: the SessionStart hook (claimable list + the eight rules), non-fatal. */
 function checkSessionStart() {
   const section = "session-start (claude)";
-  const hookPath = join(ctx.home, HOSTS.claude.hook);
-  const shimPath = join(ctx.home, HOSTS.claude.shim);
+  const hookPath = join(ctx.home, KINDS.claude.hook);
+  const shimPath = join(ctx.home, KINDS.claude.shim);
 
   check(section, "hook installed and executable", () => {
     if (!existsSync(hookPath)) return `missing ${hookPath}`;
     return null;
-  }, HOSTS.claude.hook);
+  }, KINDS.claude.hook);
 
   check(section, "lists candidates through the shim (argv + output) and prints the eight rules", () => {
     const log = freshLog("session-start");
@@ -394,12 +394,12 @@ function checkSessionStart() {
 /** Codex: the cron claim trigger — one card at a time, own cards only. */
 function checkTrigger() {
   const section = "trigger (codex)";
-  const triggerPath = join(ctx.home, HOSTS.codex.trigger);
+  const triggerPath = join(ctx.home, KINDS.codex.trigger);
 
   check(section, "trigger installed and executable", () => {
     if (!existsSync(triggerPath)) return `missing ${triggerPath}`;
     return null;
-  }, HOSTS.codex.trigger);
+  }, KINDS.codex.trigger);
 
   const runTrigger = (seed, env) => {
     const log = freshLog(`trigger-${seed}`);
@@ -445,7 +445,7 @@ function checkTrigger() {
   }, "exit 0");
 
   check(section, "shim missing → exit 1 (the trigger's explicit contract)", () => {
-    const shimPath = join(ctx.home, HOSTS.codex.shim);
+    const shimPath = join(ctx.home, KINDS.codex.shim);
     const backup = `${shimPath}.bak`;
     writeFileSync(backup, readFileSync(shimPath));
     rmSync(shimPath);
@@ -462,7 +462,7 @@ function checkTrigger() {
   }, "exit 1");
 }
 
-/** Hosts that ship neither form: assert the *absence* explicitly, with the reason. */
+/** Actor kinds that ship neither form: assert the *absence* explicitly, with the reason. */
 function checkAbsences() {
   check("coverage map", "claude ships no cron trigger (SessionStart hook instead)", () => {
     return existsSync(join(ctx.home, ".claude/meerkat-taskpanel-claim.sh")) ? "unexpected claude claim trigger" : null;
@@ -472,12 +472,12 @@ function checkAbsences() {
     return existsSync(join(ctx.home, ".codex/hooks")) ? "unexpected codex hooks dir" : null;
   }, "N/A — Codex has no hooks; the trigger is the automation");
 
-  // Pi is the host where the **absence family** was conflated: this assertion used to read
+  // Pi is the agent kind where the **absence family** was conflated: this assertion used to read
   // "no hook, trigger **or shim**", with the shim lumped in beside the two *automation*
   // forms. The shim is not one of them — it is the identity wrapper around a command the
-  // agent already runs itself, so it is orthogonal to which automation a host has (see
-  // `docs/install.md`, where every host gets one). Pi has none of the automation; it does
-  // have a shim, and `HOSTS.pi.shim` above says so.
+  // agent already runs itself, so it is orthogonal to which automation an agent kind has (see
+  // `docs/install.md`, where every agent kind gets one). Pi has none of the automation; it does
+  // have a shim, and `KINDS.pi.shim` above says so.
   check("coverage map", "pi ships no hook and no trigger", () => {
     for (const rel of [".agents/hooks", ".agents/meerkat-taskpanel-claim.sh"]) {
       if (existsSync(join(ctx.home, rel))) return `unexpected ${rel}`;
@@ -493,7 +493,7 @@ function checkAbsences() {
 const ctx = { home: "", tmp: "", fakeBin: "" };
 
 function setup(homeArg) {
-  const tmp = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-hostruntime-"));
+  const tmp = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-kindruntime-"));
   ctx.tmp = tmp;
   ctx.home = homeArg ? resolve(homeArg) : join(tmp, "home");
   mkdirSync(ctx.home, { recursive: true });
@@ -515,7 +515,7 @@ async function main() {
   const { values } = parseArgs({
     options: {
       home: { type: "string" },
-      host: { type: "string", multiple: true, short: "H" },
+      "actor-kind": { type: "string", multiple: true, short: "H" },
       quiet: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -523,52 +523,52 @@ async function main() {
 
   if (values.help) {
     process.stdout.write(
-      "Usage: node scripts/verify/host-runtime.mjs [--home <dir>] [--host <host>] [--quiet]\n\n" +
+      "Usage: node scripts/verify/kind-runtime.mjs [--home <dir>] [--actor-kind <kind>] [--quiet]\n\n" +
         "  Offline mock harness: drives the generated SessionStart hook / claim trigger /\n" +
-        "  wake scripts against fake host CLIs. Never touches $HOME, never uses the network.\n" +
-        `  --host <host>  only these hosts (${Object.keys(HOSTS).join(", ")}); repeatable or comma-separated\n`,
+        "  wake scripts against fake agent CLIs. Never touches $HOME, never uses the network.\n" +
+        `  --actor-kind <kind>  only these agent kinds (${Object.keys(KINDS).join(", ")}); repeatable or comma-separated\n`,
     );
     return 0;
   }
 
-  const wanted = (values.host ?? []).flatMap((v) => String(v).split(",")).map((v) => v.trim()).filter(Boolean);
-  const hosts = wanted.length ? wanted : Object.keys(HOSTS);
-  const unknown = hosts.filter((h) => !(h in HOSTS));
+  const wanted = (values["actor-kind"] ?? []).flatMap((v) => String(v).split(",")).map((v) => v.trim()).filter(Boolean);
+  const kinds = wanted.length ? wanted : Object.keys(KINDS);
+  const unknown = kinds.filter((k) => !(k in KINDS));
   if (unknown.length) {
-    process.stderr.write(`host-runtime: unknown host(s): ${unknown.join(", ")} (expected ${Object.keys(HOSTS).join(", ")})\n`);
+    process.stderr.write(`kind-runtime: unknown actor kind(s): ${unknown.join(", ")} (expected ${Object.keys(KINDS).join(", ")})\n`);
     return 2;
   }
 
   const { tmp } = setup(values.home);
   let installError = null;
   try {
-    process.stdout.write(`host-runtime: home = ${ctx.home}\n`);
-    for (const host of hosts) {
+    process.stdout.write(`kind-runtime: home = ${ctx.home}\n`);
+    for (const kind of kinds) {
       try {
-        installHost(host);
+        installKind(kind);
       } catch (err) {
         installError = err.message;
         failures += 1;
-        results.push({ section: `install (${host})`, name: "install.sh bring-up", ok: false, detail: err.message });
+        results.push({ section: `install (${kind})`, name: "install.sh bring-up", ok: false, detail: err.message });
       }
     }
 
     if (!installError) {
-      if (hosts.includes("claude")) {
+      if (kinds.includes("claude")) {
         checkSessionStart();
         checkWake("claude");
       }
-      if (hosts.includes("codex")) {
+      if (kinds.includes("codex")) {
         checkTrigger();
         checkWake("codex");
       }
-      if (hosts.includes("pi")) {
+      if (kinds.includes("pi")) {
         checkWake("pi");
       }
-      if (hosts.includes("opencode")) {
+      if (kinds.includes("opencode")) {
         checkWake("opencode");
       }
-      if (hosts.includes("cursor")) {
+      if (kinds.includes("cursor")) {
         checkWake("cursor");
       }
       checkAbsences();
@@ -590,7 +590,7 @@ async function main() {
 
   const total = results.length;
   const passed = total - failures;
-  process.stdout.write(`\nhost-runtime: ${passed}/${total} assertions passed (${hosts.join(", ")})\n`);
+  process.stdout.write(`\nkind-runtime: ${passed}/${total} assertions passed (${kinds.join(", ")})\n`);
   return failures === 0 ? 0 : 1;
 }
 

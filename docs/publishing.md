@@ -1,7 +1,7 @@
 # Publishing
 
 How a Meerkat TaskPanel version is packaged and published across its distribution surfaces:
-**npm**, **git + GitHub Release**, and the per-host bundles — Claude Code's marketplace,
+**npm**, **git + GitHub Release**, and the per-agent-kind bundles — Claude Code's marketplace,
 OpenClaw, Codex, Pi, Cursor and OpenCode.
 
 > **Scope.** This page documents the steps only. **The actual `push`, tag and release are
@@ -20,7 +20,7 @@ OpenClaw, Codex, Pi, Cursor and OpenCode.
 | 3 | `.cursor-plugin/plugin.json` | `version` |
 | 4 | `.claude-plugin/marketplace.json` | `metadata.version` |
 
-Three hosts are not carriers. Codex and OpenClaw install the same
+Three agent kinds are not carriers. Codex and OpenClaw install the same
 `.claude-plugin/plugin.json` bundle through the repository-root marketplace, and Pi declares
 itself in the canonical `package.json` itself (its `pi` field) — a row for any would only
 restate one above.
@@ -79,10 +79,30 @@ confirm.
 ## 2. npm
 
 The published tarball's contents are decided by the `files` whitelist in the root
-`package.json` — `src/`, `skills/`, `scripts/`, `docs/`, `install.sh`, `CHANGELOG.md`,
-`LICENSE` and the two READMEs. `web/`, `dist/` and the test/CI directories are **not** in it
-(the hosted board is a separate build; see
-[development.md](development.md#two-build-layers-engine-and-web)).
+`package.json` — `src/`, `skills/`, `scripts/`, `docs/`, `install.sh`, `web/dist`,
+`CHANGELOG.md`, `LICENSE` and the two READMEs. `web/dist` (the **built** frontend, produced
+by the image's `webbuild` stage) is included so the package is a runnable board; the rest of
+`web/`, `dist/` and the test/CI directories are **not**. See
+[development.md](development.md#two-build-layers-engine-and-web).
+
+> **`web/dist` needs `web/.npmignore`.** npm's packlist reads `.npmignore` in a directory
+> *instead of* `.gitignore`, and a `files` entry does not override either — verified against
+> npm itself. `web/.gitignore` ignores `dist/` (it is build output), so `web/.npmignore` must
+> stay present and must ignore nothing; without it `npm pack` silently ships no frontend and
+> the package would install an API-only server while every whitelist check still passed.
+> `test/verify/pack-manifest.test.mjs` pins both halves.
+
+The package is the **distribution**, not only a source drop. It declares three bins —
+`meerkat-taskpanel` (the installer), `taskctl` and `taskd` — so after a publish:
+
+```bash
+npx meerkat-taskpanel                      # install server + taskctl + every agent kind's skill
+npm install -g meerkat-taskpanel           # taskctl / taskd / the installer on PATH
+```
+
+The installer materializes the runtime at `~/.meerkat-taskpanel` and never runs from inside
+the npx cache; see [install.md § Install methods](install.md#install-methods). Because the
+tarball carries `web/dist`, that install needs no build step and no network.
 
 **Precondition — already enabled.** The root manifest is publishable: it carries no
 `private` flag (the flag that makes `npm publish` refuse with `EPRIVATE`), and its
@@ -92,9 +112,10 @@ package, and it does run the `prepare` lifecycle script.
 
 **Not yet a live surface.** What gates a publish is registry state, not the manifest: the
 package **name** must be one you control and the **version** must not exist yet. The
-unscoped name `meerkat-taskpanel` is already taken on the public registry by an unrelated
-package, so a real `npm publish` is refused today and a release needs a name decision
-first — most likely a scope, which the `publishConfig.access` above already covers.
+unscoped name `meerkat-taskpanel` is this project's (the maintainer confirmed the
+ownership), so a publish needs no name decision; it is still refused until the release
+bump's version is free and the publishing machine is authenticated. `npx
+meerkat-taskpanel` becomes usable only once that publish has happened.
 
 Self-check — dry-run only; nothing below uploads anything:
 
@@ -137,8 +158,9 @@ and it is not evidence about any release published before then.
 
 The release pipeline is **tag-driven**: `.github/workflows/release.yml` runs on
 `push` of a tag matching `v*`. It re-runs the checks, builds the release tree
-(`node scripts/build.mjs`), packages and verifies the npm tarball, generates the SBOM, and
-opens a GitHub Release **draft** carrying both artifacts. It does **not** publish anywhere
+(`node scripts/build.mjs`), copies the image's built `web/dist` into the packaging tree so the
+tarball carries a runnable frontend, packages and verifies the npm tarball, generates the
+SBOM, and opens a GitHub Release **draft** carrying both artifacts. It does **not** publish anywhere
 automatically — the draft is for a human to review and publish, and the workflow holds no
 credential that could publish.
 
@@ -369,12 +391,12 @@ detected as a cursor-format bundle exposing a loadable `meerkat-taskpanel` skill
 to follow — so rather than invent one, the plugin stays skills-only.
 
 **Unverified, and flagged as such.** Cursor's CLI is not installed in this repository's
-container or on the development host, so the *host integration* above has never been run from
+container or on the development host, so the *agent integration* above has never been run from
 here; the in-chat gesture is transcribed from `obra/superpowers` rather than reproduced.
 
 ## 9. OpenCode
 
-OpenCode is a *directory-granular* host: it is handed a skills directory, not a list of skill
+OpenCode is a *directory-granular* agent kind: it is handed a skills directory, not a list of skill
 names, so `.opencode/plugins/meerkat-taskpanel.js` points it at the repository's own
 `skills/` and both skills arrive together. Nothing is copied — the directory is resolved from
 the plugin's own location, so it follows the package wherever OpenCode fetched it.
@@ -396,7 +418,7 @@ appears in neither the table in §1 nor a bundle directory of its own.
 `package.json#files` must still name `.opencode`, or the plugin never reaches the tarball.
 
 **Unverified, and flagged as such.** OpenCode's CLI is not installed in this repository's
-container or on the development host, so the host integration above has never been run from
+container or on the development host, so the agent integration above has never been run from
 here. What *is* covered is the plugin's own logic:
 `test/install/opencode-plugin.test.mjs` drives it against a fake plugin context.
 
@@ -416,8 +438,8 @@ default, so a manifest that is not listed never reaches the tarball, and
 
 ## See also
 
-- [install.md](install.md) — the per-host install and plugin-registration commands in full.
+- [install.md](install.md) — the per-agent-kind install and plugin-registration commands in full.
 - [development.md](development.md) — the two build layers, the offline policy and the
   generated-skill rule.
 - [`../README.md`](../README.md) / [`../README.zh-CN.md`](../README.zh-CN.md) — status and
-  the six-host support matrix.
+  the six-agent-kind support matrix.

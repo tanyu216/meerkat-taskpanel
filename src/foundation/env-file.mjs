@@ -1,5 +1,5 @@
 /**
- * `KEY=VALUE` configuration files — the install-root `.env` and the per-host
+ * `KEY=VALUE` configuration files — the install-root `.env` and the per-agent-kind
  * loop config — as pure text operations.
  *
  * Two writers share the install-root file (the Access panel's allow-list and

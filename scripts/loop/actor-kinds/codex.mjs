@@ -16,7 +16,7 @@
 import { spawn } from "node:child_process";
 
 import { extractAgentIds } from "../ledger.mjs";
-import { lineSplitter, writeJsonLine } from "../host-session.mjs";
+import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
 export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
@@ -308,7 +308,7 @@ export function createCodexPool(input) {
   };
 
   const pool = {
-    host: "codex",
+    actorKind: "codex",
     get pid() {
       return child.pid ?? null;
     },

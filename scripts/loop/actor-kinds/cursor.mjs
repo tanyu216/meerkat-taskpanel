@@ -9,7 +9,7 @@
  * unattended turn never stalls on a prompt.
  *
  * Verified against the published ACP shape, not against a live binary on this
- * host; `scripts/verify/host-session-matrix.mjs` is the probe. An older CLI
+ * host; `scripts/verify/kind-session-matrix.mjs` is the probe. An older CLI
  * without ACP keeps the one-shot path (`cursor-agent -p`) — it cannot run a
  * resident pool.
  */
@@ -17,7 +17,7 @@
 import { spawn } from "node:child_process";
 
 import { extractAgentIds } from "../ledger.mjs";
-import { lineSplitter, writeJsonLine } from "../host-session.mjs";
+import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
 export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
@@ -245,7 +245,7 @@ export function createCursorPool(input) {
     });
 
   const pool = {
-    host: "cursor",
+    actorKind: "cursor",
     opts,
     log,
     get pid() {

@@ -5,16 +5,16 @@ board/loop compatibility contract.
 
 ## What the installer writes
 
-For `<host>` = `~/.claude`, `~/.codex`, `~/.agents`, `~/.config/opencode` or `~/.cursor`:
+For `<agent-dir>` = `~/.claude`, `~/.codex`, `~/.agents`, `~/.config/opencode` or `~/.cursor`:
 
 | Artefact | Where | Notes |
 |---|---|---|
-| loop skill | `<host>/skills/meerkat-loop/` | always **copied**, never symlinked |
-| execution body | `<host>/meerkat-taskpanel/scripts/…` and `scripts/foundation/…` | the copy the units run; closure in the skill's `manifest.txt` |
-| units | `<host>/scheduling/{launchd,systemd,cron}/` | the resident pool (`session`), ping 60s, continue 600s, and the optional event subscriber. Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the host CLI |
-| wake glue | `<host>/bin/wake-<host>.sh` | legacy one-shot wakes only: resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` / `opencode run` / `cursor-agent -p` |
-| host config | `<host>/meerkat-taskpanel.env` | claim policy, stale recovery, `MEERKAT_TASKPANEL_REPO`, workflow answers, the pool's knobs, and the full-tool-access opt-in |
-| runtime | `<host>/meerkat-taskpanel/{supervisor.log,supervisor.state.json,sessions.state.json,subagents.state.json}` | tick log, legacy worker registry, pool sessions + heartbeat, subagent ledger |
+| loop skill | `<agent-dir>/skills/meerkat-loop/` | always **copied**, never symlinked |
+| execution body | `<agent-dir>/meerkat-taskpanel/scripts/…` and `scripts/foundation/…` | the copy the units run; closure in the skill's `manifest.txt` |
+| units | `<agent-dir>/scheduling/{launchd,systemd,cron}/` | the resident pool (`session`), ping 60s, continue 600s, and the optional event subscriber. Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the agent CLI |
+| wake glue | `<agent-dir>/bin/wake-<actor-kind>.sh` | legacy one-shot wakes only: resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` / `opencode run` / `cursor-agent -p` |
+| agent config | `<agent-dir>/meerkat-taskpanel.env` | claim policy, stale recovery, `MEERKAT_TASKPANEL_REPO`, workflow answers, the pool's knobs, and the full-tool-access opt-in |
+| runtime | `<agent-dir>/meerkat-taskpanel/{supervisor.log,supervisor.state.json,sessions.state.json,subagents.state.json}` | tick log, legacy worker registry, pool sessions + heartbeat, subagent ledger |
 
 `--link` applies to the board skill only: a symlinked loop body would
 reintroduce the checkout dependency the copied body exists to remove.
@@ -36,27 +36,27 @@ crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
 `install.sh --supervisor=enable` (alias `--enable-supervisor`) is the opt-in;
-`--supervisor-hosts claude,codex,pi,opencode,cursor` limits the hosts and `--scheduler
+`--supervisor-actor-kinds claude,codex,pi,opencode,cursor` limits the agent kinds and `--scheduler
 auto|launchd|systemd|cron` picks the mechanism. `--supervisor=disable` and
 `--supervisor=status` use the same entry point. On a TTY with no flag it asks
 once and defaults to **no**; `MEERKAT_TASKPANEL_SUPERVISOR` is the
 non-interactive form.
 
 A loaded unit names no checkout: it runs
-`<host>/meerkat-taskpanel/scripts/supervisor.mjs`, so moving, renaming or
+`<agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs`, so moving, renaming or
 deleting the checkout does not require a reload.
 
 ## Run by hand
 
 ```bash
-node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --session
-node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice
-node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --ping-only --once
-node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --continue-only --once
+node <agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --session
+node <agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice
+node <agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once
+node <agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --continue-only --once
 
-node <host>/meerkat-taskpanel/scripts/loop/passes.mjs patrol   --host claude --agent alice
-node <host>/meerkat-taskpanel/scripts/loop/passes.mjs workflow --host claude --agent alice
-node <host>/meerkat-taskpanel/scripts/loop/passes.mjs poll     --host claude --agent alice
+node <agent-dir>/meerkat-taskpanel/scripts/loop/passes.mjs patrol   --actor-kind claude --agent alice
+node <agent-dir>/meerkat-taskpanel/scripts/loop/passes.mjs workflow --actor-kind claude --agent alice
+node <agent-dir>/meerkat-taskpanel/scripts/loop/passes.mjs poll     --actor-kind claude --agent alice
 ```
 
 A bare `node` is right in your own shell. The units cannot assume it, which is
@@ -64,13 +64,13 @@ why they name an absolute interpreter.
 
 ### Main flags
 
-Precedence: flag > process env > host config > default.
+Precedence: flag > process env > agent config > default.
 `node …/supervisor.mjs --help` prints the complete list.
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `--agent <name>` | `$TASKCTL_AGENT` → `$USER` | agent(s) to work for; repeatable / comma-separated |
-| `--host claude\|codex\|pi\|opencode\|cursor` | `claude` | which worker to wake |
+| `--actor-kind claude\|codex\|pi\|opencode\|cursor` | `claude` | which worker to wake |
 | `--repo <path>` | `MEERKAT_TASKPANEL_REPO`, else this checkout | where `--cli` resolves from; fallback cwd |
 | `--ping-interval <sec>` | 60 | liveness clock |
 | `--continue-interval <sec>` | 600 | judgment clock |
@@ -89,14 +89,14 @@ Precedence: flag > process env > host config > default.
 | `--resident=auto\|no` | auto | use a live pool for continue; `no` never dispatches workers |
 | `--session-state <path>` | beside `--state` | pool state file (`sessions.state.json`) |
 | `--session-max-age <sec>` | 86400 | fresh conversation after this age; 0 = never |
-| `--session-turn-timeout <sec>` | 1800 | one host turn; must be **1200–7199** (≥ 2× the 10-minute heartbeat window, < the ledger's 2-hour reap) |
+| `--session-turn-timeout <sec>` | 1800 | one agent turn; must be **1200–7199** (≥ 2× the 10-minute heartbeat window, < the ledger's 2-hour reap) |
 | `--opened-by human\|supervisor` | supervisor | who started this loop: a supervisor escalates questions to the board; a human-opened session may ask its own operator first |
 | `--session-poll-ms <ms>` | 1000 | queue poll interval |
 | `--session-pool-max <n>` | 8 | project sessions held open |
 | `--project-concurrency <n>` | `--max-concurrency` | live subagents per project |
 | `--project-idle-ms <ms>` | 1800000 | close an idle project session (keeps its session id) |
 | `--subagent-background=yes\|no` | no | project sessions spawn background subagents |
-| `--allow-all-tools` | off | full host tool access; requires `--allow-all-tools-reason "<who authorized it and why>"` |
+| `--allow-all-tools` | off | full agent tool access; requires `--allow-all-tools-reason "<who authorized it and why>"` |
 | `--subscribe` | off | run the event subscriber (`taskctl events tail`); launchd/systemd only |
 | `--event-continue=yes\|no` | yes | let events wake a continue turn |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
@@ -110,12 +110,12 @@ Configuration and transport:
 | `--url <url>` | `TASKD_URL` (env or install-root `.env`), then the runtime pointer | board address |
 | `--env-file <path>` | `MEERKAT_TASKPANEL_ENV_FILE`, then `<repo>/.env` | config file for the loop's `taskctl` children |
 | `--token <token>` | `$TASKD_TOKEN` / `TASKD_TOKEN_FILE` / pointer tokenFile | board token; prefer the env or file form |
-| `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config the installer writes |
-| `--projects-json <path>` | beside the board skill, or `MEERKAT_TASKPANEL_PROJECTS_JSON` | host-local project map handed to the glue |
+| `--config <path>` | `<home>/<agent-dir>/meerkat-taskpanel.env` | agent config the installer writes |
+| `--projects-json <path>` | beside the board skill, or `MEERKAT_TASKPANEL_PROJECTS_JSON` | agent-local project map handed to the glue |
 | `--home <path>` | `$HOME` | root the defaults resolve against |
 | `--cli <path>` | `<repo>/src/cli/index.mjs` | `taskctl` entry |
-| `--glue <path>` | `<home>/<host-dir>/bin/wake-<host>.sh` | wake glue |
-| `--wake-command <cmd>` | — | your own wake command instead of the built-in host form |
+| `--glue <path>` | `<home>/<agent-dir>/bin/wake-<actor-kind>.sh` | wake glue |
+| `--wake-command <cmd>` | — | your own wake command instead of the built-in agent form |
 
 Selectors, state and internals:
 
@@ -124,8 +124,8 @@ Selectors, state and internals:
 | `--once` | — | run one pass and exit; no selector means the legacy poll pass |
 | `--ping-only` / `--continue-only` / `--patrol-only` | — | the selector for `--once` |
 | `--continue-state <path>` | `continue.state.json` beside `--state` | continue lock |
-| `--log <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.log` | append log lines |
-| `--state <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.state.json` | worker registry |
+| `--log <path>` | `<home>/<agent-dir>/meerkat-taskpanel/supervisor.log` | append log lines |
+| `--state <path>` | `<home>/<agent-dir>/meerkat-taskpanel/supervisor.state.json` | worker registry |
 | `--sla-ledger <path>` | sibling of `--state` | SLA de-duplication ledger |
 | `--sla-leader <id>` | the board's human decision authority | author id passed to `sla list` / `sla get` |
 | `--sla-last-ok <path>` | — | this mechanism's last-successful-run marker |
@@ -157,8 +157,8 @@ and heartbeat younger than 60s) or when `--resident=no` is set:
 - `patrol --patrol-llm=yes` degrades to notify-only;
 - `workflow` runs, and review cards accumulate until the pool returns.
 
-That is the cron shape, and the shape on a host whose CLI lacks the resident
-protocol. Start the session unit to get dispatch. All five hosts have an adapter:
+That is the cron shape, and the shape on an agent kind whose CLI lacks the resident
+protocol. Start the session unit to get dispatch. All five agent kinds have an adapter:
 Claude Code (stream-json), Codex (app-server threads), Pi (`--mode rpc`),
 OpenCode (`serve`, one per directory), Cursor (ACP).
 
@@ -269,7 +269,7 @@ The resident pool keeps role allowlists by default (control: read + `taskctl` +
 edit/write). Full tool access is the documented opt-in:
 
 ```bash
-# host config, not a unit flag:
+# agent config, not a unit flag:
 MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes
 MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON="<who authorized it and why>"
 ```
@@ -298,7 +298,7 @@ change to the `task-interface` surface means a new generation on both sides.
 ### What the loop still needs from a checkout
 
 One thing: the **board engine**. The copied body drives `taskctl`, which lives
-in the board's checkout, found through `MEERKAT_TASKPANEL_REPO` in the host
+in the board's checkout, found through `MEERKAT_TASKPANEL_REPO` in the agent
 config. The body loads with no checkout present, but a *tick* needs the engine
 reachable. Re-running `install.sh` after the checkout moves re-points the config
 key; no unit reload is needed. This is the one remaining checkout dependency.

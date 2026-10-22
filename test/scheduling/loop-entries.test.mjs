@@ -6,7 +6,7 @@
  *
  *   * **ping is liveness only** — it prunes the registry and touches nothing
  *     else (a sentinel `--cli` proves no board call was made);
- *   * **continue is a judgment turn** — it starts the host with a bounded
+ *   * **continue is a judgment turn** — it starts the agent with a bounded
  *     `Continue` prompt, never goes through the wake glue, and a single-flight lock
  *     stops a second turn while one is still running.
  *
@@ -217,7 +217,7 @@ describe("ping and continue entries", () => {
       process.execPath,
       [
         join(ROOT, "scripts", "supervisor.mjs"),
-        "--host", "claude", "--agent", "alice", "--ping-only", "--once",
+        "--actor-kind", "claude", "--agent", "alice", "--ping-only", "--once",
         "--state", state, "--log", join(dir, "log"),
         "--cli", script,
       ],
@@ -234,7 +234,7 @@ describe("ping and continue entries", () => {
     const bin = join(dir, "bin");
     const run = runSupervisor([
       "--continue-only", "--once",
-      "--host", "claude", "--agent", "alice",
+      "--actor-kind", "claude", "--agent", "alice",
       "--repo", dir, "--state", join(dir, "state.json"),
       "--log", join(dir, "log"), "--continue-state", join(dir, "continue.state.json"),
       "--dry-run",
@@ -256,7 +256,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     if (livePool) writeLivePool(dir);
     const { script, record } = sentinelCli(dir);
     const run = runEntry("passes.mjs", [
-      "--host", "claude", "--agent", "alice", "--dry-run",
+      "--actor-kind", "claude", "--agent", "alice", "--dry-run",
       "--cli", script, "--repo", dir,
       "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       ...extra,
@@ -363,7 +363,7 @@ describe("the resident poll dispatch", () => {
     mkdirSync(app, { recursive: true });
     const projectsJson = join(dir, "projects.json");
     writeFileSync(projectsJson, JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
-    const opts = { projectsJson, host: "claude", dryRun: false };
+    const opts = { projectsJson, actorKind: "claude", dryRun: false };
     // Admission exports the card brief before the claim; these cases are about
     // admission/dispatch, so the exporter is a stub (no board call).
     const exportCard = () => ({ ok: true });
@@ -609,18 +609,18 @@ describe("continue spawn", () => {
     return false;
   }
 
-  it("starts the host with -p and a prompt that begins with /meerkat-loop", () => {
+  it("starts the agent with -p and a prompt that begins with /meerkat-loop", () => {
     const dir = tempDir("tp-continue-spawn-");
     const fake = fakeClaude(dir);
     const state = join(dir, "state.json");
     const lock = join(dir, "continue.state.json");
     const run = runSupervisor(["--continue-only", "--once",
-      "--host", "claude", "--agent", "alice",
+      "--actor-kind", "claude", "--agent", "alice",
       "--repo", dir, "--state", state, "--log", join(dir, "log"),
       "--continue-state", lock,
     ], fake.env);
     assert.equal(run.status, 0, run.stderr);
-    assert.ok(waitFor(fake.record), "the fake host was not started");
+    assert.ok(waitFor(fake.record), "the fake agent was not started");
     const argv = readFileSync(fake.record, "utf8").split("\n");
     const text = argv.slice(1).join("\n");
     assert.equal(argv[0], "-p");
@@ -633,19 +633,19 @@ describe("continue spawn", () => {
     assert.ok(Number.isInteger(held.pid) && held.pid > 0, "the lock holds the child pid");
   });
 
-  it("enqueues the turn for a resident pool instead of spawning a host", () => {
+  it("enqueues the turn for a resident pool instead of spawning an agent", () => {
     const dir = tempDir("tp-continue-resident-");
     const fake = fakeClaude(dir);
     writeLivePool(dir);
     const run = runSupervisor(["--continue-only", "--once",
-      "--host", "claude", "--agent", "alice",
+      "--actor-kind", "claude", "--agent", "alice",
       "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       "--continue-state", join(dir, "continue.state.json"),
     ], fake.env);
     assert.equal(run.status, 0, run.stderr);
     const pending = JSON.parse(readFileSync(join(dir, "continue.pending.json"), "utf8"));
     assert.equal(pending.reason, "timer");
-    assert.equal(existsSync(fake.record), false, "the one-shot process must not start a host");
+    assert.equal(existsSync(fake.record), false, "the one-shot process must not start an agent");
     assert.equal(existsSync(join(dir, "continue.state.json")), false, "no spawn lock is taken");
   });
 
@@ -654,7 +654,7 @@ describe("continue spawn", () => {
     const fake = fakeClaude(dir);
     writeLivePool(dir);
     const run = runSupervisor(["--continue-only", "--once", "--resident=no",
-      "--host", "claude", "--agent", "alice",
+      "--actor-kind", "claude", "--agent", "alice",
       "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       "--continue-state", join(dir, "continue.state.json"),
     ], fake.env);
@@ -677,7 +677,7 @@ describe("continue spawn", () => {
       "utf8",
     );
     const run = runSupervisor(["--continue-only", "--once",
-      "--host", "claude", "--agent", "alice",
+      "--actor-kind", "claude", "--agent", "alice",
       "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       "--continue-state", join(dir, "continue.state.json"),
       "--notify", `${process.execPath} ${notifier}`,
@@ -695,7 +695,7 @@ describe("continue spawn", () => {
     const lock = join(dir, "continue.state.json");
     writeFileSync(lock, JSON.stringify({ version: 1, pid: process.pid, startedAt: new Date().toISOString() }));
     const run = runSupervisor(["--continue-only", "--once",
-      "--host", "claude", "--agent", "alice",
+      "--actor-kind", "claude", "--agent", "alice",
       "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       "--continue-state", lock,
     ], fake.env);
@@ -704,13 +704,13 @@ describe("continue spawn", () => {
     assert.equal(existsSync(fake.record), false, "no second LLM turn");
   });
 
-  it("releases the lock and exits 1 when the host cannot start", () => {
+  it("releases the lock and exits 1 when the agent cannot start", () => {
     const dir = tempDir("tp-continue-fail-");
     const emptyBin = join(dir, "empty");
     mkdirSync(emptyBin, { recursive: true });
     const lock = join(dir, "continue.state.json");
     const run = runSupervisor(["--continue-only", "--once",
-      "--host", "claude", "--agent", "alice",
+      "--actor-kind", "claude", "--agent", "alice",
       "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       "--continue-state", lock,
     ], { PATH: emptyBin });

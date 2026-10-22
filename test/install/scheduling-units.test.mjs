@@ -1,7 +1,7 @@
 /**
  * Scheduling units the installer drops (T-20261010-013000).
  *
- * The supervisor is host-external, so each bundle host gets a scheduling unit
+ * The supervisor is external, so each bundle host gets a scheduling unit
  * (launchd / systemd / cron) plus a wake-glue script, all merge-style and
  * idempotent under an isolated `--prefix` home. The units are *installed*, but
  * a unit only starts when the user loads it, so the installer prints the exact
@@ -45,8 +45,8 @@ function isExecutable(path) {
 }
 
 /** Every scheduling artefact the installer is expected to drop for a host. */
-function scheduledPaths(home, hostDir, host) {
-  const base = join(home, hostDir);
+function scheduledPaths(home, agentDir, host) {
+  const base = join(home, agentDir);
   return {
     pingPlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist"),
     continuePlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.continue.plist"),
@@ -68,8 +68,8 @@ function scheduledPaths(home, hostDir, host) {
  * crontab. The wake glue is deliberately excluded: the supervisor runs it, not the
  * scheduler, and it is not part of "the unit names no checkout path".
  */
-function unitPaths(home, hostDir, host) {
-  const all = scheduledPaths(home, hostDir, host);
+function unitPaths(home, agentDir, host) {
+  const all = scheduledPaths(home, agentDir, host);
   delete all.wake;
   return all;
 }
@@ -179,7 +179,7 @@ describe("install.sh: scheduling units", () => {
     assert.ok(!cron.includes("--patrol-only"));
     assert.doesNotMatch(
       cron,
-      /supervisor\.mjs --host claude --agent alice --once --log/,
+      /supervisor\.mjs --actor-kind claude --agent alice --once --log/,
       "the bare legacy poll line must be gone",
     );
 
@@ -289,12 +289,12 @@ describe("install.sh: scheduling units", () => {
 
     // The board engine stays in the checkout, so the copied executor — which has no
     // `src/cli/index.mjs` beside it — reads the location the installer recorded in the
-    // host config. `defaultRepo` with no second argument uses the copy's own directory,
+    // agent config. `defaultRepo` with no second argument uses the copy's own directory,
     // so this is the question the installed unit actually asks at tick time.
     const configPath = join(home, ".claude", "meerkat-taskpanel.env");
     assert.ok(
       readFileSync(configPath, "utf8").includes(`MEERKAT_TASKPANEL_REPO=${ROOT}`),
-      "the host config must record where the board engine lives",
+      "the agent config must record where the board engine lives",
     );
     assert.equal(installedOptions.defaultRepo(configPath), ROOT);
   });
@@ -356,7 +356,7 @@ describe("install.sh: scheduling units", () => {
     // succeeds emptily, whatever the reason.
     const home = makeTempDir();
     const bin = makeTempDir();
-    const log = join(makeTempDir(), "host-cli.log");
+    const log = join(makeTempDir(), "kind-cli.log");
     const cli = join(bin, "claude");
     writeFileSync(cli, `#!/usr/bin/env bash\necho "invoked $*" >> "${log}"\nexit 0\n`, "utf8");
     chmodSync(cli, 0o755);
@@ -454,7 +454,7 @@ describe("install.sh: scheduling units", () => {
 // ---------------------------------------------------------------------------
 
 /** Hosts the installer must place the loop skill in, the dot-directory, and the CLI name. */
-const LOOP_HOSTS = [
+const LOOP_KINDS = [
   ["claude", ".claude", "claude"],
   ["codex", ".codex", "codex"],
   ["pi", ".agents", "pi"],
@@ -463,7 +463,7 @@ const LOOP_HOSTS = [
 ];
 
 describe("install.sh: the loop skill's distribution", () => {
-  for (const [host, hostDir, cli] of LOOP_HOSTS) {
+  for (const [host, agentDir, cli] of LOOP_KINDS) {
     it(`installs the meerkat-loop skill for ${host}`, () => {
       const home = makeTempDir();
       const bin = makeTempDir();
@@ -471,7 +471,7 @@ describe("install.sh: the loop skill's distribution", () => {
       const run = runInstall(["--target", host], installEnv(home, bin));
       assert.equal(run.status, 0, run.stderr);
 
-      const dest = join(home, hostDir, "skills", "meerkat-loop");
+      const dest = join(home, agentDir, "skills", "meerkat-loop");
       assert.ok(existsSync(join(dest, "SKILL.md")), `${host}: the loop skill's SKILL.md must land`);
       assert.ok(existsSync(join(dest, "manifest.txt")), `${host}: the loop payload must land`);
       assert.equal(
@@ -493,7 +493,7 @@ describe("install.sh: the loop skill's distribution", () => {
         `${host}: the loop templates must land`,
       );
 
-      const wake = join(home, hostDir, "bin", `wake-${host}.sh`);
+      const wake = join(home, agentDir, "bin", `wake-${host}.sh`);
       assert.ok(existsSync(wake), `${host}: the wake glue must land`);
       assert.ok(isExecutable(wake), `${host}: the wake glue must be executable`);
       assert.ok(

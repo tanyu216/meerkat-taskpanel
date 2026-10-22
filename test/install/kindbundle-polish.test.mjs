@@ -32,7 +32,7 @@ after(cleanup);
 
 // The taskd keepalive guard is skipped here (its own cases live in
 // `taskd-guard.test.mjs`): an install loads a real OS unit, and these cases are
-// about the host bundle, not the guard. `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE` is
+// about the agent bundle, not the guard. `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE` is
 // the contract's test-only bypass.
 
 /** An executable fake host CLI that records its argv to `$FAKE_LOG` and exits 0. */
@@ -62,7 +62,7 @@ function fakeCliEnv(home, bin, log) {
 // D2 — docs state the real idempotence contract, with the right flag name
 // ---------------------------------------------------------------------------
 
-describe("hostbundle polish: docs (D2)", () => {
+describe("kindbundle polish: docs (D2)", () => {
   const docs = {
     "docs/install.md": readFileSync(join(ROOT, "docs", "install.md"), "utf8"),
     "README.md": readFileSync(join(ROOT, "README.md"), "utf8"),
@@ -97,7 +97,7 @@ describe("hostbundle polish: docs (D2)", () => {
 // D3 — codex AGENTS.md under --force keeps everything but (at most) trailing NLs
 // ---------------------------------------------------------------------------
 
-describe("hostbundle polish: codex AGENTS.md is byte-stable (D3)", () => {
+describe("kindbundle polish: codex AGENTS.md is byte-stable (D3)", () => {
   const BEGIN = "<!-- meerkat-taskpanel:begin -->";
   const END = "<!-- meerkat-taskpanel:end -->";
   /** The delimited block, verbatim. */
@@ -162,7 +162,7 @@ describe("hostbundle polish: codex AGENTS.md is byte-stable (D3)", () => {
 // D4a — SessionStart fallback is PATH-independent
 // ---------------------------------------------------------------------------
 
-describe("hostbundle polish: SessionStart fallback (D4a)", () => {
+describe("kindbundle polish: SessionStart fallback (D4a)", () => {
   it("names an absolute command instead of a bare taskctl", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
@@ -211,7 +211,7 @@ function writeFakeShim(path, listJson, candidateJson) {
   chmodSync(path, 0o755);
 }
 
-describe("hostbundle polish: trigger identity match (D4b)", () => {
+describe("kindbundle polish: trigger identity match (D4b)", () => {
   it("treats a case/space-variant assignee as 'already holding' and does not re-claim", () => {
     const home = makeTempDir();
     const bin = makeTempDir();

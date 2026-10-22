@@ -105,7 +105,7 @@ export function slaSnapshot(ctx, input = {}) {
     periodSeconds,
     rows: config.rows,
     mechanism: TASKD_KIND,
-    mechanismHost: null,
+    mechanismActor: null,
     leaderId: input.leaderId ?? null,
     lookbackDays: config.leaderLookbackDays,
     boardTruncated,

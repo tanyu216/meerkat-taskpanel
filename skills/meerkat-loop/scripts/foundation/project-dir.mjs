@@ -1,10 +1,10 @@
 /**
- * The host-local project → directory map — the *rule* behind `projects.json`
+ * The agent-local project → directory map — the *rule* behind `projects.json`
  * (the file that lives beside the installed skill).
  *
  * The board holds no directory (O3): a board project is an id, a name and an
  * identifier prefix, and nothing else. "Which directory does work for this
- * project happen in?" is decided **locally, per host**, by `projects.json`, and
+ * project happen in?" is decided **locally, per agent kind**, by `projects.json`, and
  * `skills/meerkat-taskpanel/references/projects-json.md` documents it. This
  * module is that document in code, so the wake glue, `taskctl` and the tests
  * all read one map the same way — and a project with no mapped directory is a
@@ -47,7 +47,7 @@ import { isAbsolute } from "node:path";
 
 /**
  * Point an installed shim / wake glue at the map beside its skill — the shim and
- * the glue both live in `<host-dir>/bin/`, one level under the skill directory.
+ * the glue both live in `<agent-dir>/bin/`, one level under the skill directory.
  * An explicit value always wins, so a user with a second board can point at it.
  */
 export const PROJECTS_JSON_ENV = "MEERKAT_TASKPANEL_PROJECTS_JSON";

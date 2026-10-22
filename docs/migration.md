@@ -45,7 +45,7 @@ server (the `meerkat-taskpanel-mcp` bin, `src/mcp/**`), the installer's MCP regi
 and the API contract snapshot's tool section (which moves `schema_version` 3 → 4) are
 gone.
 
-A host left with a registration should drop it — `claude mcp remove meerkat-taskpanel`,
+An agent kind left with a registration should drop it — `claude mcp remove meerkat-taskpanel`,
 `codex mcp remove meerkat-taskpanel`, or the matching entry in OpenClaw's or Pi's MCP
 configuration. Nothing else changes: the skill drives the `taskctl` CLI directly, and the
 board's HTTP API, CLI and delivery gate are untouched. So an existing board needs no data

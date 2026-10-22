@@ -1,6 +1,6 @@
 /**
- * The subagent ledger: capture a host handle, reattach it after a restart, and
- * release its slot without trusting a host transcript.
+ * The subagent ledger: capture an agent handle, reattach it after a restart, and
+ * release its slot without trusting an agent transcript.
  *
  * Run with: node --test
  */
@@ -35,7 +35,7 @@ describe("ledger", () => {
     assert.deepEqual(readLedger(dir).value, { version: 1, subagents: [] });
     const ledger = upsertSubagent({ subagents: [] }, {
       sessionKey: "/work/app",
-      host: "claude",
+      actorKind: "claude",
       subagentId: "a-1",
       card: "T-1",
       role: "worker",
@@ -45,17 +45,17 @@ describe("ledger", () => {
     assert.equal(readLedger(dir).value.subagents[0].subagentId, "a-1");
   });
 
-  it("fills the host handle into a row created before the id existed", () => {
+  it("fills the agent handle into a row created before the id existed", () => {
     const pending = upsertSubagent({ subagents: [] }, {
       sessionKey: "/work/app",
-      host: "claude",
+      actorKind: "claude",
       card: "T-1",
       role: "worker",
       status: "spawned",
     });
     const filled = upsertSubagent(pending, {
       sessionKey: "/work/app",
-      host: "claude",
+      actorKind: "claude",
       subagentId: "a-1",
       card: "T-1",
       role: "worker",
@@ -66,10 +66,10 @@ describe("ledger", () => {
     assert.equal(filled.subagents[0].status, "running");
   });
 
-  it("releases a slot when the host reports a stop", () => {
+  it("releases a slot when the agent reports a stop", () => {
     const running = upsertSubagent({ subagents: [] }, {
       sessionKey: "/work/app",
-      host: "claude",
+      actorKind: "claude",
       subagentId: "a-1",
       card: "T-1",
       role: "worker",

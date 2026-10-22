@@ -1,11 +1,11 @@
 # Scheduling & continue
 
-How a board gets worked **continuously** when the host that does the work has no
+How a board gets worked **continuously** when the agent kind that does the work has no
 clock: a liveness ping, a periodic judgment turn, the atomic claim, the resident
 session that spawns the worker, and the notify-only patrol that catches what the
-scan misses. The scheduler lives **outside** the host — `scripts/supervisor.mjs`,
-which `install.sh` copies into the host out of the
-**[`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill** — and the host is only
+scan misses. The scheduler lives **outside** the agent application — `scripts/supervisor.mjs`,
+which `install.sh` copies into the agent directory out of the
+**[`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill** — and the application is only
 ever the worker that gets woken. The deterministic passes live under
 `scripts/loop/` and are run by the continue turn.
 
@@ -16,8 +16,8 @@ There are two execution shapes, and the same supervisor serves both:
   session* per target directory whose subagents do the work. Poll claims a card and
   **enqueues** the handoff; the pool spawns the worker/reviewer as a subagent of the
   project session, so it inherits the project directory as its cwd.
-- **one-shot** (cron, or a host with no session service): each continue cadence
-  starts one host process for the judgment turn. With no resident pool, poll claims
+- **one-shot** (cron, or an agent kind with no session service): each continue cadence
+  starts one agent process for the judgment turn. With no resident pool, poll claims
   nothing and worker/reviewer dispatch is paused — see
   [No resident pool: what still runs](#no-resident-pool-what-still-runs).
 
@@ -25,9 +25,9 @@ The loop is a skill of its own, and it is distributed as one: `claude`, `codex` 
 install it, and OpenClaw deliberately does not (see
 [OpenClaw: do not build a supervisor](#openclaw-do-not-build-a-supervisor)).
 
-This is the design the OpenClaw host already ships as
+This is the design OpenClaw already ships as
 [openclaw-team](https://github.com/tanyu216/openclaw-team) — a per-agent poll and a
-`task-patrol`; this document is the host-agnostic statement of it, plus what
+`task-patrol`; this document is the agent-kind-agnostic statement of it, plus what
 Claude Code, Codex and Pi add on top.
 
 ## The two clocks
@@ -42,7 +42,7 @@ independent entries under `scripts/loop/`, and the continue turn invokes them.
 | Job | process liveness: prune worker registry entries whose pid is gone | enqueue the bounded `/meerkat-loop Continue` turn for the control session (or run it one-shot when no pool is live) | hold the control and project conversations; route queued handoffs to project sessions |
 | Reads | `supervisor.state.json` only | the scheduler reads nothing | the queues, the ledger, `sessions.state.json` |
 | On a hit | — | the control turn runs `patrol → workflow → poll` | poll claims + enqueues; the project session spawns the subagent |
-| Cost | one small file read | one bounded LLM turn | one host conversation per active project |
+| Cost | one small file read | one bounded LLM turn | one agent conversation per active project |
 | Why it exists | a dead worker must not pin a concurrency slot | the loop's work needs a turn that can judge, claim and dispatch | a subagent inherits its parent session's cwd, so a project needs its own session |
 
 The split is deliberate. A 60-second clock that read the board would be a poll
@@ -132,17 +132,17 @@ session service (supervisor --session)
 
 - **Control session** — runs the judgment turn; it never spawns a worker and never
   works a card itself. Poll only claims and enqueues.
-- **Project sessions** — created on demand from the host-local
+- **Project sessions** — created on demand from the agent-local
   `projects.json` (`local_path ?? run_dir`, through the same `resolveWakeDir` the
   glue uses). A card whose project is unmapped or names no directory is **deferred
   before the claim**, so the board never shows a claim that has nowhere to run.
   The batch prompt tells the session to spawn one subagent per card and return
   without working them.
 - **Ledger** (`subagents.state.json`) — the application-level record of each
-  subagent: `sessionKey` (the project directory), host, subagent id, role, card,
-  status. It is written from the host's events, never parsed out of a transcript.
+  subagent: `sessionKey` (the project directory), actor kind, subagent id, role, card,
+  status. It is written from the agent's events, never parsed out of a transcript.
 - **Resume** — the control and project sessions resume by session id. Subagents do
-  not: on start the pool sends a re-attach prompt (native reattach where the host
+  not: on start the pool sends a re-attach prompt (native reattach where the agent kind
   supports it — Claude `SendMessage`, Codex child `thread/resume`, Pi subagent
   resume, OpenCode child session, Cursor `agentId`), and anything that cannot be
   reattached is marked stale and left to the board's claim recovery.
@@ -175,7 +175,7 @@ fallback is deliberately smaller rather than silently degraded:
 
 This is the cron shape: cron cannot host a long-lived process, so a cron install
 runs ping + a one-shot continue and **cannot dispatch worker/reviewer subagents**.
-A host with a session service gets the full loop. `--resident=no` forces the
+An agent kind with a session service gets the full loop. `--resident=no` forces the
 fallback even when a pool is running.
 
 ## The cost gate: a worker turn starts only on fire
@@ -296,7 +296,7 @@ What that means concretely:
   decision, but it runs in the board (`GET /api/v1/sla`, `taskctl sla list|get`).
   The loop's patrol reads those rows, de-duplicates them against its ledger,
   re-reads a survivor (`sla get <ref>`) and notifies. `inspector_liveness` is the
-  one row the loop computes itself, because the peer marker is a file on its host.
+  one row the loop computes itself, because the peer marker is a file on the machine that runs it.
 - **Thresholds are the contract's defaults, overridable install-wide.** The
   table is `DEFAULT_SLA_ROWS` in `src/foundation/sla-config.mjs`; every limit
   sits next to the row it came from. `warn` is `L − P` (the mechanism's own
@@ -305,7 +305,7 @@ What that means concretely:
   the board validates the table and publishes it (`docs/sla.md` §2.1).
 - **Working hours, not wall clock.** `T` accumulates only inside the
   Asia/Shanghai 09:00–23:00 window, off-hours rolled over — a card blocked at the
-  end of a working day cannot be "overdue" overnight, and a host in another
+  end of a working day cannot be "overdue" overnight, and a machine in another
   timezone measures the same `T`.
 - **The SLA half is notify-only, always.** Every alert is addressed to the
   **leader** (`target: "leader"`; the card field is `notify_leader`, never a
@@ -465,13 +465,13 @@ authenticating agents, not adding a rule to the same layer.
 
 ### Known limits
 
-- **One host per supervisor.** The reviewer is woken by the same supervisor and the same
-  host CLI as the workers; a cross-host reviewer (`--reviewer-host`) is not implemented.
+- **One agent kind per supervisor.** The reviewer is woken by the same supervisor and the same
+  agent CLI as the workers; a reviewer on a different agent kind (there is no cross-kind reviewer flag) is not implemented.
   If review needs a different runtime, run a second supervisor with its own `--reviewer`
-  on that host.
+  on that machine.
 - **The reviewer's tool surface is a prompt boundary.** The board enforces acceptance
   authority, and the loop checks report attribution, but the reviewer's own permission
-  model is the host's (the wake handoff tells it to move nothing; a hard tool allowlist is
+  model is the agent kind's (the wake handoff tells it to move nothing; a hard tool allowlist is
   deployment work, not something this loop configures).
 
 ### Rejecting an epic: the fix child comes first
@@ -544,7 +544,7 @@ the container; with it, the container stays `in_progress` and names the child bl
 
 ### Configuration
 
-| Setting | Flag | Env / host config | Default |
+| Setting | Flag | Env / agent config | Default |
 |---|---|---|---|
 | workflow channel | `--workflow=yes\|no` | `MEERKAT_TASKPANEL_WORKFLOW` | `yes` |
 | reviewer (deployment default) | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | unset |
@@ -555,7 +555,7 @@ the container; with it, the container stays `in_progress` and names the child bl
 | who may close a task | `--acceptance <policy>` | `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` | `both` |
 | workflow alert ledger | `--workflow-ledger <path>` | — | `workflow-ledger.json` beside `--state` |
 
-Precedence is flag → environment → host config → default, the same as the claim policy.
+Precedence is flag → environment → agent config → default, the same as the claim policy.
 `workflow` gates the whole channel; `auto-accept-reviews` gates only the review card's own
 close (not the no-review auto-accept path); the reviewer gates only **dispatch** — outcomes
 still run without one, so reviews already in flight can finish after a deployment removes its
@@ -589,7 +589,7 @@ session and already holds the claim (heartbeat, do not re-claim), the working
 directory it inherits, the acceptance-list step (read the card with
 `issue get --json`, work to an existing list, or derive one and persist it with
 `meta.acceptance_derived=yes`), the exact `taskctl` commands to read and deliver it, and
-the attribution flags `--agent <name> --actor-kind <host> --session-id <id>`. The handoff
+the attribution flags `--agent <name> --actor-kind <kind> --session-id <id>`. The handoff
 is capped at **under 3600 characters** (a test pins it, including a maximum title and a
 UUID session id) so a wake never drags an unbounded context into the model.
 
@@ -608,12 +608,12 @@ when `--event-continue=no` and a failure leaves the previous brief in place.
 
 Continuity across wakes comes from the **board**, not the prompt: the card's
 comments, reports and session record are durable, so a resumed conversation can
-re-attach to the same work. When a session id is known, the wake adds the host's
+re-attach to the same work. When a session id is known, the wake adds the agent kind's
 own resume form: Claude resumes with `claude -p … --resume <sid>`, Codex with
 `codex exec resume <sid> <prompt>`, Pi with `pi --print --session <sid>
 <prompt>`, OpenCode with `opencode run --session <sid> <prompt>`, and Cursor with
 `cursor-agent -p --resume <sid> <prompt>`. The first three are verified against the real
-CLIs; OpenCode's and Cursor's shapes are recorded in `scripts/verify/host-resume-matrix.mjs`,
+CLIs; OpenCode's and Cursor's shapes are recorded in `scripts/verify/kind-resume-matrix.mjs`,
 which probes the real binary's help output when the CLI is installed. For Cursor, `--e2e`
 adds one real `-p` call when `CURSOR_API_KEY` is present; without the CLI or the key the
 probe SKIPs, and `--wake-command` remains the escape hatch.
@@ -626,7 +626,7 @@ checkout supplies. The board cannot say which directory that is (it holds no
 directories, O3), and neither can the supervisor: it knows a project **identity** and
 nothing else.
 
-So the directory is resolved **by the host, locally**, against `projects.json`
+So the directory is resolved **locally by the wake glue**, against `projects.json`
 beside the skill (`references/projects-json.md`) as `local_path ?? run_dir`,
 **validated** (absolute, exists, is a directory).
 
@@ -643,14 +643,14 @@ deferred unclaimed.
   is unmapped or names no directory, the card is **deferred before the claim** —
   it stays `todo`, where the next turn can offer it again, and the log says why.
 - **Legacy one-shot wake.** The supervisor starts the worker *through* the glue
-  (`<host-dir>/bin/wake-<host>.sh`) when one is installed, handing it the card's
+  (`<agent-dir>/bin/wake-<actor-kind>.sh`) when one is installed, handing it the card's
   project identity in `TP_PROJECT` and the map path in `TP_PROJECTS_JSON`. The
   glue resolves the same way, `cd`s into the directory, and only then execs the
-  host CLI. If it cannot resolve it **refuses the wake** (exit 3, reason on
+  agent CLI. If it cannot resolve it **refuses the wake** (exit 3, reason on
   stderr) and the card stays unwoken. There is no fallback directory: a session
   that runs in the wrong checkout produces confident, misplaced work, which is
   worse than no session.
-- With **no glue installed**, the legacy path falls back to the host CLI directly,
+- With **no glue installed**, the legacy path falls back to the agent CLI directly,
   pins it to `--repo`, and logs an explicit warning that no target directory was
   resolved. An explicit **`--wake-command`** outranks both.
 - The resident path never uses the glue, `--wake-command` or the CLI fallback.
@@ -663,18 +663,18 @@ asking which directory it should be, rather than continuing.
 
 ## Where the supervisor runs
 
-The loop cannot live inside the host, because Claude Code and Codex have **no
+The loop cannot live inside the agent application, because Claude Code and Codex have **no
 timers** — their hooks fire only on session events. So the loop lives outside:
 
 | Option | Shape |
 |---|---|
 | `scripts/supervisor.mjs` (this repo) | the scheduler: `--ping-only --once` / `--continue-only --once` for cron, `--session` for the resident pool, or its own daemon clocks |
-| the host-installed copy | what `install.sh` deploys, out of the [`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill: the body is copied under `<host-dir>/meerkat-taskpanel/`, and the scheduling units name *that* path |
+| the agent-installed copy | what `install.sh` deploys, out of the [`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill: the body is copied under `<agent-dir>/meerkat-taskpanel/`, and the scheduling units name *that* path |
 | the local `taskd` process | a natural home for the same loop in a future milestone |
 | [openclaw-team](https://github.com/tanyu216/openclaw-team) | on OpenClaw, the framework *is* the supervisor |
 
-The host is just a worker: the poll entry claims on the board, then the resident
-project session spawns the host's subagent in the project directory.
+The application is just a worker: the poll entry claims on the board, then the resident
+project session spawns the agent's subagent in the project directory.
 
 ### What the loop's units run with
 
@@ -687,13 +687,13 @@ than better:
 | Layer | What it is | What a minimal `PATH` does to it |
 |---|---|---|
 | ① the unit's interpreter | `/usr/bin/env node <supervisor.mjs>` | `env: node: No such file or directory` — exit 127, and no tick ever runs |
-| ② the glue the tick starts | `exec claude` in `wake-<host>.sh` | 127 again, on the *inherited* minimal `PATH` — the tick now starts and the wake still fails. Underneath it sits the worker's own process tree (`git`, `node`, `taskctl`), which is equally blind |
+| ② the glue the tick starts | `exec claude` in `wake-<actor-kind>.sh` | 127 again, on the *inherited* minimal `PATH` — the tick now starts and the wake still fails. Underneath it sits the worker's own process tree (`git`, `node`, `taskctl`), which is equally blind |
 
 So each loop unit names **both** things outright:
 
 - the **absolute `node`** that rendered it (launchd `ProgramArguments[0]`, the command on
   each cron line) — the interpreter never goes through `env` at all;
-- a **`PATH`** whose head is the host CLI's directory and node's, followed by that
+- a **`PATH`** whose head is the agent CLI's directory and node's, followed by that
   scheduler's own documented default — so the names the tick *derives* still resolve, and
   the suffix keeps `sh`, `git` and the rest exactly where the scheduler would have put them.
 
@@ -720,10 +720,10 @@ never by drift.
 # cron: ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 PATH=/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
 
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --ping-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
 ```
 
-(Both are rendered for the host CLI you installed *for*, and only for it: a unit that wakes
+(Both are rendered for the agent CLI you installed *for*, and only for it: a unit that wakes
 `claude` has no use for `codex`'s directory, and a union would only make the resolution
 longer and less predictable.)
 
@@ -734,7 +734,7 @@ identical in shape to launchd's) or inherits the login session's `PATH` (richer,
 is an open ruling. Until it lands, that service keeps its current form; shipping the
 absolute interpreter alone would be exactly the half-fix described above.
 
-When the host CLI is **not** on the installing machine's `PATH` — you installed for a host
+When the agent CLI is **not** on the installing machine's `PATH` — you installed for an application
 that is not there yet — the installer says so and renders node's directory alone. It does
 not invent a directory, and it does not fail silently:
 
@@ -774,15 +774,15 @@ write lock (R1: one `taskd` per data directory).
 ```
 
 A **neutral** directory (`<prefix>` is `install.sh --prefix`, default `$HOME`),
-deliberately **not** `<host-dir>/scheduling/` where the loop's `ping`/`continue` units
+deliberately **not** `<agent-dir>/scheduling/` where the loop's `ping`/`continue` units
 live ([Scheduling units](install.md#scheduling-units-claude-codex-pi)). Re-installing a
-host's loop units never touches this directory, and the two are never confused for one
+agent kind's loop units never touches this directory, and the two are never confused for one
 another.
 
 There is **one guard per machine** — and therefore **one guarded board** — and **not** one
-per host: the `Label` and the unit name carry no agent or host segment (unlike the loop's
+per agent kind: the `Label` and the unit name carry no agent or actor-kind segment (unlike the loop's
 `com.meerkat-taskpanel.ping` / `meerkat-taskpanel-continue`), so installing for several
-hosts does not multiply the guard. Which board it serves is chosen **at install time**, and
+agent kinds does not multiply the guard. Which board it serves is chosen **at install time**, and
 a second board is the unguarded case; see
 [One guard per machine](#one-guard-per-machine).
 
@@ -995,7 +995,7 @@ not serving is reported as such, with the log to read:
 taskd guard: loaded (com.meerkat-taskpanel.taskd, pid 17388); /health did not answer within 10000ms — read <dataDir>/logs/taskd.log
 ```
 
-Neither line fails the install (the host skills are installed either way), but only the
+Neither line fails the install (the agent-kind skills are installed either way), but only the
 first one claims the guard works.
 
 A **second board** is where the install has to be careful, because the guard is one per
@@ -1041,7 +1041,7 @@ rm ~/.config/systemd/user/meerkat-taskpanel-taskd.service
 Three **internal** bypasses exist; none is a user option:
 
 - `--no-automation`, or its environment form `MEERKAT_TASKPANEL_NO_AUTOMATION=1` (the
-  variable `install.sh` sets for each host installer) — **skips the guard too**,
+  variable `install.sh` sets for each agent-kind installer) — **skips the guard too**,
   semantically consistent with its other targets (the Codex claim trigger and the
   scheduling units). It is one bypass with two spellings, an advanced install bypass
   rather than a switch for the guard alone.
@@ -1125,12 +1125,12 @@ guarded boards on one machine is out of scope, deliberately and permanently
 This is a **design boundary**, not a defect to be closed:
 
 - The job's identity is machine-level: `TASKD_LABEL` and `TASKD_UNIT` in
-  `scripts/install/lib/taskd-guard.mjs` carry no board or host segment, and `enablePlan()`
+  `scripts/install/lib/taskd-guard.mjs` carry no board or actor-kind segment, and `enablePlan()`
   refers to them directly — on Linux it resolves the directory systemd reads itself. A
   second install cannot create a second job; it can only re-point the one that exists.
 - **Which board it serves is decided at install time** and carried in the unit's own
   environment (`TASKD_DATA_DIR` / `TASKD_RUNTIME_POINTER`, rendered by `unitEnv()`). It is
-  not chosen at run time, and it is not per-host: installing for several hosts does not
+  not chosen at run time, and it is not per-agent kind: installing for several agent kinds does not
   multiply the guard.
 - The second board is the **unguarded** case, and it is a supported one: `TASKD_DATA_DIR`
   plus an explicit `TASKD_PORT`, with its address falling back to
@@ -1156,14 +1156,14 @@ decision starts from the analysis rather than from scratch.
 
 ### The loop body is installed, not referenced
 
-`install.sh` **copies** the executor into the host rather than pointing a unit at
+`install.sh` **copies** the executor into the agent directory rather than pointing a unit at
 this checkout:
 
 ```text
-<home>/<host-dir>/meerkat-taskpanel/
+<home>/<agent-dir>/meerkat-taskpanel/
 ├── scripts/supervisor.mjs        the scheduler the units run
 ├── scripts/loop/*.mjs            the deterministic passes (patrol / workflow / poll), the subscriber,
-│                                 the resident pool (session.mjs), its queues + ledger, and the host adapters
+│                                 the resident pool (session.mjs), its queues + ledger, and the actor-kind adapters
 ├── scripts/wake-cwd.mjs          what the wake glue calls to resolve a card's directory
 ├── scripts/foundation/*.mjs      the modules those import
 ├── supervisor.log                runtime
@@ -1184,25 +1184,25 @@ writes it into the loop skill as `manifest.txt`; the installer copies exactly wh
 that manifest lists, and `test/install/scheduling-units.test.mjs` proves the same list is
 closed under its own imports. So the loop skill's payload is generated and guarded
 (`node scripts/sync-skills.mjs --check`), and a new import cannot leave the installer, the
-test, or a host's copy silently behind. The installer refreshes a differing copy only with
+test, or an agent kind's copy silently behind. The installer refreshes a differing copy only with
 `--force` (merge, never clobber — the same contract as every other installed artefact),
 and `--dry-run` reports which members would be refreshed.
 
-The units, the wake glues and the host config are rendered from the **loop skill's own
+The units, the wake glues and the agent config are rendered from the **loop skill's own
 templates** (`skills/meerkat-loop/templates/…`), not from a second copy under
 `scripts/install/templates/` — the installer deploys what the loop distributes.
 
 What that buys: a unit a user has already **loaded** names no checkout path, and the wake
-glue resolves the card's directory through the host-local `scripts/wake-cwd.mjs` rather
+glue resolves the card's directory through the agent-local `scripts/wake-cwd.mjs` rather
 than the checkout's — so moving, renaming or removing the checkout does not invalidate
 either. Pointing the loop at a new location is a re-run of `install.sh`, with no
 `launchctl` / `systemctl` / `crontab` reload.
 
 What it does not buy (yet): the **board engine** still lives in the checkout. The copied
-executor drives `taskctl`, and the shim that names it (`<host-dir>/bin/taskctl`) is
+executor drives `taskctl`, and the shim that names it (`<agent-dir>/bin/taskctl`) is
 checkout-resident, so a moved checkout still needs `install.sh` re-run (or `--force`) for
-that to follow. The host config records where the board is — `MEERKAT_TASKPANEL_REPO` in
-`<host-dir>/meerkat-taskpanel.env` — which is what lets a host-installed executor find its
+that to follow. The agent config records where the board is — `MEERKAT_TASKPANEL_REPO` in
+`<agent-dir>/meerkat-taskpanel.env` — which is what lets an agent-installed executor find its
 CLI at all. That one remaining dependency is named rather than hidden: the loop skill's
 `references/operation.md` §"What the loop still needs from a checkout" is where it is
 recorded, and the loop's interface requirement on the board (which release/interface
@@ -1211,7 +1211,7 @@ generation it drives) is declared in its `SKILL.md`.
 ## Headless permission boundary
 
 A wake is **non-interactive**: the supervisor starts the worker with no human at
-the keyboard to answer a prompt. An interactive host that stops to ask "may I run
+the keyboard to answer a prompt. An interactive agent kind that stops to ask "may I run
 this?" has no one to answer, so the worker must run under a **pre-declared
 boundary** — a tool allowlist, a permission mode, or a sandbox — chosen up front
 rather than confirmed per call.
@@ -1221,11 +1221,11 @@ The rule that follows from that is a **no-default-bypass** rule:
 - The supervisor and the generated wake scripts **must not** run workers with
   permissions bypassed by default — no `claude --dangerously-skip-permissions`,
   no Codex `--dangerously-bypass-approvals-and-sandbox` (or equivalent), on by
-  default. Neither the repo's `scripts/supervisor.mjs` nor the host wake glue
+  default. Neither the repo's `scripts/supervisor.mjs` nor the agent kind wake glue
   (`wake-claude.sh`, `wake-codex.sh`, `wake-pi.sh`) ships such a flag.
 - Turning a bypass **on** is a deliberate act that requires **explicit written
   authorization** and must be **documented at the point of use** — in the wake
-  script or host config that carries it — so a reader can see the bypass, the
+  script or agent config that carries it — so a reader can see the bypass, the
   reason, and who authorized it. An undocumented bypass is a bug, not a config.
 - The recommended mechanism is a **narrow allowlist or sandbox**, not a blanket
   bypass:
@@ -1252,7 +1252,7 @@ allowlist:
 
 An operator who needs unattended runs that edit and execute without prompts can
 opt into **full tool access** — `--allow-all-tools`, or, for the installed
-service, the host config:
+service, the agent config:
 
 ```bash
 MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes
@@ -1271,18 +1271,18 @@ installed units never carry it: the config file is where the authorization is
 recorded.
 
 The **legacy one-shot wake glue is deliberately excluded**: it keeps the
-no-default-bypass rule (`scripts/verify/host-runtime.mjs` fails the build if any
+no-default-bypass rule (`scripts/verify/kind-runtime.mjs` fails the build if any
 wake script carries a bypass flag), because it starts a process this deployment
 no longer supervises. Full access belongs to the resident pool, where the
 authorization and its reason travel with the config the pool reads.
 
-## The five hosts: how each one is triggered
+## The five agent kinds: how each one is triggered
 
 Claude Code, Codex, Pi, OpenCode and Cursor have no clock, and their wake surfaces
-differ. The supervisor's `--host` selects the wake command; the rest (scan, claim,
+differ. The supervisor's `--actor-kind` selects the wake command; the rest (scan, claim,
 patrol, registry) is identical.
 
-| Host | Wake command | Trigger / scheduling | Continuity |
+| Agent kind | Wake command | Trigger / scheduling | Continuity |
 |---|---|---|---|
 | **Claude Code** | `claude -p "<handoff>"` (headless) | external: launchd / systemd / cron running `supervisor.mjs --ping-only --once` / `--continue-only --once`, or the scheduler's own two clocks | `claude -p … --resume <sid>` — resume the session that owns the card |
 | **Codex** | `codex exec "<handoff>"` | external: the same units, or Codex app automation (`intervalMinutes`, `quotaAware`, `model`, `reasoningEffort`) | resume the thread with `codex exec resume <sid> <prompt>`; carry `$CODEX_THREAD_ID` as `--session-id` |
@@ -1291,15 +1291,15 @@ patrol, registry) is identical.
 | **Cursor** | `cursor-agent -p "<handoff>"` | external units + `wake-cursor.sh` | `cursor-agent -p --resume <sid> <prompt>` (documented flags; matrix probe SKIPs without the CLI) |
 | **OpenClaw** | *n/a — no self-scheduler* | install **openclaw-team**; its `poll`/`patrol` automations are this design | the framework keeps the id stable across resumes |
 
-The wake command column is what the *host CLI* is called with on the legacy
-one-shot path. When the host's glue is installed, the supervisor starts **the
+The wake command column is what the *agent CLI* is called with on the legacy
+one-shot path. When the agent kind's glue is installed, the supervisor starts **the
 glue** with that handoff and lets it set the working directory first — see
 [Where a worker runs](#where-a-worker-runs).
 
-**Resident adapters:** the pool ships one per host, each on that host's native
+**Resident adapters:** the pool ships one per agent kind, each on that agent kind's native
 persistent protocol.
 
-| Host | Resident form | Session identity | Subagent handle |
+| Agent kind | Resident form | Session identity | Subagent handle |
 |---|---|---|---|
 | Claude Code | one `claude -p --input-format stream-json --output-format stream-json` process per session | `--resume <session_id>` | Agent tool's `agentId`; reattach with `SendMessage` |
 | Codex | one `codex app-server --listen stdio://`; one **thread** per session | `thread/resume` | child thread (`receiverThreadIds`) |
@@ -1310,19 +1310,19 @@ persistent protocol.
 Claude, Codex and Pi are verified against the real CLIs (Codex's app-server
 schema is pinned by `codex app-server generate-json-schema`); OpenCode and Cursor
 are written to their published protocol and covered by fake-transport tests —
-`node scripts/verify/host-session-matrix.mjs` is the host-only probe. A host whose
+`node scripts/verify/kind-session-matrix.mjs` is the agent-kind-only probe. An agent kind whose
 CLI lacks the resident protocol (an old Cursor without ACP) keeps the one-shot
-path: patrol + workflow run, dispatch is paused. The seam is host-agnostic by
+path: patrol + workflow run, dispatch is paused. The seam is agent-kind-agnostic by
 design — an adapter implements `openSession({cwd, sessionId, role}) →
-{send, interrupt, close}` in `scripts/loop/hosts/`, and the pool manager never
+{send, interrupt, close}` in `scripts/loop/agent kinds/`, and the pool manager never
 names a CLI.
 
-Installers also install the **loop skill** itself, at `<host-dir>/skills/meerkat-loop/` —
+Installers also install the **loop skill** itself, at `<agent-dir>/skills/meerkat-loop/` —
 the payload the units and glues are rendered from, and the operator's documentation for
 running the loop. It is always a copy: `--link` names the board skill only.
 
-Installers write per-host units under `<host-dir>/scheduling/{launchd,systemd,cron}`
-and the wake glue at `<host-dir>/bin/wake-<host>.sh`, then **print the load
+Installers write per-agent kind units under `<agent-dir>/scheduling/{launchd,systemd,cron}`
+and the wake glue at `<agent-dir>/bin/wake-<actor-kind>.sh`, then **print the load
 command** — they never enable a daemon or run `crontab` for you:
 
 ```bash
@@ -1355,14 +1355,14 @@ below, and it is the one thing that makes an installer load a unit or run `cront
 
 ### OpenClaw: do not build a supervisor
 
-OpenClaw is the one host with a scheduler of its own. The
+OpenClaw is the one agent kind with a scheduler of its own. The
 [openclaw-team](https://github.com/tanyu216/openclaw-team) framework already
 implements exactly this pattern — a per-agent poll (its schedule *is* the trigger,
 so an idle tick costs nothing) for the scan and a `task-patrol` for the stale pass.
 Neither framework cadence is repeated here; the framework's `AUTOMATIONS.md` is the
 single source of truth for it.
 `install.sh --target openclaw` therefore installs the **board skill only**: no
-`meerkat-loop` skill, no scheduler, no wake glue, no host config — permanently, by
+`meerkat-loop` skill, no scheduler, no wake glue, no agent config — permanently, by
 ruling, not as a gap to be filled later. Two supervisors on one board would only race
 each other for the same cards, and the board's claim is atomic, so the race is bounded
 but the second supervisor is pure waste. Point OpenClaw at the framework instead:
@@ -1393,22 +1393,22 @@ and the env var are documented once in
 this section is the per-OS detail, the failure modes, and what an enabled daemon runs.
 
 The switch is `--supervisor=enable|disable|status` with
-`--supervisor-hosts claude,codex,pi,opencode,cursor` (which hosts; default: the loop hosts
+`--supervisor-actor-kinds claude,codex,pi,opencode,cursor` (which agent kinds; default: the loop agent kinds
 in `--target`) and `--scheduler auto|launchd|systemd|cron` (which mechanism; default
-`auto`). On `--target all`, `--supervisor=enable` enables **every non-OpenClaw loop host**
+`auto`). On `--target all`, `--supervisor=enable` enables **every non-OpenClaw loop agent kind**
 (see [OpenClaw stays excluded](#openclaw-stays-excluded)). OpenCode and Cursor are among
-the loop hosts; Cursor's resume flag is still unverified, so its glue labels it and
+the loop agent kinds; Cursor's resume flag is still unverified, so its glue labels it and
 `--wake-command` is the escape hatch (see [Cursor](install.md#cursor)).
 
 Per-OS commands below are written for the Claude install (`~/.claude`); for Codex, Pi,
 OpenCode and Cursor substitute `~/.codex` / `~/.agents` / `~/.config/opencode` / `~/.cursor`
-for the host directory and `codex` / `pi` / `opencode` / `cursor` for `--host`. `<agent>` is the `--agent-name` from the install (default `$USER`), and
+for the agent kind directory and `codex` / `pi` / `opencode` / `cursor` for `--actor-kind`. `<agent>` is the `--agent-name` from the install (default `$USER`), and
 `<uid>` is `id -u`.
 
 ### macOS — launchd
 
 The installer already wrote the units
-(`<host-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist`);
+(`<agent-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist`);
 enabling means bootstrapping them, one per unit — the pool first:
 
 ```bash
@@ -1479,7 +1479,7 @@ loginctl enable-linger "$USER"
 ```
 
 The enable path therefore **warns when linger is off**; turn it on if the supervisor is
-meant to survive logout. The warning appears in the enable report on Linux hosts.
+meant to survive logout. The warning appears in the enable report on Linux agent kinds.
 
 **Failure modes.**
 
@@ -1498,8 +1498,8 @@ it is idempotent and cleanly removable:
 ```cron
 # >>> meerkat-taskpanel (~/.claude) >>>
 PATH=/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --ping-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
-*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --continue-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
+*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --continue-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
 # <<< meerkat-taskpanel (~/.claude) <<<
 ```
 
@@ -1509,7 +1509,7 @@ cron's own minimal `PATH`, not yours.
 
 (The manual path above — `crontab <file>` — drops the same lines in *without* a marker
 block; the enable path is the one that wraps them. The `(~/.claude)` in the marker is the
-host directory, so the five loop hosts get five independent blocks.)
+agent kind directory, so the five loop agent kinds get five independent blocks.)
 
 - **Enable** reads `crontab -l`, strips any existing `meerkat-taskpanel (~/.claude)` block,
   appends the fresh one, and writes it back with `crontab -`. Re-enabling **replaces**,
@@ -1547,32 +1547,32 @@ still needs the written authorization, documented at the point of use, that sect
 describes.
 
 - **Identity and parameters.** The units start the scheduler with `--agent <agent>`
-  (`--agent-name`, default `$USER`), `--host <h>`, and one pass
+  (`--agent-name`, default `$USER`), `--actor-kind <h>`, and one pass
   (`--ping-only --once` / `--continue-only --once`). The continue turn starts the
-  host's headless entry point directly with the bounded `Continue` prompt — no glue, no
+  agent kind's headless entry point directly with the bounded `Continue` prompt — no glue, no
   project directory. The workers it later wakes go through the wake glue
-  (`<host-dir>/bin/wake-<host>.sh`), which runs the host's headless entry point
+  (`<agent-dir>/bin/wake-<actor-kind>.sh`), which runs the agent kind's headless entry point
   non-interactively: `claude -p "<handoff>" [--resume <sid>]` /
   `codex exec "<handoff>"` / `pi --print "<handoff>"`.
-- **Logs.** `<host-dir>/meerkat-taskpanel/supervisor.log` (the supervisor's `--log`). The
+- **Logs.** `<agent-dir>/meerkat-taskpanel/supervisor.log` (the supervisor's `--log`). The
   unit's own stdout/stderr go to the **same** file — launchd `StandardOutPath` /
   `StandardErrorPath`, systemd `append:{{LOG}}`, and cron `>/dev/null 2>&1` because `--log`
   already writes it.
-- **State.** `<host-dir>/meerkat-taskpanel/supervisor.state.json` — the running registry.
+- **State.** `<agent-dir>/meerkat-taskpanel/supervisor.state.json` — the running registry.
 - **Working directory.** A woken worker still `cd`s to the directory the map names for
   the card's project (`local_path ?? run_dir`), resolved by the wake glue from the
-  host-local `projects.json`; enabling changes nothing here (see
+  agent-local `projects.json`; enabling changes nothing here (see
   [Where a worker runs](#where-a-worker-runs)).
 - **Task process data.** A dispatched card's brief (`card.md`) and the subagent's files —
   including downloaded attachments — live under `.meerkat/<identifier>/` in that working
   directory. Poll exports the brief before the claim; an unwritable directory defers the
   card unclaimed.
 
-### One mechanism per host, and the cost gate
+### One mechanism per agent kind, and the cost gate
 
-- **One scheduler per host.** `--scheduler` picks exactly one. To move a host from, say,
+- **One scheduler per agent kind.** `--scheduler` picks exactly one. To move an agent kind from, say,
   cron to launchd, disable the first: the enable path may do disable-then-enable, but it
-  never leaves two loaded. Two loaded units for one host only race each other for the same
+  never leaves two loaded. Two loaded units for one agent kind only race each other for the same
   cards.
 - **The cost model.** Enabling installs two clocks. The **ping** clock is $0: one
   small registry read, no board, no LLM. The **continue** clock is one bounded LLM
@@ -1582,7 +1582,7 @@ describes.
   (`--patrol-llm=no`). See
   [The cost gate: a worker turn starts only on fire](#the-cost-gate-a-worker-turn-starts-only-on-fire).
 - **Disable and status** are part of the same entry point: `--supervisor=disable` unloads /
-  removes, `--supervisor=status` prints the per-host load state and changes nothing
+  removes, `--supervisor=status` prints the per-agent kind load state and changes nothing
   (per-OS forms above).
 
 ### OpenClaw stays excluded
@@ -1591,46 +1591,46 @@ The new switch does not change the [OpenClaw
 ruling](#openclaw-do-not-build-a-supervisor). `--target openclaw` still installs the
 **board skill only** — no `meerkat-loop` skill, no units, no glue, so nothing to enable.
 `--target all --supervisor=enable` **skips** openclaw: the enable action applies only to
-`{claude,codex,pi}`. `--supervisor-hosts openclaw` is **rejected** (reason on stderr, exit
+`{claude,codex,pi}`. `--supervisor-actor-kinds openclaw` is **rejected** (reason on stderr, exit
 2).
 
 > **Where it is implemented.** `scripts/install/_common.sh` (`apply_supervisor`, the
-> per-host action) drives `scripts/install/lib/supervisor.mjs`, which owns the per-OS
+> per-agent kind action) drives `scripts/install/lib/supervisor.mjs`, which owns the per-OS
 > commands above and their failure modes. A refusal is reported
-> (`supervisor: not enabled …`) and does **not** fail the install: the host's skills are
+> (`supervisor: not enabled …`) and does **not** fail the install: the agent kind's skills are
 > installed either way, and the printed command is what finishes the job.
 
 ## Running the supervisor
 
 ```bash
-node scripts/supervisor.mjs --host claude --agent alice               # both clocks (daemon), in the checkout
-node scripts/supervisor.mjs --host claude --agent alice --ping-only --once   # one ping
-node scripts/supervisor.mjs --agent alice,bob --host codex            # loop
+node scripts/supervisor.mjs --actor-kind claude --agent alice               # both clocks (daemon), in the checkout
+node scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once   # one ping
+node scripts/supervisor.mjs --agent alice,bob --actor-kind codex            # loop
 node scripts/supervisor.mjs --agent alice --dry-run --ping-only --once   # plan only
 
-node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --continue-only --once   # the installed copy
+node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --continue-only --once   # the installed copy
 ```
 
 The flags are the same either way; the installed copy is what a loaded unit names, and it
-takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
+takes the board's location from `MEERKAT_TASKPANEL_REPO` in the agent config.
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `--agent <name>` | `$TASKCTL_AGENT` → `$USER` | agent(s) to work for; repeatable / comma-separated |
-| `--host claude\|codex\|pi` | `claude` | which worker to wake |
-| `--repo <path>` | this checkout — or, for a host-installed copy, the `MEERKAT_TASKPANEL_REPO` in the host config | repository root: what `--cli` is resolved from, and the fallback working directory |
+| `--actor-kind claude\|codex\|pi` | `claude` | which worker to wake |
+| `--repo <path>` | this checkout — or, for a agent-installed copy, the `MEERKAT_TASKPANEL_REPO` in the agent config | repository root: what `--cli` is resolved from, and the fallback working directory |
 | `--ping-interval <sec>` | `60` | liveness clock: prune dead worker pids; no board read |
-| `--continue-interval <sec>` | `600` | judgment clock: wake the host for one `Continue` turn |
+| `--continue-interval <sec>` | `600` | judgment clock: wake the agent kind for one `Continue` turn |
 | `--max-concurrency <n>` | `8` | cap on simultaneously running subagents; workers and reviewers share it and the split follows demand (no per-role reservation) |
-| `--claim-unassigned=yes\|no` | from host config → `yes` | also claim unassigned cards (the public pool) |
+| `--claim-unassigned=yes\|no` | from agent config → `yes` | also claim unassigned cards (the public pool) |
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |
-| `--recover-stale=yes\|no` | from host config → `yes` | also claim stale `in_progress` cards: the same holder after 30 min, any agent after 6 h |
-| `--workflow=yes\|no` | from host config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch) |
+| `--recover-stale=yes\|no` | from agent config → `yes` | also claim stale `in_progress` cards: the same holder after 30 min, any agent after 6 h |
+| `--workflow=yes\|no` | from agent config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch) |
 | `--reviewer <agent>` | from `$MEERKAT_TASKPANEL_REVIEWER`, else unset | the independent reviewer; unset disables dispatch only |
-| `--auto-accept-reviews=yes\|no` | from host config → `yes` | let the loop close a review card after applying its verdict; `no` leaves it for a human |
+| `--auto-accept-reviews=yes\|no` | from agent config → `yes` | let the loop close a review card after applying its verdict; `no` leaves it for a human |
 | `--workflow-max-actions <n>` | `20` | max workflow writes (and bounded reads) per pass |
 | `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
-| `--continue=yes\|no` | from host config → `yes` | enable the continue turn |
+| `--continue=yes\|no` | from agent config → `yes` | enable the continue turn |
 | `--continue-state <path>` | `continue.state.json` beside `--state` | the single-flight lock for the continue turn |
 | `--once` | off | one pass, then exit. With no selector this is the **legacy poll pass**; the installed units use `--ping-only` / `--continue-only` |
 | `--ping-only` / `--continue-only` | off | with `--once`, run only that clock's pass |
@@ -1639,8 +1639,8 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--patrol-llm=yes\|no` | `no` | let patrol start an LLM turn on a stale card |
 | `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin — both the legacy heartbeat alert and the SLA tuple |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
-| `--log <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.log` | where the tick log appends |
-| `--state <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
+| `--log <path>` | `<home>/<agent-dir>/meerkat-taskpanel/supervisor.log` | where the tick log appends |
+| `--state <path>` | `<home>/<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 | `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
 | `--workflow-ledger <path>` | `workflow-ledger.json` beside `--state` | the workflow alert de-duplication ledger; an unreadable one suppresses nothing |
 | `--sla-leader <id>` | from `$MEERKAT_TASKPANEL_SLA_LEADER`, else unset | the author id the leader writes under, for the `leader_stalled` attribution set; unset ⇒ the board's own decision authority (`author_kind = "human"`). Set the **same** identity on both mechanisms |
@@ -1648,12 +1648,12 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--sla-peer <path>` | from `$MEERKAT_TASKPANEL_SLA_PEER`, else unset | the peer inspector's last-ok marker; a marker older than `3 × P_peer` raises `inspector_liveness`, where `P_peer` is the cadence the marker declares (fallback 15min). Unset ⇒ the peer's half is a registered dependency and nothing alarms |
 | `--board-limit <n>` | `500` | max cards read in one patrol pass |
 | `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
-| `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config: the claim default, the concurrency cap (`MEERKAT_TASKPANEL_MAX_CONCURRENCY`), and (for a host copy) `MEERKAT_TASKPANEL_REPO` |
+| `--config <path>` | `<home>/<agent-dir>/meerkat-taskpanel.env` | agent config: the claim default, the concurrency cap (`MEERKAT_TASKPANEL_MAX_CONCURRENCY`), and (for an agent kind copy) `MEERKAT_TASKPANEL_REPO` |
 | `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber's `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
 | `--home <path>` | `$HOME` | base for those defaults |
-| `--glue <path>` | `<home>/<host-dir>/bin/wake-<host>.sh` | the wake glue that resolves the project directory and starts the worker ([Where a worker runs](#where-a-worker-runs)) |
-| `--projects-json <path>` | `<home>/<host-dir>/skills/meerkat-taskpanel/projects.json` | the host-local map handed to the glue |
-| `--wake-command <cmd>` | — | your own wake command instead of the built-in host forms; called as `<cmd> <handoff> [<sid>]` |
+| `--glue <path>` | `<home>/<agent-dir>/bin/wake-<actor-kind>.sh` | the wake glue that resolves the project directory and starts the worker ([Where a worker runs](#where-a-worker-runs)) |
+| `--projects-json <path>` | `<home>/<agent-dir>/skills/meerkat-taskpanel/projects.json` | the agent-local map handed to the glue |
+| `--wake-command <cmd>` | — | your own wake command instead of the built-in agent kind forms; called as `<cmd> <handoff> [<sid>]` |
 
 **Fixed paths.** Logs and state always land at the paths in the table — a user
 who wants to know why a card did not start reads
@@ -1671,10 +1671,10 @@ through one read: `issue candidates --assignee <name> [--include-unassigned]`.
 Allow claiming unassigned tasks? [Y/n]
 ```
 
-and remembers the answer in the host config file:
+and remembers the answer in the agent config file:
 
 ```ini
-# <home>/<host-dir>/meerkat-taskpanel.env
+# <home>/<agent-dir>/meerkat-taskpanel.env
 MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes
 MEERKAT_TASKPANEL_RECOVER_STALE=yes
 ```
@@ -1729,14 +1729,14 @@ launchd / systemd / cron  ──continue 600s──▶  supervisor --continue-on
 
 ## Verifying the generated trigger / wake glue
 
-The installer *generates* the per-host claim entry points — the Claude SessionStart
-hook, the Codex claim trigger, and each `wake-<host>.sh`. `scripts/verify/profiles.mjs`
-only proves they *landed*; it never runs them. `scripts/verify/host-runtime.mjs` runs
+The installer *generates* the per-agent kind claim entry points — the Claude SessionStart
+hook, the Codex claim trigger, and each `wake-<actor-kind>.sh`. `scripts/verify/profiles.mjs`
+only proves they *landed*; it never runs them. `scripts/verify/kind-runtime.mjs` runs
 them, offline, in CI:
 
 ```bash
-node scripts/verify/host-runtime.mjs            # all hosts; exit 0 only if every assert passes
-node scripts/verify/host-runtime.mjs --host codex
+node scripts/verify/kind-runtime.mjs            # all agent kinds; exit 0 only if every assert passes
+node scripts/verify/kind-runtime.mjs --actor-kind codex
 ```
 
 The harness installs into a throwaway prefix (never `$HOME`), then swaps in a **canned
@@ -1754,21 +1754,21 @@ not just the exit code:
 
 The wake assertions compare the recorded argv against `wakeCommand()` (the same pure
 function `scripts/supervisor.mjs` dispatches through), so the generated script and the
-supervisor can't drift apart — and they compare the **working directory** the mock host
+supervisor can't drift apart — and they compare the **working directory** the mock agent kind
 CLI was actually started in, so "a woken worker runs in its project's directory" is
 executed, not merely documented. The harness drives each wake script with a prompt only; the
 **resume** branches (the `<sid>` column above) are asserted at the `wakeCommand()` level in
-`test/scheduling/`, not re-executed against a mock host CLI.
+`test/scheduling/`, not re-executed against a mock agent CLI.
 
 **Coverage boundary (what this does *not* prove).** It pins the generated *shell glue*
-against mocks. It does not drive the real host CLIs (that is the supplementary
-`scripts/verify/host-cli.mjs`, which SKIPs when a CLI is absent) and it does not exercise
+against mocks. It does not drive the real agent CLIs (that is the supplementary
+`scripts/verify/kind-cli.mjs`, which SKIPs when a CLI is absent) and it does not exercise
 the real board's claim semantics (`scripts/verify/install-e2e.sh` drives the real
-`taskctl`/`taskd`). Per host, only the forms the bundle actually ships are covered:
+`taskctl`/`taskd`). Per agent kind, only the forms the bundle actually ships are covered:
 Claude has a hook and no trigger, Codex has a trigger and no hook, and **Pi has neither a
 hook nor a trigger** — only the external `wake-pi.sh` applies, which is why its row above is
 the wake form alone. (The `taskctl` shim is not one of these forms and is not part of this
-boundary: every host gets one — see `docs/install.md`.)
+boundary: every agent kind gets one — see `docs/install.md`.)
 
 ## See also
 

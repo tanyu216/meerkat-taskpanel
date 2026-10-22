@@ -47,7 +47,7 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * `field` names the property that carries the version (so the diagnostic for the
  * marketplace, whose version hides under `metadata`, says so).
  *
- * Three hosts are not carriers: Codex and OpenClaw install the same
+ * Three agent kinds are not carriers: Codex and OpenClaw install the same
  * `.claude-plugin/plugin.json` bundle through the repository marketplace, and Pi declares
  * itself in the canonical `package.json` itself. A row for any would only restate one
  * already above.

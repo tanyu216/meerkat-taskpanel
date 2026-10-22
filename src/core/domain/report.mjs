@@ -177,7 +177,7 @@ export function validateReport(input, context = {}) {
   if (author === null || typeof author !== "object") {
     issues.push({ path: "author", message: "author is required" });
   } else {
-    // Open, like a comment's author kind: `human`, a platform, or whatever a host
+    // Open, like a comment's author kind: `human`, a platform, or whatever an actor kind
     // calls itself. Only a blank one is refused.
     if (!isActorKind(author.kind)) {
       issues.push({ path: "author.kind", message: "kind must be a non-empty string" });

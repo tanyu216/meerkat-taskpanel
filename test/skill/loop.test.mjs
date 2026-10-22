@@ -9,7 +9,7 @@
  * These tests hold the three things that make that split real rather than cosmetic:
  *
  *   1. the payload is in sync with its sources, and the body is **closed** under its own
- *      relative imports — a body missing a member loads in the repo and dies in a host;
+ *      relative imports — a body missing a member loads in the repo and dies in an agent kind;
  *   2. the skill declares the board interface it needs, and its gate enforces it against
  *      a board's own `--version --json` answer;
  *   3. the board skill no longer points into the repository root — a distributed skill's
@@ -74,7 +74,7 @@ describe("loop skill: the generated payload", () => {
     assert.deepEqual(report.body, [...report.body].sort(), "the closure is reported sorted");
 
     // The body's own imports all land inside the body: nothing it loads may be left
-    // behind in the repository, or a host copy would die at load with a relative import
+    // behind in the repository, or an agent copy would die at load with a relative import
     // that resolves to nothing.
     for (const rel of report.body) {
       const text = readFileSync(join(LOOP_SKILL, rel), "utf8");
@@ -243,7 +243,7 @@ describe("loop skill: SKILL.md", () => {
 
   it("says out loud that OpenClaw never gets the loop", () => {
     assert.match(text, /OpenClaw is deliberately excluded/);
-    // No host takes a generated copy of the loop: every harness reads the repository's own
+    // No agent kind takes a generated copy of the loop: every harness reads the repository's own
     // skills/ tree, and OpenClaw is excluded by ruling. `install.sh` is the loop's only
     // distribution path — there is no loop bundle in the marketplace any more, and no
     // `plugins/` tree for one to live in (asserted against the checkout in

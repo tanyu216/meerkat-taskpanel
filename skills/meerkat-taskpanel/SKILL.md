@@ -10,7 +10,7 @@ agent claims a card, heartbeats while it works, comments, and delivers with a re
 roll up a parent/child tree. This skill is the manual for that surface: the status model, task
 management and the board's workflow.
 
-Scheduling is **not** this skill's job. The host-external supervisor is the `meerkat-loop`
+Scheduling is **not** this skill's job. The external supervisor is the `meerkat-loop`
 skill; this skill never depends on it — only the reverse.
 
 > Paths written as `src/…` or `docs/…` name the taskpanel **source repository**. This skill
@@ -31,13 +31,13 @@ code. It resolves the CLI in this order, using the first that exists:
 1. `$MEERKAT_TASKPANEL_ROOT/src/cli/index.mjs`;
 2. `$MEERKAT_TASKPANEL_REPO/src/cli/index.mjs` (recorded by `install.sh`);
 3. the checkout this skill sits in;
-4. the `taskctl` shim `install.sh` writes beside this skill (`<host>/bin/taskctl`);
+4. the `taskctl` shim `install.sh` writes beside this skill (`<agent-dir>/bin/taskctl`);
 5. `taskctl` on `PATH`.
 
-Rung 4 carries your identity: the shim passes `--actor-kind <host>` and a default `--agent
+Rung 4 carries your identity: the shim passes `--actor-kind <kind>` and a default `--agent
 <name>` on every call. `--actor-kind` is required on every command except `--help` /
 `--version`; a team passes `--agent jobs` / `linus` / `turing` to override the default, and a
-human uses `--as-human`. The identity is a per-host default, not shared config.
+human uses `--as-human`. The identity is a per-agent-kind default, not shared config.
 `taskd`/`taskctl` read the install-root `.env` for the board URL, token and server policy
 (the process environment wins key by key); `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects
 another file. If no board is running, `taskctl` starts one (set `TASKD_NO_AUTOSTART=1` to
@@ -331,7 +331,7 @@ Full protocol, the two-round model and the acceptance-policy behaviour:
 - **Never force a conflict.** On `VERSION_CONFLICT`, or a claim that looks stale, re-read the
   card once and retry from the fresh state with the current `--if-version`. Blind retries are
   how two agents overwrite each other.
-- **Stamp every write with your identity:** `--actor-kind <host> --session-id <id>`. The
+- **Stamp every write with your identity:** `--actor-kind <kind> --session-id <id>`. The
   session id is what turns a card back into "which conversation did this", and lets a resumed
   session re-attach instead of starting over. `--actor-kind human` is reserved; a human write
   uses `--as-human`. To know the id before the session starts, `taskctl session id <ref> --seg
@@ -341,11 +341,11 @@ Full protocol, the two-round model and the acceptance-policy behaviour:
 
 ## Owning the clock
 
-The board runs no timer. On a host with the loop installed, the `meerkat-loop` skill owns the
+The board runs no timer. On an agent kind with the loop installed, the `meerkat-loop` skill owns the
 scheduler — do not add a second poller or schedule its entries yourself. The loop's resident
 session pool claims a card and hands it to a project session, which spawns the worker/reviewer
 subagent in the project directory; a card is never claimed for a process that does not exist.
-A host or service that owns its own timer drives the board directly; one tick is:
+An agent kind or service that owns its own timer drives the board directly; one tick is:
 
 ```bash
 taskctl --json issue candidates --assignee <agent> --include-unassigned --stale

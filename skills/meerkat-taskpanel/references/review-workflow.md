@@ -55,7 +55,7 @@ key is `loop-review|<original-ref>|r<round>`.
 ### Step 0 — the review is still valid
 
 ```bash
-taskctl issue get <original> --json --actor-kind <host> --agent <reviewer>
+taskctl issue get <original> --json --actor-kind <kind> --agent <reviewer>
 ```
 
 If the original is no longer `in_review`, or its `delivery_round` is not the round recorded
@@ -130,7 +130,7 @@ is racing the acceptor.
 **Review policy is not acceptance policy.** `projects.review_policy` says whether a card needs
 an independent review; the board's acceptance policy says who may close it. They are
 orthogonal. The reviewer for a dispatched card is `project.reviewer ?? the deployment
-reviewer` (the loop's `--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / host config), and the
+reviewer` (the loop's `--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent config), and the
 review card's assignee records the one actually used.
 
 `done` is the board's acceptance act. The board's **policy** and the card's **scope** decide

@@ -55,6 +55,16 @@ Anyone or anything that can be recorded as having done something — a human, an
 the system. Actors are created by use and are never renamed or deleted.
 _Avoid_: user, owner, person
 
+**Actor kind**:
+Which application wrote: a platform slug (`claude`, `codex`, `pi`, `opencode`,
+`openclaw`, `cursor`, `taskd`), with `human` the one reserved value a caller may not
+declare. It is recorded on every write and read back as `author_kind` / `owner_kind`;
+the CLI flag is `--actor-kind`. It is **not** the identity: that is the actor id
+(`--agent jobs|linus|…`).
+_中文_: actor kind（平台）
+_Avoid_: host (that is the machine), platform (the web layer's display badge), kind alone
+(card kind is a different word)
+
 ### The lifecycle
 
 **Status**:
@@ -206,7 +216,7 @@ _Avoid_: project policy (that is the default, not the decision)
 
 **Effective reviewer**:
 The reviewer a card's review card is assigned to: `project.reviewer` when the project sets
-one, otherwise the deployment reviewer (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / host
+one, otherwise the deployment reviewer (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent
 config). The loop merges every project reviewer into its scan/wake set.
 _中文_: 实际审核人
 
@@ -331,8 +341,8 @@ The loop is the part that keeps a board moving when no agent is watching. Its vo
 its own and does not appear in the board's wire surface.
 
 **Supervisor**:
-The host-external **scheduler**. It owns two clocks — ping and continue — and performs no
-board I/O of its own. It runs outside the agent host, but it is neither the board service
+The external **scheduler**. It owns two clocks — ping and continue — and performs no
+board I/O of its own. It runs outside the agent application, but it is neither the board service
 nor an agent itself. In its resident shape it also runs the **session pool**.
 _中文_: 监督进程（调度器）
 _Avoid_: daemon (that is the board service), cron; and do not call it the thing that polls
@@ -360,11 +370,11 @@ _中文_: 项目会话
 _Avoid_: worker, project agent, runner
 
 **Subagent**:
-A worker or reviewer started by a project session through the host's own subagent
+A worker or reviewer started by a project session through the agent kind's own subagent
 mechanism. It is not a separate supervisor process, and it inherits its parent session's
 cwd rather than being handed one.
 _中文_: 子代理
-_Avoid_: worker process, child session (that is a host API term), thread
+_Avoid_: worker process, child session (that is an agent-kind API term), thread
 
 **Resident**:
 The loop's default shape: a live session pool that can claim and dispatch. Without it —
@@ -440,7 +450,7 @@ _Avoid_: planning, decomposition, estimation
 **Wake**:
 Starting one worker, once, with a bounded prompt. A wake is dispatched only for work the
 loop actually claimed, and it is idempotent. In the resident shape the wake is a project
-session spawning a subagent; the legacy one-shot shape starts a host process through the
+session spawning a subagent; the legacy one-shot shape starts an agent process through the
 glue.
 _中文_: 唤醒
 _Avoid_: spawn, launch, trigger
@@ -472,7 +482,7 @@ _Avoid_: job queue, work queue
 
 **Ledger**:
 The supervisor's own record of live subagents (`subagents.state.json`): project directory,
-host, subagent id, role, card and status. It is written from host events, never parsed
+actor kind, subagent id, role, card and status. It is written from agent events, never parsed
 from a transcript, and it is what frees a concurrency slot and drives reattach.
 _中文_: 子代理台账
 _Avoid_: registry (that is the legacy one-shot process registry), log
@@ -554,9 +564,11 @@ card in the importer's sense — a markdown file — is a third, file-level mean
 _Avoid_: treating "card" as an entity name in code
 
 **Agent (as a type)**:
-There is no agent type. An agent is an actor whose kind is `agent`, together with the
-sessions it opens; the word names a role, not a structure.
-_Avoid_: `Agent`, `AgentService`, agent object
+There is no agent type. An agent is an actor id — the role or person recorded on writes
+(`--agent jobs`, `TASKCTL_AGENT`), which the shim names on every call. The word names a
+role, not a structure.
+_Avoid_: `Agent`, `AgentService`, agent object; and do not use it for the application
+(that is the actor kind)
 
 **Report digest**:
 Does not exist. Reports are stored whole. The word "digest" in this codebase means a hash,
