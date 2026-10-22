@@ -131,7 +131,10 @@ round — and only the holder may send it. A claim you stop pulsing reads as aba
 
 ### Read the acceptance list before you work
 
-`issue get <ref>` omits the description and the acceptance list; read the JSON:
+`issue get <ref>` prints a fixed field table — identifier, title, status, priority, kind,
+assignee, reporter, delivery_round, review_required, version, plus any waiver rows and an
+attachment table. It does **not** print the description, labels, meta or acceptance list; read
+the JSON:
 
 ```bash
 taskctl issue get <ref> --json     # description, labels, meta.acceptance, meta.acceptance_legacy

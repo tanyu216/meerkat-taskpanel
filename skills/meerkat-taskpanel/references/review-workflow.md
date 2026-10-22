@@ -62,7 +62,17 @@ If the original is no longer `in_review`, or its `delivery_round` is not the rou
 on the review card:
 
 1. leave a `note` comment on the review card saying so;
-2. stop. Do **not** deliver a verdict — the loop will close the review card.
+2. stop. Do **not** deliver a verdict, and never move either card.
+
+What the loop does next depends on why the target moved:
+
+- **The original was canceled** — the loop cancels the review card (`cancel_review`).
+- **The original is on a later round** — the verdict is history. With review auto-accept on
+  the loop closes the review card; with it off the loop raises `review_stale_round` and
+  writes nothing.
+- **The original is `done` at the same round** — the loop raises `verdict_unreadable` and
+  leaves the review card open. A human must cancel it with the two-hop
+  `in_review → in_progress → canceled`.
 
 ### Read
 

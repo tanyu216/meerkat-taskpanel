@@ -17,8 +17,9 @@ key: |                     # literal block — newlines kept
 
 ## Field reference
 
-Exactly these 24 keys, in this order. Anything else rides in `meta_json.legacy` — see
-§Unknown keys are preserved.
+Exactly these 24 keys. Anything else rides in `meta_json.legacy` — see
+§Unknown keys are preserved. The exporter's fixed order is `CARD_KEY_ORDER`; the table below
+groups the keys for reading.
 
 | Key | Meaning | Values & rules |
 |---|---|---|
@@ -86,7 +87,7 @@ carry a `blocks` edge. A `blocks` edge itself has **no degree cap**.
 
 ## Unknown keys are preserved
 
-Any key outside the 23 is kept verbatim in `meta_json.legacy`, in the card's own order, and
+Any key outside these 24 is kept verbatim in `meta_json.legacy`, in the card's own order, and
 re-emitted on export. Keys riding this path today: `target` (an opaque per-card value),
 `goal`, `review_of`, and a team's own bookkeeping (`git_rules`, `subsession_ids`, …).
 **Do not delete a key you do not recognise.**
@@ -275,8 +276,13 @@ const { CARD_KEY_ORDER } = await import(code);
 const md = readFileSync("skills/meerkat-taskpanel/references/card-schema.md", "utf8");
 const table = md.split("## Field reference")[1].split("\n## ")[0];
 const keys = [...table.matchAll(/^\|\s*`([a-z_]+)`\s*\|/gm)].map((m) => m[1]);
-const same = keys.length === CARD_KEY_ORDER.length && keys.every((k, i) => k === CARD_KEY_ORDER[i]);
-console.log(JSON.stringify({ doc: keys.length, code: CARD_KEY_ORDER.length, same }));
+// `target` holds a slot in CARD_KEY_ORDER for an imported key's historical position,
+// but it is not one of the 24 keys the table documents.
+const documented = CARD_KEY_ORDER.filter((key) => key !== "target");
+const same =
+  keys.length === documented.length &&
+  JSON.stringify([...keys].sort()) === JSON.stringify([...documented].sort());
+console.log(JSON.stringify({ doc: keys.length, code: documented.length, same }));
 process.exit(same ? 0 : 1);
 '
 ```

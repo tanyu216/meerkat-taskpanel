@@ -287,7 +287,7 @@ The markdown importer is the exception: it writes history directly, importing
 `status` is a **move, never a patch**: `issue update` has no `--status`, and `PATCH {status}`
 is refused with `INVALID_TRANSITION`.
 
-### What is enforced, and what is practice
+## 10. What is enforced, and what is practice
 
 | Rule | Enforced by |
 |---|---|
