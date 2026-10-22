@@ -10,7 +10,7 @@
  *   * `unit-path.mjs` owns the recipe (one definition, three scheduler renderings);
  *   * `_common.sh` reaches it through the CLI, so bash and JS cannot drift;
  *   * the rendered launchd/cron units name an absolute interpreter and carry the PATH;
- *   * a positive control — the rendered PATH really does resolve `node` and the host
+ *   * a positive control — the rendered PATH really does resolve `node` and the agent
  *     CLI under `env -i`, the same minimal environment the scheduler provides.
  *
  * The units are *rendered* here, never loaded: the loading itself is the taskd guard's
@@ -41,7 +41,7 @@ const ENV_BIN = "/usr/bin/env";
 
 after(cleanup);
 
-/** A fake host CLI: enough to be *found* by name on PATH, which is the whole question. */
+/** A fake agent CLI: enough to be *found* by name on PATH, which is the whole question. */
 function makeFakeCli(binDir, name) {
   const dest = join(binDir, name);
   writeFileSync(dest, `#!/usr/bin/env bash\nexit 0\n`, "utf8");
@@ -58,7 +58,7 @@ function runHelper(args) {
 // ---------------------------------------------------------------------------
 
 describe("unit-path: the recipe", () => {
-  it("prepends the host CLI's directory and node's to the scheduler's documented default", () => {
+  it("prepends the agent CLI's directory and node's to the scheduler's documented default", () => {
     assert.equal(
       unitPath("/opt/node/bin", { cliDir: "/opt/cli/bin", scheduler: "launchd" }),
       "/opt/cli/bin:/opt/node/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -89,7 +89,7 @@ describe("unit-path: the recipe", () => {
     );
   });
 
-  it("degrades to node's directory alone when the host CLI is not on PATH", () => {
+  it("degrades to node's directory alone when the agent CLI is not on PATH", () => {
     assert.equal(unitPath("/opt/node/bin", { scheduler: "cron" }), "/opt/node/bin:/usr/bin:/bin");
     assert.equal(unitPath("/opt/node/bin", { cliDir: "", scheduler: "cron" }), "/opt/node/bin:/usr/bin:/bin");
   });
@@ -166,7 +166,7 @@ function plistPath(text) {
   return /<key>PATH<\/key>\s*<string>(.*?)<\/string>/.exec(text)?.[1];
 }
 
-describe("install.sh: the units carry their own PATH instead of borrowing the host's", () => {
+describe("install.sh: the units carry their own PATH instead of borrowing the machine's", () => {
   it("launchd names the absolute interpreter and exports the CLI's directory + node's", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
@@ -219,7 +219,7 @@ describe("install.sh: the units carry their own PATH instead of borrowing the ho
     }
   });
 
-  it("positive control: under a minimal PATH the rendered value resolves node AND the host CLI", () => {
+  it("positive control: under a minimal PATH the rendered value resolves node AND the agent CLI", () => {
     // The unit's own mechanism, reproduced: `/usr/bin/env <name>` with nothing but the
     // unit's PATH in the environment — the layer-① and layer-② failures, both fixed by
     // the one value the installer wrote.
@@ -250,7 +250,7 @@ describe("install.sh: the units carry their own PATH instead of borrowing the ho
     assert.equal(sh.status, 0, "sh must stay reachable through the scheduler's default suffix");
   });
 
-  it("degrades out loud when the host CLI is not on PATH — never a silent half-fix", () => {
+  it("degrades out loud when the agent CLI is not on PATH — never a silent half-fix", () => {
     // A PATH with node but no `claude`: the unit would still tick, and the wake would
     // still fail. That is a *stated* half-fix, not a hidden one.
     const home = makeTempDir();

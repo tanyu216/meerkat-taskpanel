@@ -121,14 +121,14 @@ describe("supervisor: the scheduler and the identifiers", () => {
     assert.match(plist, /<string>com\.meerkat-taskpanel\.\{\{AGENT\}\}\.\{\{ACTOR_KIND\}\}\.ping<\/string>/);
   });
 
-  it("the three actions and the five loop hosts are the contract's, and openclaw is never one", () => {
+  it("the three actions and the five loop agent kinds are the contract's, and openclaw is never one", () => {
     assert.deepEqual([...ACTIONS], ["enable", "disable", "status"]);
     assert.deepEqual([...SCHEDULERS], ["auto", "launchd", "systemd", "cron"]);
     assert.deepEqual([...LOOP_KINDS], ["claude", "codex", "pi", "opencode", "cursor"]);
     assert.ok(!LOOP_KINDS.includes("openclaw"), "OpenClaw runs openclaw-team's own supervisor");
   });
 
-  it("paths come from the host directory, with the marker the docs name", () => {
+  it("paths come from the agent directory, with the marker the docs name", () => {
     const paths = supervisorPaths({ agentBase: "/home/op/.claude", agent: "alice", actorKind: "claude", env: {}, home: "/home/op" });
 
     assert.equal(paths.marker, "~/.claude");
@@ -173,7 +173,7 @@ describe("supervisor: the scheduler and the identifiers", () => {
 describe("supervisor: the cron marker block is the idempotency key", () => {
   const { begin, end } = cronMarkers("~/.claude");
 
-  it("names the host directory, exactly as the docs show", () => {
+  it("names the agent directory, exactly as the docs show", () => {
     assert.equal(begin, "# >>> meerkat-taskpanel (~/.claude) >>>");
     assert.equal(end, "# <<< meerkat-taskpanel (~/.claude) <<<");
     assert.ok(doc("docs/scheduling.md").includes(begin), "the docs quote the same marker");
@@ -376,7 +376,7 @@ describe("supervisor: the docs and the implementation agree", () => {
     }
   });
 
-  it("OpenClaw's exclusion is still stated, and still true of the loop hosts", () => {
+  it("OpenClaw's exclusion is still stated, and still true of the loop agent kinds", () => {
     const scheduling = doc("docs/scheduling.md");
     assert.match(scheduling, /OpenClaw: do not build a supervisor/);
     assert.match(scheduling, /--supervisor-actor-kinds openclaw` is \*\*rejected\*\*/);

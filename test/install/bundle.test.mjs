@@ -1,10 +1,10 @@
 /**
- * Bundle / marketplace inspection + the per-host profile bundle assertions.
+ * Bundle / marketplace inspection + the per-agent-kind profile bundle assertions.
  *
- * The container cannot run the six host CLIs (they are not in the image and there is
- * no network), so `scripts/verify/lib/bundle.mjs` reproduces the hosts' detection
+ * The container cannot run the six agent CLIs (they are not in the image and there is
+ * no network), so `scripts/verify/lib/bundle.mjs` reproduces the agent kinds' detection
  * contract offline. These tests pin that reproduction: the shipped bundles must be
- * detected with the format each host's profile declares, and the detector must follow
+ * detected with the format each agent kind's profile declares, and the detector must follow
  * OpenClaw's documented precedence rather than accidentally matching the wrong format.
  *
  * Run with: node --test
@@ -269,28 +269,28 @@ describe("profiles: bundle expectations", () => {
     const { profiles, errors } = await loadProfiles(join(ROOT, "docker", "profiles"));
     assert.deepEqual(errors, []);
 
-    for (const host of PROFILE_KINDS) {
-      const profile = profiles[host];
-      const meta = KIND_BUNDLES[host];
+    for (const kind of PROFILE_KINDS) {
+      const profile = profiles[kind];
+      const meta = KIND_BUNDLES[kind];
 
-      // A host may deliberately have no bundle of its own. OpenCode is one: its skills
+      // An agent kind may deliberately have no bundle of its own. OpenCode is one: its skills
       // arrive through an in-process plugin rather than a bundle directory a detector
-      // classifies. Such a host must declare *no* bundle fields — the profile is where
+      // classifies. Such an agent kind must declare *no* bundle fields — the profile is where
       // "skills only, no supervisor, no browser-checkable bundle" is recorded.
       if (!meta) {
-        assert.equal(profile.bundle, undefined, `${host}: must not declare a bundle`);
-        assert.equal(profile.bundle_format, undefined, `${host}: must not declare a bundle format`);
-        assert.equal(profile.bundle_kind, undefined, `${host}: must not declare a bundle kind`);
+        assert.equal(profile.bundle, undefined, `${kind}: must not declare a bundle`);
+        assert.equal(profile.bundle_format, undefined, `${kind}: must not declare a bundle format`);
+        assert.equal(profile.bundle_kind, undefined, `${kind}: must not declare a bundle kind`);
         continue;
       }
 
-      assert.equal(profile.bundle, meta.dir, `${host}: bundle dir`);
-      assert.equal(profile.bundle_format, meta.openclawFormat, `${host}: bundle format`);
-      assert.equal(profile.bundle_kind, meta.openclawKind, `${host}: bundle kind`);
+      assert.equal(profile.bundle, meta.dir, `${kind}: bundle dir`);
+      assert.equal(profile.bundle_format, meta.openclawFormat, `${kind}: bundle format`);
+      assert.equal(profile.bundle_kind, meta.openclawKind, `${kind}: bundle kind`);
     }
   });
 
-  it("runProfiles asserts the bundle for each host (not just the skill copy)", async () => {
+  it("runProfiles asserts the bundle for each agent kind (not just the skill copy)", async () => {
     const home = await makeTempDir("meerkat-taskpanel-home-");
     const result = await runProfiles({ home, quiet: true });
 
@@ -300,8 +300,8 @@ describe("profiles: bundle expectations", () => {
       const kinds = entry.steps.map((s) => s.name);
       const hasBundle = KIND_BUNDLES[entry.kind] !== undefined;
 
-      // The assertion follows the host: a bundle-less host (OpenCode) must NOT have
-      // these steps, and every other host must. Asserting both directions keeps the
+      // The assertion follows the agent kind: a bundle-less agent kind (OpenCode) must NOT have
+      // these steps, and every other agent kind must. Asserting both directions keeps the
       // branch honest instead of letting a bundle silently go unchecked.
       assert.equal(
         kinds.some((n) => n.includes("bundle detected as")),

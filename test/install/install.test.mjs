@@ -1,9 +1,9 @@
 /**
- * install.sh dispatch behaviour and the supplementary host-CLI probe runner.
+ * install.sh dispatch behaviour and the supplementary agent-CLI probe runner.
  *
  * `install.sh` is verified in more depth in `test/scaffold.test.mjs`; this file covers
- * the M4 additions — comma-separated targets, the per-host summary, and the exit code —
- * plus the "skip cleanly when the host CLI is absent" contract of
+ * the M4 additions — comma-separated targets, the per-agent-kind summary, and the exit code —
+ * plus the "skip cleanly when the agent CLI is absent" contract of
  * `scripts/verify/kind-cli.mjs` (so it can be run anywhere, including CI, without ever
  * reaching the network).
  *
@@ -50,7 +50,7 @@ describe("install.sh: targets", () => {
     }
   });
 
-  it("accepts the later two hosts in a comma-separated --target list", () => {
+  it("accepts the later two agent kinds in a comma-separated --target list", () => {
     // opencode and cursor joined the target set after claude/codex/pi, so the comma path
     // is pinned for them too: their skill must land, and nothing else may come along.
     const home = makeTempDir();
@@ -65,9 +65,9 @@ describe("install.sh: targets", () => {
     }
   });
 
-  it("prints a per-host summary and exits non-zero when a host fails", () => {
+  it("prints a per-agent-kind summary and exits non-zero when an agent kind fails", () => {
     // A target home whose parent is a regular file makes the skill copy fail with
-    // ENOTDIR — the honest "host failed" path: exit 1 and a FAIL summary line.
+    // ENOTDIR — the honest "agent-kind failed" path: exit 1 and a FAIL summary line.
     const block = join(makeTempDir(), "block");
     writeFileSync(block, "not a directory", "utf8");
     const home = join(block, "home");
@@ -96,7 +96,7 @@ describe("install.sh: targets", () => {
     assert.match(run.stderr, /server/, "the expected list names server");
   });
 
-  it("installs the runtime tree for --target server and no host", () => {
+  it("installs the runtime tree for --target server and no agent kind", () => {
     const home = makeTempDir();
     const run = runInstall(
       ["--target", "server", "--prefix", home],
@@ -117,7 +117,7 @@ describe("install.sh: targets", () => {
     }
   });
 
-  it("--target server,claude is server-first and points the host shim at the tree", () => {
+  it("--target server,claude is server-first and points the agent shim at the tree", () => {
     const home = makeTempDir();
     const run = runInstall(
       ["--target", "server,claude", "--prefix", home],
@@ -129,7 +129,7 @@ describe("install.sh: targets", () => {
     const serverAt = run.stdout.indexOf("OK   server");
     const claudeAt = run.stdout.indexOf("OK   claude");
     assert.ok(serverAt !== -1 && claudeAt !== -1);
-    assert.ok(serverAt < claudeAt, "the server must be materialized before the host");
+    assert.ok(serverAt < claudeAt, "the server must be materialized before the agent kind");
 
     const shim = readFileSync(join(home, ".claude", "bin", "taskctl"), "utf8");
     assert.ok(shim.includes(join(tree, "src", "cli", "index.mjs")), "the shim drives the installed tree");
@@ -194,8 +194,8 @@ describe("install.sh: targets", () => {
 });
 
 describe("kind-cli: absent CLIs are skipped, never failed", () => {
-  it("SKIPs every host when PATH has no host CLI and exits 0", () => {
-    // An empty bin dir on PATH means the host CLIs cannot be found — the probe must
+  it("SKIPs every agent kind when PATH has no agent CLI and exits 0", () => {
+    // An empty bin dir on PATH means the agent CLIs cannot be found — the probe must
     // report SKIP for all of them rather than fail or reach for the network.
     const empty = makeTempDir();
     const run = spawnSync(NODE, [join(ROOT, "scripts/verify/kind-cli.mjs")], {

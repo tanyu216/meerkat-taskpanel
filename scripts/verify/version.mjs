@@ -12,7 +12,7 @@
  *   3. .cursor-plugin/plugin.json                      (the board plugin, Cursor's marker)
  *   4. .claude-plugin/marketplace.json  → metadata.version
  *
- * Every host reads *its own* manifest to decide what version it installed, so a drift
+ * Every agent kind reads its own manifest to decide what version it installed, so a drift
  * within the group ships a release that calls itself two different things. This script
  * reads every carrier, checks the group against its canonical entry, prints any offending
  * file and exits non-zero on drift — wired into CI so the mistake is caught at

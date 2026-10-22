@@ -1,9 +1,9 @@
 /**
  * The OpenCode plugin, driven directly.
  *
- * OpenCode is not installed here, and the container ships no host CLIs at all, so the
- * *host integration* cannot be run from this repository. The plugin's own logic, however,
- * is plain JavaScript with no host dependency — so this drives it against a fake plugin
+ * OpenCode is not installed here, and the container ships no agent CLIs at all, so the
+ * *agent integration* cannot be run from this repository. The plugin's own logic, however,
+ * is plain JavaScript with no agent dependency — so this drives it against a fake plugin
  * context and pins what it hands over: the V1 config hook's path list, and the V2 draft
  * payloads. That is the half that can be proved here; the half that cannot is named in
  * `docs/install.md`.
@@ -30,7 +30,7 @@ async function runConfigHook(config) {
   return config;
 }
 
-/** Collect the payloads the V2 `setup` hands the host's skill draft. */
+/** Collect the payloads the V2 `setup` hands the agent's skill draft. */
 async function collectRegisteredSkills() {
   const added = [];
   const ctx = {
@@ -74,7 +74,7 @@ describe("opencode plugin — V1 config hook", () => {
 });
 
 describe("opencode plugin — V2 setup", () => {
-  it("registers both skills, with the frontmatter the host reads", async () => {
+  it("registers both skills, with the frontmatter the agent reads", async () => {
     const skills = await collectRegisteredSkills();
 
     assert.deepEqual(
@@ -95,7 +95,7 @@ describe("opencode plugin — V2 setup", () => {
 
   it("runs a block-scalar description through the reader, not just a plain one", async () => {
     // `meerkat-loop`'s description is written as `description: >` with indented lines;
-    // a reader that only handled `key: value` would hand the host a bare ">".
+    // a reader that only handled `key: value` would hand the agent a bare ">".
     const skills = await collectRegisteredSkills();
     const loop = skills.find((skill) => skill.id === LOOP_SKILL_NAME);
     assert.notEqual(loop.description, ">");
@@ -109,14 +109,14 @@ describe("opencode plugin — V2 setup", () => {
     assert.ok(true, "none of these may throw");
   });
 
-  it("a skill the host rejects does not take the others down with it", async () => {
+  it("a skill the agent rejects does not take the others down with it", async () => {
     const added = [];
     const ctx = {
       skill: {
         transform: async (fn) =>
           fn({
             add: (skill) => {
-              if (skill.id === SKILL_NAME) throw new Error("rejected by the host");
+              if (skill.id === SKILL_NAME) throw new Error("rejected by the agent");
               added.push(skill.id);
             },
           }),

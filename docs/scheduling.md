@@ -77,7 +77,7 @@ is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `1800
 
 | Clock | Default | Where |
 |---|---:|---|
-| host turn timeout | 30 min (`--session-turn-timeout`) | `scripts/loop/options.mjs`, `scripts/loop/session.mjs` |
+| agent turn timeout | 30 min (`--session-turn-timeout`) | `scripts/loop/options.mjs`, `scripts/loop/session.mjs` |
 | worker heartbeat interval | ≤ 10 min | worker handoff (`src/foundation/scheduling.mjs`) |
 | `HEARTBEAT_FRESH_MS` | 10 min | `src/foundation/constants.mjs` |
 | `CLAIM_STALE_SAME_MS` | 30 min | `src/foundation/constants.mjs` |

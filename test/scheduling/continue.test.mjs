@@ -139,7 +139,7 @@ describe("buildContinuePrompt", () => {
     assert.doesNotMatch(prompt, /ask the human in this conversation/);
 
     const openedByHuman = buildContinuePrompt({
-      host: "claude",
+      actorKind: "claude",
       agent: "alice",
       nodePath: "/opt/node/bin/node",
       passesScript,

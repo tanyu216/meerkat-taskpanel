@@ -26,7 +26,7 @@
  *      themselves instead of failing the install.
  *
  * The service manager is **faked on PATH**, the way `scheduling-units.test.mjs` fakes a
- * host CLI: an install must never load a real unit during a test run. The readiness probe
+ * agent CLI: an install must never load a real unit during a test run. The readiness probe
  * is answered by a **real loopback `/health` server in its own process** — `spawnSync`
  * blocks this one's event loop, so a server in-process could never reply.
  *
@@ -212,7 +212,7 @@ describe("taskd guard: the unit templates are the contract's", () => {
     }
   });
 
-  it("the label and unit name carry no agent or host segment (one guard per machine)", () => {
+  it("the label and unit name carry no agent or actor-kind segment (one guard per machine)", () => {
     for (const name of [TASKD_LABEL, TASKD_UNIT]) {
       assert.doesNotMatch(name, /\{\{|AGENT|HOST/i);
     }
@@ -272,7 +272,7 @@ function assertWellFormedPlist(xml) {
 // ---------------------------------------------------------------------------
 
 describe("taskd guard: rendering", () => {
-  it("lands in the neutral directory, never under a host's own scheduling tree", () => {
+  it("lands in the neutral directory, never under an agent kind's own scheduling tree", () => {
     const prefix = makeTempDir();
     const dataDir = makeTempDir();
     const paths = guardPaths({ prefix, env: { TASKD_DATA_DIR: dataDir } });
@@ -1018,7 +1018,7 @@ describe("taskd guard: the readiness gate", () => {
 // helpers
 // ---------------------------------------------------------------------------
 
-/** Run `install.sh` for one host into `prefix`, with the guard's paths isolated. */
+/** Run `install.sh` for one agent kind into `prefix`, with the guard's paths isolated. */
 function runGuardInstall(prefix, env, extra = []) {
   return runInstall(["--target", "claude", "--prefix", prefix, ...extra], env);
 }

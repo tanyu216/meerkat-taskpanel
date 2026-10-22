@@ -1,5 +1,5 @@
 /**
- * `install.sh` seeds one install-root `.env`, never per host and never over an
+ * `install.sh` seeds one install-root `.env`, never per agent kind and never over an
  * existing file.
  *
  * The file is the only place a fresh install's default board URL lives, so this

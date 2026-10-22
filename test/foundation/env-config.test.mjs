@@ -142,7 +142,7 @@ describe("loadEnvFile — namespaces and values", () => {
     assert.equal(config.env.TASKCTL_AGENT, "jobs");
   });
 
-  it("rejects identity keys that are per host / per invocation", () => {
+  it("rejects identity keys that are per agent kind / per invocation", () => {
     const root = tempDir();
     writeEnv(root, "TASKCTL_ACTOR_KIND=claude\n");
     assert.throws(() => loadEnvFile({ root, env: {} }), /identity/);

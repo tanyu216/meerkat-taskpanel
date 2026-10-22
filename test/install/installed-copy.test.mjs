@@ -2,7 +2,7 @@
  * The board skill, deployed **on its own** — the mode `install.sh` actually ships.
  *
  * The skill is distributed as a *copy*: `install_skill` runs `cp -R skills/<skill> <dest>`,
- * which lands `SKILL.md`, `references/` and `scripts/` in a host's skill directory and
+ * which lands `SKILL.md`, `references/` and `scripts/` in an agent's skill directory and
  * nothing else. In particular the taskpanel checkout is **not** beside it, so anything the
  * skill tells a user to run has to work without one.
  *
@@ -14,7 +14,7 @@
  * (T-20261014-214002) — a path the user never had, reported as a crash rather than as a
  * condition of the deployment.
  *
- * Per host (all six the board goes to — see `HOSTS` below), against a real
+ * Per agent kind (all six the board goes to — see `KINDS` below), against a real
  * copy-mode install into a throwaway prefix, this asserts the wrapper:
  *
  *   1. with no CLI reachable refuses **controllably** — non-zero, an actionable remedy on
@@ -47,23 +47,23 @@ const SKILL = "meerkat-taskpanel";
 const WRAPPER = join("scripts", "run.mjs");
 
 /**
- * The six hosts the board skill is distributed to, and the dot-directory each one's skill
+ * The six agent kinds the board skill is distributed to, and the dot-directory each one's skill
  * lands in. These are `docker/profiles/<agent-dir>.yml`'s `target_dir`s — the same destinations
  * `scripts/verify/profiles.mjs` asserts — restated here because this file drives the
  * installs itself.
  */
-const HOSTS = Object.freeze([
-  { host: "claude", dir: ".claude" },
-  { host: "codex", dir: ".codex" },
-  { host: "openclaw", dir: ".openclaw" },
-  { host: "pi", dir: ".agents" },
-  { host: "opencode", dir: ".config/opencode" },
-  { host: "cursor", dir: ".cursor" },
+const KINDS = Object.freeze([
+  { kind: "claude", dir: ".claude" },
+  { kind: "codex", dir: ".codex" },
+  { kind: "openclaw", dir: ".openclaw" },
+  { kind: "pi", dir: ".agents" },
+  { kind: "opencode", dir: ".config/opencode" },
+  { kind: "cursor", dir: ".cursor" },
 ]);
 
 after(cleanup);
 
-/** The throwaway `$HOME` the hosts are installed into, and the `bin` holding the fake CLI. */
+/** The throwaway `$HOME` the agent kinds are installed into, and the `bin` holding the fake CLI. */
 let home;
 let fakeBin;
 
@@ -101,7 +101,7 @@ before(() => {
   chmodSync(fake, 0o755);
 });
 
-/** The installed skill directory for one host's dot-directory. */
+/** The installed skill directory for one agent kind's dot-directory. */
 function installedDir(dir) {
   return join(home, dir, "skills", SKILL);
 }
@@ -156,7 +156,7 @@ const NO_CLI = { PATH: "" };
  * it has been copied somewhere on its own, which is the deployment this whole file is
  * about. It is what the refusal legs need now that the installed tree has a reachable shim.
  *
- * The walk is the wrapper's own (`here/../../..` lands on the host directory), so a copy
+ * The walk is the wrapper's own (`here/../../..` lands on the agent directory), so a copy
  * under a fresh temp dir has no sibling shim to find.
  */
 const bareCopies = new Map();
@@ -170,42 +170,42 @@ function bareCopy(dir) {
 }
 
 describe("the installed skill is a copy, not a link", () => {
-  it("install.sh --target all lands every host, each as a real directory", () => {
-    for (const { host, dir } of HOSTS) {
+  it("install.sh --target all lands every agent kind, each as a real directory", () => {
+    for (const { kind, dir } of KINDS) {
       const dest = installedDir(dir);
-      assert.ok(existsSync(join(dest, "SKILL.md")), `${host}: SKILL.md must be installed at ${dest}`);
-      assert.ok(existsSync(join(dest, WRAPPER)), `${host}: the wrapper must be installed`);
+      assert.ok(existsSync(join(dest, "SKILL.md")), `${kind}: SKILL.md must be installed at ${dest}`);
+      assert.ok(existsSync(join(dest, WRAPPER)), `${kind}: the wrapper must be installed`);
       // The precondition of the whole file: a copy. A symlink here would put the checkout
       // back beside the wrapper, and the tests below would prove nothing.
-      assert.equal(lstatSync(dest).isSymbolicLink(), false, `${host}: ${dest} must be a copy, not a symlink`);
+      assert.equal(lstatSync(dest).isSymbolicLink(), false, `${kind}: ${dest} must be a copy, not a symlink`);
     }
   });
 
-  it("writes a taskctl shim for every host — the rung that carries the identity", () => {
-    // The shim is what pins `--agent <name> --actor-kind <agent-dir>` on every call, and a host
+  it("writes a taskctl shim for every agent kind — the rung that carries the identity", () => {
+    // The shim is what pins `--agent <name> --actor-kind <kind>` on every call, and an agent kind
     // without one records its writes with no kind — which the board reads as a person's.
-    // `docs/install.md` promises it for every host, not only the two bundle agent kinds.
-    for (const { host, dir } of HOSTS) {
+    // `docs/install.md` promises it for every agent kind, not only the two bundle agent kinds.
+    for (const { kind, dir } of KINDS) {
       const shim = join(home, dir, "bin", "taskctl");
-      assert.ok(existsSync(shim), `${host}: the shim must be installed at ${shim}`);
-      assert.equal(lstatSync(shim).isSymbolicLink(), false, `${host}: the shim must be a real file`);
+      assert.ok(existsSync(shim), `${kind}: the shim must be installed at ${shim}`);
+      assert.equal(lstatSync(shim).isSymbolicLink(), false, `${kind}: the shim must be a real file`);
       const text = readFileSync(shim, "utf8");
-      assert.match(text, /--actor-kind/, `${host}: the shim must inject the kind`);
-      // ...and this host's own name at each place the shim defaults it: the flag on the
+      assert.match(text, /--actor-kind/, `${kind}: the shim must inject the kind`);
+      // ...and this agent kind's own name at each place the shim defaults it: the flag on the
       // command line, and the variable it exports for anything else the session runs.
-      assert.ok(text.includes(`--actor-kind "${host}"`) || text.includes(`:-${host}}`), `${host}: the shim must name this host`);
+      assert.ok(text.includes(`--actor-kind "${kind}"`) || text.includes(`:-${kind}}`), `${kind}: the shim must name this agent kind`);
     }
   });
 
   it("carries no src/ — the checkout is genuinely absent from the install", () => {
-    for (const { host, dir } of HOSTS) {
-      assert.equal(existsSync(join(installedDir(dir), "src")), false, `${host}: an installed skill must not carry src/`);
+    for (const { kind, dir } of KINDS) {
+      assert.equal(existsSync(join(installedDir(dir), "src")), false, `${kind}: an installed skill must not carry src/`);
     }
   });
 });
 
-for (const { host, dir } of HOSTS) {
-  describe(`${host} (${dir}) — the wrapper, installed on its own`, () => {
+for (const { kind, dir } of KINDS) {
+  describe(`${kind} (${dir}) — the wrapper, installed on its own`, () => {
     it("with no CLI reachable, refuses controllably — no module-not-found crash", () => {
       const run = runBare(dir, ["--version"], NO_CLI);
 
@@ -246,7 +246,7 @@ for (const { host, dir } of HOSTS) {
       assert.equal(failed.status, 7, "the CLI's exit code must be propagated verbatim");
     });
 
-    it("prefers the host's own shim over a taskctl on PATH", () => {
+    it("prefers the agent's own shim over a taskctl on PATH", () => {
       // Both are reachable and they disagree: the shim is the `taskctl` that pins the
       // caller's identity, and the one on PATH is a stranger's. The fake would exit 7, so a
       // zero exit with the real version is the shim answering.
@@ -274,7 +274,7 @@ for (const { host, dir } of HOSTS) {
 
 describe("the resolution ladder is checked, not assumed", () => {
   /** The claude copy stands in for all six here — the ladder lives in one shared file. */
-  const dir = HOSTS[0].dir;
+  const dir = KINDS[0].dir;
   /** The wrapper inside the checkout: its own rung resolves, so it is the control case. */
   const checkoutWrapper = join(ROOT, "skills", SKILL, WRAPPER);
 
@@ -289,7 +289,7 @@ describe("the resolution ladder is checked, not assumed", () => {
   it("skips a root that does not hold a CLI instead of failing on it", () => {
     // A stale MEERKAT_TASKPANEL_ROOT — a moved or deleted checkout — must fall through to
     // the next rung rather than shadow it: that is what makes honouring the variable safe.
-    // From the installed tree the rung after it is the host's shim; from a bare copy it is
+    // From the installed tree the rung after it is the agent's shim; from a bare copy it is
     // the PATH CLI. Both are asserted, because "falls through" must not depend on which
     // rung happens to be alive.
     const stale = makeTempDir();
@@ -302,7 +302,7 @@ describe("the resolution ladder is checked, not assumed", () => {
     assert.match(bare.stdout, /FAKE_TASKCTL/, "and, with no shim, all the way to PATH");
   });
 
-  it("prefers an explicit root over both PATH and the host's shim", () => {
+  it("prefers an explicit root over both PATH and the agent's shim", () => {
     // Three rungs are reachable and they disagree — the named checkout, the installed shim
     // (which runs the same checkout, so it agrees) and the fake on PATH (which would exit
     // 7). The explicit root wins, and nothing below it is consulted.

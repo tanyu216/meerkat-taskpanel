@@ -8,7 +8,7 @@
  *
  * This module answers that question *offline* by reproducing the detection contract the
  * agent kinds actually apply, with the rules transcribed from the OpenClaw CLI that ships on
- * the developer host (`openclaw 2026.9.8`, `dist/bundle-manifest-*.mjs`
+ * the developer machine (`openclaw 2026.9.8`, `dist/bundle-manifest-*.mjs`
  * `detectBundleManifestFormat` / `loadBundleManifest`, documented in
  * `docs/plugins/bundles.md` § "Detection precedence"). The agent-CLI run is the
  * supplementary cross-check (`scripts/verify/kind-cli.mjs`); this is what CI and the

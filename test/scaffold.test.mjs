@@ -91,26 +91,26 @@ describe("plugin manifests", () => {
     assert.equal(report.ok, true);
   });
 
-  it("every host manifest points its skills field at ./skills (or [./skills])", async () => {
+  it("every agent-kind manifest points its skills field at ./skills (or [./skills])", async () => {
     // Codex is absent on purpose: it ships no manifest, and installs the same
     // repository-root bundle as Claude Code (KIND_BUNDLES.codex names that manifest).
     // Pi's manifest is the repository's own `package.json`, whose `pi` field declares the
     // skills path — hence the `files`/`skills` fallback in the assertion below.
-    const hosts = ["claude", "cursor", "pi"];
+    const kinds = ["claude", "cursor", "pi"];
     const paths = {
       claude: ".claude-plugin/plugin.json",
       cursor: ".cursor-plugin/plugin.json",
       pi: "package.json",
     };
 
-    for (const host of hosts) {
-      const data = JSON.parse(await readFile(join(ROOT, paths[host]), "utf8"));
+    for (const kind of kinds) {
+      const data = JSON.parse(await readFile(join(ROOT, paths[kind]), "utf8"));
       // Claude and Cursor declare `skills`; Pi's carrier is the root package's `files`.
       const value = data.skills ?? data.files;
       assert.ok(
         JSON.stringify(value).includes("./skills") ||
           JSON.stringify(value).includes("skills"),
-        `${host} manifest should reference its skills directory`,
+        `${kind} manifest should reference its skills directory`,
       );
     }
   });
@@ -222,8 +222,8 @@ describe("install.sh", () => {
     assert.match(script, /--link/, "install.sh must accept --link");
     assert.match(script, /--force/, "install.sh must accept --force");
 
-    // It is a dispatcher: it must delegate to the per-host installers.
-    assert.match(script, /scripts\/install\/?\$?\{?host\}?\.sh|scripts\/install\//);
+    // It is a dispatcher: it must delegate to the per-agent-kind installers.
+    assert.match(script, /scripts\/install\/\$target\.sh/);
   });
 
   it("--dry-run prints destinations and creates nothing", async () => {

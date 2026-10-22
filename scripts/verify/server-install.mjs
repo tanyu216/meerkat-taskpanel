@@ -160,14 +160,14 @@ async function main() {
   check(runInstall("npx", dryHome, ["--dry-run"]).status === 0, "dry-run exits 0");
   check(!existsSync(join(dryHome, ".meerkat-taskpanel")), "dry-run writes no tree");
 
-  // 6. Full install: the host shim/config point at the tree.
+  // 6. Full install: the agent shim/config point at the tree.
   const fullHome = tempHome();
   const full = runInstall("npx", fullHome, ["--target", "server,claude"]);
   check(full.status === 0, `full install exits 0: ${full.stderr}`);
   const fullTree = join(fullHome, ".meerkat-taskpanel");
   assertTree(fullTree);
   const shim = readFileSync(join(fullHome, ".claude", "bin", "taskctl"), "utf8");
-  check(shim.includes(join(fullTree, "src", "cli", "index.mjs")), "the host shim drives the installed tree");
+  check(shim.includes(join(fullTree, "src", "cli", "index.mjs")), "the agent shim drives the installed tree");
   check(
     readFileSync(join(fullHome, ".claude", "meerkat-taskpanel.env"), "utf8").includes(
       `MEERKAT_TASKPANEL_REPO=${fullTree}`,

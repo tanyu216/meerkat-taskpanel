@@ -1,5 +1,5 @@
 /**
- * Host-bundle install contract: `install.sh --target claude` / `--target codex`.
+ * Agent-bundle install contract: `install.sh --target claude` / `--target codex`.
  *
  * The two bundle agent kinds deploy more than a skill — agent config, slash commands
  * (Claude) / a claim trigger (Codex), and a `taskctl` shim that pins the agent
@@ -10,7 +10,7 @@
  *   - idempotent: re-running with the same inputs leaves every file byte-identical;
  *   - merge-style: pre-existing settings.json / AGENTS.md content survives untouched.
  *
- * The install needs no host CLI — it writes the whole bundle itself — so every
+ * The install needs no agent CLI — it writes the whole bundle itself — so every
  * case runs the same way on a bare machine and inside the verification image.
  *
  * Run with: node --test
@@ -38,7 +38,7 @@ after(cleanup);
 // has its own cases in `taskd-guard.test.mjs`, where the supervisor is faked on PATH.
 
 /** Env for an install into an isolated `home`, with any extra keys layered on. */
-function hostEnv(home, extra = {}) {
+function agentEnv(home, extra = {}) {
   return {
     ...process.env,
     MEERKAT_TASKPANEL_TARGET_HOME: home,
@@ -168,7 +168,7 @@ describe("agent bundle: claude", () => {
   it("deploys skill + settings + hook + shim + slash commands", () => {
     const home = makeTempDir();
 
-    const run = runInstall(["--target", "claude", "--agent-name", "alice"], hostEnv(home));
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], agentEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     // 1. skill
@@ -177,7 +177,7 @@ describe("agent bundle: claude", () => {
     // 2. settings.json — merged identity + SessionStart
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
     assert.equal(settings.env.TASKCTL_AGENT, "alice");
-    assert.equal(settings.env.TASKCTL_ACTOR_KIND, "claude", "the host script names the platform it is installing for");
+    assert.equal(settings.env.TASKCTL_ACTOR_KIND, "claude", "the agent-kind script names the kind it is installing for");
     const start = settings.hooks.SessionStart;
     assert.equal(start.length, 1);
     assert.equal(start[0].hooks[0].type, "command");
@@ -205,7 +205,7 @@ describe("agent bundle: claude", () => {
     // ...and the *kind*, or every write from this shim reads as a human's.
     assert.ok(shimText.includes('kind="${TASKCTL_ACTOR_KIND:-claude}"'), shimText);
     assert.ok(shimText.includes('--actor-kind "$kind"'), shimText);
-    // ...and the human, so `--as-human` on this host signs with the person's
+    // ...and the human, so `--as-human` on this agent kind signs with the person's
     // name and not the agent's.
     assert.ok(shimText.includes('human="${TASKCTL_HUMAN:-'), shimText);
     assert.ok(!shimText.includes("{{"), "template tokens must be rendered");
@@ -235,7 +235,7 @@ describe("agent bundle: claude", () => {
       "utf8",
     );
 
-    const run = runInstall(["--target", "claude", "--agent-name", "alice"], hostEnv(home));
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], agentEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
@@ -249,8 +249,8 @@ describe("agent bundle: claude", () => {
   it("--force updates the managed identity but leaves unrelated keys alone", () => {
     const home = makeTempDir();
 
-    assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], hostEnv(home)).status, 0);
-    const forced = runInstall(["--target", "claude", "--agent-name", "bob", "--force"], hostEnv(home));
+    assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], agentEnv(home)).status, 0);
+    const forced = runInstall(["--target", "claude", "--agent-name", "bob", "--force"], agentEnv(home));
     assert.equal(forced.status, 0, forced.stderr);
 
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
@@ -261,7 +261,7 @@ describe("agent bundle: claude", () => {
 
   it("defaults the agent name to $USER when --agent-name is omitted", () => {
     const home = makeTempDir();
-    const run = runInstall(["--target", "claude"], hostEnv(home));
+    const run = runInstall(["--target", "claude"], agentEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
@@ -270,7 +270,7 @@ describe("agent bundle: claude", () => {
 
   it("the installed shim runs the real CLI and forwards --version", () => {
     const home = makeTempDir();
-    const run = runInstall(["--target", "claude", "--agent-name", "alice"], hostEnv(home));
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], agentEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     const shim = join(home, ".claude", "bin", "taskctl");
@@ -290,7 +290,7 @@ describe("agent bundle: codex", () => {
   it("deploys skill + shim + AGENTS.md snippet + trigger", () => {
     const home = makeTempDir();
 
-    const run = runInstall(["--target", "codex", "--agent-name", "alice"], hostEnv(home));
+    const run = runInstall(["--target", "codex", "--agent-name", "alice"], agentEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     // 1. skill
@@ -322,7 +322,7 @@ describe("agent bundle: codex", () => {
     const home = makeTempDir();
     const run = runInstall(
       ["--target", "codex", "--agent-name", "alice", "--no-automation"],
-      hostEnv(home),
+      agentEnv(home),
     );
     assert.equal(run.status, 0, run.stderr);
 
@@ -337,7 +337,7 @@ describe("agent bundle: codex", () => {
     mkdirSync(join(home, ".codex"), { recursive: true });
     writeFileSync(join(home, ".codex", "AGENTS.md"), "# My rules\n\nAlways be kind.\n", "utf8");
 
-    const run = runInstall(["--target", "codex", "--agent-name", "alice"], hostEnv(home));
+    const run = runInstall(["--target", "codex", "--agent-name", "alice"], agentEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     const agents = readFileSync(join(home, ".codex", "AGENTS.md"), "utf8");
@@ -353,7 +353,7 @@ describe("agent bundle: codex", () => {
 describe("agent bundle: idempotency", () => {
   it("re-running claude + codex leaves every installed file unchanged", () => {
     const home = makeTempDir();
-    const env = hostEnv(home);
+    const env = agentEnv(home);
 
     const first = runInstall(["--target", "claude,codex", "--agent-name", "alice"], env);
     assert.equal(first.status, 0, first.stderr);

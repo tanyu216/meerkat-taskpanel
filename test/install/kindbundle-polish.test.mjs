@@ -1,5 +1,5 @@
 /**
- * Host-bundle polish (T-20261010-001800): D2 docs wording, D3 `--force` re-render of
+ * Agent-bundle polish (T-20261010-001800): D2 docs wording, D3 `--force` re-render of
  * the Codex `AGENTS.md` snippet, D4 shim/hook robustness.
  *
  *   - D2 — the docs state the real contract: a repeat install exits 0, managed files
@@ -35,7 +35,7 @@ after(cleanup);
 // about the agent bundle, not the guard. `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE` is
 // the contract's test-only bypass.
 
-/** An executable fake host CLI that records its argv to `$FAKE_LOG` and exits 0. */
+/** An executable fake agent CLI that records its argv to `$FAKE_LOG` and exits 0. */
 function makeFakeCli(binDir, name) {
   const script = [
     "#!/usr/bin/env bash",

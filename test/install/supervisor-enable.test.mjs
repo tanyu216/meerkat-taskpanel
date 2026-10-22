@@ -6,7 +6,7 @@
  * exception the contract fixes in `docs/scheduling.md` §"Enabling the supervisor
  * (opt-in)": `install.sh --supervisor=enable|disable|status` (+ aliases,
  * `--supervisor-actor-kinds`, `--scheduler`, `MEERKAT_TASKPANEL_SUPERVISOR`) really does run
- * `launchctl` / `systemctl` / `crontab` — and is idempotent, per-host selectable, and
+ * `launchctl` / `systemctl` / `crontab` — and is idempotent, per-agent-kind selectable, and
  * silent (no load at all) unless asked.
  *
  * The service manager is **faked on PATH** — `launchctl`, `systemctl`, `crontab` and
@@ -178,10 +178,10 @@ function loads(manager) {
 }
 
 /** The enable report the docs prescribe, as a regex — quoted literally, not as a pattern. */
-function enabledLine(host, scheduler, units) {
+function enabledLine(kind, scheduler, units) {
   const quote = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(
-    `^supervisor: enabled \\(kind=${quote(host)}, scheduler=${quote(scheduler)}, units=${quote(units)}\\)$`,
+    `^supervisor: enabled \\(kind=${quote(kind)}, scheduler=${quote(scheduler)}, units=${quote(units)}\\)$`,
     "m",
   );
 }
@@ -251,12 +251,12 @@ describe("install.sh: the supervisor flag surface", () => {
   it("rejects an unknown --supervisor-actor-kinds entry and an unknown --scheduler", () => {
     const home = makeTempDir();
     const manager = fakeManager();
-    const hosts = runInstall(
+    const run = runInstall(
       ["--target", "all", "--prefix", home, "--supervisor=enable", "--supervisor-actor-kinds", "emacs"],
       installEnv(home, manager),
     );
-    assert.equal(hosts.status, 2);
-    assert.match(hosts.stderr, /invalid --supervisor-actor-kinds: emacs/);
+    assert.equal(run.status, 2);
+    assert.match(run.stderr, /invalid --supervisor-actor-kinds: emacs/);
 
     const scheduler = runInstall(
       ["--target", "claude", "--prefix", home, "--supervisor=enable", "--scheduler", "upstart"],
@@ -310,7 +310,7 @@ describe("install.sh: the supervisor flag surface", () => {
 // ---------------------------------------------------------------------------
 
 describe("install.sh: enable — launchd", () => {
-  it("bootstraps both units and reports host / scheduler / units", () => {
+  it("bootstraps both units and reports kind / scheduler / units", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const run = runInstall(
@@ -362,7 +362,7 @@ describe("install.sh: enable — launchd", () => {
     assert.doesNotMatch(run.stdout, /not enabled/);
   });
 
-  it("reports a load it cannot do instead of claiming success — and still installs the host", () => {
+  it("reports a load it cannot do instead of claiming success — and still installs the agent kind", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const run = runInstall(
@@ -375,7 +375,7 @@ describe("install.sh: enable — launchd", () => {
     assert.match(run.stdout, /supervisor: enable it with:/);
     assert.match(run.stdout, /supervisor:   launchctl bootstrap gui\/\d+ /);
     assert.doesNotMatch(run.stdout, /supervisor: enabled/);
-    // The host's own install is unaffected — the units are written, and the summary is OK.
+    // The agent kind's own install is unaffected — the units are written, and the summary is OK.
     assert.match(run.stdout, /OK   claude/);
     assert.ok(existsSync(join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist")));
   });
@@ -639,7 +639,7 @@ describe("install.sh: enable — cron", () => {
     assert.match(again.stdout, /^supervisor: already disabled \(kind=claude, scheduler=cron, units=/m);
   });
 
-  it("enabling a second mechanism takes the first down — never two loaded for one host", () => {
+  it("enabling a second mechanism takes the first down — never two loaded for one agent kind", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const base = ["--target", "claude", "--agent-name", "alice", "--prefix", home];
@@ -674,10 +674,10 @@ describe("install.sh: enable — cron", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5 — --dry-run, per-host selection, and the openclaw exclusion
+// 5 — --dry-run, per-agent-kind selection, and the openclaw exclusion
 // ---------------------------------------------------------------------------
 
-describe("install.sh: --dry-run and per-host selection", () => {
+describe("install.sh: --dry-run and per-agent-kind selection", () => {
   it("--dry-run prints the exact commands it would run, for every mechanism, and changes nothing", () => {
     const cases = [
       ["launchd", new RegExp(`^supervisor: would run: launchctl bootstrap gui/${UID} .*com\\.meerkat-taskpanel\\.ping\\.plist$`, "m")],
@@ -700,7 +700,7 @@ describe("install.sh: --dry-run and per-host selection", () => {
     }
   });
 
-  it("--supervisor-actor-kinds acts on the named host only", () => {
+  it("--supervisor-actor-kinds acts on the named agent kind only", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const run = runInstall(
@@ -724,7 +724,7 @@ describe("install.sh: --dry-run and per-host selection", () => {
     assert.equal(bootstraps.length, 4, "only claude's units are loaded");
     for (const line of bootstraps) assert.ok(line.includes(join(".claude", "scheduling")), line);
 
-    // Every loop host is still installed — the selection is about the *action*, not the files.
+    // Every loop agent kind is still installed — the selection is about the *action*, not the files.
     for (const agentDir of [".claude", ".codex", ".agents", ".config/opencode", ".cursor"]) {
       assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-loop", "SKILL.md")), `${agentDir} loop skill`);
     }

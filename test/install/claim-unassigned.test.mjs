@@ -4,9 +4,9 @@
  *
  * `install.sh` asks the question when stdin is a TTY and no flag was given,
  * defaults to **yes** everywhere else, and persists the answer as
- * `<target_home>/<host-dir>/meerkat-taskpanel.env` (`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=…`) —
+ * `<target_home>/<agent-dir>/meerkat-taskpanel.env` (`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=…`) —
  * the file `scripts/supervisor.mjs` reads as its default. OpenClaw is the one
- * host that gets no such file, because it does not build its own supervisor
+ * agent kind that gets no such file, because it does not build its own supervisor
  * (it installs openclaw-team, whose poll/patrol already implement the design).
  *
  * Run with: node --test
@@ -26,7 +26,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 after(cleanup);
 
-/** An executable fake host CLI that does nothing and exits 0. */
+/** An executable fake agent CLI that does nothing and exits 0. */
 function makeFakeCli(binDir, name) {
   const dest = join(binDir, name);
   writeFileSync(dest, `#!/usr/bin/env bash\nexit 0\n`, "utf8");
@@ -34,7 +34,7 @@ function makeFakeCli(binDir, name) {
   return dest;
 }
 
-/** An environment that sees fake host CLIs and installs into an isolated home. */
+/** An environment that sees fake agent CLIs and installs into an isolated home. */
 function installEnv(home, bin) {
   return {
     ...process.env,

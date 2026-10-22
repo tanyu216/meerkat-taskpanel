@@ -2,7 +2,7 @@
  * The npm/npx installer wrapper.
  *
  * The wrapper is a translation layer: it decides the default target set and
- * points host installs at the materialized tree. It must not grow a second
+ * points agent installs at the materialized tree. It must not grow a second
  * install implementation, so the cases here are the plan and the dry-run.
  */
 

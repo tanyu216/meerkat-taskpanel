@@ -4,7 +4,7 @@
  * `install.sh` asks "who may close a task?" when stdin is a TTY and no flag was
  * given, defaults to **both** everywhere else, and writes the answer **twice**:
  *
- *   * `<target_home>/<host-dir>/meerkat-taskpanel.env` — what the loop believes
+ *   * `<target_home>/<agent-dir>/meerkat-taskpanel.env` — what the loop believes
  *     (`MEERKAT_TASKPANEL_ACCEPTANCE_POLICY`);
  *   * the install-root `.env` — what the board enforces
  *     (`TASKD_ACCEPTANCE_POLICY`). The board is authoritative, and this file is
@@ -34,7 +34,7 @@ function makeFakeCli(binDir, name) {
   return dest;
 }
 
-const hostConfig = (home) => {
+const agentConfig = (home) => {
   const path = join(home, ".claude", "meerkat-taskpanel.env");
   return existsSync(path) ? readFileSync(path, "utf8") : "";
 };
@@ -54,7 +54,7 @@ describe("install.sh: acceptance policy", () => {
       MEERKAT_TASKPANEL_ENV_FILE: envFile,
     });
     assert.equal(run.status, 0, run.stderr);
-    assert.match(hostConfig(home), /^MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=both$/m);
+    assert.match(agentConfig(home), /^MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=both$/m);
     assert.match(boardConfig(envFile), /^TASKD_ACCEPTANCE_POLICY=both$/m);
   });
 
@@ -77,7 +77,7 @@ describe("install.sh: acceptance policy", () => {
         MEERKAT_TASKPANEL_ENV_FILE: envFile,
       });
       assert.equal(run.status, 0, run.stderr);
-      assert.match(hostConfig(home), new RegExp(`^MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=${expected}$`, "m"));
+      assert.match(agentConfig(home), new RegExp(`^MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=${expected}$`, "m"));
       assert.match(boardConfig(envFile), new RegExp(`^TASKD_ACCEPTANCE_POLICY=${expected}$`, "m"));
     }
 

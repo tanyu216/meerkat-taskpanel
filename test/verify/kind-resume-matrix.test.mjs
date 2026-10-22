@@ -2,7 +2,7 @@
  * The Cursor row of the kind-resume matrix.
  *
  * `cursor-agent` is handled the same way as claude / codex / pi / opencode: a
- * supplementary, host-side probe that SKIPs when the CLI is absent. The flag
+ * supplementary, machine-side probe that SKIPs when the CLI is absent. The flag
  * table is the evidence for the argv shape the wake glue builds; `--e2e` adds
  * one real `-p` call when `CURSOR_API_KEY` is present.
  *
@@ -17,7 +17,7 @@ import { KINDS, e2eKind } from "../../scripts/verify/kind-resume-matrix.mjs";
 describe("kind-resume-matrix — the cursor row", () => {
   const cursor = KINDS.find((k) => k.actorKind === "cursor");
 
-  it("is part of the same host table as the other CLIs", () => {
+  it("is part of the same actor-kind table as the other CLIs", () => {
     assert.ok(cursor, "cursor must be probed by the same matrix");
     assert.equal(cursor.bin, "cursor-agent");
     assert.equal(cursor.headless, "cursor-agent -p <prompt>");
