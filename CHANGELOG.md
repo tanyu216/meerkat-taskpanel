@@ -9,6 +9,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Three read-surface conveniences for an integrating poll (no migration).**
+  `comment add --ref <kind:id>` (repeatable) stores references in the comment's existing wire
+  `refs`; `project ensure <id>` creates a project if absent and returns an existing one
+  **untouched** (`PUT /api/v1/projects/:id`, with `created:false`), so an idempotent caller
+  stops treating a duplicate as a conflict; and `issue candidates` now carries `created_at`,
+  `target` (the card's own `meta.target`) and the card's whole `meta`, so a poll can read a
+  target or routing field without an `issue get` per candidate. The candidate's `target` is
+  the card's opaque value, not a project directory.
+
 - **`/setup-meerkat`, an optional team, and a narrower decision ladder.** A third skill,
   `skills/setup-meerkat/`, is a user-invoked install/repair command: it detects the server,
   `taskctl`, the board/loop skills and the supervisor without writing anything, installs what

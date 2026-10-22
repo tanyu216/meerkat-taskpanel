@@ -135,6 +135,28 @@ describe("server/routes — projects", () => {
     const listed = dataOf(await call("GET", "/api/v1/projects"));
     assert.deepEqual(listed.projects.map((p) => p.id), ["demo"]);
   });
+
+  it("ensures a project: creates once, then returns the existing row untouched", async () => {
+    const fresh = dataOf(
+      await call("PUT", "/api/v1/projects/ensured", {
+        name: "Ensured",
+        meta: { team: "panel" },
+      }),
+    );
+    assert.equal(fresh.created, true);
+    assert.equal(fresh.project.id, "ensured");
+    assert.deepEqual(fresh.project.meta, { team: "panel" });
+
+    const again = dataOf(
+      await call("PUT", "/api/v1/projects/ensured", {
+        name: "Renamed",
+        meta: { team: "other" },
+      }),
+    );
+    assert.equal(again.created, false);
+    assert.equal(again.project.name, "Ensured", "an existing project is not updated");
+    assert.deepEqual(again.project.meta, { team: "panel" });
+  });
 });
 
 describe("server/routes — tasks, the gate and deliver", () => {
@@ -993,8 +1015,10 @@ describe("server/routes — candidates (the poll read)", () => {
     assert.deepEqual(
       Object.keys(candidates.candidates[0]).sort(),
       [
+        "created_at",
         "id",
         "identifier",
+        "meta",
         "priority",
         "project",
         "reason",
@@ -1002,9 +1026,10 @@ describe("server/routes — candidates (the poll read)", () => {
         "review_round",
         "sort",
         "status",
+        "target",
         "title",
       ],
-      "no `target` — the board owns no project directory (O3)",
+      "the card's fields, its opaque meta, and `reason`",
     );
     assert.equal(candidates.candidates[0].status, "todo");
     assert.equal(candidates.candidates[0].project, "cand");

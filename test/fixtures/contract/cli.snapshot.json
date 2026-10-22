@@ -256,6 +256,14 @@
               "required": false,
               "repeat": false,
               "short": null
+            },
+            {
+              "flag": "ref",
+              "as": "string",
+              "value": "<kind:id>",
+              "required": false,
+              "repeat": true,
+              "short": null
             }
           ]
         },
@@ -1207,6 +1215,65 @@
               "flag": "projects-json",
               "as": "string",
               "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "ensure",
+          "positionals": [
+            {
+              "name": "id",
+              "summary": "Project id."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "label",
+              "as": "string",
+              "value": "<label>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "meta",
+              "as": "kv",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "name",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "readme",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-policy",
+              "as": "string",
+              "value": "<required|optional|off>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
               "required": false,
               "repeat": false,
               "short": null

@@ -30,6 +30,7 @@ export function createCommands(ctx) {
   return {
     // projects ---------------------------------------------------------------
     createProject: (input) => projects.createProject(ctx, input),
+    ensureProject: (input) => projects.ensureProject(ctx, input),
     updateProject: (input) => projects.updateProject(ctx, input),
     getProject: (input) => projects.getProject(ctx, input),
     listProjects: (filter) => projects.listProjects(ctx, filter),

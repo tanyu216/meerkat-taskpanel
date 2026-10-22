@@ -1759,12 +1759,14 @@ function staleReason(task, assigneeIds, now) {
 }
 
 /**
- * The candidate projection: exactly the card's fields, plus `reason` so the
- * poll can rank ready against recovery without re-deriving it.
+ * The candidate projection: the card's fields a poll needs, plus `reason` so it
+ * can rank ready against recovery without re-deriving it.
  *
- * There is no `target` here (O3): a project owns no directory, so the board has
- * no workspace to project onto a candidate. A dispatch consumer that needs a
- * location resolves one from `project` against its own mapping.
+ * `target` is the card's own opaque value (`meta.target`), not a project
+ * directory: the board still holds no workspace for a project (O3). `meta` is
+ * projected whole as the generic escape hatch for a consumer's own keys (a
+ * routing field, for example), so a poll does not need an `issue get` per
+ * candidate to read one.
  * @param {object} task
  * @param {string} reason
  */
@@ -1778,6 +1780,9 @@ function candidateOf(task, reason) {
     priority: task.priority,
     project: task.projectId,
     sort: task.sortOrder ?? 0,
+    created_at: task.createdAt,
+    target: nonEmptyString(meta.target),
+    meta,
     reason,
     // A review card names the card it audits (`meta.review_of`) and the round it
     // audits (`meta.review_round`), so the supervisor can pick the review

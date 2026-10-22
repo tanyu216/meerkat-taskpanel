@@ -365,12 +365,14 @@ describe("task-order — assertion 10: the scope reaches SQL before the order do
 });
 
 describe("task-order — the candidate projection is unchanged by the order", () => {
-  it("still emits exactly the card's fields plus `reason`, and writes nothing", async () => {
+  it("still emits the card's fields, its meta and `reason`, and writes nothing", async () => {
     const before = currentRevision(db());
     const { candidates } = dataOf(await call("GET", "/api/v1/tasks/candidates?assignee=linus&order=weight"));
     assert.deepEqual(Object.keys(candidates[0]).sort(), [
+      "created_at",
       "id",
       "identifier",
+      "meta",
       "priority",
       "project",
       "reason",
@@ -378,6 +380,7 @@ describe("task-order — the candidate projection is unchanged by the order", ()
       "review_round",
       "sort",
       "status",
+      "target",
       "title",
     ]);
     assert.equal(currentRevision(db()), before, "the ordered poll read is still read-only");
