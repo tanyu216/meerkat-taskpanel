@@ -2,6 +2,16 @@
 
 > One card's state model. `cli.md` is the command surface; `card-schema.md` is the card file.
 
+**Contents:** [1. Vocabulary](#1-the-vocabulary) · [2. Whitelist](#2-the-whitelist) ·
+[3. Guards](#3-the-guard-on-each-edge) ·
+[4. Delivery gate](#4-the-delivery-gate-and-the-delivery-round) ·
+[5. Claims](#5-claims-and-heartbeats) · [6. Containers](#6-containers-epic) ·
+[7. Acceptance](#7-acceptance-policy--scope) ·
+[8. Creating](#8-creating-a-card-in-a-status) · [9. Refusals](#9-refusals) ·
+[10. Enforced vs practice](#10-what-is-enforced-and-what-is-practice) ·
+[11. Workflow decisions](#11-the-boards-workflow-decisions) ·
+[12. Choosing a status](#12-choosing-a-status)
+
 ## 1. The vocabulary
 
 A card has **eight stored status words**, but only **seven are stages** — the board's columns:
@@ -213,11 +223,13 @@ idempotent; the ordinary path does not need it.
 `done` is the board's acceptance act; who may perform it depends on the policy and the card's
 scope.
 
+<!-- acceptance-matrix:begin -->
 | Scope | `human-only` | `both` (default) | `agent-only` |
 |---|---|---|---|
 | `top_level` | human only | human or `taskd` | any non-human |
 | `review` card | human or `taskd` | human or `taskd` | any non-human |
 | `child` (has a parent) | any non-human | any non-human | any non-human |
+<!-- acceptance-matrix:end -->
 
 Scope precedence is **`hasParent` > review marker > `top_level`**.
 
@@ -287,7 +299,7 @@ The markdown importer is the exception: it writes history directly, importing
 `status` is a **move, never a patch**: `issue update` has no `--status`, and `PATCH {status}`
 is refused with `INVALID_TRANSITION`.
 
-### What is enforced, and what is practice
+## 10. What is enforced, and what is practice
 
 | Rule | Enforced by |
 |---|---|

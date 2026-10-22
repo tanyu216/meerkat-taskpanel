@@ -3,6 +3,20 @@
 `taskctl` is an **HTTP client** for `taskd`, the local board service. The CLI holds no second
 copy of the rules: a refusal is the service's, with the same code, details and repair command.
 
+> Paths written as `src/…`, `docs/…` or `scripts/loop/…` name the taskpanel **source
+> repository**. This skill ships only `SKILL.md`, `references/` and `scripts/`; everything you
+> run is `taskctl`.
+
+**Contents:** [Configuration](#configuration-env) · [Starting the board](#starting-the-board) ·
+[Global options](#global-options) · [Commands](#commands) ·
+[Editing a card](#editing-a-card-status-priority-description-attachments-dependencies) ·
+[The delivery gate](#the-delivery-gate) ·
+[`awaiting`](#the-awaiting-state--asking-a-human-a-question) ·
+[`blocked`](#the-blocked-state--what-the-card-is-waiting-for) ·
+[Review cards](#review-cards--the-declared-fields) ·
+[`reconcile --workflow`](#reconcile---workflow--the-boards-workflow-plan) ·
+[`--json`](#--json) · [Notes](#notes)
+
 ```bash
 taskctl <group> <command> [options]
 taskctl --help
@@ -101,10 +115,10 @@ ask rather than guessing.
 
 | Command | Purpose |
 |---|---|
-| `issue create --project <id> --title <t> [--review yes\|no] [--acceptance <text>]… [--assignee <text>] [--assignee-id <id>] [--assignee-kind <agent\|human>] [--reporter <text>] [--reporter-id <id>] [--reporter-kind <agent\|human>] [--description <md>] [--priority] [--kind task\|epic\|deploy] [--label <l>]… [--meta k=v]… [--target <t>] [--parent <ref>] [--status <s>] [--idem <key>] [--allow-dup] [--force-create] [--review-of <ref> [--review-round <n>]]` | Create a task. `--review` states whether the card needs an independent review: in a `required` project it must be `yes` (omitting it means yes), in an `off` project it must be `no` (omitting it means no), and in an `optional` project an **agent** must pass it (`yes` or `no`); a human/UI caller may omit it and gets `no`. `--idem` is the creation idempotency key (a match returns the existing card, keeping its review decision). `--parent` fills the idempotency key's source slot and links nothing. |
-| `issue list [--project] [--status <s>]… [--assignee-id] [--review-of <ref>] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List tasks. `--order weight` is the assignee weight order (below); the default is board order. `--review-of <ref>` returns the **review cards of** that card — not the card itself — across every round (`review_round` is on each returned card, so a caller selecting the current round filters on it). It combines with the other filters and is read-only. An unknown ref is `NOT_FOUND`; an identifier that exists in two projects is `VALIDATION_FAILED`. |
+| `issue create` | Create a card. Synopsis and flag semantics: [below](#issue-create). |
+| `issue list [--project] [--status <s>]… [--assignee-id] [--review-of <ref>] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List cards. `--order weight` is the assignee weight order (below); the default is board order. `--review-of <ref>` returns the **review cards of** that card — not the card itself — across every round (`review_round` is on each returned card, so a caller selecting the current round filters on it). It combines with the other filters and is read-only. An unknown ref is `NOT_FOUND`; an identifier that exists in two projects is `VALIDATION_FAILED`. |
 | `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The claim read: `todo` cards that are auto-claimable (not an `epic`, not a `deploy`), every `depends_on` predecessor `done` (a `canceled` one also withholds). `--stale` adds the recovery pool (holder after 30 min, anyone after 6 h); `--include-unassigned` adds the public pool. Read-only; no `--limit`. |
-| `issue get <id\|identifier>` | One task, plus `report_waivers[]` and `attachments[]` (`id`, `filename`, `content_type`, `size`, `kind`, `created_at`, `comment_id`). The human view adds an attachment table when the card has files. |
+| `issue get <id\|identifier>` | One card, plus `report_waivers[]` and `attachments[]` (`id`, `filename`, `content_type`, `size`, `kind`, `created_at`, `comment_id`). The human view prints identifier, title, status, priority, kind, assignee, reporter, delivery_round, review_required and version, then a waiver row and an attachment table when present; the description, labels, meta and acceptance list are JSON-only. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]… [--review yes\|no [--reason "<why>"]]` | Patch. `--status` is refused here on purpose. `--review yes` escalates a card to requiring review (any actor); `--review no` waives it and is **human-only**, needs `--reason` (≥ 8 characters) and no open current-round review card. Both are audited as `review_override`. |
 | `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <word>]` | Move, subject to the delivery gate. `todo → in_progress` is a **claim**; a move to `done` is an **acceptance**. `done`/`canceled → todo` is the audited **reopen** and needs `--reason` (prefer `issue reopen`). `--awaiting-reason` is required for `awaiting`; `--blocked-reason` is optional. |
 | `issue reopen <ref> --reason "<why>"` | **Reopen a `done`/`canceled` card to `todo`.** Audited: the reason is required (≥ 8 characters) and recorded as `task_reopened`. Starts a new delivery round, clears the archive and releases the idem key. A review card is refused — reopen the original; the loop issues the next round's review. |
@@ -115,6 +129,31 @@ ask rather than guessing.
 | `issue meta <ref> --meta <k>=<v>…` | Merge metadata keys into a card, leaving other keys intact. The read-modify-write form with `--if-version` CAS. |
 | `issue deliver <ref> --report-file <file\|-> [--no-report --reason "<why>"] [--seg <seg>]` | **Write the report and move to `in_review`, in one transaction.** The two report forms are mutually exclusive. No `--to`; it always lands in `in_review`. |
 | `issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] [--auto-accept-reviews yes\|no] [--review-aging-ms <n>] [--max-actions <n>] [--board-limit <n>]` | Without `--workflow`: replay the epic rules over every non-terminal container. With it: return the board's workflow plan (see below). `--dry-run` writes nothing. Idempotent. |
+
+#### `issue create`
+
+```bash
+taskctl issue create --project <id> --title <t> [flags]
+```
+
+| Flag | Meaning |
+|---|---|
+| `--project <id>` | **Required.** The project; its id is the identifier prefix. |
+| `--title <t>` | **Required.** The one-line summary. |
+| `--review yes\|no` | Whether the card needs an independent review. In a `required` project it must be `yes` (omitting it means yes); in an `off` project it must be `no` (omitting it means no); in an `optional` project an **agent** must state it, while a human/UI caller may omit it and gets `no`. |
+| `--acceptance <text>` | One acceptance item; repeat for each. |
+| `--assignee <text>` / `--assignee-id <id>` / `--assignee-kind <agent\|human>` | Route the card. `--assignee-id` bypasses the dictionary. |
+| `--reporter <text>` / `--reporter-id <id>` / `--reporter-kind <agent\|human>` | Set the reporter. |
+| `--description <md>` | The markdown description. |
+| `--priority <low\|medium\|high\|urgent>` | Urgency; a card with none reads as `medium`. |
+| `--kind task\|epic\|deploy` | The card's role; default `task`. |
+| `--label <l>` / `--meta k=v` | Repeatable labels and metadata. |
+| `--target <t>` | An opaque per-card value; it is not a directory. |
+| `--parent <ref>` | Fills the idempotency key's source slot; it **links nothing** — use `relation add --type parent`. |
+| `--status <s>` | Initial status; see [`status-lifecycle.md` §8](status-lifecycle.md#8-creating-a-card-in-a-status). |
+| `--idem <key>` | Creation idempotency key; a match returns the existing card, keeping its review decision. |
+| `--allow-dup` / `--force-create` | Skip the duplicate guard / the fuzzy dictionary step. |
+| `--review-of <ref> [--review-round <n>]` | Create a review card for that original and round. |
 
 ### The weight order (`--order weight`)
 
@@ -169,9 +208,10 @@ taskctl relation add PROJ-0007 --type parent --target PROJ-0008
 Only an `epic` may be a parent (`VALIDATION_FAILED`, `details.field: kind`, until promoted).
 Neither end of a `parent` edge may be a review card (`VALIDATION_FAILED`,
 `details.field: source|target`), even with `--force`. An epic cannot be claimed, so a card
-that must end up `in_progress` is claimed first and promoted after. `todo → in_review` is the epic's own edge. The promotion is an ordinary patch
-(status, claim, heartbeat and delivery round stay put) and leaves no comment — write the split
-down yourself. An epic that still has children cannot be downgraded to `task`. The board
+that must end up `in_progress` is claimed first and promoted after. `todo → in_review` is the
+epic's own edge. The promotion is an ordinary patch — status, claim, heartbeat and delivery
+round stay put — and leaves no comment, so write the split down yourself. An epic that still
+has children cannot be downgraded to `task`. The board
 starts and closes the container; see
 [`status-lifecycle.md`](status-lifecycle.md#6-containers-epic).
 
@@ -271,7 +311,7 @@ the file and remove or rename it to accept the rewrite. The `## Acceptance` sect
 the modern `meta.acceptance` list as plain bullets; an imported card's checkbox list is the
 fallback. A card with attachments also carries an `## Attachments` section between `## Sessions`
 and `## Report` (one metadata line per file; the bytes stay on the board). The product is the card **store mirror** (frontmatter plus
-sections) used for round-tripping and CI checks, not a human-readable task detail: use
+sections) used for round-tripping and CI checks, not a human-readable card detail: use
 `issue get <ref>` for prose and `issue get <ref> --json` for machines. The implicit spelling
 `export --md <ref>` cannot carry a ref; use `export md <ref>`. The file format is in
 [`card-schema.md`](card-schema.md).
@@ -389,7 +429,7 @@ an honest `404` on download. Removal deletes the row and the bytes in one transa
 
 ### `depends_on` — a `blocks` edge, written the other way round
 
-`depends_on` is **not** a field on the task: "this card depends on X" is a `blocks` relation
+`depends_on` is **not** a field on the card: "this card depends on X" is a `blocks` relation
 whose **source is X**. So adding a dependency names the blocker first:
 
 ```bash

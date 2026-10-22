@@ -110,6 +110,10 @@ describe("cli/issue — create, list, get", () => {
       const byId = dataOf(run(["issue", "get", created.task.id, "--json"]));
       assert.equal(byId.task.identifier, "DEMO-0001");
 
+      const human = run(["issue", "get", "DEMO-0001"]);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /^title\s+Ship M2$/m);
+
       const missing = run(["issue", "get", "NOPE-9999", "--json"]);
       assert.equal(missing.status, 1);
       assert.equal(JSON.parse(missing.stdout).error.code, "NOT_FOUND");

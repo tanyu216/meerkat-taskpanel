@@ -62,7 +62,17 @@ If the original is no longer `in_review`, or its `delivery_round` is not the rou
 on the review card:
 
 1. leave a `note` comment on the review card saying so;
-2. stop. Do **not** deliver a verdict — the loop will close the review card.
+2. stop. Do **not** deliver a verdict, and never move either card.
+
+What the loop does next depends on why the target moved:
+
+- **The original was canceled** — the loop cancels the review card (`cancel_review`).
+- **The original is on a later round** — the verdict is history. With review auto-accept on
+  the loop closes the review card; with it off the loop raises `review_stale_round` and
+  writes nothing.
+- **The original is `done` at the same round** — the loop raises `verdict_unreadable` and
+  leaves the review card open. A human must cancel it with the two-hop
+  `in_review → in_progress → canceled`.
 
 ### Read
 
@@ -108,20 +118,21 @@ reviewer` (the loop's `--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / host config)
 review card's assignee records the one actually used.
 
 `done` is the board's acceptance act. The board's **policy** and the card's **scope** decide
-who may perform it; the full matrix is in
-[`status-lifecycle.md §7`](status-lifecycle.md#7-acceptance-policy--scope). In agent terms:
+who may perform it:
 
-- **Top-level original, `human-only`** — a human accepts. The loop's `APPROVE` becomes a
-  **hold**: it records the verdict and closes the review card, but leaves the original in
-  `in_review`. Do not close it yourself.
-- **Top-level original, `both` (default)** — a human or the board (`taskd`, i.e. the loop)
-  accepts. A worker agent cannot.
-- **Top-level original, `agent-only`** — any non-human writer accepts.
-- **Review card** — a human or `taskd` closes it under `both` and `human-only`; under
-  `agent-only` only a non-human writer can. (A human cannot close a review card on an
-  `agent-only` board.)
-- **Child card (has a parent)** — only a non-human writer accepts, under every policy. Scope
-  precedence is **`hasParent` > review marker > `top_level`**.
+<!-- acceptance-matrix:begin -->
+| Scope | `human-only` | `both` (default) | `agent-only` |
+|---|---|---|---|
+| `top_level` | human only | human or `taskd` | any non-human |
+| `review` card | human or `taskd` | human or `taskd` | any non-human |
+| `child` (has a parent) | any non-human | any non-human | any non-human |
+<!-- acceptance-matrix:end -->
+
+Scope precedence is **`hasParent` > review marker > `top_level`**. In agent terms: a worker
+agent cannot close a top-level original under the default `both`; under `human-only` the
+loop's `APPROVE` becomes a **hold** — it records the verdict and closes the review card, but
+leaves the original in `in_review`, so do not close it yourself. Under `agent-only` a human
+cannot close a review card; under `both` / `human-only` a human or `taskd` can.
 
 The policy is enforced by the board. There is no `taskctl` command that reads it: attempt the
 move and handle `ACCEPTANCE_FORBIDDEN` — its `details` carry `policy` and `scope`. The loop's
@@ -166,9 +177,9 @@ controls whether the loop closes a review card.
 - **APPROVE** — under `both` / `agent-only` (or a child card) the loop writes
   `meta.accepted_by=loop-review` and moves the original `in_review → done`. Under
   `human-only` + a top-level original it holds.
-- **REJECT on a task** — the loop comments the findings, writes `meta.rework_round` and moves
-  the original `in_review → in_progress → todo`. It is re-claimed and re-delivered on the new
-  round.
+- **REJECT on a work card** — the loop comments the findings, writes `meta.rework_round` and
+  moves the original `in_review → in_progress → todo`. It is re-claimed and re-delivered on
+  the new round.
 - **REJECT on an epic** — the loop creates and links a **fix child** first, then reopens the
   container to `in_progress`; the open child stops `reconcile` from re-closing the container.
 - **One action failing never stops the rest**, and the review card is closed last, so a crash
@@ -189,7 +200,7 @@ controls whether the loop closes a review card.
 
 ## 8. Boundaries
 
-- A review card is a normal task: it is claimable, heartbeat-able, and delivered like any
+- A review card is an ordinary card of kind `task`: it is claimable, heartbeat-able, and delivered like any
   other card. It is special only in what its report must contain and in who may close it.
 - Do not promote a review card to an epic, and do not derive an acceptance list on one.
 - A `parent` edge is refused when either end is a review card (`VALIDATION_FAILED`,

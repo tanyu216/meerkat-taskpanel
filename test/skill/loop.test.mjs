@@ -39,8 +39,10 @@ import { resolveSkillSource } from "../../scripts/sync-skills.mjs";
 import { readFrontmatterField } from "../../scripts/verify/lib/frontmatter.mjs";
 import { LOOP_SKILL_COMMAND } from "../../src/foundation/scheduling.mjs";
 import {
+  ACCEPTANCE_POLICIES,
   ALLOWED_TRANSITIONS,
   EPIC_ONLY_TRANSITIONS,
+  acceptanceAllows,
 } from "../../src/core/domain/status.mjs";
 import { STATUSES } from "../../src/core/domain/enums.mjs";
 
@@ -401,6 +403,58 @@ describe("board skill: references resolve where the skill is installed", () => {
     }
   });
 
+  it("resolves every #fragment against the target file's headings", () => {
+    // GitHub's slug rules, as far as these pages use them: strip backticks and stars, keep
+    // letters, digits, spaces, underscores and hyphens, then turn each space into a hyphen.
+    // A punctuation run leaves the double hyphen that `policy × scope` produces.
+    const slug = (heading) =>
+      heading
+        .trim()
+        .toLowerCase()
+        .replace(/[`*]/g, "")
+        .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+        .replace(/ /g, "-");
+
+    const headings = (text) => {
+      const slugs = new Map();
+      let fence = null;
+      for (const line of text.split("\n")) {
+        const marker = /^\s*(```|~~~)/.exec(line);
+        if (marker !== null) {
+          fence = fence === null ? marker[1] : fence === marker[1] ? null : fence;
+          continue;
+        }
+        if (fence !== null) continue;
+        const heading = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
+        if (heading === null) continue;
+        const base = slug(heading[1]);
+        const seen = slugs.get(base) ?? 0;
+        slugs.set(base, seen + 1);
+        if (seen > 0) slugs.set(`${base}-${seen}`, 1);
+      }
+      return slugs;
+    };
+
+    const cache = new Map();
+    const slugsFor = (path) => {
+      if (!cache.has(path)) cache.set(path, headings(readFileSync(path, "utf8")));
+      return cache.get(path);
+    };
+
+    for (const file of files) {
+      for (const match of read(file).matchAll(/\]\(([^)]+)\)/g)) {
+        const target = match[1];
+        if (/^(https?:|mailto:)/.test(target) || !target.includes("#")) continue;
+        const [pathPart, fragment] = target.split("#");
+        if (fragment === "") continue;
+        const targetFile =
+          pathPart === "" ? join(skillDir, file) : join(dirname(join(skillDir, file)), pathPart);
+        assert.ok(existsSync(targetFile), `${file}: ${target} does not resolve`);
+        assert.ok(slugsFor(targetFile).has(fragment), `${file}: ${target} is not a heading anchor`);
+      }
+    }
+  });
+
   it("points the loop ownership it describes at the loop skill", () => {
     const text = read("SKILL.md");
     assert.match(text, /meerkat-loop/);
@@ -483,6 +537,85 @@ describe("board skill: the status whitelist matches the domain", () => {
     assert.equal(epic.length, 1, "exactly one epic-only overlay");
     const [from, to] = epic[0];
     assert.ok(EPIC_ONLY_TRANSITIONS[from]?.includes(to), `epic overlay ${from} → ${to}`);
+  });
+});
+
+describe("board and loop skills: the acceptance matrix agrees", () => {
+  const BEGIN = "<!-- acceptance-matrix:begin -->";
+  const END = "<!-- acceptance-matrix:end -->";
+  const copies = [
+    ["status-lifecycle.md", join(ROOT, "skills/meerkat-taskpanel/references/status-lifecycle.md")],
+    ["review-workflow.md", join(ROOT, "skills/meerkat-taskpanel/references/review-workflow.md")],
+    ["meerkat-loop/SKILL.md", join(LOOP_SKILL, "SKILL.md")],
+  ];
+
+  /** The raw block between the markers, asserting the markers appear exactly once. */
+  function marked(path) {
+    const text = readFileSync(path, "utf8");
+    const begin = text.indexOf(BEGIN);
+    const end = text.indexOf(END);
+    assert.ok(begin >= 0 && end > begin, `${path}: missing acceptance-matrix markers`);
+    assert.equal(text.indexOf(BEGIN, begin + 1), -1, `${path}: more than one begin marker`);
+    return text.slice(begin + BEGIN.length, end);
+  }
+
+  const cells = (line) =>
+    line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+
+  /** What a cell promises, reduced to the three kinds the board can allow. */
+  function cellClass(text) {
+    const value = text.replace(/`/g, "").toLowerCase();
+    if (/human only/.test(value)) return "human";
+    if (/human or taskd/.test(value)) return "human+taskd";
+    if (/any non-human/.test(value)) return "non-human";
+    return "unknown";
+  }
+
+  /** What `acceptanceAllows` says for the same policy/scope pair. */
+  function expectedClass(policy, scope) {
+    const human = acceptanceAllows("human", policy, scope);
+    const taskd = acceptanceAllows("taskd", policy, scope);
+    if (human && taskd) return "human+taskd";
+    if (human) return "human";
+    return taskd ? "non-human" : "none";
+  }
+
+  it("keeps the three copies byte-identical after whitespace normalisation", () => {
+    const blocks = copies.map(([, path]) => marked(path));
+    for (let i = 1; i < blocks.length; i += 1) {
+      assert.equal(
+        blocks[i].replace(/\s+/g, " ").trim(),
+        blocks[0].replace(/\s+/g, " ").trim(),
+        `${copies[i][0]} and ${copies[0][0]} must agree`,
+      );
+    }
+  });
+
+  it("re-encodes the board's policy × scope decisions", () => {
+    const raw = marked(copies[0][1]);
+    const rows = raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("|") && !/^\|[\s:|-]+\|$/.test(line))
+      .map(cells);
+    assert.equal(rows.length, 4, "one header plus the three scopes");
+
+    const policies = rows[0].slice(1).map((cell) => cell.replace(/`/g, "").split(/\s+/)[0]);
+    assert.deepEqual(policies, [...ACCEPTANCE_POLICIES]);
+    const scopes = rows.slice(1).map((row) => row[0].replace(/`/g, "").split(/\s+/)[0]);
+    assert.deepEqual(scopes, ["top_level", "review", "child"]);
+
+    for (const row of rows.slice(1)) {
+      const scope = row[0].replace(/`/g, "").split(/\s+/)[0];
+      assert.equal(row.length, policies.length + 1, `${scope} must state every policy`);
+      policies.forEach((policy, index) => {
+        assert.equal(
+          cellClass(row[index + 1]),
+          expectedClass(policy, scope),
+          `${policy} × ${scope}`,
+        );
+      });
+    }
   });
 });
 

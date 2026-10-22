@@ -76,20 +76,23 @@ The board's acceptance policy is authoritative and arrives in the plan.
 `--acceptance` / `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` is an advisory local copy,
 printed at startup for diagnostics only.
 
-| policy | top-level original | child card | review card |
+<!-- acceptance-matrix:begin -->
+| Scope | `human-only` | `both` (default) | `agent-only` |
 |---|---|---|---|
-| `human-only` | **hold** — record the verdict, close the review card, leave the card `in_review` | close | close |
-| `both` (default) | close | close | close |
-| `agent-only` | close | close | close |
+| `top_level` | human only | human or `taskd` | any non-human |
+| `review` card | human or `taskd` | human or `taskd` | any non-human |
+| `child` (has a parent) | any non-human | any non-human | any non-human |
+<!-- acceptance-matrix:end -->
 
-A review card is closed by the loop (`taskd`) or a human under `human-only` /
-`both`; under `agent-only` a human cannot close one, because the board's review
-scope allows only a non-human writer. A **no-review** top-level card under
+In loop terms it closes every card the matrix lets `taskd` close. Under `human-only`
+a top-level `APPROVE` is **held** (`approve_hold`): record the verdict, close the
+review card, leave the original `in_review`. A **no-review** top-level card under
 `human-only` is left for the human (`auto_accept_skipped`, reason `human_only`);
-a child is auto-accepted in every policy. The board skill's
-`references/review-workflow.md` is the semantic authority for the review card,
-the two rounds and the policy matrix; this skill describes **when** the loop
-dispatches and **how** it executes the plan.
+a child is auto-accepted in every policy. Under `agent-only` a human cannot close a
+review card, because the board's review scope allows only a non-human writer. The
+board skill's `references/review-workflow.md` is the semantic authority for the
+review card, the two rounds and the policy matrix; this skill describes **when** the
+loop dispatches and **how** it executes the plan.
 
 A held approval is idempotent: `review_verdict=approve` +
 `review_verdict_round` means a second pass rewrites neither the comment nor the

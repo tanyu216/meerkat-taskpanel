@@ -5,6 +5,10 @@ supervisor uses**, with the exact invocation and the JSON keys it reads. It is t
 contract behind `scripts/loop/board.mjs` and `scripts/loop/passes.mjs` in the
 `meerkat-loop` skill: the loop decides *when*; these are the *how*.
 
+> Paths written as `scripts/loop/…` or `src/…` name the source repositories. This skill ships
+> only `SKILL.md`, `references/` and `scripts/`; the loop body under `scripts/loop/` is the
+> generated copy in the `meerkat-loop` skill.
+
 > The loop never calls the board's HTTP API directly. Every operation below —
 > including the live event stream — is a `taskctl` command.
 
