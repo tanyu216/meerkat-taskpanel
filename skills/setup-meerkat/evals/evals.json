@@ -8,7 +8,7 @@
       "expected_output": "A detection report that classifies the board as remote, asks before configuring, and runs the installer with --target claude --no-automation (never starting a local taskd). A --dry-run writes nothing.",
       "files": [],
       "assertions": [
-        "The detection report names http://board.internal:9527 and classifies it as remote (not loopback).",
+        "The detection report names the requested board URL (or the reachable non-loopback stand-in used for an unresolvable hostname) and classifies it as remote (not loopback).",
         "The plan asks the user to confirm the remote address before writing anything.",
         "The chosen install invocation does not include the server target and does not enable the supervisor.",
         "No file under the temporary HOME is created by the detection or dry-run step."

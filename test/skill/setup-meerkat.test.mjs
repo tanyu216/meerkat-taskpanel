@@ -148,8 +148,34 @@ describe("detect.mjs — read-only discovery", () => {
     assert.equal(result.body.server.probed, false);
     assert.ok(result.body.missing.includes("taskctl"));
     assert.equal(result.body.human.configured, false);
+    assert.equal(result.body.roles.effective, null);
+    assert.ok(result.body.actions.includes("install-roles"));
     assert.deepEqual(tree(home), before.home);
     assert.deepEqual(tree(project), before.project);
+  });
+
+  it("reports the effective roles root", (t) => {
+    const home = temp(t);
+    const project = temp(t);
+    const roles = join(project, ".meerkat", "roles");
+    mkdirSync(roles, { recursive: true });
+    writeFileSync(
+      join(roles, "manifest.json"),
+      JSON.stringify({
+        version: 1,
+        roles: [{ id: "jobs", agent: "Jobs", lanes: ["worker"] }],
+      }),
+    );
+    const result = runJson(
+      t,
+      DETECT,
+      ["--home", home, "--project", project, "--no-network"],
+      { cwd: project, env: { HOME: home, PATH: temp(t) } },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.body.roles.effective.source, "project");
+    assert.equal(result.body.roles.effective.roles, 1);
+    assert.equal(result.body.actions.includes("install-roles"), false);
   });
 
   it("reads the fixed human name and the tracker state", (t) => {

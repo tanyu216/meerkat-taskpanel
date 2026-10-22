@@ -437,8 +437,21 @@ async function main(argv) {
   const roles = {
     global: rolesAt(join(loopSkillDir(opts.home, kind), "roles")),
     project: rolesAt(join(opts.project, ".meerkat", "roles")),
+    state: rolesAt(join(loopBodyDir(opts.home, kind), "roles")),
     explicit: rolesAt(explicitRoles),
   };
+  // The loader's precedence, resolved once so a caller need not re-derive it.
+  const effectiveRoles =
+    roles.explicit.present
+      ? { source: "explicit", ...roles.explicit }
+      : roles.project.present
+        ? { source: "project", ...roles.project }
+        : roles.global.present
+          ? { source: "loop-skill", ...roles.global }
+          : roles.state.present
+            ? { source: "state", ...roles.state }
+            : null;
+  roles.effective = effectiveRoles;
   const human = detectHuman(opts, opts.home, kind, env, envFile);
   const mattPocock = detectMatt(opts.project, opts.home);
 
@@ -450,7 +463,14 @@ async function main(argv) {
   if (!skills.setup.installed) missing.push("setup-skill");
   if (!loopBody.installed) missing.push("loop-body");
   if (!supervisor.installed) missing.push("supervisor");
-  if (!roles.global.present && !roles.project.present && !roles.explicit.present) missing.push("roles");
+  if (
+    !roles.global.present &&
+    !roles.project.present &&
+    !roles.state.present &&
+    !roles.explicit.present
+  ) {
+    missing.push("roles");
+  }
 
   const warnings = [];
   const hostname = new URL(resolved.url).hostname.toLowerCase();
@@ -467,7 +487,7 @@ async function main(argv) {
   if (opts.network && !health.reachable && loopback) actions.push("start-local-server");
   if (opts.network && !health.reachable && !loopback) actions.push("ask-remote-url");
   if (!human.configured) actions.push("configure-human-name");
-  if (!roles.global.present && !roles.project.present && !roles.explicit.present) actions.push("install-roles");
+  if (roles.effective === null) actions.push("install-roles");
   if (mattPocock.skill.installed && !mattPocock.tracker.exists) actions.push("offer-matt-integration");
   if (mattPocock.tracker.exists && mattPocock.tracker.unrelated) actions.push("ask-tracker-overwrite");
 
