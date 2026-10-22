@@ -879,10 +879,13 @@ export async function addComment(ref, body) {
     const data = await api.addComment(ref, { body, kind: "discuss" });
     if (board.detail && board.detail.task?.identifier === ref) {
       // Newest first — the same order the drawer's read asks for (`order=desc`)
-      // and the order the activity trail already uses.
+      // and the order the activity trail already uses. The author is the wire's
+      // own ref (the browser is the local human), so the row does not flash a
+      // different name and then change when the re-read lands.
+      const author = data.comment?.author ?? { display_name: ME };
       board.detail = {
         ...board.detail,
-        comments: [{ ...data.comment, author: { display_name: ME } }, ...board.detail.comments],
+        comments: [{ ...data.comment, author }, ...board.detail.comments],
       };
       patchTaskLocal(board.detail.task.id, {});
     }

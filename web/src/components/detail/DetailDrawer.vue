@@ -250,7 +250,12 @@ function onTabKeydown(event) {
 }
 /* A different card starts on Details; a card without sessions can never leave
    a hidden Sessions tab selected. */
-watch(() => task.value?.id, () => { activeTab.value = "details"; cancelReopen(); });
+watch(() => task.value?.id, () => {
+  // A card that stopped for a human opens where the question and the comment
+  // box are; every other card keeps the design's Details default.
+  activeTab.value = task.value?.status === "awaiting" ? "activity" : "details";
+  cancelReopen();
+});
 watch(hasSessions, (present) => {
   if (!present && activeTab.value === "sessions") activeTab.value = "details";
 });
@@ -1628,6 +1633,23 @@ function copyId() {
       <section class="td-section">
         <h3 class="td-section-title" data-i18n="drawer.comments">{{ $t("drawer.comments") }}</h3>
         <div data-detail-comments>
+          <!-- The composer sits above the list: the comments are newest-first, so
+               the newest answer and the box that writes the next one stay together.
+               R14 D47 — the form is four pieces: the visually-hidden label (the
+               prototype's `.td-sr`, whose `for` names the field), the field, the
+               hint, and the submit button on the hint's line. -->
+          <form class="mt-2" data-comment-form @submit.prevent="submitComment">
+            <label class="td-sr" for="td-comment-input" data-i18n="drawer.comment">{{ $t("drawer.comment") }}</label>
+            <textarea id="td-comment-input" class="td-textarea" data-comment-input v-model="commentDraft" :placeholder="$t('drawer.commentPlaceholder')"></textarea>
+            <div class="mt-2 flex items-center justify-between">
+              <!-- On an awaiting card the same submit is the answer, so the
+                   consequence is stated where the human is about to act. -->
+              <span v-if="statusValue === 'awaiting'" class="text-[11px] text-(--brand-text-3)" data-i18n="drawer.commentHintAwaiting">{{ $t("drawer.commentHintAwaiting") }}</span>
+              <span v-else class="text-[11px] text-(--brand-text-3)" data-i18n="drawer.commentHint">{{ $t("drawer.commentHint") }}</span>
+              <button type="submit" class="btn btn-primary btn-sm" data-comment-submit :disabled="commentBusy">{{ $t("drawer.submit") }}</button>
+            </div>
+          </form>
+
           <!-- R14 D39/D40/D41 — avatar, meta line (author + kin + stamp) and the
                pre-lined body; a decision comment is quoted by `.td-comment-decision`
                and its kin is the chip the prototype gives it. -->
@@ -1643,18 +1665,6 @@ function copyId() {
               <div class="td-comment-body">{{ row.body }}</div>
             </div>
           </article>
-
-          <!-- R14 D47 — the form is four pieces: the visually-hidden label (the
-               prototype's `.td-sr`, whose `for` names the field), the field, the
-               hint, and the submit button on the hint's line. -->
-          <form class="mt-2" data-comment-form @submit.prevent="submitComment">
-            <label class="td-sr" for="td-comment-input" data-i18n="drawer.comment">{{ $t("drawer.comment") }}</label>
-            <textarea id="td-comment-input" class="td-textarea" data-comment-input v-model="commentDraft" :placeholder="$t('drawer.commentPlaceholder')"></textarea>
-            <div class="mt-2 flex items-center justify-between">
-              <span class="text-[11px] text-(--brand-text-3)" data-i18n="drawer.commentHint">{{ $t("drawer.commentHint") }}</span>
-              <button type="submit" class="btn btn-primary btn-sm" data-comment-submit :disabled="commentBusy">{{ $t("drawer.submit") }}</button>
-            </div>
-          </form>
         </div>
       </section>
 

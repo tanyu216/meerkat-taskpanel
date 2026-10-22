@@ -857,13 +857,20 @@ describe("web/board — posting a comment", () => {
     const task = seedTask(board, { identifier: "TD-1" });
     board.detail = { task, comments: [{ id: "c1", body: "old" }] };
     const calls = installFetch({
-      "POST /api/v1/tasks/TD-1/comments": () => ok({ comment: { id: "c2", body: "new" } }),
+      "POST /api/v1/tasks/TD-1/comments": () => ok({
+        comment: { id: "c2", body: "new", author: { display_name: "local", kind: "human" } },
+      }),
     });
 
     await addComment("TD-1", "new");
 
     assert.deepEqual(board.detail.comments.map((comment) => comment.id), ["c2", "c1"]);
     assert.equal(calls[0].body.kind, "discuss");
+    assert.equal(
+      board.detail.comments[0].author.display_name,
+      "local",
+      "the row uses the server's author, not the app's ME placeholder",
+    );
     assert.equal(toasts.value.at(-1).kind, "success");
   });
 
