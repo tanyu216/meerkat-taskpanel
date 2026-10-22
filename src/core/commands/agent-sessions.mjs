@@ -3,12 +3,13 @@
  * trail, and the resume key (§4.1).
  */
 
+import { DomainError } from "../../foundation/errors.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { BOARD_ACTOR, actorOf } from "./context.mjs";
 
 /**
  * @param {object} ctx
- * @param {{taskId: string, seg: string, owner?: string, actor?: object, ownerKind: string, sessionId: string, phase?: string|null, pid?: number|null, status?: string, goal?: string}} input
+ * @param {{taskId: string, seg: string, owner?: string, actor?: object, ownerKind: string, sessionId: string, phase?: string|null, pid?: number|null, status?: string, goal?: string, meta?: object}} input
  */
 export function registerSession(ctx, input) {
   const actor = actorOf(input.actor ?? { kind: BOARD_ACTOR.kind, id: input.owner ?? BOARD_ACTOR.id });
@@ -31,6 +32,9 @@ export function registerSession(ctx, input) {
         // Pass `undefined` through: the repository keeps the recorded goal on a
         // re-registration that does not mention it.
         goal: input.goal,
+        // The same rule for meta: an omitted object keeps the recorded keys, a
+        // supplied one merges into them.
+        meta: input.meta,
       });
       ctx.repos.activities.append({
         taskId: task.id,
@@ -47,8 +51,14 @@ export function registerSession(ctx, input) {
 }
 
 /**
+ * Close a session by its row id, or by its natural key `(task, seg, owner)`.
+ *
+ * The natural key is the one a caller can derive before it has listed anything
+ * (`session id` returns the deterministic id; the key is what produced it), so
+ * a resumed conversation can close itself without a read first.
+ *
  * @param {object} ctx
- * @param {{sessionId: string, actor?: object, status?: "closed"|"failed"}} input
+ * @param {{sessionId?: string, taskId?: string, seg?: string, owner?: string, actor?: object, status?: "closed"|"failed"}} input
  */
 export function closeSession(ctx, input) {
   const actor = actorOf(input.actor ?? BOARD_ACTOR);
@@ -57,10 +67,12 @@ export function closeSession(ctx, input) {
   return transaction(
     ctx.db,
     () => {
-      const session = ctx.repos.sessions.close(input.sessionId, {
-        ts: now,
-        status: input.status ?? "closed",
-      });
+      const session = input.sessionId !== undefined
+        ? ctx.repos.sessions.close(input.sessionId, { ts: now, status: input.status ?? "closed" })
+        : ctx.repos.sessions.closeByNaturalKey(input.taskId, input.seg, input.owner, {
+            ts: now,
+            status: input.status ?? "closed",
+          });
       ctx.repos.activities.append({
         taskId: session.taskId,
         actorKind: actor.kind,
@@ -75,7 +87,28 @@ export function closeSession(ctx, input) {
   );
 }
 
-/** @param {object} ctx @param {{taskId: string}} input */
-export function listSessions(ctx, input) {
-  return ctx.repos.sessions.listByTask(input.taskId);
+/**
+ * A card's sessions, or the board's sessions across cards.
+ *
+ * `taskId` selects the per-card read (oldest first). Without it, the global read
+ * requires at least one filter — an unfiltered scan of every session on the
+ * board is not a useful answer and would grow without bound.
+ *
+ * @param {object} ctx
+ * @param {{taskId?: string, owner?: string, ownerKind?: string, status?: string, limit?: number}} [input]
+ */
+export function listSessions(ctx, input = {}) {
+  if (input.taskId !== undefined) return ctx.repos.sessions.listByTask(input.taskId);
+  if (
+    (input.owner === undefined || input.owner === "") &&
+    (input.ownerKind === undefined || input.ownerKind === "") &&
+    (input.status === undefined || input.status === "")
+  ) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: "a board-wide session read needs --owner, --owner-kind or --status",
+      details: { fields: ["owner", "ownerKind", "status"] },
+      hint: { fix: "pass --owner <name> (or --status running) to bound the read" },
+    });
+  }
+  return ctx.repos.sessions.list(input);
 }

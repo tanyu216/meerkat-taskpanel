@@ -260,10 +260,10 @@ no stored bytes is the board's `NOT_FOUND`.
 
 | Command | Purpose |
 |---|---|
-| `session set <ref> --seg <seg> --owner-kind <name> [--owner] [--phase] [--pid] [--goal <text>] [--session <id>]` | Register a session (the id is derived from `task, owner, seg`, so a resume keeps it). `--owner-kind` is the owner's platform kind (e.g. `claude`, `codex`); `--goal` is one sentence saying what this session is for. Omit `--goal` on a re-registration to keep the recorded sentence. |
+| `session set <ref> --seg <seg> --owner-kind <name> [--owner] [--phase] [--pid] [--goal <text>] [--meta k=v]… [--session <id>]` | Register a session (the id is derived from `task, owner, seg`, so a resume keeps it). `--owner-kind` is the owner's platform kind (e.g. `claude`, `codex`); `--goal` is one sentence saying what this session is for. Omit `--goal` on a re-registration to keep the recorded sentence. `--meta` is opaque host metadata (harness, thread id, log path, …); a re-registration **merges** the supplied keys into the recorded object. |
 | `session id <ref> --seg <seg> [--owner <name>] [--session <task-id>]` | Print the deterministic session id **without registering a session**. It is the value `session set` would write for the same `(task, owner, seg)`, so it can be handed to an agent before it starts. `--owner` defaults to the caller's actor id, exactly as `session set` does; `--session` replaces the task fed to the derivation. It always derives — a global `--session-id` is ignored. Read-only: no session row and no card change; it still resolves the ref through the board, so `ensureBoard` may start `taskd` (use the script below, or `TASKD_NO_AUTOSTART=1`, for a strict offline read). |
-| `session close <ref> <session-id> [--failed]` | Close it. |
-| `session list <ref>` | List them, including each session's `goal`. |
+| `session close <ref> [<session-id>] [--seg <seg>] [--owner <name>] [--failed]` | Close it by row id, or by the natural key `(task, seg, owner)` with `--seg` (owner defaults to the acting actor). Exactly one identity is required. |
+| `session list [<ref>] [--owner <name>] [--owner-kind <kind>] [--status running\|closed\|failed] [--limit <n>]` | With a ref: a card's sessions (oldest first), including each `goal` and `meta`. Without a ref: the board-wide read, newest first, bounded by `--limit` (default 200); it requires at least one of `--owner` / `--owner-kind` / `--status`, and refuses an unbounded scan. |
 
 For a derivation that never touches the board, the skill ships
 [`scripts/session-id.mjs`](../scripts/session-id.mjs):

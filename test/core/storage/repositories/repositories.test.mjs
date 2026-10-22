@@ -745,7 +745,7 @@ describe("repositories/dictionary", () => {
 
 describe("repositories/sessions and attachments and activities", () => {
   it("upserts a session on its natural key and closes it", async () => {
-    await board(({ repos }) => {
+    await board(({ db, repos }) => {
       const task = makeTask(repos);
       const session = repos.sessions.upsertByNaturalKey({
         taskId: task.id,
@@ -786,8 +786,41 @@ describe("repositories/sessions and attachments and activities", () => {
       assert.deepEqual(repos.sessions.listByTask(task.id).length, 1);
       assert.equal(repos.sessions.find(task.id, "seg2", "linus").id, session.id);
       assert.equal(repos.sessions.get(session.id).pid, 42, "an unspecified pid is not clobbered to null");
+
+      // 0036 — opaque meta merges across re-registrations, and a broken value
+      // reads as an empty object instead of breaking the read.
+      const withMeta = repos.sessions.upsertByNaturalKey({
+        taskId: task.id,
+        seg: "seg2",
+        owner: "linus",
+        ownerKind: "claude",
+        sessionId: "ff309028",
+        meta: { harness: "claude" },
+        ts: TS2,
+      });
+      assert.deepEqual(withMeta.meta, { harness: "claude" });
+      const merged = repos.sessions.upsertByNaturalKey({
+        taskId: task.id,
+        seg: "seg2",
+        owner: "linus",
+        ownerKind: "claude",
+        sessionId: "ff309028",
+        meta: { thread_id: "t1" },
+        ts: TS2,
+      });
+      assert.deepEqual(merged.meta, { harness: "claude", thread_id: "t1" }, "a partial meta merges");
+      assert.equal(repos.sessions.list({ owner: "linus" }).length, 1);
+      assert.equal(repos.sessions.list({ owner: "nobody" }).length, 0);
+      db.prepare("UPDATE agent_sessions SET meta_json = 'not json' WHERE id = ?").run(session.id);
+      assert.deepEqual(repos.sessions.get(session.id).meta, {}, "a broken value reads as empty");
+
       assert.equal(repos.sessions.close(session.id, { ts: TS2 }).status, "closed");
       assert.throws(() => repos.sessions.close("nope", { ts: TS2 }), (err) => err.code === "NOT_FOUND");
+      assert.equal(repos.sessions.closeByNaturalKey(task.id, "seg2", "linus", { ts: TS2 }).status, "closed");
+      assert.throws(
+        () => repos.sessions.closeByNaturalKey(task.id, "nope", "linus", { ts: TS2 }),
+        (err) => err.code === "NOT_FOUND",
+      );
       assert.throws(
         () => repos.sessions.upsertByNaturalKey({ taskId: task.id, seg: "", owner: "x", ownerKind: "claude", sessionId: "s", ts: TS }),
         (err) => err.code === "VALIDATION_FAILED",

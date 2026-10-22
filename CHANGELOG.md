@@ -46,6 +46,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checks (dynamic 64-item cap), and the review prompt requires an omission check: a
   missing requirement or an unexplained deviation from `plan.md` is grounds for `REJECT`.
   With no roles root, every handoff is byte-identical to before.
+- **Sessions record opaque host observations, and can be read/closed across cards (migration
+  `0036`).** `agent_sessions.meta_json` stores a free-form object the board never interprets;
+  `session set --meta k=v` writes it (a re-registration merges the supplied keys), and the
+  session wire carries `meta`. `session close <ref> --seg <seg> [--owner <name>]` closes by the
+  natural key `(task, seg, owner)` instead of the row id, and `session list` without a card ref
+  is the board-wide read (`--owner` / `--owner-kind` / `--status`, newest first, `--limit`
+  default 200; an unfiltered scan is refused). The per-card `session list <ref>` is unchanged.
 - **A worker can ask, and the answer re-queues it (migration `0034`).** `comments.kind` gains
   `question`; an agent entering `awaiting` must supply `issue move … --question "…"` (or
   already have an unanswered question), which is written as a `question` comment in the same
