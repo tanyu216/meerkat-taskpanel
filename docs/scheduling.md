@@ -1196,11 +1196,18 @@ The reason is **required**; `--allow-all-tools` without it is a startup error. W
 it the Claude adapter runs `--permission-mode bypassPermissions`, and the control,
 project and subagent sessions alike have the installing user's full OS
 permissions. **The project directory is not an isolation boundary** — cwd is
-where the work happens, not a sandbox. Other hosts use their own equivalent
-(Codex approvals off + full-access sandbox, Cursor `agent` mode + permissions
-allow, OpenCode allow-all rules, Pi auto-approve) when their resident adapter
-lands. The flag is printed in `--supervisor=status`, and the installed units
-never carry it: the config file is where the authorization is recorded.
+where the work happens, not a sandbox. Codex uses `approvalPolicy: "never"` with
+the full-access sandbox, Pi adds `--approve`, Cursor answers every
+`session/request_permission` with an allow option, and OpenCode's permission rules
+stay its own configuration. The flag is printed in `--supervisor=status`, and the
+installed units never carry it: the config file is where the authorization is
+recorded.
+
+The **legacy one-shot wake glue is deliberately excluded**: it keeps the
+no-default-bypass rule (`scripts/verify/host-runtime.mjs` fails the build if any
+wake script carries a bypass flag), because it starts a process this deployment
+no longer supervises. Full access belongs to the resident pool, where the
+authorization and its reason travel with the config the pool reads.
 
 ## The five hosts: how each one is triggered
 

@@ -141,7 +141,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `--subagent-background`, and the authorized full-tool-access opt-in
   `--allow-all-tools` + `--allow-all-tools-reason` (off by default; the reason is
   required, and the project directory is not an isolation boundary). The legacy
-  glue/`--wake-command` path remains for manual and old installations. Resident
+  glue/`--wake-command` path remains for manual and old installations and keeps
+  the no-default-bypass rule. Resident
   adapters ship for all five hosts — Claude Code stream-json, Codex app-server
   threads, Pi `--mode rpc`, OpenCode `serve` (one per directory), Cursor ACP. See
   `docs/scheduling.md` §The resident session pool.

@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { after, describe, it } from "node:test";
@@ -209,68 +209,18 @@ describe("install.sh: scheduling units", () => {
     assert.ok(wake.includes("claude -p"), "wake-claude must drive headless claude");
     assert.ok(wake.includes("--resume"), "wake-claude must support --resume <sid>");
     assert.ok(!wake.includes("{{"), "templates must be rendered");
-    // Full tool access is never a default; the glue reads the host config's
-    // authorization instead of carrying a bypass of its own.
-    assert.ok(wake.includes("MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS"), wake);
-    assert.ok(wake.includes("bypassPermissions"), "the opt-in must reach the CLI when enabled");
-    assert.equal(
-      /^\s*exec claude .*--dangerously-skip-permissions/m.test(wake),
-      false,
-      "no unconditional bypass",
-    );
+    // The legacy one-shot glue stays inside the no-default-bypass rule; full
+    // access is the resident pool's opt-in, not this script's.
+    const commands = wake
+      .split("\n")
+      .filter((line) => !/^\s*#/.test(line))
+      .join("\n");
+    for (const bad of ["--dangerously-skip-permissions", "--dangerously-bypass", "--approve", "--force"]) {
+      assert.equal(commands.includes(bad), false, `wake-claude must not carry ${bad}`);
+    }
 
     // The exact load command is printed, not run.
     assert.match(run.stdout + run.stderr, /launchctl|systemctl|crontab/);
-  });
-
-  it("the wake glue applies full tool access only when the host config authorizes it", () => {
-    const home = makeTempDir();
-    const bin = makeTempDir();
-    makeFakeCli(bin, "claude");
-    const run = runInstall(["--target", "claude", "--agent-name", "alice"], installEnv(home, bin));
-    assert.equal(run.status, 0, run.stderr);
-
-    const project = join(home, "project");
-    mkdirSync(project, { recursive: true });
-    writeFileSync(
-      join(home, ".claude", "skills", "meerkat-taskpanel", "projects.json"),
-      JSON.stringify({ projects: [{ project: "P", local_path: project }] }),
-    );
-    const record = join(home, "wake-argv.json");
-    const fake = join(bin, "claude");
-    writeFileSync(fake, `#!/bin/sh\nprintf '%s\\n' "$@" > "${record}"\n`, "utf8");
-    chmodSync(fake, 0o755);
-
-    const env = {
-      ...process.env,
-      PATH: `${bin}:${process.env.PATH}`,
-      TP_PROJECT: "P",
-      TP_NODE: process.execPath,
-    };
-    const first = spawnSync("bash", [join(home, ".claude", "bin", "wake-claude.sh"), "handoff"], {
-      encoding: "utf8",
-      env,
-    });
-    assert.equal(first.status, 0, first.stderr);
-    assert.equal(
-      readFileSync(record, "utf8").includes("bypassPermissions"),
-      false,
-      "no bypass without the host config's authorization",
-    );
-
-    writeFileSync(
-      join(home, ".claude", "meerkat-taskpanel.env"),
-      `${readFileSync(join(home, ".claude", "meerkat-taskpanel.env"), "utf8")}` +
-        "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes\nMEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON=operator authorized unattended runs\n",
-    );
-    const second = spawnSync("bash", [join(home, ".claude", "bin", "wake-claude.sh"), "handoff"], {
-      encoding: "utf8",
-      env,
-    });
-    assert.equal(second.status, 0, second.stderr);
-    const argv = readFileSync(record, "utf8").split("\n");
-    assert.equal(argv[argv.indexOf("--permission-mode") + 1], "bypassPermissions");
-    assert.match(second.stderr, /authorized by: operator authorized unattended runs/);
   });
 
   it("copies the loop body into the host, so a loaded unit outlives the checkout", async () => {
@@ -592,8 +542,8 @@ describe("install.sh: the loop skill's distribution", () => {
     assert.equal(run.status, 0, run.stderr);
 
     const glue = readFileSync(join(home, ".cursor", "bin", "wake-cursor.sh"), "utf8");
-    assert.match(glue, /exec cursor-agent -p \$\{allow_flag:\+--force\} "\$prompt"/);
-    assert.match(glue, /exec cursor-agent -p \$\{allow_flag:\+--force\} --resume "\$sid" "\$prompt"/);
+    assert.match(glue, /exec cursor-agent -p "\$prompt"/);
+    assert.match(glue, /exec cursor-agent -p --resume "\$sid" "\$prompt"/);
     assert.match(glue, /CURSOR_API_KEY/, "the real-CLI probe must be named, with its credential gate");
   });
 

@@ -218,7 +218,8 @@ MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON="<who authorized it and why>"
 The reason is required and recorded in `--supervisor=status`. With it, every
 control, project and subagent session runs with the installing user's full OS
 permissions; the project directory is a working directory, **not** an isolation
-boundary.
+boundary. The legacy one-shot wake glue never carries a bypass: full access is
+the resident pool's opt-in only.
 
 ## Compatibility
 
