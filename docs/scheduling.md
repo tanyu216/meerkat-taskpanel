@@ -581,6 +581,61 @@ ledger key), so it notifies once rather than every pass; the loop warns at start
 not a card is stuck. The fix is to turn auto-accept on or let a non-human writer close the
 card — the board's plan stays authoritative either way.
 
+## Team roles (optional)
+
+A deployment may give its agents named roles — the standard team is **Jobs** (product
+design), **Linus** (architecture and implementation), **Turing** (acceptance) and a
+separate **Reviewer**. The board never sees a "role": Jobs/Linus/Turing are ordinary board
+**agent names**, so the creator, the assignee and the report author are recorded as those
+names. Roles are installed by `/setup-meerkat`, never by `install.sh`; with no roles root
+the loop behaves exactly as it did before the feature.
+
+A roles root is a directory with `manifest.json`:
+
+```text
+<roles-root>/
+├── manifest.json
+├── decision-policy.md          optional; overrides the loop's default ladder
+├── jobs/{workflow.md,self-check.md}
+├── linus/{workflow.md,self-check.md}
+├── turing/{workflow.md,self-check.md}
+└── reviewer/{workflow.md,reviewer-prompt.md}
+```
+
+Each role carries its board `agent` name, an optional `native_agent` (the Claude/Codex
+subagent definition), its `lanes` (`worker` and/or `reviewer`), and relative paths to its
+workflow, self-check and reviewer prompt. The loader resolves the **whole manifest** at the
+first root that has one:
+
+1. `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`
+2. `<project>/.meerkat/roles/`
+3. `<agent-dir>/skills/meerkat-loop/roles/` (the global install)
+4. `<agent-dir>/meerkat-taskpanel/roles/` (legacy state-dir location)
+
+A project set replaces the global set; the roles are not merged one by one. Every path must
+stay inside the root, including through symlinks — an escaping or malformed entry warns and
+leaves that path `null`, and a broken manifest degrades to "no roles" rather than wedging
+the poll or the wake.
+
+**Two layers.** The loop routes by the card's assignee and puts the role's title,
+responsibilities and boundaries into the handoff (layer 1); the spawned subagent reads the
+role's `workflow.md` (and `self-check.md`) before acting (layer 2). The reviewer's prompt is
+inlined at the start of the review handoff. Every role is told to write and maintain
+`.meerkat/<identifier>/plan.md`, which the reviewer reads.
+
+**Decisions.** A subagent does not decide an unauthorized question: it writes an agent
+`question` comment on the `in_progress` card and stops. The project session answers
+operationally with a `note` (and reattaches or requeues), or escalates to the human with
+`issue move <ref> awaiting --awaiting-reason E1..E5`; only a human decision resumes an
+awaiting card. The ladder is the loop's `references/decision-policy.md`, overridable per
+team.
+
+The scan set is still explicit: write `MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing` (and
+`MEERKAT_TASKPANEL_REVIEWER=Reviewer`) to the agent config, or the loop scans only its
+default agent and a role card is never claimed. `/setup-meerkat` does this merge with the
+user's consent. `--force` on a loop reinstall replaces its `roles/` directory, so re-run
+`/setup-meerkat` afterwards.
+
 ## Continuity: a fresh handoff, not a resumed pile
 
 Every wake hands the worker a **bounded, fresh handoff** built by

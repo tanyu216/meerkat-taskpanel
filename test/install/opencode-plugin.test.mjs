@@ -18,6 +18,7 @@ import { describe, it } from "node:test";
 
 import plugin, { MeerkatTaskpanelPlugin } from "../../.opencode/plugins/meerkat-taskpanel.js";
 import { LOOP_SKILL_NAME } from "../../scripts/sync-loop.mjs";
+import { SKILLS } from "../../scripts/verify/skill.mjs";
 import { SKILL_NAME } from "../../src/foundation/constants.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -74,12 +75,12 @@ describe("opencode plugin — V1 config hook", () => {
 });
 
 describe("opencode plugin — V2 setup", () => {
-  it("registers both skills, with the frontmatter the host reads", async () => {
+  it("registers every skill in the tree, with the frontmatter the host reads", async () => {
     const skills = await collectRegisteredSkills();
 
     assert.deepEqual(
       skills.map((skill) => skill.id).sort(),
-      [LOOP_SKILL_NAME, SKILL_NAME].sort(),
+      [...SKILLS].sort(),
     );
 
     for (const skill of skills) {
@@ -124,6 +125,10 @@ describe("opencode plugin — V2 setup", () => {
     };
 
     await plugin.setup(ctx);
-    assert.deepEqual(added, [LOOP_SKILL_NAME], "the surviving skill is still registered");
+    assert.deepEqual(
+      [...added].sort(),
+      SKILLS.filter((skill) => skill !== SKILL_NAME).sort(),
+      "the surviving skills are still registered",
+    );
   });
 });

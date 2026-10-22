@@ -65,7 +65,7 @@ node --test                          # smoke / contract test suite
 node scripts/sync-skills.mjs         # regenerate the loop payload (manifest + scripts/ + templates/)
 node scripts/sync-skills.mjs --check # verify both are in sync
 node scripts/verify/manifests.mjs    # validate the agent-kind + loop + marketplace manifests
-node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
+node scripts/verify/skill.mjs        # validate every shipped SKILL.md frontmatter
 node scripts/verify/web-dist.mjs     # are the two web/dist-guarded tests legs actually run?
 node scripts/build.mjs               # produce dist/ — the npm release tree (not web/dist)
 ```
@@ -380,13 +380,18 @@ state (§4.3); the row still exists in `task_activities` and under
 
 ## The skills are generated, never hand-edited
 
-There are two skills, and `scripts/sync-skills.mjs` owns the whole generated surface
+There are three skills, and `scripts/sync-skills.mjs` owns the whole generated surface
 around them (it delegates the payload half to `scripts/sync-loop.mjs`):
 
 | Skill | Authored in | Generated into |
 |---|---|---|
 | `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | nothing — every harness reads `skills/` in place |
 | `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `manifest.txt` + `scripts/` (except the gate) + `templates/`; foundation is generated inside `scripts/foundation/` |
+| `setup-meerkat` (install/repair + team setup) | `skills/setup-meerkat/` — everything, including its `scripts/` and `assets/` | nothing — it is standalone (Node builtins only) and is copied as-is with the Claude bundle |
+
+`setup-meerkat` is the one skill whose scripts are **not** generated: it may not import
+`src/core`, `src/cli` or `src/server`, because it has to run from an installed copy that
+has only its own directory (`test/cli/imports.test.mjs` enforces that).
 
 There is exactly one `skills` tree in the repository. No harness receives a copy: each reads
 `skills/` in place through a manifest at the repository root, which is the board's plugin
@@ -412,7 +417,8 @@ from the board through `issue reconcile --workflow`. OpenClaw never receives the
 all, by ruling: its framework already ships an equivalent supervisor, and `install.sh
 --target openclaw` copies the board skill only.
 
-**After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/loop/`,
+**After editing the generated skill surfaces (`skills/meerkat-loop/` except its authored
+files, `skills/meerkat-taskpanel/`), `scripts/supervisor.mjs`, `scripts/loop/`,
 `scripts/wake-cwd.mjs`, `src/foundation/`, or `scripts/install/templates/`, run:**
 
 ```bash

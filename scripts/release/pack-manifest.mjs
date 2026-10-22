@@ -42,6 +42,8 @@ export const REQUIRED = Object.freeze([
   "scripts/install/templates/server/taskctl",
   "web/dist/index.html",
   "skills/meerkat-taskpanel/SKILL.md",
+  "skills/meerkat-loop/SKILL.md",
+  "skills/setup-meerkat/SKILL.md",
   ".claude-plugin/plugin.json",
   ".claude-plugin/marketplace.json",
   ".cursor-plugin/plugin.json",

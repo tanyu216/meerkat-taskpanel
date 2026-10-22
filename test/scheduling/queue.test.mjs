@@ -137,6 +137,15 @@ describe("card queue", () => {
     assert.equal(b.review_round, null);
   });
 
+  it("records the selected role agent, normalizing absent to null", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, { ...card("T-1"), agent_role: "Jobs" });
+    enqueueCard(dir, card("T-2"));
+    const [a, b] = readCards(dir).value.cards;
+    assert.equal(a.agent_role, "Jobs");
+    assert.equal(b.agent_role, null);
+  });
+
   it("claims a bounded batch and completes it", (t) => {
     const dir = dirFor(t);
     for (const ref of ["T-1", "T-2", "T-3"]) enqueueCard(dir, card(ref));

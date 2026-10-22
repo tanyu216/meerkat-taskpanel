@@ -264,6 +264,16 @@ Acceptance status is `met` · `partial` · `not_met` · `not_applicable`. Eviden
 set. A report that satisfies the delivery gate is `origin='delivery'`; an imported historical
 report is `origin='import'` and never satisfies it.
 
+## The process directory
+
+The loop exports each card to `.meerkat/<identifier>/card.md` (read-only) and puts the worker's
+process files beside it. Workers maintain `.meerkat/<identifier>/plan.md` — goals, non-goals,
+steps, risks, and the requirement → acceptance mapping — and update it as they learn. The
+reviewer reads it and treats an unexplained deviation as grounds for `VERDICT: REJECT`; a
+missing plan is not itself a failure (the reviewer falls back to the description and the frozen
+acceptance snapshot). The board holds no directory (O3): this is a loop convention under the
+project's own working directory.
+
 ## Export rules
 
 | Rule | Consequence |

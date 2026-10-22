@@ -31,6 +31,14 @@ import {
 } from "./constants.mjs";
 import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
+import {
+  renderDecisionPolicySummary,
+  renderReviewerProtocol,
+  renderRoleDecision,
+  renderRoleLayerOne,
+  renderRoleSelfCheck,
+  renderRoleWorkflow,
+} from "./role-prompt.mjs";
 
 /**
  * Default cap on concurrently running subagents — workers and reviewers share it.
@@ -669,7 +677,7 @@ export function buildHandoff(input) {
     : "stop at in_review — a human accepts to done.";
   const brief = cardFileRel(ref);
   const processDir = cardDirRel(ref);
-  return [
+  const lines = [
     `You are a worker subagent of the ${project} project session — one card: ${ref}.`,
     `Title: ${title}`,
     `Task brief: ${brief} — exported by the loop; read it first, it is authoritative for this card.`,
@@ -684,37 +692,49 @@ export function buildHandoff(input) {
     "Step 0 — container check. Read the brief first, then the live card:",
     `  ${brief}    # description, acceptance, comments, sessions, attachments, report`,
     `  taskctl issue get ${ref} --json <flags>    # live status, version, acceptance snapshot, meta`,
-    "  Several deliverables? Promote and split FIRST:",
-    `    taskctl issue update ${ref} --kind epic <flags>`,
-    `    taskctl issue move ${ref} todo <flags>      # an epic is never claimed; release this wake claim`,
-    `    taskctl comment add ${ref} --kind change --body "split into: ..." <flags>`,
-    `    taskctl issue create --project ${project} --title "..." --acceptance "..." --target "<piece>" <flags>`,
-    `    taskctl relation add ${ref} --type parent --target <child> <flags>`,
-    `    taskctl issue move <child> in_progress <flags>    # claim ONE piece and work that`,
-    "    Each child needs its own --target and --acceptance.",
-    "    meta.epic_triage=off: do not promote; record a split plan in a change comment.",
+    "  Several deliverables? Do not promote or split yourself. Add an agent question",
+    "  comment describing the pieces, keep the card in_progress, and stop. The project",
+    "  session decides whether to split (scope expansion is E1 and goes to the human).",
+    "    taskctl comment add ${ref} --kind question --body \"...\" <flags>",
+    "    meta.epic_triage=off: do not promote; record the split question in a comment.",
     "",
-    `Step 1 — acceptance list, on the card you work (<card> = ${ref}, or the child after a split):`,
+    `Step 1 — acceptance list, on the card you work (<card> = ${ref}):`,
     "  `acceptance` in issue get --json is the FROZEN baseline; meta.acceptance is only",
     "  the seed it was copied from. Work to the snapshot; append, never replace or remove.",
-    "  Snapshot and meta both empty (not an epic): derive 1-6 concrete, externally",
-    "  checkable, non-empty items from the card, then persist once:",
+    "  Snapshot and meta both empty (not an epic): a mechanical derivation may be",
+    "  pre-authorized by the project session. If it was not, add an agent question",
+    "  comment and stop. Changing an existing acceptance item is E2 and goes to the",
+    "  project session/human.",
     `    taskctl issue update <card> --acceptance "..." --acceptance "..." --meta acceptance_derived=yes <flags>`,
     `    taskctl comment add <card> --kind change --body "acceptance list derived at claim: 1) ..." <flags>`,
     `  Comments: taskctl comment list <card> --limit 200 --json <flags>`,
-    "  Too thin to yield checkable items, or blocked on a decision? ASK AND STOP —",
-    "  the human's answer re-queues the card for a fresh worker:",
-    `    taskctl issue move <card> awaiting --awaiting-reason E2 --question "what you need to know" <flags>`,
-    "  Then stop. Do not wait in this conversation: read the newest human decision/note",
+    "  Too thin to yield checkable items, or blocked on a decision? Do not enter awaiting",
+    "  yourself: add an agent question comment on the card, keep it in_progress, and stop.",
+    "  The project session answers, or escalates to the human with E1-E5.",
+    `    taskctl comment add <card> --kind question --body "Decision needed: ..." <flags>`,
+    "  Then stop. Do not wait in this conversation: read the newest project/human answer",
     "  when the card is claimed again and continue from it.",
-    "  Review asks for more: append, never replace. legacy: ask via E2, do not migrate.",
+    "  Review asks for more: append, never replace. Ask the project session, do not migrate.",
     "",
     `Keep the claim alive (<=10 minutes): taskctl issue heartbeat <card> <flags>`,
     `Deliver with a report (a draft may live under ${processDir}/report.md): taskctl issue deliver <card> --report-file - <flags>`,
     "Rules: after a split, the heartbeat and delivery apply to the claimed CHILD, not the epic.",
     `On resume, re-read ${brief} before acting; never edit it.`,
     `${acceptanceRule} Carry the flags above on every write.`,
-  ].join("\n");
+  ];
+  if (input.role) {
+    lines.push("", ...renderRoleLayerOne(input.role));
+    lines.push(
+      "",
+      "## Plan file",
+      `Write and maintain ${processDir}/plan.md before you start; update it as you learn.`,
+      "The reviewer reads it. Do not edit card.md.",
+    );
+    if (input.roleWorkflowPath) lines.push("", ...renderRoleWorkflow(input.role, input.roleWorkflowPath));
+    if (input.selfCheckPath) lines.push("", ...renderRoleSelfCheck(input.role, input.selfCheckPath));
+    lines.push("", ...renderRoleDecision(input.role, input.decisionPolicyPath ?? null));
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -746,7 +766,7 @@ export function buildReviewHandoff(input) {
     ? card.review_of.trim()
     : null;
   const originalBrief = originalRef === null ? null : cardFileRel(originalRef);
-  return [
+  const lines = [
     `You are a reviewer subagent of the ${project} project session — one delivered card.`,
     `Review card: ${ref}`,
     `Card under review: ${original} (round ${round})`,
@@ -788,7 +808,32 @@ export function buildReviewHandoff(input) {
     "closes this card. You cannot enter awaiting — a review must end in a verdict; if the",
     "evidence is insufficient, REJECT and write the findings. Carry the attribution flags",
     "above on every write.",
-  ].join("\n");
+  ];
+  if (input.reviewerPrompt || input.reviewerPromptPath) {
+    const block = renderReviewerProtocol(input.reviewerPrompt ?? null, input.reviewerPromptPath ?? null);
+    if (block.length > 0) {
+      const at = lines.findIndex((line) => line.startsWith("Step 0 —"));
+      lines.splice(at === -1 ? lines.length : at, 0, ...block, "");
+    }
+  }
+  if (input.role) {
+    lines.push("", ...renderRoleLayerOne(input.role));
+    if (input.roleWorkflowPath) lines.push("", ...renderRoleWorkflow(input.role, input.roleWorkflowPath));
+    const originalDir = originalRef === null ? "<original>" : cardDirRel(originalRef);
+    lines.push(
+      "",
+      "## Reference material",
+      `  ${originalDir}/plan.md — the worker's plan (if it exists)`,
+      `  ${originalDir}/ — notes, evidence, report drafts, attachments`,
+      "Omission check: every requirement in the description, comments and plan must map to",
+      "an acceptance item and evidence, or be explicitly deferred. A narrowed acceptance list,",
+      "an unexplained deviation from the plan, or a missing requirement is grounds for",
+      "`VERDICT: REJECT`. If plan.md does not exist, say so and fall back to the description",
+      "and acceptance snapshot; absence alone is not a reject.",
+    );
+    if (input.decisionPolicyPath) lines.push("", `Decision policy: ${input.decisionPolicyPath}`);
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -828,6 +873,8 @@ export function buildReviewHandoff(input) {
  *   commonArgs?: string[],
  *   continueIntervalSeconds?: number,
  *   includePoll?: boolean,
+ *   openedBy?: "human"|"supervisor",
+ *   decisionPolicy?: {path?: string|null, text?: string|null}|null,
  * }} [input]
  * @returns {string}
  */
@@ -870,28 +917,38 @@ export function buildContinuePrompt(input = {}) {
     );
   }
 
-  // 0034 — the question channel. A worker that cannot proceed stops with a
-  // `question` comment; the human's `decision` / `confirm` / `change` answer
-  // re-queues the card automatically, while a `note` answer needs an explicit
-  // move. Where an unanswerable question goes depends on who opened this loop.
+  // The decision ladder. A subagent never decides an unauthorized question: it
+  // records an agent `question` comment on an in_progress card and stops. The
+  // main session decides what it can (operational or plan/acceptance-internal)
+  // with a note, or escalates E1-E5 to the human via `awaiting`. Only a human
+  // decision resumes an awaiting card; the loop's own answer is never a decision
+  // kind and never `--as-human` (except when recording what the human said in a
+  // human-opened conversation).
   const openedBy = input.openedBy === "human" ? "human" : "supervisor";
   lines.push(
     "",
-    "Waiting questions (before poll):",
-    "  taskctl issue list --status awaiting --json",
-    "  taskctl comment list <ref> --kind question --json",
-    "  If you can answer:",
-    '    taskctl comment add <ref> --kind note --body "..."',
-    "    taskctl issue move <ref> todo",
-    "  A note does NOT auto-resume; the move does.",
-    "  Never write decision/confirm/change — those are the human's.",
-    "  Any human comment after the question is an answer: if one exists, move the card",
-    "  to todo; do not re-answer it.",
-    "  If the question needs a human:",
+    "Questions and decision rights (before poll):",
+    "  Subagents never decide an unauthorized question: they write an agent `question`",
+    "  comment on an in_progress card and stop. Read those first:",
+    "    taskctl issue list --status in_progress --json",
+    "    taskctl comment list <ref> --kind question --json",
+    "  Then read human questions:",
+    "    taskctl issue list --status awaiting --json",
+    "    taskctl comment list <ref> --kind question --json",
+    "  For an agent question you can decide (operational or within the plan/acceptance):",
+    '    taskctl comment add <ref> --kind note --body "decision: ... (why)"',
+    "    taskctl issue move <ref> todo        # re-claim with the answer in the trail",
+    "  A note does NOT auto-resume an awaiting card; the move does.",
+    "  For E1-E5 (scope, acceptance, design/aesthetic, security/data, architecture) or",
+    "  anything you cannot decide, do not answer: escalate with the question format:",
+    '    taskctl issue move <ref> awaiting --awaiting-reason E1..E5 --question "Decision needed: ...; Options: ...; Recommendation: ...; Why the main session cannot decide: ..."',
+    "  Never write decision/confirm/change for your own decision.",
+    "  A human decision/confirm/change is the only thing that auto-resumes an awaiting card.",
     openedBy === "human"
-      ? "    ask the human in this conversation, then record the answer as a note and move to todo."
-      : "    leave the card awaiting — the human answers with a decision comment and the",
-    ...(openedBy === "human" ? [] : ["    board re-queues it automatically."]),
+      ? "  When the human answers in this conversation, record it with --as-human and the appropriate decision kind; the board re-queues the card. If they only give a note, record a note and move the card to todo."
+      : "  The human answers on the board with a decision comment; the board re-queues it automatically.",
+    "  Do not re-answer a question that already has a later human comment.",
+    ...(input.decisionPolicy ? ["", ...renderDecisionPolicySummary(input.decisionPolicy)] : []),
     "",
     "Rules:",
     "- Never move a card to done. in_review → done is the board's acceptance, applied by the loop as taskd.",

@@ -189,15 +189,24 @@ export function createQueueDispatch(input) {
   const { opts, config, stateDir, admission } = input;
   const exportCard = input.exportCard ?? exportCardFile;
   const log = input.log ?? (() => {});
+  const loggedRoleWarnings = new Set();
   return async (action, card) => {
     if (opts.dryRun) return { ok: true, pid: null, dryRun: true };
     const dir = admission.dirFor(action.identifier);
     if (dir === null) return { ok: false, error: "no admitted project directory" };
-    const { role, handoff } = wakeHandoff(opts, config, action, card);
+    const { role, agentRole, roleWarnings, handoff } = wakeHandoff(opts, config, action, card, {
+      projectDir: dir,
+    });
+    for (const warning of roleWarnings) {
+      if (loggedRoleWarnings.has(warning)) continue;
+      loggedRoleWarnings.add(warning);
+      log(`roles: ${warning}`);
+    }
     const queued = enqueueCard(stateDir, {
       card: action.identifier,
       role,
       agent: action.agent,
+      agent_role: agentRole,
       project: card?.project ?? null,
       target_dir: dir,
       handoff,
@@ -444,7 +453,13 @@ export async function runPatrolOnce(opts, env = process.env) {
         log(`patrol: claim refused ${alert.identifier} (${claimed.error ?? "conflict"}) — not dispatching`);
         return { ok: false };
       }
-      const { role, handoff } = wakeHandoff(opts, config, action, task ?? { identifier: alert.identifier });
+      const { role, handoff } = wakeHandoff(
+        opts,
+        config,
+        action,
+        task ?? { identifier: alert.identifier },
+        { projectDir: resolved.dir },
+      );
       const queued = enqueueCard(dirname(String(opts.state)), {
         card: alert.identifier,
         role,

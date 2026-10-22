@@ -277,6 +277,8 @@ describe("planReviewDispatch", () => {
     assert.deepEqual(action.acceptance, [
       "The delivery report is consistent with its evidence anchors",
       "The comment trail has no unresolved decision/defect entry",
+      "Every requirement in the original description, comments and plan is covered by an acceptance item or explicitly deferred with a recorded decision",
+      "The delivery matches .meerkat/T-1/plan.md, or every deviation is recorded and justified",
     ]);
   });
 
@@ -290,10 +292,12 @@ describe("planReviewDispatch", () => {
       "gate visible",
       "The delivery report is consistent with its evidence anchors",
       "The comment trail has no unresolved decision/defect entry",
+      "Every requirement in the original description, comments and plan is covered by an acceptance item or explicitly deferred with a recorded decision",
+      "The delivery matches .meerkat/T-1/plan.md, or every deviation is recorded and justified",
     ]);
   });
 
-  it("uses the three-item checklist on an epic, where the children stand in for the list", () => {
+  it("uses the larger checklist on an epic, where the children stand in for the list", () => {
     const result = planReviewDispatch({
       tasks: [card({ kind: "epic", acceptance: ["container goal"] })],
       config: CONFIG,
@@ -301,15 +305,18 @@ describe("planReviewDispatch", () => {
     const action = result.actions[0];
     assert.equal(action.acceptance[0], "container goal");
     assert.match(action.acceptance[1], /Every child of T-1/);
-    assert.equal(action.acceptance.length, 4);
+    assert.equal(action.acceptance.length, 7);
+    assert.ok(action.acceptance.some((text) => /Every child's scope and plan/.test(text)));
   });
 
-  it("tells the reviewer when the original's acceptance list was worker-derived", () => {
+  it("tells the reviewer to run the unconditional omission check", () => {
     const action = planReviewDispatch({ tasks: [card()], config: CONFIG }).actions[0];
-    assert.match(action.description, /acceptance_derived/);
-    assert.match(action.description, /narrowed/);
+    assert.match(action.description, /Omission check/);
+    assert.match(action.description, /narrowed acceptance list/);
     assert.match(action.description, /REJECT/);
-    assert.equal(action.acceptance.length, 2, "the generic review checklist is unchanged");
+    assert.match(action.description, /plan\.md \(the worker's plan\)/);
+    assert.match(action.description, /absence alone is not a reject/);
+    assert.equal(action.acceptance.length, 4, "the generic review checklist now includes coverage");
   });
 
   it("never reviews a review card, a flow-B card, or a card not in review", () => {

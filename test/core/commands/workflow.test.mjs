@@ -224,6 +224,55 @@ describe("commands/workflowTick — 0031", () => {
     });
   });
 
+  it("gives the review card requirement, plan and omission items, within the 64 cap", async () => {
+    await board(({ commands }) => {
+      commands.createProject({
+        id: "p2",
+        name: "P2",
+        reviewPolicy: "required",
+        reviewer: "bob",
+        actor: HUMAN,
+      });
+      const items = Array.from({ length: 60 }, (_, index) => `criterion ${index}`);
+      const task = commands.createTask({
+        projectId: "p2",
+        title: "Needs review",
+        assignee: "linus",
+        meta: { acceptance: items },
+        actor: HUMAN,
+      });
+      commands.moveStatus({ id: task.id, to: "in_progress", actor: WORKER });
+      commands.deliver({
+        taskId: task.id,
+        report: {
+          conclusion: "done",
+          acceptance: items.map((text) => ({ text, status: "met" })),
+          evidence: [{ kind: "commit", sha: "abc1234" }],
+          author: WORKER,
+        },
+        actor: WORKER,
+      });
+
+      const dispatch = commands
+        .workflowTick({ reviewer: "jobs" })
+        .workflow.actions.find((action) => action.type === "create_review");
+      assert.ok(dispatch, "the required card is dispatched");
+      assert.match(dispatch.description, /Reference material/);
+      assert.match(dispatch.description, /Omission check/);
+      assert.match(dispatch.description, /\.meerkat\/[^/]+\//);
+      assert.match(dispatch.description, /plan\.md \(the worker's plan\)/);
+      assert.match(dispatch.description, /absence alone is not a reject/);
+      assert.equal(dispatch.acceptance.length, 64, "the review card stays inside the 64-item cap");
+      assert.ok(
+        dispatch.acceptance.includes("The delivery report is consistent with its evidence anchors"),
+      );
+      assert.ok(
+        dispatch.acceptance.some((text) => /Every requirement in the original description/.test(text)),
+      );
+      assert.ok(dispatch.acceptance.some((text) => /plan\.md/.test(text)));
+    });
+  });
+
   it("keeps an archived project's reviewer — its in-flight cards still dispatch", async () => {
     await board(({ db, commands }) => {
       commands.createProject({

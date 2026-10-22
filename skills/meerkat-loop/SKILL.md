@@ -115,6 +115,7 @@ the resolved `target_dir` (`local_path ?? run_dir`), which is also the subagent'
 ```text
 .meerkat/<identifier>/
   card.md          the board card, exported by the loop (read-only)
+  plan.md          the worker's plan (goals, steps, risks, acceptance mapping)
   …                the subagent's notes, logs, evidence, report drafts, attachments
 ```
 
@@ -132,6 +133,35 @@ the resolved `target_dir` (`local_path ?? run_dir`), which is also the subagent'
 - `--subscribe` follows board events and **batch-refreshes** the briefs of active cards
   (comments and reports included), debounced and rate-limited. A failed refresh leaves the
   previous brief in place.
+- Workers maintain `plan.md` and the reviewer reads it. An unexplained deviation from the
+  plan is grounds for `VERDICT: REJECT`; a missing plan is not itself a failure (the
+  reviewer falls back to the description and the frozen acceptance snapshot).
+
+### Team roles (optional)
+
+A team is an optional roles root, authored by `setup-meerkat` and never shipped by
+`install.sh`. It adds two layers:
+
+1. **Routing** — the loop reads the manifest's role responsibilities and selects the role
+   named by the card's assignee (`Jobs`, `Linus`, `Turing`, `Reviewer`).
+2. **Workflow** — the handoff carries the role's workflow path; the spawned subagent reads
+   it before acting.
+
+Precedence is whole-manifest: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, then
+`<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`, then
+`<agent-dir>/meerkat-taskpanel/roles/`. With no roles root the loop behaves exactly as
+before. `setup-meerkat` writes the team's board names to `MEERKAT_TASKPANEL_AGENTS`;
+without that list the loop only scans its default agent.
+
+### Questions and decision rights
+
+The ladder is **subagent → main session → human** (details:
+`references/decision-policy.md`). A subagent never decides an unauthorized question: it
+writes an agent `question` comment, keeps the card `in_progress`, and stops. The project
+session answers with a `note` (then reattaches or moves the card to `todo`), or escalates
+E1-E5 to the human with `awaiting`. Only a human `decision` / `confirm` / `change` resumes
+an awaiting card. The loop never writes a decision kind for its own answer and never uses
+`--as-human` except to record what the human actually said in a human-opened conversation.
 
 ## Required board interface
 

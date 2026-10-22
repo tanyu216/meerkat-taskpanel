@@ -500,6 +500,19 @@ describe("install.sh: the loop skill's distribution", () => {
         readFileSync(wake, "utf8").includes("wake-cwd.mjs"),
         `${host}: the glue must resolve the card's project directory`,
       );
+
+      // The setup command ships with the Claude bundle only; the repository bundle
+      // and marketplace still carry it for the other kinds, but this installer does not.
+      const setup = join(home, agentDir, "skills", "setup-meerkat");
+      assert.equal(
+        existsSync(setup),
+        host === "claude",
+        `${host}: setup-meerkat is copied for Claude only`,
+      );
+      if (host === "claude") {
+        assert.ok(existsSync(join(setup, "scripts", "detect.mjs")), "claude: the setup scripts must land");
+        assert.ok(existsSync(join(setup, "assets", "team", "standard", "manifest.json")), "claude: the team template must land");
+      }
     });
   }
 
@@ -517,6 +530,11 @@ describe("install.sh: the loop skill's distribution", () => {
       existsSync(join(home, ".openclaw", "skills", "meerkat-loop")),
       false,
       "openclaw must not receive the loop skill (O3: the framework is its supervisor)",
+    );
+    assert.equal(
+      existsSync(join(home, ".openclaw", "skills", "setup-meerkat")),
+      false,
+      "setup-meerkat is Claude-only",
     );
     assert.equal(existsSync(join(home, ".openclaw", "scheduling")), false);
     assert.equal(existsSync(join(home, ".openclaw", "meerkat-taskpanel")), false);

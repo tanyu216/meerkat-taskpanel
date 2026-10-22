@@ -209,8 +209,12 @@ into the snapshot; the gates never read meta.
   round's rollup over its children (§6).
 
 The engine guarantees coverage of the written baseline. It cannot guarantee that the baseline
-itself covers everything in the description — that stays the reviewer's judgement, which is
-why `meta.acceptance_derived = "yes"` is still a prompt to audit the list.
+itself covers everything in the description or the plan — that stays the reviewer's omission
+check: every requirement in the description, comments and `.meerkat/<id>/plan.md` must map to
+an acceptance item and evidence, or be explicitly deferred. A missing plan is not itself a
+failure (fall back to the description and snapshot); an unexplained deviation from an existing
+plan is. `meta.acceptance_derived = "yes"` is a flag to audit the list closely, not the only
+case that needs the check.
 
 ## 5. Claims and heartbeats
 

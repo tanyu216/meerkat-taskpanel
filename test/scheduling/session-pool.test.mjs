@@ -413,4 +413,35 @@ describe("session pool", () => {
     assert.match(prompt, /review two/);
     assert.match(prompt, /Do not work the cards yourself/);
   });
+
+  it("names the selected role agents and carries the question-first rule", () => {
+    const prompt = buildProjectBatchPrompt(
+      [
+        {
+          card: "T-1",
+          role: "worker",
+          agent_role: "Jobs",
+          project: "P",
+          target_dir: "/work/app",
+          handoff: "do one",
+        },
+      ],
+      {
+        roles: [
+          {
+            id: "jobs",
+            agent: "Jobs",
+            nativeAgent: "jobs",
+            workflows: { worker: "/roles/jobs/workflow.md" },
+          },
+        ],
+      },
+    );
+    assert.match(prompt, /Named role agents/);
+    assert.match(prompt, /spawn as "jobs"/);
+    assert.match(prompt, /T-1 \(worker\) role Jobs handoff/);
+    assert.match(prompt, /Subagent questions/);
+    assert.match(prompt, /escalate E1-E5/);
+    assert.match(prompt, /never use --as-human/);
+  });
 });

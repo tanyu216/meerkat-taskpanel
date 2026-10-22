@@ -20,6 +20,7 @@ import { createInstallHarness } from "./helpers/install-harness.mjs";
 import { AGENT_BUNDLE_SCHEMA, CLAUDE_MANIFEST, CODEX_MANIFEST, KIND_BUNDLES, NATIVE_MANIFEST, detectBundle, findSkills, inspectBundle, normalizePathList, parseMarketplace, resolveSkillRoots } from "../../scripts/verify/lib/bundle.mjs";
 import { PROFILE_KINDS, loadProfiles, runProfiles } from "../../scripts/verify/lib/profiles.mjs";
 import { LOOP_SKILL_NAME } from "../../scripts/sync-loop.mjs";
+import { SKILLS } from "../../scripts/verify/skill.mjs";
 import { SKILL_NAME } from "../../src/foundation/constants.mjs";
 
 const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-bundle-" });
@@ -187,7 +188,7 @@ describe("bundle: parseMarketplace", () => {
 
     // `source: "./"` — the board's plugin root IS the repository root, which is what lets
     // claude / codex / cursor / pi / openclaw share the one `skills/` tree. It is the
-    // shared tree, so it exposes both skills; that is not a second marketplace plugin.
+    // shared tree, so it exposes all three skills; that is not a second marketplace plugin.
     assert.deepEqual(market.entries.map((entry) => entry.name), [SKILL_NAME]);
     assert.equal(market.entries[0].dir, "", "the board's source directory");
 
@@ -195,8 +196,8 @@ describe("bundle: parseMarketplace", () => {
     assert.ok(names.includes(SKILL_NAME), `./ must expose ${SKILL_NAME}`);
     assert.deepEqual(
       [...names].sort(),
-      [LOOP_SKILL_NAME, SKILL_NAME].sort(),
-      "the root bundle is the shared tree and carries both skills",
+      [...SKILLS].sort(),
+      "the root bundle is the shared tree and carries all three skills",
     );
 
     // No entry may be sourced at a bundle directory: with `plugins/` gone, a second entry

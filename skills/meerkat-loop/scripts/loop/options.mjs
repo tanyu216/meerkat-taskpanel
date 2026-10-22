@@ -132,6 +132,7 @@ function resolvePositive(input, fallback) {
 }
 
 flag("--agent", (opts, value) => opts.agents.push(...list(value)));
+flag("--roles-dir", (opts, value) => { opts.rolesDir = resolve(value); });
 flag("--actor-kind", (opts, value) => { opts.actorKind = value; });
 flag("--repo", (opts, value) => { opts.repo = resolve(value); });
 flag("--ping-interval", (opts, value) => { opts.pingInterval = number("--ping-interval", value); });
@@ -223,6 +224,8 @@ flag("--wake-command", (opts, value) => { opts.wakeCommand = value; });
 /** Agent-local files derived from `--home` and `--actor-kind`. */
 export function agentPaths(home, actorKind) {
   const dir = join(home, AGENT_DIRS[actorKind]);
+  const loopSkill = join(dir, "skills", "meerkat-loop");
+  const loopBody = join(dir, "meerkat-taskpanel");
   return {
     log: join(dir, "meerkat-taskpanel", "supervisor.log"),
     state: join(dir, "meerkat-taskpanel", "supervisor.state.json"),
@@ -232,8 +235,13 @@ export function agentPaths(home, actorKind) {
     // The two skills the resident sessions need: the loop expands
     // `/meerkat-loop` in the control session; project subagents use the board
     // skill. Checked at `--session` start, never assumed.
-    loopSkill: join(dir, "skills", "meerkat-loop"),
+    loopSkill,
     boardSkill: join(dir, "skills", "meerkat-taskpanel"),
+    // The deployed executor. A roles root may travel with either the skill
+    // (the setup skill's default) or the body (`--state`/install-local).
+    loopBody,
+    loopRoles: join(loopSkill, "roles"),
+    bodyRoles: join(loopBody, "roles"),
   };
 }
 
@@ -318,6 +326,7 @@ function defaultOptions(env) {
     projectsJson: null,
     wakeCommand: null,
     help: false,
+    rolesDir: null,
   };
 }
 
@@ -353,10 +362,6 @@ export function parseArgs(argv, env = process.env) {
     spec.set(opts, value);
   }
 
-  if (opts.agents.length === 0) {
-    const fallback = env.TASKCTL_AGENT || env.USER || env.LOGNAME || "agent";
-    opts.agents = [fallback];
-  }
   if (!(opts.actorKind in AGENT_DIRS)) {
     throw new Error(`unknown actor kind '${opts.actorKind}' (expected claude|codex|pi|opencode|cursor)`);
   }
@@ -375,6 +380,20 @@ export function parseArgs(argv, env = process.env) {
   opts.slaPeer ??= env.MEERKAT_TASKPANEL_SLA_PEER ?? null;
   opts.config ??= paths.config;
   opts.configFile = readConfigFile(opts.config);
+  // A team is a list of board identities, not a second config surface. The
+  // explicit `--agent` flags win; otherwise the env/config list is the scan set.
+  // Without this, a loop configured for one human name never claims a role card.
+  if (opts.agents.length === 0) {
+    const configured = env.MEERKAT_TASKPANEL_AGENTS ?? opts.configFile.MEERKAT_TASKPANEL_AGENTS;
+    const listed = typeof configured === "string"
+      ? configured.split(/[,\s]+/).map((part) => part.trim()).filter(Boolean)
+      : [];
+    opts.agents = listed.length > 0
+      ? listed
+      : [env.TASKCTL_AGENT || env.USER || env.LOGNAME || "agent"];
+  }
+  const rolesDir = opts.rolesDir ?? env.MEERKAT_TASKPANEL_ROLES_DIR ?? opts.configFile.MEERKAT_TASKPANEL_ROLES_DIR;
+  opts.rolesDir = typeof rolesDir === "string" && rolesDir.trim() !== "" ? resolve(rolesDir.trim()) : null;
   // One concurrency cap for the whole fleet of subagents: workers and reviewers
   // share it and compete for the slots by demand. Zero is meaningful ("claim
   // nothing"), so this uses the non-negative resolver.
@@ -773,7 +792,10 @@ The clocks stay as the fallback (and as the only path for time-based work).
 
 Options:
   --agent <name>            Agent(s) to work for. Repeatable / comma-separated.
-                            Default: $TASKCTL_AGENT, then $USER.
+                            Default: MEERKAT_TASKPANEL_AGENTS, then $TASKCTL_AGENT,
+                            then $USER.
+  --roles-dir <path>        Optional team roles root. Default: the project's
+                            .meerkat/roles, then the loop skill's roles/.
   --actor-kind claude|codex|pi|opencode|cursor
                             Which actor kind to wake (default: claude).
   --repo <path>             Repository root (default: this checkout; an agent-installed

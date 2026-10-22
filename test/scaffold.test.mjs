@@ -20,7 +20,7 @@ import test, { after, describe, it } from "node:test";
 
 import { listFiles, resolveSkillSource } from "../scripts/sync-skills.mjs";
 import { MANIFESTS, validateManifests } from "../scripts/verify/manifests.mjs";
-import { validateSkill } from "../scripts/verify/skill.mjs";
+import { validateSkills } from "../scripts/verify/skill.mjs";
 import { VERSION } from "../src/foundation/constants.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -151,15 +151,20 @@ describe("skill sync", () => {
   });
 });
 
-describe("skill definition", () => {
-  it("SKILL.md has frontmatter with name: meerkat-taskpanel and a real description", async () => {
-    const result = await validateSkill(ROOT);
-    assert.equal(result.ok, true, result.error);
-    assert.equal(result.name, "meerkat-taskpanel");
-    assert.ok(
-      typeof result.description === "string" && result.description.length >= 20,
-      "description must be non-empty and at least 20 characters",
+describe("skill definitions", () => {
+  it("every SKILL.md names its directory and carries a real description", async () => {
+    const { ok, results } = await validateSkills(ROOT);
+    assert.equal(ok, true, results.filter((result) => !result.ok).map((result) => result.error).join("\n"));
+    assert.deepEqual(
+      results.map((result) => result.name).sort(),
+      ["meerkat-loop", "meerkat-taskpanel", "setup-meerkat"],
     );
+    for (const result of results) {
+      assert.ok(
+        typeof result.description === "string" && result.description.length >= 20,
+        `${result.skill}: description must be non-empty and at least 20 characters`,
+      );
+    }
   });
 });
 

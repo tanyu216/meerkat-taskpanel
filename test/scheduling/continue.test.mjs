@@ -119,27 +119,29 @@ describe("buildContinuePrompt", () => {
     assert.doesNotMatch(prompt, /claim a ready card yourself/);
   });
 
-  it("carries the question channel, and escalates where the loop was opened (0034)", () => {
-    // Both origins get the same mechanics: read awaiting cards, answer with a
-    // note + explicit move, never write a human decision.
-    for (const text of [prompt]) {
-      assert.match(text, /Waiting questions/);
-      assert.match(text, /issue list --status awaiting/);
-      assert.match(text, /comment list <ref> --kind question/);
-      assert.match(text, /comment add <ref> --kind note/);
-      assert.match(text, /issue move <ref> todo/);
-      assert.match(text, /note does NOT auto-resume/);
-      assert.match(text, /Never write decision\/confirm\/change/);
-      assert.match(text, /Any human comment after the question is an answer/);
-    }
+  it("carries the question ladder and escalates where the loop was opened (0034)", () => {
+    // The ladder: subagent -> main session -> human. The main session answers
+    // what it can with a note + explicit move; E1-E5 stays for a human decision.
+    assert.match(prompt, /Questions and decision rights/);
+    assert.match(prompt, /issue list --status in_progress/);
+    assert.match(prompt, /issue list --status awaiting/);
+    assert.match(prompt, /comment list <ref> --kind question/);
+    assert.match(prompt, /comment add <ref> --kind note/);
+    assert.match(prompt, /issue move <ref> todo/);
+    assert.match(prompt, /note does NOT auto-resume/);
+    assert.match(prompt, /Never write decision\/confirm\/change/);
+    assert.match(prompt, /E1-E5/);
+    assert.match(prompt, /--awaiting-reason E1\.\.E5/);
+    assert.match(prompt, /Why the main session cannot decide/);
+    assert.match(prompt, /Do not re-answer a question that already has a later human comment/);
     // The default origin is a supervisor: an unanswerable question stays on the
     // board for a human's decision comment.
-    assert.match(prompt, /leave the card awaiting/);
+    assert.match(prompt, /The human answers on the board with a decision comment/);
     assert.match(prompt, /board re-queues it automatically/);
     assert.doesNotMatch(prompt, /ask the human in this conversation/);
 
     const openedByHuman = buildContinuePrompt({
-      host: "claude",
+      actorKind: "claude",
       agent: "alice",
       nodePath: "/opt/node/bin/node",
       passesScript,
@@ -147,8 +149,25 @@ describe("buildContinuePrompt", () => {
       continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
       openedBy: "human",
     });
-    assert.match(openedByHuman, /ask the human in this conversation/);
+    assert.match(openedByHuman, /When the human answers in this conversation/);
+    assert.match(openedByHuman, /--as-human/);
     assert.doesNotMatch(openedByHuman, /board re-queues it automatically/);
+  });
+
+  it("carries the decision policy path and the three-tier ladder", () => {
+    const withPolicy = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      nodePath: "/opt/node/bin/node",
+      passesScript,
+      commonArgs: [],
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      decisionPolicy: { path: "/roles/decision-policy.md", text: "# Policy\n" },
+    });
+    assert.match(withPolicy, /## Decision policy/);
+    assert.match(withPolicy, /Subagents do not decide/);
+    assert.match(withPolicy, /\/roles\/decision-policy\.md/);
+    assert.match(withPolicy, /E1-E5/);
   });
 
   it("stays bounded", () => {

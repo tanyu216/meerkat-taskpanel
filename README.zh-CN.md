@@ -95,7 +95,8 @@ meerkat-taskpanel/
 │   ├── server/                   #   本地 HTTP API + SSE
 │   └── foundation/               #   DTO / 常量 / 纯函数
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
-├── skills/                       # 两个 skill：meerkat-taskpanel（看板）、meerkat-loop（监督进程）
+├── skills/                       # 三个 skill：meerkat-taskpanel（看板）、meerkat-loop（监督进程）、
+│                                 #   setup-meerkat（安装/修复 + 团队配置；仅复制给 Claude）
 ├── .claude-plugin/               # marketplace + board 插件清单（插件根 = 仓根）
 ├── .pi/                          # Pi 扩展（由 package.json 的 `pi` 字段声明）
 ├── .opencode/                    # OpenCode 插件（就地读那一份 skills/）
@@ -186,6 +187,11 @@ OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的�
 
 `meerkat-loop` 监督进程**不走** marketplace 分发：它由
 `install.sh --target claude|codex|pi|opencode|cursor` 安装，且永不进入 OpenClaw。
+
+第三个 skill **`setup-meerkat`** 就是 `/setup-meerkat` 命令：它探测已安装的部分、补齐缺失、
+提供 Matt Pocock issue-tracker 集成，并按需安装 Jobs/Linus/Turing 加独立 reviewer 的团队
+（角色 workflow、原生 agent 定义、计划文件与遗漏检查的约定）。`install.sh --target claude`
+会把它复制到 `~/.claude/skills/setup-meerkat`；其余 agent kind 仍可从共享 bundle 就地读到。
 
 常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，
 默认 `$USER`，须与其 assignee 一致；对既有安装改名需配 `--force` 才生效）、`--no-automation`

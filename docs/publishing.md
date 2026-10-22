@@ -292,7 +292,7 @@ git merge-base --is-ancestor "$(git rev-parse v1.2.3^{commit})" origin/main \
 
 | Plugin | Source | Carries |
 |---|---|---|
-| `meerkat-taskpanel` | `./` | both skills — the repository's one `skills/` tree, read in place |
+| `meerkat-taskpanel` | `./` | all three skills — the repository's one `skills/` tree, read in place |
 
 The loop used to be a second entry, sourced at a `plugins/loop` bundle that carried the loop
 skill and nothing else so it could be installed alone. That bundle is gone: `meerkat-loop`
@@ -398,8 +398,8 @@ here; the in-chat gesture is transcribed from `obra/superpowers` rather than rep
 
 OpenCode is a *directory-granular* agent kind: it is handed a skills directory, not a list of skill
 names, so `.opencode/plugins/meerkat-taskpanel.js` points it at the repository's own
-`skills/` and both skills arrive together. Nothing is copied — the directory is resolved from
-the plugin's own location, so it follows the package wherever OpenCode fetched it.
+`skills/` and all three skills arrive together. Nothing is copied — the directory is resolved
+from the plugin's own location, so it follows the package wherever OpenCode fetched it.
 
 ```jsonc
 // opencode.json — consumer-side registration (V2 >= 2.0.4; V1 uses the singular `plugin` key)
