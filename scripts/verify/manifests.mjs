@@ -11,9 +11,9 @@
  *
  * Codex has no manifest of its own: `codex plugin marketplace add` reads the same
  * repository-root marketplace and installs the same `./` bundle as Claude Code, so its
- * expected manifest is the board plugin's (see HOST_BUNDLES.codex). OpenClaw has none
+ * expected manifest is the board plugin's (see KIND_BUNDLES.codex). OpenClaw has none
  * either — it reads that same `./` bundle, which is why no native OpenClaw manifest
- * ships (see HOST_BUNDLES.openclaw and docs/install.md).
+ * ships (see KIND_BUNDLES.openclaw and docs/install.md).
  *
  * Exits non-zero with a readable message on the first failure. Node builtins only.
  */

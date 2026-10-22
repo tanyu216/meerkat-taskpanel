@@ -1,14 +1,14 @@
 /**
- * Host profile loading and verification.
+ * Agent-kind profile loading and verification.
  *
- * Every supported agent host gets a flat profile file in `docker/profiles/<host>.yml`.
+ * Every supported agent kind gets a flat profile file in `docker/profiles/<actor-kind>.yml`.
  * Loading and asserting are split on purpose:
  *
  *   loadProfiles()  reads + validates the profile files        (I/O, thin)
  *   buildChecks()   derives the destination paths + assertions  (pure, fully testable)
  *   runProfiles()   installs into a throwaway home and asserts  (I/O)
  *
- * Installation always happens under `MEERKAT_TASKPANEL_TARGET_HOME`, never a real host home —
+ * Installation always happens under `MEERKAT_TASKPANEL_TARGET_HOME`, never a real user home —
  * the container/CI run must not touch `$HOME`.
  *
  * Installs use `--link` (`MEERKAT_TASKPANEL_LINK=1`). The skill's wrapper resolves the CLI by
@@ -26,22 +26,22 @@ import { fileURLToPath } from "node:url";
 
 import { SKILL_NAME, VERSION } from "../../../src/foundation/constants.mjs";
 import { MANIFESTS, validateManifests } from "../manifests.mjs";
-import { HOST_BUNDLES, inspectBundle, parseMarketplace } from "./bundle.mjs";
+import { KIND_BUNDLES, inspectBundle, parseMarketplace } from "./bundle.mjs";
 import { readFrontmatterField } from "./frontmatter.mjs";
 import { MiniYamlError, parseMiniYaml } from "./mini-yaml.mjs";
 
 // Re-exported so the existing import path (`./profiles.mjs`) keeps working.
 export { readFrontmatterField };
 
-/** Hosts that must each ship a profile. */
-export const PROFILE_HOSTS = ["claude", "openclaw", "codex", "pi", "opencode", "cursor"];
+/** Actor kinds that must each ship a profile. */
+export const PROFILE_KINDS = ["claude", "openclaw", "codex", "pi", "opencode", "cursor"];
 
 /** Required keys of the flat profile schema. */
-export const REQUIRED_PROFILE_FIELDS = ["host", "label", "installer", "target_dir", "skill_entry", "wrapper"];
+export const REQUIRED_PROFILE_FIELDS = ["actor_kind", "label", "installer", "target_dir", "skill_entry", "wrapper"];
 
 /**
- * Optional keys: the host's distribution bundle. When a profile declares `bundle`, the
- * verifier additionally asserts the bundle's manifest parses and that the host's detector
+ * Optional keys: the agent kind's distribution bundle. When a profile declares `bundle`, the
+ * verifier additionally asserts the bundle's manifest parses and that its detector
  * (see lib/bundle.mjs) recognizes it with the expected format and a loadable skill.
  */
 export const BUNDLE_PROFILE_FIELDS = ["bundle", "bundle_kind", "bundle_format"];
@@ -61,7 +61,7 @@ export function defaultHome() {
  * them all at once instead of dying on the first one.
  *
  * @param {string} profilesDir
- * @returns {Promise<{hosts: string[], profiles: Record<string, Record<string, string>>, errors: string[]}>}
+ * @returns {Promise<{kinds: string[], profiles: Record<string, Record<string, string>>, errors: string[]}>}
  */
 export async function loadProfiles(profilesDir) {
   /** @type {string[]} */
@@ -73,32 +73,32 @@ export async function loadProfiles(profilesDir) {
   try {
     entries = await readdir(profilesDir);
   } catch (err) {
-    return { hosts: [], profiles, errors: [`profiles directory not readable: ${profilesDir} (${err.code ?? err.message})`] };
+    return { kinds: [], profiles, errors: [`profiles directory not readable: ${profilesDir} (${err.code ?? err.message})`] };
   }
 
   const present = new Set(entries.filter((name) => name.endsWith(".yml")).map((name) => name.slice(0, -4)));
 
   for (const name of present) {
-    if (!PROFILE_HOSTS.includes(name)) {
-      errors.push(`unknown profile: ${name}.yml (expected one of ${PROFILE_HOSTS.join(", ")})`);
+    if (!PROFILE_KINDS.includes(name)) {
+      errors.push(`unknown profile: ${name}.yml (expected one of ${PROFILE_KINDS.join(", ")})`);
     }
   }
 
-  for (const host of PROFILE_HOSTS) {
-    if (!present.has(host)) {
-      errors.push(`${host}: missing profile file ${join(profilesDir, `${host}.yml`)}`);
+  for (const kind of PROFILE_KINDS) {
+    if (!present.has(kind)) {
+      errors.push(`${kind}: missing profile file ${join(profilesDir, `${kind}.yml`)}`);
       continue;
     }
 
-    const file = join(profilesDir, `${host}.yml`);
+    const file = join(profilesDir, `${kind}.yml`);
     let parsed;
     try {
       parsed = parseMiniYaml(await readFile(file, "utf8"));
     } catch (err) {
       if (err instanceof MiniYamlError) {
-        errors.push(`${host}: invalid profile: ${err.message}`);
+        errors.push(`${kind}: invalid profile: ${err.message}`);
       } else {
-        errors.push(`${host}: unreadable profile: ${err.message}`);
+        errors.push(`${kind}: unreadable profile: ${err.message}`);
       }
       continue;
     }
@@ -107,13 +107,13 @@ export async function loadProfiles(profilesDir) {
 
     for (const field of REQUIRED_PROFILE_FIELDS) {
       if (typeof parsed[field] !== "string" || parsed[field] === "") {
-        errors.push(`${host}: missing required field "${field}"`);
+        errors.push(`${kind}: missing required field "${field}"`);
         ok = false;
       }
     }
 
-    if (typeof parsed.host === "string" && parsed.host !== "" && parsed.host !== host) {
-      errors.push(`${host}: host field is "${parsed.host}" but the file is ${host}.yml`);
+    if (typeof parsed.actor_kind === "string" && parsed.actor_kind !== "" && parsed.actor_kind !== kind) {
+      errors.push(`${kind}: actor_kind field is "${parsed.actor_kind}" but the file is ${kind}.yml`);
       ok = false;
     }
 
@@ -121,21 +121,21 @@ export async function loadProfiles(profilesDir) {
     const bundleFields = BUNDLE_PROFILE_FIELDS.filter((f) => typeof parsed[f] === "string" && parsed[f] !== "");
     if (bundleFields.length !== 0 && bundleFields.length !== BUNDLE_PROFILE_FIELDS.length) {
       const missing = BUNDLE_PROFILE_FIELDS.filter((f) => !bundleFields.includes(f));
-      errors.push(`${host}: bundle fields must appear together; missing ${missing.join(", ")}`);
+      errors.push(`${kind}: bundle fields must appear together; missing ${missing.join(", ")}`);
       ok = false;
     }
 
-    if (ok) profiles[host] = parsed;
+    if (ok) profiles[kind] = parsed;
   }
 
-  return { hosts: PROFILE_HOSTS.filter((host) => host in profiles), profiles, errors };
+  return { kinds: PROFILE_KINDS.filter((kind) => kind in profiles), profiles, errors };
 }
 
 /**
  * Derive the install command and the assertion list for one profile.
  *
  * Pure: no filesystem or process access, so it can be unit tested and reused by both
- * the host CLI and the in-container CLI.
+ * the agent CLI and the in-container CLI.
  *
  * @param {Record<string, string>} profile
  * @param {{home?: string, root?: string}} [opts]
@@ -143,7 +143,7 @@ export async function loadProfiles(profilesDir) {
 export function buildChecks(profile, opts = {}) {
   const home = opts.home ?? defaultHome();
   const root = opts.root ?? REPO_ROOT;
-  const host = profile.host;
+  const kind = profile.actor_kind;
 
   const dest = join(home, profile.target_dir);
   const entryPath = join(dest, profile.skill_entry);
@@ -156,7 +156,7 @@ export function buildChecks(profile, opts = {}) {
     // Link, not copy: this keeps the run on the wrapper's checkout-relative rung, so
     // `wrapper --version` below exercises that resolution end to end. The mode
     // `install.sh` *defaults* to — a copy, which carries no `src/` and so has to reach a CLI
-    // on PATH or through an explicit root — is the other half, and has its own per-host
+    // on PATH or through an explicit root — is the other half, and has its own per-agent-kind
     // coverage in `test/install/installed-copy.test.mjs` (T-20261014-214002). Neither mode
     // replaces the other: this one would not have caught that defect, and only that one
     // covers what a user actually gets.
@@ -167,19 +167,19 @@ export function buildChecks(profile, opts = {}) {
   const assertions = [
     {
       kind: "pathExists",
-      name: `${host}: ${profile.skill_entry} installed`,
+      name: `${kind}: ${profile.skill_entry} installed`,
       path: entryPath,
     },
     {
       kind: "skillFrontmatter",
-      name: `${host}: SKILL.md frontmatter name: ${SKILL_NAME}`,
+      name: `${kind}: SKILL.md frontmatter name: ${SKILL_NAME}`,
       path: skillMdPath,
       field: "name",
       value: SKILL_NAME,
     },
     {
       kind: "wrapperVersion",
-      name: `${host}: ${profile.wrapper} --version == ${VERSION}`,
+      name: `${kind}: ${profile.wrapper} --version == ${VERSION}`,
       command: process.execPath,
       args: [wrapperPath, "--version"],
       env: installEnv,
@@ -187,25 +187,25 @@ export function buildChecks(profile, opts = {}) {
     },
   ];
 
-  // Per-host bundle assertions. The expectations come from the profile file when it
+  // Per-agent-kind bundle assertions. The expectations come from the profile file when it
   // declares them; otherwise they fall back to the shipped table, so ad-hoc profiles in
   // tests stay terse.
-  const fallback = HOST_BUNDLES[host];
+  const fallback = KIND_BUNDLES[kind];
   const bundleDir = profile.bundle ?? fallback?.dir;
   const expectedKind = profile.bundle_kind ?? fallback?.openclawKind;
   const expectedFormat = profile.bundle_format ?? fallback?.openclawFormat;
 
   if (bundleDir && expectedKind && expectedFormat) {
-    // A host may install a bundle whose manifest belongs to another label — Codex reads
+    // An agent kind may install a bundle whose manifest belongs to another label — Codex reads
     // the same repository-root marketplace as Claude Code and ships no manifest of its
     // own — so the entry is resolved by path when the label does not name one.
-    const manifestRel = MANIFESTS.find((m) => m.label === host)?.path ?? fallback?.manifest;
-    const manifestKey = MANIFESTS.find((m) => m.path === manifestRel)?.label ?? host;
+    const manifestRel = MANIFESTS.find((m) => m.label === kind)?.path ?? fallback?.manifest;
+    const manifestKey = MANIFESTS.find((m) => m.path === manifestRel)?.label ?? kind;
 
     if (manifestRel) {
       assertions.push({
         kind: "manifestParses",
-        name: `${host}: manifest parses (${manifestRel})`,
+        name: `${kind}: manifest parses (${manifestRel})`,
         path: join(root, manifestRel),
         manifestKey,
         root,
@@ -214,7 +214,7 @@ export function buildChecks(profile, opts = {}) {
 
     assertions.push({
       kind: "bundleDetected",
-      name: `${host}: bundle detected as ${expectedKind}/${expectedFormat} with skill ${SKILL_NAME}`,
+      name: `${kind}: bundle detected as ${expectedKind}/${expectedFormat} with skill ${SKILL_NAME}`,
       dir: join(root, bundleDir),
       expectedKind,
       expectedFormat,
@@ -222,7 +222,7 @@ export function buildChecks(profile, opts = {}) {
     });
 
     // The Claude marketplace lives at the repository root and points at ./plugins/*.
-    if (host === "claude") {
+    if (kind === "claude") {
       assertions.push({
         kind: "marketplaceParses",
         name: "claude: .claude-plugin/marketplace.json parses and its entries resolve",
@@ -232,7 +232,7 @@ export function buildChecks(profile, opts = {}) {
   }
 
   return {
-    host,
+    kind,
     home,
     root,
     dest,
@@ -337,7 +337,7 @@ async function evaluate(assertion) {
 /**
  * Install every profile into `home` and verify the result.
  *
- * @param {{home?: string, profilesDir?: string, root?: string, quiet?: boolean, hosts?: string[], log?: (line: string) => void}} [opts]
+ * @param {{home?: string, profilesDir?: string, root?: string, quiet?: boolean, kinds?: string[], log?: (line: string) => void}} [opts]
  * @returns {Promise<{ok: boolean, home: string, profilesDir: string, errors: string[], results: Array<object>}>}
  */
 export async function runProfiles(opts = {}) {
@@ -354,20 +354,20 @@ export async function runProfiles(opts = {}) {
     return { ok: false, home, profilesDir, errors, results };
   }
 
-  // `hosts` narrows which profiles are *run*; every profile is still loaded and
-  // validated, so a broken sibling profile cannot hide behind a single-host run.
-  const selected = opts.hosts?.length ? PROFILE_HOSTS.filter((h) => opts.hosts.includes(h)) : PROFILE_HOSTS;
+  // `kinds` narrows which profiles are *run*; every profile is still loaded and
+  // validated, so a broken sibling profile cannot hide behind a single-kind run.
+  const selected = opts.kinds?.length ? PROFILE_KINDS.filter((k) => opts.kinds.includes(k)) : PROFILE_KINDS;
 
   await mkdir(home, { recursive: true });
 
-  for (const host of selected) {
-    const checks = buildChecks(profiles[host], { home, root });
+  for (const kind of selected) {
+    const checks = buildChecks(profiles[kind], { home, root });
     const steps = [];
 
     const installed = install(checks);
     const installOk = !installed.error && installed.status === 0;
     steps.push({
-      name: `${host}: install`,
+      name: `${kind}: install`,
       ok: installOk,
       detail: installOk
         ? (installed.stdout ?? "").trim() || "installed"
@@ -383,8 +383,8 @@ export async function runProfiles(opts = {}) {
 
     const ok = steps.every((step) => step.ok);
     results.push({
-      host,
-      profile: profiles[host],
+      kind,
+      profile: profiles[kind],
       dest: checks.dest,
       home,
       ok,

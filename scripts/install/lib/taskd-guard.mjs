@@ -3,9 +3,9 @@
  * The `taskd` OS-level keepalive unit — "the guard" (`docs/scheduling.md`).
  *
  * `install.sh` calls this once per install, because the guard is **one per
- * machine**, not one per host: it writes both unit templates into a neutral
+ * machine**, not one per agent kind: it writes both unit templates into a neutral
  * `<prefix>/taskpanel/scheduling/` directory (deliberately *not* the loop units'
- * `<host-dir>/scheduling/`, so re-installing a host never touches it) and then
+ * `<agent-dir>/scheduling/`, so re-installing an agent kind never touches it) and then
  * loads the one for this platform. It is the single **explicit exception** to
  * the installer's rule that it writes a unit and prints the load command but
  * never starts a daemon — the loop supervisor's units still keep that rule.
@@ -26,7 +26,7 @@
  * The data directory is resolved through `resolveDataDir`, the single source of
  * truth — never restated here.
  *
- * **The unit must not depend on the host's `PATH`** (T-20261014-052428). launchd
+ * **The unit must not depend on the user's `PATH`** (T-20261014-052428). launchd
  * runs a job with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, so a `/usr/bin/env node`
  * unit on a machine whose node lives only under nvm or Homebrew exits 127 in a
  * restart loop, forever. The rendered unit therefore names **`process.execPath`
@@ -97,7 +97,7 @@ import { probeHealth, readPointer } from "../../../src/foundation/transport/runt
  *
  * 3 is this repository's "ran, found a difference, declined" code — `export --check`
  * and `wake-cwd.mjs` use it the same way. Every other outcome of an install is 0 on
- * purpose: a unit that cannot be loaded is *reported*, not failed (the host install is
+ * purpose: a unit that cannot be loaded is *reported*, not failed (the agent install is
  * unaffected either way), so the one non-zero exit is the one deliberate refusal.
  *
  * @param {object} report the `installGuard` report
@@ -106,7 +106,7 @@ export function exitCode(report) {
   return report.state === "occupied" ? 3 : 0;
 }
 
-/** The launchd Label. One per machine: no agent or host segment (unlike the loop's). */
+/** The launchd Label. One per machine: no agent or actor-kind segment (unlike the loop's). */
 export const TASKD_LABEL = "com.meerkat-taskpanel.taskd";
 /** The systemd user unit name. Likewise machine-wide. */
 export const TASKD_UNIT = "meerkat-taskpanel-taskd.service";
@@ -127,7 +127,7 @@ export const TASKD_TEMPLATE_FILES = Object.freeze({
  * reported `loaded … /health did not answer`, which reads exactly like the crash loop
  * this gate exists to expose. That is not hypothetical — during this card's own
  * real-machine run (T-20261014-052428) a first spawn after `launchctl bootstrap` took
- * ~5.5s under host load, while every isolated measurement of the same start is ~140ms.
+ * ~5.5s under machine load, while every isolated measurement of the same start is ~140ms.
  * A false alarm on a healthy install is the worse outcome, so the budget is the one that
  * tolerates it and the honest report survives for boards that are really dead.
  */
@@ -148,7 +148,7 @@ function templatesRoot() {
  *
  * `node` is the interpreter the unit will name: **absolute**, and by default the
  * one running this file (`process.execPath`), so the unit runs the same node the
- * install did and never has to look one up on the host's `PATH`.
+ * install did and never has to look one up on the user's `PATH`.
  *
  * @param {{prefix?: string, repoRoot?: string, env?: NodeJS.ProcessEnv, node?: string}} [options]
  */
@@ -191,7 +191,7 @@ export function guardPaths(options = {}) {
  * process.
  *
  * The recipe itself lives in `unit-path.mjs`, shared with the loop's units — which
- * prepend one more directory, the host CLI's, because they derive a wakeable
+ * prepend one more directory, the agent CLI's, because they derive a wakeable
  * executable this guard never does. The taskd unit's own `{{PATH}}` is deliberately
  * unchanged by that sharing: called with node's directory alone, `unitPath()` still
  * renders exactly the string it always did.
@@ -444,7 +444,7 @@ export function parsePid(plan, output) {
  * Every step is reported: a write says `wrote` / `kept`, and the load says
  * `enabled (…, pid …)` — the line `docs/install.md` documents — or, when this
  * machine has no way to load it, `installed … not loaded` plus the command that
- * would. A load that cannot happen is **not** a failed install: the host skills
+ * would. A load that cannot happen is **not** a failed install: the agent skills
  * are installed either way, and the honest report plus the printed command is
  * what lets an operator finish the job.
  *
@@ -812,7 +812,7 @@ board to answer /health, and reports what happened.
 Called by install.sh; not meant to be run by hand.
 
 Exit 0 even when the unit could not be loaded (the report says so, and the
-host install is unaffected). Exit 3 when it refused to re-point the machine's
+agent install is unaffected). Exit 3 when it refused to re-point the machine's
 already-loaded guard at this board — that guard is one per machine, and it
 belongs to the board installed first; --force re-points it deliberately.
 `;

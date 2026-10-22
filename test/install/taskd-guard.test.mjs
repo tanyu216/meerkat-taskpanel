@@ -281,8 +281,8 @@ describe("taskd guard: rendering", () => {
     assert.equal(paths.systemdUnit, join(prefix, "taskpanel", "scheduling", "systemd", TASKD_UNIT));
     assert.equal(paths.serverEntry, join(ROOT, "src", "server", "main.mjs"));
     assert.equal(paths.logFile, join(dataDir, "logs", "taskd.log"));
-    for (const hostDir of [".claude", ".codex", ".openclaw", ".agents"]) {
-      assert.ok(!paths.launchdUnit.includes(join(prefix, hostDir)), `never under ${hostDir}/`);
+    for (const agentDir of [".claude", ".codex", ".openclaw", ".agents"]) {
+      assert.ok(!paths.launchdUnit.includes(join(prefix, agentDir)), `never under ${agentDir}/`);
     }
   });
 

@@ -317,9 +317,9 @@ check belongs. Its steps, in order:
 | 4 | `node scripts/verify/contract.mjs` (API contract snapshot) |
 | 5 | `node scripts/verify/route-request.mjs` (declared request schema vs handler reads) |
 | 6 | `bash install.sh --target all --dry-run` |
-| 7 | `node scripts/verify/profiles.mjs` (every host, throwaway home) |
+| 7 | `node scripts/verify/profiles.mjs` (every agent kind, throwaway home) |
 | 8 | `node scripts/verify/server-install.mjs` (npm/npx and source server install, launchers, `/health`) |
-| 9 | `node scripts/verify/host-runtime.mjs` (offline host-runtime harness) |
+| 9 | `node scripts/verify/kind-runtime.mjs` (offline agent-kind runtime harness) |
 | 10 | `bash scripts/verify/install-e2e.sh` (install + first-run end-to-end) |
 
 Each step prints an `== ... ==` header and the script aborts on the first failure.
@@ -336,9 +336,9 @@ Each step prints an `== ... ==` header and the script aborts on the first failur
 
 ## Profiles
 
-`docker/profiles/*.yml` describes one flat profile per supported agent host:
+`docker/profiles/*.yml` describes one flat profile per supported agent kind:
 
-| Host | `target_dir` | `installer` |
+| Agent kind | `target_dir` | `installer` |
 |---|---|---|
 | `claude` | `.claude/skills/meerkat-taskpanel` | `scripts/install/claude.sh` |
 | `openclaw` | `.openclaw/skills/meerkat-taskpanel` | `scripts/install/openclaw.sh` |
@@ -347,13 +347,13 @@ Each step prints an `== ... ==` header and the script aborts on the first failur
 | `opencode` | `.config/opencode/skills/meerkat-taskpanel` | `scripts/install/opencode.sh` |
 | `cursor` | `.cursor/skills/meerkat-taskpanel` | `scripts/install/cursor.sh` |
 
-Each file has the same six keys: `host`, `label`, `installer`, `target_dir`,
+Each file has the same six keys: `actor_kind`, `label`, `installer`, `target_dir`,
 `skill_entry`, `wrapper`. They are read by a tiny flat-map parser
 (`scripts/verify/lib/mini-yaml.mjs`) — this project takes no YAML dependency, so a
 profile must stay a flat `key: value` map. Unsupported syntax is a hard error with a
 line number.
 
-`node scripts/verify/profiles.mjs` installs every profiled host and asserts, per host:
+`node scripts/verify/profiles.mjs` installs every profiled agent kind and asserts, per agent kind:
 
 - the skill directory exists at `<home>/<target_dir>`;
 - `SKILL.md` still carries `name: meerkat-taskpanel` in its frontmatter;
@@ -362,7 +362,7 @@ line number.
 
 ### Why a temporary home
 
-Nothing is ever installed into a real host directory. Every profile install runs against
+Nothing is ever installed into a real agent directory. Every profile install runs against
 a throwaway home:
 
 ```bash
@@ -372,16 +372,16 @@ node scripts/verify/profiles.mjs --home "$(mktemp -d)"
 The default is `$TMPDIR/meerkat-taskpanel-profiles-<pid>`, and the installer is driven through
 the same `MEERKAT_TASKPANEL_TARGET_HOME` variable that `install.sh --prefix <dir>` sets — so the
 check is equivalent to a real install while touching only a temp directory. This is how
-the six-host matrix is verified on a machine that does not (and should not) have those
-hosts installed: the profile's `target_dir` and `installer` are exercised for real, and
+the six-agent-kind matrix is verified on a machine that does not (and should not) have those
+agent kinds installed: the profile's `target_dir` and `installer` are exercised for real, and
 the installed skill is executed through its own wrapper.
 
 The verification installs with `--link` semantics (`MEERKAT_TASKPANEL_LINK=1`), matching
 `install.sh --link`. That is what keeps this check on the wrapper's **checkout-relative**
 rung: a symlinked skill still has this checkout three levels up, so `run.mjs` finds the CLI
 beside it, and `--version` exercises that path end to end. The mode `install.sh` *defaults*
-to — a copy, which carries no `src/` — is covered per host by
-`test/install/installed-copy.test.mjs`: it installs the hosts by copy and asserts the
+to — a copy, which carries no `src/` — is covered per agent kind by
+`test/install/installed-copy.test.mjs`: it installs the agent kinds by copy and asserts the
 wrapper falls back to `taskctl` on `PATH` or to an explicitly named checkout, and otherwise
 refuses with an actionable remedy rather than a crash. See
 [Troubleshooting](#troubleshooting).
@@ -544,7 +544,7 @@ lockfile.
 The wrapper found no CLI on any rung: no checkout named by `MEERKAT_TASKPANEL_ROOT` or
 `MEERKAT_TASKPANEL_REPO`, no checkout around the skill itself (an installed copy carries no
 `src/`), and no `taskctl` on `PATH`. The message prints what it looked for and the three
-ways in; pick one — install the CLI and put it on `PATH` (`install.sh --target <host>`),
+ways in; pick one — install the CLI and put it on `PATH` (`install.sh --target <agent-kind>`),
 name a checkout in `MEERKAT_TASKPANEL_ROOT`, or run that checkout's own
 `skills/meerkat-taskpanel/scripts/run.mjs`. A *copied* skill is not a failure by itself:
 before T-20261014-214002 this case died with `Cannot find module .../src/cli/index.mjs`,

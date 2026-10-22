@@ -672,7 +672,7 @@ export const TASKD_KIND = "taskd";
  *
  * Declared in `foundation` because **both** sides of the board read the same
  * vocabulary: `src/core/domain/status.mjs` enforces it, and
- * `src/foundation/scheduling.mjs` resolves the loop's copy from its host config
+ * `src/foundation/scheduling.mjs` resolves the loop's copy from its agent config
  * (which is what the loop believes before the board tells it otherwise).
  *
  *   * `human-only` — only a human accepts a top-level original;

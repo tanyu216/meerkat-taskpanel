@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * The host-external scheduler — the loop's two clocks.
+ * The external scheduler — the loop's two clocks.
  *
  *   * **ping** (60s) — prune worker pids that are gone. No board read, no LLM.
- *   * **continue** (600s) — wake the host with a bounded Continue prompt; that turn
+ *   * **continue** (600s) — wake the agent with a bounded Continue prompt; that turn
  *     runs `scripts/loop/passes.mjs patrol|workflow|poll`, in that order.
  *
  * The installed units are one-shot (`--ping-only --once` / `--continue-only
@@ -11,10 +11,10 @@
  * legacy poll pass, so an old installed unit keeps discovering work.
  *
  * Usage:
- *   node scripts/supervisor.mjs --host claude --agent alice
- *   node scripts/supervisor.mjs --host claude --agent alice --ping-only --once
- *   node scripts/supervisor.mjs --host claude --agent alice --continue-only --once
- *   node scripts/supervisor.mjs --host claude --agent alice --subscribe
+ *   node scripts/supervisor.mjs --actor-kind claude --agent alice
+ *   node scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once
+ *   node scripts/supervisor.mjs --actor-kind claude --agent alice --continue-only --once
+ *   node scripts/supervisor.mjs --actor-kind claude --agent alice --subscribe
  *
  * Run with: node scripts/supervisor.mjs --help
  */

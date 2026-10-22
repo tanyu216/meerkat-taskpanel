@@ -5,7 +5,7 @@
 #   wake-claude.sh "<handoff>"            # a fresh headless turn
 #   wake-claude.sh "<handoff>" <sid>      # resume session <sid>
 #
-# A worker must run in the card's project directory, and only this host-local
+# A worker must run in the card's project directory, and only this agent-local
 # glue can resolve it. Inputs (set by the supervisor):
 #   TP_PROJECT        the card's board project identity
 #   TP_PROJECTS_JSON  the local project map (default: beside the installed skill)
@@ -41,7 +41,7 @@ cd "$cwd"
 echo "wake-claude: working directory $cwd" >&2
 
 # Full tool access is an opt-in of the *resident* session pool (`--session`),
-# where the operator records an authorization in the host config. This legacy
+# where the operator records an authorization in the agent config. This legacy
 # one-shot glue stays inside the no-default-bypass rule: it never adds one.
 if [ -n "$sid" ]; then
   exec claude -p "$prompt" --resume "$sid"

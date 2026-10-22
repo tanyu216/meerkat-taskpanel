@@ -106,7 +106,7 @@ function card(fields) {
 }
 
 function plan(cards, { trails = {}, now = NOW, periodSeconds = PERIOD_SECONDS, ...rest } = {}) {
-  return planSlaPatrol({ cards, trails, now, periodSeconds, mechanismHost: "claude/linus", ...rest });
+  return planSlaPatrol({ cards, trails, now, periodSeconds, mechanismActor: "claude/linus", ...rest });
 }
 
 const rowsOf = (result) => result.alerts.map((alert) => alert.sla_row).sort();
@@ -1053,7 +1053,7 @@ describe("the shared tuple (§4) and the safe-operation envelope (§9)", () => {
       "measure_start_kind", "measure_start_at", "measure_start_source",
       "elapsed_working_min", "elapsed_basis", "threshold_min", "due_at", "action",
       "target", "notify", "releasable", "releasable_basis", "blocked_reason",
-      "confidence", "mechanism", "mechanism_host", "first_seen", "last_seen",
+      "confidence", "mechanism", "mechanism_actor", "first_seen", "last_seen",
       "observed_by", "evidence",
     ];
     for (const field of expected) assert.ok(field in FULL, `missing tuple field: ${field}`);
@@ -1114,7 +1114,7 @@ describe("buildSlaAlert (one tuple builder for every mechanism)", () => {
       detection: detection(),
       periodMin: 5,
       mechanism: "taskd",
-      mechanismHost: null,
+      mechanismActor: null,
       now: NOW,
     });
     assert.equal(alert.card_id, "T-1");
@@ -1366,7 +1366,7 @@ function alertsFor(cards, extra = {}) {
     now: NOW,
     periodSeconds: PERIOD_SECONDS,
     mechanism: "taskd",
-    mechanismHost: null,
+    mechanismActor: null,
     ...extra,
   }).alerts;
 }

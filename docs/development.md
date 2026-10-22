@@ -26,7 +26,7 @@
 | `skills/meerkat-taskpanel/` | The skill — **single source of truth** |
 | `.claude-plugin/` | The board plugin manifest and the marketplace; the plugin root is the repository root, which is how every harness shares the one `skills/` tree |
 | `.pi/` | The Pi extension, declared by the root `package.json`'s `pi` field (which also names the skills directory) |
-| `.opencode/` | The OpenCode plugin — a Shape-B host: it registers the shared `skills/` directory at runtime, so it too needs no copy |
+| `.opencode/` | The OpenCode plugin — a Shape-B agent kind: it registers the shared `skills/` directory at runtime, so it too needs no copy |
 | `.cursor-plugin/` | Cursor's marker. Cursor reads `skills` out of its plugin root, which is why the repository root is a Cursor plugin root as well |
 | `scripts/` | Build, install, sync and verify scripts |
 | `test/` | Smoke / contract tests |
@@ -64,7 +64,7 @@ HTTP API directly. Capability detail lives in the board skill's
 node --test                          # smoke / contract test suite
 node scripts/sync-skills.mjs         # regenerate the loop payload (manifest + scripts/ + templates/)
 node scripts/sync-skills.mjs --check # verify both are in sync
-node scripts/verify/manifests.mjs    # validate the host + loop + marketplace manifests
+node scripts/verify/manifests.mjs    # validate the agent-kind + loop + marketplace manifests
 node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
 node scripts/verify/web-dist.mjs     # are the two web/dist-guarded tests legs actually run?
 node scripts/build.mjs               # produce dist/ — the npm release tree (not web/dist)
@@ -253,7 +253,7 @@ are three roots in play and they are not interchangeable:
 
 The installed tree is a copy of `src/**` plus the built `web/dist`, materialized by
 `scripts/install/lib/server-install.mjs`; `scripts/install/server.sh` is the shell entry, and
-the npm wrapper `scripts/install/cli.mjs` only translates flags and points a combined host
+the npm wrapper `scripts/install/cli.mjs` only translates flags and points a combined agent-kind
 install at the tree. `bin/taskd` and `bin/taskctl` are thin launchers that exec the tree's own
 `src/server/main.mjs` / `src/cli/index.mjs`, so the npx cache can be pruned and the checkout
 can move without disturbing an installed board. This is separate from `dist/`: that is the
@@ -425,10 +425,10 @@ gitignored.
 
 **One more rule for the skills, because they are distributed rather than read in place:** a
 link inside `skills/**` must resolve wherever the skill is *installed*, not where it was
-authored. A host's skill store holds `skills/<name>/` and nothing above it, so a
+authored. An agent kind's skill store holds `skills/<name>/` and nothing above it, so a
 `../../../docs/…` link dangles in every install — link out by absolute URL instead. (Sharing
 the tree across harnesses does not relax this: `install.sh` still lands one skill directory
-in the host's store.) `test/skill/loop.test.mjs` asserts no link climbs out of the skill
+in the agent kind's store.) `test/skill/loop.test.mjs` asserts no link climbs out of the skill
 tree.
 
 ## Build output

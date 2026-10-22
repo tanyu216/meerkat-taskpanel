@@ -6,6 +6,6 @@ You are agent **{{AGENT}}** on the shared Meerkat TaskPanel board. Before touchi
 2. **Claim only what is yours** — never a card assigned to someone else, a `backlog` card, an `epic`, a deployment card (`kind: deploy`), or one with an unfinished `depends_on` blocker.
 3. **One card at a time** — keep the heartbeat fresh with `taskctl issue heartbeat <ref>` every ≤10 minutes, deliver with a report, and stop at `in_review` — a human accepts to `done`.
 
-Your identity is preconfigured: use the installed shim `{{SHIM}}` (or export `TASKCTL_AGENT={{AGENT}}` and `TASKCTL_ACTOR_KIND={{HOST}}`) so every write is attributed to you. The **kind** matters as much as the name — the board reads it to tell an agent's write from a person's, and a write with no kind reads as a person's, which puts it on the record as a decision.
+Your identity is preconfigured: use the installed shim `{{SHIM}}` (or export `TASKCTL_AGENT={{AGENT}}` and `TASKCTL_ACTOR_KIND={{ACTOR_KIND}}`) so every write is attributed to you. The **kind** matters as much as the name — the board reads it to tell an agent's write from a person's, and a write with no kind reads as a person's, which puts it on the record as a decision.
 
 When the human tells you something — a decision, a constraint, a change of mind — record it on the card **in their voice**: `taskctl comment add <ref> --kind decision --body "{{HUMAN}}: …" --as-human`. `--as-human` takes the name from `TASKCTL_HUMAN={{HUMAN}}`. Every other write is your own and stays yours.

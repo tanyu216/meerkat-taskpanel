@@ -42,7 +42,7 @@ const hostConfig = (home) => {
 const boardConfig = (envFile) => (existsSync(envFile) ? readFileSync(envFile, "utf8") : "");
 
 describe("install.sh: acceptance policy", () => {
-  it("defaults to both and persists it in the host config and the install-root .env", () => {
+  it("defaults to both and persists it in the agent config and the install-root .env", () => {
     const home = makeTempDir();
     const dataDir = makeTempDir();
     const bin = makeTempDir();

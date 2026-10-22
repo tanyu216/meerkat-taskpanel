@@ -10,7 +10,7 @@ Meerkat TaskPanel is **local-first** by design.
   `~/.meerkat-taskpanel/.data` for an npm/npx install. That directory is gitignored, is
   never packaged, and is never deleted or overwritten by an upgrade.
 - **Installs are file copies.** `install.sh` copies or symlinks the skill into your own
-  host directories (`~/.claude/skills`, `~/.openclaw/skills`, `~/.codex/skills`,
+  agent directories (`~/.claude/skills`, `~/.openclaw/skills`, `~/.codex/skills`,
   `~/.agents/skills`). It sends nothing anywhere.
 
 If a future milestone adds an optional hosted or sync feature, it will be opt-in and

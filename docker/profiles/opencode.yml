@@ -1,5 +1,5 @@
-# Host profile: OpenCode. See docs/docker.md § Profiles and docs/install.md.
-host: opencode
+# Agent-kind profile: OpenCode. See docs/docker.md § Profiles and docs/install.md.
+actor_kind: opencode
 label: OpenCode
 installer: scripts/install/opencode.sh
 target_dir: .config/opencode/skills/meerkat-taskpanel

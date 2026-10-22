@@ -54,7 +54,7 @@ describe("card-file — exportCardFile", () => {
     const target = tempDir();
     const calls = [];
     const outcome = exportCardFile({
-      opts: { cli: "/taskctl", host: "claude" },
+      opts: { cli: "/taskctl", actorKind: "claude" },
       agent: "alice",
       targetDir: target,
       identifier: "PROJ-0007",

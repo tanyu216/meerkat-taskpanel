@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * SUPPLEMENTARY verification: the four-host SESSION-RESUME capability matrix.
+ * SUPPLEMENTARY verification: the five-agent-kind SESSION-RESUME capability matrix.
  *
- *   node scripts/verify/host-resume-matrix.mjs [options]
+ *   node scripts/verify/kind-resume-matrix.mjs [options]
  *
  * Options:
- *   --host <h1,h2>       restrict to some of claude,codex,pi,opencode,cursor (default: all)
+ *   --actor-kind <k1,k2>       restrict to some actor kinds (claude,codex,pi,opencode,cursor (default: all)
  *   --timeout <ms>       per-probe timeout (default 60000)
  *   --e2e                also run the "new session -> remember a marker -> resume reads it
  *                        back" round trip (needs working credentials; OFF by default)
@@ -18,18 +18,18 @@
  *
  * WHAT THIS DOES / WHY IT EXISTS
  * -----------------------------
- * The team twice mis-read the hosts: "codex/pi have no resume" was really our own wake
- * scripts not being wired. This script makes that claim falsifiable. It records, per host
+ * The team twice mis-read the agent kinds: "codex/pi have no resume" was really our own wake
+ * scripts not being wired. This script makes that claim falsifiable. It records, per agent kind
  * and per capability dimension, the exact command, the matched help text and the exit code,
  * then optionally proves the capability end to end with a marker round trip.
  *
  * Dimensions (columns): version | continue-last | resume-by-id | fork | non-interactive.
  *
  * RELATION TO THE OTHER VERIFY ASSETS (the card asks for this explicitly)
- *   * scripts/verify/host-runtime.mjs — OFFLINE mock harness: drives the generated glue
+ *   * scripts/verify/kind-runtime.mjs — OFFLINE mock harness: drives the generated glue
  *     (hooks, wake-*.sh) against FAKE CLIs and asserts argv. It never touches a real CLI,
  *     and it says nothing about resume. This script is the real-CLI counterpart.
- *   * scripts/verify/host-cli.mjs — drives the real CLIs too, but only for plugin/marketplace
+ *   * scripts/verify/kind-cli.mjs — drives the real CLIs too, but only for plugin/marketplace
  *     *recognition*; it has no resume dimension. Same isolation tricks are reused here
  *     (throwaway HOME, SKIP-on-absent), so the two are complementary and coexist.
  *   * src/foundation/scheduling.mjs#wakeCommand — the production consumer. It emits
@@ -39,7 +39,7 @@
  *     `cursor-agent -p [--resume <sid>]`; this matrix is the evidence that those flags
  *     are real in the CLI versions we pin.
  *
- * A `null` dimension means the host does not offer that capability (Cursor has no fork
+ * A `null` dimension means the agent kind does not offer that capability (Cursor has no fork
  * flag); it renders as `➖` and is excluded from the row's pass/fail decision.
  *
  * EVIDENCE DISCIPLINE
@@ -47,9 +47,9 @@
  *     ~/.pi, ~/.config/opencode, ~/.cursor.
  *   * `--e2e` copies ONLY the minimum provider config / auth into the throwaway home and
  *     deletes it afterwards. Credentials are never printed into stdout or evidence; the
- *     e2e fixtures below are generated literals ("MK-<HOST>-<rand>"), not secrets.
+ *     e2e fixtures below are generated literals ("MK-<KIND>-<rand>"), not secrets.
  *     Cursor's e2e reads `CURSOR_API_KEY` from the environment and SKIPs without it.
- *   * A host whose CLI is absent is SKIPPED (blocked), not failed — safe to run anywhere.
+ *   * An agent kind whose CLI is absent is SKIPPED (blocked), not failed — safe to run anywhere.
  */
 
 import { spawnSync } from "node:child_process";
@@ -61,21 +61,21 @@ import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 const IMAGE = "meerkat-taskpanel:verify";
 
-/** Keep host CLIs off the network where we can, and their output machine-readable. */
+/** Keep agent CLIs off the network where we can, and their output machine-readable. */
 const QUIET_ENV = { NO_COLOR: "1", CI: "1", OPENCLAW_DISABLE_UPDATE_CHECK: "1" };
 
 /**
- * Per-host probe table. `bins` is the executable name; `help` is the list of argv tails
+ * Per-agent-kind probe table. `bins` is the executable name; `help` is the list of argv tails
  * whose combined output we scan; `dims` maps each capability to a RegExp that must match
  * the help text; `nonInteractive` additionally carries the concrete headless invocation.
  *
- * @type {Array<{host:string, bin:string, dotDir:string, configEnv:string, help:string[][],
+ * @type {Array<{actorKind:string, bin:string, dotDir:string, configEnv:string, help:string[][],
  *   dims:{continueLast:RegExp, resumeById:RegExp, fork:RegExp, nonInteractive:RegExp},
  *   headless:string}>}
  */
-export const HOSTS = [
+export const KINDS = [
   {
-    host: "claude",
+    actorKind: "claude",
     bin: "claude",
     dotDir: ".claude",
     configEnv: "CLAUDE_CONFIG_DIR",
@@ -89,7 +89,7 @@ export const HOSTS = [
     headless: "claude -p --output-format json <prompt>",
   },
   {
-    host: "codex",
+    actorKind: "codex",
     bin: "codex",
     dotDir: ".codex",
     configEnv: "CODEX_HOME",
@@ -103,7 +103,7 @@ export const HOSTS = [
     headless: "codex exec --json --skip-git-repo-check <prompt>",
   },
   {
-    host: "pi",
+    actorKind: "pi",
     bin: "pi",
     dotDir: ".pi",
     configEnv: null, // pi reads ~/.pi; isolated via HOME only
@@ -117,7 +117,7 @@ export const HOSTS = [
     headless: "pi --print <prompt>",
   },
   {
-    host: "opencode",
+    actorKind: "opencode",
     bin: "opencode",
     dotDir: ".config/opencode",
     configEnv: null,
@@ -134,7 +134,7 @@ export const HOSTS = [
     // Cursor's documented flag surface (`-p/--print`, `--resume [chatId]`,
     // `--continue`, `--workspace`). It has no fork flag, so `fork: null` records
     // "not offered" rather than inventing a capability. An absent CLI SKIPs.
-    host: "cursor",
+    actorKind: "cursor",
     bin: "cursor-agent",
     dotDir: ".cursor",
     configEnv: null,
@@ -167,25 +167,25 @@ function which(bin) {
   return r.status === 0 ? (r.stdout || "").trim() : null;
 }
 
-/** Run one host's help probes in a throwaway HOME; return the concatenated output. */
-function gatherHelp(host, timeoutMs) {
-  const home = mkdtempSync(join(tmpdir(), `trm-resume-${host.host}-`));
-  mkdirSync(join(home, host.dotDir), { recursive: true });
+/** Run one agent kind's help probes in a throwaway HOME; return the concatenated output. */
+function gatherHelp(kind, timeoutMs) {
+  const home = mkdtempSync(join(tmpdir(), `trm-resume-${kind.actorKind}-`));
+  mkdirSync(join(home, kind.dotDir), { recursive: true });
   const env = {
     ...process.env,
     ...QUIET_ENV,
     HOME: home,
-    ...(host.configEnv ? { [host.configEnv]: join(home, host.dotDir) } : {}),
+    ...(kind.configEnv ? { [kind.configEnv]: join(home, kind.dotDir) } : {}),
   };
   const chunks = [];
   const transcripts = [];
   try {
-    for (const args of host.help) {
-      const r = spawnSync(host.bin, args, { env, encoding: "utf8", timeout: timeoutMs, input: "" });
+    for (const args of kind.help) {
+      const r = spawnSync(kind.bin, args, { env, encoding: "utf8", timeout: timeoutMs, input: "" });
       const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
       chunks.push(out);
       transcripts.push({
-        cmd: `${host.bin} ${args.join(" ")}`,
+        cmd: `${kind.bin} ${args.join(" ")}`,
         rc: r.status,
         error: r.error?.message ?? null,
         excerpt: tail(out, 20),
@@ -197,28 +197,28 @@ function gatherHelp(host, timeoutMs) {
   }
 }
 
-/** Probe one host: version + the four capability dimensions (flag level). */
-export function probeHost(host, timeoutMs) {
-  const binPath = which(host.bin);
+/** Probe one agent kind: version + the four capability dimensions (flag level). */
+export function probeKind(kind, timeoutMs) {
+  const binPath = which(kind.bin);
   if (!binPath) {
     return {
-      host: host.host,
+      actorKind: kind.actorKind,
       status: "SKIP",
-      reason: `${host.bin} not on PATH`,
+      reason: `${kind.bin} not on PATH`,
       version: null,
       env: "host",
       dims: {},
-      headless: host.headless,
+      headless: kind.headless,
     };
   }
 
-  const v = spawnSync(host.bin, ["--version"], { encoding: "utf8", timeout: timeoutMs, input: "" });
+  const v = spawnSync(kind.bin, ["--version"], { encoding: "utf8", timeout: timeoutMs, input: "" });
   const version = `${v.stdout ?? ""}${v.stderr ?? ""}`.trim().split("\n")[0] || "(unknown)";
-  const { text, transcripts } = gatherHelp(host, timeoutMs);
+  const { text, transcripts } = gatherHelp(kind, timeoutMs);
 
   const dims = {};
-  for (const [key, re] of Object.entries(host.dims)) {
-    // `null` means the host does not offer this capability; it is neither a pass
+  for (const [key, re] of Object.entries(kind.dims)) {
+    // `null` means the agent kind does not offer this capability; it is neither a pass
     // nor a failure, and it must not drag the whole row to PARTIAL.
     if (re === null) continue;
     const m = text.match(re);
@@ -230,13 +230,13 @@ export function probeHost(host, timeoutMs) {
   }
 
   return {
-    host: host.host,
+    actorKind: kind.actorKind,
     status: Object.values(dims).every((d) => d.ok) ? "PASS" : "PARTIAL",
     version,
     env: "host",
     dims,
     probes: transcripts,
-    headless: host.headless,
+    headless: kind.headless,
   };
 }
 
@@ -250,14 +250,14 @@ const E2E_FIXTURES = {
   cursor: [], // auth arrives via CURSOR_API_KEY
 };
 
-/** The per-host dot-directory under an isolated HOME. */
+/** The per-agent-kind dot-directory under an isolated HOME. */
 const E2E_DIRS = { claude: ".claude", codex: ".codex", pi: ".pi", opencode: ".config/opencode", cursor: ".cursor" };
 
-function isolatedHome(host) {
-  const home = mkdtempSync(join(tmpdir(), `trm-e2e-${host}-`));
-  const dir = E2E_DIRS[host] ?? ".claude";
+function isolatedHome(kind) {
+  const home = mkdtempSync(join(tmpdir(), `trm-e2e-${kind}-`));
+  const dir = E2E_DIRS[kind] ?? ".claude";
   mkdirSync(join(home, dir), { recursive: true });
-  for (const rel of E2E_FIXTURES[host] ?? []) {
+  for (const rel of E2E_FIXTURES[kind] ?? []) {
     const src = join(homedir(), dir, rel);
     const dst = join(home, dir, rel);
     if (existsSync(src)) {
@@ -273,25 +273,25 @@ function runIn(bin, args, env, cwd, timeoutMs) {
   return { rc: r.status, out: r.stdout ?? "", err: r.stderr ?? "", error: r.error?.message ?? null };
 }
 
-const MARK = (host) => `MK-${host.toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+const MARK = (kind) => `MK-${kind.toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 const ASK = (m) => `Remember the token ${m}. Reply with exactly: STORED`;
 const RECALL = "What token did I ask you to remember? Reply with only the token, nothing else.";
 
 /**
- * Marker round trip for one host. Returns a list of step results; each carries the command,
+ * Marker round trip for one agent kind. Returns a list of step results; each carries the command,
  * the exit code and whether the marker came back. A step whose model turn is refused (auth,
  * network) is reported as `blocked` with the upstream message — never silently "passed".
  */
-export function e2eHost(hostName, timeoutMs) {
-  const mark = MARK(hostName);
-  const home = isolatedHome(hostName);
-  const cwd = mkdtempSync(join(tmpdir(), `trm-e2e-${hostName}-cwd-`));
+export function e2eKind(kindName, timeoutMs) {
+  const mark = MARK(kindName);
+  const home = isolatedHome(kindName);
+  const cwd = mkdtempSync(join(tmpdir(), `trm-e2e-${kindName}-cwd-`));
   const env = {
     ...process.env,
     ...QUIET_ENV,
     HOME: home,
-    ...(hostName === "codex" ? { CODEX_HOME: join(home, ".codex") } : {}),
-    ...(hostName === "claude" ? { CLAUDE_CONFIG_DIR: join(home, ".claude") } : {}),
+    ...(kindName === "codex" ? { CODEX_HOME: join(home, ".codex") } : {}),
+    ...(kindName === "claude" ? { CLAUDE_CONFIG_DIR: join(home, ".claude") } : {}),
   };
   const steps = [];
   const push = (name, res, extra = {}) => {
@@ -306,7 +306,7 @@ export function e2eHost(hostName, timeoutMs) {
   };
 
   try {
-    if (hostName === "claude") {
+    if (kindName === "claude") {
       const a = runIn("claude", ["-p", "--output-format", "json", ASK(mark)], env, cwd, timeoutMs);
       let sid = null;
       try { sid = JSON.parse(a.out).session_id; } catch { /* non-JSON = refused turn */ }
@@ -321,7 +321,7 @@ export function e2eHost(hostName, timeoutMs) {
         try { nsid = JSON.parse(d.out).session_id; } catch { /* ignore */ }
         push("fork (claude -p --resume <sid> --fork-session)", d, { forkedSessionId: nsid, forkIsNew: !!nsid && nsid !== sid });
       }
-    } else if (hostName === "codex") {
+    } else if (kindName === "codex") {
       const a = runIn("codex", ["exec", "--json", "--skip-git-repo-check", ASK(mark)], env, cwd, timeoutMs);
       const tid = (a.out.match(/"thread_id":"([0-9a-f-]+)"/) || [])[1] ?? null;
       push("new session (codex exec)", a, { threadId: tid });
@@ -334,16 +334,16 @@ export function e2eHost(hostName, timeoutMs) {
         const ntid = (d.out.match(/"thread_id":"([0-9a-f-]+)"/) || [])[1] ?? null;
         push("fork (codex exec fork <id>)", d, { forkedThreadId: ntid, forkIsNew: !!ntid && ntid !== tid });
       }
-    } else if (hostName === "pi") {
+    } else if (kindName === "pi") {
       const a = runIn("pi", ["--print", ASK(mark)], env, cwd, timeoutMs);
       push("new session (pi --print)", a);
       const b = runIn("pi", ["--print", "--continue", RECALL], env, cwd, timeoutMs);
       push("continue-last (pi --print --continue)", b);
-    } else if (hostName === "cursor") {
+    } else if (kindName === "cursor") {
       // Cursor's headless auth is `CURSOR_API_KEY`; without one the turn would be
       // refused upstream, so say so instead of spending a call.
       if (!process.env.CURSOR_API_KEY) {
-        return { host: hostName, marker: mark, status: "blocked", reason: "CURSOR_API_KEY is not set", steps: [] };
+        return { actorKind: kindName, marker: mark, status: "blocked", reason: "CURSOR_API_KEY is not set", steps: [] };
       }
       const a = runIn("cursor-agent", ["-p", "--trust", "--output-format", "json", ASK(mark)], env, cwd, timeoutMs);
       let sid = null;
@@ -361,19 +361,19 @@ export function e2eHost(hostName, timeoutMs) {
           runIn("cursor-agent", ["-p", "--trust", "--continue", "--output-format", "json", RECALL], env, cwd, timeoutMs));
       }
     } else {
-      return { host: hostName, marker: mark, status: "blocked", reason: "no CLI (see flag-level probe)", steps: [] };
+      return { actorKind: kindName, marker: mark, status: "blocked", reason: "no CLI (see flag-level probe)", steps: [] };
     }
 
     const recalled = steps.filter((s) => /resume-by-id|continue-last/.test(s.step));
     // Cursor's proof is the documented one-shot `-p` call; a resume is a bonus when
     // the JSON output carries a session id. Every step that ran must read the marker.
     const green =
-      hostName === "cursor"
+      kindName === "cursor"
         ? steps.length > 0 && steps.every((s) => s.readBack)
         : recalled.length > 0 && recalled.every((s) => s.readBack);
     const refused = steps.some((s) => s.rc !== 0 && !s.readBack && /4\d\d|forbidden|unauthor|not allowed|api key/i.test(s.excerpt));
     return {
-      host: hostName,
+      actorKind: kindName,
       marker: mark,
       status: green ? "PASS" : refused ? "blocked" : "FAIL",
       reason: green ? "marker read back after resume" : refused ? "model turn refused upstream (auth/provider) — flag level only" : "marker not read back",
@@ -430,12 +430,12 @@ function containerProbe(image, timeoutMs) {
 
 function renderMatrix(rows) {
   const cols = ["version", ...Object.values(DIM_LABELS)];
-  const head = `| host | ${cols.join(" | ")} |`;
+  const head = `| actor kind | ${cols.join(" | ")} |`;
   const sep = `| --- | ${cols.map(() => "---").join(" | ")} |`;
   const body = rows.map((r) => {
-    if (r.status === "SKIP") return `| ${r.host} | ${r.version ?? "n/a"} | ${cols.slice(1).map(() => "⚪ blocked").join(" | ")} |`;
+    if (r.status === "SKIP") return `| ${r.actorKind} | ${r.version ?? "n/a"} | ${cols.slice(1).map(() => "⚪ blocked").join(" | ")} |`;
     const cells = Object.keys(DIM_LABELS).map((k) => (!r.dims[k] ? "➖" : r.dims[k].ok ? "✅" : "❌"));
-    return `| ${r.host} | ${r.version} | ${cells.join(" | ")} |`;
+    return `| ${r.actorKind} | ${r.version} | ${cells.join(" | ")} |`;
   });
   return [head, sep, ...body].join("\n");
 }
@@ -443,7 +443,7 @@ function renderMatrix(rows) {
 async function main() {
   const { values } = parseArgs({
     options: {
-      host: { type: "string", multiple: true, short: "H" },
+      "actor-kind": { type: "string", multiple: true, short: "H" },
       timeout: { type: "string" },
       e2e: { type: "boolean", default: false },
       container: { type: "boolean", default: false },
@@ -456,7 +456,7 @@ async function main() {
 
   if (values.help) {
     process.stdout.write(
-      "Usage: node scripts/verify/host-resume-matrix.mjs [--host claude,codex] [--e2e] [--container]\n" +
+      "Usage: node scripts/verify/kind-resume-matrix.mjs [--actor-kind claude,codex] [--e2e] [--container]\n" +
         "       [--json] [--evidence-dir DIR]\n\n" +
         "  Flag-level resume matrix for claude|codex|pi|opencode|cursor; --e2e adds marker round trips.\n",
     );
@@ -464,18 +464,18 @@ async function main() {
   }
 
   const timeoutMs = Number(values.timeout ?? 60_000);
-  const wanted = (values.host ?? []).flatMap((v) => String(v).split(",")).map((s) => s.trim()).filter(Boolean);
-  const hosts = wanted.length ? HOSTS.filter((h) => wanted.includes(h.host)) : HOSTS;
+  const wanted = (values["actor-kind"] ?? []).flatMap((v) => String(v).split(",")).map((s) => s.trim()).filter(Boolean);
+  const kinds = wanted.length ? KINDS.filter((k) => wanted.includes(k.actorKind)) : KINDS;
   const image = values.image ?? IMAGE;
 
-  const rows = hosts.map((h) => probeHost(h, timeoutMs));
+  const rows = kinds.map((k) => probeKind(k, timeoutMs));
   let e2e = null;
   if (values.e2e) {
     e2e = [];
-    for (const h of hosts) {
-      if (h.host === "opencode") continue; // handled by the flag-level probe / blocked conclusion
+    for (const k of kinds) {
+      if (k.actorKind === "opencode") continue; // handled by the flag-level probe / blocked conclusion
       if (!which(h.bin)) continue;
-      e2e.push(e2eHost(h.host, Math.max(timeoutMs, 240_000)));
+      e2e.push(e2eKind(k.actorKind, Math.max(timeoutMs, 240_000)));
     }
   }
   const container = values.container ? containerProbe(image, 900_000) : null;
@@ -486,16 +486,16 @@ async function main() {
     const dir = resolve(values["evidence-dir"]);
     mkdirSync(dir, { recursive: true });
     for (const r of rows) {
-      const lines = [`# ${r.host} (${r.env})`, `status: ${r.status}`, `version: ${r.version}`, ""];
+      const lines = [`# ${r.actorKind} (${r.env})`, `status: ${r.status}`, `version: ${r.version}`, ""];
       for (const [k, d] of Object.entries(r.dims)) lines.push(`${DIM_LABELS[k]}: ${d.ok ? "YES" : "NO"} (${d.evidence})`);
       lines.push("", "## help transcripts");
       for (const p of r.probes ?? []) lines.push(`$ ${p.cmd}   # rc=${p.rc}`, p.excerpt, "");
-      writeFileSync(join(dir, `flags-${r.host}.txt`), lines.join("\n"));
+      writeFileSync(join(dir, `flags-${r.actorKind}.txt`), lines.join("\n"));
     }
     for (const e of e2e ?? []) {
       writeFileSync(
-        join(dir, `e2e-${e.host}.txt`),
-        [`# e2e ${e.host}`, `status: ${e.status}`, `marker: ${e.marker}`, `reason: ${e.reason}`, "",
+        join(dir, `e2e-${e.actorKind}.txt`),
+        [`# e2e ${e.actorKind}`, `status: ${e.status}`, `marker: ${e.marker}`, `reason: ${e.reason}`, "",
           ...e.steps.map((s) => [`## ${s.step}  rc=${s.rc}  readBack=${s.readBack}`,
             s.sessionId ? `session_id=${s.sessionId}` : "", s.threadId ? `thread_id=${s.threadId}` : "",
             s.forkIsNew !== undefined ? `forkIsNew=${s.forkIsNew}` : "", s.excerpt, ""].filter(Boolean).join("\n"))].join("\n"),
@@ -511,9 +511,9 @@ async function main() {
   } else {
     process.stdout.write(`\n${renderMatrix(rows)}\n\n`);
     for (const r of rows) {
-      process.stdout.write(`${r.status.padEnd(8)} ${r.host.padEnd(9)} ${r.version ?? "-"}\n`);
+      process.stdout.write(`${r.status.padEnd(8)} ${r.actorKind.padEnd(9)} ${r.version ?? "-"}\n`);
     }
-    for (const e of e2e ?? []) process.stdout.write(`e2e ${e.status.padEnd(8)} ${e.host} — ${e.reason}\n`);
+    for (const e of e2e ?? []) process.stdout.write(`e2e ${e.status.padEnd(8)} ${e.actorKind} — ${e.reason}\n`);
     if (container) process.stdout.write(`container probe rc=${container.rc}\n`);
   }
 

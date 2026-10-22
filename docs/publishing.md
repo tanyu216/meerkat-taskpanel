@@ -1,7 +1,7 @@
 # Publishing
 
 How a Meerkat TaskPanel version is packaged and published across its distribution surfaces:
-**npm**, **git + GitHub Release**, and the per-host bundles — Claude Code's marketplace,
+**npm**, **git + GitHub Release**, and the per-agent-kind bundles — Claude Code's marketplace,
 OpenClaw, Codex, Pi, Cursor and OpenCode.
 
 > **Scope.** This page documents the steps only. **The actual `push`, tag and release are
@@ -20,7 +20,7 @@ OpenClaw, Codex, Pi, Cursor and OpenCode.
 | 3 | `.cursor-plugin/plugin.json` | `version` |
 | 4 | `.claude-plugin/marketplace.json` | `metadata.version` |
 
-Three hosts are not carriers. Codex and OpenClaw install the same
+Three agent kinds are not carriers. Codex and OpenClaw install the same
 `.claude-plugin/plugin.json` bundle through the repository-root marketplace, and Pi declares
 itself in the canonical `package.json` itself (its `pi` field) — a row for any would only
 restate one above.
@@ -96,7 +96,7 @@ The package is the **distribution**, not only a source drop. It declares three b
 `meerkat-taskpanel` (the installer), `taskctl` and `taskd` — so after a publish:
 
 ```bash
-npx meerkat-taskpanel                      # install server + taskctl + every agent skill
+npx meerkat-taskpanel                      # install server + taskctl + every agent kind's skill
 npm install -g meerkat-taskpanel           # taskctl / taskd / the installer on PATH
 ```
 
@@ -391,12 +391,12 @@ detected as a cursor-format bundle exposing a loadable `meerkat-taskpanel` skill
 to follow — so rather than invent one, the plugin stays skills-only.
 
 **Unverified, and flagged as such.** Cursor's CLI is not installed in this repository's
-container or on the development host, so the *host integration* above has never been run from
+container or on the development host, so the *agent integration* above has never been run from
 here; the in-chat gesture is transcribed from `obra/superpowers` rather than reproduced.
 
 ## 9. OpenCode
 
-OpenCode is a *directory-granular* host: it is handed a skills directory, not a list of skill
+OpenCode is a *directory-granular* agent kind: it is handed a skills directory, not a list of skill
 names, so `.opencode/plugins/meerkat-taskpanel.js` points it at the repository's own
 `skills/` and both skills arrive together. Nothing is copied — the directory is resolved from
 the plugin's own location, so it follows the package wherever OpenCode fetched it.
@@ -418,7 +418,7 @@ appears in neither the table in §1 nor a bundle directory of its own.
 `package.json#files` must still name `.opencode`, or the plugin never reaches the tarball.
 
 **Unverified, and flagged as such.** OpenCode's CLI is not installed in this repository's
-container or on the development host, so the host integration above has never been run from
+container or on the development host, so the agent integration above has never been run from
 here. What *is* covered is the plugin's own logic:
 `test/install/opencode-plugin.test.mjs` drives it against a fake plugin context.
 
@@ -438,8 +438,8 @@ default, so a manifest that is not listed never reaches the tarball, and
 
 ## See also
 
-- [install.md](install.md) — the per-host install and plugin-registration commands in full.
+- [install.md](install.md) — the per-agent-kind install and plugin-registration commands in full.
 - [development.md](development.md) — the two build layers, the offline policy and the
   generated-skill rule.
 - [`../README.md`](../README.md) / [`../README.zh-CN.md`](../README.zh-CN.md) — status and
-  the six-host support matrix.
+  the six-agent-kind support matrix.

@@ -1554,7 +1554,7 @@
         "measure_start_kind": "string",
         "measure_start_source": "string",
         "mechanism": "string",
-        "mechanism_host": "string",
+        "mechanism_actor": "string",
         "notify": "string",
         "observed_by": "array",
         "releasable": "boolean",

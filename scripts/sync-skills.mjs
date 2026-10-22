@@ -23,7 +23,7 @@
  * `scripts/`, `src/foundation/` and `scripts/install/templates/`, by `scripts/sync-loop.mjs`.
  * This script is the entry point for that, and `--check` guards it.
  *
- * The earlier shape of this file also synced per-host copies into `plugins/<target>/`,
+ * The earlier shape of this file also synced per-agent-kind copies into `plugins/<target>/`,
  * which is why the name says "skills" rather than "loop" — see the 2026-10-17 decision
  * note in `design/plugin-distribution-plan.md` for why the last two were removed and how
  * `test/scaffold.test.mjs` now carries the "exactly one skills tree" invariant instead.

@@ -1,6 +1,6 @@
 ---
 name: meerkat-loop
-description: The host-external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation plus one project session per target directory. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the project session spawns the worker/reviewer subagent in the project directory. Installs launchd / systemd / cron units and the per-host wake glue for claude, codex, pi, opencode and cursor; OpenClaw is excluded.
+description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation plus one project session per target directory. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the project session spawns the worker/reviewer subagent in the project directory. Installs launchd / systemd / cron units and the per-agent-kind wake glue for claude, codex, pi, opencode and cursor; OpenClaw is excluded.
 disable-model-invocation: true
 ---
 
@@ -35,7 +35,7 @@ The continue turn runs three deterministic passes, in this order:
    `auto_accept` and the loop closes the original directly (`loop-auto`).
    On by default; `--workflow=no` disables it.
    The reviewer is `project.reviewer ??` the deployment reviewer
-   (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / host config). A `required`
+   (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent config). A `required`
    project with no effective reviewer fails the loop at startup, and
    `agent-only` + `autoAcceptReviews=no` is refused for the same reason.
    `autoAcceptReviews` only controls whether the loop closes a **review card**;
@@ -67,8 +67,8 @@ continue turn passes `/meerkat-loop Continue — …`; the rest of that prompt (
 passes, with absolute entry paths) is appended as the turn's input. There is no
 argument placeholder, no subcommand and no argument parsing.
 
-`install.sh` copies the skill to `<host>/skills/meerkat-loop/`, so the bare
-`/meerkat-loop` resolves there. On a host that does not expand slash commands, the prefix
+`install.sh` copies the skill to `<agent-dir>/skills/meerkat-loop/`, so the bare
+`/meerkat-loop` resolves there. On an agent kind that does not slash commands, the prefix
 stays literal text and the rest of the prompt still carries the work.
 
 ### Who may close
@@ -161,13 +161,13 @@ pairing.
 
 ```bash
 bash install.sh --target claude     # or codex, pi, opencode, cursor
-bash install.sh --target all        # every host; openclaw gets the board only
+bash install.sh --target all        # every agent kind; openclaw gets the board only
 ```
 
-The installer copies this skill into the host's skill directory, copies the
-execution body into `<host>/meerkat-taskpanel/`, renders the units and wake
+The installer copies this skill into the agent's skill directory, copies the
+execution body into `<agent-dir>/meerkat-taskpanel/`, renders the units and wake
 glue, and prints the one command that loads a unit. Loading is opt-in:
-`install.sh --supervisor=enable` (per host with `--supervisor-hosts`; also
+`install.sh --supervisor=enable` (per agent kind with `--supervisor-actor-kinds`; also
 `--supervisor=status`, `--supervisor=disable`).
 
 **OpenClaw is deliberately excluded.** `install.sh --target openclaw` installs
@@ -185,7 +185,7 @@ scripts/supervisor.mjs    the scheduler (generated)
 scripts/wake-cwd.mjs      the wake glue's resolver (generated)
 scripts/loop/*.mjs        the passes, subscriber and their seams (generated)
 scripts/foundation/**     modules the execution body imports (generated)
-templates/                units, wake glue, host config (generated)
+templates/                units, wake glue, agent config (generated)
 ```
 
 Everything except `SKILL.md`, `references/` and `scripts/board-check.mjs` is

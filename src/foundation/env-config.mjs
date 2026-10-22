@@ -59,13 +59,13 @@ function inOurNamespace(key) {
 /** @param {string} key */
 function unknownKeyMessage(key) {
   if (key === "TASKCTL_ACTOR_KIND" || key === "TASKCTL_SESSION_ID") {
-    return `${key} is identity, not install-wide configuration: pass it per host (the shim / harness settings) or per invocation`;
+    return `${key} is identity, not install-wide configuration: pass it per agent kind (the shim / harness settings) or per invocation`;
   }
   if (key === ENV_FILE_ENV) {
     return `${ENV_FILE_ENV} selects this file and cannot be set inside it`;
   }
   if (key.startsWith("MEERKAT_TASKPANEL_")) {
-    return `${key} is loop policy and belongs in <host>/meerkat-taskpanel.env, not the shared .env`;
+    return `${key} is loop policy and belongs in <agent-dir>/meerkat-taskpanel.env, not the shared .env`;
   }
   return `unknown configuration key "${key}"`;
 }

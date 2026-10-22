@@ -170,7 +170,7 @@ export async function runSlaPass(opts, log, periodSeconds = opts.patrolInterval)
       detection: liveness,
       periodMin: boardPeriod / 60,
       mechanism: MECHANISM,
-      mechanismHost: `${opts.host}/${opts.agents[0]}`,
+      mechanismActor: `${opts.actorKind}/${opts.agents[0]}`,
       now,
     });
     if (alert !== null) alerts.push(alert);
@@ -180,7 +180,7 @@ export async function runSlaPass(opts, log, periodSeconds = opts.patrolInterval)
     alerts,
     ledger: loadSlaLedger(opts.slaLedger),
     mechanism: MECHANISM,
-    mechanismHost: `${opts.host}/${opts.agents[0]}`,
+    mechanismActor: `${opts.actorKind}/${opts.agents[0]}`,
     recheck: (ref) => {
       const live = readSlaCard(opts, ref, boardPeriod);
       if (!live.ok) return { checked: false };
@@ -204,7 +204,7 @@ export async function runSlaPass(opts, log, periodSeconds = opts.patrolInterval)
       saveLastOk(opts.slaLastOk, {
         mechanism: MECHANISM,
         at: new Date().toISOString(),
-        host: `${opts.host}/${opts.agents[0]}`,
+        actor: `${opts.actorKind}/${opts.agents[0]}`,
         periodSeconds: boardPeriod,
       });
     } catch (err) {

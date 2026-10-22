@@ -93,7 +93,7 @@ describe("plugin manifests", () => {
 
   it("every host manifest points its skills field at ./skills (or [./skills])", async () => {
     // Codex is absent on purpose: it ships no manifest, and installs the same
-    // repository-root bundle as Claude Code (HOST_BUNDLES.codex names that manifest).
+    // repository-root bundle as Claude Code (KIND_BUNDLES.codex names that manifest).
     // Pi's manifest is the repository's own `package.json`, whose `pi` field declares the
     // skills path — hence the `files`/`skills` fallback in the assertion below.
     const hosts = ["claude", "cursor", "pi"];
@@ -192,7 +192,7 @@ describe("package manifest", () => {
   });
 
   it("exposes the CLI as a bin that is ready to run", async () => {
-    // `taskctl` is a *program*, not just a library: a host config or an installer
+    // `taskctl` is a *program*, not just a library: a agent config or an installer
     // has to be able to start it without knowing where it lives. So it is a bin,
     // and a bin has to actually be runnable — two separate facts, both of them
     // easy to lose and neither visible from here without being written down.
@@ -236,10 +236,10 @@ describe("install.sh", () => {
     });
 
     assert.equal(run.status, 0, run.stderr);
-    for (const hostDir of [".claude", ".openclaw", ".codex", ".agents"]) {
+    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
       assert.ok(
-        run.stdout.includes(join(fakeHome, hostDir, "skills", "meerkat-taskpanel")),
-        `dry run must print the ${hostDir} destination path`,
+        run.stdout.includes(join(fakeHome, agentDir, "skills", "meerkat-taskpanel")),
+        `dry run must print the ${agentDir} destination path`,
       );
     }
     assert.equal(existsSync(join(fakeHome, ".claude")), false, "dry run must not write");

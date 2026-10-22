@@ -5,7 +5,7 @@
  * own scheduling units. A low-frequency "Continue" wake runs them instead, so the
  * prompt is load-bearing: it must name the entries by absolute path, run them
  * in the order that lets a fresh review card be claimed in the same turn, and
- * carry the board rules a headless host cannot infer.
+ * carry the board rules a headless agent kind cannot infer.
  *
  * These tests pin the prompt's contract and the invocation shape. The process
  * spawn, the lock and the registry pruning are covered by
@@ -74,11 +74,11 @@ describe("quoteArg", () => {
 describe("buildContinuePrompt", () => {
   const passesScript = "/opt/loop/scripts/loop/passes.mjs";
   const prompt = buildContinuePrompt({
-    host: "claude",
+    actorKind: "claude",
     agent: "alice",
     nodePath: "/opt/node/bin/node",
     passesScript,
-    commonArgs: ["--host", "claude", "--agent", "alice"],
+    commonArgs: ["--actor-kind", "claude", "--agent", "alice"],
     continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
   });
 
@@ -125,7 +125,7 @@ describe("buildContinuePrompt", () => {
 
   it("quotes a passes path that contains a space", () => {
     const spaced = buildContinuePrompt({
-      host: "claude",
+      actorKind: "claude",
       agent: "alice",
       nodePath: "/opt/node/bin/node",
       commonArgs: [],
@@ -137,7 +137,7 @@ describe("buildContinuePrompt", () => {
 
   it("omits poll entirely when no resident pool is running", () => {
     const fallback = buildContinuePrompt({
-      host: "claude",
+      actorKind: "claude",
       agent: "alice",
       nodePath: "/opt/node/bin/node",
       passesScript,
@@ -157,27 +157,27 @@ describe("buildContinuePrompt", () => {
     assert.ok(fallback.length < prompt.length, "the fallback is the shorter turn");
   });
 
-  it("carries the prefix into every host's headless form", () => {
-    for (const host of ["claude", "codex", "pi", "opencode", "cursor"]) {
+  it("carries the prefix into every agent kind's headless form", () => {
+    for (const actorKind of ["claude", "codex", "pi", "opencode", "cursor"]) {
       const p = buildContinuePrompt({
-        host,
+        actorKind,
         agent: "alice",
         passesScript,
         commonArgs: [],
         continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
       });
-      const plan = planContinueInvocation({ host, prompt: p });
+      const plan = planContinueInvocation({ actorKind, prompt: p });
       assert.ok(
         String(plan.args.at(-1)).startsWith("/meerkat-loop "),
-        `${host}: ${plan.args.join(" ")}`,
+        `${actorKind}: ${plan.args.join(" ")}`,
       );
     }
   });
 });
 
 describe("planContinueInvocation", () => {
-  it("takes the host's built-in headless form, not the glue", () => {
-    const plan = planContinueInvocation({ host: "claude", prompt: "Continue", cwd: "/repo", nodePath: "/opt/node" });
+  it("takes the agent kind's built-in headless form, not the glue", () => {
+    const plan = planContinueInvocation({ actorKind: "claude", prompt: "Continue", cwd: "/repo", nodePath: "/opt/node" });
     assert.deepEqual(plan, {
       command: "claude",
       args: ["-p", "Continue"],
@@ -188,14 +188,14 @@ describe("planContinueInvocation", () => {
     assert.equal(plan.warning, undefined);
   });
 
-  for (const [host, command, args] of [
+  for (const [actorKind, command, args] of [
     ["codex", "codex", ["exec", "Continue"]],
     ["pi", "pi", ["--print", "Continue"]],
     ["opencode", "opencode", ["run", "Continue"]],
     ["cursor", "cursor-agent", ["-p", "Continue"]],
   ]) {
-    it(`uses ${command} for ${host}`, () => {
-      const plan = planContinueInvocation({ host, prompt: "Continue", cwd: "/repo" });
+    it(`uses ${command} for ${actorKind}`, () => {
+      const plan = planContinueInvocation({ actorKind, prompt: "Continue", cwd: "/repo" });
       assert.equal(plan.command, command);
       assert.deepEqual(plan.args, args);
       assert.deepEqual(plan.env, {});
@@ -203,13 +203,13 @@ describe("planContinueInvocation", () => {
   }
 
   it("never carries a project identity", () => {
-    const plan = planContinueInvocation({ host: "claude", prompt: "Continue", cwd: "/repo" });
+    const plan = planContinueInvocation({ actorKind: "claude", prompt: "Continue", cwd: "/repo" });
     assert.equal(plan.env.TP_PROJECT, undefined);
     assert.equal(plan.env.TP_PROJECTS_JSON, undefined);
   });
 
-  it("rejects a host it does not wire", () => {
-    assert.throws(() => planContinueInvocation({ host: "openclaw", prompt: "Continue" }), /unknown host/);
+  it("rejects an actor kind it does not wire", () => {
+    assert.throws(() => planContinueInvocation({ actorKind: "openclaw", prompt: "Continue" }), /unknown agent kind/);
   });
 });
 

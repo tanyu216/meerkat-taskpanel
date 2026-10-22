@@ -18,7 +18,7 @@ if [ -x "$shim" ] && command -v node >/dev/null 2>&1; then
   "$shim" issue candidates --assignee "$name" 2>&1 || true
 else
   echo "-- claimable for $name --"
-  # PATH-independent fallback: the shim lives under the host home and is *not* on
+  # PATH-independent fallback: the shim lives under the user's home and is *not* on
   # PATH, so a bare `taskctl` here would be a command the user cannot run. Name
   # the shim by absolute path, and offer the repo CLI for the case where the shim
   # is missing but node is present.

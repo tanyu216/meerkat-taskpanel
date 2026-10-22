@@ -295,7 +295,7 @@ const PROBE_SLA_ALERT = Object.freeze({
   blocked_reason: "probe",
   confidence: "probe",
   mechanism: "probe",
-  mechanism_host: "probe",
+  mechanism_actor: "probe",
   first_seen: "probe",
   last_seen: "probe",
   observed_by: ["probe"],

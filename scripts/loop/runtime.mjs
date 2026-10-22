@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The loop's host-local runtime primitives.
+ * The loop's local runtime primitives.
  *
  * These are the things a one-shot entry and the scheduler both need: the
  * process-liveness probe, the worker registry, the log, the `taskctl` shell-out,
@@ -71,7 +71,7 @@ export function saveRegistry(path, registry) {
 /**
  * Run the taskctl CLI and parse its `--json` envelope. Returns `{ok, data|error}`.
  *
- * The CLI requires an identity on every call: reads and claims use the host
+ * The CLI requires an identity on every call: reads and claims use the agent kind
  * (`claude`/`codex`/`pi`), workflow writes pass `system` so an automated
  * acceptance is attributable. `--env-file` and `--url` are forwarded; the token
  * rides in the child environment, never argv.
@@ -79,13 +79,13 @@ export function saveRegistry(path, registry) {
 /**
  * The argv and environment for one `taskctl` call.
  *
- * Identity is required on every CLI call: the loop's host (claude/codex/pi) is
+ * Identity is required on every CLI call: the loop's actor kind (claude/codex/pi) is
  * the platform for its agent actions; the board's own workflow pass names
- * `system` explicitly. A caller that forgot gets the host, never `human`.
+ * `system` explicitly. A caller that forgot gets the agent kind, never `human`.
  * A token never goes on argv (it would be visible in `ps`).
  */
 export function cliInvocation(opts, agent, args, { actorKind = null } = {}) {
-  const kind = actorKind ?? opts.host ?? "system";
+  const kind = actorKind ?? opts.actorKind ?? "system";
   const argv = [
     opts.cli,
     "--json",
@@ -335,12 +335,12 @@ export function saveSlaLedger(path, ledger) {
  * so a reader never sees half a file. An unreadable peer marker reads as null;
  * interpreting that is the decision half's job.
  */
-export function saveLastOk(path, { mechanism, at, host = null, periodSeconds = null } = {}) {
+export function saveLastOk(path, { mechanism, at, actor = null, periodSeconds = null } = {}) {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(
     tmp,
-    `${JSON.stringify({ mechanism, last_ok: at, mechanism_host: host, cadence_period_min: periodSeconds === null ? null : periodSeconds / 60 }, null, 2)}\n`,
+    `${JSON.stringify({ mechanism, last_ok: at, mechanism_actor: actor, cadence_period_min: periodSeconds === null ? null : periodSeconds / 60 }, null, 2)}\n`,
   );
   renameSync(tmp, path);
 }

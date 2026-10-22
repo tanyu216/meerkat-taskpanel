@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { createOpenCodePool, messageText } from "../../scripts/loop/hosts/opencode.mjs";
+import { createOpenCodePool, messageText } from "../../scripts/loop/actor-kinds/opencode.mjs";
 
 const FAKE = `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
@@ -159,7 +159,7 @@ describe("opencode resident session", () => {
     assert.equal(aborted, true, "the turn is aborted, not merely abandoned");
   });
 
-  it("reports a missing host binary instead of hanging", async (t) => {
+  it("reports a missing agent binary instead of hanging", async (t) => {
     const f = fixture(t);
     const pool = createOpenCodePool({ opts: {}, bin: join(f.dir, "missing"), log: f.log });
     t.after(() => pool.close());

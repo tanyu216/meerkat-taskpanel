@@ -2,12 +2,12 @@
 /**
  * Generate the **loop payload** carried by `skills/meerkat-loop/`.
  *
- * The loop is a deployment, not a library: what a host needs to run it is
+ * The loop is a deployment, not a library: what an agent kind needs to run it is
  *
  *   * the **execution body** — `scripts/supervisor.mjs` (the tick), `scripts/wake-cwd.mjs`
  *     (the wake glue's directory resolver) and the `src/foundation/` modules those two import;
  *   * the **templates** the installer renders — the launchd / systemd / cron units, the
- *     three `wake-<host>.sh` glues, and the host config.
+ *     three `wake-<actor-kind>.sh` glues, and the agent config.
  *
  * Both are *generated* here, from the single sources this repository already keeps
  * (`scripts/`, `src/foundation/`, `scripts/install/templates/`), into
@@ -35,7 +35,7 @@
  *
  * `manifest.txt` is the closure itself, one **destination-relative** path per line
  * (`scripts/...`). It is generated, so the loop's *consumers* —
- * `scripts/install/_common.sh` (which copies the body into the host) and
+ * `scripts/install/_common.sh` (which copies the body into the agent directory) and
  * `test/install/scheduling-units.test.mjs` (which proves the copy is closed under its own
  * imports) — read one file instead of each restating the list.
  *
@@ -47,7 +47,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isEntryPoint } from "../src/foundation/entry-guard.mjs";
 
-/** Directory name of the loop skill, inside `skills/` and each host's `skills/`. */
+/** Directory name of the loop skill, inside `skills/` and each agent's `skills/`. */
 export const LOOP_SKILL_NAME = "meerkat-loop";
 
 /**
@@ -78,7 +78,7 @@ export const LOOP_MANIFEST = "manifest.txt";
  * `supervisor.mjs` is the scheduler; `wake-cwd.mjs` is what the generated wake glue
  * calls to answer "which directory does this card's project live in?"; and
  * `scripts/loop/*.mjs` are the deterministic entries the continue turn invokes.
- * Every root must travel with the body, or an installed unit names a file the host
+ * Every root must travel with the body, or an installed unit names a file the agent
  * does not have. Listing the foundation modules explicitly is harmless (the closure
  * dedupes) and protects the shipped tree from a future computed import.
  */
@@ -93,8 +93,8 @@ export const LOOP_BODY_ROOTS = Object.freeze([
   "scripts/loop/card-file.mjs",
   "scripts/loop/queue.mjs",
   "scripts/loop/ledger.mjs",
-  "scripts/loop/host-session.mjs",
-  "scripts/loop/hosts/claude.mjs",
+  "scripts/loop/kind-session.mjs",
+  "scripts/loop/actor-kinds/claude.mjs",
   "scripts/loop/session.mjs",
   "scripts/wake-cwd.mjs",
 ]);
@@ -103,11 +103,11 @@ export const LOOP_BODY_ROOTS = Object.freeze([
  * The installer templates the loop owns, as repository-relative paths under
  * `scripts/install/templates/`. Keys are the destination-relative paths under
  * `skills/meerkat-loop/templates/` — identical, so `emit_loop_file` renders the same
- * `scheduling/…`, `claude/wake-claude.sh`, `host/meerkat-taskpanel.env` names either way.
+ * `scheduling/…`, `claude/wake-claude.sh`, `agent/meerkat-taskpanel.env` names either way.
  *
  * The board-side templates (the Claude session-start hook and slash commands, the Codex
  * trigger and `AGENTS.md` snippet, the `taskctl` shims) are deliberately **not** here:
- * they wire a board into a host, which is the board skill's job.
+ * they wire a board into an agent, which is the board skill's job.
  */
 export const LOOP_TEMPLATE_FILES = Object.freeze([
   "scheduling/launchd/com.meerkat-taskpanel.ping.plist",
@@ -126,7 +126,7 @@ export const LOOP_TEMPLATE_FILES = Object.freeze([
   "pi/wake-pi.sh",
   "opencode/wake-opencode.sh",
   "cursor/wake-cursor.sh",
-  "host/meerkat-taskpanel.env",
+  "agent/meerkat-taskpanel.env",
 ]);
 
 /** Repository root implied by this file's location (`scripts/` → up one level). */
@@ -183,7 +183,7 @@ export function relativeImports(text) {
   return out;
 }
 
-/** Map a repository-relative body path to its skill/host-relative destination. */
+/** Map a repository-relative body path to its skill/agent-relative destination. */
 export function loopDest(rel) {
   const prefix = `${LOOP_FOUNDATION_REPO}/`;
   return rel.startsWith(prefix) ? `${LOOP_FOUNDATION_SKILL}/${rel.slice(prefix.length)}` : rel;
@@ -238,7 +238,7 @@ export function transformBody(text, sourceRel, root = defaultRoot()) {
  *
  * A specifier only resolves to a file (`./x.mjs`); anything that does not land on one is a
  * hard error rather than a silently shorter list — a body missing a member dies at load
- * time in the host, which is the failure this closure exists to prevent.
+ * time in the agent, which is the failure this closure exists to prevent.
  *
  * @param {string} root repository root
  * @returns {Promise<string[]>}

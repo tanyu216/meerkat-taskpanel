@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /**
- * SUPPLEMENTARY verification: drive each host's *real* CLI against this checkout.
+ * SUPPLEMENTARY verification: drive each agent kind's *real* CLI against this checkout.
  *
- *   node scripts/verify/host-cli.mjs [--host <host>] [--timeout <ms>]
+ *   node scripts/verify/kind-cli.mjs [--actor-kind <kind>] [--timeout <ms>]
  *
  * Why this is supplementary and not the evidence: ARCHITECTURE §9.1 requires
  * verification to run in the container, but the container image ships Node and the
  * repository only — no `claude` / `codex` / `openclaw` / `pi`, and no network to install
- * them. The container instead asserts the hosts' *detection contract* offline
+ * them. The container instead asserts the agent kinds' *detection contract* offline
  * (`scripts/verify/lib/bundle.mjs`, run by `scripts/verify/profiles.mjs`). This script is
  * the cross-check that those offline rules match what the real CLI does, and it runs
- * wherever the CLIs happen to exist (a developer host), never in CI.
+ * wherever the CLIs happen to exist (a developer machine), never in CI.
  *
  * Every probe runs in a throwaway HOME (never the real `~/.claude`, `~/.codex`,
- * `~/.openclaw`, `~/.pi`) and touches no network. A host whose CLI is absent is SKIPPED,
+ * `~/.openclaw`, `~/.pi`) and touches no network. An agent kind whose CLI is absent is SKIPPED,
  * not failed, so the script is safe to run anywhere.
  */
 
@@ -27,7 +27,7 @@ import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-/** Env that discourages any network/update behaviour in the host CLIs. */
+/** Env that discourages any network/update behaviour in the agent CLIs. */
 const OFFLINE_ENV = {
   CI: "1",
   OPENCLAW_NO_AUTO_UPDATE: "1",
@@ -36,15 +36,15 @@ const OFFLINE_ENV = {
 };
 
 /**
- * One probe per host. `steps` are run in order with cwd = the repository root; `home`
+ * One probe per agent kind. `steps` are run in order with cwd = the repository root; `home`
  * names the dot-directory the CLI keeps its config in (relative to the throwaway HOME).
  * `expect` asserts a substring that a *recognition* run must print.
  *
- * @type {Array<{host: string, bin: string, home: string, configEnv?: string, steps: string[][], expect: (output: string) => string|null}>}
+ * @type {Array<{actorKind: string, bin: string, home: string, configEnv?: string, steps: string[][], expect: (output: string) => string|null}>}
  */
 export const PROBES = [
   {
-    host: "openclaw",
+    actorKind: "openclaw",
     bin: "openclaw",
     home: ".openclaw",
     steps: [
@@ -63,7 +63,7 @@ export const PROBES = [
     },
   },
   {
-    host: "claude",
+    actorKind: "claude",
     bin: "claude",
     home: ".claude",
     configEnv: "CLAUDE_CONFIG_DIR",
@@ -74,7 +74,7 @@ export const PROBES = [
     expect: (output) => (/meerkat-taskpanel-marketplace/.test(output) ? null : "expected meerkat-taskpanel-marketplace"),
   },
   {
-    host: "codex",
+    actorKind: "codex",
     bin: "codex",
     home: ".codex",
     configEnv: "CODEX_HOME",
@@ -86,7 +86,7 @@ export const PROBES = [
       /meerkat-taskpanel@meerkat-taskpanel-marketplace/.test(output) ? null : "expected meerkat-taskpanel@meerkat-taskpanel-marketplace",
   },
   {
-    host: "pi",
+    actorKind: "pi",
     bin: "pi",
     home: ".pi",
     // A path source, so nothing is fetched. The root package is the pi package now —
@@ -118,11 +118,11 @@ function tail(text, lines = 15) {
  */
 const BIN_ABSENT = new Set(["ENOENT", "ENOTDIR"]);
 
-/** Run one host probe in an isolated HOME. Returns a result row. */
+/** Run one agent-kind probe in an isolated HOME. Returns a result row. */
 export function runProbe(probe, timeoutMs) {
-  const home = mkdtempSync(join(tmpdir(), `meerkat-taskpanel-hostcli-${probe.host}-`));
+  const home = mkdtempSync(join(tmpdir(), `meerkat-taskpanel-kindcli-${probe.actorKind}-`));
   // Some CLIs refuse to start when their config dir is absent (codex: "failed to
-  // resolve CODEX_HOME"), so create the host's dot-directory up front.
+  // resolve CODEX_HOME"), so create the agent's dot-directory up front.
   mkdirSync(join(home, probe.home), { recursive: true });
   const env = {
     ...process.env,
@@ -154,7 +154,7 @@ export function runProbe(probe, timeoutMs) {
       }
     }
 
-    if (skipped) return { host: probe.host, status: "SKIP", detail: `${probe.bin} not on PATH`, transcripts };
+    if (skipped) return { actorKind: probe.actorKind, status: "SKIP", detail: `${probe.bin} not on PATH`, transcripts };
 
     if (!failed) {
       const output = transcripts.join("\n");
@@ -163,7 +163,7 @@ export function runProbe(probe, timeoutMs) {
     }
 
     return {
-      host: probe.host,
+      actorKind: probe.actorKind,
       status: failed ? "FAIL" : "PASS",
       detail: failed ?? "recognized",
       transcripts,
@@ -176,7 +176,7 @@ export function runProbe(probe, timeoutMs) {
 async function main() {
   const { values } = parseArgs({
     options: {
-      host: { type: "string", multiple: true, short: "H" },
+      "actor-kind": { type: "string", multiple: true, short: "H" },
       timeout: { type: "string" },
       json: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
@@ -185,19 +185,19 @@ async function main() {
 
   if (values.help) {
     process.stdout.write(
-      "Usage: node scripts/verify/host-cli.mjs [--host <host>] [--timeout <ms>] [--json]\n\n" +
-        "  Supplementary: drives each host's real CLI in a throwaway HOME. Absent CLIs are skipped.\n",
+      "Usage: node scripts/verify/kind-cli.mjs [--actor-kind <kind>] [--timeout <ms>] [--json]\n\n" +
+        "  Supplementary: drives each agent kind's real CLI in a throwaway HOME. Absent CLIs are skipped.\n",
     );
     return 0;
   }
 
   const timeoutMs = Number(values.timeout ?? 90_000);
-  const wanted = (values.host ?? []).flatMap((v) => String(v).split(",")).map((v) => v.trim()).filter(Boolean);
-  const probes = wanted.length ? PROBES.filter((p) => wanted.includes(p.host)) : PROBES;
+  const wanted = (values["actor-kind"] ?? []).flatMap((v) => String(v).split(",")).map((v) => v.trim()).filter(Boolean);
+  const probes = wanted.length ? PROBES.filter((p) => wanted.includes(p.actorKind)) : PROBES;
 
   const results = [];
   for (const probe of probes) {
-    if (!values.json) process.stdout.write(`\n== ${probe.host} (${probe.bin}) ==\n`);
+    if (!values.json) process.stdout.write(`\n== ${probe.actorKind} (${probe.bin}) ==\n`);
     const row = runProbe(probe, timeoutMs);
     if (!values.json && row.status !== "SKIP") process.stdout.write(`${row.transcripts.join("\n\n")}\n`);
     results.push(row);
@@ -208,7 +208,7 @@ async function main() {
   } else {
     process.stdout.write("\n== SUMMARY ==\n");
     for (const row of results) {
-      process.stdout.write(`${row.status}  ${row.host.padEnd(9)} ${row.detail}\n`);
+      process.stdout.write(`${row.status}  ${row.actorKind.padEnd(9)} ${row.detail}\n`);
     }
     const ran = results.filter((r) => r.status !== "SKIP");
     process.stdout.write(

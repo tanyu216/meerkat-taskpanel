@@ -245,7 +245,7 @@ reached a client.
 
 ## The CLI contract snapshot
 
-`taskctl --json` is the surface the host-external loop binds to, and any user script may
+`taskctl --json` is the surface the external loop binds to, and any user script may
 too. `test/fixtures/contract/cli.snapshot.json` freezes it separately from the HTTP
 snapshot:
 

@@ -1,5 +1,5 @@
 /**
- * The "allow claiming unassigned tasks?" wizard and its persisted host config
+ * The "allow claiming unassigned tasks?" wizard and its persisted agent config
  * (T-20261010-013000).
  *
  * `install.sh` asks the question when stdin is a TTY and no flag was given,
@@ -46,8 +46,8 @@ function installEnv(home, bin) {
   };
 }
 
-function configOf(home, hostDir) {
-  const path = join(home, hostDir, "meerkat-taskpanel.env");
+function configOf(home, agentDir) {
+  const path = join(home, agentDir, "meerkat-taskpanel.env");
   return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
@@ -69,10 +69,10 @@ describe("install.sh: claim-unassigned flags and persisted config", () => {
     const run = runInstall(["--target", "claude,codex", "--agent-name", "alice"], installEnv(home, bin));
     assert.equal(run.status, 0, run.stderr);
 
-    for (const hostDir of [".claude", ".codex"]) {
-      const text = configOf(home, hostDir);
-      assert.ok(text !== null, `${hostDir}/meerkat-taskpanel.env must exist`);
-      assert.match(text, /^MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes$/m, `${hostDir} default must be yes`);
+    for (const agentDir of [".claude", ".codex"]) {
+      const text = configOf(home, agentDir);
+      assert.ok(text !== null, `${agentDir}/meerkat-taskpanel.env must exist`);
+      assert.match(text, /^MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes$/m, `${agentDir} default must be yes`);
     }
   });
 
@@ -318,7 +318,7 @@ describe("install.sh: the scheduler's two clocks", () => {
     }
   });
 
-  it("adds the clock keys to an older host config without touching existing values", () => {
+  it("adds the clock keys to an older agent config without touching existing values", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");

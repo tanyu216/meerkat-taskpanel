@@ -170,7 +170,7 @@ export async function run(argv, io) {
           alternative: "--as-human",
         },
         hint: {
-          fix: "agents pass --actor-kind <platform> (the host shim does this); a human may use --as-human",
+          fix: "agents pass --actor-kind <platform> (the taskctl shim does this); a human may use --as-human",
         },
       });
     }

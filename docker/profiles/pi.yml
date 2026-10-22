@@ -1,5 +1,5 @@
-# Host profile: Pi. See docs/docker.md § Profiles and docs/install.md.
-host: pi
+# Agent-kind profile: Pi. See docs/docker.md § Profiles and docs/install.md.
+actor_kind: pi
 label: Pi
 installer: scripts/install/pi.sh
 target_dir: .agents/skills/meerkat-taskpanel

@@ -46,7 +46,7 @@ const BOARD_LEVEL_ROWS = new Set(["leader_stalled", "inspector_liveness"]);
  *
  * `dispatch` is the side effect of a successful claim. In the resident model it
  * writes the card queue (the project session spawns the subagent); the legacy
- * direct wake still spawns a host process. `admit` and `limit` are the claim
+ * direct wake still spawns an agent process. `admit` and `limit` are the claim
  * budget: a card beyond the pool's capacity is deferred **before** it is
  * claimed, so the board never shows a claim that has nowhere to run.
  *
@@ -202,13 +202,13 @@ export async function runPatrolTick(deps) {
  *   now: () => string,
  *   log: (line: string) => void,
  *   mechanism?: string,
- *   mechanismHost?: string|null,
+ *   mechanismActor?: string|null,
  * }} deps
  */
 export async function notifySlaAlerts(deps) {
   const { ledger, recheck, notify, now, log } = deps;
   const mechanism = deps.mechanism ?? MECHANISM;
-  const mechanismHost = deps.mechanismHost ?? null;
+  const mechanismActor = deps.mechanismActor ?? null;
   const stamp = now();
   // The board computed the rows; the *mechanism* that delivers them is this
   // loop. Stamp identity here so the ledger's `observed_by` and the peer's
@@ -216,7 +216,7 @@ export async function notifySlaAlerts(deps) {
   const alerts = (Array.isArray(deps.alerts) ? deps.alerts : []).map((alert) => ({
     ...alert,
     mechanism,
-    mechanism_host: mechanismHost,
+    mechanism_actor: mechanismActor,
   }));
 
   const { notify: fresh, suppressed } = partitionSlaAlerts(alerts, ledger);
@@ -691,11 +691,11 @@ export function wakeHandoff(opts, config, action, card) {
     reviewers.includes(action.agent) && !reviewerWorkers.includes(action.agent);
   const isReview = (typeof card?.review_of === "string" && card.review_of !== "") || dedicatedReviewer;
   const handoff = isReview
-    ? buildReviewHandoff({ card: card ?? { identifier: action.identifier }, agent: action.agent, host: opts.host })
+    ? buildReviewHandoff({ card: card ?? { identifier: action.identifier }, agent: action.agent, actorKind: opts.actorKind })
     : buildHandoff({
         card: card ?? { identifier: action.identifier },
         agent: action.agent,
-        host: opts.host,
+        actorKind: opts.actorKind,
         review: reviewers.includes(action.agent),
       });
   return { isReview, role: isReview ? "reviewer" : "worker", handoff };
@@ -706,7 +706,7 @@ export function spawnWorkerReal(opts, config, log) {
     const { handoff: prompt } = wakeHandoff(opts, config, action, card);
     // The parsed field is `opts.glue`; there is no `gluePath`.
     const invocation = planWakeInvocation({
-      host: opts.host,
+      actorKind: opts.actorKind,
       prompt,
       wakeCommand: config.wakeCommand ?? null,
       gluePath: opts.glue,
@@ -742,7 +742,7 @@ export function notifyNoResident(opts, log, pool, notify = notifyReal(opts, log)
   notify({
     kind: "no_resident",
     severity: "warning",
-    host: opts.host,
+    actorKind: opts.actorKind,
     reason: pool?.reason ?? "unknown",
     message: "no resident session pool — worker/reviewer dispatch is paused; poll skipped",
     at: new Date().toISOString(),
@@ -773,7 +773,7 @@ export function notifyReal(opts, log, { timeoutMs = NOTIFY_TIMEOUT_MS } = {}) {
 
 /**
  * Start one continue turn and return as soon as the child exists. Its stderr
- * goes to the loop log, or a failed host CLI would be silent.
+ * goes to the loop log, or a failed agent CLI would be silent.
  *
  * @param {{log: string}} opts
  * @param {{command: string, args: string[], env: Record<string,string>, cwd: string|null}} invocation
@@ -790,7 +790,7 @@ export function spawnContinueTurn(opts, invocation, log) {
 
 /**
  * Run one continue turn: build a bounded `Continue` prompt, take the
- * single-flight lock, start the host agent. The prompt runs
+ * single-flight lock, start the agent. The prompt runs
  * `passes.mjs patrol → workflow → poll`; poll is last so a review card
  * dispatched in this turn can be claimed immediately.
  *
@@ -853,7 +853,7 @@ export async function runContinue(opts, deps = {}) {
   }
 
   const prompt = buildContinuePrompt({
-    host: opts.host,
+    actorKind: opts.actorKind,
     agent: opts.agents[0],
     nodePath: process.execPath,
     passesScript: join(here, "passes.mjs"),
@@ -862,7 +862,7 @@ export async function runContinue(opts, deps = {}) {
     includePoll: false,
   });
   const invocation = planContinueInvocation({
-    host: opts.host,
+    actorKind: opts.actorKind,
     prompt,
     cwd: opts.repo,
     nodePath: process.execPath,
@@ -915,7 +915,7 @@ export async function runContinue(opts, deps = {}) {
         log(`continue: could not record the turn pid (${err.message}) — the lock will expire`);
       }
     }
-    log(`continue: woke ${opts.host} pid ${outcome.pid ?? "(none)"}`);
+    log(`continue: woke ${opts.actorKind} pid ${outcome.pid ?? "(none)"}`);
     return 0;
   } catch (err) {
     releaseContinueLock(opts.continueState);
@@ -925,7 +925,7 @@ export async function runContinue(opts, deps = {}) {
 }
 
 /**
- * One continue pass with the real host config and logger.
+ * One continue pass with the real agent config and logger.
  *
  * @param {object} opts
  * @param {NodeJS.ProcessEnv} [env]

@@ -134,9 +134,9 @@ export const ERROR_CODES = Object.freeze({
   // is the registry's own `UNIQUE(project_id, norm)`.
   LABEL_CONFLICT: spec(409, "Label already exists in this project."),
 
-  // ---- Project directories (host-local map) ---------------------------------
+  // ---- Project directories (agent-local map) ---------------------------------
   // The board holds no directory (O3), so "which directory does work for this
-  // project happen in?" is answered on the host, by `projects.json`, and
+  // project happen in?" is answered locally, by `projects.json`, and
   // *checked* before it is used. These codes say why a directory could not be
   // used; every one of them stops the caller — the alternative is a worker
   // running in the wrong checkout, which is worse than not starting one. (An
@@ -294,7 +294,7 @@ export const JS_ONLY_CODES = Object.freeze([
   "CONFIG_FILE_INSECURE",
   // The single-writer guard: raised in JS, before any database is opened.
   "BOARD_ALREADY_RUNNING",
-  // Project directories: read from a host-local JSON file, never from a table,
+  // Project directories: read from a local JSON file, never from a table,
   // a trigger or a SQLite constraint.
   "PROJECT_MAP_UNREADABLE",
   "PROJECT_DIR_UNMAPPED",

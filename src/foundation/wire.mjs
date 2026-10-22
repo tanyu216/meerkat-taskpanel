@@ -267,7 +267,7 @@ export function slaAlertToWire(alert) {
     blocked_reason: alert.blocked_reason,
     confidence: alert.confidence,
     mechanism: alert.mechanism,
-    mechanism_host: alert.mechanism_host,
+    mechanism_actor: alert.mechanism_actor,
     first_seen: alert.first_seen,
     last_seen: alert.last_seen,
     observed_by: Array.isArray(alert.observed_by) ? alert.observed_by : [],

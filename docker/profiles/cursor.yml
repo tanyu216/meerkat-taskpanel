@@ -1,5 +1,5 @@
-# Host profile: Cursor. See docs/docker.md § Profiles and docs/install.md.
-host: cursor
+# Agent-kind profile: Cursor. See docs/docker.md § Profiles and docs/install.md.
+actor_kind: cursor
 label: Cursor
 installer: scripts/install/cursor.sh
 target_dir: .cursor/skills/meerkat-taskpanel

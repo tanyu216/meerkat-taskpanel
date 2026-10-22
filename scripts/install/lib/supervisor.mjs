@@ -5,14 +5,14 @@
  * `install.sh` writes the loop's scheduling units and, by default, stops there: it prints
  * the load command and never starts a daemon. This module is the one deliberate exception
  * — the opt-in path the contract fixes in `docs/scheduling.md` §"Enabling the supervisor
- * (opt-in)" — run by `scripts/install/_common.sh` for each loop host when the user asked
+ * (opt-in)" — run by `scripts/install/_common.sh` for each loop agent kind when the user asked
  * for it (`--supervisor=enable|disable|status`, `MEERKAT_TASKPANEL_SUPERVISOR`, or a `y`
  * to the one-time TTY question, whose default is **N**).
  *
- * One mechanism per host, chosen by `--scheduler` (default `auto`: launchd on macOS,
+ * One mechanism per agent kind, chosen by `--scheduler` (default `auto`: launchd on macOS,
  * systemd `--user` on Linux, cron anywhere else). Every action is **idempotent**: a repeat
  * enable never loads a unit twice, and disabling something that is not loaded is a no-op.
- * Enabling a mechanism takes down any *other* one already loaded for the same host first —
+ * Enabling a mechanism takes down any *other* one already loaded for the same agent kind first —
  * the contract's "never leave two loaded", which also means this module only ever touches
  * the units it names (its own labels, its own unit files, its own cron marker block).
  *
@@ -38,8 +38,8 @@ import { unitPath } from "./unit-path.mjs";
 export const ACTIONS = Object.freeze(["enable", "disable", "status"]);
 /** The mechanisms `--scheduler` may name, plus `auto` (this platform's one). */
 export const SCHEDULERS = Object.freeze(["auto", "launchd", "systemd", "cron"]);
-/** The hosts that run the supervisor. OpenClaw is never among them (D8). */
-export const LOOP_HOSTS = Object.freeze(["claude", "codex", "pi", "opencode", "cursor"]);
+/** The actor kinds that run the supervisor. OpenClaw is never among them (D8). */
+export const LOOP_KINDS = Object.freeze(["claude", "codex", "pi", "opencode", "cursor"]);
 /** Every systemd user unit the loop installs — copied before `daemon-reload`. */
 export const SYSTEMD_UNITS = Object.freeze([
   "meerkat-taskpanel-ping.service",
@@ -98,8 +98,8 @@ function pidAlive(pid) {
   }
 }
 
-/** One `KEY=value` from the host config, or `null`. */
-function hostConfigValue(path, key) {
+/** One `KEY=value` from the agent config, or `null`. */
+function agentConfigValue(path, key) {
   try {
     const lines = readFileSync(path, "utf8").split("\n");
     for (let index = lines.length - 1; index >= 0; index -= 1) {
@@ -169,25 +169,25 @@ export function poolReport(stateDir, options = {}) {
 }
 
 /**
- * The launchd label / systemd-name stem for one host — `com.meerkat-taskpanel.<agent>.<host>`.
+ * The launchd label / systemd-name stem for one agent kind — `com.meerkat-taskpanel.<agent>.<actor-kind>`.
  *
  * @param {string} agent
- * @param {string} host
+ * @param {string} actorKind
  */
-export function supervisorBase(agent, host) {
-  return `com.meerkat-taskpanel.${agent}.${host}`;
+export function supervisorBase(agent, actorKind) {
+  return `com.meerkat-taskpanel.${agent}.${actorKind}`;
 }
 
 /**
  * The launchd Label of one tick, exactly as the installer's unit template renders it
- * (`com.meerkat-taskpanel.{{AGENT}}.{{HOST}}.{{poll|patrol}}`).
+ * (`com.meerkat-taskpanel.{{AGENT}}.{{ACTOR_KIND}}.{{poll|patrol}}`).
  *
  * @param {string} agent
- * @param {string} host
- * @param {string} kind
+ * @param {string} actorKind
+ * @param {string} unit
  */
-export function supervisorLabel(agent, host, kind) {
-  return `${supervisorBase(agent, host)}.${kind}`;
+export function supervisorLabel(agent, actorKind, unit) {
+  return `${supervisorBase(agent, actorKind)}.${unit}`;
 }
 
 /**
@@ -207,45 +207,45 @@ export function resolveScheduler(requested, platform) {
 }
 
 /**
- * Every path and name the action needs, from the host's own directory (`<home>/<host-dir>`,
+ * Every path and name the action needs, from the agent kind's own directory (`<home>/<agent-dir>`,
  * e.g. `~/.claude`). Pure arithmetic — nothing is created here.
  *
- * @param {{hostBase: string, agent: string, host: string, env?: NodeJS.ProcessEnv,
+ * @param {{agentBase: string, agent: string, actorKind: string, env?: NodeJS.ProcessEnv,
  *          home?: string}} options
  */
 export function supervisorPaths(options) {
-  const hostBase = resolve(options.hostBase);
+  const agentBase = resolve(options.agentBase);
   const env = options.env ?? process.env;
   const home = options.home ?? homedir();
 
   return {
-    hostBase,
-    hostDir: basename(hostBase),
+    agentBase,
+    agentDir: basename(agentBase),
     agent: options.agent,
-    host: options.host,
+    actorKind: options.actorKind,
     env,
     home,
-    loopDir: join(hostBase, "meerkat-taskpanel"),
-    supervisor: join(hostBase, "meerkat-taskpanel", "scripts", "supervisor.mjs"),
-    log: join(hostBase, "meerkat-taskpanel", "supervisor.log"),
-    state: join(hostBase, "meerkat-taskpanel", "supervisor.state.json"),
-    config: join(hostBase, "meerkat-taskpanel.env"),
+    loopDir: join(agentBase, "meerkat-taskpanel"),
+    supervisor: join(agentBase, "meerkat-taskpanel", "scripts", "supervisor.mjs"),
+    log: join(agentBase, "meerkat-taskpanel", "supervisor.log"),
+    state: join(agentBase, "meerkat-taskpanel", "supervisor.state.json"),
+    config: join(agentBase, "meerkat-taskpanel.env"),
     launchd: KINDS.map((kind) => ({
       kind,
-      label: supervisorLabel(options.agent, options.host, kind),
-      plist: join(hostBase, "scheduling", "launchd", `com.meerkat-taskpanel.${kind}.plist`),
+      label: supervisorLabel(options.agent, options.actorKind, kind),
+      plist: join(agentBase, "scheduling", "launchd", `com.meerkat-taskpanel.${kind}.plist`),
     })),
     legacyLaunchd: LEGACY_KINDS.map((kind) => ({
       kind,
-      label: supervisorLabel(options.agent, options.host, kind),
-      plist: join(hostBase, "scheduling", "launchd", `com.meerkat-taskpanel.${kind}.plist`),
+      label: supervisorLabel(options.agent, options.actorKind, kind),
+      plist: join(agentBase, "scheduling", "launchd", `com.meerkat-taskpanel.${kind}.plist`),
     })),
-    systemdSrcDir: join(hostBase, "scheduling", "systemd"),
+    systemdSrcDir: join(agentBase, "scheduling", "systemd"),
     systemdUnitDir: systemdUserDir(env, home),
-    cronFile: join(hostBase, "scheduling", "cron", "meerkat-taskpanel.cron"),
-    // The marker key the docs name — `~/.claude`, the host *directory*, so each host gets
+    cronFile: join(agentBase, "scheduling", "cron", "meerkat-taskpanel.cron"),
+    // The marker key the docs name — `~/.claude`, the agent *directory*, so each agent kind gets
     // its own block and the three never collide.
-    marker: `~/${basename(hostBase)}`,
+    marker: `~/${basename(agentBase)}`,
   };
 }
 
@@ -253,7 +253,7 @@ export function supervisorPaths(options) {
 // The cron managed block — the idempotency key (cron has no other "enabled" state)
 // ---------------------------------------------------------------------------
 
-/** The begin/end marker pair for one host's block. */
+/** The begin/end marker pair for one agent kind's block. */
 export function cronMarkers(marker) {
   return {
     begin: `# >>> meerkat-taskpanel (${marker}) >>>`,
@@ -312,7 +312,7 @@ export function cronContentLines(paths) {
       schedule,
       node,
       paths.supervisor,
-      `--host ${paths.host}`,
+      `--actor-kind ${paths.actorKind}`,
       `--agent ${paths.agent}`,
       mode,
       "--once",
@@ -388,7 +388,7 @@ export function launchdMechanism({ paths, uid, run }) {
 
   return {
     name: "launchd",
-    unitsReport: `${supervisorBase(paths.agent, paths.host)}.session,.ping,.continue,.subscribe`,
+    unitsReport: `${supervisorBase(paths.agent, paths.actorKind)}.session,.ping,.continue,.subscribe`,
 
     plan() {
       return [
@@ -661,12 +661,12 @@ export function lingerState(options = {}) {
  * (without it, a `--scheduler=cron` enable on macOS would be undone on launchd).
  */
 function disableHint(paths, chosen, platform) {
-  const base = `install.sh --supervisor=disable --supervisor-hosts ${paths.host}`;
+  const base = `install.sh --supervisor=disable --supervisor-actor-kinds ${paths.actorKind}`;
   return chosen === resolveScheduler("auto", platform) ? base : `${base} --scheduler=${chosen}`;
 }
 
 /**
- * Run one action for one host. Everything is reported on `log`; the return value is the
+ * Run one action for one agent kind. Everything is reported on `log`; the return value is the
  * process exit code (non-zero only when an `enable`/`disable` the user asked for could
  * not be performed — a failure is never dressed up as a success).
  *
@@ -682,11 +682,11 @@ export function runSupervisorAction(options) {
   const log = options.log ?? ((line) => process.stdout.write(`${line}\n`));
   const requested = resolveScheduler(scheduler, platform);
   const withUnits = (mechanism) =>
-    `host=${paths.host}, scheduler=${mechanism.name}, units=${mechanism.unitsReport}`;
+    `kind=${paths.actorKind}, scheduler=${mechanism.name}, units=${mechanism.unitsReport}`;
   const all = mechanisms({ paths, uid: options.uid ?? process.getuid?.() ?? null, run });
 
   if (action === "status") {
-    log(`supervisor: status (host=${paths.host})`);
+    log(`supervisor: status (kind=${paths.actorKind})`);
     const names = scheduler === "auto" ? ["launchd", "systemd", "cron"] : [requested];
     for (const name of names) {
       const probe = all[name].probe();
@@ -712,9 +712,9 @@ export function runSupervisorAction(options) {
     log(`supervisor:   session: ${pool.live ? "running" : "not running"} (${detail})`);
     // The full-access opt-in is an authorization, so status states it — and who
     // recorded it — rather than leaving a bypass invisible.
-    const allowAll = String(hostConfigValue(paths.config, "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS") ?? "").toLowerCase();
+    const allowAll = String(agentConfigValue(paths.config, "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS") ?? "").toLowerCase();
     if (allowAll === "yes" || allowAll === "true" || allowAll === "1") {
-      const reason = hostConfigValue(paths.config, "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON") ?? "unrecorded";
+      const reason = agentConfigValue(paths.config, "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON") ?? "unrecorded";
       log(`supervisor:   tools: all enabled (authorized by: ${reason}) — the project directory is not an isolation boundary`);
     } else {
       log("supervisor:   tools: role allowlists (full access is off)");
@@ -747,7 +747,7 @@ export function runSupervisorAction(options) {
     return 0;
   }
 
-  // One mechanism per host: take any *other* loaded one down first, so this can never
+  // One mechanism per agent kind: take any *other* loaded one down first, so this can never
   // leave two racing for the same cards. Only this module's own labels / unit names /
   // marker block are touched, and a take-down that did not happen is said so — a silent
   // failure here would leave exactly the double-load this is meant to prevent.
@@ -758,11 +758,11 @@ export function runSupervisorAction(options) {
     if (!other.probe().loaded && !legacyLoaded) continue;
     const taken = other.disable();
     if (taken.ok) {
-      log(`supervisor: disabled (host=${paths.host}, scheduler=${name}, units=${other.unitsReport}) — one mechanism per host`);
+      log(`supervisor: disabled (kind=${paths.actorKind}, scheduler=${name}, units=${other.unitsReport}) — one mechanism per agent kind`);
     } else {
       log(
-        `supervisor: warning — ${name} is also loaded (host=${paths.host}, units=${other.unitsReport}) and could not be ` +
-          `taken down (${taken.reason}); two loaded units for one host race for the same cards`,
+        `supervisor: warning — ${name} is also loaded (kind=${paths.actorKind}, units=${other.unitsReport}) and could not be ` +
+          `taken down (${taken.reason}); two loaded units for one agent kind race for the same cards`,
       );
     }
   }
@@ -793,10 +793,10 @@ export function runSupervisorAction(options) {
 // CLI
 // ---------------------------------------------------------------------------
 
-const USAGE = `Usage: node scripts/install/lib/supervisor.mjs <enable|disable|status> --host <host> \\
-         --agent <name> --host-base <dir> [--scheduler auto|launchd|systemd|cron] [--dry-run]
+const USAGE = `Usage: node scripts/install/lib/supervisor.mjs <enable|disable|status> --actor-kind <kind> \\
+         --agent <name> --agent-base <dir> [--scheduler auto|launchd|systemd|cron] [--dry-run]
 
-Loads, unloads or reports one loop host's supervisor units — the opt-in path
+Loads, unloads or reports one loop agent kind's supervisor units — the opt-in path
 docs/scheduling.md defines. Called by scripts/install/_common.sh; not meant to be
 run by hand.
 `;
@@ -817,9 +817,9 @@ function main(argv) {
     const arg = rest[i];
     const value = () => rest[++i];
     if (arg === "--dry-run") opts.dryRun = true;
-    else if (arg === "--host") opts.host = value();
+    else if (arg === "--actor-kind") opts.actorKind = value();
     else if (arg === "--agent") opts.agent = value();
-    else if (arg === "--host-base") opts.hostBase = value();
+    else if (arg === "--agent-base") opts.agentBase = value();
     else if (arg === "--scheduler") opts.scheduler = value();
     else {
       process.stderr.write(`supervisor: unknown option: ${arg}\n`);
@@ -827,7 +827,7 @@ function main(argv) {
     }
   }
 
-  for (const required of ["host", "agent", "hostBase"]) {
+  for (const required of ["actorKind", "agent", "agentBase"]) {
     if (opts[required] === undefined) {
       process.stderr.write(`supervisor: --${required.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} is required\n`);
       return 2;
@@ -842,7 +842,7 @@ function main(argv) {
   return runSupervisorAction({
     action,
     scheduler: opts.scheduler,
-    paths: supervisorPaths({ hostBase: opts.hostBase, agent: opts.agent, host: opts.host, env }),
+    paths: supervisorPaths({ agentBase: opts.agentBase, agent: opts.agent, actorKind: opts.actorKind, env }),
     user: env.USER ?? env.LOGNAME ?? "",
     dryRun: opts.dryRun,
   });

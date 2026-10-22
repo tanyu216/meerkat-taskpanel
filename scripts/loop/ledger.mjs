@@ -1,16 +1,16 @@
 /**
  * The subagent ledger — durable, application-level state for work delegated to
- * a host's subagents.
+ * an agent's subagents.
  *
- * The ledger is deliberately *not* a copy of a host transcript. It records only
+ * The ledger is deliberately *not* a copy of an agent transcript. It records only
  * what the supervisor needs to recover work across a crash:
  *
  *   sessionKey   the project directory whose project session spawned it
- *   subagentId   the host's handle (Claude agentId, Codex thread id, …)
+ *   subagentId   the agent's handle (Claude agentId, Codex thread id, …)
  *   role/card    what the subagent is responsible for
  *   status       spawned | running | completed | failed | interrupted | stale
  *
- * Host transcripts are internal formats; the ledger is the supervisor's own
+ * Agent transcripts are internal formats; the ledger is the supervisor's own
  * state and the only thing resume/reattach reads.
  *
  * Node builtins only; no network, no dependencies.
@@ -65,8 +65,8 @@ export function liveSubagents(ledger) {
 }
 
 /**
- * Insert or update one subagent. Identity is the host handle when present,
- * else (sessionKey, card, role). Callers may upsert a row before the host has
+ * Insert or update one subagent. Identity is the agent handle when present,
+ * else (sessionKey, card, role). Callers may upsert a row before the agent has
  * assigned an id; the later upsert with the id fills it in.
  *
  * @param {{subagents: object[]}} ledger
@@ -76,7 +76,7 @@ export function liveSubagents(ledger) {
 export function upsertSubagent(ledger, record) {
   const next = normalise(ledger);
   const id = record.subagentId === undefined || record.subagentId === null ? null : String(record.subagentId);
-  // Prefer the host handle. A row created before the handle existed is matched
+  // Prefer the agent handle. A row created before the handle existed is matched
   // by (sessionKey, card, role), but only while it is still live: a retry of a
   // finished card is a new subagent, not the old row.
   let index = id === null ? -1 : next.subagents.findIndex((entry) => entry.subagentId === id);
@@ -92,7 +92,7 @@ export function upsertSubagent(ledger, record) {
   const merged = {
     version: 1,
     sessionKey: record.sessionKey ?? null,
-    host: record.host ?? null,
+    actorKind: record.actorKind ?? null,
     subagentId: id ?? (index === -1 ? null : next.subagents[index].subagentId ?? null),
     role: record.role ?? (index === -1 ? "worker" : next.subagents[index].role ?? "worker"),
     card: record.card ?? (index === -1 ? null : next.subagents[index].card ?? null),
@@ -116,7 +116,7 @@ export function upsertSubagent(ledger, record) {
 
 /**
  * Mark one subagent terminal (or refresh its status). `identity` may be the
- * host handle, or `{sessionKey, card, role}` for a row that never got one.
+ * agent handle, or `{sessionKey, card, role}` for a row that never got one.
  *
  * @param {{subagents: object[]}} ledger
  * @param {string|{sessionKey?: string, card?: string, role?: string}} identity
@@ -169,7 +169,7 @@ export function reattachCandidates(ledger, options = {}) {
 export function extractAgentIds(text) {
   const out = new Set();
   const body = String(text ?? "");
-  // `agentId: x` in prose, and `"agentId":"x"` in a host event's JSON.
+  // `agentId: x` in prose, and `"agentId":"x"` in an agent event's JSON.
   for (const match of body.matchAll(/\bagentId["']?\s*[:=]\s*["']?([A-Za-z0-9_.:-]+)/g)) out.add(match[1]);
   for (const match of body.matchAll(/\bagent_id\b["']?\s*[:=]\s*["']?([A-Za-z0-9_.:-]+)/g)) out.add(match[1]);
   return [...out];
@@ -178,7 +178,7 @@ export function extractAgentIds(text) {
 /**
  * Reconcile live rows against the board. A subagent whose card is no longer in
  * progress (or whose lastSeenAt is older than the bound) is marked `stale`, so
- * a missed host event cannot pin a concurrency slot forever.
+ * a missed agent event cannot pin a concurrency slot forever.
  *
  * `cardStatus` is a map `card -> status` read from the board; a missing card is
  * treated as unknown, not as finished.

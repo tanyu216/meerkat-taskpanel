@@ -8,7 +8,7 @@
 #                         every other key and hook
 #   4. slash commands   → ~/.claude/commands/{board,claim,deliver}.md
 #   5. scheduling       → ~/.claude/scheduling/{launchd,systemd,cron}, the loop body in
-#                         ~/.claude/meerkat-taskpanel/, wake-claude.sh and the host config
+#                         ~/.claude/meerkat-taskpanel/, wake-claude.sh and the agent config
 #                         (~/.claude/meerkat-taskpanel.env)
 # plus the reproducible hook script and the taskctl shim that injects --agent <name>.
 set -eu
@@ -31,7 +31,7 @@ emit_file "claude/commands/board.md"   "$(target_home)/.claude/commands/board.md
 emit_file "claude/commands/claim.md"   "$(target_home)/.claude/commands/claim.md"
 emit_file "claude/commands/deliver.md" "$(target_home)/.claude/commands/deliver.md"
 
-# Host-external supervisor: units + wake glue + the persisted claim policy. Claude
+# External supervisor: units + wake glue + the persisted claim policy. Claude
 # Code has no timers, so the loop lives outside it (see docs/scheduling.md).
 install_scheduling
-write_host_config
+write_agent_config

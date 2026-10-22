@@ -36,7 +36,7 @@ function fakeCli(source) {
 }
 
 function opts(cli) {
-  return { cli, host: "claude", envFile: null, url: null, token: "td_test" };
+  return { cli, actorKind: "claude", envFile: null, url: null, token: "td_test" };
 }
 
 describe("loop/streamCli — argv and environment", () => {

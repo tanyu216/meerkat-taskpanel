@@ -4,7 +4,7 @@
  * `install.sh` is verified in more depth in `test/scaffold.test.mjs`; this file covers
  * the M4 additions — comma-separated targets, the per-host summary, and the exit code —
  * plus the "skip cleanly when the host CLI is absent" contract of
- * `scripts/verify/host-cli.mjs` (so it can be run anywhere, including CI, without ever
+ * `scripts/verify/kind-cli.mjs` (so it can be run anywhere, including CI, without ever
  * reaching the network).
  *
  * Run with: node --test
@@ -42,11 +42,11 @@ describe("install.sh: targets", () => {
     const run = runInstall(["--target", "claude,codex", "--prefix", home]);
 
     assert.equal(run.status, 0, run.stderr);
-    for (const hostDir of [".claude", ".codex"]) {
-      assert.ok(existsSync(join(home, hostDir, "skills", "meerkat-taskpanel", "SKILL.md")), `${hostDir} install missing`);
+    for (const agentDir of [".claude", ".codex"]) {
+      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-taskpanel", "SKILL.md")), `${agentDir} install missing`);
     }
-    for (const hostDir of [".openclaw", ".agents", ".config/opencode", ".cursor"]) {
-      assert.equal(existsSync(join(home, hostDir)), false, `${hostDir} must not be installed`);
+    for (const agentDir of [".openclaw", ".agents", ".config/opencode", ".cursor"]) {
+      assert.equal(existsSync(join(home, agentDir)), false, `${agentDir} must not be installed`);
     }
   });
 
@@ -57,11 +57,11 @@ describe("install.sh: targets", () => {
     const run = runInstall(["--target", "opencode,cursor", "--prefix", home]);
 
     assert.equal(run.status, 0, run.stderr);
-    for (const hostDir of [".config/opencode", ".cursor"]) {
-      assert.ok(existsSync(join(home, hostDir, "skills", "meerkat-taskpanel", "SKILL.md")), `${hostDir} install missing`);
+    for (const agentDir of [".config/opencode", ".cursor"]) {
+      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-taskpanel", "SKILL.md")), `${agentDir} install missing`);
     }
-    for (const hostDir of [".claude", ".codex", ".openclaw", ".agents"]) {
-      assert.equal(existsSync(join(home, hostDir)), false, `${hostDir} must not be installed`);
+    for (const agentDir of [".claude", ".codex", ".openclaw", ".agents"]) {
+      assert.equal(existsSync(join(home, agentDir)), false, `${agentDir} must not be installed`);
     }
   });
 
@@ -112,8 +112,8 @@ describe("install.sh: targets", () => {
     assert.ok(existsSync(join(tree, ".env")));
     assert.ok(existsSync(join(tree, ".data")));
     assert.match(run.stdout, new RegExp(`OK   server — ${tree.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-    for (const hostDir of [".claude", ".openclaw", ".codex", ".agents", ".config/opencode", ".cursor"]) {
-      assert.equal(existsSync(join(home, hostDir)), false, `${hostDir} must not be installed`);
+    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents", ".config/opencode", ".cursor"]) {
+      assert.equal(existsSync(join(home, agentDir)), false, `${agentDir} must not be installed`);
     }
   });
 
@@ -147,10 +147,10 @@ describe("install.sh: targets", () => {
     assert.equal(run.status, 0, run.stderr);
     const tree = join(home, ".meerkat-taskpanel");
     assert.ok(existsSync(join(tree, "src", "server", "main.mjs")), "all includes the server");
-    for (const hostDir of [".claude", ".openclaw", ".codex", ".agents", ".config/opencode", ".cursor"]) {
+    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents", ".config/opencode", ".cursor"]) {
       assert.ok(
-        existsSync(join(home, hostDir, "skills", "meerkat-taskpanel", "SKILL.md")),
-        `${hostDir} must be installed`,
+        existsSync(join(home, agentDir, "skills", "meerkat-taskpanel", "SKILL.md")),
+        `${agentDir} must be installed`,
       );
     }
   });
@@ -186,19 +186,19 @@ describe("install.sh: targets", () => {
     assert.equal(lstatSync(tree).isSymbolicLink(), false);
   });
 
-  it("rejects --supervisor-hosts server with a usage error", () => {
-    const run = runInstall(["--target", "server", "--supervisor-hosts", "server", "--dry-run"]);
+  it("rejects --supervisor-actor-kinds server with a usage error", () => {
+    const run = runInstall(["--target", "server", "--supervisor-actor-kinds", "server", "--dry-run"]);
     assert.equal(run.status, 2);
-    assert.match(run.stderr, /--supervisor-hosts server/);
+    assert.match(run.stderr, /--supervisor-actor-kinds server/);
   });
 });
 
-describe("host-cli: absent CLIs are skipped, never failed", () => {
+describe("kind-cli: absent CLIs are skipped, never failed", () => {
   it("SKIPs every host when PATH has no host CLI and exits 0", () => {
     // An empty bin dir on PATH means the host CLIs cannot be found — the probe must
     // report SKIP for all of them rather than fail or reach for the network.
     const empty = makeTempDir();
-    const run = spawnSync(NODE, [join(ROOT, "scripts/verify/host-cli.mjs")], {
+    const run = spawnSync(NODE, [join(ROOT, "scripts/verify/kind-cli.mjs")], {
       cwd: ROOT,
       encoding: "utf8",
       env: { ...process.env, PATH: empty },
@@ -218,7 +218,7 @@ describe("host-cli: absent CLIs are skipped, never failed", () => {
     writeFileSync(notADir, "not a directory\n", "utf8");
     assert.equal(statSync(notADir).isDirectory(), false, "fixture precondition: this PATH entry must be a file");
 
-    const run = spawnSync(NODE, [join(ROOT, "scripts/verify/host-cli.mjs")], {
+    const run = spawnSync(NODE, [join(ROOT, "scripts/verify/kind-cli.mjs")], {
       cwd: ROOT,
       encoding: "utf8",
       env: { ...process.env, PATH: notADir },

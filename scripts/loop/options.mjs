@@ -37,8 +37,8 @@ import {
   PEER_PERIOD_MIN,
 } from "../../src/foundation/sla-patrol.mjs";
 
-/** Host → dot-directory under the target home. */
-export const HOST_DIRS = Object.freeze({
+/** Actor kind → the agent's config directory under the target home. */
+export const AGENT_DIRS = Object.freeze({
   claude: ".claude",
   codex: ".codex",
   pi: ".agents",
@@ -63,19 +63,19 @@ export function readConfigFile(path) {
  *   * **from the checkout** (`node scripts/supervisor.mjs`, the documented dev run
  *     and every test) — the board sits beside the executor, so the relative answer is
  *     the right one and nothing else is consulted. This branch is why a dev run never
- *     depends on the machine's host config.
- *   * **from the host** — `install.sh` copies the loop body under
- *     `<host-dir>/meerkat-taskpanel/` so a loaded scheduling unit survives the
+ *     depends on the machine's agent config.
+ *   * **from the agent** — `install.sh` copies the loop body under
+ *     `<agent-dir>/meerkat-taskpanel/` so a loaded scheduling unit survives the
  *     checkout moving. That copy has no board of its own, so it falls back to the
- *     location the installer recorded in the host config (`MEERKAT_TASKPANEL_REPO`).
+ *     location the installer recorded in the agent config (`MEERKAT_TASKPANEL_REPO`).
  *
  * An unreadable or key-less config falls back to the executor's own location, which
  * is what a copy written by an older installer has — the tick still runs, and
  * re-running `install.sh` records the path.
  *
- * @param {string | null} configPath the host config file to consult
+ * @param {string | null} configPath the agent config file to consult
  * @param {string} [beside] the executor's own directory — injectable so the
- *   host-installed branch is testable without a second checkout on disk
+ *   agent-installed branch is testable without a second checkout on disk
  * @returns {string} an absolute directory
  */
 export function defaultRepo(configPath, beside = resolve(dirname(fileURLToPath(import.meta.url)), "../..")) {
@@ -132,7 +132,7 @@ function resolvePositive(input, fallback) {
 }
 
 flag("--agent", (opts, value) => opts.agents.push(...list(value)));
-flag("--host", (opts, value) => { opts.host = value; });
+flag("--actor-kind", (opts, value) => { opts.actorKind = value; });
 flag("--repo", (opts, value) => { opts.repo = resolve(value); });
 flag("--ping-interval", (opts, value) => { opts.pingInterval = number("--ping-interval", value); });
 // Deprecated alias for the ping clock. The old units pass a bare `--once`, so
@@ -211,14 +211,14 @@ flag("--glue", (opts, value) => { opts.glue = value; });
 flag("--projects-json", (opts, value) => { opts.projectsJson = value; });
 flag("--wake-command", (opts, value) => { opts.wakeCommand = value; });
 
-/** Host-local files derived from `--home` and `--host`. */
-export function hostPaths(home, host) {
-  const dir = join(home, HOST_DIRS[host]);
+/** Agent-local files derived from `--home` and `--actor-kind`. */
+export function agentPaths(home, actorKind) {
+  const dir = join(home, AGENT_DIRS[actorKind]);
   return {
     log: join(dir, "meerkat-taskpanel", "supervisor.log"),
     state: join(dir, "meerkat-taskpanel", "supervisor.state.json"),
     config: join(dir, "meerkat-taskpanel.env"),
-    glue: join(dir, "bin", `wake-${host}.sh`),
+    glue: join(dir, "bin", `wake-${actorKind}.sh`),
     projectsJson: join(dir, "skills", "meerkat-taskpanel", "projects.json"),
     // The two skills the resident sessions need: the loop expands
     // `/meerkat-loop` in the control session; project subagents use the board
@@ -243,10 +243,10 @@ function statePaths(state) {
 function defaultOptions(env) {
   return {
     agents: [],
-    host: "claude",
+    actorKind: "claude",
     repo: null,   // resolved below: --repo, else defaultRepo()
-    pingInterval: undefined,     // resolved below: flag > env > host config > 60
-    continueInterval: undefined, // resolved below: flag > env > host config > 600
+    pingInterval: undefined,     // resolved below: flag > env > agent config > 60
+    continueInterval: undefined, // resolved below: flag > env > agent config > 600
     continue: undefined,
     continueState: null,
     session: false,
@@ -263,7 +263,7 @@ function defaultOptions(env) {
     subagentBackground: false,
     patrolInterval: DEFAULT_PATROL_SECONDS, // the SLA measurement period, not a schedule
     patrolIntervalExplicit: false, // true only when `--patrol-interval` was given
-    maxConcurrency: undefined, // resolved below: flag > env > host config > 8
+    maxConcurrency: undefined, // resolved below: flag > env > agent config > 8
     claimUnassigned: undefined,
     recoverStale: undefined,
     workflow: undefined,
@@ -344,11 +344,11 @@ export function parseArgs(argv, env = process.env) {
     const fallback = env.TASKCTL_AGENT || env.USER || env.LOGNAME || "agent";
     opts.agents = [fallback];
   }
-  if (!(opts.host in HOST_DIRS)) {
-    throw new Error(`unknown host '${opts.host}' (expected claude|codex|pi|opencode|cursor)`);
+  if (!(opts.actorKind in AGENT_DIRS)) {
+    throw new Error(`unknown actor kind '${opts.actorKind}' (expected claude|codex|pi|opencode|cursor)`);
   }
 
-  const paths = hostPaths(opts.home, opts.host);
+  const paths = agentPaths(opts.home, opts.actorKind);
   opts.log ??= paths.log;
   opts.state ??= paths.state;
   // The lock and the ledgers sit beside the worker registry, never inside it: an
@@ -374,7 +374,7 @@ export function parseArgs(argv, env = process.env) {
     DEFAULT_MAX_CONCURRENCY,
   );
   // Cadences follow the same precedence as every other policy: flag > env >
-  // the host config the installer wrote > default. Invalid values are ignored,
+  // the agent config the installer wrote > default. Invalid values are ignored,
   // never allowed to wedge a clock.
   opts.pingInterval = resolveIntervalSeconds({
     flag: opts.pingInterval,
@@ -620,7 +620,7 @@ export function resolveLoopConfig(opts, env = process.env) {
     claimUnassigned,
     recoverStale,
     patrolLlm: opts.patrolLlm,
-    host: opts.host,
+    actorKind: opts.actorKind,
     wakeCommand: opts.wakeCommand,
     workflow: workflow.workflow,
     reviewer: workflow.reviewer,
@@ -650,13 +650,13 @@ export function resolveLoopConfig(opts, env = process.env) {
 /**
  * The argv a child entry must share with the scheduler that woke it. Only
  * consistency-critical values are emitted; policies the child can re-read from
- * the host config are passed only when they were stated explicitly.
+ * the agent config are passed only when they were stated explicitly.
  *
  * @param {object} opts
  * @returns {string[]}
  */
 export function loopCommandArgs(opts) {
-  const args = ["--host", opts.host];
+  const args = ["--actor-kind", opts.actorKind];
   for (const agent of opts.agents) args.push("--agent", agent);
   args.push("--log", opts.log, "--state", opts.state);
 
@@ -666,7 +666,7 @@ export function loopCommandArgs(opts) {
   };
   // Only state values that differ from what the child would derive anyway,
   // or every line of the prompt carries a dozen redundant absolute paths.
-  const paths = hostPaths(opts.home, opts.host);
+  const paths = agentPaths(opts.home, opts.actorKind);
   const beside = statePaths(opts.state);
   const defaults = {
     config: paths.config,
@@ -714,7 +714,7 @@ export function loopCommandArgs(opts) {
   if (opts.boardLimit !== DEFAULT_BOARD_LIMIT) add("--board-limit", opts.boardLimit);
   if (opts.trailLimit !== DEFAULT_TRAIL_LIMIT) add("--trail-limit", opts.trailLimit);
   // Always carry the resolved value: the child poll must not re-resolve the cap
-  // from an env or host config that differs from the one this process used.
+  // from an env or agent config that differs from the one this process used.
   add("--max-concurrency", opts.maxConcurrency);
   if (opts.patrolLlm) args.push("--patrol-llm");
   // The resident settings the child `passes.mjs` re-reads: it must ask
@@ -748,8 +748,9 @@ The clocks stay as the fallback (and as the only path for time-based work).
 Options:
   --agent <name>            Agent(s) to work for. Repeatable / comma-separated.
                             Default: $TASKCTL_AGENT, then $USER.
-  --host claude|codex|pi|opencode|cursor    Which worker/agent to wake (default: claude).
-  --repo <path>             Repository root (default: this checkout; a host-installed
+  --actor-kind claude|codex|pi|opencode|cursor
+                            Which actor kind to wake (default: claude).
+  --repo <path>             Repository root (default: this checkout; an agent-installed
                             copy takes it from --config — MEERKAT_TASKPANEL_REPO).
   --ping-interval <sec>     Liveness clock (default: ${DEFAULT_PING_SECONDS}).
   --continue-interval <sec> Judgment clock (default: ${DEFAULT_CONTINUE_SECONDS} = 10 minutes).
@@ -769,7 +770,7 @@ Options:
   --project-concurrency <n> Max live subagents per project (default: --max-concurrency).
   --project-idle-ms <ms>    Close an idle project session after this (default: 1800000).
   --subagent-background=yes|no  Project sessions spawn background subagents (default: no).
-  --allow-all-tools         Enable every host tool. Requires --allow-all-tools-reason;
+  --allow-all-tools         Enable every agent tool. Requires --allow-all-tools-reason;
                             the session runs with the operator's full OS permissions.
   --allow-all-tools-reason <text>
                             Who authorized full tool access, and why.
@@ -818,8 +819,8 @@ Options:
   --patrol-llm=yes|no       Allow patrol to start an LLM turn (default: no).
   --notify <cmd>            Run <cmd> with each patrol alert as JSON on stdin.
   --dry-run                 Print intended actions; write nothing, spawn nothing.
-  --log <path>              Append log lines here (default: <home>/<host-dir>/meerkat-taskpanel/supervisor.log).
-  --state <path>            Worker registry (default: <home>/<host-dir>/meerkat-taskpanel/supervisor.state.json).
+  --log <path>              Append log lines here (default: <home>/<agent-dir>/meerkat-taskpanel/supervisor.log).
+  --state <path>            Worker registry (default: <home>/<agent-dir>/meerkat-taskpanel/supervisor.state.json).
   --sla-ledger <path>       SLA de-duplication ledger (default: a sibling of --state).
   --workflow-ledger <path>  Workflow alert de-duplication ledger (default: a sibling of --state).
   --sla-leader <id>         The author id the leader writes under (default: the board's human
@@ -830,12 +831,12 @@ Options:
   --board-limit <n>         Max cards per read (default: ${DEFAULT_BOARD_LIMIT}); passed to sla list.
   --trail-limit <n>         Max comment trails per SLA read (default: ${DEFAULT_TRAIL_LIMIT}); passed
                             to sla list.
-  --config <path>           Host config (default: <home>/<host-dir>/meerkat-taskpanel.env).
+  --config <path>           Agent config (default: <home>/<agent-dir>/meerkat-taskpanel.env).
   --home <path>             Home the defaults are resolved against (default: $HOME).
   --cli <path>              taskctl entry (default: <repo>/src/cli/index.mjs).
-  --glue <path>             Wake glue (default: <home>/<host-dir>/bin/wake-<host>.sh).
-  --wake-command <cmd>      Your own wake command instead of the built-in host forms.
-  --projects-json <path>    Host-local project map handed to the glue.
+  --glue <path>             Wake glue (default: <home>/<agent-dir>/bin/wake-<actor-kind>.sh).
+  --wake-command <cmd>      Your own wake command instead of the built-in agent forms.
+  --projects-json <path>    Agent-local project map handed to the glue.
   -h, --help                Show this help
 
 The deterministic passes are also runnable on their own:

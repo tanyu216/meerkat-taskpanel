@@ -14,7 +14,7 @@ database (Node's built-in `node:sqlite`) — no external services. Node **>= 22*
 **zero runtime dependencies**, MIT, public repo.
 
 **Status (honest):** the engine has landed in full — the core engine, the `taskctl` CLI and
-its local `taskd`, the six-host installers, and the board HTTP API + SSE plus the `web/`
+its local `taskd`, the six-agent-kind installers, and the board HTTP API + SSE plus the `web/`
 frontend. `src/core/` has the domain model, SQLite storage
 + migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl` command surface
 and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` is the
@@ -25,7 +25,7 @@ roadmap lives in `README.md` / `README.zh-CN.md`.
 **Distribution:** `npx meerkat-taskpanel` (or `install.sh --target all` from a checkout)
 materializes the runtime at `~/.meerkat-taskpanel` — `src/`, the built `web/dist`,
 `bin/taskd`, `bin/taskctl`, one `.env` and `.data` — and installs the skill for every
-supported agent. `all` is the default and includes the server; `--no-server` (or an explicit
+supported agent kind. `all` is the default and includes the server; `--no-server` (or an explicit
 comma list such as `--target claude,server,pi`) narrows it. The npm tarball therefore carries
 the built `web/dist`, and the tree is self-locating (the launchers exec the tree's own
 `src/`), so it survives the checkout moving or the npx cache being pruned. The Docker image
@@ -33,7 +33,7 @@ is unchanged and keeps `/app/.data`. `docs/install.md` is the reference.
 
 The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/install.md`).
 The board owns the workflow decisions (`issue reconcile --workflow`); the loop executes the
-resulting plan. The host-external supervisor is a **skill of its own**
+resulting plan. The external supervisor is a **skill of its own**
 (`skills/meerkat-loop/`), never installed for OpenClaw and **not** distributed through the
 marketplace: `install.sh --target claude|codex|pi|opencode|cursor` is its only path, and it
 carries no version of its own.
@@ -158,7 +158,7 @@ the release workflow stages the image's build there before `npm pack`.
 ## Constraints / MUST-follow rules
 
 - **Verification runs inside Docker, not on the host.** Everything that *runs* — tests,
-  starting or serving the app, the CLI, host skill installs, plugin installs, migration
+  starting or serving the app, the CLI, agent skill installs, plugin installs, migration
   rehearsals — runs in the container (`npm run verify:docker`, `docker/verify-in-container.sh`).
   Host-allowed (static/pure only, per `docs/docker.md` §Host-allowed checks): `node --test`,
   `node --check`, the `scripts/verify/*` checkers, `git` and file inspection, prototype

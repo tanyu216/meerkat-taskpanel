@@ -33,7 +33,7 @@ taskctl --actor-kind claude --agent linus issue claim PROJ-7
 taskctl --actor-kind claude --agent turing issue deliver PROJ-7 --report-file -
 ```
 
-The host shim injects both halves for an installed skill, so a session normally does not repeat
+The taskctl shim injects both halves for an installed skill, so a session normally does not repeat
 them. A human writes with `--as-human`.
 
 `--version --json` publishes the contract's `schema_version` — a coarse generation marker for
@@ -59,7 +59,7 @@ both.
   `TASKD_ACCEPTANCE_POLICY`, `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS`) live in the same file;
   the Access panel writes them. `TASKD_HOST` / `TASKD_PORT` / `TASKD_DATA_DIR` / `TASKD_DB` /
   `TASKD_RUNTIME_POINTER` and `TASKD_NO_AUTOSTART` are also read.
-- **Identity is not a `.env` key.** `TASKCTL_ACTOR_KIND` and `TASKCTL_SESSION_ID` are per host /
+- **Identity is not a `.env` key.** `TASKCTL_ACTOR_KIND` and `TASKCTL_SESSION_ID` are per agent kind /
   per invocation and are refused in the file; `TASKCTL_AGENT` / `TASKCTL_HUMAN` may be defaults.
 - **Unknown keys:** a typo inside `TASKD_*` / `TASKCTL_*` / `MEERKAT_TASKPANEL_*` is an error.
   Other keys (`VITE_*`, `NODE_ENV`, …) are ignored and never merged into the child environment.
@@ -260,7 +260,7 @@ no stored bytes is the board's `NOT_FOUND`.
 | Command | Purpose |
 |---|---|
 | `session set <ref> --seg <seg> --owner-kind <name> [--owner] [--phase] [--pid] [--goal <text>] [--session <id>]` | Register a session (the id is derived from `task, owner, seg`, so a resume keeps it). `--owner-kind` is the owner's platform kind (e.g. `claude`, `codex`); `--goal` is one sentence saying what this session is for. Omit `--goal` on a re-registration to keep the recorded sentence. |
-| `session id <ref> --seg <seg> [--owner <name>] [--session <task-id>]` | Print the deterministic session id **without registering a session**. It is the value `session set` would write for the same `(task, owner, seg)`, so it can be handed to a host before it starts. `--owner` defaults to the caller's actor id, exactly as `session set` does; `--session` replaces the task fed to the derivation. It always derives — a global `--session-id` is ignored. Read-only: no session row and no card change; it still resolves the ref through the board, so `ensureBoard` may start `taskd` (use the script below, or `TASKD_NO_AUTOSTART=1`, for a strict offline read). |
+| `session id <ref> --seg <seg> [--owner <name>] [--session <task-id>]` | Print the deterministic session id **without registering a session**. It is the value `session set` would write for the same `(task, owner, seg)`, so it can be handed to an agent before it starts. `--owner` defaults to the caller's actor id, exactly as `session set` does; `--session` replaces the task fed to the derivation. It always derives — a global `--session-id` is ignored. Read-only: no session row and no card change; it still resolves the ref through the board, so `ensureBoard` may start `taskd` (use the script below, or `TASKD_NO_AUTOSTART=1`, for a strict offline read). |
 | `session close <ref> <session-id> [--failed]` | Close it. |
 | `session list <ref>` | List them, including each session's `goal`. |
 

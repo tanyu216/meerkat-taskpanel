@@ -16,7 +16,7 @@
 import { spawn } from "node:child_process";
 
 import { extractAgentIds } from "../ledger.mjs";
-import { lineSplitter, writeJsonLine } from "../host-session.mjs";
+import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
 export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
@@ -273,7 +273,7 @@ class PiSession {
 export function createPiPool(input) {
   const sessions = new Set();
   return {
-    host: "pi",
+    actorKind: "pi",
     openSession(options) {
       const session = new PiSession({
         opts: input.opts ?? {},

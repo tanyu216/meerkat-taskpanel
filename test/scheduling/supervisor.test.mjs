@@ -1,5 +1,5 @@
 /**
- * The host-external supervisor (T-20261010-013000).
+ * The external supervisor (T-20261010-013000).
  *
  * Two halves, deliberately:
  *
@@ -63,7 +63,7 @@ function spy(impl = () => undefined) {
   return fn;
 }
 
-const BASE_CONFIG = { maxConcurrency: DEFAULT_MAX_CONCURRENCY, claimUnassigned: true, host: "claude" };
+const BASE_CONFIG = { maxConcurrency: DEFAULT_MAX_CONCURRENCY, claimUnassigned: true, actorKind: "claude" };
 
 function candidate(identifier, agent = "alice", reason = "ready") {
   return { identifier, agent, reason, title: `work on ${identifier}`, project: "P1", target: "/repo" };
@@ -341,7 +341,7 @@ describe("candidateArgs (pure)", () => {
 });
 
 describe("resolveRecoverStale (pure)", () => {
-  it("prefers flag > environment > host config, and defaults to on", () => {
+  it("prefers flag > environment > agent config, and defaults to on", () => {
     assert.equal(resolveRecoverStale(), true);
     assert.equal(resolveRecoverStale({ file: { MEERKAT_TASKPANEL_RECOVER_STALE: "no" } }), false);
     assert.equal(
@@ -369,60 +369,60 @@ describe("resolveRecoverStale (pure)", () => {
 
 describe("wakeCommand (pure)", () => {
   it("builds a headless claude wake, resuming a session when one is known", () => {
-    const fresh = wakeCommand({ host: "claude", prompt: "do T-1" });
+    const fresh = wakeCommand({ actorKind: "claude", prompt: "do T-1" });
     assert.equal(fresh.command, "claude");
     assert.deepEqual(fresh.args, ["-p", "do T-1"]);
 
-    const resumed = wakeCommand({ host: "claude", prompt: "do T-1", resumeSid: "sid-9" });
+    const resumed = wakeCommand({ actorKind: "claude", prompt: "do T-1", resumeSid: "sid-9" });
     assert.deepEqual(resumed.args, ["-p", "do T-1", "--resume", "sid-9"]);
   });
 
   it("builds a codex exec wake, resuming a thread when a session id is known", () => {
-    const fresh = wakeCommand({ host: "codex", prompt: "do T-1" });
+    const fresh = wakeCommand({ actorKind: "codex", prompt: "do T-1" });
     assert.equal(fresh.command, "codex");
     assert.deepEqual(fresh.args, ["exec", "do T-1"]);
 
-    const resumed = wakeCommand({ host: "codex", prompt: "do T-1", resumeSid: "sid-9" });
+    const resumed = wakeCommand({ actorKind: "codex", prompt: "do T-1", resumeSid: "sid-9" });
     assert.deepEqual(resumed.args, ["exec", "resume", "sid-9", "do T-1"]);
   });
 
   it("builds a pi wake (--print, no `run`), resuming a session when an id is known", () => {
-    const fresh = wakeCommand({ host: "pi", prompt: "do T-1" });
+    const fresh = wakeCommand({ actorKind: "pi", prompt: "do T-1" });
     assert.equal(fresh.command, "pi");
     assert.deepEqual(fresh.args, ["--print", "do T-1"]);
     assert.ok(!fresh.args.includes("run"), "pi has no `run` subcommand — headless is `--print`");
 
-    const resumed = wakeCommand({ host: "pi", prompt: "do T-1", resumeSid: "sid-9" });
+    const resumed = wakeCommand({ actorKind: "pi", prompt: "do T-1", resumeSid: "sid-9" });
     assert.deepEqual(resumed.args, ["--print", "--session", "sid-9", "do T-1"]);
   });
 
   it("builds an opencode run wake, resuming a session when an id is known", () => {
-    const fresh = wakeCommand({ host: "opencode", prompt: "do T-1" });
+    const fresh = wakeCommand({ actorKind: "opencode", prompt: "do T-1" });
     assert.equal(fresh.command, "opencode");
     assert.deepEqual(fresh.args, ["run", "do T-1"]);
 
-    const resumed = wakeCommand({ host: "opencode", prompt: "do T-1", resumeSid: "sid-9" });
+    const resumed = wakeCommand({ actorKind: "opencode", prompt: "do T-1", resumeSid: "sid-9" });
     assert.deepEqual(resumed.args, ["run", "--session", "sid-9", "do T-1"]);
   });
 
   it("builds a cursor-agent -p wake, resuming a session when an id is known", () => {
     // Cursor's headless form is the documented `cursor-agent -p`; the resume flag
     // is the unverified half (there is no Cursor CLI here), kept behind the same
-    // `--wake-command` escape hatch as every other host.
-    const fresh = wakeCommand({ host: "cursor", prompt: "do T-1" });
+    // `--wake-command` escape hatch as every other agent kind.
+    const fresh = wakeCommand({ actorKind: "cursor", prompt: "do T-1" });
     assert.equal(fresh.command, "cursor-agent");
     assert.deepEqual(fresh.args, ["-p", "do T-1"]);
 
-    const resumed = wakeCommand({ host: "cursor", prompt: "do T-1", resumeSid: "sid-9" });
+    const resumed = wakeCommand({ actorKind: "cursor", prompt: "do T-1", resumeSid: "sid-9" });
     assert.deepEqual(resumed.args, ["-p", "--resume", "sid-9", "do T-1"]);
   });
 
   it("honours an explicit --wake-command override, with and without a session id", () => {
-    const overridden = wakeCommand({ host: "claude", prompt: "do T-1", wakeCommand: "my-wake.sh" });
+    const overridden = wakeCommand({ actorKind: "claude", prompt: "do T-1", wakeCommand: "my-wake.sh" });
     assert.equal(overridden.command, "my-wake.sh");
     assert.deepEqual(overridden.args, ["do T-1"]);
 
-    const resumed = wakeCommand({ host: "claude", prompt: "do T-1", resumeSid: "sid-9", wakeCommand: "my-wake.sh" });
+    const resumed = wakeCommand({ actorKind: "claude", prompt: "do T-1", resumeSid: "sid-9", wakeCommand: "my-wake.sh" });
     assert.deepEqual(resumed.args, ["do T-1", "--resume", "sid-9"]);
   });
 });
@@ -435,9 +435,9 @@ describe("planWakeInvocation (pure)", () => {
   const GLUE = "/home/alice/.claude/bin/wake-claude.sh";
   const MAP = "/home/alice/.claude/skills/meerkat-taskpanel/projects.json";
 
-  it("starts the host's wake glue when one is installed", () => {
+  it("starts the agent kind's wake glue when one is installed", () => {
     const plan = planWakeInvocation({
-      host: "claude",
+      actorKind: "claude",
       prompt: "do T-1",
       gluePath: GLUE,
       glueInstalled: true,
@@ -462,7 +462,7 @@ describe("planWakeInvocation (pure)", () => {
 
   it("passes a session id to the glue as its second argument", () => {
     const plan = planWakeInvocation({
-      host: "codex",
+      actorKind: "codex",
       prompt: "do T-1",
       resumeSid: "sid-9",
       gluePath: "/home/alice/.codex/bin/wake-codex.sh",
@@ -472,9 +472,9 @@ describe("planWakeInvocation (pure)", () => {
     assert.deepEqual(plan.args, ["/home/alice/.codex/bin/wake-codex.sh", "do T-1", "sid-9"]);
   });
 
-  it("falls back to the host CLI — with an explicit warning — when no glue is installed", () => {
+  it("falls back to the agent CLI — with an explicit warning — when no glue is installed", () => {
     const plan = planWakeInvocation({
-      host: "claude",
+      actorKind: "claude",
       prompt: "do T-1",
       gluePath: GLUE,
       glueInstalled: false,
@@ -495,7 +495,7 @@ describe("planWakeInvocation (pure)", () => {
 
   it("honours an explicit --wake-command over everything, without warning", () => {
     const plan = planWakeInvocation({
-      host: "claude",
+      actorKind: "claude",
       prompt: "do T-1",
       wakeCommand: "my-wake.sh",
       // Even with a glue installed: an explicit choice is not overridden by a default.
@@ -512,7 +512,7 @@ describe("planWakeInvocation (pure)", () => {
   });
 
   it("sends no project variables when the card carries no project identity", () => {
-    const plan = planWakeInvocation({ host: "claude", prompt: "do T-1", gluePath: GLUE, glueInstalled: true });
+    const plan = planWakeInvocation({ actorKind: "claude", prompt: "do T-1", gluePath: GLUE, glueInstalled: true });
     assert.deepEqual(plan.env, {});
   });
 });
@@ -522,7 +522,7 @@ describe("buildHandoff (pure)", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1", target: "/repo" },
       agent: "alice",
-      host: "claude",
+      actorKind: "claude",
       sessionId: "sid-9",
     });
     assert.match(text, /T-1/);
@@ -538,7 +538,7 @@ describe("buildHandoff (pure)", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
       agent: "alice",
-      host: "claude",
+      actorKind: "claude",
     });
     assert.match(text, /^You are a worker subagent of the P1 project session/);
     assert.match(text, /working directory is this project's directory/);
@@ -550,7 +550,7 @@ describe("buildHandoff (pure)", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
       agent: "alice",
-      host: "claude",
+      actorKind: "claude",
     });
     assert.match(text, /Task brief: \.meerkat\/T-1\/card\.md/);
     assert.match(text, /read it first, it is authoritative/);
@@ -565,7 +565,7 @@ describe("buildHandoff (pure)", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "x".repeat(5000), project: "P1", target: "/repo" },
       agent: "alice",
-      host: "codex",
+      actorKind: "codex",
     });
     assert.ok(text.length < 3600);
   });
@@ -574,7 +574,7 @@ describe("buildHandoff (pure)", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
       agent: "alice",
-      host: "claude",
+      actorKind: "claude",
     });
     assert.match(text, /Step 0/);
     assert.match(text, /--kind epic/);
@@ -588,7 +588,7 @@ describe("buildHandoff (pure)", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
       agent: "alice",
-      host: "claude",
+      actorKind: "claude",
       sessionId: "sid-9",
     });
     assert.match(text, /Step 1/);
@@ -606,7 +606,7 @@ describe("buildHandoff (pure)", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "x".repeat(300), project: "P1" },
       agent: "alice",
-      host: "claude",
+      actorKind: "claude",
       sessionId: "550e8400-e29b-41d4-a716-446655440000",
     });
     assert.ok(text.length < 3600, `the handoff must be bounded (was ${text.length})`);
@@ -616,7 +616,7 @@ describe("buildHandoff (pure)", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
       agent: "alice",
-      host: "claude",
+      actorKind: "claude",
       review: true,
     });
     assert.match(text, /the loop dispatches an independent reviewer/);
@@ -627,7 +627,7 @@ describe("buildHandoff (pure)", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "x", project: "P1" },
       agent: "alice",
-      host: "claude",
+      actorKind: "claude",
     });
     assert.equal(text.includes("/meerkat-loop"), false);
   });
@@ -637,7 +637,7 @@ describe("buildReviewHandoff (pure)", () => {
   const text = buildReviewHandoff({
     card: { identifier: "T-2", review_of: "T-1", review_round: 3 },
     agent: "jobs",
-    host: "claude",
+    actorKind: "claude",
   });
 
   it("names both cards, the round and the attribution flags, bounded", () => {
@@ -898,7 +898,7 @@ describe("runPatrolTick (injected deps)", () => {
     const spawnPatrol = spy(async () => ({ ok: true }));
     await runPatrolTick({
       tasks: [{ identifier: "T-1", status: "in_progress", heartbeat_at: ago(45) }],
-      config: { patrolLlm: true, host: "claude", agent: "alice" },
+      config: { patrolLlm: true, actorKind: "claude", agent: "alice" },
       spawnPatrol,
       notify: () => {},
       now: () => now,
@@ -1521,8 +1521,8 @@ describe("pruneRegistry (pure)", () => {
 describe("parseArgs — the wake surface", () => {
   const ENV = { HOME: "/home/alice" };
 
-  it("defaults the glue and the project map under the host's dot-directory", () => {
-    const opts = parseArgs(["--host", "codex", "--once"], ENV);
+  it("defaults the glue and the project map under the agent's dot-directory", () => {
+    const opts = parseArgs(["--actor-kind", "codex", "--once"], ENV);
     assert.equal(opts.glue, "/home/alice/.codex/bin/wake-codex.sh");
     assert.equal(opts.projectsJson, "/home/alice/.codex/skills/meerkat-taskpanel/projects.json");
     assert.equal(opts.wakeCommand, null, "no override unless the operator asks for one");
@@ -1531,7 +1531,7 @@ describe("parseArgs — the wake surface", () => {
   it("accepts an explicit glue, map and wake command", () => {
     const opts = parseArgs(
       [
-        "--host", "pi",
+        "--actor-kind", "pi",
         "--glue", "/tmp/my-wake.sh",
         "--projects-json=/tmp/map.json",
         "--wake-command", "my-wake.sh",
@@ -1544,31 +1544,31 @@ describe("parseArgs — the wake surface", () => {
   });
 
   it("defaults the SLA ledger beside the state file, and follows a custom one", () => {
-    assert.equal(parseArgs(["--host", "claude", "--once"], ENV).slaLedger, "/home/alice/.claude/meerkat-taskpanel/sla-ledger.json");
-    const moved = parseArgs(["--host", "claude", "--once", "--state", "/tmp/state.json"], ENV);
+    assert.equal(parseArgs(["--actor-kind", "claude", "--once"], ENV).slaLedger, "/home/alice/.claude/meerkat-taskpanel/sla-ledger.json");
+    const moved = parseArgs(["--actor-kind", "claude", "--once", "--state", "/tmp/state.json"], ENV);
     assert.equal(moved.slaLedger, "/tmp/sla-ledger.json", "one directory remembers everything");
-    assert.equal(parseArgs(["--host", "claude", "--once", "--sla-ledger=/tmp/l.json"], ENV).slaLedger, "/tmp/l.json");
+    assert.equal(parseArgs(["--actor-kind", "claude", "--once", "--sla-ledger=/tmp/l.json"], ENV).slaLedger, "/tmp/l.json");
   });
 
   it("defaults the workflow ledger beside the state file, and follows a custom one", () => {
     assert.equal(
-      parseArgs(["--host", "claude", "--once"], ENV).workflowLedger,
+      parseArgs(["--actor-kind", "claude", "--once"], ENV).workflowLedger,
       "/home/alice/.claude/meerkat-taskpanel/workflow-ledger.json",
     );
-    const moved = parseArgs(["--host", "claude", "--once", "--state", "/tmp/state.json"], ENV);
+    const moved = parseArgs(["--actor-kind", "claude", "--once", "--state", "/tmp/state.json"], ENV);
     assert.equal(moved.workflowLedger, "/tmp/workflow-ledger.json");
     assert.equal(
-      parseArgs(["--host", "claude", "--once", "--workflow-ledger=/tmp/w.json"], ENV).workflowLedger,
+      parseArgs(["--actor-kind", "claude", "--once", "--workflow-ledger=/tmp/w.json"], ENV).workflowLedger,
       "/tmp/w.json",
     );
   });
 
   it("bounds the two reads the SLA pass makes", () => {
-    const opts = parseArgs(["--host", "claude", "--once"], ENV);
+    const opts = parseArgs(["--actor-kind", "claude", "--once"], ENV);
     assert.ok(opts.boardLimit > 0);
     assert.ok(opts.trailLimit > 0);
-    assert.equal(parseArgs(["--host", "claude", "--once", "--board-limit=10", "--trail-limit", "5"], ENV).boardLimit, 10);
-    assert.equal(parseArgs(["--host", "claude", "--once", "--trail-limit", "5"], ENV).trailLimit, 5);
+    assert.equal(parseArgs(["--actor-kind", "claude", "--once", "--board-limit=10", "--trail-limit", "5"], ENV).boardLimit, 10);
+    assert.equal(parseArgs(["--actor-kind", "claude", "--once", "--trail-limit", "5"], ENV).trailLimit, 5);
   });
 });
 
@@ -1607,7 +1607,7 @@ describe("the SLA ledger file", () => {
   it("publishes a last-ok marker the peer can read, atomically (§8.4)", () => {
     const dir = tempDir("meerkat-lastok-");
     const path = join(dir, "loop-patrol-last-ok.json");
-    saveLastOk(path, { mechanism: "loop-patrol", at: "2026-10-14T10:00:00.000Z", host: "claude/linus", periodSeconds: 300 });
+    saveLastOk(path, { mechanism: "loop-patrol", at: "2026-10-14T10:00:00.000Z", actor: "claude/linus", periodSeconds: 300 });
     assert.equal(readPeerLastOk(path), "2026-10-14T10:00:00.000Z");
     // The marker names its own mechanism and cadence, so the peer's watchdog
     // computes the derived bound from *this* side's declared period.
@@ -1734,8 +1734,8 @@ describe("parseArgs — the SLA attribution and liveness surface", () => {
 describe("parseArgs — the workflow surface", () => {
   const ENV = { HOME: "/home/alice" };
 
-  it("leaves the settings unresolved, so the host config can decide them", () => {
-    const opts = parseArgs(["--host", "claude", "--once"], ENV);
+  it("leaves the settings unresolved, so the agent config can decide them", () => {
+    const opts = parseArgs(["--actor-kind", "claude", "--once"], ENV);
     assert.equal(opts.workflow, undefined);
     assert.equal(opts.reviewer, undefined);
     assert.equal(opts.autoAcceptReviews, undefined);
@@ -1776,7 +1776,7 @@ describe("parseArgs — the workflow surface", () => {
 
 // ---------------------------------------------------------------------------
 // defaultRepo — where a run that was not told finds the board it drives
-// (T-20261012-163500-loopdecouple-c: the executor is also installed as a host copy)
+// (T-20261012-163500-loopdecouple-c: the executor is also installed as an agent copy)
 // ---------------------------------------------------------------------------
 
 describe("defaultRepo — the board a supervisor drives", () => {
@@ -1792,7 +1792,7 @@ describe("defaultRepo — the board a supervisor drives", () => {
 
   const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-  it("answers with the board beside the executor, and never reads the host config", () => {
+  it("answers with the board beside the executor, and never reads the agent config", () => {
     // The checkout's own supervisor is the documented dev run, so it stays hermetic:
     // a stale MEERKAT_TASKPANEL_REPO on the machine cannot redirect it.
     const config = join(tempDir("meerkat-defaultrepo-"), "meerkat-taskpanel.env");
@@ -1800,11 +1800,11 @@ describe("defaultRepo — the board a supervisor drives", () => {
     assert.equal(defaultRepo(config, REPO), REPO);
   });
 
-  it("reads the recorded checkout for a host copy that has no board beside it", () => {
-    // install.sh copies the loop body under <host-dir>/meerkat-taskpanel/, where
-    // `src/cli/index.mjs` does not exist; the host config is then the only place the
+  it("reads the recorded checkout for an agent copy that has no board beside it", () => {
+    // install.sh copies the loop body under <agent-dir>/meerkat-taskpanel/, where
+    // `src/cli/index.mjs` does not exist; the agent config is then the only place the
     // copied executor can learn where the `taskctl` it drives lives.
-    const dir = tempDir("meerkat-defaultrepo-host-");
+    const dir = tempDir("meerkat-defaultrepo-agent-");
     const config = join(dir, "meerkat-taskpanel.env");
     writeFileSync(config, "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no\nMEERKAT_TASKPANEL_REPO=/checkout/board\n", "utf8");
     assert.equal(defaultRepo(config, join(dir, "meerkat-taskpanel")), "/checkout/board");
@@ -1818,8 +1818,8 @@ describe("defaultRepo — the board a supervisor drives", () => {
   });
 
   it("lets --repo override both, with --cli following it", () => {
-    assert.equal(parseArgs(["--host", "codex", "--once"], { HOME: "/home/alice" }).repo, REPO);
-    const opts = parseArgs(["--host", "codex", "--once", "--repo", "/tmp/board"], { HOME: "/home/alice" });
+    assert.equal(parseArgs(["--actor-kind", "codex", "--once"], { HOME: "/home/alice" }).repo, REPO);
+    const opts = parseArgs(["--actor-kind", "codex", "--once", "--repo", "/tmp/board"], { HOME: "/home/alice" });
     assert.equal(opts.repo, "/tmp/board");
     assert.equal(opts.cli, "/tmp/board/src/cli/index.mjs");
   });
@@ -1885,7 +1885,7 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
     const dir = tempDir("meerkat-wake-glue-");
     // Two mutually exclusive stubs, so the case reports *which* branch ran rather than
     // merely that something did. The `claude` stub goes first on PATH for the duration
-    // of the call: the direct fallback must resolve to it, never to a real host CLI.
+    // of the call: the direct fallback must resolve to it, never to a real agent CLI.
     const glueMarker = join(dir, "glue.txt");
     const directMarker = join(dir, "direct.txt");
     const glue = stub(dir, "wake-claude.sh", [
@@ -1897,7 +1897,7 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
 
     const logs = [];
     const spawnWorker = spawnWorkerReal(
-      { host: "claude", repo: dir, glue, projectsJson: join(dir, "projects.json"), log: join(dir, "supervisor.log") },
+      { actorKind: "claude", repo: dir, glue, projectsJson: join(dir, "projects.json"), log: join(dir, "supervisor.log") },
       { wakeCommand: null },
       (line) => logs.push(line),
     );
@@ -1938,14 +1938,14 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
     const marker = join(dir, "prompt.txt");
     const glue = stub(dir, "wake-claude.sh", [`printf '%s' "$*" > "${marker}"`]);
     const spawnWorker = spawnWorkerReal(
-      { host: "claude", repo: dir, glue, projectsJson: join(dir, "projects.json"), log: join(dir, "supervisor.log") },
+      { actorKind: "claude", repo: dir, glue, projectsJson: join(dir, "projects.json"), log: join(dir, "supervisor.log") },
       { wakeCommand: null, reviewer: "jobs", reviewerIsWorker: false },
       () => {},
     );
 
     const originalPath = process.env.PATH;
     // An empty PATH would make a regression to the direct branch fail loudly rather
-    // than reach a real host CLI; the glue path is absolute, so it still runs.
+    // than reach a real agent CLI; the glue path is absolute, so it still runs.
     process.env.PATH = `${tempDir("meerkat-wake-review-bin-")}:${originalPath}`;
     let result;
     try {
@@ -1967,7 +1967,7 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
   it("names the configured glue, and probes no undefined path (DEP0187)", () => {
     // In a child process: a deprecation warning is emitted once per process, so a fresh
     // one is what turns its absence into a fact instead of a leftover. PATH is emptied
-    // so a regression to the direct branch cannot reach a real host CLI — this case
+    // so a regression to the direct branch cannot reach a real agent CLI — this case
     // only observes what the glue decision was handed.
     const dir = tempDir("meerkat-wake-probe-");
     const missing = join(dir, "definitely-not-installed.sh");
@@ -1978,7 +1978,7 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
         `import { spawnWorkerReal } from ${JSON.stringify(RUNNERS_URL.href)};`,
         "const logs = [];",
         "const spawnWorker = spawnWorkerReal(",
-        `  { host: "claude", repo: ${JSON.stringify(dir)}, glue: ${JSON.stringify(missing)}, projectsJson: ${JSON.stringify(join(dir, "map.json"))}, log: ${JSON.stringify(join(dir, "supervisor.log"))} },`,
+        `  { actorKind: "claude", repo: ${JSON.stringify(dir)}, glue: ${JSON.stringify(missing)}, projectsJson: ${JSON.stringify(join(dir, "map.json"))}, log: ${JSON.stringify(join(dir, "supervisor.log"))} },`,
         "  { wakeCommand: null },",
         "  (line) => logs.push(line),",
         ");",
@@ -2106,16 +2106,16 @@ describe("the scheduler's two clocks", () => {
   const ENV = { HOME: "/home/alice" };
 
   it("selects ping / continue / patrol / the legacy poll / daemon", () => {
-    assert.equal(selectMode(parseArgs(["--host", "claude", "--ping-only", "--once"], ENV)), "ping");
-    assert.equal(selectMode(parseArgs(["--host", "claude", "--continue-only", "--once"], ENV)), "continue");
-    assert.equal(selectMode(parseArgs(["--host", "claude", "--patrol-only", "--once"], ENV)), "patrol");
-    assert.equal(selectMode(parseArgs(["--host", "claude", "--once"], ENV)), "poll");
-    assert.equal(selectMode(parseArgs(["--host", "claude", "--subscribe"], ENV)), "subscribe");
-    assert.equal(selectMode(parseArgs(["--host", "claude"], ENV)), null);
+    assert.equal(selectMode(parseArgs(["--actor-kind", "claude", "--ping-only", "--once"], ENV)), "ping");
+    assert.equal(selectMode(parseArgs(["--actor-kind", "claude", "--continue-only", "--once"], ENV)), "continue");
+    assert.equal(selectMode(parseArgs(["--actor-kind", "claude", "--patrol-only", "--once"], ENV)), "patrol");
+    assert.equal(selectMode(parseArgs(["--actor-kind", "claude", "--once"], ENV)), "poll");
+    assert.equal(selectMode(parseArgs(["--actor-kind", "claude", "--subscribe"], ENV)), "subscribe");
+    assert.equal(selectMode(parseArgs(["--actor-kind", "claude"], ENV)), null);
   });
 
   it("defaults to a 60s ping and a 600s continue", () => {
-    const opts = parseArgs(["--host", "claude"], ENV);
+    const opts = parseArgs(["--actor-kind", "claude"], ENV);
     assert.equal(opts.pingInterval, 60);
     assert.equal(opts.continueInterval, 600);
     assert.equal(opts.patrolInterval, 300, "the SLA measurement period did not move");
@@ -2126,12 +2126,12 @@ describe("the scheduler's two clocks", () => {
     assert.equal(opts.eventContinueMinMs, 60_000);
   });
 
-  it("takes the cadences from flags, environment and the host config", () => {
-    const flagged = parseArgs(["--host", "claude", "--ping-interval", "30", "--continue-interval", "900"], ENV);
+  it("takes the cadences from flags, environment and the agent config", () => {
+    const flagged = parseArgs(["--actor-kind", "claude", "--ping-interval", "30", "--continue-interval", "900"], ENV);
     assert.equal(flagged.pingInterval, 30);
     assert.equal(flagged.continueInterval, 900);
 
-    const fromEnv = parseArgs(["--host", "claude"], {
+    const fromEnv = parseArgs(["--actor-kind", "claude"], {
       ...ENV,
       MEERKAT_TASKPANEL_PING_INTERVAL: "45",
       MEERKAT_TASKPANEL_CONTINUE_INTERVAL: "120",
@@ -2143,7 +2143,7 @@ describe("the scheduler's two clocks", () => {
     try {
       const config = join(dir, "meerkat-taskpanel.env");
       writeFileSync(config, "MEERKAT_TASKPANEL_CONTINUE_INTERVAL=240\nMEERKAT_TASKPANEL_PING_INTERVAL=90\n");
-      const opts = parseArgs(["--host", "claude", "--config", config], ENV);
+      const opts = parseArgs(["--actor-kind", "claude", "--config", config], ENV);
       assert.equal(opts.continueInterval, 240);
       assert.equal(opts.pingInterval, 90);
     } finally {
@@ -2152,36 +2152,36 @@ describe("the scheduler's two clocks", () => {
   });
 
   it("carries --continue=no as the raw flag the policy resolver reads", () => {
-    assert.equal(parseArgs(["--host", "claude", "--continue=no"], ENV).continue, "no");
+    assert.equal(parseArgs(["--actor-kind", "claude", "--continue=no"], ENV).continue, "no");
   });
 
   it("rejects a selector without --once, and two selectors", () => {
     assert.throws(
-      () => selectMode(parseArgs(["--host", "claude", "--ping-only"], ENV)),
+      () => selectMode(parseArgs(["--actor-kind", "claude", "--ping-only"], ENV)),
       /requires --once/,
     );
     assert.throws(
-      () => selectMode(parseArgs(["--host", "claude", "--ping-only", "--continue-only", "--once"], ENV)),
+      () => selectMode(parseArgs(["--actor-kind", "claude", "--ping-only", "--continue-only", "--once"], ENV)),
       /choose one of/,
     );
     assert.throws(
-      () => selectMode(parseArgs(["--host", "claude", "--subscribe", "--once"], ENV)),
+      () => selectMode(parseArgs(["--actor-kind", "claude", "--subscribe", "--once"], ENV)),
       /daemon mode/,
     );
     assert.throws(
-      () => selectMode(parseArgs(["--host", "claude", "--subscribe", "--dry-run"], ENV)),
+      () => selectMode(parseArgs(["--actor-kind", "claude", "--subscribe", "--dry-run"], ENV)),
       /dry-run/,
     );
   });
 
   it("maps the deprecated --poll-interval onto the ping clock", () => {
-    const opts = parseArgs(["--host", "claude", "--poll-interval", "45"], ENV);
+    const opts = parseArgs(["--actor-kind", "claude", "--poll-interval", "45"], ENV);
     assert.equal(opts.pingInterval, 45);
     assert.equal(opts.legacyPollInterval, true);
   });
 
   it("places the continue lock beside the state file, never inside it", () => {
-    const opts = parseArgs(["--host", "claude", "--state", "/tmp/state.json"], ENV);
+    const opts = parseArgs(["--actor-kind", "claude", "--state", "/tmp/state.json"], ENV);
     assert.equal(opts.continueState, "/tmp/continue.state.json");
     assert.notEqual(opts.continueState, opts.state);
   });
@@ -2195,11 +2195,11 @@ describe("the resident session pool surface", () => {
   const ENV = { HOME: "/home/alice" };
 
   it("selects session mode, and refuses a one-shot selector beside it", () => {
-    const opts = parseArgs(["--host", "claude", "--session"], ENV);
+    const opts = parseArgs(["--actor-kind", "claude", "--session"], ENV);
     assert.equal(selectMode(opts), "session");
     for (const extra of [["--once"], ["--dry-run"], ["--subscribe"], ["--ping-only", "--once"]]) {
       assert.throws(
-        () => selectMode(parseArgs(["--host", "claude", "--session", ...extra], ENV)),
+        () => selectMode(parseArgs(["--actor-kind", "claude", "--session", ...extra], ENV)),
         /daemon mode/,
         `--session beside ${extra.join(" ")} was accepted`,
       );
@@ -2207,7 +2207,7 @@ describe("the resident session pool surface", () => {
   });
 
   it("defaults the pool to the documented capacities and windows", () => {
-    const opts = parseArgs(["--host", "claude", "--session"], ENV);
+    const opts = parseArgs(["--actor-kind", "claude", "--session"], ENV);
     assert.equal(opts.resident, "auto");
     assert.equal(opts.sessionMaxAgeMs, 24 * 60 * 60 * 1000);
     assert.equal(opts.sessionTurnTimeoutMs, 30 * 60 * 1000);
@@ -2220,10 +2220,10 @@ describe("the resident session pool surface", () => {
     assert.equal(opts.subagentBackground, false);
   });
 
-  it("takes the pool knobs from flags, environment and the host config", () => {
+  it("takes the pool knobs from flags, environment and the agent config", () => {
     const flagged = parseArgs(
       [
-        "--host", "claude", "--session",
+        "--actor-kind", "claude", "--session",
         "--session-state", "/tmp/sessions.json",
         "--session-max-age", "3600",
         "--session-turn-timeout", "90",
@@ -2242,7 +2242,7 @@ describe("the resident session pool surface", () => {
     assert.equal(flagged.projectConcurrency, 2);
     assert.equal(flagged.projectIdleMs, 60_000);
 
-    const fromEnv = parseArgs(["--host", "claude", "--session"], {
+    const fromEnv = parseArgs(["--actor-kind", "claude", "--session"], {
       ...ENV,
       MEERKAT_TASKPANEL_SESSION_MAX_AGE: "120",
       MEERKAT_TASKPANEL_SESSION_POOL_MAX: "4",
@@ -2256,12 +2256,12 @@ describe("the resident session pool surface", () => {
     try {
       const config = join(dir, "meerkat-taskpanel.env");
       writeFileSync(config, "MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT=45\nMEERKAT_TASKPANEL_PROJECT_CONCURRENCY=2\n");
-      const opts = parseArgs(["--host", "claude", "--session", "--config", config], ENV);
+      const opts = parseArgs(["--actor-kind", "claude", "--session", "--config", config], ENV);
       assert.equal(opts.sessionTurnTimeoutMs, 45_000);
       assert.equal(opts.projectConcurrency, 2);
-      // A flag still beats the host config.
+      // A flag still beats the agent config.
       const overriding = parseArgs(
-        ["--host", "claude", "--session", "--config", config, "--session-turn-timeout", "75"],
+        ["--actor-kind", "claude", "--session", "--config", config, "--session-turn-timeout", "75"],
         ENV,
       );
       assert.equal(overriding.sessionTurnTimeoutMs, 75_000);
@@ -2271,28 +2271,28 @@ describe("the resident session pool surface", () => {
   });
 
   it("keeps a zero max-age as the documented 'never'", () => {
-    assert.equal(parseArgs(["--host", "claude", "--session", "--session-max-age", "0"], ENV).sessionMaxAgeMs, 0);
+    assert.equal(parseArgs(["--actor-kind", "claude", "--session", "--session-max-age", "0"], ENV).sessionMaxAgeMs, 0);
   });
 
   it("accepts --resident=auto|no and rejects anything else", () => {
-    assert.equal(parseArgs(["--host", "claude", "--resident=no"], ENV).resident, "no");
-    assert.equal(parseArgs(["--host", "claude", "--resident=auto"], ENV).resident, "auto");
-    assert.throws(() => parseArgs(["--host", "claude", "--resident=maybe"], ENV), /auto or no/);
+    assert.equal(parseArgs(["--actor-kind", "claude", "--resident=no"], ENV).resident, "no");
+    assert.equal(parseArgs(["--actor-kind", "claude", "--resident=auto"], ENV).resident, "auto");
+    assert.throws(() => parseArgs(["--actor-kind", "claude", "--resident=maybe"], ENV), /auto or no/);
   });
 
   it("requires a recorded authorization for full tool access", () => {
     assert.throws(
-      () => parseArgs(["--host", "claude", "--session", "--allow-all-tools"], ENV),
+      () => parseArgs(["--actor-kind", "claude", "--session", "--allow-all-tools"], ENV),
       /--allow-all-tools-reason/,
     );
     const authorized = parseArgs(
-      ["--host", "claude", "--session", "--allow-all-tools", "--allow-all-tools-reason", "operator authorized unattended runs"],
+      ["--actor-kind", "claude", "--session", "--allow-all-tools", "--allow-all-tools-reason", "operator authorized unattended runs"],
       ENV,
     );
     assert.equal(authorized.allowAllTools, true);
     assert.equal(authorized.allowAllToolsReason, "operator authorized unattended runs");
 
-    const fromEnv = parseArgs(["--host", "claude"], {
+    const fromEnv = parseArgs(["--actor-kind", "claude"], {
       ...ENV,
       MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS: "yes",
       MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON: "fleet policy",
@@ -2302,13 +2302,13 @@ describe("the resident session pool surface", () => {
   });
 
   it("turns on background subagents from the flag or the environment", () => {
-    assert.equal(parseArgs(["--host", "claude", "--subagent-background"], ENV).subagentBackground, true);
+    assert.equal(parseArgs(["--actor-kind", "claude", "--subagent-background"], ENV).subagentBackground, true);
     assert.equal(
-      parseArgs(["--host", "claude"], { ...ENV, MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND: "yes" }).subagentBackground,
+      parseArgs(["--actor-kind", "claude"], { ...ENV, MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND: "yes" }).subagentBackground,
       true,
     );
     assert.equal(
-      parseArgs(["--host", "claude", "--subagent-background=no"], ENV).subagentBackground,
+      parseArgs(["--actor-kind", "claude", "--subagent-background=no"], ENV).subagentBackground,
       false,
     );
   });
@@ -2322,15 +2322,15 @@ describe("the concurrency cap", () => {
   const ENV = { HOME: "/home/alice" };
 
   it("defaults to the documented total, with no per-role split", () => {
-    const opts = parseArgs(["--host", "claude"], ENV);
+    const opts = parseArgs(["--actor-kind", "claude"], ENV);
     assert.equal(opts.maxConcurrency, DEFAULT_MAX_CONCURRENCY);
     assert.equal(opts.projectConcurrency, DEFAULT_MAX_CONCURRENCY);
     assert.equal(opts.maxWorkers, undefined, "there is no per-role cap");
     assert.equal(opts.maxReviewers, undefined, "there is no per-role cap");
   });
 
-  it("takes the cap from flag > environment > host config, then the default", () => {
-    const fromEnv = parseArgs(["--host", "claude"], {
+  it("takes the cap from flag > environment > agent config, then the default", () => {
+    const fromEnv = parseArgs(["--actor-kind", "claude"], {
       ...ENV,
       MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5",
     });
@@ -2341,10 +2341,10 @@ describe("the concurrency cap", () => {
     try {
       mkdirSync(join(dir, ".claude"), { recursive: true });
       writeFileSync(join(dir, ".claude", "meerkat-taskpanel.env"), "MEERKAT_TASKPANEL_MAX_CONCURRENCY=4\n");
-      const fromFile = parseArgs(["--host", "claude", "--home", dir], {});
+      const fromFile = parseArgs(["--actor-kind", "claude", "--home", dir], {});
       assert.equal(fromFile.maxConcurrency, 4);
 
-      const envWins = parseArgs(["--host", "claude", "--home", dir], {
+      const envWins = parseArgs(["--actor-kind", "claude", "--home", dir], {
         MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5",
       });
       assert.equal(envWins.maxConcurrency, 5);
@@ -2352,7 +2352,7 @@ describe("the concurrency cap", () => {
       rmSync(dir, { recursive: true, force: true });
     }
 
-    const flagged = parseArgs(["--host", "claude", "--max-concurrency", "2"], {
+    const flagged = parseArgs(["--actor-kind", "claude", "--max-concurrency", "2"], {
       ...ENV,
       MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5",
     });
@@ -2360,14 +2360,14 @@ describe("the concurrency cap", () => {
   });
 
   it("keeps zero as 'claim nothing'", () => {
-    assert.equal(parseArgs(["--host", "claude", "--max-concurrency", "0"], ENV).maxConcurrency, 0);
+    assert.equal(parseArgs(["--actor-kind", "claude", "--max-concurrency", "0"], ENV).maxConcurrency, 0);
   });
 
   it("carries the resolved cap into the child poll even when it equals the default", () => {
     // The parent resolved 8 (the flag beats the env); the child must be told 8
     // rather than re-reading the environment and resolving 5.
     const args = loopCommandArgs(
-      parseArgs(["--host", "claude", "--max-concurrency", "8"], {
+      parseArgs(["--actor-kind", "claude", "--max-concurrency", "8"], {
         ...ENV,
         MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5",
       }),
@@ -2375,7 +2375,7 @@ describe("the concurrency cap", () => {
     assert.equal(args[args.indexOf("--max-concurrency") + 1], "8");
 
     const fromEnv = loopCommandArgs(
-      parseArgs(["--host", "claude"], { ...ENV, MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5" }),
+      parseArgs(["--actor-kind", "claude"], { ...ENV, MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5" }),
     );
     assert.equal(fromEnv[fromEnv.indexOf("--max-concurrency") + 1], "5");
   });

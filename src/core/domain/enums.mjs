@@ -192,7 +192,7 @@ export const COMMENT_KINDS = Object.freeze([
 /**
  * **There is no actor-kind vocabulary.** An actor's kind is `human`, or the
  * platform an agent runs on (`claude`, `codex`, `pi`, `opencode`, …), or
- * whatever a host calls itself — and `0018` already dropped the enumeration from
+ * whatever an actor kind calls itself — and `0018` already dropped the enumeration from
  * `comments.author_kind` and `task_reports.author_kind` for exactly that reason.
  *
  * What stood here instead was `ACTOR_KINDS = ["agent", "human", "system"]`, and

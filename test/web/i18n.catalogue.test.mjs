@@ -18,7 +18,7 @@
  *      still checked against the source rather than against a number written
  *      down here. `.dockerignore` excludes `design/prototype/`, so this half self-skips
  *      in the image, following the "absent tool ⇒ SKIP, never FAIL" precedent
- *      from `scripts/verify/host-cli.mjs`.
+ *      from `scripts/verify/kind-cli.mjs`.
  *   3. **Purity** — the data module imports nothing, touches no global and
  *      cannot be mutated in place, so the frontend build and `node --test`
  *      can both consume it without ordering hazards.

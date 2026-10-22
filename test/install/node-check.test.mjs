@@ -23,7 +23,7 @@ import test, { after, describe, it } from "node:test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const INSTALL = join(ROOT, "install.sh");
-const HOST_INSTALLER = join(ROOT, "scripts/install/claude.sh");
+const KIND_INSTALLER = join(ROOT, "scripts/install/claude.sh");
 
 /** Standard tools the installer needs on PATH besides `node` (POSIX utilities). */
 const TOOLS = ["bash", "dirname", "tr", "sed"];
@@ -89,7 +89,7 @@ function runInstall(fakeBin, { args = ["--target", "all", "--dry-run"], env = {}
  */
 function runHost(fakeBin, { env = {} } = {}) {
   const home = makeTempDir("meerkat-taskpanel-host-home-");
-  return spawnSync(REAL.bash, [HOST_INSTALLER], {
+  return spawnSync(REAL.bash, [KIND_INSTALLER], {
     cwd: ROOT,
     encoding: "utf8",
     env: {

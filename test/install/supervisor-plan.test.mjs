@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-import { ACTIONS, LOOP_HOSTS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, poolReport, resolveScheduler, stripBlock, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
+import { ACTIONS, LOOP_KINDS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, poolReport, resolveScheduler, stripBlock, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
 
 const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-plan-" });
 
@@ -118,21 +118,21 @@ describe("supervisor: the scheduler and the identifiers", () => {
 
     // The template the installer writes is the single source of truth for the Label.
     const plist = doc("skills/meerkat-loop/templates/scheduling/launchd/com.meerkat-taskpanel.ping.plist");
-    assert.match(plist, /<string>com\.meerkat-taskpanel\.\{\{AGENT\}\}\.\{\{HOST\}\}\.ping<\/string>/);
+    assert.match(plist, /<string>com\.meerkat-taskpanel\.\{\{AGENT\}\}\.\{\{ACTOR_KIND\}\}\.ping<\/string>/);
   });
 
   it("the three actions and the five loop hosts are the contract's, and openclaw is never one", () => {
     assert.deepEqual([...ACTIONS], ["enable", "disable", "status"]);
     assert.deepEqual([...SCHEDULERS], ["auto", "launchd", "systemd", "cron"]);
-    assert.deepEqual([...LOOP_HOSTS], ["claude", "codex", "pi", "opencode", "cursor"]);
-    assert.ok(!LOOP_HOSTS.includes("openclaw"), "OpenClaw runs openclaw-team's own supervisor");
+    assert.deepEqual([...LOOP_KINDS], ["claude", "codex", "pi", "opencode", "cursor"]);
+    assert.ok(!LOOP_KINDS.includes("openclaw"), "OpenClaw runs openclaw-team's own supervisor");
   });
 
   it("paths come from the host directory, with the marker the docs name", () => {
-    const paths = supervisorPaths({ hostBase: "/home/op/.claude", agent: "alice", host: "claude", env: {}, home: "/home/op" });
+    const paths = supervisorPaths({ agentBase: "/home/op/.claude", agent: "alice", actorKind: "claude", env: {}, home: "/home/op" });
 
     assert.equal(paths.marker, "~/.claude");
-    assert.equal(paths.hostDir, ".claude");
+    assert.equal(paths.agentDir, ".claude");
     assert.equal(paths.supervisor, "/home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs");
     assert.equal(paths.log, "/home/op/.claude/meerkat-taskpanel/supervisor.log");
     assert.equal(paths.state, "/home/op/.claude/meerkat-taskpanel/supervisor.state.json");
@@ -159,7 +159,7 @@ describe("supervisor: the scheduler and the identifiers", () => {
     // systemd reads the *user's* config directory, which `--prefix` never moves.
     assert.equal(paths.systemdUnitDir, "/home/op/.config/systemd/user");
     assert.equal(
-      supervisorPaths({ hostBase: "/p/.codex", agent: "a", host: "codex", env: { XDG_CONFIG_HOME: "/xdg" }, home: "/home/op" })
+      supervisorPaths({ agentBase: "/p/.codex", agent: "a", actorKind: "codex", env: { XDG_CONFIG_HOME: "/xdg" }, home: "/home/op" })
         .systemdUnitDir,
       "/xdg/systemd/user",
     );
@@ -211,9 +211,9 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
 
   it("carries the rendered cron unit when there is one, and the same lines otherwise", () => {
     const paths = supervisorPaths({
-      hostBase: "/home/op/.claude",
+      agentBase: "/home/op/.claude",
       agent: "alice",
-      host: "claude",
+      actorKind: "claude",
       env: {},
       home: "/home/op",
     });
@@ -228,24 +228,24 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
     const built = cronContentLines(paths);
     assert.equal(built.length, 3);
     assert.match(built[0], /^PATH=\S+$/);
-    assert.match(built[1], /^\* \* \* \* \* \/[^ ]*node \/home\/op\/\.claude\/meerkat-taskpanel\/scripts\/supervisor\.mjs --host claude --agent alice --ping-only --once /);
+    assert.match(built[1], /^\* \* \* \* \* \/[^ ]*node \/home\/op\/\.claude\/meerkat-taskpanel\/scripts\/supervisor\.mjs --actor-kind claude --agent alice --ping-only --once /);
     assert.match(built[2], /^\*\/10 \* \* \* \* .* --continue-only --once /);
     assert.match(built[1], />\/dev\/null 2>&1$/);
 
     // Exported by `install.sh` before it calls this module: the preview then carries the
     // very values the rendered unit carries, not a second guess at them.
     const exported = supervisorPaths({
-      hostBase: "/home/op/.claude",
+      agentBase: "/home/op/.claude",
       agent: "alice",
-      host: "claude",
+      actorKind: "claude",
       env: { TP_NODE: "/opt/node/bin/node", TP_UNIT_PATH_CRON: "/opt/cli/bin:/opt/node/bin:/usr/bin:/bin" },
       home: "/home/op",
     });
     exported.cronFile = join(makeTempDir(), "meerkat-taskpanel.cron");
     assert.deepEqual(cronContentLines(exported), [
       "PATH=/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
-      "* * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --ping-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
-      "*/10 * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --continue-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
+      "* * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
+      "*/10 * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --continue-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
     ]);
 
     // Once the installer has written the unit, that file is the source: the enable path
@@ -297,7 +297,7 @@ describe("supervisor: the docs and the implementation agree", () => {
       "--enable-supervisor",
       "--disable-supervisor",
       "--supervisor-status",
-      "--supervisor-hosts",
+      "--supervisor-actor-kinds",
       "--scheduler auto|launchd|systemd|cron",
       "MEERKAT_TASKPANEL_SUPERVISOR",
     ]) {
@@ -345,7 +345,7 @@ describe("supervisor: the docs and the implementation agree", () => {
     // The doc's example (`docs/install.md` §Enabling the supervisor (opt-in)) is written
     // with `<agent>` as a placeholder; filling it in must give exactly the string the
     // launchd mechanism reports, or the doc is lying about what a user will see.
-    const documented = doc("docs/install.md").match(/^supervisor: enabled \(host=claude, scheduler=launchd, units=(.*)\)$/m);
+    const documented = doc("docs/install.md").match(/^supervisor: enabled \(kind=claude, scheduler=launchd, units=(.*)\)$/m);
     assert.notEqual(documented, null, "the enable report must be quoted in docs/install.md");
     assert.equal(
       documented[1].replace("<agent>", "alice"),
@@ -379,7 +379,7 @@ describe("supervisor: the docs and the implementation agree", () => {
   it("OpenClaw's exclusion is still stated, and still true of the loop hosts", () => {
     const scheduling = doc("docs/scheduling.md");
     assert.match(scheduling, /OpenClaw: do not build a supervisor/);
-    assert.match(scheduling, /--supervisor-hosts openclaw` is \*\*rejected\*\*/);
-    assert.ok(!LOOP_HOSTS.includes("openclaw"));
+    assert.match(scheduling, /--supervisor-actor-kinds openclaw` is \*\*rejected\*\*/);
+    assert.ok(!LOOP_KINDS.includes("openclaw"));
   });
 });

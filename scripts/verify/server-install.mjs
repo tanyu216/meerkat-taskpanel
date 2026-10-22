@@ -172,7 +172,7 @@ async function main() {
     readFileSync(join(fullHome, ".claude", "meerkat-taskpanel.env"), "utf8").includes(
       `MEERKAT_TASKPANEL_REPO=${fullTree}`,
     ),
-    "the host config names the installed tree",
+    "the agent config names the installed tree",
   );
 
   // 7. The installed launchers run.

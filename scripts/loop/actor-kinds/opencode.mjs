@@ -14,7 +14,7 @@
  *
  * Verified against the published server API (`POST /session`,
  * `POST /session/:id/message`, `POST /session/:id/abort`), not against a live
- * binary on this host; `scripts/verify/host-session-matrix.mjs` is the probe.
+ * binary on this host; `scripts/verify/kind-session-matrix.mjs` is the probe.
  * Permission rules are OpenCode's own configuration (`opencode.json`); this
  * adapter sends no permission grants.
  */
@@ -23,7 +23,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 
 import { extractAgentIds } from "../ledger.mjs";
-import { lineSplitter } from "../host-session.mjs";
+import { lineSplitter } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
 export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
@@ -273,7 +273,7 @@ export function createOpenCodePool(input) {
   const refs = new Map();
 
   const pool = {
-    host: "opencode",
+    actorKind: "opencode",
     log,
     onEvent: input.onEvent ?? null,
     /** One server per directory, started on first use. */

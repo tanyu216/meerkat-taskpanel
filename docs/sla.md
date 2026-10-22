@@ -127,7 +127,7 @@ Every alert is the same flat object (26 fields):
 `measure_start_kind`, `measure_start_at`, `measure_start_source`,
 `elapsed_working_min`, `elapsed_basis`, `threshold_min`, `due_at`, `action`,
 `target`, `notify`, `releasable`, `releasable_basis`, `blocked_reason`,
-`confidence`, `mechanism`, `mechanism_host`, `first_seen`, `last_seen`,
+`confidence`, `mechanism`, `mechanism_actor`, `first_seen`, `last_seen`,
 `observed_by`, `evidence`.
 
 `evidence` carries the card's `status`, `status_changed_at`, `has_sessions`,
@@ -296,7 +296,7 @@ The last-ok marker is written atomically:
 {
   "mechanism": "loop-patrol",
   "last_ok": "2026-10-14T10:00:00.000Z",
-  "mechanism_host": "claude/linus",
+  "mechanism_actor": "claude/linus",
   "cadence_period_min": 5
 }
 ```
@@ -333,7 +333,7 @@ kind; a `confirm_request` entry wins over either. Within one channel the latest
 
 ## 12. Non-goals
 
-- There is no **per-host** override. The install-root `.env` is the one
+- There is no **per-agent-kind** override. The install-root `.env` is the one
   install-wide override, read by the board and published on the API; changing a
   **default** remains a contract change.
 - No weekend or holiday calendar.

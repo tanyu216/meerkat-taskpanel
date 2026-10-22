@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { allowOption, createCursorPool } from "../../scripts/loop/hosts/cursor.mjs";
+import { allowOption, createCursorPool } from "../../scripts/loop/actor-kinds/cursor.mjs";
 
 const FAKE = `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";

@@ -81,7 +81,7 @@ export function normalizeCommentCreate(input, context) {
   }
   const author = input.author ?? {};
   // Open on purpose. A kind is `human`, or the platform an agent runs on, or
-  // whatever a host calls itself — the schema has no CHECK on this column
+  // whatever an actor kind calls itself — the schema has no CHECK on this column
   // (`0018` dropped it) and neither does this. What is refused is a *blank* one,
   // because that reads as neither.
   if (!isActorKind(author.kind)) {

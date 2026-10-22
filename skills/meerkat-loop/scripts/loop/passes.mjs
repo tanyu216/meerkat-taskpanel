@@ -85,7 +85,7 @@ async function runEntry(name, argv, env, run, validate = null) {
 /**
  * Project admission for a poll claim.
  *
- * Resolves the candidate's `project` to a directory through the host-local map
+ * Resolves the candidate's `project` to a directory through the agent-local map
  * **before** the board is claimed, and enforces the per-project cap. A card whose
  * project is unmapped, names no directory, or has no free project slot is
  * deferred — it stays `todo`, where the next turn can offer it again.
@@ -173,7 +173,7 @@ export function createProjectAdmission(input) {
 
 /**
  * The resident dispatch: write one claimed card's handoff into the card queue.
- * The pool manager takes it from there; this process never starts a host.
+ * The pool manager takes it from there; this process never starts an agent.
  *
  * @param {{
  *   opts: object,
@@ -341,8 +341,8 @@ export async function runPollOnce(opts, env = process.env) {
       if (opts.dryRun) return { ok: true };
       // `issue claim` is the one claim path: it handles a ready `todo` card and
       // the stale re-claim/takeover that the transition table cannot express.
-      // The claim is the host's act, not a person's.
-      const claimed = runCli(opts, agent, ["issue", "claim", identifier], { actorKind: opts.host });
+      // The claim is the agent kind's act, not a person's.
+      const claimed = runCli(opts, agent, ["issue", "claim", identifier], { actorKind: opts.actorKind });
       return claimed.ok ? { ok: true } : { ok: false, error: claimed.error };
     },
     dispatch,
@@ -354,7 +354,7 @@ export async function runPollOnce(opts, env = process.env) {
   };
 
   log(
-    `tick: host=${opts.host} agents=${agents.join(",")} claim_unassigned=${config.claimUnassigned ? "yes" : "no"} ` +
+    `tick: kind=${opts.actorKind} agents=${agents.join(",")} claim_unassigned=${config.claimUnassigned ? "yes" : "no"} ` +
       `recover_stale=${config.recoverStale ? "yes" : "no"} pool=resident ` +
       `budget=${budget} projects_json=${opts.projectsJson}${opts.dryRun ? " (dry-run)" : ""}`,
   );
@@ -438,7 +438,7 @@ export async function runPatrolOnce(opts, env = process.env) {
       }
 
       const claimed = runCli(opts, action.agent, ["issue", "claim", alert.identifier], {
-        actorKind: opts.host,
+        actorKind: opts.actorKind,
       });
       if (!claimed.ok) {
         log(`patrol: claim refused ${alert.identifier} (${claimed.error ?? "conflict"}) — not dispatching`);
@@ -498,7 +498,7 @@ export async function runWorkflowOnce(opts, env = process.env) {
       `auto_accept_reviews=${config.autoAcceptReviews ? "yes" : "no"} max_actions=${config.maxActions} ` +
       `review_aging=${Math.round(config.reviewAgingMs / 60_000)}m ` +
       // The board decides acceptance in the plan; this copy is printed so an
-      // operator can see which policy the host *thinks* it is running under.
+      // operator can see which policy the agent kind *thinks* it is running under.
       `acceptance=${config.acceptancePolicy} (advisory)`,
   );
   if (!config.workflow) {

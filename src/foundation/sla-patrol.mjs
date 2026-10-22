@@ -1269,7 +1269,7 @@ function boardContext(cards, trails, options = {}) {
  *
  * @param {{
  *   id: string, detection: object, rows?: object, periodMin?: number,
- *   mechanism?: string, mechanismHost?: string|null, now: string|number,
+ *   mechanism?: string, mechanismActor?: string|null, now: string|number,
  * }} input
  * @returns {object|null}
  */
@@ -1280,7 +1280,7 @@ export function buildSlaAlert(input) {
     rows = SLA_ROWS,
     periodMin = 0,
     mechanism = MECHANISM,
-    mechanismHost = null,
+    mechanismActor = null,
     now,
   } = input;
   // The elapsed value is computed here, once per detection, so every row
@@ -1329,7 +1329,7 @@ export function buildSlaAlert(input) {
     blocked_reason: detection.blockedReason ?? null,
     confidence: detection.origin.confidence,
     mechanism,
-    mechanism_host: mechanismHost,
+    mechanism_actor: mechanismActor,
     // The ledger owns these three (§8.3): a plan on its own has not been
     // observed yet, so the runner overwrites them from the recorded entry
     // before the tuple goes out.
@@ -1353,7 +1353,7 @@ export function buildSlaAlert(input) {
  *   trails?: Record<string, object[]>,
  *   now: string|number,
  *   periodSeconds?: number,
- *   mechanismHost?: string|null,
+ *   mechanismActor?: string|null,
  *   mechanism?: string,
  *   leaderId?: string|null,
  *   lookbackDays?: number,
@@ -1371,7 +1371,7 @@ export function planSlaPatrol(input = {}) {
   const trails = input.trails ?? {};
   const now = input.now;
   const mechanism = input.mechanism ?? MECHANISM;
-  const mechanismHost = input.mechanismHost ?? null;
+  const mechanismActor = input.mechanismActor ?? null;
   const periodMin = Number.isFinite(input.periodSeconds) ? input.periodSeconds / 60 : 0;
   const rows = input.rows ?? SLA_ROWS;
   const context = boardContext(cards, trails, {
@@ -1439,7 +1439,7 @@ export function planSlaPatrol(input = {}) {
       rows,
       periodMin,
       mechanism,
-      mechanismHost,
+      mechanismActor,
       now,
     });
     if (alert !== null) alerts.push(alert);

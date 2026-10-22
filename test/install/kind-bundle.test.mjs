@@ -1,7 +1,7 @@
 /**
  * Host-bundle install contract: `install.sh --target claude` / `--target codex`.
  *
- * The two bundle hosts deploy more than a skill — host config, slash commands
+ * The two bundle agent kinds deploy more than a skill — agent config, slash commands
  * (Claude) / a claim trigger (Codex), and a `taskctl` shim that pins the agent
  * identity. These tests pin that contract under an isolated home
  * (`MEERKAT_TASKPANEL_TARGET_HOME`), and in particular the two "never clobber"
@@ -27,7 +27,7 @@ import { createInstallHarness } from "./helpers/install-harness.mjs";
 import { mergeSettings } from "../../scripts/install/lib/apply.mjs";
 import { VERSION } from "../../src/foundation/constants.mjs";
 
-const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-hostbundle-" });
+const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-kindbundle-" });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -69,7 +69,7 @@ function isExecutable(path) {
 // mergeSettings — the merge contract, unit-level
 // ---------------------------------------------------------------------------
 
-describe("host bundle: mergeSettings", () => {
+describe("agent bundle: mergeSettings", () => {
   it("adds env.TASKCTL_AGENT + a SessionStart hook and preserves every other key", () => {
     const { data, changed } = mergeSettings(
       {
@@ -164,7 +164,7 @@ describe("host bundle: mergeSettings", () => {
 // Claude bundle
 // ---------------------------------------------------------------------------
 
-describe("host bundle: claude", () => {
+describe("agent bundle: claude", () => {
   it("deploys skill + settings + hook + shim + slash commands", () => {
     const home = makeTempDir();
 
@@ -286,7 +286,7 @@ describe("host bundle: claude", () => {
 // Codex bundle
 // ---------------------------------------------------------------------------
 
-describe("host bundle: codex", () => {
+describe("agent bundle: codex", () => {
   it("deploys skill + shim + AGENTS.md snippet + trigger", () => {
     const home = makeTempDir();
 
@@ -350,7 +350,7 @@ describe("host bundle: codex", () => {
 // Idempotency — re-running writes nothing
 // ---------------------------------------------------------------------------
 
-describe("host bundle: idempotency", () => {
+describe("agent bundle: idempotency", () => {
   it("re-running claude + codex leaves every installed file unchanged", () => {
     const home = makeTempDir();
     const env = hostEnv(home);

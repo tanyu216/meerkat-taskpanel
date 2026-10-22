@@ -5,7 +5,7 @@
  * Spawns `taskctl events tail` and asks for a `continue` turn when a
  * dispatch-relevant event arrives. The loop never speaks HTTP itself: board
  * discovery, the token and the stream all live behind `taskctl`, and this file
- * only decides when to reconnect and when to wake the host.
+ * only decides when to reconnect and when to wake the agent.
  *
  * It never claims, moves or wakes anything: the continue turn rescans, so
  * replay, duplicate frames and bursts are harmless and there is only one
