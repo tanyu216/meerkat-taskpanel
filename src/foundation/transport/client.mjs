@@ -13,7 +13,7 @@
  * one seam, below the CLI surface rather than inside it.
  */
 
-import { requestJson, requestStream, withQuery } from "./http.mjs";
+import { requestBytes, requestJson, requestStream, withQuery } from "./http.mjs";
 
 /**
  * @param {{
@@ -74,6 +74,21 @@ export function createBoardClient(options) {
      * accidentally ship its `JSON.stringify`'d envelope as an attachment.
      */
     putBytes: (path, bytes, contentType, extra = {}) => call("PUT", path, { ...extra, rawBody: bytes, contentType }),
+    /**
+     * The byte half of a download (`GET …/attachments/:id/content`): send the
+     * same identity as `call`, return the bytes instead of an envelope.
+     */
+    getBytes: (path, extra = {}) =>
+      requestBytes({
+        url,
+        path: withQuery(path, extra.query),
+        token,
+        actor,
+        session,
+        seg,
+        ...(extra.timeoutMs === undefined ? {} : { timeoutMs: extra.timeoutMs }),
+        ...(fetchFn === undefined ? {} : { fetchFn }),
+      }),
     delete: (path, extra) => call("DELETE", path, extra),
     /** Escape hatch for the rare call that is not CRUD-shaped. */
     call,

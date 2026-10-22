@@ -121,6 +121,20 @@ All writes use `--actor-kind taskd` and are idempotent by their key.
 `issue meta` **merges**; `issue update --meta` replaces the whole object and would
 erase the acceptance list, target and review keys. Use `issue meta`.
 
+### The subagent's file surface
+
+The loop itself never downloads an attachment. The handoff tells a worker/reviewer to keep
+everything it produces — including downloaded attachments — under `.meerkat/<identifier>/`:
+
+```bash
+taskctl attachment list <ref> --json                 # id + filename
+taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>
+```
+
+`download` is the byte half of `add`; it writes to an existing parent directory and returns
+`data.{attachment_id,out,size,content_type}`. `card.md` in that directory is the loop's export
+and is never edited by the subagent.
+
 ## 8. Live stream — `events tail`
 
 | Invocation | Output | Consumer |

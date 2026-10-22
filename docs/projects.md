@@ -4,7 +4,10 @@ A project is the board's grouping of tasks (a name, a label set, free-form meta 
 identifier counter). It carries **no working directory** — the local directory a project's
 *workers* run in is decided on the agent side, in `projects.json`, never on the board; a
 project need not have one at all (operations work, for instance), and where a project
-keeps whatever its tasks produce is its own business.
+keeps whatever its tasks produce is its own business. The loop does write its own process
+data under that directory (`.meerkat/<identifier>/`: the exported `card.md` plus a
+subagent's notes, evidence and downloaded attachments) — loop state, not a project-results
+store, and worth ignoring in version control.
 
 ## The id is also the identifier prefix
 

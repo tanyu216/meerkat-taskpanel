@@ -8,6 +8,9 @@ dist/
 # runtime data (local SQLite board database, etc.)
 .data/
 
+# the loop's per-task process directories: card.md and whatever a subagent writes there
+.meerkat/
+
 # the install-root config file — it may hold TASKD_TOKEN, so it is never tracked
 .env
 

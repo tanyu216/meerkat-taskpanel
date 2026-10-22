@@ -243,6 +243,11 @@ export function enqueueCard(stateDir, card) {
     ...card,
     id: card.id ?? `${card.card}-${card.role ?? "worker"}`,
     role: card.role ?? "worker",
+    // The subscriber maps an event's UUID back to this row; keep the shape
+    // stable even for a legacy caller that knows no UUID.
+    task_id: card.task_id ?? null,
+    review_of: card.review_of ?? null,
+    review_round: card.review_round ?? null,
     status: "pending",
     enqueuedAt: card.enqueuedAt ?? new Date().toISOString(),
     claimedAt: null,

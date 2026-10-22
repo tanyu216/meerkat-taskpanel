@@ -35,7 +35,7 @@ export const groups = Object.freeze([
   { name: "issue", summary: "Tasks: create, move, deliver.", commands: issueCommands },
   { name: "comment", summary: "The append-only discussion trail.", commands: commentCommands },
   { name: "relation", summary: "Parent/child, blocks, related.", commands: relationCommands },
-  { name: "attachment", summary: "A card's files: add, list, remove.", commands: attachmentCommands },
+  { name: "attachment", summary: "A card's files: add, list, download, remove.", commands: attachmentCommands },
   { name: "session", summary: "Agent sessions per task.", commands: sessionCommands },
   { name: "actors", summary: "Read-only dictionary of actors (assignees and reporters).", commands: actorCommands },
   { name: "labels", summary: "Read-only registry of labels.", commands: labelCommands },

@@ -189,6 +189,91 @@ export async function requestJson(options) {
   return envelope.data;
 }
 
+/**
+ * The byte half of a download: `GET` a response whose success body is not JSON.
+ *
+ * The attachment content route (`GET /api/v1/attachments/:id/content`) answers
+ * bytes with `content-disposition: attachment`; every other response on this
+ * board is the JSON envelope. Success therefore returns the bytes verbatim,
+ * while a failure is rebuilt through the same `domainErrorFromPayload` the JSON
+ * path uses — an attachment that does not exist is the board's `NOT_FOUND`,
+ * not a transport guess.
+ *
+ * @param {{
+ *   url: string, method?: string, path: string,
+ *   token?: string|null, actor?: object|null, session?: string|null, seg?: string|null,
+ *   timeoutMs?: number, fetchFn?: typeof fetch,
+ * }} options
+ * @returns {Promise<{bytes: Uint8Array, contentType: string|null}>}
+ */
+export async function requestBytes(options) {
+  const {
+    url,
+    method = "GET",
+    path,
+    token = null,
+    actor = null,
+    session = null,
+    seg = null,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+    fetchFn = fetch,
+  } = options;
+
+  let response;
+  try {
+    response = await fetchFn(`${url}${path}`, {
+      method,
+      headers: buildHeaders({ token, actor, session, seg, accept: "*/*" }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+      throw new DomainError("CLI_IO", {
+        message: `the board at ${redactText(url)} did not answer within ${timeoutMs}ms`,
+        details: { url: redactText(url), method, path: redactText(path), timeoutMs },
+        hint: { fix: "check the board is healthy (`taskctl token rotate` prints where it lives), or pass --url" },
+        cause: err,
+      });
+    }
+    throw new DomainError("CLI_IO", {
+      message: `cannot reach the board at ${redactText(url)}: ${redactText(err?.message ?? String(err))}`,
+      details: { url: redactText(url), method, path: redactText(path) },
+      hint: { fix: "start one with `node src/server/main.mjs`, or pass --url <url>" },
+      cause: err,
+    });
+  }
+
+  if (!response.ok) {
+    let text = "";
+    try {
+      text = await response.text();
+    } catch {
+      // The status is enough to report; the body was unreadable.
+    }
+    let envelope = null;
+    try {
+      envelope = text === "" ? null : JSON.parse(text);
+    } catch {
+      // Not the JSON envelope — report the status and a redacted slice.
+    }
+    if (envelope !== null && envelope.ok === false) throw domainErrorFromPayload(envelope.error);
+    throw new DomainError("CLI_IO", {
+      message: `the board answered HTTP ${response.status} for a download`,
+      details: {
+        url: redactText(url),
+        path: redactText(path),
+        status: response.status,
+        body: redactText(text.slice(0, 200)),
+      },
+    });
+  }
+
+  return {
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    contentType: response.headers.get("content-type") ?? null,
+  };
+}
+
 /** A caller abort, distinguishable from an idle timeout and a board error. */
 function streamAbortedError() {
   return new DomainError("CLI_IO", {

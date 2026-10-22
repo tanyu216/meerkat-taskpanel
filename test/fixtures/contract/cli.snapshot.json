@@ -180,6 +180,25 @@
           ]
         },
         {
+          "name": "download",
+          "positionals": [
+            {
+              "name": "id",
+              "summary": "The attachment id (`attachment list` prints it)."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "out",
+              "as": "string",
+              "value": "<file>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
           "name": "list",
           "positionals": [
             {

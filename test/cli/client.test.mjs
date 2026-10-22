@@ -18,7 +18,13 @@ import { fileURLToPath } from "node:url";
 import test, { after, before, describe, it } from "node:test";
 
 import { createBoardClient } from "../../src/foundation/transport/client.mjs";
-import { domainErrorFromPayload, requestJson, requestStream, withQuery } from "../../src/foundation/transport/http.mjs";
+import {
+  domainErrorFromPayload,
+  requestBytes,
+  requestJson,
+  requestStream,
+  withQuery,
+} from "../../src/foundation/transport/http.mjs";
 import { probeHealth, repoRoot, serverEntry, spawnTaskd, waitForPointer } from "../../src/foundation/transport/autostart.mjs";
 import { ensureBoard, readPointer } from "../../src/foundation/transport/runtime.mjs";
 import { ERROR_CODES, isDomainError } from "../../src/foundation/errors.mjs";
@@ -292,6 +298,49 @@ describe("shared/transport/http — over a real board", () => {
     // author_id is an actor id since 0020; the wire's ref carries the name.
     assert.equal(commented.comment.author.display_name, "linus");
     assert.equal(commented.comment.agent_session, "session-1");
+  });
+
+  it("returns attachment bytes verbatim and rebuilds the envelope on failure", async () => {
+    const project = await requestJson({
+      url,
+      method: "POST",
+      path: "/api/v1/projects",
+      body: { id: "bytes", name: "Bytes" },
+    });
+    assert.equal(project.project.id, "bytes");
+    const task = await requestJson({
+      url,
+      method: "POST",
+      path: "/api/v1/tasks",
+      body: { project_id: "bytes", title: "Bytes", review_required: false },
+    });
+    const bytes = new TextEncoder().encode("hello\n");
+    const created = await requestJson({
+      url,
+      method: "POST",
+      path: `/api/v1/tasks/${task.task.identifier}/attachments`,
+      body: { filename: "hello.txt", content_type: "text/plain", size: bytes.length },
+    });
+    const id = created.attachment.id;
+    await requestJson({
+      url,
+      method: "PUT",
+      path: `/api/v1/attachments/${id}/content`,
+      rawBody: bytes,
+      contentType: "text/plain",
+    });
+
+    const downloaded = await requestBytes({ url, path: `/api/v1/attachments/${id}/content` });
+    assert.equal(Buffer.from(downloaded.bytes).toString("utf8"), "hello\n");
+    assert.match(downloaded.contentType, /^text\/plain/);
+
+    await assert.rejects(
+      () => requestBytes({ url, path: "/api/v1/attachments/nope/content" }),
+      (err) => {
+        assert.equal(err.code, "NOT_FOUND");
+        return true;
+      },
+    );
   });
 
   it("reports a connection that never happens as CLI_IO", async () => {

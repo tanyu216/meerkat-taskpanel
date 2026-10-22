@@ -18,6 +18,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { cardFileRel } from "../foundation/card-brief.mjs";
 import { buildContinuePrompt } from "../foundation/scheduling.mjs";
 import { createHostPool } from "./host-session.mjs";
 import { hostPaths, loopCommandArgs } from "./options.mjs";
@@ -203,7 +204,13 @@ export function buildReattachPrompt(input) {
     "The previous process left these subagents unfinished:",
   ];
   for (const subagent of input.subagents) {
-    lines.push(`  - ${subagent.subagentId} (${subagent.role ?? "worker"}) card ${subagent.card ?? "?"}`);
+    const card = typeof subagent.card === "string" && subagent.card !== "" ? subagent.card : null;
+    lines.push(
+      `  - ${subagent.subagentId} (${subagent.role ?? "worker"}) card ${card ?? "?"}` +
+        (card === null
+          ? ""
+          : ` — re-read ${cardFileRel(card)} before continuing; never edit it`),
+    );
   }
   lines.push(
     "",

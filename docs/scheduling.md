@@ -82,7 +82,7 @@ already where they belong.
 session service (supervisor --session)
 ├── control session        cwd = the taskpanel checkout
 │     /meerkat-loop Continue → patrol → workflow → poll
-│     poll: claim on the board, write the handoff to cards.pending.json
+│     poll: export .meerkat/<id>/card.md, claim, write the handoff queue
 └── project session        cwd = <project target_dir>   (one per directory)
       batch prompt → spawn one worker/reviewer subagent per card
       worker/reviewer inherit the project directory
@@ -149,8 +149,9 @@ poll entry
  ├─ scan       taskctl issue candidates …        → no candidates? stop. 0 handoffs
  ├─ budget     max-concurrency − live − queued   → 0? defer, claim nothing
  ├─ admit      project → target_dir + per-project cap → no directory? defer before the claim
+ ├─ brief      taskctl export md → .meerkat/<id>/card.md → failed? defer unclaimed
  ├─ claim      taskctl issue claim …             → refused? stop. no handoff
- └─ enqueue    cards.pending.json (handoff, target_dir, role)
+ └─ enqueue    cards.queue.json (handoff, target_dir, role, task_id)
                      ↓
                 project session (cwd = target_dir) → one subagent per card  ← the tokens
 ```
@@ -547,11 +548,21 @@ directory it inherits, the acceptance-list step (read the card with
 `issue get --json`, work to an existing list, or derive one and persist it with
 `meta.acceptance_derived=yes`), the exact `taskctl` commands to read and deliver it, and
 the attribution flags `--agent <name> --actor-kind <host> --session-id <id>`. The handoff
-is capped at **under 2800 characters** (a test pins it, including a maximum title and a
-UUID session id) so a wake never drags an unbounded context into the model. It names no
-directory path: the board holds none (O3), the project session's cwd **is** the
-directory, and the subagent inherits it — see
-[Where a worker runs](#where-a-worker-runs).
+is capped at **under 3600 characters** (a test pins it, including a maximum title and a
+UUID session id) so a wake never drags an unbounded context into the model.
+
+It names the task's **process directory**, relative to the project session's cwd:
+`.meerkat/<identifier>/`. `card.md` inside it is the loop's authoritative export of the
+card, written by `taskctl export md` (a temp file plus an atomic rename) before the claim;
+the handoff tells the subagent to read it first, to re-read it on resume, and never to edit
+it. Every other process file — notes, logs, evidence, report drafts, downloaded
+attachments — belongs in the same directory. The board still holds no directory (O3): the
+project session's cwd **is** the directory, and `.meerkat/` is the loop's convention under
+it — see [Where a worker runs](#where-a-worker-runs).
+
+With `--subscribe`, a debounced event batch refreshes the brief of every active queued card
+(and a review card's original). The refresh is a file write, not an LLM turn; it runs even
+when `--event-continue=no` and a failure leaves the previous brief in place.
 
 Continuity across wakes comes from the **board**, not the prompt: the card's
 comments, reports and session record are durable, so a resumed conversation can
@@ -576,6 +587,13 @@ nothing else.
 So the directory is resolved **by the host, locally**, against `projects.json`
 beside the skill (`references/projects-json.md`) as `local_path ?? run_dir`,
 **validated** (absolute, exists, is a directory).
+
+The directory is a **worker's** start directory. The loop writes its own per-task process
+data beneath it (`.meerkat/<identifier>/`: `card.md` plus the subagent's files). That is
+loop state, not project data — where a project keeps its results is still its own business
+— and a project should ignore `.meerkat/` in version control. A target directory that is
+not writable blocks dispatch: a claim with no brief has nowhere to run, so the card is
+deferred unclaimed.
 
 - **Resident (default).** Poll resolves the candidate's project before claiming it
   and writes the result into the queue entry as `target_dir`; the pool launches the
@@ -1503,6 +1521,10 @@ describes.
   the card's project (`local_path ?? run_dir`), resolved by the wake glue from the
   host-local `projects.json`; enabling changes nothing here (see
   [Where a worker runs](#where-a-worker-runs)).
+- **Task process data.** A dispatched card's brief (`card.md`) and the subagent's files —
+  including downloaded attachments — live under `.meerkat/<identifier>/` in that working
+  directory. Poll exports the brief before the claim; an unwritable directory defers the
+  card unclaimed.
 
 ### One mechanism per host, and the cost gate
 

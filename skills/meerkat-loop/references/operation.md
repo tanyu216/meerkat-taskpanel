@@ -161,6 +161,49 @@ protocol. Start the session unit to get dispatch. All five hosts have an adapter
 Claude Code (stream-json), Codex (app-server threads), Pi (`--mode rpc`),
 OpenCode (`serve`, one per directory), Cursor (ACP).
 
+## Card briefs and task process directories
+
+The loop gives each dispatched card one directory under the project's working directory
+(the resolved `target_dir`):
+
+```text
+.meerkat/<identifier>/
+  card.md          exported by the loop; read-only to agents
+  …                notes, logs, evidence, report drafts, downloaded attachments
+```
+
+**Export before claim.** `poll` resolves the project directory, then runs
+`taskctl export md <identifier> --out <target_dir>/.meerkat/<identifier>/card.md` before
+`issue claim`. The CLI writes a unique temp file in the same directory and the loop renames
+it over `card.md`, so a reader never sees a partial file and a legitimate growth (comments,
+a report) cannot trip the CLI's growth guard. If the export fails, the card is **deferred
+unclaimed** and the next turn retries it. Patrol's `--patrol-llm=yes` lane claims the same
+way and applies the same gate.
+
+A reviewer's dispatch also exports the original (`review_of`) best-effort; a failure there
+is logged but does not block the review card.
+
+**The brief is authoritative for dispatch and resume.** The handoff names the relative path
+(its cwd is the project directory), says to read it first, and says never to edit it: only
+`taskctl export md` overwrites it. `taskctl issue get <ref> --json` stays in the handoff for
+live status and the `version` a write needs. A resumed session re-reads the brief before
+continuing (`buildReattachPrompt`).
+
+**Attachments go in the same directory.** Use
+`taskctl attachment list <ref> --json`, then
+`taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>`.
+`--out` is the caller's choice; the loop's handoff is what fixes it to the task directory.
+
+**Refresh on events.** With `--subscribe`, every event that names an active queued card
+(including `comment_added` and `report_written`, and including the loop's own writes) adds
+its `task_id` to a debounced batch. The batch refreshes the briefs of every matching card
+and, for a review card, its original. It runs even when `--event-continue=no`; it is bounded by its own minimum
+interval (`CARD_REFRESH_MIN_MS`) and a failed refresh only logs and keeps the previous file.
+
+The queue row carries the event UUID (`task_id`) and `review_of`/`review_round` so this
+mapping needs no board read. Rows written before this convention have no `task_id` and are
+not refreshed until they are enqueued again.
+
 ## The workflow channel
 
 The SLA rows are notify-only. The workflow pass is the only path that writes a

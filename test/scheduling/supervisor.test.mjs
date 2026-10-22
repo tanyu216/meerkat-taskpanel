@@ -531,7 +531,7 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /--actor-kind claude/);
     assert.match(text, /--session-id sid-9/);
     assert.match(text, /report/i);
-    assert.ok(text.length < 2800, "the handoff must be bounded");
+    assert.ok(text.length < 3600, "the handoff must be bounded");
   });
 
   it("places the worker in the project session and says the claim is already taken", () => {
@@ -546,13 +546,28 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /already claimed this card for you: do not claim it again/);
   });
 
+  it("points the worker at the authoritative card brief and the process directory", () => {
+    const text = buildHandoff({
+      card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
+      agent: "alice",
+      host: "claude",
+    });
+    assert.match(text, /Task brief: \.meerkat\/T-1\/card\.md/);
+    assert.match(text, /read it first, it is authoritative/);
+    assert.match(text, /Never edit \.meerkat\/T-1\/card\.md/);
+    assert.match(text, /Put your process files[^\n]*\.meerkat\/T-1\//);
+    assert.match(text, /taskctl attachment download <attachment-id> --out \.meerkat\/T-1\//);
+    assert.match(text, /On resume, re-read \.meerkat\/T-1\/card\.md/);
+    assert.match(text, /issue get T-1 --json/, "the live read stays as the version/status source");
+  });
+
   it("truncates an absurdly long title so the handoff stays bounded", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "x".repeat(5000), project: "P1", target: "/repo" },
       agent: "alice",
       host: "codex",
     });
-    assert.ok(text.length < 2800);
+    assert.ok(text.length < 3600);
   });
 
   it("carries the epic-triage step, and says an epic is never claimed", () => {
@@ -594,7 +609,7 @@ describe("buildHandoff (pure)", () => {
       host: "claude",
       sessionId: "550e8400-e29b-41d4-a716-446655440000",
     });
-    assert.ok(text.length < 2800, `the handoff must be bounded (was ${text.length})`);
+    assert.ok(text.length < 3600, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("points the worker at the reviewer when one is configured", () => {
@@ -630,7 +645,15 @@ describe("buildReviewHandoff (pure)", () => {
     assert.match(text, /Card under review: T-1 \(round 3\)/);
     assert.match(text, /--agent jobs/);
     assert.match(text, /--actor-kind claude/);
-    assert.ok(text.length < 2800, "the handoff must be bounded");
+    assert.ok(text.length < 3600, "the handoff must be bounded");
+  });
+
+  it("points the reviewer at both briefs and the never-edit rule", () => {
+    assert.match(text, /Review brief: \.meerkat\/T-2\/card\.md/);
+    assert.match(text, /Original brief: \.meerkat\/T-1\/card\.md/);
+    assert.match(text, /Never edit a card\.md/);
+    assert.match(text, /taskctl attachment download <attachment-id> --out \.meerkat\/T-2\//);
+    assert.match(text, /On resume, re-read \.meerkat\/T-2\/card\.md/);
   });
 
   it("is a reviewer subagent in the project session, with the claim already taken", () => {

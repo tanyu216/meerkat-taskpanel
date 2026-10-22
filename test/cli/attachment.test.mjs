@@ -13,7 +13,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
@@ -37,7 +37,7 @@ async function board(fn) {
 }
 
 describe("cli/attachment", () => {
-  it("uploads a file, lists it, downloads nothing and removes it for good", async () => {
+  it("uploads a file, lists it and removes it for good", async () => {
     await board(async ({ run }) => {
       const dir = scratch();
       const file = join(dir, "spec.md");
@@ -55,6 +55,59 @@ describe("cli/attachment", () => {
       const removed = dataOf(run(["attachment", "remove", added.attachment.id, "--json"]));
       assert.equal(removed.removed, true);
       assert.equal(dataOf(run(["attachment", "list", "DEMO-0001", "--json"])).attachments.length, 0);
+    });
+  });
+
+  it("downloads the bytes back into the task's process directory", async () => {
+    await board(async ({ run }) => {
+      const dir = scratch();
+      const source = join(dir, "spec.md");
+      const content = Buffer.from("# Spec\n\nSome markdown.\n");
+      writeFileSync(source, content);
+      const added = dataOf(run(["attachment", "add", "DEMO-0001", "--file", source, "--json"]));
+
+      const taskDir = join(scratch(), ".meerkat", "DEMO-0001");
+      mkdirSync(taskDir, { recursive: true });
+      const out = join(taskDir, "spec.md");
+      const downloaded = dataOf(
+        run(["attachment", "download", added.attachment.id, "--out", out, "--json"]),
+      );
+      assert.equal(downloaded.attachment_id, added.attachment.id);
+      assert.equal(downloaded.out, out);
+      assert.equal(downloaded.size, content.length);
+      assert.match(downloaded.content_type, /^text\/markdown/);
+      assert.deepEqual(readFileSync(out), content, "the bytes are the stored bytes");
+
+      // The parent is the caller's job, exactly as with `export md` file mode.
+      const missing = join(scratch(), "absent", "spec.md");
+      const failed = run(["attachment", "download", added.attachment.id, "--out", missing, "--json"]);
+      assert.notEqual(failed.status, 0);
+      assert.equal(errorOf(failed).code, "CLI_USAGE");
+      assert.equal(existsSync(missing), false);
+    });
+  });
+
+  it("returns the board's NOT_FOUND when no bytes were stored", async () => {
+    await board(async ({ run }) => {
+      // `attachment add` always stores bytes, so mint the row directly? The
+      // public path cannot produce an empty row; remove is the closest analogue.
+      const dir = scratch();
+      const source = join(dir, "gone.md");
+      writeFileSync(source, "x", "utf8");
+      const added = dataOf(run(["attachment", "add", "DEMO-0001", "--file", source, "--json"]));
+      run(["attachment", "remove", added.attachment.id, "--json"]);
+      const taskDir = join(scratch(), ".meerkat", "DEMO-0001");
+      mkdirSync(taskDir, { recursive: true });
+      const failed = run([
+        "attachment",
+        "download",
+        added.attachment.id,
+        "--out",
+        join(taskDir, "gone.md"),
+        "--json",
+      ]);
+      assert.notEqual(failed.status, 0);
+      assert.equal(errorOf(failed).code, "NOT_FOUND");
     });
   });
 

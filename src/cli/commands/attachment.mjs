@@ -1,5 +1,5 @@
 /**
- * `attachment add|list|remove` — the file surface of a card
+ * `attachment add|list|download|remove` — the file surface of a card
  * (T-20261014-212017-4, closing `T-20261014-212017-2` G1's "no CLI group").
  *
  * The board stores an attachment as **two things** and this group drives both:
@@ -18,12 +18,13 @@
  * the command, the transport and the server.
  */
 
-import { readFileSync } from "node:fs";
-import { basename } from "node:path";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
 
 import { assertAttachmentSize, contentTypeForFilename, normalizeAttachmentContentType } from "../../foundation/attachments.mjs";
 import { ATTACHMENT_MAX_BYTES } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
+import { usageError } from "../../foundation/transport/errors.mjs";
 import { table } from "../output/human.mjs";
 
 /**
@@ -101,6 +102,57 @@ export const COMMANDS = [
       return {
         data: listing,
         human: rows.length === 0 ? "no attachments" : table(["id", "filename", "size", "type"], rows),
+      };
+    },
+  },
+
+  {
+    name: "download",
+    summary: "Download an attachment's bytes to a file.",
+    usage: "attachment download <attachment-id> --out <file>",
+    positionals: [{ name: "id", summary: "The attachment id (`attachment list` prints it)." }],
+    flags: [
+      {
+        flag: "out",
+        key: "out",
+        as: "string",
+        value: "<file>",
+        required: true,
+        summary: "Write the bytes here; the parent directory must already exist.",
+      },
+    ],
+    async run(ctx) {
+      const out = resolve(ctx.flags.out);
+      const parent = statSync(dirname(out), { throwIfNoEntry: false });
+      if (parent === undefined || !parent.isDirectory()) {
+        // The same discipline as `export md`'s single-file mode: a typo must not
+        // invent a directory tree. A loop task's `.meerkat/<identifier>/` is
+        // created by the card-brief export.
+        throw usageError(`attachment download: the parent directory of ${out} does not exist`, {
+          fix: "create it first, or pass --out <existing-dir>/<file>",
+        });
+      }
+
+      const { bytes, contentType } = await ctx.client.getBytes(
+        `/api/v1/attachments/${encodeURIComponent(ctx.args.id)}/content`,
+      );
+      try {
+        writeFileSync(out, bytes);
+      } catch (err) {
+        throw new DomainError("CLI_IO", {
+          message: `cannot write ${out}: ${err?.code ?? err?.message ?? String(err)}`,
+          details: { file: out },
+          hint: { fix: "check the path and that the directory is writable" },
+        });
+      }
+      return {
+        data: {
+          attachment_id: ctx.args.id,
+          out,
+          size: bytes.length,
+          content_type: contentType,
+        },
+        human: `wrote ${basename(out)} (${sizeLabel(bytes.length)}) to ${out}`,
       };
     },
   },

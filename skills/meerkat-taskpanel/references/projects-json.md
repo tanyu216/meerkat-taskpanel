@@ -6,7 +6,10 @@ never written into the board, never sent to `taskd`. Losing it loses only the ma
 tasks, comments and reports are untouched.
 
 The directory is a **worker's** start directory, not a data location. Where a project keeps
-its results is the project's own business.
+its results is the project's own business. The exception is the loop's own process data: the
+supervisor exports each dispatched card to `.meerkat/<identifier>/` under this directory
+(and the subagent keeps its notes, evidence and downloaded attachments there). That is loop
+state, not a project-results store; a project should ignore `.meerkat/` in version control.
 
 ## Schema
 
