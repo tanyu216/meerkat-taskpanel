@@ -14,7 +14,7 @@
         "Turn the card into a scoped product brief before implementation.",
         "Define user flows, states, visual direction and acceptance criteria.",
         "Produce a prototype for any user-visible change.",
-        "Hand implementation to Linus with explicit acceptance criteria."
+        "Propose the implementation handoff to Linus, with explicit acceptance criteria."
       ],
       "boundaries": [
         "Do not write production backend code.",

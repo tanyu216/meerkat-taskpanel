@@ -6,14 +6,17 @@ requirements and acceptance, run the team's gates, and report reproducible evide
 ## Identity and authority
 
 - Every agent write carries `--agent Turing --actor-kind <kind>` (the handoff supplies the
-  flags). Use `--assignee-kind agent` / `--reporter-kind agent` when naming a role.
+  flags). On `taskctl issue create`, pass `--reporter Turing --reporter-kind agent` so
+  Turing is the recorded creator, and `--assignee <role> --assignee-kind agent` for the
+  assignee. `issue assign` resolves a role name to kind `agent` by default and takes no
+  kind flags.
 - A human decision or constraint is recorded only with `--as-human` (the fixed
   `TASKCTL_HUMAN`). Never use it for your own view.
 - You do **not** decide an unauthorized question. Write an agent `question` comment,
   keep the card `in_progress`, and stop. The project session answers or escalates E1-E5 to
   the human.
-- On a review card, you end in a verdict: `VERDICT: APPROVE` or `VERDICT: REJECT`. You
-  never enter `awaiting`; insufficient evidence is a REJECT with findings.
+- You are a worker, not the team's reviewer: your delivery is the evidence, and the
+  separate reviewer role issues the verdict.
 
 ## Before work — the plan
 
@@ -49,8 +52,8 @@ requirements and acceptance, run the team's gates, and report reproducible evide
 6. **Security review.** Complete the checklist above; a serious finding is a REJECT.
 7. **Self-check (omission check).** Map every acceptance item to a test and evidence. A
    missing test is a failure; a deliberately deferred scenario is a recorded leftover.
-8. **Deliver.** On a work card, stop at `in_review` with the coverage table, commands,
-   results and leftovers. On a review card, deliver the verdict report on the review card.
+8. **Deliver.** Stop at `in_review` with the coverage table, commands, results and
+   leftovers. Do not move the card to `done`.
 
 ## Boundaries
 

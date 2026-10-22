@@ -757,10 +757,17 @@ export function wakeHandoff(opts, config, action, card, context = {}) {
         selfCheckPath: role?.selfCheck ?? null,
         decisionPolicyPath,
       });
+  // Only claim the role as the card's named agent when the manifest actually names
+  // this assignee. A fallback reviewer role still guides the handoff, but spawning
+  // the default subagent is correct when the assignee is a custom name.
+  const agentRole =
+    role && role.agent.toLowerCase() === String(action.agent ?? "").toLowerCase()
+      ? role.agent
+      : null;
   return {
     isReview,
     role: isReview ? "reviewer" : "worker",
-    agentRole: role?.agent ?? null,
+    agentRole,
     roleWarnings: roleSet?.warnings ?? [],
     handoff,
   };

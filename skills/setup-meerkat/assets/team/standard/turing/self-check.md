@@ -19,5 +19,5 @@ Run this after the verification work and before `issue deliver`.
    traversal, SSRF. Record each finding with severity and evidence.
 6. Any uncovered item: add the test if it is in scope, ask the project session if it
    needs a decision, or record an explicit leftover with the reason.
-7. Deliver with the table, the exact commands/results and the leftovers. On a review card,
-   the first line is `VERDICT: APPROVE` or `VERDICT: REJECT`.
+7. Deliver with the table, the exact commands/results and the leftovers. Do not issue a
+   verdict: the separate reviewer role does that.

@@ -173,8 +173,9 @@ Destinations:
   opencode   <home>/.config/opencode/skills/meerkat-taskpanel
   cursor     <home>/.cursor/skills/meerkat-taskpanel
 
-Two skills share two distribution surfaces. The **board** skill goes to all six agent kinds. The
-**loop** skill (the external supervisor) goes to the five non-OpenClaw agent kinds:
+The **board** and **loop** skills share two distribution surfaces. The board skill goes
+to all six agent kinds; the loop skill (the external supervisor) goes to the five
+non-OpenClaw agent kinds:
 
   claude     <home>/.claude/skills/meerkat-loop
   codex      <home>/.codex/skills/meerkat-loop

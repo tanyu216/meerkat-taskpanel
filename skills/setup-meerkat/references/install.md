@@ -36,7 +36,7 @@ file with `TASKD_URL=http://localhost:9527` once and never overwrites it.
 For a remote board, merge the URL (and token) into that env file **before** installing:
 
 ```bash
-node scripts/configure-env.mjs --file <home>/.meerkat-taskpanel/.env \
+node <skill-dir>/scripts/configure-env.mjs --file <home>/.meerkat-taskpanel/.env \
   --key TASKD_URL --value https://board.example.internal:9527 --json
 ```
 

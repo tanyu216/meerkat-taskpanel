@@ -21,6 +21,10 @@ One idempotent pass over the things a working Meerkat TaskPanel deployment needs
 This skill is **command-only** (`disable-model-invocation: true`). It installs software
 and writes files, so it never runs unless the user asks for it.
 
+In the commands below, `<skill-dir>` is the directory containing this `SKILL.md`. Run the
+bundled scripts from there (or by absolute path); the current working directory is the
+user's project, not the skill.
+
 ## Modes
 
 | Mode | Meaning |
@@ -43,7 +47,7 @@ Detection always runs with `TASKD_NO_AUTOSTART=1`; a probe must not start a boar
 Run:
 
 ```bash
-node scripts/detect.mjs --json --project <dir> --actor-kind <kind>
+node <skill-dir>/scripts/detect.mjs --json --project <dir> --actor-kind <kind>
 ```
 
 Report the important rows, not the raw JSON:
@@ -77,7 +81,7 @@ Before installing, merge the board address into the effective env file
 source run, or `MEERKAT_TASKPANEL_ENV_FILE`):
 
 ```bash
-node scripts/configure-env.mjs --file <env-file> --key TASKD_URL --value <url> --json
+node <skill-dir>/scripts/configure-env.mjs --file <env-file> --key TASKD_URL --value <url> --json
 ```
 
 Then show the plan with the installer's own dry run, and only then run it:
@@ -96,6 +100,9 @@ bash install.sh --target claude,server --agent-name <name> --dry-run
 - **Remote + unreachable**: report the failure and ask for a corrected URL; stop.
 - **No URL/pointer**: report `source: "default"` and confirm
   `http://localhost:9527` before installing.
+- **No frontend toolchain**: a checkout without `web/node_modules` or a built `web/dist`
+  can install an API-only server with `--skip-web-build`; say so rather than hiding the
+  missing board UI.
 
 Pass the human name as `MEERKAT_TASKPANEL_HUMAN_NAME=<name>` to `install.sh`; the
 installer renders it into `TASKCTL_HUMAN`. If the name is a fallback (`USER`/`LOGNAME`),
@@ -156,7 +163,7 @@ role's summary, then install with `--source <staging>`.
 Install:
 
 ```bash
-node scripts/install-roles.mjs --scope global|project --project <dir> \
+node <skill-dir>/scripts/install-roles.mjs --scope global|project --project <dir> \
   --actor-kind <kind> --source <dir> --dry-run --json
 # then without --dry-run, after showing the file list
 ```
@@ -182,8 +189,8 @@ with a warning; their layer-2 workflow still reaches them through the handoff.
 
 ## 5. Verify and finish
 
-1. Re-run `detect.mjs --json`; report roles present and the selected agents.
-2. Run `install-roles.mjs --validate <roles-root>`; it must be `ok`.
+1. Re-run `<skill-dir>/scripts/detect.mjs --json`; report roles present and the selected agents.
+2. Run `<skill-dir>/scripts/install-roles.mjs --validate <roles-root>`; it must be `ok`.
 3. Print the next command to load/restart the supervisor
    (`install.sh --supervisor=enable` for the actor kind), and note that a running pool
    picks up role edits on its next dispatch.
@@ -194,9 +201,11 @@ with a warning; their layer-2 workflow still reaches them through the handoff.
 
 ## Identity and decision rights (what the team inherits)
 
-- Every agent write carries `--agent <Role> --actor-kind <kind>`; a named assignee or
-  reporter also carries `--assignee-kind agent` / `--reporter-kind agent`. The creator,
-  assignee and report/comment author are the role, not a human.
+- Every agent write carries `--agent <Role> --actor-kind <kind>`. On `issue create`, a
+  role also carries `--reporter <Role> --reporter-kind agent` (the creator is the
+  reporter, and create's reporter kind defaults to `human`) and `--assignee-kind agent`;
+  `issue assign` resolves a role name to kind `agent` by default. The creator, assignee
+  and report/comment author are the role, not a human.
 - A human decision or constraint is recorded only with `--as-human`; it signs the fixed
   `TASKCTL_HUMAN`. Never use it for a role's own view.
 - The ladder is **subagent → main session → human**. A subagent asks with an agent
@@ -210,6 +219,7 @@ with a warning; their layer-2 workflow still reaches them through the handoff.
 skills/setup-meerkat/
 ├── SKILL.md
 ├── references/{detection,install,matt-pocock,roles,evals}.md
+├── evals/evals.json
 ├── scripts/{detect,install-roles,configure-env}.mjs
 ├── scripts/lib/{agent-kinds,atomic,env-merge,validate,entry-guard}.mjs
 └── assets/team/standard/{manifest.json,decision-policy.md,jobs/,linus/,turing/,reviewer/,agents/}

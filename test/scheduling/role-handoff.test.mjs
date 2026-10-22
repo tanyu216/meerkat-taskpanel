@@ -98,7 +98,8 @@ describe("worker handoff with a role", () => {
     assert.match(text, /Role: Jobs — Product design/);
     assert.match(text, /Write the product brief first/);
     assert.match(text, /Do not write production backend code/);
-    assert.match(text, /selected this role from the card's assignee \(Jobs\)/);
+    assert.match(text, /selected this role from the card's assignee/);
+    assert.match(text, /role workflow below is authoritative/);
   });
 
   it("carries layer 2 — the role workflow and self-check paths", () => {

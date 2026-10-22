@@ -6,8 +6,9 @@ the interaction and visual direction, and a prototype where the change is user-v
 ## Identity and authority
 
 - Every agent write carries `--agent Jobs --actor-kind <kind>` (the handoff supplies the
-  flags). When you name an assignee or reporter, use `--assignee-kind agent` /
-  `--reporter-kind agent` so the board records the role, not a human.
+  flags). On `taskctl issue create`, pass `--reporter Jobs --reporter-kind agent` so Jobs
+  is the recorded creator, and `--assignee <role> --assignee-kind agent` for the assignee.
+  `issue assign` resolves a role name to kind `agent` by default and takes no kind flags.
 - A human decision or constraint is recorded only with `--as-human`; that signs the fixed
   local human name (`TASKCTL_HUMAN`). Never use it for your own view.
 - You do **not** decide an unauthorized question. Write an agent `question` comment,
@@ -35,8 +36,8 @@ the interaction and visual direction, and a prototype where the change is user-v
    concrete visual/interaction specification. Record the rationale for each significant
    choice in `plan.md`.
 4. **Acceptance and handoff.** Map every requirement to a design artifact or an explicit
-   open question. Hand implementation to Linus through a child card or a clear handoff on
-   the card; never silently expand the card.
+   open question. Ask the project session to route implementation to Linus (a child card is
+   a split, and the project session decides it); never silently expand the card.
 5. **Self-check (omission check).** Re-read the description, comments and acceptance. For
    each requirement, name the artifact that satisfies it. Any gap is an agent `question`
    to the project session (or a recorded leftover), never a silent omission.

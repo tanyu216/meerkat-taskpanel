@@ -45,7 +45,8 @@ export function renderRoleLayerOne(role) {
     ...(role.summary ? [role.summary] : []),
     ...bullets("Responsibilities:", role.responsibilities),
     ...bullets("Boundaries:", role.boundaries),
-    `The loop selected this role from the card's assignee (${role.agent}). This is routing guidance; the role workflow below is authoritative for how the role works.`,
+    "The loop selected this role from the card's assignee. This is routing guidance; the",
+    "role workflow below is authoritative for how the role works.",
   ];
   return [clamp(lines.join("\n"), ROLE_PROMPT_LIMITS.layerOne)];
 }
@@ -144,6 +145,7 @@ export function renderDecisionPolicySummary(policy) {
     "and anything it cannot decide to the human. The loop answers with a note (never a",
     "decision kind) and an explicit move, or leaves an E1-E5 card awaiting for the human.",
     path ? `Full policy: ${path}` : "Full policy: the installed loop skill's references/decision-policy.md",
+    "A card in a project whose .meerkat/roles/decision-policy.md exists uses that file instead.",
   ];
   return [clamp(lines.join("\n"), ROLE_PROMPT_LIMITS.policySummary)];
 }

@@ -21,7 +21,7 @@ import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** The skills shipped from `skills/`, in the order this checker reports them. */
-export const SKILLS = ["meerkat-taskpanel", "meerkat-loop", "setup-meerkat"];
+export const SKILLS = Object.freeze(["meerkat-taskpanel", "meerkat-loop", "setup-meerkat"]);
 
 const MIN_DESCRIPTION = 20;
 

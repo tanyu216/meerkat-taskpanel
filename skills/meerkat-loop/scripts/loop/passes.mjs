@@ -453,7 +453,13 @@ export async function runPatrolOnce(opts, env = process.env) {
         log(`patrol: claim refused ${alert.identifier} (${claimed.error ?? "conflict"}) — not dispatching`);
         return { ok: false };
       }
-      const { role, handoff } = wakeHandoff(opts, config, action, task ?? { identifier: alert.identifier });
+      const { role, handoff } = wakeHandoff(
+        opts,
+        config,
+        action,
+        task ?? { identifier: alert.identifier },
+        { projectDir: resolved.dir },
+      );
       const queued = enqueueCard(dirname(String(opts.state)), {
         card: alert.identifier,
         role,

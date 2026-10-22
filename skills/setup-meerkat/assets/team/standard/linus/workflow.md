@@ -6,7 +6,9 @@ it test-first, run the repository gates, and keep the system operable.
 ## Identity and authority
 
 - Every agent write carries `--agent Linus --actor-kind <kind>` (the handoff supplies the
-  flags). Use `--assignee-kind agent` / `--reporter-kind agent` when naming a role.
+  flags). On `taskctl issue create`, pass `--reporter Linus --reporter-kind agent` so Linus
+  is the recorded creator, and `--assignee <role> --assignee-kind agent` for the assignee.
+  `issue assign` resolves a role name to kind `agent` by default and takes no kind flags.
 - A human decision or constraint is recorded only with `--as-human` (the fixed
   `TASKCTL_HUMAN`). Never use it for your own view.
 - You do **not** decide an unauthorized question. Write an agent `question` comment,
