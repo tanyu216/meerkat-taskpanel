@@ -13,6 +13,7 @@ import {
   isBlockingStatus,
   normalizeAcceptanceList,
   normalizeAcceptanceText,
+  rollupGapOf,
 } from "../../../src/core/domain/acceptance.mjs";
 
 describe("domain/acceptance — normalisation", () => {
@@ -165,5 +166,88 @@ describe("domain/acceptance — coverage", () => {
     assert.equal(isBlockingStatus("not_met"), true);
     assert.equal(isBlockingStatus("met"), false);
     assert.equal(isBlockingStatus("not_applicable"), false);
+  });
+});
+
+describe("domain/acceptance — the rollup gap (0033)", () => {
+  const children = [
+    { identifier: "P-1", status: "done" },
+    { identifier: "P-2", status: "canceled" },
+  ];
+  const items = [
+    { text: "P-1 done", status: "met", ref: "P-1" },
+    { text: "P-2 dropped", status: "not_applicable", note: "scope withdrawn", ref: "P-2" },
+  ];
+
+  it("accepts a rollup that names every child with the right verdict", () => {
+    const gap = rollupGapOf({ children, items });
+    assert.equal(gap.ok, true);
+    assert.equal(gap.childCount, 2);
+    assert.equal(gap.done, 1);
+  });
+
+  it("joins by ref, not by prose — a renamed child is the same card", () => {
+    const renamed = items.map((item) => ({ ...item, text: "a title that changed later" }));
+    assert.equal(rollupGapOf({ children, items: renamed }).ok, true);
+  });
+
+  it("names a missing child, an unexpected ref, and a duplicate", () => {
+    const missing = rollupGapOf({ children, items: [items[0]] });
+    assert.deepEqual(missing.missingChildren, ["P-2"]);
+    assert.equal(missing.ok, false);
+
+    const unexpected = rollupGapOf({
+      children,
+      items: [...items, { text: "stranger", status: "met", ref: "P-9" }],
+    });
+    assert.deepEqual(unexpected.unexpectedChildren, ["P-9"]);
+
+    const duplicated = rollupGapOf({
+      children,
+      items: [...items, { text: "again", status: "met", ref: "P-1" }],
+    });
+    assert.deepEqual(duplicated.duplicates, ["P-1"]);
+    assert.equal(duplicated.ok, false);
+  });
+
+  it("refuses the wrong verdict for a child's state", () => {
+    const notMet = rollupGapOf({
+      children,
+      items: [{ ...items[0], status: "not_met" }, items[1]],
+    });
+    assert.equal(notMet.statusMismatches[0].expected, "met");
+
+    const noNote = rollupGapOf({
+      children,
+      items: [items[0], { ...items[1], note: "" }],
+    });
+    assert.equal(noNote.statusMismatches[0].expected, "not_applicable with a note");
+
+    const openChild = rollupGapOf({
+      children: [...children, { identifier: "P-3", status: "in_progress" }],
+      items: [...items, { text: "P-3", status: "met", ref: "P-3" }],
+    });
+    assert.equal(openChild.statusMismatches[0].expected, "a terminal child");
+  });
+
+  it("requires at least one done child and at least one child", () => {
+    assert.equal(
+      rollupGapOf({
+        children: [{ identifier: "P-1", status: "canceled" }],
+        items: [{ text: "x", status: "not_applicable", note: "dropped", ref: "P-1" }],
+      }).ok,
+      false,
+      "an all-canceled container delivered nothing",
+    );
+    assert.equal(rollupGapOf({ children: [], items: [] }).ok, false);
+  });
+
+  it("ignores items without a usable ref", () => {
+    const gap = rollupGapOf({
+      children: [{ identifier: "P-1", status: "done" }],
+      items: [{ text: "unjoined", status: "met" }, null, "junk", { text: "x", status: "met", ref: "  " }],
+    });
+    assert.deepEqual(gap.missingChildren, ["P-1"]);
+    assert.equal(gap.ok, false);
   });
 });

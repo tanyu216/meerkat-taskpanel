@@ -245,6 +245,18 @@
       "http": 409
     },
     {
+      "code": "ROLLUP_INVALID",
+      "http": 409
+    },
+    {
+      "code": "ROLLUP_REQUIRED",
+      "http": 409
+    },
+    {
+      "code": "ROLLUP_STALE",
+      "http": 409
+    },
+    {
       "code": "RUNTIME_POINTER_TOKEN_LEAK",
       "http": 500
     },
@@ -1544,6 +1556,7 @@
         "evidence": "array",
         "evidence_truncated": "boolean",
         "id": "string",
+        "is_rollup": "boolean",
         "leftovers": "string",
         "round": "number",
         "seg": "string",

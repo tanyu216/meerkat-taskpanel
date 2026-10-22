@@ -34,6 +34,13 @@ Rules that are enforced, not just documented:
   `APPROVE` requires the review report to cover the original's, and the auto-accept planner
   reads the same report so it never plans an acceptance the write gate would refuse. The DB
   trigger (`tr_tasks_acceptance_revision`) refuses a revision-less rewrite at the source;
+* an **epic's** acceptance evidence is its **rollup** (0033): a delivery report marked
+  `is_rollup` whose items name each child by `ref`. A report written on an epic is always a
+  rollup (`commands/reports.mjs`, `commands/rollup.mjs#advanceContainer`), the delivery gate
+  refuses an unmarked current-round report (`ROLLUP_REQUIRED`), `done` refuses a rollup that
+  no longer matches the live children (`ROLLUP_STALE`), and the DB trigger
+  `tr_tasks_epic_rollup_done` enforces the current-round row at the write. The same pure rule
+  (`domain/acceptance.mjs#rollupGapOf`) is read by the sweep and by the workflow planner;
 * the **workflow decisions** are the board's: `domain/workflow.mjs` is pure (reconcile
   classification, review outcomes, review dispatch), and `commands/workflow.mjs` assembles
   a bounded board snapshot for it. `issue reconcile --workflow` exposes the plan; the loop

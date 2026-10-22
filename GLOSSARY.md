@@ -547,9 +547,13 @@ report.
 _Avoid_: digest, report summary, report hash
 
 **Rollup**:
-Informal prose for how child results aggregate into an epic. It is a behaviour, not a
-field, command or type — do not look for a rollup object.
-_中文_: rollup（中文镜像沿用英文，非字段名）
+An epic's delivery report: the one report whose acceptance items name each child (`ref`) and
+say whether that child's terminal state is acceptable. It is a behaviour *and* a marker —
+`task_reports.is_rollup` (`report.is_rollup` on the wire, 0033) — and it is the epic's
+acceptance evidence: `done` and an `APPROVE` refuse a missing (`ROLLUP_REQUIRED`) or stale
+(`ROLLUP_STALE`) one. A stale rollup is repaired by reworking the epic to a new round.
+_中文_: 汇总报告（rollup）
+_Avoid_: summary, aggregate, container report
 
 **State**:
 Not a synonym for status. A card's status is where it sits in its lifecycle; its execution

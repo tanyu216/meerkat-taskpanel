@@ -91,6 +91,13 @@ a non-empty note) pass; a missing item, `partial` or `not_met` refuses with
 coverage — `partial` / `not_met` is its normal shape. If the baseline itself is wrong, rework
 the original (a new round re-freezes it); a reviewer cannot edit it.
 
+For an **epic**, the rollup is the delivery. An `APPROVE` additionally needs the epic's
+current-round rollup (`is_rollup = 1`) to still match its children: every child appears by
+`ref`, a `done` child is `met`, a `canceled` one is `not_applicable` with a note, and at
+least one child is `done`. A missing rollup is `rollup_unverified`; a stale one is
+`rollup_stale` (both are log-only alerts; the loop plans no approval). The repair is a
+rework of the epic, which starts a new round and a fresh rollup.
+
 If the original carries `meta.acceptance_derived = "yes"`, its acceptance list was derived by
 the worker at claim time. Check that it covers every requirement in the description and
 comments; a list that narrows the card is grounds for `VERDICT: REJECT`. For an epic, check

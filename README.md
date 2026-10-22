@@ -73,7 +73,8 @@ the [Highlights](#highlights) below describe.
    appended to but not quietly shortened, and a review `APPROVE` must cover it too.
 3. **Dependencies and epics as first-class edges.** `depends_on` links form a DAG, so
    independent work runs in parallel and dependent work waits; parent/child links roll a
-   subtree's progress up into its epic.
+   subtree's progress up into its epic. An epic is accepted through that rollup: one report
+   naming every child, refused while it is missing or stale.
 4. **Sessions that resume.** Every agent session gets a deterministic id derived from
    `task + owner + segment`; reconnecting reuses the same session instead of spending tokens
    to re-establish context.

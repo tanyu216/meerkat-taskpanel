@@ -54,6 +54,9 @@ export const REPORT_COLUMNS = Object.freeze([
   "source_seq",
   "created_at",
   "origin",
+  // 0033 — an epic's rollup marker. `validateReport` never reads it: the writer
+  // decides it from the card's kind, so a payload cannot forge one.
+  "is_rollup",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -119,6 +122,11 @@ export function validateReport(input, context = {}) {
       }
       if (item.note !== undefined && typeof item.note !== "string") {
         issues.push({ path: `${at}.note`, message: "note must be a string" });
+      }
+      // 0033 — a rollup item names the child it speaks about. It is metadata on
+      // the item, not part of its identity (the text still matches the baseline).
+      if (item.ref !== undefined && (typeof item.ref !== "string" || item.ref.trim() === "")) {
+        issues.push({ path: `${at}.ref`, message: "ref must be a non-empty string" });
       }
       // 0032 — `not_applicable` is a verdict, not a shrug. The DB trigger
       // (0032) enforces the same rule on a raw insert; this is the friendly
@@ -264,9 +272,18 @@ export function boundEvidence(acceptance, evidence, options = {}) {
     return value.length > TRUNCATED_STRING_CHARS ? `${value.slice(0, TRUNCATED_STRING_CHARS)}…` : value;
   };
 
-  const slimAcceptance = (Array.isArray(acceptance) ? acceptance : []).map((item) =>
-    item !== null && typeof item === "object" ? { text: shrink(item.text), status: item.status } : item,
-  );
+  const slimAcceptance = (Array.isArray(acceptance) ? acceptance : []).map((item) => {
+    if (item === null || typeof item !== "object") return item;
+    // `ref` is structural (0033's staleness check reads it), and a
+    // `not_applicable` note is mandatory (0032's trigger refuses one without
+    // it), so those survive. Any other note is prose and goes first.
+    const slim = { text: shrink(item.text), status: item.status };
+    if (item.status === "not_applicable" && typeof item.note === "string") {
+      slim.note = shrink(item.note);
+    }
+    if (typeof item.ref === "string") slim.ref = shrink(item.ref);
+    return slim;
+  });
   const slimEvidence = (Array.isArray(evidence) ? evidence : []).map((anchor) => {
     if (anchor === null || typeof anchor !== "object") return anchor;
     const copy = { ...anchor };
@@ -507,6 +524,7 @@ const CAMEL = {
   source_seq: "sourceSeq",
   created_at: "createdAt",
   origin: "origin",
+  is_rollup: "isRollup",
 };
 
 /** @param {object} row */
@@ -518,5 +536,8 @@ export function reportFromRow(row) {
   }
   report.acceptance = acceptanceFromJson(row.acceptance_json);
   report.evidence = evidenceFromJson(row.evidence_json);
+  // The column is an INTEGER (0/1); callers reason in booleans. A row from a
+  // board that predates 0033 reads as `false`, which is also the default.
+  report.isRollup = Number(row.is_rollup ?? 0) === 1;
   return report;
 }

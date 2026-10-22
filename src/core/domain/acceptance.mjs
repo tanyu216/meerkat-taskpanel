@@ -199,3 +199,87 @@ export function coverageOf(input = {}) {
     extra,
   };
 }
+
+/**
+ * 0033 — does a rollup describe the epic's **live** children?
+ *
+ * The join key is the item's `ref` (the child's identifier), not its prose: a
+ * child may be renamed after the rollup and stay the same card. Every child
+ * appears exactly once; a `done` child is `met`, a `canceled` one is
+ * `not_applicable` **with a note** (the person accepting the container decides
+ * whether finishing without that work was right), and a non-terminal child is a
+ * mismatch — a terminal rollup cannot describe work still in flight. At least
+ * one child must be `done`, the same rule the automatic rollup applies.
+ *
+ * Pure: callers pass the children (the command reads them from the repository,
+ * the workflow planner from its board snapshot), so the rule is written once.
+ *
+ * @param {{children?: {identifier: string, status: string}[], items?: unknown[]}} input
+ * @returns {{ok: boolean, childCount: number, done: number, missingChildren: string[], unexpectedChildren: string[], statusMismatches: object[], duplicates: string[]}}
+ */
+export function rollupGapOf(input = {}) {
+  const children = Array.isArray(input.children) ? input.children : [];
+  const byRef = new Map();
+  const duplicates = [];
+  for (const item of Array.isArray(input.items) ? input.items : []) {
+    if (item === null || typeof item !== "object") continue;
+    if (typeof item.ref !== "string" || item.ref.trim() === "") continue;
+    const ref = item.ref.trim();
+    if (byRef.has(ref)) duplicates.push(ref);
+    else byRef.set(ref, item);
+  }
+
+  const childRefs = new Set(children.map((child) => child.identifier));
+  const missingChildren = [...childRefs].filter((ref) => !byRef.has(ref));
+  const unexpectedChildren = [...byRef.keys()].filter((ref) => !childRefs.has(ref));
+  const statusMismatches = [];
+  let done = 0;
+  for (const child of children) {
+    const item = byRef.get(child.identifier);
+    if (item === undefined) continue;
+    if (child.status === "done") {
+      done += 1;
+      if (item.status !== "met") {
+        statusMismatches.push({
+          ref: child.identifier,
+          childStatus: child.status,
+          verdict: item.status ?? null,
+          expected: "met",
+        });
+      }
+    } else if (child.status === "canceled") {
+      const noted = typeof item.note === "string" && item.note.trim() !== "";
+      if (item.status !== "not_applicable" || !noted) {
+        statusMismatches.push({
+          ref: child.identifier,
+          childStatus: child.status,
+          verdict: item.status ?? null,
+          expected: "not_applicable with a note",
+        });
+      }
+    } else {
+      statusMismatches.push({
+        ref: child.identifier,
+        childStatus: child.status,
+        verdict: item.status ?? null,
+        expected: "a terminal child",
+      });
+    }
+  }
+
+  return {
+    ok:
+      children.length > 0 &&
+      done > 0 &&
+      missingChildren.length === 0 &&
+      unexpectedChildren.length === 0 &&
+      statusMismatches.length === 0 &&
+      duplicates.length === 0,
+    childCount: children.length,
+    done,
+    missingChildren,
+    unexpectedChildren,
+    statusMismatches,
+    duplicates,
+  };
+}

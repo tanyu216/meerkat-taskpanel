@@ -107,7 +107,7 @@ describe("storage/migrations — 0030 widens the comment-kind CHECK", () => {
       const before = board.db.prepare("SELECT id, task_id, body, kind, author_kind, author_id, refs_json, created_at FROM comments ORDER BY id").all();
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0030", "0031", "0032"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0030", "0031", "0032", "0033"]);
 
       // 1 — rows survive verbatim.
       const after = board.db.prepare("SELECT id, task_id, body, kind, author_kind, author_id, refs_json, created_at FROM comments ORDER BY id").all();

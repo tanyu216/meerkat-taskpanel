@@ -59,6 +59,13 @@ export const ERROR_CODES = Object.freeze({
   ACCEPTANCE_SNAPSHOT_IMMUTABLE: spec(409, "The acceptance baseline can only grow; a prune needs an audited reason."),
   // Raised by `validateReport` and by 0032's report trigger.
   REPORT_NOT_APPLICABLE_NOTE: spec(422, "A not_applicable acceptance item needs a note saying why."),
+  // ---- Epic rollups (0033) --------------------------------------------------
+  // An epic's delivery is a rollup over its children, not a summary written
+  // beside them. The row is marked `is_rollup=1`; `ROLLUP_REQUIRED` is both the
+  // delivery-gate refusal and the DB trigger's done guard.
+  ROLLUP_REQUIRED: spec(409, "An epic needs a current-round rollup report before it can be delivered or accepted."),
+  ROLLUP_INVALID: spec(409, "Only a delivery report on an epic can carry the rollup marker."),
+  ROLLUP_STALE: spec(409, "The rollup no longer matches the epic's children."),
 
   // ---- Task state machine + lifecycle ---------------------------------------
   INVALID_TRANSITION: spec(409, "Status transition is not allowed."),
@@ -254,6 +261,9 @@ export const DB_RAISE_CODES = Object.freeze([
   // 0032 — the frozen acceptance baseline and the not_applicable note.
   "ACCEPTANCE_SNAPSHOT_IMMUTABLE",
   "REPORT_NOT_APPLICABLE_NOTE",
+  // 0033 — the rollup marker and the epic done guard.
+  "ROLLUP_REQUIRED",
+  "ROLLUP_INVALID",
 ]);
 
 /** Codes produced by mapping SQLite failures (constraints, and lock contention). */
@@ -294,6 +304,9 @@ export const JS_ONLY_CODES = Object.freeze([
   "ACCEPTANCE_STALE_REVISION",
   "ACCEPTANCE_PRUNE_FORBIDDEN",
   "ACCEPTANCE_LOCKED",
+  // 0033 — staleness compares the report's `ref` set with the live children,
+  // which a trigger cannot do without duplicating the rollup's own rules.
+  "ROLLUP_STALE",
   "REPORT_ROUND_MISMATCH",
   "VERSION_CONFLICT",
   "CLAIM_LOST",

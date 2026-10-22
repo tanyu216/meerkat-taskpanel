@@ -103,9 +103,16 @@ The plan is snake_case (`workflowToWire`). Action `type`s the loop executes:
 Alert `type`s include `original_unseen`, `verdict_unreadable`, `verdict_incomplete`,
 `acceptance_incomplete`, `acceptance_unverified`, `review_aging`, `actions_capped`,
 `dispatch_capped`, `self_review_not_independent`, and the `review_cards_unclosable` startup
-warning. Each carries a `dedup_key`. The three acceptance/verdict alerts are log-only: the
-planner declines to plan an action the write gate would refuse, rather than producing one
-failure per tick.
+warning. Each carries a `dedup_key`. The acceptance/verdict alerts are log-only: the planner
+declines to plan an action the write gate would refuse, rather than producing one failure per
+tick. An epic's skip reasons are `rollup_unverified` (no current-round rollup) and
+`rollup_stale` (the rollup no longer matches the children); both appear on
+`auto_accept_skipped` / `verdict_incomplete`.
+
+An **epic's** only delivery report is its rollup: `report.is_rollup` is `true` on the wire,
+its acceptance items carry `ref: <child identifier>`, and `done` / an `APPROVE` refuse a
+missing or stale one (`ROLLUP_REQUIRED` / `ROLLUP_STALE`). The loop never writes a non-rollup
+report on an epic.
 
 ## 7. Workflow writes
 

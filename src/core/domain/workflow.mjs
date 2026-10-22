@@ -40,7 +40,7 @@ import {
   TASKD_KIND,
 } from "../../foundation/constants.mjs";
 import { reviewRequiredOf } from "./review-policy.mjs";
-import { coverageOf } from "./acceptance.mjs";
+import { coverageOf, rollupGapOf } from "./acceptance.mjs";
 import { acceptanceAllows, acceptanceScopeOf } from "./status.mjs";
 
 // The two workflow defaults are shared with the loop's config resolver, so they
@@ -332,6 +332,48 @@ function boundedFindings(text) {
  */
 function alertKey(...parts) {
   return parts.map((part) => (part === null || part === undefined ? "" : String(part))).join("|");
+}
+
+/**
+ * 0033 — is the epic's current-round rollup present and faithful to its children?
+ *
+ * `null` means "go ahead"; an object names why the planner must not accept or
+ * approve, plus a stable key for the alert ledger. The children come from the
+ * board snapshot (same `tasks` the planners already receive), so this stays pure
+ * and shares `rollupGapOf` with the command-layer gate.
+ *
+ * @param {object} epic
+ * @param {object[]} tasks
+ * @param {Record<string, object>} [reportsByRef]
+ * @returns {{reason: string, key: string, detail: object}|null}
+ */
+function epicRollupIssue(epic, tasks, reportsByRef) {
+  const report = reportsByRef?.[epic.identifier] ?? null;
+  if (report === null || report.is_rollup !== true) {
+    return { reason: "rollup_unverified", key: "", detail: {} };
+  }
+  const children = (Array.isArray(tasks) ? tasks : [])
+    .filter((task) => task?.parent_id === epic.id)
+    .map((task) => ({ identifier: String(task.identifier ?? ""), status: task.status }));
+  const gap = rollupGapOf({ children, items: report.acceptance ?? [] });
+  if (gap.ok) return null;
+  const key = [
+    ...gap.missingChildren,
+    ...gap.unexpectedChildren,
+    ...gap.duplicates,
+    ...gap.statusMismatches.map((mismatch) => `${mismatch.ref}:${mismatch.childStatus}`),
+  ]
+    .sort()
+    .join("|");
+  return {
+    reason: "rollup_stale",
+    key,
+    detail: {
+      missingChildren: gap.missingChildren,
+      unexpectedChildren: gap.unexpectedChildren,
+      statusMismatches: gap.statusMismatches,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -796,11 +838,29 @@ export function planReviewOutcomes(input = {}) {
 
     if (original.status === "in_review") {
       if (verdict.verdict === "APPROVE") {
+        // 0033 — an epic APPROVE is only as good as its rollup. A missing or
+        // stale one is decided here for the same reason as 0032's baseline:
+        // the write gate would refuse the approval, and one standing alert is
+        // better than a failed action every tick.
+        if (original.kind === "epic") {
+          const issue = epicRollupIssue(original, tasks, input.reportsByRef);
+          if (issue !== null) {
+            alerts.push({
+              type: "verdict_incomplete",
+              review: reviewRef,
+              original: originalRef,
+              reason: issue.reason,
+              ...issue.detail,
+              dedupKey: alertKey("verdict_incomplete", reviewRef, issue.reason, issue.key),
+            });
+            continue;
+          }
+        }
         // 0032 — an APPROVE over a report that does not answer every baseline
         // criterion is not an approval. The write gate would refuse it; deciding
         // it here keeps the refusal out of the failed-action noise.
         const baseline = Array.isArray(original.acceptance) ? original.acceptance : [];
-        if (baseline.length > 0) {
+        if (original.kind !== "epic" && baseline.length > 0) {
           const coverage = coverageOf({
             baseline,
             reportItems: verdict.report?.acceptance ?? [],
@@ -1026,12 +1086,30 @@ export function planAutoAccept(input = {}) {
       continue;
     }
 
+    // 0033 — a container's evidence is its rollup, not its own (informational)
+    // baseline. The planner holds the same rule as the write gate: a current
+    // round rollup that describes every child, with the children read off the
+    // board snapshot.
+    if (task.kind === "epic") {
+      const issue = epicRollupIssue(task, tasks, input.reportsByRef);
+      if (issue !== null) {
+        alerts.push({
+          type: "auto_accept_skipped",
+          original: ref,
+          reason: issue.reason,
+          ...issue.detail,
+          dedupKey: alertKey("auto_accept_skipped", ref, issue.reason, issue.key),
+        });
+        continue;
+      }
+    }
+
     // 0032 — an empty baseline is vacuous (no report needed); a non-empty one
     // is covered only by a current-round delivery report. This is the planner's
     // copy of the write gate, so a broken delivery produces one standing alert
     // rather than a failed action every tick.
     const baseline = Array.isArray(task.acceptance) ? task.acceptance : [];
-    if (baseline.length > 0) {
+    if (task.kind !== "epic" && baseline.length > 0) {
       const report = input.reportsByRef?.[ref] ?? null;
       if (report === null) {
         alerts.push({

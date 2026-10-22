@@ -25,6 +25,7 @@ import {
   cleanupTempDirs,
   countRows,
   ensureActor,
+  insertTask,
   revision,
   withBoard,
 } from "../../helpers/sqlite-fixture.mjs";
@@ -378,26 +379,29 @@ describe("commands/tasks — promoting a card into an epic (the container protoc
         },
         "the overlay adds a delivery, not a shortcut to done",
       );
-      assert.equal(commands.canMove({ taskId: epic.id, to: "in_review" }).reason, "REPORT_REQUIRED", "and not without a report");
+      assert.equal(commands.canMove({ taskId: epic.id, to: "in_review" }).reason, "ROLLUP_REQUIRED", "and not without a rollup");
       assert.equal(commands.canMove({ taskId: epic.id, to: "backlog" }).ok, true);
     });
   });
 
-  it("delivers a `todo` epic to in_review with its rollup report — the dead end, closed", async () => {
+  it("refuses to deliver an empty epic — there is nothing to roll up", async () => {
     await board(async ({ db, commands }) => {
       const epic = linusTask(commands, { kind: "epic" });
       assert.equal(epic.status, "todo", "which is where `issue create --kind epic` puts a container");
 
-      const delivered = commands.deliver({ taskId: epic.id, report: report(), actor: AGENT });
-
-      assert.equal(delivered.task.status, "in_review");
-      assert.equal(delivered.report.origin, "delivery", "the gate's own row, not history");
-      assert.equal(delivered.report.round, 1);
-      assert.equal(delivered.task.deliveryRound, 1, "delivering from todo is not a rework");
-      assert.deepEqual(activitiesFor(db, epic.id), ["task_created", "task_delivered"]);
-      // ...and review is still the only way on: `done` is one move away, from
-      // `in_review`, exactly as it is for a task.
-      assert.equal(commands.moveStatus({ id: epic.id, to: "done", actor: HUMAN }).status, "done");
+      // 0033 — a container's delivery evidence is its children. An empty one has
+      // no children to stand a rollup on, so it is refused like `assessClose`'s
+      // `empty_epic`: cancel it or give it work.
+      assert.throws(
+        () => commands.deliver({ taskId: epic.id, report: report(), actor: AGENT }),
+        (err) => {
+          assert.equal(err.code, "ROLLUP_STALE");
+          assert.equal(err.details.childCount, 0);
+          return true;
+        },
+      );
+      assert.equal(commands.getTask({ id: epic.id }).status, "todo", "a refused delivery writes nothing");
+      assert.deepEqual(activitiesFor(db, epic.id), ["task_created"]);
     });
   });
 
@@ -414,21 +418,30 @@ describe("commands/tasks — promoting a card into an epic (the container protoc
         "a task still cannot reach review without being worked",
       );
 
-      // The kind dimension is not the gate: an epic that owes a report is refused
-      // for the report, and told how to write it.
+      // 0033 — the kind dimension *is* the gate now: an epic owes a rollup, and
+      // is told how to write one (the template lists the children).
       const epic = linusTask(commands, { kind: "epic", allowDup: true });
       assert.throws(
         () => commands.moveStatus({ id: epic.id, to: "in_review", actor: AGENT }),
         (err) => {
-          assert.equal(err.code, "REPORT_REQUIRED");
-          assert.match(err.hint?.command ?? "", /^taskctl issue deliver /);
+          assert.equal(err.code, "ROLLUP_REQUIRED");
+          assert.match(err.hint?.command ?? "", /^taskctl report template /);
           assert.deepEqual(err.details.allowed, undefined, "a gate refusal is not a whitelist refusal");
           return true;
         },
       );
-      // ...and the audited waiver is still the one way past it, from `todo` too.
-      const waived = commands.moveStatus({ id: epic.id, to: "in_review", actor: AGENT, noReport: true, reason: "rollup in the children" });
-      assert.equal(waived.status, "in_review");
+      // ...and a waiver cannot stand in for a container's evidence.
+      assert.throws(
+        () =>
+          commands.moveStatus({
+            id: epic.id,
+            to: "in_review",
+            actor: AGENT,
+            noReport: true,
+            reason: "rollup in the children",
+          }),
+        (err) => err.code === "ROLLUP_REQUIRED",
+      );
     });
   });
 
@@ -462,20 +475,22 @@ describe("commands/tasks — promoting a card into an epic (the container protoc
     });
   });
 
-  it("closes the container from its park, with a rollup report", async () => {
+  it("refuses a promoted-but-childless container from its park, too", async () => {
     await board(async ({ db, commands }) => {
       const container = linusTask(commands);
       commands.updateTask({ id: container.id, patch: { kind: "epic" }, actor: AGENT });
       commands.moveStatus({ id: container.id, to: "blocked", blockedReason: "dependency", actor: AGENT });
 
-      const delivered = commands.deliver({ taskId: container.id, report: report(), actor: AGENT });
-
-      assert.equal(delivered.task.status, "in_review");
-      assert.equal(delivered.task.deliveryRound, 1);
-      const stored = db.prepare("SELECT round, origin FROM task_reports WHERE task_id = ?").get(container.id);
-      assert.equal(stored.origin, "delivery", "the gate is kind-agnostic: a container delivers like a leaf");
-      assert.equal(stored.round, 1);
-      assert.deepEqual(activitiesFor(db, container.id), ["task_created", "task_updated", "task_moved", "task_delivered"]);
+      // 0033 — the blocked → in_review repair edge still exists, but a container
+      // without children has no rollup to deliver; the refusal is the same one
+      // an empty epic gets from `todo`.
+      assert.throws(
+        () => commands.deliver({ taskId: container.id, report: report(), actor: AGENT }),
+        (err) => err.code === "ROLLUP_STALE",
+      );
+      assert.equal(commands.getTask({ id: container.id }).status, "blocked");
+      assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(container.id).c, 0);
+      assert.deepEqual(activitiesFor(db, container.id), ["task_created", "task_updated", "task_moved"]);
     });
   });
 });
@@ -528,13 +543,22 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       assert.equal(closed.deliveryRound, 1, "a first delivery, not a rework");
 
       const reports = db
-        .prepare("SELECT round, origin, author_kind, acceptance_json, evidence_json FROM task_reports WHERE task_id = ?")
+        .prepare(
+          "SELECT round, origin, is_rollup, author_kind, acceptance_json, evidence_json FROM task_reports WHERE task_id = ?",
+        )
         .all(epic.id);
       assert.equal(reports.length, 1, "the board wrote exactly one rollup report");
       assert.equal(reports[0].origin, "delivery");
+      assert.equal(reports[0].is_rollup, 1, "0033 — the board's report is the rollup");
       assert.equal(reports[0].author_kind, "taskd", "the board wrote it, not the last agent");
       assert.equal(reports[0].round, 1);
-      assert.equal(JSON.parse(reports[0].acceptance_json).length, 2, "one criterion per child");
+      const items = JSON.parse(reports[0].acceptance_json);
+      assert.equal(items.length, 2, "one criterion per child");
+      assert.deepEqual(
+        items.map((item) => item.ref).sort(),
+        [one.identifier, two.identifier].sort(),
+        "each item names its child — the rollup gate joins on `ref`",
+      );
       // The children's evidence, unioned and de-duplicated: the work happened
       // there, not in the container.
       assert.equal(JSON.parse(reports[0].evidence_json).length, 2);
@@ -658,6 +682,80 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
     });
   });
 
+  it("refuses an epic whose current round has only an unmarked report", async () => {
+    await board(async ({ db, commands }) => {
+      // A board that predates 0033: the child is done, the container is live,
+      // and the round has a delivery report nobody marked as a rollup. Raw
+      // inserts set the state the hooks would otherwise write for us.
+      const child = insertTask(db, {
+        id: "child-1",
+        identifier: "PROJ-0098",
+        title: "Child",
+        status: "done",
+      });
+      const epic = insertTask(db, {
+        id: "epic-1",
+        identifier: "PROJ-0099",
+        title: "Container",
+        kind: "epic",
+        status: "in_progress",
+      });
+      commands.addRelation({ type: "parent", source: epic, target: child, actor: AGENT });
+      db.prepare(
+        `INSERT INTO task_reports(task_id, round, conclusion, acceptance_json, evidence_json,
+                                  author_kind, author_id, created_at, origin, is_rollup)
+         VALUES (?, 1, ?, ?, ?, ?, ?, ?, 'delivery', 0)`,
+      ).run(
+        epic,
+        "rollup",
+        JSON.stringify([{ text: "child done", status: "met", ref: "PROJ-0098" }]),
+        JSON.stringify([{ kind: "path", path: "x" }]),
+        "system",
+        ensureActor(db, "taskd", "system"),
+        TS,
+      );
+
+      // The content even looks right; the *marker* is what the gate reads.
+      assert.throws(
+        () => commands.moveStatus({ id: epic, to: "in_review", actor: AGENT }),
+        (err) => err.code === "ROLLUP_REQUIRED",
+      );
+    });
+  });
+
+  it("flags a stale rollup after a child is attached, without moving the epic", async () => {
+    await board(async ({ commands }) => {
+      const child = linusTask(commands, { title: "Child" });
+      const epic = epicWith(commands, [child]);
+      finish(commands, child, "abc1234");
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
+
+      const late = linusTask(commands, { title: "Late", allowDup: true });
+      commands.addRelation({ type: "parent", source: epic.id, target: late.id, actor: AGENT });
+      commands.moveStatus({ id: late.id, to: "canceled", actor: AGENT });
+
+      // The sweep is read-only on an in_review epic: it names the gap and lets a
+      // human (or a rework) decide.
+      const plan = commands.reconcileContainers({ dryRun: true });
+      const entry = plan.actions.find((candidate) => candidate.epic === epic.identifier);
+      assert.deepEqual(
+        { action: entry.action, reason: entry.reason },
+        { action: "none", reason: "rollup_stale" },
+      );
+      assert.deepEqual(entry.blocking, [{ identifier: late.identifier, status: "missing" }]);
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
+
+      assert.throws(
+        () => commands.moveStatus({ id: epic.id, to: "done", actor: HUMAN }),
+        (err) => {
+          assert.equal(err.code, "ROLLUP_STALE");
+          assert.deepEqual(err.details.missingChildren, [late.identifier]);
+          return true;
+        },
+      );
+    });
+  });
+
   it("does not close a container whose children were all canceled — nothing was delivered", async () => {
     await board(async ({ db, commands }) => {
       const one = linusTask(commands, { title: "One" });
@@ -758,8 +856,21 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       // No report of theirs to stand on: the container is left for a human
       // (started, because its children were worked, but not delivered).
       assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
-      const manual = commands.deliver({ taskId: epic.id, report: report(), actor: AGENT });
+      // 0033 — the manual rollup must name every child; the children's own
+      // waiver says nothing about the container.
+      const manual = commands.deliver({
+        taskId: epic.id,
+        report: report({
+          acceptance: [one, two].map((child) => ({
+            text: `${child.identifier} done`,
+            status: "met",
+            ref: child.identifier,
+          })),
+        }),
+        actor: AGENT,
+      });
       assert.equal(manual.task.status, "in_review", "the manual path still works");
+      assert.equal(manual.report.isRollup, true, "a report on an epic is its rollup");
     });
   });
 
@@ -2657,19 +2768,24 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
       assert.equal(refusal(() => commands.moveStatus({ id: epic.id, to: "done", actor: HUMAN })), "CHILDREN_OPEN");
 
       commands.moveStatus({ id: late.id, to: "canceled", actor: AGENT });
+      // 0033 — the round-1 rollup predates `late`, so it cannot accept the epic.
+      // Rework bumps the round; the sweep then writes a fresh rollup.
+      assert.equal(refusal(() => commands.moveStatus({ id: epic.id, to: "done", actor: HUMAN })), "ROLLUP_STALE");
+      commands.moveStatus({ id: epic.id, to: "in_progress", actor: HUMAN });
+      commands.reconcileContainers();
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_review", "a new round, a new rollup");
       assert.equal(commands.moveStatus({ id: epic.id, to: "done", actor: HUMAN }).status, "done");
     });
   });
 
-  it("a leaf card and an empty epic are not affected", async () => {
+  it("a leaf card is unaffected; an empty epic has nothing to roll up", async () => {
     await board(async ({ commands }) => {
       const leaf = commands.createTask({ projectId: "proj", title: "Leaf", actor: AGENT });
       deliverCard(commands, leaf);
       assert.equal(commands.moveStatus({ id: leaf.id, to: "done", actor: HUMAN }).status, "done");
 
       const empty = commands.createTask({ projectId: "proj", title: "Empty", kind: "epic", allowDup: true, actor: AGENT });
-      const moved = deliverEpic(commands, empty);
-      assert.equal(moved.task.status, "in_review", "an empty epic may be delivered manually");
+      assert.equal(refusal(() => deliverEpic(commands, empty)), "ROLLUP_STALE", "no children, no rollup");
     });
   });
 

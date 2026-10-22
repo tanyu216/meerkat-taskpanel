@@ -179,6 +179,42 @@ describe("cli/report template", () => {
     });
   });
 
+  it("builds an epic template from its children, one `ref` item each", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      const epic = dataOf(
+        run(["issue", "create", "--project", "demo", "--title", "Epic", "--kind", "epic", "--json"]),
+      ).task;
+      const one = dataOf(
+        run(["issue", "create", "--project", "demo", "--title", "One", "--allow-dup", "--json"]),
+      ).task;
+      const two = dataOf(
+        run(["issue", "create", "--project", "demo", "--title", "Two", "--allow-dup", "--json"]),
+      ).task;
+      for (const child of [one, two]) {
+        run([
+          "relation", "add", epic.identifier,
+          "--type", "parent", "--target", child.identifier, "--json",
+        ]);
+      }
+      run(["issue", "move", two.identifier, "canceled", "--json"]);
+
+      const data = dataOf(run(["report", "template", epic.identifier, "--commit", "dcd7d15", "--json"]));
+      assert.equal(data.acceptance_source, "children (rollup)");
+      assert.deepEqual(
+        data.report.acceptance.map((item) => [item.ref, item.status]),
+        [
+          [one.identifier, "not_met"],
+          [two.identifier, "not_applicable"],
+        ],
+        "an untouched template never claims met — even for a canceled child",
+      );
+      assert.match(data.report.acceptance[0].text, new RegExp(`^${one.identifier} One \\(todo\\)`));
+      assert.match(data.report.acceptance[1].text, /\(canceled\)$/);
+      assert.match(data.report.acceptance[1].note, /TODO/);
+    });
+  });
+
   it("prints something a human can edit, and what it prints delivers", async () => {
     await boardWithIssue(
       async ({ run }) => {

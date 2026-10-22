@@ -442,11 +442,23 @@ function parseReportBody(block, options = {}) {
   const conclusion = [];
   let leftovers = "";
   let mode = "conclusion";
+  let isRollup = null;
+  let origin = null;
 
   for (const entry of block.lines) {
     const text = typeof entry === "string" ? entry : entry.text;
     const lineNo = typeof entry === "string" ? 0 : entry.line;
     const trimmed = text.trim();
+    // 0033 — the block's own markers, before any prose. Recognised only in the
+    // conclusion mode so an acceptance item can never be mistaken for one.
+    if (mode === "conclusion" && trimmed === "rollup: yes") {
+      isRollup = true;
+      continue;
+    }
+    if (mode === "conclusion" && trimmed === "origin: import") {
+      origin = "import";
+      continue;
+    }
     if (SUB_BLOCK.test(trimmed)) {
       mode = SUB_BLOCK.exec(trimmed)[1];
       continue;
@@ -501,17 +513,27 @@ function parseReportBody(block, options = {}) {
     leftovers: leftovers.trim() === "" ? null : leftovers.trim(),
     // No structured fields at all → a historical free-form narrative (fix ②).
     narrative: acceptance.length === 0 && evidence.length === 0,
+    // Only when the block carried the marker, so an old card round-trips to the
+    // same object it parsed from.
+    ...(isRollup === null ? {} : { isRollup }),
+    ...(origin === null ? {} : { origin }),
     notices: blockNotices,
   };
 }
 
 function splitNote(status, rest) {
   const at = rest.indexOf(" — ");
-  const text = at === -1 ? rest : rest.slice(0, at);
+  const head = at === -1 ? rest : rest.slice(0, at);
   const note = at === -1 ? null : rest.slice(at + 3);
+  // 0033 — ` · ref: <child>` is a rollup item's join key, not prose. It sits
+  // between the text and the note, exactly where the renderer puts it.
+  const refAt = head.lastIndexOf(" · ref: ");
+  const ref = refAt === -1 ? null : head.slice(refAt + " · ref: ".length).trim();
+  const text = refAt === -1 ? head : head.slice(0, refAt);
   return {
     status,
     text: text.trim(),
+    ...(ref === null || ref === "" ? {} : { ref }),
     ...(note === null ? {} : { note: note.trim() }),
   };
 }
@@ -550,6 +572,11 @@ export function renderReportBlock(reports) {
   for (const report of reports) {
     chunks.push(`### R${report.round} · ${report.ts} · ${report.authorId}`);
     chunks.push("");
+    // 0033 — the two facts a reader cannot infer from the content. `origin` is
+    // written only for an imported narrative (the row the delivery gate ignores).
+    if (report.isRollup === true) chunks.push("rollup: yes");
+    if (report.origin === "import") chunks.push("origin: import");
+    if (report.isRollup === true || report.origin === "import") chunks.push("");
     if (report.conclusion.trim() !== "") {
       chunks.push(report.conclusion.trim());
       chunks.push("");
@@ -558,7 +585,8 @@ export function renderReportBlock(reports) {
       chunks.push("acceptance:");
       for (const item of report.acceptance) {
         const status = ACCEPTANCE_STATUSES.includes(item.status) ? item.status : "not_met";
-        chunks.push(`- [${status}] ${item.text}${item.note ? ` — ${item.note}` : ""}`);
+        const ref = typeof item.ref === "string" && item.ref.trim() !== "" ? ` · ref: ${item.ref}` : "";
+        chunks.push(`- [${status}] ${item.text}${ref}${item.note ? ` — ${item.note}` : ""}`);
       }
       chunks.push("");
     }

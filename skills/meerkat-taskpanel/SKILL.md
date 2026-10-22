@@ -212,12 +212,19 @@ Facts that decide that order:
   writes the rollup report (one line per child, carrying the child's own delivery evidence)
   and moves the epic to `in_review`. A `canceled` child does not block the close and is
   listed as `not_applicable`; write its cancellation reason as a comment on that child.
+- **An epic's delivery *is* its rollup.** A report on an epic is marked `is_rollup` and must
+  name every live child by `ref` (done → `met`, canceled → `not_applicable` + note, at least
+  one `done`); `done` refuses a missing one (`ROLLUP_REQUIRED`) or a stale one
+  (`ROLLUP_STALE`). A waiver cannot deliver a container, and an empty epic has nothing to
+  roll up. A child attached after the rollup makes it stale — rework the epic to start a new
+  round.
 - **Each child needs its own `--target`.** The create guard keys on kind + assignee + source +
   target, so two children for one owner with nothing to tell them apart are the *same card*
   (the second create is read as a retry). Use `--allow-dup` when a target does not apply.
 - **`issue create --parent <epic>` links nothing** — only `relation add … --type parent` does.
-- **Nothing delivered stays open:** if every child was canceled or waived, close the container
-  by hand (`report template` → `issue deliver`).
+- **Nothing delivered stays open:** if every child was canceled or waived, there is no `done`
+  child to roll up — cancel the container instead. A container with delivered children but no
+  automatic close can be delivered by hand with `report template <epic>` → `issue deliver`.
 - **The container rests in `todo`** until its first child starts; it is never claimed.
 - **`issue reconcile` is the backstop, not a step you owe** — `--dry-run` reports the plan,
   the plain form applies it, and both are idempotent.

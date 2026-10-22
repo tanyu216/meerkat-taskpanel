@@ -27,8 +27,9 @@ surface is a snapshot update, not a documentation edit.
 The acceptance baseline (0032) is part of the same surface: `task.acceptance[]` and
 `task.acceptance_revision` on the wire, `acceptance` / `acceptance_drop` /
 `acceptance_revision` / `reason` on `PATCH /api/v1/tasks/:ref`, and the new refusal codes
-(`ACCEPTANCE_*`, `REPORT_NOT_APPLICABLE_NOTE`) in `errors`. Its snapshot changes exactly when
-`node scripts/verify/contract.mjs --update` says it does.
+(`ACCEPTANCE_*`, `REPORT_NOT_APPLICABLE_NOTE`) in `errors`. The epic rollup (0033) adds
+`report.is_rollup` and its refusal codes (`ROLLUP_REQUIRED`, `ROLLUP_INVALID`, `ROLLUP_STALE`).
+Both snapshots change exactly when `node scripts/verify/contract.mjs --update` says they do.
 
 Nothing is a second copy of a list. The routes are *enumerated* by registering
 them against a stub router (registration only records `{method, pattern, handler,

@@ -319,6 +319,8 @@ export function renderCard(task, context) {
         acceptance: report.acceptance,
         evidence: report.evidence,
         leftovers: report.leftovers,
+        isRollup: report.isRollup === true,
+        origin: report.origin,
       })),
     ),
   );

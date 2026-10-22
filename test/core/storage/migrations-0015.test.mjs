@@ -76,7 +76,7 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       const up = applyMigrations(board.db);
       // 0015 and everything after it: 0016 (`blocked_reason`) is the next file in
       // the set, and this board is below both.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033"]);
       assert.deepEqual(up.skipped.slice(-2), ["0013", "0014"]);
 
       // 1 — the enum: the new word is storable, the old ones still are (they are
@@ -212,12 +212,14 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
         "tr_rel_block_cycle",
         "tr_rel_parent_block_pair",
         "tr_reports_not_applicable_note",
+        "tr_reports_rollup_valid",
         "tr_rev_actors_del",
         "tr_rev_actors_ins",
         "tr_rev_actors_upd",
         "tr_tasks_acceptance_prune_audited",
         "tr_tasks_acceptance_revision",
         "tr_tasks_children_terminal",
+        "tr_tasks_epic_rollup_done",
         "tr_tasks_reopen_state",
         "tr_tasks_review_card_not_required",
         "tr_tasks_review_card_not_required_update",

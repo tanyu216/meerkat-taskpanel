@@ -93,7 +93,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       const up = applyMigrations(board.db);
       // 0018 is the last file in the set today; when a later migration lands this
       // list grows by one, as the 0013/0015 suites' equivalents did.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033"]);
       assert.deepEqual(up.skipped.slice(-2), ["0016", "0017"]);
 
       // 1 — the enumeration is gone from both tables, and nothing replaced it.
@@ -237,7 +237,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
         Object.keys(newTriggers)
           .filter((name) => !(name in oldTriggers))
           .sort(),
-        ["tr_dict_actors_delete", "tr_rel_block_chain", "tr_rel_parent_block_pair", "tr_reports_not_applicable_note", "tr_rev_actors_del", "tr_rev_actors_ins", "tr_rev_actors_upd", "tr_tasks_acceptance_prune_audited", "tr_tasks_acceptance_revision", "tr_tasks_children_terminal", "tr_tasks_reopen_state", "tr_tasks_review_card_not_required", "tr_tasks_review_card_not_required_update", "tr_tasks_review_marker_immutable", "tr_tasks_review_required_done"],
+        ["tr_dict_actors_delete", "tr_rel_block_chain", "tr_rel_parent_block_pair", "tr_reports_not_applicable_note", "tr_reports_rollup_valid", "tr_rev_actors_del", "tr_rev_actors_ins", "tr_rev_actors_upd", "tr_tasks_acceptance_prune_audited", "tr_tasks_acceptance_revision", "tr_tasks_children_terminal", "tr_tasks_epic_rollup_done", "tr_tasks_reopen_state", "tr_tasks_review_card_not_required", "tr_tasks_review_card_not_required_update", "tr_tasks_review_marker_immutable", "tr_tasks_review_required_done"],
         "0018 invents no trigger; 0019's actor triggers and 0021/0022's relation guards are the later additions",
       );
       assert.deepEqual(

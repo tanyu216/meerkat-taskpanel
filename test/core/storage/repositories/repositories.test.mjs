@@ -605,6 +605,30 @@ describe("repositories/reports", () => {
       assert.equal(countRows(db, "task_reports"), 1);
     });
   });
+
+  it("persists the rollup marker and exposes it to the gate (0033)", async () => {
+    await board(({ db, repos }) => {
+      ensureActor(db, "linus");
+      const epic = makeTask(repos, { title: "Container", kind: "epic" });
+      const rollup = repos.reports.insert({ ...prepared(epic.id, 1), isRollup: true });
+      assert.equal(rollup.isRollup, true, "the DTO reads the integer back as a boolean");
+      assert.equal(repos.reports.get(rollup.id).isRollup, true);
+      assert.deepEqual(repos.reports.listGateReports(epic.id), [
+        { round: 1, origin: "delivery", isRollup: true },
+      ]);
+
+      // A plain card's report is never a rollup, and the DB refuses a forged
+      // marker even when the repository is bypassed in spirit.
+      const task = makeTask(repos, { title: "Plain" });
+      const plain = repos.reports.insert(prepared(task.id, 1));
+      assert.equal(plain.isRollup, false);
+      assert.throws(
+        () => repos.reports.insert({ ...prepared(task.id, 2), isRollup: true }),
+        (err) => String(err.message).includes("ROLLUP_INVALID"),
+      );
+      assert.equal(countRows(db, "task_reports"), 2);
+    });
+  });
 });
 
 describe("repositories/dictionary", () => {

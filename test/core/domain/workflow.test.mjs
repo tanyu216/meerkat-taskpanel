@@ -447,6 +447,44 @@ describe("planReviewOutcomes", () => {
     assert.deepEqual(result.alerts[0].missing, ["b"]);
   });
 
+  it("does not approve an epic whose rollup is missing or stale", () => {
+    const epic = card({ kind: "epic", identifier: "E-1" });
+    const child = card({ identifier: "T-9", status: "done", parent_id: "id-E-1" });
+    const review = reviewCard({ meta: { review_of: "E-1", flow: "B", review_round: 1 } });
+
+    const missing = planReviewOutcomes({
+      tasks: [epic, child, review],
+      verdicts: { "T-2": approve },
+      config: CONFIG,
+    });
+    assert.deepEqual(missing.actions, []);
+    assert.equal(missing.alerts[0].type, "verdict_incomplete");
+    assert.equal(missing.alerts[0].reason, "rollup_unverified");
+
+    const stale = planReviewOutcomes({
+      tasks: [epic, child, review],
+      verdicts: { "T-2": approve },
+      reportsByRef: { "E-1": { is_rollup: true, acceptance: [] } },
+      config: CONFIG,
+    });
+    assert.deepEqual(stale.actions, []);
+    assert.equal(stale.alerts[0].reason, "rollup_stale");
+    assert.deepEqual(stale.alerts[0].missingChildren, ["T-9"]);
+
+    const ok = planReviewOutcomes({
+      tasks: [epic, child, review],
+      verdicts: { "T-2": approve },
+      reportsByRef: {
+        "E-1": {
+          is_rollup: true,
+          acceptance: [{ text: "child done", status: "met", ref: "T-9" }],
+        },
+      },
+      config: CONFIG,
+    });
+    assert.deepEqual(ok.actions.map((action) => action.type), ["approve"]);
+  });
+
   it("rejects a task through in_review → in_progress → todo, carrying the findings", () => {
     const result = outcomes({ tasks: [card(), reviewCard()], verdicts: { "T-2": reject }, config: CONFIG });
     assert.deepEqual(types(result), ["reject_task"]);
@@ -1114,6 +1152,53 @@ describe("planAutoAccept — no review required", () => {
         },
       },
       config: { ...CONFIG, acceptancePolicy: "both" },
+    });
+    assert.deepEqual(complete.actions.map((action) => action.type), ["auto_accept"]);
+  });
+
+  it("requires a current-round rollup that names every child before accepting an epic", () => {
+    const epic = autoCard({ identifier: "E-1", kind: "epic" });
+    const children = [
+      card({ identifier: "T-2", status: "done", parent_id: "id-E-1" }),
+      card({ identifier: "T-3", status: "canceled", parent_id: "id-E-1" }),
+    ];
+    const tasks = [epic, ...children];
+    const config = { ...CONFIG, acceptancePolicy: "both" };
+
+    const missing = planAutoAccept({ tasks, config });
+    assert.deepEqual(missing.actions, []);
+    assert.equal(missing.alerts[0].reason, "rollup_unverified");
+
+    const unmarked = planAutoAccept({
+      tasks,
+      reportsByRef: { "E-1": { acceptance: [] } },
+      config,
+    });
+    assert.equal(unmarked.alerts[0].reason, "rollup_unverified", "content without the marker is not a rollup");
+
+    const stale = planAutoAccept({
+      tasks,
+      reportsByRef: {
+        "E-1": { is_rollup: true, acceptance: [{ text: "done", status: "met", ref: "T-2" }] },
+      },
+      config,
+    });
+    assert.deepEqual(stale.actions, []);
+    assert.equal(stale.alerts[0].reason, "rollup_stale");
+    assert.deepEqual(stale.alerts[0].missingChildren, ["T-3"]);
+
+    const complete = planAutoAccept({
+      tasks,
+      reportsByRef: {
+        "E-1": {
+          is_rollup: true,
+          acceptance: [
+            { text: "done", status: "met", ref: "T-2" },
+            { text: "dropped", status: "not_applicable", note: "scope withdrawn", ref: "T-3" },
+          ],
+        },
+      },
+      config,
     });
     assert.deepEqual(complete.actions.map((action) => action.type), ["auto_accept"]);
   });

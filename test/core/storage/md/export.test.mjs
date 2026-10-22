@@ -10,7 +10,12 @@ import { after, describe, it } from "node:test";
 import { createCommands, createContext } from "../../../../src/core/commands/index.mjs";
 import { exportMd, renderCard } from "../../../../src/core/storage/md/export.mjs";
 import { createRepositories } from "../../../../src/core/storage/repositories/index.mjs";
-import { TS, cleanupTempDirs, createTempBoard, makeTempDir } from "../../../helpers/sqlite-fixture.mjs";
+import {
+  TS,
+  cleanupTempDirs,
+  createTempBoard,
+  makeTempDir,
+} from "../../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
 
@@ -426,5 +431,59 @@ describe("md/export — 0032 snapshot and workflow facts", () => {
       }
       assert.match(plain, /^acceptance_revision: "1"$/m);
     });
+  });
+});
+
+describe("md/export — 0033 rollups", () => {
+  it("marks a rollup report and keeps each child's ref, and marks an imported row", async () => {
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    const agent = { kind: "agent", id: "linus" };
+    try {
+      repos.projects.create({ id: "proj", name: "P", now: TS });
+      const ctx = createContext({ db: board.db, repos, clock: () => TS });
+      const commands = createCommands(ctx);
+      const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: agent });
+      const child = commands.createTask({ projectId: "proj", title: "Child", allowDup: true, actor: agent });
+      commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: agent });
+
+      commands.claim({ id: child.id, actor: agent });
+      commands.deliver({
+        taskId: child.id,
+        report: {
+          conclusion: "Child delivered.",
+          acceptance: [{ text: "child works", status: "met" }],
+          evidence: [{ kind: "commit", sha: "dcd7d15" }],
+          author: agent,
+        },
+        actor: agent,
+      });
+      commands.moveStatus({ id: child.id, to: "done", actor: agent });
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_review", "the board rolled up");
+
+      // An imported narrative on the same epic is history, and says so.
+      const authorId = board.db
+        .prepare("SELECT id FROM actors WHERE normalized_name = ?")
+        .get("linus").id;
+      board.db
+        .prepare(
+          `INSERT INTO task_reports(task_id, round, conclusion, acceptance_json, evidence_json,
+                                    author_kind, author_id, created_at, origin, is_rollup)
+           VALUES (?, 2, ?, '[]', '[]', 'agent', ?, ?, 'import', 0)`,
+        )
+        .run(epic.id, "An imported narrative.", authorId, TS);
+
+      const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
+      assert.match(card, /^rollup: yes$/m);
+      assert.match(card, new RegExp(`^- \\[met\\] ${child.identifier} Child \\(done\\) · ref: ${child.identifier}$`, "m"));
+      assert.match(card, /^origin: import$/m);
+      assert.match(card, /An imported narrative\./);
+
+      // A plain card's report never grows the marker.
+      const plain = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0002"), { repos });
+      assert.doesNotMatch(plain, /^rollup: yes$/m);
+    } finally {
+      board.close();
+    }
   });
 });

@@ -24,7 +24,8 @@ import { acceptanceScopeOf, assertAcceptanceAuthority, isTerminalStatus } from "
 import { reviewRequiredOf } from "../domain/review-policy.mjs";
 import { parseReviewVerdict } from "../domain/workflow.mjs";
 import { coverageOf } from "../domain/acceptance.mjs";
-import { STATUS } from "../domain/enums.mjs";
+import { STATUS, TASK_KIND } from "../domain/enums.mjs";
+import { assertEpicRollupReady, assertRollupCoverage } from "./rollup.mjs";
 
 /**
  * The scope a card's acceptance falls in: a card with a parent is a child; a
@@ -77,6 +78,18 @@ export function assertAcceptance(ctx, task, actor) {
  */
 export function assertAcceptanceCoverage(ctx, task, options = {}) {
   if (task.reviewOfId !== null && task.reviewOfId !== undefined) return true;
+  // 0033 — an epic's acceptance facts are its children's, not its own
+  // `acceptance_json` (which stays informational). The container owes a
+  // current-round rollup that covers every child.
+  if (task.kind === TASK_KIND.EPIC) {
+    // A `deliver` call passes the report it is about to insert; any other caller
+    // reads the current round from the repository.
+    if (options.report !== undefined && options.report !== null) {
+      assertRollupCoverage(ctx, task, options.report.acceptance);
+      return true;
+    }
+    return assertEpicRollupReady(ctx, task);
+  }
   // An empty baseline is vacuously covered — the migration grandfather and the
   // "the creator wrote no criteria" case. It needs no report: the guarantee is
   // that a non-empty baseline cannot be shortened, not that every card has one.

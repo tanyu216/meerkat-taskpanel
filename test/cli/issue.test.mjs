@@ -898,13 +898,24 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
       );
 
       // The manual path still works — the container is a human's to close here.
+      // 0033: the report on an epic is its rollup, so it must name the child.
       const delivered = dataOf(
         run(["issue", "deliver", card.task.identifier, "--report-file", "-", ...AS, "--json"], {
-          input: JSON.stringify(REPORT),
+          input: JSON.stringify({
+            ...REPORT,
+            acceptance: [
+              {
+                text: `${child.task.identifier} delivered`,
+                status: "met",
+                ref: child.task.identifier,
+              },
+            ],
+          }),
         }),
       );
       assert.equal(delivered.task.status, "in_review");
       assert.equal(delivered.report.round, 1);
+      assert.equal(delivered.report.is_rollup, true, "a report on an epic is its rollup");
     });
   });
 

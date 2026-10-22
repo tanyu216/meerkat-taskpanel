@@ -292,6 +292,21 @@ describe("domain/report — bounds and truncation", () => {
     assert.match(report.evidence.note, new RegExp(String(REPORT_MAX_BYTES)));
     assert.match(report.evidence.items[0].path, /…$/, "long strings are shortened");
     assert.equal(report.acceptance[0].note, undefined, "prose is dropped before evidence");
+
+    // 0032's invariant outranks the size saving: a not_applicable note must
+    // survive truncation, or the report could never be written.
+    const notApplicable = normalizeReportCreate(
+      {
+        ...good(),
+        acceptance: [
+          { text: "criterion", status: "not_applicable", note: "n".repeat(40_000) },
+        ],
+        evidence: [{ kind: "path", path: "p".repeat(40_000) }],
+      },
+      CONTEXT,
+    );
+    assert.equal(typeof notApplicable.acceptance[0].note, "string");
+    assert.match(notApplicable.acceptance[0].note, /…$/, "shortened, not dropped");
     const size =
       new TextEncoder().encode(report.acceptanceJson).length +
       new TextEncoder().encode(report.evidenceJson).length;

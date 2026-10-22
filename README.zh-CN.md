@@ -44,7 +44,8 @@ Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题
    `done` 还要把当轮报告与卡片**冻结的验收基线**逐项对照：每一项都必须 `met`，或明确
    `not_applicable` 并附说明；基线只能追加、不能悄悄缩短，审核 `APPROVE` 同样要被逐项核验。
 3. **依赖与 epic 是一等公民。** `depends_on` 链接构成 DAG：无依赖可并行、有依赖则等待；
-   父子链接把子树进展汇总（rollup）到所属 epic。
+   父子链接把子树进展汇总（rollup）到所属 epic。epic 就是凭这份 rollup 被验收的：一份
+   逐子卡列明的报告，缺失或过期都会被拒绝。
 4. **可续接的 Agent 会话。** 每个会话都有由 `task + owner + segment` 推导出的确定性 id；
    重连即复用同一会话，不必为重建上下文白烧 token。
 5. **append-only 审计轨迹。** 评论、报告与活动只增不改、不可删除。看板不只是工作的视图，

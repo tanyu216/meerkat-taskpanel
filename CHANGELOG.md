@@ -9,6 +9,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **An epic's delivery is its rollup, and `done` checks it (migration `0033`).** Delivery
+  reports gain `is_rollup` (only a `delivery` report on an `epic` may carry it; the DB refuses
+  anything else with `ROLLUP_INVALID`). A report written on an epic is always a rollup and
+  must name every live child by `ref` (`done` → `met`, `canceled` → `not_applicable` with a
+  note, at least one `done`); a missing current-round rollup is `ROLLUP_REQUIRED`, one that no
+  longer matches the children is `ROLLUP_STALE`. A `--no-report` waiver can no longer deliver
+  a container, an empty epic has nothing to roll up, and `in_review → in_progress` (a new
+  round) is the repair for a stale rollup. `report template <epic>` now reads the children and
+  emits one `ref` item each; `issue reconcile` reports `rollup_stale` / `rollup_missing`
+  read-only; the auto-accept and review-approve planners refuse a missing or stale rollup
+  before the write gate would. The report wire gains `is_rollup`, and the markdown export
+  marks rollup blocks (`rollup: yes`) and each item's `ref`. The epic `done` trigger only
+  answers the legal `in_review → done` edge, so an illegal move still reports
+  `INVALID_TRANSITION`.
 - **The acceptance baseline is frozen, and `done` must cover it (migration `0032`).** A card
   now carries `acceptance_json` + `acceptance_revision`, seeded once at creation (or first
   claim) from `meta.acceptance` / the imported checkbox texts and never read from writable

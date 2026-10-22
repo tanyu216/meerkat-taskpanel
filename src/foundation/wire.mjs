@@ -421,6 +421,9 @@ export function reportToWire(report, options = {}) {
     // As with a comment: the report's own `author_kind`.
     author: actorRef(report.authorId, report.authorKind, lookup),
     created_at: report.createdAt,
+    // 0033 — an epic's rollup. `origin` stays internal (only `import` vs
+    // `delivery` matters, and the wire has never exposed it).
+    is_rollup: report.isRollup === true,
   };
 }
 

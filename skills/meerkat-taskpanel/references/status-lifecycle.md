@@ -235,10 +235,24 @@ is not `done` — literally `status !== "done"`, so a `canceled` predecessor wit
   `todo → in_progress` (actor kind `taskd`, no claim), with an `epic_auto_start` activity and
   a `kind=note` comment naming the child. A `backlog` epic is not auto-started.
 - **The board closes it to `in_review`, never `done`.** When every child is terminal, at least
-  one is `done`, and there is evidence to roll up, it writes the rollup report and moves the
-  epic. Auto-close works from `todo`, `in_progress` and `blocked`; acceptance stays separate.
-- **Nothing delivered, nothing to close.** Close by hand: `report template`, then
-  `issue deliver`.
+  one is `done`, and there is evidence to roll up, it writes the **rollup report**
+  (`is_rollup = 1`) and moves the epic. Auto-close works from `todo`, `in_progress` and
+  `blocked`; acceptance stays separate.
+- **An epic's delivery is a rollup, always.** A report written on an epic is marked as its
+  rollup; a `--no-report` waiver cannot deliver a container. The rollup must name **every
+  live child** by `ref`: a `done` child is `met`, a `canceled` child is `not_applicable` with
+  the reason it was acceptable, and at least one child must be `done`. A mismatch is
+  `ROLLUP_STALE`; a missing current-round rollup is `ROLLUP_REQUIRED`.
+- **An empty epic cannot be delivered.** No children means no rollup; cancel it or give it
+  work.
+- **Nothing delivered, nothing to close.** Close by hand with a rollup: `report template
+  <epic>` lists the children, then `issue deliver <epic> --report-file -`.
+- **The epic's own `acceptance` snapshot is informational.** `done` on an epic checks the
+  current-round rollup, not the container's `acceptance_json`.
+- **A stale rollup blocks acceptance, not the board.** `issue reconcile` reports an
+  `in_review` epic whose rollup no longer matches its children (`rollup_stale`) without
+  moving it. Repair it by reworking the epic (`in_review → in_progress`, which starts a new
+  round); the sweep then writes a fresh rollup.
 - **`todo → in_review` is the epic-only repair edge** for a child attached after the container
   finished; it still passes the delivery gate.
 - **No parent closes over an open child.** `CHILDREN_OPEN` guards both `in_review` and `done`.
