@@ -213,11 +213,13 @@ idempotent; the ordinary path does not need it.
 `done` is the board's acceptance act; who may perform it depends on the policy and the card's
 scope.
 
+<!-- acceptance-matrix:begin -->
 | Scope | `human-only` | `both` (default) | `agent-only` |
 |---|---|---|---|
 | `top_level` | human only | human or `taskd` | any non-human |
 | `review` card | human or `taskd` | human or `taskd` | any non-human |
 | `child` (has a parent) | any non-human | any non-human | any non-human |
+<!-- acceptance-matrix:end -->
 
 Scope precedence is **`hasParent` > review marker > `top_level`**.
 

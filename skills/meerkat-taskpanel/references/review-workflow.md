@@ -118,20 +118,21 @@ reviewer` (the loop's `--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / host config)
 review card's assignee records the one actually used.
 
 `done` is the board's acceptance act. The board's **policy** and the card's **scope** decide
-who may perform it; the full matrix is in
-[`status-lifecycle.md §7`](status-lifecycle.md#7-acceptance-policy--scope). In agent terms:
+who may perform it:
 
-- **Top-level original, `human-only`** — a human accepts. The loop's `APPROVE` becomes a
-  **hold**: it records the verdict and closes the review card, but leaves the original in
-  `in_review`. Do not close it yourself.
-- **Top-level original, `both` (default)** — a human or the board (`taskd`, i.e. the loop)
-  accepts. A worker agent cannot.
-- **Top-level original, `agent-only`** — any non-human writer accepts.
-- **Review card** — a human or `taskd` closes it under `both` and `human-only`; under
-  `agent-only` only a non-human writer can. (A human cannot close a review card on an
-  `agent-only` board.)
-- **Child card (has a parent)** — only a non-human writer accepts, under every policy. Scope
-  precedence is **`hasParent` > review marker > `top_level`**.
+<!-- acceptance-matrix:begin -->
+| Scope | `human-only` | `both` (default) | `agent-only` |
+|---|---|---|---|
+| `top_level` | human only | human or `taskd` | any non-human |
+| `review` card | human or `taskd` | human or `taskd` | any non-human |
+| `child` (has a parent) | any non-human | any non-human | any non-human |
+<!-- acceptance-matrix:end -->
+
+Scope precedence is **`hasParent` > review marker > `top_level`**. In agent terms: a worker
+agent cannot close a top-level original under the default `both`; under `human-only` the
+loop's `APPROVE` becomes a **hold** — it records the verdict and closes the review card, but
+leaves the original in `in_review`, so do not close it yourself. Under `agent-only` a human
+cannot close a review card; under `both` / `human-only` a human or `taskd` can.
 
 The policy is enforced by the board. There is no `taskctl` command that reads it: attempt the
 move and handle `ACCEPTANCE_FORBIDDEN` — its `details` carry `policy` and `scope`. The loop's
