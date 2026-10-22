@@ -60,7 +60,7 @@ out of a terminal card):
 backlog     → todo, canceled
 todo        → backlog, in_progress, blocked, canceled        (an epic also → in_review)
 in_progress → in_review, blocked, todo, canceled, awaiting
-awaiting    → in_progress, canceled
+awaiting    → in_progress, todo, canceled
 in_review   → done, in_progress, blocked
 blocked     → todo, in_progress, in_review, canceled
 done        → todo
@@ -77,10 +77,15 @@ A legal edge can still be refused. Seven rules decide it:
 2. **`done` is acceptance, and only from `in_review`.** Under the default policy an agent is
    refused (`ACCEPTANCE_FORBIDDEN`) on a **top-level** card; a **child** card is the opposite —
    only a non-human writer closes it. A human closing a top-level card needs the current
-   round's review cards resolved (`REVIEW_PENDING`).
-3. **`awaiting` has one entrance and two exits.** Only `in_progress → awaiting`, naming
-   `E1`–`E5`; only `awaiting → in_progress` (a human replied) or `awaiting → canceled`. It
-   cannot reach `in_review` or `done`.
+   round's review cards resolved (`REVIEW_PENDING`). And a card with a non-empty **acceptance
+   baseline** is refused (`ACCEPTANCE_INCOMPLETE` / `ACCEPTANCE_UNVERIFIED`) until the current
+   round's report covers every item — details in §"Read the acceptance list before you work".
+3. **`awaiting` has one entrance and three exits.** Only `in_progress → awaiting`, naming
+   `E1`–`E5`; an **agent** must also ask a `question` in the same move (`--question`, or an
+   earlier unanswered one on the card). The exits are `awaiting → in_progress` (a live worker
+   is resumed), `awaiting → todo` (the worker stopped; an answer re-queues the card for a
+   fresh one — the round does not move) and `awaiting → canceled`. It cannot reach
+   `in_review` or `done`.
 4. **`blocked` is not `awaiting`.** `--blocked-reason` is optional and cleared on exit.
    `in_review → blocked` is a rework and starts a new round; `blocked → in_review` is a legal
    delivery edge.
@@ -131,21 +136,28 @@ round — and only the holder may send it. A claim you stop pulsing reads as aba
 
 ### Read the acceptance list before you work
 
-`issue get <ref>` prints a fixed field table — identifier, title, status, priority, kind,
-assignee, reporter, delivery_round, review_required, version, plus any waiver rows and an
-attachment table. It does **not** print the description, labels, meta or acceptance list; read
-the JSON:
+`issue get <ref>` prints the whole card: identifier, title, status, priority, kind, labels,
+assignee, reporter, claimed_by, heartbeat_at, delivery_round, review_required, review_of,
+review_round, parent, awaiting_reason, acceptance_revision, the numbered acceptance list, meta
+(JSON), the description, version — plus any waiver rows and an attachment table. `--json`
+carries the same fields.
+
+The list you work to is the **frozen snapshot** (`acceptance` on the wire, `acceptance_json`
+in the database). `meta.acceptance` is only the seed it was copied from — the gate never reads
+it:
 
 ```bash
-taskctl issue get <ref> --json     # description, labels, meta.acceptance, meta.acceptance_legacy
+taskctl issue get <ref> --json     # acceptance[] (the snapshot), meta, description, labels
 ```
 
-- **`meta.acceptance` is non-empty** — that is the list you work to. Do not rewrite it. A
-  reviewer's rejection may add an item: re-send the whole existing list plus the new one.
-- **`meta.acceptance_legacy` is non-empty** (an imported card) — use it as-is; the checkboxes
-  are the author's intent, not evidence. If more items are needed, ask:
-  `issue move <ref> awaiting --awaiting-reason E2`.
-- **Both are empty** — before writing code, derive **1–6 concrete, externally checkable**
+- **The snapshot is non-empty** — that is the list you work to. It is frozen: **append** with
+  `issue update <ref> --acceptance "…"`, never replace or remove. Removal is a human-only,
+  audited prune (`--drop-acceptance --reason`, ≥ 8 characters). Once the card is `in_review`
+  the baseline is locked; a wrong baseline means rework, which starts a new round.
+- **The snapshot is empty but `meta.acceptance` / `meta.acceptance_legacy` is not** — a
+  grandfathered card. Its list renders as a seed with no frozen baseline; append it as above
+  and the next round freezes it.
+- **All three are empty** — before writing code, derive **1–6 concrete, externally checkable**
   items (usually 2–6; never pad) from the title, description, labels and comments, then
   persist them once:
 
@@ -161,12 +173,17 @@ card is too thin to yield checkable items, do not invent them:
 `issue move <ref> awaiting --awaiting-reason E2`. Say in the delivery report that the list was
 derived when it was.
 
+The report must **cover the snapshot**: every item appears by text; `met` or `not_applicable`
+(with a non-empty note) pass, `partial` / `not_met` block `done`. A report item you add beyond
+the baseline blocks too if it is `partial` / `not_met`. An imported checkbox list freezes as
+plain items — a tick on the card is the author's intent, not this delivery's evidence.
+
 ## One card, end to end
 
 ```bash
 taskctl issue candidates --assignee <me>            # read: what may I claim?
 taskctl issue move <ref> in_progress                # claim exactly one
-taskctl issue get <ref> --json                      # description + acceptance list
+taskctl issue get <ref> --json                      # description + acceptance snapshot
 taskctl issue heartbeat <ref>                       # keep the claim fresh
 taskctl report template <ref>                       # fill the TODO lines
 taskctl issue deliver <ref> --report-file -         # report + in_review, one transaction
@@ -198,12 +215,19 @@ Facts that decide that order:
   writes the rollup report (one line per child, carrying the child's own delivery evidence)
   and moves the epic to `in_review`. A `canceled` child does not block the close and is
   listed as `not_applicable`; write its cancellation reason as a comment on that child.
+- **An epic's delivery *is* its rollup.** A report on an epic is marked `is_rollup` and must
+  name every live child by `ref` (done → `met`, canceled → `not_applicable` + note, at least
+  one `done`); `done` refuses a missing one (`ROLLUP_REQUIRED`) or a stale one
+  (`ROLLUP_STALE`). A waiver cannot deliver a container, and an empty epic has nothing to
+  roll up. A child attached after the rollup makes it stale — rework the epic to start a new
+  round.
 - **Each child needs its own `--target`.** The create guard keys on kind + assignee + source +
   target, so two children for one owner with nothing to tell them apart are the *same card*
   (the second create is read as a retry). Use `--allow-dup` when a target does not apply.
 - **`issue create --parent <epic>` links nothing** — only `relation add … --type parent` does.
-- **Nothing delivered stays open:** if every child was canceled or waived, close the container
-  by hand (`report template` → `issue deliver`).
+- **Nothing delivered stays open:** if every child was canceled or waived, there is no `done`
+  child to roll up — cancel the container instead. A container with delivered children but no
+  automatic close can be delivered by hand with `report template <epic>` → `issue deliver`.
 - **The container rests in `todo`** until its first child starts; it is never claimed.
 - **`issue reconcile` is the backstop, not a step you owe** — `--dry-run` reports the plan,
   the plain form applies it, and both are idempotent.

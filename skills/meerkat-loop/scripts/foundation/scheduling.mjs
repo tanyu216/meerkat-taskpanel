@@ -66,6 +66,17 @@ export const LOOP_SKILL_COMMAND = "/meerkat-loop";
 /** A claim older than this is "stale" for patrol (same-holder recovery window). */
 export const PATROL_STALE_MS = CLAIM_STALE_SAME_MS;
 
+/**
+ * 0034 — how long a live ledger row survives after its card has left the work
+ * state. The reconcile pass reaps it at this age.
+ *
+ * It is the upper bound of the **time contract**: a turn must finish before the
+ * bookkeeping that describes it is reclaimed (`sessionTurnTimeoutMs <
+ * LEDGER_STALE_MS`), or a long turn outlives its own slot. One fact source: the
+ * ledger imports this rather than spelling `2h` a second time.
+ */
+export const LEDGER_STALE_MS = 2 * 60 * 60 * 1000;
+
 
 /**
  * Quote one argv element for a shell command line. The continue prompt embeds
@@ -672,7 +683,7 @@ export function buildHandoff(input) {
     "",
     "Step 0 — container check. Read the brief first, then the live card:",
     `  ${brief}    # description, acceptance, comments, sessions, attachments, report`,
-    `  taskctl issue get ${ref} --json <flags>    # live status and the version writes need`,
+    `  taskctl issue get ${ref} --json <flags>    # live status, version, acceptance snapshot, meta`,
     "  Several deliverables? Promote and split FIRST:",
     `    taskctl issue update ${ref} --kind epic <flags>`,
     `    taskctl issue move ${ref} todo <flags>      # an epic is never claimed; release this wake claim`,
@@ -684,14 +695,18 @@ export function buildHandoff(input) {
     "    meta.epic_triage=off: do not promote; record a split plan in a change comment.",
     "",
     `Step 1 — acceptance list, on the card you work (<card> = ${ref}, or the child after a split):`,
-    "  meta.acceptance (array) or meta.acceptance_legacy: work to it; NEVER rewrite it.",
-    "  Both empty (not an epic): derive 1-6 concrete, externally checkable, non-empty items",
-    "  from the card, then persist once:",
+    "  `acceptance` in issue get --json is the FROZEN baseline; meta.acceptance is only",
+    "  the seed it was copied from. Work to the snapshot; append, never replace or remove.",
+    "  Snapshot and meta both empty (not an epic): derive 1-6 concrete, externally",
+    "  checkable, non-empty items from the card, then persist once:",
     `    taskctl issue update <card> --acceptance "..." --acceptance "..." --meta acceptance_derived=yes <flags>`,
     `    taskctl comment add <card> --kind change --body "acceptance list derived at claim: 1) ..." <flags>`,
     `  Comments: taskctl comment list <card> --limit 200 --json <flags>`,
-    "  Too thin to yield checkable items? ask and stop:",
-    `    taskctl issue move <card> awaiting --awaiting-reason E2 <flags>`,
+    "  Too thin to yield checkable items, or blocked on a decision? ASK AND STOP —",
+    "  the human's answer re-queues the card for a fresh worker:",
+    `    taskctl issue move <card> awaiting --awaiting-reason E2 --question "what you need to know" <flags>`,
+    "  Then stop. Do not wait in this conversation: read the newest human decision/note",
+    "  when the card is claimed again and continue from it.",
     "  Review asks for more: append, never replace. legacy: ask via E2, do not migrate.",
     "",
     `Keep the claim alive (<=10 minutes): taskctl issue heartbeat <card> <flags>`,
@@ -770,7 +785,9 @@ export function buildReviewHandoff(input) {
     `On resume, re-read ${brief} before acting; never edit it.`,
     "Rules: heartbeat only this review card, never the card under review. Do not move",
     "the card under review and do not move this review card: the loop applies the verdict and",
-    "closes this card. Carry the attribution flags above on every write.",
+    "closes this card. You cannot enter awaiting — a review must end in a verdict; if the",
+    "evidence is insufficient, REJECT and write the findings. Carry the attribution flags",
+    "above on every write.",
   ].join("\n");
 }
 
@@ -853,7 +870,28 @@ export function buildContinuePrompt(input = {}) {
     );
   }
 
+  // 0034 — the question channel. A worker that cannot proceed stops with a
+  // `question` comment; the human's `decision` / `confirm` / `change` answer
+  // re-queues the card automatically, while a `note` answer needs an explicit
+  // move. Where an unanswerable question goes depends on who opened this loop.
+  const openedBy = input.openedBy === "human" ? "human" : "supervisor";
   lines.push(
+    "",
+    "Waiting questions (before poll):",
+    "  taskctl issue list --status awaiting --json",
+    "  taskctl comment list <ref> --kind question --json",
+    "  If you can answer:",
+    '    taskctl comment add <ref> --kind note --body "..."',
+    "    taskctl issue move <ref> todo",
+    "  A note does NOT auto-resume; the move does.",
+    "  Never write decision/confirm/change — those are the human's.",
+    "  Any human comment after the question is an answer: if one exists, move the card",
+    "  to todo; do not re-answer it.",
+    "  If the question needs a human:",
+    openedBy === "human"
+      ? "    ask the human in this conversation, then record the answer as a note and move to todo."
+      : "    leave the card awaiting — the human answers with a decision comment and the",
+    ...(openedBy === "human" ? [] : ["    board re-queues it automatically."]),
     "",
     "Rules:",
     "- Never move a card to done. in_review → done is the board's acceptance, applied by the loop as taskd.",

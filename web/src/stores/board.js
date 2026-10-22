@@ -27,7 +27,7 @@ import { isAgentKind, kindLabel, platformForActor, platformOfKind } from "../lib
 
 export { isAgentKind, kindLabel, platformForActor, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
-import { acceptanceWaitingTasks } from "../lib/waiting-queue.js";
+import { acceptanceWaitingTasks, payloadCommentOf } from "../lib/waiting-queue.js";
 import {
   detailRefetch,
   invalidatesWaitingPayload,
@@ -115,7 +115,9 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
   backlog: Object.freeze(["todo", "canceled"]),
   todo: Object.freeze(["backlog", "in_progress", "blocked", "canceled"]),
   in_progress: Object.freeze(["in_review", "blocked", "todo", "canceled", AWAITING]),
-  awaiting: Object.freeze(["in_progress", "canceled"]),
+  // 0034 — `todo` is the post-answer requeue (the asking worker had stopped);
+  // `in_progress` stays for a worker that is still live.
+  awaiting: Object.freeze(["in_progress", "todo", "canceled"]),
   in_review: Object.freeze(["done", "in_progress", "blocked"]),
   blocked: Object.freeze(["todo", "in_progress", "in_review", "canceled"]),
   done: Object.freeze([]),
@@ -495,9 +497,10 @@ export async function loadWaitingPayloads() {
         try {
           const data = await api.taskComments(task.identifier, { limit: 50 });
           const comments = data.comments ?? [];
-          // The payload is the *newest human* comment (design §2.2/§2.3): an agent
-          // comment written afterwards is commentary, not the question.
-          const payload = [...comments].reverse().find((comment) => comment.author_kind === "human") ?? null;
+          // 0034 — the payload is the newest **question**, falling back to the
+          // newest human comment for a card that predates the kind (the M1 rule).
+          // The selector is the domain's `payloadOf`, mirrored in lib/.
+          const payload = payloadCommentOf(comments);
           if ((waitingGen.get(task.id) ?? 0) === generation) {
             board.waitingPayload = { ...board.waitingPayload, [task.id]: payload };
           } else {

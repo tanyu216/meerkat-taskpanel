@@ -63,6 +63,20 @@ export function workflowTick(ctx, input = {}) {
     taskToWire(task, { lookup, parentId: parents.get(task.id) ?? null }),
   );
 
+  // 0032 — the current-round delivery report for every in_review non-review
+  // card. The planner needs its `acceptance` list to decide whether an
+  // auto-accept or an APPROVE is safe *before* the write gate refuses it.
+  const reportsByRef = {};
+  for (let i = 0; i < snapshot.length; i += 1) {
+    const card = tasks[i];
+    if (isReviewCard(card) || card.status !== "in_review") continue;
+    const ref = String(card.identifier ?? "");
+    if (ref === "") continue;
+    const report = ctx.repos.reports.latestForRound(snapshot[i].id, snapshot[i].deliveryRound);
+    if (report === null || report === undefined || report.origin !== "delivery") continue;
+    reportsByRef[ref] = reportToWire(report, { lookup });
+  }
+
   // A verdict is the review card's report for its OWN current delivery round
   // (`delivery_round`), not the round it audits (`review_round`): every report
   // is stamped with the card's own round, and a fresh review card's own round
@@ -97,6 +111,7 @@ export function workflowTick(ctx, input = {}) {
   const workflow = planWorkflowTick({
     tasks,
     verdicts,
+    reportsByRef,
     reconcileActions: reconcile.actions,
     config: {
       reviewer,

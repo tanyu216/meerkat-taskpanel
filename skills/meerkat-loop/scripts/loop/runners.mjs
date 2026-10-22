@@ -341,6 +341,7 @@ export async function runWorkflowTick(deps) {
     changes: [],
     executed: 0,
     failed: 0,
+    skipped: 0,
     summary: { actions: 0, alerts: 0 },
     ledger: baseLedger,
   };
@@ -381,6 +382,7 @@ export async function runWorkflowTick(deps) {
 
   let executed = 0;
   let failed = 0;
+  let skipped = 0;
 
   const step = async (fn, name, ...args) => {
     if (typeof fn !== "function") throw new Error(`${name} is not wired`);
@@ -542,8 +544,17 @@ export async function runWorkflowTick(deps) {
       }
       executed += 1;
     } catch (err) {
-      failed += 1;
       const ref = action.original_ref ?? action.review_ref;
+      // 0032 — a plan that outlived the report it was built on is a *skipped*
+      // action, not an implementation failure: the next tick re-plans it. Keep
+      // it out of `failed` (and out of the notification set) so a broken
+      // delivery does not page every period.
+      if (EXPECTED_ACCEPTANCE_SKIP_CODES.has(err.code)) {
+        skipped += 1;
+        log(`workflow: ${action.type} skipped for ${ref} (${err.code}: ${err.message})`);
+        continue;
+      }
+      failed += 1;
       log(
         `workflow: ${action.type} failed for ${ref} ` +
           `(${err.message}) — leaving the review card for the next pass`,
@@ -571,10 +582,24 @@ export async function runWorkflowTick(deps) {
     changes,
     executed,
     failed,
-    summary: { ...(plan.summary ?? {}), executed, failed },
+    skipped,
+    summary: { ...(plan.summary ?? {}), executed, failed, skipped },
     ledger: workingLedger,
   };
 }
+
+/**
+ * Codes a plan can hit when the board's state moved under it. They are
+ * re-planned on the next tick, so they are logged and counted as `skipped`, not
+ * as failed actions.
+ */
+const EXPECTED_ACCEPTANCE_SKIP_CODES = new Set([
+  "ACCEPTANCE_INCOMPLETE",
+  "ACCEPTANCE_UNVERIFIED",
+  "ROLLUP_REQUIRED",
+  "ROLLUP_STALE",
+  "REVIEW_PENDING",
+]);
 
 /**
  * Alerts worth a notification. The rest are log-only standing state
@@ -859,6 +884,7 @@ export async function runContinue(opts, deps = {}) {
     passesScript: join(here, "passes.mjs"),
     commonArgs: loopCommandArgs(opts),
     continueIntervalSeconds: opts.continueInterval,
+    openedBy: opts.openedBy,
     includePoll: false,
   });
   const invocation = planContinueInvocation({

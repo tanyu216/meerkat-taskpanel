@@ -69,6 +69,48 @@ workflow pass dispatches a review card, and the poll that follows in the same
 turn can enqueue its reviewer immediately. Polling first would delay that review
 by a whole cadence.
 
+## The time contract
+
+The clocks below are not independent knobs: each one is a bound on another, and the
+inequalities are asserted in `test/scheduling/time-contract.test.mjs`. `--session-turn-timeout`
+is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `1800`).
+
+| Clock | Default | Where |
+|---|---:|---|
+| host turn timeout | 30 min (`--session-turn-timeout`) | `scripts/loop/options.mjs`, `scripts/loop/session.mjs` |
+| worker heartbeat interval | ≤ 10 min | worker handoff (`src/foundation/scheduling.mjs`) |
+| `HEARTBEAT_FRESH_MS` | 10 min | `src/foundation/constants.mjs` |
+| `CLAIM_STALE_SAME_MS` | 30 min | `src/foundation/constants.mjs` |
+| `CLAIM_STALE_ANY_MS` | 6 h | `src/foundation/constants.mjs` |
+| patrol stale (scans `in_progress` only) | 30 min (= `CLAIM_STALE_SAME_MS`) | `src/foundation/scheduling.mjs` |
+| continue interval | 10 min | `scripts/loop/options.mjs` |
+| queue `recoverStaleCards` | `2 × turn` | `scripts/loop/session.mjs` |
+| ledger live-row reap | 2 h (`LEDGER_STALE_MS`) | `src/foundation/scheduling.mjs` |
+| pool heartbeat / stale | 15 s / 60 s | `scripts/loop/session.mjs` |
+| project idle / session max age | 30 min / 24 h | `scripts/loop/options.mjs` |
+
+The contract:
+
+- `HEARTBEAT_FRESH_MS < CLAIM_STALE_SAME_MS < CLAIM_STALE_ANY_MS` — a claim is fresh longer
+  than a worker is told to pulse, and a takeover is later still.
+- `2 × HEARTBEAT_FRESH_MS ≤ TURN_MIN` and `TURN_DEFAULT < LEDGER_STALE_MS` — a turn covers two
+  pulse windows and still ends before the ledger reclaims a live row.
+- `CONTINUE_INTERVAL < TURN_DEFAULT`; `PATROL_STALE_MS = CLAIM_STALE_SAME_MS`;
+  `POOL_STALE_MS > POOL_HEARTBEAT_MS`.
+
+**`awaiting` is exempt from three scans**, by design:
+
+- `planPatrol` scans `in_progress` only, so an awaiting card never produces a stale-heartbeat
+  alert — it holds a *dormant* claim;
+- `issue candidates --stale` returns `in_progress` recoveries only, so an awaiting card is
+  never offered as a stealable claim;
+- the ledger treats `awaiting` as "left the work state" for its finished-row check, so a
+  stopped worker's concurrency slot is reclaimed by the 2-hour reap at the latest.
+
+After a human answers, the card is `todo`; dispatch happens on the next continue/poll (the
+default 10-minute cadence, or sooner when the event subscriber fires). That delay is the
+continue interval, not a new clock.
+
 ## The resident session pool
 
 A subagent inherits the **launch cwd of the session that spawns it**; a main

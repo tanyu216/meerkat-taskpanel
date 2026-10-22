@@ -409,6 +409,43 @@ describe("md/sections — report", () => {
     ]);
   });
 
+  it("round-trips a rollup: marker, child refs, and the imported-origin line", () => {
+    const reports = [
+      {
+        round: 2,
+        ts: "2026-10-08T02:00:00.000Z",
+        authorId: "taskd",
+        isRollup: true,
+        origin: "import",
+        conclusion: "Rollup.",
+        acceptance: [
+          { text: "PROJ-0001 One (done)", status: "met", ref: "PROJ-0001" },
+          { text: "PROJ-0002 Two (canceled)", status: "not_applicable", note: "scope dropped", ref: "PROJ-0002" },
+        ],
+        evidence: { items: [{ kind: "path", path: "x" }], truncated: false },
+        leftovers: null,
+      },
+    ];
+    const rendered = renderReportBlock(reports);
+    assert.match(rendered, /^### R2 · .*\n\nrollup: yes\norigin: import\n\nRollup\./);
+    assert.match(rendered, /- \[met\] PROJ-0001 One \(done\) · ref: PROJ-0001/);
+    assert.match(rendered, /- \[not_applicable\] PROJ-0002 Two \(canceled\) · ref: PROJ-0002 — scope dropped/);
+
+    const [back] = parseReportBlock(rendered);
+    assert.equal(back.isRollup, true);
+    assert.equal(back.origin, "import");
+    assert.deepEqual(back.acceptance, reports[0].acceptance);
+  });
+
+  it("keeps the marker absent when the block carries none", () => {
+    const [plain] = parseReportBlock(
+      ["### R1 · t · a", "", "Done.", "", "acceptance:", "- [met] a · ref: not-a-marker"].join("\n"),
+    );
+    assert.equal("isRollup" in plain, false);
+    assert.equal("origin" in plain, false);
+    assert.equal(plain.acceptance[0].ref, "not-a-marker", "a ref is still read mid-line");
+  });
+
   it("tolerates a report block it cannot fully parse — and records notices", () => {
     const notices = [];
     const reports = parseReportBlock(

@@ -60,6 +60,47 @@ describe("domain/delivery-gate", () => {
     assert.equal(checkDeliveryGate({ task, reports: undefined, to: "in_review" }).ok, false);
     assert.equal(checkDeliveryGate({ task, reports: null, to: "in_progress" }).ok, true);
   });
+
+  it("requires an epic's current round to carry a rollup, never a waiver (0033)", () => {
+    const epic = { ...task, kind: "epic" };
+    const plain = checkDeliveryGate({ task: epic, reports: [{ round: 1, origin: "delivery" }], to: "in_review" });
+    assert.equal(plain.ok, false, "an unmarked report is not a container's evidence");
+    assert.equal(plain.reason, "ROLLUP_REQUIRED");
+    assert.equal(plain.hint.command, "taskctl report template PROJ-0007");
+
+    assert.deepEqual(
+      checkDeliveryGate({
+        task: epic,
+        reports: [{ round: 1, origin: "delivery", isRollup: true }],
+        to: "in_review",
+      }),
+      { ok: true },
+    );
+
+    const waived = checkDeliveryGate({
+      task: epic,
+      reports: [],
+      to: "in_review",
+      waiver: { round: 1, reason: "it is audited, but it is not a rollup" },
+    });
+    assert.equal(waived.ok, false, "a waiver cannot stand in for the children's evidence");
+    assert.throws(
+      () =>
+        assertDeliveryGate({
+          task: epic,
+          reports: [],
+          to: "in_review",
+          waiver: { round: 1, reason: "it is audited, but it is not a rollup" },
+        }),
+      (err) => err.code === "ROLLUP_REQUIRED",
+    );
+
+    // A plain card is unaffected by the marker.
+    assert.deepEqual(
+      checkDeliveryGate({ task, reports: [{ round: 1, origin: "delivery", isRollup: false }], to: "in_review" }),
+      { ok: true },
+    );
+  });
 });
 
 describe("domain/delivery-gate — the throw", () => {

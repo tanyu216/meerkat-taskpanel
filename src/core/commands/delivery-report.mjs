@@ -16,9 +16,14 @@
  * container's report with no working conversation behind it.
  *
  * @param {object} ctx
- * @param {{taskId: string, prepared: object, seg?: string|null, sessionId?: string|null}} input
+ * @param {{taskId: string, prepared: object, seg?: string|null, sessionId?: string|null, isRollup?: boolean}} input
  * @returns {object} the inserted report row
  */
-export function insertDeliveryReport(ctx, { taskId, prepared, seg = null, sessionId = null }) {
-  return ctx.repos.reports.insert({ ...prepared, taskId, origin: "delivery", seg, sessionId });
+export function insertDeliveryReport(
+  ctx,
+  { taskId, prepared, seg = null, sessionId = null, isRollup = false },
+) {
+  // 0033 — the marker is the writer's decision (the card's kind), never a field
+  // read off the payload; `validateReport` does not recognise `is_rollup`.
+  return ctx.repos.reports.insert({ ...prepared, taskId, origin: "delivery", seg, sessionId, isRollup });
 }

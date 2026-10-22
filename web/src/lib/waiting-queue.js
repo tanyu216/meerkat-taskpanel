@@ -113,6 +113,27 @@ export function acceptanceSinceOf(task) {
   return task?.status_changed_at ?? task?.updated_at ?? "";
 }
 
+/**
+ * The comment a waiting row is showing: the newest `question`, else the newest
+ * human comment (the M1 reading, for a card that predates the kind).
+ *
+ * Mirrors `src/core/domain/awaiting.mjs#payloadOf` — the web cannot import
+ * `src/`, so this is a copy held in step by `test/web/waiting.queue.test.mjs`.
+ *
+ * @param {object[]} comments wire comments (`kind`, `author_kind`, …)
+ * @returns {object|null}
+ */
+export function payloadCommentOf(comments) {
+  const list = Array.isArray(comments) ? comments : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i]?.kind === "question") return list[i];
+  }
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i]?.author_kind === "human") return list[i];
+  }
+  return null;
+}
+
 /** The awaiting categories the core writes, all of them questions to a human. */
 export const AWAITING_CATEGORIES = Object.freeze(["E1", "E2", "E3", "E4", "E5"]);
 

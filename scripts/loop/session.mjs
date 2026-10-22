@@ -436,6 +436,7 @@ export function createSessionPool(input = {}) {
       passesScript: join(here, "passes.mjs"),
       commonArgs: loopCommandArgs(opts),
       continueIntervalSeconds: opts.continueInterval,
+      openedBy: opts.openedBy,
     });
     let outcome;
     try {

@@ -186,28 +186,47 @@ export function reportCountsAsDelivery(report) {
  * rows are ignored, so `existingRounds` is the rounds a delivery actually covers
  * ("none" when nothing qualifies).
  *
- * @param {{task: {id: string, identifier?: string, deliveryRound: number}, reports: {round: number, origin?: string}[], to: string, waiver?: {round: number, reason: string}|null}} input
- * @returns {{ok: true, waived?: boolean}|{ok: false, reason: "REPORT_REQUIRED", round: number, existingRounds: number[], hint: object}}
+ * @param {{task: {id: string, identifier?: string, kind?: string, deliveryRound: number}, reports: {round: number, origin?: string, isRollup?: boolean}[], to: string, waiver?: {round: number, reason: string}|null}} input
+ * @returns {{ok: true, waived?: boolean}|{ok: false, reason: "REPORT_REQUIRED"|"ROLLUP_REQUIRED", round: number, existingRounds: number[], hint: object}}
  */
 export function checkDeliveryGate(input) {
   const { task, reports, to } = input;
 
   if (!requiresReport(to)) return { ok: true };
 
+  // 0033 — an epic's delivery evidence is its rollup. An unmarked report for the
+  // round is not the container's evidence, and a waiver cannot stand in: the
+  // container has nothing to deliver but its children's work.
+  const isEpic = task.kind === TASK_KIND.EPIC;
   const round = task.deliveryRound;
   const rounds = (Array.isArray(reports) ? reports : [])
     .filter(reportCountsAsDelivery)
+    .filter((report) => !isEpic || report.isRollup === true)
     .map((report) => report.round);
   if (rounds.includes(round)) return { ok: true };
-  if (waiverCovers(input.waiver, round)) return { ok: true, waived: true };
+  if (!isEpic && waiverCovers(input.waiver, round)) return { ok: true, waived: true };
 
   const existingRounds = [...new Set(rounds)].sort((a, b) => a - b);
+  const ref = task.identifier ?? task.id;
+  if (isEpic) {
+    return {
+      ok: false,
+      reason: "ROLLUP_REQUIRED",
+      round,
+      existingRounds,
+      hint: {
+        command: `taskctl report template ${ref}`,
+        note: "an epic template lists every child; fill it, then deliver it on the epic",
+        deliver: `taskctl issue deliver ${ref} --report-file -`,
+      },
+    };
+  }
   return {
     ok: false,
     reason: "REPORT_REQUIRED",
     round,
     existingRounds,
-    hint: deliverCommandHint(task.identifier ?? task.id),
+    hint: deliverCommandHint(ref),
   };
 }
 
@@ -223,6 +242,20 @@ export function assertDeliveryGate(input) {
   if (verdict.ok) return true;
 
   const rounds = verdict.existingRounds.length === 0 ? "none" : verdict.existingRounds.join(", ");
+  if (verdict.reason === "ROLLUP_REQUIRED") {
+    throw new DomainError("ROLLUP_REQUIRED", {
+      message:
+        `cannot move ${input.task.identifier ?? input.task.id} to ${input.to}: ` +
+        `no rollup report for delivery round ${verdict.round} (rollup rounds on file: ${rounds})`,
+      details: {
+        taskId: input.task.id,
+        identifier: input.task.identifier ?? null,
+        round: verdict.round,
+        existingRounds: verdict.existingRounds,
+      },
+      hint: verdict.hint,
+    });
+  }
   throw new DomainError("REPORT_REQUIRED", {
     message:
       `cannot move ${input.task.identifier ?? input.task.id} to ${input.to}: ` +

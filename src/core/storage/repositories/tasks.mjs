@@ -659,6 +659,74 @@ export function createTasksRepository(db) {
     },
 
     /**
+     * Seed the acceptance baseline if it is still empty (0032).
+     *
+     * The snapshot is written once, from the card's meta/legacy list at
+     * creation or from the baseline the worker derived at claim. A later call
+     * with a different list is a no-op: the baseline is frozen, and the append
+     * path is `setAcceptance`.
+     *
+     * The `version` bump matters: a claim that seeded the baseline must re-read
+     * the row before its CAS, or the claim would lose to its own seed.
+     *
+     * @param {{id: string, acceptance: string[], now: string}} input
+     */
+    seedAcceptance(input) {
+      const json = JSON.stringify(input.acceptance ?? []);
+      try {
+        db.prepare(
+          `UPDATE tasks
+              SET acceptance_json = ?,
+                  acceptance_revision = acceptance_revision + 1,
+                  version = version + 1,
+                  updated_at = ?
+            WHERE id = ? AND json_array_length(acceptance_json) = 0`,
+        ).run(json, input.now, input.id);
+      } catch (err) {
+        throw mapSqliteError(err, { op: "tasks.seedAcceptance", table: "tasks" });
+      }
+      return requireTask(input.id);
+    },
+
+    /**
+     * Write a new acceptance baseline with an optimistic lock on its revision.
+     *
+     * The caller is responsible for taking the ordered list (append merged by
+     * the command layer) and for writing the `acceptance_pruned` audit row when
+     * the write removes an old item; 0032's triggers enforce both.
+     *
+     * @param {{id: string, acceptance: string[], expectedRevision: number, now: string}} input
+     */
+    setAcceptance(input) {
+      try {
+        const info = db
+          .prepare(
+            `UPDATE tasks
+                SET acceptance_json = ?,
+                    acceptance_revision = acceptance_revision + 1,
+                    version = version + 1,
+                    updated_at = ?
+              WHERE id = ? AND acceptance_revision = ?`,
+          )
+          .run(
+            JSON.stringify(input.acceptance ?? []),
+            input.now,
+            input.id,
+            input.expectedRevision,
+          );
+        if (Number(info.changes) === 0) {
+          throw new DomainError("ACCEPTANCE_STALE_REVISION", {
+            message: `acceptance revision changed for ${input.id}; re-read the card and retry`,
+            details: { taskId: input.id, expectedRevision: input.expectedRevision },
+          });
+        }
+      } catch (err) {
+        throw mapSqliteError(err, { op: "tasks.setAcceptance", table: "tasks" });
+      }
+      return requireTask(input.id);
+    },
+
+    /**
      * Archive a finished task. Status is never touched (I6) — the trigger
      * refuses anything non-terminal, and the waiting period is policy applied by
      * the caller.

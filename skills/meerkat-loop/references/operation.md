@@ -89,7 +89,8 @@ Precedence: flag > process env > host config > default.
 | `--resident=auto\|no` | auto | use a live pool for continue; `no` never dispatches workers |
 | `--session-state <path>` | beside `--state` | pool state file (`sessions.state.json`) |
 | `--session-max-age <sec>` | 86400 | fresh conversation after this age; 0 = never |
-| `--session-turn-timeout <sec>` | 1800 | one host turn |
+| `--session-turn-timeout <sec>` | 1800 | one host turn; must be **1200–7199** (≥ 2× the 10-minute heartbeat window, < the ledger's 2-hour reap) |
+| `--opened-by human\|supervisor` | supervisor | who started this loop: a supervisor escalates questions to the board; a human-opened session may ask its own operator first |
 | `--session-poll-ms <ms>` | 1000 | queue poll interval |
 | `--session-pool-max <n>` | 8 | project sessions held open |
 | `--project-concurrency <n>` | `--max-concurrency` | live subagents per project |

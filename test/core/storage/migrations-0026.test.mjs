@@ -24,6 +24,7 @@ import {
   cleanupTempDirs,
   createTempBoard,
   insertProject,
+  insertReport,
   insertTask,
   reasonCode,
 } from "../../helpers/sqlite-fixture.mjs";
@@ -48,6 +49,12 @@ async function headBoard() {
  */
 function epicWithChildren(db, children, epicStatus = "todo") {
   insertTask(db, { id: "epic", identifier: "PROJ-0001", kind: "epic", status: epicStatus });
+  // 0033 — the epic `done` guard and the children guard both fire on the same
+  // UPDATE. Seed the round's rollup so these cases keep measuring 0026's rule
+  // rather than the rollup refusal.
+  if (epicStatus === "in_review") {
+    insertReport(db, { task_id: "epic", round: 1, is_rollup: 1 });
+  }
   children.forEach((status, index) => {
     const id = `child-${index}`;
     insertTask(db, { id, identifier: `PROJ-000${index + 2}`, status });
@@ -115,6 +122,9 @@ describe("storage/migrations — 0026 guards a parent's delivery and acceptance"
       epicWithChildren(board.db, ["done"]);
       waive(board.db);
       assert.equal(move(board.db, "epic", "in_review"), "NO_ERROR");
+      // 0033 — the done guard needs a current-round rollup; its *coverage* is the
+      // command layer's, so a bare row is enough to keep this test on 0026.
+      insertReport(board.db, { task_id: "epic", round: 1, is_rollup: 1 });
 
       insertTask(board.db, { id: "late", identifier: "PROJ-0009", status: "todo" });
       board.db

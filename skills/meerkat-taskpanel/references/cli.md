@@ -118,16 +118,16 @@ ask rather than guessing.
 | `issue create` | Create a card. Synopsis and flag semantics: [below](#issue-create). |
 | `issue list [--project] [--status <s>]… [--assignee-id] [--review-of <ref>] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List cards. `--order weight` is the assignee weight order (below); the default is board order. `--review-of <ref>` returns the **review cards of** that card — not the card itself — across every round (`review_round` is on each returned card, so a caller selecting the current round filters on it). It combines with the other filters and is read-only. An unknown ref is `NOT_FOUND`; an identifier that exists in two projects is `VALIDATION_FAILED`. |
 | `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The claim read: `todo` cards that are auto-claimable (not an `epic`, not a `deploy`), every `depends_on` predecessor `done` (a `canceled` one also withholds). `--stale` adds the recovery pool (holder after 30 min, anyone after 6 h); `--include-unassigned` adds the public pool. Read-only; no `--limit`. |
-| `issue get <id\|identifier>` | One card, plus `report_waivers[]` and `attachments[]` (`id`, `filename`, `content_type`, `size`, `kind`, `created_at`, `comment_id`). The human view prints identifier, title, status, priority, kind, assignee, reporter, delivery_round, review_required and version, then a waiver row and an attachment table when present; the description, labels, meta and acceptance list are JSON-only. |
-| `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]… [--review yes\|no [--reason "<why>"]]` | Patch. `--status` is refused here on purpose. `--review yes` escalates a card to requiring review (any actor); `--review no` waives it and is **human-only**, needs `--reason` (≥ 8 characters) and no open current-round review card. Both are audited as `review_override`. |
-| `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <word>]` | Move, subject to the delivery gate. `todo → in_progress` is a **claim**; a move to `done` is an **acceptance**. `done`/`canceled → todo` is the audited **reopen** and needs `--reason` (prefer `issue reopen`). `--awaiting-reason` is required for `awaiting`; `--blocked-reason` is optional. |
+| `issue get <id\|identifier>` | One card, plus `report_waivers[]` and `attachments[]` (`id`, `filename`, `content_type`, `size`, `kind`, `created_at`, `comment_id`). The human view prints identifier, title, status, priority, kind, labels, assignee, reporter, claimed_by, heartbeat_at, delivery_round, review_required, review_of (the reviewed card's identifier), review_round, parent, awaiting_reason, acceptance_revision, the numbered acceptance snapshot (`none (vacuous)` when empty), meta as JSON, the description and version, then a waiver row and an attachment table when present. `--json` carries the same fields: `acceptance[]` is the **frozen baseline**; `meta.acceptance` is only its seed. |
+| `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]… [--drop-acceptance <text>]… [--acceptance-revision <n>] [--review yes\|no [--reason "<why>"]]` | Patch. `--status` is refused here on purpose. `--acceptance` **appends** to the frozen baseline (`tasks.acceptance_json`) and is idempotent by criterion text; it cannot remove an item. `--drop-acceptance` is **human-only**, needs `--reason` (≥ 8 characters) and the current `--acceptance-revision`; both are audited. `--review yes` escalates a card to requiring review (any actor); `--review no` waives it and is **human-only**, needs `--reason` and no open current-round review card. |
+| `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--question "<text>"] [--blocked-reason <word>]` | Move, subject to the delivery gate. `todo → in_progress` is a **claim**; a move to `done` is an **acceptance** and requires a current-round report that covers every frozen acceptance criterion — for an **epic**, a current-round rollup (`ROLLUP_REQUIRED` / `ROLLUP_STALE`). `done`/`canceled → todo` is the audited **reopen** and needs `--reason` (prefer `issue reopen`). `--awaiting-reason` is required for `awaiting`; an agent entering `awaiting` must also supply `--question` (or already have an unanswered `question` comment). `--blocked-reason` is optional. |
 | `issue reopen <ref> --reason "<why>"` | **Reopen a `done`/`canceled` card to `todo`.** Audited: the reason is required (≥ 8 characters) and recorded as `task_reopened`. Starts a new delivery round, clears the archive and releases the idem key. A review card is refused — reopen the original; the loop issues the next round's review. |
 | `issue claim <ref> [--allow-steal --reason "<why>"]` | **Claim, re-claim or take over.** On `todo` it behaves like `move … in_progress`; on `in_progress` it is the only recovery path. The holder may re-claim after 10 min; anyone may take over after 6 h. A fresh claim by another actor is `EXECUTION_ACTIVE`. |
 | `issue heartbeat <ref>` | Pulse a claim you hold. Refreshes `heartbeat_at` and nothing else; holder only; `in_progress` only; takes no flags of its own. |
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--reporter-id <id>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue meta <ref> --meta <k>=<v>…` | Merge metadata keys into a card, leaving other keys intact. The read-modify-write form with `--if-version` CAS. |
-| `issue deliver <ref> --report-file <file\|-> [--no-report --reason "<why>"] [--seg <seg>]` | **Write the report and move to `in_review`, in one transaction.** The two report forms are mutually exclusive. No `--to`; it always lands in `in_review`. |
+| `issue deliver <ref> --report-file <file\|-> [--no-report --reason "<why>"] [--seg <seg>]` | **Write the report and move to `in_review`, in one transaction.** The two report forms are mutually exclusive. No `--to`; it always lands in `in_review`. On an **epic** the report is its rollup: it must name every live child by `ref` (`ROLLUP_STALE` otherwise) and is stored with `is_rollup = 1`; `--no-report` is refused for an epic (`ROLLUP_REQUIRED`). |
 | `issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] [--auto-accept-reviews yes\|no] [--review-aging-ms <n>] [--max-actions <n>] [--board-limit <n>]` | Without `--workflow`: replay the epic rules over every non-terminal container. With it: return the board's workflow plan (see below). `--dry-run` writes nothing. Idempotent. |
 
 #### `issue create`
@@ -220,7 +220,7 @@ starts and closes the container; see
 | Command | Purpose |
 |---|---|
 | `comment list <ref> [--kind <kind>] [--limit <n>]` | Oldest first. |
-| `comment add <ref> --body <text> [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect] [--file <path\|->]` | Append. |
+| `comment add <ref> --body <text> [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect\|question] [--file <path\|->]` | Append. A `question` + `awaiting` E2 is how an agent asks a human; a human's `decision`/`confirm`/`change` on an `awaiting` card moves it back to `todo` in the same transaction. |
 
 Append-only: there is no edit and no delete, by design. A `decision` / `change` comment is what
 a reviewer reads later.
@@ -289,13 +289,16 @@ as the task write: an exact or unique prefix match is reused; several matches ar
 | Command | Purpose |
 |---|---|
 | `report list <ref> [--round <n>]` | A card's delivery reports (round, author, conclusion), newest last. This is how a reviewer reads the report it audits. |
-| `report template <ref> [--commit <sha>] [--path <p>]… [--command <cmd:exit>]… [--coverage <pct[@scope]>]…` | Print a report to fill in. |
+| `report template <ref> [--commit <sha>] [--path <p>]… [--command <cmd:exit>]… [--coverage <pct[@scope]>]…` | Print a report to fill in. On an **epic** the template is a rollup: it reads the card's children and emits one `ref`-carrying item per child (`done` → `not_met` until you confirm it, `canceled` → `not_applicable` with a TODO note), and reports `acceptance_source: "children (rollup)"`. |
 
-The template is built from `meta.acceptance`, then an imported card's
-`meta.acceptance_legacy`, then an empty list with a warning. Every item starts **`not_met`** —
-a ticked box on an imported card is the author's intent, not this delivery's evidence.
-Evidence anchors are the explicit flags first, then a read-only `git rev-parse HEAD`, then the
-task's `source_path`, then a placeholder.
+The template is built from the card's **frozen baseline** (`tasks.acceptance_json`, printed as
+`acceptance_source: "acceptance_json"`), then — for a grandfathered card whose snapshot is
+empty — `meta.acceptance`, then an imported card's `meta.acceptance_legacy`, then an empty
+list with a warning. Every item starts **`not_met`** — a ticked box on an imported card is
+the author's intent, not this delivery's evidence. A derived list
+(`meta.acceptance_derived=yes`) carries a warning on stderr. Evidence anchors are the
+explicit flags first, then a read-only `git rev-parse HEAD`, then the task's `source_path`,
+then a placeholder.
 
 ### `export`
 
@@ -310,8 +313,12 @@ never touches a caller-named path. Before overwriting an existing non-empty file
 applies the same `MD_GROWTH_FACTOR` (4×) guard as the core exporter: a rewrite that would grow
 the file past it is refused with `MD_GROWTH_GUARD` rather than silently replacing it — inspect
 the file and remove or rename it to accept the rewrite. The `## Acceptance` section renders
-the modern `meta.acceptance` list as plain bullets; an imported card's checkbox list is the
-fallback. A card with attachments also carries an `## Attachments` section between `## Sessions`
+the frozen snapshot as plain bullets (a snapshot that is empty while `meta.acceptance` is not
+renders the seed with a `(seed; no frozen baseline)` note); an imported card's checkbox list
+is the fallback, and its tick marks are dropped — the snapshot keeps texts, not check state.
+The frontmatter also carries `target` (from `meta.target`), and — only when set —
+`delivery_round` (>1), `awaiting_reason`, `review_of` / `review_round`,
+`acceptance_revision` (>0), the report-waiver keys and `archived_at`. A card with attachments also carries an `## Attachments` section between `## Sessions`
 and `## Report` (one metadata line per file; the bytes stay on the board). The product is the card **store mirror** (frontmatter plus
 sections) used for round-tripping and CI checks, not a human-readable card detail: use
 `issue get <ref>` for prose and `issue get <ref> --json` for machines. The implicit spelling
@@ -450,8 +457,12 @@ unfinished dependency is what keeps a card out of `issue candidates`. On the wir
 
 ### The acceptance list
 
-`meta.acceptance` (`string[]`) is written by `issue create/update --acceptance` and replaced
-wholesale by `issue update`. Imported cards carry `meta.acceptance_legacy` instead.
+`issue create --acceptance` seeds the frozen baseline (`tasks.acceptance_json`); after that,
+`issue update --acceptance` **appends** and never replaces. `meta.acceptance` is a seed, not
+the authority — the gate reads the snapshot. A human may remove an item with
+`issue update --drop-acceptance <text> --reason "<why>" --acceptance-revision <n>`; the
+`acceptance-revision` is the value returned by `issue get`/the last write. Imported cards
+carry `meta.acceptance_legacy` instead (its `checked` state is never evidence).
 `meta.acceptance_derived=yes` is a marker, not policy: it records that an agent derived the
 list because the card had none, and `report template` warns when it sees it.
 

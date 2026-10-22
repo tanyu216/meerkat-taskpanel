@@ -26,6 +26,27 @@ Rules that are enforced, not just documented:
   one;
 * the delivery gate is a database trigger *and* a domain check, and the two are
   tested against each other (`test/contract/`);
+* the **acceptance baseline** is a column, not writable meta: `tasks.acceptance_json` +
+  `acceptance_revision` (0032) are seeded once from `meta.acceptance` / the imported
+  checkboxes, can only be appended to (a human may prune an item with an audited reason),
+  and are locked once the card is `in_review`. `done` requires the current round's report to
+  cover it (`domain/acceptance.mjs#coverageOf`, `commands/acceptance.mjs`), a review
+  `APPROVE` requires the review report to cover the original's, and the auto-accept planner
+  reads the same report so it never plans an acceptance the write gate would refuse. The DB
+  trigger (`tr_tasks_acceptance_revision`) refuses a revision-less rewrite at the source;
+* an **epic's** acceptance evidence is its **rollup** (0033): a delivery report marked
+  `is_rollup` whose items name each child by `ref`. A report written on an epic is always a
+  rollup (`commands/reports.mjs`, `commands/rollup.mjs#advanceContainer`), the delivery gate
+  refuses an unmarked current-round report (`ROLLUP_REQUIRED`), `done` refuses a rollup that
+  no longer matches the live children (`ROLLUP_STALE`), and the DB trigger
+  `tr_tasks_epic_rollup_done` enforces the current-round row at the write. The same pure rule
+  (`domain/acceptance.mjs#rollupGapOf`) is read by the sweep and by the workflow planner;
+* **questions** (0034) are comments, not a column: an agent entering `awaiting` writes a
+  `question` comment in the same transaction (`QUESTION_REQUIRED` if it has neither a
+  `--question` nor an unanswered one), and a human `decision` / `confirm` / `change` comment
+  re-queues the card to `todo` in the same transaction (`commands/comments.mjs`,
+  `domain/awaiting.mjs#resumeDecision`). `awaiting → todo` is a whitelist edge, not a reopen:
+  the round does not move, the claim is released, and a fresh worker is dispatched;
 * the **workflow decisions** are the board's: `domain/workflow.mjs` is pure (reconcile
   classification, review outcomes, review dispatch), and `commands/workflow.mjs` assembles
   a bounded board snapshot for it. `issue reconcile --workflow` exposes the plan; the loop

@@ -120,6 +120,48 @@ describe("cli/issue — create, list, get", () => {
     });
   });
 
+  it("shows the whole card in the human read — title, labels, meta, description, snapshot", async () => {
+    await board(async ({ run }) => {
+      createIssue(run, [
+        "--acceptance", "cli works",
+        "--acceptance", "gate visible",
+        "--label", "infra",
+        "--label", "m2",
+        "--description", "The long story.",
+        "--meta", "team=panel",
+        "--target", "repo-a",
+      ]);
+
+      const human = run(["issue", "get", "DEMO-0001"]);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /^title\s+Ship M2$/m);
+      assert.match(human.stdout, /^labels\s+infra, m2$/m);
+      assert.match(human.stdout, /^description\s+The long story\.$/m);
+      assert.match(human.stdout, /^acceptance\s+1\) cli works; 2\) gate visible$/m);
+      assert.match(human.stdout, /^acceptance_revision\s+1$/m);
+      assert.match(human.stdout, /^parent\s+-$/m);
+      assert.match(human.stdout, /^awaiting_reason\s+-$/m);
+      assert.match(human.stdout, /^review_of\s+-$/m);
+      const metaLine = human.stdout.split("\n").find((line) => line.startsWith("meta"));
+      assert.ok(metaLine !== undefined, "meta is printed");
+      assert.match(metaLine, /"team":"panel"/);
+      assert.match(metaLine, /"target":"repo-a"/);
+    });
+  });
+
+  it("prints the reviewed card's identifier, not its internal id", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      deliverIssue(run, "DEMO-0001");
+      createIssue(run, ["--review-of", "DEMO-0001", "--review-round", "1"]);
+
+      const human = run(["issue", "get", "DEMO-0002"]);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /^review_of\s+DEMO-0001$/m);
+      assert.match(human.stdout, /^review_round\s+1$/m);
+    });
+  });
+
   it("gets the card's attachments in both output shapes", async () => {
     await board(async ({ run }) => {
       createIssue(run);
@@ -163,11 +205,11 @@ describe("cli/issue — update, move, assign, archive", () => {
       createIssue(run);
 
       const updated = dataOf(run(["issue", "update", "DEMO-0001", "--acceptance", "a", "--acceptance", "b", "--json"]));
-      assert.deepEqual(updated.task.meta.acceptance, ["a", "b"]);
+      assert.deepEqual(updated.task.acceptance, ["a", "b"], "the frozen baseline is the authority");
 
       const merged = dataOf(run(["issue", "update", "DEMO-0001", "--meta", "team=panel", "--json"]));
       assert.equal(merged.task.meta.team, "panel");
-      assert.deepEqual(merged.task.meta.acceptance, ["a", "b"], "meta merge keeps what was there");
+      assert.deepEqual(merged.task.acceptance, ["a", "b"], "a meta merge keeps the baseline");
 
       const nothing = run(["issue", "update", "DEMO-0001"]);
       assert.equal(nothing.status, 0, "nothing to do is not an error");
@@ -190,7 +232,7 @@ describe("cli/issue — update, move, assign, archive", () => {
       );
 
       assert.equal(updated.task.status, "in_progress");
-      assert.deepEqual(updated.task.meta.acceptance, ["a", "b"]);
+      assert.deepEqual(updated.task.acceptance, ["a", "b"]);
       assert.equal(updated.task.meta.acceptance_derived, "yes");
       assert.equal(updated.task.meta.target, "src/x");
       assert.equal(updated.task.meta.epic_triage, "off");
@@ -856,13 +898,24 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
       );
 
       // The manual path still works — the container is a human's to close here.
+      // 0033: the report on an epic is its rollup, so it must name the child.
       const delivered = dataOf(
         run(["issue", "deliver", card.task.identifier, "--report-file", "-", ...AS, "--json"], {
-          input: JSON.stringify(REPORT),
+          input: JSON.stringify({
+            ...REPORT,
+            acceptance: [
+              {
+                text: `${child.task.identifier} delivered`,
+                status: "met",
+                ref: child.task.identifier,
+              },
+            ],
+          }),
         }),
       );
       assert.equal(delivered.task.status, "in_review");
       assert.equal(delivered.report.round, 1);
+      assert.equal(delivered.report.is_rollup, true, "a report on an epic is its rollup");
     });
   });
 
@@ -1313,6 +1366,51 @@ describe("cli/issue — review decision (0031)", () => {
       ]);
       assert.equal(result.status, 1);
       assert.equal(errorOf(result).code, "VALIDATION_FAILED");
+    });
+  });
+});
+
+describe("cli/issue — asking a question in awaiting (0034)", () => {
+  const AS = ["--agent", "linus", "--actor-kind", "claude"];
+
+  it("writes --question as a question comment, and needs one from an agent", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run, ["--title", "Ask", "--assignee", "linus", "--assignee-kind", "agent"]);
+      run(["issue", "move", card.task.identifier, "in_progress", ...AS, "--json"]);
+
+      const refused = run([
+        "issue", "move", card.task.identifier, "awaiting",
+        "--awaiting-reason", "E2", ...AS, "--json",
+      ]);
+      assert.equal(refused.status, 1);
+      assert.equal(JSON.parse(refused.stdout).error.code, "QUESTION_REQUIRED");
+
+      const waiting = dataOf(
+        run([
+          "issue", "move", card.task.identifier, "awaiting",
+          "--awaiting-reason", "E2", "--question", "which schema?", ...AS, "--json",
+        ]),
+      );
+      assert.equal(waiting.status, "awaiting");
+      const comments = dataOf(
+        run(["comment", "list", card.task.identifier, "--kind", "question", "--json"]),
+      );
+      assert.deepEqual(comments.comments.map((comment) => comment.body), ["which schema?"]);
+
+      // The human's decision re-queues the card automatically — a separate
+      // command, not a second move.
+      dataOf(
+        // No identity flags: the harness injects `--as-human`, and the board
+        // treats that as the human's decision.
+        run([
+          "comment", "add", card.task.identifier,
+          "--kind", "confirm", "--body", "v2", "--json",
+        ]),
+      );
+      const after = dataOf(run(["issue", "get", card.task.identifier, "--json"]));
+      assert.equal(after.task.status, "todo");
+      assert.equal(after.task.delivery_round, 1, "an answer is not a reopen");
+      assert.equal(after.task.claimed_by, null, "the dormant claim is released");
     });
   });
 });

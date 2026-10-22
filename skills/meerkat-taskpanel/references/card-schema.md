@@ -21,9 +21,10 @@ key: |                     # literal block — newlines kept
 
 ## Field reference
 
-Exactly these 24 keys. Anything else rides in `meta_json.legacy` — see
+Exactly these 41 keys. Anything else rides in `meta_json.legacy` — see
 §Unknown keys are preserved. The exporter's fixed order is `CARD_KEY_ORDER`; the table below
-groups the keys for reading.
+groups the keys for reading. The workflow group at the end (delivery/review/acceptance facts)
+is written **only when it carries something**, so a plain card does not grow a line.
 
 | Key | Meaning | Values & rules |
 |---|---|---|
@@ -48,6 +49,23 @@ groups the keys for reading.
 | `heartbeat_at` | Last liveness signal from the holder. | Timestamp. |
 | `blocked_at` | When the card entered `blocked`. | Timestamp. |
 | `blocked_reason` | **Why** the card is blocked. | One of the eight literals below, or absent. |
+| `delivery_round` | The card's current delivery round. | Integer; written only when greater than `1`. |
+| `awaiting_reason` | **Which** kind of question is pending. | `E1`–`E5`; written only while `awaiting`. |
+| `review_of` | The reviewed card. | Its identifier; review cards only. |
+| `review_round` | The delivery round this review audits. | Integer; a review card only, absent for a round-agnostic review. |
+| `acceptance_revision` | Revision of the frozen acceptance baseline. | Integer; written only when greater than `0`. |
+| `report_waiver_round` | The round whose delivery gate was waived. | Integer; written only when a waiver is on record. |
+| `report_waiver_reason` | Why the report was waived. | The audited reason. |
+| `report_waived_at` | When the waiver was granted. | Timestamp. |
+| `archived_at` | When the card was archived. | Timestamp; written only when archived. |
+| `acceptance_derived` | The acceptance list was derived by the worker. | `yes`; a review prompt to audit coverage, not a rule. |
+| `accepted_by` | Who accepted the card automatically. | The loop's marker (`loop-auto`). |
+| `accepted_round` | The round that acceptance names. | Integer. |
+| `auto_accepted` | The acceptance was automated. | `yes`. |
+| `review_verdict` | The applied review verdict. | `APPROVE` · `REJECT`. |
+| `review_verdict_round` | The round that verdict applied to. | Integer. |
+| `rework_round` | The original round a rework child targets. | Integer. |
+| `flow` | The workflow lane the card belongs to. | `A` (dispatch/review) · `B`. |
 | `depends_on` | Blockers that must finish first. | Inline array of card ids; direction is `blocks` with **source = the blocker**. |
 | `parent` | This card's parent. | A single card id; the parent is an `epic`. |
 | `notify_leader` | Tell the leader this card needs attention. | Kept verbatim in `meta_json`; the board preserves it and does not act on it. |
@@ -91,10 +109,10 @@ carry a `blocks` edge. A `blocks` edge itself has **no degree cap**.
 
 ## Unknown keys are preserved
 
-Any key outside these 24 is kept verbatim in `meta_json.legacy`, in the card's own order, and
-re-emitted on export. Keys riding this path today: `target` (an opaque per-card value),
-`goal`, `review_of`, and a team's own bookkeeping (`git_rules`, `subsession_ids`, …).
-**Do not delete a key you do not recognise.**
+Any key outside these 41 is kept verbatim in `meta_json.legacy`, in the card's own order, and
+re-emitted on export. Keys riding this path today: `target` (an opaque per-card value — the
+export reads `meta.target` first and falls back to the legacy slot), `goal`, and a team's own
+bookkeeping (`git_rules`, `subsession_ids`, …). **Do not delete a key you do not recognise.**
 
 ## Identifier syntax
 
@@ -281,7 +299,7 @@ const md = readFileSync("skills/meerkat-taskpanel/references/card-schema.md", "u
 const table = md.split("## Field reference")[1].split("\n## ")[0];
 const keys = [...table.matchAll(/^\|\s*`([a-z_]+)`\s*\|/gm)].map((m) => m[1]);
 // `target` holds a slot in CARD_KEY_ORDER for an imported key's historical position,
-// but it is not one of the 24 keys the table documents.
+// but it is not one of the 41 keys the table documents.
 const documented = CARD_KEY_ORDER.filter((key) => key !== "target");
 const same =
   keys.length === documented.length &&

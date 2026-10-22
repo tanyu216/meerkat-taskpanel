@@ -9,6 +9,46 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A worker can ask, and the answer re-queues it (migration `0034`).** `comments.kind` gains
+  `question`; an agent entering `awaiting` must supply `issue move … --question "…"` (or
+  already have an unanswered question), which is written as a `question` comment in the same
+  transaction (`QUESTION_REQUIRED` otherwise; a human may park silently). `awaiting → todo`
+  becomes a legal edge — not a reopen, so the delivery round does not move and the claim is
+  released — and a human's `decision` / `confirm` / `change` comment moves the card there
+  automatically (a `note` answer needs an explicit move). The waiting payload is now the
+  newest `question` (falling back to the newest human comment), mirrored in `web/`. The loop
+  gains `--opened-by human|supervisor` and a waiting-questions section in the continue
+  prompt, and the turn/ledger/heartbeat clocks are stated as one contract: the turn must be
+  `1200–7199` seconds and finish before the ledger's 2-hour reap (`LEDGER_STALE_MS`).
+- **An epic's delivery is its rollup, and `done` checks it (migration `0033`).** Delivery
+  reports gain `is_rollup` (only a `delivery` report on an `epic` may carry it; the DB refuses
+  anything else with `ROLLUP_INVALID`). A report written on an epic is always a rollup and
+  must name every live child by `ref` (`done` → `met`, `canceled` → `not_applicable` with a
+  note, at least one `done`); a missing current-round rollup is `ROLLUP_REQUIRED`, one that no
+  longer matches the children is `ROLLUP_STALE`. A `--no-report` waiver can no longer deliver
+  a container, an empty epic has nothing to roll up, and `in_review → in_progress` (a new
+  round) is the repair for a stale rollup. `report template <epic>` now reads the children and
+  emits one `ref` item each; `issue reconcile` reports `rollup_stale` / `rollup_missing`
+  read-only; the auto-accept and review-approve planners refuse a missing or stale rollup
+  before the write gate would. The report wire gains `is_rollup`, and the markdown export
+  marks rollup blocks (`rollup: yes`) and each item's `ref`. The epic `done` trigger only
+  answers the legal `in_review → done` edge, so an illegal move still reports
+  `INVALID_TRANSITION`.
+- **The acceptance baseline is frozen, and `done` must cover it (migration `0032`).** A card
+  now carries `acceptance_json` + `acceptance_revision`, seeded once at creation (or first
+  claim) from `meta.acceptance` / the imported checkbox texts and never read from writable
+  meta again. The list can be appended to (`issue update --acceptance`); only a human may
+  remove an item, with `--drop-acceptance --reason` recorded as `acceptance_pruned`. The DB
+  refuses any rewrite that does not bump the revision (`ACCEPTANCE_SNAPSHOT_IMMUTABLE`) and
+  any `not_applicable` report item without a note (`REPORT_NOT_APPLICABLE_NOTE`). Moving to
+  `done` now requires the current round's delivery report to cover the baseline
+  (`ACCEPTANCE_UNVERIFIED` / `ACCEPTANCE_INCOMPLETE`); `met` and `not_applicable` pass,
+  `partial` / `not_met` block, and a waiver no longer satisfies acceptance. A review
+  `APPROVE` is checked against the original's baseline, and the auto-accept planner reads the
+  report so it never plans a refusal. The task wire gains `acceptance[]` /
+  `acceptance_revision`, the PATCH body gains `acceptance_drop` / `acceptance_revision`, and
+  the markdown export prefers the snapshot while fixing the long-standing lost `meta.target`
+  and emitting the delivery/review/waiver facts.
 - **Per-project review policy and per-card review decision (migration `0031`).** A project
   now carries `review_policy` (`required` / `optional` / `off`, default `optional`) and an
   optional `reviewer` override; a card carries a `review_required` snapshot resolved at

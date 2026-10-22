@@ -187,6 +187,10 @@ export const COMMENT_KINDS = Object.freeze([
   "change",
   "note",
   "defect",
+  // 0034 — a worker's question. The `awaiting` payload is a `question` comment;
+  // a human's `decision` / `confirm` / `change` (DECISION_KINDS) answers it.
+  // Deliberately absent from DECISION_KINDS: asking is not deciding.
+  "question",
 ]);
 
 /**
@@ -270,10 +274,17 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "task_heartbeat",
   "task_moved",
   "task_reopened",
+  // 0034 — a human's decision comment answered an `awaiting` question and the
+  // board moved the card back to `todo` in the same transaction.
+  "task_resumed",
   "task_archived",
   "report_written",
   "task_delivered",
   "report_waived",
+  // 0032 — the frozen acceptance baseline: a successful append, and the audited
+  // prune a human performs with a reason.
+  "acceptance_changed",
+  "acceptance_pruned",
   // A card's review requirement was changed after creation (an agent escalating
   // it, or a human waiving it with a reason). The card column is the decision;
   // this event is the audit trail for changing that decision.

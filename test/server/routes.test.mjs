@@ -284,11 +284,12 @@ describe("server/routes — tasks, the gate and deliver", () => {
     assert.equal(again.body.error.code, "INVALID_TRANSITION");
   });
 
-  it("merges --acceptance into meta without clobbering the rest", async () => {
+  it("appends --acceptance to the frozen baseline without clobbering meta", async () => {
     const updated = dataOf(
       await call("PATCH", `/api/v1/tasks/${identifier}`, { acceptance: ["a", "b"], title: "Ship M2 (final)" }),
     );
-    assert.deepEqual(updated.task.meta.acceptance, ["a", "b"]);
+    assert.deepEqual(updated.task.acceptance, ["cli works", "gate visible", "a", "b"]);
+    assert.deepEqual(updated.task.meta.acceptance, ["cli works", "gate visible"]);
     assert.equal(updated.task.title, "Ship M2 (final)");
   });
 });
@@ -1162,6 +1163,45 @@ describe("server/routes — blocked_reason over HTTP (0016)", () => {
     assert.equal(moved.task.blocked_reason, "resource");
     dataOf(await call("POST", `/api/v1/tasks/${REF}/move`, { to: "canceled" }));
     assert.equal(columnOf(REF), null);
+  });
+
+  it("writes the question on an agent's awaiting move, and refuses one without it (0034)", async () => {
+    const AS = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "linus" }) };
+    dataOf(await call("POST", "/api/v1/projects", { id: "ask", name: "Ask" }));
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "ask",
+        title: "Ask me",
+        assignee: "linus",
+        assignee_kind: "agent",
+        // The idem key is kind|assignee|source|target; an earlier test's card
+        // has the same shape, so opt out of the reuse.
+        allow_dup: true,
+      }),
+    );
+    const ref = created.task.identifier;
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }, AS));
+
+    const refused = await call(
+      "POST",
+      `/api/v1/tasks/${ref}/move`,
+      { to: "awaiting", awaiting_reason: "E2" },
+      AS,
+    );
+    assert.equal(refused.status, 422, JSON.stringify(refused.body));
+    assert.equal(refused.body.error.code, "QUESTION_REQUIRED");
+
+    const waiting = dataOf(
+      await call(
+        "POST",
+        `/api/v1/tasks/${ref}/move`,
+        { to: "awaiting", awaiting_reason: "E2", question: "which schema?" },
+        AS,
+      ),
+    );
+    assert.equal(waiting.task.status, "awaiting");
+    const comments = dataOf(await call("GET", `/api/v1/tasks/${ref}/comments?kind=question`));
+    assert.deepEqual(comments.comments.map((comment) => comment.body), ["which schema?"]);
   });
 });
 

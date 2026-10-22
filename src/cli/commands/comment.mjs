@@ -8,7 +8,7 @@
 
 import { table } from "../output/human.mjs";
 
-const KINDS = ["discuss", "decision", "confirm", "confirm_request", "change", "note", "defect"];
+const KINDS = ["discuss", "decision", "confirm", "confirm_request", "change", "note", "defect", "question"];
 
 export const COMMANDS = [
   {

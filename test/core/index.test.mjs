@@ -29,6 +29,8 @@ const PLANNED = [
   "domain/blocked-reason.mjs",
   "domain/priority.mjs",
   "domain/task.mjs",
+  // 0032 — the frozen acceptance baseline's normalisation and coverage gate.
+  "domain/acceptance.mjs",
   "domain/idem.mjs",
   "domain/comment.mjs",
   "domain/relation.mjs",

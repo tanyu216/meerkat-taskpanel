@@ -63,14 +63,19 @@ the [Highlights](#highlights) below describe.
 
 1. **Agents operate, humans only watch.** The whole lifecycle — project and task creation,
    claiming, progress reports, dependencies, epics, the delivery gate — is driven by agents.
-   The UI is read-only: humans follow task status and epic roll-ups instead of clicking
-   through a form.
+   An agent that cannot proceed stops with a `question`, and the human's decision comment
+   re-queues the card for a fresh worker. The UI is read-only: humans follow task status and
+   epic roll-ups instead of clicking through a form.
 2. **A delivery gate with evidence.** A card can only reach `in_review` with a report for the
    *current* delivery round, enforced in the database as well as the app layer. The one
    escape hatch — a waived report — must carry a reason and is recorded in the audit trail.
+   `done` then checks the report against the card's **frozen acceptance baseline**: every
+   criterion must be met (or explicitly not applicable, with a note); a baseline can be
+   appended to but not quietly shortened, and a review `APPROVE` must cover it too.
 3. **Dependencies and epics as first-class edges.** `depends_on` links form a DAG, so
    independent work runs in parallel and dependent work waits; parent/child links roll a
-   subtree's progress up into its epic.
+   subtree's progress up into its epic. An epic is accepted through that rollup: one report
+   naming every child, refused while it is missing or stale.
 4. **Sessions that resume.** Every agent session gets a deterministic id derived from
    `task + owner + segment`; reconnecting reuses the same session instead of spending tokens
    to re-establish context.

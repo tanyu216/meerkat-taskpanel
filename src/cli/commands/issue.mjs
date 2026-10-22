@@ -27,16 +27,35 @@ const metaOf = (flags) => flags.meta;
 
 /** The task payload the service returns is `{task, report_waivers}`. */
 function taskHuman(task, extra) {
+  const acceptance = Array.isArray(task.acceptance) ? task.acceptance : [];
   return fields([
     ["identifier", task.identifier],
     ["title", task.title],
     ["status", task.status],
     ["priority", task.priority],
     ["kind", task.kind],
+    ["labels", Array.isArray(task.labels) && task.labels.length > 0 ? task.labels.join(", ") : "-"],
     ["assignee", task.assignee === null ? "-" : `${task.assignee.display_name}#${task.assignee.id}`],
     ["reporter", task.reporter === null ? "-" : `${task.reporter.display_name}#${task.reporter.id}`],
+    ["claimed_by", task.claimed_by_actor === null ? "-" : `${task.claimed_by_actor.display_name}#${task.claimed_by_actor.id}`],
+    ["heartbeat_at", task.heartbeat_at ?? "-"],
     ["delivery_round", task.delivery_round],
     ["review_required", task.review_required === true ? "yes" : "no"],
+    // The column is an internal id; the human read wants the identifier the
+    // worker can pass back. `meta.review_of` is the readable mirror (0025).
+    ["review_of", task.meta?.review_of ?? task.review_of_id ?? "-"],
+    ["review_round", task.review_round ?? "-"],
+    ["parent", task.parent_id ?? "-"],
+    ["awaiting_reason", task.awaiting_reason ?? "-"],
+    ["acceptance_revision", task.acceptance_revision ?? 0],
+    [
+      "acceptance",
+      acceptance.length === 0
+        ? "none (vacuous)"
+        : acceptance.map((text, index) => `${index + 1}) ${text}`).join("; "),
+    ],
+    ["meta", JSON.stringify(task.meta ?? {})],
+    ["description", task.description ?? ""],
     ["version", task.version],
     ...extra,
   ]);
@@ -222,15 +241,20 @@ export const COMMANDS = [
     op: TASK_OPS.update,
     usage:
       'issue update <id|identifier> [--title <text>] [--acceptance <text>]… ' +
+      '[--drop-acceptance <text> --reason "<why>" --acceptance-revision <n>] ' +
       '[--review yes|no [--reason "<why>"]]',
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: projectFlags(TASK_OPS.update),
     async run(ctx) {
       const flags = ctx.flags;
       const reviewRequired = reviewFlag("issue update", flags.reviewRequired);
-      if (flags.reason !== undefined && reviewRequired !== false) {
-        throw usageError("issue update: --reason is only used with --review no", {
-          fix: "pass --review no --reason \"<why>\" to waive a required review",
+      if (
+        flags.reason !== undefined &&
+        reviewRequired !== false &&
+        flags.acceptanceDrop === undefined
+      ) {
+        throw usageError("issue update: --reason is only used with --review no or --drop-acceptance", {
+          fix: "pass --review no --reason \"<why>\" to waive a required review, or --drop-acceptance <text> --reason \"<why>\" to prune a baseline",
         });
       }
       // Every field is offered; `projectBody` drops the ones the caller did not
@@ -243,6 +267,8 @@ export const COMMANDS = [
         labels: flags.labels,
         meta: metaOf(flags),
         acceptance: flags.acceptance,
+        acceptance_drop: flags.acceptanceDrop,
+        acceptance_revision: flags.acceptanceRevision,
         review_required: reviewRequired,
         reason: flags.reason,
       });
@@ -251,7 +277,7 @@ export const COMMANDS = [
         return {
           data: null,
           human: "",
-          warnings: ["nothing to update: pass at least one of --title/--description/--priority/--kind/--label/--meta/--acceptance/--review"],
+          warnings: ["nothing to update: pass at least one of --title/--description/--priority/--kind/--label/--meta/--acceptance/--drop-acceptance/--review"],
         };
       }
       const payload = await ctx.client.patch(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`, body);
@@ -292,7 +318,8 @@ export const COMMANDS = [
     op: TASK_OPS.move,
     usage:
       'issue move <id|identifier> <status> [--allow-steal --reason "<why>"] ' +
-      '[--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <class>]',
+      '[--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--question "<text>"] ' +
+      '[--blocked-reason <class>]',
     positionals: [
       { name: "ref", summary: "Task id or identifier." },
       { name: "to", summary: "Target status." },
@@ -323,6 +350,10 @@ export const COMMANDS = [
         allow_steal: allowSteal,
         reason: ctx.flags.reason,
         awaiting_reason: ctx.flags.awaitingReason,
+        // 0034 — the question is written as a `question` comment in the same
+        // transaction as the move. An agent entering `awaiting` must supply it
+        // (or have an unanswered question already); a human need not.
+        question: ctx.flags.question,
         // 0016 — a `blocked` card may name *what* it is waiting for (SLA
         // inspection contract §7). Optional, unlike `--awaiting-reason`: an
         // unstated class is legal (the inspector reads it as `clarify`), so the

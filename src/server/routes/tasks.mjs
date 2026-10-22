@@ -279,19 +279,15 @@ export function registerTaskRoutes(router, surface) {
     for (const field of ["title", "description", "priority", "kind", "labels"]) {
       if (body[field] !== undefined) patch[field] = body[field];
     }
-    // `--meta k=v` **merges** into what the task already carries, and
-    // `--acceptance` is sugar over `meta.acceptance` (F-D1). Both are merges
-    // because a CLI flag is a delta, not a document: sending
-    // `--meta team=panel` must not silently erase everything else, and the
-    // caller should not have to read-modify-write to say one thing.
+    // `--meta k=v` **merges** into what the task already carries. The
+    // acceptance baseline is not a meta key since 0032: `acceptance` appends to
+    // `tasks.acceptance_json`, and `acceptance_drop` is the audited human prune.
+    // Sending `--meta team=panel` must not silently erase anything else, so the
+    // merge itself stays.
     const meta = {};
     let metaTouched = false;
     if (body.meta !== undefined) {
       Object.assign(meta, body.meta);
-      metaTouched = true;
-    }
-    if (body.acceptance !== undefined) {
-      meta.acceptance = body.acceptance;
       metaTouched = true;
     }
     if (metaTouched) patch.meta = { ...(current.meta ?? {}), ...meta };
@@ -312,6 +308,9 @@ export function registerTaskRoutes(router, surface) {
       forceCreate: body.force_create === true,
       reviewRequired: body.review_required,
       reason: body.reason,
+      acceptance: body.acceptance,
+      acceptanceDrop: body.acceptance_drop,
+      acceptanceRevision: body.acceptance_revision,
       actor,
     });
     return taskPayload(repos, task);
@@ -331,6 +330,9 @@ export function registerTaskRoutes(router, surface) {
       // M1 — the `awaiting` entry category (`E1..E5`), required only when the
       // destination is `awaiting`; the command layer is what enforces that.
       awaitingReason: body.awaiting_reason,
+      // 0034 — the question an agent asks when it stops in `awaiting`; written
+      // as a `question` comment in the same transaction as the move.
+      question: body.question,
       // 0016 — the `blocked` card's class (`clarify`…`unknown`, SLA-inspection
       // contract §7), optional; written when the destination is `blocked`, and
       // cleared on any other destination. The command layer enforces both.

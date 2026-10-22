@@ -121,6 +121,17 @@ describe("contract/liveness — every non-terminal status can reach canceled", (
     assert.ok(reachable("in_review", null).has("canceled"), "cancellation is not gated");
   });
 
+  it("a card refused by the acceptance-coverage gate can still finish or leave", () => {
+    // 0032 attaches the coverage gate to `in_review → done`. A refusal must not
+    // wedge: rework is the same exit it was before, and it starts a new delivery
+    // round, which is exactly what re-freezes the evidence the gate reads.
+    assert.ok(allowedTargets("in_review").includes("done"), "the edge exists; the gate decides");
+    assert.ok(allowedTargets("in_review").includes("in_progress"), "rework needs no new report");
+    assert.ok(allowedTargets("in_progress").includes("in_review"), "and the card can come back");
+    assert.ok(reachable("in_review", null).has("canceled"), "cancellation is never gated by coverage");
+    assert.ok(reachable("in_review", null).has("done"), "done stays reachable from the table");
+  });
+
   it("the acceptance policy decides writers, never reachability", () => {
     // The policy changes *who* may take the `done` edge, not whether the state
     // machine has it: `in_review → done` is present under all three policies.

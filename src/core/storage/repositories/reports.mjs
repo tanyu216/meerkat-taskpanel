@@ -31,6 +31,9 @@ function toRow(report) {
     // delivery — the column's own DEFAULT, restated so the repository never
     // depends on it silently.
     origin: report.origin ?? "delivery",
+    // 0033 — only an epic's delivery report is a rollup; the writer sets this
+    // from the card's kind, never from a caller-supplied payload field.
+    is_rollup: report.isRollup === true ? 1 : 0,
   };
 }
 
@@ -105,13 +108,17 @@ export function createReportsRepository(db) {
      * the query. A caller that only wants delivery rounds filters on `origin`.
      *
      * @param {string} taskId
-     * @returns {{round: number, origin: string}[]}
+     * @returns {{round: number, origin: string, isRollup: boolean}[]}
      */
     listGateReports(taskId) {
       return db
-        .prepare("SELECT round, origin FROM task_reports WHERE task_id = ? ORDER BY round ASC")
+        .prepare("SELECT round, origin, is_rollup FROM task_reports WHERE task_id = ? ORDER BY round ASC")
         .all(taskId)
-        .map((row) => ({ round: Number(row.round), origin: String(row.origin) }));
+        .map((row) => ({
+          round: Number(row.round),
+          origin: String(row.origin),
+          isRollup: Number(row.is_rollup ?? 0) === 1,
+        }));
     },
 
     /** @param {string} taskId */

@@ -11,15 +11,25 @@
 
 import { DomainError } from "../../foundation/errors.mjs";
 import { assertWaiverRequest } from "../domain/delivery-gate.mjs";
-import { STATUS } from "../domain/enums.mjs";
+import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
 import { assertTransition, isTerminalStatus } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
-import { assertAcceptance, assertChildrenTerminal, assertReviewReady } from "./acceptance.mjs";
+import {
+  assertAcceptance,
+  assertAcceptanceCoverage,
+  assertChildrenTerminal,
+  assertReviewReady,
+} from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
 import { insertDeliveryReport } from "./delivery-report.mjs";
 import { resolveActorId } from "./dictionary.mjs";
-import { advanceContainerForChild, hasChildStarted, startContainerForChild } from "./rollup.mjs";
+import {
+  advanceContainerForChild,
+  assertRollupCoverage,
+  hasChildStarted,
+  startContainerForChild,
+} from "./rollup.mjs";
 
 /** The task must exist, and its delivery round is what the report is judged against. */
 function loadTask(ctx, taskRef) {
@@ -66,11 +76,16 @@ export function writeReport(ctx, input) {
         },
       );
 
+      // 0033 — a report on an epic *is* its rollup: it must describe every live
+      // child, and it is marked as such. A plain `task` report is never a rollup.
+      const isRollup = task.kind === TASK_KIND.EPIC;
+      if (isRollup) assertRollupCoverage(ctx, task, prepared.acceptance);
       const report = insertDeliveryReport(ctx, {
         taskId: task.id,
         prepared,
         seg: prepared.seg ?? input.seg ?? null,
         sessionId: prepared.sessionId ?? input.sessionId ?? null,
+        isRollup,
       });
       const updated = ctx.repos.tasks.setReportLatest({ id: task.id, reportId: report.id, now });
 
@@ -151,6 +166,24 @@ export function deliver(ctx, input) {
       if (to === STATUS.DONE) assertReviewReady(ctx, task, actor);
 
       if (waived) {
+        // 0033 — a container has no report of its own to waive: its evidence is
+        // the rollup over its children. The deliberate exit is to roll up (or
+        // cancel the epic), never to skip the evidence.
+        if (task.kind === TASK_KIND.EPIC) {
+          throw new DomainError("ROLLUP_REQUIRED", {
+            message:
+              `${task.identifier}: an epic cannot be delivered under a report waiver — ` +
+              "its delivery evidence is the rollup over its children",
+            details: { taskId: task.id, identifier: task.identifier, round: task.deliveryRound },
+            hint: {
+              command: `taskctl report template ${task.identifier}`,
+              note: "fill the child list, then deliver it on the epic",
+            },
+          });
+        }
+        // A waiver excuses the *delivery* gate, never the acceptance gate: a
+        // non-empty baseline still needs a current-round report before done.
+        if (to === STATUS.DONE) assertAcceptanceCoverage(ctx, task);
         const waiver = { round: task.deliveryRound, reason: waiverReason, at: now };
         const moved = ctx.repos.tasks.moveCas({ id: task.id, ifVersion: input.ifVersion, to, now, waiver });
         ctx.repos.activities.append({
@@ -182,11 +215,18 @@ export function deliver(ctx, input) {
           now,
         },
       );
+      // The prepared row is not in the repository yet, so the gate is given it
+      // directly; if it fails, the transaction rolls back and no report is left
+      // behind.
+      if (to === STATUS.DONE) assertAcceptanceCoverage(ctx, task, { report: prepared });
+      const isRollup = task.kind === TASK_KIND.EPIC;
+      if (isRollup) assertRollupCoverage(ctx, task, prepared.acceptance);
       const report = insertDeliveryReport(ctx, {
         taskId: task.id,
         prepared,
         seg: prepared.seg ?? input.seg ?? null,
         sessionId: prepared.sessionId ?? input.sessionId ?? null,
+        isRollup,
       });
 
       const moved = ctx.repos.tasks.moveCas({

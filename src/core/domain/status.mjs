@@ -74,11 +74,14 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
     // M1 — the single entry into `awaiting` (design §2.1/§6).
     STATUS.AWAITING,
   ]),
-  // M1 — the overlay state. Its only exits are back into the work (the human
-  // replied) or out of it (the human canceled). `blocked`, `in_review` and
-  // `done` are absent on purpose: an `awaiting` card must not be able to reach
-  // `in_review` without the report the delivery gate demands.
-  [STATUS.AWAITING]: Object.freeze([STATUS.IN_PROGRESS, STATUS.CANCELED]),
+  // M1 — the overlay state. Its exits are back into the work (the worker was
+  // live when the reply arrived), back to the **queue** (0034 — the worker had
+  // stopped, so the card must be claimed again by a fresh one), or out
+  // (canceled). `blocked`, `in_review` and `done` are absent on purpose: an
+  // `awaiting` card must not be able to reach `in_review` without the report the
+  // delivery gate demands. `awaiting → todo` is not a reopen: the round does not
+  // move and the claim is released.
+  [STATUS.AWAITING]: Object.freeze([STATUS.IN_PROGRESS, STATUS.TODO, STATUS.CANCELED]),
   [STATUS.IN_REVIEW]: Object.freeze([STATUS.DONE, STATUS.IN_PROGRESS, STATUS.BLOCKED]),
   [STATUS.BLOCKED]: Object.freeze([STATUS.TODO, STATUS.IN_PROGRESS, STATUS.IN_REVIEW, STATUS.CANCELED]),
   // The reopen edge. `todo` is the only target on purpose: `in_progress` is a

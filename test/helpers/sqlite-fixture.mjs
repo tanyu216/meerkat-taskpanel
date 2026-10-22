@@ -318,11 +318,19 @@ export function insertReport(db, overrides = {}) {
     created_at: TS,
     ...overrides,
   };
+  // 0033 adds `is_rollup`; a board on either side of it must be buildable, so
+  // the column is named only when the schema has it (the same rule `insertTask`
+  // follows for the columns that come and go).
+  const hasRollup = db
+    .prepare("SELECT 1 FROM pragma_table_info('task_reports') WHERE name = 'is_rollup'")
+    .get() !== undefined;
+  const extra = hasRollup ? ", is_rollup" : "";
+  const marker = hasRollup ? ", ?" : "";
   const info = db
     .prepare(
       `INSERT INTO task_reports(task_id, round, seg, session_id, conclusion, acceptance_json,
-                                evidence_json, leftovers, author_kind, author_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                evidence_json, leftovers, author_kind, author_id, created_at${extra})
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${marker})`,
     )
     .run(
       row.task_id,
@@ -336,6 +344,7 @@ export function insertReport(db, overrides = {}) {
       row.author_kind,
       ensureActor(db, row.author_id, row.author_kind),
       row.created_at,
+      ...(hasRollup ? [row.is_rollup ?? 0] : []),
     );
   return Number(info.lastInsertRowid);
 }

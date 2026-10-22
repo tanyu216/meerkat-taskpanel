@@ -113,6 +113,10 @@ export function taskToWire(task, options = {}) {
   }
   out.labels = Array.isArray(task.labels) ? task.labels : [];
   out.meta = task.meta ?? {};
+  // 0032 — the frozen baseline, not `meta.acceptance`. The revision is the
+  // optimistic lock a prune sends back.
+  out.acceptance = Array.isArray(task.acceptance) ? task.acceptance : [];
+  out.acceptance_revision = Number(task.acceptanceRevision ?? 0);
   // 0031 — the decision snapshot is stored as 0/1 and exposed as a boolean: the
   // request declarations use `bool()`, and a reader should not have to know the
   // storage type.
@@ -417,6 +421,9 @@ export function reportToWire(report, options = {}) {
     // As with a comment: the report's own `author_kind`.
     author: actorRef(report.authorId, report.authorKind, lookup),
     created_at: report.createdAt,
+    // 0033 — an epic's rollup. `origin` stays internal (only `import` vs
+    // `delivery` matters, and the wire has never exposed it).
+    is_rollup: report.isRollup === true,
   };
 }
 

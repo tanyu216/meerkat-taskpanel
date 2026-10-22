@@ -24,8 +24,8 @@ const create = (input = {}) =>
   );
 
 describe("domain/comment — create", () => {
-  it("accepts the seven kinds and defaults to note", () => {
-    assert.deepEqual([...COMMENT_KINDS], ["discuss", "decision", "confirm", "confirm_request", "change", "note", "defect"]);
+  it("accepts the eight kinds and defaults to note", () => {
+    assert.deepEqual([...COMMENT_KINDS], ["discuss", "decision", "confirm", "confirm_request", "change", "note", "defect", "question"]);
     for (const kind of COMMENT_KINDS) {
       assert.equal(create({ kind }).kind, kind);
       assert.equal(isCommentKind(kind), true);
@@ -40,7 +40,7 @@ describe("domain/comment — create", () => {
       assert.equal(err.details.field, "body");
       return true;
     });
-    assert.throws(() => create({ kind: "shout" }), (err) => err.details.allowed.length === 7);
+    assert.throws(() => create({ kind: "shout" }), (err) => err.details.allowed.length === 8);
     // The *comment* kind is a closed vocabulary; the **author**'s is not. A kind
     // is `human`, or the platform an agent runs on, or whatever a host calls
     // itself — the column has no CHECK (`0018` dropped it) and neither does this.

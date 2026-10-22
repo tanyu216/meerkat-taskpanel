@@ -34,6 +34,7 @@
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
+import { DECISION_KINDS } from "./comment.mjs";
 import { AWAITING_REASONS, STATUS } from "./enums.mjs";
 
 export { AWAITING_REASONS };
@@ -78,17 +79,58 @@ export function isHumanComment(comment) {
 }
 
 /**
+ * The newest `question` comment, or `null`.
+ *
+ * 0034 — since a worker can *ask*, the payload `awaiting` shows is the question,
+ * not whatever human comment happens to be last (the asking worker's own
+ * `note`/`progress` comments must not displace it).
+ *
+ * @param {object[]} comments in `created_at` order
+ * @returns {object|null}
+ */
+export function latestQuestion(comments) {
+  const list = Array.isArray(comments) ? comments : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i]?.kind === "question") return list[i];
+  }
+  return null;
+}
+
+/**
+ * Is there a human comment after `question`?
+ *
+ * Any human comment counts as having answered (the plan's rule): `decision` /
+ * `confirm` / `change` resume the card automatically, while a `note` /
+ * `discuss` is an answer the control session must act on with an explicit move.
+ * A question with no later human comment is still open.
+ *
+ * @param {object[]} comments
+ * @param {object|null} question
+ * @returns {boolean}
+ */
+export function isAnsweredAfter(comments, question) {
+  const list = Array.isArray(comments) ? comments : [];
+  if (question === null || question === undefined) return false;
+  const index = list.findIndex((comment) => comment?.id === question.id);
+  if (index === -1) return false;
+  return list.slice(index + 1).some((comment) => isHumanComment(comment));
+}
+
+/**
  * The comment that `awaiting` is showing, or `null`.
  *
- * Reads only — "the newest human comment on the card". Which comment that is
- * belongs to the caller (`repos.comments.list({ author_kind: "human" })`), so
- * this stays a pure projection.
+ * 0034 — the newest **question** wins; a card that predates the kind falls back
+ * to the newest human comment (the M1 reading), so old cards keep their payload.
+ * The caller supplies the comment list (`repos.comments.list`), so this stays a
+ * pure projection.
  *
  * @param {{comments?: object[]}} input
  * @returns {object|null}
  */
 export function payloadOf(input = {}) {
   const comments = Array.isArray(input.comments) ? input.comments : [];
+  const question = latestQuestion(comments);
+  if (question !== null) return question;
   for (let i = comments.length - 1; i >= 0; i -= 1) {
     if (isHumanComment(comments[i])) return comments[i];
   }
@@ -144,7 +186,9 @@ export function isConsumed(cursor, commentId) {
  *   task?: {status?: string},
  *   comments?: object[],
  *   cursor?: string|number|null,
- * }} input
+ *   newest?: object|null,
+ * }} input `newest` lets the writer decide on the comment it just stored,
+ *   instead of re-reading a list whose `created_at` ties could reorder it.
  * @returns {{resume: boolean, reason: string, comment: object|null, nextCursor: string|number|null}}
  *   `resume: true` only when **all** of these hold:
  *
@@ -152,6 +196,10 @@ export function isConsumed(cursor, commentId) {
  *     * the newest comment on the card is written by a **human**
  *       (`author_kind === "human"` — an agent comment is just a comment, and it
  *       neither satisfies the payload nor resumes the card, §2.3);
+ *     * that comment is a **decision** (`decision` / `confirm` / `change`). A
+ *       human `note` or `discuss` is an answer too, but the control session
+ *       answers with it explicitly and then moves the card; the board does not
+ *       invent consent from prose (0034);
  *     * that comment is **strictly after the cursor**, so the same comment can
  *       never resume the card twice — the second read returns `resume: false`
  *       with the cursor unmoved (the idempotence the card's F2 asks for).
@@ -169,15 +217,22 @@ export function resumeDecision(input = {}) {
     return { resume: false, reason: "not_awaiting", ...settled };
   }
 
-  const newest = comments.length > 0 ? comments[comments.length - 1] : null;
-  if (newest === null) {
+  const newest = input.newest !== undefined
+    ? input.newest
+    : comments.length > 0
+      ? comments[comments.length - 1]
+      : null;
+  if (newest === null || newest === undefined) {
     return { resume: false, reason: "no_comment", ...settled };
   }
   if (!isHumanComment(newest)) {
     return { resume: false, reason: "not_human", ...settled };
   }
+  if (!DECISION_KINDS.includes(newest.kind)) {
+    return { resume: false, reason: "not_a_decision", comment: newest, nextCursor: cursor };
+  }
   if (isConsumed(cursor, newest.id)) {
     return { resume: false, reason: "already_consumed", comment: newest, nextCursor: cursor };
   }
-  return { resume: true, reason: "human_reply", comment: newest, nextCursor: newest.id ?? cursor };
+  return { resume: true, reason: "human_decision", comment: newest, nextCursor: newest.id ?? cursor };
 }

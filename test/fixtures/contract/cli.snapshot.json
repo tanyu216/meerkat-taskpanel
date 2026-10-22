@@ -901,6 +901,14 @@
               "short": null
             },
             {
+              "flag": "question",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "reason",
               "as": "string",
               "value": "<why>",
@@ -1009,11 +1017,27 @@
               "short": null
             },
             {
+              "flag": "acceptance-revision",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "description",
               "as": "string",
               "value": "<text>",
               "required": false,
               "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "drop-acceptance",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": true,
               "short": null
             },
             {

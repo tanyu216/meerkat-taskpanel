@@ -78,8 +78,13 @@ function boardWith(db, from, to, suffix = "", kind = "task") {
     status: from,
     kind,
   });
-  if (canTransition(from, to, kind) && to === "in_review") {
-    insertReport(db, { task_id: id, round: 1 });
+  // 0033 — an epic's delivery row is a rollup, and its `done` row needs one for
+  // the current round. The matrix tests the *transition* (the trigger only asks
+  // that the row exists, not that it covers the children — the command layer
+  // owns coverage), so an empty rollup is the right fixture here.
+  const needsEpicRollup = kind === "epic" && (to === "in_review" || to === "done");
+  if (canTransition(from, to, kind) && (to === "in_review" || needsEpicRollup)) {
+    insertReport(db, { task_id: id, round: 1, is_rollup: needsEpicRollup ? 1 : 0 });
   }
   return id;
 }
@@ -360,11 +365,21 @@ describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
     });
   });
 
-  it("has awaiting → in_progress as the only way back into the work", async () => {
+  it("exits awaiting into the work, back to the queue, or out (0034)", async () => {
     await withBoard(({ db }) => {
       const taskId = boardWith(db, "awaiting", "in_progress");
       assert.equal(move(db, taskId, "in_progress"), "NO_ERROR");
-      assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "canceled"]);
+
+      // The answered card returns to `todo`, and that is not a reopen: the
+      // delivery round stays where it was.
+      const requeued = boardWith(db, "awaiting", "todo", "_requeue");
+      assert.equal(move(db, requeued, "todo"), "NO_ERROR");
+      assert.equal(
+        db.prepare("SELECT delivery_round FROM tasks WHERE id = ?").get(requeued).delivery_round,
+        1,
+        "re-queueing does not start a round",
+      );
+      assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "todo", "canceled"]);
     });
   });
 
@@ -525,7 +540,12 @@ describe("contract/state-machine — the execution claim follows the work cycle"
               // every other status seeds the claim the move must carry.
               ...(from === "backlog" ? {} : { claimed_by: "linus", claimed_at: TS, heartbeat_at: TS }),
             });
-            if (to === "in_review") insertReport(db, { task_id: id, round: 1 });
+            // 0033 — the epic rows that need a delivery row: entering review, and
+            // the legal done edge (which reads the current round's rollup).
+            const epicRollup = kind === "epic" && (to === "in_review" || to === "done");
+            if (to === "in_review" || epicRollup) {
+              insertReport(db, { task_id: id, round: 1, is_rollup: epicRollup ? 1 : 0 });
+            }
 
             try {
               repos.tasks.moveCas({ id, to, now: TS2 });

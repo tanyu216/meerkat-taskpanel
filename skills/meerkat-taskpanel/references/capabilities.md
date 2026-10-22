@@ -94,15 +94,25 @@ The plan is snake_case (`workflowToWire`). Action `type`s the loop executes:
 
 | `type` | Meaning |
 |---|---|
-| `create_review` | create the review card (`original_ref`, `project_id`, `reviewer`, `round`, `idem`, `target`, `title`, `description`, `acceptance[]`) |
+| `create_review` | create the review card (`original_ref`, `project_id`, `reviewer`, `round`, `idem`, `target`, `title`, `description`, `acceptance[]`). `acceptance[]` is the original's frozen baseline followed by the generic review items (2 for a card, 3 for an epic), and becomes the review card's own frozen baseline |
 | `auto_accept` | close a no-review original (`original_ref`, `accepted_by`, `round`) |
 | `approve` / `approve_hold` | apply an APPROVE verdict; `_hold` leaves a top-level original `in_review` under `human-only` |
 | `reject_task` / `reject_epic` / `reject_task_finish` | apply a REJECT verdict; the epic form also creates a fix child |
 | `close_review` / `cancel_review` | close the review card last |
 
-Alert `type`s include `original_unseen`, `verdict_unreadable`, `review_aging`,
-`actions_capped`, `dispatch_capped`, `self_review_not_independent`, and the
-`review_cards_unclosable` startup warning. Each carries a `dedup_key`.
+Alert `type`s include `original_unseen`, `verdict_unreadable`, `verdict_incomplete`,
+`acceptance_incomplete`, `acceptance_unverified`, `review_aging`, `actions_capped`,
+`dispatch_capped`, `self_review_not_independent`, and the `review_cards_unclosable` startup
+warning. Each carries a `dedup_key`. The acceptance/verdict alerts are log-only: the planner
+declines to plan an action the write gate would refuse, rather than producing one failure per
+tick. An epic's skip reasons are `rollup_unverified` (no current-round rollup) and
+`rollup_stale` (the rollup no longer matches the children); both appear on
+`auto_accept_skipped` / `verdict_incomplete`.
+
+An **epic's** only delivery report is its rollup: `report.is_rollup` is `true` on the wire,
+its acceptance items carry `ref: <child identifier>`, and `done` / an `APPROVE` refuse a
+missing or stale one (`ROLLUP_REQUIRED` / `ROLLUP_STALE`). The loop never writes a non-rollup
+report on an epic.
 
 ## 7. Workflow writes
 
@@ -119,7 +129,29 @@ All writes use `--actor-kind taskd` and are idempotent by their key.
 | comment | `comment add <ref> --kind note\|change --body <text>` | `ok` only |
 
 `issue meta` **merges**; `issue update --meta` replaces the whole object and would
-erase the acceptance list, target and review keys. Use `issue meta`.
+erase `target` and the review keys. Use `issue meta`. The acceptance baseline no longer
+lives in meta (0032): it is a column, immune to `--meta`, and a **changed**
+`meta.acceptance` / `meta.acceptance_legacy` is refused (`VALIDATION_FAILED`) — append with
+`issue update --acceptance`, prune only as a human with `--drop-acceptance --reason`.
+
+## Questions — the `awaiting` protocol (0034)
+
+A worker that cannot proceed asks and stops:
+
+```bash
+taskctl issue move <ref> awaiting --awaiting-reason E2 --question "what you need to know" <attribution>
+```
+
+The move and the `question` comment are one transaction. A human answers with a
+`decision` / `confirm` / `change` comment, and the board moves the card to `todo` in the same
+transaction — the asking subagent is gone, so only the queue can dispatch the next one. A
+human `note` / `discuss` is an answer too, but the control session records it and moves the
+card explicitly; the loop never writes a decision kind. The card's `awaiting_reason` stays the
+category (`E1`–`E5`); the question is the payload (`waitingPayload`, the newest `question`).
+
+Who answers what the loop cannot: `--opened-by human` means the control turn may ask its own
+operator in that conversation; the default (`supervisor`, for systemd/launchd/cron) leaves the
+card `awaiting` for the human's decision comment.
 
 ### The subagent's file surface
 

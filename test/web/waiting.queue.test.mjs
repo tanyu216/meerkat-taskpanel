@@ -15,12 +15,14 @@ import { describe, it } from "node:test";
 import {
   AWAITING_CATEGORIES,
   WAITING_REASON_KINDS,
+  payloadCommentOf,
   reasonKeyOf,
   reasonKindOf,
   sinceOf,
   waitingRow,
   waitingRows,
 } from "../../web/src/lib/waiting-queue.js";
+import { payloadOf } from "../../src/core/domain/awaiting.mjs";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -255,6 +257,45 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
     assert.equal(merged[1].kind, "acceptance");
     assert.equal(merged[1].reasonKind, "acceptance");
     assert.equal(merged[1].stamp.key, "time.minutesAgo");
+  });
+});
+
+describe("0034 · the payload comment is the question", () => {
+  const wire = (id, kind, author_kind) => ({ id, kind, author_kind, body: id, created_at: at(0) });
+
+  it("prefers the newest question, then the newest human comment", () => {
+    const trail = [
+      wire("h1", "decision", "human"),
+      wire("a2", "note", "agent"),
+      wire("q3", "question", "agent"),
+      wire("a4", "progress", "agent"),
+    ];
+    assert.equal(payloadCommentOf(trail).id, "q3");
+    assert.equal(payloadCommentOf([wire("a1", "note", "agent"), wire("h2", "note", "human")]).id, "h2");
+    assert.equal(payloadCommentOf([]), null);
+  });
+
+  it("agrees with `domain/awaiting.mjs#payloadOf` on the same trails", () => {
+    const trails = [
+      [wire("h1", "decision", "human")],
+      [wire("a1", "note", "agent"), wire("h2", "note", "human")],
+      [wire("h1", "decision", "human"), wire("q2", "question", "agent")],
+      [wire("q1", "question", "agent"), wire("h2", "note", "human")],
+      [wire("a1", "note", "agent")],
+      [],
+    ];
+    for (const trail of trails) {
+      const domain = trail.map((comment) => ({
+        id: comment.id,
+        kind: comment.kind,
+        authorKind: comment.author_kind,
+      }));
+      assert.equal(
+        payloadCommentOf(trail)?.id ?? null,
+        payloadOf({ comments: domain })?.id ?? null,
+        JSON.stringify(trail),
+      );
+    }
   });
 });
 

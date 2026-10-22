@@ -110,7 +110,18 @@ export const SPELLING = Object.freeze({
     kind: { value: "<task|epic|deploy>" },
     labels: { flag: "label", value: "<label>" },
     meta: { as: "kv" },
-    acceptance: { value: "<text>" },
+    acceptance: { value: "<text>", summary: "Append a criterion; the baseline is frozen and only grows." },
+    acceptance_drop: {
+      flag: "drop-acceptance",
+      key: "acceptanceDrop",
+      value: "<text>",
+      summary: "Remove a criterion (human only; needs --reason and --acceptance-revision).",
+    },
+    acceptance_revision: {
+      key: "acceptanceRevision",
+      value: "<n>",
+      summary: "The acceptance revision you read; guards a prune against a concurrent change.",
+    },
     review_required: {
       flag: "review",
       as: "string",
@@ -119,7 +130,10 @@ export const SPELLING = Object.freeze({
         "Change the review decision. Any agent may escalate no→yes; only a human may waive " +
         "yes→no, and a waiver needs --reason.",
     },
-    reason: { value: "<why>", summary: "Why a required review is being waived (audited; ≥8 characters)." },
+    reason: {
+      value: "<why>",
+      summary: "Why a required review is being waived, or why the acceptance baseline is being pruned (audited; ≥8 characters).",
+    },
   }),
   [TASK_OPS.move]: Object.freeze({
     // `to` is the command's second positional, not a flag: the CLI reads it as
@@ -134,6 +148,10 @@ export const SPELLING = Object.freeze({
       summary:
         "What a blocked card is waiting for — written on a move into `blocked`, cleared on any move out of it. " +
         "clarify · decision · dependency · out_of_bounds · defect · external · resource · unknown",
+    },
+    question: {
+      value: "<text>",
+      summary: "The question you need answered; written as a `question` comment with the move into `awaiting`.",
     },
   }),
   [TASK_OPS.reopen]: Object.freeze({

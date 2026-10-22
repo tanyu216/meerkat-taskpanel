@@ -44,6 +44,34 @@ export const ERROR_CODES = Object.freeze({
   REPORT_ROUND_MISMATCH: spec(409, "Report round does not match the task's current delivery round."),
   REPORT_APPEND_ONLY: spec(409, "Reports are append-only; write a new round instead of editing history."),
   REPORT_TASK_MISMATCH: spec(409, "report_latest_id does not belong to this task."),
+  // ---- Acceptance baseline (0032) -------------------------------------------
+  // The card's frozen baseline is the thing a delivery report is evidence
+  // against. `ACCEPTANCE_INCOMPLETE` is the report-exists-but-does-not-cover
+  // case; `ACCEPTANCE_UNVERIFIED` is "no current-round report at all" (a waived
+  // delivery is not acceptance evidence).
+  ACCEPTANCE_INCOMPLETE: spec(409, "The current-round report does not cover every acceptance criterion."),
+  ACCEPTANCE_UNVERIFIED: spec(409, "This card has an acceptance baseline but no current-round delivery report."),
+  ACCEPTANCE_STALE_REVISION: spec(409, "Acceptance revision changed — re-read the card and retry."),
+  ACCEPTANCE_PRUNE_FORBIDDEN: spec(409, "Only a human may remove an acceptance criterion."),
+  ACCEPTANCE_LOCKED: spec(409, "The acceptance baseline is frozen while the card is in review or terminal."),
+  // Raised by 0032's triggers as well as by the command layer: a rewrite must
+  // advance `acceptance_revision`, and a shrink needs an audited reason.
+  ACCEPTANCE_SNAPSHOT_IMMUTABLE: spec(409, "The acceptance baseline can only grow; a prune needs an audited reason."),
+  // Raised by `validateReport` and by 0032's report trigger.
+  REPORT_NOT_APPLICABLE_NOTE: spec(422, "A not_applicable acceptance item needs a note saying why."),
+  // ---- Epic rollups (0033) --------------------------------------------------
+  // An epic's delivery is a rollup over its children, not a summary written
+  // beside them. The row is marked `is_rollup=1`; `ROLLUP_REQUIRED` is both the
+  // delivery-gate refusal and the DB trigger's done guard.
+  ROLLUP_REQUIRED: spec(409, "An epic needs a current-round rollup report before it can be delivered or accepted."),
+  ROLLUP_INVALID: spec(409, "Only a delivery report on an epic can carry the rollup marker."),
+  ROLLUP_STALE: spec(409, "The rollup no longer matches the epic's children."),
+
+  // ---- Questions (0034) ------------------------------------------------------
+  // An agent may only enter `awaiting` with something to wait on: a `--question`
+  // (written as a `question` comment) or an earlier unanswered one. A human may
+  // park a card silently; the state's payload promise is about workers.
+  QUESTION_REQUIRED: spec(422, "Entering awaiting needs a question (or an earlier unanswered one)."),
 
   // ---- Task state machine + lifecycle ---------------------------------------
   INVALID_TRANSITION: spec(409, "Status transition is not allowed."),
@@ -236,6 +264,12 @@ export const DB_RAISE_CODES = Object.freeze([
   // 0031 — the review-required done gate and the review-card marker invariant.
   "REVIEW_REQUIRED",
   "REVIEW_CARD_MARKER_INVALID",
+  // 0032 — the frozen acceptance baseline and the not_applicable note.
+  "ACCEPTANCE_SNAPSHOT_IMMUTABLE",
+  "REPORT_NOT_APPLICABLE_NOTE",
+  // 0033 — the rollup marker and the epic done guard.
+  "ROLLUP_REQUIRED",
+  "ROLLUP_INVALID",
 ]);
 
 /** Codes produced by mapping SQLite failures (constraints, and lock contention). */
@@ -269,6 +303,18 @@ export const JS_ONLY_CODES = Object.freeze([
   // policy and the review cards' current state), and the loop's own protocol is
   // exempt from it by design.
   "REVIEW_PENDING",
+  // 0032 — the coverage gate combines the task's baseline with a report body;
+  // the revision CAS and the human-only prune rule are service-layer facts.
+  "ACCEPTANCE_INCOMPLETE",
+  "ACCEPTANCE_UNVERIFIED",
+  "ACCEPTANCE_STALE_REVISION",
+  "ACCEPTANCE_PRUNE_FORBIDDEN",
+  "ACCEPTANCE_LOCKED",
+  // 0033 — staleness compares the report's `ref` set with the live children,
+  // which a trigger cannot do without duplicating the rollup's own rules.
+  "ROLLUP_STALE",
+  // 0034 — "a question is owed" reads the actor and the comment trail.
+  "QUESTION_REQUIRED",
   "REPORT_ROUND_MISMATCH",
   "VERSION_CONFLICT",
   "CLAIM_LOST",
