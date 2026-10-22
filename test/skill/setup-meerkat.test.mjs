@@ -113,6 +113,17 @@ describe("skill frontmatter and assets", () => {
     assert.equal(existsSync(join(ROOT, "skills", "meerkat-loop", "roles")), false);
   });
 
+  it("keeps the skill-creator eval prompts parseable", () => {
+    const evals = JSON.parse(readFileSync(join(SKILL, "evals", "evals.json"), "utf8"));
+    assert.equal(evals.skill_name, "setup-meerkat");
+    assert.equal(evals.evals.length, 6);
+    for (const entry of evals.evals) {
+      assert.equal(typeof entry.prompt, "string");
+      assert.ok(entry.prompt.length > 20, `eval ${entry.id}: prompt`);
+      assert.ok(Array.isArray(entry.assertions) && entry.assertions.length > 0, `eval ${entry.id}: assertions`);
+    }
+  });
+
   it("mirrors the loop's actor-kind table", () => {
     assert.deepEqual([...LOOP_KINDS].sort(), Object.keys(AGENT_DIRS).sort());
   });

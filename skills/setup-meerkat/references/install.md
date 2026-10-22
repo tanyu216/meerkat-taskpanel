@@ -33,6 +33,11 @@ remote-board path: do not load a local keepalive behind a remote URL.
 `web/dist`. The agent shims and the loop config point at it. `install.sh` seeds the env
 file with `TASKD_URL=http://localhost:9527` once and never overwrites it.
 
+An **agent-only** install (`--target claude`, no server) has no such tree: its install-root
+`.env` is the checkout's (or npm package's) `.env`, and the dry run names that path. Read
+the dry run before writing if the checkout must stay untouched; `MEERKAT_TASKPANEL_ENV_FILE`
+selects another file for the CLI and the acceptance-policy write.
+
 For a remote board, merge the URL (and token) into that env file **before** installing:
 
 ```bash

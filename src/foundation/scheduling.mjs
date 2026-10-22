@@ -647,12 +647,13 @@ export function planContinueInvocation(input = {}) {
  * an unbounded context. It names the card, the attribution flags every write
  * should carry, and the compliant next step (triage, read, work, report).
  *
- * **Step 0 is the epic-triage decision**, and it lives in the handoff rather
- * than in a separate planner process: the worker is the only process that has
- * already read the card when the answer is cheap, and the claim→wake path is
- * the one place the loop can afford to ask. A card with several independent
- * deliverables is promoted to `epic` and split into children *before* any work
- * starts; a card with one deliverable proceeds untouched.
+ * **Step 0 is the epic-triage check**, and it lives in the handoff rather than
+ * in a separate planner process: the worker is the only process that has
+ * already read the card when the answer is cheap. The worker does **not**
+ * promote or split: a card with several independent deliverables becomes an
+ * agent `question` comment to the project session, which decides the split
+ * (a scope expansion is E1 for the human). A card with one deliverable
+ * proceeds untouched.
  *
  * The handoff names the task's **process directory** (`.meerkat/<identifier>/`),
  * relative to the project session's cwd. `card.md` is the loop's authoritative
@@ -661,7 +662,11 @@ export function planContinueInvocation(input = {}) {
  * board still owns no directory (O3): this is the loop's convention under the
  * worker's own cwd, resolved locally.
  *
- * @param {{card?: object, agent: string, actorKind: string, sessionId?: string|null, review?: boolean}} input
+ * Optional team-role fields (`role`, `roleWorkflowPath`, `selfCheckPath`,
+ * `decisionPolicyPath`) append the role layer; without them the text is the
+ * pre-roles handoff, byte for byte.
+ *
+ * @param {{card?: object, agent: string, actorKind: string, sessionId?: string|null, review?: boolean, role?: object|null, roleWorkflowPath?: string|null, selfCheckPath?: string|null, decisionPolicyPath?: string|null}} input
  * @returns {string}
  */
 export function buildHandoff(input) {

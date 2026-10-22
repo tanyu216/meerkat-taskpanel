@@ -25,7 +25,7 @@
         "<home>/.claude/skills/setup-meerkat/SKILL.md exists after installation.",
         "The roles root is <home>/.claude/skills/meerkat-loop/roles with manifest.json, a decision policy, and four roles.",
         ".claude/agents/jobs.md and .codex/agents/reviewer.toml exist.",
-        "A second identical run writes no file and reports unchanged actions."
+        "A second identical run leaves the role files and native agent definitions unchanged (content-hash identical), and the role installer reports every action as unchanged."
       ]
     },
     {
