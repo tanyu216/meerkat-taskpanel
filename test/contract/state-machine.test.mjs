@@ -365,11 +365,21 @@ describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
     });
   });
 
-  it("has awaiting → in_progress as the only way back into the work", async () => {
+  it("exits awaiting into the work, back to the queue, or out (0034)", async () => {
     await withBoard(({ db }) => {
       const taskId = boardWith(db, "awaiting", "in_progress");
       assert.equal(move(db, taskId, "in_progress"), "NO_ERROR");
-      assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "canceled"]);
+
+      // The answered card returns to `todo`, and that is not a reopen: the
+      // delivery round stays where it was.
+      const requeued = boardWith(db, "awaiting", "todo", "_requeue");
+      assert.equal(move(db, requeued, "todo"), "NO_ERROR");
+      assert.equal(
+        db.prepare("SELECT delivery_round FROM tasks WHERE id = ?").get(requeued).delivery_round,
+        1,
+        "re-queueing does not start a round",
+      );
+      assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "todo", "canceled"]);
     });
   });
 

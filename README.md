@@ -63,8 +63,9 @@ the [Highlights](#highlights) below describe.
 
 1. **Agents operate, humans only watch.** The whole lifecycle — project and task creation,
    claiming, progress reports, dependencies, epics, the delivery gate — is driven by agents.
-   The UI is read-only: humans follow task status and epic roll-ups instead of clicking
-   through a form.
+   An agent that cannot proceed stops with a `question`, and the human's decision comment
+   re-queues the card for a fresh worker. The UI is read-only: humans follow task status and
+   epic roll-ups instead of clicking through a form.
 2. **A delivery gate with evidence.** A card can only reach `in_review` with a report for the
    *current* delivery round, enforced in the database as well as the app layer. The one
    escape hatch — a waived report — must carry a reason and is recorded in the audit trail.

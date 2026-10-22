@@ -295,8 +295,16 @@ _Avoid_: severity, cause, note
 
 **Awaiting**:
 The overlay for a card that has stopped to ask a human a question. It is entered only from
-`in_progress` and left only by resuming or cancelling — it is not an eighth column.
+`in_progress` and left by resuming (a live worker), re-queueing to `todo` (the worker
+stopped; an answer gets a fresh one) or cancelling — it is not an eighth column.
 _Avoid_: pending, on hold, blocked
+
+**Question**:
+The `question` comment a worker writes on entering `awaiting` (0034). It is the payload the
+state promises; a human's `decision` / `confirm` / `change` answers it and the board
+re-queues the card. A `note` answer needs an explicit move.
+_中文_: 提问
+_Avoid_: awaiting reason (that is the category, not the question), issue
 
 **Awaiting reason**:
 The category of the question being asked — a fixed enumeration, never free text. It says

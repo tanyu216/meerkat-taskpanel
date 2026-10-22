@@ -884,6 +884,7 @@ export async function runContinue(opts, deps = {}) {
     passesScript: join(here, "passes.mjs"),
     commonArgs: loopCommandArgs(opts),
     continueIntervalSeconds: opts.continueInterval,
+    openedBy: opts.openedBy,
     includePoll: false,
   });
   const invocation = planContinueInvocation({

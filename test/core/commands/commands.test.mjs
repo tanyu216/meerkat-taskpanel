@@ -355,6 +355,64 @@ describe("commands/comments", () => {
       assert.throws(() => commands.addComment({ taskId: task.id, body: "", actor: AGENT }), (err) => err.code === "VALIDATION_FAILED");
     });
   });
+
+  it("a human decision answers an awaiting question and re-queues the card", async () => {
+    await board(({ db, commands }) => {
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "Ask",
+        assignee: "linus",
+        assigneeKind: "agent",
+        actor: AGENT,
+      });
+      commands.claim({ id: task.id, actor: AGENT });
+      commands.moveStatus({
+        id: task.id,
+        to: "awaiting",
+        awaitingReason: "E2",
+        question: "which schema should the migration use?",
+        actor: AGENT,
+      });
+      assert.equal(commands.getTask({ id: task.id }).status, "awaiting");
+
+      // A human *note* is an answer but not a decision: the board leaves it be.
+      commands.addComment({ taskId: task.id, body: "probably v2", kind: "note", actor: HUMAN });
+      assert.equal(commands.getTask({ id: task.id }).status, "awaiting");
+
+      // A decision resumes the card — to the **queue**, claim released, round unchanged.
+      commands.addComment({ taskId: task.id, body: "v2, confirmed", kind: "confirm", actor: HUMAN });
+      const resumed = commands.getTask({ id: task.id });
+      assert.equal(resumed.status, "todo");
+      assert.equal(resumed.claimedBy, null);
+      assert.equal(resumed.awaitingReason, null);
+      assert.equal(resumed.deliveryRound, 1, "an answer is not a reopen");
+      assert.equal(
+        db.prepare("SELECT COUNT(*) n FROM task_activities WHERE event = 'task_resumed'").get().n,
+        1,
+      );
+      // ...and the poll offers it again, which is the whole point of `todo`.
+      assert.deepEqual(
+        commands.listCandidates({ assignee: "linus" }).map((candidate) => candidate.id),
+        [task.id],
+      );
+    });
+  });
+
+  it("an agent decision never resumes the card", async () => {
+    await board(async ({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Ask", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      commands.moveStatus({
+        id: task.id,
+        to: "awaiting",
+        awaitingReason: "E2",
+        question: "is this the right table?",
+        actor: AGENT,
+      });
+      commands.addComment({ taskId: task.id, body: "I decided v2 is fine", kind: "decision", actor: AGENT });
+      assert.equal(commands.getTask({ id: task.id }).status, "awaiting", "the human's is the only decision");
+    });
+  });
 });
 
 describe("commands/agent-sessions", () => {

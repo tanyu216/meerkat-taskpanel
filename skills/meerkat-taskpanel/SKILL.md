@@ -60,7 +60,7 @@ out of a terminal card):
 backlog     → todo, canceled
 todo        → backlog, in_progress, blocked, canceled        (an epic also → in_review)
 in_progress → in_review, blocked, todo, canceled, awaiting
-awaiting    → in_progress, canceled
+awaiting    → in_progress, todo, canceled
 in_review   → done, in_progress, blocked
 blocked     → todo, in_progress, in_review, canceled
 done        → todo
@@ -80,9 +80,12 @@ A legal edge can still be refused. Seven rules decide it:
    round's review cards resolved (`REVIEW_PENDING`). And a card with a non-empty **acceptance
    baseline** is refused (`ACCEPTANCE_INCOMPLETE` / `ACCEPTANCE_UNVERIFIED`) until the current
    round's report covers every item — details in §"Read the acceptance list before you work".
-3. **`awaiting` has one entrance and two exits.** Only `in_progress → awaiting`, naming
-   `E1`–`E5`; only `awaiting → in_progress` (a human replied) or `awaiting → canceled`. It
-   cannot reach `in_review` or `done`.
+3. **`awaiting` has one entrance and three exits.** Only `in_progress → awaiting`, naming
+   `E1`–`E5`; an **agent** must also ask a `question` in the same move (`--question`, or an
+   earlier unanswered one on the card). The exits are `awaiting → in_progress` (a live worker
+   is resumed), `awaiting → todo` (the worker stopped; an answer re-queues the card for a
+   fresh one — the round does not move) and `awaiting → canceled`. It cannot reach
+   `in_review` or `done`.
 4. **`blocked` is not `awaiting`.** `--blocked-reason` is optional and cleared on exit.
    `in_review → blocked` is a rework and starts a new round; `blocked → in_review` is a legal
    delivery edge.

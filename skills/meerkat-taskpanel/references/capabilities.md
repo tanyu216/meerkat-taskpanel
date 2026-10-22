@@ -134,6 +134,25 @@ lives in meta (0032): it is a column, immune to `--meta`, and a **changed**
 `meta.acceptance` / `meta.acceptance_legacy` is refused (`VALIDATION_FAILED`) — append with
 `issue update --acceptance`, prune only as a human with `--drop-acceptance --reason`.
 
+## Questions — the `awaiting` protocol (0034)
+
+A worker that cannot proceed asks and stops:
+
+```bash
+taskctl issue move <ref> awaiting --awaiting-reason E2 --question "what you need to know" <attribution>
+```
+
+The move and the `question` comment are one transaction. A human answers with a
+`decision` / `confirm` / `change` comment, and the board moves the card to `todo` in the same
+transaction — the asking subagent is gone, so only the queue can dispatch the next one. A
+human `note` / `discuss` is an answer too, but the control session records it and moves the
+card explicitly; the loop never writes a decision kind. The card's `awaiting_reason` stays the
+category (`E1`–`E5`); the question is the payload (`waitingPayload`, the newest `question`).
+
+Who answers what the loop cannot: `--opened-by human` means the control turn may ask its own
+operator in that conversation; the default (`supervisor`, for systemd/launchd/cron) leaves the
+card `awaiting` for the human's decision comment.
+
 ## 8. Live stream — `events tail`
 
 | Invocation | Output | Consumer |

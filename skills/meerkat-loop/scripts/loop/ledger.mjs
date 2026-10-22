@@ -16,6 +16,7 @@
  * Node builtins only; no network, no dependencies.
  */
 
+import { LEDGER_STALE_MS } from "../foundation/scheduling.mjs";
 import { QUEUE_FILES, readJsonFile, writeJsonFile } from "./queue.mjs";
 import { join } from "node:path";
 
@@ -191,7 +192,7 @@ export function reconcile(ledger, options = {}) {
   const next = normalise(ledger);
   const cardStatus = options.cardStatus ?? {};
   const now = options.now ?? Date.now();
-  const staleAfterMs = Number(options.staleAfterMs ?? 2 * 60 * 60 * 1000);
+  const staleAfterMs = Number(options.staleAfterMs ?? LEDGER_STALE_MS);
   const stale = [];
   for (const entry of next.subagents) {
     if (!isLive(entry)) continue;

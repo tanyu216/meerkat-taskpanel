@@ -9,6 +9,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A worker can ask, and the answer re-queues it (migration `0034`).** `comments.kind` gains
+  `question`; an agent entering `awaiting` must supply `issue move … --question "…"` (or
+  already have an unanswered question), which is written as a `question` comment in the same
+  transaction (`QUESTION_REQUIRED` otherwise; a human may park silently). `awaiting → todo`
+  becomes a legal edge — not a reopen, so the delivery round does not move and the claim is
+  released — and a human's `decision` / `confirm` / `change` comment moves the card there
+  automatically (a `note` answer needs an explicit move). The waiting payload is now the
+  newest `question` (falling back to the newest human comment), mirrored in `web/`. The loop
+  gains `--opened-by human|supervisor` and a waiting-questions section in the continue
+  prompt, and the turn/ledger/heartbeat clocks are stated as one contract: the turn must be
+  `1200–7199` seconds and finish before the ledger's 2-hour reap (`LEDGER_STALE_MS`).
 - **An epic's delivery is its rollup, and `done` checks it (migration `0033`).** Delivery
   reports gain `is_rollup` (only a `delivery` report on an `epic` may carry it; the DB refuses
   anything else with `ROLLUP_INVALID`). A report written on an epic is always a rollup and

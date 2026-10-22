@@ -1988,6 +1988,34 @@ describe("commands/tasks — listCandidates (poll read)", () => {
     });
   });
 
+  it("never offers an awaiting card, even as a stale claim (0034)", async () => {
+    await board(async ({ db, commands }) => {
+      const task = linusTodo(commands, { title: "Waiting", allowDup: true });
+      commands.claim({ id: task.id, actor: AGENT });
+      commands.moveStatus({
+        id: task.id,
+        to: "awaiting",
+        awaitingReason: "E2",
+        question: "which schema?",
+        actor: AGENT,
+      });
+      // Age the dormant claim far past every window; `awaiting` is still excluded
+      // because the poll only ever offers `in_progress` recoveries.
+      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run("2020-01-01T00:00:00.000Z", task.id);
+      assert.equal(
+        commands.listCandidates({ assignee: "linus", stale: true }).some((candidate) => candidate.id === task.id),
+        false,
+      );
+
+      // The human's decision re-queues it; then it is a normal todo candidate.
+      commands.addComment({ taskId: task.id, body: "v2", kind: "confirm", actor: HUMAN });
+      assert.deepEqual(
+        commands.listCandidates({ assignee: "linus" }).map((candidate) => candidate.id),
+        [task.id],
+      );
+    });
+  });
+
   it("excludes a task whose depends_on is not done, and admits it once done", async () => {
     await board(async ({ db, commands }) => {
       const blocker = linusTodo(commands, { title: "Blocker", allowDup: true });
@@ -2457,12 +2485,64 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
         id: task.id,
         to: "awaiting",
         awaitingReason: "E1",
+        question: "is this the intended scope?",
         actor: AGENT,
       });
       assert.equal(actorName(db, waiting.claimedBy), "linus", "asking a human does not hand the card over");
       const resumed = commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
       assert.equal(actorName(db, resumed.claimedBy), "linus");
       assert.equal(resumed.heartbeatAt, task.heartbeatAt, "resuming does not re-stamp the attempt");
+    });
+  });
+
+  it("an agent must ask a question to enter awaiting; a human may park silently (0034)", async () => {
+    await board(async ({ db, commands }) => {
+      const task = await claimed(commands);
+      assert.throws(
+        () => commands.moveStatus({ id: task.id, to: "awaiting", awaitingReason: "E2", actor: AGENT }),
+        (err) => err.code === "QUESTION_REQUIRED" && err.http === 422,
+      );
+      assert.equal(commands.getTask({ id: task.id }).status, "in_progress", "a refusal writes nothing");
+
+      const waiting = commands.moveStatus({
+        id: task.id,
+        to: "awaiting",
+        awaitingReason: "E2",
+        question: "which schema?",
+        actor: AGENT,
+      });
+      assert.equal(waiting.status, "awaiting");
+      const [question] = commands
+        .listComments({ taskId: task.id })
+        .filter((comment) => comment.kind === "question");
+      assert.equal(question.body, "which schema?");
+      const moved = db
+        .prepare(
+          "SELECT changes_json FROM task_activities WHERE task_id = ? AND event = 'task_moved' ORDER BY id DESC LIMIT 1",
+        )
+        .get(task.id);
+      assert.equal(JSON.parse(moved.changes_json).questionCommentId, question.id);
+
+      // Back into the work and out again: the still-unanswered question is
+      // reused, so the worker does not have to repeat it.
+      commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
+      assert.equal(
+        commands.moveStatus({ id: task.id, to: "awaiting", awaitingReason: "E2", actor: AGENT }).status,
+        "awaiting",
+      );
+
+      // A human parks a card without inventing a question.
+      const parked = commands.createTask({
+        projectId: "proj",
+        title: "Parked",
+        allowDup: true,
+        actor: AGENT,
+      });
+      commands.claim({ id: parked.id, actor: AGENT });
+      assert.equal(
+        commands.moveStatus({ id: parked.id, to: "awaiting", awaitingReason: "E1", actor: HUMAN }).status,
+        "awaiting",
+      );
     });
   });
 
@@ -2630,7 +2710,13 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
           if (status === "awaiting" || status === "in_review" || status === "in_progress") {
             commands.claim({ id: review.id, actor: AGENT });
             if (status === "awaiting") {
-              commands.moveStatus({ id: review.id, to: "awaiting", awaitingReason: "E1", actor: AGENT });
+              commands.moveStatus({
+                id: review.id,
+                to: "awaiting",
+                awaitingReason: "E1",
+                question: "what is the review waiting on?",
+                actor: AGENT,
+              });
             } else if (status === "in_review") {
               commands.deliver({ taskId: review.id, report: report(), actor: AGENT });
             }

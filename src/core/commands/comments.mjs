@@ -4,7 +4,9 @@
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
+import { resumeDecision } from "../domain/awaiting.mjs";
 import { normalizeCommentCreate } from "../domain/comment.mjs";
+import { STATUS } from "../domain/enums.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 import { resolveActorId } from "./dictionary.mjs";
@@ -50,6 +52,34 @@ export function addComment(ctx, input) {
         changes: { commentId: stored.id, kind: stored.kind },
         createdAt: now,
       });
+
+      // 0034 — a human's decision answers an `awaiting` question. The board
+      // moves the card back to the **queue** in this same transaction: the
+      // asking worker is a one-shot subagent, already gone, so only `todo` gets
+      // it dispatched again. The comment is passed directly rather than re-read,
+      // so a `created_at` tie cannot pick the wrong "newest".
+      //
+      // A `note` / `discuss` from a human is an answer too, but not a decision:
+      // the control session records it and moves the card explicitly.
+      if (task.status === STATUS.AWAITING) {
+        const decision = resumeDecision({ task, newest: stored });
+        if (decision.resume) {
+          const moved = ctx.repos.tasks.moveCas({
+            id: task.id,
+            ifVersion: task.version,
+            to: STATUS.TODO,
+            now,
+          });
+          ctx.repos.activities.append({
+            taskId: task.id,
+            actorKind: actor.kind,
+            actorId: actor.id,
+            event: "task_resumed",
+            changes: { commentId: stored.id, from: STATUS.AWAITING, to: moved.status },
+            createdAt: now,
+          });
+        }
+      }
       return stored;
     },
     { op: "comments.add" },

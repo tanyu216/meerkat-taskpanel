@@ -399,8 +399,17 @@ describe("md/export — 0032 snapshot and workflow facts", () => {
       assert.match(review, /^review_of: PROJ-0001$/m, "the identifier, not the internal id");
       assert.match(review, /^review_round: "1"$/m);
 
+      // 0034 — a `question` comment is a kind like any other in the trail.
+      commands.addComment({
+        taskId: bare.id,
+        body: "which schema?",
+        kind: "question",
+        actor: { kind: "agent", id: "linus" },
+      });
+
       const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0003"), { repos });
       assert.match(card, /^delivery_round: "2"$/m);
+      assert.match(card, /· question · /);
       assert.match(card, /^awaiting_reason: E2$/m);
       assert.match(card, /^report_waiver_round: "1"$/m);
       assert.match(card, /^report_waiver_reason: no report exists yet$/m);

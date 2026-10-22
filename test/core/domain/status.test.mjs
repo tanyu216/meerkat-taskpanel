@@ -38,7 +38,9 @@ const EXPECTED_ALLOWED = {
   // row below. The card's conversion rules: entry only from `in_progress`;
   // `→ canceled` allowed; `→ blocked` / `→ in_review` / `→ done` forbidden.
   in_progress: ["in_review", "blocked", "todo", "canceled", "awaiting"],
-  awaiting: ["in_progress", "canceled"],
+  // 0034 — the answered card re-queues (`todo`); `in_progress` stays for a live
+  // worker. `→ blocked` / `→ in_review` / `→ done` remain forbidden.
+  awaiting: ["in_progress", "todo", "canceled"],
   in_review: ["done", "in_progress", "blocked"],
   blocked: ["todo", "in_progress", "in_review", "canceled"],
   // The reopen edge: a finished card may go back to the queue, and nowhere
@@ -147,10 +149,10 @@ describe("domain/status — rejection codes", () => {
     assert.equal(rejected, STATUSES.length ** 2 - WHITELISTED, "every pair minus the whitelisted ones");
   });
 
-  it("keeps `awaiting` a real exit with exactly two doors, and no gate bypass (M1)", () => {
-    // The card's three conversion rules, asserted against the independent table
-    // rather than against the module's own answer.
-    assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "canceled"]);
+  it("keeps `awaiting` a real exit with three doors, and no gate bypass (M1/0034)", () => {
+    // The card's conversion rules, asserted against the independent table rather
+    // than against the module's own answer. 0034 adds the re-queue door.
+    assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "todo", "canceled"]);
     assert.deepEqual(
       STATUSES.filter((from) => canTransition(from, "awaiting")),
       ["in_progress"],

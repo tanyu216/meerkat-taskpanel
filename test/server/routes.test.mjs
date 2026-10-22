@@ -1164,6 +1164,45 @@ describe("server/routes — blocked_reason over HTTP (0016)", () => {
     dataOf(await call("POST", `/api/v1/tasks/${REF}/move`, { to: "canceled" }));
     assert.equal(columnOf(REF), null);
   });
+
+  it("writes the question on an agent's awaiting move, and refuses one without it (0034)", async () => {
+    const AS = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "linus" }) };
+    dataOf(await call("POST", "/api/v1/projects", { id: "ask", name: "Ask" }));
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "ask",
+        title: "Ask me",
+        assignee: "linus",
+        assignee_kind: "agent",
+        // The idem key is kind|assignee|source|target; an earlier test's card
+        // has the same shape, so opt out of the reuse.
+        allow_dup: true,
+      }),
+    );
+    const ref = created.task.identifier;
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }, AS));
+
+    const refused = await call(
+      "POST",
+      `/api/v1/tasks/${ref}/move`,
+      { to: "awaiting", awaiting_reason: "E2" },
+      AS,
+    );
+    assert.equal(refused.status, 422, JSON.stringify(refused.body));
+    assert.equal(refused.body.error.code, "QUESTION_REQUIRED");
+
+    const waiting = dataOf(
+      await call(
+        "POST",
+        `/api/v1/tasks/${ref}/move`,
+        { to: "awaiting", awaiting_reason: "E2", question: "which schema?" },
+        AS,
+      ),
+    );
+    assert.equal(waiting.task.status, "awaiting");
+    const comments = dataOf(await call("GET", `/api/v1/tasks/${ref}/comments?kind=question`));
+    assert.deepEqual(comments.comments.map((comment) => comment.body), ["which schema?"]);
+  });
 });
 
 // Last, and on its own project: T-20261015-063755 asked for the wire-level

@@ -29,6 +29,15 @@ A card has **eight stored status words**, but only **seven are stages** — the 
 `awaiting` is the **eighth literal but not an eighth column**: an *attention overlay* on an
 in-progress card that has stopped to ask a human a question, displayed under `in_progress`.
 
+The question is a **`question` comment** (0034): an agent enters with
+`issue move <ref> awaiting --awaiting-reason E2 --question "…"`, and the move and the comment
+land in one transaction. The payload the view shows is the newest `question` (falling back to
+the newest human comment for a card that predates the kind). A human answers with
+`decision` / `confirm` / `change`; that comment re-queues the card (`awaiting → todo`) in the
+same transaction, because the asking subagent has stopped. A human `note` / `discuss` is an
+answer too but not a decision — the control session records it and moves the card explicitly.
+An answer is not a reopen: the delivery round stays where it was.
+
 - **`done` and `canceled` are terminal, but may be reopened to `todo`.** The reopen is audited
   (`issue reopen <ref> --reason "<why>"`, at least 8 characters), starts a **new delivery
   round**, clears the archive and releases the idempotency key. `in_progress` is deliberately
@@ -49,7 +58,7 @@ Only these moves exist; every other ordered pair is refused — `INVALID_TRANSIT
 backlog     → todo, canceled
 todo        → backlog, in_progress, blocked, canceled        (an epic also → in_review)
 in_progress → in_review, blocked, todo, canceled, awaiting
-awaiting    → in_progress, canceled
+awaiting    → in_progress, todo, canceled
 in_review   → done, in_progress, blocked
 blocked     → todo, in_progress, in_review, canceled
 done        → todo
@@ -97,7 +106,7 @@ A pair on the whitelist can still be refused; the target decides which guard app
 | `in_progress` | From `todo` this **is a claim**: the assignee, or an audited `--allow-steal --reason` of at least 8 characters; an `epic` is refused (`not_claimable`). From `in_review`/`blocked` it is **rework/unblock** — keeps the executor. From `awaiting` it is a **resume**; the round does not move. |
 | `in_review` | The **delivery gate**: a `delivery` report for the current `delivery_round`, or an audited waiver for that round (§4). Every child must be terminal (`CHILDREN_OPEN`). |
 | `blocked` | `--blocked-reason` is **optional**. Entering `blocked` does not bump the round; **`in_review → blocked` does**. |
-| `awaiting` | Only `in_progress → awaiting`, naming `--awaiting-reason E1`…`E5`. Leaving clears the reason. `awaiting → blocked`/`in_review`/`done` are forbidden. |
+| `awaiting` | Only `in_progress → awaiting`, naming `--awaiting-reason E1`…`E5`. An **agent** must also supply `--question` (or already have an unanswered `question` comment) — `QUESTION_REQUIRED`; a human may park silently. Exits: `→ in_progress` (live worker), `→ todo` (an answer re-queues the card; releases the claim, no round bump), `→ canceled`. Leaving clears the reason. `awaiting → blocked`/`in_review`/`done` are forbidden. |
 | `done` | Only from `in_review` — **acceptance**, so the delivery gate is not re-consulted. The writer must be allowed by policy and scope (§7); every child must be terminal (`CHILDREN_OPEN`). A card whose `review_required` is 1 needs a current-round APPROVE review (`REVIEW_REQUIRED`; the DB trigger checks that a review card reached the reviewer). A human closing a top-level card also needs the current round's review cards resolved (`REVIEW_PENDING`). A non-empty **acceptance baseline** must be covered by the current round's report (`ACCEPTANCE_UNVERIFIED` / `ACCEPTANCE_INCOMPLETE`, §4a). |
 | `canceled` | From `backlog`, `todo`, `in_progress`, `awaiting` or `blocked` — **never directly from `in_review`**. Terminal. |
 
@@ -147,6 +156,7 @@ report counts only for the round it was written in.
 | `in_review → blocked` | **+1** |
 | `in_review → done` | unchanged |
 | `awaiting → in_progress` | unchanged |
+| `awaiting → todo` | unchanged (an answer re-queues; not a reopen) |
 | everything else | unchanged |
 
 A rework voids the previous report **and** waiver; the next delivery needs fresh evidence.
@@ -422,7 +432,8 @@ one leaves the standard creation action.
 ## 12. Choosing a status
 
 - Not released → `backlog`. Released, not started → `todo`. Working → `in_progress` (a claim).
-- Stopped to ask a human a question → `awaiting` with `E1`–`E5`; put the question in a comment.
+- Stopped to ask a human a question → `awaiting` with `E1`–`E5` **and** `--question "…"` (an
+  agent must ask; the answer re-queues the card as `todo`).
 - Stopped on anything else → `blocked`, with an optional `--blocked-reason`.
 - Evidence attached, awaiting a verdict → `in_review` (`issue deliver`).
 - Accepted → `done`, by whoever the policy/scope matrix allows.

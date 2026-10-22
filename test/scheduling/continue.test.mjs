@@ -119,6 +119,38 @@ describe("buildContinuePrompt", () => {
     assert.doesNotMatch(prompt, /claim a ready card yourself/);
   });
 
+  it("carries the question channel, and escalates where the loop was opened (0034)", () => {
+    // Both origins get the same mechanics: read awaiting cards, answer with a
+    // note + explicit move, never write a human decision.
+    for (const text of [prompt]) {
+      assert.match(text, /Waiting questions/);
+      assert.match(text, /issue list --status awaiting/);
+      assert.match(text, /comment list <ref> --kind question/);
+      assert.match(text, /comment add <ref> --kind note/);
+      assert.match(text, /issue move <ref> todo/);
+      assert.match(text, /note does NOT auto-resume/);
+      assert.match(text, /Never write decision\/confirm\/change/);
+      assert.match(text, /Any human comment after the question is an answer/);
+    }
+    // The default origin is a supervisor: an unanswerable question stays on the
+    // board for a human's decision comment.
+    assert.match(prompt, /leave the card awaiting/);
+    assert.match(prompt, /board re-queues it automatically/);
+    assert.doesNotMatch(prompt, /ask the human in this conversation/);
+
+    const openedByHuman = buildContinuePrompt({
+      host: "claude",
+      agent: "alice",
+      nodePath: "/opt/node/bin/node",
+      passesScript,
+      commonArgs: [],
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      openedBy: "human",
+    });
+    assert.match(openedByHuman, /ask the human in this conversation/);
+    assert.doesNotMatch(openedByHuman, /board re-queues it automatically/);
+  });
+
   it("stays bounded", () => {
     assert.ok(prompt.length < 6000, `prompt is ${prompt.length} chars`);
   });

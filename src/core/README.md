@@ -41,6 +41,12 @@ Rules that are enforced, not just documented:
   no longer matches the live children (`ROLLUP_STALE`), and the DB trigger
   `tr_tasks_epic_rollup_done` enforces the current-round row at the write. The same pure rule
   (`domain/acceptance.mjs#rollupGapOf`) is read by the sweep and by the workflow planner;
+* **questions** (0034) are comments, not a column: an agent entering `awaiting` writes a
+  `question` comment in the same transaction (`QUESTION_REQUIRED` if it has neither a
+  `--question` nor an unanswered one), and a human `decision` / `confirm` / `change` comment
+  re-queues the card to `todo` in the same transaction (`commands/comments.mjs`,
+  `domain/awaiting.mjs#resumeDecision`). `awaiting → todo` is a whitelist edge, not a reopen:
+  the round does not move, the claim is released, and a fresh worker is dispatched;
 * the **workflow decisions** are the board's: `domain/workflow.mjs` is pure (reconcile
   classification, review outcomes, review dispatch), and `commands/workflow.mjs` assembles
   a bounded board snapshot for it. `issue reconcile --workflow` exposes the plan; the loop

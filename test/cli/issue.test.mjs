@@ -1369,3 +1369,48 @@ describe("cli/issue — review decision (0031)", () => {
     });
   });
 });
+
+describe("cli/issue — asking a question in awaiting (0034)", () => {
+  const AS = ["--agent", "linus", "--actor-kind", "claude"];
+
+  it("writes --question as a question comment, and needs one from an agent", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run, ["--title", "Ask", "--assignee", "linus", "--assignee-kind", "agent"]);
+      run(["issue", "move", card.task.identifier, "in_progress", ...AS, "--json"]);
+
+      const refused = run([
+        "issue", "move", card.task.identifier, "awaiting",
+        "--awaiting-reason", "E2", ...AS, "--json",
+      ]);
+      assert.equal(refused.status, 1);
+      assert.equal(JSON.parse(refused.stdout).error.code, "QUESTION_REQUIRED");
+
+      const waiting = dataOf(
+        run([
+          "issue", "move", card.task.identifier, "awaiting",
+          "--awaiting-reason", "E2", "--question", "which schema?", ...AS, "--json",
+        ]),
+      );
+      assert.equal(waiting.status, "awaiting");
+      const comments = dataOf(
+        run(["comment", "list", card.task.identifier, "--kind", "question", "--json"]),
+      );
+      assert.deepEqual(comments.comments.map((comment) => comment.body), ["which schema?"]);
+
+      // The human's decision re-queues the card automatically — a separate
+      // command, not a second move.
+      dataOf(
+        // No identity flags: the harness injects `--as-human`, and the board
+        // treats that as the human's decision.
+        run([
+          "comment", "add", card.task.identifier,
+          "--kind", "confirm", "--body", "v2", "--json",
+        ]),
+      );
+      const after = dataOf(run(["issue", "get", card.task.identifier, "--json"]));
+      assert.equal(after.task.status, "todo");
+      assert.equal(after.task.delivery_round, 1, "an answer is not a reopen");
+      assert.equal(after.task.claimed_by, null, "the dormant claim is released");
+    });
+  });
+});

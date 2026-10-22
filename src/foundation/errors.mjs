@@ -67,6 +67,12 @@ export const ERROR_CODES = Object.freeze({
   ROLLUP_INVALID: spec(409, "Only a delivery report on an epic can carry the rollup marker."),
   ROLLUP_STALE: spec(409, "The rollup no longer matches the epic's children."),
 
+  // ---- Questions (0034) ------------------------------------------------------
+  // An agent may only enter `awaiting` with something to wait on: a `--question`
+  // (written as a `question` comment) or an earlier unanswered one. A human may
+  // park a card silently; the state's payload promise is about workers.
+  QUESTION_REQUIRED: spec(422, "Entering awaiting needs a question (or an earlier unanswered one)."),
+
   // ---- Task state machine + lifecycle ---------------------------------------
   INVALID_TRANSITION: spec(409, "Status transition is not allowed."),
   // Acceptance authority: `done` is a human's or the board's act, never a worker
@@ -307,6 +313,8 @@ export const JS_ONLY_CODES = Object.freeze([
   // 0033 — staleness compares the report's `ref` set with the live children,
   // which a trigger cannot do without duplicating the rollup's own rules.
   "ROLLUP_STALE",
+  // 0034 — "a question is owed" reads the actor and the comment trail.
+  "QUESTION_REQUIRED",
   "REPORT_ROUND_MISMATCH",
   "VERSION_CONFLICT",
   "CLAIM_LOST",

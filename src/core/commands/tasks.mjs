@@ -38,7 +38,11 @@ import {
 import { assertTransition, isReopen, isTerminalStatus } from "../domain/status.mjs";
 import { acceptanceKey, normalizeAcceptanceList } from "../domain/acceptance.mjs";
 import { resolveReviewRequired, reviewRequiredOf } from "../domain/review-policy.mjs";
-import { assertAwaitingReason } from "../domain/awaiting.mjs";
+import {
+  assertAwaitingReason,
+  isAnsweredAfter,
+  latestQuestion,
+} from "../domain/awaiting.mjs";
 import { normalizeBlockedReason } from "../domain/blocked-reason.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { hasIdemDiscriminator, idemKey, idemSource, normalizeIdem } from "../domain/idem.mjs";
@@ -1164,7 +1168,7 @@ export function heartbeat(ctx, input) {
  * `move … todo` for an already-open card.
  *
  * @param {object} ctx
- * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string, allowSteal?: boolean, awaitingReason?: string|null, blockedReason?: string|null, requireTerminalSource?: boolean}} input
+ * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string, allowSteal?: boolean, awaitingReason?: string|null, blockedReason?: string|null, question?: string|null, requireTerminalSource?: boolean}} input
  */
 export function moveStatus(ctx, input) {
   const actor = actorOf(input.actor);
@@ -1205,6 +1209,39 @@ export function moveStatus(ctx, input) {
       }
 
       assertTransition(current.status, input.to, current.kind);
+
+      // 0034 — an agent entering `awaiting` must say what it is waiting for.
+      // The question is stored as a `question` comment in this same transaction,
+      // so a later gate refusal rolls it back with the move. A human may park a
+      // card silently; an agent that already has an unanswered question on the
+      // card need not repeat it.
+      let questionCommentId = null;
+      if (input.to === STATUS.AWAITING) {
+        const questionText = typeof input.question === "string" ? input.question.trim() : "";
+        if (questionText !== "") {
+          questionCommentId = addComment(ctx, {
+            taskId: current.id,
+            kind: "question",
+            body: questionText,
+            actor,
+          }).id;
+        } else if (actor.kind !== "human") {
+          const comments = ctx.repos.comments.list({ taskId: current.id, limit: 10_000 });
+          const openQuestion = latestQuestion(comments);
+          if (openQuestion === null || isAnsweredAfter(comments, openQuestion)) {
+            throw new DomainError("QUESTION_REQUIRED", {
+              message:
+                `${current.identifier}: an agent entering awaiting must ask a question ` +
+                "(or point at an earlier unanswered one)",
+              details: { taskId: current.id, identifier: current.identifier, field: "question" },
+              hint: {
+                fix: `taskctl issue move ${current.identifier} awaiting --awaiting-reason E2 --question "<what you need>"`,
+              },
+            });
+          }
+          questionCommentId = openQuestion.id ?? null;
+        }
+      }
 
       // Reopening is the `done|canceled → todo` edge. It is audited, and it is
       // closed to review cards: a review is a loop artifact, and reopening the
@@ -1315,6 +1352,8 @@ export function moveStatus(ctx, input) {
                   // 0016 — and the same for a block's class, so the trail keeps
                   // the reason even after `blocked_reason` is cleared on exit.
                   ...(blockedReason === null ? {} : { blockedReason }),
+                  // 0034 — the question the worker stopped on.
+                  ...(questionCommentId === null ? {} : { questionCommentId }),
                 }
               : {
                   from: current.status,

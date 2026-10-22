@@ -552,7 +552,7 @@ describe("buildHandoff (pure)", () => {
       agent: "alice",
       host: "codex",
     });
-    assert.ok(text.length < 2800);
+    assert.ok(text.length < 3100, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("carries the epic-triage step, and says an epic is never claimed", () => {
@@ -580,11 +580,14 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /issue get T-1 --json/);
     assert.match(text, /comment list/);
     assert.match(text, /--limit 200/);
-    assert.match(text, /meta\.acceptance/);
-    assert.match(text, /meta\.acceptance_legacy/);
-    assert.match(text, /NEVER rewrite/);
+    // 0032 — the card's `acceptance` snapshot is the baseline; meta is its seed.
+    assert.match(text, /FROZEN baseline/);
+    assert.match(text, /meta\.acceptance is only/);
+    assert.match(text, /append, never replace or remove/i);
     assert.match(text, /acceptance_derived=yes/);
-    assert.match(text, /--awaiting-reason E2/);
+    // 0034 — asking is how a worker stops; the answer re-queues the card.
+    assert.match(text, /--awaiting-reason E2 --question/);
+    assert.match(text, /ASK AND STOP/);
   });
 
   it("stays bounded with a maximum title and a UUID session id", () => {
@@ -594,7 +597,7 @@ describe("buildHandoff (pure)", () => {
       host: "claude",
       sessionId: "550e8400-e29b-41d4-a716-446655440000",
     });
-    assert.ok(text.length < 2800, `the handoff must be bounded (was ${text.length})`);
+    assert.ok(text.length < 3100, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("points the worker at the reviewer when one is configured", () => {
@@ -2203,7 +2206,7 @@ describe("the resident session pool surface", () => {
         "--host", "claude", "--session",
         "--session-state", "/tmp/sessions.json",
         "--session-max-age", "3600",
-        "--session-turn-timeout", "90",
+        "--session-turn-timeout", "2400",
         "--session-poll-ms", "250",
         "--session-pool-max", "3",
         "--project-concurrency", "2",
@@ -2213,7 +2216,7 @@ describe("the resident session pool surface", () => {
     );
     assert.equal(flagged.sessionState, "/tmp/sessions.json");
     assert.equal(flagged.sessionMaxAgeMs, 3_600_000);
-    assert.equal(flagged.sessionTurnTimeoutMs, 90_000);
+    assert.equal(flagged.sessionTurnTimeoutMs, 2_400_000);
     assert.equal(flagged.sessionPollMs, 250);
     assert.equal(flagged.sessionPoolMax, 3);
     assert.equal(flagged.projectConcurrency, 2);
@@ -2232,16 +2235,51 @@ describe("the resident session pool surface", () => {
     const dir = mkdtempSync(join(tmpdir(), "tp-session-opts-"));
     try {
       const config = join(dir, "meerkat-taskpanel.env");
-      writeFileSync(config, "MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT=45\nMEERKAT_TASKPANEL_PROJECT_CONCURRENCY=2\n");
+      writeFileSync(config, "MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT=1800\nMEERKAT_TASKPANEL_PROJECT_CONCURRENCY=2\n");
       const opts = parseArgs(["--host", "claude", "--session", "--config", config], ENV);
-      assert.equal(opts.sessionTurnTimeoutMs, 45_000);
+      assert.equal(opts.sessionTurnTimeoutMs, 1_800_000);
       assert.equal(opts.projectConcurrency, 2);
       // A flag still beats the host config.
       const overriding = parseArgs(
-        ["--host", "claude", "--session", "--config", config, "--session-turn-timeout", "75"],
+        ["--host", "claude", "--session", "--config", config, "--session-turn-timeout", "3600"],
         ENV,
       );
-      assert.equal(overriding.sessionTurnTimeoutMs, 75_000);
+      assert.equal(overriding.sessionTurnTimeoutMs, 3_600_000);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("bounds the turn between 2x the heartbeat window and the ledger reap (0034)", () => {
+    // The defaults pass; the boundaries are exact (1200 accepted, 7200 refused).
+    assert.equal(
+      parseArgs(["--host", "claude", "--session", "--session-turn-timeout", "1200"], ENV).sessionTurnTimeoutMs,
+      1_200_000,
+    );
+    assert.equal(
+      parseArgs(["--host", "claude", "--session", "--session-turn-timeout", "7199"], ENV).sessionTurnTimeoutMs,
+      7_199_000,
+    );
+    for (const bad of ["900", "1199", "7200", "36000"]) {
+      assert.throws(
+        () => parseArgs(["--host", "claude", "--session", "--session-turn-timeout", bad], ENV),
+        /must be between 1200 and 7199/,
+        bad,
+      );
+    }
+    // Every source goes through the same guard.
+    assert.throws(
+      () => parseArgs(["--host", "claude", "--session"], { ...ENV, MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT: "60" }),
+      /must be between 1200 and 7199/,
+    );
+    const dir = mkdtempSync(join(tmpdir(), "tp-turn-bound-"));
+    try {
+      const config = join(dir, "meerkat-taskpanel.env");
+      writeFileSync(config, "MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT=7200\n");
+      assert.throws(
+        () => parseArgs(["--host", "claude", "--session", "--config", config], ENV),
+        /must be between 1200 and 7199/,
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

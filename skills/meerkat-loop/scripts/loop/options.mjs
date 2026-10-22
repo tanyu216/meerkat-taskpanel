@@ -143,6 +143,15 @@ flag("--poll-interval", (opts, value) => {
 });
 flag("--continue-interval", (opts, value) => { opts.continueInterval = number("--continue-interval", value); });
 flag("--continue", (opts, value) => { opts.continue = value; });
+// 0034 — the origin of this loop, which decides *where* an unanswerable question
+// goes. `supervisor` is the default because systemd/launchd/cron are the normal
+// entries; a human running it by hand says so.
+flag("--opened-by", (opts, value) => {
+  if (value !== "human" && value !== "supervisor") {
+    throw new Error("--opened-by must be human or supervisor");
+  }
+  opts.openedBy = value;
+});
 flag("--continue-state", (opts, value) => { opts.continueState = value; });
 flag("--session", (opts) => { opts.session = true; }, "switch");
 flag("--resident", (opts, value) => { opts.resident = value; });
@@ -261,6 +270,10 @@ function defaultOptions(env) {
     allowAllTools: false,
     allowAllToolsReason: null,
     subagentBackground: false,
+    // 0034 — who opened this loop. `supervisor` (systemd/launchd/cron) must
+    // escalate questions to the board; a human-opened session may ask in its own
+    // conversation first.
+    openedBy: "supervisor",
     patrolInterval: DEFAULT_PATROL_SECONDS, // the SLA measurement period, not a schedule
     patrolIntervalExplicit: false, // true only when `--patrol-interval` was given
     maxConcurrency: undefined, // resolved below: flag > env > host config > 8
@@ -400,13 +413,23 @@ export function parseArgs(argv, env = process.env) {
       },
       24 * 60 * 60,
     ) * 1000;
-  opts.sessionTurnTimeoutMs =
-    resolveIntervalSeconds({
-      flag: opts.sessionTurnTimeout,
-      env: env.MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT,
-      file: opts.configFile.MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT,
-      fallback: 30 * 60,
-    }) * 1000;
+  const turnSeconds = resolveIntervalSeconds({
+    flag: opts.sessionTurnTimeout,
+    env: env.MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT,
+    file: opts.configFile.MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT,
+    fallback: 30 * 60,
+  });
+  // 0034 — the time contract's turn bound. Below 20 minutes a turn can end
+  // before a worker's first heartbeat window (10 min) has even been exercised
+  // twice; at 2 hours the ledger reaps a live row whose card left the work
+  // state, so the turn outlives the bookkeeping that describes it.
+  if (turnSeconds < 1200 || turnSeconds >= 7200) {
+    throw new Error(
+      `--session-turn-timeout must be between 1200 and 7199 seconds, got ${turnSeconds} ` +
+        "(the turn must outlast 2x the 10-minute heartbeat window and stay under the ledger's 2-hour reap)",
+    );
+  }
+  opts.sessionTurnTimeoutMs = turnSeconds * 1000;
   opts.sessionPollMs = Math.max(
     50,
     resolveNonNegative(
@@ -708,6 +731,9 @@ export function loopCommandArgs(opts) {
   ]) {
     add(flag, value);
   }
+  // 0034 — only the non-default origin needs carrying; a child that omits it is
+  // a supervisor-started loop, which is what it would have inherited anyway.
+  if (opts.openedBy === "human") add("--opened-by", "human");
   if (opts.patrolIntervalExplicit === true || opts.patrolInterval !== DEFAULT_PATROL_SECONDS) {
     add("--patrol-interval", opts.patrolInterval);
   }
@@ -763,7 +789,12 @@ Options:
                             no forces the one-shot fallback with poll skipped.
   --session-state <path>    Sessions state file (default: sessions.state.json beside --state).
   --session-max-age <sec>   Fresh conversation after this age (default: 86400; 0 = never).
-  --session-turn-timeout <sec> Per-turn cap (default: 1800).
+  --session-turn-timeout <sec> Per-turn cap, 1200..7199 (default: 1800). A turn
+                            shorter than 2x the heartbeat window starves workers;
+                            at 2h the ledger reaps them.
+  --opened-by human|supervisor  Who started this loop (default: supervisor).
+                            A supervisor-started loop escalates questions to the
+                            board; a human-opened one may ask its own operator.
   --session-poll-ms <ms>    Queue poll interval (default: 1000).
   --session-pool-max <n>    Max project sessions (default: 8).
   --project-concurrency <n> Max live subagents per project (default: --max-concurrency).

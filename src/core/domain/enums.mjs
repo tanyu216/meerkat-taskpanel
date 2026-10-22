@@ -187,6 +187,10 @@ export const COMMENT_KINDS = Object.freeze([
   "change",
   "note",
   "defect",
+  // 0034 — a worker's question. The `awaiting` payload is a `question` comment;
+  // a human's `decision` / `confirm` / `change` (DECISION_KINDS) answers it.
+  // Deliberately absent from DECISION_KINDS: asking is not deciding.
+  "question",
 ]);
 
 /**
@@ -270,6 +274,9 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "task_heartbeat",
   "task_moved",
   "task_reopened",
+  // 0034 — a human's decision comment answered an `awaiting` question and the
+  // board moved the card back to `todo` in the same transaction.
+  "task_resumed",
   "task_archived",
   "report_written",
   "task_delivered",
