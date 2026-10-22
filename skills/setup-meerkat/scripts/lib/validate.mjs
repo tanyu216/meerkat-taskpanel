@@ -23,6 +23,7 @@ export const TEAM_LIMITS = Object.freeze({
 });
 
 const ROLE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const NATIVE_AGENT = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const LANES = Object.freeze(["worker", "reviewer"]);
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -104,10 +105,17 @@ function normalizeRole(raw, root, warnings) {
   const reviewerPrompt = nonEmpty(raw.reviewer_prompt)
     ? resolveRoleFile(root, raw.reviewer_prompt)
     : null;
+  // A native agent definition is a file name, so it must be a plain slug: a
+  // template that says `../x` would otherwise write outside the agents dir.
+  let nativeAgent = nonEmpty(raw.native_agent) ? raw.native_agent.trim() : id;
+  if (!NATIVE_AGENT.test(nativeAgent)) {
+    warnings.push(`role ${id}: native_agent ${JSON.stringify(nativeAgent)} is not a slug; using ${id}`);
+    nativeAgent = id;
+  }
   return {
     id,
     agent: nonEmpty(raw.agent) ? raw.agent.trim() : id,
-    nativeAgent: nonEmpty(raw.native_agent) ? raw.native_agent.trim() : id,
+    nativeAgent,
     lanes,
     title: nonEmpty(raw.title) ? raw.title.trim() : id,
     summary: nonEmpty(raw.summary) ? raw.summary.trim() : "",

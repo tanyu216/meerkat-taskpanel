@@ -316,6 +316,7 @@ describe("install-roles.mjs — project scope", () => {
           {
             id: "jobs",
             agent: "Jobs",
+            native_agent: "../evil",
             workflow: "../escape.md",
             lanes: ["worker"],
           },
@@ -327,6 +328,7 @@ describe("install-roles.mjs — project scope", () => {
     assert.equal(result.body.ok, true);
     assert.equal(result.body.roles[0].workflows.worker, null);
     assert.match(result.body.warnings.join("\n"), /escapes/);
+    assert.match(result.body.warnings.join("\n"), /native_agent .* not a slug/);
   });
 });
 
