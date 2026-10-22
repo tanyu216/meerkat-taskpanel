@@ -311,6 +311,9 @@ function main(argv) {
     errors: [],
   };
 
+  const originalAgent = new Map(team.roles.map((role) => [role.id, role.agent]));
+  const renamedAgent = new Map(selected.map((role) => [role.id, role.agent]));
+
   let conflict = false;
   for (const rel of files) {
     if (rel === "manifest.json") continue;
@@ -322,6 +325,13 @@ function main(argv) {
       report.warnings.push(`cannot read ${rel}: ${err instanceof Error ? err.message : String(err)}`);
       continue;
     }
+    // A renamed role's own files must speak its new board name; the handoff
+    // flags are authoritative, but a hard-coded `--agent Jobs` would contradict
+    // them. Only the role's directory is rewritten — the team policy is shared.
+    const roleId = rel.split("/")[0];
+    const before = originalAgent.get(roleId);
+    const after = renamedAgent.get(roleId);
+    if (before && after && before !== after) text = text.split(before).join(after);
     const action = placeText(join(targetRoot, rel), text, opts);
     if (action.action === "conflict") conflict = true;
     report.files.push({ path: join(targetRoot, rel), action: action.action });

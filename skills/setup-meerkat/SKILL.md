@@ -196,8 +196,10 @@ with a warning; their layer-2 workflow still reaches them through the handoff.
    picks up role edits on its next dispatch.
 4. Summarize: what was installed, where, the effective roles root, the human name, and
    what was skipped and why.
-5. A second run must perform **no writes**; report every action as
-   `written` / `unchanged` / `skip` / `conflict`.
+5. A second run must change **no managed content**: role files, native definitions and
+   env keys report `unchanged`; `install.sh` may re-copy identical runtime bytes, which
+   is still idempotent. Report every action as `written` / `unchanged` / `skip` /
+   `conflict`.
 
 ## Identity and decision rights (what the team inherits)
 

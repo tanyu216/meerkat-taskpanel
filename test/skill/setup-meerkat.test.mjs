@@ -315,6 +315,15 @@ describe("install-roles.mjs — project scope", () => {
     assert.equal(manifest.roles.find((role) => role.id === "jobs").agent, "Alice");
     assert.equal(manifest.roles.find((role) => role.id === "reviewer").agent, "Grace");
     assert.equal(result.body.reviewerAgent, "Grace");
+    const jobsWorkflow = readFileSync(join(project, ".meerkat", "roles", "jobs", "workflow.md"), "utf8");
+    assert.match(jobsWorkflow, /--agent Alice/);
+    assert.doesNotMatch(jobsWorkflow, /--agent Jobs/);
+    const reviewerPrompt = readFileSync(
+      join(project, ".meerkat", "roles", "reviewer", "reviewer-prompt.md"),
+      "utf8",
+    );
+    assert.match(reviewerPrompt, /--agent Grace/);
+    assert.doesNotMatch(reviewerPrompt, /--agent Reviewer/);
   });
 
   it("rejects a workflow that escapes the team root", (t) => {

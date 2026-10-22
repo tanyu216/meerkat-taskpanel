@@ -16,7 +16,9 @@ local taskd, chooses `--target claude --no-automation`, and `--dry-run` writes n
 
 Assert: `--dry-run` prints the install and role plans and writes nothing; the real run
 installs board/loop/setup skills, roles at `<home>/.claude/skills/meerkat-loop/roles/`,
-and Claude/Codex agent definitions; the second run is all `unchanged`.
+and Claude/Codex agent definitions; the second run changes no managed content (role
+files and agent definitions are `unchanged`; the installer may re-copy identical
+runtime bytes).
 
 ## 3. Project-scoped custom reviewer
 
