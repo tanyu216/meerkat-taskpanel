@@ -515,6 +515,11 @@ describe("web/board — the live stream drives the revision", () => {
       /[?&]order=desc(&|$)/,
       "the refresh activity read asks for descending order",
     );
+    assert.match(
+      calls.find((call) => call.url.includes("/comments")).url,
+      /[?&]order=desc(&|$)/,
+      "the refresh comment read asks for descending order too",
+    );
   });
 
   it("invalidates and re-reads a waiting payload when the card's question can change", async () => {
@@ -844,6 +849,38 @@ describe("web/board — the loading window", () => {
   });
 });
 
+/* ---------------------------------------------------------- posting a comment */
+
+describe("web/board — posting a comment", () => {
+  it("prepends the posted comment, so the newest is first", async () => {
+    const { board, addComment } = await freshBoard();
+    const task = seedTask(board, { identifier: "TD-1" });
+    board.detail = { task, comments: [{ id: "c1", body: "old" }] };
+    const calls = installFetch({
+      "POST /api/v1/tasks/TD-1/comments": () => ok({ comment: { id: "c2", body: "new" } }),
+    });
+
+    await addComment("TD-1", "new");
+
+    assert.deepEqual(board.detail.comments.map((comment) => comment.id), ["c2", "c1"]);
+    assert.equal(calls[0].body.kind, "discuss");
+    assert.equal(toasts.value.at(-1).kind, "success");
+  });
+
+  it("surfaces a refused comment instead of dropping it silently", async () => {
+    const { board, addComment } = await freshBoard();
+    const task = seedTask(board, { identifier: "TD-1", status: "awaiting" });
+    board.detail = { task, comments: [] };
+    installFetch({ "POST /api/v1/tasks/TD-1/comments": () => failure(503, "DB_BUSY") });
+
+    await assert.rejects(() => addComment("TD-1", "use v2"), (err) => err.code === "DB_BUSY");
+
+    assert.equal(toasts.value.at(-1).kind, "danger");
+    assert.equal(toasts.value.at(-1).text, resolveText("en", "error.busy"));
+    assert.equal(board.detail.comments.length, 0, "a refused comment is not optimistically added");
+  });
+});
+
 /* --------------------------------------------------------- the open drawer */
 
 /** Every read `openDetail()` fans out, happy-path. */
@@ -895,6 +932,11 @@ describe("web/board — opening the detail drawer", () => {
       calls.find((call) => call.url.includes("/activities")).url,
       /[?&]order=desc(&|$)/,
       "the drawer's activity read asks for descending order",
+    );
+    assert.match(
+      calls.find((call) => call.url.includes("/comments")).url,
+      /[?&]order=desc(&|$)/,
+      "the drawer's comment read asks for descending order too",
     );
   });
 

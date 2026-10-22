@@ -52,6 +52,8 @@ import ComboField from "../combo/ComboField.vue";
 import MarkdownEditor from "../create/MarkdownEditor.vue";
 
 const commentDraft = ref("");
+/** One comment at a time: the button is disabled while the POST is in flight. */
+const commentBusy = ref(false);
 const assigneeDraft = ref("");
 const reporterDraft = ref("");
 const labelDraft = ref([]);
@@ -938,9 +940,17 @@ watch(dependsDraft, () => commitDepends(dependsDraft.value), { deep: true });
 
 async function submitComment() {
   const body = commentDraft.value.trim();
-  if (!body || !task.value) return;
-  await addComment(task.value.identifier, body);
-  commentDraft.value = "";
+  if (!body || !task.value || commentBusy.value) return;
+  commentBusy.value = true;
+  try {
+    await addComment(task.value.identifier, body);
+    commentDraft.value = "";
+  } catch {
+    // The store already reported the refusal in the one error vocabulary; the
+    // draft stays so the human can retry without retyping.
+  } finally {
+    commentBusy.value = false;
+  }
 }
 
 /** The prototype reports a toast without touching the clipboard; so do we. */
@@ -1642,7 +1652,7 @@ function copyId() {
             <textarea id="td-comment-input" class="td-textarea" data-comment-input v-model="commentDraft" :placeholder="$t('drawer.commentPlaceholder')"></textarea>
             <div class="mt-2 flex items-center justify-between">
               <span class="text-[11px] text-(--brand-text-3)" data-i18n="drawer.commentHint">{{ $t("drawer.commentHint") }}</span>
-              <button type="submit" class="btn btn-primary btn-sm" data-comment-submit>{{ $t("drawer.submit") }}</button>
+              <button type="submit" class="btn btn-primary btn-sm" data-comment-submit :disabled="commentBusy">{{ $t("drawer.submit") }}</button>
             </div>
           </form>
         </div>

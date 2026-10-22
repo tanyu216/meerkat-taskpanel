@@ -42,6 +42,22 @@ describe("cli/comment", () => {
     });
   });
 
+  it("lists newest first, so --limit takes the newest N", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
+      run(["comment", "add", "DEMO-0001", "--body", "first", "--kind", "note", "--json"]);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      run(["comment", "add", "DEMO-0001", "--body", "second", "--kind", "note", "--json"]);
+
+      const listed = dataOf(run(["comment", "list", "DEMO-0001", "--json"]));
+      assert.deepEqual(listed.comments.map((c) => c.body), ["second", "first"]);
+
+      const newest = dataOf(run(["comment", "list", "DEMO-0001", "--limit", "1", "--json"]));
+      assert.deepEqual(newest.comments.map((c) => c.body), ["second"], "--limit takes the newest N");
+    });
+  });
+
   it("accepts the confirm_request kind", async () => {
     await withCli(async ({ run }) => {
       run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);

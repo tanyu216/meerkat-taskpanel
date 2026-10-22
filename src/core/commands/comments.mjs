@@ -85,7 +85,13 @@ export function addComment(ctx, input) {
   );
 }
 
-/** @param {object} ctx @param {{taskId?: string, kind?: string, limit?: number, after?: string}} [filter] */
+/**
+ * @param {object} ctx
+ * @param {{taskId?: string, kind?: string, limit?: number, after?: string, order?: "asc"|"desc"}} [filter]
+ *
+ * `order` is presentation-only: `desc` + `limit` returns the newest N. The
+ * default stays `asc` for the domain predicates that walk the trail forward.
+ */
 export function listComments(ctx, filter = {}) {
   return ctx.repos.comments.list(filter);
 }

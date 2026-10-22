@@ -219,7 +219,7 @@ starts and closes the container; see
 
 | Command | Purpose |
 |---|---|
-| `comment list <ref> [--kind <kind>] [--limit <n>]` | Oldest first. |
+| `comment list <ref> [--kind <kind>] [--limit <n>]` | Newest first (the CLI asks for `order=desc`, so `--limit` takes the newest N). |
 | `comment add <ref> --body <text> [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect\|question] [--file <path\|->]` | Append. A `question` + `awaiting` E2 is how an agent asks a human; **any human comment** on an `awaiting` card moves it back to `todo` in the same transaction, whatever its kind. |
 
 Append-only: there is no edit and no delete, by design. A `decision` / `change` comment is what

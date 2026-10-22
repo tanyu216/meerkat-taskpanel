@@ -31,7 +31,14 @@ export function createCommentsRepository(db) {
     },
 
     /**
-     * @param {{taskId?: string, limit?: number, after?: string, kind?: string}} [filter]
+     * @param {{taskId?: string, limit?: number, after?: string, kind?: string, order?: "asc"|"desc"}} [filter]
+     *
+     * `order` is the presentation read: `desc` with `limit` returns the **newest**
+     * N, which is what the CLI and the drawer display. The default stays `asc`
+     * because every pure predicate in `domain/awaiting.mjs` (the newest comment,
+     * the question payload, "answered after") walks the trail oldest-first.
+     * `after` is a `created_at` cursor and keeps filtering `created_at > ?` in
+     * either direction — a `desc` read is not a "previous page" cursor.
      */
     list(filter = {}) {
       const clauses = [];
@@ -49,9 +56,10 @@ export function createCommentsRepository(db) {
         values.push(filter.after);
       }
       const limit = Number.isInteger(filter.limit) ? filter.limit : 500;
+      const direction = filter.order === "desc" ? "DESC" : "ASC";
       const sql = `SELECT ${SELECT_LIST} FROM comments
                    ${clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : ""}
-                   ORDER BY created_at ASC, id ASC LIMIT ?`;
+                   ORDER BY created_at ${direction}, id ${direction} LIMIT ?`;
       return db.prepare(sql).all(...values, limit).map(commentFromRow);
     },
 

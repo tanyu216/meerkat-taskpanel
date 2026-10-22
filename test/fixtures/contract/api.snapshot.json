@@ -1040,6 +1040,9 @@
             },
             "limit": {
               "type": "string"
+            },
+            "order": {
+              "type": "string"
             }
           },
           "required": [],

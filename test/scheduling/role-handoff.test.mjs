@@ -70,13 +70,14 @@ describe("handoffs without a role stay byte-identical", () => {
     // Re-pinned when the worker's epic-split / acceptance / awaiting text became
     // question-first (the decision ladder), again when the pre-authorized
     // derivation record moved from `--kind change` to `--kind note` so a subagent
-    // never writes a decision kind, and again when any human comment began to
-    // resume awaiting (the worker now judges the answer's content at re-claim).
-    // With no role input the role renderer contributes nothing; this hash is the
-    // post-rewrite base.
+    // never writes a decision kind, again when any human comment began to
+    // resume awaiting (the worker now judges the answer's content at re-claim),
+    // and again when the handoff was told to read every human comment after the
+    // last question rather than only the newest one. With no role input the role
+    // renderer contributes nothing; this hash is the post-rewrite base.
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "17a87f32dbba35c543594e17f7c9b42cf6b9f5e0c7ebdff9bd4be30eeb5b9ff4",
+      "5a8a80d19ad5c3fb1156fe138940a8ae2760b05c7f3a1bfcb6d6c85d990e4bf3",
     );
   });
 

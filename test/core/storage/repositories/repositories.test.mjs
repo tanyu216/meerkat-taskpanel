@@ -564,6 +564,12 @@ describe("repositories/comments", () => {
       assert.deepEqual(repos.comments.listDecisions(task.id).map((c) => c.authorId), ["Terry"]);
       assert.deepEqual(repos.comments.list({ taskId: task.id, kind: "note" }).map((c) => c.id), ["c2"]);
       assert.deepEqual(repos.comments.list({ taskId: task.id, limit: 1 }).map((c) => c.id), ["c1"]);
+      // The presentation read: newest first, and `limit` takes the newest N.
+      assert.deepEqual(repos.comments.list({ taskId: task.id, order: "desc" }).map((c) => c.id), ["c2", "c1"]);
+      assert.deepEqual(
+        repos.comments.list({ taskId: task.id, order: "desc", limit: 1 }).map((c) => c.id),
+        ["c2"],
+      );
     });
   });
 });

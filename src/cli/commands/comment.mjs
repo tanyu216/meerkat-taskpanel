@@ -13,7 +13,7 @@ const KINDS = ["discuss", "decision", "confirm", "confirm_request", "change", "n
 export const COMMANDS = [
   {
     name: "list",
-    summary: "List a task's comments, oldest first.",
+    summary: "List a task's comments, newest first.",
     usage: "comment list <id|identifier> [--kind <kind>] [--limit <n>]",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: [
@@ -21,9 +21,11 @@ export const COMMANDS = [
       { flag: "limit", key: "limit", as: "number", value: "<n>" },
     ],
     async run(ctx) {
+      // `order=desc` makes `--limit` mean "the newest N" and gives the table
+      // and `--json` the same newest-first order the drawer shows.
       const { comments } = await ctx.client.get(
         `/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/comments`,
-        { query: { kind: ctx.flags.kind, limit: ctx.flags.limit } },
+        { query: { kind: ctx.flags.kind, limit: ctx.flags.limit, order: "desc" } },
       );
       const human = comments.length === 0
         ? "no comments"

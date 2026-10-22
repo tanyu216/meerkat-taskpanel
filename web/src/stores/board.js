@@ -875,13 +875,25 @@ export async function createTask(payload) {
 }
 
 export async function addComment(ref, body) {
-  const data = await api.addComment(ref, { body, kind: "discuss" });
-  if (board.detail && board.detail.task?.identifier === ref) {
-    board.detail = { ...board.detail, comments: [...board.detail.comments, { ...data.comment, author: { display_name: ME } }] };
-    patchTaskLocal(board.detail.task.id, {});
+  try {
+    const data = await api.addComment(ref, { body, kind: "discuss" });
+    if (board.detail && board.detail.task?.identifier === ref) {
+      // Newest first — the same order the drawer's read asks for (`order=desc`)
+      // and the order the activity trail already uses.
+      board.detail = {
+        ...board.detail,
+        comments: [{ ...data.comment, author: { display_name: ME } }, ...board.detail.comments],
+      };
+      patchTaskLocal(board.detail.task.id, {});
+    }
+    pushToast(t("toast.commented"), "success");
+    return data.comment;
+  } catch (err) {
+    // One vocabulary for every refusal: the human sees why the comment did not
+    // land, and the caller keeps the draft so it can be retried without retyping.
+    pushToast(t(errorTextKey(err), ref), "danger");
+    throw err;
   }
-  pushToast(t("toast.commented"), "success");
-  return data.comment;
 }
 
 /* ------------------------------------------------------- detail auto-save */
@@ -1187,7 +1199,9 @@ export async function openDetail(identifier) {
       api.taskReports(identifier).catch(() => ({ reports: [] })),
     ]);
     if (!current()) return;
-    const comments = await api.taskComments(identifier, { limit: 200 }).catch(() => ({ comments: [] }));
+    // Newest first, like the activity trail; the waiting-payload read below
+    // stays ascending because `payloadCommentOf` scans the trail from its tail.
+    const comments = await api.taskComments(identifier, { limit: 200, order: "desc" }).catch(() => ({ comments: [] }));
     if (!current()) return;
     // T-20261014-212017-4 / G2 — the attachment rows come from the `attachments`
     // **table**, not from `task.meta`. A board that predates the write surface
@@ -1265,7 +1279,7 @@ async function refreshDetail(wanted, taskId) {
   read("task", () => api.task(identifier), (data) => {
     if (data?.task) patch.task = data.task;
   });
-  read("comments", () => api.taskComments(identifier, { limit: 200 }), (data) => {
+  read("comments", () => api.taskComments(identifier, { limit: 200, order: "desc" }), (data) => {
     patch.comments = data.comments ?? [];
   });
   read("relations", () => api.taskRelations(identifier), (data) => {

@@ -548,6 +548,26 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
     assert.equal(after.task.awaiting_reason, null);
   });
 
+  it("reads comments newest first with ?order=desc, and limit takes the newest N", async () => {
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "demo", title: "Comment order", allow_dup: true }),
+    );
+    const ref = created.task.identifier;
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/comments`, { body: "first", kind: "note" }));
+    // A distinct millisecond, so the newest-first assertion does not hinge on
+    // the id tie-break the repository uses for equal timestamps.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/comments`, { body: "second", kind: "note" }));
+
+    const asc = dataOf(await call("GET", `/api/v1/tasks/${ref}/comments`)).comments;
+    const desc = dataOf(await call("GET", `/api/v1/tasks/${ref}/comments?order=desc`)).comments;
+    assert.deepEqual(desc.map((c) => c.id), asc.map((c) => c.id).reverse());
+    assert.equal(desc[0].body, "second", "the newest comment is first");
+
+    const newest = dataOf(await call("GET", `/api/v1/tasks/${ref}/comments?order=desc&limit=1`)).comments;
+    assert.deepEqual(newest.map((c) => c.body), ["second"], "--limit takes the newest N");
+  });
+
   it("adds, lists and removes a relation", async () => {
     // Only an `epic` may be a parent (§4.2), so the fixture is an epic + a child.
     sibling = dataOf(

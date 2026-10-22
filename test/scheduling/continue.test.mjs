@@ -126,6 +126,9 @@ describe("buildContinuePrompt", () => {
     assert.match(prompt, /issue list --status in_progress/);
     assert.match(prompt, /issue list --status awaiting/);
     assert.match(prompt, /comment list <ref> --kind question/);
+    // A human answer written while the card is still in_progress is not a
+    // `question`; the control turn needs the plain read to see it.
+    assert.match(prompt, /comment list <ref> --limit 20/);
     assert.match(prompt, /comment add <ref> --kind note/);
     assert.match(prompt, /issue move <ref> todo/);
     assert.match(prompt, /A HUMAN comment of any kind resumes/);
