@@ -47,7 +47,7 @@ append-only audit trail, first-class dependency and epic edges, resumable sessio
 the [Highlights](#highlights) below describe.
 
 > **Status: the engine has landed in full — the core engine, the `taskctl` CLI and its
-> local `taskd`, the six-host installers, and the full board backend plus the `web/`
+> local `taskd`, the installers for the six supported agents, and the full board backend plus the `web/`
 > frontend.**
 > `src/core/` holds the domain model, SQLite storage and migrations, use-cases and
 > `openBoard()`; `src/cli/` + `src/server/` provide the real `taskctl` command surface and
@@ -161,7 +161,7 @@ meerkat-taskpanel/
 ## Quick install (npm/npx)
 
 ```bash
-# Server + taskctl + all six host skills, in one command.
+# The server, taskctl and the skill for every supported agent, in one command.
 npx meerkat-taskpanel
 
 # Or install the package globally, then run its installer whenever needed.
@@ -169,9 +169,9 @@ npm install -g meerkat-taskpanel
 meerkat-taskpanel install
 
 # Narrow the install:
-npx meerkat-taskpanel install --target server         # server + taskctl only
-npx meerkat-taskpanel install --target claude,codex   # server + those hosts
-npx meerkat-taskpanel install --no-server             # host skills only
+npx meerkat-taskpanel install --target server            # server + taskctl only
+npx meerkat-taskpanel install --target claude,server,pi  # server + those two agents
+npx meerkat-taskpanel install --no-server                # agent skills only
 ```
 
 The installer materializes the runtime at `~/.meerkat-taskpanel/` — `src/`, the built
@@ -185,32 +185,34 @@ package to be published; `--prefix <home>` relocates the tree, and `--force` /
 The same installer runs from the repository, without npm:
 
 ```bash
-bash install.sh --target all,server   # server + the six host skills
-bash install.sh --target server       # server + taskctl only
-bash install.sh --target all          # host skills only (no server)
+bash install.sh --target all              # server + the skill for every agent
+bash install.sh --target claude,server,pi # server + those two agents
+bash install.sh --target all --no-server  # agent skills only
+bash install.sh --target server           # server + taskctl only
 ```
 
-## Host install details
+## Agent install details
 
 ```bash
 bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all
 ```
 
-Default target is `all` (the six hosts); the server runtime is the separate `server`
-target — combine them as `all,server` for a full source install. The dispatcher forwards to
-`scripts/install/<host>.sh`, which
+`all` is the default: every agent below **plus** the server runtime. `--no-server` leaves
+the server out, and a comma list (`--target claude,server,pi`) selects exactly those
+targets. The dispatcher forwards to
+`scripts/install/<host>.sh` (the installers are named after their agent), which
 installs the skill into each host's skill directory — and, for **Claude Code** and
 **Codex**, the rest of the host bundle: the host config
 (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude) or a claim
 trigger (Codex), and a `taskctl` shim that pins the agent identity. All bundle writes are
 merge-style and idempotent: a repeat install **exits 0**, keeps every managed file and
 config key at its existing value, and prints `left unchanged — use --force to overwrite`;
-`--force` is the only way to overwrite. The `Bundle` column is the per-host manifest that
-the host's own plugin system consumes — registering it needs that host's CLI, so
+`--force` is the only way to overwrite. The `Bundle` column is the per-agent manifest that
+the agent's own plugin system consumes — registering it needs that agent's CLI, so
 `install.sh` only prints the command; see
-[`docs/install.md`](docs/install.md#per-host-steps) for the exact one per host.
+[`docs/install.md`](docs/install.md#per-agent-steps) for the exact one per agent.
 
-| Host | `--target` | Skill directory | Bundle |
+| Agent | `--target` | Skill directory | Bundle |
 |---|---|---|---|
 | Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `.claude-plugin/plugin.json` (plugin root = the repository root) |
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | the same root bundle |
@@ -429,7 +431,7 @@ Contributions land under the MIT license.
 |---|---|---|
 | **Engine** | `src/core/` — domain model, SQLite storage + migrations, state machine, invariants pushed down into database triggers, `openBoard()` | *landed* |
 | **CLI & local service** | `src/cli/` — the `taskctl` command surface aligned with `task-interface v1`; the loopback `taskd` it auto-starts | *landed* |
-| **Installers** | `install.sh` + `scripts/install/<host>.sh` — the six host targets, idempotent and merge-style | *landed* |
+| **Installers** | `install.sh` + `scripts/install/<host>.sh` — the six agent targets plus the `server` runtime, idempotent and merge-style | *landed* |
 | **Markdown export** | `src/core/storage/md/` — `taskctl export md` writes one canonical card per task | *landed* |
 | **Board API & frontend** | `src/server/` — the full board HTTP API and its SSE stream; `web/` — the Vue 3 board built to `web/dist` | *landed* |
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate | *(planned)* |

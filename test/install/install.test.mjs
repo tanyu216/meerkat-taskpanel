@@ -138,11 +138,40 @@ describe("install.sh: targets", () => {
     assert.match(readFileSync(join(tree, ".env"), "utf8"), /TASKD_ACCEPTANCE_POLICY=both/);
   });
 
-  it("--target all stays host-only and never creates the server tree", () => {
+  it("--target all installs every agent and the server tree", () => {
     const home = makeTempDir();
-    const run = runInstall(["--target", "all", "--prefix", home]);
+    const run = runInstall(
+      ["--target", "all", "--prefix", home],
+      { MEERKAT_TASKPANEL_SKIP_WEB_BUILD: "1" },
+    );
+    assert.equal(run.status, 0, run.stderr);
+    const tree = join(home, ".meerkat-taskpanel");
+    assert.ok(existsSync(join(tree, "src", "server", "main.mjs")), "all includes the server");
+    for (const hostDir of [".claude", ".openclaw", ".codex", ".agents", ".config/opencode", ".cursor"]) {
+      assert.ok(
+        existsSync(join(home, hostDir, "skills", "meerkat-taskpanel", "SKILL.md")),
+        `${hostDir} must be installed`,
+      );
+    }
+  });
+
+  it("--no-server removes the server from --target all", () => {
+    const home = makeTempDir();
+    const run = runInstall(["--target", "all", "--no-server", "--prefix", home]);
     assert.equal(run.status, 0, run.stderr);
     assert.equal(existsSync(join(home, ".meerkat-taskpanel")), false);
+    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-taskpanel", "SKILL.md")));
+  });
+
+  it("--target claude,server,pi selects exactly those three", () => {
+    const run = runInstall(["--target", "claude,server,pi", "--dry-run"]);
+    assert.equal(run.status, 0, run.stderr);
+    for (const target of ["server", "claude", "pi"]) {
+      assert.ok(run.stdout.includes(`install.sh: ${target}`), `${target} must be selected`);
+    }
+    for (const absent of ["openclaw", "codex", "opencode", "cursor"]) {
+      assert.equal(run.stdout.includes(`install.sh: ${absent}`), false, `${absent} must not be selected`);
+    }
   });
 
   it("--target server --link warns and still copies a real directory", () => {

@@ -15,9 +15,8 @@
 #              [--link] [--force] [--dry-run] [--skip-node-check] [--skip-web-build] [-h|--help]
 #
 # `--target` also accepts a comma-separated list (e.g. `--target claude,codex`).
-# Default target is "all" (the six hosts). `server` materializes the runtime tree at
-# <home>/.meerkat-taskpanel; `all` does not include it, so a full install is
-# `--target all,server`.
+# Default target is "all": the six agents plus the server runtime tree at
+# <home>/.meerkat-taskpanel. `--no-server` leaves the server out.
 #
 # It also asks (when stdin is a TTY and no flag was given) whether the supervisor
 # may claim **unassigned** cards, and persists the answer as
@@ -77,21 +76,22 @@ FORCE=""
 DRY_RUN=""
 SKIP_NODE_CHECK=""
 SKIP_WEB_BUILD=""
+NO_SERVER=""
 
 usage() {
   cat <<'EOF'
 Usage: install.sh [options]
 
 Install the Meerkat TaskPanel skills into one or more agent hosts, and
-optionally the server runtime tree.
+the server runtime tree.
 
 Options:
-  --target <host>   claude | openclaw | codex | pi | opencode | cursor | server | all
-                    (default: all)
+  --target <agent>  claude | openclaw | codex | pi | opencode | cursor | server | all
+                    (default: all — every agent above plus the server)
                     A comma-separated list is also accepted (claude,codex).
                     `server` materializes the runtime at <home>/.meerkat-taskpanel
-                    and provides bin/taskd + bin/taskctl; it is NOT part of `all`.
-                    Use `--target all,server` for a full source install.
+                    and provides bin/taskd + bin/taskctl.
+  --no-server       Install the agent skills only, leaving the server out
   --prefix <home>   Install relative to <home> instead of $HOME
   --agent-name <n>  Agent identity written into the host bundle (default: $USER)
   --no-automation   Skip the Codex claim trigger and scheduling units
@@ -453,6 +453,10 @@ while [ "$#" -gt 0 ]; do
       SKIP_WEB_BUILD="1"
       shift
       ;;
+    --no-server)
+      NO_SERVER="1"
+      shift
+      ;;
     -h | --help)
       usage
       exit 0
@@ -485,6 +489,9 @@ fi
 [ -n "$TARGET" ] || TARGET="all"
 HOSTS=""
 add_host() {
+  # `--no-server` drops the server from whichever selection contributed it (`all`
+  # includes it), leaving the agent skills — the source form of the npm flag.
+  if [ "$1" = "server" ] && [ -n "$NO_SERVER" ]; then return 0; fi
   case "$HOSTS" in
     *" $1 "*) return 0 ;;
   esac
@@ -506,6 +513,7 @@ for raw in $TARGET; do
       add_host pi
       add_host opencode
       add_host cursor
+      add_host server
       ;;
     claude | openclaw | codex | pi | opencode | cursor | server)
       add_host "$entry"
@@ -517,7 +525,12 @@ for raw in $TARGET; do
 done
 IFS="$OLD_IFS"
 
-[ -n "$(echo "$HOSTS" | tr -d ' ')" ] || die "no targets selected"
+if [ -z "$(echo "$HOSTS" | tr -d ' ')" ]; then
+  if [ -n "$NO_SERVER" ]; then
+    die "no targets selected — --no-server leaves no agent to install"
+  fi
+  die "no targets selected"
+fi
 
 # --prefix wins; otherwise honour an inherited MEERKAT_TASKPANEL_TARGET_HOME; else $HOME.
 TARGET_HOME="${PREFIX_HOME:-${MEERKAT_TASKPANEL_TARGET_HOME:-$HOME}}"

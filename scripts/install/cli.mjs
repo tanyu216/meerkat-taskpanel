@@ -7,9 +7,9 @@
  * `install.sh` a source checkout uses. `server`, `taskctl` and the skills all
  * come from the package that was just downloaded.
  *
- *   npx meerkat-taskpanel                 # server + taskctl + all host skills
+ *   npx meerkat-taskpanel                 # server + taskctl + every agent skill
  *   npx meerkat-taskpanel install --target server
- *   npx meerkat-taskpanel install --target claude,codex
+ *   npx meerkat-taskpanel install --target claude,server,pi
  *   npx meerkat-taskpanel install --no-server
  */
 
@@ -28,9 +28,9 @@ Installs the board server at <home>/.meerkat-taskpanel, the taskctl/taskd
 launchers, and the agent skills. Run through npx or a global npm install.
 
 Options:
-  --target <list>     hosts to install (claude,openclaw,codex,pi,opencode,cursor,all)
-                      or "server"; default: server + all hosts
-  --no-server         install only the host skills
+  --target <list>     agents to install (claude,openclaw,codex,pi,opencode,cursor),
+                      "server", or "all" (default: every agent + the server)
+  --no-server         install only the agent skills
   --prefix <home>     install under <home> instead of $HOME
   --force             refresh drifted managed files (never .env or .data)
   --dry-run           print every path; write nothing
@@ -77,8 +77,13 @@ export function splitTargets(value) {
 /**
  * The `--target` value the wrapper hands to install.sh.
  *
- * The server is first when selected: the host shims/config point at
- * `<server_root>`, so the tree must exist before the host scripts run.
+ * `all` means every agent **and** the server, so the default is just `all`. An
+ * explicit list is literal: `--target claude,codex` installs those two agents and
+ * no server, and `--target claude,server,pi` names all three targets. `--no-server`
+ * drops the server from whatever the selection resolves to (it is forwarded to
+ * install.sh, which owns the expansion). An explicit `server` is moved to the
+ * front: the agent shims/config point at `<server_root>`, so the tree must exist
+ * before the agent scripts run.
  *
  * @param {{targets?: string|null, noServer?: boolean}} options
  * @returns {{targets: string, server: boolean}}
@@ -86,15 +91,14 @@ export function splitTargets(value) {
 export function planTargets(options) {
   const explicit = options.targets !== null && options.targets !== undefined;
   const requested = explicit ? splitTargets(options.targets) : ["all"];
-  if (explicit && requested.length === 0) throw new Error("no targets selected");
-  const hasServer = requested.includes("server");
-  if (options.noServer && hasServer) {
-    throw new Error("--no-server cannot be combined with a server target");
+  if (requested.length === 0) throw new Error("no targets selected");
+  const agents = requested.filter((entry) => entry !== "server");
+  if (options.noServer && agents.length === 0) {
+    throw new Error("no targets selected — --no-server leaves no agent to install");
   }
-  const hosts = requested.filter((entry) => entry !== "server");
-  const server = !options.noServer;
-  const list = server ? ["server", ...hosts] : hosts;
-  if (list.length === 0) throw new Error("no targets selected");
+  const wantsServer = requested.includes("server") || requested.includes("all");
+  const server = wantsServer && !options.noServer;
+  const list = requested.includes("server") && !options.noServer ? ["server", ...agents] : requested;
   return { targets: list.join(","), server };
 }
 
@@ -129,6 +133,7 @@ async function main(argv) {
   }
 
   const installArgs = [join(ROOT, "install.sh"), "--target", plan.targets, "--prefix", home];
+  if (args.noServer) installArgs.push("--no-server");
   if (args.force) installArgs.push("--force");
   if (args.dryRun) installArgs.push("--dry-run");
   if (args.skipWebBuild) installArgs.push("--skip-web-build");

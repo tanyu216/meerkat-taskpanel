@@ -4,35 +4,41 @@ Meerkat TaskPanel ships as **a local server**, **two Agent Skills** and **one pl
 — the repository itself, which every harness reads in place:
 
 - **`meerkat-taskpanel`** (`skills/meerkat-taskpanel/`) — the board. Installed for all six
-  hosts.
+  agents.
 - **`meerkat-loop`** (`skills/meerkat-loop/`) — the host-external supervisor that keeps a
-  board moving when no agent is looking. Installed for **every host except OpenClaw**
+  board moving when no agent is looking. Installed for **every agent except OpenClaw**
   (claude, codex, pi, opencode, cursor); OpenClaw gets the board on its own, because the
   openclaw-team framework already runs an equivalent poll / patrol (see
   [`scheduling.md`](scheduling.md#openclaw-do-not-build-a-supervisor)).
 
+> **"Agent" and "host".** An **agent** is the application that runs a Claude/Codex/Pi/…
+  agent: Claude Code, OpenClaw, Codex, Pi / Agent Skills, OpenCode or Cursor — the values
+  `--target` takes. The code and some flag names still say *host* (`scripts/install/<host>.sh`,
+  `--supervisor-hosts`, the "host config"): a host is the process that hosts the skill. The
+  two words name the same targets.
+
 There are three layers, and it is worth keeping them straight:
 
 1. **The skills** — `SKILL.md` + `references/` + a wrapper, copied (or, for the board
-   skill, symlinked) into the host's skill directory by `install.sh`. This is
-   deterministic, offline, and needs no host tooling. The board skill is what makes the
+   skill, symlinked) into the agent's skill directory by `install.sh`. This is
+   deterministic, offline, and needs no agent tooling. The board skill is what makes the
    agent able to drive `taskctl`; the loop skill carries the supervisor's execution body
    and the templates the units are rendered from.
-2. **The host bundle** (Claude Code and Codex) — `install.sh --target claude|codex`
-   deploys the rest of the host's setup too, not just the skill: the host config
+2. **The agent bundle** (Claude Code and Codex) — `install.sh --target claude|codex`
+   deploys the rest of that agent's setup too, not just the skill: the agent config
    (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
    or a claim trigger (Codex), and a `taskctl` shim that pins the agent identity. Writes
    are **merge-style and idempotent**: a repeat install **exits 0**, leaves every managed
    file and config key at its existing value, and prints a
    `left unchanged — use --force to overwrite` notice; `--force` is the *only* way to
    overwrite. See [Idempotence](#idempotence-re-running-and-force).
-3. **The plugin/bundle** — the manifest that lets the host's own plugin system discover
-   and enable the skill. This step needs the host CLI, so `install.sh` does **not** run
+3. **The plugin/bundle** — the manifest that lets the agent's own plugin system discover
+   and enable the skill. This step needs that agent's CLI, so `install.sh` does **not** run
    it; it prints the command and you run it once. The repository root *is* the board's
    plugin root (`.claude-plugin/plugin.json`), which is what lets every harness share the
    one `skills/` tree instead of receiving a copy. The marketplace has a single entry —
    `meerkat-taskpanel`, sourced at `./`. `meerkat-loop` is **not** a marketplace plugin: it
-   is installed by `install.sh`, and only for the five non-OpenClaw hosts.
+   is installed by `install.sh`, and only for the five non-OpenClaw agents.
 
 > **Status: the engine has landed in full.** The skill is discoverable, the `taskctl`
 > commands it describes are implemented, and the board backend (`src/server/`, HTTP + SSE)
@@ -47,12 +53,12 @@ the same tree, the same launchers and the same config file.
 ### npm / npx (preferred)
 
 ```bash
-npx meerkat-taskpanel                                  # server + taskctl + all six host skills
-npm install -g meerkat-taskpanel                       # or install the package globally …
-meerkat-taskpanel install                              # … and run the installer whenever needed
-npx meerkat-taskpanel install --target server          # server runtime + taskctl only
-npx meerkat-taskpanel install --target claude,codex    # server + those hosts
-npx meerkat-taskpanel install --no-server              # host skills only
+npx meerkat-taskpanel                                    # server + taskctl + every agent skill
+npm install -g meerkat-taskpanel                         # or install the package globally …
+meerkat-taskpanel install                                # … and run the installer whenever needed
+npx meerkat-taskpanel install --target server            # server runtime + taskctl only
+npx meerkat-taskpanel install --target claude,server,pi  # server + those two agents
+npx meerkat-taskpanel install --no-server                # agent skills only
 ```
 
 With no subcommand, `install` is assumed. The wrapper ships inside the package, so `npx`
@@ -63,13 +69,15 @@ serves its UI with no build step.
 ### From a source checkout
 
 ```bash
-bash install.sh --target all,server   # server + the six host skills
-bash install.sh --target server       # server runtime + taskctl only
-bash install.sh --target all          # the six host skills, no server
-bash install.sh --target claude       # one host, no server
+bash install.sh --target all                # server + the skill for every agent (the default)
+bash install.sh --target claude,server,pi   # server + those two agents
+bash install.sh --target all --no-server    # the agent skills, no server
+bash install.sh --target server             # server runtime + taskctl only
+bash install.sh --target claude             # one agent, no server
 ```
 
-`all` never implies `server`; combine them as `all,server`. From a checkout, `web/dist` is
+`all` is every agent **plus** the server; `--no-server` leaves the server out, and an
+explicit comma list selects exactly the targets named. From a checkout, `web/dist` is
 copied if present; if it is absent and `web/node_modules` exists the installer builds it;
 otherwise it warns and installs an API-only server (it never runs `npm ci`).
 
@@ -93,11 +101,12 @@ The tree is self-locating: `src/` resolves `.env`, `.data` and `web/dist` from i
 position, so `bin/taskd` and `bin/taskctl` work from any directory and with no environment
 variables. Add `~/.meerkat-taskpanel/bin` to `PATH`, or use `npm install -g`.
 
-When the server is installed alongside host skills, the host shim and loop config
-(`MEERKAT_TASKPANEL_REPO`, `MEERKAT_TASKPANEL_ENV_FILE`) point at this tree, never at the
-npx cache or the checkout, and the `taskd` guard's unit runs the tree's
-`src/server/main.mjs` with `TASKD_DATA_DIR=<tree>/.data`. A host-only install is unchanged:
-it keeps pointing at the checkout.
+When the server is installed alongside agent skills (the default, and every npm/npx
+install), the agent shim and loop config (`MEERKAT_TASKPANEL_REPO`,
+`MEERKAT_TASKPANEL_ENV_FILE`) point at this tree, never at the npx cache or the checkout,
+and the `taskd` guard's unit runs the tree's `src/server/main.mjs` with
+`TASKD_DATA_DIR=<tree>/.data`. An agent-only install (`--no-server`) is unchanged: it keeps
+pointing at the checkout.
 
 The installer is **idempotent**: a re-run exits 0 and leaves `.env` and `.data` byte-for-byte
 alone; `src/` and the launchers are refreshed. `--force` additionally prunes stale files
@@ -106,23 +115,23 @@ under `src/` (it still never touches `.env` or `.data`); `--dry-run` writes noth
 ### Upgrading and removing
 
 Upgrade by running the installer again (`--force` to refresh managed files). To remove,
-delete the host skill directories listed below and the tree itself; **keep `.data/` if you
+delete the agent skill directories listed below and the tree itself; **keep `.data/` if you
 want the board**: `rm -rf ~/.meerkat-taskpanel` deletes the database with it.
 
-## Quick start (host skills)
+## Quick start (agent skills)
 
 ```bash
-bash install.sh --target all --agent-name "$USER"   # skill everywhere; full bundle for claude+codex
-bash install.sh --target claude --link --agent-name alice  # or one host, symlinked, named alice
+bash install.sh --target all --agent-name "$USER"   # everything; full bundle for claude+codex
+bash install.sh --target claude --link --agent-name alice  # or one agent, symlinked, named alice
 ```
 
-Then register the plugin/bundle for the hosts you use (one command each — see
-[Per-host steps](#per-host-steps)). `--agent-name` names the agent on the board and must
+Then register the plugin/bundle for the agents you use (one command each — see
+[Per-agent steps](#per-agent-steps)). `--agent-name` names the agent on the board and must
 match the assignee the board uses for it; it defaults to `$USER`.
 
 ## Where things land
 
-| Host | `--target` | Board skill | Loop skill | Bundle |
+| Agent | `--target` | Board skill | Loop skill | Bundle |
 |---|---|---|---|---|
 | Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `~/.claude/skills/meerkat-loop` | `.` — the repository root (`.claude-plugin/plugin.json`) |
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `.` — the same root bundle |
@@ -135,8 +144,8 @@ The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists a
 plugin, `./` (the board); Codex reads the same marketplace manifest, which is why it has no
 bundle of its own.
 
-Every host above has both routes: a `--target` that lands the skill on disk, and a
-plugin/bundle the host's own plugin system reads in place. OpenCode and Cursor are no
+Every agent above has both routes: a `--target` that lands the skill on disk, and a
+plugin/bundle that agent's own plugin system reads in place. OpenCode and Cursor are no
 exception — see [OpenCode](#opencode) and [Cursor](#cursor).
 
 `--link` applies to the **board** skill only. The loop is always copied: a symlinked
@@ -362,13 +371,14 @@ so a node that lives only under nvm or Homebrew still starts the server — see
 [`scheduling.md § The taskd guard (keepalive)`](scheduling.md#the-taskd-guard-keepalive).
 
 **Which program the unit runs.** With the server target selected (`--target server` /
-`all,server`, and always for an npm/npx install), the unit runs the installed tree's
+`all`, which includes it, and always for an npm/npx install unless `--no-server`), the unit
+runs the installed tree's
 `src/server/main.mjs` with `TASKD_DATA_DIR=<home>/.meerkat-taskpanel/.data` pinned in its
 environment — so the guarded board is the installed one, not whatever checkout you happened
 to install from, and it keeps working after the checkout moves or the npx cache is pruned.
 Without the server target the unit runs the checkout's `src/server/main.mjs` and leaves the
 data directory to the normal config chain. A unit written for one layout does not match the
-other, so re-pointing a host-only install at a server install (or back) is a deliberate
+other, so re-pointing an agent-only install at a server install (or back) is a deliberate
 `--force`.
 
 **A second board does not inherit the guard.** The guard is one per machine
@@ -377,7 +387,7 @@ re-install for a *different* board is refused rather than silently re-pointing t
 only guard (on Linux, systemd reads `~/.config/systemd/user/meerkat-taskpanel-taskd.service`
 and that file is the guard). The refusal names both boards, leaves the unit alone, and is
 the install's one non-zero guard outcome — **exit 3**, which `install.sh` reports and then
-carries on from (the host skills are installed either way, and the install's own exit status
+carries on from (the agent skills are installed either way, and the install's own exit status
 is unchanged). `--force` is how you re-point it deliberately:
 
 ```text
@@ -486,7 +496,8 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|server|all] [--pre
 
 | Flag | Effect |
 |---|---|
-| `--target <host>` | Which host(s) to install for. Default `all` (the six hosts). Repeatable, and a comma-separated list (`--target claude,codex`) works too. `server` selects the runtime tree instead of a host — `all` does not include it, so a full source install is `--target all,server`. |
+| `--target <agent>` | Which agent(s) to install for, or `server` for the runtime tree. Default `all` — every agent plus the server. Repeatable, and a comma-separated list (`--target claude,server,pi`) works too. `--no-server` removes the server from whatever the selection resolves to. |
+| `--no-server` | Install the agent skills only, leaving the runtime tree out (`--target all --no-server` is the old `all`). |
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`; the server tree lands at `<home>/.meerkat-taskpanel`. |
 | `--skip-web-build` | Never try to build `web/dist`. A server install without a prebuilt `web/dist` is then API-only (with a warning) instead of building it. |
 | `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `$USER`). Must equal the board assignee for the agent to claim cards. |
@@ -560,11 +571,11 @@ bash install.sh --target all --dry-run                 # preview
 bash install.sh --target claude --link --force         # development install
 bash install.sh --target all --prefix /tmp/tp-home     # isolated home (testing)
 bash install.sh --target all --supervisor=enable       # opt in: install + load the supervisor
-bash install.sh --target all,server                    # full install: runtime tree + skills
+bash install.sh --target all                           # full install: runtime tree + every agent
 bash install.sh --target server --skip-web-build       # API-only server, no frontend build
 ```
 
-## Per-host steps
+## Per-agent steps
 
 ### Claude Code
 
@@ -863,12 +874,12 @@ as does `npm link` or a global install.
 ## Verifying the install
 
 **Everything that runs is verified inside the container** (see
-[`docker.md`](docker.md) and ARCHITECTURE §9.1): the six host CLIs are not installed in
+[`docker.md`](docker.md) and ARCHITECTURE §9.1): the six agent CLIs are not installed in
 the image and there is no network, so the container asserts each host's *detection
 contract* offline instead.
 
 ```bash
-npm run verify:docker                     # the full container suite, all six hosts
+npm run verify:docker                     # the full container suite, all six agents
 ```
 
 That run includes `scripts/verify/profiles.mjs`, which for each host installs into a
@@ -881,9 +892,9 @@ on its own with:
 node scripts/verify/profiles.mjs --host openclaw
 ```
 
-### Supplementary: the real host CLIs
+### Supplementary: the real agent CLIs
 
-When the host CLIs *are* present (a developer host, never CI), the same four steps are
+When the agent CLIs *are* present (a developer machine, never CI), the same four steps are
 driven for real, each in a throwaway `HOME`, touching no network:
 
 ```bash
@@ -926,7 +937,7 @@ bash install.sh --target all --prefix /tmp/tp-home
 MEERKAT_TASKPANEL_TARGET_HOME=/tmp/tp-home bash scripts/install/claude.sh   # env equivalent
 ```
 
-The host CLIs honour their own config-directory variables, so a fully isolated plugin
+The agent CLIs honour their own config-directory variables, so a fully isolated plugin
 install is possible too:
 
 ```bash

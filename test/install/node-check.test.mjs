@@ -186,14 +186,30 @@ describe("require_node — the dispatcher's runtime check", () => {
     assert.match(run.stdout, /== install summary ==/);
   });
 
+  it("the server target names the missing node instead of a shell error", () => {
+    const run = runInstall(makeFakeBin(null), {
+      args: ["--target", "server", "--dry-run", "--skip-node-check"],
+    });
+    assert.equal(run.status, 1, run.stdout);
+    assert.match(run.stderr, /needs node on PATH/);
+  });
+
+  // Host-only targets: the check is the dispatcher's, and a plain host install is pure
+  // shell. `--target all` includes the server, whose materializer *is* a Node program,
+  // so no bypass can run it without node (server.sh says so instead of crashing).
   it("--skip-node-check bypasses the check even with no node", () => {
-    const run = runInstall(makeFakeBin(null), { args: ["--target", "all", "--dry-run", "--skip-node-check"] });
+    const run = runInstall(makeFakeBin(null), {
+      args: ["--target", "claude", "--dry-run", "--skip-node-check"],
+    });
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /== install summary ==/);
   });
 
   it("MEERKAT_TASKPANEL_SKIP_NODE_CHECK=1 bypasses the check even with no node", () => {
-    const run = runInstall(makeFakeBin(null), { env: { MEERKAT_TASKPANEL_SKIP_NODE_CHECK: "1" } });
+    const run = runInstall(makeFakeBin(null), {
+      args: ["--target", "claude", "--dry-run"],
+      env: { MEERKAT_TASKPANEL_SKIP_NODE_CHECK: "1" },
+    });
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /== install summary ==/);
   });

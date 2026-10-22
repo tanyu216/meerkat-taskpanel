@@ -24,7 +24,7 @@ Meerkat TaskPanel 就是回答这些问题的记录：
 
 Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题是 **Agent 之间的任务协作** —— 拆分工作、声明依赖、交接结果；而对围绕它们的人来说，它把这种协作变成**可可视化、可追溯**的东西，而不是锁在模型的上下文里。真正干这些事的机制 —— 只增不改的审计轨迹、一等公民的依赖与 epic 关系、可续接的会话 —— 正是下方[亮点](#亮点)所描述的。
 
-> **状态：引擎已整体落地 —— 核心引擎、`taskctl` CLI 与其本地 `taskd`、六宿主安装器、
+> **状态：引擎已整体落地 —— 核心引擎、`taskctl` CLI 与其本地 `taskd`、六个 agent 的安装器、
 > 以及完整的看板后端与 `web/` 前端。**
 > `src/core/` 已包含领域模型、SQLite 存储与迁移、用例与 `openBoard()`；`src/cli/` +
 > `src/server/` 提供了真实的 `taskctl` 命令面，以及 CLI 会在回环地址上自动启动的本地
@@ -120,7 +120,7 @@ meerkat-taskpanel/
 ## 快速安装（npm/npx）
 
 ```bash
-# 一条命令：server + taskctl + 六个 host 的 skills
+# 一条命令：server + taskctl + 每个 agent 的 skill
 npx meerkat-taskpanel
 
 # 或全局安装，之后随时运行安装器
@@ -128,9 +128,9 @@ npm install -g meerkat-taskpanel
 meerkat-taskpanel install
 
 # 缩小范围
-npx meerkat-taskpanel install --target server         # 只装 server + taskctl
-npx meerkat-taskpanel install --target claude,codex   # server + 指定 host
-npx meerkat-taskpanel install --no-server             # 只装 host skills
+npx meerkat-taskpanel install --target server            # 只装 server + taskctl
+npx meerkat-taskpanel install --target claude,server,pi  # server + 这两个 agent
+npx meerkat-taskpanel install --no-server                # 只装 agent skills
 ```
 
 安装器会把运行时 materialize 到 `~/.meerkat-taskpanel/`：`src/`、构建好的 `web/dist`、
@@ -143,29 +143,31 @@ npx meerkat-taskpanel install --no-server             # 只装 host skills
 同一个安装器也可直接从仓库运行，不依赖 npm：
 
 ```bash
-bash install.sh --target all,server   # server + 六个 host 的 skills
-bash install.sh --target server       # 只装 server + taskctl
-bash install.sh --target all          # 只装 host skills（不装 server）
+bash install.sh --target all              # server + 每个 agent 的 skill
+bash install.sh --target claude,server,pi # server + 这两个 agent
+bash install.sh --target all --no-server  # 只装 agent skills
+bash install.sh --target server           # 只装 server + taskctl
 ```
 
-## 安装（宿主细节）
+## 安装（agent 细节）
 
 ```bash
 bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all
 ```
 
-默认 target 为 `all`（六个 host）；server 运行时是独立的 `server` target，需要全量源码安装时
-写成 `all,server`。分发器转发到 `scripts/install/<host>.sh`，把 skill 安装到各宿主的
-skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 的其余部分：
-宿主配置（`~/.claude/settings.json` / `~/.codex/AGENTS.md`）、slash 命令（Claude）或认领
+`all` 是默认值：下面每个 agent **加上** server 运行时。`--no-server` 去掉 server；
+逗号列表（`--target claude,server,pi`）只装列出的目标。分发器转发到
+`scripts/install/<host>.sh`（安装脚本按 agent 命名），把 skill 安装到各 agent 的
+skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署 agent bundle 的其余部分：
+agent 配置（`~/.claude/settings.json` / `~/.codex/AGENTS.md`）、slash 命令（Claude）或认领
 触发脚本（Codex），以及固定身份用的 `taskctl` 包装脚本。所有 bundle 写入均为**合并式且
 幂等**：重复安装**退出码为 0**，受管文件与配置键一律保留旧值，并打印
 `left unchanged — use --force to overwrite` 提示 —— 唯有 `--force` 才会覆盖。
-`Bundle` 列是该宿主自身插件系统消费的清单文件 —— 注册它需要对应宿主的 CLI，因此
-`install.sh` 只打印命令，不代为执行；每个宿主的具体命令见
-[`docs/install.md`](docs/install.md#per-host-steps)。
+`Bundle` 列是该 agent 自身插件系统消费的清单文件 —— 注册它需要对应 agent 的 CLI，因此
+`install.sh` 只打印命令，不代为执行；每个 agent 的具体命令见
+[`docs/install.md`](docs/install.md#per-agent-steps)。
 
-| 宿主 | `--target` | Skill 落点 | Bundle |
+| Agent | `--target` | Skill 落点 | Bundle |
 |---|---|---|---|
 | Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `.claude-plugin/plugin.json`（插件根 = 仓根） |
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | 同一个仓根 bundle |
@@ -342,7 +344,7 @@ PR 流程，以及 CI 强制执行的约定。贡献以 MIT 许可落库。
 |---|---|---|
 | **引擎** | `src/core/` —— 领域模型、SQLite 存储与迁移、状态机、下沉到数据库触发器的各项不变量、`openBoard()` | *已落地* |
 | **CLI 与本地服务** | `src/cli/` —— 对齐 `task-interface v1` 的 `taskctl` 命令面，以及 CLI 自动启动的回环 `taskd` | *已落地* |
-| **安装器** | `install.sh` + `scripts/install/<host>.sh` —— 六个宿主目标，幂等且合并式写入 | *已落地* |
+| **安装器** | `install.sh` + `scripts/install/<host>.sh` —— 六个 agent 目标外加 `server` 运行时，幂等且合并式写入 | *已落地* |
 | **md 导出** | `src/core/storage/md/` —— `taskctl export md` 为每张卡写一份规范 markdown | *已落地* |
 | **看板 API 与前端** | `src/server/` —— 完整的看板 HTTP API 及其 SSE 流；`web/` —— 构建到 `web/dist` 的 Vue 3 看板 | *已落地* |
 | **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合 | *（规划中）* |

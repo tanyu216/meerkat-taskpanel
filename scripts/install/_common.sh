@@ -745,20 +745,25 @@ ensure_env_key() {
 # `MEERKAT_TASKPANEL_ENV_FILE` overrides the path (tests, containers, a read-only
 # package root).
 seed_env_file() {
+  # `$ROOT` when the caller has one: install.sh computes it absolutely, and a
+  # relative `bash install.sh` would make repo_root() resolve the checkout's
+  # parent (dirname "install.sh" is "."). server.sh has no $ROOT and calls with
+  # an explicit path, so repo_root() is the right fallback there.
+  seed_root="${ROOT:-$(repo_root)}"
   if [ "$#" -ge 1 ] && [ -n "$1" ]; then
     env_file="$1"
   else
-    env_file="${MEERKAT_TASKPANEL_ENV_FILE:-$(repo_root)/.env}"
+    env_file="${MEERKAT_TASKPANEL_ENV_FILE:-$seed_root/.env}"
   fi
   case "$env_file" in
     /*) ;;
-    *) env_file="$(repo_root)/$env_file" ;;
+    *) env_file="$seed_root/$env_file" ;;
   esac
-  template="$(repo_root)/scripts/install/templates/env.example"
+  template="$seed_root/scripts/install/templates/env.example"
 
   # The old board file is no longer read (hard switch). Say so, but do not touch
   # it: a human may still want to move its keys by hand.
-  legacy_dir="${TASKD_DATA_DIR:-$(repo_root)/.data}"
+  legacy_dir="${TASKD_DATA_DIR:-$seed_root/.data}"
   if [ -f "$legacy_dir/taskd.env" ]; then
     echo "install.sh: note: $legacy_dir/taskd.env is no longer read; move its keys into $env_file" >&2
   fi

@@ -22,13 +22,14 @@ board HTTP API + SSE; `web/` is the Vue 3 + Vite frontend that builds to `web/di
 served by `taskd`. Still planned: the **epic view** and **iteration management** — the
 roadmap lives in `README.md` / `README.zh-CN.md`.
 
-**Distribution:** `npx meerkat-taskpanel` (or `install.sh --target server|all,server` from a
-checkout) materializes the runtime at `~/.meerkat-taskpanel` — `src/`, the built `web/dist`,
-`bin/taskd`, `bin/taskctl`, one `.env` and `.data` — and, by default, installs the six host
-skills too; `all` alone never includes the server. The npm tarball therefore carries the
-built `web/dist`, and the tree is self-locating (the launchers exec the tree's own `src/`),
-so it survives the checkout moving or the npx cache being pruned. The Docker image is
-unchanged and keeps `/app/.data`. `docs/install.md` is the reference.
+**Distribution:** `npx meerkat-taskpanel` (or `install.sh --target all` from a checkout)
+materializes the runtime at `~/.meerkat-taskpanel` — `src/`, the built `web/dist`,
+`bin/taskd`, `bin/taskctl`, one `.env` and `.data` — and installs the skill for every
+supported agent. `all` is the default and includes the server; `--no-server` (or an explicit
+comma list such as `--target claude,server,pi`) narrows it. The npm tarball therefore carries
+the built `web/dist`, and the tree is self-locating (the launchers exec the tree's own
+`src/`), so it survives the checkout moving or the npx cache being pruned. The Docker image
+is unchanged and keeps `/app/.data`. `docs/install.md` is the reference.
 
 The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/install.md`).
 The board owns the workflow decisions (`issue reconcile --workflow`); the loop executes the
@@ -114,7 +115,7 @@ node scripts/verify/cli-contract.mjs         # CLI surface snapshot (commands/fl
 node scripts/verify/route-request.mjs        # declared request schema vs what the handler reads; --print
 node src/server/main.mjs                     # start taskd directly (taskctl also auto-starts it)
 bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all   # --prefix --link --force --dry-run --skip-web-build
-npx meerkat-taskpanel [install] [--target …] [--no-server] [--prefix <home>]   # server + skills; defaults to server,all
+npx meerkat-taskpanel [install] [--target …] [--no-server] [--prefix <home>]   # defaults to all: server + every agent
 ```
 
 `test:coverage` gates `src/core/**`, `src/foundation/**`, `src/cli/**` and `src/server/**`; the
@@ -236,9 +237,9 @@ authoritative home, because the container image drops `design/`.
   on every command except `--help` / `--version`; `--agent` names the role and is not a
   shared-file key. The install root is the **running program's** root: the checkout, `/app`
   in the image, or `~/.meerkat-taskpanel` for an installed tree. On a combined install
-  (`--target all,server` or npm/npx) the host shims and loop config name the installed tree
-  (`MEERKAT_TASKPANEL_REPO`, `MEERKAT_TASKPANEL_ENV_FILE`) — never the checkout and never the
-  npx cache; host-only installs keep pointing at the checkout.
+  (`--target all`, which includes the server, or npm/npx) the agent shims and loop config
+  name the installed tree (`MEERKAT_TASKPANEL_REPO`, `MEERKAT_TASKPANEL_ENV_FILE`) — never
+  the checkout and never the npx cache; `--no-server` installs keep pointing at the checkout.
 - **The `taskd` guard follows the same root.** Selecting the server target writes
   `ExecStart` = `<node> <home>/.meerkat-taskpanel/src/server/main.mjs` and pins
   `TASKD_DATA_DIR=<home>/.meerkat-taskpanel/.data` in the unit; without it the unit runs the

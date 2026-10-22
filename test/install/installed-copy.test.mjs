@@ -78,13 +78,16 @@ before(() => {
   const install = spawnSync("bash", [join(ROOT, "install.sh"), "--target", "all", "--prefix", home], {
     cwd: ROOT,
     encoding: "utf8",
-    env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1" },
+    env: {
+      ...process.env,
+      MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+      MEERKAT_TASKPANEL_SKIP_WEB_BUILD: "1",
+    },
   });
   assert.equal(install.status, 0, install.stderr);
-  assert.equal(
-    existsSync(join(home, ".meerkat-taskpanel")),
-    false,
-    "--target all is host-only; the server tree needs an explicit server target",
+  assert.ok(
+    existsSync(join(home, ".meerkat-taskpanel", "src", "cli", "index.mjs")),
+    "--target all is the full install: the server tree comes with the agent skills",
   );
 
   // A `taskctl` that records its argv and exits with whatever `FAKE_TASKCTL_EXIT` says —

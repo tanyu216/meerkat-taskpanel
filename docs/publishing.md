@@ -96,7 +96,7 @@ The package is the **distribution**, not only a source drop. It declares three b
 `meerkat-taskpanel` (the installer), `taskctl` and `taskd` — so after a publish:
 
 ```bash
-npx meerkat-taskpanel                      # install server + taskctl + host skills
+npx meerkat-taskpanel                      # install server + taskctl + every agent skill
 npm install -g meerkat-taskpanel           # taskctl / taskd / the installer on PATH
 ```
 

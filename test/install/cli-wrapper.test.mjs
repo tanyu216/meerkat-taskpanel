@@ -45,16 +45,24 @@ function run(argv, env = {}) {
 }
 
 describe("cli-wrapper — target planning", () => {
-  it("defaults to server + all hosts, server first", () => {
-    assert.deepEqual(planTargets({}), { targets: "server,all", server: true });
-    assert.deepEqual(planTargets({ targets: "claude,codex" }), {
-      targets: "server,claude,codex",
+  it("defaults to all agents plus the server", () => {
+    // `all` carries the server, so the wrapper hands it through unchanged.
+    assert.deepEqual(planTargets({}), { targets: "all", server: true });
+    assert.deepEqual(planTargets({ targets: "claude,server,pi" }), {
+      targets: "server,claude,pi",
       server: true,
     });
     assert.deepEqual(planTargets({ targets: "server" }), { targets: "server", server: true });
   });
 
-  it("--no-server installs only the selected hosts", () => {
+  it("an explicit list is literal — an agent list does not add the server", () => {
+    assert.deepEqual(planTargets({ targets: "claude,codex" }), {
+      targets: "claude,codex",
+      server: false,
+    });
+  });
+
+  it("--no-server installs only the selected agents", () => {
     assert.deepEqual(planTargets({ noServer: true }), { targets: "all", server: false });
     assert.deepEqual(planTargets({ noServer: true, targets: "claude" }), {
       targets: "claude",
@@ -62,8 +70,8 @@ describe("cli-wrapper — target planning", () => {
     });
   });
 
-  it("refuses --no-server with a server target, and an empty selection", () => {
-    assert.throws(() => planTargets({ noServer: true, targets: "server" }), /--no-server/);
+  it("refuses --no-server when it leaves nothing, and an empty selection", () => {
+    assert.throws(() => planTargets({ noServer: true, targets: "server" }), /no targets/);
     assert.throws(() => planTargets({ targets: "," }), /no targets/);
   });
 
@@ -83,15 +91,30 @@ describe("cli-wrapper — dry run", () => {
     assert.equal(existsSync(tree), false);
   });
 
-  it("defaults to the full install (server first, then the hosts)", () => {
+  it("defaults to the full install (server first, then every agent)", () => {
     const home = tempDir();
     const runResult = run(["--prefix", home, "--dry-run"]);
     assert.equal(runResult.status, 0, runResult.stderr);
     const serverAt = runResult.stdout.indexOf("install.sh: server");
     const claudeAt = runResult.stdout.indexOf("install.sh: claude");
     assert.ok(serverAt !== -1 && claudeAt !== -1, runResult.stdout);
-    assert.ok(serverAt < claudeAt, "server must be installed before the hosts");
+    assert.ok(serverAt < claudeAt, "server must be installed before the agents");
+    for (const agent of ["openclaw", "codex", "pi", "opencode", "cursor"]) {
+      assert.ok(runResult.stdout.includes(`install.sh: ${agent}`), `${agent} must be part of the default`);
+    }
     assert.equal(existsSync(join(home, ".meerkat-taskpanel")), false);
+  });
+
+  it("a comma list selects exactly those targets", () => {
+    const home = tempDir();
+    const runResult = run(["--target", "claude,server,pi", "--prefix", home, "--dry-run"]);
+    assert.equal(runResult.status, 0, runResult.stderr);
+    for (const target of ["server", "claude", "pi"]) {
+      assert.ok(runResult.stdout.includes(`install.sh: ${target}`), `${target} must be selected`);
+    }
+    for (const absent of ["openclaw", "codex", "opencode", "cursor"]) {
+      assert.equal(runResult.stdout.includes(`install.sh: ${absent}`), false, `${absent} must not be selected`);
+    }
   });
 
   it("--no-server leaves the server out", () => {

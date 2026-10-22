@@ -14,6 +14,14 @@ set -eu
 
 require_node
 
+# The version floor can be skipped, but the materializer is a Node program: without
+# any node there is nothing to run it with. Say that plainly instead of letting the
+# shell print "node: command not found".
+if ! command -v node >/dev/null 2>&1; then
+  echo "server: the server target needs node on PATH (--skip-node-check skips only the version floor)" >&2
+  exit 1
+fi
+
 SERVER_ROOT="$(target_home)/.meerkat-taskpanel"
 
 if [ -n "${MEERKAT_TASKPANEL_LINK:-}" ]; then

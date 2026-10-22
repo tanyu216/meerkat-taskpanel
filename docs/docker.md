@@ -2,8 +2,8 @@
 
 ## Why
 
-Local verification, deployment and the six-host skill installs all happen **inside a
-container**, never on the host machine. This is a hard constraint for this repository
+Local verification, deployment and the six-agent skill installs all happen **inside a
+container**, never on the operator's machine. This is a hard constraint for this repository
 (Terry, 2026-10-08) and it is recorded in `ARCHITECTURE.md §9.1`:
 
 - a host run mutates the developer's real `$HOME` (skill installs), leaves stray Node
