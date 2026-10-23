@@ -13,7 +13,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { createPiPool, sessionArgs } from "../../scripts/loop/actor-kinds/pi.mjs";
+import {
+  createPiPool,
+  piSubagentsInstalled,
+  sessionArgs,
+} from "../../scripts/loop/actor-kinds/pi.mjs";
 
 const FAKE = `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
@@ -91,6 +95,26 @@ describe("pi session args", () => {
     const args = sessionArgs({ opts: { allowAllTools: true }, role: "worker" });
     assert.ok(args.includes("--approve"));
     assert.equal(args.includes("--tools"), false);
+  });
+});
+
+describe("pi subagent dependency", () => {
+  it("warns when the extension is absent, and clears once it is installed", (t) => {
+    const f = fixture(t);
+    const home = join(f.dir, "home");
+    mkdirSync(home, { recursive: true });
+    const logs = [];
+    const pool = createPiPool({ opts: {}, bin: f.bin, log: (line) => logs.push(line), home });
+    t.after(() => pool.close());
+
+    assert.equal(piSubagentsInstalled(home), false);
+    assert.ok(
+      logs.some((line) => line.includes("pi install npm:pi-subagents")),
+      logs.join("\n"),
+    );
+
+    mkdirSync(join(home, ".pi", "agent", "extensions", "subagent"), { recursive: true });
+    assert.equal(piSubagentsInstalled(home), true);
   });
 });
 

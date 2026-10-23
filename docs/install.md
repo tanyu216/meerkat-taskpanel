@@ -740,6 +740,17 @@ Pi has no timer of its own, so step 1 also drops the units under
 `~/.agents/scheduling/` and the `~/.agents/bin/wake-pi.sh` glue; load one of them to
 run the supervisor (see [Scheduling units](#scheduling-units-claude-codex-pi)).
 
+The loop dispatches one subagent per card, and Pi has no native subagent mechanism. A Pi
+host therefore needs an extension; the installer checks
+`~/.pi/agent/extensions/subagent` and prints the recommended command when it is missing:
+
+```bash
+pi install npm:pi-subagents
+```
+
+Install it before enabling the supervisor. Without it the project session can start, but it
+cannot spawn the worker/reviewer subagents, so cards are never worked.
+
 Uninstall:
 
 ```bash

@@ -1,8 +1,33 @@
 # UI workflow — validate a design with a prototype
 
-Read this before stage 2 of the role workflow, when a card changes what a user sees or
-does. The prototype answers the card's design questions with evidence; it does not write
-the PRD and it is not a delivery.
+Read this in card mode before stage 2 of the role workflow, when a card changes what a user
+sees or does; read it directly in standalone mode for a single feature optimization or
+prototype revision. The prototype answers the design questions with evidence; it does not
+write the PRD unless the change is product-scoped, and it is not a delivery.
+
+## Modes
+
+### Card mode
+
+Inputs: the card, the frozen acceptance, the spec and the plan. Working artifacts use the
+card id and stay in `.meerkat/<id>/`: `spec.md`, `prototype/`, `prd.md`. The role workflow's
+archive stage promotes them to content-named files under `design/`.
+
+### Standalone mode
+
+Run this file directly for a single feature optimization, prototype revision or interaction
+change with no card. The brief is the acceptance source: write a one-page brief directly in
+`design/specs/<content-slug>.md` (problem, target surface, success test, 1-3 questions,
+constraints, non-goals), where `<content-slug>` is a kebab-case name derived from the
+feature or topic, never a task id. The prototype and evidence go to
+`design/prototype/<content-slug>/`. Write `design/prds/<content-slug>.md` only on demand —
+when the change introduces new behaviour, an external contract, or a decision others will
+build on. A pure visual or interaction revision ends with the spec, the prototype and the
+verdict.
+
+Standalone mode never writes to the board and never changes a card. If a decision needs the
+human, ask; do not infer it. Finish by reporting the chosen direction, the evidence and the
+file paths.
 
 ## When to skip
 
@@ -12,18 +37,23 @@ the PRD and it is not a delivery.
 
 ## Inputs
 
-- `card.md`, the live card and the frozen `acceptance` snapshot;
-- `design/specs/<id>.md`: the frozen direction, the states and the 1–3 assumptions;
-- `.meerkat/<id>/plan.md`: the card index (acceptance mapping, risks, open questions);
+- in card mode: `card.md`, the live card and the frozen `acceptance` snapshot;
+- in standalone mode: the brief in `design/specs/<content-slug>.md` is the acceptance
+  source; there is no card workspace;
+- `.meerkat/<id>/spec.md` (card mode) or `design/specs/<content-slug>.md` (standalone): the
+  frozen direction, the states and the 1–3 assumptions;
+- `.meerkat/<id>/plan.md` (card mode) or the brief (standalone): the index (acceptance
+  mapping, risks, open questions);
 - the project's existing design system or tokens, if any. Extend it; never fork a second.
 
 ## Steps
 
 ### 1. Question card
 
-Write the 1–3 questions the prototype answers. A prototype that answers no question is
-waste. If the question is about state or logic rather than appearance, build a single
-clickable HTML demo instead of UI variants.
+Write the 1–3 questions the prototype answers. In standalone mode this is the one-page
+brief in `design/specs/<content-slug>.md`. A prototype that answers no question is waste. If
+the question is about state or logic rather than appearance, build a single clickable HTML
+demo instead of UI variants.
 
 ### 2. Diverge
 
@@ -35,8 +65,9 @@ affordance, navigation model. Colour-only variants are not variants.
 ### 3. Converge
 
 Pick one variant; mixing is allowed ("B's header with C's sidebar"). Record the choice, the
-rejected variants and why in `design/specs/<id>.md`, and link the verdict from `plan.md`.
-Write the one token source: colour (named values),
+rejected variants and why in `.meerkat/<id>/spec.md` (card mode) or
+`design/specs/<content-slug>.md` (standalone), and link the verdict from `plan.md` (card
+mode). Write the one token source: colour (named values),
 type and scale, spacing ladder, radius, elevation, motion, component states, accessibility
 baseline, and the anti-patterns that would be a failure.
 
@@ -59,18 +90,22 @@ Run four gates in order; the expensive ones do not replace the cheap ones.
 3. **Screenshot self-review.** Look at your own screenshots; fix the three worst problems;
    at most three rounds. Keep the before/after frames.
 4. **Critique pass.** Check focal point, hierarchy, typography, colour, surfaces, states
-   and motion, then remove generated-UI tells. This is a critique, not acceptance.
+   and motion, then remove generated-UI tells. This is the role's own critique, not
+   acceptance; the independent reviewer still audits the PRD and the prototype evidence at
+   delivery.
 
 ### 6. Archive
 
 Put the verdict, the evidence (screenshots, commands, readings) and the rejected variants
-in `design/prototype/<id>/`. Keep the chosen prototype as the reference for the PRD and
-the implementation handoff. The switcher and the losing variants do not ship.
+in `.meerkat/<id>/prototype/` (card mode) or `design/prototype/<content-slug>/`
+(standalone). Keep the chosen prototype as the reference for the PRD and the implementation
+handoff. The switcher and the losing variants do not ship.
 
 ## Evidence
 
 A claim without evidence is an open question, not a decision. Store screenshots, geometry
-readings and check outputs in `design/prototype/<id>/`, never in a scratch directory.
+readings and check outputs in `.meerkat/<id>/prototype/` (card mode) or
+`design/prototype/<content-slug>/` (standalone), never in a scratch directory.
 
 ## Boundaries
 

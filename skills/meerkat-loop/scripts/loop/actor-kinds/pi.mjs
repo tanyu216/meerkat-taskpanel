@@ -14,12 +14,33 @@
  */
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 import { extractAgentIds } from "../ledger.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
 export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
+
+/** The extension directories `pi-subagents` installs into. */
+const PI_SUBAGENT_DIRS = [
+  join(".pi", "agent", "extensions", "subagent"),
+  join(".pi", "agent", "extensions", "pi-subagents"),
+];
+export const PI_SUBAGENTS_INSTALL = "pi install npm:pi-subagents";
+
+/**
+ * Whether a pi subagent extension is present under `home`. The loop's project
+ * session spawns one subagent per card, and Pi has no native subagent mechanism,
+ * so a missing extension means dispatch cannot happen.
+ *
+ * @param {string} home
+ */
+export function piSubagentsInstalled(home = homedir()) {
+  return PI_SUBAGENT_DIRS.some((rel) => existsSync(join(home, rel)));
+}
 
 /**
  * The argv for one Pi resident session.
@@ -268,9 +289,16 @@ class PiSession {
 }
 
 /**
- * @param {{opts: object, log: (line: string) => void, bin?: string, onEvent?: (event: object) => void}} input
+ * @param {{opts: object, log: (line: string) => void, bin?: string,
+ *   onEvent?: (event: object) => void, home?: string}} input
  */
 export function createPiPool(input) {
+  const home = input.home ?? homedir();
+  if (!piSubagentsInstalled(home)) {
+    input.log(
+      `pi: no subagent extension found — the project session cannot spawn worker/reviewer subagents; install it with ${PI_SUBAGENTS_INSTALL}`,
+    );
+  }
   const sessions = new Set();
   return {
     actorKind: "pi",

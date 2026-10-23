@@ -21,8 +21,10 @@ the card `in_progress`, and stop. Do not enter `awaiting` yourself.
 Operational and plan/acceptance-internal choices: role routing, ordering, retry/requeue,
 concurrency, project directory, verification commands, re-running a failed check, a
 mechanical acceptance derivation the handoff pre-authorized, and an epic split within the
-same deliverable. Record the answer as a `note`, then answer the subagent or move the card
-to `todo`. Never write a decision kind for its own answer.
+same deliverable. It also owns the card-shape triage (small change vs feature vs epic +
+children) and creating, seeding and linking the next card(s) from a delivered stage card's
+handoff. Record the answer as a `note`, then answer the subagent or move the card to `todo`.
+Never write a decision kind for its own answer.
 
 ## The human decides E1-E5
 
@@ -40,4 +42,6 @@ complete decision, and ask again if it is not.
 
 The reviewer never asks a blocking question and never enters `awaiting`. It answers the
 review card's acceptance and ends in `VERDICT: APPROVE` or `VERDICT: REJECT`; ambiguous or
-insufficient evidence is a REJECT with findings.
+insufficient evidence is a REJECT with findings. It re-runs the mandatory gates (100% pass,
+>80% coverage, mock boundaries, security scan) and audits the changed surface against CWE
+Top 25, OWASP Top 10 and OWASP ASVS; a red gate is a REJECT.

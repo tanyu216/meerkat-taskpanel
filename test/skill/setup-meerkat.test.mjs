@@ -98,13 +98,21 @@ describe("skill frontmatter and assets", () => {
       "jobs/ui-workflow.md",
       "jobs/self-check.md",
       "linus/workflow.md",
+      "linus/architecture-workflow.md",
+      "linus/implementation-workflow.md",
       "linus/self-check.md",
       "turing/workflow.md",
+      "turing/test-design-workflow.md",
+      "turing/regression-workflow.md",
+      "turing/performance-workflow.md",
       "turing/self-check.md",
       "reviewer/workflow.md",
       "reviewer/reviewer-prompt.md",
       "agents/claude/role.md.tmpl",
       "agents/codex/role.toml.tmpl",
+      "agents/opencode/role.md.tmpl",
+      "agents/cursor/role.md.tmpl",
+      "agents/pi/role.md.tmpl",
     ]) {
       assert.ok(existsSync(join(team, rel)), `${rel} must exist`);
     }
@@ -125,8 +133,9 @@ describe("skill frontmatter and assets", () => {
       "### 1. Plan and freeze the direction",
       "### 2. Validate with a prototype",
       "### 3. Write the PRD",
-      "### 4. Self-check the PRD",
-      "### 5. Review",
+      "### 4. Archive the product artifacts",
+      "### 5. Self-check the PRD and the archive",
+      "### 6. Review and handoff",
     ];
     let at = -1;
     for (const stage of stages) {
@@ -141,6 +150,230 @@ describe("skill frontmatter and assets", () => {
     assert.match(ui, /design\/prototype\//, "prototype evidence lives under design/prototype");
     assert.match(selfCheck, /design\/prds\//, "the self-check covers the PRD path");
     assert.doesNotMatch(ui, /\bJobs\b/, "the sub-flow must not hard-code the board identity");
+  });
+
+  it("routes Linus, Turing and Jobs through their branch workflows", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const linus = readFileSync(join(team, "linus", "workflow.md"), "utf8");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+    const impl = readFileSync(join(team, "linus", "implementation-workflow.md"), "utf8");
+    const turing = readFileSync(join(team, "turing", "workflow.md"), "utf8");
+    const regression = readFileSync(join(team, "turing", "regression-workflow.md"), "utf8");
+    const performance = readFileSync(join(team, "turing", "performance-workflow.md"), "utf8");
+    const jobsWorkflow = readFileSync(join(team, "jobs", "workflow.md"), "utf8");
+    const jobsCheck = readFileSync(join(team, "jobs", "self-check.md"), "utf8");
+
+    assert.match(linus, /architecture-workflow\.md/, "Linus routes to the architecture branch");
+    assert.match(linus, /implementation-workflow\.md/, "Linus routes to the implementation branch");
+    assert.match(arch, /\.githooks\/pre-commit/, "the architecture branch wires pre-commit");
+    assert.match(arch, /pre-push/, "the architecture branch wires pre-push");
+    assert.match(arch, /pre-tag/, "the architecture branch wires pre-tag");
+    assert.match(arch, /core\.hooksPath/, "the architecture branch sets core.hooksPath");
+    assert.match(impl, /failing test|reproduce/i, "implementation starts from a reproduction");
+    assert.match(impl, /gates/i, "implementation records the gates");
+
+    assert.match(turing, /test-design-workflow\.md/, "Turing routes to test design");
+    assert.match(turing, /regression-workflow\.md/, "Turing routes to regression");
+    assert.match(turing, /performance-workflow\.md/, "Turing routes to performance");
+    assert.match(performance, /optional|on request|when the card/i, "performance is opt-in");
+    assert.match(regression, /production bug/i, "regression covers production bugs");
+    assert.match(regression, /before and after|before\/after|pre-fix/i, "regression proves the fix");
+
+    assert.match(jobsWorkflow, /Review ownership/i, "Jobs states who reviews what");
+    assert.match(jobsWorkflow, /E3/, "the design direction is an E3 decision");
+    for (const section of [
+      "Direction check",
+      "Prototype check",
+      "PRD check",
+      "Handoff and delivery check",
+    ]) {
+      assert.match(jobsCheck, new RegExp(section), `Jobs self-check has a ${section}`);
+    }
+  });
+
+  it("carries the decision method, split glossaries and the worktree lifecycle", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const jobs = readFileSync(join(team, "jobs", "workflow.md"), "utf8");
+    const ui = readFileSync(join(team, "jobs", "ui-workflow.md"), "utf8");
+    const jobsCheck = readFileSync(join(team, "jobs", "self-check.md"), "utf8");
+    const linus = readFileSync(join(team, "linus", "workflow.md"), "utf8");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+    const impl = readFileSync(join(team, "linus", "implementation-workflow.md"), "utf8");
+    const turing = readFileSync(join(team, "turing", "workflow.md"), "utf8");
+    const testPlan = readFileSync(join(team, "turing", "test-design-workflow.md"), "utf8");
+
+    for (const [name, text] of [["Jobs", jobs], ["Linus", linus], ["Turing", turing]]) {
+      assert.match(text, /Decide before you build/, `${name} carries the decision method`);
+      assert.match(text, /frontier/i, `${name} names the frontier`);
+    }
+
+    assert.match(jobs, /design\/glossary\.md/);
+    assert.match(jobs, /design\/adr\//);
+    assert.match(jobs, /## Terminology/);
+
+    assert.match(ui, /## Modes/);
+    assert.match(ui, /### Standalone mode/);
+    assert.match(ui, /design\/specs\/<content-slug>\.md/);
+    assert.match(ui, /on demand|only when/i);
+
+    assert.match(jobs, /\.meerkat\/<id>\/spec\.md/, "the working spec stays in the card");
+    assert.match(jobs, /### 4\. Archive the product artifacts/, "archiving is a stage");
+    assert.match(jobs, /<content-slug>/, "design filenames use a content slug");
+    assert.match(jobsCheck, /Archive check/, "the self-check covers the archive");
+
+    assert.match(linus, /## Product language/);
+    assert.match(linus, /design\/glossary\.md/);
+    assert.match(linus, /worktree/i, "Linus follows the shared workspace rule");
+    assert.match(arch, /\/init/);
+    assert.match(arch, /AGENTS\.md/);
+    assert.match(arch, /CLAUDE\.md/);
+    assert.match(arch, /git worktree add \.worktrees\/<card-slug> -b <branch> dev/);
+    assert.match(arch, /merge --no-ff/);
+    assert.match(arch, /worktree remove/);
+    assert.match(arch, /branch -d/);
+    assert.match(arch, /reviewer approves|operator confirms/i);
+    assert.match(impl, /worktree/i);
+    assert.match(jobs, /worktree/i, "Jobs shares the card worktree");
+    assert.match(turing, /worktree/i, "Turing shares the card worktree");
+
+    assert.match(turing, /GLOSSARY\.md|canonical term/);
+    assert.match(testPlan, /decision round|frontier/i);
+    assert.match(jobsCheck, /Standalone mode/);
+  });
+
+  it("reads the design artifacts on a feature path, not on a bug path", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const impl = readFileSync(join(team, "linus", "implementation-workflow.md"), "utf8");
+    const testDesign = readFileSync(join(team, "turing", "test-design-workflow.md"), "utf8");
+    const regression = readFileSync(join(team, "turing", "regression-workflow.md"), "utf8");
+
+    assert.match(impl, /for a feature or behaviour change,[\s\S]*archived spec/, "a feature reads the design artifacts");
+    assert.match(impl, /bug fix does not\s+need the design artifacts/, "a bug does not need them");
+    assert.match(testDesign, /for a feature or behaviour change,[\s\S]*archived spec/, "test design reads them for a feature");
+    assert.match(regression, /are not inputs here/, "regression verifies the defect, not the design");
+  });
+
+  it("triages the card shape and hands off design outputs explicitly", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const jobs = readFileSync(join(team, "jobs", "workflow.md"), "utf8");
+    const jobsCheck = readFileSync(join(team, "jobs", "self-check.md"), "utf8");
+    const linus = readFileSync(join(team, "linus", "workflow.md"), "utf8");
+    const linusCheck = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    const impl = readFileSync(join(team, "linus", "implementation-workflow.md"), "utf8");
+    const turing = readFileSync(join(team, "turing", "workflow.md"), "utf8");
+    const testDesign = readFileSync(join(team, "turing", "test-design-workflow.md"), "utf8");
+    const regression = readFileSync(join(team, "turing", "regression-workflow.md"), "utf8");
+    const turingCheck = readFileSync(join(team, "turing", "self-check.md"), "utf8");
+    const reviewer = readFileSync(join(team, "reviewer", "workflow.md"), "utf8");
+    const prompt = readFileSync(join(team, "reviewer", "reviewer-prompt.md"), "utf8");
+    const roles = readFileSync(join(SKILL, "references", "roles.md"), "utf8");
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    const policy = readFileSync(join(team, "decision-policy.md"), "utf8");
+
+    assert.match(jobs, /## Handoff/);
+    assert.match(jobs, /design\/specs\/<content-slug>\.md/);
+    assert.match(jobs, /design\/prototype\/<content-slug>\//);
+    assert.match(jobs, /design\/prds\/<content-slug>\.md/);
+    assert.match(jobs, /Acceptance source/i);
+    assert.match(jobs, /Delivery shape/i);
+    assert.match(jobs, /epic/i);
+    assert.match(jobs, /children/i);
+    assert.match(jobs, /stage_handoff/);
+    assert.match(jobs, /product_change=none/);
+    assert.match(jobs, /project session/i);
+    assert.match(jobs, /--type blocks --target/);
+    assert.match(jobs, /--type parent --target/);
+    assert.match(jobs, /backlog/);
+    assert.match(jobs, /do not create .*downstream card/i);
+    assert.doesNotMatch(jobs, /five stages/i);
+    assert.doesNotMatch(jobs, /inherit or extend/i);
+
+    assert.match(jobsCheck, /## Handoff/);
+    assert.match(jobsCheck, /Acceptance source/i);
+    assert.match(jobsCheck, /Delivery shape/i);
+    assert.match(jobsCheck, /proposed/i);
+
+    for (const [name, text] of [["Linus", linus], ["Turing", turing]]) {
+      assert.match(text, /own plan|this card's plan/i, `${name} writes its own plan`);
+      assert.match(text, /## Handoff/, `${name} reads the handoff block`);
+      assert.doesNotMatch(text, /inherit or extend/i, `${name} does not inherit another card's plan`);
+    }
+    assert.match(linus, /product_change=none/i);
+    assert.match(linus, /design_stage/);
+    assert.match(impl, /## Handoff/);
+    assert.match(impl, /does not\s+need the design artifacts/i);
+    assert.match(testDesign, /## Handoff/);
+    assert.match(testDesign, /report list/);
+    assert.match(regression, /not inputs here/);
+    assert.match(turing, /test-plan\.md/);
+    assert.match(turing, /API/i);
+    assert.match(turing, /browser/i);
+    assert.match(testDesign, /API/);
+    assert.match(testDesign, /browser/i);
+    assert.match(regression, /API|browser/i);
+
+    for (const text of [reviewer, prompt]) {
+      assert.match(text, /## Handoff/);
+      assert.match(text, /design_stage|stage_handoff/);
+      assert.match(text, /product_change/);
+      assert.match(text, /100%/);
+      assert.match(text, />80%|80%/);
+      assert.match(text, /http/i);
+      assert.match(text, /websocket/i);
+      assert.match(text, /db/i);
+      assert.match(text, /redis/i);
+      assert.match(text, /internal/i);
+      assert.match(text, /security scan/i);
+      assert.match(text, /API|browser/i);
+      assert.match(text, /REJECT/);
+    }
+    assert.match(reviewer, /rollup/i);
+    assert.match(reviewer, /epic/i);
+    assert.match(reviewer, /review card's snapshot/i);
+    assert.match(reviewer, /generic review items/i);
+    assert.match(prompt, /review card's snapshot/i);
+    assert.match(prompt, /generic review items/i);
+    assert.match(reviewer, /CWE Top 25/i);
+    assert.match(reviewer, /OWASP Top 10/i);
+    assert.match(reviewer, /OWASP ASVS/i);
+    assert.match(prompt, /CWE Top 25/i);
+    assert.match(prompt, /OWASP Top 10/i);
+    assert.match(prompt, /OWASP ASVS/i);
+    assert.doesNotMatch(reviewer, /archived product artifacts named in .*plan\.md/i);
+    for (const text of [linusCheck, turingCheck]) {
+      assert.match(text, /100%/);
+      assert.match(text, /80%/);
+      assert.match(text, /websocket/);
+      assert.match(text, /internal/i);
+      assert.match(text, /security scan/i);
+      assert.match(text, /API|browser/i);
+    }
+
+    assert.match(roles, /Card and plan lifecycle/);
+    assert.match(roles, /Test execution vs review gate/);
+    assert.match(roles, /product_change/);
+    assert.match(roles, /epic/);
+    assert.match(roles, /--type parent --target/);
+    assert.match(roles, /--type blocks --target/);
+    assert.match(roles, /CWE Top 25|OWASP ASVS/);
+    assert.match(roles, /API|browser/i);
+    const manifest = JSON.parse(readFileSync(join(team, "manifest.json"), "utf8"));
+    assert.ok(
+      manifest.roles.find((role) => role.id === "turing")
+        .responsibilities.some((line) => /API|browser/i.test(line)),
+      "Turing owns API and browser tests",
+    );
+    assert.ok(
+      manifest.roles.find((role) => role.id === "reviewer")
+        .responsibilities.some((line) => /CWE Top 25|OWASP/i.test(line)),
+      "the reviewer audits the security standards",
+    );
+    assert.match(skill, /## Handoff/);
+    assert.match(skill, /triage/i);
+    assert.match(skill, /epic/i);
+    assert.match(skill, /100%/);
+    assert.match(policy, /card-shape triage|triage/i);
+    assert.match(policy, /epic/i);
   });
 
   it("does not ship a roles/ directory inside the loop skill", () => {
@@ -262,6 +495,38 @@ describe("detect.mjs — read-only discovery", () => {
     assert.equal(result.body.mattPocock.tracker.mentionsTaskpanel, true);
     assert.equal(result.body.mattPocock.tracker.unrelated, false);
   });
+
+  it("reports a missing pi subagent extension, and clears it once installed", (t) => {
+    const home = temp(t);
+    const project = temp(t);
+    const env = { HOME: home, PATH: temp(t) };
+    const args = ["--home", home, "--project", project, "--actor-kind", "pi", "--no-network"];
+
+    const missing = runJson(t, DETECT, args, { cwd: project, env });
+    assert.equal(missing.status, 0, missing.stderr);
+    assert.equal(missing.body.piSubagents.installed, false);
+    assert.match(missing.body.piSubagents.recommended, /pi install npm:pi-subagents/);
+    assert.ok(missing.body.missing.includes("pi-subagents"));
+    assert.ok(missing.body.actions.includes("install-pi-subagents"));
+    assert.match(missing.body.warnings.join("\n"), /pi install npm:pi-subagents/);
+
+    const claude = runJson(
+      t,
+      DETECT,
+      ["--home", home, "--project", project, "--actor-kind", "claude", "--no-network"],
+      { cwd: project, env },
+    );
+    assert.equal(claude.body.piSubagents.installed, false);
+    assert.equal(claude.body.missing.includes("pi-subagents"), false, "a non-pi host is not blocked");
+    assert.equal(claude.body.actions.includes("install-pi-subagents"), false);
+
+    mkdirSync(join(home, ".pi", "agent", "extensions", "subagent"), { recursive: true });
+    const present = runJson(t, DETECT, args, { cwd: project, env });
+    assert.equal(present.body.piSubagents.installed, true);
+    assert.equal(present.body.piSubagents.recommended, null);
+    assert.equal(present.body.missing.includes("pi-subagents"), false);
+    assert.equal(present.body.actions.includes("install-pi-subagents"), false);
+  });
 });
 
 describe("install-roles.mjs — project scope", () => {
@@ -285,6 +550,14 @@ describe("install-roles.mjs — project scope", () => {
       existsSync(join(project, ".meerkat", "roles", "jobs", "ui-workflow.md")),
       "the UI sub-flow ships with the role",
     );
+    assert.ok(
+      existsSync(join(project, ".meerkat", "roles", "linus", "architecture-workflow.md")),
+      "the Linus architecture branch ships",
+    );
+    assert.ok(
+      existsSync(join(project, ".meerkat", "roles", "turing", "performance-workflow.md")),
+      "the Turing performance branch ships",
+    );
 
     const second = runJson(t, INSTALL, args, { cwd: project });
     assert.equal(second.status, 0, second.stderr);
@@ -304,6 +577,51 @@ describe("install-roles.mjs — project scope", () => {
     const codex = readFileSync(join(project, ".codex", "agents", "reviewer.toml"), "utf8");
     assert.match(codex, /^name = "reviewer"$/m);
     assert.match(codex, /\.meerkat\/roles\/reviewer\/workflow\.md/);
+
+    const opencode = readFileSync(join(project, ".opencode", "agents", "jobs.md"), "utf8");
+    assert.match(opencode, /^description:/m);
+    assert.match(opencode, /^mode: subagent$/m);
+    assert.match(opencode, /\.meerkat\/roles\/jobs\/workflow\.md/);
+    const cursorWorker = readFileSync(join(project, ".cursor", "agents", "jobs.md"), "utf8");
+    assert.match(cursorWorker, /^name: jobs$/m);
+    assert.match(cursorWorker, /^readonly: false$/m);
+    const cursorReviewer = readFileSync(join(project, ".cursor", "agents", "reviewer.md"), "utf8");
+    assert.match(cursorReviewer, /^readonly: true$/m);
+
+    const piWorker = readFileSync(join(project, ".pi", "agents", "jobs.md"), "utf8");
+    assert.match(piWorker, /^name: jobs$/m);
+    assert.match(piWorker, /^tools: read, grep, find, ls, bash, edit, write$/m);
+    assert.match(piWorker, /\.meerkat\/roles\/jobs\/workflow\.md/);
+    const piReviewer = readFileSync(join(project, ".pi", "agents", "reviewer.md"), "utf8");
+    assert.match(piReviewer, /^tools: read, grep, find, ls, bash$/m);
+    assert.equal(
+      existsSync(join(project, ".agents", "agents")),
+      false,
+      "Pi native definitions live under .pi/agents, not the skills base",
+    );
+  });
+
+  it("omits native definitions with --native-agent-defs none", (t) => {
+    const home = temp(t);
+    const project = temp(t);
+    const result = runJson(
+      t,
+      INSTALL,
+      [
+        "--scope", "project", "--project", project, "--home", home,
+        "--actor-kind", "claude", "--native-agent-defs", "none",
+      ],
+      { cwd: project },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.body.agentDefs.length, 0);
+    for (const kindDir of [".claude", ".codex", ".opencode", ".cursor", ".pi"]) {
+      assert.equal(
+        existsSync(join(project, kindDir, "agents")),
+        false,
+        `${kindDir} must have no native definitions`,
+      );
+    }
   });
 
   it("refuses a differing file without --force, then replaces it with --force", (t) => {
@@ -357,6 +675,9 @@ describe("install-roles.mjs — project scope", () => {
     assert.ok(existsSync(join(roles, "reviewer", "reviewer-prompt.md")));
     assert.ok(existsSync(join(home, ".claude", "agents", "jobs.md")));
     assert.ok(existsSync(join(home, ".codex", "agents", "jobs.toml")));
+    assert.ok(existsSync(join(home, ".config", "opencode", "agents", "jobs.md")));
+    assert.ok(existsSync(join(home, ".cursor", "agents", "jobs.md")));
+    assert.ok(existsSync(join(home, ".pi", "agent", "agents", "jobs.md")));
     assert.equal(existsSync(join(project, ".meerkat", "roles")), false, "global must not write into the project");
   });
 

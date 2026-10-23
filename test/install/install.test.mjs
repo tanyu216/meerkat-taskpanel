@@ -15,6 +15,7 @@ import { spawnSync } from "node:child_process";
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   readFileSync,
   statSync,
   writeFileSync,
@@ -63,6 +64,21 @@ describe("install.sh: targets", () => {
     for (const agentDir of [".claude", ".codex", ".openclaw", ".agents"]) {
       assert.equal(existsSync(join(home, agentDir)), false, `${agentDir} must not be installed`);
     }
+  });
+
+  it("recommends the pi subagent extension when it is absent", () => {
+    const home = makeTempDir();
+    const run = runInstall(["--target", "pi", "--prefix", home]);
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stderr, /pi install npm:pi-subagents/);
+  });
+
+  it("stays quiet when the pi subagent extension is already installed", () => {
+    const home = makeTempDir();
+    mkdirSync(join(home, ".pi", "agent", "extensions", "subagent"), { recursive: true });
+    const run = runInstall(["--target", "pi", "--prefix", home]);
+    assert.equal(run.status, 0, run.stderr);
+    assert.doesNotMatch(run.stderr, /pi install npm:pi-subagents/);
   });
 
   it("prints a per-agent-kind summary and exits non-zero when an agent kind fails", () => {

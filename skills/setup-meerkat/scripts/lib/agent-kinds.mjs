@@ -13,15 +13,39 @@ export const AGENT_KINDS = Object.freeze({
   claude: { dir: ".claude", loop: true, native: "markdown" },
   openclaw: { dir: ".openclaw", loop: false, native: null },
   codex: { dir: ".codex", loop: true, native: "toml" },
-  pi: { dir: ".agents", loop: true, native: null },
-  opencode: { dir: ".config/opencode", loop: true, native: null },
-  cursor: { dir: ".cursor", loop: true, native: null },
+  // Pi gets subagents from the `pi-subagents` extension: global definitions live in
+  // `~/.pi/agent/agents/` and project definitions in `.pi/agents/`. The skills and
+  // config still use the `.agents` base.
+  pi: {
+    dir: ".agents",
+    loop: true,
+    native: "markdown",
+    nativeDir: ".pi/agent/agents",
+    nativeProjectDir: ".pi/agents",
+  },
+  // OpenCode reads global agents from `~/.config/opencode/agents/` and project agents
+  // from `.opencode/agents/`; the project base differs from the skills base.
+  opencode: {
+    dir: ".config/opencode",
+    loop: true,
+    native: "markdown",
+    nativeProjectDir: ".opencode/agents",
+  },
+  // Cursor reads both `~/.cursor/agents/` and `.cursor/agents/`.
+  cursor: { dir: ".cursor", loop: true, native: "markdown" },
 });
 
 /** The actor kinds that run the external loop (OpenClaw does not). */
 export const LOOP_KINDS = Object.freeze(
   Object.entries(AGENT_KINDS)
     .filter(([, info]) => info.loop)
+    .map(([kind]) => kind),
+);
+
+/** The actor kinds with a native agent-definition format. */
+export const NATIVE_KINDS = Object.freeze(
+  Object.entries(AGENT_KINDS)
+    .filter(([, info]) => info.native !== null)
     .map(([kind]) => kind),
 );
 
@@ -82,13 +106,26 @@ export function nativeAgentFormat(kind) {
  * @returns {string|null}
  */
 export function nativeAgentFile(input) {
+  const info = AGENT_KINDS[input.kind];
   const format = nativeAgentFormat(input.kind);
   if (format === null) return null;
   const ext = format === "markdown" ? "md" : "toml";
   const base = input.projectDir
-    ? join(input.projectDir, AGENT_KINDS[input.kind].dir, "agents")
-    : join(input.home, AGENT_KINDS[input.kind].dir, "agents");
+    ? join(input.projectDir, info.nativeProjectDir ?? join(info.dir, "agents"))
+    : join(input.home, info.nativeDir ?? join(info.dir, "agents"));
   return join(base, `${input.name}.${ext}`);
+}
+
+/** The `readonly` flag Cursor's agent definition expects. */
+export function readonlyForLanes(lanes) {
+  return lanes.includes("worker") ? "false" : "true";
+}
+
+/** The `tools` allowlist the `pi-subagents` extension expects. */
+export function piToolsForLanes(lanes) {
+  return lanes.includes("worker")
+    ? "read, grep, find, ls, bash, edit, write"
+    : "read, grep, find, ls, bash";
 }
 
 /**

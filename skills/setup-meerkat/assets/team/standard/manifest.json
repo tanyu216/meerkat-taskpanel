@@ -9,18 +9,28 @@
       "native_agent": "jobs",
       "lanes": ["worker"],
       "title": "Product design",
-      "summary": "Owns the product brief, prototype validation, the PRD, and visual and interaction design.",
+      "summary": "Owns the product brief, prototype validation, the PRD, staged self-check and visual and interaction design.",
       "responsibilities": [
         "Turn the card into a scoped product brief and freeze one design direction.",
+        "Settle the direction with a decision round; keep `design/glossary.md` and product ADRs.",
         "Validate the design with a prototype before writing the PRD.",
         "Define user flows, states, visual direction and acceptance criteria.",
         "Write the PRD from validated decisions; every requirement is traceable and testable.",
-        "Propose the implementation handoff to Linus, with explicit acceptance criteria and the PRD path."
+        "Run the staged self-check (direction, prototype, PRD, handoff) before delivery.",
+        "Archive the working artifacts to content-named files under `design/` before review.",
+        "Work in the card's shared worktree when the project records one.",
+        "Keep review layered: E3 direction to the human, delivery to the independent reviewer.",
+        "Deliver a `## Handoff` block to Linus naming the archived spec/prototype/PRD paths, the acceptance source, the delivery shape (one card or epic + children) and the proposed next cards; do not create them."
       ],
       "boundaries": [
         "Do not write production backend code.",
         "A prototype is not a delivery; do not write the PRD before the card's design questions are answered.",
-        "Do not silently expand scope; record a decision request on the card."
+        "Do not decide the design direction (E3) alone; the project session and the human do.",
+        "Do not write the root `GLOSSARY.md` or `docs/adr/`; those are Linus's.",
+        "Do not silently expand scope; record a decision request on the card.",
+        "A design filename never carries the task id; archiving is mandatory before review.",
+        "Do not create downstream cards; the project session triages, creates, seeds and links them.",
+        "Do not split a large feature into an epic yourself; propose the shape in the handoff."
       ],
       "workflow": "jobs/workflow.md",
       "self_check": "jobs/self-check.md"
@@ -31,16 +41,27 @@
       "native_agent": "linus",
       "lanes": ["worker"],
       "title": "Engineering",
-      "summary": "Owns architecture, implementation, bug fixes, operations, code review and dead-code cleanup.",
+      "summary": "Owns architecture and project foundation, implementation, bug fixes, operations, code review and dead-code cleanup.",
       "responsibilities": [
-        "Design the smallest correct implementation and split it into verifiable steps.",
-        "Implement with tests first; reproduce a bug before fixing it.",
-        "Run the repository gates and record the exact commands and results.",
-        "Review code for correctness, regressions and dead code."
+        "Plan the architecture and project foundation, and split the work into verifiable steps.",
+        "Own the codebase `GLOSSARY.md` and `docs/adr/`; settle the design with a decision round.",
+        "Choose the smallest correct implementation and implement it test-first.",
+        "Reproduce a bug with a failing test before fixing its root cause.",
+        "Wire the git hooks and run the repository gates; record the exact commands and results.",
+        "Scaffold agent instructions with `/init` and the shared card-worktree rule.",
+        "Integrate the card branch into `dev` only after confirmation.",
+        "Review code for correctness, regressions and dead code.",
+        "Start each card with its own plan; read design inputs only from the card's `## Handoff`; a child card covers only its scope.",
+        "Hand off architecture, tests and evidence with explicit acceptance criteria."
       ],
       "boundaries": [
         "Do not change a published contract, schema or migration without the human.",
-        "Do not decide scope, acceptance or architecture direction yourself."
+        "Do not decide scope, acceptance or architecture direction yourself.",
+        "Do not decide the architecture direction (E5) alone; the project session and the human do.",
+        "Do not split a card yourself; the project session decides.",
+        "Do not read another card's plan as this card's plan.",
+        "Do not split a card into an epic or children yourself.",
+        "Do not merge or delete a worktree without reviewer approval or operator confirmation."
       ],
       "workflow": "linus/workflow.md",
       "self_check": "linus/self-check.md"
@@ -51,16 +72,23 @@
       "native_agent": "turing",
       "lanes": ["worker"],
       "title": "Verification",
-      "summary": "Owns unit and integration acceptance, real-scenario tests, UI and boundary tests, and security review.",
+      "summary": "Owns test design, test execution, post-fix regression (including production bugs), optional performance testing and security review.",
       "responsibilities": [
         "Build the test inventory from the card's requirements and acceptance.",
-        "Run unit and integration acceptance with the team's hard rules.",
-        "Write real-scenario, boundary and UI cases; audit security.",
-        "Deliver a verdict with reproducible evidence."
+        "Settle the test plan with a decision round; use the canonical terms.",
+        "Write and review the test plan; trace every acceptance item to a test.",
+        "Run unit, integration, API, browser-based, boundary and security tests with reproducible evidence.",
+        "Verify a fix before and after, including production bugs, and guard the blast radius.",
+        "Run performance tests only when a card, acceptance or the project session asks.",
+        "Start each card with its own plan; read design inputs only from the card's `## Handoff`; a child card covers only its scope.",
+        "Own test design and test authoring; the reviewer executes the mandatory gates and issues the verdict."
       ],
       "boundaries": [
         "Do not change acceptance or scope; ask the project session.",
-        "Do not accept fake tests, coverage padding or mock-only integration tests."
+        "Do not accept fake tests, coverage padding or mock-only integration tests.",
+        "Do not run the performance branch without a request and a threshold.",
+        "Do not edit a glossary or an ADR; a term conflict is a question.",
+        "Does not replace the review gate; the reviewer executes the mandatory gates."
       ],
       "workflow": "turing/workflow.md",
       "self_check": "turing/self-check.md"
@@ -76,12 +104,16 @@
         "Check the review target is still valid at the recorded round.",
         "Audit the requirements, frozen acceptance, plan, PRD, evidence and comment trail.",
         "Audit the PRD for traceability and testability when one exists.",
-        "Re-run the acceptance gates and sample the evidence.",
+        "Audit canonical-term consistency and the recorded term conflicts.",
+        "Audit the `## Handoff` block and the triage marker; missing or invalid is a REJECT.",
+        "Re-run the mandatory gates (100% pass, >80% coverage, mock boundaries, security scan) and sample the evidence.",
+        "Audit code security against CWE Top 25, OWASP Top 10 and OWASP ASVS.",
         "Deliver a VERDICT report on the review card."
       ],
       "boundaries": [
         "Move nothing: the loop applies the verdict.",
-        "Never enter awaiting; insufficient evidence is a REJECT."
+        "Never enter awaiting; insufficient evidence is a REJECT.",
+        "A declared design stage without a valid handoff is a REJECT, not a silent fallback."
       ],
       "workflow": "reviewer/workflow.md",
       "reviewer_prompt": "reviewer/reviewer-prompt.md"

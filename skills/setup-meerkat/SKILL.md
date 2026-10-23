@@ -144,18 +144,55 @@ The standard template is `assets/team/standard/`:
 
 | Role | Board agent | Native agent | Scope |
 |---|---|---|---|
-| Jobs | `Jobs` | `jobs` | product planning, prototype validation, PRD, visual/interaction design |
-| Linus | `Linus` | `linus` | architecture, implementation, bugs, ops, code review, dead code |
-| Turing | `Turing` | `turing` | unit/integration acceptance, real scenarios, UI/boundary, security |
+| Jobs | `Jobs` | `jobs` | product planning, prototype validation, PRD, product glossary/ADRs, visual/interaction design |
+| Linus | `Linus` | `linus` | architecture and project foundation, implementation, bugs, ops, worktree/init, code glossary/ADRs |
+| Turing | `Turing` | `turing` | test design, post-fix regression (incl. production), optional performance, security, canonical terms |
 | Reviewer | `Reviewer` | `reviewer` | independent fourth role; verdict only |
 
 The template also ships `decision-policy.md` and the native agent templates.
 
-A Jobs card writes its product artifacts to the **project's** `design/` tree:
-`design/specs/<task-id>.md` (planning and frozen direction),
-`design/prototype/<task-id>/` (prototype and verification evidence) and
-`design/prds/<task-id>.md` (the PRD, written after the prototype). `.meerkat/<id>/plan.md`
-stays the card index and links to them.
+A Jobs card keeps its working artifacts in `.meerkat/<id>/` — `spec.md`, `prototype/` and
+`prd.md` — and the workflow's **mandatory archive stage** promotes them to the **project's**
+`design/` tree under one content slug: `design/specs/<content-slug>.md`,
+`design/prototype/<content-slug>/` and `design/prds/<content-slug>.md`. A design filename
+never carries the task id; a same-topic artifact is updated, not duplicated. Jobs also keeps
+`design/glossary.md` (product language) and `design/adr/NNNN-<slug>.md` (product decisions).
+`.meerkat/<id>/plan.md` stays the card index and links the archived paths. The cross-card
+channel is the `## Handoff` block in the delivery report: it names the archived paths, the
+acceptance source, the delivery shape and the proposed next cards.
+
+Before creating a downstream card the project session triages the target: a small change or
+bug with no product archive gets a plain task with `meta.product_change=none` and no design
+artifacts; a feature with an archive gets a task (or one per downstream stage) carrying the
+`## Handoff` and `meta.design_stage`; a large feature with several independently verifiable
+deliverables becomes an `epic` with one child per deliverable. Every card's worker writes
+its own `.meerkat/<id>/plan.md`; no card inherits another card's plan.
+
+Every worker workflow carries the same decision round before it freezes a direction: a
+decision tree, the frontier of questions whose prerequisites are settled, one round at a
+time with a recommended answer, and no building while a decision is open. Jobs keeps the
+product glossary at `design/glossary.md` and product ADRs under `design/adr/`; Linus keeps
+the codebase `GLOSSARY.md` and `docs/adr/`, and the root glossary links the product one
+without copying it. `ui-workflow.md` also runs standalone for a single feature or prototype
+change.
+
+Linus scaffolds the agent instructions with the host's `/init` (writing `CLAUDE.md` or
+`AGENTS.md`) and writes the workspace rule into them. The rule is global rather than
+Linus-only: Jobs, Linus and Turing all work a card in one linked worktree off `dev`, created
+with `git worktree add .worktrees/<card-slug> -b <branch> dev`, with the primary checkout
+left on `dev`. Merge and cleanup happen only after reviewer approval or operator
+confirmation (`merge --no-ff`, then `worktree remove`, then `branch -d`; never `-D`).
+
+Test execution and the security scan are the **review card's** gate, not a worker test
+card: the project session seeds the gates into the card's acceptance, and the reviewer
+re-runs all applicable suites (unit, integration, API and browser-based) and requires 100%
+pass,
+line/branch/function coverage >80%, the mock boundary
+(http/websocket/db/redis only; never an internal module or function) and the project's
+security scan (no unaddressed high/critical), then issues the verdict. A separate Turing
+card is for test design and authoring (unit, integration, API and browser-based suites),
+performance testing and a security assessment; it does not replace the gate. The reviewer
+audits the changed surface against CWE Top 25, OWASP Top 10 and OWASP ASVS.
 
 For a custom team, start from the standard template in a temporary staging directory,
 change role names/responsibilities/workflows with the user, show the manifest and each
@@ -192,9 +229,15 @@ an explicit yes for each key before writing it: an empty installer default (for 
 empty value — ask before replacing it. Without `MEERKAT_TASKPANEL_AGENTS` the loop scans
 only its default agent and a role card is never claimed.
 
-Native agent definitions are written for Claude (`.claude/agents/<name>.md`) and Codex
-(`.codex/agents/<name>.toml`), globally or in the project. Other actor kinds are skipped
-with a warning; their layer-2 workflow still reaches them through the handoff.
+Native agent definitions are written for every host with a native format: Claude
+(`.claude/agents/<name>.md`), Codex (`.codex/agents/<name>.toml`), OpenCode
+(`~/.config/opencode/agents/<name>.md`, or `.opencode/agents/<name>.md` in a project),
+Cursor (`~/.cursor/agents/<name>.md`, or `.cursor/agents/<name>.md`) and Pi
+(`~/.pi/agent/agents/<name>.md`, or `.pi/agents/<name>.md`). Pi's subagents come from the
+`pi-subagents` extension (`pi install npm:pi-subagents`); the definition is inert until
+that extension is installed. The loop's project session also uses that extension to spawn
+one subagent per card; `detect.mjs` reports a missing extension and `install.sh --target pi`
+prints the install command. `--native-agent-defs none` writes none of them.
 
 ## 5. Verify and finish
 

@@ -40,6 +40,20 @@ actor kind's shim (`<home>/<agent-dir>/bin/taskctl`), the checkout's
 - Live pool: `<agent-dir>/meerkat-taskpanel/sessions.state.json` (`poolPid` alive and a
   heartbeat fresher than five minutes).
 
+## Pi subagents
+
+Pi has no native subagent mechanism, and the loop's project session spawns one subagent per
+card. The check looks for `~/.pi/agent/extensions/subagent` (and the `pi-subagents` alias)
+and reports:
+
+- `installed` — the directory exists;
+- `extensionDir` — the directory found, or the expected path;
+- `recommended` — `pi install npm:pi-subagents` when missing, else `null`.
+
+For an `--actor-kind pi` run, a missing extension is added to `missing`, an
+`install-pi-subagents` action is emitted, and a warning names the install command. Other
+actor kinds report the field but are not blocked by it.
+
 ## Fixed human name
 
 Resolution: process `TASKCTL_HUMAN`, Claude `~/.claude/settings.json` `env.TASKCTL_HUMAN`,
@@ -66,6 +80,7 @@ the actor-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the rend
   "supervisor": {"installed": true, "body": "…", "units": [], "running": false, "poolPid": null, "reason": "…"},
   "roles": {"global": {}, "project": {}, "state": {}, "explicit": {}, "effective": {}},
   "mattPocock": {"skill": {}, "tracker": {"path": null, "exists": false, "mentionsTaskpanel": false, "unrelated": false}},
+  "piSubagents": {"installed": false, "extensionDir": "…/.pi/agent/extensions/subagent", "recommended": "pi install npm:pi-subagents"},
   "missing": [],
   "actions": [],
   "warnings": []

@@ -1359,7 +1359,7 @@ persistent protocol.
 |---|---|---|---|
 | Claude Code | one `claude -p --input-format stream-json --output-format stream-json` process per session | `--resume <session_id>` | Agent tool's `agentId`; reattach with `SendMessage` |
 | Codex | one `codex app-server --listen stdio://`; one **thread** per session | `thread/resume` | child thread (`receiverThreadIds`) |
-| Pi | one `pi --mode rpc` process per session | `--session-id <id>` | the subagent package's `agentId` |
+| Pi | one `pi --mode rpc` process per session | `--session-id <id>` | the `pi-subagents` extension's `agentId` |
 | OpenCode | one `opencode serve` **per directory** (its API has no per-session cwd) | `GET /session/:id` + the stored id | child session id |
 | Cursor | one `cursor-agent acp`; one `session/new {cwd}` per session | `session/load` | `agentId` in a task update |
 
@@ -1372,6 +1372,11 @@ path: patrol + workflow run, dispatch is paused. The seam is agent-kind-agnostic
 design — an adapter implements `openSession({cwd, sessionId, role}) →
 {send, interrupt, close}` in `scripts/loop/agent kinds/`, and the pool manager never
 names a CLI.
+
+Pi has no native subagents. The pool's Pi adapter warns when
+`~/.pi/agent/extensions/subagent` is missing; `setup-meerkat` reports the same check and
+`install.sh --target pi` prints `pi install npm:pi-subagents`. Without the extension the
+project session cannot spawn worker/reviewer subagents.
 
 Installers also install the **loop skill** itself, at `<agent-dir>/skills/meerkat-loop/` —
 the payload the units and glues are rendered from, and the operator's documentation for

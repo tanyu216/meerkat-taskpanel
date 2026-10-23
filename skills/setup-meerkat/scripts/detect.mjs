@@ -370,6 +370,28 @@ function detectMatt(project, home) {
   };
 }
 
+/**
+ * The extension directories `pi-subagents` installs into (its docs name the first).
+ * Pi has no native subagent mechanism, and the loop's project session needs one to
+ * spawn the worker/reviewer. A directory check is a heuristic, not a load test.
+ */
+const PI_SUBAGENT_DIRS = [
+  join(".pi", "agent", "extensions", "subagent"),
+  join(".pi", "agent", "extensions", "pi-subagents"),
+];
+const PI_SUBAGENTS_INSTALL = "pi install npm:pi-subagents";
+
+/** @param {string} home */
+function detectPiSubagents(home) {
+  const candidates = PI_SUBAGENT_DIRS.map((rel) => join(home, rel));
+  const found = candidates.find((dir) => existsSync(dir)) ?? null;
+  return {
+    installed: found !== null,
+    extensionDir: found ?? candidates[0],
+    recommended: found === null ? PI_SUBAGENTS_INSTALL : null,
+  };
+}
+
 function humanReport(report) {
   const lines = [];
   lines.push(`detect: ${report.actorKind} on ${report.home}`);
@@ -382,6 +404,11 @@ function humanReport(report) {
   lines.push(`  roles:     global=${report.roles.global.present} project=${report.roles.project.present}${report.roles.explicit.present ? ` explicit=${report.roles.explicit.present}` : ""}`);
   lines.push(`  human:     ${report.human.name}${report.human.configured ? ` (${report.human.source})` : " (fallback; confirm)"}`);
   lines.push(`  matt:      skill=${report.mattPocock.skill.installed} tracker=${report.mattPocock.tracker.exists ? report.mattPocock.tracker.path : "none"}`);
+  if (report.actorKind === "pi" || report.actorKind === "all") {
+    lines.push(
+      `  pi subagents: ${report.piSubagents.installed ? report.piSubagents.extensionDir : `missing (${report.piSubagents.recommended})`}`,
+    );
+  }
   if (report.missing.length > 0) lines.push(`  missing:   ${report.missing.join(", ")}`);
   for (const warning of report.warnings) lines.push(`  warning:   ${warning}`);
   return lines.join("\n");
@@ -454,6 +481,7 @@ async function main(argv) {
   roles.effective = effectiveRoles;
   const human = detectHuman(opts, opts.home, kind, env, envFile);
   const mattPocock = detectMatt(opts.project, opts.home);
+  const piSubagents = detectPiSubagents(opts.home);
 
   const missing = [];
   if (!taskctl.found) missing.push("taskctl");
@@ -471,6 +499,7 @@ async function main(argv) {
   ) {
     missing.push("roles");
   }
+  if (kind === "pi" && !piSubagents.installed) missing.push("pi-subagents");
 
   const warnings = [];
   const hostname = new URL(resolved.url).hostname.toLowerCase();
@@ -481,6 +510,11 @@ async function main(argv) {
   if (opts.network && loopback && !health.reachable) warnings.push("the board is configured loopback but is not reachable; a local taskd may need to start");
   if (opts.network && !loopback && !health.reachable) warnings.push("the remote board is unreachable; do not fall back to localhost without the operator");
   if (checkout.found && checkout.path === process.cwd() && !opts.checkout) warnings.push("using the current directory as the checkout");
+  if (kind === "pi" && !piSubagents.installed) {
+    warnings.push(
+      `pi has no subagent extension; the loop's project session cannot spawn worker/reviewer subagents — install it with \`${PI_SUBAGENTS_INSTALL}\``,
+    );
+  }
 
   const actions = [];
   if (!taskctl.found || !skills.board.installed || !skills.loop.installed) actions.push("install-or-repair");
@@ -488,6 +522,7 @@ async function main(argv) {
   if (opts.network && !health.reachable && !loopback) actions.push("ask-remote-url");
   if (!human.configured) actions.push("configure-human-name");
   if (roles.effective === null) actions.push("install-roles");
+  if (kind === "pi" && !piSubagents.installed) actions.push("install-pi-subagents");
   if (mattPocock.skill.installed && !mattPocock.tracker.exists) actions.push("offer-matt-integration");
   if (mattPocock.tracker.exists && mattPocock.tracker.unrelated) actions.push("ask-tracker-overwrite");
 
@@ -521,6 +556,7 @@ async function main(argv) {
     supervisor,
     roles,
     mattPocock,
+    piSubagents,
     missing,
     actions,
     warnings,

@@ -17,8 +17,11 @@ import { writeAtomic } from "./lib/atomic.mjs";
 import {
   isAgentKind,
   loopSkillDir,
+  NATIVE_KINDS,
   nativeAgentFile,
   nativeAgentFormat,
+  piToolsForLanes,
+  readonlyForLanes,
   toolsForLanes,
 } from "./lib/agent-kinds.mjs";
 import { readTeam, relativeTo, validateRolesRoot } from "./lib/validate.mjs";
@@ -150,7 +153,9 @@ function renderTemplate(template, role, workflow, selfCheck) {
     .replaceAll("{{SUMMARY}}", role.summary)
     .replaceAll("{{TOOLS}}", toolsForLanes(role.lanes))
     .replaceAll("{{WORKFLOW}}", workflow)
-    .replaceAll("{{SELF_CHECK_LINE}}", selfLine);
+    .replaceAll("{{SELF_CHECK_LINE}}", selfLine)
+    .replaceAll("{{READONLY}}", readonlyForLanes(role.lanes))
+    .replaceAll("{{PI_TOOLS}}", piToolsForLanes(role.lanes));
 }
 
 /** @param {Buffer} left @param {string} right */
@@ -343,12 +348,10 @@ function main(argv) {
     report.files.push({ path: join(targetRoot, rel), action: action.action });
   }
 
-  // Native agent definitions (Claude and Codex only; the other kinds skip).
-  const defKinds = opts.nativeDefs === "none"
-    ? []
-    : opts.nativeDefs === "all"
-      ? ["claude", "codex"]
-      : ["claude", "codex"];
+  // Native agent definitions for every kind with a native format. Pi has none: its
+  // subagent definitions are package-dependent, so it receives the role through the
+  // handoff (and can read the Claude-compatible `.claude/agents/` file).
+  const defKinds = opts.nativeDefs === "none" ? [] : [...NATIVE_KINDS];
   for (const kind of defKinds) {
     if (nativeAgentFormat(kind) === null) continue;
     for (const role of selected) {
