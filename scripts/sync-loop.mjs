@@ -169,15 +169,22 @@ async function isFile(path) {
 }
 
 /**
- * Every relative module specifier a source text imports (`import`/`export … from`, and a
- * dynamic `import()`).
+ * Every relative module specifier a source text imports (`import`/`export … from`, a bare
+ * side-effect `import "…"`, and a dynamic `import()`).
+ *
+ * The side-effect form has neither `from` nor parentheses; missing it would drop a closure
+ * member silently, so it is scanned here and rewritten in `transformBody` like the rest.
  *
  * @param {string} text
  * @returns {string[]}
  */
 export function relativeImports(text) {
   const out = [];
-  for (const re of [/from\s+["'](\.[^"']+)["']/g, /import\s*\(\s*["'](\.[^"']+)["']\s*\)/g]) {
+  for (const re of [
+    /from\s+["'](\.[^"']+)["']/g,
+    /import\s*\(\s*["'](\.[^"']+)["']\s*\)/g,
+    /^\s*import\s+["'](\.[^"']+)["']/gm,
+  ]) {
     for (const match of text.matchAll(re)) out.push(match[1]);
   }
   return out;
@@ -229,6 +236,9 @@ export function transformBody(text, sourceRel, root = defaultRoot()) {
     )
     .replace(/(import\s*\(\s*)(["'])(\.[^"']+)\2(\s*\))/g, (match, before, quote, specifier, after) =>
       `${before}${quote}${rewrite(specifier)}${quote}${after}`,
+    )
+    .replace(/(^\s*import\s+)(["'])(\.[^"']+)\2/gm, (match, before, quote, specifier) =>
+      `${before}${quote}${rewrite(specifier)}${quote}`,
     );
 }
 

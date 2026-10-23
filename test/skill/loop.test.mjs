@@ -89,6 +89,25 @@ describe("loop skill: the generated payload", () => {
     }
   });
 
+  it("counts a bare side-effect import as a member of the closure", () => {
+    // `import "./x.mjs"` carries neither `from` nor parentheses. Miss it here and the
+    // closure ships one file short; the copy loads in this repository and dies in an agent.
+    assert.deepEqual(relativeImports('import "./sibling.mjs";\n'), ["./sibling.mjs"]);
+    assert.deepEqual(relativeImports('  import "./sibling.mjs"\n'), ["./sibling.mjs"]);
+    assert.deepEqual(
+      relativeImports('import x from "./a.mjs";\nimport "./b.mjs";\nimport("./c.mjs");\n').sort(),
+      ["./a.mjs", "./b.mjs", "./c.mjs"],
+    );
+  });
+
+  it("rewrites a side-effect import into the foundation as well", () => {
+    // The same blind spot in the transform would leave a repository path in the shipped copy.
+    assert.equal(
+      transformBody('import "../src/foundation/errors.mjs";\n', "scripts/wake-cwd.mjs", ROOT),
+      'import "./foundation/errors.mjs";\n',
+    );
+  });
+
   it("carries the foundation modules the supervisor and the wake resolver import", () => {
     // Named explicitly as well as derived: the closure is a computation, and a
     // computation with a bug would still look internally consistent.
