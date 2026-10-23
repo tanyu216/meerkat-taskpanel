@@ -3,10 +3,6 @@
 `taskctl` is an **HTTP client** for `taskd`, the local board service. The CLI holds no second
 copy of the rules: a refusal is the service's, with the same code, details and repair command.
 
-> Paths written as `src/…`, `docs/…` or `scripts/loop/…` name the taskpanel **source
-> repository**. This skill ships only `SKILL.md`, `references/` and `scripts/`; everything you
-> run is `taskctl`.
-
 **Contents:** [Configuration](#configuration-env) · [Starting the board](#starting-the-board) ·
 [Global options](#global-options) · [Commands](#commands) ·
 [Editing a card](#editing-a-card-status-priority-description-attachments-dependencies) ·
@@ -15,7 +11,7 @@ copy of the rules: a refusal is the service's, with the same code, details and r
 [`blocked`](#the-blocked-state--what-the-card-is-waiting-for) ·
 [Review cards](#review-cards--the-declared-fields) ·
 [`reconcile --workflow`](#reconcile---workflow--the-boards-workflow-plan) ·
-[`--json`](#--json) · [Notes](#notes)
+[`--json`](#--json)
 
 ```bash
 taskctl <group> <command> [options]
@@ -42,36 +38,32 @@ detecting drift, readable without a board. Run `taskctl <group> --help` or
 
 ## Configuration (`.env`)
 
-One install-root file, `<program root>/.env`, is read by `taskctl` and `taskd` (the loop reads
-it through its `taskctl` children). The process environment wins key by key; CLI flags win over
-both.
+One install-root file, `<program root>/.env`, is read by `taskctl` and `taskd`. The process
+environment wins key by key; CLI flags win over both.
 
-- **Path:** `--env-file <path>` > `$MEERKAT_TASKPANEL_ENV_FILE` > `<program root>/.env`.
-  A file named with `--env-file` that does not exist is an error; a missing
-  `MEERKAT_TASKPANEL_ENV_FILE` target or default is "no configuration".
-- **`TASKD_URL`** is the preferred address: it is probed. A dead **loopback** address falls
-  through to the runtime pointer or a lazy start; a dead **remote** address is an error.
-  `--url` is an explicit pin and never starts anything.
-- **Token:** `--token` > `$TASKD_TOKEN` > `$TASKD_TOKEN_FILE` > the pointer's token file.
-  Setting both token keys in `.env` is an error; an inline `TASKD_TOKEN` requires the file to be
-  `0600`.
-- **Server keys** (`TASKD_ALLOW_LIST_ENABLED`, `TASKD_ALLOW_CIDRS`,
-  `TASKD_ACCEPTANCE_POLICY`, `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS`) live in the same file;
-  the Access panel writes them. `TASKD_HOST` / `TASKD_PORT` / `TASKD_DATA_DIR` / `TASKD_DB` /
-  `TASKD_RUNTIME_POINTER` and `TASKD_NO_AUTOSTART` are also read.
-- **Identity is not a `.env` key.** `TASKCTL_ACTOR_KIND` and `TASKCTL_SESSION_ID` are per agent kind /
-  per invocation and are refused in the file; `TASKCTL_AGENT` / `TASKCTL_HUMAN` may be defaults.
-- **Unknown keys:** a typo inside `TASKD_*` / `TASKCTL_*` / `MEERKAT_TASKPANEL_*` is an error.
-  Other keys (`VITE_*`, `NODE_ENV`, …) are ignored and never merged into the child environment.
-- **Grammar:** `KEY=VALUE`, `#` comments, matching quotes. No inline comments, interpolation,
-  escapes or multiline values. Use absolute paths.
+- **Path:** `--env-file <path>` > `$MEERKAT_TASKPANEL_ENV_FILE` > `<program root>/.env`. A
+  named `--env-file` that does not exist is an error; a missing default is "no configuration".
+- **Address:** `TASKD_URL` is probed — a dead **loopback** address falls through to the runtime
+  pointer or a lazy start, a dead **remote** address is an error. `--url` is a pin: never
+  probed, never autostarted.
+- **Token:** `--token` > `$TASKD_TOKEN` > `$TASKD_TOKEN_FILE` > the pointer's token file. Both
+  token keys set in `.env` is an error; an inline `TASKD_TOKEN` requires the file to be `0600`.
+- **Server keys:** `TASKD_ALLOW_LIST_ENABLED`, `TASKD_ALLOW_CIDRS`, `TASKD_ACCEPTANCE_POLICY`,
+  `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS`, `TASKD_HOST`, `TASKD_PORT`, `TASKD_DATA_DIR`,
+  `TASKD_DB`, `TASKD_RUNTIME_POINTER`, `TASKD_NO_AUTOSTART`. The Access panel writes the
+  policy keys.
+- **Identity is not a `.env` key.** `TASKCTL_ACTOR_KIND` / `TASKCTL_SESSION_ID` are refused in
+  the file; `TASKCTL_AGENT` / `TASKCTL_HUMAN` may be defaults.
+- **Grammar:** `KEY=VALUE`, `#` comments, matching quotes; no inline comments, interpolation,
+  escapes or multiline values; absolute paths. An unknown key inside `TASKD_*` / `TASKCTL_*` /
+  `MEERKAT_TASKPANEL_*` is an error; other keys are ignored and never merged into the child
+  environment.
 
 ## Starting the board
 
-`taskctl` resolves the board as: `--url` pin → `TASKD_URL` (probed; a dead remote address is an
-error) → the runtime pointer → lazy start. If no board is running it starts one
-(`node src/server/main.mjs`, detached, logging to `<dataDir>/logs/taskd.log`) and waits for
-`/health`. `TASKD_NO_AUTOSTART=1` forbids the lazy start.
+Resolution order: `--url` pin → `TASKD_URL` → the runtime pointer → lazy start. With no board
+running, `taskctl` starts one (detached, logging to `<dataDir>/logs/taskd.log`) and waits for
+`/health`; `TASKD_NO_AUTOSTART=1` forbids that.
 
 ## Global options
 
@@ -188,11 +180,9 @@ the **claimer** is who is doing it now.
   `--allow-steal --reason "<why>"` (reason ≥ 8 characters) is the audited override, valid on
   that first claim only; it records a `task_claimed` activity and a `kind: change` comment.
 
-| Heartbeat age | The holder | Anyone else |
-|---|---|---|
-| `≤ 10 min` (fresh) | reuses the claim, nothing reset | refused — `EXECUTION_ACTIVE` |
-| `10 min … 6 h` | re-claims it, resetting the lock | refused — `EXECUTION_ACTIVE` |
-| `> 6 h`, or no heartbeat | may take it | may take it — an audited takeover |
+The holder may re-claim after **10 minutes**; anyone may take over after **6 hours**. The full
+threshold table, including the 30-minute stale pool, is in
+[`status-lifecycle.md` §5](status-lifecycle.md#5-claims-and-heartbeats).
 
 A **rework** (`in_review`/`blocked → in_progress`) is not a claim: it keeps the existing
 executor and their lock. The claim is held in `in_progress`, `awaiting`, `in_review` and
@@ -217,12 +207,10 @@ taskctl relation add PROJ-0007 --type parent --target PROJ-0008
 
 Only an `epic` may be a parent (`VALIDATION_FAILED`, `details.field: kind`, until promoted).
 Neither end of a `parent` edge may be a review card (`VALIDATION_FAILED`,
-`details.field: source|target`), even with `--force`. An epic cannot be claimed, so a card
-that must end up `in_progress` is claimed first and promoted after. `todo → in_review` is the
-epic's own edge. The promotion is an ordinary patch — status, claim, heartbeat and delivery
-round stay put — and leaves no comment, so write the split down yourself. An epic that still
-has children cannot be downgraded to `task`. The board
-starts and closes the container; see
+`details.field: source|target`), even with `--force`. `todo → in_review` is the epic's own
+edge. The promotion is an ordinary patch — status, claim, heartbeat and delivery round stay
+put — and leaves no comment, so write the split down yourself. An epic that still has children
+cannot be downgraded to `task`. The board starts and closes the container; see
 [`status-lifecycle.md`](status-lifecycle.md#6-containers-epic).
 
 ### `comment`
@@ -468,19 +456,15 @@ unfinished dependency is what keeps a card out of `issue candidates`. On the wir
 
 ### The acceptance list
 
-`issue create --acceptance` seeds the frozen baseline (`tasks.acceptance_json`); after that,
-`issue update --acceptance` **appends** and never replaces. `meta.acceptance` is a seed, not
-the authority — the gate reads the snapshot. A human may remove an item with
-`issue update --drop-acceptance <text> --reason "<why>" --acceptance-revision <n>`; the
-`acceptance-revision` is the value returned by `issue get`/the last write. Imported cards
-carry `meta.acceptance_legacy` instead (its `checked` state is never evidence).
-`meta.acceptance_derived=yes` is a marker, not policy: it records that an agent derived the
-list because the card had none, and `report template` warns when it sees it.
+`issue create --acceptance` seeds the frozen baseline; `issue update --acceptance` **appends**
+and never replaces; a human may remove an item with `--drop-acceptance <text> --reason "<why>"
+--acceptance-revision <n>`. Imported cards carry `meta.acceptance_legacy` (its `checked` state
+is never evidence). The gate, the snapshot rule and the derivation rule:
+[`status-lifecycle.md` §4a](status-lifecycle.md#4a-the-acceptance-baseline).
 
 ## The delivery gate
 
-A card may not enter `in_review` without a report **for the current delivery round**; leaving
-`in_review` (except to `done`) starts the next round.
+A refusal looks like this:
 
 ```console
 $ taskctl issue move PROJ-0007 in_review
@@ -489,11 +473,11 @@ try: taskctl issue deliver PROJ-0007 --report-file -
   or: taskctl issue move PROJ-0007 in_review --no-report --reason "<why this is audited>"
 ```
 
-The compliant path is the short one: `issue deliver` writes the report and performs the move
-atomically, and `report template` prints a report `deliver` accepts without editing. The
-second line is the **audited waiver** (reason ≥ 8 characters, stamped on the task row and
-recorded as a `report_waived` activity). The round table is in
-[`status-lifecycle.md`](status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round).
+`issue deliver` writes the report and performs the move atomically; `report template` prints a
+report `deliver` accepts without editing. The second line is the **audited waiver** (reason
+≥ 8 characters, stamped on the task row and recorded as a `report_waived` activity). The gate
+rule and the round table:
+[`status-lifecycle.md` §4](status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round).
 
 ## The `awaiting` state — asking a human a question
 
@@ -517,12 +501,10 @@ taskctl issue move PROJ-0007 awaiting --awaiting-reason E3
 
 Without the flag the CLI refuses as a usage error (exit 2); the service refuses an unusable
 value with `VALIDATION_FAILED` (`details.field` = `awaiting_reason`). The reason is stamped on
-the card while it is `awaiting` and cleared on exit. `awaiting → in_progress` means a human
-replied — a resume, not a rework; `awaiting → canceled` is allowed; `blocked`/`in_review`/
-`done` are not. **Any human comment re-queues the card to `todo`**, whatever its kind: the
-board does not read the text, and the resumed worker judges from its content whether the
-answer is a complete decision (an incomplete one asks again and returns to `awaiting`). Read
-the set with `issue list --status awaiting`; the web board's **waiting** view is the same set.
+the card while it is `awaiting` and cleared on exit. An agent must also ask the question
+(`--question`, or an already-unanswered `question` comment) — `QUESTION_REQUIRED` otherwise.
+Read the set with `issue list --status awaiting`; the web board's **waiting** view is the same
+set. Entry, exits and the resume rule: [`status-lifecycle.md` §1](status-lifecycle.md#1-the-vocabulary).
 
 ## The `blocked` state — what the card is waiting for
 
@@ -561,10 +543,10 @@ itself. One review card per `(original, delivery round)`; the loop's idempotency
 Four creation invariants (`VALIDATION_FAILED`): `review_of` must name a card that is
 `in_review` (deliver the original first); `review_of` may not name another review card;
 `review_round` may not be stale or future; and a review card must be `kind=task` (an epic
-cannot be claimed, so an epic review card would never be woken). Detection is structural —
-`review_of_id` first, `meta.review_of` only as the legacy fallback — never the `review` label.
-A review card in `in_review` cannot be moved directly to `canceled`; cancel it with
-`in_review → in_progress → canceled`.
+cannot be claimed, so an epic review card would never be woken). A review card in `in_review`
+cannot be moved directly to `canceled`; cancel it with
+`in_review → in_progress → canceled`. Detection and the two-round model:
+[`review-workflow.md`](review-workflow.md).
 
 ## reconcile --workflow — the board's workflow plan
 
@@ -575,13 +557,9 @@ taskctl issue reconcile --workflow --reviewer jobs --auto-accept-reviews yes \
 
 `--json` returns `{dry_run, scanned, actions, workflow}`, where `workflow` is
 `{alerts, actions, changes, summary}` in snake_case. `--board-limit` bounds the snapshot; a
-truncated snapshot still applies outcomes but dispatches nothing. The actions
-(`create_review`, `approve`, `approve_hold`, `reject_task`, `reject_epic`,
-`reject_task_finish`, `close_review`, `cancel_review`) are decisions — the board writes none of
-them; the loop executes them and closes the review card last. A `cancel_review` on a review
-card still in `in_review` is a two-hop move (`in_review → in_progress → canceled`), never
-`done`. The rules are in
-[`status-lifecycle.md`](status-lifecycle.md#11-the-boards-workflow-decisions).
+truncated snapshot still applies outcomes but dispatches nothing. The actions are decisions
+the loop executes, not effects; what each one means, and the fail-safe rules behind them, are
+in [`status-lifecycle.md` §11](status-lifecycle.md#11-the-boards-workflow-decisions).
 
 ## `--json`
 
@@ -620,10 +598,5 @@ Bind scripts to `error.code` and `error.hint.command`, never to the prose.
 `events tail` is the exception: it writes newline-delimited records (see [`events`](#events)),
 not this envelope. Every other command, including `sla list`, answers one document.
 
-## Notes
-
-- Everything is **local**: no network beyond loopback to your own board.
-- Every state-mutating write is safe under concurrent agents — transactions and
-  compare-and-swap are the service's guarantee, not the CLI's.
-- Data lives in `<dataDir>/board.sqlite` (default `<repo>/.data`), overridable with
-  `TASKD_DATA_DIR` / `TASKD_DB`.
+Everything is local (loopback only); data lives in `<dataDir>/board.sqlite` (default
+`<repo>/.data`), overridable with `TASKD_DATA_DIR` / `TASKD_DB`.

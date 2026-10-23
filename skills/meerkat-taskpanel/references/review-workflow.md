@@ -86,21 +86,20 @@ What the loop does next depends on why the target moved:
 - the comment trail, looking for unresolved decision / defect entries;
 - for an epic: the rollup report and each child's state.
 
-An `APPROVE` is checked against the baseline before it can close anything: the review report
-must cover **every item of the original's snapshot** (and the review card's own snapshot,
-which is the original's list plus the generic review items — including the requirement,
-plan-file and omission items). `met` and `not_applicable` (with a non-empty note) pass; a
-missing item, `partial` or `not_met` refuses with `ACCEPTANCE_INCOMPLETE` and the original
-stays `in_review`. A `REJECT` is never checked for coverage — `partial` / `not_met` is its
-normal shape. If the baseline itself is wrong, rework the original (a new round re-freezes
-it); a reviewer cannot edit it.
+An `APPROVE` is checked against **two** baselines before it can close anything: the review
+report must cover every item of the original's snapshot and of the review card's own snapshot
+(the original's list plus the generic review items). A `REJECT` is never checked for coverage
+— `partial` / `not_met` is its normal shape. If the baseline itself is wrong, rework the
+original (a new round re-freezes it); a reviewer cannot edit it. The pass/fail rules for an
+item, and the omission check's `meta.acceptance_derived` flag, are in
+[`status-lifecycle.md` §4a](status-lifecycle.md#4a-the-acceptance-baseline).
 
 For an **epic**, the rollup is the delivery. An `APPROVE` additionally needs the epic's
-current-round rollup (`is_rollup = 1`) to still match its children: every child appears by
-`ref`, a `done` child is `met`, a `canceled` one is `not_applicable` with a note, and at
-least one child is `done`. A missing rollup is `rollup_unverified`; a stale one is
-`rollup_stale` (both are log-only alerts; the loop plans no approval). The repair is a
-rework of the epic, which starts a new round and a fresh rollup.
+current-round rollup (`is_rollup = 1`) to still match its children; a missing rollup is
+`rollup_unverified`, a stale one is `rollup_stale` (both are log-only alerts — the loop plans
+no approval). The repair is a rework of the epic, which starts a new round and a fresh
+rollup. The rollup's own shape is in
+[`status-lifecycle.md` §6](status-lifecycle.md#6-containers-epic).
 
 The omission check is unconditional: every requirement in the description, comments and plan
 must map to an acceptance item and to evidence, or be explicitly deferred with a recorded
@@ -108,8 +107,6 @@ decision. A narrowed acceptance list, an unexplained deviation from `plan.md`, o
 requirement is grounds for `VERDICT: REJECT`. If `plan.md` does not exist, say so and fall back
 to the description and acceptance snapshot; absence alone is not a reject. For an epic, check
 that the children cover the epic's description and that no child is omitted from the rollup.
-`meta.acceptance_derived = "yes"` is a flag to audit the list closely, not the only case that
-needs the check.
 
 ### Deliver
 
@@ -158,16 +155,10 @@ loop's `APPROVE` becomes a **hold** — it records the verdict and closes the re
 leaves the original in `in_review`, so do not close it yourself. Under `agent-only` a human
 cannot close a review card; under `both` / `human-only` a human or `taskd` can.
 
-The policy is enforced by the board. There is no `taskctl` command that reads it: attempt the
-move and handle `ACCEPTANCE_FORBIDDEN` — its `details` carry `policy` and `scope`. The loop's
-`--acceptance` flag is an **advisory local copy** for diagnostics; it never overrides the
-board.
-
-`agent-only` combined with `--auto-accept-reviews=no` leaves review cards with no writer who
-may close them: a human is refused and the loop deliberately does not close them. The board
-reports each open card as `review_cards_unclosable` and the loop warns at startup. If a card
-must be closed on such a board, a **non-human** writer (the loop with auto-accept on, or
-another agent) has to do it.
+The policy is enforced by the board; `ACCEPTANCE_FORBIDDEN` carries `policy` and `scope` in
+its `details`. What the matrix means for the loop, and the `agent-only` × `--auto-accept-reviews=no`
+deadlock (`review_cards_unclosable`), are in
+[`status-lifecycle.md` §7](status-lifecycle.md#7-acceptance-policy--scope).
 
 ## 5. The human's side
 
@@ -206,21 +197,18 @@ controls whether the loop closes a review card.
   the new round.
 - **REJECT on an epic** — the loop creates and links a **fix child** first, then reopens the
   container to `in_progress`; the open child stops `reconcile` from re-closing the container.
-- **One action failing never stops the rest**, and the review card is closed last, so a crash
-  between the original's move and the card's close is recovered on the next pass.
+
+Failure isolation is the loop's: one action failing never stops the rest, and the review card
+is closed last, so a crash between the original's move and the card's close is recovered on
+the next pass.
 
 ## 7. Review-side refusals
 
-| Code | When |
-|---|---|
-| `REPORT_REQUIRED` | A move to `in_review` without a report for the current round (or the audited waiver). Creating a card in `in_review` / `done`. |
-| `REPORT_ROUND_MISMATCH` | A report names a round other than the card's current one, or duplicates `(task, round)`. |
-| `ACCEPTANCE_FORBIDDEN` | The writer may not accept under the policy × scope matrix. |
-| `REVIEW_PENDING` | A human closes a top-level original with a current-round review card still open. |
-| `REVIEW_REQUIRED` | A card whose `review_required` is 1 is moved to `done` without a current-round review card that reached the reviewer. The escape is an audited human waiver (`issue update <ref> --review no --reason "<why>"`) or a new review. |
-| `REVIEW_CARD_MARKER_INVALID` | A write tried to set `review_required = 1` on a review card. |
-| `VALIDATION_FAILED` | `review_of` names a card that is not `in_review`; `review_of` names another review card; `review_round` is not the original's current `delivery_round`; the review card is not `kind=task`; a malformed round. |
-| `INVALID_TRANSITION` | A review card cannot be reopened; `in_review → canceled` does not exist (use the two-hop cancel). |
+A review card can be refused by the same codes as any other card — `REPORT_REQUIRED`,
+`REPORT_ROUND_MISMATCH`, `ACCEPTANCE_FORBIDDEN`, `REVIEW_PENDING`, `REVIEW_REQUIRED`,
+`REVIEW_CARD_MARKER_INVALID`, `VALIDATION_FAILED` — plus `INVALID_TRANSITION` for a reopen or
+a direct `in_review → canceled`. The full table, with when each fires, is in
+[`status-lifecycle.md` §9](status-lifecycle.md#9-refusals).
 
 ## 8. Boundaries
 

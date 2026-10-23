@@ -1,16 +1,10 @@
 # Board capabilities a supervisor binds to
 
 [`cli.md`](cli.md) is the complete `taskctl` reference. This page is the **subset a
-supervisor uses**, with the exact invocation and the JSON keys it reads. It is the
-contract behind `scripts/loop/board.mjs` and `scripts/loop/passes.mjs` in the
-`meerkat-loop` skill: the loop decides *when*; these are the *how*.
-
-> Paths written as `scripts/loop/…` or `src/…` name the source repositories. This skill ships
-> only `SKILL.md`, `references/` and `scripts/`; the loop body under `scripts/loop/` is the
-> generated copy in the `meerkat-loop` skill.
-
-> The loop never calls the board's HTTP API directly. Every operation below —
-> including the live event stream — is a `taskctl` command.
+supervisor uses**, with the exact invocation and the JSON keys it reads. It is the contract
+behind `board.mjs` and `passes.mjs` in the `meerkat-loop` skill: the loop decides *when*;
+these are the *how*. The loop never calls the board's HTTP API directly — every operation
+below, including the live event stream, is a `taskctl` command.
 
 ## The invocation rule
 
@@ -144,12 +138,12 @@ All writes use `--actor-kind taskd` and are idempotent by their key.
 | comment | `comment add <ref> --kind note\|change --body <text>` | `ok` only |
 
 `issue meta` **merges**; `issue update --meta` replaces the whole object and would
-erase `target` and the review keys. Use `issue meta`. The acceptance baseline no longer
-lives in meta (0032): it is a column, immune to `--meta`, and a **changed**
-`meta.acceptance` / `meta.acceptance_legacy` is refused (`VALIDATION_FAILED`) — append with
-`issue update --acceptance`, prune only as a human with `--drop-acceptance --reason`.
+erase `target` and the review keys. Use `issue meta`. The acceptance baseline is a column,
+immune to `--meta`, and a **changed** `meta.acceptance` / `meta.acceptance_legacy` is refused
+(`VALIDATION_FAILED`) — append with `issue update --acceptance`, prune only as a human with
+`--drop-acceptance --reason`.
 
-## Questions — the `awaiting` protocol (0034)
+## Questions — the `awaiting` protocol
 
 A worker that cannot proceed asks and stops:
 
@@ -157,14 +151,10 @@ A worker that cannot proceed asks and stops:
 taskctl issue move <ref> awaiting --awaiting-reason E2 --question "what you need to know" <attribution>
 ```
 
-The move and the `question` comment are one transaction. **Any human comment** answers it —
-whatever its kind — and the board moves the card to `todo` in the same transaction (the
-asking subagent is gone, so only the queue can dispatch the next one). The board does not
-read the text: the resumed worker judges from its content whether it is a complete decision
-(approve, reject, or ask again), and the loop never writes a decision kind. A `decision` /
-`confirm` / `change` kind is the explicit I5 record, not the resume gate. The card's
-`awaiting_reason` stays the category (`E1`–`E5`); the question is the payload
-(`waitingPayload`, the newest `question`).
+The move and the `question` comment are one transaction; the loop never writes a decision
+kind. The card's `awaiting_reason` stays the category (`E1`–`E5`); the question is the payload
+(`waitingPayload`, the newest `question`). Entry, exits and the resume rule:
+[`status-lifecycle.md` §1](status-lifecycle.md#1-the-vocabulary).
 
 Who answers what the loop cannot: `--opened-by human` means the control turn may ask its own
 operator in that conversation; the default (`supervisor`, for systemd/launchd/cron) leaves the
@@ -188,31 +178,9 @@ and is never edited by the subagent.
 
 | Invocation | Output | Consumer |
 |---|---|---|
-| `events tail [--after <rev>] [--idle <ms>]` | NDJSON lines (below) | `scripts/loop/runtime.mjs#streamCli` → `subscribe.mjs` |
+| `events tail [--after <rev>] [--idle <ms>]` | NDJSON lines | `runtime.mjs#streamCli` → `subscribe.mjs` |
 
-```json
-{"type":"open"}
-{"type":"event","id":12,"data":{"event":"task_created","task_id":"…","actor_kind":"human","actor_id":"terry","changes":{},"revision":12,"created_at":"…"}}
-{"type":"idle","data":{"idle_ms":45000}}
-{"type":"shutdown","data":{"reason":"server_shutdown"}}
-{"type":"eof"}
-{"type":"error","data":{"code":"CLI_IO","message":"…"}}
-```
-
-`event.id` is the board revision; pass the maximum back as `--after` to resume.
-`open` means the board answered; `idle`, `shutdown` and `eof` exit 0, `error`
-exits 1. The server sends a heartbeat every 15 s; `--idle` defaults to 45 s.
-
-## Capability → loop consumer
-
-| Capability | Loop wrapper | Reads |
-|---|---|---|
-| `--version --json` | `skills/meerkat-loop/scripts/board-check.mjs` | version floor |
-| `project list` | `board.mjs#readProjectReviewers` | reviewer overrides, `required` policy |
-| `issue candidates` | `passes.mjs` (poll) | candidates |
-| `issue claim` | `passes.mjs` (poll) | ok/error |
-| `issue list` | `board.mjs#readBoard` | heartbeat rows |
-| `sla list` / `sla get` | `board.mjs#runSlaPass` | alert rows |
-| `issue reconcile --workflow` | `board.mjs#runWorkflowPass` | the plan |
-| workflow writes | `board.mjs#runWorkflowPass` | created refs / ok |
-| `events tail` | `runtime.mjs#streamCli` → `subscribe.mjs` | activity stream |
+The loop reads `type` on every line and `event.id` as the board revision, passing the maximum
+back as `--after` to resume; `open` means the board answered. The line shapes, the exit
+semantics and the 15 s heartbeat / 45 s idle defaults are in
+[`cli.md#events`](cli.md#events).
