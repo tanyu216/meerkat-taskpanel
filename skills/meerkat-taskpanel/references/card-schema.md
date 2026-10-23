@@ -258,12 +258,15 @@ record who wrote it.
 ## The process directory
 
 The loop exports each card to `.meerkat/<identifier>/card.md` (read-only) and puts the worker's
-process files beside it. Workers maintain `.meerkat/<identifier>/plan.md` — goals, non-goals,
-steps, risks, and the requirement → acceptance mapping — and update it as they learn. The
-reviewer reads it and treats an unexplained deviation as grounds for `VERDICT: REJECT`; a
-missing plan is not itself a failure (the reviewer falls back to the description and the frozen
-acceptance snapshot). The board holds no directory (O3): this is a loop convention under the
-project's own working directory.
+process files beside it. The file has two writers, both machine-only: `export md` writes the
+snapshot, and `export watch` keeps it fresh from the event stream (unique temp file plus an
+atomic rename, skipping a byte-identical render). Workers maintain
+`.meerkat/<identifier>/plan.md` — goals, non-goals, steps, risks, and the requirement →
+acceptance mapping — and update it as they learn. The reviewer reads it and treats an
+unexplained deviation as grounds for `VERDICT: REJECT`; a missing plan is not itself a
+failure (the reviewer falls back to the description and the frozen acceptance snapshot). The
+board holds no directory (O3): this is a loop convention under the project's own working
+directory.
 
 ## Export rules
 
@@ -274,7 +277,7 @@ project's own working directory.
 | A known key's unrecognised value re-emitted in place | Recognising a key never costs a card its wording. |
 | Optional keys written only when set | An existing card is not grown by a key it never had. |
 | Attachments section written only when present | A card without files keeps its five-section shape. |
-| Growth guard | A rewrite that would grow a card past the guard factor refuses. |
+| Growth guard | An `export md` rewrite that would grow a card past the guard factor refuses. `export watch` is exempt: its temp+rename refresh legitimately grows a brief when comments or a report land. |
 
 Asymmetries: `assignee_kind` is not re-exported (it lives on the actor row); `meta_json` holds
 both `notify_leader` and every unknown key under `legacy`; `acceptance_derived` is board meta,

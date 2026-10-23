@@ -391,6 +391,58 @@
               "short": null
             }
           ]
+        },
+        {
+          "name": "watch",
+          "positionals": [
+            {
+              "name": "ref",
+              "required": false,
+              "summary": "Watch this card (id or identifier); at least one ref in total is required."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "after",
+              "as": "number",
+              "value": "<rev>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "idle",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "once",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ref",
+              "as": "string",
+              "value": "<ref>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            }
+          ]
         }
       ]
     },

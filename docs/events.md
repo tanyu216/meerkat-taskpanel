@@ -117,6 +117,21 @@ passes and wakes the loop.
 Coalescing: 300 ms debounce, at most 2 s wait, at most one event-triggered continue turn
 per minute; a turn refused by the continue lock is retried after 5 s.
 
+### The card watcher (`taskctl export watch`)
+
+`export watch` is the CLI-side consumer for one or more **explicitly named** cards. It maps
+each `task_id` (UUID) to the `<dir>/.meerkat/<identifier>/card.md` it exported; an event
+naming a watched task marks that card for a refresh, and an event with no `task_id` (a
+project-level change) refreshes every watched card. An unknown UUID refreshes nothing. The
+refresh is a full re-render through `POST /api/v1/export` (`{ref: task_id}`), written
+atomically — the event is the signal, never the payload.
+
+It shares the loop's cadence — 300 ms debounce, 2 s maximum wait, `CARD_REFRESH_MIN_MS`
+(5 s) between batches — and refreshes are serial. Per-card failures are reported in the
+NDJSON stream and keep the previous file. The command does not reconnect: on
+`idle`/`shutdown`/`eof` it exits 0, and on a stream error it exits 1; resume with the last
+`refresh.revision` as `--after`.
+
 ## What is *not* an event
 
 These change server state but have no activity row, by design:
