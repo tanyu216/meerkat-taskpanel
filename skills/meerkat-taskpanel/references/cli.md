@@ -355,8 +355,9 @@ re-read; that failure is not fatal. `--after` seeds the replay cursor (when omit
 command reads `/meta` first, closing the export→stream gap), and `--idle` ends a silent
 stream exactly as in `events tail`. `--ttl <ms>` is a hard lifetime bound: when it expires
 the watcher aborts its own stream and writes `{"type":"ttl","data":{"ttl_ms":…}}`, so a
-session that vanishes without killing the process cannot leave it running forever (`0`, the
-default, disables it). Terminal lines are `idle`, `shutdown`, `eof` (exit 0), **`done`**,
+session that vanishes without killing the process cannot leave it running forever. The
+default is **120 minutes (2 h)**; `0` disables it, and a longer-lived session passes a larger
+value. Terminal lines are `idle`, `shutdown`, `eof` (exit 0), **`done`**,
 **`ttl`** (exit 0) or `error` (exit 1), and always follow the last `refresh`. A failure
 before `open` is the normal `{ok:false}` document: a bad ref resolves nothing and no
 directory is created.

@@ -120,6 +120,13 @@ function requireParentDirectory(path) {
 /* --------------------------------------------------------------- export watch */
 
 /**
+ * Default hard lifetime for `export watch`: two hours. A single card's work is
+ * not expected to outlive it, and the bound is what keeps a vanished session
+ * from leaving an SSE connection behind forever. `--ttl 0` disables it.
+ */
+export const CARD_WATCH_TTL_MS = 120 * 60 * 1000;
+
+/**
  * NDJSON line types for `export watch`: the shared stream spellings plus the one
  * record this command adds. Kept local (rather than in `foundation/constants`)
  * so the loop's generated payload does not change for a CLI-only vocabulary.
@@ -446,7 +453,7 @@ export const COMMANDS = [
         key: "ttl",
         as: "number",
         value: "<ms>",
-        summary: "Stop after this long in total (0 disables; default 0).",
+        summary: "Stop after this long in total (0 disables; default 120 minutes).",
       },
       {
         flag: "once",
@@ -471,7 +478,7 @@ export const COMMANDS = [
       const once = ctx.flags.once === true;
       const afterFlag = nonNegativeInteger(ctx.flags, "after", "after");
       const idleMs = nonNegativeInteger(ctx.flags, "idle", "idle") ?? SSE_SUBSCRIBE_IDLE_MS;
-      const ttlMs = nonNegativeInteger(ctx.flags, "ttl", "ttl") ?? 0;
+      const ttlMs = nonNegativeInteger(ctx.flags, "ttl", "ttl") ?? CARD_WATCH_TTL_MS;
 
       const baseDir = ctx.flags.dir === undefined
         ? resolve(ctx.cwd)

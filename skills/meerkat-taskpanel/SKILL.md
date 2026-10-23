@@ -320,7 +320,8 @@ taskctl export watch <ref> --dir <project-dir> --once
 
 If your runtime has a **documented background-process facility**, you may instead keep one
 running (`taskctl export watch <ref> --dir <project-dir>`), stop it when the session ends, and
-bound it with `--ttl <ms>`. Claude Code's background Bash qualifies; for any other harness,
+keep its default 2-hour `--ttl` bound (or pass a larger value / `0` for a genuinely longer
+task). Claude Code's background Bash qualifies; for any other harness,
 check its own documentation — do not assume a shell `&` survives the turn. Either way the
 watcher is one-way: it refreshes the file, it does not wake you, so re-read the brief before a
 decision or a resume.
