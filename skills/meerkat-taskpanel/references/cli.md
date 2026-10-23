@@ -304,7 +304,7 @@ then a placeholder.
 | Command | Purpose |
 |---|---|
 | `export md [<ref>] [--out <dir\|file.md>] [--project <id>] [--check] [--md]` | Write markdown cards: every identifier into a directory, or only `<ref>` (id or identifier). With `<ref>`, a `--out` ending in `.md` that is not an existing directory names the file itself; otherwise it is a directory and the card lands at `<dir>/<ID>.md`. `--project` cannot be combined with `<ref>` (usage error, exit 2). |
-| `export watch [<ref>] [--ref <ref>]… [--dir <dir>] [--after <rev>] [--idle <ms>] [--once]` | Keep `<dir>/.meerkat/<identifier>/card.md` fresh from the event stream. Explicit refs only; there is no `.meerkat/` discovery. |
+| `export watch [<ref>] [--ref <ref>]… [--dir <dir>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once]` | Keep `<dir>/.meerkat/<identifier>/card.md` fresh from the event stream. Explicit refs only; there is no `.meerkat/` discovery. |
 
 `--check` writes nothing and exits **3** when a card is missing or differs; with `<ref>` it
 checks only that card. A single-file target must already have a parent directory (exit 2 in
@@ -353,8 +353,11 @@ Output is newline-delimited JSON, like `events tail`:
 board, and an `error` object (the usual `{code,message,…}`) when one card could not be
 re-read; that failure is not fatal. `--after` seeds the replay cursor (when omitted, the
 command reads `/meta` first, closing the export→stream gap), and `--idle` ends a silent
-stream exactly as in `events tail`. Terminal lines are `idle`, `shutdown`, `eof` (exit 0),
-**`done`** (exit 0) or `error` (exit 1), and always follow the last `refresh`. A failure
+stream exactly as in `events tail`. `--ttl <ms>` is a hard lifetime bound: when it expires
+the watcher aborts its own stream and writes `{"type":"ttl","data":{"ttl_ms":…}}`, so a
+session that vanishes without killing the process cannot leave it running forever (`0`, the
+default, disables it). Terminal lines are `idle`, `shutdown`, `eof` (exit 0), **`done`**,
+**`ttl`** (exit 0) or `error` (exit 1), and always follow the last `refresh`. A failure
 before `open` is the normal `{ok:false}` document: a bad ref resolves nothing and no
 directory is created.
 

@@ -310,22 +310,26 @@ Work that needs no directory (claiming, moving, commenting, delivering) is unaff
 
 ## Keeping the brief fresh
 
-A card exported into a project directory is a **snapshot**. To keep it current while you work:
+A card exported into a project directory is a **snapshot**. The portable way to refresh it is
+a one-shot export at each phase boundary and before a resume — it works on every runtime and
+leaves no process behind:
 
 ```bash
-taskctl export watch <ref> --dir <project-dir>
+taskctl export watch <ref> --dir <project-dir> --once
 ```
 
-This writes `<project-dir>/.meerkat/<identifier>/card.md` and re-renders it whenever the board
-changes that card (`comment_added`, `task_updated`, a move, an attachment, …). Run it in the
-background and stop it when the card is delivered; if your runtime cannot keep a background
-process, run `--once` at each phase boundary instead. The watcher is one-way — it refreshes
-the file, it does not wake you — so re-read the brief before a decision or a resume.
+If your runtime has a **documented background-process facility**, you may instead keep one
+running (`taskctl export watch <ref> --dir <project-dir>`), stop it when the session ends, and
+bound it with `--ttl <ms>`. Claude Code's background Bash qualifies; for any other harness,
+check its own documentation — do not assume a shell `&` survives the turn. Either way the
+watcher is one-way: it refreshes the file, it does not wake you, so re-read the brief before a
+decision or a resume.
 
-It stops itself once the card reaches `done` (writing the final brief first), so a forgotten
-watcher cannot outlive the work indefinitely. A card that stops at `in_review` is not done
-yet: still kill the watcher when the session ends, and start a new one if a done card is
-reopened.
+It writes `<project-dir>/.meerkat/<identifier>/card.md` and re-renders it whenever the board
+changes that card (`comment_added`, `task_updated`, a move, an attachment, …). It stops itself
+once the card reaches `done` (writing the final brief first), and `--ttl` bounds a session
+that never gets there. A card that stops at `in_review` is not done yet: stop the watcher when
+the session ends, and start a new one if a done card is reopened.
 
 **Do not start one when the `meerkat-loop` supervisor dispatched you**: its `--subscribe`
 daemon already refreshes active queued briefs, and a second watcher is duplicated traffic.

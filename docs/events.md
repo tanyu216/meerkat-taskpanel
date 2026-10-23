@@ -131,9 +131,10 @@ It shares the loop's cadence — 300 ms debounce, 2 s maximum wait, `CARD_REFRES
 NDJSON stream and keep the previous file. `done` is terminal: a card that reaches it is
 written once and dropped from the watch, and when the last one is done the watcher aborts
 its own stream and emits `done`; a card that is already done at startup never causes a
-connection to open. The command does not reconnect: on `idle`/`shutdown`/`eof`/`done` it
-exits 0, and on a stream error it exits 1; resume with the last `refresh.revision` as
-`--after`.
+connection to open. `--ttl <ms>` bounds the watcher's lifetime and emits `ttl` when it
+expires, so a session that disappears without killing the process leaves nothing behind.
+The command does not reconnect: on `idle`/`shutdown`/`eof`/`done`/`ttl` it exits 0, and on a
+stream error it exits 1; resume with the last `refresh.revision` as `--after`.
 
 ## What is *not* an event
 
