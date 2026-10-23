@@ -7,7 +7,8 @@
  *     .meerkat/<identifier>/card.md      the board's export (read-only)
  *     .meerkat/<identifier>/…            notes, logs, evidence, attachments
  *
- * The card brief is machine-generated: only `taskctl export md` may write it.
+ * The card brief is machine-generated: only `taskctl export md` and
+ * `taskctl export watch` may write it.
  * This module is the single source of the path text, shared by the handoff
  * builders (foundation) and the loop's exporter (`scripts/loop/card-file.mjs`),
  * so the brief a subagent is told to read is the file the loop actually writes.

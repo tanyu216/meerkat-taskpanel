@@ -32,6 +32,7 @@ export const BOOLEAN_FLAGS = Object.freeze(
     "stale",
     "quiet",
     "check-blockers",
+    "once",
   ]),
 );
 

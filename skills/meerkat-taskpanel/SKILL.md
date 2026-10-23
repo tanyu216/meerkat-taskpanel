@@ -308,6 +308,30 @@ Which directory does it work in? I will add it to projects.json beside this skil
 
 Work that needs no directory (claiming, moving, commenting, delivering) is unaffected.
 
+## Keeping the brief fresh
+
+A card exported into a project directory is a **snapshot**. To keep it current while you work:
+
+```bash
+taskctl export watch <ref> --dir <project-dir>
+```
+
+This writes `<project-dir>/.meerkat/<identifier>/card.md` and re-renders it whenever the board
+changes that card (`comment_added`, `task_updated`, a move, an attachment, …). Run it in the
+background and stop it when the card is delivered; if your runtime cannot keep a background
+process, run `--once` at each phase boundary instead. The watcher is one-way — it refreshes
+the file, it does not wake you — so re-read the brief before a decision or a resume.
+
+It stops itself once the card reaches `done` (writing the final brief first), so a forgotten
+watcher cannot outlive the work indefinitely. A card that stops at `in_review` is not done
+yet: still kill the watcher when the session ends, and start a new one if a done card is
+reopened.
+
+**Do not start one when the `meerkat-loop` supervisor dispatched you**: its `--subscribe`
+daemon already refreshes active queued briefs, and a second watcher is duplicated traffic.
+Either way `card.md` is machine-generated — never hand-edit it. The command's output and
+exact flags are in [`references/cli.md#export-watch`](references/cli.md#export-watch).
+
 ## Where to look
 
 | You need… | Read |
@@ -317,4 +341,5 @@ Work that needs no directory (claiming, moving, commenting, delivering) is unaff
 | what a reviewer reads and writes, and the two-round model | [`references/review-workflow.md`](references/review-workflow.md) |
 | the `taskctl` invocations and JSON keys a supervisor binds to | [`references/capabilities.md`](references/capabilities.md) |
 | the `export md` card format, identifier syntax, or `blocked_reason` meanings | [`references/card-schema.md`](references/card-schema.md) |
+| how to keep `.meerkat/<identifier>/card.md` current while you work | [`references/cli.md#export-watch`](references/cli.md#export-watch) |
 | the project ↔ directory map | [`references/projects-json.md`](references/projects-json.md) |

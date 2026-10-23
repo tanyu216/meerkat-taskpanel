@@ -304,6 +304,7 @@ then a placeholder.
 | Command | Purpose |
 |---|---|
 | `export md [<ref>] [--out <dir\|file.md>] [--project <id>] [--check] [--md]` | Write markdown cards: every identifier into a directory, or only `<ref>` (id or identifier). With `<ref>`, a `--out` ending in `.md` that is not an existing directory names the file itself; otherwise it is a directory and the card lands at `<dir>/<ID>.md`. `--project` cannot be combined with `<ref>` (usage error, exit 2). |
+| `export watch [<ref>] [--ref <ref>]… [--dir <dir>] [--after <rev>] [--idle <ms>] [--once]` | Keep `<dir>/.meerkat/<identifier>/card.md` fresh from the event stream. Explicit refs only; there is no `.meerkat/` discovery. |
 
 `--check` writes nothing and exits **3** when a card is missing or differs; with `<ref>` it
 checks only that card. A single-file target must already have a parent directory (exit 2 in
@@ -323,6 +324,49 @@ sections) used for round-tripping and CI checks, not a human-readable card detai
 `issue get <ref>` for prose and `issue get <ref> --json` for machines. The implicit spelling
 `export --md <ref>` cannot carry a ref; use `export md <ref>`. The file format is in
 [`card-schema.md`](card-schema.md).
+
+#### `export watch`
+
+`export watch` is the streaming writer for a card brief. It exports every named ref (the
+positional and each repeatable `--ref` are unioned; at least one is required), writes
+`<dir>/.meerkat/<identifier>/card.md` (`--dir` defaults to cwd), then subscribes to
+`GET /api/v1/events`. When an event names a watched `task_id`, the card is re-rendered and
+the file is replaced atomically (a unique temp file in the same directory plus a rename; a
+byte-identical render is left alone, so mtime does not churn). A task-less event such as
+`project_updated` refreshes every watched card. Refreshes are coalesced on the loop's
+cadence — 300 ms debounce, 2 s maximum wait, 5 s minimum interval between batches — and
+never overlap.
+
+The 4× `MD_GROWTH_FACTOR` guard does **not** apply here: a brief legitimately grows when
+comments or a report land. `--once` performs the initial export and exits without streaming;
+it is the portable fallback when a runtime cannot keep a background process.
+
+Output is newline-delimited JSON, like `events tail`:
+
+```json
+{"type":"open"}
+{"type":"refresh","task_id":"…","identifier":"PROJ-0007","path":"/repo/.meerkat/PROJ-0007/card.md","changed":true,"status":"in_progress"}
+{"type":"eof"}
+```
+
+`refresh` carries `changed:false` when the file was already current, `status` from the
+board, and an `error` object (the usual `{code,message,…}`) when one card could not be
+re-read; that failure is not fatal. `--after` seeds the replay cursor (when omitted, the
+command reads `/meta` first, closing the export→stream gap), and `--idle` ends a silent
+stream exactly as in `events tail`. Terminal lines are `idle`, `shutdown`, `eof` (exit 0),
+**`done`** (exit 0) or `error` (exit 1), and always follow the last `refresh`. A failure
+before `open` is the normal `{ok:false}` document: a bad ref resolves nothing and no
+directory is created.
+
+**`done` is terminal.** A watched card that reaches `done` is written once with its final
+brief and then dropped from the watch; when the last one is done the watcher closes its own
+stream and emits `{"type":"done"}`. If every named card is already done at startup, `open`,
+one `refresh` per card and `done` are written without opening an SSE connection at all. A
+done card that is later reopened (`issue reopen`) is no longer watched — start a new
+watcher. `canceled` is not a stop condition.
+
+One watcher per card is enough. The loop's `--subscribe` daemon already refreshes active
+queued cards, so a loop-dispatched worker must not start a second one.
 
 ### `token`
 
@@ -361,8 +405,8 @@ Read-only; it moves no card.
 cursor). `--idle` ends the stream after that many milliseconds with no bytes; the default is
 45000 (three missed heartbeats), and `0` disables the timer. The server's heartbeat is 15 s.
 
-**This is the one command whose output is not the `{ok,data}` envelope.** Each line is one
-JSON object:
+**Like `export watch`, this command's output is not the `{ok,data}` envelope.** Each line is
+one JSON object:
 
 ```json
 {"type":"open"}
@@ -595,8 +639,9 @@ verbatim:
 
 Bind scripts to `error.code` and `error.hint.command`, never to the prose.
 
-`events tail` is the exception: it writes newline-delimited records (see [`events`](#events)),
-not this envelope. Every other command, including `sla list`, answers one document.
+`events tail` and `export watch` are the exceptions: both write newline-delimited records
+(see [`events`](#events) and [`export watch`](#export-watch)), not this envelope. Every other
+command, including `sla list`, answers one document.
 
 Everything is local (loopback only); data lives in `<dataDir>/board.sqlite` (default
 `<repo>/.data`), overridable with `TASKD_DATA_DIR` / `TASKD_DB`.

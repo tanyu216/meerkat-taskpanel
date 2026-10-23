@@ -1480,6 +1480,7 @@ describe("server/routes — exporting one card", () => {
       assert.equal(exported.cards.length, 1);
       assert.equal(exported.cards[0].identifier, original.identifier);
       assert.equal(exported.cards[0].task_id, original.id);
+      assert.equal(exported.cards[0].status, original.status);
       assert.match(exported.cards[0].markdown, /^---\n/);
       assert.match(exported.cards[0].markdown, new RegExp(`id: ${original.identifier}`));
     }
