@@ -30,7 +30,7 @@ is written **only when it carries something**, so a plain card does not grow a l
 |---|---|---|
 | `id` | The card's board identifier. | Non-empty; stored verbatim as `tasks.identifier`. |
 | `title` | One-line summary. | Non-empty string. |
-| `status` | Where the card sits in the lifecycle. | One of the canonical words (`backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`, plus the `awaiting` overlay). The old v1 words (`ready`, `failed`, and their spelling variants) are not accepted. |
+| `status` | Where the card sits in the lifecycle. | One of the canonical words (`backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`, plus the `awaiting` overlay). |
 | `priority` | Urgency. | `low` · `medium` · `high` · `urgent`. |
 | `kind` | The card's role. | `task` · `epic` · `deploy`. |
 | `review_required` | Whether this card needs an independent review before `done`. | `yes`; **absent** means it does not. A review card (flow B) never carries it. |
@@ -77,11 +77,6 @@ parent/child graph is bounded — a card has at most one parent, a parent holds 
 children (`RELATION_FANIN_MAX`), and a parent/child chain is at most **8** deep
 (`RELATION_CHAIN_MAX`). Cycles are refused, and an ancestor and its descendant may not also
 carry a `blocks` edge. A `blocks` edge itself has **no degree cap**.
-
-### The status machine
-
-- **The card carries the stored status**, always in its canonical spelling.
-- The card's status is data, not permission: `issue move` still enforces the transitions.
 
 ## blocked_reason — what a blocked card is waiting for
 
@@ -199,12 +194,8 @@ Published generated-form pattern:
 The body is `##` sections, canonical order **Background · Acceptance · Comments · Sessions ·
 Attachments (only when the card has files) · Report**. The exporter always writes the other
 five; `## Attachments` appears only when the card carries attachments. Prose in
-`## Background` becomes the card's description.
-
-The card does **not** carry the activity trail. The old `## Progress` section rendered the
-imported `progress` activity event, which has had no writer since the markdown importer was
-removed; it is gone. The full audit trail is a separate board read
-(`GET /api/v1/tasks/:ref/activities`), not part of the card file.
+`## Background` becomes the card's description. The card does **not** carry the activity
+trail: the full audit trail is a separate board read (`GET /api/v1/tasks/:ref/activities`).
 
 ```
 ## Acceptance
@@ -262,7 +253,7 @@ leftovers: <what is still open>
 ```
 Acceptance status is `met` · `partial` · `not_met` · `not_applicable`. Evidence is a **closed**
 set. Any report for the card's current delivery round satisfies the gate; the board does not
-record who wrote it (0035 removed the old `origin` marker).
+record who wrote it.
 
 ## The process directory
 
@@ -288,36 +279,3 @@ project's own working directory.
 Asymmetries: `assignee_kind` is not re-exported (it lives on the actor row); `meta_json` holds
 both `notify_leader` and every unknown key under `legacy`; `acceptance_derived` is board meta,
 not a card key, and is not re-emitted.
-
-## Conformance
-
-This page is hand-maintained; the code is not. The field table is asserted against
-`CARD_KEY_ORDER` in the source repository's `src/core/storage/md/export.mjs`. Run this **from
-the repository root**; it exits `0` when they agree, `1` when they disagree, `2` when no
-checkout is present:
-
-```bash
-node --input-type=module -e '
-import { existsSync, readFileSync } from "node:fs";
-const code = "./src/core/storage/md/export.mjs";
-if (!existsSync(code)) {
-  console.error(`card-schema conformance: needs the taskpanel checkout — ${code} is not here.`);
-  process.exit(2);
-}
-const { CARD_KEY_ORDER } = await import(code);
-const md = readFileSync("skills/meerkat-taskpanel/references/card-schema.md", "utf8");
-const table = md.split("## Field reference")[1].split("\n## ")[0];
-const keys = [...table.matchAll(/^\|\s*`([a-z_]+)`\s*\|/gm)].map((m) => m[1]);
-// `target` holds a slot in CARD_KEY_ORDER for an imported key's historical position,
-// but it is not one of the 41 keys the table documents.
-const documented = CARD_KEY_ORDER.filter((key) => key !== "target");
-const same =
-  keys.length === documented.length &&
-  JSON.stringify([...keys].sort()) === JSON.stringify([...documented].sort());
-console.log(JSON.stringify({ doc: keys.length, code: documented.length, same }));
-process.exit(same ? 0 : 1);
-'
-```
-
-If it prints `false`, the code moved and this page owes an update: **`CARD_KEY_ORDER` is the
-source of truth.**

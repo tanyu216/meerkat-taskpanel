@@ -9,8 +9,7 @@
 [7. Acceptance](#7-acceptance-policy--scope) ·
 [8. Creating](#8-creating-a-card-in-a-status) · [9. Refusals](#9-refusals) ·
 [10. Enforced vs practice](#10-what-is-enforced-and-what-is-practice) ·
-[11. Workflow decisions](#11-the-boards-workflow-decisions) ·
-[12. Choosing a status](#12-choosing-a-status)
+[11. Workflow decisions](#11-the-boards-workflow-decisions)
 
 ## 1. The vocabulary
 
@@ -29,7 +28,7 @@ A card has **eight stored status words**, but only **seven are stages** — the 
 `awaiting` is the **eighth literal but not an eighth column**: an *attention overlay* on an
 in-progress card that has stopped to ask a human a question, displayed under `in_progress`.
 
-The question is a **`question` comment** (0034): an agent enters with
+The question is a **`question` comment**: an agent enters with
 `issue move <ref> awaiting --awaiting-reason E2 --question "…"`, and the move and the comment
 land in one transaction. The payload the view shows is the newest `question` (falling back to
 the newest human comment for a card that predates the kind). **Any human comment** answers
@@ -141,8 +140,8 @@ caller sees.
 A card may not enter `in_review` without evidence **for the current delivery round** — a
 report counts only for the round it was written in.
 
-- A report for the card's current `delivery_round`. Every report counts; 0035 removed the
-  `origin` distinction between a live delivery and imported history.
+- A report for the card's current `delivery_round`. Every report counts, whether written live
+  or imported as history.
 - The escape hatch is the **audited waiver**: `--no-report --reason "<why>"` on a move to
   `in_review` (or on `issue deliver`). The reason needs at least **8 characters** after
   trimming; the waiver is stamped on the task row, recorded as a `report_waived` activity and
@@ -171,13 +170,8 @@ taskctl issue deliver <ref> --report-file -   # always lands in in_review; no --
 ```
 
 A report with an explicit non-current `round` is `REPORT_ROUND_MISMATCH` — a report-write
-error, not a move refusal. A refusal names the round and the fixing command:
-
-```console
-REPORT_REQUIRED: cannot move PROJ-0007 to in_review: no report for delivery round 1 (rounds on file: none)
-try: taskctl issue deliver PROJ-0007 --report-file -
-  or: taskctl issue move PROJ-0007 in_review --no-report --reason "<why this is audited>"
-```
+error, not a move refusal. A refusal names the round and the fixing command; the exact text is
+in [`cli.md#the-delivery-gate`](cli.md#the-delivery-gate).
 
 ## 4a. The acceptance baseline
 
@@ -278,9 +272,8 @@ is not `done` — literally `status !== "done"`, so a `canceled` predecessor wit
 - **A terminal container never rolls up.** The sweep scans non-terminal epics only, so a
   `done`/`canceled` card promoted to an epic will never close over children attached later.
   A delivered card starts a new container instead.
-- **Status at promotion.** The board starts a container only from `todo` and closes it from
-  `todo`, `in_progress` or `blocked`; `backlog` and `awaiting` need a move first, and an
-  `in_review` epic that gains a child needs a rework back to `in_progress`.
+- **Status at promotion.** A `backlog` or `awaiting` epic needs a move to `todo` first, and
+  an `in_review` epic that gains a child needs a rework back to `in_progress`.
 
 `issue reconcile` replays the start/close rules over every non-terminal epic and is
 idempotent; the ordinary path does not need it.
@@ -365,14 +358,12 @@ is refused with `INVALID_TRANSITION`.
 
 ## 10. What is enforced, and what is practice
 
-| Rule | Enforced by |
+The transition whitelist, the delivery gate, the terminal exits and the child-before-parent
+rule are enforced by the domain **and** the database triggers; acceptance authority and claim
+routing are service rules. Four things are **not** enforced, and an agent must honour them:
+
+| Rule | Kind |
 |---|---|
-| Transition whitelist | domain `ALLOWED_TRANSITIONS` + DB trigger |
-| Delivery gate | domain + DB trigger |
-| Terminal statuses leave only for `todo` | domain + DB trigger (the reason is service-only) |
-| Children terminal before a parent closes | service + DB trigger |
-| Acceptance authority | **service only** — the actor is not a column |
-| Claim routing and freshness | service + compare-and-swap |
 | “One card at a time” | **practice** — not enforced |
 | “Read candidates, then claim” | **practice** — only the claim gate is enforced |
 | `deploy` cards never auto-offered | **read rule** — explicit dispatch may claim one |
@@ -382,16 +373,12 @@ is refused with `INVALID_TRANSITION`.
 
 ### Flow A and flow B
 
-A **flow-A** card is an ordinary work card; `meta.flow` absent means A (fail-safe — an
+A **flow-A** card is an ordinary work card — `meta.flow` absent means A (fail-safe, so an
 unknown card is not exempted from review). A **flow-B** card is a review card the loop
-dispatched; it carries `meta.flow=B`, and a delivery on a flow-B card is never itself
-reviewed. The review-card predicate is the structural `review_of_id` (with `meta.review_of`
-as the legacy fallback), never the `review` label and never `meta.flow`.
-
-The review card audits a **specific delivery round**: `review_round` is the original's round,
-while the review card's own `delivery_round` is the round its verdict report is stamped with
-(a fresh review card starts at 1). A re-delivery after a rejection is a new round and needs a
-new review card; one review card covers one `(original, delivery round)` pair.
+dispatched: it carries `meta.flow=B` and a delivery on it is never itself reviewed. One review
+card covers one `(original, delivery round)` pair, so a re-delivery after a rejection needs a
+new one. The identity marker, the two-round model and the reviewer's protocol are in
+[`review-workflow.md`](review-workflow.md).
 
 The board decides what happens after a delivery; the loop executes. One command:
 
@@ -415,7 +402,7 @@ The fail-safe rules are part of the decision:
 - an unreadable verdict, a stale round, a conflicting verdict, or a report not written by the
   configured reviewer produces an **alert and no write**;
 - a **truncated** snapshot applies outcomes but **dispatches nothing**;
-- **one review card per `(original, delivery round)`**, keyed `loop-review|<ref>|r<round>`;
+- the dispatch key is `loop-review|<ref>|r<round>` — one card per pair;
 - a delivery on flow B (a review card) is never itself reviewed;
 - self-review is refused: the reviewer may not be the card's assignee/holder;
 - `autoAcceptReviews = no` only withholds the review card's close; the verdict on the
@@ -431,20 +418,3 @@ A `cancel_review` on a review card that is still `in_review` is a two-hop move
 Only an **open** review card suppresses the original's `acceptance_card_creation`
 SLA row. A `done` review turns that row into an acceptance reminder; a `canceled`
 one leaves the standard creation action.
-
-## 12. Choosing a status
-
-- Not released → `backlog`. Released, not started → `todo`. Working → `in_progress` (a claim).
-- Stopped to ask a human a question → `awaiting` with `E1`–`E5` **and** `--question "…"` (an
-  agent must ask; any human comment re-queues the card as `todo`).
-- Stopped on anything else → `blocked`, with an optional `--blocked-reason`.
-- Evidence attached, awaiting a verdict → `in_review` (`issue deliver`).
-- Accepted → `done`, by whoever the policy/scope matrix allows.
-- Abandoned → `canceled`; from `in_review` that is two hops.
-- “Reopen” → `done`/`canceled` → `todo`, with `issue reopen <ref> --reason "<why>"` (audited;
-  starts a new round). Review cards cannot be reopened — reopen the original.
-
-`blocked` is the card's own declaration that it cannot proceed; `awaiting` is a question
-addressed to a human. `blocked_reason` is optional and cleared on exit; `blocked_at` is kept
-because it dates the last blockage. See
-[`card-schema.md`](card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for).
