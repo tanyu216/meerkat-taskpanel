@@ -10,11 +10,27 @@ exactly as it did before the feature.
 <roles-root>/
 ├── manifest.json
 ├── decision-policy.md          optional; overrides the loop's default policy
-├── jobs/{workflow.md,self-check.md}
+├── jobs/{workflow.md,ui-workflow.md,self-check.md}
 ├── linus/{workflow.md,self-check.md}
 ├── turing/{workflow.md,self-check.md}
 └── reviewer/{workflow.md,reviewer-prompt.md}
 ```
+
+## Project artifacts
+
+A design card keeps its product artifacts in the **project's** `design/` tree, not in the
+card directory:
+
+```text
+design/
+├── specs/<task-id>.md        # product planning: problem, direction, assumptions
+├── prototype/<task-id>/      # prototype, screenshots, verification evidence
+└── prds/<task-id>.md         # the PRD, written after the prototype validates the design
+```
+
+`.meerkat/<id>/plan.md` stays the card index: it links to those artifacts and carries the
+acceptance mapping, risks and open questions. All paths are project-relative; never use an
+absolute path or another project's tree.
 
 ## Manifest
 

@@ -95,6 +95,7 @@ describe("skill frontmatter and assets", () => {
       "manifest.json",
       "decision-policy.md",
       "jobs/workflow.md",
+      "jobs/ui-workflow.md",
       "jobs/self-check.md",
       "linus/workflow.md",
       "linus/self-check.md",
@@ -107,6 +108,39 @@ describe("skill frontmatter and assets", () => {
     ]) {
       assert.ok(existsSync(join(team, rel)), `${rel} must exist`);
     }
+  });
+
+  it("runs a design card as plan → prototype → PRD → self-check → review", () => {
+    const jobs = join(SKILL, "assets", "team", "standard", "jobs");
+    const workflow = readFileSync(join(jobs, "workflow.md"), "utf8");
+    const ui = readFileSync(join(jobs, "ui-workflow.md"), "utf8");
+    const selfCheck = readFileSync(join(jobs, "self-check.md"), "utf8");
+
+    assert.match(workflow, /ui-workflow\.md/, "the role workflow points at the UI sub-flow");
+    assert.match(workflow, /design\/specs\//, "planning artifacts live under design/specs");
+    assert.match(workflow, /design\/prototype\//, "prototypes live under design/prototype");
+    assert.match(workflow, /design\/prds\//, "PRDs live under design/prds");
+
+    const stages = [
+      "### 1. Plan and freeze the direction",
+      "### 2. Validate with a prototype",
+      "### 3. Write the PRD",
+      "### 4. Self-check the PRD",
+      "### 5. Review",
+    ];
+    let at = -1;
+    for (const stage of stages) {
+      const next = workflow.indexOf(stage);
+      assert.ok(next > at, `stage must exist in order: ${stage}`);
+      at = next;
+    }
+
+    assert.match(ui, /3 variants/i, "the sub-flow asks for variants");
+    assert.match(ui, /\?variant=/, "variants are switchable by URL");
+    assert.match(ui, /screenshot/i, "the sub-flow keeps screenshot evidence");
+    assert.match(ui, /design\/prototype\//, "prototype evidence lives under design/prototype");
+    assert.match(selfCheck, /design\/prds\//, "the self-check covers the PRD path");
+    assert.doesNotMatch(ui, /\bJobs\b/, "the sub-flow must not hard-code the board identity");
   });
 
   it("does not ship a roles/ directory inside the loop skill", () => {
@@ -247,6 +281,10 @@ describe("install-roles.mjs — project scope", () => {
     assert.ok(existsSync(join(project, ".meerkat", "roles", "manifest.json")));
     assert.ok(existsSync(join(project, ".claude", "agents", "jobs.md")));
     assert.ok(existsSync(join(project, ".codex", "agents", "reviewer.toml")));
+    assert.ok(
+      existsSync(join(project, ".meerkat", "roles", "jobs", "ui-workflow.md")),
+      "the UI sub-flow ships with the role",
+    );
 
     const second = runJson(t, INSTALL, args, { cwd: project });
     assert.equal(second.status, 0, second.stderr);

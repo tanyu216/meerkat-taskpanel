@@ -10,6 +10,8 @@ Inputs (read all of them):
 - the original's description, comments and **frozen** `acceptance` snapshot;
 - `.meerkat/<original>/card.md` and `.meerkat/<original>/plan.md` (if present), plus the
   notes, evidence, report drafts and attachments in that directory;
+- the product artifacts: `design/specs/<original>.md`, `design/prds/<original>.md` and
+  `design/prototype/<original>/` (if present);
 - the current-round delivery report and its evidence anchors;
 - the full comment trail, including unresolved decision/defect/change entries;
 - for an epic: the rollup report and every child's state.
@@ -18,10 +20,12 @@ Your core job is the **omission check**:
 1. Every original acceptance item is met with reproducible evidence.
 2. Every requirement in the description, comments and plan maps to an acceptance item or
    an explicit deferral.
-3. The delivery matches the plan, or every deviation is recorded and justified.
-4. The tests satisfy the team's rules: 100% pass, unit coverage > 80%, mocks only at
+3. `design/prds/<original>.md`, when present, gives every Must a testable acceptance and
+   contains no orphan or untestable requirement; it agrees with `design/specs/<original>.md`.
+4. The delivery matches the plan, or every deviation is recorded and justified.
+5. The tests satisfy the team's rules: 100% pass, unit coverage > 80%, mocks only at
    db/http/redis boundaries, no mocks in integration, real-scenario and boundary cases.
-5. No security or regression issue is left unaddressed.
+6. No security or regression issue is left unaddressed.
 A narrowed acceptance list, a missing requirement, an unexplained plan deviation, or
 insufficient evidence is a REJECT. A missing `plan.md` is not itself a failure; say so and
 fall back to the description and acceptance snapshot.

@@ -27,8 +27,10 @@ the review card, leave a `note` on the review card and stop. Do not deliver a ve
 - the original's description and every **frozen** acceptance item (`acceptance` in
   `issue get --json`); `meta.acceptance` is only the seed;
 - `.meerkat/<original>/card.md` (the authoritative brief) and
-  `.meerkat/<original>/plan.md` (the worker's plan, if it exists), plus notes, evidence,
+  `.meerkat/<original>/plan.md` (the worker's index, if it exists), plus notes, evidence,
   report drafts and attachments in that directory;
+- the product artifacts under the project's `design/` tree: `design/specs/<original>.md`,
+  `design/prds/<original>.md` and `design/prototype/<original>/` (if present);
 - the current round's delivery report and every evidence anchor;
 - the full comment trail, looking for unresolved decision / defect / change entries;
 - for an epic: the rollup report and every child's state.
@@ -42,13 +44,17 @@ the review card, leave a `note` on the review card and stop. Do not deliver a ve
    narrowed acceptance list, a missing requirement, or an unexplained deviation from
    `plan.md` is grounds for REJECT. A missing plan is not itself a failure; say so and fall
    back to the description and acceptance snapshot.
-3. **Evidence.** Re-run the acceptance gates and sample the evidence. The delivery report
+3. **PRD.** When `design/prds/<original>.md` exists, every Must requirement has a testable
+   acceptance and traces to the description, a frozen acceptance item or a prototype
+   finding; no requirement is untestable or orphaned; the chosen direction and recorded
+   deviations agree with `design/specs/<original>.md` and `plan.md`.
+4. **Evidence.** Re-run the acceptance gates and sample the evidence. The delivery report
    must be reproducible, not merely plausible.
-4. **Tests.** Apply the team's rules: 100% pass, unit coverage > 80%, mocks only at
+5. **Tests.** Apply the team's rules: 100% pass, unit coverage > 80%, mocks only at
    db/http/redis boundaries, no mocks in integration, real-scenario and boundary cases.
-5. **Security and regressions.** Check authorization, input validation, secrets,
+6. **Security and regressions.** Check authorization, input validation, secrets,
    injection, path traversal and SSRF; look for regressions in touched behaviour.
-6. **Epic.** The current-round rollup must match the live children; every child has an
+7. **Epic.** The current-round rollup must match the live children; every child has an
    explicit conclusion and no child is omitted.
 
 ## Verdict

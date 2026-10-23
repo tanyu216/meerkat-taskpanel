@@ -1,0 +1,84 @@
+# UI workflow — validate a design with a prototype
+
+Read this before stage 2 of the role workflow, when a card changes what a user sees or
+does. The prototype answers the card's design questions with evidence; it does not write
+the PRD and it is not a delivery.
+
+## When to skip
+
+- The card changes no user-visible surface: record why in `plan.md` and skip.
+- The card already carries a frozen direction and approved artifacts: verify them instead
+  of re-deriving them.
+
+## Inputs
+
+- `card.md`, the live card and the frozen `acceptance` snapshot;
+- `design/specs/<id>.md`: the frozen direction, the states and the 1–3 assumptions;
+- `.meerkat/<id>/plan.md`: the card index (acceptance mapping, risks, open questions);
+- the project's existing design system or tokens, if any. Extend it; never fork a second.
+
+## Steps
+
+### 1. Question card
+
+Write the 1–3 questions the prototype answers. A prototype that answers no question is
+waste. If the question is about state or logic rather than appearance, build a single
+clickable HTML demo instead of UI variants.
+
+### 2. Diverge
+
+Build 3 variants (max 5) in the real shell with representative data. Switch them with a
+URL parameter (`?variant=`) and a floating bar; keep the bar out of the deliverable.
+Variants must differ in at least two of: layout, information hierarchy, primary
+affordance, navigation model. Colour-only variants are not variants.
+
+### 3. Converge
+
+Pick one variant; mixing is allowed ("B's header with C's sidebar"). Record the choice, the
+rejected variants and why in `design/specs/<id>.md`, and link the verdict from `plan.md`.
+Write the one token source: colour (named values),
+type and scale, spacing ladder, radius, elevation, motion, component states, accessibility
+baseline, and the anti-patterns that would be a failure.
+
+### 4. Build
+
+Use the real shell and real (or representative) data. Implement every state that matters:
+empty, loading, error, permission denied, long content, partial, success. Every value
+traces to a token; no magic numbers. Structure first, then states, then UI motion — and
+motion only answers a user action, never a decorative page-load sequence.
+
+### 5. Verify
+
+Run four gates in order; the expensive ones do not replace the cheap ones.
+
+1. **Deterministic checks.** Accessibility, responsive behaviour and the common
+   generated-UI tells. Fix each finding or record a written waiver.
+2. **Browser geometry.** At least 3 widths (desktop, tablet, phone) plus the dark theme
+   and Chinese or the longest realistic content. Horizontal overflow 0; console and page
+   errors 0; keyboard focus visible; `prefers-reduced-motion` respected.
+3. **Screenshot self-review.** Look at your own screenshots; fix the three worst problems;
+   at most three rounds. Keep the before/after frames.
+4. **Critique pass.** Check focal point, hierarchy, typography, colour, surfaces, states
+   and motion, then remove generated-UI tells. This is a critique, not acceptance.
+
+### 6. Archive
+
+Put the verdict, the evidence (screenshots, commands, readings) and the rejected variants
+in `design/prototype/<id>/`. Keep the chosen prototype as the reference for the PRD and
+the implementation handoff. The switcher and the losing variants do not ship.
+
+## Evidence
+
+A claim without evidence is an open question, not a decision. Store screenshots, geometry
+readings and check outputs in `design/prototype/<id>/`, never in a scratch directory.
+
+## Boundaries
+
+- Keep every artifact inside the project: relative `design/...` paths only, never an
+  absolute path or another project's tree.
+- A prototype is not a delivery and never production code.
+- The prototype stack is closed: Tailwind CSS + daisyUI + jQuery. three.js needs a written
+  rationale and human approval.
+- Do not change the card's scope or acceptance. A design question that changes either is a
+  `question` to the project session.
+- Do not fork the project's design system; extend the one that exists.

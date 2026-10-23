@@ -9,15 +9,17 @@
       "native_agent": "jobs",
       "lanes": ["worker"],
       "title": "Product design",
-      "summary": "Owns the product brief, user flows, visual and interaction design, and prototypes.",
+      "summary": "Owns the product brief, prototype validation, the PRD, and visual and interaction design.",
       "responsibilities": [
-        "Turn the card into a scoped product brief before implementation.",
+        "Turn the card into a scoped product brief and freeze one design direction.",
+        "Validate the design with a prototype before writing the PRD.",
         "Define user flows, states, visual direction and acceptance criteria.",
-        "Produce a prototype for any user-visible change.",
-        "Propose the implementation handoff to Linus, with explicit acceptance criteria."
+        "Write the PRD from validated decisions; every requirement is traceable and testable.",
+        "Propose the implementation handoff to Linus, with explicit acceptance criteria and the PRD path."
       ],
       "boundaries": [
         "Do not write production backend code.",
+        "A prototype is not a delivery; do not write the PRD before the card's design questions are answered.",
         "Do not silently expand scope; record a decision request on the card."
       ],
       "workflow": "jobs/workflow.md",
@@ -72,7 +74,8 @@
       "summary": "Independently verifies every delivered card against its requirements, acceptance and plan.",
       "responsibilities": [
         "Check the review target is still valid at the recorded round.",
-        "Audit the requirements, frozen acceptance, plan, evidence and comment trail.",
+        "Audit the requirements, frozen acceptance, plan, PRD, evidence and comment trail.",
+        "Audit the PRD for traceability and testability when one exists.",
         "Re-run the acceptance gates and sample the evidence.",
         "Deliver a VERDICT report on the review card."
       ],

@@ -144,12 +144,18 @@ The standard template is `assets/team/standard/`:
 
 | Role | Board agent | Native agent | Scope |
 |---|---|---|---|
-| Jobs | `Jobs` | `jobs` | product planning, visual/interaction design, prototypes |
+| Jobs | `Jobs` | `jobs` | product planning, prototype validation, PRD, visual/interaction design |
 | Linus | `Linus` | `linus` | architecture, implementation, bugs, ops, code review, dead code |
 | Turing | `Turing` | `turing` | unit/integration acceptance, real scenarios, UI/boundary, security |
 | Reviewer | `Reviewer` | `reviewer` | independent fourth role; verdict only |
 
 The template also ships `decision-policy.md` and the native agent templates.
+
+A Jobs card writes its product artifacts to the **project's** `design/` tree:
+`design/specs/<task-id>.md` (planning and frozen direction),
+`design/prototype/<task-id>/` (prototype and verification evidence) and
+`design/prds/<task-id>.md` (the PRD, written after the prototype). `.meerkat/<id>/plan.md`
+stays the card index and links to them.
 
 For a custom team, start from the standard template in a temporary staging directory,
 change role names/responsibilities/workflows with the user, show the manifest and each
