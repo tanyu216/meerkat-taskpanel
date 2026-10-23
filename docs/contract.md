@@ -112,6 +112,20 @@ Three things follow, and the third is the point:
   the snapshot is what keeps a promise from changing silently. Validating against
   it would be a behavioural change and belongs in a card that says so.
 
+Two consequences worth naming, because the snapshot freezes the field and not the
+behaviour behind it:
+
+- **A declared enum is not a validator.** `GET /api/v1/tasks?kind=…` declares the
+  task-kind vocabulary, but the handler refuses an unknown value itself
+  (`VALIDATION_FAILED`) — the schema is never run. The declaration tells a client
+  what the route means; it does not make the route check it.
+- **A declared field does not imply the check on every path.**
+  `POST /api/v1/tasks/:ref/claim` declares `check_blockers`, but only
+  `issue claim --check-blockers` re-reads the dependency graph
+  (`BLOCKED_BY_PREDECESSOR`). The default claim trusts the caller, because the
+  candidate scan (`issue candidates`) already withholds blocked cards; the opt-in
+  exists for a caller that did not read candidates.
+
 `test/verify/contract.test.mjs` pins the premise in both directions: every route
 must carry such a declaration, and each one is checked down to its facets — and
 the drift tests retype, drop and widen a route request field and assert the gate
