@@ -128,9 +128,12 @@ atomically — the event is the signal, never the payload.
 
 It shares the loop's cadence — 300 ms debounce, 2 s maximum wait, `CARD_REFRESH_MIN_MS`
 (5 s) between batches — and refreshes are serial. Per-card failures are reported in the
-NDJSON stream and keep the previous file. The command does not reconnect: on
-`idle`/`shutdown`/`eof` it exits 0, and on a stream error it exits 1; resume with the last
-`refresh.revision` as `--after`.
+NDJSON stream and keep the previous file. `done` is terminal: a card that reaches it is
+written once and dropped from the watch, and when the last one is done the watcher aborts
+its own stream and emits `done`; a card that is already done at startup never causes a
+connection to open. The command does not reconnect: on `idle`/`shutdown`/`eof`/`done` it
+exits 0, and on a stream error it exits 1; resume with the last `refresh.revision` as
+`--after`.
 
 ## What is *not* an event
 

@@ -345,17 +345,25 @@ Output is newline-delimited JSON, like `events tail`:
 
 ```json
 {"type":"open"}
-{"type":"refresh","task_id":"…","identifier":"PROJ-0007","path":"/repo/.meerkat/PROJ-0007/card.md","changed":true}
+{"type":"refresh","task_id":"…","identifier":"PROJ-0007","path":"/repo/.meerkat/PROJ-0007/card.md","changed":true,"status":"in_progress"}
 {"type":"eof"}
 ```
 
-`refresh` carries `changed:false` when the file was already current, and an `error` object
-(the usual `{code,message,…}`) when one card could not be re-read; that failure is not
-fatal. `--after` seeds the replay cursor (when omitted, the command reads `/meta` first,
-closing the export→stream gap), and `--idle` ends a silent stream exactly as in `events
-tail`. Terminal lines are `idle`, `shutdown`, `eof` (exit 0) or `error` (exit 1), and always
-follow the last `refresh`. A failure before `open` is the normal `{ok:false}` document: a
-bad ref resolves nothing and no directory is created.
+`refresh` carries `changed:false` when the file was already current, `status` from the
+board, and an `error` object (the usual `{code,message,…}`) when one card could not be
+re-read; that failure is not fatal. `--after` seeds the replay cursor (when omitted, the
+command reads `/meta` first, closing the export→stream gap), and `--idle` ends a silent
+stream exactly as in `events tail`. Terminal lines are `idle`, `shutdown`, `eof` (exit 0),
+**`done`** (exit 0) or `error` (exit 1), and always follow the last `refresh`. A failure
+before `open` is the normal `{ok:false}` document: a bad ref resolves nothing and no
+directory is created.
+
+**`done` is terminal.** A watched card that reaches `done` is written once with its final
+brief and then dropped from the watch; when the last one is done the watcher closes its own
+stream and emits `{"type":"done"}`. If every named card is already done at startup, `open`,
+one `refresh` per card and `done` are written without opening an SSE connection at all. A
+done card that is later reopened (`issue reopen`) is no longer watched — start a new
+watcher. `canceled` is not a stop condition.
 
 One watcher per card is enough. The loop's `--subscribe` daemon already refreshes active
 queued cards, so a loop-dispatched worker must not start a second one.

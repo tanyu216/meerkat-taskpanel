@@ -131,6 +131,8 @@ export const WATCH_LINE = Object.freeze({
   SHUTDOWN: EVENT_STREAM_LINE.SHUTDOWN,
   EOF: EVENT_STREAM_LINE.EOF,
   ERROR: EVENT_STREAM_LINE.ERROR,
+  /** Every watched card reached `done`; the watcher stopped itself. */
+  DONE: "done",
 });
 
 /** The brief `export watch` keeps fresh: `<dir>/.meerkat/<identifier>/card.md`. */
@@ -516,31 +518,48 @@ export const COMMANDS = [
       const watched = new Map();
       const firstPass = [];
       for (const card of initial) {
-        watched.set(card.task_id, card.identifier);
+        // `done` is terminal: write its final brief, but do not keep watching it.
+        if (card.status !== "done") watched.set(card.task_id, card.identifier);
         firstPass.push({
           card,
           outcome: writeCardFile(watchPath(baseDir, card.identifier), card.markdown),
         });
       }
 
-      const stream = once
-        ? null
-        : await ctx.client.stream("/api/v1/events", { query: { after }, idleMs });
+      const emitFirstPass = () => {
+        ctx.emit({ type: WATCH_LINE.OPEN });
+        for (const { card, outcome } of firstPass) {
+          ctx.emit({
+            type: WATCH_LINE.REFRESH,
+            task_id: card.task_id,
+            identifier: card.identifier,
+            path: outcome.path,
+            changed: outcome.changed,
+            ...(card.status === undefined ? {} : { status: card.status }),
+          });
+        }
+      };
 
-      ctx.emit({ type: WATCH_LINE.OPEN });
-      for (const { card, outcome } of firstPass) {
-        ctx.emit({
-          type: WATCH_LINE.REFRESH,
-          task_id: card.task_id,
-          identifier: card.identifier,
-          path: outcome.path,
-          changed: outcome.changed,
-        });
-      }
       if (once) {
+        emitFirstPass();
         ctx.emit({ type: WATCH_LINE.EOF });
         return { streamed: true, exit: CLI_EXIT.OK };
       }
+      if (watched.size === 0) {
+        // Nothing left to follow: every named card is already done.
+        emitFirstPass();
+        ctx.emit({ type: WATCH_LINE.DONE });
+        return { streamed: true, exit: CLI_EXIT.OK };
+      }
+
+      const controller = new AbortController();
+      const stream = await ctx.client.stream("/api/v1/events", {
+        query: { after },
+        idleMs,
+        signal: controller.signal,
+      });
+      let completed = false;
+      emitFirstPass();
 
       const refresh = async ({ taskIds, all, revision }) => {
         const ids = all ? [...watched.keys()] : taskIds;
@@ -562,14 +581,18 @@ export const COMMANDS = [
                 details: { task_id: taskId },
               });
             }
+            const status = typeof card.status === "string" ? card.status : null;
             const outcome = writeCardFile(watchPath(baseDir, card.identifier), card.markdown);
-            watched.set(taskId, card.identifier);
+            // A done card has no further changes to follow; stop tracking it.
+            if (status === "done") watched.delete(taskId);
+            else watched.set(taskId, card.identifier);
             ctx.emit({
               type: WATCH_LINE.REFRESH,
               task_id: taskId,
               identifier: card.identifier,
               path: outcome.path,
               changed: outcome.changed,
+              ...(status === null ? {} : { status }),
               ...(revision === null ? {} : { revision }),
             });
           } catch (err) {
@@ -584,6 +607,12 @@ export const COMMANDS = [
               error: errorPayload(err),
             });
           }
+        }
+        // Every card reached `done`: no work remains, so close the stream now
+        // rather than holding a connection forever.
+        if (!completed && watched.size === 0) {
+          completed = true;
+          controller.abort();
         }
       };
       const scheduler = createWatchScheduler({ refresh });
@@ -631,10 +660,16 @@ export const COMMANDS = [
         // Never throw past `open`: the dispatcher's catch would print an
         // envelope into the middle of the NDJSON stream.
         if (err?.details?.reason === "aborted") {
-          // A caller abort is not an outcome of the stream; like `events tail`,
-          // leave the NDJSON without a terminal line.
-          emitTerminal = false;
-          exit = CLI_EXIT.OK;
+          if (completed) {
+            // The watcher closed the stream itself: every card is done.
+            terminal = { type: WATCH_LINE.DONE };
+            exit = CLI_EXIT.OK;
+          } else {
+            // A caller abort is not an outcome of the stream; like `events
+            // tail`, leave the NDJSON without a terminal line.
+            emitTerminal = false;
+            exit = CLI_EXIT.OK;
+          }
         } else if (err?.details?.reason === "idle") {
           terminal = { type: WATCH_LINE.IDLE, data: { idle_ms: idleMs } };
           exit = CLI_EXIT.OK;
@@ -646,6 +681,7 @@ export const COMMANDS = [
 
       // Drain before the terminal line, so a `refresh` never follows it.
       await scheduler.stop();
+      if (completed && terminal === null) terminal = { type: WATCH_LINE.DONE };
       if (emitTerminal) ctx.emit(terminal ?? { type: WATCH_LINE.EOF });
       return { streamed: true, exit };
     },

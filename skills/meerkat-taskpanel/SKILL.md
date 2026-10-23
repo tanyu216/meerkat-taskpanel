@@ -322,6 +322,11 @@ background and stop it when the card is delivered; if your runtime cannot keep a
 process, run `--once` at each phase boundary instead. The watcher is one-way — it refreshes
 the file, it does not wake you — so re-read the brief before a decision or a resume.
 
+It stops itself once the card reaches `done` (writing the final brief first), so a forgotten
+watcher cannot outlive the work indefinitely. A card that stops at `in_review` is not done
+yet: still kill the watcher when the session ends, and start a new one if a done card is
+reopened.
+
 **Do not start one when the `meerkat-loop` supervisor dispatched you**: its `--subscribe`
 daemon already refreshes active queued briefs, and a second watcher is duplicated traffic.
 Either way `card.md` is machine-generated — never hand-edit it. The command's output and

@@ -49,6 +49,9 @@ export function registerExportRoutes(router, surface) {
       cards: tasks.map((task) => ({
         identifier: task.identifier,
         task_id: task.id,
+        // The watcher stops itself when every card it follows is `done`; the
+        // status rides along so a consumer never has to parse the markdown.
+        status: task.status,
         markdown: renderCard(task, { repos }),
       })),
     };

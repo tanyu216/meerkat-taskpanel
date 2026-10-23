@@ -53,9 +53,13 @@ function fakeBoard(options = {}) {
     cards = [{ identifier: "DEMO-0001", task_id: "uuid-1" }],
     initial = "v1",
     refreshed = "v2",
+    initialStatus = "todo",
+    refreshedStatus = "todo",
+    statusFor = null,
     frames = [],
     refreshError = null,
     shutdown = null,
+    holdOpen = false,
   } = options;
   const byTask = new Map(cards.map((card) => [card.task_id, card.identifier]));
   const byIdentifier = new Map(cards.map((card) => [card.identifier, card.task_id]));
@@ -80,13 +84,18 @@ function fakeBoard(options = {}) {
       if (phase === "refresh" && refreshError !== null) {
         return sendJson(res, 404, { ok: false, error: refreshError });
       }
+      const taskId = byIdentifier.get(identifier);
+      const status = typeof statusFor === "function"
+        ? statusFor({ identifier, taskId, phase })
+        : (phase === "initial" ? initialStatus : refreshedStatus);
       return sendJson(res, 200, {
         ok: true,
         data: {
           cards: [
             {
               identifier,
-              task_id: byIdentifier.get(identifier),
+              task_id: taskId,
+              status,
               markdown: phase === "initial" ? initial : refreshed,
             },
           ],
@@ -101,7 +110,7 @@ function fakeBoard(options = {}) {
         res.write(`event: shutdown\ndata: ${JSON.stringify(shutdown)}\n\n`);
       }
       phase = "refresh";
-      res.end();
+      if (!holdOpen) res.end();
       return;
     }
     sendJson(res, 404, { ok: false, error: { code: "NOT_FOUND", message: "no route", http: 404 } });
@@ -562,7 +571,10 @@ describe("cli/export watch — stream", () => {
     assert.equal(result.exit, 0, result.stderr);
     assert.equal(readFileSync(join(projectDir, ".meerkat", "DEMO-0001", "card.md"), "utf8"), "v2");
     assert.deepEqual(calls.exports, ["DEMO-0001", "uuid-1"]);
-    assert.deepEqual(records(result.stdout).at(-1), { type: "eof" });
+    const lines = records(result.stdout);
+    assert.deepEqual(lines.at(-1), { type: "eof" });
+    // A live card's refresh record carries the status it saw.
+    assert.equal(lines.find((line) => line.type === "refresh").status, "todo");
   });
 
   it("leaves the card alone for an unrelated task_id", async () => {
@@ -634,6 +646,73 @@ describe("cli/export watch — stream", () => {
     assert.equal(failure.error.code, "NOT_FOUND");
     assert.equal(readFileSync(join(projectDir, ".meerkat", "DEMO-0001", "card.md"), "utf8"), "v1");
     assert.deepEqual(lines.at(-1), { type: "eof" });
+  });
+
+  it("does not open a stream when the card is already done", async () => {
+    const projectDir = makeTempDir();
+    const { handler, calls } = fakeBoard({ initialStatus: "done" });
+    const url = await serve(handler);
+
+    const result = await invokeWatch(["DEMO-0001", "--dir", projectDir, "--url", url]);
+    assert.equal(result.exit, 0, result.stderr);
+    const lines = records(result.stdout);
+    assert.deepEqual(lines.map((line) => line.type), ["open", "refresh", "done"]);
+    assert.equal(lines[1].status, "done");
+    assert.equal(calls.events, 0);
+    assert.equal(readFileSync(join(projectDir, ".meerkat", "DEMO-0001", "card.md"), "utf8"), "v1");
+  });
+
+  it("stops itself when the watched card reaches done", async () => {
+    const projectDir = makeTempDir();
+    const { handler, calls } = fakeBoard({
+      initialStatus: "todo",
+      refreshedStatus: "done",
+      frames: [{ event: "task_moved", task_id: "uuid-1", changes: { to: "done" } }],
+      holdOpen: true,
+    });
+    const url = await serve(handler);
+
+    const result = await invokeWatch(["DEMO-0001", "--dir", projectDir, "--url", url]);
+    assert.equal(result.exit, 0, result.stderr);
+    const lines = records(result.stdout);
+    assert.deepEqual(lines.at(-1), { type: "done" });
+    assert.equal(lines.filter((line) => line.type === "refresh").at(-1).status, "done");
+    assert.equal(calls.events, 1);
+    assert.equal(readFileSync(join(projectDir, ".meerkat", "DEMO-0001", "card.md"), "utf8"), "v2");
+  });
+
+  it("stops only after every watched card is done", async () => {
+    const projectDir = makeTempDir();
+    const cards = [
+      { identifier: "DEMO-0001", task_id: "uuid-1" },
+      { identifier: "DEMO-0002", task_id: "uuid-2" },
+    ];
+    const { handler, calls } = fakeBoard({
+      cards,
+      initial: "v1",
+      refreshed: "v2",
+      statusFor: ({ taskId, phase }) => {
+        if (taskId === "uuid-1") return "done"; // already done at startup
+        return phase === "initial" ? "todo" : "done";
+      },
+      frames: [{ event: "comment_added", task_id: "uuid-2" }],
+      holdOpen: true,
+    });
+    const url = await serve(handler);
+
+    const result = await invokeWatch([
+      "--ref", "DEMO-0001", "--ref", "DEMO-0002", "--dir", projectDir, "--url", url,
+    ]);
+    assert.equal(result.exit, 0, result.stderr);
+    const lines = records(result.stdout);
+    assert.deepEqual(lines.at(-1), { type: "done" });
+    assert.deepEqual(
+      lines.filter((line) => line.type === "refresh").map((line) => [line.identifier, line.status]),
+      [["DEMO-0001", "done"], ["DEMO-0002", "todo"], ["DEMO-0002", "done"]],
+    );
+    assert.equal(calls.events, 1);
+    assert.equal(readFileSync(join(projectDir, ".meerkat", "DEMO-0001", "card.md"), "utf8"), "v1");
+    assert.equal(readFileSync(join(projectDir, ".meerkat", "DEMO-0002", "card.md"), "utf8"), "v2");
   });
 });
 
