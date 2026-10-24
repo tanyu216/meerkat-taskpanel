@@ -120,6 +120,13 @@ function requireParentDirectory(path) {
 /* --------------------------------------------------------------- export watch */
 
 /**
+ * Default hard lifetime for `export watch`: two hours. A single card's work is
+ * not expected to outlive it, and the bound is what keeps a vanished session
+ * from leaving an SSE connection behind forever. `--ttl 0` disables it.
+ */
+export const CARD_WATCH_TTL_MS = 120 * 60 * 1000;
+
+/**
  * NDJSON line types for `export watch`: the shared stream spellings plus the one
  * record this command adds. Kept local (rather than in `foundation/constants`)
  * so the loop's generated payload does not change for a CLI-only vocabulary.
@@ -133,6 +140,8 @@ export const WATCH_LINE = Object.freeze({
   ERROR: EVENT_STREAM_LINE.ERROR,
   /** Every watched card reached `done`; the watcher stopped itself. */
   DONE: "done",
+  /** The `--ttl` bound expired; the watcher stopped itself. */
+  TTL: "ttl",
 });
 
 /** The brief `export watch` keeps fresh: `<dir>/.meerkat/<identifier>/card.md`. */
@@ -401,7 +410,7 @@ export const COMMANDS = [
   {
     name: "watch",
     summary: "Keep .meerkat/<identifier>/card.md fresh from the event stream.",
-    usage: "export watch [<ref>] [--ref <ref>]… [--dir <dir>] [--after <rev>] [--idle <ms>] [--once]",
+    usage: "export watch [<ref>] [--ref <ref>]… [--dir <dir>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once]",
     positionals: [
       {
         name: "ref",
@@ -440,6 +449,13 @@ export const COMMANDS = [
         summary: `End after this long with no bytes (0 disables; default ${SSE_SUBSCRIBE_IDLE_MS}).`,
       },
       {
+        flag: "ttl",
+        key: "ttl",
+        as: "number",
+        value: "<ms>",
+        summary: "Stop after this long in total (0 disables; default 120 minutes).",
+      },
+      {
         flag: "once",
         key: "once",
         as: "boolean",
@@ -462,6 +478,7 @@ export const COMMANDS = [
       const once = ctx.flags.once === true;
       const afterFlag = nonNegativeInteger(ctx.flags, "after", "after");
       const idleMs = nonNegativeInteger(ctx.flags, "idle", "idle") ?? SSE_SUBSCRIBE_IDLE_MS;
+      const ttlMs = nonNegativeInteger(ctx.flags, "ttl", "ttl") ?? CARD_WATCH_TTL_MS;
 
       const baseDir = ctx.flags.dir === undefined
         ? resolve(ctx.cwd)
@@ -559,6 +576,17 @@ export const COMMANDS = [
         signal: controller.signal,
       });
       let completed = false;
+      // A hard lifetime bound. The session that started the watcher may be
+      // gone without killing it, and a card that never reaches `done` would
+      // otherwise keep this connection open forever.
+      let ttlExpired = false;
+      const ttlTimer = ttlMs > 0
+        ? setTimeout(() => {
+            ttlExpired = true;
+            controller.abort();
+          }, ttlMs)
+        : null;
+      if (typeof ttlTimer?.unref === "function") ttlTimer.unref();
       emitFirstPass();
 
       const refresh = async ({ taskIds, all, revision }) => {
@@ -664,6 +692,10 @@ export const COMMANDS = [
             // The watcher closed the stream itself: every card is done.
             terminal = { type: WATCH_LINE.DONE };
             exit = CLI_EXIT.OK;
+          } else if (ttlExpired) {
+            // The hard lifetime bound fired.
+            terminal = { type: WATCH_LINE.TTL, data: { ttl_ms: ttlMs } };
+            exit = CLI_EXIT.OK;
           } else {
             // A caller abort is not an outcome of the stream; like `events
             // tail`, leave the NDJSON without a terminal line.
@@ -679,9 +711,14 @@ export const COMMANDS = [
         }
       }
 
+      if (ttlTimer !== null) clearTimeout(ttlTimer);
+
       // Drain before the terminal line, so a `refresh` never follows it.
       await scheduler.stop();
       if (completed && terminal === null) terminal = { type: WATCH_LINE.DONE };
+      else if (ttlExpired && terminal === null) {
+        terminal = { type: WATCH_LINE.TTL, data: { ttl_ms: ttlMs } };
+      }
       if (emitTerminal) ctx.emit(terminal ?? { type: WATCH_LINE.EOF });
       return { streamed: true, exit };
     },

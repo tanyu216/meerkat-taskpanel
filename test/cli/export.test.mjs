@@ -105,6 +105,9 @@ function fakeBoard(options = {}) {
     if (req.method === "GET" && req.url.startsWith("/api/v1/events")) {
       calls.events += 1;
       res.writeHead(200, { "content-type": "text/event-stream" });
+      // Send the headers before a frame so a held-open stream still resolves
+      // the client's fetch (the TTL test has no frames at all).
+      res.flushHeaders?.();
       for (const frame of frames) res.write(`id: 1\ndata: ${JSON.stringify(frame)}\n\n`);
       if (shutdown !== null) {
         res.write(`event: shutdown\ndata: ${JSON.stringify(shutdown)}\n\n`);
@@ -679,6 +682,19 @@ describe("cli/export watch — stream", () => {
     assert.equal(lines.filter((line) => line.type === "refresh").at(-1).status, "done");
     assert.equal(calls.events, 1);
     assert.equal(readFileSync(join(projectDir, ".meerkat", "DEMO-0001", "card.md"), "utf8"), "v2");
+  });
+
+  it("stops itself after --ttl and reports ttl", async () => {
+    const projectDir = makeTempDir();
+    const { handler } = fakeBoard({ holdOpen: true });
+    const url = await serve(handler);
+
+    const result = await invokeWatch([
+      "DEMO-0001", "--dir", projectDir, "--url", url, "--ttl", "50",
+    ]);
+    assert.equal(result.exit, 0, result.stderr);
+    assert.deepEqual(records(result.stdout).at(-1), { type: "ttl", data: { ttl_ms: 50 } });
+    assert.equal(readFileSync(join(projectDir, ".meerkat", "DEMO-0001", "card.md"), "utf8"), "v1");
   });
 
   it("stops only after every watched card is done", async () => {
