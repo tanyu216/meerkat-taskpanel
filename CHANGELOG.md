@@ -44,6 +44,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A board-wide activity cursor (`GET /api/v1/activities`).** The activity ledger used to
+  backfill by reading every card's trail separately; it now makes one newest-first read
+  (limit 1000) and scopes the rows through the board's own task set. The route takes the same
+  `?after=<revision>`, `?limit`, `?order` contract as the per-card trail, including the strict
+  cursor validation.
+
 - **Three read-surface conveniences for an integrating poll (no migration).**
   `comment add --ref <kind:id>` (repeatable) stores references in the comment's existing wire
   `refs`; `project ensure <id>` creates a project if absent and returns an existing one

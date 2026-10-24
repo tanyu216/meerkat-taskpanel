@@ -5,15 +5,11 @@
  * this module is where its two halves come from:
  *
  *   * **The ledger** — every admitted activity of the current project, newest
- *     first. `GET /tasks/:ref/activities` is M6a's only audit read: it is scoped
- *     to one card, so the project-wide ledger is read by fanning out over the
- *     board's own task list (bounded pool) and **merging**. That is a deliberate
- *     choice of the frozen API: no project-level activities route exists, and
- *     this card may not add one (its boundary is the implementation). The cost is
- *     one small read per card, paid once per view entry, and the store keeps what
- *     it has read, so re-entering the view re-reads only what the stream has not
- *     already handed it. A project-wide route in M6 replaces the fan-out without
- *     changing anything above this module.
+ *     first. `GET /activities` returns the board-wide audit trail in one read;
+ *     the feed scopes it to the board's own task set (the current project), so
+ *     another project's rows are dropped at derivation, not at the read. The
+ *     store keeps what it has read, so re-entering the view re-reads only what
+ *     the stream has not already handed it.
  *   * **The live tail** — the board's own SSE stream already delivers every
  *     activity as it happens (`stores/board.js` → `absorb`), so a card that moves
  *     after the backfill lands in the feed without a second connection.
@@ -38,10 +34,11 @@ import { assigneeFilterValue, board, ME, onActivityStream } from "./board.js";
 /** The read cursor's storage key — the same browser-local surface theme/lang use. */
 export const ACTIVITY_SEEN_KEY = "meerkat-taskpanel.activitySeen";
 
-/** How many per-card audit reads are in flight at once during a backfill. */
-const POOL = 8;
-/** The per-card read cap. The ledger's first pages live far inside it. */
-const PER_TASK_LIMIT = 50;
+/**
+ * The ledger's backfill cap — one board-wide page, newest first. The route's
+ * own ceiling is 1000; the feed's "Load older" pages inside what was read.
+ */
+const LEDGER_LIMIT = 1_000;
 
 /** Read the persisted read cursor, or `null` when this browser has never read. */
 export function readSeen(storage = globalThis.localStorage) {
@@ -223,10 +220,10 @@ export function resetActivity() {
  * Backfill the ledger for the current project.
  *
  * Idempotent per project: entering the view again with entries already read for
- * this project resolves immediately, so a view switch never re-issues the
- * fan-out. A project switch invalidates and re-reads. Per-card failures are
- * swallowed — one unreadable card must not blank the ledger — and the view's
- * empty state is what says whether anything came back.
+ * this project resolves immediately, so a view switch never re-issues the read.
+ * A project switch invalidates and re-reads. One read failure surfaces through
+ * `activity.error`; the board-wide response is not split into rows that could
+ * fail independently.
  */
 export async function loadActivities() {
   const token = ++loadToken;
@@ -244,29 +241,14 @@ export async function loadActivities() {
   activity.loading = true;
   activity.error = null;
   try {
-    const tasks = board.tasks.filter((task) => task.project_id === projectId);
-    const collected = [];
-    const queue = [...tasks];
-    const workers = Array.from({ length: Math.min(POOL, queue.length) }, async () => {
-      for (;;) {
-        const task = queue.shift();
-        if (task === undefined) return;
-        try {
-          const data = await api.taskActivities(task.identifier, { limit: PER_TASK_LIMIT });
-          collected.push(...(data.activities ?? []));
-        } catch {
-          /* one card's trail is not the ledger; the others still load */
-        }
-      }
-    });
-    await Promise.all(workers);
-    // A fan-out the store has already left behind (another project, or a reset)
-    // is history: it may not merge into the ledger that replaced it.
+    const data = await api.boardActivities({ limit: LEDGER_LIMIT, order: "desc" });
+    // A read the store has already left behind (another project, or a reset) is
+    // history: it may not merge into the ledger that replaced it.
     if (token !== loadToken) return activity.entries;
-    // The stream may have delivered rows while the fan-out was in flight; the
+    // The stream may have delivered rows while the read was in flight; the
     // merge is by id, so nothing is counted twice and nothing is lost.
     const byId = new Map(activity.entries.map((entry) => [entry.id, entry]));
-    for (const entry of collected) if (!byId.has(entry.id)) byId.set(entry.id, entry);
+    for (const entry of data.activities ?? []) if (!byId.has(entry.id)) byId.set(entry.id, entry);
     activity.entries = [...byId.values()];
     // A read taken while the board is still loading its task list sees a partial
     // project; marking that memoised would leave a project switch showing an

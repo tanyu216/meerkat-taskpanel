@@ -104,6 +104,13 @@ whole audit trail.
   `test/contract/activity-consumers.test.mjs` is what keeps a declared event out of this
   branch.
 
+### The activity ledger (`web/src/stores/activity.js`)
+
+The ledger backfills with **one** `GET /activities` (`limit=1000&order=desc`) instead of
+one read per card. The response is board-wide; the feed scopes it to the board's own task
+set (the current project) at derivation, and the live stream keeps merging rows by id. A
+project switch invalidates the read, not a per-card pool.
+
 ### The human activity feed (`web/src/lib/activity-feed.js`)
 
 A strict allow-list, because the feed is a *human* account, not a raw log:

@@ -195,7 +195,8 @@ The body is `##` sections, canonical order **Background · Acceptance · Comment
 Attachments (only when the card has files) · Report**. The exporter always writes the other
 five; `## Attachments` appears only when the card carries attachments. Prose in
 `## Background` becomes the card's description. The card does **not** carry the activity
-trail: the full audit trail is a separate board read (`GET /api/v1/tasks/:ref/activities`).
+trail: the full audit trail is a separate board read (`GET /api/v1/tasks/:ref/activities`
+for one card, `GET /api/v1/activities` across the board).
 
 ```
 ## Acceptance

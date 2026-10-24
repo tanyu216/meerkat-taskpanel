@@ -2,10 +2,13 @@
  * `stores/activity.js` — the ledger's own read, browser-free.
  *
  * The view's skeleton reads `activity.loading`, so that flag has to mean "the
- * ledger's fan-out is in flight" and nothing else: it may not be cleared by a
- * fan-out the store has already left behind (a project switch starts a second
- * read while the first is still in flight), and `resetActivity()` must invalidate
+ * ledger's read is in flight" and nothing else: it may not be cleared by a read
+ * the store has already left behind (a project switch starts a second read
+ * while the first is still in flight), and `resetActivity()` must invalidate
  * whatever is in the air.
+ *
+ * The backfill is one board-wide `GET /activities`; the feed scopes the rows to
+ * the board's own task set at derivation, not at the read.
  *
  * Same harness as `board.store.test.mjs`: Vue is the in-repo shim, `fetch` is the
  * only stubbed boundary, and the store/service chain is the real one.
@@ -50,11 +53,12 @@ const wireTask = (identifier, projectId) => ({
 const wireActivity = (id, taskId) => ({
   id,
   task_id: taskId,
-  kind: "status",
-  at: "2026-01-01T00:00:00.000Z",
-  actor: "codex",
+  event: "task_created",
+  changes: {},
+  revision: id,
   actor_kind: "agent",
-  payload: {},
+  actor_id: "codex",
+  created_at: "2026-01-01T00:00:00.000Z",
 });
 
 beforeEach(() => {
@@ -68,19 +72,21 @@ beforeEach(() => {
 /* ------------------------------------------------------------------ reads */
 
 describe("web/activity — the ledger's loading window", () => {
-  it("holds loading while the fan-out is in flight", async () => {
+  it("holds loading while the board-wide read is in flight", async () => {
     board.currentProjectId = "p1";
     board.loaded = true;
     board.tasks = [wireTask("TD-1", "p1")];
 
     let release;
-    installFetch({
-      "GET /api/v1/tasks/TD-1/activities": () => new Promise((resolve) => (release = resolve)),
+    const calls = installFetch({
+      "GET /api/v1/activities": () => new Promise((resolve) => (release = resolve)),
     });
 
     const pending = loadActivities();
     assert.equal(activity.loading, true, "the view shows its skeleton while this is true");
     assert.equal(activity.projectId, "p1");
+    assert.match(calls[0].url, /^\/api\/v1\/activities\?/);
+    assert.match(calls[0].url, /limit=1000/);
 
     release(ok({ activities: [wireActivity(1, "td_TD-1")] }));
     await pending;
@@ -89,15 +95,19 @@ describe("web/activity — the ledger's loading window", () => {
     assert.deepEqual(activity.entries.map((entry) => entry.id), [1]);
   });
 
-  it("does not let a fan-out for a project already left write the new ledger", async () => {
+  it("does not let a read for a project already left write the new ledger", async () => {
     board.currentProjectId = "p1";
     board.loaded = true;
     board.tasks = [wireTask("TD-1", "p1")];
 
     let releaseOld;
+    let call = 0;
     installFetch({
-      "GET /api/v1/tasks/TD-1/activities": () => new Promise((resolve) => (releaseOld = resolve)),
-      "GET /api/v1/tasks/TD-2/activities": () => ok({ activities: [wireActivity(2, "td_TD-2")] }),
+      "GET /api/v1/activities": () => {
+        call += 1;
+        if (call === 1) return new Promise((resolve) => (releaseOld = resolve));
+        return ok({ activities: [wireActivity(2, "td_TD-2")] });
+      },
     });
 
     const old = loadActivities();
@@ -113,18 +123,18 @@ describe("web/activity — the ledger's loading window", () => {
     await old;
 
     assert.equal(activity.projectId, "p2", "the ledger is still the new project's");
-    assert.deepEqual(activity.entries.map((entry) => entry.id), [2], "the late fan-out is dropped");
+    assert.deepEqual(activity.entries.map((entry) => entry.id), [2], "the late read is dropped");
     assert.equal(activity.loading, false, "and it does not clear a flag it no longer owns");
   });
 
-  it("invalidates an in-flight fan-out on reset", async () => {
+  it("invalidates an in-flight read on reset", async () => {
     board.currentProjectId = "p1";
     board.loaded = true;
     board.tasks = [wireTask("TD-1", "p1")];
 
     let release;
     installFetch({
-      "GET /api/v1/tasks/TD-1/activities": () => new Promise((resolve) => (release = resolve)),
+      "GET /api/v1/activities": () => new Promise((resolve) => (release = resolve)),
     });
 
     const pending = loadActivities();
@@ -137,7 +147,7 @@ describe("web/activity — the ledger's loading window", () => {
     release(ok({ activities: [wireActivity(1, "td_TD-1")] }));
     await pending;
 
-    assert.deepEqual(activity.entries, [], "the stale fan-out writes nothing");
+    assert.deepEqual(activity.entries, [], "the stale read writes nothing");
     assert.equal(activity.projectId, null);
     assert.equal(activity.loading, false);
   });
