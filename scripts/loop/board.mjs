@@ -40,6 +40,8 @@ export function reviewCreateArgs(action) {
     "--assignee", action.reviewer,
     "--assignee-kind", "agent",
     "--label", "review",
+    // 0038 — a review card is flow B and is never itself reviewed.
+    "--acceptance-mode", "off",
     "--meta", "flow=B",
     "--review-of", action.original_ref,
     "--review-round", String(action.round),
@@ -234,7 +236,6 @@ export async function runWorkflowPass(opts, config, log) {
   const args = ["issue", "reconcile", "--workflow"];
   if (opts.dryRun) args.push("--dry-run");
   if (config.reviewer !== null) args.push("--reviewer", config.reviewer);
-  args.push("--auto-accept-reviews", config.autoAcceptReviews === false ? "no" : "yes");
   args.push("--review-aging-ms", String(config.reviewAgingMs));
   args.push("--max-actions", String(config.maxActions));
   args.push("--board-limit", String(opts.boardLimit));
@@ -281,11 +282,8 @@ export async function runWorkflowPass(opts, config, log) {
           action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
         }`,
         ...(action.assignee_id === null ? [] : ["--assignee-id", String(action.assignee_id)]),
-        // 0031 — the loop creates as a non-human actor, so an optional project
-        // requires an explicit decision. Inherit the original epic's marker
-        // (the board puts it on the action); an older board without the field
-        // defaults to "no" for a rework child.
-        "--review", action.review_required === true ? "yes" : "no",
+        // 0038 — a fix child is a loop artifact: no review, no human gate.
+        "--acceptance-mode", "off",
         "--meta", `rework_of=${action.original_ref}`,
         "--meta", `rework_round=${action.rework_round}`,
         "--target", `rework:${action.original_ref}:r${action.rework_round}`,

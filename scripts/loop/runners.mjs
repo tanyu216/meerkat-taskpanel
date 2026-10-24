@@ -297,7 +297,6 @@ export async function notifySlaAlerts(deps) {
  * write happens before it arrives. Actions run independently, one failure never
  * stops the rest, and the review card is closed last, so a crash between the
  * original's move and the card's close is recovered on the next pass.
- * `autoAcceptReviews=false` is already in each action's `close_review`.
  *
  * @param {{
  *   plan?: {alerts?: object[], actions?: object[], changes?: object[], summary?: object},
@@ -372,10 +371,9 @@ export async function runWorkflowTick(deps) {
   for (const alert of alerts) {
     log(`workflow: ${describeWorkflowAlert(alert)}`);
   }
-  // Standing-state notices (no reviewer configured, a capped pass, a review
-  // waiting for a human by the operator's own --auto-accept-reviews=no)
-  // would otherwise re-notify on every pass forever. They are logged; only
-  // findings an operator can act on are notified.
+  // Standing-state notices (no reviewer configured, a capped pass) would
+  // otherwise re-notify on every pass forever. They are logged; only findings
+  // an operator can act on are notified.
   notifyBatch(alerts.filter((alert) => WORKFLOW_NOTIFY_TYPES.has(alert.type)));
   for (const change of changes) {
     log(`workflow: reconcile ${change.action} ${change.epic} (${change.reason})`);
@@ -397,10 +395,8 @@ export async function runWorkflowTick(deps) {
   // `in_review → canceled` edge. `close_review` still ends `done`, because that
   // is the only terminal an `in_review` card can reach directly.
   const closeReviewCard = async (action, note) => {
-    if (action.close_review === false) {
-      log(`workflow: review ${action.review_ref} left in_review for human acceptance`);
-      return;
-    }
+    // 0038 — the loop always closes the review card it dispatched. `human` is a
+    // card mode, not a "leave the review open" flag.
     // The board carries the status; the fallback keeps an older plan safe.
     const status =
       action.review_status ?? (action.type === "cancel_review" ? "canceled" : "in_review");
@@ -470,29 +466,6 @@ export async function runWorkflowTick(deps) {
             `Loop auto-accepted this review card after applying VERDICT: APPROVE to ${action.original_ref}.`,
           );
           break;
-
-        // `human-only` + a top-level original: record the verdict, close the
-        // review card, leave acceptance to the human. `held` (from the board,
-        // which compared the marker with the current round) skips the writes.
-        case "approve_hold": {
-          if (action.held !== true) {
-            await step(comment, "comment", action.original_ref, {
-              kind: "note",
-              body:
-                `Review ${action.review_ref} (round ${action.round}): VERDICT: APPROVE. ` +
-                `This board accepts top-level cards by a human, so the card is left in in_review for acceptance.`,
-            });
-            await step(setMeta, "setMeta", action.original_ref, {
-              review_verdict: "approve",
-              review_verdict_round: String(action.round),
-            });
-          }
-          await closeReviewCard(
-            action,
-            `Loop recorded VERDICT: APPROVE for ${action.original_ref}; the card awaits human acceptance.`,
-          );
-          break;
-        }
 
         case "reject_task": {
           const body = `VERDICT: REJECT (review ${action.review_ref}, round ${action.round}).\n\n${
@@ -607,7 +580,7 @@ const EXPECTED_ACCEPTANCE_SKIP_CODES = new Set([
  * (`dispatch_skipped`, `dispatch_capped`, `review_awaiting_human_acceptance`):
  * a tick cannot resolve them, so notifying would repeat every period.
  * A state-based alert may still notify once when the ledger keys it to the
- * state rather than the clock (`actions_capped`, `review_cards_unclosable`).
+ * state rather than the clock (`actions_capped`).
  */
 const WORKFLOW_NOTIFY_TYPES = new Set([
   "reconcile",
@@ -621,7 +594,6 @@ const WORKFLOW_NOTIFY_TYPES = new Set([
   "original_unexpected_status",
   "review_stale_round",
   "actions_capped",
-  "review_cards_unclosable",
 ]);
 
 function describeWorkflowAlert(alert) {
@@ -637,8 +609,6 @@ function describeWorkflowAction(action) {
       return `auto-accept ${action.original_ref} (round ${action.round})`;
     case "approve":
       return `approve ${action.original_ref} (round ${action.round}) and close ${action.review_ref}`;
-    case "approve_hold":
-      return `record approval of ${action.original_ref} (round ${action.round}) and leave it for a human`;
     case "reject_task":
     case "reject_epic":
       return `${action.type} ${action.original_ref} (round ${action.round})`;

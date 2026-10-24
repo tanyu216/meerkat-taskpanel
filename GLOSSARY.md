@@ -189,30 +189,27 @@ tested against each other.
 _中文_: 交付门禁
 _Avoid_: review gate, checklist, policy
 
-**Acceptance authority**:
-The board policy and card scope that decide who may move a card into `done`. Under the
-default `both`, a human or the board (`taskd`) closes a **top-level** card, and a worker
-agent may not accept its own; a **child** card is the opposite, closed only by a non-human
-writer. Acceptance is a separate act from delivery, and the board refuses the shortcut.
-Authority decides *who*; the acceptance baseline decides *whether* the evidence suffices.
-_中文_: 验收权限
-_Avoid_: approver role, reviewer (the reviewer reports; it does not accept)
+**Acceptance mode**:
+The one word that decides who may move a card into `done`: `off` (the deliverer may close it,
+and `in_progress → done` is allowed), `agent` (an independent review card must APPROVE first;
+`taskd` or a human closes), `human` (a person only). Resolved once at creation and stored on
+the card; a card **never** stores `auto`. Authority decides *who*; the acceptance baseline
+decides *whether* the evidence suffices.
+_中文_: 验收模式
+_Avoid_: acceptance policy, approver role, reviewer (the reviewer reports; it does not accept)
 
-**Review policy**:
-A project's default answer to "does a card need an independent review?" — `required`,
-`optional` (the default) or `off`. It is **not** acceptance authority: the review policy
-decides whether a review card is created, the acceptance policy decides who may close the
-card. A project's `reviewer` optionally overrides the deployment reviewer.
-_中文_: 审核策略
-_Avoid_: acceptance policy, review gate
+**Project acceptance**:
+A project's default mode for new cards — `auto` (the default), `off`, `agent` or `human`.
+`auto` means the creator decides per card; an unresolved card falls back to `human`. It is a
+default, not a mandate: an explicit `--acceptance-mode` wins.
+_中文_: 项目验收默认
+_Avoid_: review policy (retired), board policy
 
-**Review-required marker**:
-The per-card `review_required` decision, resolved at creation from the project's review
-policy (and, in an `optional` project, from the creator's explicit choice) and stored as a
-snapshot. Dispatch, auto-accept and the `done` gate read this marker, never the project's
-current policy. A review card is always `0`.
-_中文_: 审核标记
-_Avoid_: project policy (that is the default, not the decision)
+**Legacy review marker**:
+`review_required` (and `projects.review_policy`) survive one release as the old spelling of
+`agent`; every new write derives it from `acceptance_mode`. A review card is always `off`.
+_中文_: 旧审核标记
+_Avoid_: review policy (as a live concept)
 
 **Effective reviewer**:
 The reviewer a card's review card is assigned to: `project.reviewer` when the project sets
@@ -221,10 +218,10 @@ config). The loop merges every project reviewer into its scan/wake set.
 _中文_: 实际审核人
 
 **Auto-accept**:
-The loop's `auto_accept` action for a delivered card whose `review_required` is `0`: it writes
-`meta.accepted_by=loop-auto` and moves the card `in_review → done` when the board's acceptance
-policy allows `taskd` to close that scope. Under `human-only` a top-level card is left for the
-human; a child still auto-accepts. It is distinct from closing a review card.
+The loop's `auto_accept` action for a delivered card whose `acceptance_mode` is `off`: it
+writes `meta.accepted_by=loop-auto` and moves the card `in_review → done`. A `human` card is
+left for the person; an `off` card may also be delivered straight to `done`. It is distinct
+from closing a review card.
 _中文_: 自动验收
 
 **Report**:

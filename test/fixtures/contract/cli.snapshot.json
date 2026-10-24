@@ -622,6 +622,14 @@
               "short": null
             },
             {
+              "flag": "acceptance-mode",
+              "as": "string",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "allow-dup",
               "as": "boolean",
               "value": null,
@@ -680,7 +688,7 @@
             {
               "flag": "kind",
               "as": "string",
-              "value": "<task|epic|deploy>",
+              "value": "<task|epic>",
               "required": false,
               "repeat": false,
               "short": null
@@ -836,6 +844,14 @@
               "flag": "seg",
               "as": "string",
               "value": "<seg>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "to",
+              "as": "string",
+              "value": null,
               "required": false,
               "repeat": false,
               "short": null
@@ -1067,14 +1083,6 @@
           "positionals": [],
           "flags": [
             {
-              "flag": "auto-accept-reviews",
-              "as": "string",
-              "value": "yes|no",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "board-limit",
               "as": "string",
               "value": "<n>",
@@ -1161,6 +1169,14 @@
               "short": null
             },
             {
+              "flag": "acceptance-mode",
+              "as": "string",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "acceptance-revision",
               "as": "number",
               "value": "<n>",
@@ -1187,7 +1203,7 @@
             {
               "flag": "kind",
               "as": "string",
-              "value": "<task|epic|deploy>",
+              "value": "<task|epic>",
               "required": false,
               "repeat": false,
               "short": null
@@ -1281,6 +1297,14 @@
           "positionals": [],
           "flags": [
             {
+              "flag": "acceptance",
+              "as": "string",
+              "value": "<auto|off|agent|human>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "id",
               "as": "string",
               "value": "<id>",
@@ -1366,6 +1390,14 @@
             }
           ],
           "flags": [
+            {
+              "flag": "acceptance",
+              "as": "string",
+              "value": "<auto|off|agent|human>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
             {
               "flag": "label",
               "as": "string",
@@ -1466,6 +1498,14 @@
             }
           ],
           "flags": [
+            {
+              "flag": "acceptance",
+              "as": "string",
+              "value": "<auto|off|agent|human>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
             {
               "flag": "label",
               "as": "string",

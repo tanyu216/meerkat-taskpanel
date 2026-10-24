@@ -250,8 +250,19 @@ export function insertTask(db, overrides = {}) {
     ["review_of_id", row.review_of_id ?? null],
     ["review_round", row.review_round ?? null],
     // 0031 — the creation-time snapshot. A legacy board has no such column, so
-    // it is schema-probed like the rest; a review card is inserted at 0.
-    ["review_required", row.review_required ?? 0],
+    // it is schema-probed like the rest; a review card is inserted at 0. 0038's
+    // mirror means the two must agree, so an explicit `agent` mode implies 1.
+    [
+      "review_required",
+      row.review_required ?? (row.acceptance_mode === "agent" ? 1 : 0),
+    ],
+    // 0038 — the single acceptance decision. Derived from the legacy mirror
+    // when the caller only states that, so a fixture cannot trip the mirror
+    // trigger by accident; pass `acceptance_mode` explicitly to seed `human`.
+    [
+      "acceptance_mode",
+      row.acceptance_mode ?? (Number(row.review_required ?? 0) === 1 ? "agent" : "off"),
+    ],
     // 0005 — carried explicitly so a migration test can seed the JSON a
     // backfill reads. Absent before 0005, hence the schema probe.
     ["meta_json", row.meta_json ?? "{}"],

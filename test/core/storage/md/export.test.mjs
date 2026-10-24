@@ -250,7 +250,9 @@ describe("md/export — 0031 review decision", () => {
         title: "Reviewed",
         actor: { kind: "agent", id: "linus" },
       });
-      commands.createProject({ id: "proj", name: "P", actor: { kind: "human", id: "T" } });
+      // 0038 — an `auto` project falls back to `human` per card; `off` is the
+      // state that writes no key.
+      commands.createProject({ id: "proj", name: "P", acceptance: "off", actor: { kind: "human", id: "T" } });
       const plain = commands.createTask({
         projectId: "proj",
         title: "Plain",
@@ -259,6 +261,18 @@ describe("md/export — 0031 review decision", () => {
 
       assert.match(renderCard(required, { repos }), /^review_required: yes$/m);
       assert.doesNotMatch(renderCard(plain, { repos }), /^review_required:/m);
+      // 0038 — the mode is the forward key; `off` stays absent like the legacy
+      // `review_required`, and `agent` states itself.
+      assert.match(renderCard(required, { repos }), /^acceptance_mode: agent$/m);
+      assert.doesNotMatch(renderCard(plain, { repos }), /^acceptance_mode:/m);
+
+      const human = commands.createTask({
+        projectId: "proj",
+        title: "Human",
+        acceptanceMode: "human",
+        actor: { kind: "human", id: "T" },
+      });
+      assert.match(renderCard(human, { repos }), /^acceptance_mode: human$/m);
     } finally {
       board.close();
     }
@@ -453,7 +467,13 @@ describe("md/export — 0033 rollups", () => {
       const ctx = createContext({ db: board.db, repos, clock: () => TS });
       const commands = createCommands(ctx);
       const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: agent });
-      const child = commands.createTask({ projectId: "proj", title: "Child", allowDup: true, actor: agent });
+      const child = commands.createTask({
+        projectId: "proj",
+        title: "Child",
+        acceptanceMode: "off",
+        allowDup: true,
+        actor: agent,
+      });
       commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: agent });
 
       commands.claim({ id: child.id, actor: agent });

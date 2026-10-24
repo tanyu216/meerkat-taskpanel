@@ -18,7 +18,6 @@
 import { readConfigFileVars } from "../foundation/env-config.mjs";
 import { DomainError } from "../foundation/errors.mjs";
 import { readSlaConfig } from "../foundation/sla-config.mjs";
-import { createAcceptancePolicy } from "./acceptance-policy.mjs";
 import { createCommands, createContext } from "./commands/index.mjs";
 import { closeDatabase, openDatabase, sqliteVersion } from "./storage/driver.mjs";
 import { applyMigrations, assertSchemaCurrent, listMigrations } from "./storage/migrations-runner.mjs";
@@ -42,7 +41,6 @@ import { readRuntimePointer, writeRuntimePointer } from "./storage/secrets/runti
  *   readonly?: boolean,
  *   allowStale?: boolean,
  *   busyTimeoutMs?: number,
- *   acceptancePolicy?: string,
  *   envFile?: string|null,          // the config file path, for errors / the Access panel
  *   envVars?: Map<string,string>|Record<string,string>|null, // the parsed `.env` layer
  *   processEnv?: NodeJS.ProcessEnv|null, // the *unmerged* environment (source decisions)
@@ -71,6 +69,11 @@ export async function openBoard(options = {}) {
   const dataDir = resolveDataDir({ dataDir: options.dataDir ?? null, env });
   const dbPath = resolveDbPath({ dataDir, dbPath: options.dbPath ?? null, env });
   ensureDir(dataDir);
+
+  // 0038 — the board-level acceptance policy is gone (one project default plus a
+  // per-card snapshot replaced it). A configured legacy value would silently not
+  // apply, so the board **fails closed** and names the migration instead.
+  assertNoLegacyAcceptancePolicy(env, envVars);
 
   // `busyTimeoutMs` is an *override* of the pinned 5000ms (§4.3), not a new
   // default: only a caller that says so gets a different lock wait. The tests
@@ -134,22 +137,10 @@ export async function openBoard(options = {}) {
     schema.ok === false
       ? staleRepositoriesTrap(schema)
       : createRepositories(db);
-  // The acceptance policy is read per decision (`ctx.acceptancePolicy()`), not
-  // frozen here: `.env` may be rewritten by a re-install while the board keeps
-  // running, and a policy must apply from the next write. `envVars` is the file
-  // layer; `processEnv` stays separate so `source` can say which won.
-  const acceptancePolicy = createAcceptancePolicy({
-    env: processEnv ?? env,
-    envFile,
-    // Deliberately *not* the parsed snapshot: the policy must apply from the
-    // next decision after a re-install or a hand edit, so the resolver re-reads
-    // its key.
-    ...(options.acceptancePolicy === undefined ? {} : { acceptancePolicy: options.acceptancePolicy }),
-  });
-  // The SLA table is board configuration too. Like the acceptance policy it is
-  // re-read per call, so a hand edit (or a re-install) applies to the next
-  // `GET /api/v1/sla` without restarting `taskd`. A named env file wins; an
-  // embedder that passes parsed values instead gets those.
+  // The SLA table is board configuration. It is re-read per call, so a hand
+  // edit (or a re-install) applies to the next `GET /api/v1/sla` without
+  // restarting `taskd`. A named env file wins; an embedder that passes parsed
+  // values instead gets those.
   const slaConfig = () =>
     readSlaConfig({
       env: processEnv ?? env,
@@ -158,7 +149,6 @@ export async function openBoard(options = {}) {
   const ctx = createContext({
     db,
     repos,
-    acceptancePolicy,
     slaConfig,
     ...(clock === undefined ? {} : { clock }),
     ...(idFactory === undefined ? {} : { idFactory }),
@@ -209,6 +199,46 @@ function staleRepositoriesTrap(schema) {
       },
     },
   );
+}
+
+/** The env key the retired board-level acceptance policy lived under (0038). */
+export const LEGACY_ACCEPTANCE_POLICY_ENV = "TASKD_ACCEPTANCE_POLICY";
+
+/**
+ * Refuse to start a board whose `.env` still configures the retired
+ * board-level acceptance policy.
+ *
+ * Silently ignoring `human-only` would upgrade an operator into a different
+ * closing rule than the one they asked for, so this is the one place old
+ * configuration is an error. The replacement is board data, not configuration:
+ * a project's `acceptance` default plus each card's snapshot.
+ *
+ * @param {NodeJS.ProcessEnv|null|undefined} env the merged environment
+ * @param {Map<string,string>|Record<string,string>|null|undefined} envVars the parsed `.env`
+ */
+function assertNoLegacyAcceptancePolicy(env, envVars) {
+  /** @param {unknown} value */
+  const set = (value) => value !== undefined && value !== null && String(value).trim() !== "";
+  let value = null;
+  if (env !== undefined && env !== null && set(env[LEGACY_ACCEPTANCE_POLICY_ENV])) {
+    value = String(env[LEGACY_ACCEPTANCE_POLICY_ENV]);
+  } else if (envVars instanceof Map && set(envVars.get(LEGACY_ACCEPTANCE_POLICY_ENV))) {
+    value = String(envVars.get(LEGACY_ACCEPTANCE_POLICY_ENV));
+  } else if (envVars !== null && typeof envVars === "object" && set(envVars[LEGACY_ACCEPTANCE_POLICY_ENV])) {
+    value = String(envVars[LEGACY_ACCEPTANCE_POLICY_ENV]);
+  }
+  if (value === null) return;
+  throw new DomainError("ACCESS_CONFIG_INVALID", {
+    message:
+      `${LEGACY_ACCEPTANCE_POLICY_ENV} is retired; card acceptance is now one project default ` +
+      "plus a per-card acceptance mode (off | agent | human)",
+    details: { key: LEGACY_ACCEPTANCE_POLICY_ENV, value },
+    hint: {
+      fix:
+        `remove ${LEGACY_ACCEPTANCE_POLICY_ENV} from .env, then set the default with ` +
+        "`taskctl project update <id> --acceptance human`",
+    },
+  });
 }
 
 /**

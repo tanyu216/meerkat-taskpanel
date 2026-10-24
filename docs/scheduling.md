@@ -384,14 +384,12 @@ plan has four parts, in this order:
    `no_child_done` and `dangling_child_edge` are notified, naming the blocking children.
 2. **outcomes.** The plan says what each readable verdict means for the card it audits
    (below); the loop applies it.
-3. **auto-accept.** For every flow-A card in `in_review` whose `review_required` snapshot is
-   `0`, and with no current-round review card (a canceled one does not block), the plan emits
+3. **auto-accept.** For every flow-A card in `in_review` whose `acceptance_mode` is `off`,
+   and with no current-round review card (a canceled one does not block), the plan emits
    `auto_accept`. The loop writes `meta.accepted_by=loop-auto` and moves the card
-   `in_review → done`. It does this only when `taskd` may accept that scope under the board's
-   acceptance policy (`acceptanceAllows`): a `human-only` **top-level** card is left for the
-   human (`auto_accept_skipped`), while a child still auto-accepts. `--auto-accept-reviews`
-   does **not** gate this path — it only controls closing review cards.
-4. **dispatch.** For every flow-A card in `in_review` whose `review_required` snapshot is `1`,
+   `in_review → done`. A `human` card is left for the person (`auto_accept_skipped`, reason
+   `human_mode`).
+4. **dispatch.** For every flow-A card in `in_review` whose `acceptance_mode` is `agent`,
    create a review card for the effective reviewer — one per `(original, delivery round)`,
    with the deterministic idempotency key `loop-review|<ref>|r<round>`. The effective reviewer
    is `project.reviewer ??` the deployment reviewer (the reconcile request's `--reviewer`).
@@ -408,8 +406,8 @@ falls back to `meta.review_of` for a snapshot written before 0025; the acceptanc
 the column only. A caller-supplied `meta.review_of` given as an id, or a string round, is
 normalized to the resolved identifier and an integer, and a meta patch is canonicalized
 from the column, so a later PATCH cannot make the two spellings disagree. There is no
-`kind=review`: the board's kinds are `task`/`epic`/`deploy`, and a review is a task like
-any other.
+`kind=review`: the board's kinds are `task`/`epic` (0038 retired `deploy`), and a review is
+a task like any other.
 
 Its lifecycle cannot skip `in_review`:
 
@@ -431,13 +429,11 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
   `meta.accepted_by=loop-review` and moves the original `in_review → done`; a `REJECT`
   comments the findings, writes `meta.rework_round`, and moves it back to rework. Only
   after that does it close the review card.
-- `--auto-accept-reviews=no` is the escape hatch: the verdict is still applied, but the
-  review card is left in `in_review` for a human to accept. It does **not** gate the
-  auto-accept path for a no-review original. Under `agent-only` a human cannot close a review
-  card, so `agent-only` + `no` is refused at startup.
-- A `required` project with no effective reviewer is also refused at startup: the loop reads
-  `project list` and computes `project.reviewer ?? the deployment reviewer` for each required
-  project. The board still reports `reviewer_not_configured` per project at runtime.
+- The loop always closes the review card it dispatched — there is no switch that could leave
+  it for nobody. On a `human` card it records the evidence and stops; the person closes.
+- An `agent` card with no effective reviewer is refused at startup: the loop reads
+  `project list` and computes `project.reviewer ?? the deployment reviewer`. The board still
+  reports `reviewer_not_configured` per project at runtime.
 
 Why not let the reviewer close its own card (or skip the card entirely)? A reviewer that
 both produces the verdict and accepts it is not a second pair of eyes, and a card is the
@@ -502,8 +498,7 @@ the container; with it, the container stays `in_progress` and names the child bl
 - **Fail-safe.** An unreadable verdict, an unseen original or a conflicting verdict
   (`done` + `REJECT`) produces an alert and **no write**; the review card stays put and the
   next pass retries. A round mismatch closes the review card (`close_review`, reason
-  `round_mismatch`) under the default auto-accept, and only alerts (`review_stale_round`)
-  when auto-accept is off. A truncated board read dispatches nothing; an `original_unseen`
+  `round_mismatch`); no configuration makes the loop leave it behind. A truncated board read dispatches nothing; an `original_unseen`
   found on that partial read is marked `reason: board_truncated` / `undecidable: true` (with
   its own ledger key), because the original may sit below the read cap.
 - **The verdict must come from the reviewer.** The report's author is checked against the
@@ -517,11 +512,10 @@ the container; with it, the container stays `in_progress` and names the child bl
   (todo / in_progress / blocked / awaiting) older than `--review-aging-minutes` (default 60)
   raises `review_aging`.
 - **Notified only when actionable.** Standing state — no reviewer configured, a
-  dispatch-only cap, a review card the operator deliberately left for a human — is logged,
-  not sent to `--notify` on every period. Findings an operator can act on (including
-  `review_aging`, an unattributable verdict, `actions_capped` and
-  `review_cards_unclosable`) are notified; the ledger suppresses repeats, keyed to the state
-  rather than the clock.
+  dispatch-only cap — is logged, not sent to `--notify` on every period. Findings an
+  operator can act on (including `review_aging`, an unattributable verdict and
+  `actions_capped`) are notified; the ledger suppresses repeats, keyed to the state rather
+  than the clock.
 - **One action failing never stops the rest**; the review card is always closed last, so
   every half-applied outcome is recoverable (`original done + APPROVE`,
   `rework_round` matching a rework in progress, …).
@@ -550,38 +544,25 @@ the container; with it, the container stays `in_progress` and names the child bl
 |---|---|---|---|
 | workflow channel | `--workflow=yes\|no` | `MEERKAT_TASKPANEL_WORKFLOW` | `yes` |
 | reviewer (deployment default) | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | unset |
-| close the review card | `--auto-accept-reviews=yes\|no` | `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS` | `yes` |
 | project reviewer override | `project create/update --reviewer <agent>` | — | `null` (use the deployment reviewer) |
 | writes per pass | `--workflow-max-actions <n>` | `MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS` | `20` |
 | silent-review threshold | `--review-aging-minutes <n>` | `MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES` | `60` |
-| who may close a task | `--acceptance <policy>` | `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` | `both` |
 | workflow alert ledger | `--workflow-ledger <path>` | — | `workflow-ledger.json` beside `--state` |
 
 Precedence is flag → environment → agent config → default, the same as the claim policy.
-`workflow` gates the whole channel; `auto-accept-reviews` gates only the review card's own
-close (not the no-review auto-accept path); the reviewer gates only **dispatch** — outcomes
-still run without one, so reviews already in flight can finish after a deployment removes its
-reviewer.
+`workflow` gates the whole channel; the reviewer gates only **dispatch** — outcomes still run
+without one, so reviews already in flight can finish after a deployment removes its reviewer.
 
 The effective reviewer for a card is `projects.reviewer ??` the deployment reviewer. The loop
 reads `project list` at startup to merge every project reviewer into its scan/wake set, and
-refuses to start when a `required` project has no effective reviewer or when
-`agent-only` meets `auto-accept-reviews=no`.
+refuses to start when an `agent` card would be dispatachable with no effective reviewer.
 
-`acceptance` is the loop's **copy** of the board's policy; the board is authoritative
-(the install-root `.env`, seeded by `install.sh` and re-read on every acceptance decision).
-Under `human-only` the loop records a top-level `APPROVE` as a comment plus
-`meta.review_verdict=approve` / `review_verdict_round`, closes the review card, and leaves
-the original `in_review` for a human; the marker makes the hold idempotent. Child cards and
-review cards are still closed by the loop. Under `agent-only` the board only requires a
-non-human writer — which agent applies the verdict is the deployment's business.
-
-`agent-only` + `--auto-accept-reviews=no` is a dead configuration for review cards: a human
-cannot close them and the loop will not, so they accumulate. The board reports it per open
-card as `review_cards_unclosable` (`reason: agent_only_without_auto_accept`, `reviews`, one
-ledger key), so it notifies once rather than every pass; the loop warns at startup whether or
-not a card is stuck. The fix is to turn auto-accept on or let a non-human writer close the
-card — the board's plan stays authoritative either way.
+**Who closes a card is the card's own `acceptance_mode`** — `off` (the deliverer may close it,
+and `in_progress → done` is allowed), `agent` (a current-round `APPROVE`, applied by the loop)
+or `human` (a person only). The project's `acceptance` (`auto | off | agent | human`) is the
+default a new card inherits; the loop's creator path passes `--acceptance-mode` explicitly
+when the project says `auto`. There is no board-level policy and no local copy to keep in
+step. On a `human` card the loop records its findings and stops; it never closes the card.
 
 ## Team roles (optional)
 
@@ -1702,7 +1683,6 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the agent config.
 | `--recover-stale=yes\|no` | from agent config → `yes` | also claim stale `in_progress` cards: the same holder after 30 min, any agent after 6 h |
 | `--workflow=yes\|no` | from agent config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch) |
 | `--reviewer <agent>` | from `$MEERKAT_TASKPANEL_REVIEWER`, else unset | the independent reviewer; unset disables dispatch only |
-| `--auto-accept-reviews=yes\|no` | from agent config → `yes` | let the loop close a review card after applying its verdict; `no` leaves it for a human |
 | `--workflow-max-actions <n>` | `20` | max workflow writes (and bounded reads) per pass |
 | `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
 | `--continue=yes\|no` | from agent config → `yes` | enable the continue turn |
@@ -1771,9 +1751,7 @@ it:
 
 ```ini
 MEERKAT_TASKPANEL_WORKFLOW=yes
-MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=yes
 MEERKAT_TASKPANEL_REVIEWER=
-MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=both
 ```
 
 An empty `MEERKAT_TASKPANEL_REVIEWER` is a complete answer — "no independent reviewer" —

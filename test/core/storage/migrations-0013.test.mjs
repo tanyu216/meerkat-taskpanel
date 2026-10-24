@@ -77,6 +77,8 @@ const EXPECTED_TRIGGERS = [
   "tr_tasks_kind_downgrade",
   "tr_latest_report_belongs",
   "tr_deliver_gate",
+  // 0038 — the direct `off` delivery still owes its baseline evidence.
+  "tr_deliver_gate_done",
   "tr_tasks_round_bump",
   // 0025/0026 — the head's review-marker and children-terminal guards.
   "tr_tasks_review_marker_immutable",
@@ -87,7 +89,10 @@ const EXPECTED_TRIGGERS = [
   // 0031 — the review-required marker and its `done` floor.
   "tr_tasks_review_card_not_required",
   "tr_tasks_review_card_not_required_update",
-  "tr_tasks_review_required_done",
+  // 0038 — the acceptance-mode mirror and the mode-based done floor.
+  "tr_tasks_acceptance_agent_done",
+  "tr_tasks_acceptance_mode_ins",
+  "tr_tasks_acceptance_mode_upd",
   // 0032 — the frozen acceptance baseline and its audited prune.
   "tr_tasks_acceptance_prune_audited",
   "tr_tasks_acceptance_revision",
@@ -134,7 +139,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -271,6 +276,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       // `0021_block_chain.sql` / `0022_block_pair_on_parent.sql` add the two
       // relation guards `tr_rel_block_chain` + `tr_rel_parent_block_pair`.
       const LATER_MIGRATION_TRIGGERS = [
+        "tr_deliver_gate_done",
         "tr_dict_actors_delete",
         "tr_rel_block_chain",
         "tr_rel_block_cycle",
@@ -280,6 +286,9 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         "tr_rev_actors_del",
         "tr_rev_actors_ins",
         "tr_rev_actors_upd",
+        "tr_tasks_acceptance_agent_done",
+        "tr_tasks_acceptance_mode_ins",
+        "tr_tasks_acceptance_mode_upd",
         "tr_tasks_acceptance_prune_audited",
         "tr_tasks_acceptance_revision",
         "tr_tasks_children_terminal",
@@ -288,7 +297,6 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         "tr_tasks_review_card_not_required",
         "tr_tasks_review_card_not_required_update",
         "tr_tasks_review_marker_immutable",
-        "tr_tasks_review_required_done",
       ];
       const LATER_MIGRATION_TRIGGERS_REMOVED = [
         "tr_dict_assignees_delete",
@@ -327,6 +335,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         changed,
         [
           ...LATER_MIGRATION_TRIGGERS_REMOVED,
+          "tr_rev_projects_upd",
           "tr_rev_tasks_upd",
           "tr_tasks_transition",
           "tr_deliver_gate",

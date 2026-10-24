@@ -100,7 +100,7 @@ describe("storage/migrations — 0034 questions and awaiting → todo", () => {
         triggers: triggerNames(board.db),
       };
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0034", "0035", "0036", "0037"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0034", "0035", "0036", "0037", "0038", "0039"]);
 
       const kinds = board.db
         .prepare("SELECT id, kind, body FROM comments ORDER BY id")
@@ -111,7 +111,20 @@ describe("storage/migrations — 0034 questions and awaiting → todo", () => {
         { id: "c-2", kind: "decision", body: "the decision" },
       ]);
       assert.deepEqual(indexNames(board.db), before.indexes, "both indexes survive the rebuild");
-      assert.deepEqual(triggerNames(board.db), before.triggers, "the trigger set (incl. the actor guard) is unchanged");
+      // 0038 adds its own triggers and replaces the legacy review-required
+      // floor; 0034's rebuild is proved against the rest of the set.
+      const LATER_0038_ADDED = [
+        "tr_tasks_acceptance_agent_done",
+        "tr_tasks_acceptance_mode_ins",
+        "tr_tasks_acceptance_mode_upd",
+        "tr_deliver_gate_done",
+      ];
+      const LATER_0038_REMOVED = ["tr_tasks_review_required_done"];
+      assert.deepEqual(
+        triggerNames(board.db).filter((name) => !LATER_0038_ADDED.includes(name)),
+        before.triggers.filter((name) => !LATER_0038_REMOVED.includes(name)),
+        "the trigger set (incl. the actor guard) is unchanged by 0034",
+      );
 
       const actorId = ensureActor(board.db, "linus", "agent");
       assert.doesNotThrow(() =>

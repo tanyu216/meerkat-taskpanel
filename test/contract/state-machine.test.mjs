@@ -36,6 +36,7 @@ import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
 import { STATUSES, TASK_KINDS } from "../../src/core/domain/enums.mjs";
+import { CARD_ACCEPTANCE_MODES } from "../../src/core/domain/acceptance-mode.mjs";
 import {
   ALLOWED_TRANSITIONS,
   EPIC_ONLY_TRANSITIONS,
@@ -51,6 +52,7 @@ import { TS, TS2, cleanupTempDirs, ensureActor, insertProject, insertReport, ins
 after(cleanupTempDirs);
 
 const PAIRS = STATUSES.flatMap((from) => STATUSES.map((to) => [from, to]));
+const ACCEPTANCE_MODES = CARD_ACCEPTANCE_MODES;
 
 /** The whitelist, counted from the fact source — never a literal. */
 const WHITELISTED = Object.values(ALLOWED_TRANSITIONS).reduce((sum, list) => sum + list.length, 0);
@@ -69,24 +71,50 @@ const STATUS_COUNT = STATUSES.length;
  * @param {string} kind the card's `kind` (`TASK_KINDS`)
  * @returns {string} the task id
  */
-function boardWith(db, from, to, suffix = "", kind = "task") {
-  const id = `t_${from}_${to}${suffix}_${kind}`;
+function boardWith(db, from, to, suffix = "", kind = "task", mode = "off") {
+  const id = `t_${from}_${to}${suffix}_${kind}_${mode}`;
   insertProject(db);
   insertTask(db, {
     id,
-    identifier: `PROJ-${from}-${to}${suffix}-${kind}`.toUpperCase(),
+    identifier: `PROJ-${from}-${to}${suffix}-${kind}-${mode}`.toUpperCase(),
     status: from,
     kind,
+    acceptance_mode: mode,
   });
   // 0033 — an epic's delivery row is a rollup, and its `done` row needs one for
   // the current round. The matrix tests the *transition* (the trigger only asks
   // that the row exists, not that it covers the children — the command layer
   // owns coverage), so an empty rollup is the right fixture here.
   const needsEpicRollup = kind === "epic" && (to === "in_review" || to === "done");
-  if (canTransition(from, to, kind) && (to === "in_review" || needsEpicRollup)) {
+  if (canTransition(from, to, kind, mode) && (to === "in_review" || needsEpicRollup)) {
     insertReport(db, { task_id: id, round: 1, is_rollup: needsEpicRollup ? 1 : 0 });
   }
+  // 0038 — an `agent` card reaching done owes a current-round review. The
+  // trigger is coarse (the row must exist and have reached the reviewer); the
+  // APPROVE verdict is the service layer's rule.
+  if (mode === "agent" && from === "in_review" && to === "done") {
+    insertTask(db, {
+      id: `${id}_rev`,
+      identifier: `PROJ-${from}-${to}${suffix}-${kind}-${mode}-REV`.toUpperCase(),
+      status: "in_review",
+      review_of_id: id,
+      review_round: 1,
+    });
+  }
   return id;
+}
+
+/** Can `start` reach `done` without ever stepping through `in_review`? */
+function reachesDoneWithoutReview(start, kind, mode) {
+  const seen = new Set();
+  const queue = [...allowedTargets(start, kind, mode)];
+  while (queue.length > 0) {
+    const next = queue.shift();
+    if (next === "in_review" || seen.has(next)) continue;
+    seen.add(next);
+    queue.push(...allowedTargets(next, kind, mode));
+  }
+  return seen.has("done");
 }
 
 const move = (db, taskId, to) =>
@@ -116,30 +144,32 @@ describe("contract/state-machine — every pair, two paths", () => {
     }
   });
 
-  it("every pair is allowed or rejected identically by JS and by SQL — for every kind", async () => {
+  it("every pair is allowed or rejected identically by JS and by SQL — for every kind and mode", async () => {
     await withBoard(({ db }) => {
       const disagreements = [];
       const codeMismatches = [];
       for (const kind of TASK_KINDS) {
-        for (const [from, to] of PAIRS) {
-          if (from === to) continue; // a no-op is not a transition — asserted below
-          const taskId = boardWith(db, from, to, "", kind);
-          const dbVerdict = move(db, taskId, to);
-          const dbAllowed = dbVerdict === "NO_ERROR";
-          const jsAllowed = canTransition(from, to, kind);
+        for (const mode of ACCEPTANCE_MODES) {
+          for (const [from, to] of PAIRS) {
+            if (from === to) continue; // a no-op is not a transition — asserted below
+            const taskId = boardWith(db, from, to, "", kind, mode);
+            const dbVerdict = move(db, taskId, to);
+            const dbAllowed = dbVerdict === "NO_ERROR";
+            const jsAllowed = canTransition(from, to, kind, mode);
 
-          if (dbAllowed !== jsAllowed) {
-            disagreements.push(`${kind} ${from} → ${to}: js=${jsAllowed ? "allow" : "reject"} sql=${dbVerdict}`);
-          }
-          if (!jsAllowed) {
-            const expected = transitionReasonCode(from, to, kind);
-            if (dbVerdict !== expected) {
-              codeMismatches.push(`${kind} ${from} → ${to}: sql=${dbVerdict} js=${expected}`);
+            if (dbAllowed !== jsAllowed) {
+              disagreements.push(`${kind}/${mode} ${from} → ${to}: js=${jsAllowed ? "allow" : "reject"} sql=${dbVerdict}`);
+            }
+            if (!jsAllowed) {
+              const expected = transitionReasonCode(from, to, kind, mode);
+              if (dbVerdict !== expected) {
+                codeMismatches.push(`${kind}/${mode} ${from} → ${to}: sql=${dbVerdict} js=${expected}`);
+              }
             }
           }
         }
       }
-      assert.deepEqual(disagreements, [], "service and trigger must agree on every pair, for every kind");
+      assert.deepEqual(disagreements, [], "service and trigger must agree on every pair, for every kind and mode");
       assert.deepEqual(codeMismatches, [], "and must report the same reason code");
     });
   });
@@ -156,7 +186,8 @@ describe("contract/state-machine — every pair, two paths", () => {
       assert.deepEqual([...EPIC_ONLY_TRANSITIONS.todo], ["in_review"]);
       // ...and it is the *only* kind that gained anything: the DB walk above
       // would have caught a wider trigger, and this catches a wider table.
-      for (const kind of ["task", "deploy"]) {
+      // 0038 — `deploy` is retired; `task` is the only kind without an overlay.
+      for (const kind of ["task"]) {
         for (const [from, to] of PAIRS) {
           assert.equal(canTransition(from, to, kind), canTransition(from, to), `${kind} ${from} → ${to}`);
         }
@@ -188,22 +219,25 @@ describe("contract/state-machine — every pair, two paths", () => {
     });
   });
 
-  it("makes done reachable only from in_review — down both paths, for every kind", async () => {
+  it("makes done reachable only from in_review — except the off direct edge", async () => {
     await withBoard(({ db }) => {
+      const expected = { off: ["in_progress", "in_review"], agent: ["in_review"], human: ["in_review"] };
       for (const kind of TASK_KINDS) {
-        const viaSql = [];
-        for (const from of STATUSES) {
-          if (from === "done") continue; // done → done is a no-op, not an entry
-          const taskId = boardWith(db, from, "done", "_r", kind);
-          const verdict = move(db, taskId, "done");
-          if (verdict === "NO_ERROR") viaSql.push(from);
+        for (const mode of ACCEPTANCE_MODES) {
+          const viaSql = [];
+          for (const from of STATUSES) {
+            if (from === "done") continue; // done → done is a no-op, not an entry
+            const taskId = boardWith(db, from, "done", "_r", kind, mode);
+            const verdict = move(db, taskId, "done");
+            if (verdict === "NO_ERROR") viaSql.push(from);
+          }
+          assert.deepEqual(viaSql, expected[mode], `${kind}/${mode}`);
+          assert.deepEqual(
+            STATUSES.filter((from) => canTransition(from, "done", kind, mode)),
+            expected[mode],
+            `${kind}/${mode}`,
+          );
         }
-        assert.deepEqual(viaSql, ["in_review"], kind);
-        assert.deepEqual(
-          STATUSES.filter((from) => canTransition(from, "done", kind)),
-          ["in_review"],
-          kind,
-        );
       }
     });
   });
@@ -420,7 +454,7 @@ describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
     });
   });
 
-  it("reaches done only through in_review — exhaustively, over the whole graph", () => {
+  it("reaches done only through in_review, except the off direct edge", () => {
     // Not a spot check: from every status, the whole reachable set is expanded
     // **without ever stepping through `in_review`**, and `done` must never be in
     // it. This is "no delivery without review" stated as reachability rather
@@ -428,25 +462,38 @@ describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
     // including the epic overlay's, which is why the walk is run per kind.
     //
     // `in_review` itself is exempt from the start set — it *is* the review, and
-    // `in_review → done` is precisely the exit the invariant is built on.
+    // `in_review → done` is precisely the exit the invariant is built on. `off`
+    // adds exactly one direct edge, `in_progress → done`; every other start still
+    // has to pass through `in_review`.
     for (const kind of TASK_KINDS) {
-      for (const start of STATUSES) {
-        if (start === "in_review") continue;
-        const seen = new Set();
-        const queue = [...allowedTargets(start, kind)];
-        while (queue.length > 0) {
-          const next = queue.shift();
-          if (next === "in_review" || seen.has(next)) continue;
-          seen.add(next);
-          queue.push(...allowedTargets(next, kind));
+      for (const mode of ["agent", "human"]) {
+        for (const start of STATUSES) {
+          if (start === "in_review") continue;
+          assert.equal(
+            reachesDoneWithoutReview(start, kind, mode),
+            false,
+            `${kind}/${mode} ${start} reaches done without passing in_review`,
+          );
         }
-        assert.equal(seen.has("done"), false, `${kind} ${start} reaches done without passing in_review`);
+        assert.deepEqual(
+          STATUSES.filter((from) => canTransition(from, "done", kind, mode)),
+          ["in_review"],
+          `${kind}/${mode}`,
+        );
       }
-      // And the direct-predicate form, down both paths.
+
+      // `off` adds exactly the one direct pair. "No done without in_review" is
+      // deliberately false here — that is what off means — so the property is
+      // "the only new entry into done is in_progress", not the old reachability
+      // invariant.
+      const extras = PAIRS.filter(
+        ([from, to]) => canTransition(from, to, kind, "off") && !canTransition(from, to, kind),
+      );
+      assert.deepEqual(extras, [["in_progress", "done"]], `${kind}/off`);
       assert.deepEqual(
-        STATUSES.filter((from) => canTransition(from, "done", kind)),
-        ["in_review"],
-        kind,
+        STATUSES.filter((from) => canTransition(from, "done", kind, "off")),
+        ["in_progress", "in_review"],
+        `${kind}/off`,
       );
     }
   });

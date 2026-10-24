@@ -10,7 +10,7 @@
  * place, and a new key is appended.
  *
  * Pure: no `node:` imports, no filesystem. The caller reads and writes the bytes
- * (`core/acceptance-policy.mjs`, `server/access-config.mjs`).
+ * (`server/access-config.mjs`).
  */
 
 import { DomainError } from "./errors.mjs";

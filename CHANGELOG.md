@@ -9,6 +9,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **One acceptance mode per card; the policy × scope matrix is gone (migrations `0038`,
+  `0039`).** A card now stores `acceptance_mode` — `off` (no review; the deliverer may close
+  it, and `in_progress → done` is allowed), `agent` (an independent review card must APPROVE;
+  the loop or a human closes) or `human` (a person only) — resolved once at creation. A
+  project stores a default (`auto`, the default, or one of the three); `auto` leaves the
+  decision to the creator, and an unresolved card falls back to `human`. The retired
+  two-axis model is removed: `TASKD_ACCEPTANCE_POLICY` (a board configured with it now
+  **refuses to start** until the key is deleted), the loop's advisory `--acceptance` copy,
+  `--auto-accept-reviews` / `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS`, the `human-only` hold
+  (`approve_hold`) and the `review_cards_unclosable` deadlock check. The loop always closes
+  the review card it dispatched. `issue deliver --to done` performs an `off` card's direct
+  acceptance atomically; `issue update --acceptance-mode <value> --reason "<why>"` is the one
+  audited override (an agent may only tighten). `projects.review_policy` and
+  `tasks.review_required` survive one release as the legacy spelling (`required → agent`);
+  `--review yes|no` is their CLI alias. **`kind=deploy` is retired** (migration `0039`): a
+  historical deployment card becomes a `task` and keeps its acceptance snapshot, and
+  `--kind deploy` is refused. Whether a card belongs to a release line is the loop's
+  decision, not a card kind.
+
 - **Reports are reports: report provenance is no longer recorded (migration `0035`).**
   `task_reports.origin` (`delivery` | `import`) is gone. The board records a report and
   enforces its shape — a non-empty conclusion, one report per round, `deliver`/`writeReport`

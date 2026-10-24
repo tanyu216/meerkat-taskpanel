@@ -24,22 +24,10 @@
  *   * `> 6h` (or no heartbeat at all): the claim has rotted — anybody may take
  *     it, and the takeover is audited (`steal: true`).
  *
- * An `epic` is a grouping card and is never claimable. `backlog` is not
- * claimable either — only `todo` is (the state machine's `isClaimable`).
- *
- * `deploy` is the deliberate **asymmetry** (T-20261013-232004): a deployment
- * card is claimable — by an explicit dispatch — but is withheld from the
- * *automatic* candidate read (`issue candidates`, the read a poll performs).
- * The two rules live in different places on purpose:
- *
- *   * `epic` — refused **here**, at the claim gate, so no path may claim it;
- *   * `deploy` — absent from the candidate read
- *     (`commands/tasks.mjs#listCandidates`, via
- *     `AUTO_CLAIM_EXCLUDED_KINDS` below), and *not* refused here.
- *
- * A `deploy` card has to be runnable — Elon assigns it, `issue move <ref>
- * in_progress` takes it — so a `not_claimable` gate would lock the work out
- * entirely rather than merely keeping the poll off it.
+ * An `epic` is a grouping card and is never claimable — the gate refuses it
+ * here, so no path may claim it, and the automatic candidate read also withholds
+ * it. `backlog` is not claimable either — only `todo` is (the state machine's
+ * `isClaimable`).
  *
  * Pure: no `node:` specifiers, no clock — callers pass `now` and inject the
  * `resolveAssignee` lookup, so this stays testable without a database.
@@ -55,13 +43,9 @@ import { isClaimable } from "./status.mjs";
  * The kinds an **automatic** candidate read must not offer an agent.
  *
  *   * `epic` — a container, not a unit of work (its refusal at the claim gate
- *     is the second half of the same rule);
- *   * `deploy` — a deployment card runs against a live instance and is
- *     high-impact, so it is dispatched explicitly (Elon, or a human) instead of
- *     being picked up by a poll. `issue candidates` withholds it; an explicit
- *     `issue move <ref> in_progress` still claims it.
+ *     is the second half of the same rule).
  */
-export const AUTO_CLAIM_EXCLUDED_KINDS = Object.freeze([TASK_KIND.EPIC, TASK_KIND.DEPLOY]);
+export const AUTO_CLAIM_EXCLUDED_KINDS = Object.freeze([TASK_KIND.EPIC]);
 
 /**
  * May an automatic candidate read offer this card?
@@ -256,9 +240,6 @@ export function decideClaim(task, options) {
   }
 
   if (isClaimable(task.status)) {
-    // A `deploy` card is deliberately *not* refused here: it is withheld from
-    // the automatic candidate read only, so its explicit dispatch still claims
-    // it (see `AUTO_CLAIM_EXCLUDED_KINDS` above).
     if (isAssignee(task, actor, resolveAssignee)) {
       return { action: CLAIM_ACTIONS.TAKE, code: null };
     }

@@ -49,7 +49,7 @@ tests:
 | `report_waived` | `commands/reports.mjs`, `commands/tasks.mjs` | task | `from`, `to`, `round`, `reason`, `deliveryRound` | yes |
 | `acceptance_changed` | `commands/tasks.mjs` (`updateTask`) | task | `added`, `revision` | yes |
 | `acceptance_pruned` | `commands/tasks.mjs` (`updateTask`, before the state write) | task | `reason`, `removed` | yes |
-| `review_override` | `commands/tasks.mjs` (`updateTask`) | task | `from`, `to`, optional `reason` | yes |
+| `acceptance_override` | `commands/tasks.mjs` (`updateTask`) | task | `from`, `to`, optional `reason` | yes |
 | `epic_auto_start` | `commands/rollup.mjs` | task | `from`, `to`, `child`, `source` | yes |
 | `comment_added` | `commands/comments.mjs`, `commands/rollup.mjs` | task | `commentId`, `kind` | yes |
 | `relation_added` | `commands/relations.mjs` | **target** | `relationId`, `type`, `source`, `target` | yes |
@@ -80,7 +80,7 @@ whole audit trail.
 
 - **Task events** refresh the card. `task_created`/`updated`/`claimed`/`moved`/`reopened`/
   `resumed`/`archived`/`delivered`/`report_*`/`epic_auto_start`/`acceptance_changed`/
-  `acceptance_pruned`/`review_override` cost a `GET /tasks/:ref` (100 ms per-card debounce,
+  `acceptance_pruned`/`acceptance_override` cost a `GET /tasks/:ref` (100 ms per-card debounce,
   newest response wins). An archived card is removed from the board.
 - **Sub-resource events** refresh only the open drawer's affected tab:
   `comment_added` → comments; `relation_*` → relations (both endpoints, because the
@@ -110,7 +110,7 @@ A strict allow-list, because the feed is a *human* account, not a raw log:
   `reporterId`/`reporterKind`/`title`/`description`/`priority`/`kind`;
 - excluded (`FEED_EXCLUDED_EVENTS`): `task_heartbeat`, `session_*`, `progress`,
   `label_gc`, `project_*`, `attachment_updated`, `import_completed`, `task_resumed`,
-  `acceptance_changed`, `acceptance_pruned`, `review_override`.
+  `acceptance_changed`, `acceptance_pruned`, `acceptance_override`.
 
 `task_resumed` is a real status transition and the drawer renders it, but the feed does not
 surface the automatic `awaiting → todo` return; that is a product decision, named rather

@@ -181,10 +181,6 @@ flag("--assignee-only", (opts) => { opts.claimUnassigned = "no"; }, "switch");
 flag("--recover-stale", (opts, value) => { opts.recoverStale = value; });
 flag("--workflow", (opts, value) => { opts.workflow = value; });
 flag("--reviewer", (opts, value) => { opts.reviewer = value; });
-flag("--auto-accept-reviews", (opts, value) => { opts.autoAcceptReviews = value; });
-// Advisory copy of the board's acceptance policy (the board decides).
-flag("--acceptance", (opts, value) => { opts.acceptance = value; });
-flag("--acceptance-policy", (opts, value) => { opts.acceptance = value; });
 flag("--workflow-max-actions", (opts, value) => { opts.workflowMaxActions = value; });
 flag("--review-aging-minutes", (opts, value) => { opts.reviewAgingMinutes = value; });
 flag("--once", (opts) => { opts.once = true; }, "switch");
@@ -289,8 +285,6 @@ function defaultOptions(env) {
     recoverStale: undefined,
     workflow: undefined,
     reviewer: undefined,
-    autoAcceptReviews: undefined,
-    acceptance: undefined,
     workflowMaxActions: undefined,
     reviewAgingMinutes: undefined,
     once: false,
@@ -648,8 +642,6 @@ export function resolveLoopConfig(opts, env = process.env) {
     flags: {
       workflow: opts.workflow,
       reviewer: opts.reviewer,
-      autoAcceptReviews: opts.autoAcceptReviews,
-      acceptance: opts.acceptance,
       workflowMaxActions: opts.workflowMaxActions,
       reviewAgingMinutes: opts.reviewAgingMinutes,
     },
@@ -667,8 +659,6 @@ export function resolveLoopConfig(opts, env = process.env) {
     workflow: workflow.workflow,
     reviewer: workflow.reviewer,
     reviewerIsWorker,
-    autoAcceptReviews: workflow.autoAcceptReviews,
-    acceptancePolicy: workflow.acceptancePolicy,
     maxActions: workflow.maxActions,
     reviewAgingMs: workflow.reviewAgingMs,
   };
@@ -743,8 +733,6 @@ export function loopCommandArgs(opts) {
     ["--recover-stale", opts.recoverStale],
     ["--workflow", opts.workflow],
     ["--reviewer", opts.reviewer],
-    ["--auto-accept-reviews", opts.autoAcceptReviews],
-    ["--acceptance", opts.acceptance],
     ["--workflow-max-actions", opts.workflowMaxActions],
     ["--review-aging-minutes", opts.reviewAgingMinutes],
   ]) {
@@ -862,11 +850,6 @@ Options:
   --recover-stale=yes|no    Also recover stale in_progress claims (default: yes).
   --workflow=yes|no         Run the workflow pass when the continue turn calls it (default: yes).
   --reviewer <agent>        The independent reviewer. Unset disables review dispatch.
-  --auto-accept-reviews=yes|no
-                            Close a review card after applying its verdict (default: yes).
-  --acceptance <policy>     human-only | both | agent-only (default: both). Advisory: the
-                            board decides the plan; the loop prints this copy at startup
-                            for diagnostics and keeps it for compatibility.
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
   --patrol-llm=yes|no       Allow patrol to start an LLM turn (default: no).

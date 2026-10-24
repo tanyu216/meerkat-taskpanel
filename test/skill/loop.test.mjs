@@ -38,11 +38,10 @@ import {
 import { resolveSkillSource } from "../../scripts/sync-skills.mjs";
 import { readFrontmatterField } from "../../scripts/verify/lib/frontmatter.mjs";
 import { LOOP_SKILL_COMMAND } from "../../src/foundation/scheduling.mjs";
+import { acceptanceAllows } from "../../src/core/domain/acceptance-mode.mjs";
 import {
-  ACCEPTANCE_POLICIES,
   ALLOWED_TRANSITIONS,
   EPIC_ONLY_TRANSITIONS,
-  acceptanceAllows,
 } from "../../src/core/domain/status.mjs";
 import { STATUSES } from "../../src/core/domain/enums.mjs";
 
@@ -605,24 +604,6 @@ describe("board and loop skills: the acceptance matrix agrees", () => {
   const cells = (line) =>
     line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
 
-  /** What a cell promises, reduced to the three kinds the board can allow. */
-  function cellClass(text) {
-    const value = text.replace(/`/g, "").toLowerCase();
-    if (/human only/.test(value)) return "human";
-    if (/human or taskd/.test(value)) return "human+taskd";
-    if (/any non-human/.test(value)) return "non-human";
-    return "unknown";
-  }
-
-  /** What `acceptanceAllows` says for the same policy/scope pair. */
-  function expectedClass(policy, scope) {
-    const human = acceptanceAllows("human", policy, scope);
-    const taskd = acceptanceAllows("taskd", policy, scope);
-    if (human && taskd) return "human+taskd";
-    if (human) return "human";
-    return taskd ? "non-human" : "none";
-  }
-
   it("keeps the three copies byte-identical after whitespace normalisation", () => {
     const blocks = copies.map(([, path]) => marked(path));
     for (let i = 1; i < blocks.length; i += 1) {
@@ -634,31 +615,35 @@ describe("board and loop skills: the acceptance matrix agrees", () => {
     }
   });
 
-  it("re-encodes the board's policy × scope decisions", () => {
+  it("re-encodes the board's acceptance modes", () => {
     const raw = marked(copies[0][1]);
     const rows = raw
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.startsWith("|") && !/^\|[\s:|-]+\|$/.test(line))
       .map(cells);
-    assert.equal(rows.length, 4, "one header plus the three scopes");
+    assert.equal(rows.length, 5, "one header plus four modes");
 
-    const policies = rows[0].slice(1).map((cell) => cell.replace(/`/g, "").split(/\s+/)[0]);
-    assert.deepEqual(policies, [...ACCEPTANCE_POLICIES]);
-    const scopes = rows.slice(1).map((row) => row[0].replace(/`/g, "").split(/\s+/)[0]);
-    assert.deepEqual(scopes, ["top_level", "review", "child"]);
+    const data = rows.slice(1);
+    const modes = data.map((row) => row[0].replace(/`/g, "").trim());
+    assert.deepEqual(modes, ["off", "agent", "human", "a review card"]);
 
-    for (const row of rows.slice(1)) {
-      const scope = row[0].replace(/`/g, "").split(/\s+/)[0];
-      assert.equal(row.length, policies.length + 1, `${scope} must state every policy`);
-      policies.forEach((policy, index) => {
-        assert.equal(
-          cellClass(row[index + 1]),
-          expectedClass(policy, scope),
-          `${policy} × ${scope}`,
-        );
-      });
+    // Each mode row's `done` cell is read against the domain's own predicate.
+    const cellAllows = (cell) => cell.replace(/`/g, "").toLowerCase();
+    for (const [index, mode] of ["off", "agent", "human"].entries()) {
+      const cell = cellAllows(data[index][2]);
+      assert.equal(cell.includes("human"), acceptanceAllows("human", mode), `${mode} × human`);
+      assert.equal(cell.includes("taskd"), acceptanceAllows("taskd", mode), `${mode} × taskd`);
+      assert.equal(
+        cell.includes("deliverer") || cell.includes("any actor kind"),
+        acceptanceAllows("claude", mode),
+        `${mode} × an agent`,
+      );
     }
+
+    const review = cellAllows(data[3][2]);
+    assert.ok(review.includes("human") && review.includes("taskd"), "the acceptor closes a review card");
+    assert.equal(acceptanceAllows("claude", "off", { reviewCard: true }), false, "never the reviewer");
   });
 });
 

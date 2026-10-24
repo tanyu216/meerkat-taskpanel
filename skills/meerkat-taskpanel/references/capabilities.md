@@ -31,11 +31,11 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `taskctl --json … project list` | `data.projects[].id`, `.name`, `.reviewer`, `.review_policy` | `board.mjs#readProjectReviewers` → poll's reviewer merge and the workflow pass's `required` check |
+| `taskctl --json … project list` | `data.projects[].id`, `.name`, `.reviewer`, `.acceptance` | `board.mjs#readProjectReviewers` → poll's reviewer merge and the workflow pass's reviewer check |
 
-`reviewer` is the project's override; `review_policy` is `off` / `optional` /
-`required`. The board resolves the effective reviewer per card
-(`project.reviewer ?? deployment reviewer`).
+`reviewer` is the project's override; `acceptance` (`auto` / `off` / `agent` /
+`human`) is the default a new card inherits. The board resolves the effective
+reviewer per card (`project.reviewer ?? deployment reviewer`).
 
 ## 3. Candidate scan and atomic claim
 
@@ -97,7 +97,7 @@ cannot see the other agent kind's file.
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `issue reconcile --workflow [--dry-run] [--reviewer <a>] [--auto-accept-reviews yes\|no] [--review-aging-ms <n>] [--max-actions <n>] --board-limit <n>` | `data.scanned`; `data.workflow.actions[]`, `.alerts[]`, `.changes[]`, `.summary` | `board.mjs#runWorkflowPass` → `runners.mjs#runWorkflowTick` |
+| `issue reconcile --workflow [--dry-run] [--reviewer <a>] [--review-aging-ms <n>] [--max-actions <n>] --board-limit <n>` | `data.scanned`; `data.workflow.actions[]`, `.alerts[]`, `.changes[]`, `.summary` | `board.mjs#runWorkflowPass` → `runners.mjs#runWorkflowTick` |
 
 The plan is snake_case (`workflowToWire`). Action `type`s the loop executes:
 
@@ -105,14 +105,13 @@ The plan is snake_case (`workflowToWire`). Action `type`s the loop executes:
 |---|---|
 | `create_review` | create the review card (`original_ref`, `project_id`, `reviewer`, `round`, `idem`, `target`, `title`, `description`, `acceptance[]`). `acceptance[]` is the original's frozen baseline followed by the generic review items (2 for a card, 3 for an epic), and becomes the review card's own frozen baseline |
 | `auto_accept` | close a no-review original (`original_ref`, `accepted_by`, `round`) |
-| `approve` / `approve_hold` | apply an APPROVE verdict; `_hold` leaves a top-level original `in_review` under `human-only` |
+| `approve` | apply an APPROVE verdict to an `agent` original and close its review card (`close_review` follows last) |
 | `reject_task` / `reject_epic` / `reject_task_finish` | apply a REJECT verdict; the epic form also creates a fix child |
 | `close_review` / `cancel_review` | close the review card last |
 
 Alert `type`s include `original_unseen`, `verdict_unreadable`, `verdict_incomplete`,
 `acceptance_incomplete`, `acceptance_unverified`, `review_aging`, `actions_capped`,
-`dispatch_capped`, `self_review_not_independent`, and the `review_cards_unclosable` startup
-warning. Each carries a `dedup_key`. The acceptance/verdict alerts are log-only: the planner
+`dispatch_capped`, `self_review_not_independent`. Each carries a `dedup_key`. The acceptance/verdict alerts are log-only: the planner
 declines to plan an action the write gate would refuse, rather than producing one failure per
 tick. An epic's skip reasons are `rollup_unverified` (no current-round rollup) and
 `rollup_stale` (the rollup no longer matches the children); both appear on
@@ -130,7 +129,7 @@ All writes use `--actor-kind taskd` and are idempotent by their key.
 | Capability | Invocation | Keys read |
 |---|---|---|
 | create a review card | `issue create --project <p> --kind task --title … --description … --assignee <reviewer> --assignee-kind agent --label review --meta flow=B --review-of <original> --review-round <n> --target <t> --idem <key> --acceptance <text>…` | `data.task.identifier` |
-| create a rework child | `issue create --project <p> --kind task --title … --description … [--assignee-id <id>] --review yes\|no --meta rework_of=<original> --meta rework_round=<n> --target … --idem …` | `data.task.identifier` |
+| create a rework child | `issue create --project <p> --kind task --title … --description … [--assignee-id <id>] --acceptance-mode off --meta rework_of=<original> --meta rework_round=<n> --target … --idem …` | `data.task.identifier` |
 | list relations | `relation list <ref>` | `data.children[].target` |
 | link a parent | `relation add <ref> --type parent --target <child>` | `ok` only |
 | merge metadata | `issue meta <ref> --meta k=v …` | `ok` only |

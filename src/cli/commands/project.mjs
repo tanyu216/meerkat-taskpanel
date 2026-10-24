@@ -86,8 +86,8 @@ export const COMMANDS = [
     name: "create",
     summary: "Create a project.",
     usage:
-      "project create --id <id> --name <name> [--review-policy required|optional|off] " +
-      "[--reviewer <agent>] [--meta k=v]…",
+      "project create --id <id> --name <name> [--acceptance auto|off|agent|human] " +
+      "[--review-policy required|optional|off] [--reviewer <agent>] [--meta k=v]…",
     positionals: [],
     flags: [
       { flag: "id", key: "id", as: "string", value: "<id>", required: true, summary: "Project id; also the identifier prefix (must be unique across projects after normalization)." },
@@ -96,11 +96,19 @@ export const COMMANDS = [
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
       {
+        flag: "acceptance",
+        key: "acceptance",
+        as: "string",
+        value: "<auto|off|agent|human>",
+        summary:
+          "The acceptance default for cards created here (default: auto — the creator decides per card).",
+      },
+      {
         flag: "review-policy",
         key: "reviewPolicy",
         as: "string",
         value: "<required|optional|off>",
-        summary: "Whether cards created here need an independent review (default: optional).",
+        summary: "Legacy spelling of --acceptance (required=agent, off=off, optional=auto).",
       },
       {
         flag: "reviewer",
@@ -117,12 +125,13 @@ export const COMMANDS = [
         labels: ctx.flags.labels,
         meta: metaOf(ctx.flags),
         readme: ctx.flags.readme,
+        acceptance: ctx.flags.acceptance,
         review_policy: ctx.flags.reviewPolicy,
         reviewer: ctx.flags.reviewer,
       });
       return {
         data: { project },
-        human: `created project ${project.id}  ${project.name}  review=${project.review_policy}`,
+        human: `created project ${project.id}  ${project.name}  acceptance=${project.acceptance}`,
       };
     },
   },
@@ -131,7 +140,8 @@ export const COMMANDS = [
     name: "ensure",
     summary: "Create a project if it does not exist; leave an existing one untouched.",
     usage:
-      "project ensure <id> [--name <name>] [--review-policy required|optional|off] " +
+      "project ensure <id> [--name <name>] [--acceptance auto|off|agent|human] " +
+      "[--review-policy required|optional|off] " +
       "[--reviewer <agent>] [--meta k=v]… [--label <label>]… [--readme <text>]",
     positionals: [{ name: "id", summary: "Project id." }],
     flags: [
@@ -140,11 +150,18 @@ export const COMMANDS = [
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
       {
+        flag: "acceptance",
+        key: "acceptance",
+        as: "string",
+        value: "<auto|off|agent|human>",
+        summary: "Acceptance default for a newly created project (default: auto).",
+      },
+      {
         flag: "review-policy",
         key: "reviewPolicy",
         as: "string",
         value: "<required|optional|off>",
-        summary: "Review policy for a newly created project (default: optional).",
+        summary: "Legacy spelling of --acceptance.",
       },
       {
         flag: "reviewer",
@@ -162,6 +179,7 @@ export const COMMANDS = [
           labels: ctx.flags.labels,
           meta: metaOf(ctx.flags),
           readme: ctx.flags.readme,
+          acceptance: ctx.flags.acceptance,
           review_policy: ctx.flags.reviewPolicy,
           reviewer: ctx.flags.reviewer,
         },
@@ -169,7 +187,7 @@ export const COMMANDS = [
       return {
         data: { project, created },
         human: created
-          ? `created project ${project.id}  ${project.name}  review=${project.review_policy}`
+          ? `created project ${project.id}  ${project.name}  acceptance=${project.acceptance}`
           : `project ${project.id} already exists  ${project.name}`,
       };
     },
@@ -177,10 +195,10 @@ export const COMMANDS = [
 
   {
     name: "update",
-    summary: "Update a project's name, labels, metadata, readme, review policy or reviewer.",
+    summary: "Update a project's name, labels, metadata, readme, acceptance default or reviewer.",
     usage:
-      "project update <id> [--name <name>] [--review-policy required|optional|off] " +
-      "[--reviewer <agent>] [--meta k=v]…",
+      "project update <id> [--name <name>] [--acceptance auto|off|agent|human] " +
+      "[--review-policy required|optional|off] [--reviewer <agent>] [--meta k=v]…",
     positionals: [{ name: "id", summary: "Project id." }],
     flags: [
       { flag: "name", key: "name", as: "string", value: "<name>" },
@@ -188,11 +206,18 @@ export const COMMANDS = [
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
       {
+        flag: "acceptance",
+        key: "acceptance",
+        as: "string",
+        value: "<auto|off|agent|human>",
+        summary: "Change the acceptance default; it affects future cards only.",
+      },
+      {
         flag: "review-policy",
         key: "reviewPolicy",
         as: "string",
         value: "<required|optional|off>",
-        summary: "Change the project default; it affects future cards only.",
+        summary: "Legacy spelling of --acceptance.",
       },
       {
         flag: "reviewer",
@@ -208,12 +233,13 @@ export const COMMANDS = [
       if (ctx.flags.meta !== undefined) body.meta = ctx.flags.meta;
       if (ctx.flags.labels !== undefined) body.labels = ctx.flags.labels;
       if (ctx.flags.readme !== undefined) body.readme = ctx.flags.readme;
+      if (ctx.flags.acceptance !== undefined) body.acceptance = ctx.flags.acceptance;
       if (ctx.flags.reviewPolicy !== undefined) body.review_policy = ctx.flags.reviewPolicy;
       if (ctx.flags.reviewer !== undefined) body.reviewer = ctx.flags.reviewer;
       const { project } = await ctx.client.patch(`/api/v1/projects/${ctx.args.id}`, body);
       return {
         data: { project },
-        human: `updated project ${project.id}  review=${project.review_policy}`,
+        human: `updated project ${project.id}  acceptance=${project.acceptance}`,
       };
     },
   },
@@ -231,8 +257,8 @@ export const COMMANDS = [
       const human = projects.length === 0
         ? "no projects"
         : table(
-            ["id", "name", "review", "reviewer"],
-            projects.map((p) => [p.id, p.name, p.review_policy, p.reviewer ?? "-"]),
+            ["id", "name", "acceptance", "reviewer"],
+            projects.map((p) => [p.id, p.name, p.acceptance, p.reviewer ?? "-"]),
           );
       return { data: { projects }, human };
     },

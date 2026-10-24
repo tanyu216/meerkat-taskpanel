@@ -247,8 +247,8 @@ export function writeAccessConfig(input) {
  * is already there.
  *
  * The file is shared by independent settings — the access policy
- * (`TASKD_ALLOW_CIDRS`), the acceptance policy (`TASKD_ACCEPTANCE_POLICY`) and
- * the client's board URL/token — so a whole-file rewrite by one writer would
+ * (`TASKD_ALLOW_CIDRS`) and the client's board URL/token — so a whole-file
+ * rewrite by one writer would
  * silently erase the others. Unknown lines (including an operator's comments)
  * are preserved; a key in `patch` is replaced in place and new keys are
  * appended.

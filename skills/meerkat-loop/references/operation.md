@@ -80,9 +80,7 @@ Precedence: flag > process env > agent config > default.
 | `--claim-unassigned=yes\|no` | yes | also claim the public pool |
 | `--recover-stale=yes\|no` | yes | also claim stale `in_progress` (same holder 30 min, anyone 6 h) |
 | `--workflow=yes\|no` | yes | run the workflow pass; off means the loop writes no card |
-| `--reviewer <agent>` | unset | the deployment reviewer. A project's `reviewer` overrides it; unset disables dispatch for projects without one, and a `required` project with no effective reviewer fails startup. Verdicts in flight still apply. |
-| `--auto-accept-reviews=yes\|no` | yes | close a **review card** after applying its verdict; `no` leaves it for a human. It does not gate auto-accepting a no-review original. `agent-only` + `no` is refused at startup (nobody could close a review card). |
-| `--acceptance <policy>` | `both` | `human-only` \| `both` \| `agent-only`; **advisory**, the board decides |
+| `--reviewer <agent>` | unset | the deployment reviewer. A project's `reviewer` overrides it; unset disables dispatch for projects without one, and an `agent` card with no effective reviewer fails startup. Verdicts in flight still apply. |
 | `--workflow-max-actions <n>` | 20 | writes per workflow pass |
 | `--review-aging-minutes <n>` | 60 | report a review card with no readable verdict this long |
 | `--workflow-ledger <path>` | beside `--state` | workflow alert de-duplication ledger; an unreadable one suppresses nothing |
@@ -267,18 +265,16 @@ invocation and every action field are the board skill's capability contract
 (`references/capabilities.md` §6–7); the review-card shape and its structural
 identity are `references/review-workflow.md` in the same skill.
 
-A flow-A delivery that lands in `in_review` **whose `review_required` snapshot
-is 1** is dispatched to the configured reviewer as a **review card**. The
-reviewer is `project.reviewer ??` the deployment reviewer. Poll wakes every
-configured reviewer through the normal atomic claim; a dedicated reviewer sees
-only review cards and never the public pool.
+A flow-A delivery that lands in `in_review` **on a card whose
+`acceptance_mode` is `agent`** is dispatched to the configured reviewer as a
+**review card**. The reviewer is `project.reviewer ??` the deployment reviewer.
+Poll wakes every configured reviewer through the normal atomic claim; a
+dedicated reviewer sees only review cards and never the public pool.
 
-A card at `review_required = 0` gets no review card. The plan carries
-`auto_accept`, and the loop applies it only when `taskd` may accept the card's
-scope under the board policy; under `human-only` a top-level card is left for
-the human (`auto_accept_skipped`, reason `human_only`), while a child still
-auto-accepts. `autoAcceptReviews` does not gate this path — it only controls
-whether the loop closes a review card.
+An `off` card gets no review card. The plan carries `auto_accept`, which the
+loop applies (`loop-auto`); an `off` card may also skip `in_review` entirely
+(`issue deliver --to done`). A `human` card is left for the person
+(`auto_accept_skipped`, reason `human_mode`).
 
 What keeps it safe to run unattended:
 
@@ -291,10 +287,8 @@ What keeps it safe to run unattended:
   card's own assignee is refused (`self_review_not_independent`).
 - **A canceled review card ends `canceled`** — the two-hop
   `in_review → in_progress → canceled`; it is never recorded as `done`.
-- **A dead configuration is named** — `agent-only` with
-  `auto_accept_reviews=no` leaves review cards with no writer who may close
-  them; the board reports each open one as `review_cards_unclosable` and the
-  loop warns at startup.
+- **A review card always has a closer** — the loop closes the card it
+  dispatched; there is no switch that could leave it for nobody.
 
 Operational alerts: `original_unseen` (`board_truncated` when the read is
 capped), `verdict_unreadable`, `review_aging`, `review_report_not_by_reviewer`,

@@ -46,13 +46,8 @@
  * Pure: no `node:` specifiers.
  */
 
-import {
-  ACCEPTANCE_POLICIES,
-  DEFAULT_ACCEPTANCE_POLICY,
-  HUMAN_KIND,
-  TASKD_KIND,
-} from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
+import { normalizeCardAcceptance } from "./acceptance-mode.mjs";
 import { STATUS, STATUSES, TASK_KIND } from "./enums.mjs";
 
 /**
@@ -113,8 +108,8 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
  *     deliberately absent: an unreleased container is not deliverable, exactly as
  *     an unreleased task is not claimable.
  *   - `todo → in_progress` is *not* removed. It is the claim gate, not the table,
- *     that refuses an epic, and moving that refusal into the table would take
- *     `in_progress → todo`'s counterexample apart for `deploy` cards too.
+ *     that refuses an epic; the table only says which status may be delivered
+ *     from.
  *
  * What the overlay does **not** relax is the delivery gate: `requiresReport`
  * keys on `to` alone, so an epic landing in `in_review` still owes a report for
@@ -123,6 +118,20 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
  */
 export const EPIC_ONLY_TRANSITIONS = Object.freeze({
   [STATUS.TODO]: Object.freeze([STATUS.IN_REVIEW]),
+});
+
+/**
+ * The **acceptance-mode overlay** (0038): the one pair a card in `off` mode
+ * gains on top of the base table.
+ *
+ * `off` means "no review" — the deliverer may close the card directly, so
+ * `in_progress → done` is the honest edge. `agent` and `human` still reach done
+ * only through `in_review`; the overlay is keyed on an explicitly supplied
+ * mode, never on a missing one, so a caller that has not read the card keeps the
+ * base table (the fail-closed direction).
+ */
+export const AUTO_ONLY_TRANSITIONS = Object.freeze({
+  [STATUS.IN_PROGRESS]: Object.freeze([STATUS.DONE]),
 });
 
 
@@ -229,25 +238,36 @@ export function isTerminalStatus(value) {
  *
  * @param {string} from
  * @param {string|null} [kind] the card's kind, or `null`/omitted for the base table
+ * @param {"off"|"agent"|"human"|null} [acceptanceMode] the card's acceptance
+ *   mode; only an explicit `off` adds the direct-done edge
  * @returns {readonly string[]} allowed targets (empty for terminal statuses and
  *   for unknown inputs).
  */
-export function allowedTargets(from, kind = null) {
+export function allowedTargets(from, kind = null, acceptanceMode = null, reviewCard = false) {
   const base = ALLOWED_TRANSITIONS[from];
   if (base === undefined) return Object.freeze([]);
-  if (kind !== TASK_KIND.EPIC) return base;
-  const extra = EPIC_ONLY_TRANSITIONS[from];
-  return extra === undefined ? base : Object.freeze([...base, ...extra]);
+  const extra = [];
+  if (kind === TASK_KIND.EPIC) extra.push(...(EPIC_ONLY_TRANSITIONS[from] ?? []));
+  // 0038 — only an explicit `off` gains the direct edge. A missing mode keeps
+  // the base table; `cardAcceptanceOf(null)` would default to `off` and widen
+  // every caller that has not read the card. A review card is flow B: it must
+  // deliver its verdict through `in_review`, so the direct edge is withheld.
+  if (!reviewCard && normalizeCardAcceptance(acceptanceMode) === "off") {
+    extra.push(...(AUTO_ONLY_TRANSITIONS[from] ?? []));
+  }
+  return extra.length === 0 ? base : Object.freeze([...new Set([...base, ...extra])]);
 }
 
 /**
  * @param {string} from
  * @param {string} to
  * @param {string|null} [kind] the card's kind (see {@link allowedTargets})
- * @returns {boolean} whether the pair is on the whitelist for this kind
+ * @param {"off"|"agent"|"human"|null} [acceptanceMode] the card's acceptance mode
+ * @param {boolean} [reviewCard] whether the card is a flow-B review card
+ * @returns {boolean} whether the pair is on the whitelist for this kind/mode
  */
-export function canTransition(from, to, kind = null) {
-  return allowedTargets(from, kind).includes(to);
+export function canTransition(from, to, kind = null, acceptanceMode = null, reviewCard = false) {
+  return allowedTargets(from, kind, acceptanceMode, reviewCard).includes(to);
 }
 
 /**
@@ -258,10 +278,12 @@ export function canTransition(from, to, kind = null) {
  * @param {string} from
  * @param {string} to
  * @param {string|null} [kind] the card's kind (see {@link allowedTargets})
+ * @param {"off"|"agent"|"human"|null} [acceptanceMode] the card's acceptance mode
+ * @param {boolean} [reviewCard] whether the card is a flow-B review card
  * @returns {"TERMINAL_STATE"|"INVALID_TRANSITION"|null}
  */
-export function transitionReasonCode(from, to, kind = null) {
-  if (canTransition(from, to, kind)) return null;
+export function transitionReasonCode(from, to, kind = null, acceptanceMode = null, reviewCard = false) {
+  if (canTransition(from, to, kind, acceptanceMode, reviewCard)) return null;
   if (isTerminalStatus(from)) return "TERMINAL_STATE";
   return "INVALID_TRANSITION";
 }
@@ -276,22 +298,24 @@ export function transitionReasonCode(from, to, kind = null) {
  * @param {string} from
  * @param {string} to
  * @param {string|null} [kind] the card's kind (see {@link allowedTargets})
+ * @param {"off"|"agent"|"human"|null} [acceptanceMode] the card's acceptance mode
+ * @param {boolean} [reviewCard] whether the card is a flow-B review card
  * @returns {string} `to`, for chaining
  */
-export function assertTransition(from, to, kind = null) {
+export function assertTransition(from, to, kind = null, acceptanceMode = null, reviewCard = false) {
   if (!isKnownStatus(from) || !isKnownStatus(to)) {
     throw new DomainError("VALIDATION_FAILED", {
       message: `unknown status value(s): from=${JSON.stringify(from)} to=${JSON.stringify(to)}`,
       details: { from, to, allowed: STATUSES },
     });
   }
-  const reason = transitionReasonCode(from, to, kind);
+  const reason = transitionReasonCode(from, to, kind, acceptanceMode, reviewCard);
   if (reason !== null) {
     throw new DomainError(reason, {
       details: {
         from,
         to,
-        allowed: [...allowedTargets(from, kind)],
+        allowed: [...allowedTargets(from, kind, acceptanceMode, reviewCard)],
       },
       message:
         reason === "TERMINAL_STATE"
@@ -305,148 +329,6 @@ export function assertTransition(from, to, kind = null) {
 /** @param {unknown} value */
 export function isClaimable(value) {
   return value === CLAIMABLE_STATUS;
-}
-
-/**
- * The acceptance policies a board may run under (T-20261019 acceptance).
- *
- *   * `human-only` — only a human closes a top-level card (children and review
- *     cards are still closed by agents/the loop);
- *   * `both` (the default, and the historical rule) — a human or the board;
- *   * `agent-only` — any non-human writer (the board, or any agent platform).
- *
- * `agent-only` deliberately does **not** name *which* agent closes a card: that
- * is the deployment's business (the loop's skill, a reviewer, an operator's own
- * script). The board's only claim is the one bit it can see — "this writer is
- * not the human".
- */
-export { ACCEPTANCE_POLICIES, DEFAULT_ACCEPTANCE_POLICY };
-
-/**
- * The historical allowed-kinds pair, kept as an export for the `both` policy and
- * for callers that still describe the old rule. New code should ask
- * {@link acceptanceAllows} instead.
- */
-export const ACCEPTANCE_ACTOR_KINDS = Object.freeze([HUMAN_KIND, TASKD_KIND]);
-
-/** Normalise a configured policy string, or `null` when it is not one of ours. */
-export function normalizeAcceptancePolicy(value) {
-  const text = String(value ?? "").trim().toLowerCase();
-  return ACCEPTANCE_POLICIES.includes(text) ? text : null;
-}
-
-/**
- * Which acceptance rule applies to this card.
- *
- * Precedence is deliberate: **a card with a parent is a child, whatever else it
- * is**. A human never closes a child card (the children are the agents' work to
- * finish), and that rule is stronger than the review-card exemption — a review
- * card that somehow acquired a parent is treated as a child, which is the
- * conservative reading of both rules.
- *
- * @param {{reviewCard?: boolean, hasParent?: boolean}} [input]
- * @returns {"child"|"review"|"top_level"}
- */
-export function acceptanceScopeOf(input = {}) {
-  if (input.hasParent === true) return "child";
-  if (input.reviewCard === true) return "review";
-  return "top_level";
-}
-
-/**
- * May `kind` accept a card in `scope` under `policy`?
- *
- * "Any non-human" is the whole test for `agent-only` and for child cards: the
- * board does not model agent roles, so it cannot and must not distinguish
- * `taskd` from `claude` there.
- *
- * @param {string|null|undefined} kind the writer's declared actor kind
- * @param {string} policy one of {@link ACCEPTANCE_POLICIES}
- * @param {"child"|"review"|"top_level"} scope
- * @returns {boolean}
- */
-export function acceptanceAllows(kind, policy, scope) {
-  const who = String(kind ?? "").trim();
-  if (who === "") return false;
-  if (scope === "child") return who !== HUMAN_KIND;
-  if (scope === "review") {
-    return policy === "agent-only" ? who !== HUMAN_KIND : ACCEPTANCE_ACTOR_KINDS.includes(who);
-  }
-  switch (policy) {
-    case "human-only":
-      return who === HUMAN_KIND;
-    case "agent-only":
-      return who !== HUMAN_KIND;
-    case "both":
-    default:
-      return ACCEPTANCE_ACTOR_KINDS.includes(who);
-  }
-}
-
-/** The kinds a refusal should name: `any non-human`, or a concrete pair. */
-function allowedKindsFor(policy, scope) {
-  if (scope === "child") return "any non-human";
-  if (scope === "review") {
-    return policy === "agent-only" ? "any non-human" : [...ACCEPTANCE_ACTOR_KINDS];
-  }
-  if (policy === "human-only") return [HUMAN_KIND];
-  if (policy === "agent-only") return "any non-human";
-  return [...ACCEPTANCE_ACTOR_KINDS];
-}
-
-/**
- * Assert that this writer may move a card into `done`.
- *
- * `done` is the board's *acceptance* act, and acceptance is the one transition a
- * worker must never perform on its own work by default. What "the acceptor" means
- * is a board policy (see {@link ACCEPTANCE_POLICIES}); the actor's declared kind
- * is the only input, because the board does not model agent roles.
- *
- * This is a service-layer invariant, and deliberately so: the actor of a write
- * is not a column of the `tasks` row, so — unlike the delivery gate, which a
- * trigger can decide from the report table — no `tasks` trigger can see it.
- * `SQL_CONSTRAINT_CODES`/`DB_RAISE_CODES` in `foundation/errors.mjs` name the codes
- * a trigger *can* raise; this one is `JS_ONLY_CODES` for exactly that reason.
- *
- * The check reads the actor's **declared** kind. The board trusts a caller's
- * attribution (a loopback caller is trusted, and `--actor-kind human` is
- * refused), so this raises the bar to "you must claim to be the allowed kind",
- * not to a cryptographic guarantee.
- *
- * @param {{kind?: string, id?: string}|null|undefined} actor
- * @param {{policy?: string, reviewCard?: boolean, hasParent?: boolean}} [options]
- * @returns {true}
- * @throws {DomainError} ACCEPTANCE_FORBIDDEN
- */
-export function assertAcceptanceAuthority(actor, options = {}) {
-  const kind = String(actor?.kind ?? "").trim();
-  const policy = normalizeAcceptancePolicy(options.policy) ?? DEFAULT_ACCEPTANCE_POLICY;
-  const scope = acceptanceScopeOf(options);
-  if (acceptanceAllows(kind, policy, scope)) return true;
-
-  const allowed = allowedKindsFor(policy, scope);
-  throw new DomainError("ACCEPTANCE_FORBIDDEN", {
-    message:
-      scope === "child"
-        ? "Only a non-human writer may accept a child card; a human closes the top-level card."
-        : policy === "human-only"
-          ? "This board is human-only: only a human may accept a delivered card."
-          : "This writer may not accept a delivery to done under the board's acceptance policy.",
-    details: {
-      actorKind: kind === "" ? null : kind,
-      actorId: actor?.id ?? null,
-      policy,
-      scope,
-      allowed,
-    },
-    hint: {
-      fix:
-        scope === "child"
-          ? "let the agent/loop close the child; a human accepts the top-level card"
-          : "a worker stops at in_review; an independent reviewer reports a verdict and the loop " +
-            "(or a human) applies it",
-    },
-  });
 }
 
 /**

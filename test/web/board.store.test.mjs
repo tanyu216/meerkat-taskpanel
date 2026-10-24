@@ -412,6 +412,19 @@ describe("web/board — move guards", () => {
   });
 });
 
+describe("web/board — the move menu's direct-done edge (0038)", () => {
+  it("offers `done` from in_progress only for an `off` card", async () => {
+    const { allowedTargets } = await freshBoard();
+    assert.ok(allowedTargets("in_progress", { acceptance_mode: "off" }).includes("done"));
+    assert.ok(!allowedTargets("in_progress", { acceptance_mode: "agent" }).includes("done"));
+    assert.ok(!allowedTargets("in_progress", { acceptance_mode: "human" }).includes("done"));
+    // No card in hand is the conservative reading: the base row only.
+    assert.ok(!allowedTargets("in_progress").includes("done"));
+    // The edge belongs to `in_progress` alone.
+    assert.ok(!allowedTargets("todo", { acceptance_mode: "off" }).includes("done"));
+  });
+});
+
 /* ------------------------------------------- events → store (global_revision) */
 
 describe("web/board — the live stream drives the revision", () => {
@@ -1245,6 +1258,8 @@ describe("board store — the acceptance half of the waiting queue", () => {
     parent_id: null,
     review_of_id: null,
     review_round: null,
+    // 0038 — only a `human` card is the human's to accept.
+    acceptance_mode: "human",
     version: 1,
     labels: [],
     ...over,
@@ -1268,7 +1283,6 @@ describe("board store — the acceptance half of the waiting queue", () => {
     mod.board.currentProjectId = "p1";
     mod.board.loaded = true;
     mod.board.tasks = [original()];
-    mod.board.acceptancePolicy = "both";
     assert.deepEqual(mod.acceptanceTasks.value.map((task) => task.id), ["o1"]);
     assert.equal(mod.waitingCount.value, 1);
 
@@ -1277,8 +1291,8 @@ describe("board store — the acceptance half of the waiting queue", () => {
     assert.equal(mod.visibleTasks.value.length, 0);
     assert.deepEqual(mod.acceptanceTasks.value.map((task) => task.id), ["o1"]);
 
-    mod.board.acceptancePolicy = "agent-only";
-    assert.deepEqual(mod.acceptanceTasks.value, [], "an agent-only board asks the human for nothing");
+    mod.board.tasks = [original({ acceptance_mode: "agent" }), original({ id: "o2", identifier: "TD-2", acceptance_mode: "off" })];
+    assert.deepEqual(mod.acceptanceTasks.value, [], "agent and off cards ask the human for nothing");
     assert.equal(mod.waitingCount.value, 0);
     mod.writeStatusFilter(["all"]);
   });
@@ -1287,7 +1301,6 @@ describe("board store — the acceptance half of the waiting queue", () => {
     const mod = await freshBoard();
     mod.board.currentProjectId = "p1";
     mod.board.loaded = true;
-    mod.board.acceptancePolicy = "both";
     mod.board.tasks = [original(), review("todo")];
     assert.deepEqual(mod.acceptanceTasks.value, [], "a todo review holds it");
 
@@ -1305,7 +1318,6 @@ describe("board store — the acceptance half of the waiting queue", () => {
     const mod = await freshBoard();
     mod.board.currentProjectId = "p1";
     mod.board.loaded = true;
-    mod.board.acceptancePolicy = "both";
     const child = { ...original({ id: "c1", identifier: "TD-C", status: "todo", parent_id: "o1" }) };
     mod.board.tasks = [original(), child];
     assert.deepEqual(mod.acceptanceTasks.value, [], "an open child holds the container");
@@ -1321,7 +1333,6 @@ describe("board store — the acceptance half of the waiting queue", () => {
     const mod = await freshBoard();
     mod.board.currentProjectId = "p1";
     mod.board.loaded = true;
-    mod.board.acceptancePolicy = "both";
     mod.board.tasks = [original({ assignee: { display_name: "elon", kind: "claude" } })];
 
     assert.deepEqual(mod.visibleAcceptanceTasks.value.map((task) => task.id), ["o1"]);
@@ -1350,7 +1361,6 @@ describe("board store — the acceptance half of the waiting queue", () => {
     const mod = await freshBoard();
     mod.board.currentProjectId = "p1";
     mod.board.loaded = true;
-    mod.board.acceptancePolicy = "both";
     const child = original({
       id: "c1",
       identifier: "TD-C",

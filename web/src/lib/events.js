@@ -57,7 +57,7 @@ const TASK_REFRESH_EVENTS = new Set([
   // "unknown activity event" warning.
   "acceptance_changed",
   "acceptance_pruned",
-  "review_override",
+  "acceptance_override",
 ]);
 
 /** Events with no task: an unknown one is treated as a full reload, the safe direction. */
