@@ -187,14 +187,17 @@ describe("shared/transport/http — the event stream", () => {
       res.write(": connected\n\n");
     });
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 20);
     try {
+      // Abort *after* the headers are up: the body phase is the interesting one.
+      // A timer racing the connect turns this into a header-phase abort on a slow
+      // machine, which is a different (and already deterministic) path.
       const stream = await requestStream({
         url,
         path: "/api/v1/events",
         signal: controller.signal,
         idleMs: 5_000,
       });
+      controller.abort();
       await assert.rejects(
         async () => {
           for await (const _chunk of stream) { /* drain */ }
@@ -205,6 +208,15 @@ describe("shared/transport/http — the event stream", () => {
       server.closeAllConnections?.();
       server.close();
     }
+  });
+
+  it("refuses a signal that was already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(
+      () => requestStream({ url: "http://127.0.0.1:1", path: "/api/v1/events", signal: controller.signal }),
+      (err) => err.code === "CLI_IO" && err.details.reason === "aborted",
+    );
   });
 });
 
