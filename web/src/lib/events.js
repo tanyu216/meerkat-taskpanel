@@ -17,8 +17,9 @@
  */
 
 /**
- * The cursor after seeing a frame. Revision is non-decreasing, so the cursor
- * never moves backwards even if a replay delivers a stale frame.
+ * The cursor after seeing a frame. Revisions written since 0037 are strictly
+ * increasing; historical rows are non-decreasing. Either way the cursor never
+ * moves backwards, even if a replay delivers a stale frame.
  *
  * @param {number|null} current
  * @param {unknown} revision
@@ -67,6 +68,13 @@ const TASK_REFRESH_EVENTS = new Set([
   "report_written",
   "report_waived",
   "epic_auto_start",
+  // 0032/0031 — the acceptance baseline and the review decision live on the
+  // card row, so these were already refreshing it through the "unknown event"
+  // fallback. Naming them here keeps that behaviour while removing the false
+  // "unknown activity event" warning.
+  "acceptance_changed",
+  "acceptance_pruned",
+  "review_override",
 ]);
 
 /** Events with no task: an unknown one is treated as a full reload, the safe direction. */

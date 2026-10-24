@@ -100,6 +100,13 @@ describe("web/events — the refresh map", () => {
     assert.equal(isKnownEvent("task_created"), true);
     assert.equal(isKnownEvent("task_resumed"), true, "a resume is not an unknown-event warning");
     assert.equal(isKnownEvent("attachment_added"), true);
+    // The acceptance/review rows refresh the card through the same set; they
+    // used to fall through the unknown-event branch.
+    assert.equal(isKnownEvent("acceptance_changed"), true);
+    assert.equal(isKnownEvent("acceptance_pruned"), true);
+    assert.equal(isKnownEvent("review_override"), true);
+    assert.equal(taskEventNeedsRefresh("acceptance_pruned"), true);
+    assert.equal(taskEventNeedsRefresh("review_override"), true);
     assert.equal(isKnownEvent("brand_new_event"), false);
   });
 });
