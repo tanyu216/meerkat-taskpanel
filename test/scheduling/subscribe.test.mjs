@@ -3,7 +3,7 @@
  * reconnects, and that a refused turn is retried rather than dropped.
  *
  * The transport itself is injected: `streamEvents` stands where the spawned
- * `taskctl events tail` would be, so these tests stay deterministic.
+ * `taskctl events follow` would be, so these tests stay deterministic.
  */
 
 import assert from "node:assert/strict";

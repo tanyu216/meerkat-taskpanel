@@ -1,11 +1,12 @@
 /**
- * The loop's `streamCli` seam — the only way the loop still speaks to the
- * board's live stream.
+ * The loop's `streamCli` seam — the only way the loop still consumes the live
+ * event stream (through the local hub).
  *
- * It spawns `taskctl events tail` like any other call (same globals, token in
- * the environment) but consumes NDJSON instead of one envelope. The final case
- * runs the *real* CLI against a fake SSE server, which is the gate against the
- * producer and consumer drifting.
+ * It spawns a streaming `taskctl` call (`events follow` in the subscriber) like
+ * any other call (same globals, token in the environment) but consumes NDJSON
+ * instead of one envelope. The final case runs the *real* CLI's `events tail`
+ * against a fake SSE server, which is the gate against the producer and
+ * consumer drifting; the loop itself uses `events follow`.
  */
 
 import assert from "node:assert/strict";
