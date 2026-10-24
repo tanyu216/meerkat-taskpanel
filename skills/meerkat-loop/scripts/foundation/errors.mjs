@@ -159,6 +159,10 @@ export const ERROR_CODES = Object.freeze({
   // ---- Comments / activities -------------------------------------------------
   COMMENT_APPEND_ONLY: spec(409, "Comments are append-only."),
   COMMENT_DUPLICATE: spec(409, "That comment was already imported."),
+  // 0038 — the audit log is the change feed; rewriting a row would change what
+  // a client already received, and deleting one would leave a hole the cursor
+  // can never replay.
+  ACTIVITY_APPEND_ONLY: spec(409, "Activities are append-only; never edit or delete history."),
 
   // ---- Dictionary entities ---------------------------------------------------
   DICTIONARY_ENTRY_IN_USE: spec(409, "Dictionary entry is referenced by existing tasks."),
@@ -266,6 +270,8 @@ export const DB_RAISE_CODES = Object.freeze([
   "CROSS_PROJECT_RELATION",
   "RELATION_IMMUTABLE",
   "COMMENT_APPEND_ONLY",
+  // 0038 — the activity log joins the append-only tables.
+  "ACTIVITY_APPEND_ONLY",
   "DICTIONARY_ENTRY_IN_USE",
   // 0025 / 0026
   "REVIEW_OF_IMMUTABLE",
