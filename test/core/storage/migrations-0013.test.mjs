@@ -271,6 +271,9 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       // `0021_block_chain.sql` / `0022_block_pair_on_parent.sql` add the two
       // relation guards `tr_rel_block_chain` + `tr_rel_parent_block_pair`.
       const LATER_MIGRATION_TRIGGERS = [
+        // 0038 makes the activity log append-only.
+        "tr_activities_no_delete",
+        "tr_activities_no_update",
         "tr_dict_actors_delete",
         "tr_rel_block_chain",
         "tr_rel_block_cycle",

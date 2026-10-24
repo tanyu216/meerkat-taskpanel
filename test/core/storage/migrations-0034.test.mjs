@@ -111,7 +111,12 @@ describe("storage/migrations — 0034 questions and awaiting → todo", () => {
         { id: "c-2", kind: "decision", body: "the decision" },
       ]);
       assert.deepEqual(indexNames(board.db), before.indexes, "both indexes survive the rebuild");
-      assert.deepEqual(triggerNames(board.db), before.triggers, "the trigger set (incl. the actor guard) is unchanged");
+      // 0034 adds no trigger; the only additions come from the later migrations
+      // this run also applies (0038's append-only guards on the activity log).
+      const addedTriggers = triggerNames(board.db).filter((name) => !before.triggers.includes(name));
+      const lostTriggers = before.triggers.filter((name) => !triggerNames(board.db).includes(name));
+      assert.deepEqual(addedTriggers, ["tr_activities_no_delete", "tr_activities_no_update"]);
+      assert.deepEqual(lostTriggers, [], "the rebuild drops no trigger (incl. the actor guard)");
 
       const actorId = ensureActor(board.db, "linus", "agent");
       assert.doesNotThrow(() =>
