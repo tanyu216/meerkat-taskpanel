@@ -283,6 +283,31 @@ describe("contract/invariants — I4/I5 the record is immutable", () => {
   });
 });
 
+describe("contract/invariants — the activity log is append-only", () => {
+  it("inserts, reads, and refuses UPDATE/DELETE", async () => {
+    await withBoard(({ db }) => {
+      insertProject(db);
+      insertTask(db, { id: "t", identifier: "PROJ-0001" });
+      db.prepare(
+        "INSERT INTO task_activities(task_id,event,changes_json,revision,created_at) VALUES('t','task_created','{}',1,?)",
+      ).run(TS);
+
+      const row = db.prepare("SELECT event, revision FROM task_activities WHERE task_id='t'").get();
+      assert.deepEqual({ ...row }, { event: "task_created", revision: 1 });
+
+      assert.equal(
+        reasonCode(() => db.prepare("UPDATE task_activities SET event = 'rewritten'").run()),
+        "ACTIVITY_APPEND_ONLY",
+      );
+      assert.equal(
+        reasonCode(() => db.prepare("DELETE FROM task_activities").run()),
+        "ACTIVITY_APPEND_ONLY",
+      );
+      assert.equal(countRows(db, "task_activities"), 1, "the row survived both attempts");
+    });
+  });
+});
+
 describe("contract/invariants — relations", () => {
   it("allows at most one parent per child", async () => {
     await withBoard(({ db }) => {

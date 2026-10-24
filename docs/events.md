@@ -15,6 +15,11 @@ cursor. Rows written before migration 0037 keep their historical value; the log 
 strictly increasing across the boundary. A hand-written row with no revision is readable
 through the per-task route but is never replayed by the stream.
 
+The table is **append-only in the schema** since migration 0038:
+`tr_activities_no_update` / `tr_activities_no_delete` raise `ACTIVITY_APPEND_ONLY`. An edit
+would rewrite history a client already received, and a delete would leave a gap the cursor
+can never replay; a wrong row is corrected by writing the next one.
+
 This document is the event catalogue: who writes each event, what it carries, which
 consumer reads it, and which events are deliberately excluded from a surface.
 

@@ -44,7 +44,7 @@ describe("storage/migrations — 0037 activity indexes", () => {
         .run(TS);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0037"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0037", "0038"]);
 
       assert.deepEqual(activityIndexes(board.db).map((index) => index.name), [
         "ix_activities_created",

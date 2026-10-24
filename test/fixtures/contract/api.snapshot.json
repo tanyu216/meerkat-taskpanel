@@ -33,6 +33,10 @@
       "http": 500
     },
     {
+      "code": "ACTIVITY_APPEND_ONLY",
+      "http": 409
+    },
+    {
       "code": "ARCHIVE_NOT_TERMINAL",
       "http": 409
     },

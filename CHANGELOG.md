@@ -9,6 +9,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The activity log is append-only in the schema (migration `0038`).** `UPDATE` and `DELETE` on
+  `task_activities` now raise `ACTIVITY_APPEND_ONLY`, the same rule `comments` and
+  `task_reports` already enforce. The log is the change feed: an edit would rewrite history a
+  client already received, and a delete would leave a gap the revision cursor can never replay.
+  Every production writer inserts only; the triggers keep it that way, and a wrong row is
+  corrected by writing the next one.
+
 - **Reports are reports: report provenance is no longer recorded (migration `0035`).**
   `task_reports.origin` (`delivery` | `import`) is gone. The board records a report and
   enforces its shape — a non-empty conclusion, one report per round, `deliver`/`writeReport`
