@@ -169,6 +169,106 @@ export function poolReport(stateDir, options = {}) {
 }
 
 /**
+ * The event subscriber's runtime state, for `--supervisor=status`. Best effort:
+ * a missing or unreadable file reads as "not running", never as a failure.
+ *
+ * `unitLoaded` is the mechanism probe's answer; it distinguishes "the process
+ * died" from "the unit was never loaded" in the printed verdict.
+ *
+ * @param {string} stateDir the directory holding `subscribe.state.json`
+ * @param {{scheduler?: string, isAlive?: (pid: number) => boolean, now?: () => number,
+ *          unitLoaded?: boolean|null}} [options]
+ */
+export function subscribeReport(stateDir, options = {}) {
+  const scheduler = options.scheduler;
+  if (scheduler === "cron") {
+    return { state: "unavailable", reason: "scheduler=cron has no long-lived process" };
+  }
+  const isAlive = options.isAlive ?? pidAlive;
+  const now = options.now ?? Date.now;
+  const unitLoaded = options.unitLoaded;
+  let file = null;
+  try {
+    file = JSON.parse(readFileSync(join(stateDir, "subscribe.state.json"), "utf8"));
+  } catch {
+    file = null;
+  }
+  if (!file || typeof file !== "object" || file.version !== 1) return { state: "missing", unitLoaded };
+  const pid = Number.isInteger(file.pid) ? file.pid : null;
+  if (pid === null || !isAlive(pid)) return { state: "dead", pid, unitLoaded };
+  const dispatchEnabled = file.dispatchEnabled !== false;
+  if (file.nextAttemptAt) {
+    const next = Date.parse(String(file.nextAttemptAt));
+    return {
+      state: "reconnecting",
+      pid,
+      reconnects: Number.isInteger(file.reconnects) ? file.reconnects : 0,
+      nextInMs: Number.isFinite(next) ? Math.max(0, next - now()) : null,
+      lastError: typeof file.lastError === "string" ? file.lastError : null,
+      lastErrorAt: typeof file.lastErrorAt === "string" ? file.lastErrorAt : null,
+      dispatchEnabled,
+    };
+  }
+  if (!file.connectedAt) return { state: "starting", pid, dispatchEnabled };
+  return {
+    state: "streaming",
+    pid,
+    connectedAt: file.connectedAt,
+    lastEventAt: typeof file.lastEventAt === "string" ? file.lastEventAt : null,
+    lastEventId: Number.isInteger(file.lastEventId) ? file.lastEventId : null,
+    reconnects: Number.isInteger(file.reconnects) ? file.reconnects : 0,
+    dispatchEnabled,
+  };
+}
+
+/** The one-line verdict `--supervisor=status` prints for the subscriber. */
+export function subscribeStatusLine(report, now = Date.now) {
+  const at = typeof now === "function" ? now() : now;
+  const prefix = "supervisor:   subscribe: ";
+  const dispatch =
+    report.dispatchEnabled === false
+      ? "dispatch off (--continue=no or --event-continue=no)"
+      : "dispatch on";
+  const since = (iso) => {
+    const at0 = Date.parse(String(iso ?? ""));
+    if (!Number.isFinite(at0)) return null;
+    const ms = Math.max(0, at - at0);
+    if (ms < 60_000) return `${Math.round(ms / 1000)}s ago`;
+    if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`;
+    return `${Math.round(ms / 3_600_000)}h ago`;
+  };
+  const unitNote = report.unitLoaded === false ? "; unit not loaded" : "";
+  switch (report.state) {
+    case "unavailable":
+      return `${prefix}not available (${report.reason})`;
+    case "missing":
+      return `${prefix}not running (no subscribe state${unitNote})`;
+    case "dead":
+      return `${prefix}not running (pid ${report.pid} is gone${unitNote})`;
+    case "starting":
+      return `${prefix}running (starting; pid ${report.pid}, no connection yet, ${dispatch})`;
+    case "reconnecting": {
+      const parts = [`pid ${report.pid}`, `attempt ${report.reconnects}`];
+      if (report.nextInMs !== null) parts.push(`next in ${Math.max(0, Math.round(report.nextInMs / 1000))}s`);
+      if (report.lastError) {
+        const ago = since(report.lastErrorAt);
+        parts.push(`last error${ago === null ? "" : ` ${ago}`}: ${report.lastError}`);
+      }
+      return `${prefix}running (reconnecting; ${parts.join(", ")})`;
+    }
+    case "streaming": {
+      const parts = [`pid ${report.pid}`, `connected ${since(report.connectedAt) ?? "unknown"}`];
+      if (report.lastEventAt) parts.push(`last event ${since(report.lastEventAt)}`);
+      if (report.lastEventId !== null) parts.push(`id ${report.lastEventId}`);
+      parts.push(`reconnects ${report.reconnects}`, dispatch);
+      return `${prefix}running (streaming; ${parts.join(", ")})`;
+    }
+    default:
+      return `${prefix}unknown (${report.state})`;
+  }
+}
+
+/**
  * The launchd label / systemd-name stem for one agent kind — `com.meerkat-taskpanel.<agent>.<actor-kind>`.
  *
  * @param {string} agent
@@ -688,8 +788,13 @@ export function runSupervisorAction(options) {
   if (action === "status") {
     log(`supervisor: status (kind=${paths.actorKind})`);
     const names = scheduler === "auto" ? ["launchd", "systemd", "cron"] : [requested];
+    let subscribeUnitLoaded = null;
     for (const name of names) {
       const probe = all[name].probe();
+      if (name === requested) {
+        const unit = probe.units.find((u) => /(^|[.-])subscribe(\.service)?$/.test(u.unit));
+        subscribeUnitLoaded = unit === undefined ? null : unit.loaded;
+      }
       const listed = probe.units.map((u) => `${u.unit}=${u.loaded ? "loaded" : "not loaded"}`).join(", ");
       log(`supervisor:   ${name}: ${probe.loaded ? "loaded" : "not loaded"} (${listed})`);
       const legacy = typeof all[name].legacyProbe === "function" ? all[name].legacyProbe() : null;
@@ -710,6 +815,15 @@ export function runSupervisorAction(options) {
         `${pool.heartbeatAgeMs === null ? "" : `, heartbeat ${Math.round(pool.heartbeatAgeMs / 1000)}s`}`
       : pool.reason;
     log(`supervisor:   session: ${pool.live ? "running" : "not running"} (${detail})`);
+    // The subscriber is a *runtime* fact too: loaded tells you the unit exists,
+    // not whether it is streaming or stuck on the reconnect ladder.
+    const subscriber = subscribeReport(dirname(paths.state), {
+      scheduler: requested,
+      now: options.now,
+      isAlive: options.isAlive,
+      unitLoaded: subscribeUnitLoaded,
+    });
+    log(subscribeStatusLine(subscriber, options.now ?? Date.now));
     // The full-access opt-in is an authorization, so status states it — and who
     // recorded it — rather than leaving a bypass invisible.
     const allowAll = String(agentConfigValue(paths.config, "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS") ?? "").toLowerCase();

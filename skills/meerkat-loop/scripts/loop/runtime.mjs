@@ -22,7 +22,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 import { EVENT_STREAM_LINE } from "../foundation/constants.mjs";
 import { pruneRegistry } from "../foundation/scheduling.mjs";
@@ -65,6 +65,37 @@ export function saveRegistry(path, registry) {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(registry, null, 2)}\n`);
+  renameSync(tmp, path);
+}
+
+// ---------------------------------------------------------------------------
+// Event-subscriber liveness (`--supervisor=status` reads this)
+// ---------------------------------------------------------------------------
+
+/** Where the subscriber publishes its connection facts, beside the other loop state. */
+export function subscribeStatePath(stateDir) {
+  return join(stateDir, "subscribe.state.json");
+}
+
+/** Read the subscriber's state; a missing/corrupt file is `null`, never a crash. */
+export function loadSubscribeState(path) {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    if (parsed && typeof parsed === "object" && parsed.version === 1) return parsed;
+  } catch {
+    // Missing or unreadable — status says "not running".
+  }
+  return null;
+}
+
+/**
+ * Publish the subscriber's state. Temp + rename, like the registry: `status` runs
+ * in another process and must never read a torn file.
+ */
+export function saveSubscribeState(path, state) {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`);
   renameSync(tmp, path);
 }
 

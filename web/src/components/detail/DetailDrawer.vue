@@ -42,6 +42,7 @@ import {
 } from "../../stores/board.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { activityLine, relativeTime } from "../../lib/activity.js";
+import { newestFirst } from "../../lib/time.js";
 import { attachmentRows } from "../../lib/attachments.js";
 import { errorTextKey } from "../../i18n/messages.mjs";
 import { api, ApiError } from "../../services/api.js";
@@ -170,9 +171,13 @@ const reopenReady = computed(() => reopenReason.value.trim().length >= 8);
  * event without a catalogue sentence reads as its own name (see `lib/activity.js`).
  * `agent` picks the actor's face — an agent's handle is monospaced, exactly as
  * the prototype's `font-medium td-mono` states it (R14 D46).
+ *
+ * The list reads **newest first** (nearest in time at the top) and the drawer
+ * owns that order: `newestFirst` sorts whatever the read answered, so a board
+ * that ignored the `order=desc` parameter cannot invert the trail.
  */
 const activityRows = computed(() =>
-  activities.value.map((row) => ({
+  newestFirst(activities.value).map((row) => ({
     id: row.id,
     actor: row.actor_id ?? "—",
     agent: row.actor_kind === "agent",
@@ -188,9 +193,13 @@ const activityRows = computed(() =>
  * (the catalogue's `comment.*` trio, R14 D40). A decision comment is *quoted*
  * (`[data-detail-comments] .td-comment-decision`) and its kind rides a chip, as
  * the prototype has it.
+ *
+ * Newest first, for the same reason as the activity trail: the composer sits
+ * above the list, so the freshest answer and the box that writes the next one
+ * stay together whichever order the read answered.
  */
 const commentRows = computed(() =>
-  comments.value.map((row) => {
+  newestFirst(comments.value).map((row) => {
     const name = row.author?.display_name ?? row.author_id ?? "—";
     const kind = row.author_kind ?? "human";
     const decision = row.kind === "decision";

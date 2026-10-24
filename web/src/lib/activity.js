@@ -13,7 +13,7 @@
  * as unknown, not as a plausible lie.
  */
 
-import { TIME_RUNGS_TWO, timeLadder } from "./time.js";
+import { TIME_RUNGS_DRAWER, timeLadder } from "./time.js";
 
 /**
  * The three events the prototype gives a localised sentence, as the **suffix**
@@ -40,10 +40,11 @@ export const ACTIVITY_SENTENCES = Object.freeze({
 });
 
 /**
- * The row's timestamp: the prototype's two-step ladder — `time.hoursAgo` under a
- * day, `time.daysAgo` from a day up — as `{key, arg, absolute}`.
+ * The row's timestamp: the drawer's four-step ladder — `time.justNow` under a
+ * minute, `time.minutesAgo` under an hour, `time.hoursAgo` under a day,
+ * `time.daysAgo` from a day up — as `{key, arg, absolute}`.
  *
- * A stamp in the future (a clock that disagree with the server's) reads as the
+ * A stamp in the future (a clock that disagrees with the server's) reads as the
  * freshest row rather than as a negative number, and anything unparseable
  * returns `null` so the caller drops the node instead of printing `NaN`.
  *
@@ -52,7 +53,7 @@ export const ACTIVITY_SENTENCES = Object.freeze({
  * @returns {{key: string, arg: number, absolute: string}|null}
  */
 export function relativeTime(iso, now = Date.now()) {
-  return timeLadder(iso, now, TIME_RUNGS_TWO);
+  return timeLadder(iso, now, TIME_RUNGS_DRAWER);
 }
 
 /**

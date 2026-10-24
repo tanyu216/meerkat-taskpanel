@@ -93,6 +93,11 @@ export const EXTRA = {
     "error.attachTooLarge": "That file is larger than the board's 64 MiB limit.",
     "error.attachType": "That file type is not allowed on the board.",
     "attach.placeholder": "No attachments",
+    // The drawer's relative-time ladder reaches under a minute. The prototype's
+    // own "just now" is `comment.now`, a comment-scoped key that only its demo
+    // composer writes; the drawer's comments **and** activity trail share this
+    // generic rung, so the word lives here rather than under a comment name.
+    "time.justNow": "just now",
     // The drawer's inline preview: a previewable row's filename is a disclosure
     // button, and the region it opens is a named surface of its own.
     "attachment.preview": "Attachment preview",
@@ -235,6 +240,8 @@ export const EXTRA = {
     "error.attachTooLarge": "该文件超过看板 64 MiB 的上限。",
     "error.attachType": "看板不接受该文件类型。",
     "attach.placeholder": "无附件",
+    // 同上：抽屉的相对时间阶梯向下延伸到 1 分钟以内。
+    "time.justNow": "刚刚",
     "attachment.preview": "附件预览",
     "attachment.previewOpen": "查看",
     "attachment.previewClose": "关闭预览",

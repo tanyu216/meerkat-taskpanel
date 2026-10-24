@@ -47,16 +47,17 @@ independent entries under `scripts/loop/`, and the continue turn invokes them.
 
 The split is deliberate. A 60-second clock that read the board would be a poll
 again; a 10-minute clock that ran the entries itself would keep the loop's
-responsibilities inside the scheduler. On launchd/systemd the optional
-**event subscriber** (`--subscribe`) follows the local event hub through
-`taskctl events follow` and asks for a continue turn when a dispatch-relevant event arrives,
-so a new card or a completed dependency is seen within seconds; the hub owns the host's
-single board connection and its reconnect ladder, and the subscriber's `follow` child sees
-the same records `events tail` would; the continue clock remains the
-fallback and the only path for time-based work (stale claims, review aging, SLA
-tiers). On cron — which cannot host a long-lived process — discovery stays at
-most one continue cadence. `--continue-interval` is still the lever for that
-fallback; lowering it raises the LLM cost linearly.
+responsibilities inside the scheduler. On launchd/systemd the **event subscriber**
+(`--subscribe`) follows the local event hub through `taskctl events follow` and asks for a
+continue turn when a dispatch-relevant event arrives, so a new card or a completed dependency
+is seen within seconds; the hub owns the host's single board connection and its reconnect
+ladder, and the subscriber's `follow` child sees the same records `events tail` would. It is
+part of the enabled set, not a separate switch, and it is a **latency path only**: the
+continue clock remains the fallback and the only path for time-based work (stale claims,
+review aging, SLA tiers), and an event wakes a turn only while a resident pool is live.
+On cron — which cannot host a long-lived process — discovery stays at most one continue
+cadence. `--continue-interval` is still the lever for that fallback; lowering it raises the
+LLM cost linearly.
 
 The deterministic passes are **not scheduled individually**:
 
@@ -1408,10 +1409,21 @@ stops at "no resident pool".
 The `.subscribe` unit is the **event daemon**. launchd (`KeepAlive`) and systemd
 (`Type=simple`, `Restart=always`) follow the local event hub through
 `taskctl events follow` and ask for a continue turn when a dispatch-relevant event arrives.
-The hub — not the subscriber — owns the board connection. It is optional: ping/continue remain
-the fallback, and they are the only path for time-based work (stale claims, review aging,
-SLA tiers). **cron cannot host it** — a crontab entry is not a long-lived process — so a
-cron deployment stays on the continue cadence.
+The hub — not the subscriber — owns the board connection. It ships with every
+launchd/systemd `--supervisor=enable`; it is a latency path, not a closure component:
+ping/continue remain the fallback, and they are the only path for time-based work (stale
+claims, review aging, SLA tiers). **cron cannot host it** — a crontab entry is not a
+long-lived process — so a cron deployment stays on the continue cadence.
+
+An event-triggered turn requires a **live resident pool**. With no pool it could not
+dispatch anything, so the subscriber logs and skips the turn; the continue timer still runs
+patrol + workflow. The subscriber is observable: it publishes
+`<agent-dir>/meerkat-taskpanel/subscribe.state.json`, and `--supervisor=status` reports
+`streaming`, `reconnecting`, `starting`, or `not running` from it. To run without the
+daemon, take its unit down with the service manager (`launchctl bootout …` /
+`systemctl --user disable --now meerkat-taskpanel-subscribe.service`); status then reports
+it as not loaded. `--event-continue=no` is the runtime soft-off — the process keeps the
+briefs fresh but no event wakes a turn.
 
 That is the **manual** path, and it is all a plain install does. Loading is a separate,
 explicit act: the opt-in switch is [`--supervisor=enable`](#enabling-the-supervisor-opt-in)

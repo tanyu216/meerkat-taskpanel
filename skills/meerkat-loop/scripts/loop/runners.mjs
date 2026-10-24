@@ -880,6 +880,7 @@ export function spawnContinueTurn(opts, invocation, log) {
  * @param {{
  *   log: (line: string) => void,
  *   continueEnabled?: boolean,
+ *   requirePool?: boolean,
  *   spawn?: (opts: object, invocation: object, log: (line: string) => void) => Promise<{ok: boolean, pid?: number, error?: string}>,
  *   isAlive?: (pid: number) => boolean,
  *   now?: () => number,
@@ -919,6 +920,19 @@ export async function runContinue(opts, deps = {}) {
       return 1;
     }
     log(`continue: enqueued for the resident control session${queued.coalesced ? " (coalesced)" : ""}`);
+    return 0;
+  }
+
+  // The event path may not spend a turn when there is nothing it could
+  // dispatch: with no pool, poll claims nothing, so an event-triggered turn
+  // would be a patrol + workflow pass bought at the event cadence (60 s) rather
+  // than the continue cadence (600 s). The timer still runs that pass, and it
+  // owns the one-per-cadence operator alert. Brief refreshes are unaffected.
+  if (!pool.live && deps.requirePool === true) {
+    log(
+      `continue: event dispatch skipped — no resident session pool (${pool.reason ?? "unknown"}); ` +
+        "worker dispatch paused",
+    );
     return 0;
   }
 
@@ -1019,7 +1033,9 @@ export async function runContinue(opts, deps = {}) {
  *
  * @param {object} opts
  * @param {NodeJS.ProcessEnv} [env]
- * @param {{onSkip?: Function, onAcquired?: Function}} [hooks]
+ * @param {{onSkip?: Function, onAcquired?: Function, requirePool?: boolean}} [hooks]
+ *   `requirePool` is set by the event subscriber: an event may not buy a turn
+ *   that could not dispatch anything.
  * @returns {Promise<number>}
  */
 export async function runContinueOnce(opts, env = process.env, hooks = {}) {
@@ -1028,6 +1044,7 @@ export async function runContinueOnce(opts, env = process.env, hooks = {}) {
   return runContinue(opts, {
     log,
     continueEnabled,
+    requirePool: hooks.requirePool === true,
     onSkip: hooks.onSkip,
     onAcquired: hooks.onAcquired,
   });

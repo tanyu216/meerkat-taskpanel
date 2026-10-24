@@ -234,6 +234,7 @@ See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-lo
 | log (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
+| state (runtime) | `<agent-dir>/meerkat-taskpanel/subscribe.state.json` | the event daemon's pid, last connection/event and pending reconnect — what `--supervisor=status` reports |
 
 `<agent-dir>` is `~/.claude`, `~/.codex` or `~/.agents`. **OpenClaw gets none of these, and no
 `meerkat-loop` skill** — it installs the board skill only and uses the
@@ -308,9 +309,15 @@ supervisor: enabled (kind=claude, scheduler=launchd, units=com.meerkat-taskpanel
 to disable:  install.sh --supervisor=disable --supervisor-actor-kinds claude
 ```
 
-Enabling installs the resident pool plus the two clocks: a long-lived `--session`
-manager, a $0 ping, and one bounded `Continue` judgment turn per continue cadence
-that the pool runs in its control session. Inside that turn the poll is still the
+Enabling installs the resident pool, the two clocks **and the event daemon**: a long-lived
+`--session` manager, a $0 ping, one bounded `Continue` judgment turn per continue cadence
+that the pool runs in its control session, and the `--subscribe` daemon on launchd/systemd.
+The daemon is part of that set, not a separate flag: it is the low-latency path, the
+continue cadence remains the fallback, and an event wakes a turn only while the pool is
+live. It is not a closure component — with no pool it skips the turn and the timer still
+runs patrol + workflow — and `--supervisor=status` reports whether it is `streaming`,
+`reconnecting` or `not running` from `subscribe.state.json`. To run without it, disable that
+one unit in the service manager; `--event-continue=no` is the runtime soft-off. Inside that turn the poll is still the
 $0 local scan; it claims and enqueues, and the project session spawns the
 subagent — so a worker turn still starts only when a claim succeeded (see
 [`scheduling.md §The cost gate`](scheduling.md#the-cost-gate-a-worker-turn-starts-only-on-fire)).
