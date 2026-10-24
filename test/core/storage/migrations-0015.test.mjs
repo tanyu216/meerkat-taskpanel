@@ -30,9 +30,9 @@ after(cleanupTempDirs);
 
 /** The shipped set **before** 0015 — a board as the previous build left it. */
 const before0015 = migrationsBefore("0015", { prefix: "meerkat-taskpanel-pre0015-" });
-/** The set through 0037: 0038 rebuilds `tasks` again and retires `deploy`, which
+/** The set through 0038: 0039 rebuilds `tasks` again and retires `deploy`, which
  *  is that file's subject, not this one's. */
-const through0037 = migrationsThrough("0037", { prefix: "meerkat-taskpanel-through0037-" });
+const through0038 = migrationsThrough("0038", { prefix: "meerkat-taskpanel-through0038-" });
 
 const columnsOf = (db) => db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name);
 const tasksSql = (db) => db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get().sql;
@@ -76,10 +76,10 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       );
       seedLegacyBoard(board.db);
 
-      const up = applyMigrations(board.db, { dir: through0037() });
+      const up = applyMigrations(board.db, { dir: through0038() });
       // 0015 and everything after it: 0016 (`blocked_reason`) is the next file in
       // the set, and this board is below both.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0038"]);
       assert.deepEqual(up.skipped.slice(-2), ["0013", "0014"]);
 
       // 1 — the enum: the new word is storable, the old ones still are (they are
@@ -303,8 +303,8 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
   it("is a no-op on a board that is already at 0015", async () => {
     const board = await createTempBoard({ migrate: false });
     try {
-      applyMigrations(board.db, { dir: through0037() });
-      const again = applyMigrations(board.db, { dir: through0037() });
+      applyMigrations(board.db, { dir: through0038() });
+      const again = applyMigrations(board.db, { dir: through0038() });
       assert.deepEqual(again.applied, []);
       assert.equal(again.skipped.includes("0015"), true);
       assert.match(tasksSql(board.db), /'deploy'/);

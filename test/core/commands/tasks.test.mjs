@@ -515,7 +515,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       title: "Child",
       assignee: "linus",
       assigneeKind: "agent",
-      // 0037 — a child is the agent's to close unless the creator says otherwise.
+      // 0038 — a child is the agent's to close unless the creator says otherwise.
       acceptanceMode: "off",
       actor: AGENT,
       ...extra,
@@ -932,7 +932,7 @@ describe("commands/tasks — the container lifecycle (system start, notes, recon
       title: "Child",
       assignee: "linus",
       assigneeKind: "agent",
-      // 0037 — a child is the agent's to close unless the creator says otherwise.
+      // 0038 — a child is the agent's to close unless the creator says otherwise.
       acceptanceMode: "off",
       actor: AGENT,
       ...extra,
@@ -2112,7 +2112,7 @@ describe("commands/tasks — listCandidates (poll read)", () => {
     });
   });
 
-  it("retires the deploy kind: create and update refuse it (0037)", async () => {
+  it("retires the deploy kind: create and update refuse it (0038)", async () => {
     await board(async ({ commands }) => {
       assert.throws(
         () => commands.createTask({ projectId: "proj", title: "Rebuild dist", kind: "deploy", actor: AGENT }),
@@ -3388,7 +3388,7 @@ describe("commands/tasks — review decision (0031)", () => {
       const fallback = commands.createTask({ projectId: "proj", title: "d", actor: AGENT });
       assert.equal(fallback.acceptanceMode, "human");
       assert.equal(fallback.reviewRequired, 0);
-      // 0037 — the explicit card value wins over the project default.
+      // 0038 — the explicit card value wins over the project default.
       const optIn = commands.createTask({ projectId: "off", title: "yes", actor: AGENT, acceptanceMode: "agent" });
       assert.equal(optIn.acceptanceMode, "agent");
       assert.equal(optIn.reviewRequired, 1);

@@ -657,7 +657,7 @@ describe("commands — timestamps come from the context clock", () => {
   });
 });
 
-describe("commands/projects — the acceptance default (0037)", () => {
+describe("commands/projects — the acceptance default (0038)", () => {
   it("stores an explicit acceptance and refuses a value outside the vocabulary", async () => {
     await board(({ commands }) => {
       const project = commands.createProject({ id: "acc", name: "Acc", acceptance: "human", actor: HUMAN });

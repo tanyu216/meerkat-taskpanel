@@ -117,7 +117,7 @@ export function workflowTick(ctx, input = {}) {
       projectReviewers,
       reviewAgingMs: input.reviewAgingMs,
       maxActions: input.maxActions,
-      // 0037 — the card's own `acceptance_mode` is the whole decision; there is
+      // 0038 — the card's own `acceptance_mode` is the whole decision; there is
       // no board-level policy and no loop-side advisory copy to merge.
     },
     boardTruncated,

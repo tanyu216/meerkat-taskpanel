@@ -121,7 +121,7 @@ export function taskToWire(task, options = {}) {
   // boolean: the request declarations use `bool()`, and a reader should not
   // have to know the storage type. Kept for one release.
   out.review_required = task.reviewRequired === 1 || task.reviewRequired === true;
-  // 0037 — the single acceptance decision. `auto` never appears here: the card
+  // 0038 — the single acceptance decision. `auto` never appears here: the card
   // stores a concrete mode.
   out.acceptance_mode = task.acceptanceMode ?? "off";
   out.assignee = actorRef(task.assigneeId, task.assigneeKind, lookup);
@@ -193,7 +193,7 @@ export function projectToWire(project) {
     meta: project.meta ?? {},
     readme: project.readme ?? null,
     // 0031 — the project's review default and its optional reviewer override.
-    // 0037 — `acceptance` is the single project default; `review_policy` is the
+    // 0038 — `acceptance` is the single project default; `review_policy` is the
     // legacy spelling, kept for one release.
     review_policy: project.reviewPolicy ?? "optional",
     acceptance: project.acceptance ?? "auto",

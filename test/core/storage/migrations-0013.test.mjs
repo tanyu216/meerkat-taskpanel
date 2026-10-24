@@ -77,7 +77,7 @@ const EXPECTED_TRIGGERS = [
   "tr_tasks_kind_downgrade",
   "tr_latest_report_belongs",
   "tr_deliver_gate",
-  // 0037 — the direct `off` delivery still owes its baseline evidence.
+  // 0038 — the direct `off` delivery still owes its baseline evidence.
   "tr_deliver_gate_done",
   "tr_tasks_round_bump",
   // 0025/0026 — the head's review-marker and children-terminal guards.
@@ -89,7 +89,7 @@ const EXPECTED_TRIGGERS = [
   // 0031 — the review-required marker and its `done` floor.
   "tr_tasks_review_card_not_required",
   "tr_tasks_review_card_not_required_update",
-  // 0037 — the acceptance-mode mirror and the mode-based done floor.
+  // 0038 — the acceptance-mode mirror and the mode-based done floor.
   "tr_tasks_acceptance_agent_done",
   "tr_tasks_acceptance_mode_ins",
   "tr_tasks_acceptance_mode_upd",
@@ -139,7 +139,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0038", "0039"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an

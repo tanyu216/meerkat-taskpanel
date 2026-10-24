@@ -250,7 +250,7 @@ describe("md/export — 0031 review decision", () => {
         title: "Reviewed",
         actor: { kind: "agent", id: "linus" },
       });
-      // 0037 — an `auto` project falls back to `human` per card; `off` is the
+      // 0038 — an `auto` project falls back to `human` per card; `off` is the
       // state that writes no key.
       commands.createProject({ id: "proj", name: "P", acceptance: "off", actor: { kind: "human", id: "T" } });
       const plain = commands.createTask({
@@ -261,7 +261,7 @@ describe("md/export — 0031 review decision", () => {
 
       assert.match(renderCard(required, { repos }), /^review_required: yes$/m);
       assert.doesNotMatch(renderCard(plain, { repos }), /^review_required:/m);
-      // 0037 — the mode is the forward key; `off` stays absent like the legacy
+      // 0038 — the mode is the forward key; `off` stays absent like the legacy
       // `review_required`, and `agent` states itself.
       assert.match(renderCard(required, { repos }), /^acceptance_mode: agent$/m);
       assert.doesNotMatch(renderCard(plain, { repos }), /^acceptance_mode:/m);

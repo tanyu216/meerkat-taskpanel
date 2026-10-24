@@ -152,7 +152,7 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
       review_round: null,
       status_changed_at: at(30),
       updated_at: at(30),
-      // 0037 — only a `human` card waits for a person.
+      // 0038 — only a `human` card waits for a person.
       acceptance_mode: "human",
       assignee: { id: "a1", display_name: "linus", kind: "agent" },
       ...overrides,
@@ -208,7 +208,7 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
     child.status = "canceled";
     assert.deepEqual(waitIds([original, child]), ["1"], "a canceled child counts as finished");
 
-    // 0037 — a child is accepted on its own mode: a `human` child waits like
+    // 0038 — a child is accepted on its own mode: a `human` child waits like
     // any other card, an `off`/`agent` child does not. There is no scope matrix.
     assert.deepEqual(waitIds([delivered("3", { parent_id: "1" })]), ["3"]);
     assert.deepEqual(waitIds([delivered("4", { parent_id: "1", acceptance_mode: "off" })]), []);

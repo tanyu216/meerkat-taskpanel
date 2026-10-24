@@ -40,7 +40,7 @@ export function reviewCreateArgs(action) {
     "--assignee", action.reviewer,
     "--assignee-kind", "agent",
     "--label", "review",
-    // 0037 — a review card is flow B and is never itself reviewed.
+    // 0038 — a review card is flow B and is never itself reviewed.
     "--acceptance-mode", "off",
     "--meta", "flow=B",
     "--review-of", action.original_ref,
@@ -282,7 +282,7 @@ export async function runWorkflowPass(opts, config, log) {
           action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
         }`,
         ...(action.assignee_id === null ? [] : ["--assignee-id", String(action.assignee_id)]),
-        // 0037 — a fix child is a loop artifact: no review, no human gate.
+        // 0038 — a fix child is a loop artifact: no review, no human gate.
         "--acceptance-mode", "off",
         "--meta", `rework_of=${action.original_ref}`,
         "--meta", `rework_round=${action.rework_round}`,

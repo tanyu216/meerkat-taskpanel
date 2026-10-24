@@ -292,7 +292,7 @@ describe("cli/deliver — the audited waiver (case 5, F-B1)", () => {
   });
 });
 
-describe("cli/deliver — the direct `done` edge (0037)", () => {
+describe("cli/deliver — the direct `done` edge (0038)", () => {
   /** A board with one card in `in_progress`, created with `mode`. */
   async function modeBoard(fn, mode = "off") {
     return withCli(async (ctx) => {

@@ -1,18 +1,16 @@
 /**
- * 0038 — `deploy` leaves the card model.
+ * 0038 — the single acceptance vocabulary.
  *
  * Properties:
  *
- *   1. a historical `deploy` row survives the rebuild as `task`, keeping its
- *      acceptance mode (0037's `agent` snapshot) and every other column;
- *   2. after the rebuild the table's own CHECK refuses `deploy` again — for an
- *      INSERT and for an UPDATE;
- *   3. nothing else moved: the index set, the triggers on `tasks`, the parked
- *      external triggers and the foreign keys are all intact.
+ *   1. the project default maps `review_policy` faithfully, and the card
+ *      backfill keeps in-flight no-review deliveries on the human path;
+ *   2. `acceptance_mode` and the legacy `review_required` mirror cannot drift,
+ *      and a review card is always `off`;
+ *   3. only `off` gains the direct `in_progress → done` edge, and it still owes
+ *      its baseline evidence; `agent` still owes a current-round review.
  *
- * Raw SQL on purpose: the command layer already refuses `kind=deploy`, so a
- * fixture that went through `createTask` could not tell the backfill from a
- * refusal.
+ * Raw SQL on purpose: the fixture's `createTask` would hide a backfill bug.
  */
 
 import assert from "node:assert/strict";
@@ -21,8 +19,7 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import { applyMigrations, defaultMigrationsDir } from "../../../src/core/storage/migrations-runner.mjs";
-import { indexShapesOf, triggersOf } from "../../helpers/migration-shapes.mjs";
-import { TS, cleanupTempDirs, createTempBoard, makeTempDir, reasonCode } from "../../helpers/sqlite-fixture.mjs";
+import { TS, cleanupTempDirs, createTempBoard, makeTempDir } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
 
@@ -37,116 +34,179 @@ function before0038() {
   return dir;
 }
 
-const tasksSql = (db) =>
-  db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get().sql;
+const triggersOf = (db) =>
+  Object.fromEntries(
+    db
+      .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'")
+      .all()
+      .map((r) => [r.name, String(r.sql).replace(/\s+/g, " ").trim()]),
+  );
 
-function seedDeployBoard(db) {
+const tableNames = (db) =>
+  db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((r) => r.name);
+
+const raises = (fn, code) =>
+  assert.throws(fn, (err) => String(err.message).includes(code));
+
+function seedProject(db, id, reviewPolicy) {
   db.prepare(
-    `INSERT INTO projects(id, name, next_task_number, labels, meta_json, created_at, updated_at)
-     VALUES ('legacy', 'Legacy', 5, '[]', '{}', ?, ?)`,
-  ).run(TS, TS);
-  // A deployment card as 0015–0037 stored it: the marker plus the review gate
-  // 0037 mirrored as `agent`.
-  db.prepare(
-    `INSERT INTO tasks(id, identifier, project_id, title, status, kind, meta_json,
-                       review_required, acceptance_mode, created_at, updated_at, status_changed_at)
-     VALUES ('dep', 'LEGACY-0001', 'legacy', 'Rebuild dist', 'todo', 'deploy', '{"target":"/srv"}',
-             1, 'agent', ?, ?, ?)`,
-  ).run(TS, TS, TS);
-  db.prepare(
-    `INSERT INTO tasks(id, identifier, project_id, title, status, kind, created_at, updated_at, status_changed_at)
-     VALUES ('plain', 'LEGACY-0002', 'legacy', 'Ordinary', 'todo', 'task', ?, ?, ?)`,
-  ).run(TS, TS, TS);
+    `INSERT INTO projects(id, name, next_task_number, labels, meta_json, review_policy, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?)`,
+  ).run(id, id, 20, "[]", "{}", reviewPolicy, TS, TS);
 }
 
-describe("storage/migrations — 0038 retires the deploy kind", () => {
-  it("copies a deploy row across as a task, keeping its acceptance snapshot", async () => {
+function seedTask(db, id, projectId, status, reviewRequired = 0, acceptanceJson = "[]") {
+  db.prepare(
+    `INSERT INTO tasks(id, identifier, project_id, title, status, review_required, acceptance_json, created_at, updated_at, status_changed_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+  ).run(id, `${projectId}-${id}`, projectId, id, status, reviewRequired, acceptanceJson, TS, TS, TS);
+}
+
+function seedReview(db, id, originalId) {
+  db.prepare(
+    `INSERT INTO tasks(id, identifier, project_id, title, status, review_of_id, review_round, created_at, updated_at, status_changed_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+  ).run(id, `p1-${id}`, "p1", id, "in_review", originalId, 1, TS, TS, TS);
+}
+
+function seed(db) {
+  seedProject(db, "p1", "required");
+  seedProject(db, "p2", "optional");
+  seedProject(db, "p3", "off");
+  seedTask(db, "t-req", "p1", "in_progress", 1);
+  seedTask(db, "t-off", "p2", "in_progress", 0);
+  seedTask(db, "t-inflight", "p2", "in_review", 0);
+  seedReview(db, "r1", "t-req");
+}
+
+const modeOf = (db, id) =>
+  db.prepare("SELECT acceptance_mode FROM tasks WHERE id = ?").get(id).acceptance_mode;
+
+describe("storage/migrations — 0038 acceptance mode", () => {
+  it("maps the project policy and backfills card modes conservatively", async () => {
     const board = await createTempBoard({ migrate: false });
     try {
       applyMigrations(board.db, { dir: before0038() });
-      assert.match(tasksSql(board.db), /'deploy'/, "precondition: the old CHECK names deploy");
-      seedDeployBoard(board.db);
-
+      seed(board.db);
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0038"]);
+      assert.ok(up.applied.some((m) => m.version === "0038"));
 
-      const dep = board.db.prepare("SELECT * FROM tasks WHERE id = 'dep'").get();
-      assert.equal(dep.kind, "task", "a historical deployment card becomes an ordinary card");
-      assert.equal(dep.acceptance_mode, "agent", "its review gate is untouched");
-      assert.equal(dep.review_required, 1);
-      assert.equal(dep.identifier, "LEGACY-0001");
-      assert.equal(JSON.parse(dep.meta_json).target, "/srv", "every other column survives");
-      assert.equal(board.db.prepare("SELECT kind FROM tasks WHERE id = 'plain'").get().kind, "task");
+      const projects = board.db
+        .prepare("SELECT id, acceptance FROM projects ORDER BY id")
+        .all()
+        .map((row) => ({ ...row }));
+      assert.deepEqual(projects, [
+        { id: "p1", acceptance: "agent" },
+        { id: "p2", acceptance: "auto" },
+        { id: "p3", acceptance: "off" },
+      ]);
 
-      assert.match(tasksSql(board.db), /CHECK \(kind IN \('task','epic'\)\)/, "the CHECK is narrowed");
-      assert.equal(/deploy/.test(tasksSql(board.db)), false);
+      assert.equal(modeOf(board.db, "t-req"), "agent");
+      assert.equal(modeOf(board.db, "t-off"), "off");
+      // The one conservative grandfather: an in-flight no-review delivery.
+      assert.equal(modeOf(board.db, "t-inflight"), "human");
+      assert.equal(modeOf(board.db, "r1"), "off");
+
+      // The legacy columns are still there for the compatibility release.
+      const cols = board.db.prepare("PRAGMA table_info(tasks)").all().map((c) => c.name);
+      assert.ok(cols.includes("review_required"));
+      assert.ok(cols.includes("acceptance_mode"));
     } finally {
       board.close();
     }
   });
 
-  it("refuses the retired kind on both write paths, from the table itself", async () => {
-    const board = await createTempBoard();
+  it("refuses a raw write that breaks the mirror or the review-card rule", async () => {
+    const board = await createTempBoard({ migrate: false });
     try {
-      board.db.prepare(
-        `INSERT INTO projects(id, name, next_task_number, labels, meta_json, created_at, updated_at)
-         VALUES ('p', 'P', 5, '[]', '{}', ?, ?)`,
-      ).run(TS, TS);
-      assert.equal(
-        reasonCode(() =>
+      applyMigrations(board.db, { dir: before0038() });
+      seed(board.db);
+      applyMigrations(board.db);
+
+      raises(
+        () => board.db.prepare("UPDATE tasks SET acceptance_mode = 'agent' WHERE id = 't-off'").run(),
+        "ACCEPTANCE_MODE_CONFLICT",
+      );
+      raises(
+        () => board.db.prepare("UPDATE tasks SET review_required = 1 WHERE id = 't-off'").run(),
+        "ACCEPTANCE_MODE_CONFLICT",
+      );
+      raises(
+        () => board.db.prepare("UPDATE tasks SET acceptance_mode = 'human' WHERE id = 'r1'").run(),
+        "REVIEW_CARD_MARKER_INVALID",
+      );
+      raises(
+        () =>
           board.db
             .prepare(
-              `INSERT INTO tasks(id, identifier, project_id, title, status, kind, created_at, updated_at)
-               VALUES ('d', 'P-1', 'p', 'x', 'todo', 'deploy', ?, ?)`,
+              `INSERT INTO tasks(id, identifier, project_id, title, status, review_required, created_at, updated_at, status_changed_at)
+               VALUES ('t-bad','p2-t-bad','p2','t-bad','todo',1,?,?,?)`,
             )
-            .run(TS, TS),
-        ),
-        "VALIDATION_FAILED",
-        "the CHECK refuses a new deploy card",
-      );
-      board.db
-        .prepare(
-          `INSERT INTO tasks(id, identifier, project_id, title, status, kind, created_at, updated_at)
-           VALUES ('t', 'P-2', 'p', 'x', 'todo', 'task', ?, ?)`,
-        )
-        .run(TS, TS);
-      assert.equal(
-        reasonCode(() => board.db.prepare("UPDATE tasks SET kind = 'deploy' WHERE id = 't'").run()),
-        "VALIDATION_FAILED",
-        "...and an update to the retired kind",
+            .run(TS, TS, TS),
+        "ACCEPTANCE_MODE_CONFLICT",
       );
     } finally {
       board.close();
     }
   });
 
-  it("leaves the index set, triggers and foreign keys intact", async () => {
-    const upgrade = await createTempBoard({ migrate: false });
-    const fresh = await createTempBoard();
+  it("lets only off take the direct done edge, and still enforces its evidence", async () => {
+    const board = await createTempBoard({ migrate: false });
     try {
-      applyMigrations(upgrade.db, { dir: before0038() });
-      const indexesBefore = indexShapesOf(upgrade.db, "tasks");
-      const triggersBefore = triggersOf(upgrade.db);
+      applyMigrations(board.db, { dir: before0038() });
+      seed(board.db);
+      applyMigrations(board.db);
 
-      applyMigrations(upgrade.db);
+      // off, empty baseline → direct done is allowed.
+      assert.doesNotThrow(() =>
+        board.db.prepare("UPDATE tasks SET status = 'done' WHERE id = 't-off'").run(),
+      );
 
-      assert.deepEqual(indexShapesOf(upgrade.db, "tasks"), indexesBefore, "no index lost or added");
-      assert.deepEqual(indexShapesOf(upgrade.db, "tasks"), indexShapesOf(fresh.db, "tasks"));
-      // Every trigger comes back; the only text that may change is the table's
-      // own kind CHECK, which no trigger carries.
-      assert.deepEqual(triggersOf(upgrade.db), triggersBefore);
+      // agent from in_progress is not on the whitelist; it must deliver first.
+      raises(
+        () => board.db.prepare("UPDATE tasks SET status = 'done' WHERE id = 't-req'").run(),
+        "INVALID_TRANSITION",
+      );
 
-      const leftovers = upgrade.db
-        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'tasks_%'")
-        .all()
-        .map((r) => r.name);
-      assert.deepEqual(leftovers, [], "the scratch table is gone");
-      assert.equal(upgrade.db.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
-      assert.deepEqual(upgrade.db.prepare("PRAGMA foreign_key_check").all(), []);
-      assert.equal(upgrade.db.prepare("PRAGMA foreign_keys").get().foreign_keys, 1, "the pragma is restored");
+      // human from in_progress is likewise refused.
+      seedTask(board.db, "t-human", "p2", "in_progress", 0);
+      board.db.prepare("UPDATE tasks SET acceptance_mode = 'human' WHERE id = 't-human'").run();
+      raises(
+        () => board.db.prepare("UPDATE tasks SET status = 'done' WHERE id = 't-human'").run(),
+        "INVALID_TRANSITION",
+      );
+
+      // …but a human card delivered to in_review may be closed by the human path.
+      assert.doesNotThrow(() =>
+        board.db.prepare("UPDATE tasks SET status = 'done' WHERE id = 't-inflight'").run(),
+      );
+
+      // off with a non-empty baseline and no current-round report is refused.
+      seedTask(board.db, "t-evidence", "p2", "in_progress", 0, '["criterion"]');
+      raises(
+        () => board.db.prepare("UPDATE tasks SET status = 'done' WHERE id = 't-evidence'").run(),
+        "REPORT_REQUIRED",
+      );
     } finally {
-      upgrade.close();
+      board.close();
+    }
+  });
+
+  it("upgrades to the same schema as a fresh board", async () => {
+    const fresh = await createTempBoard();
+    const upgraded = await createTempBoard({ migrate: false });
+    try {
+      applyMigrations(upgraded.db, { dir: before0038() });
+      seed(upgraded.db);
+      applyMigrations(upgraded.db);
+
+      assert.deepEqual(triggersOf(upgraded.db), triggersOf(fresh.db));
+      assert.deepEqual(tableNames(upgraded.db), tableNames(fresh.db));
+      assert.equal(upgraded.db.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
+      assert.deepEqual(upgraded.db.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally {
       fresh.close();
+      upgraded.close();
     }
   });
 });

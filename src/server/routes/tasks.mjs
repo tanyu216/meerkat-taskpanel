@@ -263,7 +263,7 @@ export function registerTaskRoutes(router, surface) {
       // so a re-submitted create is a no-op, not a second card.
       idem: body.idem,
       allowDup: body.allow_dup === true,
-      // 0037 — the single acceptance decision; `review_required` is the legacy
+      // 0038 — the single acceptance decision; `review_required` is the legacy
       // alias the command layer still accepts for one release.
       acceptanceMode: body.acceptance_mode,
       reviewRequired: body.review_required,

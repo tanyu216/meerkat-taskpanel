@@ -142,7 +142,7 @@ taskctl issue create --project <id> --title <t> [flags]
 |---|---|
 | `--project <id>` | **Required.** The project; its id is the identifier prefix. |
 | `--title <t>` | **Required.** The one-line summary. |
-| `--acceptance-mode off\|agent\|human` | 0037 — the card's acceptance decision. `off`: no review; the deliverer may close it directly (`in_progress → done`). `agent`: an independent review card must APPROVE before the loop closes it. `human`: only a human closes it. An explicit value wins over the project default; an unresolved card under a project `auto` falls back to `human`. A review card is always `off`. |
+| `--acceptance-mode off\|agent\|human` | 0038 — the card's acceptance decision. `off`: no review; the deliverer may close it directly (`in_progress → done`). `agent`: an independent review card must APPROVE before the loop closes it. `human`: only a human closes it. An explicit value wins over the project default; an unresolved card under a project `auto` falls back to `human`. A review card is always `off`. |
 | `--review yes\|no` | Legacy alias for `--acceptance-mode`: `yes → agent`, `no → off`. Kept for one release. |
 | `--acceptance <text>` | One acceptance item; repeat for each. |
 | `--assignee <text>` / `--assignee-id <id>` / `--assignee-kind <agent\|human>` | Route the card. `--assignee-id` bypasses the dictionary. |

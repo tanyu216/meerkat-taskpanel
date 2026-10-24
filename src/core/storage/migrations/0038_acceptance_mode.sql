@@ -1,4 +1,4 @@
--- 0037_acceptance_mode.sql — one acceptance vocabulary.
+-- 0038_acceptance_mode.sql — one acceptance vocabulary.
 --
 -- The board used to answer "who may close this card?" with two orthogonal axes:
 -- the project's `review_policy` (required | optional | off) and the board's
@@ -12,9 +12,9 @@
 --   * `tasks.acceptance_mode` — `off | agent | human`; the resolved snapshot.
 --     `auto` is never stored on a card — an unresolved card has no owner.
 --
--- 0037 is deliberately **additive**. The legacy columns are still written and
+-- 0038 is deliberately **additive**. The legacy columns are still written and
 -- still drive behaviour for one release; the new column is the decision the next
--- phases read. 0038 retires `review_required` / `review_policy`.
+-- phases read. 0039 retires `review_required` / `review_policy`.
 --
 -- ---------------------------------------------------------------------------
 -- What each mode means
@@ -38,7 +38,7 @@
 --
 -- Cards: `review_required = 1 → agent`. A card at 0 becomes `off`, except an
 -- in-flight `in_review` card — that one becomes `human`. This is a one-time
--- conservative stop: before 0037 a human-only board would leave that delivery
+-- conservative stop: before 0038 a human-only board would leave that delivery
 -- for a human, and the first reconcile tick after an upgrade must not silently
 -- auto-accept it. Review cards are always `off` (flow B is never reviewed).
 --
@@ -128,7 +128,7 @@ BEGIN
       -- 0024 · the epic overlay.
       OR (OLD.status = 'todo'        AND NEW.status = 'in_review' AND NEW.kind = 'epic')
       OR (OLD.status = 'in_progress' AND NEW.status IN ('in_review','blocked','todo','canceled','awaiting'))
-      -- 0037 · the off-mode direct path. `agent`/`human` are absent on purpose,
+      -- 0038 · the off-mode direct path. `agent`/`human` are absent on purpose,
       -- and a review card is flow B: it must deliver its verdict through
       -- `in_review`, so it never gets the shortcut.
       OR (OLD.status = 'in_progress' AND NEW.status = 'done'

@@ -1,7 +1,7 @@
--- 0038_retire_deploy_kind.sql — the card model forgets `deploy` (0037, phase 2).
+-- 0039_retire_deploy_kind.sql — the card model forgets `deploy` (0038, phase 2).
 --
 -- 0015 widened `tasks.kind` to ('task','epic','deploy') so a deployment card
--- could be marked. 0037 retired the concept: whether a card belongs to a release
+-- could be marked. 0038 retired the concept: whether a card belongs to a release
 -- line is the loop's own decision, and a card that needs an independent gate
 -- says `acceptance_mode: agent`. The application stopped producing or accepting
 -- the value first; this file narrows the table so the schema cannot outlive the
@@ -10,7 +10,7 @@
 -- SQLite cannot alter a CHECK, so this is the 0015 rebuild procedure again:
 -- CREATE new → copy → DROP old → RENAME new. Every row and every column
 -- survives; a historical `deploy` row is copied as `task` — its review gate was
--- already carried over as `acceptance_mode = 'agent'` by 0037, so nothing about
+-- already carried over as `acceptance_mode = 'agent'` by 0038, so nothing about
 -- its acceptance changes.
 --
 -- Triggers on *other* tables that name `tasks` in their bodies are parked and
@@ -28,7 +28,7 @@ DROP TRIGGER IF EXISTS tr_rel_parent_epic;
 DROP TRIGGER IF EXISTS tr_rel_parent_guard;
 DROP TRIGGER IF EXISTS tr_reports_rollup_valid;
 
--- The replacement table: the 0037 shape, one token different in the kind CHECK.
+-- The replacement table: the 0038 shape, one token different in the kind CHECK.
 CREATE TABLE tasks_retire_deploy (
   id                      TEXT PRIMARY KEY,
   identifier              TEXT NOT NULL,
@@ -421,7 +421,7 @@ BEGIN
       -- 0024 · the epic overlay.
       OR (OLD.status = 'todo'        AND NEW.status = 'in_review' AND NEW.kind = 'epic')
       OR (OLD.status = 'in_progress' AND NEW.status IN ('in_review','blocked','todo','canceled','awaiting'))
-      -- 0037 · the off-mode direct path. `agent`/`human` are absent on purpose,
+      -- 0038 · the off-mode direct path. `agent`/`human` are absent on purpose,
       -- and a review card is flow B: it must deliver its verdict through
       -- `in_review`, so it never gets the shortcut.
       OR (OLD.status = 'in_progress' AND NEW.status = 'done'

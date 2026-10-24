@@ -183,7 +183,7 @@ export const EXTRA = {
     "activity.progress": "recorded progress",
     "activity.other": "recorded an event",
     "activity.detail.archived": "Archived from",
-    // 0037 — one acceptance vocabulary: a project default and a per-card
+    // 0038 — one acceptance vocabulary: a project default and a per-card
     // snapshot. None of these exist in the prototype.
     "createProject.field.acceptance": "Acceptance",
     "createProject.field.reviewer": "Reviewer",

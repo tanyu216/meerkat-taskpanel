@@ -121,7 +121,7 @@ export const EPIC_ONLY_TRANSITIONS = Object.freeze({
 });
 
 /**
- * The **acceptance-mode overlay** (0037): the one pair a card in `off` mode
+ * The **acceptance-mode overlay** (0038): the one pair a card in `off` mode
  * gains on top of the base table.
  *
  * `off` means "no review" — the deliverer may close the card directly, so
@@ -248,7 +248,7 @@ export function allowedTargets(from, kind = null, acceptanceMode = null, reviewC
   if (base === undefined) return Object.freeze([]);
   const extra = [];
   if (kind === TASK_KIND.EPIC) extra.push(...(EPIC_ONLY_TRANSITIONS[from] ?? []));
-  // 0037 — only an explicit `off` gains the direct edge. A missing mode keeps
+  // 0038 — only an explicit `off` gains the direct edge. A missing mode keeps
   // the base table; `cardAcceptanceOf(null)` would default to `off` and widen
   // every caller that has not read the card. A review card is flow B: it must
   // deliver its verdict through `in_review`, so the direct edge is withheld.

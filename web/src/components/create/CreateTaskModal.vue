@@ -45,7 +45,7 @@ const form = reactive({
   labels: [],
   parent: "",
   depends: [],
-  // 0037 — `null` means "follow the project's default"; a chosen value is the
+  // 0038 — `null` means "follow the project's default"; a chosen value is the
   // card's own snapshot. The card never stores `auto`.
   acceptance_mode: null,
 });
@@ -66,7 +66,7 @@ const relationOptions = taskRoster;
 const canSubmit = computed(() => form.title.trim() !== "" && form.project_id);
 
 /**
- * 0037 — the card's acceptance snapshot. The project's value is the default;
+ * 0038 — the card's acceptance snapshot. The project's value is the default;
  * `auto` resolves to `human` here, exactly as the server's fail-safe does, so
  * the hint and the created card agree. The select stays a native `<select>`
  * like the project field above it, and it is sent only when the creator chose

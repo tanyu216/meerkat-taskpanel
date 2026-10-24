@@ -94,7 +94,7 @@ export const REQUEST = Object.freeze({
   priority: oneOf(PRIORITIES),
   taskKind: oneOf(TASK_KINDS),
   reviewPolicy: oneOf(REVIEW_POLICIES),
-  // 0037 — the single acceptance vocabulary. A project may say `auto`; a card
+  // 0038 — the single acceptance vocabulary. A project may say `auto`; a card
   // may not (an unresolved snapshot is refused at the domain boundary).
   projectAcceptance: oneOf(PROJECT_ACCEPTANCES),
   relationType: oneOf(RELATION_TYPES),

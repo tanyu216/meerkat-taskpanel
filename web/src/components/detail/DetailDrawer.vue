@@ -1362,7 +1362,7 @@ function copyId() {
             <span class="td-mono" data-detail-project-label>{{ projectLabel }}</span>
           </button>
 
-          <!-- 0031/0037 — the card's acceptance mode. Read-only: the mode is
+          <!-- 0031/0038 — the card's acceptance mode. Read-only: the mode is
                resolved at creation and changed through the audited
                `--acceptance-mode` override, not by a drawer edit. -->
           <span class="td-prop-label" data-i18n="review.label">{{ $t("review.label") }}</span>

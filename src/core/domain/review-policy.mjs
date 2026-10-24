@@ -13,7 +13,7 @@
  * A **review card** is always `0`: a review is flow B and can never be dispatched
  * for another review.
  *
- * 0037 replaced this axis with `domain/acceptance-mode.mjs`; the wrapper and the
+ * 0038 replaced this axis with `domain/acceptance-mode.mjs`; the wrapper and the
  * `review_required` column survive one release, and every new write derives one
  * from the other. The legacy result is a snapshot: a later project change does
  * not rewrite cards already in flight.

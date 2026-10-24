@@ -9,7 +9,7 @@
  * This module is pure: no `node:` specifiers.
  */
 
-// 0038 folds `tasks.acceptance_mode` into the CREATE TABLE body during the
+// 0039 folds `tasks.acceptance_mode` into the CREATE TABLE body during the
 // `deploy` rebuild, so the SQL-parity reader sees it and the vocabulary must be
 // declared below. `acceptance-mode.mjs` is pure and imports nothing from here.
 import { CARD_ACCEPTANCE_MODES } from "./acceptance-mode.mjs";
@@ -122,7 +122,7 @@ export const PRIORITY = Object.freeze({
  * `epic` is withheld from the automatic candidate read (see
  * `domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`).
  *
- * 0037 retired `deploy` from the card model. Whether a card belongs to a
+ * 0038 retired `deploy` from the card model. Whether a card belongs to a
  * release line — and what confirming that means — is the loop's own decision;
  * a card that needs an independent gate says so with `acceptance_mode: agent`.
  */
@@ -146,7 +146,7 @@ export const TASK_KIND = Object.freeze({
  *   * `optional` — the creator decides per card (the default);
  *   * `off` — no card is born requiring review.
  *
- * 0037 replaced this axis with the card's `acceptance_mode`; the column survives
+ * 0038 replaced this axis with the card's `acceptance_mode`; the column survives
  * one release as the legacy spelling (`required → agent`, `off → off`), and this
  * vocabulary is read only by the compatibility wrapper in `review-policy.mjs`.
  *
@@ -331,7 +331,7 @@ export const SQL_ENUM_SETS = Object.freeze({
   // covered `task_reports.origin` before 0035 removed it. `BLOCKED_REASONS`
   // above owns the vocabulary.
   "tasks.blocked_reason": BLOCKED_REASONS,
-  // 0038 — 0037 added `acceptance_mode` by ALTER (invisible to the reader);
+  // 0039 — 0038 added `acceptance_mode` by ALTER (invisible to the reader);
   // the `deploy` rebuild moves it into the CREATE body, so it is declared here.
   "tasks.acceptance_mode": CARD_ACCEPTANCE_MODES,
   "task_relations.relation_type": RELATION_TYPES,

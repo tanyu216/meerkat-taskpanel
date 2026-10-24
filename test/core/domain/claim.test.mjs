@@ -150,7 +150,7 @@ describe("domain/claim — decide", () => {
     }
   });
 
-  it("withholds only the epic from the poll's read (0037 retired deploy)", () => {
+  it("withholds only the epic from the poll's read (0038 retired deploy)", () => {
     // The claim gate refuses an epic outright (above); the candidate read also
     // withholds it. `deploy` is no longer a kind at all — a card that needs an
     // independent gate says `acceptance_mode: agent` instead.

@@ -406,7 +406,7 @@ falls back to `meta.review_of` for a snapshot written before 0025; the acceptanc
 the column only. A caller-supplied `meta.review_of` given as an id, or a string round, is
 normalized to the resolved identifier and an integer, and a meta patch is canonicalized
 from the column, so a later PATCH cannot make the two spellings disagree. There is no
-`kind=review`: the board's kinds are `task`/`epic` (0037 retired `deploy`), and a review is
+`kind=review`: the board's kinds are `task`/`epic` (0038 retired `deploy`), and a review is
 a task like any other.
 
 Its lifecycle cannot skip `in_review`:

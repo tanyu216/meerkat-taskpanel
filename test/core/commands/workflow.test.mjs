@@ -49,7 +49,7 @@ function seed(commands) {
     projectId: "proj",
     title: "Do the thing",
     assignee: "linus",
-    // 0037 — the project defaults to `auto`, so a creator must say what this
+    // 0038 — the project defaults to `auto`, so a creator must say what this
     // card needs. This fixture is the reviewed path.
     acceptanceMode: "agent",
     actor: HUMAN,

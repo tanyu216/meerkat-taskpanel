@@ -70,7 +70,7 @@ export async function openBoard(options = {}) {
   const dbPath = resolveDbPath({ dataDir, dbPath: options.dbPath ?? null, env });
   ensureDir(dataDir);
 
-  // 0037 — the board-level acceptance policy is gone (one project default plus a
+  // 0038 — the board-level acceptance policy is gone (one project default plus a
   // per-card snapshot replaced it). A configured legacy value would silently not
   // apply, so the board **fails closed** and names the migration instead.
   assertNoLegacyAcceptancePolicy(env, envVars);
@@ -201,7 +201,7 @@ function staleRepositoriesTrap(schema) {
   );
 }
 
-/** The env key the retired board-level acceptance policy lived under (0037). */
+/** The env key the retired board-level acceptance policy lived under (0038). */
 export const LEGACY_ACCEPTANCE_POLICY_ENV = "TASKD_ACCEPTANCE_POLICY";
 
 /**

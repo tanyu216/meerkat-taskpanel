@@ -41,7 +41,7 @@ const PLANNED = [
   "domain/workflow.mjs",
   // 0031 — the per-project review policy: vocabulary, resolution, the marker.
   "domain/review-policy.mjs",
-  // 0037 — the single acceptance vocabulary and the card/project resolvers.
+  // 0038 — the single acceptance vocabulary and the card/project resolvers.
   "domain/acceptance-mode.mjs",
   "domain/index.mjs",
   "storage/paths.mjs",

@@ -27,7 +27,7 @@ const CAMEL = {
   readme: "readme",
   // 0031 — the project's review default and its optional reviewer override.
   review_policy: "reviewPolicy",
-  // 0037 — the single project-level acceptance default (`auto|off|agent|human`).
+  // 0038 — the single project-level acceptance default (`auto|off|agent|human`).
   // The legacy `review_policy` is kept for one release; the create/update paths
   // derive it from the same input so the two cannot disagree.
   acceptance: "acceptance",
@@ -71,7 +71,7 @@ export function createProjectsRepository(db) {
       if (typeof input.name !== "string" || input.name.trim() === "") {
         throw new DomainError("VALIDATION_FAILED", { message: "project name is required", details: { field: "name" } });
       }
-      // 0037 — the single project default. Until 0038 the legacy policy is still
+      // 0038 — the single project default. Until 0039 the legacy policy is still
       // written; derive the new column from it when the caller only supplied it.
       const acceptance =
         input.acceptance ??
@@ -143,7 +143,7 @@ export function createProjectsRepository(db) {
         sets.push("review_policy = ?");
         values.push(patch.reviewPolicy);
       }
-      // 0037 — a legacy policy patch still moves the new default with it; an
+      // 0038 — a legacy policy patch still moves the new default with it; an
       // explicit `acceptance` patch wins.
       const nextAcceptance =
         patch.acceptance ??

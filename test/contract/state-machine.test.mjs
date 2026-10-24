@@ -89,7 +89,7 @@ function boardWith(db, from, to, suffix = "", kind = "task", mode = "off") {
   if (canTransition(from, to, kind, mode) && (to === "in_review" || needsEpicRollup)) {
     insertReport(db, { task_id: id, round: 1, is_rollup: needsEpicRollup ? 1 : 0 });
   }
-  // 0037 — an `agent` card reaching done owes a current-round review. The
+  // 0038 — an `agent` card reaching done owes a current-round review. The
   // trigger is coarse (the row must exist and have reached the reviewer); the
   // APPROVE verdict is the service layer's rule.
   if (mode === "agent" && from === "in_review" && to === "done") {
@@ -186,7 +186,7 @@ describe("contract/state-machine — every pair, two paths", () => {
       assert.deepEqual([...EPIC_ONLY_TRANSITIONS.todo], ["in_review"]);
       // ...and it is the *only* kind that gained anything: the DB walk above
       // would have caught a wider trigger, and this catches a wider table.
-      // 0037 — `deploy` is retired; `task` is the only kind without an overlay.
+      // 0038 — `deploy` is retired; `task` is the only kind without an overlay.
       for (const kind of ["task"]) {
         for (const [from, to] of PAIRS) {
           assert.equal(canTransition(from, to, kind), canTransition(from, to), `${kind} ${from} → ${to}`);

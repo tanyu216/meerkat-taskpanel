@@ -168,7 +168,7 @@ describe("loadEnvFile — namespaces and values", () => {
       ["TASKD_PORT=99999\n", /0–65535/],
       ["TASKD_NO_AUTOSTART=maybe\n", /true or false/],
       ["TASKD_ALLOW_LIST_ENABLED=maybe\n", /true or false/],
-      // 0037 — the key is retired; any value is refused with the migration.
+      // 0038 — the key is retired; any value is refused with the migration.
       ["TASKD_ACCEPTANCE_POLICY=both\n", /retired/],
     ];
     for (const [text, pattern] of cases) {

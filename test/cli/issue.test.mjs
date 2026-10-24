@@ -585,7 +585,7 @@ describe("cli/issue — candidates (the poll read)", () => {
       assert.match(human.stdout, new RegExp(`${ready.task.identifier}\\s+todo\\s+medium`));
       assert.match(human.stdout, new RegExp(`${blocker.task.identifier}\\s+todo\\s+medium`));
 
-      // 0037 — the kind is retired: no read special-cases it, and a create that
+      // 0038 — the kind is retired: no read special-cases it, and a create that
       // asks for it is refused at the flag layer (CLI_USAGE; the HTTP body path
       // answers VALIDATION_FAILED for the same value).
       const retired = run(["issue", "create", "--title", "Rebuild dist", "--kind", "deploy", "--assignee", "pollbot", "--assignee-kind", "agent", "--json"]);
@@ -840,7 +840,7 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
   // Rule 8: every write carries the agent's attribution, so the claim below is
   // made *by* the card's assignee rather than by whatever actor the agent defaulted to.
   const AS = ["--agent", "linus"];
-  // 0037 — the container recipe's cards are the trusted path: no review, the
+  // 0038 — the container recipe's cards are the trusted path: no review, the
   // agent closes its own child and the board closes the container.
   const forLinus = ["--assignee", "linus", "--assignee-kind", "agent", "--acceptance-mode", "off", ...AS];
 
@@ -1342,7 +1342,7 @@ describe("cli/issue — `issue reopen` (done/canceled → todo)", () => {
 // 0031 — the per-card review decision
 // ---------------------------------------------------------------------------
 
-describe("cli/issue — acceptance mode (0037)", () => {
+describe("cli/issue — acceptance mode (0038)", () => {
   it("carries --acceptance-mode on create, and keeps --review as an alias", async () => {
     await board(async ({ run }) => {
       const agent = createIssue(run, ["--acceptance-mode", "agent"]);

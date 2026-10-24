@@ -1686,7 +1686,7 @@ describe("server/routes — review policy (0031)", () => {
         review_policy: "optional",
       }),
     );
-    // 0037 — an unresolved card under an `auto` project falls back to human.
+    // 0038 — an unresolved card under an `auto` project falls back to human.
     const omitted = dataOf(
       await call(
         "POST",

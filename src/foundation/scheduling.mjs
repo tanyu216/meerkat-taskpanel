@@ -266,7 +266,7 @@ export function resolveWorkflowConfig(input = {}) {
   return {
     workflow:
       firstYesNo(flags.workflow, env.MEERKAT_TASKPANEL_WORKFLOW, file.MEERKAT_TASKPANEL_WORKFLOW) ?? true,
-    // 0037 — the card's own acceptance mode is the whole decision; the loop no
+    // 0038 — the card's own acceptance mode is the whole decision; the loop no
     // longer carries an advisory copy of a board policy or a review-close flag.
     reviewer: firstText(
       flags.reviewer,

@@ -395,7 +395,7 @@ export async function runWorkflowTick(deps) {
   // `in_review → canceled` edge. `close_review` still ends `done`, because that
   // is the only terminal an `in_review` card can reach directly.
   const closeReviewCard = async (action, note) => {
-    // 0037 — the loop always closes the review card it dispatched. `human` is a
+    // 0038 — the loop always closes the review card it dispatched. `human` is a
     // card mode, not a "leave the review open" flag.
     // The board carries the status; the fallback keeps an older plan safe.
     const status =

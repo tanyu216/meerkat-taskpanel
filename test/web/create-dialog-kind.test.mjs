@@ -106,12 +106,12 @@ describe("web · C-KIND-1 — the create dialog files plain `task` cards", () =>
     );
   });
 
-  it("K3 — the wire carries two kinds since 0037, and this is still a UI decision", () => {
+  it("K3 — the wire carries two kinds since 0038, and this is still a UI decision", () => {
     assert.deepEqual(
       [...TASK_KINDS],
       ["task", "epic"],
       "`TASK_KINDS` is the vocabulary `POST /api/v1/tasks` accepts (`kind` is in the contract " +
-        "snapshot). 0037 retired `deploy`; the dialog still withholds `kind` by ruling (C), not " +
+        "snapshot). 0038 retired `deploy`; the dialog still withholds `kind` by ruling (C), not " +
         "because the wire is missing it — if this assertion moves again, the ruling has to be " +
         "re-taken, not the dialog quietly re-opened.",
     );

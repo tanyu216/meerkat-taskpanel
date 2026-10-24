@@ -113,7 +113,7 @@ export const COMMANDS = [
         idem: flags.idem,
         allow_dup: flags.allowDup === true,
         target: flags.target,
-        // 0037 — the single acceptance decision; `--review` is the legacy alias.
+        // 0038 — the single acceptance decision; `--review` is the legacy alias.
         acceptance_mode: flags.acceptanceMode,
         review_required: reviewRequired,
         review_of: flags.reviewOf,
@@ -537,7 +537,7 @@ export const COMMANDS = [
           fix: "taskctl issue deliver <id> --report-file -",
         });
       }
-      // 0037 — the only destination a delivery may name is `done` (the `off`
+      // 0038 — the only destination a delivery may name is `done` (the `off`
       // card's direct acceptance). `in_review` is the default, and a waiver
       // never reaches `done`: the direct path is the one that must carry the
       // evidence.

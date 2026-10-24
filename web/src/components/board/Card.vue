@@ -124,7 +124,7 @@ function onMenu(event) {
       >
         <span data-card-waiting-label>{{ $t("status.awaiting") }}</span>
       </span>
-      <!-- 0031/0037 — the card's acceptance mode. A descendant hook (the root's
+      <!-- 0031/0038 — the card's acceptance mode. A descendant hook (the root's
            hook set is invariant across every card), and no new stage: a review
            is a gate on `done`, not a column. The chip is the `agent` mode's
            (an independent review card will be dispatched); a `human` card is

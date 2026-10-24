@@ -159,7 +159,7 @@ function withoutPrefix(meta) {
 export function createProject(ctx, input) {
   const actor = actorOf(input.actor ?? { kind: "human", id: "local" });
   const reviewPolicy = assertReviewPolicy(input.reviewPolicy ?? "optional", "review_policy");
-  // 0037 — `acceptance` is the forward word; `review_policy` is its legacy
+  // 0038 — `acceptance` is the forward word; `review_policy` is its legacy
   // spelling, still accepted while the column is (Phase 3 drops it). An
   // explicit acceptance wins; otherwise the repository derives one.
   const acceptance =

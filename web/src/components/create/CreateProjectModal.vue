@@ -24,7 +24,7 @@ import { loadProjects, selectProject } from "../../stores/board.js";
 import { createProjectOpen, pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
 
-// 0037 — one acceptance default, `auto` unless the creator says otherwise.
+// 0038 — one acceptance default, `auto` unless the creator says otherwise.
 const form = reactive({ name: "", prefix: "", acceptance: "auto", reviewer: "" });
 const canSubmit = computed(() => form.name.trim() !== "" && form.prefix.trim() !== "");
 const acceptances = ["auto", "off", "agent", "human"];
@@ -108,7 +108,7 @@ async function submit() {
           </label>
           <label class="flex flex-col gap-1 mb-3">
             <span data-i18n="createProject.field.acceptance">{{ $t("createProject.field.acceptance") }}</span>
-            <!-- 0037 — `data-create-project-review-policy` stays as the design's
+            <!-- 0038 — `data-create-project-review-policy` stays as the design's
                  stable hook (B11's selector); the field it names is now the one
                  acceptance vocabulary. -->
             <select v-model="form.acceptance" class="select select-sm td-select w-full" data-create-project-acceptance data-create-project-review-policy>

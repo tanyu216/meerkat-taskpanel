@@ -64,7 +64,7 @@ describe("contract/actor-kind — concrete writers, not vague roles", () => {
     assert.equal(HUMAN_KIND, "human");
     assert.equal(TASKD_KIND, "taskd");
     assert.deepEqual({ ...BOARD_ACTOR }, { kind: "taskd", id: "taskd" });
-    // 0037 — the pair an `agent`-mode card accepts (replacing the retired
+    // 0038 — the pair an `agent`-mode card accepts (replacing the retired
     // `ACCEPTANCE_ACTOR_KINDS` constant).
     assert.deepEqual(
       [HUMAN_KIND, TASKD_KIND].filter((kind) => acceptanceAllows(kind, "agent")),

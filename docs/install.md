@@ -478,7 +478,7 @@ MEERKAT_TASKPANEL_WORKFLOW=yes
 MEERKAT_TASKPANEL_REVIEWER=
 ```
 
-Acceptance is **not** install configuration any more (0037): each project stores a default
+Acceptance is **not** install configuration any more (0038): each project stores a default
 (`auto | off | agent | human`) and each card a snapshot, both set through
 `taskctl project update <id> --acceptance …` / `issue create --acceptance-mode …`. The retired
 `TASKD_ACCEPTANCE_POLICY` key makes `taskd` refuse to start until it is removed — that refusal

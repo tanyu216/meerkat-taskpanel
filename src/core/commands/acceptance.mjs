@@ -30,7 +30,7 @@ import { assertEpicRollupReady, assertRollupCoverage } from "./rollup.mjs";
 /**
  * Refuse a writer that may not accept this card under the card's own mode.
  *
- * 0037 — scope is gone: the card's `acceptance_mode` names who closes it. The
+ * 0038 — scope is gone: the card's `acceptance_mode` names who closes it. The
  * one structural override is the review card itself (its reviewer reports a
  * verdict; the acceptor closes it).
  *
@@ -257,7 +257,7 @@ export function assertReviewEvidence(ctx, task) {
  * @param {{kind?: string, id?: string}} actor
  */
 export function assertReviewReady(ctx, task, actor) {
-  // 0037 — the card's own mode. `agent` owes a current-round APPROVE; `off` and
+  // 0038 — the card's own mode. `agent` owes a current-round APPROVE; `off` and
   // `human` owe no review evidence. The human pending check below is a second,
   // independent rule about an open review a human is about to close.
   if (cardAcceptanceOf(task.acceptanceMode) !== "agent") return true;

@@ -412,7 +412,7 @@ describe("web/board — move guards", () => {
   });
 });
 
-describe("web/board — the move menu's direct-done edge (0037)", () => {
+describe("web/board — the move menu's direct-done edge (0038)", () => {
   it("offers `done` from in_progress only for an `off` card", async () => {
     const { allowedTargets } = await freshBoard();
     assert.ok(allowedTargets("in_progress", { acceptance_mode: "off" }).includes("done"));
@@ -1258,7 +1258,7 @@ describe("board store — the acceptance half of the waiting queue", () => {
     parent_id: null,
     review_of_id: null,
     review_round: null,
-    // 0037 — only a `human` card is the human's to accept.
+    // 0038 — only a `human` card is the human's to accept.
     acceptance_mode: "human",
     version: 1,
     labels: [],

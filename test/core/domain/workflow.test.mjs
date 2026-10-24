@@ -48,7 +48,7 @@ const NOW = "2026-10-19T10:00:00.000Z";
 
 function card(fields = {}) {
   const identifier = fields.identifier ?? "T-1";
-  // 0037 — the planner reads `acceptance_mode`. Most fixtures describe a card
+  // 0038 — the planner reads `acceptance_mode`. Most fixtures describe a card
   // that is dispatched for review; the legacy boolean is still accepted by the
   // helper so the older tests read naturally.
   const reviewRequired = fields.review_required ?? true;

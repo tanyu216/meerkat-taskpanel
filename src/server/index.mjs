@@ -318,7 +318,7 @@ export async function createTaskd(options = {}) {
       // is what this capability's `upload_url` points at.
       attachments: true,
       allow_list: allowList.configured,
-      // 0037 — the acceptance vocabulary, stated once: a project default
+      // 0038 — the acceptance vocabulary, stated once: a project default
       // (`auto` included) and a card snapshot (never `auto`). A client
       // feature-detects the fields instead of assuming them.
       acceptance: ACCEPTANCE_CAPABILITY,
@@ -562,7 +562,7 @@ export async function closeServer(server, graceMs = SHUTDOWN_GRACE_MS) {
  * 500, so the raw text is returned and fails the id lookup instead.
  */
 /**
- * The `/meta` view of the acceptance vocabulary (0037).
+ * The `/meta` view of the acceptance vocabulary (0038).
  *
  * It is a constant: there is no board-level policy to read, and the project
  * default is board data (`projects.acceptance`) rather than configuration.

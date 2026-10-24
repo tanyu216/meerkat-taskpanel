@@ -372,7 +372,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     const call = callsToReconcile[0];
     assert.ok(call.includes("--workflow"), JSON.stringify(call));
     assert.ok(call.includes("--dry-run"), JSON.stringify(call));
-    // 0037 — the loop no longer carries a policy copy or a close flag.
+    // 0038 — the loop no longer carries a policy copy or a close flag.
     assert.equal(call.includes("--auto-accept-reviews"), false, JSON.stringify(call));
     assert.equal(call.includes("--acceptance"), false, JSON.stringify(call));
   });

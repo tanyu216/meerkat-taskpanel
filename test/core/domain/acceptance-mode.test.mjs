@@ -1,5 +1,5 @@
 /**
- * The single acceptance vocabulary (0037).
+ * The single acceptance vocabulary (0038).
  *
  * One project-level default (`auto | off | agent | human`) and one card-level
  * snapshot (`off | agent | human`). `auto` is a delegation word, never a stored

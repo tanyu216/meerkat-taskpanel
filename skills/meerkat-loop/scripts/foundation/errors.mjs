@@ -109,7 +109,7 @@ export const ERROR_CODES = Object.freeze({
     409,
     "A review card can never be marked as requiring its own review.",
   ),
-  // 0037 — the card's acceptance mode and the legacy `review_required` mirror
+  // 0038 — the card's acceptance mode and the legacy `review_required` mirror
   // must agree (`agent` ⇔ 1, `off`/`human` ⇔ 0). The column pair is a
   // compatibility shim; a raw write that sets only one half would make the
   // dispatch and the done gate read different answers.
@@ -281,7 +281,7 @@ export const DB_RAISE_CODES = Object.freeze([
   // 0031 — the review-required done gate and the review-card marker invariant.
   "REVIEW_REQUIRED",
   "REVIEW_CARD_MARKER_INVALID",
-  // 0037 — the acceptance-mode / review_required mirror invariant.
+  // 0038 — the acceptance-mode / review_required mirror invariant.
   "ACCEPTANCE_MODE_CONFLICT",
   // 0032 — the frozen acceptance baseline and the not_applicable note.
   "ACCEPTANCE_SNAPSHOT_IMMUTABLE",

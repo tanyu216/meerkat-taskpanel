@@ -59,7 +59,7 @@ export function isTerminalTask(task) {
 /**
  * Does this card still have acceptance work for a human?
  *
- * 0037 — the card's own `acceptance_mode` is the answer: only `human` waits for
+ * 0038 — the card's own `acceptance_mode` is the answer: only `human` waits for
  * a person. The predicate is the client-side twin of the board's gates
  * (`commands/acceptance.mjs`), deliberately: the board refuses the human's
  * accept when these are false, so listing the card would be offering an action

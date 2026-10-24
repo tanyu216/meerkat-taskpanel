@@ -201,7 +201,7 @@ export function createTask(ctx, input) {
       candidate.reviewRound = marker.reviewRound;
       if (marker.reviewOfId !== null) candidate.meta = mirrorReviewMeta(candidate.meta, marker);
 
-      // 0037 — one acceptance decision. The project is the default, an explicit
+      // 0038 — one acceptance decision. The project is the default, an explicit
       // card value wins, a review card is always `off`, and an unresolved
       // `auto` project falls back to `human`. The legacy `--review`
       // (`review_required`) is still accepted as an alias for one release.
@@ -596,7 +596,7 @@ export function updateTask(ctx, input) {
       details: { field: "review_required", received: input.reviewRequired },
     });
   }
-  // 0037 — the new spelling wins; the legacy boolean is an alias for one
+  // 0038 — the new spelling wins; the legacy boolean is an alias for one
   // release (`true → agent`, `false → off`).
   const acceptanceTarget =
     input.acceptanceMode !== undefined

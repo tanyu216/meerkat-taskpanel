@@ -125,7 +125,7 @@ const CREATE = Object.freeze([
   both("idem"),
   both("allow_dup", { type: BOOLEAN }),
   sugar("target", "meta.target"),
-  // 0037 — the per-card acceptance decision. `auto` is a project word, so a
+  // 0038 — the per-card acceptance decision. `auto` is a project word, so a
   // card states a concrete mode; an omitted value falls back to the project (or
   // `human` when the project is `auto`).
   both("acceptance_mode", { vocab: CARD_ACCEPTANCE_MODES }),
@@ -158,7 +158,7 @@ const UPDATE = Object.freeze([
   // is the optimistic lock; `reason` is the audit row the DB trigger reads.
   both("acceptance_drop", { repeat: true }),
   both("acceptance_revision", { type: INTEGER }),
-  // 0037 — the controlled acceptance override. `reason` is required when the
+  // 0038 — the controlled acceptance override. `reason` is required when the
   // change leaves `agent` (waives a review).
   both("acceptance_mode", { vocab: CARD_ACCEPTANCE_MODES }),
   // 0031 — the legacy boolean alias, kept for one release.
@@ -214,7 +214,7 @@ const CLAIM = Object.freeze([
 ]);
 
 const DELIVER = Object.freeze([
-  // 0037 — `--to done` is the `off` card's direct acceptance: the report and the
+  // 0038 — `--to done` is the `off` card's direct acceptance: the report and the
   // move land in one transaction, so the evidence the done gate reads exists.
   both("to", { vocab: STATUSES }),
   both("report", { type: OBJECT, nested: REPORT }),

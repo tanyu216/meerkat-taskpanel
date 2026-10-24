@@ -57,7 +57,7 @@ export { DEFAULT_REVIEW_AGING_MS, DEFAULT_WORKFLOW_MAX_ACTIONS };
 export function acceptanceModeOf(task) {
   const explicit = normalizeCardAcceptance(task?.acceptance_mode ?? task?.acceptanceMode);
   if (explicit !== null) return explicit;
-  // Compatibility for a snapshot written before 0037: the legacy integer was
+  // Compatibility for a snapshot written before 0038: the legacy integer was
   // the review decision, so `1` is `agent` and `0` is `off`. (`human` cannot be
   // recovered from the old column; the migration backfilled those cards.)
   if (task?.review_required === true || Number(task?.review_required) === 1) return "agent";
@@ -677,7 +677,7 @@ function reviewChecklist(task, ref) {
 export function planReviewOutcomes(input = {}) {
   const tasks = Array.isArray(input.tasks) ? input.tasks : [];
   const verdicts = input.verdicts ?? {};
-  // 0037 — the review card is always the loop's to close. `human` is a card
+  // 0038 — the review card is always the loop's to close. `human` is a card
   // mode, not a flag on the review's closure.
   const closeReview = true;
   const now = instant(input.now);
@@ -768,7 +768,7 @@ export function planReviewOutcomes(input = {}) {
         }
         continue;
       }
-      // 0037 — the review card is always the loop's to close; `human` is a card
+      // 0038 — the review card is always the loop's to close; `human` is a card
       // mode, not a flag on the review's closure.
       actions.push({ type: "close_review", reviewStatus: review.status, reviewRef, originalRef, round, reason: "round_mismatch", closeReview: true });
       continue;
@@ -880,7 +880,7 @@ export function planReviewOutcomes(input = {}) {
             continue;
           }
         }
-        // 0037 — only an `agent` original is moved by an APPROVE. An `off` or
+        // 0038 — only an `agent` original is moved by an APPROVE. An `off` or
         // `human` card may carry an ad-hoc review card; its verdict is recorded
         // on that card, and the review card is closed, but the original's own
         // mode owns acceptance. The marker is written with the round the
@@ -1005,7 +1005,7 @@ export function planReviewOutcomes(input = {}) {
  * Decide which `in_review` cards can be closed directly because they do not
  * require an independent review.
  *
- * This is the `off` half of the 0037 model. Whether an `off` original may be
+ * This is the `off` half of the 0038 model. Whether an `off` original may be
  * completed is decided by its own acceptance mode, exactly as it is for any
  * other `done` write. The loop executes the plan as `taskd`.
  *

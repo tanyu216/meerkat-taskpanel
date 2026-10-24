@@ -103,7 +103,7 @@ describe("storage/migrations — 0031 review policy and decision", () => {
       applyMigrations(board.db, { dir: before0031() });
       seed(board.db);
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0031", "0032", "0033", "0034", "0035", "0036", "0038", "0039"]);
 
       const project = board.db
         .prepare("SELECT review_policy, reviewer FROM projects WHERE id = 'p1'")
@@ -197,7 +197,7 @@ describe("storage/migrations — 0031 review policy and decision", () => {
         () => setDone(board.db, "t5"),
         (err) => String(err.message).includes("REVIEW_REQUIRED"),
       );
-      // 0037 — the legacy mirror and the acceptance mode move together.
+      // 0038 — the legacy mirror and the acceptance mode move together.
       board.db.prepare("UPDATE tasks SET review_required = 0, acceptance_mode = 'off' WHERE id = 't5'").run();
       assert.doesNotThrow(() => setDone(board.db, "t5"));
     } finally {

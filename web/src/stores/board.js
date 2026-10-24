@@ -131,7 +131,7 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
  */
 export function allowedTargets(status, task = null) {
   const base = ALLOWED_TRANSITIONS[status] ?? Object.freeze([]);
-  // 0037 — an `off` card may go straight to done from in_progress.
+  // 0038 — an `off` card may go straight to done from in_progress.
   if (status === "in_progress" && task?.acceptance_mode === "off" && !base.includes("done")) {
     return Object.freeze([...base, "done"]);
   }

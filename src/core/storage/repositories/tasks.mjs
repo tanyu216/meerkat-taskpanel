@@ -388,7 +388,7 @@ export function createTasksRepository(db) {
           try {
             info = db
               .prepare(
-                // 0037 — the mirror must move together: `agent` ⇔ 1,
+                // 0038 — the mirror must move together: `agent` ⇔ 1,
                 // `off`/`human` ⇔ 0. A legacy `true` waives to `off`; the
                 // Phase-2 override path writes `human` explicitly.
                 `UPDATE tasks SET review_required = ?, acceptance_mode = ?, ` +
@@ -406,7 +406,7 @@ export function createTasksRepository(db) {
     },
 
     /**
-     * Rewrite the single acceptance decision (0037). Kept out of `PATCHABLE`
+     * Rewrite the single acceptance decision (0038). Kept out of `PATCHABLE`
      * for the same reason `setReviewRequired` is: changing it is an audited
      * override, not a generic patch.
      *

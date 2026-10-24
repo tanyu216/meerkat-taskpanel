@@ -175,7 +175,7 @@ function validateValue(key, value) {
       }
       return value;
     case "TASKD_ACCEPTANCE_POLICY":
-      // 0037 — retired. Acceptance is board data now (`projects.acceptance` and
+      // 0038 — retired. Acceptance is board data now (`projects.acceptance` and
       // each card's `acceptance_mode`); silently ignoring a configured rule
       // would upgrade an operator into a different closing rule than they asked
       // for, so the config file is refused with the migration to run.
