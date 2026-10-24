@@ -48,6 +48,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A writer-coverage contract gate.** `test/contract/activity-events.test.mjs` used to prove
+  only that the vocabulary and its writers agree. It now also fails when a function in
+  `src/core/commands/` calls a mutating repository method without appending an activity in the
+  same function, and when a repository method reaches a command without being classified as a
+  read or a write. The four helpers that hand their audit row to the caller
+  (`resolveOrCreate`, `resolveActorId`, `resolveLabels`, `insertDeliveryReport`) are a named
+  exemption table that fails once it no longer describes a real delegation.
+
 - **A board-wide activity cursor (`GET /api/v1/activities`).** The activity ledger used to
   backfill by reading every card's trail separately; it now makes one newest-first read
   (limit 1000) and scopes the rows through the board's own task set. The route takes the same

@@ -32,7 +32,10 @@ tests:
 
 - `test/contract/activity-events.test.mjs` — every `activities.append({ event: "…" })` in
   `src/` names a declared event, and every declared event has a writer (except the
-  historical pair);
+  historical pair); and every mutating repository call in `src/core/commands/` sits in a
+  function that appends an activity of its own. The helpers that hand their audit to the
+  caller (`resolveOrCreate`, `resolveActorId`, `resolveLabels`, `insertDeliveryReport`)
+  are a named exemption table that fails when it goes stale;
 - `test/contract/activity-consumers.test.mjs` — every declared event is an explicit
   decision at each reader: the board's `isKnownEvent`, the human feed's admit/exclude
   lists, the loop's dispatch/ignore lists, the wire noise filter, and this catalogue.
