@@ -33,6 +33,10 @@ export const BOOLEAN_FLAGS = Object.freeze(
     "quiet",
     "check-blockers",
     "once",
+    "detach",
+    "watch-status",
+    "stop",
+    "standalone",
   ]),
 );
 

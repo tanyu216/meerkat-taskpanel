@@ -85,6 +85,7 @@ export function createContext(parsed, options) {
     stdin = () => readStdin(),
     readFile = (file) => readFileSync(file, "utf8"),
     out = () => {},
+    board = null,
   } = options;
   const identity = resolveActor({ flags: parsed.flags, env });
   return {
@@ -92,6 +93,8 @@ export function createContext(parsed, options) {
     flags: parsed.flags,
     args: parsed.commandArgs,
     actor: identity.actor,
+    /** The resolved board coordinates; the local hub key needs both. Never printed. */
+    board,
     session: parsed.flags.sessionId ?? identity.session,
     cwd,
     env,
@@ -255,6 +258,7 @@ export async function run(argv, io) {
       env: effectiveEnv,
       cwd: io.cwd ?? process.cwd(),
       out,
+      board: { url, token },
       ...(io.stdin === undefined ? {} : { stdin: io.stdin }),
       ...(io.readFile === undefined ? {} : { readFile: io.readFile }),
     });

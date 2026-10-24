@@ -253,10 +253,16 @@ authoritative home, because the container image drops `design/`.
   checkout's entry. One guard per machine, and switching layout is a deliberate `--force`
   (a mismatched unit is refused with exit 3, non-fatal).
 - **The loop speaks only `taskctl`.** `scripts/loop/**` and `scripts/supervisor.mjs` never call
-  the board's HTTP API directly — the live event stream is `taskctl events tail`, not `fetch`,
+  the board's HTTP API directly — the live event stream is `taskctl events follow` (the local event hub), not `fetch`,
   and the loop carries no board discovery or token code. Board capability detail (invocations,
   JSON keys) lives in `skills/meerkat-taskpanel/references/capabilities.md`; the loop skill
   records decisions only.
+- **One local event hub per user and board.** `taskctl events hub` owns the host's single
+  SSE connection to a board and fans it out to local consumers (`events follow` and watch
+  registrations); it binds loopback, publishes an owner-only pointer, and is started detached
+  on demand. `export watch` registers with it (`--detach`), `--standalone` keeps the direct
+  stream, and the loop's subscriber consumes `events follow`. The board still never writes a
+  user directory: the hub is a client-side process.
 - The **delivery gate** requires a report **for the current delivery round** before a card can
   move to `in_review`; a report from an earlier round is history, not evidence. It is enforced by
   a DB trigger *and* a domain check, tested against each other under `test/contract/`. There is

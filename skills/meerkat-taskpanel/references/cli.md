@@ -304,7 +304,7 @@ then a placeholder.
 | Command | Purpose |
 |---|---|
 | `export md [<ref>] [--out <dir\|file.md>] [--project <id>] [--check] [--md]` | Write markdown cards: every identifier into a directory, or only `<ref>` (id or identifier). With `<ref>`, a `--out` ending in `.md` that is not an existing directory names the file itself; otherwise it is a directory and the card lands at `<dir>/<ID>.md`. `--project` cannot be combined with `<ref>` (usage error, exit 2). |
-| `export watch [<ref>] [--ref <ref>]… [--dir <dir>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once]` | Keep `<dir>/.meerkat/<identifier>/card.md` fresh from the event stream. Explicit refs only; there is no `.meerkat/` discovery. |
+| `export watch [<ref>] [--ref <ref>]… [--dir <dir>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once] [--detach] [--watch-status] [--stop] [--standalone]` | Keep `<dir>/.meerkat/<identifier>/card.md` fresh through the local event hub (or directly with `--standalone`). Explicit refs only; there is no `.meerkat/` discovery. |
 
 `--check` writes nothing and exits **3** when a card is missing or differs; with `<ref>` it
 checks only that card. A single-file target must already have a parent directory (exit 2 in
@@ -327,50 +327,66 @@ sections) used for round-tripping and CI checks, not a human-readable card detai
 
 #### `export watch`
 
-`export watch` is the streaming writer for a card brief. It exports every named ref (the
-positional and each repeatable `--ref` are unioned; at least one is required), writes
-`<dir>/.meerkat/<identifier>/card.md` (`--dir` defaults to cwd), then subscribes to
-`GET /api/v1/events`. When an event names a watched `task_id`, the card is re-rendered and
-the file is replaced atomically (a unique temp file in the same directory plus a rename; a
-byte-identical render is left alone, so mtime does not churn). A task-less event such as
-`project_updated` refreshes every watched card. Refreshes are coalesced on the loop's
-cadence — 300 ms debounce, 2 s maximum wait, 5 s minimum interval between batches — and
-never overlap.
+`export watch` keeps a card brief fresh. By default it **registers with the local event
+hub** (`events hub`), which owns the host's single SSE connection for this board; the command
+itself only talks to the hub over loopback. `--standalone` keeps the original direct-SSE
+implementation for a sandbox or a differential check.
 
-The 4× `MD_GROWTH_FACTOR` guard does **not** apply here: a brief legitimately grows when
-comments or a report land. `--once` performs the initial export and exits without streaming;
-it is the portable fallback when a runtime cannot keep a background process.
+```text
+taskctl export watch <ref> --dir <project>                 # foreground NDJSON stream
+taskctl export watch <ref> --dir <project> --detach        # register and return
+taskctl export watch <ref> --dir <project> --watch-status  # is it running?
+taskctl export watch <ref> --dir <project> --stop          # unregister
+taskctl export watch <ref> --dir <project> --once          # one export, no watcher
+taskctl export watch <ref> --dir <project> --standalone    # direct SSE (fallback)
+```
 
-Output is newline-delimited JSON, like `events tail`:
+The positional ref and each repeatable `--ref` are unioned; at least one is required. The
+target is `<dir>/.meerkat/<identifier>/card.md` (`--dir` defaults to cwd). The first export
+is written before `open`; a bad ref is a normal `{ok:false}` document and creates nothing.
+Writes are atomic (a unique temp file in the same directory plus a rename; a byte-identical
+render is left alone, so mtime does not churn), and the 4× `MD_GROWTH_FACTOR` guard does
+**not** apply — a brief legitimately grows when comments or a report land. Refreshes are
+coalesced on the loop's cadence — 300 ms debounce, 2 s maximum wait, 5 s minimum interval
+between batches — and never overlap.
+
+Foreground output is newline-delimited JSON, like `events tail`:
 
 ```json
 {"type":"open"}
 {"type":"refresh","task_id":"…","identifier":"PROJ-0007","path":"/repo/.meerkat/PROJ-0007/card.md","changed":true,"status":"in_progress"}
-{"type":"eof"}
+{"type":"done"}
 ```
 
 `refresh` carries `changed:false` when the file was already current, `status` from the
 board, and an `error` object (the usual `{code,message,…}`) when one card could not be
-re-read; that failure is not fatal. `--after` seeds the replay cursor (when omitted, the
-command reads `/meta` first, closing the export→stream gap), and `--idle` ends a silent
-stream exactly as in `events tail`. `--ttl <ms>` is a hard lifetime bound: when it expires
-the watcher aborts its own stream and writes `{"type":"ttl","data":{"ttl_ms":…}}`, so a
-session that vanishes without killing the process cannot leave it running forever. The
-default is **120 minutes (2 h)**; `0` disables it, and a longer-lived session passes a larger
-value. Terminal lines are `idle`, `shutdown`, `eof` (exit 0), **`done`**,
-**`ttl`** (exit 0) or `error` (exit 1), and always follow the last `refresh`. A failure
-before `open` is the normal `{ok:false}` document: a bad ref resolves nothing and no
-directory is created.
+re-read; that failure is not fatal. Terminal lines are `done`, `ttl`, `idle`, `shutdown`,
+`eof` (exit 0) or `error` (exit 1), and always follow the last `refresh`.
 
-**`done` is terminal.** A watched card that reaches `done` is written once with its final
-brief and then dropped from the watch; when the last one is done the watcher closes its own
-stream and emits `{"type":"done"}`. If every named card is already done at startup, `open`,
-one `refresh` per card and `done` are written without opening an SSE connection at all. A
-done card that is later reopened (`issue reopen`) is no longer watched — start a new
-watcher. `canceled` is not a stop condition.
+**`--detach` is the worker form.** It writes the first brief, registers the card with the
+hub, prints `{ok:true,data:{registration_id,running,cards,expires_at}}` and exits — no client
+process has to survive the harness's command boundary. The hub keeps the registration (and
+its single board connection) until the card reaches `done`, `--ttl` expires, or `--stop`
+removes it. A detached registration is written to the hub's state file and resumes after a
+hub restart; `--watch-status` reports `{running,registration_id,cards,expires_at}` and does
+not start a hub just to answer. `--stop` unregisters (starting the hub if needed, so a
+persisted registration cannot resume). Repeating `--detach` for the same card is idempotent
+and returns the existing registration.
 
-One watcher per card is enough. The loop's `--subscribe` daemon already refreshes active
-queued cards, so a loop-dispatched worker must not start a second one.
+**`done` is terminal.** A card that reaches `done` is written once with its final brief and
+dropped; when the last card is done the registration ends and a foreground stream writes
+`{"type":"done"}`. If every named card is already done at registration, the briefs are
+written and the registration immediately reports `running:false, reason:"done"` — no SSE
+connection is opened. A done card that is later reopened (`issue reopen`) is no longer
+watched: run a new `--detach`. `canceled` is not a stop condition.
+
+`--ttl <ms>` bounds a registration (default **120 minutes**; `0` disables it). `--once`
+exports once and exits without a watcher. `--after` and `--idle` are accepted for
+compatibility but belong to the direct stream: under the hub the hub owns the cursor and
+liveness; `--standalone` is where those flags take effect.
+
+One watcher per card is enough. The loop's `--subscribe` daemon consumes `events follow` and
+refreshes active queued briefs, so a loop-dispatched worker must not start a second watcher.
 
 ### `token`
 
@@ -403,28 +419,43 @@ Read-only; it moves no card.
 
 | Command | Purpose |
 |---|---|
-| `events tail [--after <rev>] [--idle <ms>]` | Stream activities as **newline-delimited JSON** until the stream ends. |
+| `events hub` | Run the local event hub: one board SSE connection for every local consumer. |
+| `events follow [--after <rev>] [--idle <ms>]` | Follow the hub as **newline-delimited JSON**; the same line types as `events tail`. |
+| `events tail [--after <rev>] [--idle <ms>]` | Direct board SSE (diagnostic/fallback), the same NDJSON shape. |
 
-`--after` replays activities newer than that board revision, then streams (the resume
-cursor). `--idle` ends the stream after that many milliseconds with no bytes; the default is
-45000 (three missed heartbeats), and `0` disables the timer. The server's heartbeat is 15 s.
+`events hub` is normally started on demand by `export watch` or `events follow`; running it
+in the foreground is for a service manager or a debugging session. The hub is **per user and
+per board**: it binds `127.0.0.1` and publishes a 0600 pointer file in the runtime directory
+(`MEERKAT_HUB_DIR`, else `$XDG_RUNTIME_DIR/meerkat-taskpanel`). It reconnects to the board
+with the loop's 1 s→30 s ladder, keeps a bounded ring of recent events for a reconnecting
+follower, and refreshes every watch registration. Nothing else on the host should open its
+own board stream.
 
-**Like `export watch`, this command's output is not the `{ok,data}` envelope.** Each line is
+`events follow` is the consumer the loop uses. `--after` replays from the hub's ring when it
+still retains the cursor (otherwise it starts live; the next board rescan is the fallback),
+and `--idle` ends the local stream after that many milliseconds with no records (heartbeats
+count, exactly like the direct stream). Output is the same NDJSON as `events tail`.
+
+`events tail` remains the direct implementation: no hub, one SSE connection, the same output.
+Use it to diagnose the board stream itself; do not run it as a background consumer.
+
+**Like `export watch`, these commands do not write the `{ok,data}` envelope.** Each line is
 one JSON object:
 
 ```json
 {"type":"open"}
 {"type":"event","id":12,"data":{"event":"task_created","task_id":"…","revision":12,…}}
 {"type":"idle","data":{"idle_ms":45000}}
-{"type":"shutdown","data":{"reason":"server_shutdown"}}
+{"type":"shutdown","data":{"reason":"…"}}
 {"type":"eof"}
 {"type":"error","data":{"code":"CLI_IO","message":"…"}}
 ```
 
-`open` is written once the board has answered; `event.id` is the cursor to pass back as
-`--after`. `idle`, `shutdown` and `eof` exit 0; `error` exits 1. A failure **before** the
-stream opens (unreachable board, auth refusal, a bad `--after`) is still the normal
-`{ok,false}` error document with a nonzero exit — no `open` line is written.
+`open` is written once the stream (or the hub) has answered; `event.id` is the cursor to pass
+back as `--after`. `idle`, `shutdown` and `eof` exit 0; `error` exits 1. A failure **before**
+the stream opens (unreachable board, auth refusal, a bad `--after`, a hub that cannot start)
+is still the normal `{ok:false}` error document with a nonzero exit — no `open` line is
+written.
 
 ## Editing a card: status, priority, description, attachments, dependencies
 
@@ -643,7 +674,7 @@ verbatim:
 
 Bind scripts to `error.code` and `error.hint.command`, never to the prose.
 
-`events tail` and `export watch` are the exceptions: both write newline-delimited records
+`events tail`, `events follow` and `export watch` are the exceptions: they write newline-delimited records
 (see [`events`](#events) and [`export watch`](#export-watch)), not this envelope. Every other
 command, including `sla list`, answers one document.
 

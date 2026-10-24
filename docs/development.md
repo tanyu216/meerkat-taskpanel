@@ -54,7 +54,7 @@ keeps the de-duplication ledger, the pre-emit re-read and the notification, plus
 The ownership rule behind them: a rule that decides **what state is legal or required**
 belongs to the board; a rule that decides **when to act, whom to involve, or where to wake**
 belongs to the loop. The loop reaches the board only through `taskctl --json` — including
-`taskctl events tail` for the live stream — never by importing it and never by calling the
+`taskctl events follow` for the live stream (the local hub's client) — never by importing it and never by calling the
 HTTP API directly. Capability detail lives in the board skill's
 `references/capabilities.md`; the loop skill records decisions only.
 

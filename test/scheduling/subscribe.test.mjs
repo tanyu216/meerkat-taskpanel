@@ -14,6 +14,7 @@ import {
   classify,
   classifyRefresh,
   createDispatchScheduler,
+  followArgs,
   nextBackoff,
   runSubscribe,
 } from "../../scripts/loop/subscribe.mjs";
@@ -449,5 +450,24 @@ describe("loop/subscribe — the process loop", () => {
       },
     );
     assert.equal(logs.some((line) => line.includes("disk full")), true);
+  });
+});
+
+describe("the loop consumes the local event hub", () => {
+  it("spawns `events follow`, not another direct board stream", () => {
+    assert.deepEqual(followArgs({ idleMs: 45_000 }), [
+      "events",
+      "follow",
+      "--idle",
+      "45000",
+    ]);
+    assert.deepEqual(followArgs({ idleMs: 45_000, after: 12 }), [
+      "events",
+      "follow",
+      "--idle",
+      "45000",
+      "--after",
+      "12",
+    ]);
   });
 });

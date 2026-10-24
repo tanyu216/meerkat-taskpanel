@@ -430,7 +430,8 @@ export const SSE_NOISE_EVENTS = Object.freeze(["task_heartbeat"]);
 export const SSE_SHUTDOWN_EVENT = "shutdown";
 
 /**
- * The terminal/control line types `taskctl events tail` writes as NDJSON.
+ * The terminal/control line types the event-stream commands (`events tail`,
+ * `events follow`) write as NDJSON.
  *
  * Shared with the loop's `streamCli` so the producer and the consumer cannot
  * drift on a string literal.

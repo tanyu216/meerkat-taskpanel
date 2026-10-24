@@ -119,7 +119,7 @@ export function runCli(opts, agent, args, { input = null, actorKind = null } = {
 }
 
 /**
- * Run a streaming `taskctl` command (`events tail`) and consume its NDJSON.
+ * Run a streaming `taskctl` command (`events follow`) and consume its NDJSON.
  *
  * The child is a normal `taskctl` process: it resolves the board, the token and
  * `.env` itself, so the loop carries no transport code. `TASKD_NO_AUTOSTART=1`

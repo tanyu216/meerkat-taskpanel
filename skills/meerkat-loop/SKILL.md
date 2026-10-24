@@ -102,7 +102,7 @@ marker. A worker always stops at `in_review`; review cards are never held.
 ### Event subscriber (optional)
 
 On launchd/systemd, `--subscribe` follows the board's event stream through
-`taskctl events tail` and asks for a continue turn when a dispatch-relevant event
+`taskctl events follow` (the local event hub) and asks for a continue turn when a dispatch-relevant event
 arrives. The loop carries no HTTP code of its own: board discovery, the token and
 the stream all belong to the CLI. The continue clock remains the fallback and the
 only path for time-based work. Cron cannot host a long-lived process.
@@ -172,7 +172,7 @@ requires: board task-interface v1   — board release >= 1.1.0
 ```
 
 The loop drives the board only through `taskctl` — the capability subset is the
-board skill's `references/capabilities.md` (including `events tail` for the live
+board skill's `references/capabilities.md` (including `events follow` for the live
 stream; the loop never calls the HTTP API). `task-interface v1` first shipped in
 board 1.0.0; the board-side workflow plan landed in 1.1.0.
 

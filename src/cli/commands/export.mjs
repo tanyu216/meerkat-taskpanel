@@ -20,28 +20,41 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  renameSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
-  CARD_REFRESH_MIN_MS,
   CLI_EXIT,
-  EVENT_DEBOUNCE_MAX_MS,
-  EVENT_DEBOUNCE_MS,
-  EVENT_STREAM_LINE,
   MD_GROWTH_FACTOR,
   SSE_SHUTDOWN_EVENT,
   SSE_SUBSCRIBE_IDLE_MS,
 } from "../../foundation/constants.mjs";
-import { CARD_BRIEF_FILE, cardDirRel } from "../../foundation/card-brief.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { createSseParser } from "../../foundation/sse-parse.mjs";
 import { errorPayload, usageError } from "../../foundation/transport/errors.mjs";
+import { hubAnswer, hubError, hubRecords } from "../hub/client.mjs";
+import { ensureHub, hubHealthy, hubPaths, readJsonFile } from "../hub/runtime.mjs";
+import {
+  CARD_WATCH_TTL_MS,
+  WATCH_LINE,
+  createWatchScheduler,
+  watchPath,
+  writeCardFile,
+} from "../watch-core.mjs";
 import { fields } from "../output/human.mjs";
+
+/** The CLI entry a detached hub re-executes. */
+const CLI_ENTRY = fileURLToPath(new URL("../index.mjs", import.meta.url));
+
+/**
+ * The watch vocabulary and writer live in `../watch-core.mjs`, shared with the
+ * event hub. Re-exported here because this module was their original home and
+ * the CLI test suite imports them from it.
+ */
+export { CARD_WATCH_TTL_MS, WATCH_LINE, createWatchScheduler, watchPath, writeCardFile };
 
 /** Where a card goes: `<out>/<IDENTIFIER>.md`. */
 export const cardPath = (outDir, identifier) => join(outDir, `${identifier}.md`);
@@ -119,207 +132,6 @@ function requireParentDirectory(path) {
 
 /* --------------------------------------------------------------- export watch */
 
-/**
- * Default hard lifetime for `export watch`: two hours. A single card's work is
- * not expected to outlive it, and the bound is what keeps a vanished session
- * from leaving an SSE connection behind forever. `--ttl 0` disables it.
- */
-export const CARD_WATCH_TTL_MS = 120 * 60 * 1000;
-
-/**
- * NDJSON line types for `export watch`: the shared stream spellings plus the one
- * record this command adds. Kept local (rather than in `foundation/constants`)
- * so the loop's generated payload does not change for a CLI-only vocabulary.
- */
-export const WATCH_LINE = Object.freeze({
-  OPEN: EVENT_STREAM_LINE.OPEN,
-  REFRESH: "refresh",
-  IDLE: EVENT_STREAM_LINE.IDLE,
-  SHUTDOWN: EVENT_STREAM_LINE.SHUTDOWN,
-  EOF: EVENT_STREAM_LINE.EOF,
-  ERROR: EVENT_STREAM_LINE.ERROR,
-  /** Every watched card reached `done`; the watcher stopped itself. */
-  DONE: "done",
-  /** The `--ttl` bound expired; the watcher stopped itself. */
-  TTL: "ttl",
-});
-
-/** The brief `export watch` keeps fresh: `<dir>/.meerkat/<identifier>/card.md`. */
-export function watchPath(dir, identifier) {
-  return join(dir, cardDirRel(identifier), CARD_BRIEF_FILE);
-}
-
-/**
- * Write the server's markdown over a card brief, atomically.
- *
- * **No `assertGrowthGuard` here, deliberately.** A machine-generated brief
- * legitimately grows when comments or a report land; the loop's refresher has
- * the same exemption (`scripts/loop/card-file.mjs`), and the unique temp path is
- * always fresh anyway. A byte-identical file is left untouched so mtime does not
- * churn on every unrelated event.
- *
- * @param {string} file
- * @param {string} markdown
- * @returns {{path: string, changed: boolean}}
- */
-export function writeCardFile(file, markdown) {
-  if (typeof markdown !== "string" || markdown === "") {
-    throw new DomainError("CLI_IO", {
-      message: `export watch: the board rendered no card for ${basename(file)}`,
-      details: { path: file },
-    });
-  }
-  const dir = dirname(file);
-  mkdirSync(dir, { recursive: true });
-  if (existsSync(file) && readFileSync(file, "utf8") === markdown) {
-    return { path: file, changed: false };
-  }
-
-  const temp = join(
-    dir,
-    `card.${process.pid}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}.tmp.md`,
-  );
-  try {
-    writeFileSync(temp, markdown, "utf8");
-    renameSync(temp, file);
-  } finally {
-    if (existsSync(temp)) {
-      try {
-        rmSync(temp, { force: true });
-      } catch {
-        /* best effort: a leftover temp is not the caller's problem */
-      }
-    }
-  }
-  return { path: file, changed: true };
-}
-
-/**
- * Coalescing, strictly serial refresh queue for `export watch`.
- *
- * The timing mirrors the loop's subscriber (300 ms debounce, 2 s max wait,
- * `CARD_REFRESH_MIN_MS` floor), but the payload is the set of task ids that
- * changed. `notify()` never starts work synchronously; at most one `refresh()`
- * is in flight; `stop()` clears the timer, waits for the in-flight batch, then
- * force-drains whatever was pending (so an event seen just before EOF is not
- * lost).
- *
- * @param {{
- *   refresh: (batch: {taskIds: string[], all: boolean, revision: number|null}) => Promise<void>|void,
- *   now?: () => number,
- *   setTimer?: Function,
- *   clearTimer?: Function,
- *   debounceMs?: number,
- *   maxWaitMs?: number,
- *   minIntervalMs?: number,
- * }} input
- */
-export function createWatchScheduler(input = {}) {
-  const {
-    refresh,
-    now = Date.now,
-    setTimer = setTimeout,
-    clearTimer = clearTimeout,
-    debounceMs = EVENT_DEBOUNCE_MS,
-    maxWaitMs = EVENT_DEBOUNCE_MAX_MS,
-    minIntervalMs = CARD_REFRESH_MIN_MS,
-  } = input;
-
-  const pending = new Set();
-  let all = false;
-  let revision = null;
-  let timer = null;
-  let firstPendingAt = null;
-  let lastRunAt = null;
-  let running = null;
-  let stopped = false;
-  let stopping = null;
-
-  const hasPending = () => all || pending.size > 0;
-  const clear = () => {
-    if (timer !== null) {
-      clearTimer(timer);
-      timer = null;
-    }
-  };
-  const take = () => {
-    const batch = { taskIds: [...pending], all, revision };
-    pending.clear();
-    all = false;
-    revision = null;
-    firstPendingAt = null;
-    return batch;
-  };
-  const execute = async () => {
-    const batch = take();
-    try {
-      await refresh(batch);
-    } catch {
-      // refresh() reports per card; this is a belt-and-braces backstop.
-    } finally {
-      lastRunAt = now();
-    }
-  };
-  const arm = (delay) => {
-    clear();
-    timer = setTimer(() => {
-      timer = null;
-      void pump();
-    }, Math.max(0, delay));
-    if (typeof timer?.unref === "function") timer.unref();
-  };
-  const schedule = () => {
-    if (stopped || !hasPending()) return;
-    const at = now();
-    if (firstPendingAt === null) firstPendingAt = at;
-    let delay = Math.min(debounceMs, firstPendingAt + maxWaitMs - at);
-    if (lastRunAt !== null) delay = Math.max(delay, lastRunAt + minIntervalMs - at);
-    arm(delay);
-  };
-  async function pump() {
-    if (running !== null) return; // the in-flight finally reschedules
-    if (!hasPending()) return;
-    if (lastRunAt !== null && now() < lastRunAt + minIntervalMs) {
-      schedule();
-      return;
-    }
-    running = execute().finally(() => {
-      running = null;
-      if (!stopped && hasPending()) schedule();
-    });
-    await running;
-  }
-
-  return {
-    /** `taskId === null` means a task-less event: refresh every watched card. */
-    notify(taskId, atRevision = null) {
-      if (stopped) return;
-      if (taskId === null || taskId === undefined) all = true;
-      else pending.add(String(taskId));
-      if (Number.isInteger(atRevision)) {
-        revision = revision === null ? atRevision : Math.max(revision, atRevision);
-      }
-      schedule();
-    },
-    async stop() {
-      if (stopping !== null) return stopping;
-      stopped = true;
-      clear();
-      stopping = (async () => {
-        if (running !== null) await running.catch(() => {});
-        if (hasPending()) await execute();
-      })();
-      return stopping;
-    },
-    get pending() {
-      return hasPending();
-    },
-    get running() {
-      return running !== null;
-    },
-  };
-}
-
 /** `--after` and `--idle` are counts; a float or a negative is a usage mistake. */
 function nonNegativeInteger(flags, key, flag) {
   const value = flags[key];
@@ -328,6 +140,188 @@ function nonNegativeInteger(flags, key, flag) {
     throw usageError(`--${flag} expects a non-negative integer (got ${JSON.stringify(value)})`);
   }
   return value;
+}
+
+/* ------------------------------------------------------- export watch via hub */
+
+/** The hub child records who asked; reads do not need it to be a write identity. */
+function watchOwner(ctx) {
+  return { kind: ctx.identity.actor.kind, id: ctx.identity.actor.id };
+}
+
+function requireBoard(ctx, command) {
+  if (ctx.board === null || typeof ctx.board?.url !== "string") {
+    throw new DomainError("CLI_IO", {
+      message: `${command}: the board coordinates are not resolved`,
+    });
+  }
+  return ctx.board;
+}
+
+/** Find or start the hub for this board. */
+async function ensureWatchHub(ctx) {
+  const board = requireBoard(ctx, "export watch");
+  const human = ctx.identity.actor.kind === "human";
+  return ensureHub({
+    url: board.url,
+    token: board.token,
+    actorKind: human ? "claude" : ctx.identity.actor.kind,
+    asHuman: human,
+    agent: ctx.identity.actor.id,
+    envFile: typeof ctx.flags.envFile === "string" ? ctx.flags.envFile : null,
+    entry: CLI_ENTRY,
+    env: ctx.env,
+  });
+}
+
+/**
+ * `--watch-status` is read-only: starting a hub just to ask it would make the answer
+ * untrue. A missing or dead pointer means no registration is being served.
+ */
+async function watchStatus(ctx, refs, dir) {
+  const board = requireBoard(ctx, "export watch");
+  const paths = hubPaths(board.url, board.token, ctx.env);
+  const pointer = readJsonFile(paths.pointer);
+  if (pointer === null || !(await hubHealthy(pointer))) {
+    return {
+      data: { running: false, reason: "no-hub", ref: refs[0], dir },
+      human: `no local event hub is running for ${refs[0]}`,
+    };
+  }
+  const answer = await hubAnswer(
+    pointer,
+    { op: "watch-status", ref: refs[0], dir },
+    (record) => record?.op === "watch-status",
+  );
+  const running = answer.running === true;
+  return {
+    data: {
+      running,
+      registration_id: answer.registration_id ?? null,
+      cards: answer.cards ?? [],
+      expires_at: answer.expires_at ?? null,
+      last_refresh: answer.last_refresh ?? null,
+      dir,
+    },
+    human: running
+      ? `watching ${refs[0]} in ${dir}`
+      : `not watching ${refs[0]} in ${dir} (${answer.reason ?? "not found"})`,
+  };
+}
+
+/** `--stop` may start the hub: a persisted registration would otherwise resume. */
+async function watchStop(ctx, refs, dir) {
+  const { pointer } = await ensureWatchHub(ctx);
+  const answer = await hubAnswer(
+    pointer,
+    { op: "watch-stop", ref: refs[0], dir },
+    (record) => record?.op === "watch-stop",
+  );
+  const stopped = answer.stopped === true;
+  return {
+    data: {
+      stopped,
+      registration_id: answer.registration_id ?? null,
+      reason: answer.reason ?? null,
+      ref: refs[0],
+      dir,
+    },
+    human: stopped ? `stopped watching ${refs[0]}` : `no registration for ${refs[0]} in ${dir}`,
+  };
+}
+
+/** `--detach`: register, return the handle, leave no client process behind. */
+async function watchDetach(ctx, refs, dir, ttlMs) {
+  const { pointer } = await ensureWatchHub(ctx);
+  let answer = null;
+  for await (const record of hubRecords(pointer, {
+    op: "watch",
+    refs,
+    dir,
+    ttl_ms: ttlMs,
+    detach: true,
+    owner: watchOwner(ctx),
+  })) {
+    if (record?.type === "heartbeat") continue;
+    if (record?.type === "registered") {
+      answer = record;
+      break;
+    }
+    if (record?.type === WATCH_LINE.ERROR) throw hubError(record.data);
+    if (record?.op === "error" && record.ok === false) throw hubError(record.error);
+  }
+  if (answer === null) {
+    throw new DomainError("CLI_IO", {
+      message: "export watch: the local hub closed before registering the watcher",
+    });
+  }
+  const running = answer.running !== false;
+  return {
+    data: {
+      running,
+      registration_id: answer.registration_id ?? null,
+      reused: answer.reused === true,
+      reason: answer.reason ?? null,
+      cards: answer.cards ?? [],
+      expires_at: answer.expires_at ?? null,
+      dir,
+    },
+    human: running
+      ? `watching ${refs.join(", ")} in ${dir} (registration ${answer.registration_id})`
+      : `wrote the final brief for ${refs.join(", ")} (${answer.reason ?? "done"}); nothing left to watch`,
+  };
+}
+
+/** Foreground watcher served by the hub: the same NDJSON lines as before. */
+async function watchViaHub(ctx, refs, dir, ttlMs) {
+  const { pointer } = await ensureWatchHub(ctx);
+  let opened = false;
+  try {
+    for await (const record of hubRecords(pointer, {
+      op: "watch",
+      refs,
+      dir,
+      ttl_ms: ttlMs,
+      detach: false,
+      owner: watchOwner(ctx),
+    })) {
+      if (record?.type === "heartbeat") continue;
+      if (record?.type === WATCH_LINE.OPEN) {
+        opened = true;
+        ctx.emit({ type: WATCH_LINE.OPEN });
+        continue;
+      }
+      if (record?.type === WATCH_LINE.REFRESH) {
+        ctx.emit(record);
+        continue;
+      }
+      if (
+        record?.type === WATCH_LINE.DONE ||
+        record?.type === WATCH_LINE.TTL ||
+        record?.type === WATCH_LINE.IDLE ||
+        record?.type === WATCH_LINE.SHUTDOWN
+      ) {
+        ctx.emit(record);
+        return { streamed: true, exit: CLI_EXIT.OK };
+      }
+      if (record?.type === WATCH_LINE.ERROR) {
+        if (!opened) throw hubError(record.data);
+        ctx.emit(record);
+        return { streamed: true, exit: CLI_EXIT.ERROR };
+      }
+    }
+  } catch (err) {
+    if (!opened) throw err;
+    ctx.emit({ type: WATCH_LINE.ERROR, data: errorPayload(err) });
+    return { streamed: true, exit: CLI_EXIT.ERROR };
+  }
+  if (!opened) {
+    throw new DomainError("CLI_IO", {
+      message: "export watch: the local hub closed before opening the stream",
+    });
+  }
+  ctx.emit({ type: WATCH_LINE.EOF });
+  return { streamed: true, exit: CLI_EXIT.OK };
 }
 
 export const COMMANDS = [
@@ -410,7 +404,7 @@ export const COMMANDS = [
   {
     name: "watch",
     summary: "Keep .meerkat/<identifier>/card.md fresh from the event stream.",
-    usage: "export watch [<ref>] [--ref <ref>]… [--dir <dir>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once]",
+    usage: "export watch [<ref>] [--ref <ref>]… [--dir <dir>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once] [--detach] [--watch-status] [--stop] [--standalone]",
     positionals: [
       {
         name: "ref",
@@ -461,6 +455,30 @@ export const COMMANDS = [
         as: "boolean",
         summary: "Export once and exit; do not stream.",
       },
+      {
+        flag: "detach",
+        key: "detach",
+        as: "boolean",
+        summary: "Register with the local event hub and return; the hub keeps the brief fresh.",
+      },
+      {
+        flag: "watch-status",
+        key: "watchStatus",
+        as: "boolean",
+        summary: "Report whether this card's registration is running.",
+      },
+      {
+        flag: "stop",
+        key: "stop",
+        as: "boolean",
+        summary: "Stop this card's registration.",
+      },
+      {
+        flag: "standalone",
+        key: "standalone",
+        as: "boolean",
+        summary: "Use the direct SSE implementation instead of the local hub (fallback).",
+      },
     ],
     async run(ctx) {
       const refs = [];
@@ -476,6 +494,21 @@ export const COMMANDS = [
       }
 
       const once = ctx.flags.once === true;
+      const detach = ctx.flags.detach === true;
+      const statusMode = ctx.flags.watchStatus === true;
+      const stopMode = ctx.flags.stop === true;
+      const standalone = ctx.flags.standalone === true;
+
+      const modes = [once, detach, statusMode, stopMode].filter(Boolean).length;
+      if (modes > 1) {
+        throw usageError("export watch: --once, --detach, --watch-status and --stop are mutually exclusive", {
+          fix: "pick one mode; a foreground watcher is the default",
+        });
+      }
+      if (standalone && (detach || statusMode || stopMode)) {
+        throw usageError("export watch: --standalone applies to a foreground watcher, not --detach/--watch-status/--stop");
+      }
+
       const afterFlag = nonNegativeInteger(ctx.flags, "after", "after");
       const idleMs = nonNegativeInteger(ctx.flags, "idle", "idle") ?? SSE_SUBSCRIBE_IDLE_MS;
       const ttlMs = nonNegativeInteger(ctx.flags, "ttl", "ttl") ?? CARD_WATCH_TTL_MS;
@@ -489,6 +522,14 @@ export const COMMANDS = [
           fix: "create the project working directory first (the .meerkat/ subtree is created for you)",
         });
       }
+
+      // The hub is the default: one board connection for every local consumer.
+      // `--standalone` (and `--once`, which never streams) keep the direct-SSE
+      // implementation available for sandboxes and for differential tests.
+      if (statusMode) return watchStatus(ctx, uniqueRefs, baseDir);
+      if (stopMode) return watchStop(ctx, uniqueRefs, baseDir);
+      if (detach) return watchDetach(ctx, uniqueRefs, baseDir, ttlMs);
+      if (!once && !standalone) return watchViaHub(ctx, uniqueRefs, baseDir, ttlMs);
 
       // Seed the cursor before the initial export, so a write that lands between
       // the export and the stream opening is replayed rather than lost. `/meta`

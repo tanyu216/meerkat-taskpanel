@@ -98,7 +98,7 @@ Precedence: flag > process env > agent config > default.
 | `--project-idle-ms <ms>` | 1800000 | close an idle project session (keeps its session id) |
 | `--subagent-background=yes\|no` | no | project sessions spawn background subagents |
 | `--allow-all-tools` | off | full agent tool access; requires `--allow-all-tools-reason "<who authorized it and why>"` |
-| `--subscribe` | off | run the event subscriber (`taskctl events tail`); launchd/systemd only |
+| `--subscribe` | off | run the event subscriber (`taskctl events follow`, the local event hub); launchd/systemd only |
 | `--event-continue=yes\|no` | yes | let events wake a continue turn |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--sla-peer <path>` | unset | peer inspector's last-ok marker; unset registers a dependency, not an alarm |

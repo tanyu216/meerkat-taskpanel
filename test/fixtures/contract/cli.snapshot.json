@@ -321,6 +321,33 @@
       "default_command": null,
       "commands": [
         {
+          "name": "follow",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "after",
+              "as": "number",
+              "value": "<rev>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "idle",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "hub",
+          "positionals": [],
+          "flags": []
+        },
+        {
           "name": "tail",
           "positionals": [],
           "flags": [
@@ -411,6 +438,14 @@
               "short": null
             },
             {
+              "flag": "detach",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "dir",
               "as": "string",
               "value": "<dir>",
@@ -443,9 +478,33 @@
               "short": null
             },
             {
+              "flag": "standalone",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "stop",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "ttl",
               "as": "number",
               "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "watch-status",
+              "as": "boolean",
+              "value": null,
               "required": false,
               "repeat": false,
               "short": null

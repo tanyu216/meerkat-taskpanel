@@ -310,39 +310,56 @@ Work that needs no directory (claiming, moving, commenting, delivering) is unaff
 
 ## Keeping the brief fresh
 
-A card exported into a project directory is a **snapshot**. The portable way to refresh it is
-a one-shot export at each phase boundary and before a resume — it works on every runtime and
-leaves no process behind:
+A card exported into a project directory is a **snapshot**. Keep it fresh by registering it
+with the local event hub once; the command returns immediately and the hub — not your shell —
+owns the board connection:
+
+```bash
+taskctl export watch <ref> --dir <project-dir> --detach
+```
+
+This works the same in every harness: the CLI starts the hub detached (a new session), so a
+harness that tears down its command's process group at the end of a turn cannot kill it. Do
+not run the watcher with a plain shell `&`. Check it with:
+
+```bash
+taskctl export watch <ref> --dir <project-dir> --watch-status
+```
+
+and stop it at closeout with:
+
+```bash
+taskctl export watch <ref> --dir <project-dir> --stop
+```
+
+If the hub cannot run in your sandbox, `--watch-status` says so; fall back to the portable
+one-shot at phase boundaries and before a resume:
 
 ```bash
 taskctl export watch <ref> --dir <project-dir> --once
 ```
 
-If your runtime has a **documented background-process facility**, you may instead keep one
-running (`taskctl export watch <ref> --dir <project-dir>`), stop it when the session ends, and
-keep its default 2-hour `--ttl` bound (or pass a larger value / `0` for a genuinely longer
-task). Claude Code's background Bash qualifies; for any other harness,
-check its own documentation — do not assume a shell `&` survives the turn. Either way the
-watcher is one-way: it refreshes the file, it does not wake you, so re-read the brief before a
-decision or a resume.
-
-It writes `<project-dir>/.meerkat/<identifier>/card.md` and re-renders it whenever the board
-changes that card (`comment_added`, `task_updated`, a move, an attachment, …). It stops itself
-once the card reaches `done` (writing the final brief first), and `--ttl` bounds a session
-that never gets there. A card that stops at `in_review` is not done yet: stop the watcher when
-the session ends, and start a new one if a done card is reopened.
+A detached registration is persisted and resumes if the hub restarts; `--ttl` (default 2
+hours) and `--stop` bound it. Pass a larger `--ttl` (or `0` to disable it) for a task
+expected to outlive two hours. Either form writes `<project-dir>/.meerkat/<identifier>/card.md`
+and re-renders it whenever the board changes that card (`comment_added`, `task_updated`, a
+move, an attachment, …). It stops refreshing once the card reaches `done` (writing the final
+brief first). A card that stops at `in_review` is not done yet: stop the registration when
+the session ends, and start a new one if a done card is reopened. The watcher is one-way: it
+refreshes the file, it does not wake you, so re-read the brief before a decision or a resume.
 
 **Do not start one when the `meerkat-loop` supervisor dispatched you**: its `--subscribe`
-daemon already refreshes active queued briefs, and a second watcher is duplicated traffic.
-Either way `card.md` is machine-generated — never hand-edit it. The command's output and
-exact flags are in [`references/cli.md#export-watch`](references/cli.md#export-watch).
+daemon already follows the same hub and refreshes active queued briefs, and a second watcher
+is duplicated traffic. Either way `card.md` is machine-generated — never hand-edit it. The
+command's output and exact flags are in
+[`references/cli.md#export-watch`](references/cli.md#export-watch).
 
 ## Where to look
 
 | You need… | Read |
 |---|---|
 | a status, transition, guard, delivery round, claim window, refusal code, or the board's workflow plan | [`references/status-lifecycle.md`](references/status-lifecycle.md) |
-| a command, its flags, exit codes, the `--json` envelope, or the `events tail` contract | [`references/cli.md`](references/cli.md) |
+| a command, its flags, exit codes, the `--json` envelope, or the live-stream contract | [`references/cli.md`](references/cli.md) |
 | what a reviewer reads and writes, and the two-round model | [`references/review-workflow.md`](references/review-workflow.md) |
 | the `taskctl` invocations and JSON keys a supervisor binds to | [`references/capabilities.md`](references/capabilities.md) |
 | the `export md` card format, identifier syntax, or `blocked_reason` meanings | [`references/card-schema.md`](references/card-schema.md) |

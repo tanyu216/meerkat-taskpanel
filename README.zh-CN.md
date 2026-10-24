@@ -245,8 +245,8 @@ SLA 的每一条都是**发给 leader 的通知**，绝不对卡动手；工作�
 （`--reviewer` 启用派发，`--workflow=no` 整条通道关闭）。
 Claude Code 与 Codex **本身没有定时器**，因此循环活在它们
 **之外**。在 launchd/systemd
-上，可选的 **subscribe 守护进程**保持一条 SSE 连接，收到可派发事件时请求一个 continue 回合，
-因此工作发现是事件驱动的；continue 周期仍是兜底，也是基于时间的检查（过期认领、审核老化、
+上，可选的 **subscribe 守护进程**跟随本机 **事件 hub**（每块板一条 SSE，所有本地消费者共享），
+收到可派发事件时请求一个 continue 回合，因此工作发现是事件驱动的；continue 周期仍是兜底，也是基于时间的检查（过期认领、审核老化、
 SLA）的唯一路径。cron 无法承载长驻进程，因此没有会话池：巡检与工作流照常运行，
 但 poll 不再认领，worker 派发暂停；`--continue-interval` 是发现节奏的旋钮。**启用方式**：运行
 `install.sh --target claude|codex|pi|opencode|cursor` —— 它会安装 `meerkat-loop` skill、投放该 agent kind 的
