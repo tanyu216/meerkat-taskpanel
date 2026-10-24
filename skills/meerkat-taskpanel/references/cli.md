@@ -129,7 +129,7 @@ ask rather than guessing.
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--reporter-id <id>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue meta <ref> --meta <k>=<v>…` | Merge metadata keys into a card, leaving other keys intact. The read-modify-write form with `--if-version` CAS. |
-| `issue deliver <ref> --report-file <file\|-> [--no-report --reason "<why>"] [--seg <seg>]` | **Write the report and move to `in_review`, in one transaction.** The two report forms are mutually exclusive. No `--to`; it always lands in `in_review`. On an **epic** the report is its rollup: it must name every live child by `ref` (`ROLLUP_STALE` otherwise) and is stored with `is_rollup = 1`; `--no-report` is refused for an epic (`ROLLUP_REQUIRED`). |
+| `issue deliver <ref> --report-file <file\|-> [--to done] [--no-report --reason "<why>"] [--seg <seg>]` | **Write the report and move, in one transaction.** The default destination is `in_review`; `--to done` is the `off` card's **direct acceptance** (any other `--to`, and a waiver with `--to done`, are usage errors). The two report forms are mutually exclusive. On an **epic** the report is its rollup: it must name every live child by `ref` (`ROLLUP_STALE` otherwise) and is stored with `is_rollup = 1`; `--no-report` is refused for an epic (`ROLLUP_REQUIRED`). |
 | `issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] [--review-aging-ms <n>] [--max-actions <n>] [--board-limit <n>]` | Without `--workflow`: replay the epic rules over every non-terminal container. With it: return the board's workflow plan (see below). `--dry-run` writes nothing. Idempotent. |
 
 #### `issue create`

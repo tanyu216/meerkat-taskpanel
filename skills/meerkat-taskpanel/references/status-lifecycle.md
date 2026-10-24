@@ -165,7 +165,8 @@ The compliant path writes the report and moves atomically:
 
 ```bash
 taskctl report template <ref>                 # fill the TODO lines
-taskctl issue deliver <ref> --report-file -   # always lands in in_review; no --to
+taskctl issue deliver <ref> --report-file -   # lands in in_review
+taskctl issue deliver <ref> --report-file - --to done   # an `off` card's direct acceptance
 ```
 
 A report with an explicit non-current `round` is `REPORT_ROUND_MISMATCH` — a report-write

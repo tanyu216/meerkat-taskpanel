@@ -291,3 +291,64 @@ describe("cli/deliver — the audited waiver (case 5, F-B1)", () => {
     });
   });
 });
+
+describe("cli/deliver — the direct `done` edge (0037)", () => {
+  /** A board with one card in `in_progress`, created with `mode`. */
+  async function modeBoard(fn, mode = "off") {
+    return withCli(async (ctx) => {
+      ctx.run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      ctx.run([
+        "issue", "create", "--project", "demo", "--title", "Direct", "--acceptance", "cli works",
+        "--acceptance-mode", mode, "--json",
+      ]);
+      ctx.run(["issue", "move", "DEMO-0001", "in_progress", "--json"]);
+      return fn(ctx);
+    });
+  }
+
+  it("accepts an `off` card straight to done, report and move in one transaction", async () => {
+    await modeBoard(async ({ run }) => {
+      const result = run(
+        ["issue", "deliver", "DEMO-0001", "--report-file", "-", "--to", "done", "--json"],
+        { input: JSON.stringify(REPORT) },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const data = dataOf(result);
+      assert.equal(data.task.status, "done");
+      assert.equal(data.status, "done");
+      assert.equal(typeof data.report_id, "number", "the report the done gate reads was written");
+      assert.equal(data.task.delivery_round, 1, "acceptance does not start a new round");
+    });
+  });
+
+  it("refuses the direct edge for a human card — the card's mode owns it", async () => {
+    await modeBoard(async ({ run }) => {
+      const result = run(
+        ["issue", "deliver", "DEMO-0001", "--report-file", "-", "--to", "done", "--json"],
+        { input: JSON.stringify(REPORT) },
+      );
+      assert.equal(result.status, 1);
+      // `in_progress → done` is the `off` card's pair and no one else's, so the
+      // whitelist refuses it before the acceptance gate is reached.
+      assert.equal(errorOf(result).code, "INVALID_TRANSITION");
+      assert.equal(errorOf(result).details.from, "in_progress");
+      assert.equal(errorOf(result).details.to, "done");
+    }, "human");
+  });
+
+  it("refuses any other --to, and --no-report with --to done", async () => {
+    await modeBoard(async ({ run }) => {
+      const elsewhere = run(["issue", "deliver", "DEMO-0001", "--report-file", "-", "--to", "todo", "--json"], {
+        input: JSON.stringify(REPORT),
+      });
+      assert.equal(elsewhere.status, 2);
+      assert.match(errorOf(elsewhere).message, /--to accepts only "done"/);
+
+      const waived = run([
+        "issue", "deliver", "DEMO-0001", "--no-report", "--reason", "hotfix: report follows later", "--to", "done", "--json",
+      ]);
+      assert.equal(waived.status, 2);
+      assert.match(errorOf(waived).message, /--to done needs a report/);
+    });
+  });
+});

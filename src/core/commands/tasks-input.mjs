@@ -214,7 +214,9 @@ const CLAIM = Object.freeze([
 ]);
 
 const DELIVER = Object.freeze([
-  wireOnly("to", { vocab: STATUSES }),
+  // 0037 — `--to done` is the `off` card's direct acceptance: the report and the
+  // move land in one transaction, so the evidence the done gate reads exists.
+  both("to", { vocab: STATUSES }),
   both("report", { type: OBJECT, nested: REPORT }),
   both("if_version", { type: INTEGER }),
   both("no_report", { type: BOOLEAN }),

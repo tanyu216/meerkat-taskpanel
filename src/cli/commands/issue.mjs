@@ -514,9 +514,11 @@ export const COMMANDS = [
 
   {
     name: "deliver",
-    summary: "Write a report and move to in_review, atomically. The compliant path.",
+    summary: "Write a report and move to in_review (or straight to done for an `off` card), atomically.",
     op: TASK_OPS.deliver,
-    usage: "issue deliver <id|identifier> --report-file <file|-> [--no-report --reason <why>]",
+    usage:
+      "issue deliver <id|identifier> --report-file <file|-> [--to done] " +
+      "[--no-report --reason <why>]",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: projectFlags(TASK_OPS.deliver),
     async run(ctx) {
@@ -535,6 +537,20 @@ export const COMMANDS = [
           fix: "taskctl issue deliver <id> --report-file -",
         });
       }
+      // 0037 — the only destination a delivery may name is `done` (the `off`
+      // card's direct acceptance). `in_review` is the default, and a waiver
+      // never reaches `done`: the direct path is the one that must carry the
+      // evidence.
+      if (flags.to !== undefined && flags.to !== "done") {
+        throw usageError(`issue deliver: --to accepts only "done" (got ${JSON.stringify(flags.to)})`, {
+          fix: "omit --to to deliver to in_review",
+        });
+      }
+      if (flags.to === "done" && waived) {
+        throw usageError("issue deliver: --to done needs a report; --no-report cannot accept a card", {
+          fix: "send the report, or deliver to in_review with the waiver",
+        });
+      }
 
       let report = null;
       const warnings = [];
@@ -550,6 +566,7 @@ export const COMMANDS = [
 
       const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/deliver`, projectBody(TASK_OPS.deliver, {
         report,
+        to: flags.to,
         if_version: flags.ifVersion,
         no_report: waived,
         reason: flags.reason,
