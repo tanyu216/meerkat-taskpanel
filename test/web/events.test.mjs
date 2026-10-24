@@ -17,14 +17,13 @@ import {
   advanceCursor,
   backoffDelay,
   detailRefetch,
-  eventTargets,
   invalidatesWaitingPayload,
   isKnownEvent,
   resyncQuery,
   taskEventNeedsRefresh,
   tasklessNeedsReload,
 } from "../../web/src/lib/events.js";
-import { SSE_SHUTDOWN_EVENT } from "../../src/server/sse.mjs";
+import { SSE_SHUTDOWN_EVENT } from "../../src/foundation/constants.mjs";
 
 describe("web/events — the cursor", () => {
   it("takes the first revision as the starting cursor", () => {
@@ -42,18 +41,6 @@ describe("web/events — the cursor", () => {
     assert.equal(advanceCursor(5, "abc"), 5);
     assert.equal(advanceCursor(5, null), 5);
     assert.equal(advanceCursor(5, undefined), 5);
-  });
-});
-
-describe("web/events — what an activity targets", () => {
-  it("scopes a task event to that task (an incremental refresh)", () => {
-    assert.deepEqual(eventTargets({ task_id: "td_1", event: "task_updated" }), { scope: "task", taskId: "td_1" });
-  });
-
-  it("scopes a task-less event to the whole board (a full reload)", () => {
-    assert.deepEqual(eventTargets({ task_id: null, event: "project_updated" }), { scope: "all", taskId: null });
-    assert.deepEqual(eventTargets({ event: "schema" }), { scope: "all", taskId: null });
-    assert.deepEqual(eventTargets(null), { scope: "all", taskId: null });
   });
 });
 

@@ -16,9 +16,10 @@
 import { TIME_RUNGS_TWO, timeLadder } from "./time.js";
 
 /**
- * The three events the prototype gives a localised sentence, as the **suffix**
- * of their `activity.*` catalogue key: the key family is static (the template
- * writes `activity.${sentence}`) and only the sentence varies with the event.
+ * The events the drawer gives a localised sentence, as the **suffix** of their
+ * `activity.*` catalogue key: the key family is static (the template writes
+ * `activity.${sentence}`) and only the sentence varies with the event. An event
+ * not listed here reads as the generic `activity.other`.
  */
 export const ACTIVITY_SENTENCES = Object.freeze({
   task_created: "created",

@@ -31,23 +31,6 @@ export function advanceCursor(current, revision) {
   return current === null || current === undefined ? value : Math.max(current, value);
 }
 
-/**
- * What a received activity should make the board refetch.
- *
- * A task-scoped event names one task (`task_id`); a project-scoped or
- * task-less event (schema changes, project rows) forces a full reload. Heartbeat
- * events never reach the client — the server filters them — but an unknown
- * shape is treated as "reload everything", which is the safe direction.
- *
- * @param {object|null} activity the wire activity (`activityToWire`)
- * @returns {{scope: "task"|"all", taskId: string|null}}
- */
-export function eventTargets(activity) {
-  const taskId = activity?.task_id ?? null;
-  if (typeof taskId === "string" && taskId !== "") return { scope: "task", taskId };
-  return { scope: "all", taskId: null };
-}
-
 /* ------------------------------------------------------- refresh decisions */
 
 /**

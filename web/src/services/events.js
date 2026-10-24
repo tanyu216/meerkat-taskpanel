@@ -27,7 +27,7 @@
  * Nothing here retries a *write*: conflict handling is the board store's job
  * (F4: never silently overwrite, never auto-retry with a bumped version).
  */
-import { SHUTDOWN_EVENT, advanceCursor, backoffDelay, eventTargets, resyncQuery } from "../lib/events.js";
+import { SHUTDOWN_EVENT, advanceCursor, backoffDelay, resyncQuery } from "../lib/events.js";
 
 /**
  * @param {{
@@ -155,7 +155,6 @@ export function createEventClient(options = {}) {
       }
       const revision = Number(event.lastEventId);
       onActivity(activity, Number.isFinite(revision) ? revision : cursor);
-      return eventTargets(activity); // exposed for tests via the pure module, computed here for convenience
     };
   };
 

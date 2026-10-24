@@ -160,9 +160,6 @@ export const BURST_KINDS = Object.freeze(["label", "assignee", "updated", "statu
 
 const pad = (n) => String(n).padStart(2, "0");
 
-/** `2026-10-05 11:20` — the absolute stamp the row's `title` carries. */
-export { absoluteStamp } from "./time.js";
-
 /**
  * The row's visible time, on the feed's three-rung ladder: minutes under an
  * hour, hours under a day, days from a day up. Anything in the future (a clock

@@ -58,8 +58,9 @@ export function formatEvent(activity) {
  * activity and must never be mistaken for one. A client that wants it asks for
  * it by name; a client that does not is unaffected. It carries no `id:`, so a
  * client cannot advance its cursor past events it has not seen.
+ *
+ * The constant lives in `foundation/constants.mjs`; this module only formats it.
  */
-export { SSE_SHUTDOWN_EVENT };
 
 /** @param {string} reason */
 export function formatShutdown(reason) {
