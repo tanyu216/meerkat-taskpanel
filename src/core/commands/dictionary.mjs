@@ -7,8 +7,8 @@
  * management UI to hook into — which is the requirement.
  *
  * `resolveOrCreate` does not write its own audit row: the command that needed
- * the entry records `dictionary_upsert` inside its own `changes_json`, so a
- * task creation stays one transaction with one activity.
+ * the entry names the growth in the `dictionaries` field of its own activity's
+ * `changes_json`, so a task creation stays one transaction with one activity.
  *
  * Since `0019` there is one `actors` table and `assignee`/`reporter` are roles
  * (the `tasks` column a task fills). Resolution is **role-agnostic**: one person

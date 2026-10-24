@@ -366,7 +366,7 @@ export function createTasksRepository(db) {
      * Rewrite the `review_required` decision, under the same version CAS as any
      * other write. Kept out of `PATCHABLE` on purpose: the generic update path
      * must not be able to change an acceptance-relevant decision without the
-     * command layer's audit (`review_override`).
+     * command layer's audit (`acceptance_override`).
      *
      * @param {{id: string, value: boolean|0|1, ifVersion?: number, now: string}} input
      * @returns {object} the updated Task DTO

@@ -10,6 +10,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  DISPATCH_EVENTS,
+  IGNORED_EVENTS,
   advanceCursor,
   classify,
   classifyRefresh,
@@ -62,40 +64,36 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 describe("loop/subscribe — event rules", () => {
   it("dispatches the events that can create or complete work", () => {
-    for (const event of [
-      "task_created",
-      "task_moved",
-      "task_reopened",
-      "task_delivered",
-      "report_written",
-      "report_waived",
-      "epic_auto_start",
-      "relation_added",
-      "relation_removed",
-      "import_completed",
-    ]) {
+    for (const event of DISPATCH_EVENTS) {
       assert.equal(classify(activity(event, { actor_kind: "human", actor_id: "terry" }), { agents: ["linus"] }), "dispatch", event);
     }
   });
 
   it("ignores the events that cannot change candidacy", () => {
-    for (const event of [
-      "comment_added",
-      "session_registered",
-      "session_closed",
-      "progress",
-      "label_gc",
-      "project_created",
-      "project_updated",
-      "attachment_added",
-      "attachment_updated",
-      "attachment_removed",
-      "task_claimed",
-      "task_archived",
-      "task_heartbeat",
-    ]) {
+    for (const event of IGNORED_EVENTS) {
       assert.equal(classify(activity(event, { actor_kind: "human", actor_id: "terry" }), { agents: ["linus"] }), "ignore", event);
     }
+  });
+
+  it("keeps the two lists disjoint, and ignores a name neither knows", () => {
+    const overlap = DISPATCH_EVENTS.filter((event) => IGNORED_EVENTS.includes(event));
+    assert.deepEqual(overlap, [], "an event cannot be both dispatched and ignored");
+    assert.equal(
+      classify(activity("brand_new_event", { actor_kind: "human", actor_id: "terry" }), { agents: [] }),
+      "ignore",
+      "a newer board's event must never wake work",
+    );
+  });
+
+  it("does not dispatch the board's own epic start", () => {
+    // `epic_auto_start` is written by `taskd`, so suppression by author already
+    // wins; it belongs in the explicit ignore list, not the dispatch whitelist.
+    assert.equal(IGNORED_EVENTS.includes("epic_auto_start"), true);
+    assert.equal(DISPATCH_EVENTS.includes("epic_auto_start"), false);
+    assert.equal(
+      classify(activity("epic_auto_start", { actor_kind: "taskd", actor_id: "taskd" }), { agents: ["linus"] }),
+      "ignore",
+    );
   });
 
   it("dispatches task_updated only for candidacy-affecting fields", () => {

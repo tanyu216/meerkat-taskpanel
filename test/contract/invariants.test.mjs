@@ -641,6 +641,40 @@ describe("contract/invariants — indexes are actually used", () => {
       assert.equal(/SCAN task_reports/.test(plan), false, plan);
     });
   });
+
+  it("plans the event cursor through ix_activities_revision, not a scan", async () => {
+    await withBoard(({ db }) => {
+      const plan = db
+        .prepare("EXPLAIN QUERY PLAN SELECT * FROM task_activities WHERE revision > ? ORDER BY revision, id LIMIT 500")
+        .all(0)
+        .map((row) => String(row.detail))
+        .join(" | ");
+      assert.match(plan, /ix_activities_revision/, plan);
+    });
+  });
+
+  it("plans the project activity window through ix_activities_created", async () => {
+    await withBoard(({ db }) => {
+      // The real aggregation from `projects.mjs#activityByProject`: if this
+      // stops using the index, the project list is scanning the audit trail.
+      const plan = db
+        .prepare(
+          `EXPLAIN QUERY PLAN
+             SELECT t.project_id AS project_id,
+                    SUM(CASE WHEN a.created_at >= ? THEN 1 ELSE 0 END) AS a7,
+                    COUNT(*) AS a30,
+                    MAX(a.created_at) AS last_activity
+               FROM task_activities a
+               JOIN tasks t ON t.id = a.task_id
+              WHERE a.event NOT IN (?) AND a.created_at >= ?
+              GROUP BY t.project_id`,
+        )
+        .all("2026-01-01T00:00:00.000Z", "task_heartbeat", "2025-01-01T00:00:00.000Z")
+        .map((row) => String(row.detail))
+        .join(" | ");
+      assert.match(plan, /ix_activities_created/, plan);
+    });
+  });
 });
 
 /**

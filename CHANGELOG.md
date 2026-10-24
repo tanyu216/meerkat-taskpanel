@@ -41,6 +41,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `report write` command. The migration rebuilds `task_reports` to drop the column,
   preserving every row.
 
+### Fixed
+
+- **The event stream no longer loses an `acceptance_pruned` frame (migration `0037`).**
+  `task_activities.revision` now records the revision the row's own insert produced, so a
+  client cursor is a plain `revision > ?` range and a row written *before* the state change
+  it describes (the acceptance prune must do that; the 0032 trigger reads the audit row) can
+  no longer land at or below a caught-up live client's cursor. Revisions stay unique and
+  strictly increasing across appends; existing rows keep their historical value. `0037` adds
+  `ix_activities_revision` (the stream's only read, previously a full scan every 500 ms per
+  client) and `ix_activities_created` (the project weight's 30-day activity window). The SSE
+  engine also survives a failing read, respects socket backpressure, and yields between
+  replay pages instead of draining a long backlog synchronously.
+
 ### Added
 
 - **Three read-surface conveniences for an integrating poll (no migration).**

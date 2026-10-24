@@ -79,7 +79,7 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       const up = applyMigrations(board.db, { dir: through0038() });
       // 0015 and everything after it: 0016 (`blocked_reason`) is the next file in
       // the set, and this board is below both.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0038"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038"]);
       assert.deepEqual(up.skipped.slice(-2), ["0013", "0014"]);
 
       // 1 — the enum: the new word is storable, the old ones still are (they are

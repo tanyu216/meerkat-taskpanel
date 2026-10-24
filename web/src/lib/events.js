@@ -17,8 +17,9 @@
  */
 
 /**
- * The cursor after seeing a frame. Revision is non-decreasing, so the cursor
- * never moves backwards even if a replay delivers a stale frame.
+ * The cursor after seeing a frame. Revisions written since 0037 are strictly
+ * increasing; historical rows are non-decreasing. Either way the cursor never
+ * moves backwards, even if a replay delivers a stale frame.
  *
  * @param {number|null} current
  * @param {unknown} revision
@@ -28,23 +29,6 @@ export function advanceCursor(current, revision) {
   const value = Number(revision);
   if (!Number.isFinite(value)) return current;
   return current === null || current === undefined ? value : Math.max(current, value);
-}
-
-/**
- * What a received activity should make the board refetch.
- *
- * A task-scoped event names one task (`task_id`); a project-scoped or
- * task-less event (schema changes, project rows) forces a full reload. Heartbeat
- * events never reach the client — the server filters them — but an unknown
- * shape is treated as "reload everything", which is the safe direction.
- *
- * @param {object|null} activity the wire activity (`activityToWire`)
- * @returns {{scope: "task"|"all", taskId: string|null}}
- */
-export function eventTargets(activity) {
-  const taskId = activity?.task_id ?? null;
-  if (typeof taskId === "string" && taskId !== "") return { scope: "task", taskId };
-  return { scope: "all", taskId: null };
 }
 
 /* ------------------------------------------------------- refresh decisions */
@@ -67,6 +51,13 @@ const TASK_REFRESH_EVENTS = new Set([
   "report_written",
   "report_waived",
   "epic_auto_start",
+  // 0032/0031 — the acceptance baseline and the review decision live on the
+  // card row, so these were already refreshing it through the "unknown event"
+  // fallback. Naming them here keeps that behaviour while removing the false
+  // "unknown activity event" warning.
+  "acceptance_changed",
+  "acceptance_pruned",
+  "acceptance_override",
 ]);
 
 /** Events with no task: an unknown one is treated as a full reload, the safe direction. */

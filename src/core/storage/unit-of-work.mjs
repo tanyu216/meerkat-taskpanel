@@ -140,10 +140,18 @@ export function currentRevision(db) {
 /**
  * Append one audit row.
  *
- * `revision` records the global revision that the *change being described*
- * produced — read before this insert, so the activity row can be found from a
- * client's cursor. The insert itself also bumps the cursor (it is a write),
- * which is why the recorded number is not "the revision after this row".
+ * `revision` is the global revision this row's **own insert** produces. The
+ * `tr_rev_task_activities_ins` trigger bumps the counter by exactly one, so
+ * reading it and adding one is exact — and it makes every activity revision
+ * unique and strictly increasing across appends. A client cursor is therefore a
+ * plain `revision > ?` range: it can never skip a row, including one written
+ * *before* the state change it describes (the acceptance prune must do that;
+ * the 0032 trigger reads the audit row).
+ *
+ * This assumes the read and the insert are atomic. Every command calls it
+ * inside `transaction()` (`BEGIN IMMEDIATE`), which holds the write lock; a
+ * direct `activities.append` in autocommit is safe only because the daemon is
+ * the single writer.
  *
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {{
@@ -179,7 +187,7 @@ export function recordActivity(db, activity) {
     });
   }
 
-  const revision = currentRevision(db);
+  const revision = currentRevision(db) + 1;
   const info = db
     .prepare(
       `INSERT INTO task_activities(task_id, actor_kind, actor_id, event, changes_json, revision, created_at)
