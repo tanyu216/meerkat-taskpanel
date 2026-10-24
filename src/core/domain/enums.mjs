@@ -294,9 +294,9 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "session_registered",
   "session_closed",
   "progress",
-  // The attachment surface writes through its own routes, so its changes need
-  // their own rows: the activity stream is a cursor over this table, and a
-  // `global_revision` bump alone produces no frame.
+  // The attachment commands write their own rows: the activity stream is a
+  // cursor over this table, and a `global_revision` bump alone produces no
+  // frame.
   "attachment_added",
   "attachment_updated",
   "attachment_removed",
@@ -304,6 +304,16 @@ export const ACTIVITY_EVENTS = Object.freeze([
   // storm the stream; the counters are enough to make a client reload.
   "import_completed",
 ]);
+
+/**
+ * Declared words whose writer is gone (the markdown importer was removed).
+ *
+ * They stay in `ACTIVITY_EVENTS` so historical rows remain readable, and this
+ * list is what keeps a second writer from appearing — see
+ * `test/contract/activity-events.test.mjs`. Consumers must classify them, but
+ * no surface should expect a new one.
+ */
+export const HISTORICAL_ACTIVITY_EVENTS = Object.freeze(["progress", "import_completed"]);
 
 /**
  * `table.column` → allowed literals, as checked by the migration SQL. The

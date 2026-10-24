@@ -102,6 +102,34 @@ export const ADMITTED_EVENTS = Object.freeze({
 });
 
 /**
+ * Every other declared activity event, named so "not in the feed" is a
+ * decision rather than a default. `task_updated` is the one exception in
+ * neither list: `TASK_UPDATED_KINDS` admits it only when its `fields` name a
+ * human-visible change.
+ *
+ * `task_resumed` is here even though the drawer renders it: the feed's
+ * admission is a product choice about which rows deserve a human's attention,
+ * and it currently does not surface the automatic `awaiting → todo` return.
+ * `test/contract/activity-consumers.test.mjs` is what keeps this list
+ * exhaustive.
+ */
+export const FEED_EXCLUDED_EVENTS = Object.freeze([
+  "project_created",
+  "project_updated",
+  "task_heartbeat",
+  "task_resumed",
+  "acceptance_changed",
+  "acceptance_pruned",
+  "review_override",
+  "label_gc",
+  "session_registered",
+  "session_closed",
+  "progress",
+  "attachment_updated",
+  "import_completed",
+]);
+
+/**
  * The `task_updated` field names that make a row a *classifiable* change, and
  * the kind each becomes. A `task_updated` whose `fields` name none of these is
  * a machine-side revision tick and is dropped (§3.3).
@@ -131,9 +159,6 @@ export const BURST_KINDS = Object.freeze(["label", "assignee", "updated", "statu
 /* ------------------------------------------------------------------ time */
 
 const pad = (n) => String(n).padStart(2, "0");
-
-/** `2026-10-05 11:20` — the absolute stamp the row's `title` carries. */
-export { absoluteStamp } from "./time.js";
 
 /**
  * The row's visible time, on the feed's three-rung ladder: minutes under an
