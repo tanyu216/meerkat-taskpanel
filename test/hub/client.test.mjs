@@ -111,6 +111,24 @@ describe("hub client", () => {
     );
   });
 
+  it("skips heartbeats while waiting for an answer", async () => {
+    let seen = 0;
+    const { port } = await listen((socket) => {
+      seen += 1;
+      if (seen === 1) socket.write('{"op":"hello","ok":true}\n');
+      else {
+        socket.write('{"type":"heartbeat"}\n');
+        socket.write('{"op":"watch-status","ok":true,"running":true}\n');
+      }
+    });
+    const answer = await hubAnswer(
+      { port, token: "t" },
+      { op: "watch-status" },
+      (record) => record.op === "watch-status",
+    );
+    assert.equal(answer.running, true);
+  });
+
   it("surfaces an op-level error and a premature close", async () => {
     let call = 0;
     const { port } = await listen((socket) => {

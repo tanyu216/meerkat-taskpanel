@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { runHub } from "../../src/cli/commands/events.mjs";
 import { run } from "../../src/cli/index.mjs";
 import { hubRecords } from "../../src/cli/hub/client.mjs";
-import { hubCall, hubPaths, newHubToken, readJsonFile } from "../../src/cli/hub/runtime.mjs";
+import { hubCall, hubPaths, newHubToken, readJsonFile, writeJsonFile } from "../../src/cli/hub/runtime.mjs";
 import { createHubServer } from "../../src/cli/hub/server.mjs";
 import { createBoardClient } from "../../src/foundation/transport/client.mjs";
 import { fakeBoard } from "./helpers/fake-board.mjs";
@@ -263,6 +263,89 @@ describe("hub server (in process)", () => {
     await server.stop();
     await waitFor(() => seen.includes("shutdown"));
     await consume;
+  });
+
+  it("answers status and stop by registration id", async () => {
+    board.add("DEMO-0030", "uuid-30", "# id\n");
+    const detach = await cli(["export", "watch", "DEMO-0030", "--dir", projectDir, "--detach", "--json"]);
+    const { registration_id: registrationId } = JSON.parse(detach.stdout).data;
+    const live = pointer();
+    const status = await hubCall(
+      live,
+      live.token,
+      { op: "watch-status", registration_id: registrationId },
+      (record) => record.op === "watch-status",
+    );
+    assert.equal(status.running, true);
+    const stop = await hubCall(
+      live,
+      live.token,
+      { op: "watch-stop", registration_id: registrationId },
+      (record) => record.op === "watch-stop",
+    );
+    assert.equal(stop.stopped, true);
+  });
+
+  it("replays retained events to a follower with a cursor", async () => {
+    board.add("DEMO-0031", "uuid-31", "# replay\n");
+    await cli(["export", "watch", "DEMO-0031", "--dir", projectDir, "--detach", "--json"]);
+    board.update("DEMO-0031", { markdown: "# replay v2\n" });
+    board.emit("uuid-31");
+    await waitFor(() => readFileSync(cardPath("DEMO-0031"), "utf8").includes("replay v2"));
+
+    const live = pointer();
+    const seen = [];
+    for await (const record of hubRecords(live, { op: "follow", after: 0, idle_ms: 0 })) {
+      if (record.type === "event") seen.push(record.id);
+      if (seen.length > 0) break;
+    }
+    assert.ok(seen.length >= 1);
+  });
+
+  it("refreshes every registration on an event without a task_id", async () => {
+    board.add("DEMO-0032", "uuid-32", "# one\n");
+    board.add("DEMO-0033", "uuid-33", "# two\n");
+    await cli(["export", "watch", "DEMO-0032", "--dir", projectDir, "--detach", "--json"]);
+    await cli(["export", "watch", "DEMO-0033", "--dir", projectDir, "--detach", "--json"]);
+    board.update("DEMO-0032", { markdown: "# one v2\n" });
+    board.update("DEMO-0033", { markdown: "# two v2\n" });
+    board.emit(null);
+    await waitFor(() => readFileSync(cardPath("DEMO-0032"), "utf8").includes("one v2"));
+    await waitFor(() => readFileSync(cardPath("DEMO-0033"), "utf8").includes("two v2"));
+  });
+
+  it("drops invalid, expired and unresolvable persisted registrations", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "meerkat-hub-rehydrate-"));
+    try {
+      const token = `${TOKEN}-rehydrate`;
+      const rehydrateEnv = { ...env, MEERKAT_HUB_DIR: dir };
+      const paths = hubPaths(board.url, token, rehydrateEnv);
+      writeJsonFile(paths.state, {
+        version: 1,
+        registrations: [
+          { id: "invalid", refs: ["DEMO-0001"], dir: projectDir, ttl_ms: "nope", created_at: 0, expires_at: null },
+          { id: "expired", refs: ["DEMO-0002"], dir: projectDir, ttl_ms: 100, created_at: 0, expires_at: 1 },
+          { id: "unresolvable", refs: ["MISSING"], dir: projectDir, ttl_ms: 1_000, created_at: 0, expires_at: null },
+        ],
+      });
+      const rehydrated = await runHub(
+        { client, board: { url: board.url, token }, env: rehydrateEnv },
+        { log: () => {} },
+      );
+      const live = readJsonFile(paths.pointer);
+      for (const id of ["invalid", "expired", "unresolvable"]) {
+        const status = await hubCall(
+          live,
+          live.token,
+          { op: "watch-status", registration_id: id },
+          (record) => record.op === "watch-status",
+        );
+        assert.equal(status.running, false);
+      }
+      await rehydrated.stop();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("answers ping, refuses a wrong token and reports an unknown operation", async () => {

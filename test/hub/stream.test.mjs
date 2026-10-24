@@ -119,6 +119,53 @@ describe("hub board stream", () => {
     await stream.stop();
   });
 
+  it("survives an event handler that throws", async () => {
+    let handled = 0;
+    const stream = createBoardStream({
+      client: { stream: async (_path, { signal } = {}) => held([frame(1, { event: "a" })], signal) },
+      onEvent: () => {
+        handled += 1;
+        throw new Error("boom");
+      },
+      retryMinMs: 5,
+    });
+    void stream.start();
+    await waitFor(() => stream.retained === 1);
+    assert.equal(handled, 1);
+    await stream.stop();
+  });
+
+  it("reports a stream error and reconnects", async () => {
+    const states = [];
+    let calls = 0;
+    const stream = createBoardStream({
+      client: {
+        stream: async (_path, { signal } = {}) => {
+          calls += 1;
+          if (calls === 1) throw new Error("refused");
+          return held([frame(1, { event: "a" })], signal);
+        },
+      },
+      onEvent: () => {},
+      onState: (state) => states.push(state.state),
+      retryMinMs: 5,
+      retryMaxMs: 10,
+    });
+    void stream.start();
+    await waitFor(() => states.includes("error"));
+    await waitFor(() => states.includes("open"));
+    await stream.stop();
+  });
+
+  it("stops before it starts and treats an empty ring as no replay", async () => {
+    const stream = createBoardStream({
+      client: { stream: async (_path, { signal } = {}) => held([], signal) },
+      onEvent: () => {},
+    });
+    assert.deepEqual(stream.since(0), { gap: false, events: [] });
+    await stream.stop();
+  });
+
   it("stops a quiet stream without waiting for a frame", async () => {
     const stream = createBoardStream({
       client: { stream: async (_path, { signal } = {}) => held([], signal) },
