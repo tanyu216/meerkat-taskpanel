@@ -58,13 +58,18 @@ describe("web/events — the refresh map", () => {
   it("maps each event to the drawer resources it invalidates", () => {
     assert.deepEqual(detailRefetch({ event: "comment_added" }), ["comments", "activities"]);
     assert.deepEqual(detailRefetch({ event: "relation_added" }), ["relations", "activities"]);
-    assert.deepEqual(detailRefetch({ event: "report_written" }), ["task", "reports", "activities"]);
+    assert.deepEqual(detailRefetch({ event: "report_written" }), ["reports", "activities"]);
     assert.deepEqual(detailRefetch({ event: "session_registered" }), ["sessions", "activities"]);
     assert.deepEqual(detailRefetch({ event: "attachment_removed" }), ["attachments", "activities"]);
     assert.deepEqual(detailRefetch({ event: "progress" }), ["activities"]);
-    assert.deepEqual(detailRefetch({ event: "task_moved" }), ["task", "activities"]);
-    assert.deepEqual(detailRefetch({ event: "task_reopened" }), ["task", "activities"]);
-    assert.deepEqual(detailRefetch({ event: "unknown" }), ["task", "activities"]);
+    assert.deepEqual(detailRefetch({ event: "task_moved" }), ["activities"]);
+    assert.deepEqual(detailRefetch({ event: "task_reopened" }), ["activities"]);
+    assert.deepEqual(detailRefetch({ event: "unknown" }), ["activities"]);
+    // The task row is never a drawer read: `refreshTask` owns it for both
+    // surfaces, so one event costs one `GET /tasks/:ref`.
+    for (const event of ["task_created", "task_updated", "report_written", "epic_auto_start", "unknown"]) {
+      assert.equal(detailRefetch({ event }).includes("task"), false, event);
+    }
   });
 
   it("invalidates the waiting payload only when the question can change", () => {

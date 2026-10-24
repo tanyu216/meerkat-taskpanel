@@ -136,10 +136,11 @@ export function isKnownEvent(event) {
  * everything on every frame.
  *
  * `activities` is on every row because the drawer's trail is a projection of the
- * same stream.
+ * same stream. `task` is never here: the card refresh (`refreshTask`) rereads the
+ * row once and patches the board and the open drawer together.
  *
  * @param {{event?: string}} activity
- * @returns {string[]} a subset of `task|comments|relations|activities|sessions|reports|attachments`
+ * @returns {string[]} a subset of `comments|relations|activities|sessions|reports|attachments`
  */
 export function detailRefetch(activity) {
   const event = activity?.event ?? "";
@@ -153,10 +154,10 @@ export function detailRefetch(activity) {
     case "session_closed":
       return ["sessions", "activities"];
     case "report_written":
-      return ["task", "reports", "activities"];
+      return ["reports", "activities"];
     case "task_delivered":
     case "report_waived":
-      return ["task", "reports", "activities"];
+      return ["reports", "activities"];
     case "attachment_added":
     case "attachment_updated":
     case "attachment_removed":
@@ -164,11 +165,12 @@ export function detailRefetch(activity) {
     case "progress":
       return ["activities"];
     case "epic_auto_start":
-      return ["task", "relations", "activities"];
+      return ["relations", "activities"];
     default:
       // task_created/updated/claimed/moved/archived and any unknown event: the
-      // task row is the safe, bounded thing to reread.
-      return ["task", "activities"];
+      // card refresh (`refreshTask`) already reread the task for both the board
+      // and the open drawer, so the drawer only needs its trail.
+      return ["activities"];
   }
 }
 

@@ -9,6 +9,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **One event, one task read, even with the drawer open.** A task event used to refresh the
+  card and the open drawer's task separately. The card refresh now patches both; the drawer's
+  incremental refresh only rereads the sub-resource the event invalidated.
+
 - **The activity log is append-only in the schema (migration `0038`).** `UPDATE` and `DELETE` on
   `task_activities` now raise `ACTIVITY_APPEND_ONLY`, the same rule `comments` and
   `task_reports` already enforce. The log is the change feed: an edit would rewrite history a

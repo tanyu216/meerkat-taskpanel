@@ -86,7 +86,9 @@ whole audit trail.
 - **Task events** refresh the card. `task_created`/`updated`/`claimed`/`moved`/`reopened`/
   `resumed`/`archived`/`delivered`/`report_*`/`epic_auto_start`/`acceptance_changed`/
   `acceptance_pruned`/`review_override` cost a `GET /tasks/:ref` (100 ms per-card debounce,
-  newest response wins). An archived card is removed from the board.
+  newest response wins). The same response patches an open drawer's task head, so one event
+  still costs one task read; the drawer's incremental refresh only rereads sub-resources. An
+  archived card is removed from the board.
 - **Sub-resource events** refresh only the open drawer's affected tab:
   `comment_added` → comments; `relation_*` → relations (both endpoints, because the
   activity hangs off the target); `report_written`/`task_delivered`/`report_waived` →
