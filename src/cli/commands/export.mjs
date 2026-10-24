@@ -34,13 +34,12 @@ import {
   EVENT_DEBOUNCE_MS,
   EVENT_STREAM_LINE,
   MD_GROWTH_FACTOR,
-  SSE_SHUTDOWN_EVENT,
   SSE_SUBSCRIBE_IDLE_MS,
 } from "../../foundation/constants.mjs";
 import { CARD_BRIEF_FILE, cardDirRel } from "../../foundation/card-brief.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
-import { createSseParser } from "../../foundation/sse-parse.mjs";
 import { errorPayload, usageError } from "../../foundation/transport/errors.mjs";
+import { activityFrames, streamFailure } from "../activity-stream.mjs";
 import { fields } from "../output/human.mjs";
 
 /** Where a card goes: `<out>/<IDENTIFIER>.md`. */
@@ -645,49 +644,31 @@ export const COMMANDS = [
       };
       const scheduler = createWatchScheduler({ refresh });
 
-      const parser = createSseParser();
       let terminal = null;
       let emitTerminal = true;
       let exit = CLI_EXIT.OK;
       try {
-        for await (const chunk of stream) {
-          for (const frame of parser.push(chunk)) {
-            if (frame.event === SSE_SHUTDOWN_EVENT) {
-              let data = null;
-              try {
-                data = JSON.parse(frame.data);
-              } catch {
-                // A malformed shutdown frame still means the server is leaving.
-              }
-              terminal = data === null
-                ? { type: WATCH_LINE.SHUTDOWN }
-                : { type: WATCH_LINE.SHUTDOWN, data };
-              exit = CLI_EXIT.OK;
-              break;
-            }
-
-            let data;
-            try {
-              data = JSON.parse(frame.data);
-            } catch {
-              continue; // a frame that is not JSON cannot name a board event
-            }
-            const rawId = frame.id === null ? null : Number.parseInt(frame.id, 10);
-            const revision = Number.isFinite(rawId)
-              ? rawId
-              : (Number.isInteger(data?.revision) ? data.revision : null);
-            const taskId = typeof data?.task_id === "string" && data.task_id !== ""
-              ? data.task_id
-              : null;
-            if (taskId === null) scheduler.notify(null, revision);
-            else if (watched.has(taskId)) scheduler.notify(taskId, revision);
+        for await (const frame of activityFrames(stream)) {
+          if (frame.type === "shutdown") {
+            terminal = frame.data === null
+              ? { type: WATCH_LINE.SHUTDOWN }
+              : { type: WATCH_LINE.SHUTDOWN, data: frame.data };
+            exit = CLI_EXIT.OK;
+            break;
           }
-          if (terminal !== null) break;
+          if (frame.type === "eof") break;
+
+          const taskId = typeof frame.data.task_id === "string" && frame.data.task_id !== ""
+            ? frame.data.task_id
+            : null;
+          if (taskId === null) scheduler.notify(null, frame.revision);
+          else if (watched.has(taskId)) scheduler.notify(taskId, frame.revision);
         }
       } catch (err) {
         // Never throw past `open`: the dispatcher's catch would print an
         // envelope into the middle of the NDJSON stream.
-        if (err?.details?.reason === "aborted") {
+        const reason = streamFailure(err);
+        if (reason === "aborted") {
           if (completed) {
             // The watcher closed the stream itself: every card is done.
             terminal = { type: WATCH_LINE.DONE };
@@ -702,7 +683,7 @@ export const COMMANDS = [
             emitTerminal = false;
             exit = CLI_EXIT.OK;
           }
-        } else if (err?.details?.reason === "idle") {
+        } else if (reason === "idle") {
           terminal = { type: WATCH_LINE.IDLE, data: { idle_ms: idleMs } };
           exit = CLI_EXIT.OK;
         } else {

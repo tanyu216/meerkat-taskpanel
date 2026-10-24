@@ -16,15 +16,10 @@
  * this command and reconnects when it writes `idle`, `shutdown` or `eof`.
  */
 
-import {
-  CLI_EXIT,
-  EVENT_STREAM_LINE,
-  SSE_SHUTDOWN_EVENT,
-  SSE_SUBSCRIBE_IDLE_MS,
-} from "../../foundation/constants.mjs";
+import { CLI_EXIT, EVENT_STREAM_LINE, SSE_SUBSCRIBE_IDLE_MS } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
-import { createSseParser } from "../../foundation/sse-parse.mjs";
 import { errorPayload } from "../../foundation/transport/errors.mjs";
+import { activityFrames, streamFailure } from "../activity-stream.mjs";
 
 /** @param {string} message */
 function usageError(message) {
@@ -76,45 +71,27 @@ export const COMMANDS = [
 
       ctx.emit({ type: EVENT_STREAM_LINE.OPEN });
 
-      const parser = createSseParser();
       try {
-        // `requestStream` yields decoded text, so the parser consumes it directly.
-        for await (const chunk of stream) {
-          for (const frame of parser.push(chunk)) {
-            if (frame.event === SSE_SHUTDOWN_EVENT) {
-              let data = null;
-              try {
-                data = JSON.parse(frame.data);
-              } catch {
-                // A malformed shutdown frame still means the server is leaving.
-              }
-              ctx.emit(
-                data === null
-                  ? { type: EVENT_STREAM_LINE.SHUTDOWN }
-                  : { type: EVENT_STREAM_LINE.SHUTDOWN, data },
-              );
-              return { streamed: true, exit: CLI_EXIT.OK };
-            }
-
-            let data;
-            try {
-              data = JSON.parse(frame.data);
-            } catch {
-              continue; // a frame that is not JSON cannot name a board event
-            }
-            const parsedId = frame.id === null ? null : Number.parseInt(frame.id, 10);
-            ctx.emit({
-              type: EVENT_STREAM_LINE.EVENT,
-              id: Number.isFinite(parsedId) ? parsedId : null,
-              data,
-            });
+        // `requestStream` yields decoded text, so the shared adapter consumes it
+        // directly; the line vocabulary above is this command's own.
+        for await (const frame of activityFrames(stream)) {
+          if (frame.type === "shutdown") {
+            ctx.emit(
+              frame.data === null
+                ? { type: EVENT_STREAM_LINE.SHUTDOWN }
+                : { type: EVENT_STREAM_LINE.SHUTDOWN, data: frame.data },
+            );
+            return { streamed: true, exit: CLI_EXIT.OK };
           }
+          if (frame.type === "eof") break;
+          ctx.emit({ type: EVENT_STREAM_LINE.EVENT, id: frame.id, data: frame.data });
         }
       } catch (err) {
         // Never throw past the first line: the dispatcher's catch would print an
         // envelope into the middle of the NDJSON stream.
-        if (err?.details?.reason === "aborted") return { streamed: true, exit: CLI_EXIT.OK };
-        if (err?.details?.reason === "idle") {
+        const reason = streamFailure(err);
+        if (reason === "aborted") return { streamed: true, exit: CLI_EXIT.OK };
+        if (reason === "idle") {
           ctx.emit({ type: EVENT_STREAM_LINE.IDLE, data: { idle_ms: idleMs } });
           return { streamed: true, exit: CLI_EXIT.OK };
         }
