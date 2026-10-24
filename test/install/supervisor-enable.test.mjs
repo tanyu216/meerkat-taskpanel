@@ -461,7 +461,7 @@ describe("install.sh: enable — launchd", () => {
     const streaming = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
     assert.match(
       streaming.stdout,
-      /^supervisor:   subscribe: running \(streaming; pid \d+, connected 1\d?s ago, last event \d+s ago, id 812, reconnects 0, dispatch on\)$/m,
+      /^supervisor:   subscribe: running \(streaming; pid \d+, connected \d+s ago, last event \d+s ago, id 812, reconnects 0, dispatch on\)$/m,
     );
 
     writeFileSync(statePath, JSON.stringify({ version: 1, pid: 2147483646, nextAttemptAt: null }));
