@@ -641,6 +641,28 @@ describe("contract/invariants — indexes are actually used", () => {
       assert.equal(/SCAN task_reports/.test(plan), false, plan);
     });
   });
+
+  it("plans the event cursor through ix_activities_revision, not a scan", async () => {
+    await withBoard(({ db }) => {
+      const plan = db
+        .prepare("EXPLAIN QUERY PLAN SELECT * FROM task_activities WHERE revision > ? ORDER BY revision, id LIMIT 500")
+        .all(0)
+        .map((row) => String(row.detail))
+        .join(" | ");
+      assert.match(plan, /ix_activities_revision/, plan);
+    });
+  });
+
+  it("plans the project activity window through ix_activities_created", async () => {
+    await withBoard(({ db }) => {
+      const plan = db
+        .prepare("EXPLAIN QUERY PLAN SELECT task_id FROM task_activities WHERE created_at >= ?")
+        .all("2026-01-01T00:00:00.000Z")
+        .map((row) => String(row.detail))
+        .join(" | ");
+      assert.match(plan, /ix_activities_created/, plan);
+    });
+  });
 });
 
 /**

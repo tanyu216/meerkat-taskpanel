@@ -916,9 +916,10 @@ describe("repositories/sessions and attachments and activities", () => {
       const first = repos.activities.append({ taskId: task.id, actorKind: "agent", actorId: "linus", event: "task_created", changes: { a: 1 }, createdAt: TS });
       assert.equal(first.event, "task_created");
       assert.deepEqual(first.changes, { a: 1 });
-      assert.equal(first.revision, revision(db) - 1, "the revision recorded is the one the change produced");
+      assert.equal(first.revision, revision(db), "records the revision its own insert produced");
 
-      repos.activities.append({ taskId: task.id, event: "task_updated", createdAt: TS2 });
+      const second = repos.activities.append({ taskId: task.id, event: "task_updated", createdAt: TS2 });
+      assert.equal(second.revision, first.revision + 1, "activity revisions are unique and strictly increasing");
       assert.deepEqual(repos.activities.list({ taskId: task.id }).map((a) => a.event), ["task_created", "task_updated"]);
       assert.deepEqual(
         repos.activities.list({ taskId: task.id, order: "desc" }).map((a) => a.event),
@@ -930,10 +931,13 @@ describe("repositories/sessions and attachments and activities", () => {
         ["task_created", "task_updated"],
         "an unknown order is defensively ASC",
       );
-      assert.deepEqual(repos.activities.list({ taskId: task.id, afterId: first.id }).map((a) => a.event), ["task_updated"]);
+      assert.deepEqual(repos.activities.list({ taskId: task.id, afterRevision: first.revision }).map((a) => a.event), ["task_updated"]);
       assert.deepEqual(repos.activities.list({ afterRevision: 10_000 }), []);
-      assert.equal(repos.activities.count(task.id), 2);
-      assert.equal(repos.activities.count(), 2);
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id, order: "revision" }).map((a) => a.event),
+        ["task_created", "task_updated"],
+        "the SSE order reads the cursor column",
+      );
       assert.throws(() => repos.activities.append({ event: "", createdAt: TS }), (err) => err.code === "VALIDATION_FAILED");
 
       // A row someone wrote by hand with unreadable JSON: reading it must not

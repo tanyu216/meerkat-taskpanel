@@ -86,6 +86,19 @@ describe("server/routes — a task's audit trail", () => {
     assert.equal((await response.json()).error.code, "VALIDATION_FAILED");
   });
 
+  it("refuses an unparseable or out-of-range cursor instead of guessing", async () => {
+    // A silently ignored `after` would replay the whole trail; `limit=-1`
+    // reaches SQLite as an unbounded LIMIT.
+    for (const query of ["?after=nope", "?after=-1", "?limit=nope", "?limit=0", "?limit=1001"]) {
+      const response = await fetch(`${base}/api/v1/tasks/${identifier}/activities${query}`);
+      assert.equal(response.status, 400, query);
+      const body = await response.json();
+      assert.equal(body.error.code, "VALIDATION_FAILED", query);
+      assert.ok(["after", "limit"].includes(body.error.details.field), query);
+    }
+    assert.equal((await get("?after=0&limit=1")).data.activities.length, 1);
+  });
+
   it("404s an unknown task reference", async () => {
     const response = await fetch(`${base}/api/v1/tasks/PROJ-9999/activities`);
     assert.equal(response.status, 404);

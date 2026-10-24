@@ -126,6 +126,35 @@ describe("server/events — the unit rules", () => {
 });
 
 describe("server/events — increments over a real socket", () => {
+  it("streams an activity written before its state change", async () => {
+    const { commands } = taskd.board;
+    const task = commands.createTask({
+      projectId: "proj",
+      title: "prune me",
+      actor: AGENT,
+      meta: { acceptance: ["first", "second"] },
+    });
+
+    // A live subscription starts at the current global revision — the state a
+    // browser is in right after `/meta` seeds its cursor. An `acceptance_pruned`
+    // row is the one activity written *before* the state change it describes
+    // (the 0032 trigger reads it), so its recorded revision must still be newer
+    // than the cursor or the frame is lost.
+    const stream = await subscribe();
+    try {
+      commands.updateTask({
+        id: task.id,
+        acceptanceDrop: ["first"],
+        reason: "the operator narrowed the scope",
+        actor: { kind: "human", id: "terry" },
+      });
+      const frame = await stream.next((f) => f.event === "acceptance_pruned");
+      assert.equal(frame.task_id, task.id);
+    } finally {
+      stream.close();
+    }
+  });
+
   it("streams a change made in-process, without going through an HTTP write", async () => {
     const stream = await subscribe();
     try {
