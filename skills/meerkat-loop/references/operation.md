@@ -11,10 +11,10 @@ For `<agent-dir>` = `~/.claude`, `~/.codex`, `~/.agents`, `~/.config/opencode` o
 |---|---|---|
 | loop skill | `<agent-dir>/skills/meerkat-loop/` | always **copied**, never symlinked |
 | execution body | `<agent-dir>/meerkat-taskpanel/scripts/…` and `scripts/foundation/…` | the copy the units run; closure in the skill's `manifest.txt` |
-| units | `<agent-dir>/scheduling/{launchd,systemd,cron}/` | the resident pool (`session`), ping 60s, continue 600s, and the optional event subscriber. Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the agent CLI |
+| units | `<agent-dir>/scheduling/{launchd,systemd,cron}/` | the resident pool (`session`), ping 60s, continue 600s, and the event subscriber (launchd/systemd; part of the enable set). Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the agent CLI |
 | wake glue | `<agent-dir>/bin/wake-<actor-kind>.sh` | legacy one-shot wakes only: resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` / `opencode run` / `cursor-agent -p` |
 | agent config | `<agent-dir>/meerkat-taskpanel.env` | claim policy, stale recovery, `MEERKAT_TASKPANEL_REPO`, workflow answers, the pool's knobs, and the full-tool-access opt-in |
-| runtime | `<agent-dir>/meerkat-taskpanel/{supervisor.log,supervisor.state.json,sessions.state.json,subagents.state.json}` | tick log, legacy worker registry, pool sessions + heartbeat, subagent ledger |
+| runtime | `<agent-dir>/meerkat-taskpanel/{supervisor.log,supervisor.state.json,sessions.state.json,subagents.state.json,subscribe.state.json}` | tick log, legacy worker registry, pool sessions + heartbeat, subagent ledger, subscriber liveness |
 
 `--link` applies to the board skill only: a symlinked loop body would
 reintroduce the checkout dependency the copied body exists to remove.
@@ -98,7 +98,7 @@ Precedence: flag > process env > agent config > default.
 | `--project-idle-ms <ms>` | 1800000 | close an idle project session (keeps its session id) |
 | `--subagent-background=yes\|no` | no | project sessions spawn background subagents |
 | `--allow-all-tools` | off | full agent tool access; requires `--allow-all-tools-reason "<who authorized it and why>"` |
-| `--subscribe` | off | run the event subscriber (`taskctl events tail`); launchd/systemd only |
+| `--subscribe` | off | run the event subscriber (`taskctl events tail`); launchd/systemd only — the installed units pass it |
 | `--event-continue=yes\|no` | yes | let events wake a continue turn |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--sla-peer <path>` | unset | peer inspector's last-ok marker; unset registers a dependency, not an alarm |
@@ -154,6 +154,8 @@ and heartbeat younger than 60s) or when `--resident=no` is set:
 
 - `poll` claims nothing, scans nothing, logs why, and emits one `--notify` alert per
   cadence (`kind: no_resident`);
+- an event-triggered turn is skipped entirely (the subscriber logs it): it could dispatch
+  nothing, so it does not buy a turn at the event cadence;
 - a one-shot continue turn runs **patrol + workflow only** — the prompt omits poll;
 - `patrol --patrol-llm=yes` degrades to notify-only;
 - `workflow` runs, and review cards accumulate until the pool returns.
@@ -202,6 +204,10 @@ continuing (`buildReattachPrompt`).
 its `task_id` to a debounced batch. The batch refreshes the briefs of every matching card
 and, for a review card, its original. It runs even when `--event-continue=no`; it is bounded by its own minimum
 interval (`CARD_REFRESH_MIN_MS`) and a failed refresh only logs and keeps the previous file.
+Dispatch is separate: an event wakes a continue turn only while the resident pool is live.
+The daemon publishes `subscribe.state.json` (pid, last connection/event, pending reconnect),
+which `install.sh --supervisor=status` reports as `streaming` / `reconnecting` /
+`starting` / `not running`.
 
 The queue row carries the event UUID (`task_id`) and `review_of`/`review_round` so this
 mapping needs no board read. Rows written before this convention have no `task_id` and are

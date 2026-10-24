@@ -9,11 +9,14 @@
  *
  * It never claims, moves or wakes anything: the continue turn rescans, so
  * replay, duplicate frames and bursts are harmless and there is only one
- * dispatch path.
+ * dispatch path. A turn is requested only while a resident pool is live — with
+ * no pool, poll could not dispatch anything, so the event path logs and skips
+ * and the continue timer remains the patrol + workflow path.
  *
  * A burst is debounced (300 ms, capped at 2 s), at most one turn starts per
  * minute, and a turn refused by the continue lock is retried (5 s), not
- * dropped.
+ * dropped. The process publishes `subscribe.state.json` beside the other loop
+ * state so `--supervisor=status` can tell streaming from reconnect-looping.
  */
 
 import { dirname } from "node:path";
@@ -28,12 +31,13 @@ import {
   SSE_SUBSCRIBE_IDLE_MS,
   SUBSCRIBE_BACKOFF_MAX_MS,
   SUBSCRIBE_RETRY_MS,
+  SUBSCRIBE_STATE_WRITE_MIN_MS,
   TASKD_KIND,
 } from "../../src/foundation/constants.mjs";
 
 import { refreshCardsForIds } from "./card-file.mjs";
 import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./options.mjs";
-import { createLogger, streamCli } from "./runtime.mjs";
+import { createLogger, saveSubscribeState, streamCli, subscribeStatePath } from "./runtime.mjs";
 import { runContinueOnce } from "./runners.mjs";
 
 /** The reconnect ladder: 1 s, 2 s, 4 s … capped at 30 s. */
@@ -290,7 +294,8 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
   const scheduler = createDispatchScheduler({
     run:
       deps.runContinue ??
-      ((hooks) => runContinueOnce(opts, env, hooks)),
+      ((hooks) =>
+        (deps.runContinueOnce ?? runContinueOnce)(opts, env, { ...hooks, requirePool: true })),
     now,
     setTimer: deps.setTimer,
     clearTimer: deps.clearTimer,
@@ -309,6 +314,54 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
   const stateDir =
     deps.stateDir ??
     (typeof opts.state === "string" && opts.state !== "" ? dirname(opts.state) : null);
+
+  // What `--supervisor=status` reads. A quiet board produces no events, so the
+  // useful liveness facts are "when did we last open a stream" and "are we
+  // waiting to reconnect" — both forced flushes; traffic only updates the rest.
+  const subscribePath =
+    deps.subscribeStatePath ??
+    (stateDir === null || stateDir === undefined || stateDir === ""
+      ? null
+      : subscribeStatePath(stateDir));
+  const writeState = deps.writeSubscribeState ?? saveSubscribeState;
+  const state = {
+    version: 1,
+    pid: process.pid,
+    startedAt: new Date(now()).toISOString(),
+    connectedAt: null,
+    lastEventAt: null,
+    lastEventId: null,
+    reconnects: 0,
+    lastError: null,
+    lastErrorAt: null,
+    nextAttemptAt: null,
+    dispatchEnabled,
+    updatedAt: null,
+  };
+  let lastWritten = null;
+  let lastWriteAt = null;
+  let stateWriteFailed = false;
+  const flushState = (force = false) => {
+    if (subscribePath === null) return;
+    const at = now();
+    if (!force && lastWriteAt !== null && at - lastWriteAt < SUBSCRIBE_STATE_WRITE_MIN_MS) return;
+    state.updatedAt = new Date(at).toISOString();
+    const serialized = `${JSON.stringify(state, null, 2)}\n`;
+    if (serialized === lastWritten) return;
+    try {
+      writeState(subscribePath, { ...state });
+      lastWritten = serialized;
+      lastWriteAt = at;
+    } catch (err) {
+      // Observability is never allowed to break the stream; say it once.
+      if (!stateWriteFailed) {
+        stateWriteFailed = true;
+        log(`subscribe: could not write state: ${err.message}`);
+      }
+    }
+  };
+  flushState(true);
+
   const refreshCards =
     deps.refreshCards ??
     ((taskIds) => refreshCardsForIds({ opts, stateDir, taskIds, log }));
@@ -366,10 +419,16 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
         signal,
         onOpen: () => {
           backoff = 1000;
+          state.connectedAt = new Date(now()).toISOString();
+          state.nextAttemptAt = null;
+          flushState(true);
           log("subscribe: connected");
         },
         onEvent: ({ id, data }) => {
           cursor = advanceCursor(cursor, { id });
+          state.lastEventAt = new Date(now()).toISOString();
+          state.lastEventId = cursor;
+          flushState(false);
           if (dispatchEnabled && classify(data, { agents: opts.agents }) === "dispatch") {
             scheduler.notify();
           }
@@ -392,10 +451,19 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
     } else if (result.reason === "error") {
       log(`subscribe: ${result.error?.message ?? "connection failed"}`);
     }
+    state.reconnects += 1;
+    if (result.reason === "error") {
+      state.lastError = result.error?.message ?? "connection failed";
+      state.lastErrorAt = new Date(now()).toISOString();
+    }
+    state.nextAttemptAt = new Date(now() + backoff).toISOString();
+    flushState(true);
     await sleepFor(backoff);
     backoff = nextBackoff(backoff);
   }
 
+  state.nextAttemptAt = null;
+  flushState(true);
   scheduler.stop();
   refreshScheduler.stop();
   return 0;

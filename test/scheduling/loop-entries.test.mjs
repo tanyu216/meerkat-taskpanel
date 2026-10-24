@@ -34,7 +34,7 @@ import { after, describe, it } from "node:test";
 
 import { createProjectAdmission, createQueueDispatch } from "../../scripts/loop/passes.mjs";
 import { readCards } from "../../scripts/loop/queue.mjs";
-import { runPollTick } from "../../scripts/loop/runners.mjs";
+import { runContinue, runPollTick } from "../../scripts/loop/runners.mjs";
 import {
   acquireContinueLock,
   loadContinueLock,
@@ -203,6 +203,61 @@ describe("the continue lock", () => {
     assert.equal(loadContinueLock(path).pid, 4242);
     releaseContinueLock(path);
     assert.equal(loadContinueLock(path), null);
+  });
+});
+
+describe("continue — the event path needs a live pool", () => {
+  const opts = (dir) => ({
+    agents: ["alice"],
+    actorKind: "claude",
+    home: dir,
+    repo: dir,
+    state: join(dir, "supervisor.state.json"),
+    continueState: join(dir, "continue.state.json"),
+    continueInterval: 600,
+  });
+
+  it("skips an event-triggered turn when no resident pool is live", async () => {
+    const dir = tempDir("tp-require-pool-");
+    const logs = [];
+    let spawned = false;
+    let notified = false;
+    const code = await runContinue(opts(dir), {
+      requirePool: true,
+      poolStatus: () => ({ live: false, reason: "no session state" }),
+      spawn: async () => {
+        spawned = true;
+        return { ok: true };
+      },
+      notify: () => {
+        notified = true;
+      },
+      log: (line) => logs.push(line),
+      now: () => 0,
+    });
+    assert.equal(code, 0);
+    assert.equal(spawned, false, "no agent turn is started");
+    assert.equal(notified, false, "the timer owns the no-resident alert");
+    assert.equal(logs.some((line) => /event dispatch skipped/.test(line)), true);
+    assert.equal(existsSync(join(dir, "continue.state.json")), false, "no lock is taken");
+  });
+
+  it("still runs the timer turn with no pool (patrol + workflow only)", async () => {
+    const dir = tempDir("tp-timer-pool-");
+    const logs = [];
+    const code = await runContinue(
+      { ...opts(dir), dryRun: true },
+      {
+        poolStatus: () => ({ live: false, reason: "no session state" }),
+        notify: () => {},
+        log: (line) => logs.push(line),
+        now: () => 0,
+      },
+    );
+    assert.equal(code, 0);
+    assert.equal(logs.some((line) => /no resident session pool/.test(line)), true);
+    assert.equal(logs.some((line) => /would run:/.test(line)), true);
+    assert.equal(logs.some((line) => /event dispatch skipped/.test(line)), false);
   });
 });
 

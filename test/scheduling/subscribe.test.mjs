@@ -314,6 +314,152 @@ describe("loop/subscribe — the reconnect ladder", () => {
   });
 });
 
+describe("loop/subscribe — runtime state", () => {
+  const baseOpts = () => ({
+    agents: ["linus"],
+    eventDebounceMs: 0,
+    eventDebounceMaxMs: 0,
+    eventContinueMinMs: 0,
+    sseIdleMs: 1_000,
+  });
+
+  it("publishes the process and connection facts for status", async () => {
+    const controller = new AbortController();
+    const writes = [];
+    const clock = { t: 0 };
+    await runSubscribe(baseOpts(), {}, {
+      controller,
+      dispatchEnabled: true,
+      loopConfig: { continueEnabled: true, eventContinueEnabled: true },
+      log: () => {},
+      now: () => clock.t,
+      stateDir: "/state",
+      subscribeStatePath: "/state/subscribe.state.json",
+      writeSubscribeState: (path, state) => writes.push({ path, state }),
+      streamEvents: async ({ onOpen, onEvent }) => {
+        clock.t = 1_000;
+        onOpen();
+        clock.t = 3_000;
+        onEvent({
+          id: 7,
+          data: { event: "task_created", actor_kind: "human", actor_id: "terry" },
+        });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        controller.abort();
+        return { reason: "aborted" };
+      },
+      runContinue: async () => {},
+      sleep: async () => {},
+    });
+
+    assert.equal(writes[0].path, "/state/subscribe.state.json");
+    assert.equal(writes[0].state.version, 1);
+    assert.equal(writes[0].state.pid, process.pid);
+    const connected = writes.find((write) => write.state.connectedAt !== null);
+    assert.equal(connected.state.connectedAt, new Date(1_000).toISOString());
+    const last = writes[writes.length - 1].state;
+    assert.equal(last.lastEventAt, new Date(3_000).toISOString());
+    assert.equal(last.lastEventId, 7);
+    assert.equal(last.nextAttemptAt, null);
+    assert.equal(last.dispatchEnabled, true);
+    assert.equal(typeof last.updatedAt, "string");
+  });
+
+  it("records a reconnect attempt, its error and when the next one is due", async () => {
+    const controller = new AbortController();
+    const writes = [];
+    let call = 0;
+    await runSubscribe(baseOpts(), {}, {
+      controller,
+      dispatchEnabled: false,
+      loopConfig: { continueEnabled: false, eventContinueEnabled: false },
+      log: () => {},
+      now: () => 5_000,
+      subscribeStatePath: "/state/subscribe.state.json",
+      writeSubscribeState: (_path, state) => writes.push(state),
+      streamEvents: async () => {
+        call += 1;
+        if (call === 1) return { reason: "error", error: new Error("boom") };
+        controller.abort();
+        return { reason: "aborted" };
+      },
+      runContinue: async () => {},
+      sleep: async () => {},
+    });
+
+    const attempt = writes.find((state) => state.nextAttemptAt !== null);
+    assert.equal(attempt.reconnects, 1);
+    assert.equal(attempt.nextAttemptAt, new Date(6_000).toISOString());
+    assert.equal(attempt.lastError, "boom");
+    assert.equal(attempt.lastErrorAt, new Date(5_000).toISOString());
+    assert.equal(writes[writes.length - 1].nextAttemptAt, null, "a stopped subscriber is not reconnecting");
+  });
+
+  it("throttles event-time writes but never drops the final one", async () => {
+    const controller = new AbortController();
+    const writes = [];
+    const clock = { t: 0 };
+    await runSubscribe(baseOpts(), {}, {
+      controller,
+      dispatchEnabled: false,
+      loopConfig: { continueEnabled: false, eventContinueEnabled: false },
+      log: () => {},
+      now: () => clock.t,
+      subscribeStatePath: "/state/subscribe.state.json",
+      writeSubscribeState: (_path, state) => writes.push(state),
+      streamEvents: async ({ onEvent }) => {
+        onEvent({ id: 1, data: { event: "comment_added", task_id: "u1" } });
+        clock.t = 1_000;
+        onEvent({ id: 2, data: { event: "comment_added", task_id: "u1" } });
+        clock.t = 2_500;
+        onEvent({ id: 3, data: { event: "comment_added", task_id: "u1" } });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        controller.abort();
+        return { reason: "aborted" };
+      },
+      runContinue: async () => {},
+      sleep: async () => {},
+    });
+
+    assert.equal(writes.some((state) => state.lastEventId === 2), false, "an event inside the window is coalesced");
+    assert.equal(writes.some((state) => state.lastEventId === 3), true);
+    assert.equal(writes[writes.length - 1].lastEventId, 3);
+  });
+
+  it("never lets a failing state writer stop the stream", async () => {
+    const controller = new AbortController();
+    const logs = [];
+    let runs = 0;
+    const code = await runSubscribe(baseOpts(), {}, {
+      controller,
+      dispatchEnabled: true,
+      loopConfig: { continueEnabled: true, eventContinueEnabled: true },
+      log: (line) => logs.push(line),
+      subscribeStatePath: "/state/subscribe.state.json",
+      writeSubscribeState: () => {
+        throw new Error("disk full");
+      },
+      streamEvents: async ({ onOpen, onEvent }) => {
+        onOpen();
+        onEvent({
+          id: 1,
+          data: { event: "task_created", actor_kind: "human", actor_id: "terry" },
+        });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        controller.abort();
+        return { reason: "aborted" };
+      },
+      runContinue: async () => {
+        runs += 1;
+      },
+      sleep: async () => {},
+    });
+    assert.equal(code, 0);
+    assert.equal(runs, 1, "dispatch still works");
+    assert.equal(logs.some((line) => line.includes("could not write state")), true);
+  });
+});
+
 describe("loop/subscribe — the process loop", () => {
   it("turns a dispatch event into one continue turn, then stops on abort", async () => {
     const controller = new AbortController();
@@ -348,6 +494,37 @@ describe("loop/subscribe — the process loop", () => {
     );
     assert.equal(code, 0);
     assert.equal(runs, 1);
+  });
+
+  it("requires a live resident pool for every event-triggered turn", async () => {
+    const controller = new AbortController();
+    const hooks = [];
+    await runSubscribe(
+      { agents: ["linus"], eventDebounceMs: 0, eventDebounceMaxMs: 0, eventContinueMinMs: 0, sseIdleMs: 1_000 },
+      {},
+      {
+        controller,
+        dispatchEnabled: true,
+        loopConfig: { continueEnabled: true, eventContinueEnabled: true },
+        log: () => {},
+        streamEvents: async ({ onOpen, onEvent }) => {
+          onOpen();
+          onEvent({
+            id: 1,
+            data: { event: "task_created", actor_kind: "human", actor_id: "terry" },
+          });
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          controller.abort();
+          return { reason: "aborted" };
+        },
+        runContinueOnce: async (_opts, _env, passed) => {
+          hooks.push(passed);
+        },
+        sleep: async () => {},
+      },
+    );
+    assert.equal(hooks.length, 1);
+    assert.equal(hooks[0].requirePool, true);
   });
 
   it("does not dispatch when --event-continue=no", async () => {
@@ -390,6 +567,7 @@ describe("loop/subscribe — the process loop", () => {
         loopConfig: { continueEnabled: true, eventContinueEnabled: false },
         log: () => {},
         stateDir: "/state",
+        writeSubscribeState: () => {},
         refreshMinMs: 0,
         refreshCards: (taskIds) => batches.push(taskIds),
         streamEvents: async ({ onEvent }) => {
@@ -431,6 +609,7 @@ describe("loop/subscribe — the process loop", () => {
         loopConfig: { continueEnabled: true, eventContinueEnabled: false },
         log: (line) => logs.push(line),
         stateDir: "/state",
+        writeSubscribeState: () => {},
         refreshMinMs: 0,
         refreshCards: () => {
           throw new Error("disk full");

@@ -2095,7 +2095,7 @@ describe("supervisor module", () => {
     const modules = [
       [SUPERVISOR_URL, ["main"]],
       [new URL("../../scripts/loop/options.mjs", import.meta.url), ["parseArgs", "selectMode"]],
-      [new URL("../../scripts/loop/runtime.mjs", import.meta.url), ["loadRegistry", "saveRegistry", "runPingTick"]],
+      [new URL("../../scripts/loop/runtime.mjs", import.meta.url), ["loadRegistry", "saveRegistry", "runPingTick", "subscribeStatePath", "loadSubscribeState", "saveSubscribeState"]],
       [new URL("../../scripts/loop/runners.mjs", import.meta.url), ["runPollTick", "runPatrolTick", "spawnWorkerReal"]],
       [new URL("../../scripts/loop/subscribe.mjs", import.meta.url), ["runSubscribe", "createDispatchScheduler"]],
       [new URL("../../src/foundation/scheduling.mjs", import.meta.url), ["buildContinuePrompt", "planContinueInvocation", "planWakeInvocation"]],

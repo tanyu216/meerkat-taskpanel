@@ -99,13 +99,16 @@ A held approval is idempotent: `review_verdict=approve` +
 `review_verdict_round` means a second pass rewrites neither the comment nor the
 marker. A worker always stops at `in_review`; review cards are never held.
 
-### Event subscriber (optional)
+### Event subscriber
 
 On launchd/systemd, `--subscribe` follows the board's event stream through
 `taskctl events tail` and asks for a continue turn when a dispatch-relevant event
-arrives. The loop carries no HTTP code of its own: board discovery, the token and
-the stream all belong to the CLI. The continue clock remains the fallback and the
-only path for time-based work. Cron cannot host a long-lived process.
+arrives. It ships with the supervisor's enable set — the continue clock remains
+the fallback and the only path for time-based work, and an event wakes a turn only
+while the resident pool is live (without one it logs and skips). The loop carries
+no HTTP code of its own: board discovery, the token and the stream all belong to
+the CLI. Cron cannot host a long-lived process. The daemon publishes
+`subscribe.state.json`, which `install.sh --supervisor=status` reads.
 
 ### Task process directory (`.meerkat/`)
 
@@ -132,7 +135,8 @@ the resolved `target_dir` (`local_path ?? run_dir`), which is also the subagent'
   `taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>`.
 - `--subscribe` follows board events and **batch-refreshes** the briefs of active cards
   (comments and reports included), debounced and rate-limited. A failed refresh leaves the
-  previous brief in place.
+  previous brief in place. Dispatch is separate: an event wakes a continue turn only while
+  the resident pool is live.
 - Workers maintain `plan.md` and the reviewer reads it. An unexplained deviation from the
   plan is grounds for `VERDICT: REJECT`; a missing plan is not itself a failure (the
   reviewer falls back to the description and the frozen acceptance snapshot).
@@ -200,7 +204,9 @@ The installer copies this skill into the agent's skill directory, copies the
 execution body into `<agent-dir>/meerkat-taskpanel/`, renders the units and wake
 glue, and prints the one command that loads a unit. Loading is opt-in:
 `install.sh --supervisor=enable` (per agent kind with `--supervisor-actor-kinds`; also
-`--supervisor=status`, `--supervisor=disable`).
+`--supervisor=status`, `--supervisor=disable`). Enabling loads one set — the resident
+pool, ping, continue and the event subscriber — and `status` reports each unit's load
+state plus runtime facts for the pool and the subscriber.
 
 **OpenClaw is deliberately excluded.** `install.sh --target openclaw` installs
 the board skill only: the openclaw-team framework already runs an equivalent

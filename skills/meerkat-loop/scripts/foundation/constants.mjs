@@ -467,6 +467,12 @@ export const CARD_REFRESH_MIN_MS = 5_000;
 export const SUBSCRIBE_RETRY_MS = 5_000;
 /** The reconnect ladder's ceiling, matching the web client's 30 s. */
 export const SUBSCRIBE_BACKOFF_MAX_MS = 30_000;
+/**
+ * At most one `subscribe.state.json` write per this interval from traffic. A
+ * quiet board writes nothing; `--supervisor=status` still sees the last open or
+ * the pending reconnect because those flushes are forced.
+ */
+export const SUBSCRIBE_STATE_WRITE_MIN_MS = 2_000;
 
 // ---------------------------------------------------------------------------
 // Static hosting (ARCHITECTURE §8, M6a)

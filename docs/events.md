@@ -93,11 +93,18 @@ vocabulary and a generic “recorded an event” fallback for an unknown one.
 
 ### The loop subscriber (`scripts/loop/subscribe.mjs`)
 
-Optional, launchd/systemd only. It consumes `taskctl events tail` (NDJSON) and turns a
-**signal** into one continue turn (enqueued for the resident control session when a pool is
-live, a one-shot turn otherwise); it never claims, moves or wakes by itself. That keeps replay and
-duplicate frames harmless — the continue turn rescans board state, the claim CAS decides the
-winner, and the card queue plus the subagent ledger are the dispatch authorities.
+Included in every launchd/systemd supervisor (cron cannot host a long-lived process). It
+consumes `taskctl events tail` (NDJSON) and turns a **signal** into one continue turn,
+enqueued for the resident control session; it never claims, moves or wakes by itself. That
+keeps replay and duplicate frames harmless — the continue turn rescans board state, the
+claim CAS decides the winner, and the card queue plus the subagent ledger are the dispatch
+authorities.
+
+An event-triggered turn requires a **live resident pool**: with none, poll could not
+dispatch anything, so the event path logs and skips and the continue timer remains the
+patrol + workflow path. (Brief refreshes are unaffected.) The process publishes
+`subscribe.state.json` beside the other loop state, and `--supervisor=status` reads it to
+report `streaming`, `reconnecting`, `starting` or `not running`.
 
 Dispatch whitelist: `task_created`, `task_updated` (only when `fields` intersects
 `assigneeId`, `assigneeKind`, `kind`, `labels`, `meta`), `task_moved`, `task_delivered`,

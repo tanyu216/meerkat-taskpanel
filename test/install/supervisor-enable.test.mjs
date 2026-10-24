@@ -20,7 +20,7 @@
  */
 
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
@@ -431,6 +431,46 @@ describe("install.sh: enable — launchd", () => {
       authorized.stdout,
       /^supervisor:   tools: all enabled \(authorized by: operator authorized unattended runs\)/m,
     );
+  });
+
+  it("status reports the subscriber's runtime state from its state file", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const base = ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--scheduler=launchd"];
+    assert.equal(runInstall([...base, "--supervisor=enable"], installEnv(home, manager)).status, 0);
+
+    const stateDir = join(home, ".claude", "meerkat-taskpanel");
+    const statePath = join(stateDir, "subscribe.state.json");
+    const now = Date.now();
+    writeFileSync(
+      statePath,
+      JSON.stringify({
+        version: 1,
+        pid: process.pid,
+        connectedAt: new Date(now - 12_000).toISOString(),
+        lastEventAt: new Date(now - 3_000).toISOString(),
+        lastEventId: 812,
+        reconnects: 0,
+        lastError: null,
+        lastErrorAt: null,
+        nextAttemptAt: null,
+        dispatchEnabled: true,
+        updatedAt: new Date(now).toISOString(),
+      }),
+    );
+    const streaming = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
+    assert.match(
+      streaming.stdout,
+      /^supervisor:   subscribe: running \(streaming; pid \d+, connected 1\d?s ago, last event \d+s ago, id 812, reconnects 0, dispatch on\)$/m,
+    );
+
+    writeFileSync(statePath, JSON.stringify({ version: 1, pid: 2147483646, nextAttemptAt: null }));
+    const dead = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
+    assert.match(dead.stdout, /^supervisor:   subscribe: not running \(pid 2147483646 is gone\)$/m);
+
+    rmSync(statePath);
+    const absent = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
+    assert.match(absent.stdout, /^supervisor:   subscribe: not running \(no subscribe state\)$/m);
   });
 });
 

@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-import { ACTIONS, LOOP_KINDS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, poolReport, resolveScheduler, stripBlock, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
+import { ACTIONS, LOOP_KINDS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, poolReport, resolveScheduler, stripBlock, subscribeReport, subscribeStatusLine, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
 
 const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-plan-" });
 
@@ -339,6 +339,84 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.equal(live.continueQueued, true);
 
     assert.equal(poolReport(dir, { isAlive: () => false, now: () => now }).live, false);
+  });
+
+  it("reports the subscriber's runtime state, best effort", () => {
+    const dir = makeTempDir();
+    const now = Date.parse("2026-01-01T00:00:00.000Z");
+    assert.equal(subscribeReport(dir, { now: () => now }).state, "missing");
+
+    writeFileSync(
+      join(dir, "subscribe.state.json"),
+      JSON.stringify({
+        version: 1,
+        pid: 4242,
+        connectedAt: new Date(now - 12_000).toISOString(),
+        lastEventAt: new Date(now - 3_000).toISOString(),
+        lastEventId: 812,
+        reconnects: 0,
+        lastError: null,
+        lastErrorAt: null,
+        nextAttemptAt: null,
+        dispatchEnabled: true,
+      }),
+    );
+    const streaming = subscribeReport(dir, { isAlive: () => true, now: () => now, unitLoaded: true });
+    assert.equal(streaming.state, "streaming");
+    assert.equal(streaming.pid, 4242);
+    assert.equal(
+      subscribeStatusLine(streaming, now),
+      "supervisor:   subscribe: running (streaming; pid 4242, connected 12s ago, last event 3s ago, id 812, reconnects 0, dispatch on)",
+    );
+    assert.equal(subscribeReport(dir, { isAlive: () => false, now: () => now }).state, "dead");
+    assert.equal(
+      subscribeStatusLine({ state: "dead", pid: 4242, unitLoaded: false }, now),
+      "supervisor:   subscribe: not running (pid 4242 is gone; unit not loaded)",
+    );
+    assert.equal(
+      subscribeStatusLine({ state: "missing", unitLoaded: false }, now),
+      "supervisor:   subscribe: not running (no subscribe state; unit not loaded)",
+    );
+
+    writeFileSync(
+      join(dir, "subscribe.state.json"),
+      JSON.stringify({
+        version: 1,
+        pid: 4242,
+        connectedAt: new Date(now - 60_000).toISOString(),
+        lastEventAt: null,
+        lastEventId: null,
+        reconnects: 2,
+        lastError: "taskctl exited 1",
+        lastErrorAt: new Date(now - 300_000).toISOString(),
+        nextAttemptAt: new Date(now + 8_000).toISOString(),
+        dispatchEnabled: false,
+      }),
+    );
+    const reconnecting = subscribeReport(dir, { isAlive: () => true, now: () => now });
+    assert.equal(reconnecting.state, "reconnecting");
+    assert.equal(reconnecting.nextInMs, 8_000);
+    assert.match(
+      subscribeStatusLine(reconnecting, now),
+      /^supervisor:   subscribe: running \(reconnecting; pid 4242, attempt 2, next in 8s, last error 5m ago: taskctl exited 1\)$/,
+    );
+
+    writeFileSync(
+      join(dir, "subscribe.state.json"),
+      JSON.stringify({ version: 1, pid: 4242, nextAttemptAt: null, dispatchEnabled: true }),
+    );
+    const starting = subscribeReport(dir, { isAlive: () => true, now: () => now });
+    assert.equal(starting.state, "starting");
+    assert.equal(
+      subscribeStatusLine(starting, now),
+      "supervisor:   subscribe: running (starting; pid 4242, no connection yet, dispatch on)",
+    );
+
+    assert.equal(subscribeReport(dir, { scheduler: "cron" }).state, "unavailable");
+    assert.equal(
+      subscribeStatusLine({ state: "unavailable", reason: "scheduler=cron has no long-lived process" }, now),
+      "supervisor:   subscribe: not available (scheduler=cron has no long-lived process)",
+    );
   });
 
   it("the enable report the docs print is the one the launchd plan produces", () => {
