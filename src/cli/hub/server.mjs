@@ -86,6 +86,12 @@ export function createHubServer(input) {
   const registrations = new Map();
   /** card path -> registration id */
   const cardIndex = new Map();
+  /**
+   * Persisted registrations whose resume failed transiently (board restart,
+   * network, local write). They are written back on every persist and retried
+   * on the next hub start; a permanent failure is dropped instead.
+   */
+  const deferredRegistrations = new Map();
   let lastActive = now();
   let server = null;
   let port = null;
@@ -244,6 +250,10 @@ export function createHubServer(input) {
         expires_at: reg.expiresAt,
         cards: registrationCards(reg),
       }));
+    const activeIds = new Set(entries.map((entry) => entry.id));
+    for (const entry of deferredRegistrations.values()) {
+      if (!activeIds.has(entry.id)) entries.push({ ...entry });
+    }
     try {
       if (entries.length === 0) removeFile(paths.state);
       else writeJsonFile(paths.state, { version: 1, registrations: entries });
@@ -498,6 +508,21 @@ export function createHubServer(input) {
     if (result.reused) {
       const existing = result.registration;
       if (detached) {
+        // A detach can arrive while a foreground client owns the same card.
+        // Promote the registration rather than handing back a "persistent"
+        // handle that the owner's disconnect would retire; the former owner
+        // becomes a viewer and keeps receiving refresh lines.
+        if (!existing.detached) {
+          existing.detached = true;
+          if (existing.session !== null) {
+            const owner = existing.session;
+            existing.session = null;
+            owner.registrationId = null;
+            owner.viewerOf = existing.id;
+            existing.viewers.add(owner);
+          }
+          persist();
+        }
         send(session, {
           type: "registered",
           registration_id: existing.id,
@@ -677,6 +702,18 @@ export function createHubServer(input) {
 
   /* --------------------------------------------------------------- lifecycle */
 
+  /**
+   * A resume failure that will not heal by retrying: the card no longer
+   * exists, or the persisted entry is unusable. Everything else (network,
+   * 5xx, a local write failure) is deferred to the next hub start.
+   */
+  function isPermanentResumeFailure(err) {
+    return (
+      err instanceof DomainError &&
+      (err.code === "NOT_FOUND" || err.code === "CLI_USAGE" || err.code === "VALIDATION_FAILED")
+    );
+  }
+
   async function rehydrate() {
     if (paths.state === null) return;
     const state = readJsonFile(paths.state);
@@ -699,13 +736,20 @@ export function createHubServer(input) {
           id: entry.id,
           createdAt: entry.created_at,
         }));
+        deferredRegistrations.delete(result.registration.id);
         if (result.registration.watched.size === 0) {
           finishRegistration(result.registration, "done");
         } else {
           log(`hub: resumed registration ${result.registration.id}`);
         }
       } catch (err) {
-        log(`hub: could not resume ${entry?.id ?? "a registration"}: ${err?.message ?? err}`);
+        if (isPermanentResumeFailure(err)) {
+          log(`hub: dropped ${entry?.id ?? "a registration"}: ${err?.message ?? err}`);
+        } else {
+          const id = isNonEmptyString(entry?.id) ? entry.id : randomUUID();
+          deferredRegistrations.set(id, { ...entry, id });
+          log(`hub: deferred ${id}: ${err?.message ?? err}; will retry on the next hub start`);
+        }
       }
     }
     persist();

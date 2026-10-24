@@ -110,6 +110,41 @@ describe("hub server (in process)", () => {
     assert.equal(board.connections(), 1);
   });
 
+  it("promotes a foreground registration when a detach reuses it", async () => {
+    board.add("DEMO-0040", "uuid-40", "# one\n");
+    const live = pointer();
+    const stream = hubRecords(
+      live,
+      { op: "watch", refs: ["DEMO-0040"], dir: projectDir, ttl_ms: 0, detach: false },
+      { idleMs: 10_000 },
+    );
+    const iterator = stream[Symbol.asyncIterator]();
+    const opened = await iterator.next();
+    assert.equal(opened.done, false);
+    assert.equal(opened.value.type, "open");
+
+    const detach = await cli(["export", "watch", "DEMO-0040", "--dir", projectDir, "--detach", "--json"]);
+    assert.equal(detach.exit, 0, detach.stderr);
+    assert.equal(JSON.parse(detach.stdout).data.reused, true, "the detach reuses the open registration");
+
+    // The foreground client goes away. A reused detach must survive it.
+    await iterator.return();
+    await sleep(100);
+    const status = await cli(["export", "watch", "DEMO-0040", "--dir", projectDir, "--watch-status", "--json"]);
+    assert.equal(
+      JSON.parse(status.stdout).data.running,
+      true,
+      "the promoted registration outlives the foreground client",
+    );
+
+    board.update("DEMO-0040", { markdown: "# two\n" });
+    board.emit("uuid-40");
+    await waitFor(() => readFileSync(cardPath("DEMO-0040"), "utf8").includes("two"));
+
+    const stop = await cli(["export", "watch", "DEMO-0040", "--dir", projectDir, "--stop", "--json"]);
+    assert.equal(JSON.parse(stop.stdout).data.stopped, true);
+  });
+
   it("streams follow records and honours an idle bound", async () => {
     const result = await cli(["events", "follow", "--idle", "60"]);
     assert.equal(result.exit, 0, result.stderr);
@@ -343,6 +378,71 @@ describe("hub server (in process)", () => {
         assert.equal(status.running, false);
       }
       await rehydrated.stop();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("defers a registration whose re-export failed transiently, then resumes it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "meerkat-hub-defer-"));
+    const token = `${TOKEN}-defer`;
+    const deferEnv = { ...env, MEERKAT_HUB_DIR: dir };
+    const paths = hubPaths(board.url, token, deferEnv);
+    try {
+      writeJsonFile(paths.state, {
+        version: 1,
+        registrations: [
+          { id: "flaky", refs: ["FLAKY"], dir: projectDir, ttl_ms: 0, created_at: 0, expires_at: null },
+        ],
+      });
+      const flakyClient = {
+        get: (...args) => client.get(...args),
+        stream: (...args) => client.stream(...args),
+        post: async (path, body) => {
+          if (path === "/api/v1/export" && body?.ref === "FLAKY") {
+            const err = new Error("the board is restarting");
+            err.code = "CLI_IO";
+            throw err;
+          }
+          return client.post(path, body);
+        },
+      };
+      const first = await runHub(
+        { client: flakyClient, board: { url: board.url, token }, env: deferEnv },
+        { log: () => {} },
+      );
+      try {
+        assert.deepEqual(
+          readJsonFile(paths.state)?.registrations?.map((entry) => entry.id),
+          ["flaky"],
+          "a transient export failure must not delete the registration",
+        );
+      } finally {
+        await first.stop();
+      }
+      assert.deepEqual(
+        readJsonFile(paths.state)?.registrations?.map((entry) => entry.id),
+        ["flaky"],
+        "stopping the hub must preserve the deferred registration",
+      );
+
+      board.add("FLAKY", "uuid-flaky", "# flaky\n");
+      const second = await runHub(
+        { client, board: { url: board.url, token }, env: deferEnv },
+        { log: () => {} },
+      );
+      try {
+        const live = readJsonFile(paths.pointer);
+        const status = await hubCall(
+          live,
+          live.token,
+          { op: "watch-status", registration_id: "flaky" },
+          (record) => record.op === "watch-status",
+        );
+        assert.equal(status.running, true, "the deferred registration resumes on the next start");
+      } finally {
+        await second.stop();
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
