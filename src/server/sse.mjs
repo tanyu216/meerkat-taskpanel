@@ -75,7 +75,7 @@ export function formatShutdown(reason) {
  *   board: {db: object, repos: object},
  *   after?: number|null,          // replay increments newer than this revision
  *   pollMs?: number, heartbeatMs?: number, retryMs?: number, replayLimit?: number,
- *   onClose?: () => void,         // told once, whenever the stream ends
+ *   onClose?: () => void,         // whenever the stream ends; must be idempotent
  *   onError?: (err: unknown) => void, // a read failed; the stream is closed
  * }} input
  * @returns {{close: (reason?: string|null) => void}}
@@ -165,9 +165,10 @@ export function openEventStream(input) {
       clearInterval(beat);
       beat = null;
     }
-    // Called even when the stream was already closed: a registry that added us
-    // before the end must not be left holding a dead entry, and deleting twice
-    // is free.
+    // Called even when the stream was already closed, and possibly more than
+    // once (the response's own `close` event re-enters this function): a
+    // registry that added us before the end must not be left holding a dead
+    // entry, so the callback has to be idempotent — `streams.delete` is.
     if (typeof onClose === "function") onClose();
   };
 

@@ -52,9 +52,12 @@ after(async () => {
  * A minimal SSE reader: open a stream, collect `data:` payloads until a
  * predicate is satisfied (or the timeout fires and the test fails loudly).
  */
-async function subscribe(path = "/api/v1/events") {
+async function subscribe(path = "/api/v1/events", headers = {}) {
   const controller = new AbortController();
-  const response = await fetch(`${base}${path}`, { signal: controller.signal, headers: { accept: "text/event-stream" } });
+  const response = await fetch(`${base}${path}`, {
+    signal: controller.signal,
+    headers: { accept: "text/event-stream", ...headers },
+  });
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -189,12 +192,55 @@ describe("server/events — increments over a real socket", () => {
       const second = await stream.next((frame) => frame.task_id === missedB.id);
       const first = stream.frames.find((frame) => frame.task_id === missedA.id);
       assert.ok(first, "the first missed increment was replayed");
-      assert.ok(first.revision <= second.revision, "replayed in order");
+      assert.ok(first.revision < second.revision, "replayed in strict order");
       assert.equal(
         stream.frames.some((frame) => frame.task_id === seen.id),
         false,
         "nothing at or below the cursor is replayed",
       );
+    } finally {
+      stream.close();
+    }
+  });
+
+  it("replays a backlog larger than one page without dropping a row", async () => {
+    const { commands, repos } = taskd.board;
+    const task = commands.createTask({ projectId: "proj", title: "backlog", actor: AGENT });
+    const cursor = await revision();
+    const total = 510;
+    for (let i = 0; i < total; i += 1) {
+      repos.activities.append({
+        taskId: task.id,
+        event: "comment_added",
+        changes: { i },
+        createdAt: "2026-10-25T00:00:00.000Z",
+      });
+    }
+
+    const stream = await subscribe(`/api/v1/events?after=${cursor}`);
+    try {
+      await stream.next((frame) => frame.changes?.i === total - 1, 8_000);
+      const seen = stream.frames
+        .filter((frame) => Number.isInteger(frame.changes?.i))
+        .map((frame) => frame.changes.i);
+      assert.deepEqual(seen, Array.from({ length: total }, (_, i) => i), "every page, in order");
+    } finally {
+      stream.close();
+    }
+  });
+
+  it("replays from the Last-Event-ID header, not just ?after=", async () => {
+    const { commands } = taskd.board;
+    const seen = commands.createTask({ projectId: "proj", title: "seen", actor: AGENT });
+    const cursor = await revision();
+    const missed = commands.createTask({ projectId: "proj", title: "missed", actor: AGENT });
+
+    // No query parameter: this is what a native EventSource resends by itself.
+    const stream = await subscribe("/api/v1/events", { "last-event-id": String(cursor) });
+    try {
+      const frame = await stream.next((f) => f.task_id === missed.id);
+      assert.equal(frame.event, "task_created");
+      assert.equal(stream.frames.some((f) => f.task_id === seen.id), false);
     } finally {
       stream.close();
     }
