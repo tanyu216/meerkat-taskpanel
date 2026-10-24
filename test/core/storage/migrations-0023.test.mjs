@@ -98,11 +98,11 @@ describe("storage/migrations — 0023 moves the kind onto the record", () => {
       // Appended, like `blocked_reason` before them, so nothing that reads `tasks`
       // positionally has to be re-taught where a column sits. 0025 appends its
       // two review-marker columns *after* these, 0031 its `review_required`
-      // marker, and 0032 the acceptance snapshot + revision; the three this
-      // suite owns are the tail only when the later migrations' five columns are
-      // counted.
+      // marker, 0032 the acceptance snapshot + revision, and 0037 the single
+      // `acceptance_mode`; the three this suite owns are the tail only when the
+      // later migrations' six columns are counted.
       assert.deepEqual(
-        tasks.slice(-8).map((c) => c.name),
+        tasks.slice(-9).map((c) => c.name),
         [
           "assignee_kind",
           "reporter_kind",
@@ -112,6 +112,7 @@ describe("storage/migrations — 0023 moves the kind onto the record", () => {
           "review_required",
           "acceptance_json",
           "acceptance_revision",
+          "acceptance_mode",
         ],
       );
     } finally {

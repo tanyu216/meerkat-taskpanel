@@ -43,7 +43,7 @@ describe("core/bootstrap — openBoard", () => {
       pointerUrl: undefined,
     });
     try {
-      assert.deepEqual(board.migration.applied.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036"]);
+      assert.deepEqual(board.migration.applied.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038"]);
       assert.equal(board.schema.ok, true);
       assert.match(board.version, /^\d+\.\d+\.\d+$/);
       assert.equal(board.dbPath, join(dataDir, "board.sqlite"));
@@ -98,7 +98,7 @@ describe("core/bootstrap — openBoard", () => {
     const second = await openBoard({ dataDir, pointerPath, env: {} });
     try {
       assert.deepEqual(second.migration.applied, []);
-      assert.deepEqual(second.migration.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036"]);
+      assert.deepEqual(second.migration.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038"]);
       assert.equal(second.token.created, false);
       assert.equal(readFileSync(join(dataDir, "token"), "utf8").trim(), token, "the token survives a restart");
       assert.equal(second.schema.ok, true);

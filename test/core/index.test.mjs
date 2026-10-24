@@ -21,8 +21,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const PLANNED = [
   "index.mjs",
   "bootstrap.mjs",
-  // M6 — the board's acceptance policy (read from the install-root .env, per decision).
-  "acceptance-policy.mjs",
   "domain/enums.mjs",
   "domain/status.mjs",
   "domain/awaiting.mjs",
@@ -43,6 +41,8 @@ const PLANNED = [
   "domain/workflow.mjs",
   // 0031 — the per-project review policy: vocabulary, resolution, the marker.
   "domain/review-policy.mjs",
+  // 0037 — the single acceptance vocabulary and the card/project resolvers.
+  "domain/acceptance-mode.mjs",
   "domain/index.mjs",
   "storage/paths.mjs",
   "storage/driver.mjs",

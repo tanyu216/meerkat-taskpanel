@@ -25,6 +25,7 @@
 
 import { DomainError } from "../../foundation/errors.mjs";
 import { PROJECT_PREFIX_META_KEY, identifierPrefix, projectPrefix } from "../../foundation/ids.mjs";
+import { assertProjectAcceptance } from "../domain/acceptance-mode.mjs";
 import {
   assertReviewPolicy,
   normalizeReviewer,
@@ -158,6 +159,13 @@ function withoutPrefix(meta) {
 export function createProject(ctx, input) {
   const actor = actorOf(input.actor ?? { kind: "human", id: "local" });
   const reviewPolicy = assertReviewPolicy(input.reviewPolicy ?? "optional", "review_policy");
+  // 0037 — `acceptance` is the forward word; `review_policy` is its legacy
+  // spelling, still accepted while the column is (Phase 3 drops it). An
+  // explicit acceptance wins; otherwise the repository derives one.
+  const acceptance =
+    input.acceptance === undefined
+      ? undefined
+      : assertProjectAcceptance(input.acceptance, "acceptance");
   const reviewer = normalizeReviewer(input.reviewer);
   return transaction(
     ctx.db,
@@ -191,6 +199,7 @@ export function createProject(ctx, input) {
         ...input,
         meta,
         reviewPolicy,
+        acceptance,
         reviewer,
         now: ctx.now(),
       });
@@ -202,6 +211,7 @@ export function createProject(ctx, input) {
         changes: {
           project: project.id,
           review_policy: reviewPolicy,
+          acceptance: project.acceptance,
           ...(reviewer === null ? {} : { reviewer }),
         },
         createdAt: ctx.now(),
@@ -248,6 +258,9 @@ export function updateProject(ctx, input) {
   const patch = { ...input.patch };
   if (patch.reviewPolicy !== undefined) {
     patch.reviewPolicy = assertReviewPolicy(patch.reviewPolicy, "review_policy");
+  }
+  if (patch.acceptance !== undefined) {
+    patch.acceptance = assertProjectAcceptance(patch.acceptance, "acceptance");
   }
   if (patch.reviewer !== undefined) {
     patch.reviewer = normalizeReviewer(patch.reviewer);

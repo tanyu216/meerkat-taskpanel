@@ -32,7 +32,7 @@ import {
   allowedTargets,
   isTerminalStatus,
 } from "../../src/core/domain/status.mjs";
-import { ACCEPTANCE_POLICIES, acceptanceAllows } from "../../src/core/domain/status.mjs";
+import { acceptanceAllows } from "../../src/core/domain/acceptance-mode.mjs";
 
 const NON_TERMINAL = ["backlog", "todo", "in_progress", "in_review", "blocked", "awaiting"];
 
@@ -132,14 +132,14 @@ describe("contract/liveness — every non-terminal status can reach canceled", (
     assert.ok(reachable("in_review", null).has("done"), "done stays reachable from the table");
   });
 
-  it("the acceptance policy decides writers, never reachability", () => {
-    // The policy changes *who* may take the `done` edge, not whether the state
-    // machine has it: `in_review → done` is present under all three policies.
+  it("the acceptance mode decides writers, never reachability", () => {
+    // The mode changes *who* may take the `done` edge, not whether the state
+    // machine has it: `in_review → done` is present under every mode.
     assert.ok(allowedTargets("in_review").includes("done"));
-    for (const policy of ACCEPTANCE_POLICIES) {
+    for (const mode of ["off", "agent", "human"]) {
       assert.ok(
-        ["human", "taskd", "agent"].some((kind) => acceptanceAllows(kind, policy, "top_level")),
-        `${policy} has at least one acceptor — a policy no actor satisfies is a guaranteed stall`,
+        ["human", "taskd", "agent"].some((kind) => acceptanceAllows(kind, mode)),
+        `${mode} has at least one acceptor — a mode no actor satisfies is a guaranteed stall`,
       );
     }
   });

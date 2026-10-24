@@ -29,7 +29,14 @@ import { createServer } from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { currentRevision, openBoard, readToken } from "../core/index.mjs";
+import {
+  CARD_ACCEPTANCE_MODES,
+  DEFAULT_PROJECT_ACCEPTANCE,
+  PROJECT_ACCEPTANCES,
+  currentRevision,
+  openBoard,
+  readToken,
+} from "../core/index.mjs";
 import {
   LABEL_GC_ENV,
   HUMAN_KIND,
@@ -311,11 +318,10 @@ export async function createTaskd(options = {}) {
       // is what this capability's `upload_url` points at.
       attachments: true,
       allow_list: allowList.configured,
-      // The acceptance policy in force (`human-only` | `both` | `agent-only`).
-      // A client feature-detects the closing rule instead of assuming one; an
-      // unreadable policy reports `policy: null` here while every acceptance
-      // write still fails closed (`ACCESS_CONFIG_INVALID`).
-      acceptance: acceptanceCapability(board),
+      // 0037 — the acceptance vocabulary, stated once: a project default
+      // (`auto` included) and a card snapshot (never `auto`). A client
+      // feature-detects the fields instead of assuming them.
+      acceptance: ACCEPTANCE_CAPABILITY,
       // The effective SLA table (`GET /api/v1/sla` publishes the same values
       // with the alerts). A client feature-detects the configured thresholds
       // instead of assuming the defaults; an unreadable table reports `error`
@@ -556,21 +562,18 @@ export async function closeServer(server, graceMs = SHUTDOWN_GRACE_MS) {
  * 500, so the raw text is returned and fails the id lookup instead.
  */
 /**
- * The `/meta` view of the acceptance policy.
+ * The `/meta` view of the acceptance vocabulary (0037).
  *
- * Read through the board's own resolver so `/meta` reports exactly the policy a
- * write would use (explicit option → env → install-root `.env` → default). It
- * is re-read per request on purpose: a re-install may rewrite the file while the
- * server keeps running. A malformed value reports `null` instead of failing the
- * whole meta read; the acceptance write is where it fails closed.
+ * It is a constant: there is no board-level policy to read, and the project
+ * default is board data (`projects.acceptance`) rather than configuration.
  */
-function acceptanceCapability(board) {
-  try {
-    return { policy: board.ctx.acceptancePolicy() };
-  } catch (err) {
-    return { policy: null, error: err?.code ?? "ACCESS_CONFIG_INVALID" };
-  }
-}
+const ACCEPTANCE_CAPABILITY = Object.freeze({
+  modes: [...CARD_ACCEPTANCE_MODES],
+  project_modes: [...PROJECT_ACCEPTANCES],
+  default: DEFAULT_PROJECT_ACCEPTANCE,
+  card_field: "acceptance_mode",
+  project_field: "acceptance",
+});
 
 /**
  * The `/meta` view of the SLA table.

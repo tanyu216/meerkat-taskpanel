@@ -155,10 +155,16 @@ export function deliver(ctx, input) {
       // (or stamping the waiver) below. The database trigger still checks that
       // it really happened — if the ordering here were wrong, the status update
       // would be refused.
-      assertTransition(task.status, to, task.kind);
-      // `deliver` accepts a wire-only `to`; a delivery that lands on `done`
-      // (from `in_review`) is still an acceptance and obeys the same policy and
-      // scope as `moveStatus`.
+      assertTransition(
+        task.status,
+        to,
+        task.kind,
+        task.acceptanceMode,
+        task.reviewOfId !== null && task.reviewOfId !== undefined,
+      );
+      // `deliver` accepts a wire-only `to`; a delivery that lands on `done` is
+      // still an acceptance and obeys the card's own acceptance mode. In `off`
+      // mode this is the direct `in_progress → done` path.
       if (to === STATUS.DONE) assertAcceptance(ctx, task, actor);
       // No delivery to review, and no acceptance, while a child is in flight.
       // Checked before the report is written, so a refusal costs nothing.

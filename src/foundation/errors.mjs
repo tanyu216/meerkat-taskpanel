@@ -101,13 +101,21 @@ export const ERROR_CODES = Object.freeze({
   REVIEW_REQUIRED: spec(409, "This card requires an approved review for its current delivery round.", {
     fix:
       "let the loop dispatch a review, or a human may waive the requirement: " +
-      'taskctl issue update <ref> --review no --reason "<why>"',
+      'taskctl issue update <ref> --acceptance-mode off --reason "<why>"',
   }),
   // A review card is flow B. Marking it as needing its own review would create an
   // endless chain; the column is forced to 0 by the resolver and the trigger.
   REVIEW_CARD_MARKER_INVALID: spec(
     409,
     "A review card can never be marked as requiring its own review.",
+  ),
+  // 0037 — the card's acceptance mode and the legacy `review_required` mirror
+  // must agree (`agent` ⇔ 1, `off`/`human` ⇔ 0). The column pair is a
+  // compatibility shim; a raw write that sets only one half would make the
+  // dispatch and the done gate read different answers.
+  ACCEPTANCE_MODE_CONFLICT: spec(
+    409,
+    "A card's acceptance mode conflicts with its review_required marker.",
   ),
   // A card may not enter `in_review`/`done` while one of its children is still
   // in flight. Manual and automatic paths apply the same rule.
@@ -273,6 +281,8 @@ export const DB_RAISE_CODES = Object.freeze([
   // 0031 — the review-required done gate and the review-card marker invariant.
   "REVIEW_REQUIRED",
   "REVIEW_CARD_MARKER_INVALID",
+  // 0037 — the acceptance-mode / review_required mirror invariant.
+  "ACCEPTANCE_MODE_CONFLICT",
   // 0032 — the frozen acceptance baseline and the not_applicable note.
   "ACCEPTANCE_SNAPSHOT_IMMUTABLE",
   "REPORT_NOT_APPLICABLE_NOTE",

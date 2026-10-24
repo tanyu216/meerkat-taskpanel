@@ -151,7 +151,6 @@ describe("install.sh: targets", () => {
     assert.ok(shim.includes(join(tree, "src", "cli", "index.mjs")), "the shim drives the installed tree");
     const config = readFileSync(join(home, ".claude", "meerkat-taskpanel.env"), "utf8");
     assert.match(config, new RegExp(`MEERKAT_TASKPANEL_REPO=${tree.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-    assert.match(readFileSync(join(tree, ".env"), "utf8"), /TASKD_ACCEPTANCE_POLICY=both/);
   });
 
   it("--target all installs every agent and the server tree", () => {

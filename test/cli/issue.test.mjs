@@ -560,15 +560,12 @@ describe("cli/issue — the actor recorded on a report", () => {
 });
 
 describe("cli/issue — candidates (the poll read)", () => {
-  it("lists claimable cards and excludes unmet deps, epics and deployment cards", async () => {
+  it("lists claimable cards and excludes unmet deps and epics", async () => {
     await board(async ({ run }) => {
       // `--allow-dup` keeps the cards distinct: they share one assignee, so
       // the creation idempotency key would otherwise converge them onto one card.
       const ready = createIssue(run, ["--title", "Ready", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       createIssue(run, ["--title", "Epic", "--kind", "epic", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
-      // A deployment card (T-20261013-232004) assigned to the same poller: the
-      // poll's read must not offer it, even though it is a claimable `todo`.
-      const deploy = createIssue(run, ["--title", "Rebuild dist", "--kind", "deploy", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       const blocked = createIssue(run, ["--title", "Blocked", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       const blocker = createIssue(run, ["--title", "Blocker", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       // `blocks` source = blocker, target = blocked — the blocked card's depends_on.
@@ -578,7 +575,7 @@ describe("cli/issue — candidates (the poll read)", () => {
       assert.deepEqual(
         candidates.candidates.map((c) => c.identifier),
         [ready.task.identifier, blocker.task.identifier],
-        "the blocked card is excluded (depends_on unmet), and so are the epic and the deploy card",
+        "the blocked card is excluded (depends_on unmet) and so is the epic",
       );
       assert.equal(candidates.candidates[0].status, "todo");
       assert.equal(candidates.candidates[0].project, "demo");
@@ -587,22 +584,12 @@ describe("cli/issue — candidates (the poll read)", () => {
       const human = run(["issue", "candidates", "--assignee", "pollbot"]);
       assert.match(human.stdout, new RegExp(`${ready.task.identifier}\\s+todo\\s+medium`));
       assert.match(human.stdout, new RegExp(`${blocker.task.identifier}\\s+todo\\s+medium`));
-      assert.equal(human.stdout.includes(deploy.task.identifier), false, "the deploy card is withheld from the human read too");
 
-      // ...but it is a card like any other when it is dispatched explicitly: the
-      // refusal here is the **ordinary routing lock** (another actor, another
-      // card), never `not_claimable` — the marker keeps the poll off the card, it
-      // does not lock the claim gate. The documented override then takes it.
-      const asStranger = run(["issue", "move", deploy.task.identifier, "in_progress", "--json"]);
-      assert.equal(errorOf(asStranger).code, "not_assignee");
-      const dispatched = dataOf(
-        run([
-          "issue", "move", deploy.task.identifier, "in_progress",
-          "--allow-steal", "--reason", "explicit dispatch of a deployment card", "--json",
-        ]),
-      ).task;
-      assert.equal(dispatched.status, "in_progress");
-      assert.equal(dispatched.kind, "deploy", "the marker survives the claim");
+      // 0037 — the kind is retired: no read special-cases it, and a create that
+      // asks for it is refused at the flag layer (CLI_USAGE; the HTTP body path
+      // answers VALIDATION_FAILED for the same value).
+      const retired = run(["issue", "create", "--title", "Rebuild dist", "--kind", "deploy", "--assignee", "pollbot", "--assignee-kind", "agent", "--json"]);
+      assert.equal(errorOf(retired).code, "CLI_USAGE");
     });
   });
 
@@ -612,7 +599,6 @@ describe("cli/issue — candidates (the poll read)", () => {
       const pool = createIssue(run, ["--title", "Public pool", "--allow-dup"]);
       createIssue(run, ["--title", "Someone else", "--assignee", "terry", "--assignee-kind", "agent", "--allow-dup"]);
       createIssue(run, ["--title", "Pool epic", "--kind", "epic", "--allow-dup"]);
-      createIssue(run, ["--title", "Pool deploy", "--kind", "deploy", "--allow-dup"]);
 
       const without = dataOf(run(["issue", "candidates", "--assignee", "pollbot", "--json"]));
       assert.deepEqual(without.candidates.map((c) => c.identifier), [assigned.task.identifier]);
@@ -623,7 +609,7 @@ describe("cli/issue — candidates (the poll read)", () => {
       assert.deepEqual(
         withPool.candidates.map((c) => c.identifier),
         [assigned.task.identifier, pool.task.identifier],
-        "the public pool admits an unassigned card — but not the epic or the deploy card in it",
+        "the public pool admits an unassigned card — but not the epic in it",
       );
       assert.equal(withPool.candidates[1].reason, "unassigned");
     });
@@ -854,7 +840,9 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
   // Rule 8: every write carries the agent's attribution, so the claim below is
   // made *by* the card's assignee rather than by whatever actor the agent defaulted to.
   const AS = ["--agent", "linus"];
-  const forLinus = ["--assignee", "linus", "--assignee-kind", "agent", ...AS];
+  // 0037 — the container recipe's cards are the trusted path: no review, the
+  // agent closes its own child and the board closes the container.
+  const forLinus = ["--assignee", "linus", "--assignee-kind", "agent", "--acceptance-mode", "off", ...AS];
 
   const childReport = (sha) => ({
     conclusion: `Piece delivered (${sha}).`,
@@ -1126,7 +1114,7 @@ describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
   it("re-closes a reopened epic unless a fix child exists first (the safe rejection path)", async () => {
     await board(async ({ run }) => {
       const epic = createIssue(run, ["--title", "Container", "--kind", "epic", "--allow-dup"]);
-      const child = createIssue(run, ["--title", "Piece", "--allow-dup"]);
+      const child = createIssue(run, ["--title", "Piece", "--allow-dup", "--acceptance-mode", "off"]);
       dataOf(run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", child.task.identifier, "--json"]));
       dataOf(run(["issue", "move", child.task.identifier, "in_progress", "--json"]));
       dataOf(run(["issue", "deliver", child.task.identifier, "--report-file", "-", "--json"], { input: report() }));
@@ -1271,7 +1259,7 @@ describe("cli/issue — reconcile (the container backstop)", () => {
       // The epic is started by the first child, then a second child is attached
       // afterwards: the container is in_progress with work still outstanding.
       const epic = createIssue(run, ["--title", "Container", "--kind", "epic", "--allow-dup"]);
-      const done = createIssue(run, ["--title", "Done"]);
+      const done = createIssue(run, ["--title", "Done", "--acceptance-mode", "off"]);
       const pending = createIssue(run, ["--title", "Pending", "--allow-dup"]);
       dataOf(
         run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", done.task.identifier, "--json"]),
@@ -1354,58 +1342,61 @@ describe("cli/issue — `issue reopen` (done/canceled → todo)", () => {
 // 0031 — the per-card review decision
 // ---------------------------------------------------------------------------
 
-describe("cli/issue — review decision (0031)", () => {
-  it("carries an explicit --review yes|no on create", async () => {
+describe("cli/issue — acceptance mode (0037)", () => {
+  it("carries --acceptance-mode on create, and keeps --review as an alias", async () => {
     await board(async ({ run }) => {
+      const agent = createIssue(run, ["--acceptance-mode", "agent"]);
+      assert.equal(agent.task.acceptance_mode, "agent");
+      assert.equal(agent.task.review_required, true);
+      const off = createIssue(run, ["--acceptance-mode", "off"]);
+      assert.equal(off.task.acceptance_mode, "off");
+      assert.equal(off.task.review_required, false);
       const yes = createIssue(run, ["--review", "yes"]);
-      assert.equal(yes.task.review_required, true);
+      assert.equal(yes.task.acceptance_mode, "agent");
       const no = createIssue(run, ["--review", "no"]);
-      assert.equal(no.task.review_required, false);
+      assert.equal(no.task.acceptance_mode, "off");
     });
   });
 
-  it("refuses an agent's omission in an optional project", async () => {
+  it("falls an unresolved card back to human", async () => {
     await board(async ({ run }) => {
-      const result = run([
-        "issue", "create", "--project", "demo", "--title", "decide",
-        "--actor-kind", "agent", "--json",
+      const result = createIssue(run, ["--title", "decide"]);
+      assert.equal(result.task.acceptance_mode, "human");
+      assert.equal(result.task.review_required, false);
+    });
+  });
+
+  it("changes the mode through issue update, with a reason when leaving agent", async () => {
+    await board(async ({ run }) => {
+      const created = createIssue(run, ["--acceptance-mode", "off"]);
+
+      const escalated = dataOf(
+        run(["issue", "update", created.task.identifier, "--acceptance-mode", "agent", "--json"]),
+      );
+      assert.equal(escalated.task.acceptance_mode, "agent");
+
+      const missingReason = run([
+        "issue", "update", created.task.identifier, "--acceptance-mode", "off", "--json",
       ]);
-      assert.equal(result.status, 1);
-      assert.equal(errorOf(result).code, "VALIDATION_FAILED");
-      assert.equal(errorOf(result).details?.field, "review_required");
-    });
-  });
-
-  it("escalates and waives through issue update", async () => {
-    await board(async ({ run }) => {
-      const created = createIssue(run);
-      assert.equal(created.task.review_required, false);
-
-      const escalated = dataOf(run(["issue", "update", created.task.identifier, "--review", "yes", "--json"]));
-      assert.equal(escalated.task.review_required, true);
-
-      const missingReason = run(["issue", "update", created.task.identifier, "--review", "no", "--json"]);
       assert.equal(missingReason.status, 1);
       assert.equal(errorOf(missingReason).code, "VALIDATION_FAILED");
 
       const waived = dataOf(
         run([
-          "issue", "update", created.task.identifier, "--review", "no",
+          "issue", "update", created.task.identifier, "--acceptance-mode", "off",
           "--reason", "documentation only", "--json",
         ]),
       );
-      assert.equal(waived.task.review_required, false);
+      assert.equal(waived.task.acceptance_mode, "off");
     });
   });
 
-  it("refuses an opt-out in a required project", async () => {
+  it("lets an explicit card value win over the project default", async () => {
     await withCli(async ({ run }) => {
       run(["project", "create", "--id", "req", "--name", "Required", "--review-policy", "required", "--json"]);
-      const result = run([
-        "issue", "create", "--project", "req", "--title", "no", "--review", "no", "--json",
-      ]);
-      assert.equal(result.status, 1);
-      assert.equal(errorOf(result).code, "VALIDATION_FAILED");
+      const result = createIssue(run, ["--project", "req", "--title", "no", "--acceptance-mode", "off"]);
+      assert.equal(result.task.acceptance_mode, "off");
+      assert.equal(result.task.review_required, false);
     });
   });
 });

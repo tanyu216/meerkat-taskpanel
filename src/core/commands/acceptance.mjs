@@ -20,33 +20,19 @@
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
-import { acceptanceScopeOf, assertAcceptanceAuthority, isTerminalStatus } from "../domain/status.mjs";
-import { reviewRequiredOf } from "../domain/review-policy.mjs";
+import { isTerminalStatus } from "../domain/status.mjs";
+import { assertAcceptanceAuthority, cardAcceptanceOf } from "../domain/acceptance-mode.mjs";
 import { parseReviewVerdict } from "../domain/workflow.mjs";
 import { coverageOf } from "../domain/acceptance.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { assertEpicRollupReady, assertRollupCoverage } from "./rollup.mjs";
 
 /**
- * The scope a card's acceptance falls in: a card with a parent is a child; a
- * card carrying the structural review marker is a review card; everything else
- * is a top-level original.
+ * Refuse a writer that may not accept this card under the card's own mode.
  *
- * @param {object} ctx
- * @param {object} task
- * @returns {"child"|"review"|"top_level"}
- */
-export function acceptanceScopeFor(ctx, task) {
-  return acceptanceScopeOf({
-    hasParent: ctx.repos.relations.getParent(task.id) !== null,
-    // 0025 — the structural column, never `meta.review_of`: the meta key is
-    // writable and must not be able to mint the exemption.
-    reviewCard: task.reviewOfId !== null && task.reviewOfId !== undefined,
-  });
-}
-
-/**
- * Refuse a writer that may not accept this card under the board's policy.
+ * 0037 — scope is gone: the card's `acceptance_mode` names who closes it. The
+ * one structural override is the review card itself (its reviewer reports a
+ * verdict; the acceptor closes it).
  *
  * @param {object} ctx
  * @param {object} task
@@ -54,8 +40,8 @@ export function acceptanceScopeFor(ctx, task) {
  */
 export function assertAcceptance(ctx, task, actor) {
   return assertAcceptanceAuthority(actor, {
-    policy: readPolicy(ctx),
-    ...scopeInputs(ctx, task),
+    mode: cardAcceptanceOf(task.acceptanceMode),
+    reviewCard: task.reviewOfId !== null && task.reviewOfId !== undefined,
   });
 }
 
@@ -253,7 +239,7 @@ export function assertReviewEvidence(ctx, task) {
     hint: {
       fix:
         "let the loop dispatch a review, or a human may waive it: " +
-        'taskctl issue update <ref> --review no --reason "<why>"',
+        'taskctl issue update <ref> --acceptance-mode off --reason "<why>"',
     },
   });
 }
@@ -271,14 +257,13 @@ export function assertReviewEvidence(ctx, task) {
  * @param {{kind?: string, id?: string}} actor
  */
 export function assertReviewReady(ctx, task, actor) {
-  // 0031 — the card's own decision. This applies to every writer: a required
-  // card cannot reach done without an approved review, whatever the acceptance
-  // policy says. The human-only pending check below is a second, independent
-  // rule about an open review that a human is about to close.
-  if (reviewRequiredOf(task.reviewRequired)) assertReviewEvidence(ctx, task);
+  // 0037 — the card's own mode. `agent` owes a current-round APPROVE; `off` and
+  // `human` owe no review evidence. The human pending check below is a second,
+  // independent rule about an open review a human is about to close.
+  if (cardAcceptanceOf(task.acceptanceMode) !== "agent") return true;
+  assertReviewEvidence(ctx, task);
 
   if (String(actor?.kind ?? "") !== "human") return true;
-  if (acceptanceScopeFor(ctx, task) !== "top_level") return true;
 
   const reviews = currentRoundReviews(ctx, task);
   const pending = reviews.filter((review) => !isTerminalStatus(review.status));
@@ -353,15 +338,4 @@ export function currentRoundReviews(ctx, task) {
   return ctx.repos.tasks
     .listReviewsOf(task.id)
     .filter((review) => review.reviewRound === null || Number(review.reviewRound) === Number(task.deliveryRound));
-}
-
-/** The policy in force, without importing the context module (keeps this testable). */
-function readPolicy(ctx) {
-  return typeof ctx.acceptancePolicy === "function" ? ctx.acceptancePolicy() : undefined;
-}
-
-/** The scope flags `assertAcceptanceAuthority` takes. */
-function scopeInputs(ctx, task) {
-  const scope = acceptanceScopeFor(ctx, task);
-  return { hasParent: scope === "child", reviewCard: scope === "review" };
 }

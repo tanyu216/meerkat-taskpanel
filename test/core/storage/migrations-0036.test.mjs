@@ -23,7 +23,7 @@ after(cleanupTempDirs);
 function before0036() {
   const dir = makeTempDir("meerkat-taskpanel-pre0036-");
   for (const name of readdirSync(defaultMigrationsDir()).filter(
-    (n) => n.endsWith(".sql") && n.slice(0, 4) < "0036",
+    (n) => n.endsWith(".sql") && n.slice(0, 4) < "0036", "0037",
   )) {
     copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
   }
@@ -62,7 +62,7 @@ describe("storage/migrations — 0036 session meta", () => {
       insertSession(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0036"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0036", "0037", "0038"]);
 
       const meta = columnsOf(board.db, "agent_sessions").find((c) => c.name === "meta_json");
       assert.ok(meta !== undefined, "meta_json exists");

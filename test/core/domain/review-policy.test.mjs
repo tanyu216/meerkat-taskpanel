@@ -58,13 +58,9 @@ describe("domain/review-policy — resolveReviewRequired", () => {
     );
   });
 
-  it("forces a deploy card to 1, and refuses an opt-out", () => {
-    assert.equal(resolveReviewRequired({ policy: "off", kind: "deploy" }), 1);
-    assert.equal(resolveReviewRequired({ policy: "optional", kind: "deploy", requested: true }), 1);
-    throwsCode(
-      () => resolveReviewRequired({ policy: "optional", kind: "deploy", requested: false }),
-      "VALIDATION_FAILED",
-    );
+  it("leaves an epic to the policy like any other card (0037 retired deploy)", () => {
+    assert.equal(resolveReviewRequired({ policy: "off", kind: "epic" }), 0);
+    assert.equal(resolveReviewRequired({ policy: "required", kind: "epic" }), 1);
   });
 
   it("required decides for the card, and refuses an opt-out", () => {

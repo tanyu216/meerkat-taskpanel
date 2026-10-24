@@ -27,7 +27,6 @@ import { reconcileContainers } from "./rollup.mjs";
  * @param {object} ctx
  * @param {{
  *   reviewer?: string|null,
- *   autoAcceptReviews?: boolean,
  *   reviewAgingMs?: number,
  *   maxActions?: number,
  *   boardLimit?: number,
@@ -116,12 +115,10 @@ export function workflowTick(ctx, input = {}) {
     config: {
       reviewer,
       projectReviewers,
-      autoAcceptReviews: input.autoAcceptReviews,
       reviewAgingMs: input.reviewAgingMs,
       maxActions: input.maxActions,
-      // The board is authoritative. A loop's `--acceptance` copy never reaches
-      // this decision.
-      acceptancePolicy: ctx.acceptancePolicy(),
+      // 0037 — the card's own `acceptance_mode` is the whole decision; there is
+      // no board-level policy and no loop-side advisory copy to merge.
     },
     boardTruncated,
     now: ctx.now(),

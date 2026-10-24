@@ -362,9 +362,6 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
   it("workflow asks the board for the plan, and writes nothing in dry-run", () => {
     const { run, record } = runWithSentinel("workflow");
     assert.equal(run.status, 0, run.stderr);
-    // The loop's acceptance copy is advisory — the board decides in the plan.
-    // It is still said out loud at startup, which is the only thing it is for.
-    assert.match(run.stderr, /acceptance=both \(advisory\)/, "the advisory policy is stated");
     const args = calls(record);
     assert.ok(
       args.some((call) => call.includes("project") && call[call.indexOf("project") + 1] === "list"),
@@ -375,25 +372,9 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     const call = callsToReconcile[0];
     assert.ok(call.includes("--workflow"), JSON.stringify(call));
     assert.ok(call.includes("--dry-run"), JSON.stringify(call));
-  });
-
-  it("workflow refuses agent-only with auto-accept off", () => {
-    const { run } = runWithSentinel("workflow", [
-      "--acceptance", "agent-only", "--auto-accept-reviews=no",
-    ]);
-    assert.equal(run.status, 2, run.stderr);
-    assert.match(
-      run.stderr,
-      /acceptance=agent-only with auto_accept_reviews=no/,
-      "the conflict is named",
-    );
-    assert.match(run.stderr, /auto_accept_reviews=yes/, "the repair is named");
-  });
-
-  it("workflow does not warn for agent-only with auto-accept on", () => {
-    const { run } = runWithSentinel("workflow", ["--acceptance", "agent-only"]);
-    assert.equal(run.status, 0, run.stderr);
-    assert.doesNotMatch(run.stderr, /review cards will accumulate/);
+    // 0037 — the loop no longer carries a policy copy or a close flag.
+    assert.equal(call.includes("--auto-accept-reviews"), false, JSON.stringify(call));
+    assert.equal(call.includes("--acceptance"), false, JSON.stringify(call));
   });
 
   it("workflow=no does not read the board at all", () => {

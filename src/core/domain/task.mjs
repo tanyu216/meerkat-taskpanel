@@ -78,6 +78,10 @@ export const TASK_COLUMNS = Object.freeze([
   // counter. Seeded once, then only appended (or pruned by an audited human).
   "acceptance_json",
   "acceptance_revision",
+  // 0037 — the single acceptance decision (`off | agent | human`). `auto` is a
+  // project word and is never stored here. The legacy `review_required` mirror
+  // is written alongside it until 0038.
+  "acceptance_mode",
 ]);
 
 const ISO_MILLIS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -344,10 +348,13 @@ export function normalizeTaskCreate(input, context) {
     // reference (the importer stamps its own after resolving).
     reviewOfId: null,
     reviewRound: null,
-    // 0031 — the decision snapshot. `createTask` resolves it after the review
-    // marker (a review card is forced to 0); a direct/importer write gets the
-    // conservative 0 here and must set it itself if the card needs review.
+    // 0031 — the legacy decision snapshot. `createTask` resolves it after the
+    // review marker (a review card is forced to 0); a direct/importer write gets
+    // the conservative 0 here and must set it itself if the card needs review.
     reviewRequired: 0,
+    // 0037 — the single acceptance decision. The column default is `off`; the
+    // create resolver writes the real value and keeps `review_required` in step.
+    acceptanceMode: "off",
     // 0032 — the acceptance baseline. `createTask` seeds it from the card's
     // meta (or the review action's list); a direct write starts empty.
     acceptance: [],
@@ -505,8 +512,10 @@ const CAMEL = {
   // 0025 — the review marker's structural half.
   review_of_id: "reviewOfId",
   review_round: "reviewRound",
-  // 0031 — the card's review decision snapshot.
+  // 0031 — the card's legacy review decision snapshot.
   review_required: "reviewRequired",
+  // 0037 — the single acceptance decision.
+  acceptance_mode: "acceptanceMode",
   // 0032 — the frozen acceptance baseline and its revision.
   acceptance_json: "acceptance",
   acceptance_revision: "acceptanceRevision",

@@ -14,7 +14,6 @@
  */
 
 import { TASK_KINDS, TASK_OPS } from "../../core/index.mjs";
-import { HUMAN_KIND } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { attachmentToWire, reportToWire, taskToWire, workflowToWire } from "../../foundation/wire.mjs";
 import { arr, bool, int, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
@@ -102,13 +101,12 @@ const CREATE_BODY = project(TASK_OPS.create);
  * Without `workflow`, only `dry_run` is read: the sweep takes no scope, because
  * "every non-terminal epic" is the scope (commands/rollup.mjs#reconcileContainers).
  * `workflow` adds the review outcomes/dispatch decisions; the loop supplies its
- * own reviewer/policy knobs, while the acceptance policy stays the board's.
+ * own reviewer/age/cap knobs; the cards carry their own acceptance mode.
  */
 const RECONCILE_BODY = shape({
   dry_run: bool(),
   workflow: bool(),
   reviewer: str(),
-  auto_accept_reviews: bool(),
   review_aging_ms: int(),
   max_actions: int(),
   board_limit: int(),
@@ -265,10 +263,10 @@ export function registerTaskRoutes(router, surface) {
       // so a re-submitted create is a no-op, not a second card.
       idem: body.idem,
       allowDup: body.allow_dup === true,
+      // 0037 — the single acceptance decision; `review_required` is the legacy
+      // alias the command layer still accepts for one release.
+      acceptanceMode: body.acceptance_mode,
       reviewRequired: body.review_required,
-      // An agent must state the decision in an optional project; the UI (whose
-      // requests arrive as the human actor) may omit it and gets "no review".
-      requireReviewDecision: actor.kind !== HUMAN_KIND,
       reviewOf: body.review_of,
       reviewRound: body.review_round,
       parent: body.parent,
@@ -285,7 +283,6 @@ export function registerTaskRoutes(router, surface) {
     if (body.workflow === true) {
       const result = commands.workflowTick({
         reviewer: body.reviewer ?? null,
-        autoAcceptReviews: body.auto_accept_reviews,
         reviewAgingMs: body.review_aging_ms,
         maxActions: body.max_actions,
         boardLimit: body.board_limit,
@@ -370,6 +367,7 @@ export function registerTaskRoutes(router, surface) {
       assignee: body.assignee,
       reporter: body.reporter,
       forceCreate: body.force_create === true,
+      acceptanceMode: body.acceptance_mode,
       reviewRequired: body.review_required,
       reason: body.reason,
       acceptance: body.acceptance,

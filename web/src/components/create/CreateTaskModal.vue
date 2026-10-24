@@ -45,6 +45,9 @@ const form = reactive({
   labels: [],
   parent: "",
   depends: [],
+  // 0037 — `null` means "follow the project's default"; a chosen value is the
+  // card's own snapshot. The card never stores `auto`.
+  acceptance_mode: null,
 });
 
 const peopleOptions = computed(() => board.assignees.map((entry) => ({ name: entry.display_name, kind: kindLabel(entry.kind), platform: platformOf(entry.display_name) })));
@@ -63,14 +66,23 @@ const relationOptions = taskRoster;
 const canSubmit = computed(() => form.title.trim() !== "" && form.project_id);
 
 /**
- * 0031 — the task's review decision is derived by the server from the selected
- * project's policy. The dialog only shows what that means; it deliberately adds
- * no ninth routing field (B10's column is the eight `design/BLOCKS.md` names).
+ * 0037 — the card's acceptance snapshot. The project's value is the default;
+ * `auto` resolves to `human` here, exactly as the server's fail-safe does, so
+ * the hint and the created card agree. The select stays a native `<select>`
+ * like the project field above it, and it is sent only when the creator chose
+ * something.
  */
 const selectedProject = computed(
   () => board.projects.find((project) => project.id === form.project_id) ?? null,
 );
-const reviewPolicy = computed(() => selectedProject.value?.review_policy ?? "optional");
+const projectAcceptance = computed(() => selectedProject.value?.acceptance ?? "auto");
+const acceptanceMode = computed({
+  get: () => form.acceptance_mode ?? (projectAcceptance.value === "auto" ? "human" : projectAcceptance.value),
+  set: (value) => {
+    form.acceptance_mode = value;
+  },
+});
+const acceptanceModes = ["off", "agent", "human"];
 
 /**
  * The status control is a `<details>` dropdown rather than a native `<select>`:
@@ -99,6 +111,7 @@ function reset() {
   form.labels = [];
   form.parent = "";
   form.depends = [];
+  form.acceptance_mode = null;
 }
 
 watch(createTaskOpen, (open) => {
@@ -123,6 +136,9 @@ async function submit() {
     priority: form.priority,
     status: form.status,
     labels: form.labels,
+    // Sent whenever the creator picked one; otherwise the server resolves the
+    // project default (and `auto` falls back to `human` there).
+    ...(form.acceptance_mode === null ? {} : { acceptance_mode: form.acceptance_mode }),
   };
   if (form.assignee) payload.assignee = form.assignee;
   if (form.reporter) payload.reporter = form.reporter;
@@ -246,13 +262,19 @@ async function submit() {
                 <option v-for="project in board.projects" :key="project.id" :value="project.id">{{ project.name }}</option>
               </select>
             </label>
+            <label class="flex flex-col gap-1 mb-3">
+              <span data-i18n="createTask.field.acceptance">{{ $t("createTask.field.acceptance") }}</span>
+              <select v-model="acceptanceMode" class="select select-sm td-select w-full" data-create-task-acceptance>
+                <option v-for="mode in acceptanceModes" :key="mode" :value="mode">{{ $t(`createTask.acceptance.${mode}`) }}</option>
+              </select>
+            </label>
             <p
               v-if="selectedProject"
               class="text-[11px] text-(--brand-text-3) -mt-2 mb-3"
               data-create-task-review-hint
-              :data-review-policy="reviewPolicy"
+              :data-acceptance-mode="acceptanceMode"
             >
-              {{ $t(`createTask.reviewHint.${reviewPolicy}`) }}
+              {{ $t(`createTask.reviewHint.${acceptanceMode}`) }}
             </p>
 
             <div class="flex flex-col gap-1 mb-3">

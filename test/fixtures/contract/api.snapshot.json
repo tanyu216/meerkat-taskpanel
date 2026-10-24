@@ -13,6 +13,10 @@
       "http": 409
     },
     {
+      "code": "ACCEPTANCE_MODE_CONFLICT",
+      "http": 409
+    },
+    {
       "code": "ACCEPTANCE_PRUNE_FORBIDDEN",
       "http": 409
     },
@@ -497,6 +501,15 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "acceptance": {
+              "enum": [
+                "agent",
+                "auto",
+                "human",
+                "off"
+              ],
+              "type": "string"
+            },
             "id": {
               "type": "string"
             },
@@ -548,6 +561,15 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "acceptance": {
+              "enum": [
+                "agent",
+                "auto",
+                "human",
+                "off"
+              ],
+              "type": "string"
+            },
             "labels": {
               "items": {
                 "type": "string"
@@ -588,6 +610,15 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "acceptance": {
+              "enum": [
+                "agent",
+                "auto",
+                "human",
+                "off"
+              ],
+              "type": "string"
+            },
             "labels": {
               "items": {
                 "type": "string"
@@ -791,6 +822,14 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "acceptance_mode": {
+              "enum": [
+                "agent",
+                "human",
+                "off"
+              ],
+              "type": "string"
+            },
             "allow_dup": {
               "type": "boolean"
             },
@@ -817,7 +856,6 @@
             },
             "kind": {
               "enum": [
-                "deploy",
                 "epic",
                 "task"
               ],
@@ -921,6 +959,14 @@
               },
               "type": "array"
             },
+            "acceptance_mode": {
+              "enum": [
+                "agent",
+                "human",
+                "off"
+              ],
+              "type": "string"
+            },
             "acceptance_revision": {
               "type": "integer"
             },
@@ -938,7 +984,6 @@
             },
             "kind": {
               "enum": [
-                "deploy",
                 "epic",
                 "task"
               ],
@@ -1541,9 +1586,6 @@
         "body": {
           "additionalProperties": true,
           "properties": {
-            "auto_accept_reviews": {
-              "type": "boolean"
-            },
             "board_limit": {
               "type": "integer"
             },
@@ -1661,6 +1703,7 @@
     },
     {
       "fields": {
+        "acceptance": "string",
         "archived_at": "string",
         "created_at": "string",
         "id": "string",
@@ -1777,6 +1820,7 @@
     {
       "fields": {
         "acceptance": "array",
+        "acceptance_mode": "string",
         "acceptance_revision": "number",
         "agent_session": "string",
         "archived_at": "string",

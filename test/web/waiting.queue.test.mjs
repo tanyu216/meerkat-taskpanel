@@ -152,6 +152,8 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
       review_round: null,
       status_changed_at: at(30),
       updated_at: at(30),
+      // 0037 — only a `human` card waits for a person.
+      acceptance_mode: "human",
       assignee: { id: "a1", display_name: "linus", kind: "agent" },
       ...overrides,
     };
@@ -162,62 +164,61 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
     return delivered(id, { review_of_id: original.id, review_round: round, status, identifier: `TD-R${id}` });
   }
 
-  const waitIds = (tasks, policy) => {
+  const waitIds = (tasks) => {
     // Imported lazily through the same module the view uses.
-    return acceptanceWaitingTasksFor(tasks, policy).map((task) => task.id);
+    return acceptanceWaitingTasksFor(tasks).map((task) => task.id);
   };
 
-  it("lists a top-level delivered card under human-only and both, never agent-only", () => {
-    const tasks = [delivered("1")];
-    assert.deepEqual(waitIds(tasks, "human-only"), ["1"]);
-    assert.deepEqual(waitIds(tasks, "both"), ["1"]);
-    assert.deepEqual(waitIds(tasks, "agent-only"), []);
+  it("lists only a human-accepted delivered card", () => {
+    assert.deepEqual(waitIds([delivered("1")]), ["1"]);
+    assert.deepEqual(waitIds([delivered("2", { acceptance_mode: "agent" })]), []);
+    assert.deepEqual(waitIds([delivered("3", { acceptance_mode: "off" })]), []);
   });
 
-  it("still queues a no-review card for a human under human-only", () => {
-    // 0031: the review decision does not remove the human's acceptance work on
-    // a human-only board. A no-review card has no review rows, so the
-    // `every` over an empty set releases it to the human.
-    assert.deepEqual(waitIds([delivered("1", { review_required: false })], "human-only"), ["1"]);
-    assert.deepEqual(waitIds([delivered("1", { review_required: false })], "agent-only"), []);
+  it("still queues a no-review human card; off and agent are not the human's", () => {
+    assert.deepEqual(waitIds([delivered("1", { review_required: false })]), ["1"]);
+    assert.deepEqual(waitIds([delivered("2", { acceptance_mode: "off" })]), []);
+    assert.deepEqual(waitIds([delivered("3", { acceptance_mode: "agent" })]), []);
   });
 
   it("hides a card whose current-round review is still open, and shows it once resolved", () => {
     for (const status of ["todo", "in_progress", "in_review", "blocked", "awaiting"]) {
       const original = delivered("1");
       const tasks = [original, review("2", original, status)];
-      assert.deepEqual(waitIds(tasks, "both"), [], `a ${status} review holds it back`);
+      assert.deepEqual(waitIds(tasks), [], `a ${status} review holds it back`);
     }
     for (const status of ["done", "canceled"]) {
       const original = delivered("1");
       const tasks = [original, review("2", original, status)];
-      assert.deepEqual(waitIds(tasks, "both"), ["1"], `a ${status} review releases it`);
+      assert.deepEqual(waitIds(tasks), ["1"], `a ${status} review releases it`);
     }
   });
 
   it("ignores an old round, and treats a NULL round as covering every round", () => {
     const original = delivered("1");
-    assert.deepEqual(waitIds([original, review("2", original, "todo", 2)], "both"), ["1"], "round 2 is history on round 1");
+    assert.deepEqual(waitIds([original, review("2", original, "todo", 2)]), ["1"], "round 2 is history on round 1");
     const unrounded = delivered("2", { review_of_id: original.id, review_round: null, status: "todo", identifier: "TD-2" });
-    assert.deepEqual(waitIds([original, unrounded], "both"), [], "a NULL round is conservative");
+    assert.deepEqual(waitIds([original, unrounded]), [], "a NULL round is conservative");
   });
 
-  it("hides review cards and child cards, and waits for every child", () => {
+  it("hides review cards, accepts a child on its own mode, and waits for every child", () => {
     const original = delivered("1");
     const child = delivered("2", { parent_id: "1", status: "todo", identifier: "TD-2" });
-    assert.deepEqual(waitIds([original, child], "both"), [], "an open child holds the container");
+    assert.deepEqual(waitIds([original, child]), [], "an open child holds the container");
     child.status = "canceled";
-    assert.deepEqual(waitIds([original, child], "both"), ["1"], "a canceled child counts as finished");
+    assert.deepEqual(waitIds([original, child]), ["1"], "a canceled child counts as finished");
 
-    // A child (even one in review) is never the human's to accept.
-    assert.deepEqual(waitIds([delivered("3", { parent_id: "1" })], "both"), []);
+    // 0037 — a child is accepted on its own mode: a `human` child waits like
+    // any other card, an `off`/`agent` child does not. There is no scope matrix.
+    assert.deepEqual(waitIds([delivered("3", { parent_id: "1" })]), ["3"]);
+    assert.deepEqual(waitIds([delivered("4", { parent_id: "1", acceptance_mode: "off" })]), []);
     // A review card is never an acceptance item.
-    assert.deepEqual(waitIds([original, review("4", original, "in_review")], "both"), []);
+    assert.deepEqual(waitIds([original, review("5", original, "in_review")]), []);
   });
 
   it("does not list anything that is not in_review", () => {
     for (const status of ["todo", "blocked", "awaiting", "in_progress", "done", "canceled"]) {
-      assert.deepEqual(waitIds([delivered("1", { status })], "both"), [], status);
+      assert.deepEqual(waitIds([delivered("1", { status })]), [], status);
     }
   });
 
@@ -226,7 +227,7 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
     // Re-running the predicate on that narrowed list would judge the card
     // against a subset (its child assigned elsewhere would vanish and the
     // parent would be released), so the mapper must take the derived set as-is.
-    const derived = acceptanceWaitingTasksFor([delivered("1", { status_changed_at: at(10) })], "both");
+    const derived = acceptanceWaitingTasksFor([delivered("1", { status_changed_at: at(10) })]);
     const rows = acceptanceRowsFrom(derived, NOW);
     assert.deepEqual(rows.map((row) => row.identifier), ["TD-1"]);
     assert.equal(rows[0].reasonKind, "acceptance");
@@ -250,7 +251,7 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
       {},
       NOW,
     );
-    const acceptance = acceptanceRows([delivered("1", { status_changed_at: at(10) })], "both", NOW);
+    const acceptance = acceptanceRows([delivered("1", { status_changed_at: at(10) })], NOW);
     const merged = mergeWaitingRows(awaiting, acceptance);
     assert.deepEqual(merged.map((row) => row.identifier), ["TD-A", "TD-1"]);
     assert.equal(merged[0].kind, "question");

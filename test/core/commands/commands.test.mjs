@@ -656,3 +656,34 @@ describe("commands — timestamps come from the context clock", () => {
     } });
   });
 });
+
+describe("commands/projects — the acceptance default (0037)", () => {
+  it("stores an explicit acceptance and refuses a value outside the vocabulary", async () => {
+    await board(({ commands }) => {
+      const project = commands.createProject({ id: "acc", name: "Acc", acceptance: "human", actor: HUMAN });
+      assert.equal(project.acceptance, "human");
+      assert.throws(
+        () => commands.createProject({ id: "bad", name: "Bad", acceptance: "sometimes", actor: HUMAN }),
+        (err) => err.code === "VALIDATION_FAILED",
+      );
+    });
+  });
+
+  it("derives acceptance from the legacy review policy when none is given", async () => {
+    await board(({ commands }) => {
+      assert.equal(commands.createProject({ id: "r1", name: "R", reviewPolicy: "required", actor: HUMAN }).acceptance, "agent");
+      assert.equal(commands.createProject({ id: "r2", name: "R", reviewPolicy: "off", actor: HUMAN }).acceptance, "off");
+      assert.equal(commands.createProject({ id: "r3", name: "R", reviewPolicy: "optional", actor: HUMAN }).acceptance, "auto");
+    });
+  });
+
+  it("updates the acceptance default, and refuses an unknown one", async () => {
+    await board(({ commands }) => {
+      assert.equal(commands.updateProject({ id: "proj", patch: { acceptance: "off" }, actor: HUMAN }).acceptance, "off");
+      assert.throws(
+        () => commands.updateProject({ id: "proj", patch: { acceptance: "never" }, actor: HUMAN }),
+        (err) => err.code === "VALIDATION_FAILED",
+      );
+    });
+  });
+});

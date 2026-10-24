@@ -17,8 +17,8 @@
  *     predicate, it only classifies what `issue reconcile` reported.
  *   * **The reviewer reports; the loop moves.** A review card is a normal card
  *     (`kind=task`, `meta.review_of`, `meta.flow=B`) whose only job is to carry
- *     a `VERDICT:` report. Its owner never moves the original and never closes
- *     the review card — `autoAcceptReviews` is what lets the loop close it.
+ *     a `VERDICT:` report. Its owner never moves the original; the loop closes the
+ *     review card it dispatched.
  *   * **Fail-safe, never half-applied.** An unreadable verdict, a stale round or
  *     an original that cannot be seen produce an **alert and no action** — a
  *     review card left in `in_review` is recoverable on the next tick; a card
@@ -31,59 +31,46 @@
  */
 
 import {
-  ACCEPTANCE_POLICIES,
-  DEFAULT_ACCEPTANCE_POLICY,
   DEFAULT_REVIEW_AGING_MS,
   DEFAULT_WORKFLOW_MAX_ACTIONS,
   LOOP_ACCEPTOR,
   LOOP_AUTO_ACCEPTOR,
-  TASKD_KIND,
 } from "../../foundation/constants.mjs";
-import { reviewRequiredOf } from "./review-policy.mjs";
+import { normalizeCardAcceptance } from "./acceptance-mode.mjs";
 import { coverageOf, rollupGapOf } from "./acceptance.mjs";
-import { acceptanceAllows, acceptanceScopeOf } from "./status.mjs";
 
 // The two workflow defaults are shared with the loop's config resolver, so they
 // live in `foundation/constants.mjs` — one number, both sides. Re-exported here
 // because this module's public surface has always named them.
 export { DEFAULT_REVIEW_AGING_MS, DEFAULT_WORKFLOW_MAX_ACTIONS };
 
-/** The policy the loop believes the board runs, from its own config. */
-function acceptancePolicyOf(config) {
-  const value = String(config?.acceptancePolicy ?? "").trim().toLowerCase();
-  return ACCEPTANCE_POLICIES.includes(value) ? value : DEFAULT_ACCEPTANCE_POLICY;
-}
-
 /**
- * Is this original a **top-level** card?
+ * The card's acceptance mode — the **only** input to dispatch/auto-accept.
  *
- * The board sends `parent_id` on every task since 0025. A snapshot that does
- * not carry it reads as top-level, which is the conservative direction for a
- * human-only board: the loop holds instead of closing on the human's behalf.
- */
-function isTopLevel(task) {
-  return task?.parent_id === null || task?.parent_id === undefined;
-}
-
-/**
- * Does this card's own snapshot say it needs an independent review?
- *
- * This is the **only** input to dispatch/auto-accept. It never re-reads the
- * project policy: the card's decision was taken at creation and is stable.
+ * `auto` never appears on a card: the create resolver stores a concrete
+ * `off | agent | human`, so an unknown/legacy card falls back to `off` (the
+ * column default) rather than being guessed into a review.
  *
  * @param {object} task a wire task
- * @returns {boolean}
+ * @returns {"off"|"agent"|"human"}
  */
-export function reviewRequired(task) {
-  return reviewRequiredOf(task?.review_required);
+export function acceptanceModeOf(task) {
+  const explicit = normalizeCardAcceptance(task?.acceptance_mode ?? task?.acceptanceMode);
+  if (explicit !== null) return explicit;
+  // Compatibility for a snapshot written before 0037: the legacy integer was
+  // the review decision, so `1` is `agent` and `0` is `off`. (`human` cannot be
+  // recovered from the old column; the migration backfilled those cards.)
+  if (task?.review_required === true || Number(task?.review_required) === 1) return "agent";
+  return "off";
 }
 
-/** The acceptance scope of a wire task (child > review > top-level). */
-function scopeOf(task) {
-  return acceptanceScopeOf({
-    hasParent: task?.parent_id !== null && task?.parent_id !== undefined,
-    reviewCard: isReviewCard(task),
-  });
+/**
+ * The legacy predicate, kept as a compatibility export for one release:
+ * "this card requires an independent review" is exactly `mode === agent`.
+ * @param {object} task
+ */
+export function reviewRequired(task) {
+  return acceptanceModeOf(task) === "agent";
 }
 
 /**
@@ -503,7 +490,7 @@ export function planReviewDispatch(input = {}) {
     // consulted here: a card created before the policy changed keeps its
     // snapshot, and a manual review card on a `0` card is handled by its own
     // review card's outcome, not by dispatch.
-    if (!reviewRequired(task)) continue;
+    if (acceptanceModeOf(task) !== "agent") continue;
     const ref = String(task.identifier ?? "");
     if (ref === "" || skip.has(ref)) continue;
 
@@ -673,11 +660,10 @@ function reviewChecklist(task, ref) {
  * `identifier` (the runner reads each in-review review card's reports before
  * calling this).
  *
- * `autoAcceptReviews` gates exactly one thing: whether the loop closes the
- * review card itself. The verdict on the **original** is applied whenever the
- * workflow channel is on — otherwise a rejected card would wait for a human to
- * close the review card before it could be reworked, and the automation would
- * have no point.
+ * The loop always closes the review card it dispatched. The verdict on the
+ * **original** is applied whenever the workflow channel is on — otherwise a
+ * rejected card would wait for a human to close the review card before it could
+ * be reworked, and the automation would have no point.
  *
  * @param {{
  *   tasks?: object[],
@@ -691,12 +677,9 @@ function reviewChecklist(task, ref) {
 export function planReviewOutcomes(input = {}) {
   const tasks = Array.isArray(input.tasks) ? input.tasks : [];
   const verdicts = input.verdicts ?? {};
-  const autoAccept = input.config?.autoAcceptReviews !== false;
-  // `human-only` means the board expects the **human** to close a top-level
-  // original. The loop still applies the verdict (a comment and an idempotent
-  // marker) and still closes the review card — what it declines to do is move
-  // the original. Children are not held: a child is always the agents' to close.
-  const policy = acceptancePolicyOf(input.config);
+  // 0037 — the review card is always the loop's to close. `human` is a card
+  // mode, not a flag on the review's closure.
+  const closeReview = true;
   const now = instant(input.now);
   const agingMs =
     Number.isFinite(input.config?.reviewAgingMs) && input.config.reviewAgingMs > 0
@@ -739,8 +722,8 @@ export function planReviewOutcomes(input = {}) {
     }
 
     // The original is gone (canceled): the review has nothing to accept. Cleanup
-    // is not gated by `autoAcceptReviews` — there is no human decision left to
-    // make, and a terminal-by-cancellation original must not leave a live card.
+    // is unconditional — there is no human decision left to make, and a
+    // terminal-by-cancellation original must not leave a live card.
     if (original.status === "canceled") {
       actions.push({ type: "cancel_review", reviewStatus: review.status, reviewRef, originalRef, reason: "original_canceled" });
       continue;
@@ -770,7 +753,7 @@ export function planReviewOutcomes(input = {}) {
             reviewRef,
             originalRef,
             round: originalRound,
-            closeReview: autoAccept,
+            closeReview: true,
           });
         } else {
           actions.push({
@@ -780,26 +763,14 @@ export function planReviewOutcomes(input = {}) {
             originalRef,
             round,
             reason: "rework_applied",
-            closeReview: autoAccept,
+            closeReview: true,
           });
-          if (!autoAccept) {
-            alerts.push({ type: "review_awaiting_human_acceptance", review: reviewRef, original: originalRef });
-          }
         }
         continue;
       }
-      if (autoAccept) {
-        actions.push({ type: "close_review", reviewStatus: review.status, reviewRef, originalRef, round, reason: "round_mismatch", closeReview: true });
-      } else {
-        alerts.push({
-          type: "review_stale_round",
-          review: reviewRef,
-          original: originalRef,
-          round,
-          originalRound,
-          dedupKey: alertKey("review_stale", reviewRef, round, originalRound),
-        });
-      }
+      // 0037 — the review card is always the loop's to close; `human` is a card
+      // mode, not a flag on the review's closure.
+      actions.push({ type: "close_review", reviewStatus: review.status, reviewRef, originalRef, round, reason: "round_mismatch", closeReview: true });
       continue;
     }
 
@@ -859,10 +830,7 @@ export function planReviewOutcomes(input = {}) {
     }
 
     const findings = String(verdict.findings ?? "");
-    const closeReview = autoAccept;
-    if (!autoAccept) {
-      alerts.push({ type: "review_awaiting_human_acceptance", review: reviewRef, original: originalRef });
-    }
+    const closeReview = true;
 
     if (original.status === "in_review") {
       if (verdict.verdict === "APPROVE") {
@@ -912,31 +880,37 @@ export function planReviewOutcomes(input = {}) {
             continue;
           }
         }
-        // `human-only` + a top-level original: the loop records the verdict and
-        // stops. The human decides; the review card is still closed here so the
-        // human's own acceptance is not blocked by a review they already read.
-        // The hold is exactly "taskd may not complete this card under the board's
-        // acceptance policy". Reusing `acceptanceAllows` keeps the review outcome
-        // plan and the acceptance guard on one matrix: `human-only` + top-level
-        // holds; a child (and `both`/`agent-only`) does not.
-        const hold = !acceptanceAllows(TASKD_KIND, policy, scopeOf(original));
-        // The marker is written with the round the original is on now; a crash
-        // after the marker but before the review card's close is recovered on
-        // the next pass. The board decides that here so the loop's executor
-        // never needs the task snapshot.
-        const held =
-          String(original.meta?.review_verdict ?? "") === "approve" &&
-          String(original.meta?.review_verdict_round ?? "") === String(originalRound);
-        actions.push({
-          type: hold ? "approve_hold" : "approve",
-          reviewStatus: review.status,
-          reviewRef,
-          originalRef,
-          round: originalRound,
-          closeReview,
-          acceptedBy: LOOP_ACCEPTOR,
-          ...(hold ? { held } : {}),
-        });
+        // 0037 — only an `agent` original is moved by an APPROVE. An `off` or
+        // `human` card may carry an ad-hoc review card; its verdict is recorded
+        // on that card, and the review card is closed, but the original's own
+        // mode owns acceptance. The marker is written with the round the
+        // original is on now; a crash after it but before the close is recovered
+        // on the next pass.
+        if (acceptanceModeOf(original) === "agent") {
+          const held =
+            String(original.meta?.review_verdict ?? "") === "approve" &&
+            String(original.meta?.review_verdict_round ?? "") === String(originalRound);
+          actions.push({
+            type: "approve",
+            reviewStatus: review.status,
+            reviewRef,
+            originalRef,
+            round: originalRound,
+            closeReview,
+            acceptedBy: LOOP_ACCEPTOR,
+            ...(held ? { held } : {}),
+          });
+        } else {
+          actions.push({
+            type: "close_review",
+            reviewStatus: review.status,
+            reviewRef,
+            originalRef,
+            round: originalRound,
+            reason: "verdict_recorded",
+            closeReview,
+          });
+        }
         continue;
       }
       // Leaving `in_review` bumps the delivery round by exactly one
@@ -955,9 +929,9 @@ export function planReviewOutcomes(input = {}) {
           projectId: original.project_id ?? null,
           assigneeId: original.assignee_id ?? null,
           originalTitle: String(original.title ?? ""),
-          // The rework child inherits the container's review decision; the loop
-          // passes it as `--review yes|no` (a non-human creator must state it).
-          reviewRequired: reviewRequired(original),
+          // A fix child is a loop artifact: it is closed by the agent that
+          // repairs the container, never held for review or a human.
+          acceptanceMode: "off",
           findings,
           closeReview,
         });
@@ -1031,22 +1005,18 @@ export function planReviewOutcomes(input = {}) {
  * Decide which `in_review` cards can be closed directly because they do not
  * require an independent review.
  *
- * This is the "no review needed" half of the 0031 model. It is deliberately
- * separate from `autoAcceptReviews`: that flag only controls whether the loop
- * closes a **review card**; whether a no-review original may be completed is
- * decided by the board's acceptance policy, exactly as it is for any other
- * `done` write. The loop executes the plan as `taskd`.
+ * This is the `off` half of the 0037 model. Whether an `off` original may be
+ * completed is decided by its own acceptance mode, exactly as it is for any
+ * other `done` write. The loop executes the plan as `taskd`.
  *
  * Guards:
  *
  *   * a truncated board read accepts nothing — "there is no open review card"
  *     cannot be proven over an incomplete snapshot;
- *   * only flow-A, non-review, `review_required = 0` cards;
+ *   * only flow-A, non-review, `acceptance_mode = off` cards;
  *   * a current-round review card that is **not canceled** blocks — a human or
  *     the loop put the card into review on purpose, so the review outcome owns
  *     it. A canceled review released the key and does not block;
- *   * `taskd` must be allowed to accept this scope under the board policy
- *     (`acceptanceAllows`); `human-only` + top-level waits for a human;
  *   * `held` recovers a crash after the marker was written but before the move.
  *
  * @param {{
@@ -1073,7 +1043,6 @@ export function planAutoAccept(input = {}) {
     };
   }
 
-  const policy = acceptancePolicyOf(config);
   const reviewsByOriginal = new Map();
   for (const task of tasks) {
     if (!isReviewCard(task)) continue;
@@ -1089,7 +1058,7 @@ export function planAutoAccept(input = {}) {
     if (task?.status !== "in_review") continue;
     if (isReviewCard(task)) continue;
     if (flowOf(task) !== WORK_FLOW) continue;
-    if (reviewRequired(task)) continue;
+    if (acceptanceModeOf(task) !== "off") continue;
 
     const ref = String(task.identifier ?? "");
     if (ref === "" || skip.has(ref)) continue;
@@ -1103,16 +1072,6 @@ export function planAutoAccept(input = {}) {
     // Let its outcome (or a human) finish the card; auto-accepting over it would
     // defeat the review someone asked for.
     if (reviews.some((review) => review?.status !== "canceled")) continue;
-
-    if (!acceptanceAllows(TASKD_KIND, policy, scopeOf(task))) {
-      alerts.push({
-        type: "auto_accept_skipped",
-        reason: "human_only",
-        original: ref,
-        dedupKey: alertKey("auto_accept_skipped", ref, "human_only"),
-      });
-      continue;
-    }
 
     // 0033 — a container's evidence is its rollup, not its own (informational)
     // baseline. The planner holds the same rule as the write gate: a current
@@ -1291,25 +1250,6 @@ export function planWorkflowTick(input = {}) {
     });
   }
 
-  // Under `agent-only` a review card needs a non-human writer to reach `done`;
-  // with auto-accept off the loop never closes one either, so they accumulate
-  // until somebody notices. State the conflict while a card is actually stuck.
-  const policy = acceptancePolicyOf(config);
-  const autoAcceptReviews = config.autoAcceptReviews !== false;
-  const openReviews = tasks.filter(
-    (task) => isReviewCard(task) && task?.status === "in_review",
-  ).length;
-  if (policy === "agent-only" && !autoAcceptReviews && openReviews > 0) {
-    alerts.push({
-      type: "review_cards_unclosable",
-      reason: "agent_only_without_auto_accept",
-      policy,
-      autoAcceptReviews: false,
-      reviews: openReviews,
-      dedupKey: alertKey("review_cards_unclosable", policy, "auto_accept_off"),
-    });
-  }
-
   const count = (type) => actions.filter((action) => action.type === type).length;
   return {
     alerts,
@@ -1317,8 +1257,10 @@ export function planWorkflowTick(input = {}) {
     changes: reconcile.changes,
     summary: {
       reconciled: reconcile.changes.length,
-      approved: count("approve") + count("approve_hold"),
-      held: count("approve_hold"),
+      approved: count("approve"),
+      // Kept on the wire for older consumers; `human` is a card mode now, so
+      // the loop never holds an approval.
+      held: 0,
       rejected: count("reject_task") + count("reject_task_finish") + count("reject_epic"),
       dispatched: count("create_review"),
       autoAccepted: count("auto_accept"),

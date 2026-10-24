@@ -129,8 +129,13 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
  * @param {string|undefined|null} status
  * @returns {readonly string[]}
  */
-export function allowedTargets(status) {
-  return ALLOWED_TRANSITIONS[status] ?? Object.freeze([]);
+export function allowedTargets(status, task = null) {
+  const base = ALLOWED_TRANSITIONS[status] ?? Object.freeze([]);
+  // 0037 — an `off` card may go straight to done from in_progress.
+  if (status === "in_progress" && task?.acceptance_mode === "off" && !base.includes("done")) {
+    return Object.freeze([...base, "done"]);
+  }
+  return base;
 }
 
 /** @type {Record<string, any>} */
@@ -176,13 +181,6 @@ export const board = reactive({
    * a flag, because the watcher can start a second read before the first lands.
    */
   waitingPending: 0,
-  /**
-   * The board's acceptance policy (`human-only` | `both` | `agent-only`), read
-   * from `/meta` (`capabilities.acceptance.policy`). `both` is the fallback for
-   * a board that predates the capability — the historical rule, and the one
-   * under which a human still has acceptance work.
-   */
-  acceptancePolicy: "both",
 });
 
 /* --------------------------------------------------------------- accessors */
@@ -403,9 +401,7 @@ export const waitingTasks = computed(() => visibleTasks.value.filter(isAwaiting)
  * stream replaces a review card or a child, the original's row appears without
  * re-reading the original.
  */
-export const acceptanceTasks = computed(() =>
-  acceptanceWaitingTasks(board.tasks, board.acceptancePolicy),
-);
+export const acceptanceTasks = computed(() => acceptanceWaitingTasks(board.tasks));
 
 /**
  * The acceptance rows the assignee narrowing leaves.
@@ -1465,12 +1461,6 @@ export async function initBoard() {
   try {
     const meta = await api.meta();
     board.revision = Number(meta?.revision) || board.revision;
-    // The acceptance policy decides whether an `in_review` top-level card is a
-    // "waiting on me" item at all. A board that cannot read its policy reports
-    // `null`; fall back to the historical rule rather than hiding work.
-    const policy = meta?.capabilities?.acceptance?.policy;
-    board.acceptancePolicy =
-      policy === "human-only" || policy === "both" || policy === "agent-only" ? policy : "both";
   } catch {
     /* the board may be down; loadBoard reports it */
   }

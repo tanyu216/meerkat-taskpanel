@@ -24,15 +24,16 @@ import { loadProjects, selectProject } from "../../stores/board.js";
 import { createProjectOpen, pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
 
-const form = reactive({ name: "", prefix: "", review_policy: "optional", reviewer: "" });
+// 0037 — one acceptance default, `auto` unless the creator says otherwise.
+const form = reactive({ name: "", prefix: "", acceptance: "auto", reviewer: "" });
 const canSubmit = computed(() => form.name.trim() !== "" && form.prefix.trim() !== "");
-const reviewPolicies = ["required", "optional", "off"];
+const acceptances = ["auto", "off", "agent", "human"];
 
 watch(createProjectOpen, (open) => {
   if (open) {
     form.name = "";
     form.prefix = "";
-    form.review_policy = "optional";
+    form.acceptance = "auto";
     form.reviewer = "";
   }
 });
@@ -59,7 +60,7 @@ async function submit() {
     const data = await api.createProject({
       name: form.name.trim(),
       meta: { prefix: form.prefix.trim() },
-      review_policy: form.review_policy,
+      acceptance: form.acceptance,
       reviewer: form.reviewer.trim() || null,
     });
     await loadProjects();
@@ -106,9 +107,12 @@ async function submit() {
             <input v-model="form.prefix" class="input input-sm td-input td-mono w-full" type="text" maxlength="4" data-create-project-prefix :placeholder="$t('createProject.field.prefixHint')" />
           </label>
           <label class="flex flex-col gap-1 mb-3">
-            <span data-i18n="createProject.field.reviewPolicy">{{ $t("createProject.field.reviewPolicy") }}</span>
-            <select v-model="form.review_policy" class="select select-sm td-select w-full" data-create-project-review-policy>
-              <option v-for="policy in reviewPolicies" :key="policy" :value="policy">{{ $t(`createProject.reviewPolicy.${policy}`) }}</option>
+            <span data-i18n="createProject.field.acceptance">{{ $t("createProject.field.acceptance") }}</span>
+            <!-- 0037 — `data-create-project-review-policy` stays as the design's
+                 stable hook (B11's selector); the field it names is now the one
+                 acceptance vocabulary. -->
+            <select v-model="form.acceptance" class="select select-sm td-select w-full" data-create-project-acceptance data-create-project-review-policy>
+              <option v-for="acceptance in acceptances" :key="acceptance" :value="acceptance">{{ $t(`createProject.acceptance.${acceptance}`) }}</option>
             </select>
           </label>
           <label class="flex flex-col gap-1 mb-3">

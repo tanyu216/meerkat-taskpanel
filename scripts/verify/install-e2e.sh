@@ -89,7 +89,7 @@ step "taskctl issue create"
 CREATE_JSON="$(node "$CLI" --json issue create \
   --project demo \
   --title "Install e2e card" \
-  --review no \
+  --acceptance-mode off \
   --acceptance "the delivery gate refuses an empty report" \
   --label e2e \
   --assignee "$AGENT_ID")"

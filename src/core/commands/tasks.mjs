@@ -37,7 +37,11 @@ import {
 } from "../domain/delivery-gate.mjs";
 import { assertTransition, isReopen, isTerminalStatus } from "../domain/status.mjs";
 import { acceptanceKey, normalizeAcceptanceList } from "../domain/acceptance.mjs";
-import { resolveReviewRequired, reviewRequiredOf } from "../domain/review-policy.mjs";
+import {
+  assertCardAcceptance,
+  cardAcceptanceOf,
+  resolveCardAcceptance,
+} from "../domain/acceptance-mode.mjs";
 import {
   assertAwaitingReason,
   isAnsweredAfter,
@@ -197,16 +201,33 @@ export function createTask(ctx, input) {
       candidate.reviewRound = marker.reviewRound;
       if (marker.reviewOfId !== null) candidate.meta = mirrorReviewMeta(candidate.meta, marker);
 
-      // 0031 — the per-card review decision. The project row is the default; a
-      // review card is forced to 0; a deploy card is forced to 1. The result is
-      // the snapshot every later dispatch/acceptance decision reads.
-      candidate.reviewRequired = resolveReviewRequired({
-        policy: project.reviewPolicy,
-        requested: input.reviewRequired,
+      // 0037 — one acceptance decision. The project is the default, an explicit
+      // card value wins, a review card is always `off`, and an unresolved
+      // `auto` project falls back to `human`. The legacy `--review`
+      // (`review_required`) is still accepted as an alias for one release.
+      const projectAcceptance =
+        project.acceptance ??
+        (project.reviewPolicy === "required"
+          ? "agent"
+          : project.reviewPolicy === "off"
+            ? "off"
+            : "auto");
+      const requestedAcceptance =
+        input.acceptanceMode ??
+        (input.reviewRequired === true
+          ? "agent"
+          : input.reviewRequired === false
+            ? "off"
+            : undefined);
+      const resolvedAcceptance = resolveCardAcceptance({
+        projectAcceptance,
+        requested: requestedAcceptance,
         reviewCard: marker.reviewOfId !== null,
         kind: candidate.kind,
-        requireDecision: input.requireReviewDecision === true,
       });
+      candidate.acceptanceMode = resolvedAcceptance.mode;
+      // The legacy mirror moves with it: `agent` ⇔ 1, `off`/`human` ⇔ 0.
+      candidate.reviewRequired = resolvedAcceptance.mode === "agent" ? 1 : 0;
 
       // 0032 — freeze the acceptance baseline at creation. `meta.acceptance` is
       // the modern spelling; `acceptance_legacy` is the imported fallback. The
@@ -243,6 +264,7 @@ export function createTask(ctx, input) {
           identifier: task.identifier,
           status: task.status,
           priority: task.priority,
+          acceptance_mode: task.acceptanceMode,
           review_required: task.reviewRequired,
           review_policy: project.reviewPolicy ?? "optional",
           ...(task.idem === null ? {} : { idem: task.idem }),
@@ -295,8 +317,8 @@ function resolveReviewMarker(ctx, projectId, input, kind = TASK_KIND.TASK) {
   }
 
   // A review is a work card the reviewer can claim. An epic cannot be claimed,
-  // so an epic review card would never be woken — it would only age. `deploy`
-  // is claimable but not a review; everything but `task` is refused.
+  // so an epic review card would never be woken — it would only age; everything
+  // but `task` is refused.
   if (kind !== TASK_KIND.TASK) {
     throw new DomainError("VALIDATION_FAILED", {
       message: `a review card must be kind=task (got ${JSON.stringify(kind)})`,
@@ -468,63 +490,62 @@ function assertReviewOverrideReason(reason) {
 }
 
 /**
- * Apply the controlled `review_required` change.
+ * Apply the controlled acceptance-mode change.
  *
  * Asymmetric on purpose:
  *
- *   * `false → true` — any writer may escalate; it only adds a review.
- *   * `true → false` — a human only, with a reason, and only when no current
- *     round review card is still open. An agent must not be able to waive the
- *     check on its own work.
+ *   * `off → agent|human` — any writer may tighten; it only adds a gate.
+ *   * every other change — a human only. An agent must not be able to remove a
+ *     human gate or waive the review on its own work.
+ *   * leaving `agent` — needs a reason, and only when no current-round review
+ *     card is still open (an abandoned review blocks the waiver).
  *
  * Review cards and terminal cards are refused. The generic `updateCas` path
- * cannot reach this column (`reviewRequired` is not in `PATCHABLE`), so an
+ * cannot reach this column (`acceptanceMode` is not in `PATCHABLE`), so an
  * override always leaves this one activity row.
  *
  * @param {object} ctx
- * @param {{task: object, value: boolean, reason?: string, actor: object, now: string, ifVersion?: number}} input
+ * @param {{task: object, value: string, reason?: string, actor: object, now: string, ifVersion?: number}} input
  * @returns {object} the current task when the value did not change
  */
-function applyReviewOverride(ctx, input) {
+function applyAcceptanceOverride(ctx, input) {
   const { task, value, reason, actor, now, ifVersion } = input;
   if (task.reviewOfId !== null && task.reviewOfId !== undefined) {
     throw new DomainError("VALIDATION_FAILED", {
-      message: "a review card's review_required marker cannot be changed",
-      details: { field: "review_required", taskId: task.id, reviewOfId: task.reviewOfId },
+      message: "a review card's acceptance mode cannot be changed",
+      details: { field: "acceptance_mode", taskId: task.id, reviewOfId: task.reviewOfId },
     });
   }
   if (isTerminalStatus(task.status)) {
     throw new DomainError("VALIDATION_FAILED", {
-      message: `cannot change review_required on a ${task.status} card`,
-      details: { field: "review_required", status: task.status },
+      message: `cannot change acceptance mode on a ${task.status} card`,
+      details: { field: "acceptance_mode", status: task.status },
     });
   }
 
-  const currentValue = reviewRequiredOf(task.reviewRequired);
-  if (value === currentValue) return task;
+  const next = assertCardAcceptance(value, "acceptance_mode");
+  const current = cardAcceptanceOf(task.acceptanceMode);
+  if (next === current) return task;
 
-  let waiverReason = null;
-  if (value === true) {
-    const project = ctx.repos.projects.get(task.projectId);
-    if (project?.reviewPolicy === "off") {
-      throw new DomainError("VALIDATION_FAILED", {
-        message: "this project has review off; a card cannot opt in",
-        details: {
-          field: "review_required",
-          projectId: task.projectId,
-          policy: project.reviewPolicy,
-        },
-      });
-    }
-  } else {
-    if (actor.kind !== "human") {
-      throw new DomainError("ACCEPTANCE_FORBIDDEN", {
-        message: "only a human may waive a card's required review",
-        details: { field: "review_required", actorKind: actor.kind, actorId: actor.id },
-        hint: { fix: "a human can run this with --as-human, or let the review finish" },
-      });
-    }
-    waiverReason = assertReviewOverrideReason(reason);
+  const human = String(actor.kind ?? "") === "human";
+  const tightening = current === "off" && (next === "agent" || next === "human");
+  if (!human && !tightening) {
+    throw new DomainError("ACCEPTANCE_FORBIDDEN", {
+      message: "an agent may only tighten a card's acceptance mode (off → agent|human)",
+      details: {
+        field: "acceptance_mode",
+        from: current,
+        to: next,
+        actorKind: actor.kind,
+        actorId: actor.id,
+      },
+      hint: { fix: "a human can run this with --as-human" },
+    });
+  }
+
+  const leavesReview = current === "agent" && next !== "agent";
+  const overrideReason = leavesReview ? assertReviewOverrideReason(reason) : null;
+  if (leavesReview) {
     const open = currentRoundReviews(ctx, task).filter((review) => !isTerminalStatus(review.status));
     if (open.length > 0) {
       throw new DomainError("REVIEW_PENDING", {
@@ -541,9 +562,9 @@ function applyReviewOverride(ctx, input) {
     }
   }
 
-  const updated = ctx.repos.tasks.setReviewRequired({
+  const updated = ctx.repos.tasks.setAcceptanceMode({
     id: task.id,
-    value,
+    value: next,
     ifVersion,
     now,
   });
@@ -551,11 +572,11 @@ function applyReviewOverride(ctx, input) {
     taskId: updated.id,
     actorKind: actor.kind,
     actorId: actor.id,
-    event: "review_override",
+    event: "acceptance_override",
     changes: {
-      from: currentValue,
-      to: value,
-      ...(waiverReason === null ? {} : { reason: waiverReason }),
+      from: current,
+      to: next,
+      ...(overrideReason === null ? {} : { reason: overrideReason }),
     },
     createdAt: now,
   });
@@ -564,7 +585,7 @@ function applyReviewOverride(ctx, input) {
 
 /**
  * @param {object} ctx
- * @param {{id: string, ifVersion?: number, patch?: object, actor: object, assignee?: string, reporter?: string, forceCreate?: boolean, reviewRequired?: boolean, reason?: string}} input
+ * @param {{id: string, ifVersion?: number, patch?: object, actor: object, assignee?: string, reporter?: string, forceCreate?: boolean, acceptanceMode?: string, reviewRequired?: boolean, reason?: string}} input
  */
 export function updateTask(ctx, input) {
   const actor = actorOf(input.actor);
@@ -575,7 +596,16 @@ export function updateTask(ctx, input) {
       details: { field: "review_required", received: input.reviewRequired },
     });
   }
-  const reviewTarget = input.reviewRequired;
+  // 0037 — the new spelling wins; the legacy boolean is an alias for one
+  // release (`true → agent`, `false → off`).
+  const acceptanceTarget =
+    input.acceptanceMode !== undefined
+      ? assertCardAcceptance(input.acceptanceMode, "acceptance_mode")
+      : input.reviewRequired === true
+        ? "agent"
+        : input.reviewRequired === false
+          ? "off"
+          : undefined;
   const base = input.patch ?? {};
   // An assignee change is a patch in its own right, so the payload may be empty
   // as long as *something* ends up changing (checked once the dictionary has
@@ -751,9 +781,10 @@ export function updateTask(ctx, input) {
         }
       }
 
-      if (Object.keys(patch).length === 0 && reviewTarget === undefined && !acceptanceApplied) {
+      if (Object.keys(patch).length === 0 && acceptanceTarget === undefined && !acceptanceApplied) {
         throw new DomainError("VALIDATION_FAILED", {
-          message: "nothing to update: pass a patch, an assignee/reporter, --review, or an acceptance change",
+          message:
+            "nothing to update: pass a patch, an assignee/reporter, --acceptance-mode, or an acceptance change",
           details: {
             allowed: [
               "title",
@@ -763,7 +794,7 @@ export function updateTask(ctx, input) {
               "labels",
               "assignee",
               "reporter",
-              "review_required",
+              "acceptance_mode",
               "acceptance",
               "acceptance_drop",
             ],
@@ -782,10 +813,10 @@ export function updateTask(ctx, input) {
       // row. Doing it first means the generic patch's CAS runs against the
       // returned version, so the two writes cannot be split by another writer.
       let overrideApplied = false;
-      if (reviewTarget !== undefined) {
-        task = applyReviewOverride(ctx, {
+      if (acceptanceTarget !== undefined) {
+        task = applyAcceptanceOverride(ctx, {
           task,
-          value: reviewTarget,
+          value: acceptanceTarget,
           reason: input.reason,
           actor,
           now,
@@ -1228,7 +1259,13 @@ export function moveStatus(ctx, input) {
         });
       }
 
-      assertTransition(current.status, input.to, current.kind);
+      assertTransition(
+        current.status,
+        input.to,
+        current.kind,
+        current.acceptanceMode,
+        current.reviewOfId !== null && current.reviewOfId !== undefined,
+      );
 
       // 0034 — an agent entering `awaiting` must say what it is waiting for.
       // The question is stored as a `question` comment in this same transaction,
@@ -1587,8 +1624,8 @@ const NO_OPEN_EDGES = Object.freeze({ blockersOpen: 0, unblocksOpen: 0 });
  *
  * A candidate is:
  *   * `ready` — `todo`, assigned to `assignee`, **auto-claimable** (not an
- *     `epic`, not a `deploy`), and every `blocks` edge pointing at it (its
- *     `depends_on`) is `done`;
+ *     `epic`), and every `blocks` edge pointing at it (its `depends_on`) is
+ *     `done`;
  *   * `unassigned` — with `includeUnassigned: true`, a `todo`, auto-claimable,
  *     `depends_on`-done card with no assignee: the public pool any actor may
  *     claim (see `domain/claim.mjs#isAssignee`). This is the read a supervisor
@@ -1597,12 +1634,9 @@ const NO_OPEN_EDGES = Object.freeze({ blockersOpen: 0, unblocksOpen: 0 });
  *     holder after 30 minutes (`stale_same`) or anyone after 6 hours
  *     (`stale_any`) — the recovery pool.
  *
- * **Deployment cards are withheld** (T-20261013-232004): a `kind: deploy` card
- * runs against a live instance, so it is dispatched explicitly rather than
- * picked up by a poll. This read — the poll's read — never offers one, in any of
- * the three pools. The card stays claimable: the exclusion is
- * `domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`, a *read* rule, and the claim
- * gate deliberately does not refuse `deploy` (unlike `epic`, which it does).
+ * An `epic` is withheld from every pool: it is a container, not a unit of work
+ * (`domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`, and the claim gate refuses it
+ * too).
  *
  * Read-only: the returned rows are *never* claimed here; claiming still goes
  * through `claim` (and its steal/reuse semantics). The assignee is resolved the
@@ -1861,10 +1895,16 @@ export function canMove(ctx, input) {
   });
   if (!verdict.ok) return verdict;
   try {
-    assertTransition(task.status, input.to, task.kind);
+    assertTransition(
+      task.status,
+      input.to,
+      task.kind,
+      task.acceptanceMode,
+      task.reviewOfId !== null && task.reviewOfId !== undefined,
+    );
     // The structural half of the new gates is actor-independent, so the
-    // pre-flight answer can carry it. The acceptance policy and the review-ready
-    // check need the writer's declared kind, which `canMove` is not given — the
+    // pre-flight answer can carry it. The acceptance mode's *writer* rule and
+    // the review-ready check need the actor, which `canMove` is not given — the
     // write itself still refuses those.
     assertChildrenTerminal(ctx, task, input.to);
     if (input.to === STATUS.DONE) assertAcceptanceCoverage(ctx, task);

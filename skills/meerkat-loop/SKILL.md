@@ -29,17 +29,16 @@ The continue turn runs three deterministic passes, in this order:
    starts by default.
 2. **workflow** — the write channel. The **board** computes the plan and the
    **loop** applies it. For a flow-A
-   delivery whose `review_required` snapshot is 1, dispatch an independent
+   delivery whose card is `acceptance_mode: agent`, dispatch an independent
    reviewer, apply the reviewer's `VERDICT:` report to the original, and close
-   the review card last. A card at 0 is not dispatched: the plan emits
-   `auto_accept` and the loop closes the original directly (`loop-auto`).
+   the review card last. An `off` card is not dispatched: the plan emits
+   `auto_accept` and the loop closes the original directly (`loop-auto`). A
+   `human` card is left for a person.
    On by default; `--workflow=no` disables it.
    The reviewer is `project.reviewer ??` the deployment reviewer
-   (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent config). A `required`
-   project with no effective reviewer fails the loop at startup, and
-   `agent-only` + `autoAcceptReviews=no` is refused for the same reason.
-   `autoAcceptReviews` only controls whether the loop closes a **review card**;
-   it does not gate auto-accepting a no-review original.
+   (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent config). An `agent` card
+   with no effective reviewer fails the loop at startup: the board would have
+   dispatched a review nobody can claim.
 3. **poll** — scan, **export the card brief**, atomically claim, **enqueue the
    handoff**. It never spawns a worker: the resident project session does, as a
    subagent that inherits the project directory. Runs last so a review card
@@ -73,31 +72,27 @@ stays literal text and the rest of the prompt still carries the work.
 
 ### Who may close
 
-The board's acceptance policy is authoritative and arrives in the plan.
-`--acceptance` / `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` is an advisory local copy,
-printed at startup for diagnostics only.
+The card's own `acceptance_mode` is authoritative and arrives on the card. There is
+no board-level policy, and the loop keeps no local copy.
 
 <!-- acceptance-matrix:begin -->
-| Scope | `human-only` | `both` (default) | `agent-only` |
-|---|---|---|---|
-| `top_level` | human only | human or `taskd` | any non-human |
-| `review` card | human or `taskd` | human or `taskd` | any non-human |
-| `child` (has a parent) | any non-human | any non-human | any non-human |
+| Card mode | Review card | Who may move it to `done` |
+|---|---|---|
+| `off` | none | the deliverer (any actor kind), `taskd`, or a human; `in_progress → done` is allowed |
+| `agent` | yes — an agent reviewer | `taskd` (after a current-round `APPROVE`) or a human |
+| `human` | none | a human only |
+| a review card | — | a human or `taskd` — never the reviewer itself |
 <!-- acceptance-matrix:end -->
 
-In loop terms it closes every card the matrix lets `taskd` close. Under `human-only`
-a top-level `APPROVE` is **held** (`approve_hold`): record the verdict, close the
-review card, leave the original `in_review`. A **no-review** top-level card under
-`human-only` is left for the human (`auto_accept_skipped`, reason `human_only`);
-a child is auto-accepted in every policy. Under `agent-only` a human cannot close a
-review card, because the board's review scope allows only a non-human writer. The
-board skill's `references/review-workflow.md` is the semantic authority for the
-review card, the two rounds and the policy matrix; this skill describes **when** the
-loop dispatches and **how** it executes the plan.
-
-A held approval is idempotent: `review_verdict=approve` +
-`review_verdict_round` means a second pass rewrites neither the comment nor the
-marker. A worker always stops at `in_review`; review cards are never held.
+In loop terms it closes every card the matrix lets `taskd` close: an `agent`
+original after a current-round `APPROVE`, its review card, and an `off` card the
+plan auto-accepts. A `human` card is never accepted by the loop: record the
+evidence, stop, and let the person close it (`auto_accept_skipped`, reason
+`human_mode`). A worker always stops at `in_review`; review cards are never
+held — the loop always closes the card it dispatched. The board skill's
+`references/review-workflow.md` is the semantic authority for the review card and
+the two rounds; this skill describes **when** the loop dispatches and **how** it
+executes the plan.
 
 ### Event subscriber
 

@@ -94,7 +94,7 @@ describe("storage/migrations — 0035 drops report origin", () => {
       assert.equal(columnsOf(board.db, "task_reports").includes("origin"), true, "precondition: origin exists");
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0035", "0036"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0035", "0036", "0037", "0038"]);
 
       assert.equal(columnsOf(board.db, "task_reports").includes("origin"), false);
 

@@ -65,9 +65,7 @@ NO_AUTOMATION=""
 CLAIM_UNASSIGNED_FLAG=""
 RECOVER_STALE_FLAG=""
 WORKFLOW_FLAG=""
-AUTO_ACCEPT_REVIEWS_FLAG=""
 REVIEWER_FLAG=""
-ACCEPTANCE_FLAG=""
 PING_INTERVAL_FLAG=""
 CONTINUE_INTERVAL_FLAG=""
 CONTINUE_FLAG=""
@@ -112,17 +110,6 @@ Options:
   --reviewer <agent>
                     The independent reviewer that audits delivered cards. Unset
                     (the default) leaves deliveries for a human to accept.
-  --auto-accept-reviews=yes|no
-                    Let the loop close a review card after applying its verdict.
-                    Persisted to the agent config; default yes. `no` leaves the
-                    review card for a human.
-  --acceptance=human-only|both|agent-only
-                    Who may close a task. `human-only` accepts only a human on a
-                    top-level card; `both` (the default) a human or the loop;
-                    `agent-only` any non-human writer. Written to
-                    install-root .env (the board is authoritative) and to the
-                    agent config the loop reads. Asked interactively on a TTY.
-                    Alias: --acceptance-policy.
   --ping-interval <sec>
                     The liveness clock (default 60). It only prunes dead worker
                     pids from the registry: no board read, no LLM.
@@ -352,33 +339,6 @@ while [ "$#" -gt 0 ]; do
       REVIEWER_FLAG="${1#*=}"
       shift
       ;;
-    --auto-accept-reviews)
-      [ "$#" -ge 2 ] || die "--auto-accept-reviews requires a value (yes|no)"
-      AUTO_ACCEPT_REVIEWS_FLAG="$2"
-      shift 2
-      ;;
-    --auto-accept-reviews=*)
-      AUTO_ACCEPT_REVIEWS_FLAG="${1#*=}"
-      shift
-      ;;
-    --acceptance)
-      [ "$#" -ge 2 ] || die "--acceptance requires a value (human-only|both|agent-only)"
-      ACCEPTANCE_FLAG="$2"
-      shift 2
-      ;;
-    --acceptance=*)
-      ACCEPTANCE_FLAG="${1#*=}"
-      shift
-      ;;
-    --acceptance-policy)
-      [ "$#" -ge 2 ] || die "--acceptance-policy requires a value (human-only|both|agent-only)"
-      ACCEPTANCE_FLAG="$2"
-      shift 2
-      ;;
-    --acceptance-policy=*)
-      ACCEPTANCE_FLAG="${1#*=}"
-      shift
-      ;;
     --ping-interval)
       [ "$#" -ge 2 ] || die "--ping-interval requires a number of seconds"
       PING_INTERVAL_FLAG="$2"
@@ -601,7 +561,6 @@ echo "install.sh: claim unassigned tasks: $CLAIM_UNASSIGNED"
 # any agent kind is dispatched — a misspelt policy must install nothing.
 RECOVER_STALE="${RECOVER_STALE_FLAG:-${MEERKAT_TASKPANEL_RECOVER_STALE:-yes}}"
 WORKFLOW="${WORKFLOW_FLAG:-${MEERKAT_TASKPANEL_WORKFLOW:-yes}}"
-AUTO_ACCEPT_REVIEWS="${AUTO_ACCEPT_REVIEWS_FLAG:-${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-yes}}"
 REVIEWER="${REVIEWER_FLAG:-${MEERKAT_TASKPANEL_REVIEWER:-}}"
 case "$RECOVER_STALE" in
   yes | no) ;;
@@ -611,20 +570,9 @@ case "$WORKFLOW" in
   yes | no) ;;
   *) die "--workflow must be yes or no (got '$WORKFLOW')" ;;
 esac
-case "$AUTO_ACCEPT_REVIEWS" in
-  yes | no) ;;
-  *) die "--auto-accept-reviews must be yes or no (got '$AUTO_ACCEPT_REVIEWS')" ;;
-esac
 echo "install.sh: recover stale claims: $RECOVER_STALE"
 
-# Who may close a task. The board's own copy is written after the agent kinds, below;
-# this is the value every agent kind's config records for the loop.
-ACC_SAID="${ACCEPTANCE_FLAG:-${MEERKAT_TASKPANEL_ACCEPTANCE_POLICY:-}}"
-if ! ACCEPTANCE="$(acceptance_policy_value "$ACC_SAID" "$TTY")"; then
-  exit 2
-fi
-echo "install.sh: acceptance policy: $ACCEPTANCE"
-echo "install.sh: workflow: $WORKFLOW; reviewer: ${REVIEWER:-none}; auto-accept reviews: $AUTO_ACCEPT_REVIEWS"
+echo "install.sh: workflow: $WORKFLOW; reviewer: ${REVIEWER:-none}"
 
 # The scheduler's two clocks. The interval is rendered into the units, so it must
 # be known here; the continue switch is persisted and read by the entry itself.
@@ -736,9 +684,7 @@ FAIL $target — installer not found"
       MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="$CLAIM_UNASSIGNED" \
       MEERKAT_TASKPANEL_RECOVER_STALE="$RECOVER_STALE" \
       MEERKAT_TASKPANEL_WORKFLOW="$WORKFLOW" \
-      MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS="$AUTO_ACCEPT_REVIEWS" \
       MEERKAT_TASKPANEL_REVIEWER="$REVIEWER" \
-      MEERKAT_TASKPANEL_ACCEPTANCE_POLICY="$ACCEPTANCE" \
       MEERKAT_TASKPANEL_PING_INTERVAL="$PING_INTERVAL" \
       MEERKAT_TASKPANEL_CONTINUE_INTERVAL="$CONTINUE_INTERVAL" \
       MEERKAT_TASKPANEL_CONTINUE="$CONTINUE" \
@@ -772,48 +718,6 @@ done
 echo
 if ! install_taskd_guard; then
   echo "install.sh: the taskd guard step failed (see the message above)" >&2
-fi
-
-# The board's own copy of the policy. The agent config above is what the loop
-# *believes*; the install-root `.env` is what the board enforces, and it is the
-# same file the Access panel writes (the writer merges, never rewrites).
-if [ "$ACCEPTANCE" = "agent-only" ]; then
-  # Warnings, not refusals: *which* agent closes a card is the deployment's
-  # business, but each of these leaves the board with no automated closer at all.
-  if [ "$WORKFLOW" != "yes" ]; then
-    echo "install.sh: warning: agent-only with --workflow=no — nothing will close a delivered card" >&2
-  fi
-  if [ "$AUTO_ACCEPT_REVIEWS" != "yes" ]; then
-    echo "install.sh: warning: agent-only with --auto-accept-reviews=no — review cards will pile up for a human who may not close them" >&2
-  fi
-  if [ -z "$REVIEWER" ]; then
-    echo "install.sh: warning: agent-only with no --reviewer — deliveries will not be reviewed automatically" >&2
-  fi
-  if [ -n "$NO_AUTOMATION" ]; then
-    echo "install.sh: warning: agent-only with --no-automation — only an external agent can close a card" >&2
-  fi
-  loop_kind=""
-  for candidate in $TARGETS; do
-    case "$candidate" in
-      claude | codex | pi) loop_kind="1" ;;
-    esac
-  done
-  if [ -z "$loop_kind" ]; then
-    echo "install.sh: warning: agent-only with no loop agent kind installed — only an external agent can close a card" >&2
-  fi
-fi
-
-acceptance_env=()
-if [ -n "${MEERKAT_TASKPANEL_ENV_FILE:-}" ]; then
-  acceptance_env=(--env-file "$MEERKAT_TASKPANEL_ENV_FILE")
-fi
-if [ -n "$DRY_RUN" ]; then
-  echo "install.sh: would write TASKD_ACCEPTANCE_POLICY=$ACCEPTANCE to ${MEERKAT_TASKPANEL_ENV_FILE:-the install-root .env}"
-else
-  if ! node "$ROOT/scripts/install/lib/acceptance.mjs" write --policy "$ACCEPTANCE" ${acceptance_env[@]+"${acceptance_env[@]}"}; then
-    echo "install.sh: could not write the board's acceptance policy (see above)" >&2
-    status=1
-  fi
 fi
 
 echo

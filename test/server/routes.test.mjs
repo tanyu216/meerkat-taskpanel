@@ -328,6 +328,7 @@ describe("server/routes — the workflow plan on reconcile", () => {
         title: "Work awaiting review",
         assignee: "ada",
         assignee_kind: "agent",
+        acceptance_mode: "agent",
       }),
     );
     originalRef = original.task.identifier;
@@ -1661,7 +1662,7 @@ describe("server/routes — review policy (0031)", () => {
     assert.equal(result.body.error.code, "VALIDATION_FAILED");
   });
 
-  it("derives the task decision from the project, and requires an agent to state it", async () => {
+  it("derives the card mode from the project, and lets an explicit value win", async () => {
     dataOf(
       await call("POST", "/api/v1/projects", {
         id: "flow-required",
@@ -1676,6 +1677,7 @@ describe("server/routes — review policy (0031)", () => {
       }),
     );
     assert.equal(required.task.review_required, true);
+    assert.equal(required.task.acceptance_mode, "agent");
 
     dataOf(
       await call("POST", "/api/v1/projects", {
@@ -1684,25 +1686,28 @@ describe("server/routes — review policy (0031)", () => {
         review_policy: "optional",
       }),
     );
-    const omitted = await call(
-      "POST",
-      "/api/v1/tasks",
-      { project_id: "flow-optional", title: "agent omitted" },
-      AGENT,
+    // 0037 — an unresolved card under an `auto` project falls back to human.
+    const omitted = dataOf(
+      await call(
+        "POST",
+        "/api/v1/tasks",
+        { project_id: "flow-optional", title: "agent omitted" },
+        AGENT,
+      ),
     );
-    assert.equal(omitted.status, 400);
-    assert.equal(omitted.body.error.code, "VALIDATION_FAILED");
-    assert.equal(omitted.body.error.details?.field, "review_required");
+    assert.equal(omitted.task.acceptance_mode, "human");
+    assert.equal(omitted.task.review_required, false);
 
     const stated = dataOf(
       await call(
         "POST",
         "/api/v1/tasks",
-        { project_id: "flow-optional", title: "agent stated", review_required: true },
+        { project_id: "flow-optional", title: "agent stated", acceptance_mode: "off" },
         AGENT,
       ),
     );
-    assert.equal(stated.task.review_required, true);
+    assert.equal(stated.task.acceptance_mode, "off");
+    assert.equal(stated.task.review_required, false);
   });
 
   it("plans an auto_accept for a delivered card in an off project", async () => {

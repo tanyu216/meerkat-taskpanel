@@ -113,6 +113,8 @@ export const COMMANDS = [
         idem: flags.idem,
         allow_dup: flags.allowDup === true,
         target: flags.target,
+        // 0037 — the single acceptance decision; `--review` is the legacy alias.
+        acceptance_mode: flags.acceptanceMode,
         review_required: reviewRequired,
         review_of: flags.reviewOf,
         review_round: flags.reviewRound,
@@ -133,7 +135,7 @@ export const COMMANDS = [
       { flag: "assignee", key: "assignee", as: "string", value: "<name>", summary: "Resolved against the dictionary; an unknown name matches nothing (not everything)." },
       { flag: "assignee-id", key: "assigneeId", as: "string", value: "<id>", summary: "The structural spelling of --assignee; the two are refused together." },
       { flag: "parent", key: "parent", as: "string", value: "<ref>", summary: "Only the child cards of that parent (id or identifier)." },
-      { flag: "kind", key: "kind", as: "string", value: "<kind>", summary: "task|epic|deploy; an unknown kind is a VALIDATION_FAILED, not an empty page." },
+      { flag: "kind", key: "kind", as: "string", value: "<kind>", summary: "task|epic; an unknown kind is a VALIDATION_FAILED, not an empty page." },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true, summary: "Exact display name; repeatable, every label must be present." },
       { flag: "target", key: "target", as: "string", value: "<value>", summary: "The card's `meta.target`, compared as text." },
       { flag: "meta", key: "meta", as: "string", value: "<key>=<value>", repeat: true, summary: "Filter on the card's meta; repeatable, every pair must hold. The key must match [A-Za-z0-9_.-]+." },
@@ -254,7 +256,7 @@ export const COMMANDS = [
     usage:
       'issue update <id|identifier> [--title <text>] [--acceptance <text>]… ' +
       '[--drop-acceptance <text> --reason "<why>" --acceptance-revision <n>] ' +
-      '[--review yes|no [--reason "<why>"]]',
+      '[--acceptance-mode off|agent|human [--reason "<why>"]]',
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: projectFlags(TASK_OPS.update),
     async run(ctx) {
@@ -263,11 +265,17 @@ export const COMMANDS = [
       if (
         flags.reason !== undefined &&
         reviewRequired !== false &&
+        flags.acceptanceMode === undefined &&
         flags.acceptanceDrop === undefined
       ) {
-        throw usageError("issue update: --reason is only used with --review no or --drop-acceptance", {
-          fix: "pass --review no --reason \"<why>\" to waive a required review, or --drop-acceptance <text> --reason \"<why>\" to prune a baseline",
-        });
+        throw usageError(
+          "issue update: --reason is only used with --acceptance-mode, --review no, or --drop-acceptance",
+          {
+            fix:
+              'pass --acceptance-mode off --reason "<why>" to waive a review, ' +
+              'or --drop-acceptance <text> --reason "<why>" to prune a baseline',
+          },
+        );
       }
       // Every field is offered; `projectBody` drops the ones the caller did not
       // pass, so "nothing to update" stays measurable below.
@@ -281,6 +289,7 @@ export const COMMANDS = [
         acceptance: flags.acceptance,
         acceptance_drop: flags.acceptanceDrop,
         acceptance_revision: flags.acceptanceRevision,
+        acceptance_mode: flags.acceptanceMode,
         review_required: reviewRequired,
         reason: flags.reason,
       });
@@ -562,8 +571,7 @@ export const COMMANDS = [
     summary: "Replay the epic rules and, with --workflow, return the board's workflow plan.",
     usage:
       'issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] ' +
-      "[--auto-accept-reviews yes|no] [--review-aging-ms <n>] [--max-actions <n>] " +
-      "[--board-limit <n>]",
+      "[--review-aging-ms <n>] [--max-actions <n>] [--board-limit <n>]",
     positionals: [],
     flags: [
       {
@@ -584,13 +592,6 @@ export const COMMANDS = [
         as: "string",
         value: "<agent>",
         summary: "The independent reviewer the plan dispatches to.",
-      },
-      {
-        flag: "auto-accept-reviews",
-        key: "autoAcceptReviews",
-        as: "string",
-        value: "yes|no",
-        summary: "Let the loop close a review card after applying its verdict.",
       },
       {
         flag: "review-aging-ms",
@@ -615,19 +616,6 @@ export const COMMANDS = [
       },
     ],
     async run(ctx) {
-      const autoAccept =
-        ctx.flags.autoAcceptReviews === undefined
-          ? undefined
-          : ctx.flags.autoAcceptReviews === "yes"
-            ? true
-            : ctx.flags.autoAcceptReviews === "no"
-              ? false
-              : null;
-      if (autoAccept === null) {
-        throw usageError("issue reconcile: --auto-accept-reviews takes yes or no", {
-          fix: "pass --auto-accept-reviews yes, or --auto-accept-reviews no",
-        });
-      }
       const integerFlag = (name, value) => {
         if (value === undefined) return undefined;
         if (!/^\d+$/.test(String(value).trim())) {
@@ -641,7 +629,6 @@ export const COMMANDS = [
         dry_run: ctx.flags.dryRun === true,
         workflow: ctx.flags.workflow === true ? true : undefined,
         reviewer: ctx.flags.reviewer,
-        auto_accept_reviews: autoAccept,
         review_aging_ms: integerFlag("--review-aging-ms", ctx.flags.reviewAgingMs),
         max_actions: integerFlag("--max-actions", ctx.flags.maxActions),
         board_limit: integerFlag("--board-limit", ctx.flags.boardLimit),

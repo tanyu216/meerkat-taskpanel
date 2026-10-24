@@ -230,7 +230,7 @@ worker's own tool tree, resolve on that same set. If the agent CLI is not on `PA
 install time, the installer says so and renders node's directory alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
 | wake glue | `<agent-dir>/bin/wake-<actor-kind>.sh` | resolves the directory a worker for the card's project runs in (`local_path`, else `run_dir`) from the board skill's `projects.json` via the agent-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
-| agent config | `<agent-dir>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW`, `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS`, `MEERKAT_TASKPANEL_REVIEWER` and `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY`, the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE`, the concurrency cap's `MEERKAT_TASKPANEL_MAX_CONCURRENCY`, and the pool's `MEERKAT_TASKPANEL_RESIDENT`, `..._SESSION_MAX_AGE`, `..._SESSION_TURN_TIMEOUT`, `..._SESSION_POLL_MS`, `..._SESSION_POOL_MAX`, `..._PROJECT_CONCURRENCY`, `..._PROJECT_IDLE_MS` and `..._SUBAGENT_BACKGROUND`. Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
+| agent config | `<agent-dir>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW` and `MEERKAT_TASKPANEL_REVIEWER`, the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE`, the concurrency cap's `MEERKAT_TASKPANEL_MAX_CONCURRENCY`, and the pool's `MEERKAT_TASKPANEL_RESIDENT`, `..._SESSION_MAX_AGE`, `..._SESSION_TURN_TIMEOUT`, `..._SESSION_POLL_MS`, `..._SESSION_POOL_MAX`, `..._PROJECT_CONCURRENCY`, `..._PROJECT_IDLE_MS` and `..._SUBAGENT_BACKGROUND`. Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
 | log (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
@@ -470,20 +470,19 @@ lives (`MEERKAT_TASKPANEL_REPO=<checkout>`) — a key the installer adds when it
 missing, so an install made before that key existed still learns it (see
 [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)).
 
-The same merge rule covers the workflow channel's three keys, written with their defaults
-when the file is created and added only when missing on an upgrade:
+The same merge rule covers the workflow channel's two keys, written with their defaults when
+the file is created and added only when missing on an upgrade:
 
 ```ini
 MEERKAT_TASKPANEL_WORKFLOW=yes
-MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=yes
 MEERKAT_TASKPANEL_REVIEWER=
-MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=both
 ```
 
-The board's own copy — what it actually enforces — is `TASKD_ACCEPTANCE_POLICY` in the
-**install-root `.env`**, seeded by the installer (`<program root>/.env`, 0600) and the same
-file the Access panel and the client read. `both` is the default; `human-only` makes the loop
-hold a top-level approval for a human, and `agent-only` lets any non-human writer close a card.
+Acceptance is **not** install configuration any more (0037): each project stores a default
+(`auto | off | agent | human`) and each card a snapshot, both set through
+`taskctl project update <id> --acceptance …` / `issue create --acceptance-mode …`. The retired
+`TASKD_ACCEPTANCE_POLICY` key makes `taskd` refuse to start until it is removed — that refusal
+is deliberate, so a `human-only` board cannot silently become something else.
 The file is merged, never rewritten. The old `<dataDir>/taskd.env` is no longer read: move any
 keys it has into `.env`.
 
@@ -507,7 +506,7 @@ is the full contract.
 install.sh [--target claude|openclaw|codex|pi|opencode|cursor|server|all] [--prefix <home>]
            [--agent-name <name>] [--no-automation]
            [--claim-unassigned=yes|no] [--assignee-only] [--recover-stale=yes|no]
-           [--workflow=yes|no] [--reviewer <agent>] [--auto-accept-reviews=yes|no]
+           [--workflow=yes|no] [--reviewer <agent>]
            [--ping-interval <sec>] [--continue-interval <sec>] [--continue=yes|no]
            [--supervisor=enable|disable|status] [--supervisor-actor-kinds <list>]
            [--scheduler auto|launchd|systemd|cron]
@@ -528,7 +527,6 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|server|all] [--pre
 | `--recover-stale=yes\|no` | May the supervisor recover stale `in_progress` claims — the same holder after 30 minutes, any agent after 6 hours? Persisted to the agent config; default `yes`. |
 | `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — ask the board for the workflow plan (`issue reconcile --workflow`) and apply its review actions. Persisted to the agent config; default `yes`. `no` means the loop writes no card at all. |
 | `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the agent config. Unset (the default) disables **dispatch** only; a delivery then waits for a human to accept it. |
-| `--auto-accept-reviews=yes\|no` | Let the loop close a review card after applying its verdict. Persisted; default `yes`. `no` is the escape hatch: the verdict is still applied, but the review card stays in `in_review` for a human. |
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |
 | `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the agent kind with a bounded `Continue` prompt; that turn runs poll, patrol and workflow. |
 | `--continue=yes\|no` | Enable the continue turn. Persisted to the agent config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |

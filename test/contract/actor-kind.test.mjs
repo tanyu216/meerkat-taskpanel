@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import test, { describe, it } from "node:test";
 
 import { BOARD_ACTOR } from "../../src/core/commands/context.mjs";
-import { ACCEPTANCE_ACTOR_KINDS } from "../../src/core/domain/status.mjs";
+import { acceptanceAllows } from "../../src/core/domain/acceptance-mode.mjs";
 import { HUMAN_KIND, TASKD_KIND } from "../../src/foundation/constants.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -64,7 +64,12 @@ describe("contract/actor-kind — concrete writers, not vague roles", () => {
     assert.equal(HUMAN_KIND, "human");
     assert.equal(TASKD_KIND, "taskd");
     assert.deepEqual({ ...BOARD_ACTOR }, { kind: "taskd", id: "taskd" });
-    assert.deepEqual(ACCEPTANCE_ACTOR_KINDS, ["human", "taskd"]);
+    // 0037 — the pair an `agent`-mode card accepts (replacing the retired
+    // `ACCEPTANCE_ACTOR_KINDS` constant).
+    assert.deepEqual(
+      [HUMAN_KIND, TASKD_KIND].filter((kind) => acceptanceAllows(kind, "agent")),
+      ["human", "taskd"],
+    );
   });
 
   it("leaves no `system` or `agent` kind in a production write", () => {

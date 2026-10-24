@@ -674,26 +674,6 @@ export const HUMAN_KIND = "human";
 export const TASKD_KIND = "taskd";
 
 /**
- * The board's acceptance policies — "who may move a card to `done`".
- *
- * Declared in `foundation` because **both** sides of the board read the same
- * vocabulary: `src/core/domain/status.mjs` enforces it, and
- * `src/foundation/scheduling.mjs` resolves the loop's copy from its agent config
- * (which is what the loop believes before the board tells it otherwise).
- *
- *   * `human-only` — only a human accepts a top-level original;
- *   * `both` — a human or the board (`taskd`);
- *   * `agent-only` — any non-human writer.
- *
- * In every mode a human closes only **top-level** cards, and a review card is
- * closed by the human or the board (any non-human under `agent-only`).
- */
-export const ACCEPTANCE_POLICIES = Object.freeze(["human-only", "both", "agent-only"]);
-
-/** The policy used when none is configured (`both`, the historical rule). */
-export const DEFAULT_ACCEPTANCE_POLICY = "both";
-
-/**
  * The `meta.accepted_by` marker the workflow pass writes when the board's
  * automated acceptance (not a human) closes a card after a review verdict.
  * One source for the core decision, the SLA patrol and the loop's executor.

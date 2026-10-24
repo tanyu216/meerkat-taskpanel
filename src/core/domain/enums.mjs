@@ -9,6 +9,11 @@
  * This module is pure: no `node:` specifiers.
  */
 
+// 0038 folds `tasks.acceptance_mode` into the CREATE TABLE body during the
+// `deploy` rebuild, so the SQL-parity reader sees it and the vocabulary must be
+// declared below. `acceptance-mode.mjs` is pure and imports nothing from here.
+import { CARD_ACCEPTANCE_MODES } from "./acceptance-mode.mjs";
+
 /**
  * Canonical task statuses (F2 — the card's seven stage statuses, plus M1's
  * first-class `awaiting` overlay).
@@ -113,20 +118,15 @@ export const PRIORITY = Object.freeze({
 });
 
 /**
- * Task kinds. Only `epic` may be a parent (see `domain/relation.mjs`), and
- * `deploy` is a **work card that no automatic read may offer** (see
+ * Task kinds. Only `epic` may be a parent (see `domain/relation.mjs`) and only
+ * `epic` is withheld from the automatic candidate read (see
  * `domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`).
  *
- * `deploy` is the marker for a *deployment* card — work that runs against a live
- * instance rather than in the repository (rebuilding `dist`, restarting `taskd`,
- * a full `install.sh` run). It is a `kind` and not a label on purpose: `kind` is
- * the vocabulary the schema, the enum-parity contract and the claim rules all
- * already read, so the marker is checkable at every layer — exactly the shape
- * `epic` uses. It is **not** a third claimability rule: a `deploy` card stays
- * claimable by an explicit dispatch, it is only withheld from the *automatic*
- * candidate read (the difference from `epic`, which is never claimable at all).
+ * 0037 retired `deploy` from the card model. Whether a card belongs to a
+ * release line — and what confirming that means — is the loop's own decision;
+ * a card that needs an independent gate says so with `acceptance_mode: agent`.
  */
-export const TASK_KINDS = Object.freeze(["task", "epic", "deploy"]);
+export const TASK_KINDS = Object.freeze(["task", "epic"]);
 
 /**
  * Named access to the kinds. Callers that mean "the grouping card" say
@@ -136,7 +136,6 @@ export const TASK_KINDS = Object.freeze(["task", "epic", "deploy"]);
 export const TASK_KIND = Object.freeze({
   TASK: "task",
   EPIC: "epic",
-  DEPLOY: "deploy",
 });
 
 /**
@@ -147,10 +146,9 @@ export const TASK_KIND = Object.freeze({
  *   * `optional` — the creator decides per card (the default);
  *   * `off` — no card is born requiring review.
  *
- * This is deliberately **not** the board's acceptance policy (`human-only` /
- * `both` / `agent-only`, in `foundation/constants.mjs`): the review policy says
- * *whether* an independent review is needed, the acceptance policy says *who*
- * may close the card. The two are orthogonal.
+ * 0037 replaced this axis with the card's `acceptance_mode`; the column survives
+ * one release as the legacy spelling (`required → agent`, `off → off`), and this
+ * vocabulary is read only by the compatibility wrapper in `review-policy.mjs`.
  *
  * The matching `CHECK` is added by 0031 via `ALTER TABLE … ADD COLUMN`, which
  * the SQL-parity reader does not see (the `blocked_reason` precedent above), so
@@ -279,10 +277,10 @@ export const ACTIVITY_EVENTS = Object.freeze([
   // prune a human performs with a reason.
   "acceptance_changed",
   "acceptance_pruned",
-  // A card's review requirement was changed after creation (an agent escalating
-  // it, or a human waiving it with a reason). The card column is the decision;
-  // this event is the audit trail for changing that decision.
-  "review_override",
+  // A card's acceptance mode was changed after creation (an agent tightening
+  // it, or a human waiving a review with a reason). The card column is the
+  // decision; this event is the audit trail for changing that decision.
+  "acceptance_override",
   // The container's own start: a child entered the work and the board moved
   // its epic `todo → in_progress` (an automated move, never a claim).
   "epic_auto_start",
@@ -333,6 +331,9 @@ export const SQL_ENUM_SETS = Object.freeze({
   // covered `task_reports.origin` before 0035 removed it. `BLOCKED_REASONS`
   // above owns the vocabulary.
   "tasks.blocked_reason": BLOCKED_REASONS,
+  // 0038 — 0037 added `acceptance_mode` by ALTER (invisible to the reader);
+  // the `deploy` rebuild moves it into the CREATE body, so it is declared here.
+  "tasks.acceptance_mode": CARD_ACCEPTANCE_MODES,
   "task_relations.relation_type": RELATION_TYPES,
   "comments.kind": COMMENT_KINDS,
   "attachments.kind": ATTACHMENT_KINDS,

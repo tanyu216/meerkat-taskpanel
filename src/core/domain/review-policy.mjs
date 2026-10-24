@@ -11,13 +11,12 @@
  *     state the decision; a human/UI caller may omit it and gets "no review".
  *
  * A **review card** is always `0`: a review is flow B and can never be dispatched
- * for another review. `kind = deploy` is always `1` — an integration card moves
- * the release line, so the review is not optional for it even in an `off`
- * project.
+ * for another review.
  *
- * The result is stored on the task as `review_required` and is the only value the
- * dispatch/auto-accept/done gates read afterwards. It is a snapshot: a later
- * project-policy change does not rewrite cards already in flight.
+ * 0037 replaced this axis with `domain/acceptance-mode.mjs`; the wrapper and the
+ * `review_required` column survive one release, and every new write derives one
+ * from the other. The legacy result is a snapshot: a later project change does
+ * not rewrite cards already in flight.
  *
  * Pure: no `node:` specifiers.
  */
@@ -26,7 +25,6 @@ import { DomainError } from "../../foundation/errors.mjs";
 import {
   DEFAULT_REVIEW_POLICY,
   REVIEW_POLICIES,
-  TASK_KIND,
 } from "./enums.mjs";
 
 /**
@@ -125,7 +123,6 @@ export function reviewRequiredOf(value) {
 export function resolveReviewRequired(input = {}) {
   const requested = resolveRequested(input.requested);
   const reviewCard = input.reviewCard === true;
-  const kind = input.kind ?? TASK_KIND.TASK;
 
   // A review card is never a review target, whatever the project says.
   if (reviewCard) {
@@ -139,19 +136,6 @@ export function resolveReviewRequired(input = {}) {
     return 0;
   }
 
-  // A deployment/integration card always carries a review; it is the one card
-  // whose acceptance can change the release line.
-  if (kind === TASK_KIND.DEPLOY) {
-    if (requested === false) {
-      throw new DomainError("VALIDATION_FAILED", {
-        message: "a deploy card always requires review",
-        details: { field: "review_required", received: false, kind },
-        hint: { fix: "omit --review no for a deploy card; it is reviewed by policy" },
-      });
-    }
-    return 1;
-  }
-
   const policy = normalizeReviewPolicy(input.policy) ?? DEFAULT_REVIEW_POLICY;
   switch (policy) {
     case "required":
@@ -159,7 +143,7 @@ export function resolveReviewRequired(input = {}) {
         throw new DomainError("VALIDATION_FAILED", {
           message: "this project requires review; a card cannot opt out at creation",
           details: { field: "review_required", received: false, policy },
-          hint: { fix: "omit --review no; the project policy sets it" },
+          hint: { fix: "pass --acceptance-mode agent|human instead of opting out" },
         });
       }
       return 1;
@@ -169,7 +153,7 @@ export function resolveReviewRequired(input = {}) {
         throw new DomainError("VALIDATION_FAILED", {
           message: "this project has review off; a card cannot opt in at creation",
           details: { field: "review_required", received: true, policy },
-          hint: { fix: "omit --review yes; the project policy sets it" },
+          hint: { fix: "pass --acceptance-mode instead; the vocabulary is off|agent|human" },
         });
       }
       return 0;
@@ -186,7 +170,7 @@ export function resolveReviewRequired(input = {}) {
             "this project's review policy is optional; an agent must state whether the card " +
             "needs an independent review",
           details: { field: "review_required", policy },
-          hint: { fix: "pass --review yes or --review no" },
+          hint: { fix: "pass --acceptance-mode off|agent|human" },
         });
       }
       return 0;

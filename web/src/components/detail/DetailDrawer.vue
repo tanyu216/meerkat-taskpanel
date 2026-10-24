@@ -1362,12 +1362,12 @@ function copyId() {
             <span class="td-mono" data-detail-project-label>{{ projectLabel }}</span>
           </button>
 
-          <!-- 0031 — the card's review decision. Read-only: the decision is set
-               at creation and changed through the audited `--review` override,
-               not by a drawer edit. -->
+          <!-- 0031/0037 — the card's acceptance mode. Read-only: the mode is
+               resolved at creation and changed through the audited
+               `--acceptance-mode` override, not by a drawer edit. -->
           <span class="td-prop-label" data-i18n="review.label">{{ $t("review.label") }}</span>
-          <span class="td-prop-value" data-detail-review-required :data-review-required="task?.review_required === true ? 'true' : 'false'">
-            {{ task?.review_required === true ? $t("review.required") : $t("review.optional") }}
+          <span class="td-prop-value" data-detail-acceptance-mode :data-acceptance-mode="task?.acceptance_mode ?? 'off'">
+            {{ $t(`review.mode.${task?.acceptance_mode ?? 'off'}`) }}
           </span>
 
           <span class="td-prop-label" data-i18n="prop.labels">{{ $t("prop.labels") }}</span>
