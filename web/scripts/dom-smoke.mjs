@@ -5319,7 +5319,6 @@ export async function run() {
       "session_closed",
       "progress",
       "label_gc",
-      "anomaly",
       "project_created",
       "project_updated",
       "attachment_updated",

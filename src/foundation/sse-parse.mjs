@@ -12,7 +12,7 @@ export const SSE_MAX_BUFFER = 1024 * 1024;
 
 /**
  * @param {{maxBuffer?: number}} [options]
- * @returns {{push: (chunk: string) => object[], end: () => void, buffered: () => number, retry: () => number|null}}
+ * @returns {{push: (chunk: string) => object[], end: () => void, retry: () => number|null}}
  */
 export function createSseParser(options = {}) {
   const maxBuffer = options.maxBuffer ?? SSE_MAX_BUFFER;
@@ -81,9 +81,6 @@ export function createSseParser(options = {}) {
       data = [];
       event = "";
       id = null;
-    },
-    buffered() {
-      return buffer.length;
     },
     retry() {
       return retry;

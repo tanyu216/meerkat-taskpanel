@@ -103,7 +103,7 @@ describe("storage/migrations — 0031 review policy and decision", () => {
       applyMigrations(board.db, { dir: before0031() });
       seed(board.db);
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0031", "0032", "0033", "0034", "0035", "0036"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0031", "0032", "0033", "0034", "0035", "0036", "0037"]);
 
       const project = board.db
         .prepare("SELECT review_policy, reviewer FROM projects WHERE id = 'p1'")

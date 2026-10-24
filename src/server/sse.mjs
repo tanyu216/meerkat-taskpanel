@@ -20,10 +20,10 @@
  *     filtered out of the stream because it changes nothing a board renders
  *     (§4.3: "排除纯心跳").
  *
- * The cursor is `(revision, id)`. `revision` is what a client quotes back in
- * `?after=`; `id` is monotonic and gap-free, which is what the *server* advances
- * by while it is connected — an increment that shares a revision with one
- * already sent can never be skipped.
+ * The cursor is the activity's `revision`. `recordActivity` records the value
+ * its own insert produced, so revisions are unique and strictly increasing:
+ * `revision > cursor` is the whole contract, and a row written before its state
+ * change (the acceptance prune) can never be skipped.
  */
 
 import { currentRevision } from "../core/index.mjs";
@@ -58,8 +58,9 @@ export function formatEvent(activity) {
  * activity and must never be mistaken for one. A client that wants it asks for
  * it by name; a client that does not is unaffected. It carries no `id:`, so a
  * client cannot advance its cursor past events it has not seen.
+ *
+ * The constant lives in `foundation/constants.mjs`; this module only formats it.
  */
-export { SSE_SHUTDOWN_EVENT };
 
 /** @param {string} reason */
 export function formatShutdown(reason) {
@@ -74,9 +75,10 @@ export function formatShutdown(reason) {
  *   board: {db: object, repos: object},
  *   after?: number|null,          // replay increments newer than this revision
  *   pollMs?: number, heartbeatMs?: number, retryMs?: number, replayLimit?: number,
- *   onClose?: () => void,         // told once, whenever the stream ends
+ *   onClose?: () => void,         // whenever the stream ends; must be idempotent
+ *   onError?: (err: unknown) => void, // a read failed; the stream is closed
  * }} input
- * @returns {{cursor: {revision: number, id: number}, flush: () => number, close: (reason?: string|null) => void}}
+ * @returns {{close: (reason?: string|null) => void}}
  */
 export function openEventStream(input) {
   const {
@@ -88,10 +90,19 @@ export function openEventStream(input) {
     retryMs = SSE_RETRY_MS,
     replayLimit = SSE_REPLAY_LIMIT,
     onClose = null,
+    onError = null,
   } = input;
 
-  const cursor = { revision: after ?? currentRevision(board.db), id: 0 };
+  const cursor = { revision: after ?? currentRevision(board.db) };
   let closed = false;
+  /** `res.write` said its buffer is full; wait for `drain` before writing more. */
+  let paused = false;
+  /** One drain at a time: the poll timer and the initial replay may collide. */
+  let flushing = false;
+  let poll = null;
+  let beat = null;
+  /** `res.end()` happens once, whichever path (peer, error, server stop) closes. */
+  let ended = false;
 
   res.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
@@ -103,11 +114,15 @@ export function openEventStream(input) {
   res.write(`retry: ${retryMs}\n\n`);
   res.write(`: connected revision=${cursor.revision}\n\n`);
 
+  /**
+   * Write one frame. `false` means "not now": either the peer is gone (the
+   * `closed` flag is set by a throw) or the socket buffer is full (the caller
+   * pauses and resumes on `drain`).
+   */
   const write = (text) => {
     if (closed) return false;
     try {
-      res.write(text);
-      return true;
+      return res.write(text) !== false;
     } catch {
       // A peer that vanished mid-write is not an error worth propagating; the
       // `close` handler tears the timers down either way.
@@ -117,69 +132,112 @@ export function openEventStream(input) {
   };
 
   /**
-   * Drain every activity newer than the cursor.
-   *
-   * Two queries, one contract: the first pass after a reconnect filters by
-   * *revision* (what the client quoted), every pass after by *id* (the
-   * gap-free number the server owns). Because revision is non-decreasing in id,
-   * the second pass picks up exactly where the first left off.
-   *
-   * @returns {number} how many activity rows were consumed (including noise)
-   */
-  const flush = () => {
-    let consumed = 0;
-    for (;;) {
-      const filter = consumed === 0 && cursor.id === 0
-        ? { afterRevision: cursor.revision, limit: replayLimit }
-        : { afterId: cursor.id, limit: replayLimit };
-      const rows = board.repos.activities.list(filter);
-      if (rows.length === 0) break;
-      for (const activity of rows) {
-        if (activity.id > cursor.id) cursor.id = activity.id;
-        if (activity.revision > cursor.revision) cursor.revision = activity.revision;
-        if (!isNoiseActivity(activity)) write(formatEvent(activity));
-      }
-      consumed += rows.length;
-      if (rows.length < replayLimit) break;
-    }
-    return consumed;
-  };
-
-  // A client that quoted a revision gets the missed increments *before* the
-  // stream goes live, so a reconnect never has a gap it must close itself.
-  if (after !== null) flush();
-
-  const poll = setInterval(flush, pollMs);
-  const beat = setInterval(() => write(`: ping ${Date.now()}\n\n`), heartbeatMs);
-  if (typeof poll.unref === "function") poll.unref();
-  if (typeof beat.unref === "function") beat.unref();
-
-  /**
    * End the stream.
    *
    * `reason` is given by a caller that is *stopping the server* rather than
    * reacting to a client: the client is then told why, with a named frame, so it
    * can tell "the daemon is going down" from "your network broke" and reconnect
    * on a different schedule (T-20261014-213238). A client-initiated end passes
-   * nothing and writes nothing — the peer is already gone.
+   * nothing and writes nothing — the peer is already gone. A read failure is
+   * also silent on the wire: a `shutdown` frame would reset the client's
+   * backoff and make a broken board a hot reconnect loop.
    */
   const close = (reason = null) => {
-    if (!closed) {
-      if (reason !== null) write(formatShutdown(reason));
-      closed = true;
-      clearInterval(poll);
-      clearInterval(beat);
+    if (!closed && reason !== null) write(formatShutdown(reason));
+    closed = true;
+    // `write` may already have marked us closed (a vanished peer); the response
+    // still has to be ended, or the socket is left half-open.
+    if (!ended) {
+      ended = true;
       try {
         res.end();
       } catch {
         /* already gone */
       }
     }
-    // Called even when the stream was already closed: a registry that added us
-    // before the end must not be left holding a dead entry, and deleting twice
-    // is free.
+    // Timers are cleared even when `write` already marked us closed (a vanished
+    // peer): otherwise a dead stream would keep a poll timer alive forever.
+    if (poll !== null) {
+      clearInterval(poll);
+      poll = null;
+    }
+    if (beat !== null) {
+      clearInterval(beat);
+      beat = null;
+    }
+    // Called even when the stream was already closed, and possibly more than
+    // once (the response's own `close` event re-enters this function): a
+    // registry that added us before the end must not be left holding a dead
+    // entry, so the callback has to be idempotent — `streams.delete` is.
     if (typeof onClose === "function") onClose();
   };
+
+  /**
+   * Drain every activity newer than the cursor.
+   *
+   * One query shape, one contract: `revision > cursor`. Revisions are unique
+   * and strictly increasing, so a page never overlaps the previous one. A full
+   * page yields to the event loop before the next one — a long reconnect replay
+   * must not block every other request. A page that makes no cursor progress is
+   * malformed (or a raw row with a NULL revision); stop rather than spin.
+   */
+  const flush = async () => {
+    if (closed || paused || flushing) return;
+    flushing = true;
+    try {
+      for (;;) {
+        if (closed || paused) break;
+        const before = cursor.revision;
+        const rows = board.repos.activities.list({
+          afterRevision: cursor.revision,
+          limit: replayLimit,
+          order: "revision",
+        });
+        if (rows.length === 0) break;
+
+        for (const activity of rows) {
+          if (closed) break;
+          const revision = Number(activity.revision);
+          if (!Number.isFinite(revision) || revision <= cursor.revision) continue;
+          const noise = isNoiseActivity(activity);
+          const ok = noise ? true : write(formatEvent(activity));
+          cursor.revision = revision;
+          if (!ok) {
+            // A throw already set `closed`; only a full buffer is resumable.
+            if (closed) close();
+            else paused = true;
+            break;
+          }
+        }
+
+        if (closed || paused) break;
+        if (rows.length < replayLimit) break;
+        if (cursor.revision === before) break; // no progress: do not spin
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    } catch (err) {
+      if (typeof onError === "function") onError(err);
+      close();
+    } finally {
+      flushing = false;
+    }
+  };
+
+  // Timers first, so a failure in the initial replay's `close()` can clear
+  // them; listeners before any async work, so a hang-up or a full socket during
+  // that replay is seen rather than missed.
+  poll = setInterval(() => void flush(), pollMs);
+  beat = setInterval(() => {
+    if (!paused) write(`: ping ${Date.now()}\n\n`);
+  }, heartbeatMs);
+  if (typeof poll.unref === "function") poll.unref();
+  if (typeof beat.unref === "function") beat.unref();
+
+  res.on("drain", () => {
+    if (closed) return;
+    paused = false;
+    void flush();
+  });
   // `res`, not `req`: the response is what stays open for the life of the
   // stream, and it emits `close` on a client abort on every supported Node.
   // (An `IncomingMessage` 'close' can fire as soon as the request is fully
@@ -187,7 +245,11 @@ export function openEventStream(input) {
   res.on("close", () => close());
   res.on("error", () => close());
 
-  return { cursor, flush, close };
+  // A client that quoted a revision gets the missed increments *before* the
+  // stream goes live, so a reconnect never has a gap it must close itself.
+  if (after !== null) void flush();
+
+  return { close };
 }
 
 /**

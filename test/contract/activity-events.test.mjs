@@ -16,7 +16,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { describe, it } from "node:test";
 
-import { ACTIVITY_EVENTS } from "../../src/core/domain/enums.mjs";
+import { ACTIVITY_EVENTS, HISTORICAL_ACTIVITY_EVENTS } from "../../src/core/domain/enums.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const SRC = join(ROOT, "src");
@@ -78,8 +78,9 @@ describe("contract/activity-events — the catalogue and its writers agree", () 
   it("has exactly one vocabulary: no undeclared writer, no unwritten word", () => {
     // `progress` and `import_completed` were written by the markdown importer. That
     // importer is gone; the names stay declared so activity rows it already wrote
-    // remain readable, and this list is what keeps a second writer from appearing.
-    const historical = new Set(["progress", "import_completed"]);
+    // remain readable. The set lives in the domain enum so every consumer gate
+    // reads the same one.
+    const historical = new Set(HISTORICAL_ACTIVITY_EVENTS);
     const found = producers();
     const declared = new Set(ACTIVITY_EVENTS);
     const undeclared = [...found].filter(([name]) => !declared.has(name)).map(([name, at]) => `${name} at ${at}`);

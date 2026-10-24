@@ -5,7 +5,7 @@
  * it over loopback HTTP. Since M6 the whole §5.1 table is here — the command
  * surface, `/health` and `/meta`, plus the three things only a *board* needs:
  *
- *   * **`/api/v1/events`** — SSE over `global_revision` (`sse.mjs`);
+ *   * **`/api/v1/events`** — SSE over the `task_activities` cursor (`sse.mjs`);
  *   * **static hosting** of `web/dist` when the frontend has been built
  *     (`static.mjs`); absence is normal and must not be an error;
  *   * **the board projection** — `/projects` ordered by the DESIGN.md §20 weight
@@ -392,6 +392,18 @@ export async function createTaskd(options = {}) {
         // Registered so `close()` can end it deliberately; forgotten by the
         // stream itself, whichever side ends it.
         onClose: () => streams.delete(stream),
+        // A read failure must not become an unhandled exception in the poll
+        // timer; the stream closes itself and the client reconnects.
+        ...(typeof logger === "function"
+          ? {
+              onError: (err) =>
+                logger({
+                  event: "sse_stream_failed",
+                  code: err?.code ?? null,
+                  message: err?.message ?? String(err),
+                }),
+            }
+          : {}),
       });
       streams.add(stream);
       // The response may have ended between `openEventStream` and this line (a

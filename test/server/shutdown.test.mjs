@@ -30,8 +30,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
 
+import { SSE_SHUTDOWN_EVENT } from "../../src/foundation/constants.mjs";
 import { SHUTDOWN_GRACE_MS, closeServer, createTaskd } from "../../src/server/index.mjs";
-import { SSE_SHUTDOWN_EVENT, formatShutdown } from "../../src/server/sse.mjs";
+import { formatShutdown } from "../../src/server/sse.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const tempDirs = [];

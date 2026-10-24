@@ -63,10 +63,44 @@ export const DISPATCH_EVENTS = Object.freeze([
   "task_delivered",
   "report_written",
   "report_waived",
-  "epic_auto_start",
   "relation_added",
   "relation_removed",
   "import_completed",
+]);
+
+/**
+ * The declared events that deliberately do not wake a turn.
+ *
+ * `task_updated` is absent: its decision is field-dependent (below).
+ * `test/contract/activity-consumers.test.mjs` asserts that every declared,
+ * non-historical event is in exactly one of this list, `DISPATCH_EVENTS`, or
+ * the `task_updated` field rule — a new board event cannot be forgotten here.
+ *
+ * `epic_auto_start` is board-authored (`taskd`), which `isOwnWrite` already
+ * suppresses; listing it as a dispatch was a contradiction, not a behaviour.
+ * `task_resumed` is ignored on purpose for now: the human's `comment_added`
+ * already refreshes the brief, and the next continue clock picks the returned
+ * card up. Whether it should wake a turn immediately is a product decision.
+ */
+export const IGNORED_EVENTS = Object.freeze([
+  "project_created",
+  "project_updated",
+  "task_claimed",
+  "task_heartbeat",
+  "task_resumed",
+  "task_archived",
+  "acceptance_changed",
+  "acceptance_pruned",
+  "review_override",
+  "epic_auto_start",
+  "comment_added",
+  "label_gc",
+  "session_registered",
+  "session_closed",
+  "progress",
+  "attachment_added",
+  "attachment_updated",
+  "attachment_removed",
 ]);
 
 /**
@@ -106,6 +140,10 @@ export function isOwnWrite(activity, context) {
 
 /**
  * `"dispatch"` asks for a continue turn; `"ignore"` does nothing.
+ *
+ * A name neither list knows is a newer board, not an error: it is ignored. A
+ * throw here would kill the subscriber and reconnect-loop it against a board
+ * that is working correctly.
  *
  * @param {object} activity
  * @param {{agents: string[]}} context

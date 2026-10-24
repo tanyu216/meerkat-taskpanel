@@ -100,7 +100,7 @@ describe("storage/migrations — 0034 questions and awaiting → todo", () => {
         triggers: triggerNames(board.db),
       };
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0034", "0035", "0036"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0034", "0035", "0036", "0037"]);
 
       const kinds = board.db
         .prepare("SELECT id, kind, body FROM comments ORDER BY id")

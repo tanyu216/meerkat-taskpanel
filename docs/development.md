@@ -202,7 +202,7 @@ browser?" is printed rather than inferred. See
 | `/tasks/:ref/move`, `/tasks/:ref/reopen`, `/tasks/:ref/deliver`, `/tasks/:ref/assign`, `/tasks/:ref/archive` | POST | the delivery gate bites on `/move` and `/deliver`; `/reopen` is the audited `done|canceled → todo` edge |
 | `/tasks/:ref/comments`, `/tasks/:ref/relations`, `/tasks/:ref/sessions`, `/tasks/:ref/activities`, `/tasks/:ref/reports` | GET/POST/DELETE | activities is the audit cursor read |
 | `/attachments/:id/content` | GET/PUT | raw bytes; not JSON — handled outside the router |
-| `/events` | GET (SSE) | `global_revision` increments; `?after=<rev>` replays; a deliberate stop sends a named `shutdown` frame (see [Stopping the daemon](#stopping-the-daemon)) |
+| `/events` | GET (SSE) | the `task_activities` revision cursor; `?after=<rev>` replays; a deliberate stop sends a named `shutdown` frame (see [Stopping the daemon](#stopping-the-daemon)) |
 | `/actors`, `/labels` | GET | read-only by design (§4.4) |
 | `/token` | POST | rotate; loopback only |
 | `/access` | GET/PUT | the persisted token + allow-list policy; loopback only (the read answers the credential) |
