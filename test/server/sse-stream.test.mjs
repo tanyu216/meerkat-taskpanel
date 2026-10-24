@@ -173,6 +173,42 @@ describe("server/sse-stream — the engine's failure paths", () => {
     stream.close();
   });
 
+  it("stops a full page that makes no cursor progress instead of spinning", async () => {
+    let calls = 0;
+    const res = new FakeRes();
+    const board = {
+      db: {},
+      repos: {
+        activities: {
+          list() {
+            calls += 1;
+            // A NULL revision and one at the cursor: neither advances it, and
+            // both fill a page of `replayLimit`. A naive loop would re-query
+            // them forever.
+            return [
+              { ...activity(1), revision: null },
+              { ...activity(2), revision: 0 },
+            ];
+          },
+        },
+      },
+    };
+
+    const stream = openEventStream({
+      res,
+      board,
+      after: 0,
+      replayLimit: 2,
+      pollMs: PARKED,
+      heartbeatMs: PARKED,
+    });
+
+    await settle(4);
+    assert.equal(calls, 1, "one page, then stop");
+    assert.deepEqual(idsOf(res), []);
+    stream.close();
+  });
+
   it("closes rather than pausing when a write throws", async () => {
     const res = new FakeRes({ throwOn: (text) => text.startsWith("id: 2") });
     const stream = openEventStream({
