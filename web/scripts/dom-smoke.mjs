@@ -242,6 +242,13 @@ export function fixtureApi() {
   // the card's own history (design §2.2). Keyed by identifier; the visible card
   // history is what the waiting view renders, so the fixture must serve it.
   const comments = {
+    // TD-1 · the drawer's comment list (B09), served **oldest-first** on
+    // purpose: the route's `order` parameter is not honoured by this fixture, so
+    // the drawer's own newest-first ordering is what the interaction pass reads.
+    "TD-1": [
+      { id: "cm-4", task_id: "td_TD_1", kind: "note", author_kind: "agent", author_id: "jobs", body: "先起草第一段。", refs: [], created_at: "2026-10-12T00:03:00Z" },
+      { id: "cm-5", task_id: "td_TD_1", kind: "note", author_kind: "human", author_id: "Terry", body: "补上第二段，再走一遍。", refs: [], created_at: "2026-10-12T00:04:00Z" },
+    ],
     "TD-13": [
       { id: "cm-1", task_id: "TD-13", kind: "note", author_kind: "agent", author_id: "linus", body: "我先把迁移写完了。", refs: [], created_at: "2026-10-12T00:01:00Z" },
       { id: "cm-2", task_id: "TD-13", kind: "decision", author_kind: "human", author_id: "Terry", body: "范围确认：这一版不做第 8 列。后面还有一句不该出现在摘要里。", refs: [], created_at: "2026-10-12T00:02:00Z" },
@@ -1325,6 +1332,28 @@ export async function run() {
       card?.click();
     });
     await page.waitForTimeout(300);
+
+    /* The drawer's two chronological lists read **newest-first** whichever
+       order the read answered. The fixture serves the comments and the activity
+       trail in ascending order (its `/comments` route ignores `order`), so an
+       unsorted drawer would put the oldest line on top — the reported defect.
+       The absolute stamp in each row's `title` is `YYYY-MM-DD HH:mm`, so a
+       lexicographic comparison is a chronological one. */
+    await page.click('[data-detail-tab="activity"]');
+    await page.waitForTimeout(150);
+    const chronoRead = await page.evaluate(() => {
+      const stamps = (selector) =>
+        [...document.querySelectorAll(selector)].map((el) => el.getAttribute("title") ?? "").filter(Boolean);
+      const descending = (values) => values.every((value, index) => index === 0 || values[index - 1] >= value);
+      const comments = stamps("[data-detail-comments] .td-comment .td-comment-meta [title]");
+      const activities = stamps("[data-detail-activity] [data-activity-row] [data-activity-ts]");
+      return { comments, activities, commentsDesc: descending(comments), activitiesDesc: descending(activities) };
+    });
+    drawerTabsCheck(chronoRead.comments.length === 2, `drawer comments ${chronoRead.comments.length}, expected 2`);
+    drawerTabsCheck(chronoRead.commentsDesc, `drawer comments are not newest-first: ${chronoRead.comments.join(" | ")}`);
+    drawerTabsCheck(chronoRead.activities.length === 4, `drawer activity rows ${chronoRead.activities.length}, expected 4`);
+    drawerTabsCheck(chronoRead.activitiesDesc, `drawer activity rows are not newest-first: ${chronoRead.activities.join(" | ")}`);
+
     await page.click('[data-detail-tab="details"]');
     await page.waitForTimeout(120);
     /* These tab interactions are a browser focus model of their own: clicking a
@@ -6422,6 +6451,7 @@ export async function run() {
         failures: drawerTabsFailures,
         tabs: tabsRead,
         trail: trailRead,
+        chronology: chronoRead,
         reports: reportsRead,
         acceptance: acceptanceRead,
         leftovers: leftoversRead,
