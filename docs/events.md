@@ -134,6 +134,11 @@ patrol + workflow path. (Brief refreshes are unaffected.) The process publishes
 `subscribe.state.json` beside the other loop state, and `--supervisor=status` reads it to
 report `streaming`, `reconnecting`, `starting` or `not running`.
 
+A **live-session (manual) turn** is not event-triggered: the session's own loop checks the
+board and runs the same control passes. It does not start the subscriber; an
+external-control pool started by the session leaves the event daemon to the installed
+units.
+
 Dispatch (`DISPATCH_EVENTS`): `task_created`, `task_moved`, `task_reopened`,
 `task_delivered`, `report_written`, `report_waived`, `relation_added`, `relation_removed`,
 `import_completed`, plus `task_updated` only when `fields` intersects `assigneeId`,

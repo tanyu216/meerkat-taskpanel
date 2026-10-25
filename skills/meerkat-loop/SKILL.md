@@ -66,9 +66,94 @@ continue turn passes `/meerkat-loop Continue — …`; the rest of that prompt (
 passes, with absolute entry paths) is appended as the turn's input. There is no
 argument placeholder, no subcommand and no argument parsing.
 
+The instruction declares its **mode** in its first line: `mode: supervised` is the
+scheduler's control turn; no marker is a **manual** turn hosted by this live session.
+The two run the same control turn — see §Execution modes.
+
 `install.sh` copies the skill to `<agent-dir>/skills/meerkat-loop/`, so the bare
 `/meerkat-loop` resolves there. On an agent kind that does not slash commands, the prefix
 stays literal text and the rest of the prompt still carries the work.
+
+### Execution modes
+
+There is **one control turn**: `patrol → workflow → poll`, the same question ladder and
+the same acceptance rules. Two drivers run it; the turn says which.
+
+- **Supervised** (`mode: supervised`). The installed scheduler (ping/continue/events) or
+  a one-shot supplies the prompt. The prompt is authoritative: run exactly the passes it
+  lists — poll is absent when no pool is live. The human reads the board, so questions are
+  board comments. Do not start a clock, a pool, a subscriber or a watcher; return when
+  the turn is done.
+- **Manual** (no marker). A human invoked the skill in a live session. The session is the
+  control turn and the pool is the dispatcher; the human is the clock and the question
+  front-end.
+
+#### Manual mode
+
+1. **Detect.** Run `node <body>/scripts/loop/status.mjs --json` (body resolution below):
+   - `running` — a pool is live. `pool.controlMode` in the report says who owns the turn.
+     `internal` means the installed supervisor owns it: do **not** run a second control
+     turn; you may attach as a question console. `external` means a live session owns it;
+     run the loop.
+   - `configured-idle` / `partial` / `busy` — report; do not start a pool and do not fight
+     the service manager.
+   - `absent` — nothing is running. Ask the human before taking over.
+2. **Take over (explicit only).** If `absent` and the human agrees, run
+   `status.mjs --take-over`. It starts the pool in **external-control** mode — one
+   process; project sessions still dispatch — and records its pid. The pool keeps running
+   after this session; stop it with `status.mjs --stop`. If the human declines, stop after
+   the read-only report.
+3. **Control tick.** Run the same three passes the supervised prompt lists:
+   `passes.mjs patrol`, `workflow`, `poll`, by absolute path (below). With the external
+   pool live, poll claims and enqueues; the pool's project sessions spawn the
+   workers/reviewers.
+4. **Question tick.** `node <body>/scripts/loop/console.mjs --once --json` lists the
+   `awaiting` cards, in_progress agent questions no human has answered, and `in_review`
+   cards pending acceptance. Ask the human **in this conversation**, then:
+   - record their answer verbatim with `taskctl comment add <ref> --as-human …` — the
+     board comment is authoritative; the in-session question is only the front-end;
+   - apply the move the question ladder prescribes (an awaiting card resumes on the human
+     comment; an in_progress agent question → `todo`/reattach);
+   - run a control tick so the resumed card is processed promptly.
+5. **Bound the loop.** Control ticks follow the continue cadence (default 600 s); question
+   ticks default to 30 s; stop at the requested TTL (default 30 min) or on "stop". On
+   exit report the pool pid and `status.mjs --stop`.
+
+**Never** decide an E1–E5 question yourself; never claim or move a work card; never start
+a second pool. Run at most one manual console per agent directory: `session.lock` guards
+the pool, but two consoles would still race the workflow ledger. If the human wants
+unattended operation, point at `install.sh --supervisor=enable`.
+
+```bash
+# <agent-dir> is the directory containing skills/meerkat-loop/:
+# claude ~/.claude, codex ~/.codex, pi ~/.agents, opencode ~/.config/opencode,
+# cursor ~/.cursor. TASKCTL_ACTOR_KIND disambiguates more than one install.
+kind="${TASKCTL_ACTOR_KIND:-}"
+for pair in claude:.claude codex:.codex pi:.agents opencode:.config/opencode cursor:.cursor; do
+  k="${pair%%:*}"; d="$HOME/${pair#*:}"
+  [ -f "$d/skills/meerkat-loop/scripts/loop/passes.mjs" ] || continue
+  [ -z "$kind" ] || [ "$kind" = "$k" ] || continue
+  agent_dir="$d"; kind="$k"; break
+done
+[ -n "${agent_dir:-}" ] || { echo "meerkat-loop: no installed loop body; run install.sh" >&2; exit 1; }
+body="$agent_dir/meerkat-taskpanel/scripts"
+[ -f "$body/loop/passes.mjs" ] || body="$agent_dir/skills/meerkat-loop/scripts"
+agent="${TASKCTL_AGENT:-}"
+[ -n "$agent" ] || agent="$(sed -n 's/^MEERKAT_TASKPANEL_AGENTS=//p' \
+  "$agent_dir/meerkat-taskpanel.env" 2>/dev/null | head -1)"
+agent="${agent%%,*}"; agent="${agent:-${USER:-$(id -un)}}"
+cli="$agent_dir/bin/taskctl"; [ -x "$cli" ] || cli=taskctl
+
+node "$body/loop/status.mjs"  --json --agent "$agent" --actor-kind "$kind"
+node "$body/loop/console.mjs" --once --json --agent "$agent" --actor-kind "$kind"
+node "$body/loop/passes.mjs" patrol   --actor-kind "$kind" --agent "$agent"
+node "$body/loop/passes.mjs" workflow --actor-kind "$kind" --agent "$agent"
+node "$body/loop/passes.mjs" poll     --actor-kind "$kind" --agent "$agent"
+```
+
+If the install used a custom `--agent-name` and `TASKCTL_AGENT` is unset, pass
+`--agent <name>` explicitly. `--no-automation` installs skip the agent config and shim;
+the manual mode then needs an explicit `--repo` and `taskctl`.
 
 ### Who may close
 

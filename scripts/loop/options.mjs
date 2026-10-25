@@ -155,6 +155,7 @@ flag("--opened-by", (opts, value) => {
 });
 flag("--continue-state", (opts, value) => { opts.continueState = value; });
 flag("--session", (opts) => { opts.session = true; }, "switch");
+flag("--control", (opts, value) => { opts.control = value; });
 flag("--resident", (opts, value) => { opts.resident = value; });
 flag("--session-state", (opts, value) => { opts.sessionState = resolve(value); });
 flag("--session-max-age", (opts, value) => { opts.sessionMaxAge = number("--session-max-age", value); });
@@ -263,6 +264,7 @@ function defaultOptions(env) {
     continue: undefined,
     continueState: null,
     session: false,
+    control: "internal",
     resident: "auto",
     sessionState: null,
     sessionMaxAge: undefined,
@@ -487,6 +489,14 @@ export function parseArgs(argv, env = process.env) {
   const resident = String(opts.resident ?? "auto").trim().toLowerCase();
   if (resident !== "auto" && resident !== "no") throw new Error("--resident must be auto or no");
   opts.resident = resident;
+  const control = String(opts.control ?? "internal").trim().toLowerCase();
+  if (control !== "internal" && control !== "external") {
+    throw new Error("--control must be internal or external");
+  }
+  if (control === "external" && opts.session !== true) {
+    throw new Error("--control=external requires --session");
+  }
+  opts.control = control;
   const allowAll =
     parseYesNo(opts.allowAllTools === true ? "yes" : undefined) ??
     parseYesNo(env.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS) ??
@@ -796,6 +806,11 @@ Options:
                             plus one project session per target directory. The
                             project session spawns worker/reviewer subagents.
                             launchd/systemd only; cannot be combined with --once.
+  --control=internal|external
+                            Who owns the control turn (default: internal). With
+                            external, the pool opens no control session and skips
+                            continue.pending — a live /meerkat-loop session is the
+                            control; project sessions still dispatch.
   --resident=auto|no        Use a live resident pool for continue (default: auto);
                             no forces the one-shot fallback with poll skipped.
   --session-state <path>    Sessions state file (default: sessions.state.json beside --state).

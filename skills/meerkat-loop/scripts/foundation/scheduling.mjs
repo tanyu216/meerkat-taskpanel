@@ -861,6 +861,11 @@ export function buildContinuePrompt(input = {}) {
   const script = quoteArg(input.passesScript ?? "passes.mjs");
   const common = (input.commonArgs ?? []).map(quoteArg).join(" ");
   const includePoll = input.includePoll !== false;
+  // The one control-turn template, two drivers. `supervised` is the headless
+  // scheduler (the human reads the board); `manual` is the live session (the
+  // human is in the conversation, so the question front-end is in-chat while the
+  // board comment remains the record).
+  const mode = input.mode === "manual" ? "manual" : "supervised";
   const minutes = Math.max(
     1,
     Math.round((input.continueIntervalSeconds ?? DEFAULT_CONTINUE_SECONDS) / 60),
@@ -868,7 +873,7 @@ export function buildContinuePrompt(input = {}) {
   const run = (pass) => `${node} ${script} ${pass}${common === "" ? "" : ` ${common}`}`;
 
   const lines = [
-    `${LOOP_SKILL_COMMAND} Continue — Meerkat TaskPanel loop, judgment turn.`,
+    `${LOOP_SKILL_COMMAND} Continue — Meerkat TaskPanel loop, judgment turn (mode: ${mode}).`,
     "No card and no project directory: this is the loop's periodic turn, not a worker wake.",
     "",
     "Run in order, each one pass:",
@@ -902,6 +907,7 @@ export function buildContinuePrompt(input = {}) {
   // loop's own answer is never a decision kind and never `--as-human` (except
   // when recording what the human said in a human-opened conversation).
   const openedBy = input.openedBy === "human" ? "human" : "supervisor";
+  const inChat = mode === "manual" || openedBy === "human";
   lines.push(
     "",
     "Questions and decision rights (before poll):",
@@ -926,9 +932,16 @@ export function buildContinuePrompt(input = {}) {
     "  answer: apply its direction; never re-dispatch the rejected work unchanged.",
     "  If the answer is incomplete or ambiguous, the resumed worker asks; move the card",
     "  back to awaiting with a NEW question (QUESTION_REQUIRED forces one).",
-    openedBy === "human"
+    inChat
       ? "  When the human answers in this conversation, record it with --as-human; any kind re-queues the card."
       : "  The human answers on the board with a comment; any kind re-queues it automatically.",
+    ...(mode === "manual"
+      ? [
+          "  You are the live control session. Ask the human here when a question needs a",
+          "  decision, then record their answer with `taskctl comment add <ref> --as-human`.",
+          "  The board comment is authoritative; the in-session question is only the front-end.",
+        ]
+      : []),
     "  A human comment after an agent question on an in_progress card is an answer too:",
     "  act on it and move the card to todo (or reattach a live worker).",
     "  Do not answer a question a later human comment already answered.",

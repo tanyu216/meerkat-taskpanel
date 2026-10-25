@@ -56,6 +56,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A live session can host the loop's control turn (manual mode).** The loop still has
+  one control turn and one dispatcher. When no supervisor is enabled, a bare
+  `/meerkat-loop` session runs the same `patrol → workflow → poll` through the pool in
+  `--control=external` mode (no headless control session; project sessions still dispatch),
+  checks `awaiting`/question cards every few seconds, asks the human **in the session**,
+  and records the answer as a `--as-human` board comment — the comment remains the
+  authoritative record. `scripts/loop/status.mjs` detects `running / busy / starting /
+  configured-idle / partial / absent`, starts the external-control pool only on an explicit
+  `--take-over`, and stops only the pool it recorded; `scripts/loop/console.mjs` is the
+  read-only question/status cycle. The supervised prompt now declares
+  `mode: supervised`; the manual prompt declares `mode: manual` and adds the in-session
+  question channel. Unattended operation remains the installed supervisor's job.
+
 - **Three read-surface conveniences for an integrating poll (no migration).**
   `comment add --ref <kind:id>` (repeatable) stores references in the comment's existing wire
   `refs`; `project ensure <id>` creates a project if absent and returns an existing one

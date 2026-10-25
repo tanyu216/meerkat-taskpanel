@@ -273,6 +273,10 @@ export function createSessionPool(input = {}) {
   const now = input.now ?? Date.now;
   const isAlive = input.isAlive ?? isProcessAlive;
   const stateDir = dirname(String(opts.state));
+  // `internal` is the installed supervisor: the pool owns the control turn. In
+  // `external` mode a live /meerkat-loop session is the control; the pool keeps
+  // only the project sessions and the card queue (one dispatcher, two drivers).
+  const controlMode = opts.control === "external" ? "external" : "internal";
   const maxConcurrency = Number(opts.maxConcurrency ?? SESSION_DEFAULTS.maxConcurrency);
   const projectConcurrency = Number(opts.projectConcurrency ?? SESSION_DEFAULTS.projectConcurrency);
   const poolMax = Number(opts.sessionPoolMax ?? SESSION_DEFAULTS.poolMax);
@@ -319,7 +323,10 @@ export function createSessionPool(input = {}) {
       // would otherwise keep answering "resident" after its manager died.
       poolPid: process.pid,
       heartbeatAt: nowIso(now),
-      control: controlEntry
+      controlMode,
+      control: controlMode === "external"
+        ? null
+        : controlEntry
         ? {
             actorKind: opts.actorKind ?? "claude",
             cwd: controlEntry.cwd,
@@ -455,6 +462,9 @@ export function createSessionPool(input = {}) {
   }
 
   async function continueTurn() {
+    // The live session owns the control turn in external mode; consuming
+    // continue.pending here would run a second, headless control.
+    if (controlMode === "external") return { ok: true, skipped: "external control" };
     if (control?.busy === true) return { ok: true, skipped: "control busy" };
     const paths = readContinue(stateDir);
     if (paths.pending === null) return { ok: true, skipped: "no pending continue" };
@@ -750,7 +760,9 @@ export function createSessionPool(input = {}) {
       const lock = await acquireLock();
       if (!lock.ok) return lock;
       started = true;
-      await ensureSession("control", { cwd: opts.repo ?? process.cwd(), role: "control" });
+      if (controlMode === "internal") {
+        await ensureSession("control", { cwd: opts.repo ?? process.cwd(), role: "control" });
+      }
       await reattachOnStart();
       persistState();
       return { ok: true };
@@ -792,6 +804,7 @@ export function createSessionPool(input = {}) {
       const cards = readCards(stateDir).value.cards;
       return {
         running: started,
+        controlMode,
         control: state.control ?? null,
         projects: state.projects ?? {},
         openSessions: [...sessions.keys()],

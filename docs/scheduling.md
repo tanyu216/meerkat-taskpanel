@@ -175,6 +175,9 @@ fallback is deliberately smaller rather than silently degraded:
 | `patrol --patrol-llm=yes` | notify-only; no LLM turn |
 | `workflow` | runs; review cards accumulate and are claimed once the pool is back |
 
+With an **external-control** pool the pool row does not apply: the pool exists, so `poll`
+claims; the live session, not a headless control, runs the turn.
+
 This is the cron shape: cron cannot host a long-lived process, so a cron install
 runs ping + a one-shot continue and **cannot dispatch worker/reviewer subagents**.
 An agent kind with a session service gets the full loop. `--resident=no` forces the
@@ -1403,6 +1406,22 @@ daemon, take its unit down with the service manager (`launchctl bootout …` /
 `systemctl --user disable --now meerkat-taskpanel-subscribe.service`); status then reports
 it as not loaded. `--event-continue=no` is the runtime soft-off — the process keeps the
 briefs fresh but no event wakes a turn.
+
+### The same control turn in a live session
+
+The loop has **one** control turn. A live `/meerkat-loop` session can host it instead of the
+installed clock: the pool starts with `--control=external` (no control session,
+`continue.pending` untouched; project sessions still dispatch), the session runs
+`patrol → workflow → poll`, and the session's console cycle surfaces `awaiting`/question
+cards to the human. The answer is recorded as a `--as-human` board comment — the comment is
+the record, the in-session question is only the front-end. `status.mjs --json` reports
+`running | busy | starting | configured-idle | partial | absent`; `--take-over` starts the
+external-control pool only when the verdict is `absent`, and `--stop` stops only what it
+started. The scheduler's clocks and the session's loop are different **drivers** of the same
+turn; the units and the session's pool are the same dispatcher.
+
+This "live-session mode" is not the install's **manual path** described next (units written
+but not loaded); the two words name different things.
 
 That is the **manual** path, and it is all a plain install does. Loading is a separate,
 explicit act: the opt-in switch is [`--supervisor=enable`](#enabling-the-supervisor-opt-in)

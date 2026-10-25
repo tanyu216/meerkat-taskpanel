@@ -2041,6 +2041,8 @@ describe("supervisor module", () => {
       [new URL("../../scripts/loop/runtime.mjs", import.meta.url), ["loadRegistry", "saveRegistry", "runPingTick", "subscribeStatePath", "loadSubscribeState", "saveSubscribeState"]],
       [new URL("../../scripts/loop/runners.mjs", import.meta.url), ["runPollTick", "runPatrolTick", "spawnWorkerReal"]],
       [new URL("../../scripts/loop/subscribe.mjs", import.meta.url), ["runSubscribe", "createDispatchScheduler"]],
+      [new URL("../../scripts/loop/status.mjs", import.meta.url), ["probeSupervisor", "probeUnits", "takeOver", "stopSupervisor"]],
+      [new URL("../../scripts/loop/console.mjs", import.meta.url), ["consoleCycle"]],
       [new URL("../../src/foundation/scheduling.mjs", import.meta.url), ["buildContinuePrompt", "planContinueInvocation", "planWakeInvocation"]],
     ];
     for (const [url, names] of modules) {
@@ -2158,6 +2160,20 @@ describe("the resident session pool surface", () => {
         `--session beside ${extra.join(" ")} was accepted`,
       );
     }
+  });
+
+  it("takes --control=external only with --session", () => {
+    const external = parseArgs(["--actor-kind", "claude", "--session", "--control=external"], ENV);
+    assert.equal(external.control, "external");
+    assert.equal(parseArgs(["--actor-kind", "claude", "--session"], ENV).control, "internal");
+    assert.throws(
+      () => parseArgs(["--actor-kind", "claude", "--control=external"], ENV),
+      /requires --session/,
+    );
+    assert.throws(
+      () => parseArgs(["--actor-kind", "claude", "--session", "--control=other"], ENV),
+      /internal or external/,
+    );
   });
 
   it("defaults the pool to the documented capacities and windows", () => {

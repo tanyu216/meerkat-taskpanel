@@ -119,6 +119,8 @@ describe("loop skill: the generated payload", () => {
       "scripts/loop/board.mjs",
       "scripts/loop/passes.mjs",
       "scripts/loop/subscribe.mjs",
+      "scripts/loop/status.mjs",
+      "scripts/loop/console.mjs",
       "scripts/loop/card-file.mjs",
       "scripts/wake-cwd.mjs",
       "scripts/foundation/card-brief.mjs",
@@ -251,6 +253,35 @@ describe("loop skill: SKILL.md", () => {
 
   it("points the continue prompt at this skill's command", () => {
     assert.equal(LOOP_SKILL_COMMAND, `/${LOOP_SKILL_NAME}`);
+  });
+
+  it("documents one control turn with two drivers, and the live-session console", () => {
+    const begin = text.indexOf("### Execution modes");
+    assert.notEqual(begin, -1, "the two execution modes must have their own section");
+    const next = text.indexOf("\n### ", begin + 1);
+    const section = text.slice(begin, next === -1 ? text.length : next);
+
+    assert.match(section, /mode: supervised/);
+    assert.match(section, /no marker/);
+    assert.match(section, /status\.mjs/);
+    assert.match(section, /console\.mjs/);
+    assert.match(section, /--take-over/);
+    assert.match(section, /--stop/);
+    assert.match(section, /external-control/);
+    assert.match(section, /--as-human/);
+    assert.match(section, /E1[–-]E5/);
+    assert.match(section, /never claim/i);
+    assert.match(section, /\.config\/opencode/);
+    assert.match(section, /bin\/taskctl/);
+  });
+
+  it("documents the live-session mode in operation.md", () => {
+    const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
+    assert.match(operation, /## Manual mode/);
+    assert.match(operation, /status\.mjs/);
+    assert.match(operation, /console\.mjs/);
+    assert.match(operation, /--control=external/);
+    assert.match(operation, /--as-human/);
   });
 
   it("declares the board interface it requires", () => {

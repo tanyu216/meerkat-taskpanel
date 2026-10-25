@@ -492,6 +492,20 @@ describe("install.sh: the loop skill's distribution", () => {
         existsSync(join(dest, "templates", "scheduling", "cron", "meerkat-taskpanel.cron")),
         `${kind}: the loop templates must land`,
       );
+      for (const entry of ["status.mjs", "console.mjs"]) {
+        assert.ok(
+          existsSync(join(dest, "scripts", "loop", entry)),
+          `${kind}: the live-session ${entry} must land in the skill payload`,
+        );
+        assert.ok(
+          existsSync(join(home, agentDir, "meerkat-taskpanel", "scripts", "loop", entry)),
+          `${kind}: the installed body must carry ${entry}`,
+        );
+      }
+      assert.ok(
+        existsSync(join(home, agentDir, "bin", "taskctl")),
+        `${kind}: the manual mode's taskctl shim must land`,
+      );
 
       const wake = join(home, agentDir, "bin", `wake-${kind}.sh`);
       assert.ok(existsSync(wake), `${kind}: the wake glue must land`);

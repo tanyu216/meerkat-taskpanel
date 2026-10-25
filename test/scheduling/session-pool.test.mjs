@@ -142,6 +142,38 @@ describe("session pool", () => {
     await pool.stop();
   });
 
+  it("external control opens no control session, skips continue, and still dispatches", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f, { control: "external" }),
+      kindPool: fake,
+    });
+    t.after(() => pool.stop());
+    assert.equal((await pool.start()).ok, true);
+    assert.equal(
+      fake.opened.filter((handle) => handle.role === "control").length,
+      0,
+      "the live session is the control; the pool opens none",
+    );
+
+    enqueueContinue(join(f.dir), { reason: "timer" });
+    const tick = await pool.tick();
+    assert.equal(tick.continue.skipped, "external control");
+    assert.notEqual(readContinue(f.dir).pending, null, "the live session owns the pending turn");
+
+    const state = JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
+    assert.equal(state.controlMode, "external");
+    assert.equal(state.control, null);
+
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+    const projectSessions = fake.opened.filter((handle) => handle.role === "project");
+    assert.equal(projectSessions.length, 1, "project sessions still dispatch the handoff");
+    assert.equal(readCards(f.dir).value.cards.find((entry) => entry.card === "T-1").status, "done");
+    await pool.stop();
+  });
+
   it("respects the global concurrency cap while subagents are live", async (t) => {
     const f = fixture(t);
     const fake = fakePool();

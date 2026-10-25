@@ -96,6 +96,8 @@ export const LOOP_BODY_ROOTS = Object.freeze([
   "scripts/loop/kind-session.mjs",
   "scripts/loop/actor-kinds/claude.mjs",
   "scripts/loop/session.mjs",
+  "scripts/loop/status.mjs",
+  "scripts/loop/console.mjs",
   "scripts/wake-cwd.mjs",
 ]);
 
