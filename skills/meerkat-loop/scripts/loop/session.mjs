@@ -861,11 +861,18 @@ export async function runSession(opts, deps = {}) {
         ticking = false;
       });
   }, Math.max(50, Number(opts.sessionPollMs ?? SESSION_DEFAULTS.pollMs)));
-  interval.unref?.();
   // The heartbeat is independent of the tick: while a turn is in flight the
   // state file must still say "the pool is here".
   const heartbeat = setInterval(() => pool.persistState(), POOL_HEARTBEAT_MS);
-  heartbeat.unref?.();
+  // In external-control mode no control session holds the event loop, so the
+  // timers are the process's only handles: unref'd, the pool would exit the
+  // moment it started and `--take-over` would never see it. The internal pool
+  // has the control session's process; unref'ing there lets a signalled
+  // supervisor exit once that child closes.
+  if (opts.control !== "external") {
+    interval.unref?.();
+    heartbeat.unref?.();
+  }
   const stop = async () => {
     clearInterval(interval);
     clearInterval(heartbeat);

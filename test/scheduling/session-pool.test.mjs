@@ -10,6 +10,7 @@
  */
 
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -401,6 +402,58 @@ describe("session pool", () => {
     );
     assert.equal(code, 0);
     assert.equal(existsSync(join(f.dir, "session.lock")), false, "the lock is released");
+  });
+
+  it("keeps an external-control pool alive without a control session", async (t) => {
+    // External control opens no control session, so the pool has no child
+    // process holding the event loop. Its timers are the only handles: unref'd,
+    // the process exits the moment it starts and `--take-over` never sees it.
+    const f = fixture(t);
+    const home = join(f.dir, "home");
+    for (const name of ["meerkat-loop", "meerkat-taskpanel"]) {
+      const dir = join(home, ".claude", "skills", name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`);
+    }
+    const state = join(f.dir, "state.json");
+    const logPath = join(f.dir, "supervisor.log");
+    const child = spawn(
+      process.execPath,
+      [
+        join(import.meta.dirname, "../../scripts/supervisor.mjs"),
+        "--session",
+        "--control=external",
+        "--actor-kind",
+        "claude",
+        "--agent",
+        "alice",
+        "--home",
+        home,
+        "--repo",
+        join(import.meta.dirname, "../.."),
+        "--state",
+        state,
+        "--log",
+        logPath,
+      ],
+      { stdio: "ignore" },
+    );
+    t.after(() => {
+      if (child.exitCode === null) child.kill("SIGTERM");
+    });
+
+    const sessionState = join(f.dir, "sessions.state.json");
+    const deadline = Date.now() + 5_000;
+    while (!existsSync(sessionState) && Date.now() < deadline && child.exitCode === null) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const log = existsSync(logPath) ? readFileSync(logPath, "utf8") : "(none)";
+    assert.ok(existsSync(sessionState), `the pool wrote its state; log: ${log}`);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(child.exitCode, null, `the external-control pool exited (${child.exitCode}); log: ${log}`);
+
+    child.kill("SIGTERM");
+    await new Promise((resolve) => child.once("exit", resolve));
   });
 
   it("answers 'is the pool resident?' from the state file, pid and heartbeat", (t) => {
