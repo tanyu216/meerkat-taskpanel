@@ -33,7 +33,8 @@ is written **only when it carries something**, so a plain card does not grow a l
 | `status` | Where the card sits in the lifecycle. | One of the canonical words (`backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`, plus the `awaiting` overlay). |
 | `priority` | Urgency. | `low` · `medium` · `high` · `urgent`. |
 | `kind` | The card's role. | `task` · `epic` · `deploy`. |
-| `review_required` | Whether this card needs an independent review before `done`. | `yes`; **absent** means it does not. A review card (flow B) never carries it. |
+| `acceptance_mode` | Who closes the card. | `agent` · `human`; **absent** means `off` (the deliverer may close it). A review card (flow B) is always `off`. |
+| `review_required` | Legacy spelling of `agent`. | `yes`; absent means no review. Kept for one release while older cards are migrated. |
 | `labels` | Free-form tags, shown in order. | Inline array. |
 | `project` | The board project. | Its id. |
 | `assignee` | Who is on the hook. | A dictionary name; empty ⇒ unassigned. |

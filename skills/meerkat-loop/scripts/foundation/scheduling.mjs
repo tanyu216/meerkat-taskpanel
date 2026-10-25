@@ -22,9 +22,7 @@
 
 import { cardDirRel, cardFileRel } from "./card-brief.mjs";
 import {
-  ACCEPTANCE_POLICIES,
   CLAIM_STALE_SAME_MS,
-  DEFAULT_ACCEPTANCE_POLICY,
   DEFAULT_PATROL_SECONDS,
   DEFAULT_REVIEW_AGING_MS,
   DEFAULT_WORKFLOW_MAX_ACTIONS,
@@ -227,13 +225,8 @@ export const DEFAULT_REVIEW_AGING_MINUTES = DEFAULT_REVIEW_AGING_MS / 60_000;
  * Same precedence as `resolveClaimUnassigned` — **flag > environment > agent config
  * config file > default** — and the same tolerance: an unrecognised yes/no word
  * is ignored rather than treated as `false`, so a stray value cannot silently
- * disable the channel. The two booleans mean different things:
- *
- *   * `workflow` is the whole channel. Off means the loop writes no card at all.
- *   * `autoAcceptReviews` gates **only** the review card's own
- *     `in_review → done`. With it off the loop still applies the verdict to the
- *     original card and leaves the review card for a human to accept — the
- *     documented escape hatch back to manual acceptance.
+ * disable the channel. `workflow` is the whole channel: off means the loop
+ * writes no card at all.
  *
  * An empty reviewer is "not configured", not an empty name: review dispatch is
  * skipped and the rest of the channel (reconcile + outcomes) still runs, so a
@@ -241,7 +234,7 @@ export const DEFAULT_REVIEW_AGING_MINUTES = DEFAULT_REVIEW_AGING_MS / 60_000;
  * in flight.
  *
  * @param {{flags?: object, env?: object, file?: Record<string, string>|null}} [input]
- * @returns {{workflow: boolean, reviewer: string|null, autoAcceptReviews: boolean, maxActions: number, reviewAgingMs: number}}
+ * @returns {{workflow: boolean, reviewer: string|null, maxActions: number, reviewAgingMs: number}}
  */
 export function resolveWorkflowConfig(input = {}) {
   const flags = input.flags ?? {};
@@ -270,39 +263,16 @@ export function resolveWorkflowConfig(input = {}) {
     }
     return null;
   };
-  const firstAcceptancePolicy = (...values) => {
-    for (const value of values) {
-      if (typeof value !== "string") continue;
-      const text = value.trim().toLowerCase();
-      if (ACCEPTANCE_POLICIES.includes(text)) return text;
-    }
-    return DEFAULT_ACCEPTANCE_POLICY;
-  };
-
   return {
     workflow:
       firstYesNo(flags.workflow, env.MEERKAT_TASKPANEL_WORKFLOW, file.MEERKAT_TASKPANEL_WORKFLOW) ?? true,
-    // The board's acceptance policy, as the loop remembers it. Advisory: the
-    // board decides in the plan (`approve` vs `approve_hold`), and the loop
-    // executes that decision. This copy is kept for diagnostics and for agent
-    // configs written by older installers. An unrecognised value falls back to
-    // the default rather than wedging the loop.
-    acceptancePolicy: firstAcceptancePolicy(
-      flags.acceptance,
-      env.MEERKAT_TASKPANEL_ACCEPTANCE_POLICY,
-      file.MEERKAT_TASKPANEL_ACCEPTANCE_POLICY,
-    ),
+    // 0038 — the card's own acceptance mode is the whole decision; the loop no
+    // longer carries an advisory copy of a board policy or a review-close flag.
     reviewer: firstText(
       flags.reviewer,
       env.MEERKAT_TASKPANEL_REVIEWER,
       file.MEERKAT_TASKPANEL_REVIEWER,
     ),
-    autoAcceptReviews:
-      firstYesNo(
-        flags.autoAcceptReviews,
-        env.MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS,
-        file.MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS,
-      ) ?? true,
     maxActions:
       firstPositive(
         flags.workflowMaxActions,
@@ -750,8 +720,7 @@ export function buildHandoff(input) {
  * A reviewer is an independent agent, not the card's worker: it reads the
  * original, the delivery report, the comment trail and the container's children,
  * and delivers exactly one thing — a verdict report on the review card. It moves
- * nothing: the loop is the acceptor (`autoAcceptReviews` is the escape hatch
- * back to a human). The `review_not_ready` check is first because the board may
+ * nothing: the loop is the acceptor. The `review_not_ready` check is first because the board may
  * have moved between the dispatch and the wake, and a verdict on a card that is
  * no longer delivered is worse than no verdict at all.
  *
@@ -892,6 +861,11 @@ export function buildContinuePrompt(input = {}) {
   const script = quoteArg(input.passesScript ?? "passes.mjs");
   const common = (input.commonArgs ?? []).map(quoteArg).join(" ");
   const includePoll = input.includePoll !== false;
+  // The one control-turn template, two drivers. `supervised` is the headless
+  // scheduler (the human reads the board); `manual` is the live session (the
+  // human is in the conversation, so the question front-end is in-chat while the
+  // board comment remains the record).
+  const mode = input.mode === "manual" ? "manual" : "supervised";
   const minutes = Math.max(
     1,
     Math.round((input.continueIntervalSeconds ?? DEFAULT_CONTINUE_SECONDS) / 60),
@@ -899,7 +873,7 @@ export function buildContinuePrompt(input = {}) {
   const run = (pass) => `${node} ${script} ${pass}${common === "" ? "" : ` ${common}`}`;
 
   const lines = [
-    `${LOOP_SKILL_COMMAND} Continue — Meerkat TaskPanel loop, judgment turn.`,
+    `${LOOP_SKILL_COMMAND} Continue — Meerkat TaskPanel loop, judgment turn (mode: ${mode}).`,
     "No card and no project directory: this is the loop's periodic turn, not a worker wake.",
     "",
     "Run in order, each one pass:",
@@ -933,6 +907,7 @@ export function buildContinuePrompt(input = {}) {
   // loop's own answer is never a decision kind and never `--as-human` (except
   // when recording what the human said in a human-opened conversation).
   const openedBy = input.openedBy === "human" ? "human" : "supervisor";
+  const inChat = mode === "manual" || openedBy === "human";
   lines.push(
     "",
     "Questions and decision rights (before poll):",
@@ -957,9 +932,16 @@ export function buildContinuePrompt(input = {}) {
     "  answer: apply its direction; never re-dispatch the rejected work unchanged.",
     "  If the answer is incomplete or ambiguous, the resumed worker asks; move the card",
     "  back to awaiting with a NEW question (QUESTION_REQUIRED forces one).",
-    openedBy === "human"
+    inChat
       ? "  When the human answers in this conversation, record it with --as-human; any kind re-queues the card."
       : "  The human answers on the board with a comment; any kind re-queues it automatically.",
+    ...(mode === "manual"
+      ? [
+          "  You are the live control session. Ask the human here when a question needs a",
+          "  decision, then record their answer with `taskctl comment add <ref> --as-human`.",
+          "  The board comment is authoritative; the in-session question is only the front-end.",
+        ]
+      : []),
     "  A human comment after an agent question on an in_progress card is an answer too:",
     "  act on it and move the card to todo (or reattach a live worker).",
     "  Do not answer a question a later human comment already answered.",

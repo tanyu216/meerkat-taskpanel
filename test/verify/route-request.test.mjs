@@ -496,7 +496,7 @@ describe("route-request.mjs — the command-input pairing (red → green)", () =
     const result = check(allRoutes(), registry);
     assert.equal(result.ok, false);
     assert.deepEqual(result.lines, [
-      `op_shape_mismatch taskctl issue ${TASK_OPS.deliver} null "${TASK_OPS.deliver}" projects flags [report-file, no-report, reason, seg] where the command declares [report-file]`,
+      `op_shape_mismatch taskctl issue ${TASK_OPS.deliver} null "${TASK_OPS.deliver}" projects flags [to, report-file, no-report, reason, seg] where the command declares [report-file]`,
     ]);
   });
 

@@ -44,7 +44,9 @@ describe("storage/migrations — 0037 activity indexes", () => {
         .run(TS);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0037"]);
+      // 0038/0039 are the acceptance model and the `deploy` retirement; this
+      // test's subject is 0037, and the later files must not disturb its rows.
+      assert.deepEqual(up.applied.map((m) => m.version), ["0037", "0038", "0039"]);
 
       assert.deepEqual(activityIndexes(board.db).map((index) => index.name), [
         "ix_activities_created",

@@ -1035,21 +1035,11 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.equal(result.failed, 0);
   });
 
-  it("holds an approval, and skips the marker when the board says it is already held", async () => {
+  it("applies an approve and closes the review card last", async () => {
     const order = [];
-    const hold = {
-      type: "approve_hold",
-      review_status: "in_review",
-      review_ref: "T-2",
-      original_ref: "T-1",
-      round: 1,
-      close_review: true,
-      accepted_by: "loop-review",
-      held: false,
-    };
     await runWorkflowTick(
       baseDeps({
-        plan: { alerts: [], changes: [], summary: {}, actions: [hold] },
+        plan: { alerts: [], changes: [], summary: {}, actions: [approve()] },
         comment: async (ref) => (order.push(`comment:${ref}`), { ok: true }),
         setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
         move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
@@ -1057,21 +1047,11 @@ describe("runWorkflowTick (injected deps)", () => {
     );
     assert.deepEqual(order, [
       "comment:T-1",
-      'meta:T-1:{"review_verdict":"approve","review_verdict_round":"1"}',
+      'meta:T-1:{"accepted_by":"loop-review","accepted_round":"1"}',
+      "move:T-1:done",
       "comment:T-2",
       "move:T-2:done",
     ]);
-
-    order.length = 0;
-    await runWorkflowTick(
-      baseDeps({
-        plan: { alerts: [], changes: [], summary: {}, actions: [{ ...hold, held: true }] },
-        comment: async (ref) => (order.push(`comment:${ref}`), { ok: true }),
-        setMeta: async (ref) => (order.push(`meta:${ref}`), { ok: true }),
-        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
-      }),
-    );
-    assert.deepEqual(order, ["comment:T-2", "move:T-2:done"], "a second pass rewrites neither the comment nor the marker");
   });
 
   it("rejects a task through in_progress → todo and records the rework round", async () => {
@@ -1154,7 +1134,7 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.equal(result.executed, 1);
   });
 
-  it("leaves the review card for a human when closeReview is false", async () => {
+  it("ignores a legacy closeReview:false and still closes the review card", async () => {
     const move = spy(async () => ({ ok: true }));
     const result = await runWorkflowTick(
       baseDeps({
@@ -1162,7 +1142,7 @@ describe("runWorkflowTick (injected deps)", () => {
         move,
       }),
     );
-    assert.deepEqual(move.calls.map(([ref, to]) => `${ref}:${to}`), ["T-1:done"]);
+    assert.deepEqual(move.calls.map(([ref, to]) => `${ref}:${to}`), ["T-1:done", "T-2:done"]);
     assert.equal(result.executed, 1);
   });
 
@@ -1416,32 +1396,6 @@ describe("runWorkflowTick (injected deps)", () => {
           outcomes: 1,
           dispatch: 2,
           dedup_key: "actions_capped|2",
-        },
-      ],
-      changes: [],
-      actions: [],
-      summary: {},
-    };
-    const first = await runWorkflowTick(
-      baseDeps({ plan, notify, ledger: emptySlaLedger(), now: () => "2026-10-22T10:00:00.000Z" }),
-    );
-    await runWorkflowTick(
-      baseDeps({ plan, notify, ledger: first.ledger, now: () => "2026-10-22T10:10:00.000Z" }),
-    );
-    assert.equal(notify.count(), 1);
-  });
-
-  it("notifies review_cards_unclosable once, then suppresses it", async () => {
-    const notify = spy();
-    const plan = {
-      alerts: [
-        {
-          type: "review_cards_unclosable",
-          reason: "agent_only_without_auto_accept",
-          policy: "agent-only",
-          autoAcceptReviews: false,
-          reviews: 2,
-          dedup_key: "review_cards_unclosable|agent-only|auto_accept_off",
         },
       ],
       changes: [],
@@ -1749,8 +1703,6 @@ describe("parseArgs — the workflow surface", () => {
     const opts = parseArgs(["--actor-kind", "claude", "--once"], ENV);
     assert.equal(opts.workflow, undefined);
     assert.equal(opts.reviewer, undefined);
-    assert.equal(opts.autoAcceptReviews, undefined);
-    assert.equal(opts.acceptance, undefined);
     assert.equal(opts.workflowMaxActions, undefined);
     assert.equal(opts.recoverStale, undefined);
   });
@@ -1762,26 +1714,17 @@ describe("parseArgs — the workflow surface", () => {
 
   it("takes every workflow flag in both spellings", () => {
     const spaced = parseArgs(
-      ["--workflow", "no", "--reviewer", "jobs", "--auto-accept-reviews", "no", "--workflow-max-actions", "5"],
+      ["--workflow", "no", "--reviewer", "jobs", "--workflow-max-actions", "5"],
       ENV,
     );
     assert.equal(spaced.workflow, "no");
     assert.equal(spaced.reviewer, "jobs");
-    assert.equal(spaced.autoAcceptReviews, "no");
     assert.equal(spaced.workflowMaxActions, "5");
 
-    const joined = parseArgs(["--workflow=yes", "--reviewer=jobs", "--auto-accept-reviews=yes", "--workflow-max-actions=9"], ENV);
+    const joined = parseArgs(["--workflow=yes", "--reviewer=jobs", "--workflow-max-actions=9"], ENV);
     assert.equal(joined.workflow, "yes");
     assert.equal(joined.reviewer, "jobs");
-    assert.equal(joined.autoAcceptReviews, "yes");
     assert.equal(joined.workflowMaxActions, "9");
-  });
-
-  it("takes the acceptance policy under both names", () => {
-    assert.equal(parseArgs(["--acceptance", "human-only", "--once"], ENV).acceptance, "human-only");
-    assert.equal(parseArgs(["--acceptance=agent-only", "--once"], ENV).acceptance, "agent-only");
-    assert.equal(parseArgs(["--acceptance-policy", "both", "--once"], ENV).acceptance, "both");
-    assert.equal(parseArgs(["--acceptance-policy=agent-only", "--once"], ENV).acceptance, "agent-only");
   });
 });
 
@@ -2098,6 +2041,8 @@ describe("supervisor module", () => {
       [new URL("../../scripts/loop/runtime.mjs", import.meta.url), ["loadRegistry", "saveRegistry", "runPingTick", "subscribeStatePath", "loadSubscribeState", "saveSubscribeState"]],
       [new URL("../../scripts/loop/runners.mjs", import.meta.url), ["runPollTick", "runPatrolTick", "spawnWorkerReal"]],
       [new URL("../../scripts/loop/subscribe.mjs", import.meta.url), ["runSubscribe", "createDispatchScheduler"]],
+      [new URL("../../scripts/loop/status.mjs", import.meta.url), ["probeSupervisor", "probeUnits", "takeOver", "stopSupervisor"]],
+      [new URL("../../scripts/loop/console.mjs", import.meta.url), ["consoleCycle"]],
       [new URL("../../src/foundation/scheduling.mjs", import.meta.url), ["buildContinuePrompt", "planContinueInvocation", "planWakeInvocation"]],
     ];
     for (const [url, names] of modules) {
@@ -2215,6 +2160,20 @@ describe("the resident session pool surface", () => {
         `--session beside ${extra.join(" ")} was accepted`,
       );
     }
+  });
+
+  it("takes --control=external only with --session", () => {
+    const external = parseArgs(["--actor-kind", "claude", "--session", "--control=external"], ENV);
+    assert.equal(external.control, "external");
+    assert.equal(parseArgs(["--actor-kind", "claude", "--session"], ENV).control, "internal");
+    assert.throws(
+      () => parseArgs(["--actor-kind", "claude", "--control=external"], ENV),
+      /requires --session/,
+    );
+    assert.throws(
+      () => parseArgs(["--actor-kind", "claude", "--session", "--control=other"], ENV),
+      /internal or external/,
+    );
   });
 
   it("defaults the pool to the documented capacities and windows", () => {
@@ -2460,6 +2419,7 @@ describe("the workflow plan survives the wire and executes", () => {
         projectId: "proj",
         title: "Do the thing",
         assignee: "linus",
+        acceptanceMode: "agent",
         actor: HUMAN,
       });
       commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });

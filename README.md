@@ -16,7 +16,7 @@ built for **watching, not for driving**: it exists so a person can see, at a gla
 every task stands and how each epic is rolling up. Nobody has to file a card by clicking a
 button — and the dialog the board does carry files plain `task` cards only: it offers no
 `kind`, so an `epic` comes from an agent promoting a card in place (the skill's container
-protocol) and a `deploy` card is never something a form can produce. A person's one real
+protocol). A person's one real
 lever is the answer to a question: type it in the card's comment box, and the agent takes it
 from there.
 
@@ -255,7 +255,7 @@ nothing), `--skip-node-check` (bypass the Node >= 22 check).
 
 **Configuration is one file.** `taskctl` and `taskd` read `.env` at the program install root
 (the checkout root, or the npm package root) for the board URL, the client token, the
-allow-list, the acceptance policy and the SLA thresholds (`TASKD_SLA_*`, validated by the
+allow-list and the SLA thresholds (`TASKD_SLA_*`, validated by the
 board and published on `GET /api/v1/sla`). The process environment wins key by key and a CLI flag
 wins over both; `--env-file <path>` or `MEERKAT_TASKPANEL_ENV_FILE` selects another file.
 `install.sh` seeds it with `TASKD_URL=http://localhost:9527`, and the Access panel writes to
@@ -271,15 +271,15 @@ Installing the skill is one line; working the board well is a set of habits.
 Every agent kind shares the same **eight rules**: **claim first** (read
 `issue candidates --assignee <me>`, then `issue move <ref> in_progress`); claim
 only what is yours (not somebody else's card, not an unreleased `backlog` card,
-not an `epic`, not a deployment card (`kind: deploy` — the poll never offers one,
-it is dispatched explicitly), and not a card whose `depends_on` blockers are
+not an `epic`, and not a card whose `depends_on` blockers are
 unfinished); **one
 card at a time**; keep a **fresh heartbeat** (the board treats a claim as live for
 10 minutes, and `issue heartbeat <ref>` is the pulse — the board never sends one
 for you); **deliver with a report** (the delivery gate); **self-review is not
-acceptance** (an agent reaches `in_review`; the loop — applying its configured
-reviewer's verdict — or a human accepts to `done`; the board refuses an agent's
-own move with `ACCEPTANCE_FORBIDDEN`); **never
+acceptance** (unless the card is `acceptance_mode: off`, an agent reaches
+`in_review`; the loop — applying its configured reviewer's verdict — or a human
+accepts to `done`, and the board refuses a write the card's mode does not allow
+with `ACCEPTANCE_FORBIDDEN`); **never
 preempt a conflict** (re-read once, retry only if still claimable); and **stay
 traceable** (carry the session id). What differs between agent kinds is *who applies
 them*.

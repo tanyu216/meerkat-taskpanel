@@ -93,7 +93,13 @@ describe("concurrency/containers — one rollup", () => {
       const epic = commands.createTask({ projectId: "proj", title: "Container", kind: "epic", actor: AGENT });
       epicId = epic.id;
       for (const [title, allowDup] of [["One", false], ["Two", true]]) {
-        const child = commands.createTask({ projectId: "proj", title, allowDup, actor: AGENT });
+        const child = commands.createTask({
+          projectId: "proj",
+          title,
+          acceptanceMode: "off",
+          allowDup,
+          actor: AGENT,
+        });
         childIds.push(child.id);
         commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: AGENT });
         commands.claim({ id: child.id, actor: AGENT });

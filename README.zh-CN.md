@@ -6,7 +6,7 @@
 
 Jira、Plane、Linear 共用同一种视角：工具是给人用的。人建卡、指派，AI 作为一个额外的执行者接过任务去干。人面向工具，工具为人而设。
 
-Meerkat TaskPanel 反过来。它是 **AI-Agent-first** 的：看板的第一视角是 AI Agent，人面向的是 Agent，而不是工具本身。项目与任务的创建、领取、心跳、进度上报、依赖与 epic 关系的搭建，乃至交付门禁，全部由 Agent 自己完成，全程无需人在环里。看板 UI 为**观看**而设，不用于驱动流程 —— 它让人一眼看清每个任务当前的状态、以及每个 epic 汇总到哪一步。人唯一的实质杠杆是对提问的回答：在卡片的评论框里写下它，Agent 负责后续。没有人需要靠点按钮来建卡；看板上确有创建弹窗，但它只建普通的 `task` 卡：弹窗没有 `kind` 字段，所以 `epic` 由 Agent 把一张卡原地升级得到（见 skill 的容器协议），`deploy` 卡也从不从表单产生。
+Meerkat TaskPanel 反过来。它是 **AI-Agent-first** 的：看板的第一视角是 AI Agent，人面向的是 Agent，而不是工具本身。项目与任务的创建、领取、心跳、进度上报、依赖与 epic 关系的搭建，乃至交付门禁，全部由 Agent 自己完成，全程无需人在环里。看板 UI 为**观看**而设，不用于驱动流程 —— 它让人一眼看清每个任务当前的状态、以及每个 epic 汇总到哪一步。人唯一的实质杠杆是对提问的回答：在卡片的评论框里写下它，Agent 负责后续。没有人需要靠点按钮来建卡；看板上确有创建弹窗，但它只建普通的 `task` 卡：弹窗没有 `kind` 字段，所以 `epic` 由 Agent 把一张卡原地升级得到（见 skill 的容器协议）。
 
 ## 它解决什么问题
 
@@ -200,7 +200,7 @@ OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的�
 （预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
 **配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的
-`.env`，取看板 URL、客户端 token、allow-list、验收策略与 SLA 阈值（`TASKD_SLA_*`，由看板
+`.env`，取看板 URL、客户端 token、allow-list 与 SLA 阈值（`TASKD_SLA_*`，由看板
 校验并通过 `GET /api/v1/sla` 发布）。进程环境逐键优先，CLI 参数再优先于
 两者；`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会
 写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每条
@@ -213,11 +213,10 @@ OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的�
 
 安装 skill 只需一行；把看板用好则是一套习惯。所有 agent kind 共享同一条**八条规则**内核：
 **认领优先**（先 `issue candidates --assignee <我>`，再 `issue move <ref> in_progress`）；
-**只领该领的**（非本人 / `backlog` 未授权 / `epic` / 部署卡（`kind: deploy` —— poll 从不出让，由人工
-或 leader 显式派发）/ `depends_on` 未满足 ⇒ 不领）；
+**只领该领的**（非本人 / `backlog` 未授权 / `epic` / `depends_on` 未满足 ⇒ 不领）；
 **一次一卡**；**心跳新鲜**（看板把认领视为存活 10 分钟，`issue heartbeat <ref>` 就是续期命令，
 看板不会代你续期）；**交付带报告**（交付门禁）；
-**自评≠验收**（Agent 只到 `in_review`；由循环应用审核员结论、或由人验收 `done`；Agent 自己移入 `done` 会被 `ACCEPTANCE_FORBIDDEN` 拒绝）；**冲突不抢占**（重读一次，
+**自评≠验收**（除非卡片是 `acceptance_mode: off`，Agent 只到 `in_review`；由循环应用审核员结论、或由人验收 `done`，越权的移动会被 `ACCEPTANCE_FORBIDDEN` 拒绝）；**冲突不抢占**（重读一次，
 仍可领才重试）；**可追溯**（携带会话 id）。agent kind 之间的差异，只在**由谁来执行这些规则**。
 
 ### Matt Pocock 工程类 skills

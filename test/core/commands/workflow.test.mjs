@@ -33,14 +33,10 @@ const VERDICT = {
   author: REVIEWER,
 };
 
-function board(fn, { acceptancePolicy } = {}) {
+function board(fn) {
   return withBoard(({ db }) => {
     const repos = createRepositories(db);
-    const ctx = createContext({
-      db,
-      repos,
-      ...(acceptancePolicy === undefined ? {} : { acceptancePolicy }),
-    });
+    const ctx = createContext({ db, repos });
     const commands = createCommands(ctx);
     commands.createProject({ id: "proj", name: "Project", actor: HUMAN });
     return fn({ db, repos, ctx, commands });
@@ -53,6 +49,9 @@ function seed(commands) {
     projectId: "proj",
     title: "Do the thing",
     assignee: "linus",
+    // 0038 — the project defaults to `auto`, so a creator must say what this
+    // card needs. This fixture is the reviewed path.
+    acceptanceMode: "agent",
     actor: HUMAN,
   });
   commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });
@@ -94,6 +93,7 @@ describe("commands/workflowTick — the board's plan", () => {
         projectId: "proj",
         title: "Do the thing again",
         assignee: "linus",
+        acceptanceMode: "agent",
         actor: HUMAN,
       });
       commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });
@@ -126,33 +126,14 @@ describe("commands/workflowTick — the board's plan", () => {
     });
   });
 
-  it("uses the board's acceptance policy, not a loop-supplied one", async () => {
-    await board(
-      ({ commands }) => {
-        seed(commands);
-        const result = commands.workflowTick({ reviewer: "jobs" });
-        assert.equal(result.workflow.actions[0].type, "approve_hold");
-        assert.equal(result.workflow.actions[0].held, false);
-        assert.equal(result.workflow.summary.held, 1);
-      },
-      { acceptancePolicy: () => "human-only" },
-    );
-  });
-
-  it("surfaces the agent-only / auto-accept conflict from the board's policy", async () => {
-    await board(
-      ({ commands }) => {
-        seed(commands);
-        const result = commands.workflowTick({ reviewer: "jobs", autoAcceptReviews: false });
-        const alert = result.workflow.alerts.find(
-          (entry) => entry.type === "review_cards_unclosable",
-        );
-        assert.equal(alert.policy, "agent-only");
-        assert.equal(alert.reviews, 1);
-        assert.equal(alert.autoAcceptReviews, false);
-      },
-      { acceptancePolicy: () => "agent-only" },
-    );
+  it("reads the card's acceptance mode, not a loop-supplied policy", async () => {
+    await board(({ commands }) => {
+      const { original } = seed(commands);
+      const result = commands.workflowTick({ reviewer: "jobs" });
+      assert.equal(result.workflow.actions[0].type, "approve");
+      assert.equal(commands.getTask({ id: original.id }).acceptanceMode, "agent");
+      assert.equal(result.workflow.summary.held, 0);
+    });
   });
 
   it("returns a plan with no actions when nobody delivered", async () => {
@@ -186,11 +167,12 @@ describe("commands/workflowTick — the board's plan", () => {
 // ---------------------------------------------------------------------------
 
 describe("commands/workflowTick — 0031", () => {
-  function deliverPlain(commands, projectId = "proj") {
+  function deliverPlain(commands, projectId = "proj", acceptanceMode = "off") {
     const task = commands.createTask({
       projectId,
       title: "Do the thing",
       assignee: "linus",
+      acceptanceMode,
       actor: HUMAN,
     });
     commands.moveStatus({ id: task.id, to: "in_progress", actor: WORKER });
@@ -316,18 +298,16 @@ describe("commands/workflowTick — 0031", () => {
     });
   });
 
-  it("leaves a human-only top-level card for the human", async () => {
-    await board(
-      ({ commands }) => {
-        const task = deliverPlain(commands);
-        const result = commands.workflowTick({ reviewer: "jobs" });
-        assert.equal(result.workflow.actions.some((item) => item.type === "auto_accept"), false);
-        const skipped = result.workflow.alerts.find((alert) => alert.type === "auto_accept_skipped");
-        assert.ok(skipped);
-        assert.equal(skipped.original, task.identifier);
-        assert.equal(skipped.reason, "human_only");
-      },
-      { acceptancePolicy: "human-only" },
-    );
+  it("leaves a human-accepted card for the human", async () => {
+    await board(({ commands }) => {
+      const task = deliverPlain(commands, "proj", "human");
+      const result = commands.workflowTick({ reviewer: "jobs" });
+      assert.equal(result.workflow.actions.some((item) => item.type === "auto_accept"), false);
+      assert.equal(
+        result.workflow.alerts.some((alert) => alert.type === "auto_accept_skipped"),
+        false,
+      );
+      assert.equal(commands.getTask({ id: task.id }).acceptanceMode, "human");
+    });
   });
 });

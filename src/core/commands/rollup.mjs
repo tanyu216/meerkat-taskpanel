@@ -279,7 +279,7 @@ export function startContainer(ctx, containerId, now, options = {}) {
   const started = children.find((child) => CHILD_STARTED_STATUSES.includes(child.status));
   if (started === undefined) return null;
 
-  assertTransition(container.status, STATUS.IN_PROGRESS, container.kind);
+  assertTransition(container.status, STATUS.IN_PROGRESS, container.kind, container.acceptanceMode);
   const moved = ctx.repos.tasks.moveCas({
     id: container.id,
     to: STATUS.IN_PROGRESS,

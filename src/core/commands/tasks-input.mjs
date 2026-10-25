@@ -41,6 +41,7 @@
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
+import { CARD_ACCEPTANCE_MODES } from "../domain/acceptance-mode.mjs";
 import { PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
 
 /** The nine operations this module covers. */
@@ -124,8 +125,12 @@ const CREATE = Object.freeze([
   both("idem"),
   both("allow_dup", { type: BOOLEAN }),
   sugar("target", "meta.target"),
-  // 0031 — the per-card review decision. On an optional project an agent must
-  // state it; a human/UI caller may omit it (default: no review).
+  // 0038 — the per-card acceptance decision. `auto` is a project word, so a
+  // card states a concrete mode; an omitted value falls back to the project (or
+  // `human` when the project is `auto`).
+  both("acceptance_mode", { vocab: CARD_ACCEPTANCE_MODES }),
+  // 0031 — the legacy boolean alias, kept for one release (`true → agent`,
+  // `false → off`).
   both("review_required", { type: BOOLEAN }),
   both("review_of"),
   both("review_round", { type: INTEGER }),
@@ -153,8 +158,10 @@ const UPDATE = Object.freeze([
   // is the optimistic lock; `reason` is the audit row the DB trigger reads.
   both("acceptance_drop", { repeat: true }),
   both("acceptance_revision", { type: INTEGER }),
-  // 0031 — the controlled review-decision override. `reason` is required by the
-  // command layer only when a human waives a required review.
+  // 0038 — the controlled acceptance override. `reason` is required when the
+  // change leaves `agent` (waives a review).
+  both("acceptance_mode", { vocab: CARD_ACCEPTANCE_MODES }),
+  // 0031 — the legacy boolean alias, kept for one release.
   both("review_required", { type: BOOLEAN }),
   both("reason"),
   wireOnly("if_version", { type: INTEGER }),
@@ -207,7 +214,9 @@ const CLAIM = Object.freeze([
 ]);
 
 const DELIVER = Object.freeze([
-  wireOnly("to", { vocab: STATUSES }),
+  // 0038 — `--to done` is the `off` card's direct acceptance: the report and the
+  // move land in one transaction, so the evidence the done gate reads exists.
+  both("to", { vocab: STATUSES }),
   both("report", { type: OBJECT, nested: REPORT }),
   both("if_version", { type: INTEGER }),
   both("no_report", { type: BOOLEAN }),

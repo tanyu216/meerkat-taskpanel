@@ -85,6 +85,28 @@ describe("buildContinuePrompt", () => {
   it("starts with the command-only loop skill, then the continue cue", () => {
     assert.ok(prompt.startsWith("/meerkat-loop "), prompt.slice(0, 48));
     assert.match(prompt, /^\/meerkat-loop Continue\b/);
+    assert.match(prompt, /\(mode: supervised\)/, "the headless turn declares its mode");
+  });
+
+  it("carries the live-session mode, and asks the human in-chat before recording", () => {
+    const manual = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      nodePath: "/opt/node/bin/node",
+      passesScript,
+      commonArgs: ["--actor-kind", "claude", "--agent", "alice"],
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      mode: "manual",
+    });
+    assert.match(manual, /\(mode: manual\)/);
+    assert.match(manual, /Ask the human here when a question needs a/);
+    assert.match(manual, /--as-human/);
+    assert.match(manual, /board comment is authoritative/i);
+    // The pass order is the same contract in both modes.
+    const patrol = manual.indexOf(`${passesScript} patrol`);
+    const workflow = manual.indexOf(`${passesScript} workflow`);
+    const poll = manual.indexOf(`${passesScript} poll`);
+    assert.ok(patrol !== -1 && patrol < workflow && workflow < poll);
   });
 
   it("names every deterministic pass by absolute path", () => {

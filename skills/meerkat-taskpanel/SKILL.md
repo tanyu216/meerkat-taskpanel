@@ -156,24 +156,25 @@ freezes as plain items: a tick on the card is the author's intent, not this deli
 `issue deliver` writes the report and moves to `in_review` in one transaction. The board refuses
 `in_review` without a report for the current round (`REPORT_REQUIRED`) and prints the fixing
 command; `--no-report --reason "<why>"` (≥ 8 characters, mutually exclusive with
-`--report-file`) is the audited waiver for one round. Never move a **top-level** card to `done`
-yourself; a **child** card is closed by a non-human writer. Who may accept what:
-[`references/status-lifecycle.md#7-acceptance-policy--scope`](references/status-lifecycle.md#7-acceptance-policy--scope).
+`--report-file`) is the audited waiver for one round. Never move a card to `done` unless its
+own `acceptance_mode` lets you: `off` lets the deliverer close it (and `in_progress → done`
+directly), `agent` waits for an independent `APPROVE`, `human` means a person closes it. Who
+may accept what:
+[`references/status-lifecycle.md#7-acceptance-one-mode-per-card`](references/status-lifecycle.md#7-acceptance-one-mode-per-card).
 
-After delivery the board decides. When the card's `review_required` snapshot says so, it
-dispatches an independent review card, applies the reviewer's `VERDICT:`, and accepts or
-returns the original; under `human-only` a top-level `APPROVE` is **held** for a human. The
-decision is per card, taken at creation from the project's `review_policy`:
+After delivery the board decides. When the card is `agent`, it dispatches an independent
+review card, applies the reviewer's `VERDICT:`, and accepts or returns the original. The
+mode is resolved once, at creation:
 
-- `required` marks every ordinary card; `off` marks none; `optional` asks the creator.
-- In an `optional` project an **agent** must pass `--review yes|no` on `issue create`; a
-  human/UI caller may omit it and gets no review. A `deploy` card is always marked.
-- A no-review delivery is auto-accepted under `both`/`agent-only`; under `human-only` a human
-  still accepts it. The loop's `autoAcceptReviews` flag only controls review-card closure.
-- A human may waive a required review with
-  `taskctl issue update <ref> --review no --reason "<why>"` (no open current-round review).
-  Any actor may escalate with `--review yes`. Both are audited as `review_override`.
-- A review card itself is always `review_required = 0`; it is never reviewed again.
+- `--acceptance-mode off|agent|human` on `issue create` is the card's snapshot.
+- Omitted, it follows the project's `acceptance` default (`auto` by default). In an `auto`
+  project the creator decides: pass a mode, or the card falls back to `human`.
+- An `off` card is auto-accepted (`loop-auto`) and may be delivered straight to `done`.
+- A `human` card is never auto-accepted; a person closes it.
+- The mode can be changed with `taskctl issue update <ref> --acceptance-mode <value>
+  --reason "<why>"` (audited as `acceptance_override`). An agent may only tighten
+  (`off → agent|human`); leaving `agent` needs no open current-round review.
+- A review card is always `acceptance_mode = off`; it is never reviewed again.
 
 ## Containers: when the card is an epic
 

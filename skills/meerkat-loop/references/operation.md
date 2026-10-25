@@ -14,7 +14,7 @@ For `<agent-dir>` = `~/.claude`, `~/.codex`, `~/.agents`, `~/.config/opencode` o
 | units | `<agent-dir>/scheduling/{launchd,systemd,cron}/` | the resident pool (`session`), ping 60s, continue 600s, and the event subscriber (launchd/systemd; part of the enable set). Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the agent CLI |
 | wake glue | `<agent-dir>/bin/wake-<actor-kind>.sh` | legacy one-shot wakes only: resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` / `opencode run` / `cursor-agent -p` |
 | agent config | `<agent-dir>/meerkat-taskpanel.env` | claim policy, stale recovery, `MEERKAT_TASKPANEL_REPO`, workflow answers, the pool's knobs, and the full-tool-access opt-in |
-| runtime | `<agent-dir>/meerkat-taskpanel/{supervisor.log,supervisor.state.json,sessions.state.json,subagents.state.json,subscribe.state.json}` | tick log, legacy worker registry, pool sessions + heartbeat, subagent ledger, subscriber liveness |
+| runtime | `<agent-dir>/meerkat-taskpanel/{supervisor.log,supervisor.state.json,sessions.state.json,subagents.state.json,subscribe.state.json,supervisor.session.json}` | tick log, legacy worker registry, pool sessions + heartbeat (+ `controlMode`), subagent ledger, subscriber liveness, the pool a live session started |
 
 `--link` applies to the board skill only: a symlinked loop body would
 reintroduce the checkout dependency the copied body exists to remove.
@@ -57,10 +57,23 @@ node <agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --
 node <agent-dir>/meerkat-taskpanel/scripts/loop/passes.mjs patrol   --actor-kind claude --agent alice
 node <agent-dir>/meerkat-taskpanel/scripts/loop/passes.mjs workflow --actor-kind claude --agent alice
 node <agent-dir>/meerkat-taskpanel/scripts/loop/passes.mjs poll     --actor-kind claude --agent alice
+
+# The live-session mode: status, an explicit pool takeover, the console cycle.
+node <agent-dir>/meerkat-taskpanel/scripts/loop/status.mjs  --json
+node <agent-dir>/meerkat-taskpanel/scripts/loop/status.mjs  --take-over
+node <agent-dir>/meerkat-taskpanel/scripts/loop/status.mjs  --stop
+node <agent-dir>/meerkat-taskpanel/scripts/loop/console.mjs --once --json
+node <agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice \
+  --session --control=external
 ```
 
 A bare `node` is right in your own shell. The units cannot assume it, which is
 why they name an absolute interpreter.
+
+`--control=external` is the pool half of the manual mode: it opens no control session and
+skips `continue.pending`; the live session runs the control turn and the pool keeps only
+the project sessions. `status.mjs --take-over` starts exactly that, records its pid, and
+`--stop` stops only that process.
 
 ### Main flags
 
@@ -80,13 +93,12 @@ Precedence: flag > process env > agent config > default.
 | `--claim-unassigned=yes\|no` | yes | also claim the public pool |
 | `--recover-stale=yes\|no` | yes | also claim stale `in_progress` (same holder 30 min, anyone 6 h) |
 | `--workflow=yes\|no` | yes | run the workflow pass; off means the loop writes no card |
-| `--reviewer <agent>` | unset | the deployment reviewer. A project's `reviewer` overrides it; unset disables dispatch for projects without one, and a `required` project with no effective reviewer fails startup. Verdicts in flight still apply. |
-| `--auto-accept-reviews=yes\|no` | yes | close a **review card** after applying its verdict; `no` leaves it for a human. It does not gate auto-accepting a no-review original. `agent-only` + `no` is refused at startup (nobody could close a review card). |
-| `--acceptance <policy>` | `both` | `human-only` \| `both` \| `agent-only`; **advisory**, the board decides |
+| `--reviewer <agent>` | unset | the deployment reviewer. A project's `reviewer` overrides it; unset disables dispatch for projects without one, and an `agent` card with no effective reviewer fails startup. Verdicts in flight still apply. |
 | `--workflow-max-actions <n>` | 20 | writes per workflow pass |
 | `--review-aging-minutes <n>` | 60 | report a review card with no readable verdict this long |
 | `--workflow-ledger <path>` | beside `--state` | workflow alert de-duplication ledger; an unreadable one suppresses nothing |
 | `--session` | — | run the resident session pool (control + one project session per target directory); this is a daemon mode |
+| `--control=internal\|external` | internal | who owns the control turn: the pool (`internal`) or a live session (`external`, which opens no control session and skips `continue.pending`) |
 | `--resident=auto\|no` | auto | use a live pool for continue; `no` never dispatches workers |
 | `--session-state <path>` | beside `--state` | pool state file (`sessions.state.json`) |
 | `--session-max-age <sec>` | 86400 | fresh conversation after this age; 0 = never |
@@ -164,6 +176,37 @@ That is the cron shape, and the shape on an agent kind whose CLI lacks the resid
 protocol. Start the session unit to get dispatch. All five agent kinds have an adapter:
 Claude Code (stream-json), Codex (app-server threads), Pi (`--mode rpc`),
 OpenCode (`serve`, one per directory), Cursor (ACP).
+
+## Manual mode (a live session hosts the control turn)
+
+The loop has one control turn. In manual mode the **live session** runs it; the pool is
+started with `--control=external`, so it opens no control session and leaves
+`continue.pending` alone. Nothing else changes: the same `patrol → workflow → poll`, the
+same question ladder, the same acceptance rules.
+
+1. `status.mjs --json` → `running | busy | starting | configured-idle | partial | absent`.
+   - `running` + `pool.controlMode: internal`: the installed supervisor owns the turn; do
+     not run a second one. You may attach as a question console.
+   - `configured-idle` / `partial` / `busy`: report; the service manager or an in-flight
+     turn owns it.
+   - `absent`: ask the human, then `status.mjs --take-over` (explicit; the pool persists
+     until `status.mjs --stop`).
+2. Control ticks run `passes.mjs patrol → workflow → poll` (the same commands the
+   supervised prompt lists). With the external pool live, poll claims and enqueues; the
+   pool's project sessions spawn the workers/reviewers.
+3. Question ticks run `console.mjs --once --json` and ask the human **in the session**:
+   `awaiting` cards, in_progress agent questions with no later human comment, and
+   `in_review` cards pending acceptance. Record the human's answer with
+   `taskctl comment add <ref> --as-human …`; the board comment is the authoritative record,
+   the in-session question is the front-end. Then apply the ladder's move and run a control
+   tick.
+4. Bound the loop (control cadence 600 s, question tick 30 s, TTL 30 min). Never decide
+   E1–E5 yourself, never claim/move a work card, never start a second pool, and run at most
+   one console per agent directory (`session.lock` guards the pool; two consoles would race
+   the workflow ledger). For unattended operation, enable the units.
+
+`--opened-by human` is the same idea at the single-turn level; manual mode adds the pool
+and the repeated loop around it.
 
 ## Card briefs and task process directories
 
@@ -267,18 +310,16 @@ invocation and every action field are the board skill's capability contract
 (`references/capabilities.md` §6–7); the review-card shape and its structural
 identity are `references/review-workflow.md` in the same skill.
 
-A flow-A delivery that lands in `in_review` **whose `review_required` snapshot
-is 1** is dispatched to the configured reviewer as a **review card**. The
-reviewer is `project.reviewer ??` the deployment reviewer. Poll wakes every
-configured reviewer through the normal atomic claim; a dedicated reviewer sees
-only review cards and never the public pool.
+A flow-A delivery that lands in `in_review` **on a card whose
+`acceptance_mode` is `agent`** is dispatched to the configured reviewer as a
+**review card**. The reviewer is `project.reviewer ??` the deployment reviewer.
+Poll wakes every configured reviewer through the normal atomic claim; a
+dedicated reviewer sees only review cards and never the public pool.
 
-A card at `review_required = 0` gets no review card. The plan carries
-`auto_accept`, and the loop applies it only when `taskd` may accept the card's
-scope under the board policy; under `human-only` a top-level card is left for
-the human (`auto_accept_skipped`, reason `human_only`), while a child still
-auto-accepts. `autoAcceptReviews` does not gate this path — it only controls
-whether the loop closes a review card.
+An `off` card gets no review card. The plan carries `auto_accept`, which the
+loop applies (`loop-auto`); an `off` card may also skip `in_review` entirely
+(`issue deliver --to done`). A `human` card is left for the person
+(`auto_accept_skipped`, reason `human_mode`).
 
 What keeps it safe to run unattended:
 
@@ -291,10 +332,8 @@ What keeps it safe to run unattended:
   card's own assignee is refused (`self_review_not_independent`).
 - **A canceled review card ends `canceled`** — the two-hop
   `in_review → in_progress → canceled`; it is never recorded as `done`.
-- **A dead configuration is named** — `agent-only` with
-  `auto_accept_reviews=no` leaves review cards with no writer who may close
-  them; the board reports each open one as `review_cards_unclosable` and the
-  loop warns at startup.
+- **A review card always has a closer** — the loop closes the card it
+  dispatched; there is no switch that could leave it for nobody.
 
 Operational alerts: `original_unseen` (`board_truncated` when the read is
 capped), `verdict_unreadable`, `review_aging`, `review_report_not_by_reviewer`,

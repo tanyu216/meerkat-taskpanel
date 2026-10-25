@@ -49,9 +49,10 @@ export const CARD_KEY_ORDER = Object.freeze([
   "status",
   "priority",
   "kind",
-  // 0031 — emitted only when the card requires review; absence means "not
-  // required", so a card that never needs one does not grow a line.
+  // 0031/0038 — emitted only when the card is not the default `off`; absence
+  // means "no review", so a card that never needs one does not grow a line.
   "review_required",
+  "acceptance_mode",
   "labels",
   "project",
   "target",
@@ -177,6 +178,12 @@ export function renderCard(task, context) {
   // the default state.
   if (task.reviewRequired === 1 || task.reviewRequired === true) {
     data.review_required = "yes";
+  }
+  // 0038 — the mode the card actually carries. `review_required` stays one
+  // release longer as the legacy spelling; `acceptance_mode` is what a reader
+  // should branch on, and the default (`off`) stays absent.
+  if (task.acceptanceMode !== undefined && task.acceptanceMode !== null && task.acceptanceMode !== "off") {
+    data.acceptance_mode = task.acceptanceMode;
   }
   // 0023 — the three reference kinds, each written **only when it says something**
   // the reader could not otherwise know. Writing an empty key would grow every

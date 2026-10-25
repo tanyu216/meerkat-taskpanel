@@ -117,10 +117,13 @@ export function taskToWire(task, options = {}) {
   // optimistic lock a prune sends back.
   out.acceptance = Array.isArray(task.acceptance) ? task.acceptance : [];
   out.acceptance_revision = Number(task.acceptanceRevision ?? 0);
-  // 0031 — the decision snapshot is stored as 0/1 and exposed as a boolean: the
-  // request declarations use `bool()`, and a reader should not have to know the
-  // storage type.
+  // 0031 — the legacy decision snapshot is stored as 0/1 and exposed as a
+  // boolean: the request declarations use `bool()`, and a reader should not
+  // have to know the storage type. Kept for one release.
   out.review_required = task.reviewRequired === 1 || task.reviewRequired === true;
+  // 0038 — the single acceptance decision. `auto` never appears here: the card
+  // stores a concrete mode.
+  out.acceptance_mode = task.acceptanceMode ?? "off";
   out.assignee = actorRef(task.assigneeId, task.assigneeKind, lookup);
   out.reporter = actorRef(task.reporterId, task.reporterKind, lookup);
   // `claimed_by` is an actor **id** since 0020 (the execution lock's holder),
@@ -190,7 +193,10 @@ export function projectToWire(project) {
     meta: project.meta ?? {},
     readme: project.readme ?? null,
     // 0031 — the project's review default and its optional reviewer override.
+    // 0038 — `acceptance` is the single project default; `review_policy` is the
+    // legacy spelling, kept for one release.
     review_policy: project.reviewPolicy ?? "optional",
+    acceptance: project.acceptance ?? "auto",
     reviewer: project.reviewer ?? null,
     // The sidebar badge's number (design/BLOCKS.md §Projects): the project's
     // **total** task count, served with the list and independent of the order.

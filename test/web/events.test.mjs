@@ -91,9 +91,9 @@ describe("web/events — the refresh map", () => {
     // used to fall through the unknown-event branch.
     assert.equal(isKnownEvent("acceptance_changed"), true);
     assert.equal(isKnownEvent("acceptance_pruned"), true);
-    assert.equal(isKnownEvent("review_override"), true);
+    assert.equal(isKnownEvent("acceptance_override"), true);
     assert.equal(taskEventNeedsRefresh("acceptance_pruned"), true);
-    assert.equal(taskEventNeedsRefresh("review_override"), true);
+    assert.equal(taskEventNeedsRefresh("acceptance_override"), true);
     assert.equal(isKnownEvent("brand_new_event"), false);
   });
 });

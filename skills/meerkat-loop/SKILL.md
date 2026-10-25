@@ -29,17 +29,16 @@ The continue turn runs three deterministic passes, in this order:
    starts by default.
 2. **workflow** — the write channel. The **board** computes the plan and the
    **loop** applies it. For a flow-A
-   delivery whose `review_required` snapshot is 1, dispatch an independent
+   delivery whose card is `acceptance_mode: agent`, dispatch an independent
    reviewer, apply the reviewer's `VERDICT:` report to the original, and close
-   the review card last. A card at 0 is not dispatched: the plan emits
-   `auto_accept` and the loop closes the original directly (`loop-auto`).
+   the review card last. An `off` card is not dispatched: the plan emits
+   `auto_accept` and the loop closes the original directly (`loop-auto`). A
+   `human` card is left for a person.
    On by default; `--workflow=no` disables it.
    The reviewer is `project.reviewer ??` the deployment reviewer
-   (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent config). A `required`
-   project with no effective reviewer fails the loop at startup, and
-   `agent-only` + `autoAcceptReviews=no` is refused for the same reason.
-   `autoAcceptReviews` only controls whether the loop closes a **review card**;
-   it does not gate auto-accepting a no-review original.
+   (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent config). An `agent` card
+   with no effective reviewer fails the loop at startup: the board would have
+   dispatched a review nobody can claim.
 3. **poll** — scan, **export the card brief**, atomically claim, **enqueue the
    handoff**. It never spawns a worker: the resident project session does, as a
    subagent that inherits the project directory. Runs last so a review card
@@ -67,37 +66,118 @@ continue turn passes `/meerkat-loop Continue — …`; the rest of that prompt (
 passes, with absolute entry paths) is appended as the turn's input. There is no
 argument placeholder, no subcommand and no argument parsing.
 
+The instruction declares its **mode** in its first line: `mode: supervised` is the
+scheduler's control turn; no marker is a **manual** turn hosted by this live session.
+The two run the same control turn — see §Execution modes.
+
 `install.sh` copies the skill to `<agent-dir>/skills/meerkat-loop/`, so the bare
 `/meerkat-loop` resolves there. On an agent kind that does not slash commands, the prefix
 stays literal text and the rest of the prompt still carries the work.
 
+### Execution modes
+
+There is **one control turn**: `patrol → workflow → poll`, the same question ladder and
+the same acceptance rules. Two drivers run it; the turn says which.
+
+- **Supervised** (`mode: supervised`). The installed scheduler (ping/continue/events) or
+  a one-shot supplies the prompt. The prompt is authoritative: run exactly the passes it
+  lists — poll is absent when no pool is live. The human reads the board, so questions are
+  board comments. Do not start a clock, a pool, a subscriber or a watcher; return when
+  the turn is done.
+- **Manual** (no marker). A human invoked the skill in a live session. The session is the
+  control turn and the pool is the dispatcher; the human is the clock and the question
+  front-end.
+
+#### Manual mode
+
+1. **Detect.** Run `node <body>/scripts/loop/status.mjs --json` (body resolution below):
+   - `running` — a pool is live. `pool.controlMode` in the report says who owns the turn.
+     `internal` means the installed supervisor owns it: do **not** run a second control
+     turn; you may attach as a question console. `external` means a live session owns it;
+     run the loop.
+   - `configured-idle` / `partial` / `busy` — report; do not start a pool and do not fight
+     the service manager.
+   - `absent` — nothing is running. Ask the human before taking over.
+2. **Take over (explicit only).** If `absent` and the human agrees, run
+   `status.mjs --take-over`. It starts the pool in **external-control** mode — one
+   process; project sessions still dispatch — and records its pid. The pool keeps running
+   after this session; stop it with `status.mjs --stop`. If the human declines, stop after
+   the read-only report.
+3. **Control tick.** Run the same three passes the supervised prompt lists:
+   `passes.mjs patrol`, `workflow`, `poll`, by absolute path (below). With the external
+   pool live, poll claims and enqueues; the pool's project sessions spawn the
+   workers/reviewers.
+4. **Question tick.** `node <body>/scripts/loop/console.mjs --once --json` lists the
+   `awaiting` cards, in_progress agent questions no human has answered, and `in_review`
+   cards pending acceptance. Ask the human **in this conversation**, then:
+   - record their answer verbatim with `taskctl comment add <ref> --as-human …` — the
+     board comment is authoritative; the in-session question is only the front-end;
+   - apply the move the question ladder prescribes (an awaiting card resumes on the human
+     comment; an in_progress agent question → `todo`/reattach);
+   - run a control tick so the resumed card is processed promptly.
+5. **Bound the loop.** Control ticks follow the continue cadence (default 600 s); question
+   ticks default to 30 s; stop at the requested TTL (default 30 min) or on "stop". On
+   exit report the pool pid and `status.mjs --stop`.
+
+**Never** decide an E1–E5 question yourself; never claim or move a work card; never start
+a second pool. Run at most one manual console per agent directory: `session.lock` guards
+the pool, but two consoles would still race the workflow ledger. If the human wants
+unattended operation, point at `install.sh --supervisor=enable`.
+
+```bash
+# <agent-dir> is the directory containing skills/meerkat-loop/:
+# claude ~/.claude, codex ~/.codex, pi ~/.agents, opencode ~/.config/opencode,
+# cursor ~/.cursor. TASKCTL_ACTOR_KIND disambiguates more than one install.
+kind="${TASKCTL_ACTOR_KIND:-}"
+for pair in claude:.claude codex:.codex pi:.agents opencode:.config/opencode cursor:.cursor; do
+  k="${pair%%:*}"; d="$HOME/${pair#*:}"
+  [ -f "$d/skills/meerkat-loop/scripts/loop/passes.mjs" ] || continue
+  [ -z "$kind" ] || [ "$kind" = "$k" ] || continue
+  agent_dir="$d"; kind="$k"; break
+done
+[ -n "${agent_dir:-}" ] || { echo "meerkat-loop: no installed loop body; run install.sh" >&2; exit 1; }
+body="$agent_dir/meerkat-taskpanel/scripts"
+[ -f "$body/loop/passes.mjs" ] || body="$agent_dir/skills/meerkat-loop/scripts"
+agent="${TASKCTL_AGENT:-}"
+[ -n "$agent" ] || agent="$(sed -n 's/^MEERKAT_TASKPANEL_AGENTS=//p' \
+  "$agent_dir/meerkat-taskpanel.env" 2>/dev/null | head -1)"
+agent="${agent%%,*}"; agent="${agent:-${USER:-$(id -un)}}"
+cli="$agent_dir/bin/taskctl"; [ -x "$cli" ] || cli=taskctl
+
+node "$body/loop/status.mjs"  --json --agent "$agent" --actor-kind "$kind"
+node "$body/loop/console.mjs" --once --json --agent "$agent" --actor-kind "$kind"
+node "$body/loop/passes.mjs" patrol   --actor-kind "$kind" --agent "$agent"
+node "$body/loop/passes.mjs" workflow --actor-kind "$kind" --agent "$agent"
+node "$body/loop/passes.mjs" poll     --actor-kind "$kind" --agent "$agent"
+```
+
+If the install used a custom `--agent-name` and `TASKCTL_AGENT` is unset, pass
+`--agent <name>` explicitly. `--no-automation` installs skip the agent config and shim;
+the manual mode then needs an explicit `--repo` and `taskctl`.
+
 ### Who may close
 
-The board's acceptance policy is authoritative and arrives in the plan.
-`--acceptance` / `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` is an advisory local copy,
-printed at startup for diagnostics only.
+The card's own `acceptance_mode` is authoritative and arrives on the card. There is
+no board-level policy, and the loop keeps no local copy.
 
 <!-- acceptance-matrix:begin -->
-| Scope | `human-only` | `both` (default) | `agent-only` |
-|---|---|---|---|
-| `top_level` | human only | human or `taskd` | any non-human |
-| `review` card | human or `taskd` | human or `taskd` | any non-human |
-| `child` (has a parent) | any non-human | any non-human | any non-human |
+| Card mode | Review card | Who may move it to `done` |
+|---|---|---|
+| `off` | none | the deliverer (any actor kind), `taskd`, or a human; `in_progress → done` is allowed |
+| `agent` | yes — an agent reviewer | `taskd` (after a current-round `APPROVE`) or a human |
+| `human` | none | a human only |
+| a review card | — | a human or `taskd` — never the reviewer itself |
 <!-- acceptance-matrix:end -->
 
-In loop terms it closes every card the matrix lets `taskd` close. Under `human-only`
-a top-level `APPROVE` is **held** (`approve_hold`): record the verdict, close the
-review card, leave the original `in_review`. A **no-review** top-level card under
-`human-only` is left for the human (`auto_accept_skipped`, reason `human_only`);
-a child is auto-accepted in every policy. Under `agent-only` a human cannot close a
-review card, because the board's review scope allows only a non-human writer. The
-board skill's `references/review-workflow.md` is the semantic authority for the
-review card, the two rounds and the policy matrix; this skill describes **when** the
-loop dispatches and **how** it executes the plan.
-
-A held approval is idempotent: `review_verdict=approve` +
-`review_verdict_round` means a second pass rewrites neither the comment nor the
-marker. A worker always stops at `in_review`; review cards are never held.
+In loop terms it closes every card the matrix lets `taskd` close: an `agent`
+original after a current-round `APPROVE`, its review card, and an `off` card the
+plan auto-accepts. A `human` card is never accepted by the loop: record the
+evidence, stop, and let the person close it (`auto_accept_skipped`, reason
+`human_mode`). A worker always stops at `in_review`; review cards are never
+held — the loop always closes the card it dispatched. The board skill's
+`references/review-workflow.md` is the semantic authority for the review card and
+the two rounds; this skill describes **when** the loop dispatches and **how** it
+executes the plan.
 
 ### Event subscriber
 

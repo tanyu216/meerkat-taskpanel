@@ -120,7 +120,7 @@ export const FEED_EXCLUDED_EVENTS = Object.freeze([
   "task_resumed",
   "acceptance_changed",
   "acceptance_pruned",
-  "review_override",
+  "acceptance_override",
   "label_gc",
   "session_registered",
   "session_closed",

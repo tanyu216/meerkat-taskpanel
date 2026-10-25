@@ -174,19 +174,18 @@ describe("install.sh: the workflow config", () => {
     assert.equal(run.status, 0, run.stderr);
     const text = configOf(home, ".claude");
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m);
-    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=yes$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=$/m, "empty is 'not configured', deliberately");
     assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=yes$/m);
   });
 
-  it("persists --reviewer / --workflow=no / --auto-accept-reviews=no", () => {
+  it("persists --reviewer / --workflow=no", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "codex");
     const run = runInstall(
       [
         "--target", "codex", "--agent-name", "alice", "--reviewer", "jobs",
-        "--workflow=no", "--auto-accept-reviews=no", "--recover-stale=no",
+        "--workflow=no", "--recover-stale=no",
       ],
       installEnv(home, bin),
     );
@@ -194,7 +193,6 @@ describe("install.sh: the workflow config", () => {
     const text = configOf(home, ".codex");
     assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=no$/m);
-    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=no$/m);
   });
 
@@ -205,13 +203,11 @@ describe("install.sh: the workflow config", () => {
     const run = runInstall(["--target", "claude", "--agent-name", "alice"], {
       ...installEnv(home, bin),
       MEERKAT_TASKPANEL_WORKFLOW: "no",
-      MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS: "no",
       MEERKAT_TASKPANEL_REVIEWER: "jobs",
     });
     assert.equal(run.status, 0, run.stderr);
     const text = configOf(home, ".claude");
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=no$/m);
-    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
   });
 
@@ -219,13 +215,13 @@ describe("install.sh: the workflow config", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
-    for (const flag of ["--workflow=maybe", "--auto-accept-reviews=perhaps", "--recover-stale=sometimes"]) {
+    for (const flag of ["--workflow=maybe", "--recover-stale=sometimes"]) {
       const run = runInstall(["--target", "claude", "--prefix", home, flag], {
         ...process.env,
         PATH: `${bin}:${process.env.PATH}`,
       });
       assert.equal(run.status, 2, `${flag} must be a usage error`);
-      assert.match(run.stderr, flag.startsWith("--workflow") ? /--workflow/ : flag.startsWith("--recover") ? /--recover-stale/ : /--auto-accept-reviews/);
+      assert.match(run.stderr, flag.startsWith("--workflow") ? /--workflow/ : /--recover-stale/);
       assert.equal(existsSync(join(home, ".claude")), false);
     }
   });
@@ -238,21 +234,20 @@ describe("install.sh: the workflow config", () => {
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice", "--claim-unassigned=no"], env).status, 0);
 
     // Rewrite the file as a pre-workflow install: the two keys it always had, and a
-    // deliberate auto-accept choice the upgrade must not touch.
+    // deliberate reviewer choice the upgrade must not touch.
     const path = join(home, ".claude", "meerkat-taskpanel.env");
     writeFileSync(
       path,
-      "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no\nMEERKAT_TASKPANEL_REPO=/old/checkout\nMEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no\n",
+      "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no\nMEERKAT_TASKPANEL_REPO=/old/checkout\nMEERKAT_TASKPANEL_REVIEWER=old-reviewer\n",
       "utf8",
     );
 
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice", "--reviewer", "jobs"], env).status, 0);
     const text = readFileSync(path, "utf8");
-    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no$/m, "the existing choice is kept");
+    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=old-reviewer$/m, "the existing choice is kept");
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m, "the missing key is added");
     assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=yes$/m);
-    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
-    assert.equal(text.match(/^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=/gm).length, 1, "never duplicated");
+    assert.equal(text.match(/^MEERKAT_TASKPANEL_REVIEWER=/gm).length, 1, "never duplicated");
   });
 });
 

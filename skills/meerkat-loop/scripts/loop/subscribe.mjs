@@ -91,7 +91,7 @@ export const IGNORED_EVENTS = Object.freeze([
   "task_archived",
   "acceptance_changed",
   "acceptance_pruned",
-  "review_override",
+  "acceptance_override",
   "epic_auto_start",
   "comment_added",
   "label_gc",

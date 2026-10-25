@@ -36,14 +36,13 @@ const AGENT = { kind: "agent", id: "linus" };
 const HUMAN = { kind: "human", id: "Terry" };
 
 /** A board with repositories, commands and one project. */
-async function board(fn, { clock, policy } = {}) {
+async function board(fn, { clock } = {}) {
   return withBoard(({ db }) => {
     const repos = createRepositories(db);
     const ctx = createContext({
       db,
       repos,
       ...(clock === undefined ? {} : { clock }),
-      ...(policy === undefined ? {} : { acceptancePolicy: policy }),
     });
     const commands = createCommands(ctx);
     commands.createProject({ id: "proj", name: "Project", actor: HUMAN });
@@ -219,7 +218,12 @@ describe("commands/tasks — create and update", () => {
 
   it("canonicalizes the review marker from the immutable columns on update", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       commands.claim({ id: original.id, actor: AGENT });
       commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
       const review = commands.createTask({
@@ -261,7 +265,12 @@ describe("commands/tasks — create and update", () => {
 
   it("lists the cards that review one card, through both order modes", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       commands.claim({ id: original.id, actor: AGENT });
       commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
       const review = commands.createTask({
@@ -501,7 +510,16 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
   // `in_review` for a human to accept. `done` stays a human's, so acceptance
   // gates the tree from the bottom up.
   const linusTask = (commands, extra = {}) =>
-    commands.createTask({ projectId: "proj", title: "Child", assignee: "linus", assigneeKind: "agent", actor: AGENT, ...extra });
+    commands.createTask({
+      projectId: "proj",
+      title: "Child",
+      assignee: "linus",
+      assigneeKind: "agent",
+      // 0038 — a child is the agent's to close unless the creator says otherwise.
+      acceptanceMode: "off",
+      actor: AGENT,
+      ...extra,
+    });
 
   const epicWith = (commands, children) => {
     const epic = commands.createTask({ projectId: "proj", title: "Container", kind: "epic", actor: AGENT });
@@ -909,7 +927,16 @@ describe("commands/tasks — the container lifecycle (system start, notes, recon
   // note naming their source; `reconcileContainers` replays the rules for a
   // write that bypassed the hooks.
   const linusTask = (commands, extra = {}) =>
-    commands.createTask({ projectId: "proj", title: "Child", assignee: "linus", assigneeKind: "agent", actor: AGENT, ...extra });
+    commands.createTask({
+      projectId: "proj",
+      title: "Child",
+      assignee: "linus",
+      assigneeKind: "agent",
+      // 0038 — a child is the agent's to close unless the creator says otherwise.
+      acceptanceMode: "off",
+      actor: AGENT,
+      ...extra,
+    });
 
   const epicWith = (commands, children) => {
     const epic = commands.createTask({ projectId: "proj", title: "Container", kind: "epic", actor: AGENT });
@@ -1836,14 +1863,15 @@ describe("commands/tasks — the audited waiver (M2 F-B1)", () => {
   });
 });
 
-describe("commands/tasks — acceptance authority (done is human/system only)", () => {
+describe("commands/tasks — acceptance authority (the card's mode)", () => {
   /** A card delivered to `in_review` by its worker — one move from acceptance. */
-  const delivered = (commands) => {
+  const delivered = (commands, acceptanceMode) => {
     const task = commands.createTask({
       projectId: "proj",
-      title: "Work",
+      title: `Work (${acceptanceMode})`,
       assignee: "linus",
       assigneeKind: "agent",
+      acceptanceMode,
       actor: AGENT,
     });
     commands.claim({ id: task.id, actor: AGENT });
@@ -1851,17 +1879,17 @@ describe("commands/tasks — acceptance authority (done is human/system only)", 
     return task;
   };
 
-  it("refuses an agent accepting its own delivery, and says which kinds may", async () => {
+  it("refuses an agent closing a human card, and names the human", async () => {
     await board(async ({ commands }) => {
-      const task = delivered(commands);
+      const task = delivered(commands, "human");
       assert.throws(
         () => commands.moveStatus({ id: task.id, to: "done", actor: AGENT }),
         (err) => {
           assert.equal(err.code, "ACCEPTANCE_FORBIDDEN");
           assert.equal(err.http, 409);
-          assert.deepEqual(err.details.allowed, ["human", "taskd"]);
+          assert.deepEqual(err.details.allowed, ["human"]);
+          assert.equal(err.details.mode, "human");
           assert.equal(err.details.actorKind, "agent");
-          assert.match(err.hint.fix, /in_review/);
           return true;
         },
       );
@@ -1869,21 +1897,12 @@ describe("commands/tasks — acceptance authority (done is human/system only)", 
     });
   });
 
-  it("lets a human accept, and lets the board itself accept (the loop's path)", async () => {
+  it("lets a human close a human card, and the board close an off card", async () => {
     await board(async ({ commands }) => {
-      const byHuman = delivered(commands);
+      const byHuman = delivered(commands, "human");
       assert.equal(commands.moveStatus({ id: byHuman.id, to: "done", actor: HUMAN }).status, "done");
 
-      const bySystem = commands.createTask({
-        projectId: "proj",
-        title: "Loop-accepted",
-        assignee: "linus",
-        assigneeKind: "agent",
-        actor: AGENT,
-        allowDup: true,
-      });
-      commands.claim({ id: bySystem.id, actor: AGENT });
-      commands.deliver({ taskId: bySystem.id, report: report(), actor: AGENT });
+      const bySystem = delivered(commands, "off");
       assert.equal(
         commands.moveStatus({ id: bySystem.id, to: "done", actor: { kind: "taskd", id: "taskd" } }).status,
         "done",
@@ -1891,15 +1910,14 @@ describe("commands/tasks — acceptance authority (done is human/system only)", 
     });
   });
 
-  it("applies the same rule to `deliver --to done` (the wire-only shortcut)", async () => {
+  it("applies the same rule to `deliver --to done`", async () => {
     await board(async ({ commands }) => {
-      // A waived delivery leaves round 1 with no report, so the round's one
-      // report can still be written by the `deliver --to done` call.
       const task = commands.createTask({
         projectId: "proj",
         title: "Waived, then accepted",
         assignee: "linus",
         assigneeKind: "agent",
+        acceptanceMode: "human",
         actor: AGENT,
       });
       commands.claim({ id: task.id, actor: AGENT });
@@ -2094,42 +2112,17 @@ describe("commands/tasks — listCandidates (poll read)", () => {
     });
   });
 
-  it("excludes deployment cards from every pool — but an explicit dispatch still claims one", async () => {
-    // T-20261013-232004: a `kind: deploy` card runs against a live instance, so
-    // the poll's read must never offer one. The marker is a *read* exclusion, not
-    // a claim gate: Elon still dispatches the card, and the move takes it.
-    await board(async ({ db, commands }) => {
-      const deploy = commands.createTask({ projectId: "proj", title: "Rebuild dist", kind: "deploy", assignee: "linus", assigneeKind: "agent", actor: AGENT });
-      const plain = linusTodo(commands, { title: "Ordinary card", allowDup: true });
-      // ...and a deployment card in the *pool* and in the *recovery* pool too:
-      // the exclusion has to hold in all three arms, not only the ready one.
-      const pooledDeploy = commands.createTask({ projectId: "proj", title: "Pooled deploy", kind: "deploy", actor: AGENT });
-      const recoveredDeploy = commands.createTask({ projectId: "proj", title: "Running deploy", kind: "deploy", assignee: "linus", assigneeKind: "agent", actor: AGENT, allowDup: true });
-      commands.claim({ id: recoveredDeploy.id, actor: AGENT });
-      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run("2026-01-01T00:00:00.000Z", recoveredDeploy.id);
-      // The control: the same rotted-claim state on an ordinary card, which the
-      // recovery pool *must* still offer. Without it, a `staleReason` that
-      // happened to return null would make the deploy assertion above pass for
-      // the wrong reason.
-      const recoveredPlain = linusTodo(commands, { title: "Running card", allowDup: true });
-      commands.claim({ id: recoveredPlain.id, actor: AGENT });
-      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run("2026-01-01T00:00:00.000Z", recoveredPlain.id);
-
-      const read = commands.listCandidates({ assignee: "linus", stale: true, includeUnassigned: true });
-      assert.deepEqual(
-        read.map((c) => c.identifier),
-        [plain.identifier, recoveredPlain.identifier],
-        "the poll's read offers the ordinary cards and neither deployment card",
+  it("retires the deploy kind: create and update refuse it (0038)", async () => {
+    await board(async ({ commands }) => {
+      assert.throws(
+        () => commands.createTask({ projectId: "proj", title: "Rebuild dist", kind: "deploy", actor: AGENT }),
+        (err) => err.code === "VALIDATION_FAILED",
       );
-      assert.equal(read.some((c) => c.identifier === deploy.identifier), false, "ready deploy stays out");
-      assert.equal(read.some((c) => c.identifier === pooledDeploy.identifier), false, "pooled deploy stays out");
-      assert.equal(read.some((c) => c.identifier === recoveredDeploy.identifier), false, "recovery deploy stays out");
-
-      // ③ — the explicit path: the assignee claims it and the card really moves.
-      const claimed = commands.moveStatus({ id: deploy.id, to: "in_progress", actor: AGENT });
-      assert.equal(claimed.status, "in_progress");
-      assert.equal(actorName(db, claimed.claimedBy), AGENT.id);
-      assert.equal(claimed.kind, "deploy", "the marker survives the claim");
+      const task = linusTodo(commands, { title: "Ordinary card" });
+      assert.throws(
+        () => commands.updateTask({ id: task.id, patch: { kind: "deploy" }, actor: AGENT }),
+        (err) => err.code === "VALIDATION_FAILED",
+      );
     });
   });
 
@@ -2600,7 +2593,7 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
   });
 });
 
-describe("commands/tasks — acceptance policy and the two terminality gates", () => {
+describe("commands/tasks — the acceptance mode and the two terminality gates", () => {
   const TASKD = { kind: "taskd", id: "taskd" };
 
   /** Put a card in `in_review` the legal way (claim, then deliver). */
@@ -2624,67 +2617,93 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
     }
   };
 
-  /* -------------------------------------------------------------- policy */
+  /* --------------------------------------------------------------- mode */
 
-  it("both (the default) accepts from a human or the board, never from an agent", async () => {
-    for (const actor of [HUMAN, TASKD]) {
+  it("human mode: only a human closes; the board and an agent are refused", async () => {
+    for (const actor of [TASKD, AGENT]) {
       await board(async ({ commands }) => {
-        const task = commands.createTask({ projectId: "proj", title: "Top", actor: AGENT });
+        const task = commands.createTask({
+          projectId: "proj",
+          title: "Top",
+          acceptanceMode: "human",
+          actor: AGENT,
+        });
+        deliverCard(commands, task);
+        assert.equal(
+          refusal(() => commands.moveStatus({ id: task.id, to: "done", actor })),
+          "ACCEPTANCE_FORBIDDEN",
+        );
+      });
+    }
+    await board(async ({ commands }) => {
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "Top",
+        acceptanceMode: "human",
+        actor: AGENT,
+      });
+      deliverCard(commands, task);
+      assert.equal(commands.moveStatus({ id: task.id, to: "done", actor: HUMAN }).status, "done");
+    });
+  });
+
+  it("off mode: any non-blank writer closes, including the worker", async () => {
+    for (const actor of [AGENT, { kind: "claude", id: "claude" }, TASKD, HUMAN]) {
+      await board(async ({ commands }) => {
+        const task = commands.createTask({
+          projectId: "proj",
+          title: "Top",
+          acceptanceMode: "off",
+          actor: AGENT,
+        });
         deliverCard(commands, task);
         assert.equal(commands.moveStatus({ id: task.id, to: "done", actor }).status, "done");
       });
     }
+  });
+
+  it("off mode: in_progress → done directly, without a review or in_review", async () => {
     await board(async ({ commands }) => {
-      const task = commands.createTask({ projectId: "proj", title: "Top", actor: AGENT });
-      deliverCard(commands, task);
-      assert.equal(refusal(() => commands.moveStatus({ id: task.id, to: "done", actor: AGENT })), "ACCEPTANCE_FORBIDDEN");
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "Direct",
+        acceptanceMode: "off",
+        actor: AGENT,
+      });
+      commands.claim({ id: task.id, actor: AGENT });
+      assert.equal(commands.moveStatus({ id: task.id, to: "done", actor: AGENT }).status, "done");
     });
   });
 
-  it("human-only accepts only from a human on a top-level original", async () => {
+  it("agent mode: an agent is refused, and the board needs a review first", async () => {
     await board(async ({ commands }) => {
-      const task = commands.createTask({ projectId: "proj", title: "Top", actor: AGENT });
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "Reviewed",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, task);
-      assert.equal(refusal(() => commands.moveStatus({ id: task.id, to: "done", actor: TASKD })), "ACCEPTANCE_FORBIDDEN");
-      assert.equal(commands.moveStatus({ id: task.id, to: "done", actor: HUMAN }).status, "done");
-    }, { policy: () => "human-only" });
+      assert.equal(
+        refusal(() => commands.moveStatus({ id: task.id, to: "done", actor: AGENT })),
+        "ACCEPTANCE_FORBIDDEN",
+      );
+      assert.equal(
+        refusal(() => commands.moveStatus({ id: task.id, to: "done", actor: TASKD })),
+        "REVIEW_REQUIRED",
+      );
+      assert.equal(commands.getTask({ id: task.id }).status, "in_review");
+    });
   });
 
-  it("agent-only accepts from any non-human, and refuses the human", async () => {
-    for (const actor of [TASKD, { kind: "claude", id: "claude" }, AGENT]) {
-      await board(async ({ commands }) => {
-        const task = commands.createTask({ projectId: "proj", title: "Top", actor: AGENT });
-        deliverCard(commands, task);
-        assert.equal(commands.moveStatus({ id: task.id, to: "done", actor }).status, "done");
-      }, { policy: () => "agent-only" });
-    }
-    await board(async ({ commands }) => {
-      const task = commands.createTask({ projectId: "proj", title: "Top", actor: AGENT });
-      deliverCard(commands, task);
-      assert.equal(refusal(() => commands.moveStatus({ id: task.id, to: "done", actor: HUMAN })), "ACCEPTANCE_FORBIDDEN");
-    }, { policy: () => "agent-only" });
-  });
-
-  it("a human may never accept a child card — under any policy", async () => {
-    for (const policy of ["human-only", "both", "agent-only"]) {
-      await board(async ({ commands }) => {
-        const epic = commands.createTask({ projectId: "proj", title: "Container", kind: "epic", actor: AGENT });
-        const child = commands.createTask({ projectId: "proj", title: "Child", allowDup: true, actor: AGENT });
-        commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: AGENT });
-        deliverCard(commands, child);
-        assert.equal(
-          refusal(() => commands.moveStatus({ id: child.id, to: "done", actor: HUMAN })),
-          "ACCEPTANCE_FORBIDDEN",
-          policy,
-        );
-        assert.equal(commands.moveStatus({ id: child.id, to: "done", actor: AGENT }).status, "done", policy);
-      }, { policy: () => policy });
-    }
-  });
-
-  it("a review card is closed by the human or the board, and by any non-human under agent-only", async () => {
+  it("a review card is closed by the human or the board, never the reviewer", async () => {
     const makeReview = (commands) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original);
       const review = commands.createTask({
         projectId: "proj",
@@ -2705,21 +2724,21 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
     }
     await board(async ({ commands }) => {
       const review = makeReview(commands);
-      assert.equal(refusal(() => commands.moveStatus({ id: review.id, to: "done", actor: AGENT })), "ACCEPTANCE_FORBIDDEN");
+      assert.equal(
+        refusal(() => commands.moveStatus({ id: review.id, to: "done", actor: AGENT })),
+        "ACCEPTANCE_FORBIDDEN",
+      );
     });
-    await board(async ({ commands }) => {
-      const review = makeReview(commands);
-      assert.equal(commands.moveStatus({ id: review.id, to: "done", actor: AGENT }).status, "done");
-    }, { policy: () => "agent-only" });
-    await board(async ({ commands }) => {
-      const review = makeReview(commands);
-      assert.equal(refusal(() => commands.moveStatus({ id: review.id, to: "done", actor: HUMAN })), "ACCEPTANCE_FORBIDDEN");
-    }, { policy: () => "agent-only" });
   });
 
   it("authority is decided before the review/children gates", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original);
       commands.createTask({
         projectId: "proj",
@@ -2738,7 +2757,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
   it("a human closing a top-level card needs the current round's reviews resolved", async () => {
     for (const status of ["todo", "in_progress", "in_review", "blocked", "awaiting"]) {
       await board(async ({ commands }) => {
-        const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+        const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
         deliverCard(commands, original);
         const review = commands.createTask({
           projectId: "proj",
@@ -2777,33 +2801,66 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
     }
   });
 
-  it("a done or canceled review releases the original; an old round does not hold it", async () => {
-    for (const resolved of ["done", "canceled"]) {
-      await board(async ({ commands }) => {
-        const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
-        deliverCard(commands, original);
-        const review = commands.createTask({
-          projectId: "proj",
-          title: "Review",
-          allowDup: true,
-          meta: { review_of: original.identifier, review_round: 1 },
-          actor: AGENT,
-        });
-        if (resolved === "done") {
-          deliverCard(commands, review);
-          commands.moveStatus({ id: review.id, to: "done", actor: HUMAN });
-        } else {
-          commands.moveStatus({ id: review.id, to: "canceled", actor: AGENT });
-        }
-        assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: HUMAN }).status, "done");
-      });
-    }
-
+  it("a done review releases an agent card; a canceled or stale one does not", async () => {
+    // An APPROVE on the current round is the agent card's evidence.
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original);
-      // A review for round 1 is valid while the card is on round 1. The card
-      // then moves to round 2; the old review is history, not a hold.
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        meta: { review_of: original.identifier, review_round: 1 },
+        actor: AGENT,
+      });
+      commands.claim({ id: review.id, actor: AGENT });
+      commands.deliver({
+        taskId: review.id,
+        report: report({ conclusion: "VERDICT: APPROVE\nlooks good" }),
+        actor: AGENT,
+      });
+      // The human protocol is review-first: close the review card, then accept.
+      commands.moveStatus({ id: review.id, to: "done", actor: HUMAN });
+      assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: HUMAN }).status, "done");
+    });
+
+    // A canceled review is not evidence, so the agent card still waits.
+    await board(async ({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
+      deliverCard(commands, original);
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        meta: { review_of: original.identifier, review_round: 1 },
+        actor: AGENT,
+      });
+      commands.moveStatus({ id: review.id, to: "canceled", actor: AGENT });
+      assert.equal(
+        refusal(() => commands.moveStatus({ id: original.id, to: "done", actor: HUMAN })),
+        "REVIEW_REQUIRED",
+      );
+    });
+
+    // A review for an old round is history: it does not hold a human card.
+    await board(async ({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "human",
+        actor: AGENT,
+      });
+      deliverCard(commands, original);
       commands.createTask({
         projectId: "proj",
         title: "Old review",
@@ -2819,7 +2876,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
 
   it("a NULL-round review covers every round (the conservative reading)", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original);
       commands.createTask({
         projectId: "proj",
@@ -2834,7 +2896,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
 
   it("deliver(to: done) applies the same review-ready gate", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original);
       commands.createTask({
         projectId: "proj",
@@ -2850,17 +2917,15 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
     });
   });
 
-  it("a system/agent acceptance is not held by a pending review (the loop's write order)", async () => {
+  it("the board closes an off card without a review (the loop's write order)", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
-      deliverCard(commands, original);
-      commands.createTask({
+      const original = commands.createTask({
         projectId: "proj",
-        title: "Review",
-        allowDup: true,
-        meta: { review_of: original.identifier, review_round: 1 },
+        title: "Original",
+        acceptanceMode: "off",
         actor: AGENT,
       });
+      deliverCard(commands, original);
       assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: TASKD }).status, "done");
     });
   });
@@ -2883,7 +2948,13 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
   it("passes once every child is terminal, and re-opens when a child is added", async () => {
     await board(async ({ commands }) => {
       const epic = commands.createTask({ projectId: "proj", title: "Container", kind: "epic", actor: AGENT });
-      const child = commands.createTask({ projectId: "proj", title: "Child", allowDup: true, actor: AGENT });
+      const child = commands.createTask({
+        projectId: "proj",
+        title: "Child",
+        acceptanceMode: "off",
+        allowDup: true,
+        actor: AGENT,
+      });
       commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: AGENT });
 
       deliverCard(commands, child);
@@ -2892,7 +2963,13 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
       // not, the manual delivery must pass.
       assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
 
-      const late = commands.createTask({ projectId: "proj", title: "Late", allowDup: true, actor: AGENT });
+      const late = commands.createTask({
+        projectId: "proj",
+        title: "Late",
+        acceptanceMode: "off",
+        allowDup: true,
+        actor: AGENT,
+      });
       commands.addRelation({ type: "parent", source: epic.id, target: late.id, actor: AGENT });
       assert.equal(refusal(() => commands.moveStatus({ id: epic.id, to: "done", actor: HUMAN })), "CHILDREN_OPEN");
 
@@ -2926,7 +3003,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
         refusal(() => commands.createTask({ projectId: "proj", title: "Awaiting", status: "awaiting", actor: AGENT })),
         "VALIDATION_FAILED",
       );
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original);
       const review = commands.createTask({
         projectId: "proj",
@@ -2954,7 +3036,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
 
   it("stamps the resolved marker into meta without mutating the caller's meta", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original);
 
       const callerMeta = { flow: "B" };
@@ -3003,7 +3090,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
 
   it("refuses a review_of that names another review card", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original);
       const review = commands.createTask({
         projectId: "proj",
@@ -3034,7 +3126,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
 
   it("refuses a legacy meta.review_of that names another review card", async () => {
     await board(async ({ db, commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       const plain = commands.createTask({ projectId: "proj", title: "Plain", allowDup: true, actor: AGENT });
       // The immutability trigger covers the structural columns only; a legacy
       // row can still carry the marker in meta. The guard must fail closed.
@@ -3060,7 +3157,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
 
   it("requires review_round to equal the original's current delivery round", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original); // round 1, in_review
       commands.moveStatus({ id: original.id, to: "in_progress", actor: AGENT }); // round bumps to 2
       commands.deliver({ taskId: original.id, report: report(), actor: AGENT }); // round 2, in_review
@@ -3105,7 +3207,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
 
   it("requires a review card to be kind=task", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       assert.throws(
         () =>
           commands.createTask({
@@ -3125,7 +3232,13 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
   it("requires the original to be in_review", async () => {
     for (const setup of ["todo", "in_progress", "done", "canceled"]) {
       await board(async ({ commands }) => {
-        const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+        // `off` so this test can move the original to `done` without a review.
+        const original = commands.createTask({
+          projectId: "proj",
+          title: "Original",
+          acceptanceMode: "off",
+          actor: AGENT,
+        });
         if (setup === "in_progress") commands.claim({ id: original.id, actor: AGENT });
         if (setup === "done") {
           deliverCard(commands, original);
@@ -3156,7 +3269,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
     }
 
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original);
       const review = commands.createTask({
         projectId: "proj",
@@ -3172,7 +3290,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
 
   it("reports review-of-review before original-status", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original);
       const review = commands.createTask({
         projectId: "proj",
@@ -3205,7 +3328,12 @@ describe("commands/tasks — acceptance policy and the two terminality gates", (
 
   it("returns the existing review card on a retried create after the original leaves in_review", async () => {
     await board(async ({ commands }) => {
-      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        actor: AGENT,
+      });
       deliverCard(commands, original);
       const idem = `loop-review|${original.identifier}|r${original.deliveryRound}`;
       const review = commands.createTask({
@@ -3248,47 +3376,35 @@ describe("commands/tasks — review decision (0031)", () => {
     return commands.deliver({ taskId: task.id, report: report(), actor }).task;
   }
 
-  it("resolves required / optional / off at creation", async () => {
+  it("resolves the project default, and lets an explicit card value win", async () => {
     await board(async ({ commands }) => {
       commands.createProject({ id: "req", name: "Required", reviewPolicy: "required", actor: HUMAN });
       commands.createProject({ id: "off", name: "Off", reviewPolicy: "off", actor: HUMAN });
 
       assert.equal(commands.createTask({ projectId: "req", title: "r", actor: AGENT }).reviewRequired, 1);
       assert.equal(commands.createTask({ projectId: "off", title: "o", actor: AGENT }).reviewRequired, 0);
-      assert.equal(commands.createTask({ projectId: "proj", title: "d", actor: AGENT }).reviewRequired, 0);
-      assert.equal(
-        commands.createTask({ projectId: "proj", title: "y", actor: AGENT, reviewRequired: true }).reviewRequired,
-        1,
-      );
-      assert.throws(
-        () => commands.createTask({ projectId: "req", title: "no", actor: AGENT, reviewRequired: false }),
-        (err) => err.code === "VALIDATION_FAILED",
-      );
-      assert.throws(
-        () => commands.createTask({ projectId: "off", title: "yes", actor: AGENT, reviewRequired: true }),
-        (err) => err.code === "VALIDATION_FAILED",
-      );
+      // Project `optional` is the legacy spelling of `auto`; an unresolved card
+      // falls back to human.
+      const fallback = commands.createTask({ projectId: "proj", title: "d", actor: AGENT });
+      assert.equal(fallback.acceptanceMode, "human");
+      assert.equal(fallback.reviewRequired, 0);
+      // 0038 — the explicit card value wins over the project default.
+      const optIn = commands.createTask({ projectId: "off", title: "yes", actor: AGENT, acceptanceMode: "agent" });
+      assert.equal(optIn.acceptanceMode, "agent");
+      assert.equal(optIn.reviewRequired, 1);
+      const optOut = commands.createTask({ projectId: "req", title: "no", actor: AGENT, acceptanceMode: "off" });
+      assert.equal(optOut.acceptanceMode, "off");
+      assert.equal(optOut.reviewRequired, 0);
     });
   });
 
-  it("refuses an agent's omission in an optional project", async () => {
+  it("falls an unresolved agent-created card back to human", async () => {
     await board(async ({ commands }) => {
-      assert.throws(
-        () =>
-          commands.createTask({
-            projectId: "proj",
-            title: "decide",
-            actor: AGENT,
-            requireReviewDecision: true,
-          }),
-        (err) => err.code === "VALIDATION_FAILED" && err.details?.field === "review_required",
-      );
-      // A human/UI caller may omit it and gets the default.
-      assert.equal(
-        commands.createTask({ projectId: "proj", title: "human", actor: HUMAN, requireReviewDecision: false })
-          .reviewRequired,
-        0,
-      );
+      const agentCard = commands.createTask({ projectId: "proj", title: "decide", actor: AGENT });
+      assert.equal(agentCard.acceptanceMode, "human");
+      assert.equal(agentCard.reviewRequired, 0);
+      const humanCard = commands.createTask({ projectId: "proj", title: "human", actor: HUMAN, allowDup: true });
+      assert.equal(humanCard.acceptanceMode, "human");
     });
   });
 
@@ -3380,7 +3496,8 @@ describe("commands/tasks — review decision (0031)", () => {
         actor: HUMAN,
       });
       assert.equal(waived.reviewRequired, 0);
-      assert.ok(activitiesFor(db, original.id).includes("review_override"));
+      assert.equal(waived.acceptanceMode, "off");
+      assert.ok(activitiesFor(db, original.id).includes("acceptance_override"));
       assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: HUMAN }).status, "done");
     });
   });
@@ -3409,20 +3526,29 @@ describe("commands/tasks — review decision (0031)", () => {
     });
   });
 
-  it("lets an agent escalate and refuses an escalation in an off project", async () => {
+  it("lets an agent tighten an off card, and refuses to loosen a human card", async () => {
     await board(async ({ commands }) => {
-      const task = commands.createTask({ projectId: "proj", title: "escalate", actor: AGENT });
-      assert.equal(task.reviewRequired, 0);
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "escalate",
+        acceptanceMode: "off",
+        actor: AGENT,
+      });
       assert.equal(
-        commands.updateTask({ id: task.id, reviewRequired: true, actor: AGENT }).reviewRequired,
-        1,
+        commands.updateTask({ id: task.id, acceptanceMode: "agent", actor: AGENT }).acceptanceMode,
+        "agent",
       );
 
-      commands.createProject({ id: "off", name: "Off", reviewPolicy: "off", actor: HUMAN });
-      const off = commands.createTask({ projectId: "off", title: "off", actor: AGENT });
+      const human = commands.createTask({
+        projectId: "proj",
+        title: "human",
+        acceptanceMode: "human",
+        allowDup: true,
+        actor: AGENT,
+      });
       assert.throws(
-        () => commands.updateTask({ id: off.id, reviewRequired: true, actor: AGENT }),
-        (err) => err.code === "VALIDATION_FAILED",
+        () => commands.updateTask({ id: human.id, acceptanceMode: "off", actor: AGENT }),
+        (err) => err.code === "ACCEPTANCE_FORBIDDEN",
       );
     });
   });

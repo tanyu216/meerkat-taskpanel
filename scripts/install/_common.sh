@@ -61,18 +61,15 @@ MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-${TASK
 MEERKAT_TASKPANEL_SUPERVISOR="${MEERKAT_TASKPANEL_SUPERVISOR:-}"
 MEERKAT_TASKPANEL_SCHEDULER="${MEERKAT_TASKPANEL_SCHEDULER:-}"
 # The workflow channel's persisted answers. Empty means "not given" and falls back to
-# the supervisor's default (workflow on, auto-accept on, no reviewer).
+# the supervisor's default (workflow on, no reviewer).
 MEERKAT_TASKPANEL_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-}"
-MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS="${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-}"
 MEERKAT_TASKPANEL_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
-MEERKAT_TASKPANEL_ACCEPTANCE_POLICY="${MEERKAT_TASKPANEL_ACCEPTANCE_POLICY:-}"
 MEERKAT_TASKPANEL_RECOVER_STALE="${MEERKAT_TASKPANEL_RECOVER_STALE:-}"
 export MEERKAT_TASKPANEL_TARGET_HOME MEERKAT_TASKPANEL_AGENT_NAME MEERKAT_TASKPANEL_LINK \
   MEERKAT_TASKPANEL_FORCE MEERKAT_TASKPANEL_DRY_RUN MEERKAT_TASKPANEL_NO_AUTOMATION \
   MEERKAT_TASKPANEL_MIN_NODE MEERKAT_TASKPANEL_SKIP_NODE_CHECK MEERKAT_TASKPANEL_CLAIM_UNASSIGNED \
   MEERKAT_TASKPANEL_SUPERVISOR MEERKAT_TASKPANEL_SCHEDULER \
-  MEERKAT_TASKPANEL_WORKFLOW MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS MEERKAT_TASKPANEL_REVIEWER \
-  MEERKAT_TASKPANEL_ACCEPTANCE_POLICY MEERKAT_TASKPANEL_RECOVER_STALE
+  MEERKAT_TASKPANEL_WORKFLOW MEERKAT_TASKPANEL_REVIEWER MEERKAT_TASKPANEL_RECOVER_STALE
 
 # is_int64 <value> — 0 when <value> is a non-negative integer that fits in a
 # signed 64-bit integer (the width bash's `[ … -lt … ]` test arithmetic uses),
@@ -288,18 +285,7 @@ export_tp_env() {
   # The workflow channel's remembered answers. An empty reviewer is deliberate and
   # renders as `KEY=`, which the supervisor reads as "not configured".
   TP_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-yes}"
-  TP_AUTO_ACCEPT_REVIEWS="${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-yes}"
   TP_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
-  # Who may close a task (`human-only` | `both` | `agent-only`). The board reads
-  # its own copy from the install-root `.env`; this is the loop's remembered copy.
-  TP_ACCEPTANCE_POLICY="${MEERKAT_TASKPANEL_ACCEPTANCE_POLICY:-both}"
-  case "$TP_ACCEPTANCE_POLICY" in
-    human-only | both | agent-only) ;;
-    *)
-      echo "$TP_ACTOR_KIND: MEERKAT_TASKPANEL_ACCEPTANCE_POLICY must be human-only, both or agent-only (got '$TP_ACCEPTANCE_POLICY')" >&2
-      return 1
-      ;;
-  esac
   # The scheduler's two clocks. Ping only prunes dead worker pids; continue is
   # the bounded `Continue` judgment turn that runs poll/patrol/workflow.
   TP_PING_INTERVAL="${MEERKAT_TASKPANEL_PING_INTERVAL:-60}"
@@ -385,7 +371,7 @@ export_tp_env() {
 
   export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
   export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
-  export TP_RECOVER_STALE TP_WORKFLOW TP_AUTO_ACCEPT_REVIEWS TP_REVIEWER TP_ACCEPTANCE_POLICY
+  export TP_RECOVER_STALE TP_WORKFLOW TP_REVIEWER
   export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
   export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON TP_CLI_ON_PATH
 }
@@ -428,48 +414,6 @@ claim_unassigned_value() {
   fi
 
   printf 'yes\n'
-}
-
-# acceptance_policy_value <flag> <interactive> — decide "who may close a task?".
-# Prints `human-only`, `both` or `agent-only`:
-#
-#   * an explicit <flag> wins, verbatim;
-#   * otherwise, when <interactive> is "1" (stdin is a TTY), ask once — default
-#     `both` on a blank answer (the historical rule);
-#   * otherwise (including --dry-run) default `both`.
-#
-# An unrecognised <flag> is a hard error, never a silent default: a misspelt
-# policy must not install a board that closes differently than asked.
-acceptance_policy_value() {
-  flag="$1"
-  interactive="$2"
-  case "$flag" in
-    human-only | both | agent-only)
-      printf '%s\n' "$flag"
-      return 0
-      ;;
-    "")
-      ;;
-    *)
-      echo "--acceptance must be human-only, both or agent-only (got '$flag')." >&2
-      return 1
-      ;;
-  esac
-
-  if [ "$interactive" = "1" ]; then
-    printf 'Who may close a task? [1] human (top-level only) [2] human or loop [3] agent only (default 2): ' >&2
-    answer=""
-    read -r answer || answer=""
-    case "$answer" in
-      "" | [2]*) printf 'both\n' ;;
-      [1]*) printf 'human-only\n' ;;
-      [3]*) printf 'agent-only\n' ;;
-      *) printf 'both\n' ;;
-    esac
-    return 0
-  fi
-
-  printf 'both\n'
 }
 
 # supervisor_value <flag> <interactive> — decide the opt-in supervisor action. Prints
@@ -796,20 +740,17 @@ seed_env_file() {
 # write_agent_config — persist the claim policy the supervisor reads by default, the
 # location of the board engine an agent-installed executor drives, and the workflow
 # channel's answers. Requires export_tp_env first (TP_ENV, TP_CLAIM_UNASSIGNED,
-# TP_REPO, TP_WORKFLOW, TP_AUTO_ACCEPT_REVIEWS, TP_REVIEWER). The template belongs to
-# the loop skill: the supervisor is what reads it.
+# TP_REPO, TP_WORKFLOW, TP_REVIEWER). The template belongs to the loop skill: the
+# supervisor is what reads it.
 #
-# The three workflow keys are added with `ensure_env_key` as well, so an install that
-# predates them learns them on the next run without any existing value being touched —
-# an agent kind that had deliberately set `AUTO_ACCEPT_REVIEWS=no` keeps it.
+# The workflow keys are added with `ensure_env_key` as well, so an install that
+# predates them learns them on the next run without any existing value being touched.
 write_agent_config() {
   emit_loop_file "agent/meerkat-taskpanel.env" "$TP_ENV"
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
   ensure_env_key "MEERKAT_TASKPANEL_RECOVER_STALE" "$TP_RECOVER_STALE"
   ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"
-  ensure_env_key "MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS" "$TP_AUTO_ACCEPT_REVIEWS"
   ensure_env_key "MEERKAT_TASKPANEL_REVIEWER" "$TP_REVIEWER"
-  ensure_env_key "MEERKAT_TASKPANEL_ACCEPTANCE_POLICY" "$TP_ACCEPTANCE_POLICY"
   ensure_env_key "MEERKAT_TASKPANEL_PING_INTERVAL" "$TP_PING_INTERVAL"
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE_INTERVAL" "$TP_CONTINUE_INTERVAL"
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE" "$TP_CONTINUE"
