@@ -194,12 +194,13 @@ same question ladder, the same acceptance rules.
 2. Control ticks run `passes.mjs patrol → workflow → poll` (the same commands the
    supervised prompt lists). With the external pool live, poll claims and enqueues; the
    pool's project sessions spawn the workers/reviewers.
-3. Question ticks run `console.mjs --once --json` and ask the human **in the session**:
-   `awaiting` cards, in_progress agent questions with no later human comment, and
-   `in_review` cards pending acceptance. Record the human's answer with
-   `taskctl comment add <ref> --as-human …`; the board comment is the authoritative record,
-   the in-session question is the front-end. Then apply the ladder's move and run a control
-   tick.
+3. Question ticks run `console.mjs --once --json`: `awaiting` cards, in_progress agent
+   questions with no later human comment, and `in_review` cards pending acceptance. The UI
+   comment and the in-session answer are the **same record**: re-read the card before asking
+   and again before recording; if a human comment is already newer than the question, do not
+   ask or duplicate it — use that comment and run a control tick. Otherwise ask, then record
+   with `taskctl comment add <ref> --as-human …`; the board comment is authoritative, the
+   in-session question is the front-end. Then apply the ladder's move and run a control tick.
 4. Bound the loop (control cadence 600 s, question tick 30 s, TTL 30 min). Never decide
    E1–E5 yourself, never claim/move a work card, never start a second pool, and run at most
    one console per agent directory (`session.lock` guards the pool; two consoles would race

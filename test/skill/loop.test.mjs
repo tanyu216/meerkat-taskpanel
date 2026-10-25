@@ -269,6 +269,9 @@ describe("loop skill: SKILL.md", () => {
     assert.match(section, /--stop/);
     assert.match(section, /external-control/);
     assert.match(section, /--as-human/);
+    assert.match(section, /re-read/);
+    assert.match(section, /board UI/);
+    assert.match(section, /duplicate/i);
     assert.match(section, /E1[–-]E5/);
     assert.match(section, /never claim/i);
     assert.match(section, /\.config\/opencode/);
@@ -282,6 +285,8 @@ describe("loop skill: SKILL.md", () => {
     assert.match(operation, /console\.mjs/);
     assert.match(operation, /--control=external/);
     assert.match(operation, /--as-human/);
+    assert.match(operation, /re-read/);
+    assert.match(operation, /UI/);
   });
 
   it("declares the board interface it requires", () => {
