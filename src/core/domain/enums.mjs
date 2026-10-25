@@ -138,34 +138,6 @@ export const TASK_KIND = Object.freeze({
   EPIC: "epic",
 });
 
-/**
- * A project's **review policy** — whether a card created in that project must
- * carry an independent review before it can be accepted.
- *
- *   * `required` — every ordinary card is born `review_required`;
- *   * `optional` — the creator decides per card (the default);
- *   * `off` — no card is born requiring review.
- *
- * 0038 replaced this axis with the card's `acceptance_mode`; the column survives
- * one release as the legacy spelling (`required → agent`, `off → off`), and this
- * vocabulary is read only by the compatibility wrapper in `review-policy.mjs`.
- *
- * The matching `CHECK` is added by 0031 via `ALTER TABLE … ADD COLUMN`, which
- * the SQL-parity reader does not see (the `blocked_reason` precedent above), so
- * `projects.review_policy` is deliberately absent from `SQL_ENUM_SETS`.
- */
-export const REVIEW_POLICIES = Object.freeze(["required", "optional", "off"]);
-
-/** The policy a project gets when it does not state one. */
-export const DEFAULT_REVIEW_POLICY = "optional";
-
-/** Named access, so a rule never depends on positional order. */
-export const REVIEW_POLICY = Object.freeze({
-  REQUIRED: "required",
-  OPTIONAL: "optional",
-  OFF: "off",
-});
-
 /** Relation types. */
 export const RELATION_TYPES = Object.freeze(["parent", "blocks", "related"]);
 export const RELATION_TYPE = Object.freeze({

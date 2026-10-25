@@ -21,9 +21,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`approve_hold`) and the `review_cards_unclosable` deadlock check. The loop always closes
   the review card it dispatched. `issue deliver --to done` performs an `off` card's direct
   acceptance atomically; `issue update --acceptance-mode <value> --reason "<why>"` is the one
-  audited override (an agent may only tighten). `projects.review_policy` and
-  `tasks.review_required` survive one release as the legacy spelling (`required → agent`);
-  `--review yes|no` is their CLI alias. **`kind=deploy` is retired** (migration `0039`): a
+  audited override (an agent may only tighten). The one-release compatibility spelling is
+  removed as well (migration `0040`, below), so `acceptance` / `acceptance_mode` is the only
+  place an acceptance decision is read or written. **`kind=deploy` is retired** (migration `0039`): a
   historical deployment card becomes a `task` and keeps its acceptance snapshot, and
   `--kind deploy` is refused. Whether a card belongs to a release line is the loop's
   decision, not a card kind.
@@ -40,6 +40,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   acceptance refusal hint now points at `taskctl issue deliver` instead of a nonexistent
   `report write` command. The migration rebuilds `task_reports` to drop the column,
   preserving every row.
+
+### Removed
+
+- **The acceptance compatibility layer (migration `0040`).** `projects.review_policy` and
+  `tasks.review_required` are dropped, together with the triggers that mirrored and guarded
+  them; the card's `acceptance_mode` (and the project's `acceptance` default) is the only
+  spelling. The CLI no longer accepts `--review yes|no` or `--review-policy` (both are now
+  `CLI_USAGE`), the HTTP request shape no longer declares them, the wire no longer carries
+  `project.review_policy` / `task.review_required`, the markdown export no longer writes
+  `review_required: yes`, and the `project_created` / `task_created` activity rows no longer
+  carry those keys. A review card is still forced to `off`; the `REVIEW_REQUIRED` error stays
+  — it is the `agent` card's done-gate refusal, not a compatibility name.
 
 ### Fixed
 

@@ -14,6 +14,7 @@
 import { PROJECT_ACTIVITY_WINDOW_DAYS, SSE_NOISE_EVENTS } from "../../../foundation/constants.mjs";
 import { DomainError } from "../../../foundation/errors.mjs";
 import { newId, projectPrefix } from "../../../foundation/ids.mjs";
+import { DEFAULT_PROJECT_ACCEPTANCE } from "../../domain/acceptance-mode.mjs";
 import { identifierForPrefix, assertIsoMillis } from "../../domain/task.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 import { transaction } from "../unit-of-work.mjs";
@@ -25,12 +26,9 @@ const CAMEL = {
   labels: "labels",
   meta_json: "meta",
   readme: "readme",
-  // 0031 — the project's review default and its optional reviewer override.
-  review_policy: "reviewPolicy",
   // 0038 — the single project-level acceptance default (`auto|off|agent|human`).
-  // The legacy `review_policy` is kept for one release; the create/update paths
-  // derive it from the same input so the two cannot disagree.
   acceptance: "acceptance",
+  // 0031 — the optional reviewer override.
   reviewer: "reviewer",
   archived_at: "archivedAt",
   created_at: "createdAt",
@@ -63,7 +61,7 @@ export function createProjectsRepository(db) {
   const selectById = db.prepare("SELECT * FROM projects WHERE id = ?");
 
   return {
-    /** @param {{id?: string, name: string, labels?: unknown, meta?: object, readme?: string|null, reviewPolicy?: string, acceptance?: string, reviewer?: string|null, now: string}} input */
+    /** @param {{id?: string, name: string, labels?: unknown, meta?: object, readme?: string|null, acceptance?: string, reviewer?: string|null, now: string}} input */
     create(input) {
       const now = input.now;
       assertIsoMillis(now, "now");
@@ -71,27 +69,17 @@ export function createProjectsRepository(db) {
       if (typeof input.name !== "string" || input.name.trim() === "") {
         throw new DomainError("VALIDATION_FAILED", { message: "project name is required", details: { field: "name" } });
       }
-      // 0038 — the single project default. Until 0039 the legacy policy is still
-      // written; derive the new column from it when the caller only supplied it.
-      const acceptance =
-        input.acceptance ??
-        (input.reviewPolicy === "required"
-          ? "agent"
-          : input.reviewPolicy === "off"
-            ? "off"
-            : "auto");
       try {
         db.prepare(
-          `INSERT INTO projects(id, name, next_task_number, labels, meta_json, readme, review_policy, acceptance, reviewer, created_at, updated_at)
-           VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO projects(id, name, next_task_number, labels, meta_json, readme, acceptance, reviewer, created_at, updated_at)
+           VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           id,
           input.name.trim(),
           JSON.stringify(input.labels ?? []),
           JSON.stringify(input.meta ?? {}),
           input.readme ?? null,
-          input.reviewPolicy ?? "optional",
-          acceptance,
+          input.acceptance ?? DEFAULT_PROJECT_ACCEPTANCE,
           input.reviewer ?? null,
           now,
           now,
@@ -117,7 +105,7 @@ export function createProjectsRepository(db) {
 
     /**
      * @param {string} id
-     * @param {{name?: string, labels?: unknown, meta?: object, readme?: string|null, reviewPolicy?: string, acceptance?: string, reviewer?: string|null, now: string}} patch
+     * @param {{name?: string, labels?: unknown, meta?: object, readme?: string|null, acceptance?: string, reviewer?: string|null, now: string}} patch
      */
     update(id, patch) {
       assertIsoMillis(patch.now, "now");
@@ -139,24 +127,9 @@ export function createProjectsRepository(db) {
         sets.push("readme = ?");
         values.push(patch.readme);
       }
-      if (patch.reviewPolicy !== undefined) {
-        sets.push("review_policy = ?");
-        values.push(patch.reviewPolicy);
-      }
-      // 0038 — a legacy policy patch still moves the new default with it; an
-      // explicit `acceptance` patch wins.
-      const nextAcceptance =
-        patch.acceptance ??
-        (patch.reviewPolicy === undefined
-          ? undefined
-          : patch.reviewPolicy === "required"
-            ? "agent"
-            : patch.reviewPolicy === "off"
-              ? "off"
-              : "auto");
-      if (nextAcceptance !== undefined) {
+      if (patch.acceptance !== undefined) {
         sets.push("acceptance = ?");
-        values.push(nextAcceptance);
+        values.push(patch.acceptance);
       }
       if (patch.reviewer !== undefined) {
         sets.push("reviewer = ?");

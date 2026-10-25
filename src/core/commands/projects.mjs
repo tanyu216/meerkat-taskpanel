@@ -26,10 +26,7 @@
 import { DomainError } from "../../foundation/errors.mjs";
 import { PROJECT_PREFIX_META_KEY, identifierPrefix, projectPrefix } from "../../foundation/ids.mjs";
 import { assertProjectAcceptance } from "../domain/acceptance-mode.mjs";
-import {
-  assertReviewPolicy,
-  normalizeReviewer,
-} from "../domain/review-policy.mjs";
+import { normalizeReviewer } from "../domain/reviewer.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 
@@ -158,10 +155,7 @@ function withoutPrefix(meta) {
  */
 export function createProject(ctx, input) {
   const actor = actorOf(input.actor ?? { kind: "human", id: "local" });
-  const reviewPolicy = assertReviewPolicy(input.reviewPolicy ?? "optional", "review_policy");
-  // 0038 — `acceptance` is the forward word; `review_policy` is its legacy
-  // spelling, still accepted while the column is (Phase 3 drops it). An
-  // explicit acceptance wins; otherwise the repository derives one.
+  // An explicit acceptance wins; otherwise the column default (`auto`) applies.
   const acceptance =
     input.acceptance === undefined
       ? undefined
@@ -198,7 +192,6 @@ export function createProject(ctx, input) {
       const project = ctx.repos.projects.create({
         ...input,
         meta,
-        reviewPolicy,
         acceptance,
         reviewer,
         now: ctx.now(),
@@ -210,7 +203,6 @@ export function createProject(ctx, input) {
         event: "project_created",
         changes: {
           project: project.id,
-          review_policy: reviewPolicy,
           acceptance: project.acceptance,
           ...(reviewer === null ? {} : { reviewer }),
         },
@@ -233,7 +225,7 @@ export function createProject(ctx, input) {
  * existed" rather than leaking a conflict to an idempotent caller.
  *
  * @param {object} ctx
- * @param {{id: string, name: string, labels?: string[], meta?: object, readme?: string|null, reviewPolicy?: string, reviewer?: string|null, actor?: object}} input
+ * @param {{id: string, name: string, labels?: string[], meta?: object, readme?: string|null, acceptance?: string, reviewer?: string|null, actor?: object}} input
  * @returns {{project: object, created: boolean}}
  */
 export function ensureProject(ctx, input) {
@@ -256,9 +248,6 @@ export function ensureProject(ctx, input) {
  */
 export function updateProject(ctx, input) {
   const patch = { ...input.patch };
-  if (patch.reviewPolicy !== undefined) {
-    patch.reviewPolicy = assertReviewPolicy(patch.reviewPolicy, "review_policy");
-  }
   if (patch.acceptance !== undefined) {
     patch.acceptance = assertProjectAcceptance(patch.acceptance, "acceptance");
   }

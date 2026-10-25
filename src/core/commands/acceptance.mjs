@@ -4,9 +4,9 @@
  * Two questions, in a fixed order, because a caller must be told the *first*
  * reason a write is refused:
  *
- *   1. **May this writer accept?** `assertAcceptanceAuthority` reads the board's
- *      policy and the card's scope (child / review / top-level). See
- *      `domain/status.mjs`.
+ *   1. **May this writer accept?** `assertAcceptanceAuthority` reads the card's
+ *      acceptance mode; a review card is the one structural override. See
+ *      `domain/acceptance-mode.mjs`.
  *   2. **Is the card ready to be accepted?** A human closing a top-level
  *      original needs the review cards for the **current** delivery round to be
  *      resolved (`done` or `canceled`). The loop is deliberately not held to
@@ -152,7 +152,7 @@ function assertCoverageOrThrow({ task, baseline, reportItems, source, review = n
 }
 
 /**
- * Does a card that says `review_required` have the evidence it promised?
+ * Does an `agent` card have the evidence its mode promised?
  *
  * The evidence is a **current-round** review card with an `APPROVE` verdict.
  * An open review that already carries the verdict passes here: the loop's
@@ -161,7 +161,7 @@ function assertCoverageOrThrow({ task, baseline, reportItems, source, review = n
  * card to be closed, because a human should not accept over an open review.
  *
  * A review card itself is never held to this rule (it is flow B and is forced to
- * `review_required = 0`), but the guard is repeated here so a raw row cannot
+ * `acceptance_mode = off`), but the guard is repeated here so a raw row cannot
  * produce a chain.
  *
  * @param {object} ctx
@@ -234,7 +234,7 @@ export function assertReviewEvidence(ctx, task) {
       taskId: task.id,
       identifier: task.identifier,
       round: task.deliveryRound,
-      reviewRequired: true,
+      acceptanceMode: "agent",
     },
     hint: {
       fix:

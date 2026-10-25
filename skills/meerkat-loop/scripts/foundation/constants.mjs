@@ -682,7 +682,7 @@ export const LOOP_ACCEPTOR = "loop-review";
 
 /**
  * The `meta.accepted_by` marker an automatic acceptance writes when the card did
- * **not** need an independent review (`review_required = 0`) and the loop closed
+ * **not** need an independent review (`acceptance_mode = off`) and the loop closed
  * it directly after delivery. Kept distinct from `LOOP_ACCEPTOR` so the SLA
  * patrol and the activity trail can tell "a review approved this" from "no
  * review was required".

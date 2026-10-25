@@ -115,7 +115,7 @@ describe("storage/migrations — 0032 acceptance snapshot", () => {
       applyMigrations(board.db, { dir: before0032() });
       seed(board.db);
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040"]);
 
       const rows = board.db
         .prepare("SELECT id, acceptance_json, acceptance_revision FROM tasks ORDER BY id")

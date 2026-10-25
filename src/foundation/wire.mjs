@@ -117,10 +117,6 @@ export function taskToWire(task, options = {}) {
   // optimistic lock a prune sends back.
   out.acceptance = Array.isArray(task.acceptance) ? task.acceptance : [];
   out.acceptance_revision = Number(task.acceptanceRevision ?? 0);
-  // 0031 — the legacy decision snapshot is stored as 0/1 and exposed as a
-  // boolean: the request declarations use `bool()`, and a reader should not
-  // have to know the storage type. Kept for one release.
-  out.review_required = task.reviewRequired === 1 || task.reviewRequired === true;
   // 0038 — the single acceptance decision. `auto` never appears here: the card
   // stores a concrete mode.
   out.acceptance_mode = task.acceptanceMode ?? "off";
@@ -192,10 +188,7 @@ export function projectToWire(project) {
     labels: Array.isArray(project.labels) ? project.labels : [],
     meta: project.meta ?? {},
     readme: project.readme ?? null,
-    // 0031 — the project's review default and its optional reviewer override.
-    // 0038 — `acceptance` is the single project default; `review_policy` is the
-    // legacy spelling, kept for one release.
-    review_policy: project.reviewPolicy ?? "optional",
+    // 0038 — the single project default and its optional reviewer override.
     acceptance: project.acceptance ?? "auto",
     reviewer: project.reviewer ?? null,
     // The sidebar badge's number (design/BLOCKS.md §Projects): the project's

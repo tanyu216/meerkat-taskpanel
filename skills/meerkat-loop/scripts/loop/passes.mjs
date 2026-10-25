@@ -521,10 +521,9 @@ export async function runWorkflowOnce(opts, env = process.env) {
   }
 
   // A project whose default is `agent` promises a review for every card it
-  // creates, so it must have an effective reviewer. (`required` is the legacy
-  // spelling of the same default and is still read while the column lives.) The
-  // board resolves `project.reviewer ?? global`; this start-up read is the only
-  // place the loop can see the project rows before the reconcile plan.
+  // creates, so it must have an effective reviewer. The board resolves
+  // `project.reviewer ?? global`; this start-up read is the only place the loop
+  // can see the project rows before the reconcile plan.
   const projectRead = readProjectReviewers(opts, log);
   const projects = projectRead.ok ? projectRead.projects : [];
   if (projectRead.ok) {
@@ -533,9 +532,7 @@ export async function runWorkflowOnce(opts, env = process.env) {
       return override !== "" ? override : config.reviewer;
     };
     const missing = projects.filter(
-      (project) =>
-        (project.acceptance === "agent" || project.review_policy === "required") &&
-        effectiveReviewer(project) === null,
+      (project) => project.acceptance === "agent" && effectiveReviewer(project) === null,
     );
     if (missing.length > 0) {
       log(

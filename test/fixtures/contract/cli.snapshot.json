@@ -758,14 +758,6 @@
               "short": null
             },
             {
-              "flag": "review",
-              "as": "string",
-              "value": "<yes|no>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "review-of",
               "as": "string",
               "value": "<id>",
@@ -1241,14 +1233,6 @@
               "short": null
             },
             {
-              "flag": "review",
-              "as": "string",
-              "value": "<yes|no>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "title",
               "as": "string",
               "value": "<text>",
@@ -1345,14 +1329,6 @@
               "short": null
             },
             {
-              "flag": "review-policy",
-              "as": "string",
-              "value": "<required|optional|off>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "reviewer",
               "as": "string",
               "value": "<agent>",
@@ -1426,14 +1402,6 @@
               "flag": "readme",
               "as": "string",
               "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "review-policy",
-              "as": "string",
-              "value": "<required|optional|off>",
               "required": false,
               "repeat": false,
               "short": null
@@ -1534,14 +1502,6 @@
               "flag": "readme",
               "as": "string",
               "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "review-policy",
-              "as": "string",
-              "value": "<required|optional|off>",
               "required": false,
               "repeat": false,
               "short": null

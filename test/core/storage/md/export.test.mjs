@@ -232,8 +232,8 @@ describe("md/export — rendering", () => {
 });
 
 
-describe("md/export — 0031 review decision", () => {
-  it("emits review_required: yes only when the card requires review", async () => {
+describe("md/export — 0038 acceptance mode", () => {
+  it("emits acceptance_mode only when the card is not the default off", async () => {
     const board = await createTempBoard();
     const repos = createRepositories(board.db);
     try {
@@ -242,7 +242,7 @@ describe("md/export — 0031 review decision", () => {
       commands.createProject({
         id: "req",
         name: "Required",
-        reviewPolicy: "required",
+        acceptance: "agent",
         actor: { kind: "human", id: "T" },
       });
       const required = commands.createTask({
@@ -259,10 +259,7 @@ describe("md/export — 0031 review decision", () => {
         actor: { kind: "agent", id: "linus" },
       });
 
-      assert.match(renderCard(required, { repos }), /^review_required: yes$/m);
-      assert.doesNotMatch(renderCard(plain, { repos }), /^review_required:/m);
-      // 0038 — the mode is the forward key; `off` stays absent like the legacy
-      // `review_required`, and `agent` states itself.
+      // `off` is the default and stays absent; `agent` and `human` state themselves.
       assert.match(renderCard(required, { repos }), /^acceptance_mode: agent$/m);
       assert.doesNotMatch(renderCard(plain, { repos }), /^acceptance_mode:/m);
 

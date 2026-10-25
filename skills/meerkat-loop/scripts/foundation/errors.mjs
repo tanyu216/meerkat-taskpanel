@@ -94,10 +94,10 @@ export const ERROR_CODES = Object.freeze({
     409,
     "This card still has an open review for its current delivery round; close or cancel it first.",
   ),
-  // The card's own review_required snapshot says it needs an independent review,
+  // The card's own acceptance mode (`agent`) promises an independent review,
   // but no approving review exists for the current round. Raised by the service
-  // layer *and* (coarsely, as "a review card exists") by migration 0031's
-  // trigger; see `0031_review_policy.sql`.
+  // layer *and* (coarsely, as "a current-round review card exists") by the
+  // `tr_tasks_acceptance_agent_done` trigger.
   REVIEW_REQUIRED: spec(409, "This card requires an approved review for its current delivery round.", {
     fix:
       "let the loop dispatch a review, or a human may waive the requirement: " +
@@ -109,10 +109,10 @@ export const ERROR_CODES = Object.freeze({
     409,
     "A review card can never be marked as requiring its own review.",
   ),
-  // 0038 — the card's acceptance mode and the legacy `review_required` mirror
-  // must agree (`agent` ⇔ 1, `off`/`human` ⇔ 0). The column pair is a
-  // compatibility shim; a raw write that sets only one half would make the
-  // dispatch and the done gate read different answers.
+  // 0038 — the acceptance-mode / `review_required` mirror invariant. 0040
+  // dropped the mirror, so no live write can raise this any more; the code is
+  // retained because 0038/0039 still raise it and the SQL-parity contract reads
+  // every historical migration.
   ACCEPTANCE_MODE_CONFLICT: spec(
     409,
     "A card's acceptance mode conflicts with its review_required marker.",
@@ -281,7 +281,8 @@ export const DB_RAISE_CODES = Object.freeze([
   // 0031 — the review-required done gate and the review-card marker invariant.
   "REVIEW_REQUIRED",
   "REVIEW_CARD_MARKER_INVALID",
-  // 0038 — the acceptance-mode / review_required mirror invariant.
+  // 0038 — the acceptance-mode mirror invariant (historical: 0040 removed it;
+  // the code stays because those migrations still raise it).
   "ACCEPTANCE_MODE_CONFLICT",
   // 0032 — the frozen acceptance baseline and the not_applicable note.
   "ACCEPTANCE_SNAPSHOT_IMMUTABLE",

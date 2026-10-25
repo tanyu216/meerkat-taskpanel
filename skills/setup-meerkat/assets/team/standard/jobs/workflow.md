@@ -197,7 +197,7 @@ the shape below; a large feature becomes an epic with one child per deliverable.
 
   # one task
   taskctl issue create --project <p> --title "<scope>" --description "<this block>" \
-    --status backlog --assignee <role> --assignee-kind agent --review <yes|no> \
+    --status backlog --assignee <role> --assignee-kind agent --acceptance-mode <off|agent|human> \
     --acceptance "<item>" ... --meta design_stage=<id>
   taskctl relation add <id> --type blocks --target <new>
   taskctl issue move <new> todo
@@ -208,7 +208,7 @@ the shape below; a large feature becomes an epic with one child per deliverable.
     --acceptance "<high-level item>" ... --meta design_stage=<id>
   taskctl issue create --project <p> --title "<child scope>" \
     --description "<this block + your scope>" --status backlog \
-    --assignee <role> --assignee-kind agent --review <yes|no> \
+    --assignee <role> --assignee-kind agent --acceptance-mode <off|agent|human> \
     --acceptance "<child item>" ... --meta design_stage=<id>
   taskctl relation add <epic> --type parent --target <child>
   # if the design card is not done yet, gate the child on it as well

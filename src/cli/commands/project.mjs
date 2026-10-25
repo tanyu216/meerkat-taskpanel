@@ -87,7 +87,7 @@ export const COMMANDS = [
     summary: "Create a project.",
     usage:
       "project create --id <id> --name <name> [--acceptance auto|off|agent|human] " +
-      "[--review-policy required|optional|off] [--reviewer <agent>] [--meta k=v]…",
+      "[--reviewer <agent>] [--meta k=v]…",
     positionals: [],
     flags: [
       { flag: "id", key: "id", as: "string", value: "<id>", required: true, summary: "Project id; also the identifier prefix (must be unique across projects after normalization)." },
@@ -102,13 +102,6 @@ export const COMMANDS = [
         value: "<auto|off|agent|human>",
         summary:
           "The acceptance default for cards created here (default: auto — the creator decides per card).",
-      },
-      {
-        flag: "review-policy",
-        key: "reviewPolicy",
-        as: "string",
-        value: "<required|optional|off>",
-        summary: "Legacy spelling of --acceptance (required=agent, off=off, optional=auto).",
       },
       {
         flag: "reviewer",
@@ -126,7 +119,6 @@ export const COMMANDS = [
         meta: metaOf(ctx.flags),
         readme: ctx.flags.readme,
         acceptance: ctx.flags.acceptance,
-        review_policy: ctx.flags.reviewPolicy,
         reviewer: ctx.flags.reviewer,
       });
       return {
@@ -141,7 +133,6 @@ export const COMMANDS = [
     summary: "Create a project if it does not exist; leave an existing one untouched.",
     usage:
       "project ensure <id> [--name <name>] [--acceptance auto|off|agent|human] " +
-      "[--review-policy required|optional|off] " +
       "[--reviewer <agent>] [--meta k=v]… [--label <label>]… [--readme <text>]",
     positionals: [{ name: "id", summary: "Project id." }],
     flags: [
@@ -155,13 +146,6 @@ export const COMMANDS = [
         as: "string",
         value: "<auto|off|agent|human>",
         summary: "Acceptance default for a newly created project (default: auto).",
-      },
-      {
-        flag: "review-policy",
-        key: "reviewPolicy",
-        as: "string",
-        value: "<required|optional|off>",
-        summary: "Legacy spelling of --acceptance.",
       },
       {
         flag: "reviewer",
@@ -180,8 +164,7 @@ export const COMMANDS = [
           meta: metaOf(ctx.flags),
           readme: ctx.flags.readme,
           acceptance: ctx.flags.acceptance,
-          review_policy: ctx.flags.reviewPolicy,
-          reviewer: ctx.flags.reviewer,
+            reviewer: ctx.flags.reviewer,
         },
       );
       return {
@@ -198,7 +181,7 @@ export const COMMANDS = [
     summary: "Update a project's name, labels, metadata, readme, acceptance default or reviewer.",
     usage:
       "project update <id> [--name <name>] [--acceptance auto|off|agent|human] " +
-      "[--review-policy required|optional|off] [--reviewer <agent>] [--meta k=v]…",
+      "[--reviewer <agent>] [--meta k=v]…",
     positionals: [{ name: "id", summary: "Project id." }],
     flags: [
       { flag: "name", key: "name", as: "string", value: "<name>" },
@@ -211,13 +194,6 @@ export const COMMANDS = [
         as: "string",
         value: "<auto|off|agent|human>",
         summary: "Change the acceptance default; it affects future cards only.",
-      },
-      {
-        flag: "review-policy",
-        key: "reviewPolicy",
-        as: "string",
-        value: "<required|optional|off>",
-        summary: "Legacy spelling of --acceptance.",
       },
       {
         flag: "reviewer",
@@ -234,7 +210,6 @@ export const COMMANDS = [
       if (ctx.flags.labels !== undefined) body.labels = ctx.flags.labels;
       if (ctx.flags.readme !== undefined) body.readme = ctx.flags.readme;
       if (ctx.flags.acceptance !== undefined) body.acceptance = ctx.flags.acceptance;
-      if (ctx.flags.reviewPolicy !== undefined) body.review_policy = ctx.flags.reviewPolicy;
       if (ctx.flags.reviewer !== undefined) body.reviewer = ctx.flags.reviewer;
       const { project } = await ctx.client.patch(`/api/v1/projects/${ctx.args.id}`, body);
       return {

@@ -302,20 +302,20 @@ describe("contract/state-machine — delivery rounds (F3)", () => {
   });
 });
 
-describe("contract/state-machine — the review-required done gate (0031)", () => {
+describe("contract/state-machine — the review-required done gate (0038)", () => {
   /**
    * A card at `in_review` carrying the 0031 snapshot, plus the review cards it
    * has produced. The DB trigger is the machine floor: it demands that a
    * current-round review *exists and has been entered*; whether that review
    * approved is the JS rule (`REVIEW_PENDING`), stated as such.
    */
-  function reviewable(db, { reviewRequired = 1, reviews = [] } = {}) {
+  function reviewable(db, { acceptanceMode = "agent", reviews = [] } = {}) {
     insertProject(db);
     insertTask(db, {
       id: "orig",
       identifier: "PROJ-0001",
       status: "in_review",
-      review_required: reviewRequired,
+      acceptance_mode: acceptanceMode,
     });
     reviews.forEach((review, index) => {
       insertTask(db, {
@@ -337,7 +337,7 @@ describe("contract/state-machine — the review-required done gate (0031)", () =
 
   it("allows done when the card does not require review", async () => {
     await withBoard(({ db }) => {
-      assert.equal(move(db, reviewable(db, { reviewRequired: 0 }), "done"), "NO_ERROR");
+      assert.equal(move(db, reviewable(db, { acceptanceMode: "off" }), "done"), "NO_ERROR");
     });
   });
 
@@ -372,7 +372,7 @@ describe("contract/state-machine — the review-required done gate (0031)", () =
             status: "in_review",
             review_of_id: "orig2",
             review_round: 1,
-            review_required: 1,
+            acceptance_mode: "agent",
           }),
         ),
         "REVIEW_CARD_MARKER_INVALID",

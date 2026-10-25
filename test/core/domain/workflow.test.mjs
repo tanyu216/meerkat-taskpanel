@@ -37,7 +37,6 @@ import {
   planWorkflowTick,
   reviewIdemKey,
   reviewOf,
-  reviewRequired,
   reviewRoundOf,
   reworkIdemKey,
   roundOf,
@@ -49,9 +48,7 @@ const NOW = "2026-10-19T10:00:00.000Z";
 function card(fields = {}) {
   const identifier = fields.identifier ?? "T-1";
   // 0038 — the planner reads `acceptance_mode`. Most fixtures describe a card
-  // that is dispatched for review; the legacy boolean is still accepted by the
-  // helper so the older tests read naturally.
-  const reviewRequired = fields.review_required ?? true;
+  // that is dispatched for review.
   return {
     id: `id-${identifier}`,
     identifier,
@@ -64,8 +61,7 @@ function card(fields = {}) {
     delivery_round: 1,
     status_changed_at: "2026-10-19T09:00:00.000Z",
     created_at: "2026-10-18T09:00:00.000Z",
-    review_required: reviewRequired,
-    acceptance_mode: reviewRequired ? "agent" : "off",
+    acceptance_mode: fields.acceptance_mode ?? "agent",
     parent_id: null,
     meta: {},
     ...fields,
@@ -80,7 +76,7 @@ function reviewCard(fields = {}) {
     delivery_round: 0,
     assignee_id: "agent-jobs",
     assignee: { id: "agent-jobs", display_name: "jobs", kind: "agent" },
-    review_required: false,
+    acceptance_mode: "off",
     meta: { review_of: "T-1", flow: "B", review_round: 1 },
     ...fields,
   });
@@ -900,10 +896,10 @@ describe("workflow alert dedup keys", () => {
 // 0031 — review decision, per-project reviewer, auto-accept
 // ---------------------------------------------------------------------------
 
-describe("planReviewDispatch — review_required and project reviewers", () => {
+describe("planReviewDispatch — acceptance mode and project reviewers", () => {
   it("skips a card that does not require review", () => {
     const result = planReviewDispatch({
-      tasks: [card({ review_required: false })],
+      tasks: [card({ acceptance_mode: "off" })],
       config: CONFIG,
     });
     assert.deepEqual(result.actions, []);
@@ -959,17 +955,11 @@ describe("planReviewDispatch — review_required and project reviewers", () => {
     assert.equal(result.alerts[0].reviewer, "linus");
   });
 
-  it("reads the decision from the integer column too", () => {
-    assert.equal(reviewRequired({ review_required: true }), true);
-    assert.equal(reviewRequired({ review_required: 1 }), true);
-    assert.equal(reviewRequired({ review_required: 0 }), false);
-    assert.equal(reviewRequired({}), false);
-  });
 });
 
 describe("planAutoAccept — no review required", () => {
   const autoCard = (fields = {}) =>
-    card({ review_required: false, status: "in_review", ...fields });
+    card({ acceptance_mode: "off", status: "in_review", ...fields });
 
   it("auto-accepts a delivered card that does not require review", () => {
     const result = planAutoAccept({ tasks: [autoCard()], config: { ...CONFIG } });
@@ -987,7 +977,7 @@ describe("planAutoAccept — no review required", () => {
 
   it("never auto-accepts a card that requires review", () => {
     const result = planAutoAccept({
-      tasks: [card({ review_required: true })],
+      tasks: [card({ acceptance_mode: "agent" })],
       config: { ...CONFIG },
     });
     assert.deepEqual(result.actions, []);
@@ -1052,7 +1042,7 @@ describe("planAutoAccept — no review required", () => {
 
   it("excludes review cards and flow-B cards", () => {
     const result = planAutoAccept({
-      tasks: [reviewCard({ status: "in_review", review_required: false })],
+      tasks: [reviewCard({ status: "in_review", acceptance_mode: "off" })],
       config: { ...CONFIG },
     });
     assert.deepEqual(result.actions, []);
@@ -1156,7 +1146,7 @@ describe("planAutoAccept — no review required", () => {
 describe("planWorkflowTick — auto-accept ordering", () => {
   it("runs auto-accept after outcomes and before dispatch, and reports the count", () => {
     const result = planWorkflowTick({
-      tasks: [card({ identifier: "T-1", review_required: false })],
+      tasks: [card({ identifier: "T-1", acceptance_mode: "off" })],
       config: { ...CONFIG },
       now: NOW,
     });
@@ -1167,7 +1157,7 @@ describe("planWorkflowTick — auto-accept ordering", () => {
 
   it("does not dispatch a card that auto-accept already handled", () => {
     const result = planWorkflowTick({
-      tasks: [card({ identifier: "T-1", review_required: false })],
+      tasks: [card({ identifier: "T-1", acceptance_mode: "off" })],
       config: { ...CONFIG },
       now: NOW,
     });

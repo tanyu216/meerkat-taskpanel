@@ -228,8 +228,6 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
         "tr_tasks_children_terminal",
         "tr_tasks_epic_rollup_done",
         "tr_tasks_reopen_state",
-        "tr_tasks_review_card_not_required",
-        "tr_tasks_review_card_not_required_update",
         "tr_tasks_review_marker_immutable",
       ];
       const LATER_TRIGGERS_REMOVED = [

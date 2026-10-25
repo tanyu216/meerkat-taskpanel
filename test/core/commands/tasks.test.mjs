@@ -3378,23 +3378,20 @@ describe("commands/tasks — review decision (0031)", () => {
 
   it("resolves the project default, and lets an explicit card value win", async () => {
     await board(async ({ commands }) => {
-      commands.createProject({ id: "req", name: "Required", reviewPolicy: "required", actor: HUMAN });
-      commands.createProject({ id: "off", name: "Off", reviewPolicy: "off", actor: HUMAN });
+      commands.createProject({ id: "req", name: "Required", acceptance: "agent", actor: HUMAN });
+      commands.createProject({ id: "off", name: "Off", acceptance: "off", actor: HUMAN });
 
-      assert.equal(commands.createTask({ projectId: "req", title: "r", actor: AGENT }).reviewRequired, 1);
-      assert.equal(commands.createTask({ projectId: "off", title: "o", actor: AGENT }).reviewRequired, 0);
-      // Project `optional` is the legacy spelling of `auto`; an unresolved card
-      // falls back to human.
+      assert.equal(commands.createTask({ projectId: "req", title: "r", actor: AGENT }).acceptanceMode, "agent");
+      assert.equal(commands.createTask({ projectId: "off", title: "o", actor: AGENT }).acceptanceMode, "off");
+      // `proj` carries the column default (`auto`); an unresolved card falls
+      // back to human.
       const fallback = commands.createTask({ projectId: "proj", title: "d", actor: AGENT });
       assert.equal(fallback.acceptanceMode, "human");
-      assert.equal(fallback.reviewRequired, 0);
       // 0038 — the explicit card value wins over the project default.
       const optIn = commands.createTask({ projectId: "off", title: "yes", actor: AGENT, acceptanceMode: "agent" });
       assert.equal(optIn.acceptanceMode, "agent");
-      assert.equal(optIn.reviewRequired, 1);
       const optOut = commands.createTask({ projectId: "req", title: "no", actor: AGENT, acceptanceMode: "off" });
       assert.equal(optOut.acceptanceMode, "off");
-      assert.equal(optOut.reviewRequired, 0);
     });
   });
 
@@ -3402,7 +3399,6 @@ describe("commands/tasks — review decision (0031)", () => {
     await board(async ({ commands }) => {
       const agentCard = commands.createTask({ projectId: "proj", title: "decide", actor: AGENT });
       assert.equal(agentCard.acceptanceMode, "human");
-      assert.equal(agentCard.reviewRequired, 0);
       const humanCard = commands.createTask({ projectId: "proj", title: "human", actor: HUMAN, allowDup: true });
       assert.equal(humanCard.acceptanceMode, "human");
     });
@@ -3418,7 +3414,7 @@ describe("commands/tasks — review decision (0031)", () => {
         reviewRound: original.deliveryRound,
         actor: AGENT,
       });
-      assert.equal(review.reviewRequired, 0);
+      assert.equal(review.acceptanceMode, "off");
       assert.throws(
         () =>
           commands.createTask({
@@ -3427,7 +3423,7 @@ describe("commands/tasks — review decision (0031)", () => {
             reviewOf: original.identifier,
             reviewRound: original.deliveryRound,
             actor: AGENT,
-            reviewRequired: true,
+            acceptanceMode: "agent",
             // Bypass the creation idempotency guard (the first review card is
             // non-terminal and already holds the derived key) so the resolver
             // is the thing that refuses.
@@ -3440,9 +3436,9 @@ describe("commands/tasks — review decision (0031)", () => {
 
   it("requires an approved current-round review before done", async () => {
     await board(async ({ commands }) => {
-      commands.createProject({ id: "req", name: "Required", reviewPolicy: "required", actor: HUMAN });
+      commands.createProject({ id: "req", name: "Required", acceptance: "agent", actor: HUMAN });
       const original = deliverOne(commands, "req", "original");
-      assert.equal(original.reviewRequired, 1);
+      assert.equal(original.acceptanceMode, "agent");
 
       assert.throws(
         () => commands.moveStatus({ id: original.id, to: "done", actor: TASKD }),
@@ -3456,7 +3452,7 @@ describe("commands/tasks — review decision (0031)", () => {
         reviewRound: original.deliveryRound,
         actor: AGENT,
       });
-      assert.equal(review.reviewRequired, 0, "a review card never requires its own review");
+      assert.equal(review.acceptanceMode, "off", "a review card never requires its own review");
       commands.claim({ id: review.id, actor: AGENT });
       commands.deliver({
         taskId: review.id,
@@ -3471,31 +3467,30 @@ describe("commands/tasks — review decision (0031)", () => {
 
   it("lets a human waive with a reason, and refuses an agent", async () => {
     await board(async ({ db, commands }) => {
-      commands.createProject({ id: "req", name: "Required", reviewPolicy: "required", actor: HUMAN });
+      commands.createProject({ id: "req", name: "Required", acceptance: "agent", actor: HUMAN });
       const original = deliverOne(commands, "req", "original");
 
       assert.throws(
         () =>
           commands.updateTask({
             id: original.id,
-            reviewRequired: false,
+            acceptanceMode: "off",
             reason: "documentation only",
             actor: AGENT,
           }),
         (err) => err.code === "ACCEPTANCE_FORBIDDEN",
       );
       assert.throws(
-        () => commands.updateTask({ id: original.id, reviewRequired: false, actor: HUMAN }),
+        () => commands.updateTask({ id: original.id, acceptanceMode: "off", actor: HUMAN }),
         (err) => err.code === "VALIDATION_FAILED",
       );
 
       const waived = commands.updateTask({
         id: original.id,
-        reviewRequired: false,
+        acceptanceMode: "off",
         reason: "documentation only",
         actor: HUMAN,
       });
-      assert.equal(waived.reviewRequired, 0);
       assert.equal(waived.acceptanceMode, "off");
       assert.ok(activitiesFor(db, original.id).includes("acceptance_override"));
       assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: HUMAN }).status, "done");
@@ -3504,7 +3499,7 @@ describe("commands/tasks — review decision (0031)", () => {
 
   it("refuses a waiver while a current-round review is open", async () => {
     await board(async ({ commands }) => {
-      commands.createProject({ id: "req", name: "Required", reviewPolicy: "required", actor: HUMAN });
+      commands.createProject({ id: "req", name: "Required", acceptance: "agent", actor: HUMAN });
       const original = deliverOne(commands, "req", "original");
       commands.createTask({
         projectId: "req",
@@ -3517,7 +3512,7 @@ describe("commands/tasks — review decision (0031)", () => {
         () =>
           commands.updateTask({
             id: original.id,
-            reviewRequired: false,
+            acceptanceMode: "off",
             reason: "please skip",
             actor: HUMAN,
           }),
@@ -3824,7 +3819,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
         projectId: "proj",
         title: "reviewed",
         meta: { acceptance: ["a", "b"] },
-        reviewRequired: true,
+        acceptanceMode: "agent",
         actor: AGENT,
       });
       commands.claim({ id: original.id, actor: AGENT });

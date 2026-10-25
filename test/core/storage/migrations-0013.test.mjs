@@ -86,10 +86,7 @@ const EXPECTED_TRIGGERS = [
   // 0027 — the reopen edge releases the finished row's bookkeeping before the
   // terminal guard lets the status through.
   "tr_tasks_reopen_state",
-  // 0031 — the review-required marker and its `done` floor.
-  "tr_tasks_review_card_not_required",
-  "tr_tasks_review_card_not_required_update",
-  // 0038 — the acceptance-mode mirror and the mode-based done floor.
+  // 0038 — the acceptance-mode marker and the mode-based done floor.
   "tr_tasks_acceptance_agent_done",
   "tr_tasks_acceptance_mode_ins",
   "tr_tasks_acceptance_mode_upd",
@@ -139,7 +136,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -294,8 +291,6 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         "tr_tasks_children_terminal",
         "tr_tasks_epic_rollup_done",
         "tr_tasks_reopen_state",
-        "tr_tasks_review_card_not_required",
-        "tr_tasks_review_card_not_required_update",
         "tr_tasks_review_marker_immutable",
       ];
       const LATER_MIGRATION_TRIGGERS_REMOVED = [

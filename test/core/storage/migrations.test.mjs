@@ -53,7 +53,7 @@ const TINY = {
 describe("storage/migrations — the shipped set", () => {
   it("reads the shipped migrations in version order with stable checksums", () => {
     const migrations = listMigrations();
-    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039"]);
+    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040"]);
     assert.deepEqual(migrations.map((m) => m.name), [
       "core_tables",
       "invariants",
@@ -127,6 +127,9 @@ describe("storage/migrations — the shipped set", () => {
       // 0039 — `deploy` leaves the card model; the tasks table is rebuilt with
       // the narrow `kind` CHECK (0015's procedure).
       "retire_deploy_kind",
+      // 0040 — the one-release compatibility spelling is retired: the legacy
+      // `review_policy` / `review_required` columns are dropped.
+      "retire_review_compat",
     ]);
     for (const migration of migrations) {
       assert.match(migration.checksum, /^[0-9a-f]{64}$/);
@@ -140,17 +143,17 @@ describe("storage/migrations — the shipped set", () => {
     const board = await createTempBoard({ migrate: false });
     try {
       const first = applyMigrations(board.db);
-      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039"]);
+      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040"]);
       assert.deepEqual(first.skipped, []);
       for (const entry of first.applied) assert.equal(typeof entry.ms, "number");
 
       const second = applyMigrations(board.db);
       assert.deepEqual(second.applied, [], "re-apply must be a no-op");
-      assert.deepEqual(second.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039"]);
+      assert.deepEqual(second.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040"]);
 
       const rows = board.db.prepare("SELECT version, checksum FROM schema_migrations ORDER BY version").all();
       assert.equal(rows.length, listMigrations().length, "one bookkeeping row per shipped file");
-      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039"]);
+      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040"]);
     } finally {
       board.close();
     }
@@ -394,7 +397,7 @@ describe("storage/migrations — 0012 drops projects.workspace_path (O3)", () =>
       const up = applyMigrations(board.db);
       // 0012 and everything after it — this board stopped before 0012, so the
       // upgrade carries it to the head of the shipped set.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040"]);
       assert.deepEqual(up.skipped.slice(-2), ["0010", "0011"]);
 
       // The column and its unique index are gone; the table is otherwise intact.

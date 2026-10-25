@@ -528,14 +528,6 @@
             "readme": {
               "type": "string"
             },
-            "review_policy": {
-              "enum": [
-                "off",
-                "optional",
-                "required"
-              ],
-              "type": "string"
-            },
             "reviewer": {
               "type": "string"
             }
@@ -585,14 +577,6 @@
             "readme": {
               "type": "string"
             },
-            "review_policy": {
-              "enum": [
-                "off",
-                "optional",
-                "required"
-              ],
-              "type": "string"
-            },
             "reviewer": {
               "type": "string"
             }
@@ -632,14 +616,6 @@
               "type": "string"
             },
             "readme": {
-              "type": "string"
-            },
-            "review_policy": {
-              "enum": [
-                "off",
-                "optional",
-                "required"
-              ],
               "type": "string"
             },
             "reviewer": {
@@ -897,9 +873,6 @@
             "review_of": {
               "type": "string"
             },
-            "review_required": {
-              "type": "boolean"
-            },
             "review_round": {
               "type": "integer"
             },
@@ -1012,9 +985,6 @@
             },
             "reporter": {
               "type": "string"
-            },
-            "review_required": {
-              "type": "boolean"
             },
             "title": {
               "type": "string"
@@ -1712,7 +1682,6 @@
         "name": "string",
         "prefix": "string",
         "readme": "string",
-        "review_policy": "string",
         "reviewer": "string",
         "task_count": "number",
         "updated_at": "string"
@@ -1852,7 +1821,6 @@
         "reporter_id": "string",
         "reporter_kind": "null",
         "review_of_id": "null",
-        "review_required": "boolean",
         "review_round": "null",
         "sort_order": "number",
         "source_path": "string",
@@ -1947,6 +1915,7 @@
     },
     {
       "fields": {
+        "acceptance_mode": "string",
         "assignee_id": "string",
         "close_review": "boolean",
         "findings": "string",
@@ -1954,7 +1923,6 @@
         "original_title": "string",
         "project_id": "string",
         "review_ref": "string",
-        "review_required": "boolean",
         "review_status": "string",
         "rework_round": "number",
         "round": "number",

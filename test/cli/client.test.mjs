@@ -283,7 +283,7 @@ describe("shared/transport/http — over a real board", () => {
       path: "/api/v1/tasks",
       // 0031 — an agent creating a card in an `optional` project states the
       // review decision; this test is about headers, so it says "no review".
-      body: { project_id: "c1", title: "T", review_required: false },
+      body: { project_id: "c1", title: "T", acceptance_mode: "off" },
       actor: { kind: "agent", id: "linus" },
     });
     const commented = await requestJson({
@@ -312,7 +312,7 @@ describe("shared/transport/http — over a real board", () => {
       url,
       method: "POST",
       path: "/api/v1/tasks",
-      body: { project_id: "bytes", title: "Bytes", review_required: false },
+      body: { project_id: "bytes", title: "Bytes", acceptance_mode: "off" },
     });
     const bytes = new TextEncoder().encode("hello\n");
     const created = await requestJson({

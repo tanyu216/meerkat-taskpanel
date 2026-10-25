@@ -34,9 +34,9 @@ tests:
 
 | Event | Writer | Task scope | `changes` | Reaches SSE |
 |---|---|---|---|---|
-| `project_created` | `commands/projects.mjs` | none | `project`, `review_policy`, optional `reviewer` | yes |
+| `project_created` | `commands/projects.mjs` | none | `project`, `acceptance`, optional `reviewer` | yes |
 | `project_updated` | `commands/projects.mjs` (`updateProject`, `readmeSet`) | none | `project`, `fields` | yes |
-| `task_created` | `commands/tasks.mjs` | task | `identifier`, `status`, `priority`, `review_required`, `review_policy`, optional `idem`/`dictionaries`/`labels` | yes |
+| `task_created` | `commands/tasks.mjs` | task | `identifier`, `status`, `priority`, `acceptance_mode`, optional `idem`/`dictionaries`/`labels` | yes |
 | `task_updated` | `commands/tasks.mjs` | task | `fields` (field **names**), optional `dictionaries`/`labels` | yes |
 | `task_claimed` | `commands/tasks.mjs` | task | `from`, `to`, optional `stoleFrom`/`reason` | yes |
 | `task_heartbeat` | `commands/tasks.mjs` | task | `heartbeatAt` | **no — noise** |

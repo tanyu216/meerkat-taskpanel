@@ -85,14 +85,6 @@ export const SPELLING = Object.freeze({
       value: "<t>",
       summary: "The card's target — stored in its meta; also the idempotency key's target slot.",
     },
-    review_required: {
-      flag: "review",
-      as: "string",
-      value: "<yes|no>",
-      summary:
-        "Whether this card needs an independent review. Required projects decide for you; " +
-        "optional projects require an agent to state it.",
-    },
     review_of: {
       value: "<id>",
       summary: "Mark this card as a review of that card (identifier or id); resolved and stamped at creation.",
@@ -121,14 +113,6 @@ export const SPELLING = Object.freeze({
       key: "acceptanceRevision",
       value: "<n>",
       summary: "The acceptance revision you read; guards a prune against a concurrent change.",
-    },
-    review_required: {
-      flag: "review",
-      as: "string",
-      value: "<yes|no>",
-      summary:
-        "Change the review decision. Any agent may escalate no→yes; only a human may waive " +
-        "yes→no, and a waiver needs --reason.",
     },
     reason: {
       value: "<why>",

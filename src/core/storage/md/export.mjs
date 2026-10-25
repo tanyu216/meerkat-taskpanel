@@ -49,9 +49,8 @@ export const CARD_KEY_ORDER = Object.freeze([
   "status",
   "priority",
   "kind",
-  // 0031/0038 — emitted only when the card is not the default `off`; absence
-  // means "no review", so a card that never needs one does not grow a line.
-  "review_required",
+  // 0038 — emitted only when the card is not the default `off`; absence means
+  // "no review", so a card that never needs one does not grow a line.
   "acceptance_mode",
   "labels",
   "project",
@@ -173,15 +172,9 @@ export function renderCard(task, context) {
     heartbeat_at: task.heartbeatAt ?? "",
     blocked_at: task.blockedAt ?? "",
   };
-  // 0031 — only a card that requires review carries the key. Absence is "not
-  // required"; writing `no` on every card would grow every golden by a line for
-  // the default state.
-  if (task.reviewRequired === 1 || task.reviewRequired === true) {
-    data.review_required = "yes";
-  }
-  // 0038 — the mode the card actually carries. `review_required` stays one
-  // release longer as the legacy spelling; `acceptance_mode` is what a reader
-  // should branch on, and the default (`off`) stays absent.
+  // 0038 — the acceptance mode the card carries. The default (`off`) stays
+  // absent: writing it on every card would grow every golden by a line for the
+  // default state.
   if (task.acceptanceMode !== undefined && task.acceptanceMode !== null && task.acceptanceMode !== "off") {
     data.acceptance_mode = task.acceptanceMode;
   }
