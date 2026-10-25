@@ -56,6 +56,17 @@ run them.
     terms.
 17. ADRs live at `docs/adr/NNNN-<slug>.md` with context, decision and why, plus options and
     consequences where useful.
+18. The `## Tech stack` table exists and its four core layers are complete; every row is a
+    concrete choice or `n/a` with a reason, and no row says `TBD`.
+19. Runtime and major framework versions are pinned; the container base image matches the
+    backend runtime; framework, build tool, driver/ORM and migration tool are compatible.
+20. The frontend row names the framework, language, styling, component layer and build tool;
+    a choice outside the recommended baseline carries the human's E5 approval.
+21. The persistence row names the engine, driver/ORM and migration tool; the container row
+    names the runtime form and Dockerfile path, or why the deliverable is not containerized.
+22. The scaffold instantiates the recorded stack, with no unrecorded substitution.
+23. When the runtime form is a container, the Dockerfile builds and the container starts;
+    record the command and exit code.
 
 ## Implementation branch
 
@@ -69,6 +80,8 @@ run them.
 14. Merge and cleanup ran only after reviewer approval or operator confirmation;
     `worktree remove` preceded `branch -d`, and `-D` was not used to force it.
 15. The gates were re-run on the integration result.
+16. The change uses the recorded stack; a new framework, dependency or database engine is a
+    decision recorded on the card, not a silent addition.
 
 ## Delivery
 

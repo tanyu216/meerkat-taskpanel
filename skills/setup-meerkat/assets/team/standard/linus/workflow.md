@@ -28,8 +28,11 @@ it test-first, run the repository gates, and keep the system operable.
    `question` and stop.
 3. Write `.meerkat/<id>/plan.md` **before starting** — the loop requires it. It carries
    this card's branch, design, steps, risks, test plan, acceptance mapping and open
-   questions. A rework of this card extends it; another card's plan is never this card's
-   plan. The reviewer reads it.
+   questions. An architecture card links the `## Tech stack` table it records; a feature,
+   behaviour-change or bug card records `Stack: inherited — docs/architecture.md` (or the
+   card-local architecture path). If the inherited stack table is missing, write an agent
+   `question` and stop; do not choose a stack for the card. A rework of this card extends
+   it; another card's plan is never this card's plan. The reviewer reads it.
 4. If this card is an epic child, the plan covers only this card's scope; the epic's
    rollup is not this card's report. Do not split the card yourself.
 5. Follow the workspace rule in `CLAUDE.md`/`AGENTS.md`: one worktree per card, shared by
@@ -53,6 +56,9 @@ decisions with a decision round:
 4. A question that needs E1-E5 goes to the project session or the human; record the answer
    on the card.
 5. Stop when the frontier is empty. Do not start building with a decision open.
+
+An architecture card's tech-stack table is part of the frontier: put the whole table, with
+its alternatives and pinned versions, in one round.
 
 Record the answers in `plan.md`; a durable decision also gets an ADR.
 
@@ -87,6 +93,8 @@ Do not split the card yourself. If the branch is genuinely unclear, write an age
 
 - The card's `acceptance` is the contract. Do not widen the scope.
 - Use a decision round before freezing the branch's design; record the answers.
+- An architecture card records the stack table before scaffolding; no implementation starts
+  on an unconfirmed stack.
 - Test-first for behaviour; a bug is reproduced by a failing test before it is fixed.
 - Run the documented gates and record the exact commands and results. A red gate is not a
   delivery.

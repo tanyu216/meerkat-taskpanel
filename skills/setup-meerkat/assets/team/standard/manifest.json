@@ -44,6 +44,7 @@
       "summary": "Owns architecture and project foundation, implementation, bug fixes, operations, code review and dead-code cleanup.",
       "responsibilities": [
         "Plan the architecture and project foundation, and split the work into verifiable steps.",
+        "Fix and record the frontend, backend, persistence and container/build stack before scaffolding, with the human's E5 confirmation.",
         "Own the codebase `GLOSSARY.md` and `docs/adr/`; settle the design with a decision round.",
         "Choose the smallest correct implementation and implement it test-first.",
         "Reproduce a bug with a failing test before fixing its root cause.",
