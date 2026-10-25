@@ -97,6 +97,9 @@ thing.
   install + first-run end-to-end, which is a step *inside* that script rather than a
   separate CI-only `docker run`. (`verify:docker` then adds a local-only compose deploy
   smoke test, which is strictly extra.)
+- Locally, `.githooks/pre-push` runs that same `npm run verify:docker` on every branch push,
+  after the static gates and only when a branch commit is moving. Merging therefore no longer
+  ends with a separate container run; the push is the container gate.
 
 `verify:docker` is not a substitute for the **`check` job**, and does not reproduce two of
 its properties: the Node **22/24 matrix** (the image is Node 22 only, so a Node-24-only
@@ -115,7 +118,10 @@ and turns the job red.
 The mechanics:
 
 1. Branch off `main`.
-2. Push the branch and **open a pull request**.
+2. Push the branch and **open a pull request**. The push itself runs the container gate:
+   `.githooks/pre-push` builds the image and runs `docker/verify-in-container.sh` after the
+   static gates pass, so the merge step needs no separate container run. Commit first — the
+   image bakes the working tree. `SKIP_CONTAINER_VERIFY=1 git push …` opts out for one push.
 3. Wait for CI. Three workflows already carry a `pull_request` trigger, so no workflow
    change is needed for PR gating:
    - `.github/workflows/check.yml` — the Node 22/24 matrix plus the container job;

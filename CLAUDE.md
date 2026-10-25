@@ -58,8 +58,12 @@ for invariants, `test/core/**`, `test/server/**`, `test/concurrency/**`, `test/w
 harness. Turn a reported bug into a red test before fixing it.
 
 **Then verify in the right place.** The host-static checks below are the iteration loop. The
-authoritative gate is `npm run verify:docker`, and it bakes the tree it finds at build start —
-**commit before you run it**.
+authoritative gate is `npm run verify:docker`, and it runs from `.githooks/pre-push` on every
+branch push (and again in CI), so a merge is not a container-gate moment any more — push the
+result and the hook bakes it. The gate bakes the **working tree** at build start, so **commit
+before you push**; a dirty tracked tree is announced and included. Run it by hand only when you
+want the verdict before committing or the hook is not installed; `SKIP_CONTAINER_VERIFY=1 git
+push …` skips it for one push.
 
 **Finish by confirming with the user.** Do not declare a task complete, integrate it, or
 delete anything on your own initiative. Confirm first, then integrate and clean up per the
@@ -84,8 +88,8 @@ merging `dev`, and only after the user has confirmed.
 - **On confirmation, land it into `dev` and clean up** (a worktree *and* any branch that is
   not `dev`):
   1. commit every path you touched first (`git commit -- <path>`): a worktree with
-     uncommitted changes cannot be removed without `--force`, and a dirty tree is not what
-     the container gate sees;
+     uncommitted changes cannot be removed without `--force`, and the container gate at
+     `pre-push` bakes the working tree — commit first;
   2. merge into `dev` — `git checkout dev && git merge --no-ff <branch>` — and resolve
      conflicts against `dev`;
   3. remove the worktree, *then* delete the branch — `git worktree remove <path>` followed by
@@ -93,9 +97,9 @@ merging `dev`, and only after the user has confirmed.
      refuses to delete a branch that is still checked out in a worktree. Use `-d`, not `-D`
      (which would silently discard an unmerged branch); if `-d` refuses, the merge did not
      land and that is the finding;
-  4. re-run the gate on the integration result (`npm run check`, then `npm run verify:docker`
-     after committing) — a merge produces a new tree, and green on the branch does not
-     transfer to it.
+  4. re-run the host-static gate on the integration result (`npm run check`) — a merge produces
+     a new tree, and green on the branch does not transfer to it. The container gate is no
+     longer part of the merge step: it runs at `pre-push` when the result is pushed.
 
 The log contains `lane/… → main` merges from before this rule; treat the section above as the
 policy going forward.
@@ -109,7 +113,7 @@ node --test "test/contract/**/*.test.mjs"    # one directory (a bare dir arg doe
 npm run test:coverage                        # tap reporter + 80% line/branch/function floors
 npm run check                                # check:skills + verify + test (fast, host-static)
 npm run verify                               # manifests + skill + migrations + paths + signposts checkers
-npm run verify:docker                        # AUTHORITATIVE gate: build image + in-container suite
+npm run verify:docker                        # AUTHORITATIVE gate: build image + in-container suite (also run by pre-push)
 npm run verify:docker:container              # run docker/verify-in-container.sh inside the image
 node scripts/sync-skills.mjs                 # regenerate the loop payload + plugin skill copies
 node scripts/build.mjs                       # produce dist/ (the npm release tree; deletes + recreates)
@@ -164,9 +168,11 @@ the release workflow stages the image's build there before `npm pack`.
 - **Verification runs inside Docker, not on the host.** Everything that *runs* — tests,
   starting or serving the app, the CLI, agent skill installs, plugin installs, migration
   rehearsals — runs in the container (`npm run verify:docker`, `docker/verify-in-container.sh`).
-  Host-allowed (static/pure only, per `docs/docker.md` §Host-allowed checks): `node --test`,
-  `node --check`, the `scripts/verify/*` checkers, `git` and file inspection, prototype
-  screenshots, and the browser-rendered `web/` DOM/selector checks (the image has no Chromium).
+  `.githooks/pre-push` runs that gate on every branch push, so the push itself is the merge-time
+  container check. Host-allowed (static/pure only, per `docs/docker.md` §Host-allowed checks):
+  `node --test`, `node --check`, the `scripts/verify/*` checkers, `git` and file inspection,
+  prototype screenshots, and the browser-rendered `web/` DOM/selector checks (the image has no
+  Chromium).
 - **Runtime zero-dependency, no network.** The engine and every script and test use Node
   builtins only and work fully offline. Do not run `npm install` for them: there is no root
   lockfile and no root `node_modules/`.
@@ -214,7 +220,7 @@ the release workflow stages the image's build there before `npm pack`.
   lives in `design/DESIGN.md` §20; do not add a new `ARCHITECTURE.md` citation, name the live
   document instead. See `docs/README.md`.
 
-## Git hooks (offline gates, run on the host)
+## Git hooks (gates, run on the host)
 
 A fresh clone has none until `git config core.hooksPath .githooks` (do **not** run `npm install`
 to get them). Hook and CI run the same checkers:
@@ -222,7 +228,7 @@ to get them). Hook and CI run the same checkers:
 | Hook | Enforces |
 |---|---|
 | `pre-commit` | migrations append-only, contiguous from `0001`, none edited or deleted (`verify/migrations.mjs`) |
-| `pre-push` | contract snapshot matches the live surface; declared request schema equals what the handler reads; no tracked file carries a host-absolute path (`verify/paths.mjs`) or a signpost out of the repository (`verify/signposts.mjs`); every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` CHANGELOG section |
+| `pre-push` | contract snapshot matches the live surface; declared request schema equals what the handler reads; no tracked file carries a host-absolute path (`verify/paths.mjs`) or a signpost out of the repository (`verify/signposts.mjs`); every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` CHANGELOG section; `main` is not pushed directly; **then the container gate** (`npm run verify:docker`) on a branch push — skipped for a tag-only push or a branch deletion, and by `SKIP_CONTAINER_VERIFY=1` |
 | `pre-tag` | the same API + tag rules, run by hand before `git tag` (git has no native pre-tag hook) |
 
 Two workflows guard the tree itself. `paths-gate.yml`: a host-absolute `/Users/<someone>/…`

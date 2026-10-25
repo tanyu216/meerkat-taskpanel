@@ -1,7 +1,8 @@
 #!/bin/sh
 # Meerkat TaskPanel pre-push hook.
 #
-# Seven gates, all offline and Node-builtins-only:
+# Eight gates: seven static, offline and Node-builtins-only, then the container
+# suite. The static ones are:
 #
 #   1. the API contract snapshot — the live surface (routes + error codes + wire
 #      fields) must match `test/fixtures/contract/api.snapshot.json`.
@@ -26,6 +27,22 @@
 #      direct push (and a deletion) is refused. A release push that really does
 #      want the direct route says so: `ALLOW_PUSH_MAIN=1 git push origin main`.
 #
+# Gate 8 is the container suite, and the last thing this hook does:
+#
+#   8. `npm run verify:docker` on a branch push. It runs only after the static
+#      gates are green (no image build to then fail on a cheap check) and only
+#      when a branch commit is actually moving — a tag-only push and a branch
+#      deletion change no tree, so they skip it. The image bakes the working tree
+#      at build start, so commit before pushing; uncommitted tracked changes are
+#      announced. This is where the authoritative gate runs on the way out, which
+#      is why the merge workflow ends with `npm run check` rather than a separate
+#      container run. It needs a Docker daemon; without one the push is refused
+#      with the runner's own message. The escape hatch for one push:
+#
+#        SKIP_CONTAINER_VERIFY=1 git push ...
+#
+#      and `git push --no-verify` bypasses the whole hook, as it always did.
+#
 # Git supplies one line per ref on stdin:
 #
 #   <local ref> <local sha> <remote ref> <remote sha>
@@ -48,7 +65,8 @@ node scripts/verify/cli-contract.mjs || status=1
 node scripts/verify/route-request.mjs || status=1
 node scripts/verify/paths.mjs || status=1
 node scripts/verify/signposts.mjs || status=1
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
+pushed_commit=0
+while read -r _local_ref local_sha remote_ref _remote_sha; do
   case "$remote_ref" in
     refs/tags/v*)
       node scripts/verify/changelog.mjs "${remote_ref#refs/tags/}" || status=1
@@ -63,6 +81,26 @@ while read -r _local_ref _local_sha remote_ref _remote_sha; do
         status=1
       fi
       ;;
+    refs/heads/*)
+      # A branch deletion sends a zero local sha; deleting a remote branch changes
+      # no tree, so it is not a reason to build the image.
+      if [ "$local_sha" != "0000000000000000000000000000000000000000" ]; then
+        pushed_commit=1
+      fi
+      ;;
   esac
 done
+if [ "$status" -ne 0 ]; then
+  echo "pre-push: container gate skipped — an earlier gate failed." >&2
+elif [ "$pushed_commit" -eq 1 ]; then
+  if [ "${SKIP_CONTAINER_VERIFY:-0}" = "1" ]; then
+    echo "pre-push: container gate skipped (SKIP_CONTAINER_VERIFY=1)." >&2
+  else
+    if [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+      echo "pre-push: WARNING: tracked changes are uncommitted; the image bakes the working tree, not just the pushed commit." >&2
+    fi
+    echo "pre-push: running the container gate (npm run verify:docker) ..." >&2
+    npm run verify:docker || status=1
+  fi
+fi
 exit "$status"

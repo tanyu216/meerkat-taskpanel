@@ -298,6 +298,13 @@ This is the whole suite, host-side, in one command. It:
 It exits immediately with a clear message if no Docker daemon is reachable, changing
 nothing.
 
+The same command runs automatically from `.githooks/pre-push` on every **branch** push,
+after the static gates and only when they pass. A tag-only push and a branch deletion change
+no tree, so they skip it; `SKIP_CONTAINER_VERIFY=1 git push …` opts out for one push, and
+`git push --no-verify` bypasses the hook entirely. Because the gate runs on the push, merging
+into `dev` ends with `npm run check` (host-static) rather than a separate container run. The
+image bakes the working tree, so commit before pushing.
+
 Already inside the image? Run the same suite directly:
 
 ```bash
