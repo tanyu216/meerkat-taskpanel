@@ -187,7 +187,6 @@ describe("shared/transport/http — the event stream", () => {
       res.write(": connected\n\n");
     });
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 20);
     try {
       const stream = await requestStream({
         url,
@@ -195,6 +194,11 @@ describe("shared/transport/http — the event stream", () => {
         signal: controller.signal,
         idleMs: 5_000,
       });
+      // Abort only after the stream is open. The header wait has its own bound
+      // and is not what this case measures; under load the old ordering could
+      // abort before `requestStream` returned, so the rejection escaped
+      // `assert.rejects` and the case failed on a correct transport.
+      setTimeout(() => controller.abort(), 20);
       await assert.rejects(
         async () => {
           for await (const _chunk of stream) { /* drain */ }
