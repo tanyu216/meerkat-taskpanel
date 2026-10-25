@@ -81,6 +81,11 @@ function fixture(projectId, status, overrides = {}) {
     labels: overrides.labels ?? ["bug"],
     // M1 — the `awaiting` entry category (`null` on every other card).
     awaiting_reason: overrides.awaiting_reason ?? null,
+    // 0038 — the acceptance decision. The fixture is a wire reading, so the
+    // field has to be present: the waiting queue derives "a human still owes
+    // this" from `acceptance_mode === "human"`, and an absent field would read
+    // as `off` and silently empty the queue.
+    acceptance_mode: overrides.acceptance_mode ?? "off",
     meta: overrides.meta ?? {},
     assignee: overrides.assignee ?? { id: "a1", display_name: "linus", kind: "agent" },
     reporter: { id: "h1", display_name: "Terry", kind: "human" },
@@ -210,8 +215,8 @@ export function fixtureApi() {
     fixture("p1", "todo", { identifier: "TD-4", title: "Polish the empty states", priority: "medium", labels: ["ui"], assignee: AGENT.codex }),
     fixture("p1", "in_progress", { identifier: "TD-5", title: "Fix the renderer", priority: "urgent", labels: ["bug", "ui"], assignee: AGENT.codex }),
     fixture("p1", "in_progress", { identifier: "TD-6", title: "Profile the board scroll", priority: "high", labels: ["perf"], assignee: AGENT.claude }),
-    fixture("p1", "in_review", { identifier: "TD-7", title: "Audit the token store", priority: "medium", labels: ["security"], assignee: AGENT.openclaw }),
-    fixture("p1", "in_review", { identifier: "TD-8", title: "Redesign the sidebar rail", priority: "low", labels: ["design", "ui"], assignee: AGENT.pi }),
+    fixture("p1", "in_review", { identifier: "TD-7", title: "Audit the token store", priority: "medium", labels: ["security"], assignee: AGENT.openclaw, acceptance_mode: "human" }),
+    fixture("p1", "in_review", { identifier: "TD-8", title: "Redesign the sidebar rail", priority: "low", labels: ["design", "ui"], assignee: AGENT.pi, acceptance_mode: "human" }),
     fixture("p1", "blocked", { identifier: "TD-9", title: "Waiting on review", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
     // M1 · the 「等你回复」card. Its status is the overlay, so it is *listed* under
     // in_progress (the seventh column count does not change) and it wears the
