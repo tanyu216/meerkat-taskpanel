@@ -1820,6 +1820,7 @@
         "reporter": "object",
         "reporter_id": "string",
         "reporter_kind": "null",
+        "review_of": "null",
         "review_of_id": "null",
         "review_round": "null",
         "sort_order": "number",

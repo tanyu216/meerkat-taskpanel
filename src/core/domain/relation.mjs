@@ -17,6 +17,7 @@
 
 import { RELATION_ANCESTOR_CAP, RELATION_CHAIN_MAX, RELATION_FANIN_MAX } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
+import { reviewIdentityOf } from "../../foundation/review-identity.mjs";
 import { RELATION_TYPES, RELATION_TYPE, TASK_KIND } from "./enums.mjs";
 
 /**
@@ -201,9 +202,8 @@ export function wouldCreateCycle(edges, parent, child) {
  */
 export function assertParentEdgeHasNoReviewCard({ source, target }) {
   for (const [task, field] of [[source, "source"], [target, "target"]]) {
-    const structural = task?.reviewOfId !== null && task?.reviewOfId !== undefined;
-    const legacy = typeof task?.meta?.review_of === "string" && task.meta.review_of.trim() !== "";
-    if (!structural && !legacy) continue;
+    const identity = reviewIdentityOf(task);
+    if (!identity.isReview) continue;
     throw new DomainError("VALIDATION_FAILED", {
       message: `a review card cannot be a parent or a child (${task.identifier ?? task.id})`,
       details: {
@@ -211,7 +211,7 @@ export function assertParentEdgeHasNoReviewCard({ source, target }) {
         type: "parent",
         taskId: task.id,
         identifier: task.identifier,
-        reviewOf: task.reviewOfId ?? task.meta?.review_of ?? null,
+        reviewOf: identity.originalRef ?? identity.originalId,
       },
       hint: { fix: "attach the parent edge to the original work card, not to its review card" },
     });

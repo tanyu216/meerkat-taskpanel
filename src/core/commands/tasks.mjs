@@ -20,6 +20,7 @@ import {
   TASK_ORDER_DEFAULT,
   TASK_ORDER_MODES,
 } from "../../foundation/constants.mjs";
+import { reviewIdentityOf } from "../../foundation/review-identity.mjs";
 import { orderTasks, taskOrderDebugEntry } from "../../foundation/task-order.mjs";
 import {
   assertClaimable,
@@ -207,7 +208,9 @@ export function createTask(ctx, input) {
       const resolvedAcceptance = resolveCardAcceptance({
         projectAcceptance: project.acceptance,
         requested: input.acceptanceMode,
-        reviewCard: marker.reviewOfId !== null,
+        // The reader owns "is this a review card"; `marker.reviewOfId` is the
+        // structural result it reads, so the two cannot drift.
+        reviewCard: reviewIdentityOf(candidate).isReview,
         kind: candidate.kind,
       });
       candidate.acceptanceMode = resolvedAcceptance.mode;
@@ -323,11 +326,9 @@ function resolveReviewMarker(ctx, projectId, input, kind = TASK_KIND.TASK) {
     });
   }
 
-  // A review cannot itself be reviewed. The structural column is the predicate;
-  // the meta key is the compatibility fallback for a row written before 0025.
-  const originalIsReview =
-    (original.reviewOfId !== null && original.reviewOfId !== undefined) ||
-    (typeof original.meta?.review_of === "string" && original.meta.review_of.trim() !== "");
+  // A review cannot itself be reviewed. One reader owns the predicate, so a
+  // column-only row (the structural shape) and a legacy meta-only row agree.
+  const originalIsReview = reviewIdentityOf(original).isReview;
   if (originalIsReview) {
     throw new DomainError("VALIDATION_FAILED", {
       message: `review_of ${JSON.stringify(ref)} names a review card; a review cannot itself be reviewed`,
@@ -1726,7 +1727,9 @@ function orderedCandidates(ctx, input = {}) {
   });
 
   return {
-    candidates: found.map(({ task, reason }) => candidateOf(task, reason)),
+    candidates: found.map(({ task, reason }) =>
+      candidateOf(task, reason, (id) => ctx.repos.tasks.get(id)?.identifier ?? null),
+    ),
     // In the order the caller receives them, so the two arrays reconcile
     // line for line; `reason` rides along because the bucket is the first key.
     orderDebug:
@@ -1807,8 +1810,13 @@ function staleReason(task, assigneeIds, now) {
  * @param {object} task
  * @param {string} reason
  */
-function candidateOf(task, reason) {
+function candidateOf(task, reason, resolveRef = null) {
   const meta = task.meta ?? {};
+  const identity = reviewIdentityOf(task);
+  const reviewOf =
+    identity.originalId === null
+      ? identity.originalRef
+      : (resolveRef?.(identity.originalId) ?? identity.originalRef ?? identity.originalId);
   return {
     id: task.id,
     identifier: task.identifier,
@@ -1821,13 +1829,12 @@ function candidateOf(task, reason) {
     target: nonEmptyString(meta.target),
     meta,
     reason,
-    // A review card names the card it audits (`meta.review_of`) and the round it
-    // audits (`meta.review_round`), so the supervisor can pick the review
-    // handoff at wake time without a second `issue get`. Both are `null` for a
-    // normal card; the round is coerced because `--meta` values arrive as
-    // strings while a JSON metadata write may carry a number.
-    review_of: nonEmptyString(meta.review_of),
-    review_round: integerOrNull(meta.review_round),
+    // A review card names the card it audits and the round it audits, so the
+    // supervisor can pick the review handoff at wake time without a second
+    // `issue get`. The identifier is resolved from the structural column; the
+    // id remains a valid fallback because `issue get` accepts either spelling.
+    review_of: reviewOf,
+    review_round: identity.auditedRound,
   };
 }
 
@@ -1836,13 +1843,6 @@ function nonEmptyString(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
-}
-
-/** A meta value as an integer, or `null` — numbers and digit strings both. */
-function integerOrNull(value) {
-  if (typeof value === "number" && Number.isInteger(value)) return value;
-  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number.parseInt(value, 10);
-  return null;
 }
 
 /**

@@ -55,6 +55,7 @@
  */
 
 import { AUTOMATED_ACCEPTORS, LOOP_ACCEPTOR } from "./constants.mjs";
+import { reviewIdentityIndex, reviewIdentityOf } from "./review-identity.mjs";
 import {
   DEFAULT_SLA_ROWS,
   LEADER_LOOKBACK_DAYS,
@@ -632,15 +633,16 @@ function hasBugLabel(card) {
  * convention are required — the `category:bug` label **and** a structural
  * reference back — because either alone is guesswork.
  */
-function hasFixCardFor(cards, card) {
+function hasFixCardFor(cards, card, byId = null) {
   const ids = idsOf(card);
   return cards.some((other) => {
     if (other === card) return false;
     if (!hasBugLabel(other)) return false;
     const meta = other?.meta ?? {};
+    const identity = reviewIdentityOf(other, { byId });
     return (
       referencesAny(meta.fixes, ids) ||
-      referencesAny(meta.review_of, ids) ||
+      referencesAny(identity.originalRef ?? identity.originalId, ids) ||
       referencesAny(meta.origin, ids) ||
       referencesAny(meta.parent, ids)
     );
@@ -793,7 +795,7 @@ function confirmDetection(card, trail, context) {
 function defectDetection(card, trail, context) {
   const defectAt = firstDefectEntryAt(trail);
   if (defectAt === null) return null;
-  if (hasFixCardFor(context.cards, card)) return null;
+  if (hasFixCardFor(context.cards, card, context.byId ?? null)) return null;
 
   const enteredBlocked = card?.status === "blocked" || card?.status === "canceled";
   const changedAt = enteredBlocked && instant(card?.status_changed_at) !== null ? instant(card.status_changed_at) : null;
@@ -837,14 +839,14 @@ function defectDetection(card, trail, context) {
 /**
  * The `product/UX acceptance queued` row (§6.4).
  *
- * Applies to **flow A** only; an absent `flow` is treated as A (fail-safe). The
- * wait starts when the card entered delivery (`in_review`) and is open while no
- * card records `review_of = <this card>`.
+ * Applies to **flow A** only — a review card is excluded by its structural
+ * marker, not by the patchable `meta.flow` label. The wait starts when the card
+ * entered delivery (`in_review`) and is open while no card records
+ * `review_of = <this card>`.
  */
 function acceptanceDetection(card, context) {
   if (card?.status !== "in_review") return null;
-  const flow = card?.meta?.flow ?? "A";
-  if (String(flow).toUpperCase() !== "A") return null;
+  if (reviewIdentityOf(card).isReview) return null;
   // An **open** review card suppresses this row only for the round it audits.
   // A card that was rejected and re-delivered is a *new* round with no review
   // card yet — a last round's review card must not silence it (the rejection
@@ -1195,28 +1197,31 @@ function boardContext(cards, trails, options = {}) {
     return String(reporter?.kind ?? "").trim() === LEADER_AUTHOR_KIND;
   };
 
+  const byId = reviewIdentityIndex(cards);
   for (const card of cards) {
-    const reviewOf = card?.meta?.review_of;
-    if (typeof reviewOf === "string" && reviewOf.trim() !== "") {
-      const ref = reviewOf.trim();
-      // Only an open review covers the wait. A `done` review means the verdict
-      // landed but the original is still `in_review` (the human-only hold, or a
-      // crash); a `canceled` one means the review was abandoned. Neither may
-      // silence the original's only watcher.
-      const bucket =
-        card?.status === "done"
-          ? doneReviewRefs
-          : TERMINAL_STATUSES.includes(card?.status)
-            ? null
-            : reviewOfRefs;
-      if (bucket !== null) {
-        const rounds = bucket.get(ref) ?? new Set();
-        // No `review_round` on an older card is `null`, not 0: it means "the
-        // round this card audits was never recorded", which covers every round
-        // (the conservative reading — silence, not a false alarm, while the
-        // review is still open).
-        rounds.add(intOrNull(card?.meta?.review_round));
-        bucket.set(ref, rounds);
+    const identity = reviewIdentityOf(card, { byId });
+    if (identity.isReview) {
+      const ref = identity.originalRef ?? identity.originalId;
+      if (ref !== null) {
+        // Only an open review covers the wait. A `done` review means the verdict
+        // landed but the original is still `in_review` (the human-only hold, or a
+        // crash); a `canceled` one means the review was abandoned. Neither may
+        // silence the original's only watcher.
+        const bucket =
+          card?.status === "done"
+            ? doneReviewRefs
+            : TERMINAL_STATUSES.includes(card?.status)
+              ? null
+              : reviewOfRefs;
+        if (bucket !== null) {
+          const rounds = bucket.get(ref) ?? new Set();
+          // No `review_round` on an older card is `null`, not 0: it means "the
+          // round this card audits was never recorded", which covers every round
+          // (the conservative reading — silence, not a false alarm, while the
+          // review is still open).
+          rounds.add(identity.auditedRound);
+          bucket.set(ref, rounds);
+        }
       }
     }
     if (TERMINAL_STATUSES.includes(card?.status)) {
@@ -1249,6 +1254,7 @@ function boardContext(cards, trails, options = {}) {
 
   return {
     cards,
+    byId,
     reviewOfRefs,
     doneReviewRefs,
     terminalRefs,

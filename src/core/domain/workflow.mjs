@@ -36,6 +36,7 @@ import {
   LOOP_ACCEPTOR,
   LOOP_AUTO_ACCEPTOR,
 } from "../../foundation/constants.mjs";
+import { reviewIdentityIndex, reviewIdentityOf } from "../../foundation/review-identity.mjs";
 import { normalizeCardAcceptance } from "./acceptance-mode.mjs";
 import { coverageOf, rollupGapOf } from "./acceptance.mjs";
 
@@ -125,8 +126,13 @@ function instant(value) {
 }
 
 /**
- * The flow a card runs. An absent `meta.flow` is `A` — the fail-safe direction,
- * because treating an unknown card as flow B would exempt it from review.
+ * The flow a card runs, as the loop's readable marker. An absent `meta.flow` is
+ * `A` — the fail-safe direction, because treating an unknown card as flow B
+ * would exempt it from review.
+ *
+ * **Display/back-compat only.** The structural review marker is the policy
+ * predicate (`isReviewCard`); a card must not become exempt from dispatch or
+ * auto-accept because someone wrote `flow=B` into its patchable `meta`.
  *
  * @param {object} task a wire task
  * @returns {string}
@@ -139,22 +145,22 @@ export function flowOf(task) {
 /**
  * Is this a review card?
  *
- * Detection reads the **structural marker** first (`review_of_id`, 0025), and
- * falls back to `meta.review_of` for a board that has not migrated yet or a
- * snapshot assembled without the column. A label is a discovery aid, never the
- * predicate (a human may label anything).
+ * One reader for every layer (`foundation/review-identity.mjs`): the structural
+ * marker (`review_of_id`, 0025) first, the `meta.review_of` mirror only as a
+ * legacy fallback. A label is a discovery aid, never the predicate (a human may
+ * label anything).
  *
  * @param {object} task a wire task
+ * @param {Map<string,string>|Record<string,string>|null} [byId] `id → identifier`
  * @returns {boolean}
  */
-export function isReviewCard(task) {
-  if (nonEmpty(task?.review_of_id) !== null) return true;
-  return nonEmpty(task?.meta?.review_of) !== null;
+export function isReviewCard(task, byId = null) {
+  return reviewIdentityOf(task, { byId }).isReview;
 }
 
 /** The card a review card audits, or `null`. */
-export function reviewOf(task) {
-  return nonEmpty(task?.meta?.review_of);
+export function reviewOf(task, byId = null) {
+  return reviewIdentityOf(task, { byId }).originalRef;
 }
 
 /**
@@ -177,9 +183,8 @@ export function roundOf(task) {
  * @returns {number|null}
  */
 export function reviewRoundOf(task) {
-  // 0025 — the structural column wins; the meta value is the compatibility
-  // fallback for a snapshot/board written before it existed.
-  return intOrNull(task?.review_round) ?? intOrNull(task?.meta?.review_round);
+  // The reader owns the column-first / meta-fallback precedence (0025).
+  return reviewIdentityOf(task).auditedRound;
 }
 
 /** The idempotency key for one review card: one per original per round. */
@@ -452,10 +457,11 @@ export function planReviewDispatch(input = {}) {
     };
   }
 
+  const byId = reviewIdentityIndex(tasks);
   const reviewsByOriginal = new Map();
   for (const task of tasks) {
-    if (!isReviewCard(task)) continue;
-    const ref = reviewOf(task);
+    if (!isReviewCard(task, byId)) continue;
+    const ref = reviewOf(task, byId);
     const list = reviewsByOriginal.get(ref) ?? [];
     list.push(task);
     reviewsByOriginal.set(ref, list);
@@ -469,8 +475,10 @@ export function planReviewDispatch(input = {}) {
 
   for (const task of tasks) {
     if (task?.status !== "in_review") continue;
-    if (isReviewCard(task)) continue;
-    if (flowOf(task) !== WORK_FLOW) continue;
+    if (isReviewCard(task, byId)) continue;
+    // `meta.flow` is a loop display convention, not a policy input: the
+    // structural marker is the predicate. A malformed `flow=B` on an ordinary
+    // card is treated as flow A (fail-safe: it is still reviewable).
     // The card's own decision is the gate. A project's default is not
     // consulted here: a card created before the default changed keeps its
     // snapshot, and a manual review card on an `off` card is handled by its own
@@ -676,17 +684,18 @@ export function planReviewOutcomes(input = {}) {
     if (typeof task?.identifier === "string" && task.identifier !== "") byRef.set(task.identifier, task);
     if (typeof task?.id === "string" && task.id !== "") byRef.set(task.id, task);
   }
+  const byId = reviewIdentityIndex(tasks);
 
   const alerts = [];
   const actions = [];
 
   for (const review of tasks) {
-    if (!isReviewCard(review)) continue;
+    if (!isReviewCard(review, byId)) continue;
     const reviewRef = String(review.identifier ?? "");
     if (reviewRef === "") continue;
     if (TERMINAL_STATUSES.has(review.status)) continue;
 
-    const originalRef = reviewOf(review);
+    const originalRef = reviewOf(review, byId);
     const original = byRef.get(originalRef);
     if (original === undefined) {
       // On a truncated snapshot, "not in the snapshot" is not the same as
@@ -1028,10 +1037,11 @@ export function planAutoAccept(input = {}) {
     };
   }
 
+  const byId = reviewIdentityIndex(tasks);
   const reviewsByOriginal = new Map();
   for (const task of tasks) {
-    if (!isReviewCard(task)) continue;
-    const ref = reviewOf(task);
+    if (!isReviewCard(task, byId)) continue;
+    const ref = reviewOf(task, byId);
     const list = reviewsByOriginal.get(ref) ?? [];
     list.push(task);
     reviewsByOriginal.set(ref, list);
@@ -1041,8 +1051,7 @@ export function planAutoAccept(input = {}) {
   const alerts = [];
   for (const task of tasks) {
     if (task?.status !== "in_review") continue;
-    if (isReviewCard(task)) continue;
-    if (flowOf(task) !== WORK_FLOW) continue;
+    if (isReviewCard(task, byId)) continue;
     if (acceptanceModeOf(task) !== "off") continue;
 
     const ref = String(task.identifier ?? "");

@@ -43,7 +43,7 @@ function taskHuman(task, extra) {
     ["acceptance_mode", task.acceptance_mode ?? "off"],
     // The column is an internal id; the human read wants the identifier the
     // worker can pass back. `meta.review_of` is the readable mirror (0025).
-    ["review_of", task.meta?.review_of ?? task.review_of_id ?? "-"],
+    ["review_of", task.review_of ?? task.review_of_id ?? "-"],
     ["review_round", task.review_round ?? "-"],
     ["parent", task.parent_id ?? "-"],
     ["awaiting_reason", task.awaiting_reason ?? "-"],
