@@ -120,7 +120,10 @@ tree.
 
 Linus keeps durable architecture at `docs/architecture.md`, the codebase vocabulary at root
 `GLOSSARY.md`, and engineering decisions at `docs/adr/NNNN-<slug>.md`; a card-local
-architecture change may live in `.meerkat/<id>/architecture.md`. The root glossary carries a
+architecture change may live in `.meerkat/<id>/architecture.md`. The architecture document
+carries the canonical `## Tech stack` table (frontend, backend, persistence and
+container/build), and an implementation card inherits that table rather than re-choosing.
+The root glossary carries a
 `## Product language` section that links `design/glossary.md`; product terms are not copied
 there. Turing keeps each card's `test-plan.md`, `regression.md` and `performance.md`, with
 their evidence, in `.meerkat/<id>/`.
