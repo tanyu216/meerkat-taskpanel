@@ -28,11 +28,15 @@ Only pure static checks may run on the host: `node --check`, `node --test`, the
 
 ```sh
 npm run check                  # check:skills + verify + test  (host-static, fast)
-npm run verify:docker          # the authoritative gate — commit first, then run it
 ```
 
-The container gate bakes the tree it finds at build time, so **commit your work before
-running it** — an uncommitted tree is not what CI will see.
+The authoritative gate is `npm run verify:docker`, and you do not have to run it by hand:
+`.githooks/pre-push` runs it on every branch push (and CI runs it again).
+`SKIP_CONTAINER_VERIFY=1 git push …` opts out for one push.
+
+The container gate bakes the **working tree** it finds at build time, so **commit your work
+before pushing** — uncommitted tracked changes would be verified instead of the commit CI
+will see.
 
 ## Pull requests
 
@@ -46,10 +50,10 @@ running it** — an uncommitted tree is not what CI will see.
 
 > **Repository settings this depends on** (GitHub-side; the tree cannot switch them on):
 > on `main`, enable *Require a pull request before merging* and require the `check`,
-> `contract` and `security` status checks. The rule is the actual enforcement; the
-> `pre-push` hook now refuses a direct push to `main` as the local half, but it is still a
-> courtesy — `git push --no-verify` bypasses it, and a fresh clone has no hooks at all until
-> you install them (below).
+> `docker`, `contract` and `security` status checks. The rule is the actual enforcement; the
+> `pre-push` hook refuses a direct push to `main` and runs the container gate as the local
+> half, but it is still a courtesy — `git push --no-verify` bypasses it, and a fresh clone has
+> no hooks at all until you install them (below).
 
 ### Install the local hooks
 
@@ -74,6 +78,7 @@ These are checked, not merely preferred. Skipping one turns CI red.
 | **A route's *declared* request shape must equal what its handler reads** | `scripts/verify/route-request.mjs` |
 | **The skills are generated.** Author only under `skills/meerkat-taskpanel/` and the loop's hand-written surface; then run `node scripts/sync-skills.mjs`. No skill is distributed as a committed copy — `skills/` is the only `skills` tree in the repository | `npm run check:skills`, `test/scaffold.test.mjs` |
 | **Migrations are append-only.** Never edit or delete a committed `src/core/storage/migrations/*.sql`; add a new numbered file. The runner refuses a database whose applied file has changed | `migrations-runner.mjs`, `.githooks/pre-commit` |
+| **The container gate runs before a branch push leaves the machine** (`SKIP_CONTAINER_VERIFY=1` opts out for one push) | `.githooks/pre-push` |
 | **A version tag needs a `## [X.Y.Z]` CHANGELOG section** | `version-gate.yml`, `.githooks/pre-push` |
 | **Every failure is a domain error with a code** — never a bare `Error` | review |
 | **Layering:** `cli\|server -> core -> foundation`. `src/core/domain/` imports no Node builtins | review |

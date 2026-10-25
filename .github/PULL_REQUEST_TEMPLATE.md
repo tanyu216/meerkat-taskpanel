@@ -7,8 +7,9 @@
 Tick what applies. Anything left unticked should say why in the notes below.
 
 - [ ] `npm run check` passes
-- [ ] `npm run verify:docker` passes **on the committed tree** (the image bakes the SHA at
-      build time, so an uncommitted change is not what CI will see)
+- [ ] `npm run verify:docker` passes **on the committed tree** — normally run for you by
+      `.githooks/pre-push` when the branch is pushed (the image bakes the working tree, so an
+      uncommitted change is not what CI will see; `SKIP_CONTAINER_VERIFY=1` skips it)
 - [ ] If a route, error code or wire field moved: the contract snapshot was refreshed with
       `node scripts/verify/contract.mjs --update` and the diff was read, not rubber-stamped
 - [ ] If anything under `skills/` was edited: `node scripts/sync-skills.mjs` was run and

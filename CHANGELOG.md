@@ -9,6 +9,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The container gate runs at `pre-push`, not as a merge step.** `.githooks/pre-push` now
+  ends with `npm run verify:docker` on every branch push: after the static gates (a cheap
+  failure never starts an image build) and only when a branch commit is actually moving (a
+  tag-only push and a branch deletion change no tree, so they skip it). `SKIP_CONTAINER_VERIFY=1
+  git push …` opts out for one push, and `git push --no-verify` still bypasses the hook. The
+  merge workflow therefore ends with `npm run check` (host-static); the authoritative suite
+  runs when the merged result is pushed, and again in CI's `docker` job. The gate bakes the
+  working tree, so commit before pushing — uncommitted tracked changes are now announced on
+  stderr.
+
 - **One acceptance mode per card; the policy × scope matrix is gone (migrations `0038`,
   `0039`).** A card now stores `acceptance_mode` — `off` (no review; the deliverer may close
   it, and `in_progress → done` is allowed), `agent` (an independent review card must APPROVE;

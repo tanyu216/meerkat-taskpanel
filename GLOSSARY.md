@@ -509,7 +509,8 @@ load-bearing in the same conversations and are easy to mistake for board vocabul
 
 **Container gate**:
 The authoritative verification run — the whole test suite executed inside a built image. It
-bakes the tree it finds when the build starts, so the commit must land before the run.
+runs from `.githooks/pre-push` on a branch push (and in CI), and bakes the tree it finds when
+the build starts, so the commit must land before the push.
 _Avoid_: CI, build, pipeline
 
 **Host-allowed check**:

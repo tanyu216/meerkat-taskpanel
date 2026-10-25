@@ -2,11 +2,14 @@
  * Tests for `.githooks/pre-push`.
  *
  * The hook is a thin POSIX `sh` wrapper over `scripts/verify/contract.mjs`,
- * `scripts/verify/route-request.mjs` and `scripts/verify/changelog.mjs`, plus one
- * rule of its own: a direct push to `main` is refused, because `main` advances
- * through a pull request. GitHub's branch-protection rule is the enforcement;
- * this is the local, early half — it fires before the network, so a mistaken
- * `git push origin main` costs nothing.
+ * `scripts/verify/route-request.mjs` and `scripts/verify/changelog.mjs`, plus two
+ * rules of its own: a direct push to `main` is refused, because `main` advances
+ * through a pull request, and a branch push runs the container gate
+ * (`npm run verify:docker`) after the static gates pass. GitHub's branch-protection
+ * rule is the enforcement for the first; this is the local, early half — it fires
+ * before the network, so a mistaken `git push origin main` costs nothing. The
+ * container gate is the local half of the CI `docker` job, which is why a merge no
+ * longer ends with a separate container run.
  *
  * The hook reads its refs from stdin, one `<local ref> <local sha> <remote ref>
  * <remote sha>` line per ref. That is the property most easily broken here: a
@@ -19,6 +22,8 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
@@ -31,12 +36,17 @@ const SHA = "1111111111111111111111111111111111111111";
 /**
  * Run the hook with `lines` on stdin.
  *
- * `ALLOW_PUSH_MAIN` is stripped from the inherited environment so a developer who
- * happens to have it exported does not turn the refusal cases green.
+ * `ALLOW_PUSH_MAIN` and `SKIP_CONTAINER_VERIFY` are stripped from the inherited
+ * environment so a developer who happens to have either exported does not turn a
+ * refusal (or a gate) green. Every case opts out of the container gate by default:
+ * it builds the image, which is not this file's subject. The cases that *are*
+ * about it put a fake `npm` first on `PATH` instead.
  */
 function runHook(lines, env = {}) {
   const childEnv = { ...process.env };
   delete childEnv.ALLOW_PUSH_MAIN;
+  delete childEnv.SKIP_CONTAINER_VERIFY;
+  childEnv.SKIP_CONTAINER_VERIFY = "1";
   Object.assign(childEnv, env);
 
   const result = spawnSync("sh", [HOOK], {
@@ -46,6 +56,24 @@ function runHook(lines, env = {}) {
     env: childEnv,
   });
   return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
+
+/**
+ * Put a fake `npm` first on PATH and return the directory holding it.
+ *
+ * The hook must reach the container gate without this file ever building an image;
+ * the shim records the invocation and exits with `FAKE_NPM_EXIT` (default 0). Real
+ * `node` stays on PATH, so the static gates still run for real.
+ */
+function fakeNpm(t, marker) {
+  const dir = mkdtempSync(join(tmpdir(), "pre-push-npm-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(
+    join(dir, "npm"),
+    `#!/bin/sh\necho "${marker}:$*"\nexit "\${FAKE_NPM_EXIT:-0}"\n`,
+  );
+  chmodSync(join(dir, "npm"), 0o755);
+  return { dir, path: `${dir}:${process.env.PATH ?? ""}` };
 }
 
 describe("pre-push: the two API gates always run", () => {
@@ -113,5 +141,82 @@ describe("pre-push: stdin is consumed once", () => {
     ]);
 
     assert.notEqual(status, 0, "the tag on the second stdin line must still be checked");
+  });
+});
+
+describe("pre-push: the container gate runs on a branch push", () => {
+  it("runs verify:docker after the static gates", (t) => {
+    const npm = fakeNpm(t, "container-gate");
+    const { status, stdout } = runHook(
+      [`refs/heads/feature ${SHA} refs/heads/feature ${ZERO}`],
+      { PATH: npm.path, SKIP_CONTAINER_VERIFY: "0" },
+    );
+
+    assert.equal(status, 0, "the fake gate exits 0, so the push passes");
+    assert.match(stdout, /container-gate:run verify:docker/);
+    assert.ok(
+      stdout.indexOf("contract: OK") < stdout.indexOf("container-gate:"),
+      "the cheap static gates must run — and pass — before the image is built",
+    );
+  });
+
+  it("refuses the push when the container gate fails", (t) => {
+    const npm = fakeNpm(t, "container-gate");
+    const { status } = runHook([`refs/heads/feature ${SHA} refs/heads/feature ${ZERO}`], {
+      PATH: npm.path,
+      SKIP_CONTAINER_VERIFY: "0",
+      FAKE_NPM_EXIT: "1",
+    });
+
+    assert.notEqual(status, 0, "a red container gate must stop the push");
+  });
+
+  it("does not build the image when an earlier gate already failed", (t) => {
+    // A direct push to main is refused above; spending minutes on the image build
+    // to then fail anyway would punish the mistake. The marker must be absent.
+    const npm = fakeNpm(t, "container-gate");
+    const { status, stdout } = runHook([`refs/heads/main ${SHA} refs/heads/main ${ZERO}`], {
+      PATH: npm.path,
+      SKIP_CONTAINER_VERIFY: "0",
+    });
+
+    assert.notEqual(status, 0);
+    assert.doesNotMatch(stdout, /container-gate:/);
+  });
+
+  it("skips it on SKIP_CONTAINER_VERIFY=1 and says so", (t) => {
+    const npm = fakeNpm(t, "container-gate");
+    const { status, stdout, stderr } = runHook(
+      [`refs/heads/feature ${SHA} refs/heads/feature ${ZERO}`],
+      { PATH: npm.path, SKIP_CONTAINER_VERIFY: "1" },
+    );
+
+    assert.equal(status, 0);
+    assert.doesNotMatch(stdout, /container-gate:/, "the escape hatch must really skip it");
+    assert.match(stderr, /SKIP_CONTAINER_VERIFY/, "the skip must announce itself");
+  });
+
+  it("does not run for a branch deletion", (t) => {
+    const npm = fakeNpm(t, "container-gate");
+    const { status, stdout } = runHook([`(delete) ${ZERO} refs/heads/feature ${SHA}`], {
+      PATH: npm.path,
+      SKIP_CONTAINER_VERIFY: "0",
+    });
+
+    assert.equal(status, 0, "deleting a remote branch changes no tree");
+    assert.doesNotMatch(stdout, /container-gate:/);
+  });
+
+  it("does not run for a tag-only push", (t) => {
+    // The commit behind a release tag was already pushed (and gated); re-running the
+    // suite for the tag alone would only repeat it. v1.1.0 is in CHANGELOG.md.
+    const npm = fakeNpm(t, "container-gate");
+    const { status, stdout } = runHook(
+      [`refs/tags/v1.1.0 ${SHA} refs/tags/v1.1.0 ${ZERO}`],
+      { PATH: npm.path, SKIP_CONTAINER_VERIFY: "0" },
+    );
+
+    assert.equal(status, 0, "a released version has a CHANGELOG section");
+    assert.doesNotMatch(stdout, /container-gate:/);
   });
 });
