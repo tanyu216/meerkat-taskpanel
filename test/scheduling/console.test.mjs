@@ -30,7 +30,10 @@ after(() => {
 const NOW = Date.parse("2026-01-01T00:00:00.000Z");
 
 const TASKS = {
-  awaiting: [{ identifier: "T-1", title: "Needs a decision", status: "awaiting" }],
+  awaiting: [
+    { identifier: "T-1", title: "Needs a decision", status: "awaiting" },
+    { identifier: "T-5", title: "Answered in the UI", status: "awaiting" },
+  ],
   in_progress: [
     { identifier: "T-2", title: "Already answered", status: "in_progress" },
     { identifier: "T-4", title: "Still asking", status: "in_progress" },
@@ -40,6 +43,10 @@ const TASKS = {
 
 const COMMENTS = {
   "T-1": [
+    { kind: "question", author_kind: "claude", body: "Which option?", created_at: "2026-01-01T00:00:00Z" },
+  ],
+  "T-5": [
+    { kind: "note", author_kind: "human", body: "Use option B.", created_at: "2026-01-01T00:05:00Z" },
     { kind: "question", author_kind: "claude", body: "Which option?", created_at: "2026-01-01T00:00:00Z" },
   ],
   "T-2": [
@@ -119,7 +126,7 @@ describe("the live-session console", () => {
     assert.deepEqual(
       result.questions.map((entry) => entry.ref).sort(),
       ["T-1", "T-4"],
-      "T-2's question has a newer human answer, so it is not asked again",
+      "T-2 and T-5 have newer human answers (UI included), so they are not asked again",
     );
     assert.equal(result.questions.find((entry) => entry.ref === "T-1").kind, "awaiting");
     assert.equal(result.questions.find((entry) => entry.ref === "T-4").kind, "agent-question");

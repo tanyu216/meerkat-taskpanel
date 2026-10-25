@@ -89,6 +89,10 @@ export async function consoleCycle(opts, deps = {}) {
     const { comments, error } = await commentsFor(opts, agent, task.identifier);
     if (error !== null) errors.push(`${task.identifier} comments: ${error}`);
     const question = newestQuestion(comments);
+    // A human answer in the **UI** resumes the card on the board. The next
+    // `issue list` normally drops it from this set; if the snapshot is older
+    // than the comment, do not ask again — the comment is already the answer.
+    if (question !== null && answeredAfter(comments, question)) continue;
     questions.push({
       ref: task.identifier,
       title: task.title ?? null,

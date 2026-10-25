@@ -109,12 +109,22 @@ the same acceptance rules. Two drivers run it; the turn says which.
    workers/reviewers.
 4. **Question tick.** `node <body>/scripts/loop/console.mjs --once --json` lists the
    `awaiting` cards, in_progress agent questions no human has answered, and `in_review`
-   cards pending acceptance. Ask the human **in this conversation**, then:
-   - record their answer verbatim with `taskctl comment add <ref> --as-human …` — the
-     board comment is authoritative; the in-session question is only the front-end;
-   - apply the move the question ladder prescribes (an awaiting card resumes on the human
-     comment; an in_progress agent question → `todo`/reattach);
-   - run a control tick so the resumed card is processed promptly.
+   cards pending acceptance. **Both answer channels are the same record** — a human comment
+   in the board UI and an answer typed in this conversation:
+   - Before asking, re-read the card (`taskctl comment list <ref> --limit 20 --json`). If a
+     human comment is newer than the question, the human already answered — in the UI or in
+     an earlier turn — so do not ask again and do not write a second comment; run a control
+     tick.
+   - Otherwise ask the human **in this conversation**. After they answer, re-read once more:
+     if a human comment (a UI answer posted while you were asking) is already newer than the
+     question, do not duplicate it; otherwise record their answer verbatim with
+     `taskctl comment add <ref> --as-human …`. The board comment is authoritative; the
+     in-session question is only the front-end.
+   - Apply the move the question ladder prescribes (an awaiting card resumes on the human
+     comment; an in_progress agent question → `todo`/reattach) and run a control tick so the
+     resumed card is processed promptly.
+   - If the human answers in the UI while you are waiting, the next question tick sees it;
+     do not block indefinitely on a chat reply.
 5. **Bound the loop.** Control ticks follow the continue cadence (default 600 s); question
    ticks default to 30 s; stop at the requested TTL (default 30 min) or on "stop". On
    exit report the pool pid and `status.mjs --stop`.
