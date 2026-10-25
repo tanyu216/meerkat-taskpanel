@@ -37,7 +37,6 @@ const CREATE_BODY = shape({
   labels: arr(str()),
   meta: obj(),
   readme: str(),
-  review_policy: REQUEST.reviewPolicy,
   acceptance: REQUEST.projectAcceptance,
   reviewer: str(),
 });
@@ -48,7 +47,6 @@ const ENSURE_BODY = shape({
   labels: arr(str()),
   meta: obj(),
   readme: str(),
-  review_policy: REQUEST.reviewPolicy,
   acceptance: REQUEST.projectAcceptance,
   reviewer: str(),
 });
@@ -59,7 +57,6 @@ const PATCH_BODY = shape({
   labels: arr(str()),
   readme: str(),
   meta: obj(),
-  review_policy: REQUEST.reviewPolicy,
   acceptance: REQUEST.projectAcceptance,
   reviewer: str(),
 });
@@ -100,7 +97,6 @@ export function registerProjectRoutes(router, surface) {
       labels: body.labels,
       meta: body.meta,
       readme: body.readme,
-      reviewPolicy: body.review_policy,
       acceptance: body.acceptance,
       reviewer: body.reviewer,
       actor,
@@ -115,7 +111,6 @@ export function registerProjectRoutes(router, surface) {
       labels: body.labels,
       meta: body.meta,
       readme: body.readme,
-      reviewPolicy: body.review_policy,
       acceptance: body.acceptance,
       reviewer: body.reviewer,
       actor,
@@ -143,7 +138,6 @@ export function registerProjectRoutes(router, surface) {
     if (body.name !== undefined) patch.name = body.name;
     if (body.labels !== undefined) patch.labels = body.labels;
     if (body.readme !== undefined) patch.readme = body.readme;
-    if (body.review_policy !== undefined) patch.reviewPolicy = body.review_policy;
     if (body.acceptance !== undefined) patch.acceptance = body.acceptance;
     if (body.reviewer !== undefined) patch.reviewer = body.reviewer;
     // `--meta k=v` merges, for the same reason it does on a task: a flag is a

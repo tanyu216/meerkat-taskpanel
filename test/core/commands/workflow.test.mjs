@@ -185,7 +185,7 @@ describe("commands/workflowTick — 0031", () => {
       commands.createProject({
         id: "p2",
         name: "P2",
-        reviewPolicy: "required",
+        acceptance: "agent",
         reviewer: "bob",
         actor: HUMAN,
       });
@@ -195,7 +195,7 @@ describe("commands/workflowTick — 0031", () => {
         assignee: "linus",
         actor: HUMAN,
       });
-      assert.equal(task.reviewRequired, 1);
+      assert.equal(task.acceptanceMode, "agent");
       commands.moveStatus({ id: task.id, to: "in_progress", actor: WORKER });
       commands.deliver({ taskId: task.id, report: DELIVERY, actor: WORKER });
 
@@ -211,7 +211,7 @@ describe("commands/workflowTick — 0031", () => {
       commands.createProject({
         id: "p2",
         name: "P2",
-        reviewPolicy: "required",
+        acceptance: "agent",
         reviewer: "bob",
         actor: HUMAN,
       });
@@ -260,7 +260,7 @@ describe("commands/workflowTick — 0031", () => {
       commands.createProject({
         id: "p2",
         name: "P2",
-        reviewPolicy: "required",
+        acceptance: "agent",
         reviewer: "bob",
         actor: HUMAN,
       });

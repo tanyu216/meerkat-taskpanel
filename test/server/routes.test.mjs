@@ -547,7 +547,6 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
         title: "Any human answer",
         assignee: "linus",
         assignee_kind: "agent",
-        review_required: false,
         allow_dup: true,
       }, linus),
     );
@@ -1627,36 +1626,36 @@ describe("server/requests — query-string coercions", () => {
 // 0031 — project review policy, reviewer override, task decision
 // ---------------------------------------------------------------------------
 
-describe("server/routes — review policy (0031)", () => {
+describe("server/routes — project acceptance (0038)", () => {
   const AGENT = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "agent-a" }) };
 
-  it("round-trips a project's review policy and reviewer", async () => {
+  it("round-trips a project's acceptance default and reviewer", async () => {
     const created = dataOf(
       await call("POST", "/api/v1/projects", {
         id: "flow-req",
         name: "Flow Required",
-        review_policy: "required",
+        acceptance: "agent",
         reviewer: "jobs",
       }),
     );
-    assert.equal(created.project.review_policy, "required");
+    assert.equal(created.project.acceptance, "agent");
     assert.equal(created.project.reviewer, "jobs");
 
     const updated = dataOf(
       await call("PATCH", "/api/v1/projects/flow-req", {
-        review_policy: "off",
+        acceptance: "off",
         reviewer: "",
       }),
     );
-    assert.equal(updated.project.review_policy, "off");
+    assert.equal(updated.project.acceptance, "off");
     assert.equal(updated.project.reviewer, null);
   });
 
-  it("refuses an unknown review policy", async () => {
+  it("refuses an unknown acceptance value", async () => {
     const result = await call("POST", "/api/v1/projects", {
       id: "flow-bad",
       name: "Bad",
-      review_policy: "sometimes",
+      acceptance: "sometimes",
     });
     assert.equal(result.status, 400);
     assert.equal(result.body.error.code, "VALIDATION_FAILED");
@@ -1667,7 +1666,7 @@ describe("server/routes — review policy (0031)", () => {
       await call("POST", "/api/v1/projects", {
         id: "flow-required",
         name: "Required",
-        review_policy: "required",
+        acceptance: "agent",
       }),
     );
     const required = dataOf(
@@ -1676,14 +1675,13 @@ describe("server/routes — review policy (0031)", () => {
         title: "required card",
       }),
     );
-    assert.equal(required.task.review_required, true);
     assert.equal(required.task.acceptance_mode, "agent");
 
     dataOf(
       await call("POST", "/api/v1/projects", {
         id: "flow-optional",
         name: "Optional",
-        review_policy: "optional",
+        acceptance: "auto",
       }),
     );
     // 0038 — an unresolved card under an `auto` project falls back to human.
@@ -1696,7 +1694,6 @@ describe("server/routes — review policy (0031)", () => {
       ),
     );
     assert.equal(omitted.task.acceptance_mode, "human");
-    assert.equal(omitted.task.review_required, false);
 
     const stated = dataOf(
       await call(
@@ -1707,7 +1704,6 @@ describe("server/routes — review policy (0031)", () => {
       ),
     );
     assert.equal(stated.task.acceptance_mode, "off");
-    assert.equal(stated.task.review_required, false);
   });
 
   it("plans an auto_accept for a delivered card in an off project", async () => {
@@ -1715,13 +1711,13 @@ describe("server/routes — review policy (0031)", () => {
       await call("POST", "/api/v1/projects", {
         id: "flow-off",
         name: "Off",
-        review_policy: "off",
+        acceptance: "off",
       }),
     );
     const created = dataOf(
       await call("POST", "/api/v1/tasks", { project_id: "flow-off", title: "no review" }),
     );
-    assert.equal(created.task.review_required, false);
+    assert.equal(created.task.acceptance_mode, "off");
     const delivered = await deliverCard(created.task.identifier);
     assert.equal(delivered.task.status, "in_review");
 

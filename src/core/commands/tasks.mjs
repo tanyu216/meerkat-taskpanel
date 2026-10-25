@@ -203,31 +203,14 @@ export function createTask(ctx, input) {
 
       // 0038 — one acceptance decision. The project is the default, an explicit
       // card value wins, a review card is always `off`, and an unresolved
-      // `auto` project falls back to `human`. The legacy `--review`
-      // (`review_required`) is still accepted as an alias for one release.
-      const projectAcceptance =
-        project.acceptance ??
-        (project.reviewPolicy === "required"
-          ? "agent"
-          : project.reviewPolicy === "off"
-            ? "off"
-            : "auto");
-      const requestedAcceptance =
-        input.acceptanceMode ??
-        (input.reviewRequired === true
-          ? "agent"
-          : input.reviewRequired === false
-            ? "off"
-            : undefined);
+      // `auto` project falls back to `human`.
       const resolvedAcceptance = resolveCardAcceptance({
-        projectAcceptance,
-        requested: requestedAcceptance,
+        projectAcceptance: project.acceptance,
+        requested: input.acceptanceMode,
         reviewCard: marker.reviewOfId !== null,
         kind: candidate.kind,
       });
       candidate.acceptanceMode = resolvedAcceptance.mode;
-      // The legacy mirror moves with it: `agent` ⇔ 1, `off`/`human` ⇔ 0.
-      candidate.reviewRequired = resolvedAcceptance.mode === "agent" ? 1 : 0;
 
       // 0032 — freeze the acceptance baseline at creation. `meta.acceptance` is
       // the modern spelling; `acceptance_legacy` is the imported fallback. The
@@ -265,8 +248,6 @@ export function createTask(ctx, input) {
           status: task.status,
           priority: task.priority,
           acceptance_mode: task.acceptanceMode,
-          review_required: task.reviewRequired,
-          review_policy: project.reviewPolicy ?? "optional",
           ...(task.idem === null ? {} : { idem: task.idem }),
           ...(dictionaryAudit.length > 0 ? { dictionaries: dictionaryAudit } : {}),
           ...(labelAudit.length > 0 ? { labels: labelAudit } : {}),
@@ -585,27 +566,15 @@ function applyAcceptanceOverride(ctx, input) {
 
 /**
  * @param {object} ctx
- * @param {{id: string, ifVersion?: number, patch?: object, actor: object, assignee?: string, reporter?: string, forceCreate?: boolean, acceptanceMode?: string, reviewRequired?: boolean, reason?: string}} input
+ * @param {{id: string, ifVersion?: number, patch?: object, actor: object, assignee?: string, reporter?: string, forceCreate?: boolean, acceptanceMode?: string, reason?: string}} input
  */
 export function updateTask(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
-  if (input.reviewRequired !== undefined && typeof input.reviewRequired !== "boolean") {
-    throw new DomainError("VALIDATION_FAILED", {
-      message: `review_required must be a boolean (got ${JSON.stringify(input.reviewRequired)})`,
-      details: { field: "review_required", received: input.reviewRequired },
-    });
-  }
-  // 0038 — the new spelling wins; the legacy boolean is an alias for one
-  // release (`true → agent`, `false → off`).
   const acceptanceTarget =
     input.acceptanceMode !== undefined
       ? assertCardAcceptance(input.acceptanceMode, "acceptance_mode")
-      : input.reviewRequired === true
-        ? "agent"
-        : input.reviewRequired === false
-          ? "off"
-          : undefined;
+      : undefined;
   const base = input.patch ?? {};
   // An assignee change is a patch in its own right, so the payload may be empty
   // as long as *something* ends up changing (checked once the dictionary has

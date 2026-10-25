@@ -1343,18 +1343,21 @@ describe("cli/issue — `issue reopen` (done/canceled → todo)", () => {
 // ---------------------------------------------------------------------------
 
 describe("cli/issue — acceptance mode (0038)", () => {
-  it("carries --acceptance-mode on create, and keeps --review as an alias", async () => {
+  it("carries --acceptance-mode on create, and refuses the retired --review alias", async () => {
     await board(async ({ run }) => {
       const agent = createIssue(run, ["--acceptance-mode", "agent"]);
       assert.equal(agent.task.acceptance_mode, "agent");
-      assert.equal(agent.task.review_required, true);
       const off = createIssue(run, ["--acceptance-mode", "off"]);
       assert.equal(off.task.acceptance_mode, "off");
-      assert.equal(off.task.review_required, false);
-      const yes = createIssue(run, ["--review", "yes"]);
-      assert.equal(yes.task.acceptance_mode, "agent");
-      const no = createIssue(run, ["--review", "no"]);
-      assert.equal(no.task.acceptance_mode, "off");
+
+      for (const value of ["yes", "no"]) {
+        const retired = run([
+          "issue", "create", "--project", "demo", "--title", "alias",
+          "--review", value, "--json",
+        ]);
+        assert.equal(retired.status, 2, "--review is no longer a flag");
+        assert.equal(errorOf(retired).code, "CLI_USAGE");
+      }
     });
   });
 
@@ -1362,7 +1365,6 @@ describe("cli/issue — acceptance mode (0038)", () => {
     await board(async ({ run }) => {
       const result = createIssue(run, ["--title", "decide"]);
       assert.equal(result.task.acceptance_mode, "human");
-      assert.equal(result.task.review_required, false);
     });
   });
 
@@ -1393,10 +1395,9 @@ describe("cli/issue — acceptance mode (0038)", () => {
 
   it("lets an explicit card value win over the project default", async () => {
     await withCli(async ({ run }) => {
-      run(["project", "create", "--id", "req", "--name", "Required", "--review-policy", "required", "--json"]);
+      run(["project", "create", "--id", "req", "--name", "Required", "--acceptance", "agent", "--json"]);
       const result = createIssue(run, ["--project", "req", "--title", "no", "--acceptance-mode", "off"]);
       assert.equal(result.task.acceptance_mode, "off");
-      assert.equal(result.task.review_required, false);
     });
   });
 });

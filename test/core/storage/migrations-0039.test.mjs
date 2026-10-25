@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import { applyMigrations, defaultMigrationsDir } from "../../../src/core/storage/migrations-runner.mjs";
-import { indexShapesOf, triggersOf } from "../../helpers/migration-shapes.mjs";
+import { indexShapesOf, migrationsThrough, triggersOf } from "../../helpers/migration-shapes.mjs";
 import { TS, cleanupTempDirs, createTempBoard, makeTempDir, reasonCode } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
@@ -36,6 +36,12 @@ function before0039() {
   }
   return dir;
 }
+
+/**
+ * 0039 (and not 0040): this suite pins the rebuild's result, and 0040 changes
+ * the trigger set on top of it. The post-0040 schema is 0040's own suite.
+ */
+const through0039 = migrationsThrough("0039");
 
 const tasksSql = (db) =>
   db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get().sql;
@@ -67,7 +73,7 @@ describe("storage/migrations — 0039 retires the deploy kind", () => {
       assert.match(tasksSql(board.db), /'deploy'/, "precondition: the old CHECK names deploy");
       seedDeployBoard(board.db);
 
-      const up = applyMigrations(board.db);
+      const up = applyMigrations(board.db, { dir: through0039() });
       assert.deepEqual(up.applied.map((m) => m.version), ["0039"]);
 
       const dep = board.db.prepare("SELECT * FROM tasks WHERE id = 'dep'").get();
@@ -122,13 +128,14 @@ describe("storage/migrations — 0039 retires the deploy kind", () => {
 
   it("leaves the index set, triggers and foreign keys intact", async () => {
     const upgrade = await createTempBoard({ migrate: false });
-    const fresh = await createTempBoard();
+    const fresh = await createTempBoard({ migrate: false });
     try {
+      applyMigrations(fresh.db, { dir: through0039() });
       applyMigrations(upgrade.db, { dir: before0039() });
       const indexesBefore = indexShapesOf(upgrade.db, "tasks");
       const triggersBefore = triggersOf(upgrade.db);
 
-      applyMigrations(upgrade.db);
+      applyMigrations(upgrade.db, { dir: through0039() });
 
       assert.deepEqual(indexShapesOf(upgrade.db, "tasks"), indexesBefore, "no index lost or added");
       assert.deepEqual(indexShapesOf(upgrade.db, "tasks"), indexShapesOf(fresh.db, "tasks"));

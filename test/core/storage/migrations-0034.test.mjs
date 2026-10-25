@@ -100,7 +100,7 @@ describe("storage/migrations — 0034 questions and awaiting → todo", () => {
         triggers: triggerNames(board.db),
       };
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0034", "0035", "0036", "0037", "0038", "0039"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0034", "0035", "0036", "0037", "0038", "0039", "0040"]);
 
       const kinds = board.db
         .prepare("SELECT id, kind, body FROM comments ORDER BY id")
@@ -120,9 +120,16 @@ describe("storage/migrations — 0034 questions and awaiting → todo", () => {
         "tr_deliver_gate_done",
       ];
       const LATER_0038_REMOVED = ["tr_tasks_review_required_done"];
+      // 0040 retires the 0031 review-card pair (the acceptance-mode trigger
+      // covers the same rule) — the baseline below predates it.
+      const LATER_0040_REMOVED = [
+        "tr_tasks_review_card_not_required",
+        "tr_tasks_review_card_not_required_update",
+      ];
+      const LATER_REMOVED = [...LATER_0038_REMOVED, ...LATER_0040_REMOVED];
       assert.deepEqual(
         triggerNames(board.db).filter((name) => !LATER_0038_ADDED.includes(name)),
-        before.triggers.filter((name) => !LATER_0038_REMOVED.includes(name)),
+        before.triggers.filter((name) => !LATER_REMOVED.includes(name)),
         "the trigger set (incl. the actor guard) is unchanged by 0034",
       );
 

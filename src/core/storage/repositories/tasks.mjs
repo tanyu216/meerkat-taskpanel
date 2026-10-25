@@ -363,52 +363,10 @@ export function createTasksRepository(db) {
     },
 
     /**
-     * Rewrite the `review_required` decision, under the same version CAS as any
-     * other write. Kept out of `PATCHABLE` on purpose: the generic update path
-     * must not be able to change an acceptance-relevant decision without the
-     * command layer's audit (`acceptance_override`).
-     *
-     * @param {{id: string, value: boolean|0|1, ifVersion?: number, now: string}} input
-     * @returns {object} the updated Task DTO
-     */
-    setReviewRequired(input) {
-      const { id, value, ifVersion, now } = input;
-      const where = ["id = ?"];
-      const whereValues = [id];
-      if (ifVersion !== undefined) {
-        where.push("version = ?");
-        whereValues.push(ifVersion);
-      }
-
-      return transaction(
-        db,
-        () => {
-          const required = value === true || Number(value) === 1 ? 1 : 0;
-          let info;
-          try {
-            info = db
-              .prepare(
-                // 0038 — the mirror must move together: `agent` ⇔ 1,
-                // `off`/`human` ⇔ 0. A legacy `true` waives to `off`; the
-                // Phase-2 override path writes `human` explicitly.
-                `UPDATE tasks SET review_required = ?, acceptance_mode = ?, ` +
-                  `version = version + 1, updated_at = ? WHERE ${where.join(" AND ")}`,
-              )
-              .run(required, required === 1 ? "agent" : "off", now, ...whereValues);
-          } catch (err) {
-            throw mapSqliteError(err, { op: "tasks.setReviewRequired", table: "tasks" });
-          }
-          if (Number(info.changes) === 0) throw lostUpdate(db, id, ifVersion);
-          return requireTask(id);
-        },
-        { op: "tasks.setReviewRequired" },
-      );
-    },
-
-    /**
      * Rewrite the single acceptance decision (0038). Kept out of `PATCHABLE`
-     * for the same reason `setReviewRequired` is: changing it is an audited
-     * override, not a generic patch.
+     * on purpose: the generic update path must not be able to change an
+     * acceptance-relevant decision without the command layer's audit
+     * (`acceptance_override`).
      *
      * @param {{id: string, value: "off"|"agent"|"human", ifVersion?: number, now: string}} input
      * @returns {object} the updated Task DTO
@@ -435,10 +393,10 @@ export function createTasksRepository(db) {
           try {
             info = db
               .prepare(
-                `UPDATE tasks SET acceptance_mode = ?, review_required = ?, ` +
+                `UPDATE tasks SET acceptance_mode = ?, ` +
                   `version = version + 1, updated_at = ? WHERE ${where.join(" AND ")}`,
               )
-              .run(value, value === "agent" ? 1 : 0, now, ...whereValues);
+              .run(value, now, ...whereValues);
           } catch (err) {
             throw mapSqliteError(err, { op: "tasks.setAcceptanceMode", table: "tasks" });
           }

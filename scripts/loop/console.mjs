@@ -127,7 +127,6 @@ export async function consoleCycle(opts, deps = {}) {
     ref: task.identifier,
     title: task.title ?? null,
     priority: task.priority ?? null,
-    review_required: task.review_required ?? null,
   }));
 
   return {

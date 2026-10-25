@@ -129,9 +129,6 @@ const CREATE = Object.freeze([
   // card states a concrete mode; an omitted value falls back to the project (or
   // `human` when the project is `auto`).
   both("acceptance_mode", { vocab: CARD_ACCEPTANCE_MODES }),
-  // 0031 — the legacy boolean alias, kept for one release (`true → agent`,
-  // `false → off`).
-  both("review_required", { type: BOOLEAN }),
   both("review_of"),
   both("review_round", { type: INTEGER }),
   both("parent"),
@@ -161,8 +158,6 @@ const UPDATE = Object.freeze([
   // 0038 — the controlled acceptance override. `reason` is required when the
   // change leaves `agent` (waives a review).
   both("acceptance_mode", { vocab: CARD_ACCEPTANCE_MODES }),
-  // 0031 — the legacy boolean alias, kept for one release.
-  both("review_required", { type: BOOLEAN }),
   both("reason"),
   wireOnly("if_version", { type: INTEGER }),
   wireOnly("assignee"),

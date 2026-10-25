@@ -205,12 +205,6 @@ default, not a mandate: an explicit `--acceptance-mode` wins.
 _中文_: 项目验收默认
 _Avoid_: review policy (retired), board policy
 
-**Legacy review marker**:
-`review_required` (and `projects.review_policy`) survive one release as the old spelling of
-`agent`; every new write derives it from `acceptance_mode`. A review card is always `off`.
-_中文_: 旧审核标记
-_Avoid_: review policy (as a live concept)
-
 **Effective reviewer**:
 The reviewer a card's review card is assigned to: `project.reviewer` when the project sets
 one, otherwise the deployment reviewer (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent
@@ -421,8 +415,8 @@ report. Creation also stamps the immutable structural marker (`review_of_id`,
 `review_round`), which is what the acceptance gate reads; `meta.review_of` /
 `meta.review_round` are its readable mirror and are canonicalized from the columns on
 update. It is not a `kind` of its own, and it reaches `done` through `in_review` like every
-other card. Its `review_required` is always `0` (flow B is never reviewed again), enforced by
-the resolver and a database trigger.
+other card. Its `acceptance_mode` is always `off` (flow B is never reviewed again), enforced
+by the resolver and a database trigger.
 _中文_: 审核卡
 _Avoid_: review task kind, acceptance card, approval
 

@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import { applyMigrations, defaultMigrationsDir } from "../../../src/core/storage/migrations-runner.mjs";
+import { migrationsThrough } from "../../helpers/migration-shapes.mjs";
 import { TS, cleanupTempDirs, createTempBoard, makeTempDir } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
@@ -102,7 +103,10 @@ describe("storage/migrations — 0031 review policy and decision", () => {
     try {
       applyMigrations(board.db, { dir: before0031() });
       seed(board.db);
-      const up = applyMigrations(board.db);
+      // Scoped to 0039: 0040 drops `review_required`, and this test pins the
+      // 0031 backfill in the column it wrote. The post-0040 schema is 0040's
+      // own suite.
+      const up = applyMigrations(board.db, { dir: migrationsThrough("0039")() });
       assert.deepEqual(up.applied.map((m) => m.version), ["0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039"]);
 
       const project = board.db
@@ -145,7 +149,7 @@ describe("storage/migrations — 0031 review policy and decision", () => {
     try {
       applyMigrations(board.db, { dir: before0031() });
       seed(board.db);
-      applyMigrations(board.db);
+      applyMigrations(board.db, { dir: migrationsThrough("0039")() });
 
       assert.throws(
         () => board.db.prepare("UPDATE tasks SET review_required = 1 WHERE id = 'r1'").run(),
@@ -191,14 +195,13 @@ describe("storage/migrations — 0031 review policy and decision", () => {
       // t4 has a done review for round 1 — accepted.
       assert.doesNotThrow(() => setDone(board.db, "t4"));
 
-      // t5 has no review at all; a human waiver sets the decision to 0, after
-      // which the card can be accepted without one.
+      // t5 has no review at all; a human waiver sets the decision to `off`,
+      // after which the card can be accepted without one.
       assert.throws(
         () => setDone(board.db, "t5"),
         (err) => String(err.message).includes("REVIEW_REQUIRED"),
       );
-      // 0038 — the legacy mirror and the acceptance mode move together.
-      board.db.prepare("UPDATE tasks SET review_required = 0, acceptance_mode = 'off' WHERE id = 't5'").run();
+      board.db.prepare("UPDATE tasks SET acceptance_mode = 'off' WHERE id = 't5'").run();
       assert.doesNotThrow(() => setDone(board.db, "t5"));
     } finally {
       board.close();

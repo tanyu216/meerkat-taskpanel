@@ -238,10 +238,9 @@ const PROBE_PROJECT = {
   // integer on every row the list route serves; only a projection with no count
   // supplied (the local `taskctl project` read) emits `null`.
   taskCount: 1,
-  // Populated so the frozen types are `string` (review_policy) and `string`
-  // (reviewer) rather than `null`; a project with no override emits null, which
-  // the client treats as "use the deployment reviewer".
-  reviewPolicy: "required",
+  // Populated so the frozen type is `string` rather than `null`; a project with
+  // no override emits null, which the client treats as "use the deployment
+  // reviewer".
   reviewer: "probe",
   archivedAt: "probe",
   createdAt: "probe",
@@ -333,9 +332,6 @@ const PROBE_TASK = Object.freeze({
   status: "probe",
   priority: "probe",
   kind: "probe",
-  // The DB column is INTEGER 0/1; the wire field is a boolean, so the probe is
-  // `true` and the snapshot freezes `boolean`, not `number`.
-  reviewRequired: true,
   sortOrder: 1,
   assigneeId: "probe-assignee",
   reporterId: "probe-reporter",
@@ -501,7 +497,8 @@ export function collectWire() {
             assigneeId: "agent-1",
             originalTitle: "Epic",
             findings: "…",
-            reviewRequired: true,
+            // The real planner stamps the fix child's acceptance mode.
+            acceptanceMode: "off",
             closeReview: true,
           },
         ],

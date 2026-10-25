@@ -151,10 +151,11 @@ describe("blocked_reason — the card field (0016)", () => {
     assert.ok(declarations.length >= 1, "the revision cursor is declared somewhere");
     // `readMigrationFiles` sorts by filename, so the last declaration is the one
     // a board at the head of the set actually has — 0020 last re-declared it
-    // during a rebuild, 0038 re-declared it for the acceptance columns, and 0039
-    // re-declared it verbatim during the `deploy` rebuild. 0016 itself does not.
+    // during a rebuild, 0038 re-declared it for the acceptance columns, 0039
+    // re-declared it verbatim during the `deploy` rebuild, and 0040 dropped the
+    // retired `review_required` from its column list. 0016 itself does not.
     const live = declarations.at(-1);
-    assert.equal(live.version, "0039", "the live declaration is 0039's — the deploy rebuild");
+    assert.equal(live.version, "0040", "the live declaration is 0040's — the compatibility retirement");
     assert.equal(/\bblocked_reason\b/.test(live.sql), false, "the cursor's column list does not name blocked_reason");
     assert.ok(live.sql.includes("acceptance_mode"), "but it does name the new acceptance decision");
     assert.ok(live.sql.includes("version") && live.sql.includes("updated_at"), "but it does name both CAS columns");

@@ -48,29 +48,14 @@ export { DEFAULT_REVIEW_AGING_MS, DEFAULT_WORKFLOW_MAX_ACTIONS };
  * The card's acceptance mode — the **only** input to dispatch/auto-accept.
  *
  * `auto` never appears on a card: the create resolver stores a concrete
- * `off | agent | human`, so an unknown/legacy card falls back to `off` (the
- * column default) rather than being guessed into a review.
+ * `off | agent | human`, so an unreadable card falls back to `off` (the column
+ * default) rather than being guessed into a review.
  *
  * @param {object} task a wire task
  * @returns {"off"|"agent"|"human"}
  */
 export function acceptanceModeOf(task) {
-  const explicit = normalizeCardAcceptance(task?.acceptance_mode ?? task?.acceptanceMode);
-  if (explicit !== null) return explicit;
-  // Compatibility for a snapshot written before 0038: the legacy integer was
-  // the review decision, so `1` is `agent` and `0` is `off`. (`human` cannot be
-  // recovered from the old column; the migration backfilled those cards.)
-  if (task?.review_required === true || Number(task?.review_required) === 1) return "agent";
-  return "off";
-}
-
-/**
- * The legacy predicate, kept as a compatibility export for one release:
- * "this card requires an independent review" is exactly `mode === agent`.
- * @param {object} task
- */
-export function reviewRequired(task) {
-  return acceptanceModeOf(task) === "agent";
+  return normalizeCardAcceptance(task?.acceptance_mode ?? task?.acceptanceMode) ?? "off";
 }
 
 /**
@@ -486,9 +471,9 @@ export function planReviewDispatch(input = {}) {
     if (task?.status !== "in_review") continue;
     if (isReviewCard(task)) continue;
     if (flowOf(task) !== WORK_FLOW) continue;
-    // The card's own decision is the gate. A project's `off` policy is not
-    // consulted here: a card created before the policy changed keeps its
-    // snapshot, and a manual review card on a `0` card is handled by its own
+    // The card's own decision is the gate. A project's default is not
+    // consulted here: a card created before the default changed keeps its
+    // snapshot, and a manual review card on an `off` card is handled by its own
     // review card's outcome, not by dispatch.
     if (acceptanceModeOf(task) !== "agent") continue;
     const ref = String(task.identifier ?? "");

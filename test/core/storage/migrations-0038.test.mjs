@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import { applyMigrations, defaultMigrationsDir } from "../../../src/core/storage/migrations-runner.mjs";
+import { migrationsThrough } from "../../helpers/migration-shapes.mjs";
 import { TS, cleanupTempDirs, createTempBoard, makeTempDir } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
@@ -33,6 +34,12 @@ function before0038() {
   }
   return dir;
 }
+
+/**
+ * 0039 — the state these first three cases describe. 0040 drops the mirror
+ * columns they exercise; the post-0040 schema is 0040's own suite.
+ */
+const through0039 = migrationsThrough("0039");
 
 const triggersOf = (db) =>
   Object.fromEntries(
@@ -88,7 +95,7 @@ describe("storage/migrations — 0038 acceptance mode", () => {
     try {
       applyMigrations(board.db, { dir: before0038() });
       seed(board.db);
-      const up = applyMigrations(board.db);
+      const up = applyMigrations(board.db, { dir: through0039() });
       assert.ok(up.applied.some((m) => m.version === "0038"));
 
       const projects = board.db
@@ -121,7 +128,7 @@ describe("storage/migrations — 0038 acceptance mode", () => {
     try {
       applyMigrations(board.db, { dir: before0038() });
       seed(board.db);
-      applyMigrations(board.db);
+      applyMigrations(board.db, { dir: through0039() });
 
       raises(
         () => board.db.prepare("UPDATE tasks SET acceptance_mode = 'agent' WHERE id = 't-off'").run(),
@@ -155,7 +162,7 @@ describe("storage/migrations — 0038 acceptance mode", () => {
     try {
       applyMigrations(board.db, { dir: before0038() });
       seed(board.db);
-      applyMigrations(board.db);
+      applyMigrations(board.db, { dir: through0039() });
 
       // off, empty baseline → direct done is allowed.
       assert.doesNotThrow(() =>

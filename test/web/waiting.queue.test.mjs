@@ -175,12 +175,6 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
     assert.deepEqual(waitIds([delivered("3", { acceptance_mode: "off" })]), []);
   });
 
-  it("still queues a no-review human card; off and agent are not the human's", () => {
-    assert.deepEqual(waitIds([delivered("1", { review_required: false })]), ["1"]);
-    assert.deepEqual(waitIds([delivered("2", { acceptance_mode: "off" })]), []);
-    assert.deepEqual(waitIds([delivered("3", { acceptance_mode: "agent" })]), []);
-  });
-
   it("hides a card whose current-round review is still open, and shows it once resolved", () => {
     for (const status of ["todo", "in_progress", "in_review", "blocked", "awaiting"]) {
       const original = delivered("1");

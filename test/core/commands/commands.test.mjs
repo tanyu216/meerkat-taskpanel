@@ -669,11 +669,9 @@ describe("commands/projects — the acceptance default (0038)", () => {
     });
   });
 
-  it("derives acceptance from the legacy review policy when none is given", async () => {
+  it("defaults to `auto` when no acceptance is given", async () => {
     await board(({ commands }) => {
-      assert.equal(commands.createProject({ id: "r1", name: "R", reviewPolicy: "required", actor: HUMAN }).acceptance, "agent");
-      assert.equal(commands.createProject({ id: "r2", name: "R", reviewPolicy: "off", actor: HUMAN }).acceptance, "off");
-      assert.equal(commands.createProject({ id: "r3", name: "R", reviewPolicy: "optional", actor: HUMAN }).acceptance, "auto");
+      assert.equal(commands.createProject({ id: "r1", name: "R", actor: HUMAN }).acceptance, "auto");
     });
   });
 
