@@ -31,6 +31,7 @@ import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
 import {
   renderDecisionPolicySummary,
+  renderDecisionRoundPrinciples,
   renderReviewerProtocol,
   renderRoleDecision,
   renderRoleLayerOne,
@@ -941,6 +942,13 @@ export function buildContinuePrompt(input = {}) {
     "  For E1-E5 (scope, acceptance, design/aesthetic, security/data, architecture) or",
     "  anything you cannot decide, do not answer: escalate with the question format:",
     '    taskctl issue move <ref> awaiting --awaiting-reason E1..E5 --question "Decision needed: ...; Options: ...; Recommendation: ...; Why the main session cannot decide: ..."',
+    "  Decision rounds — one round per card:",
+    ...renderDecisionRoundPrinciples().map((line) => `  ${line}`),
+    '  Answer every authorized item in ONE note ("decision: Q1 ...; Q2 ..."), then move the',
+    "  card once. Escalate only E1-E5 items in ONE new awaiting question string, numbered, with",
+    "  its E-code, recommendation and `Verified already:` evidence.",
+    "  An incomplete answer is not consent: ask the next round as one new string. Only a human comment resumes awaiting.",
+    "  Nothing acts while any frontier item is open.",
     "  Never write decision/confirm/change for your own decision.",
     "  Approve/reject/direction come from the human comment's content. A rejection is an",
     "  answer: apply its direction; never re-dispatch the rejected work unchanged.",
@@ -954,6 +962,8 @@ export function buildContinuePrompt(input = {}) {
           "  You are the live control session. Ask the human here when a question needs a",
           "  decision, then record their answer with `taskctl comment add <ref> --as-human`.",
           "  The board comment is authoritative; the in-session question is only the front-end.",
+          "  Ask every waiting card in one message — one numbered block per card; each block is one question string.",
+          "  Recompute after the answers and ask only the newly unblocked round.",
         ]
       : []),
     "  A human comment after an agent question on an in_progress card is an answer too:",
