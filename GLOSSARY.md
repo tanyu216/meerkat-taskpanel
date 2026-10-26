@@ -85,8 +85,9 @@ _中文_: 重开
 _Avoid_: un-cancel, restore, retry
 
 **Kind**:
-What a card *is* — `task`, `epic` or `deploy` — as opposed to where it currently sits.
-Only an epic may be a parent; a deploy card is withheld from automatic claiming.
+What a card *is* — `task` or `epic` — as opposed to where it currently sits. Only an epic
+may be a parent, and only an epic is withheld from automatic claiming. `deploy` was a kind
+until 0039; whether a card belongs to a release line is the loop's decision, not a card kind.
 _Avoid_: type, category
 
 **Priority**:
@@ -200,7 +201,8 @@ _Avoid_: acceptance policy, approver role, reviewer (the reviewer reports; it do
 
 **Project acceptance**:
 A project's default mode for new cards — `auto` (the default), `off`, `agent` or `human`.
-`auto` means the creator decides per card; an unresolved card falls back to `human`. It is a
+`auto` means the creator decides per card; an unresolved card falls back to `human`, except
+an epic, which falls back to `off` because the board closes containers itself. It is a
 default, not a mandate: an explicit `--acceptance-mode` wins.
 _中文_: 项目验收默认
 _Avoid_: review policy (retired), board policy

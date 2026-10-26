@@ -390,9 +390,9 @@ export const projectLoading = computed(() => board.loading && !board.loaded);
 export const waitingTasks = computed(() => visibleTasks.value.filter(isAwaiting));
 
 /**
- * The cards whose **delivery** waits on this human: an `in_review` top-level
- * original whose current-round reviews and children are resolved, under a
- * policy that still asks a human to accept (`human-only` / `both`).
+ * The cards whose **delivery** waits on this human: an `in_review` card whose
+ * own `acceptance_mode` is `human`, with its current-round reviews and
+ * children resolved.
  *
  * Derived from `board.tasks` — the whole reading, unfiltered — rather than
  * `visibleTasks`: an acceptance is not a board column, so a status filter must

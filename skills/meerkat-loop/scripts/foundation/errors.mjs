@@ -87,7 +87,7 @@ export const ERROR_CODES = Object.freeze({
   // set once, at creation, and never rewritten — the review-card exemption is a
   // privilege, so it must not be obtainable by editing a card afterwards.
   REVIEW_OF_IMMUTABLE: spec(409, "A card's review marker is set at creation and cannot be changed."),
-  // A human closing a top-level card before the review cards for its current
+  // A human closing an `agent` card before the review cards for its current
   // delivery round have resolved. `canceled` counts as resolved (an abandoned
   // review must not deadlock the original).
   REVIEW_PENDING: spec(
@@ -248,7 +248,7 @@ export const ERROR_CODES = Object.freeze({
   ACCESS_CONFIG_INVALID: spec(500, "Access configuration is malformed or could not be written."),
   // The client/server config file itself: unreadable, malformed, an unknown key
   // in our namespace, both token keys, or a bad URL/port. A bad *value* the
-  // server owns (a CIDR, an acceptance policy) keeps ACCESS_CONFIG_INVALID.
+  // server owns (a CIDR, an allow-list boolean) keeps ACCESS_CONFIG_INVALID.
   CONFIG_FILE_INVALID: spec(400, "The configuration file is malformed or could not be read."),
   CONFIG_FILE_INSECURE: spec(400, "The configuration file contains a secret but is accessible by other users."),
 

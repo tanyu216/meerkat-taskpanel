@@ -482,7 +482,7 @@ Acceptance is **not** install configuration any more (0038): each project stores
 (`auto | off | agent | human`) and each card a snapshot, both set through
 `taskctl project update <id> --acceptance …` / `issue create --acceptance-mode …`. The retired
 `TASKD_ACCEPTANCE_POLICY` key makes `taskd` refuse to start until it is removed — that refusal
-is deliberate, so a `human-only` board cannot silently become something else.
+is deliberate, so a board configured `human-only` cannot silently become something else.
 The file is merged, never rewritten. The old `<dataDir>/taskd.env` is no longer read: move any
 keys it has into `.env`.
 

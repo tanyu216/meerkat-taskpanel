@@ -18,7 +18,7 @@
  *     `datetime` its visible stamp is printed from, so the two cannot disagree.
  *   * **The reason is an attribute.** `data-waiting-reason-kind` is `question`
  *     or `blocked` for the `awaiting` overlay, and `acceptance` for an
- *     `in_review` card the board's policy leaves to a human; the chip's copy
+ *     `in_review` card whose own `acceptance_mode` is `human`; the chip's copy
  *     comes from `waiting.reason.<kind>`.
  *
  * **One data note, stated rather than papered over.** The core's awaiting
@@ -43,9 +43,9 @@ import { identifierText } from "./identifier.js";
  * B27's reason domain.
  *
  * `question` and `blocked` are the `awaiting` overlay's two readings; M6 adds
- * `acceptance` — an `in_review` top-level card the board's policy says a human
- * must close (`human-only` / `both`). It shares the view (both are "on my
- * side") but not the trigger: nothing was asked, a delivery is waiting.
+ * `acceptance` — an `in_review` card whose own `acceptance_mode` is `human`, so
+ * a person must close it. It shares the view (both are "on my side") but not
+ * the trigger: nothing was asked, a delivery is waiting.
  */
 export const WAITING_REASON_KINDS = Object.freeze(["question", "blocked", "acceptance"]);
 

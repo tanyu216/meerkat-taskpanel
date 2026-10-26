@@ -10,8 +10,9 @@
  * The question ladder is the same one `buildContinuePrompt` carries:
  *   * `awaiting` cards — a human answer resumes them;
  *   * `in_progress` cards with an agent `question` and no later human comment.
- * `in_review` cards are listed as pending acceptance; the skill applies the
- * policy (the workflow applies it as taskd unless the policy is `human-only`).
+ * `in_review` cards are listed as pending acceptance. The card's own
+ * `acceptance_mode` says who closes it — the loop for `off`/`agent`, a person
+ * for `human` — so the list is a reading, not a claim about who owes the act.
  *
  * Node builtins only.
  */

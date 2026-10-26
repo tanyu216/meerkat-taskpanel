@@ -46,8 +46,7 @@ not a reopen: the delivery round stays where it was.
   Review cards are refused — reopen the card they review, and the loop issues the next round's
   review.
 - `kind` changes one thing: an **`epic`** has one extra edge (`todo → in_review`) and is never
-  claimable. A **`deploy`** card follows the ordinary `task` table — claimable, but never
-  offered by `issue candidates`.
+  claimable. A `task` follows the ordinary table below.
 
 ## 2. The whitelist
 
@@ -216,8 +215,8 @@ case that needs the check.
 
 - **Only `todo` is claimable.** `todo → in_progress` and `issue claim` are the same path;
   `issue claim` accepts only `todo`/`in_progress`.
-- **An `epic` is never claimable** (`not_claimable`). A **`deploy`** card is claimable but
-  withheld from every `issue candidates` pool.
+- **An `epic` is never claimable** (`not_claimable`), and every `issue candidates` pool
+  withholds it.
 - **A rework is not a claim.** `in_review → in_progress` and `blocked → in_progress` keep the
   claim and skip the routing lock.
 - **Held** in `in_progress`, `awaiting`, `in_review` and `blocked`; the write reaching
@@ -295,9 +294,10 @@ its own mode names, and a review card is the one structural exception.
 
 The **project default** (`projects.acceptance`: `auto | off | agent | human`, default
 `auto`) is a default at creation only. The creator — in practice the loop — resolves it to
-one of the three card modes; a card **never stores `auto`**. An explicit
-`--acceptance-mode` wins over the project value. The one structural rule: a review card is
-always `off`.
+one of the three card modes; a card **never stores `auto`**. An unresolved card falls back to
+`human`, except an epic, which falls back to `off` (the board closes containers itself). An
+explicit `--acceptance-mode` wins over the project value. The one structural rule: a review
+card is always `off`.
 
 - A worker agent delivers an `agent`, `human` or review card to `in_review`; a card whose mode
   is `off` may also go **straight to `done`** (`issue deliver --report-file - --to done`).
@@ -355,13 +355,12 @@ is refused with `INVALID_TRANSITION`.
 
 The transition whitelist, the delivery gate, the terminal exits and the child-before-parent
 rule are enforced by the domain **and** the database triggers; acceptance authority and claim
-routing are service rules. Four things are **not** enforced, and an agent must honour them:
+routing are service rules. Three things are **not** enforced, and an agent must honour them:
 
 | Rule | Kind |
 |---|---|
 | “One card at a time” | **practice** — not enforced |
 | “Read candidates, then claim” | **practice** — only the claim gate is enforced |
-| `deploy` cards never auto-offered | **read rule** — explicit dispatch may claim one |
 | `depends_on` blocks claiming | **read rule** — candidates filters only |
 
 ## 11. The board's workflow decisions

@@ -4719,8 +4719,8 @@ export async function run() {
       const countPill = document.querySelector('[data-nav-count="waiting"]');
       const rows = [...document.querySelectorAll("[data-waiting-item]")];
       // M6 — the queue now has two producers: the awaiting card (TD-13) and the
-      // delivered top-level cards the board's `both` policy leaves to a human
-      // (TD-7, TD-8). The six-field rule below is about the awaiting row, so it
+      // delivered cards whose own `acceptance_mode` is `human` (TD-7, TD-8).
+      // The six-field rule below is about the awaiting row, so it
       // selects that row explicitly; the order rule is asserted separately.
       const item = rows.find((row) => row.getAttribute("data-task") === "TD-13") ?? null;
       // Resolve the accent the same way the stylesheet does, so the comparison is
@@ -4874,7 +4874,7 @@ export async function run() {
       JSON.stringify(m1.itemIds) === JSON.stringify(["TD-7", "TD-8", "TD-13"]),
       `waiting row order ${JSON.stringify(m1.itemIds)}`,
     );
-    check(m1.acceptance !== null, "the delivered top-level card must be in the queue");
+    check(m1.acceptance !== null, "the delivered human-mode card must be in the queue");
     check(m1.acceptance.reason === "Ready for acceptance" && m1.acceptance.reasonKind === "acceptance", `acceptance reason ${m1.acceptance?.reason} (${m1.acceptance?.reasonKind})`);
     check(m1.acceptance.actor === "elon", `acceptance row's actor ${m1.acceptance?.actor} — the assignee that delivered it`);
     check(m1.acceptance.since === "2026-10-01T00:00:00Z", `acceptance row's since ${m1.acceptance?.since} — the delivery instant`);

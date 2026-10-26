@@ -219,10 +219,11 @@ export function createProject(ctx, input) {
  *
  * "Ensure" is the idempotent form of `createProject`: the second call is a
  * read, not an update. Nothing about an existing project changes — its name,
- * labels, meta, readme and review policy are the caller's earlier decisions,
- * not this call's. A race that reaches `createProject` after another writer
- * created the same id surfaces as `ID_CONFLICT`; it is read back as "already
- * existed" rather than leaking a conflict to an idempotent caller.
+ * labels, meta, readme, acceptance default and reviewer are the caller's
+ * earlier decisions, not this call's. A race that reaches `createProject`
+ * after another writer created the same id surfaces as `ID_CONFLICT`; it is
+ * read back as "already existed" rather than leaking a conflict to an
+ * idempotent caller.
  *
  * @param {object} ctx
  * @param {{id: string, name: string, labels?: string[], meta?: object, readme?: string|null, acceptance?: string, reviewer?: string|null, actor?: object}} input

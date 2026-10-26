@@ -448,13 +448,15 @@ leader accepts); the loop is just the leader's automated stand-in.
 ### Acceptance authority is enforced by the board
 
 The separation is not only a prompt rule. `in_review → done` has a **board-level
-acceptance authority**: the board's policy and the card's scope decide who may perform it.
-Under the default `both`, a `human` or the board (`taskd` — the loop's workflow pass) may
-close a top-level card; a worker agent cannot close its own top-level card, and cannot
-close somebody else's either. A **child** card is the opposite: only a non-human writer
-closes it. The refusal is `ACCEPTANCE_FORBIDDEN` (409) and it changes nothing. This is
-what makes "a worker stops at `in_review`" a machine rule rather than a habit, and it is
-why the loop's automated acceptance is attributable as `taskd`.
+acceptance authority**: the card's own `acceptance_mode` decides who may perform it.
+`off` may be closed by the deliverer, the loop (`taskd` — the loop's workflow pass) or a
+human, and `in_progress → done` is allowed; `agent` waits for a current-round `APPROVE`,
+then the loop or a human closes it; `human` is a person only. A review card is the one
+structural exception — its reviewer reports the verdict, and the loop or a human closes
+it. There is no board-level policy and no child/top-level matrix. The refusal is
+`ACCEPTANCE_FORBIDDEN` (409) and it changes nothing. This is what makes "a worker stops
+at `in_review`" a machine rule rather than a habit, and it is why the loop's automated
+acceptance is attributable as `taskd`.
 
 Two honest limits. First, the check reads the actor's **declared** kind: a loopback caller
 is trusted and `--actor-kind human` is refused, but the board has no cryptographic identity
@@ -563,9 +565,11 @@ refuses to start when an `agent` card would be dispatachable with no effective r
 **Who closes a card is the card's own `acceptance_mode`** — `off` (the deliverer may close it,
 and `in_progress → done` is allowed), `agent` (a current-round `APPROVE`, applied by the loop)
 or `human` (a person only). The project's `acceptance` (`auto | off | agent | human`) is the
-default a new card inherits; the loop's creator path passes `--acceptance-mode` explicitly
-when the project says `auto`. There is no board-level policy and no local copy to keep in
-step. On a `human` card the loop records its findings and stops; it never closes the card.
+default a new card inherits; an unresolved card falls back to `human`, except an epic, which
+falls back to `off` (the board closes containers itself). The loop's creator path passes
+`--acceptance-mode` explicitly when the project says `auto`. There is no board-level policy
+and no local copy to keep in step. On a `human` card the loop records its findings and stops;
+it never closes the card.
 
 ## Team roles (optional)
 

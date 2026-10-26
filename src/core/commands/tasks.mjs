@@ -189,7 +189,7 @@ export function createTask(ctx, input) {
       // 0025 — the structural review marker. `meta.review_of` holds an
       // identifier (`PROJ-0007`), which is what the loop and the SLA patrol
       // match on; the column holds the internal id, and that is what the
-      // acceptance policy reads. Resolve once, here, so a dangling reference is
+      // acceptance gate reads. Resolve once, here, so a dangling reference is
       // refused instead of silently producing a card that is not exempt.
       //
       // Both spellings are stamped from the same resolution. Before this, a
@@ -1281,10 +1281,9 @@ export function moveStatus(ctx, input) {
           hint: { fix: "reopen the reviewed card; the loop will issue a review for the new round" },
         });
       }
-      // `done` is acceptance, not delivery. Who may perform it is the board's
-      // policy (`human-only` | `both` | `agent-only`) and the card's scope
-      // (child / review card / top-level original) — see
-      // `commands/acceptance.mjs` and `domain/status.mjs`.
+      // `done` is acceptance, not delivery. Who may perform it is the card's
+      // own `acceptance_mode` (a review card is the one structural override) —
+      // see `commands/acceptance.mjs` and `domain/status.mjs`.
       if (input.to === STATUS.DONE) assertAcceptance(ctx, current, actor);
       // A card is not delivered or accepted while a child is still in flight.
       // The same rule the automatic rollup applies; the DB trigger is 0026.
@@ -1332,10 +1331,10 @@ export function moveStatus(ctx, input) {
         });
       }
 
-      // Last, after the delivery gate: a human accepting a top-level original
-      // needs the review cards of the current round resolved. The loop's own
-      // write order is original-first, review-last, so system/agent acceptances
-      // are deliberately exempt (the function checks the actor).
+      // Last, after the delivery gate: a human accepting an `agent` card needs
+      // the review cards of the current round resolved. The loop's own write
+      // order is original-first, review-last, so system/agent acceptances are
+      // deliberately exempt (the function checks the actor).
       if (input.to === STATUS.DONE) assertReviewReady(ctx, current, actor);
 
       const task = ctx.repos.tasks.moveCas({

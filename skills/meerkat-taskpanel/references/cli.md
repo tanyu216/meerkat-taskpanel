@@ -48,10 +48,11 @@ environment wins key by key; CLI flags win over both.
   probed, never autostarted.
 - **Token:** `--token` > `$TASKD_TOKEN` > `$TASKD_TOKEN_FILE` > the pointer's token file. Both
   token keys set in `.env` is an error; an inline `TASKD_TOKEN` requires the file to be `0600`.
-- **Server keys:** `TASKD_ALLOW_LIST_ENABLED`, `TASKD_ALLOW_CIDRS`, `TASKD_ACCEPTANCE_POLICY`,
+- **Server keys:** `TASKD_ALLOW_LIST_ENABLED`, `TASKD_ALLOW_CIDRS`,
   `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS`, `TASKD_HOST`, `TASKD_PORT`, `TASKD_DATA_DIR`,
   `TASKD_DB`, `TASKD_RUNTIME_POINTER`, `TASKD_NO_AUTOSTART`. The Access panel writes the
-  policy keys.
+  allow-list keys. The retired `TASKD_ACCEPTANCE_POLICY` is **not** a server key: `taskd`
+  refuses to start while it is present (0038 — acceptance is board data, not config).
 - **Identity is not a `.env` key.** `TASKCTL_ACTOR_KIND` / `TASKCTL_SESSION_ID` are refused in
   the file; `TASKCTL_AGENT` / `TASKCTL_HUMAN` may be defaults.
 - **Grammar:** `KEY=VALUE`, `#` comments, matching quotes; no inline comments, interpolation,
@@ -142,7 +143,7 @@ taskctl issue create --project <id> --title <t> [flags]
 |---|---|
 | `--project <id>` | **Required.** The project; its id is the identifier prefix. |
 | `--title <t>` | **Required.** The one-line summary. |
-| `--acceptance-mode off\|agent\|human` | 0038 — the card's acceptance decision. `off`: no review; the deliverer may close it directly (`in_progress → done`). `agent`: an independent review card must APPROVE before the loop closes it. `human`: only a human closes it. An explicit value wins over the project default; an unresolved card under a project `auto` falls back to `human`. A review card is always `off`. |
+| `--acceptance-mode off\|agent\|human` | 0038 — the card's acceptance decision. `off`: no review; the deliverer may close it directly (`in_progress → done`). `agent`: an independent review card must APPROVE before the loop closes it. `human`: only a human closes it. An explicit value wins over the project default; an unresolved card under a project `auto` falls back to `human` (`off` for an epic, which the board closes itself). A review card is always `off`. |
 | `--acceptance <text>` | One acceptance item; repeat for each. |
 | `--assignee <text>` / `--assignee-id <id>` / `--assignee-kind <agent\|human>` | Route the card. `--assignee-id` bypasses the dictionary. |
 | `--reporter <text>` / `--reporter-id <id>` / `--reporter-kind <agent\|human>` | Set the reporter. |

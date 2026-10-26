@@ -69,11 +69,14 @@ A legal edge can still be refused. What decides it, one line each:
    current `delivery_round`, or the audited `--no-report --reason` (≥ 8 characters). Leaving
    `in_review` for `in_progress` or `blocked` starts a new round and voids the old report; use
    `issue deliver` to write the report and move in one transaction.
-2. **`done` is acceptance, not a worker's act.** It is reachable only from `in_review`. An
-   agent is refused (`ACCEPTANCE_FORBIDDEN`) on a **top-level** card; a **child** card is the
-   opposite — only a non-human writer closes it. A human closing a top-level card needs the
-   current round's review cards resolved (`REVIEW_PENDING`), and a non-empty acceptance
-   baseline must be covered first (`ACCEPTANCE_INCOMPLETE` / `ACCEPTANCE_UNVERIFIED`).
+2. **`done` is acceptance, not a worker's act.** It is reachable only from `in_review`, or
+   directly from `in_progress` on an `off` card. The card's own `acceptance_mode` names who
+   may close it: `off` — the deliverer, the loop (`taskd`) or a human; `agent` — the loop
+   after a current-round `APPROVE`, or a human; `human` — a person only. A review card is
+   closed by the loop or a human, never by its reviewer. A human closing an `agent` card
+   needs the current round's review cards resolved (`REVIEW_PENDING`), and a non-empty
+   acceptance baseline must be covered first (`ACCEPTANCE_INCOMPLETE` /
+   `ACCEPTANCE_UNVERIFIED`).
 3. **`awaiting` is a question; `blocked` is everything else.** `awaiting` has one entrance —
    `in_progress → awaiting`, naming `E1`–`E5` — and cannot reach `in_review` or `done`.
    `blocked` takes an optional `--blocked-reason`, cleared on exit; `in_review → blocked` is a
@@ -88,7 +91,7 @@ A legal edge can still be refused. What decides it, one line each:
    `issue reopen` with a reason ≥ 8 characters; it starts a new round, clears the archive and
    releases the idem key. `in_progress` is not a reopen target.
 
-Every guard in evaluation order, the round table, claim windows, the acceptance policy matrix
+Every guard in evaluation order, the round table, claim windows, the acceptance matrix
 and the refusal codes: [`references/status-lifecycle.md`](references/status-lifecycle.md).
 
 ## Claim one card, deliver it, stop
@@ -110,7 +113,6 @@ Then **stop**: acceptance is somebody else's act. Do **not** claim a card that i
 - **assigned to someone else** — the board refuses; it is never silently reassigned;
 - in **`backlog`** — only the dispatcher or a human releases it to `todo`;
 - an **`epic`** — a container, not a unit of work; claim its leaf children;
-- a **deployment card** (`kind: deploy`) — dispatched explicitly, never auto-claimed;
 - waiting on a **`depends_on` blocker that is not `done`** (a `canceled` predecessor withholds
   it too). `issue candidates` withholds the last three; the claim verb does not re-check
   blockers, so use `taskctl relation list <ref>` when a card you expected is missing.
@@ -168,7 +170,8 @@ mode is resolved once, at creation:
 
 - `--acceptance-mode off|agent|human` on `issue create` is the card's snapshot.
 - Omitted, it follows the project's `acceptance` default (`auto` by default). In an `auto`
-  project the creator decides: pass a mode, or the card falls back to `human`.
+  project the creator decides: pass a mode, or the card falls back to `human` (an epic falls
+  back to `off`, because the board closes containers itself).
 - An `off` card is auto-accepted (`loop-auto`) and may be delivered straight to `done`.
 - A `human` card is never auto-accepted; a person closes it.
 - The mode can be changed with `taskctl issue update <ref> --acceptance-mode <value>
@@ -195,7 +198,7 @@ is the container; if they name **one deliverable** it is a child of that contain
 | `task`, with a parent | the whole job | promote to a nested epic; its parent edge stays |
 | `task`, with a parent | one deliverable among several | keep it as a child; add siblings under the same parent |
 | `in_review`, `done`, `canceled` or archived | — | do **not** promote; create a new container and link the old card as a child (or `related` for history) |
-| a review card, or a `deploy` card | — | do **not** promote; split a separate container |
+| a review card | — | do **not** promote; split a separate container |
 
 Promotion is only for a card that has **not delivered its current-round report**. The rollup
 collects the **children's** delivery reports, not the container's own history, so promoting a

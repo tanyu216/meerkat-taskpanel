@@ -7,9 +7,9 @@
  *   1. **May this writer accept?** `assertAcceptanceAuthority` reads the card's
  *      acceptance mode; a review card is the one structural override. See
  *      `domain/acceptance-mode.mjs`.
- *   2. **Is the card ready to be accepted?** A human closing a top-level
- *      original needs the review cards for the **current** delivery round to be
- *      resolved (`done` or `canceled`). The loop is deliberately not held to
+ *   2. **Is the card ready to be accepted?** A human closing an `agent` card
+ *      needs the review cards for the **current** delivery round to be resolved
+ *      (`done` or `canceled`). The loop is deliberately not held to
  *      this: its protocol is "move the original first, close the review card
  *      last", and a reverse gate would deadlock it.
  *
@@ -157,8 +157,8 @@ function assertCoverageOrThrow({ task, baseline, reportItems, source, review = n
  * The evidence is a **current-round** review card with an `APPROVE` verdict.
  * An open review that already carries the verdict passes here: the loop's
  * protocol is to move the original first and close the review card last. The
- * human/top-level pending check that follows still makes a human wait for the
- * card to be closed, because a human should not accept over an open review.
+ * human pending check that follows still makes a human wait for the card to be
+ * closed, because a human should not accept over an open review.
  *
  * A review card itself is never held to this rule (it is flow B and is forced to
  * `acceptance_mode = off`), but the guard is repeated here so a raw row cannot
@@ -245,8 +245,8 @@ export function assertReviewEvidence(ctx, task) {
 }
 
 /**
- * Refuse a human closing a top-level original whose current-round review cards
- * are still open.
+ * Refuse a human closing an `agent` card whose current-round review cards are
+ * still open.
  *
  * Only a human is checked. A `system`/agent acceptance means the loop (or an
  * operator's own automation), whose write order is original-then-review; gating

@@ -161,8 +161,8 @@ export const DOMAINS = Object.freeze({
   /**
    * B27 — the waiting queue's reason kinds (§30).
    *
-   * `acceptance` is M6's third kind: an `in_review` top-level card the board's
-   * policy leaves to a human. The prototype predates it, and the contract's
+   * `acceptance` is M6's third kind: an `in_review` card whose own
+   * `acceptance_mode` is `human`. The prototype predates it, and the contract's
    * `subset` direction is what lets the oracle stay a *sample* rather than a
    * closed list (the same reading `data-status` takes).
    */

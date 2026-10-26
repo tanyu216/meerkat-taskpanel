@@ -3,7 +3,7 @@
  * loop config — as pure text operations.
  *
  * Two writers share the install-root file (the Access panel's allow-list and
- * the installer's acceptance policy), and the client reads the same keys, so a
+ * the installer's env seeds), and the client reads the same keys, so a
  * whole-file rewrite by either would silently erase the others' answers.
  * Merging is therefore the only write this module offers: unknown lines (an
  * operator's comments included) survive, a key in the patch is replaced in

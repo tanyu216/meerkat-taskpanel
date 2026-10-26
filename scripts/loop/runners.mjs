@@ -425,10 +425,9 @@ export async function runWorkflowTick(deps) {
           await step(createReview, "create_review", action);
           break;
 
-        // 0031 — the card does not require an independent review, and `taskd`
-        // may complete it under the board's acceptance policy. The marker is
-        // written first so a crash between it and the move is recoverable
-        // without a duplicate comment (`held`).
+        // 0038 — the card's own `acceptance_mode` is `off`, so `taskd` may
+        // complete it. The marker is written first so a crash between it and
+        // the move is recoverable without a duplicate comment (`held`).
         case "auto_accept": {
           if (typeof action.accepted_by !== "string" || action.accepted_by === "") {
             throw new Error("auto_accept action is missing accepted_by");

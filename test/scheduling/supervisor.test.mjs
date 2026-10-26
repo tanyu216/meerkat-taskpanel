@@ -634,6 +634,29 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /do not move it to done yourself/);
   });
 
+  it("reads the closing rule from the card's acceptance mode", () => {
+    const text = (acceptance_mode) =>
+      buildHandoff({
+        card: { identifier: "T-1", title: "Wire the supervisor", project: "P1", acceptance_mode },
+        agent: "alice",
+        actorKind: "claude",
+      });
+    assert.match(text("off"), /the loop auto-accepts an off card/);
+    assert.match(text("agent"), /the loop dispatches an independent reviewer/);
+    assert.match(text("human"), /a human accepts to done/);
+    // The card's own mode wins over the identity hint: a reviewer agent working
+    // an `off` card is not told the loop will dispatch a reviewer for it.
+    assert.match(
+      buildHandoff({
+        card: { identifier: "T-1", title: "x", project: "P1", acceptance_mode: "off" },
+        agent: "rev",
+        actorKind: "claude",
+        review: true,
+      }),
+      /the loop auto-accepts an off card/,
+    );
+  });
+
   it("does not carry the continue command prefix", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "x", project: "P1" },

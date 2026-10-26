@@ -858,7 +858,7 @@ function acceptanceDetection(card, context) {
     if (rounds !== undefined && (rounds.has(null) || rounds.has(round))) return null;
   }
   // A closed review does not silence the wait. A `done` review means the verdict
-  // landed but the original is still `in_review` — the human-only hold, or a
+  // landed but the original is still `in_review` — the human-mode hold, or a
   // crash before the original moved. The row becomes the acceptance reminder.
   const reviewDone = idsOf(card).some((id) => {
     const rounds = context.doneReviewRefs?.get(id);
@@ -1200,7 +1200,7 @@ function boardContext(cards, trails, options = {}) {
     if (typeof reviewOf === "string" && reviewOf.trim() !== "") {
       const ref = reviewOf.trim();
       // Only an open review covers the wait. A `done` review means the verdict
-      // landed but the original is still `in_review` (the human-only hold, or a
+      // landed but the original is still `in_review` (the human-mode hold, or a
       // crash); a `canceled` one means the review was abandoned. Neither may
       // silence the original's only watcher.
       const bucket =

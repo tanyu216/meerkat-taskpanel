@@ -647,9 +647,23 @@ export function buildHandoff(input) {
   const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.actorKind}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
   const flags = attribution.join(" ");
-  const acceptanceRule = input.review === true
-    ? "stop at in_review — the loop dispatches an independent reviewer; do not move it to done yourself."
-    : "stop at in_review — a human accepts to done.";
+  // 0038 — the card's own mode is the closing rule. `input.review` is only the
+  // fallback for a payload that predates the field: it says this agent is in
+  // the reviewer set, which is the best available guess without a card mode.
+  const declaredMode = String(card.acceptance_mode ?? card.acceptanceMode ?? "")
+    .trim()
+    .toLowerCase();
+  const acceptanceMode = ["off", "agent", "human"].includes(declaredMode)
+    ? declaredMode
+    : input.review === true
+      ? "agent"
+      : "human";
+  const acceptanceRule =
+    acceptanceMode === "off"
+      ? "stop at in_review — the loop auto-accepts an off card."
+      : acceptanceMode === "agent"
+        ? "stop at in_review — the loop dispatches an independent reviewer; do not move it to done yourself."
+        : "stop at in_review — a human accepts to done.";
   const brief = cardFileRel(ref);
   const processDir = cardDirRel(ref);
   const lines = [

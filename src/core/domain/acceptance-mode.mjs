@@ -124,7 +124,8 @@ export function cardAcceptanceOf(value) {
  *   1. a review card is always `off` (flow B is never reviewed again);
  *   2. an explicit card value wins;
  *   3. a concrete project value is the default;
- *   4. project `auto` (or no project) falls back to `human`.
+ *   4. project `auto` (or no project) falls back to `human`, except an epic,
+ *      which falls back to `off` because the board closes containers itself.
  *
  * @param {{
  *   projectAcceptance?: unknown,

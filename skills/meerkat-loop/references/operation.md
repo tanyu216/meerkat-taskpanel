@@ -151,9 +151,10 @@ Selectors, state and internals:
 | `--event-debounce-max-ms <ms>` | 2000 | never delay the first pending event past this |
 | `--event-continue-min-ms <ms>` | 60000 | at most one event-triggered turn per interval |
 
-`--poll-interval` is the deprecated alias of `--ping-interval`; `--acceptance-policy` is the
-alias of `--acceptance`; `--assignee-only` is `--claim-unassigned=no`;
-`--allow-all-tools-reason` is required with `--allow-all-tools`.
+`--poll-interval` is the deprecated alias of `--ping-interval`; `--assignee-only` is
+`--claim-unassigned=no`; `--allow-all-tools-reason` is required with `--allow-all-tools`.
+There is no `--acceptance-policy` (nor `--acceptance`) flag: the card's own
+`acceptance_mode` is authoritative and the loop keeps no copy.
 
 `--once` with no selector runs the legacy poll pass; installed units use
 `--ping-only` / `--continue-only`. `--patrol-only` remains for legacy units.
