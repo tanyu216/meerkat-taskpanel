@@ -34,10 +34,19 @@ A review card is always `acceptance_mode = off`: it is flow B and is never revie
 The creation resolver forces it, and the domain refuses a review card that asks for its own
 review.
 
-The board also mirrors them into `meta.review_of` (the original's identifier) and
-`meta.review_round` (the integer round) so the loop and the SLA patrol can match on the wire.
+The structural columns are the **authority**. Every reader — the workflow planners, the SLA
+patrol, the candidate projection, and the CLI's display — goes through one reader
+(`foundation/review-identity.mjs`), which resolves the original's identifier from
+`review_of_id` (falling back to `meta.review_of` only for a legacy row) and the audited round
+from `review_round`. The board still mirrors both into `meta.review_of` / `meta.review_round`
+for export and readability, but the mirror is **not** a policy input; nor is `meta.flow`.
 The `review` label is a discovery aid; it is **never** the predicate. A card is a review card
-when `issue get <ref> --json` carries `review_of_id` (or, for a legacy row, `meta.review_of`).
+when `issue get <ref> --json` carries `review_of_id` (or, for a legacy row, `meta.review_of`),
+and the envelope also carries the resolved `review_of` identifier for display. Its derived
+`role` is the readable word — `task`, `epic`, or `review` — while `kind` stays `task`; ask
+`role`, not `kind`, when deciding what a card is for. `issue list --kind review` (and
+`GET /tasks?kind=review`) is a **filter over the marker**, not a third kind: `--kind task`
+still returns review cards, and `issue create --kind review` is refused.
 
 ### Two rounds, deliberately different
 
@@ -201,7 +210,9 @@ the next pass.
 A review card can be refused by the same codes as any other card — `REPORT_REQUIRED`,
 `REPORT_ROUND_MISMATCH`, `ACCEPTANCE_FORBIDDEN`, `REVIEW_PENDING`, `REVIEW_REQUIRED`,
 `REVIEW_CARD_MARKER_INVALID`, `VALIDATION_FAILED` — plus `INVALID_TRANSITION` for a reopen or
-a direct `in_review → canceled`. The full table, with when each fires, is in
+a direct `in_review → canceled`. The reopen, parent/child and review-of-review refusals are
+also database triggers (`0041`), so a raw writer cannot bypass the command layer. The full
+table, with when each fires, is in
 [`status-lifecycle.md` §9](status-lifecycle.md#9-refusals).
 
 ## 8. Boundaries

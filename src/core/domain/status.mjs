@@ -47,6 +47,7 @@
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
+import { reviewIdentityOf } from "../../foundation/review-identity.mjs";
 import { normalizeCardAcceptance } from "./acceptance-mode.mjs";
 import { STATUS, STATUSES, TASK_KIND } from "./enums.mjs";
 
@@ -246,6 +247,10 @@ export function isTerminalStatus(value) {
 export function allowedTargets(from, kind = null, acceptanceMode = null, reviewCard = false) {
   const base = ALLOWED_TRANSITIONS[from];
   if (base === undefined) return Object.freeze([]);
+  // A review card has no reopen edge. Reopening the *original* is what starts
+  // the next round; a review card is an artefact of the round it audited, and
+  // 0041 enforces the same rule in the terminal trigger.
+  if (reviewCard && isTerminalStatus(from)) return Object.freeze([]);
   const extra = [];
   if (kind === TASK_KIND.EPIC) extra.push(...(EPIC_ONLY_TRANSITIONS[from] ?? []));
   // 0038 — only an explicit `off` gains the direct edge. A missing mode keeps
@@ -284,6 +289,10 @@ export function canTransition(from, to, kind = null, acceptanceMode = null, revi
  */
 export function transitionReasonCode(from, to, kind = null, acceptanceMode = null, reviewCard = false) {
   if (canTransition(from, to, kind, acceptanceMode, reviewCard)) return null;
+  // 0041 — the terminal trigger refuses a review card's reopen with
+  // `INVALID_TRANSITION`, not `TERMINAL_STATE`: the card is terminal, but the
+  // reason it cannot come back is that it is a review artefact.
+  if (reviewCard && isTerminalStatus(from) && to === REOPEN_TARGET) return "INVALID_TRANSITION";
   if (isTerminalStatus(from)) return "TERMINAL_STATE";
   return "INVALID_TRANSITION";
 }
@@ -324,6 +333,47 @@ export function assertTransition(from, to, kind = null, acceptanceMode = null, r
     });
   }
   return to;
+}
+
+/**
+ * The transition policy **derived from one card**.
+ *
+ * The primitives above take the four facts a caller must know — `from`, `kind`,
+ * `acceptanceMode`, and whether the card is a review card — as positional
+ * arguments. That is the interface a caller can get wrong: forget the review
+ * flag and an `off` review card silently gains the direct-done edge. This
+ * wrapper reads all four from the card once and returns the questions a caller
+ * actually asks.
+ *
+ * `reviewIdentityOf` is the same reader the workflow and the SLA patrol use, so
+ * "is this a review card" has one answer everywhere. `acceptanceMode` is read in
+ * both spellings: the repository DTO is camelCase, a wire snapshot snake_case.
+ *
+ * @param {object|null|undefined} task a Task DTO or a wire task
+ * @returns {{
+ *   from: string,
+ *   allowed: readonly string[],
+ *   can: (to: string) => boolean,
+ *   reason: (to: string) => "TERMINAL_STATE"|"INVALID_TRANSITION"|null,
+ *   assert: (to: string) => string,
+ *   bumpsRound: (to: string) => boolean,
+ *   requiresReport: (to: string) => boolean,
+ * }}
+ */
+export function transitionPolicyFor(task) {
+  const from = task?.status;
+  const kind = task?.kind ?? null;
+  const mode = task?.acceptanceMode ?? task?.acceptance_mode ?? null;
+  const reviewCard = reviewIdentityOf(task).isReview;
+  return {
+    from,
+    allowed: allowedTargets(from, kind, mode, reviewCard),
+    can: (to) => canTransition(from, to, kind, mode, reviewCard),
+    reason: (to) => transitionReasonCode(from, to, kind, mode, reviewCard),
+    assert: (to) => assertTransition(from, to, kind, mode, reviewCard),
+    bumpsRound: (to) => bumpsDeliveryRound(from, to),
+    requiresReport: (to) => requiresReport(to),
+  };
 }
 
 /** @param {unknown} value */

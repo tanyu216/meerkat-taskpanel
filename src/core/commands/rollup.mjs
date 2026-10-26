@@ -76,7 +76,7 @@ import { rollupGapOf } from "../domain/acceptance.mjs";
 import { normalizeCommentCreate } from "../domain/comment.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
-import { assertTransition, isTerminalStatus } from "../domain/status.mjs";
+import { isTerminalStatus, transitionPolicyFor } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { BOARD_ACTOR } from "./context.mjs";
 import { insertDeliveryReport } from "./delivery-report.mjs";
@@ -279,7 +279,7 @@ export function startContainer(ctx, containerId, now, options = {}) {
   const started = children.find((child) => CHILD_STARTED_STATUSES.includes(child.status));
   if (started === undefined) return null;
 
-  assertTransition(container.status, STATUS.IN_PROGRESS, container.kind, container.acceptanceMode);
+  transitionPolicyFor(container).assert(STATUS.IN_PROGRESS);
   const moved = ctx.repos.tasks.moveCas({
     id: container.id,
     to: STATUS.IN_PROGRESS,

@@ -790,15 +790,50 @@ describe("acceptance_card_creation", () => {
     );
   });
 
-  it("does not apply to a flow B card", () => {
-    const result = plan([card({ status: "in_review", status_changed_at: "2026-10-01T04:00:00.000Z", meta: { flow: "B" } })]);
-    assert.deepEqual(result.alerts, []);
+  it("does not apply to a review card (the structural marker, not meta.flow)", () => {
+    // The review card is a review because it carries the structural marker; the
+    // `flow=B` label is a loop convention and is not the predicate.
+    const review = card({
+      identifier: "T-2",
+      status: "in_review",
+      status_changed_at: "2026-10-01T04:00:00.000Z",
+      review_of_id: "T-0",
+      review_round: 1,
+      meta: { flow: "B" },
+    });
+    assert.deepEqual(rowsOf(plan([review])).filter((row) => row === "acceptance_card_creation"), []);
+  });
+
+  it("still watches an ordinary card whose patchable meta.flow says B", () => {
+    // One meta write must not silence the card's only watcher: without the
+    // structural marker this is still a flow-A delivery waiting for acceptance.
+    const result = plan([
+      card({ status: "in_review", status_changed_at: "2026-10-01T04:00:00.000Z", meta: { flow: "B" } }),
+    ]);
+    assert.ok(rowsOf(result).includes("acceptance_card_creation"));
   });
 
   it("is suppressed by a non-terminal review card", () => {
     const result = plan([
       card({ identifier: "T-1", status: "in_review", status_changed_at: "2026-10-01T04:00:00.000Z", delivery_round: 1 }),
       card({ identifier: "T-9", status: "in_progress", meta: { review_of: "T-1", review_round: 1 } }),
+    ]);
+    assert.deepEqual(rowsOf(result).filter((row) => row === "acceptance_card_creation"), []);
+  });
+
+  it("is suppressed by a column-only review card (no meta mirror)", () => {
+    // The review's identity is the structural marker. The SLA context builds the
+    // id → identifier index from the board, so the column-only row still names
+    // its original.
+    const result = plan([
+      card({
+        id: "id-T-1",
+        identifier: "T-1",
+        status: "in_review",
+        status_changed_at: "2026-10-01T04:00:00.000Z",
+        delivery_round: 1,
+      }),
+      card({ identifier: "T-9", status: "in_progress", review_of_id: "id-T-1", review_round: 1 }),
     ]);
     assert.deepEqual(rowsOf(result).filter((row) => row === "acceptance_card_creation"), []);
   });

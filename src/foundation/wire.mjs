@@ -14,6 +14,7 @@
  */
 
 import { projectPrefix } from "./ids.mjs";
+import { reviewIdentityOf } from "./review-identity.mjs";
 import { slaToWire } from "./sla-config.mjs";
 
 /** Assignee/reporter ids are meaningless on their own; this is what resolves them. */
@@ -113,6 +114,16 @@ export function taskToWire(task, options = {}) {
   }
   out.labels = Array.isArray(task.labels) ? task.labels : [];
   out.meta = task.meta ?? {};
+  const identity = reviewIdentityOf(task);
+  // The readable word for what a card is *for* — `kind` plus the review marker.
+  // A review card is an ordinary `kind=task`, so this is derived on the wire,
+  // never stored as a third kind; `role=review` is also what `?kind=review`
+  // filters on.
+  out.role = identity.isReview ? "review" : task.kind === "epic" ? "epic" : "task";
+  // The readable review target. The reader prefers the structural column; a
+  // caller that holds the repository (the HTTP payload) replaces this with the
+  // resolved identifier when only the id is stored. `null` for an ordinary card.
+  out.review_of = identity.originalRef;
   // 0032 — the frozen baseline, not `meta.acceptance`. The revision is the
   // optimistic lock a prune sends back.
   out.acceptance = Array.isArray(task.acceptance) ? task.acceptance : [];

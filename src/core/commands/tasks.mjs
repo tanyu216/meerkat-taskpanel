@@ -20,6 +20,7 @@ import {
   TASK_ORDER_DEFAULT,
   TASK_ORDER_MODES,
 } from "../../foundation/constants.mjs";
+import { reviewIdentityOf } from "../../foundation/review-identity.mjs";
 import { orderTasks, taskOrderDebugEntry } from "../../foundation/task-order.mjs";
 import {
   assertClaimable,
@@ -35,7 +36,7 @@ import {
   checkDeliveryGate,
   WAIVER_MIN_REASON_CHARS,
 } from "../domain/delivery-gate.mjs";
-import { assertTransition, isReopen, isTerminalStatus } from "../domain/status.mjs";
+import { isReopen, isTerminalStatus, transitionPolicyFor } from "../domain/status.mjs";
 import { acceptanceKey, normalizeAcceptanceList } from "../domain/acceptance.mjs";
 import {
   assertCardAcceptance,
@@ -207,7 +208,9 @@ export function createTask(ctx, input) {
       const resolvedAcceptance = resolveCardAcceptance({
         projectAcceptance: project.acceptance,
         requested: input.acceptanceMode,
-        reviewCard: marker.reviewOfId !== null,
+        // The reader owns "is this a review card"; `marker.reviewOfId` is the
+        // structural result it reads, so the two cannot drift.
+        reviewCard: reviewIdentityOf(candidate).isReview,
         kind: candidate.kind,
       });
       candidate.acceptanceMode = resolvedAcceptance.mode;
@@ -323,11 +326,9 @@ function resolveReviewMarker(ctx, projectId, input, kind = TASK_KIND.TASK) {
     });
   }
 
-  // A review cannot itself be reviewed. The structural column is the predicate;
-  // the meta key is the compatibility fallback for a row written before 0025.
-  const originalIsReview =
-    (original.reviewOfId !== null && original.reviewOfId !== undefined) ||
-    (typeof original.meta?.review_of === "string" && original.meta.review_of.trim() !== "");
+  // A review cannot itself be reviewed. One reader owns the predicate, so a
+  // column-only row (the structural shape) and a legacy meta-only row agree.
+  const originalIsReview = reviewIdentityOf(original).isReview;
   if (originalIsReview) {
     throw new DomainError("VALIDATION_FAILED", {
       message: `review_of ${JSON.stringify(ref)} names a review card; a review cannot itself be reviewed`,
@@ -1228,13 +1229,23 @@ export function moveStatus(ctx, input) {
         });
       }
 
-      assertTransition(
-        current.status,
-        input.to,
-        current.kind,
-        current.acceptanceMode,
-        current.reviewOfId !== null && current.reviewOfId !== undefined,
-      );
+      // Reopening is the `done|canceled → todo` edge. It is audited, and it is
+      // closed to review cards: a review is a loop artifact, and reopening the
+      // original is what produces the next round's review. Checked before the
+      // generic transition refusal so the caller gets the review-specific
+      // message (the code is `INVALID_TRANSITION` either way).
+      const reopen = isReopen(current.status, input.to);
+      const reopenReason = reopen ? assertReopenReason(input.reason) : null;
+      const isReviewCard = current.reviewOfId !== null && current.reviewOfId !== undefined;
+      if (reopen && isReviewCard) {
+        throw new DomainError("INVALID_TRANSITION", {
+          message: "a review card cannot be reopened; reopen the original card instead",
+          details: { from: current.status, to: input.to, reviewOf: current.reviewOfId },
+          hint: { fix: "reopen the reviewed card; the loop will issue a review for the new round" },
+        });
+      }
+
+      transitionPolicyFor(current).assert(input.to);
 
       // 0034 — an agent entering `awaiting` must say what it is waiting for.
       // The question is stored as a `question` comment in this same transaction,
@@ -1269,18 +1280,6 @@ export function moveStatus(ctx, input) {
         }
       }
 
-      // Reopening is the `done|canceled → todo` edge. It is audited, and it is
-      // closed to review cards: a review is a loop artifact, and reopening the
-      // original is what produces the next round's review.
-      const reopen = isReopen(current.status, input.to);
-      const reopenReason = reopen ? assertReopenReason(input.reason) : null;
-      if (reopen && current.reviewOfId !== null && current.reviewOfId !== undefined) {
-        throw new DomainError("INVALID_TRANSITION", {
-          message: "a review card cannot be reopened; reopen the original card instead",
-          details: { from: current.status, to: input.to, reviewOf: current.reviewOfId },
-          hint: { fix: "reopen the reviewed card; the loop will issue a review for the new round" },
-        });
-      }
       // `done` is acceptance, not delivery. Who may perform it is the card's
       // own `acceptance_mode` (a review card is the one structural override) —
       // see `commands/acceptance.mjs` and `domain/status.mjs`.
@@ -1557,7 +1556,14 @@ function resolveOrder(value, debug) {
  * @returns {{tasks: object[], orderDebug: object[]|null}}
  */
 function readOrdered(ctx, filter) {
-  const { order: requestedOrder, orderDebug: debugFlag, ...scope } = filter;
+  const { order: requestedOrder, orderDebug: debugFlag, ...rest } = filter;
+  // `kind=review` is a filter over the review marker, not a third kind: a
+  // review card is an ordinary `kind=task` card carrying `review_of_id`. The
+  // translation lives here, at the one chokepoint both list use-cases share, so
+  // `kind=task` keeps its meaning (it still returns review cards) and the
+  // marker read is pushed into SQL — it holds under `limit`/`offset` and under
+  // the weight order, which pages in JS after a full read.
+  const scope = rest.kind === "review" ? { ...rest, kind: undefined, hasReviewMarker: true } : rest;
   const order = resolveOrder(requestedOrder, debugFlag === true);
   if (order !== "weight") return { tasks: ctx.repos.tasks.list(scope), orderDebug: null };
 
@@ -1725,7 +1731,9 @@ function orderedCandidates(ctx, input = {}) {
   });
 
   return {
-    candidates: found.map(({ task, reason }) => candidateOf(task, reason)),
+    candidates: found.map(({ task, reason }) =>
+      candidateOf(task, reason, (id) => ctx.repos.tasks.get(id)?.identifier ?? null),
+    ),
     // In the order the caller receives them, so the two arrays reconcile
     // line for line; `reason` rides along because the bucket is the first key.
     orderDebug:
@@ -1806,8 +1814,13 @@ function staleReason(task, assigneeIds, now) {
  * @param {object} task
  * @param {string} reason
  */
-function candidateOf(task, reason) {
+function candidateOf(task, reason, resolveRef = null) {
   const meta = task.meta ?? {};
+  const identity = reviewIdentityOf(task);
+  const reviewOf =
+    identity.originalId === null
+      ? identity.originalRef
+      : (resolveRef?.(identity.originalId) ?? identity.originalRef ?? identity.originalId);
   return {
     id: task.id,
     identifier: task.identifier,
@@ -1820,13 +1833,12 @@ function candidateOf(task, reason) {
     target: nonEmptyString(meta.target),
     meta,
     reason,
-    // A review card names the card it audits (`meta.review_of`) and the round it
-    // audits (`meta.review_round`), so the supervisor can pick the review
-    // handoff at wake time without a second `issue get`. Both are `null` for a
-    // normal card; the round is coerced because `--meta` values arrive as
-    // strings while a JSON metadata write may carry a number.
-    review_of: nonEmptyString(meta.review_of),
-    review_round: integerOrNull(meta.review_round),
+    // A review card names the card it audits and the round it audits, so the
+    // supervisor can pick the review handoff at wake time without a second
+    // `issue get`. The identifier is resolved from the structural column; the
+    // id remains a valid fallback because `issue get` accepts either spelling.
+    review_of: reviewOf,
+    review_round: identity.auditedRound,
   };
 }
 
@@ -1835,13 +1847,6 @@ function nonEmptyString(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
-}
-
-/** A meta value as an integer, or `null` — numbers and digit strings both. */
-function integerOrNull(value) {
-  if (typeof value === "number" && Number.isInteger(value)) return value;
-  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number.parseInt(value, 10);
-  return null;
 }
 
 /**
@@ -1863,13 +1868,7 @@ export function canMove(ctx, input) {
   });
   if (!verdict.ok) return verdict;
   try {
-    assertTransition(
-      task.status,
-      input.to,
-      task.kind,
-      task.acceptanceMode,
-      task.reviewOfId !== null && task.reviewOfId !== undefined,
-    );
+    transitionPolicyFor(task).assert(input.to);
     // The structural half of the new gates is actor-independent, so the
     // pre-flight answer can carry it. The acceptance mode's *writer* rule and
     // the review-ready check need the actor, which `canMove` is not given — the

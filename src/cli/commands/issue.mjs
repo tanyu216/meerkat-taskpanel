@@ -43,7 +43,7 @@ function taskHuman(task, extra) {
     ["acceptance_mode", task.acceptance_mode ?? "off"],
     // The column is an internal id; the human read wants the identifier the
     // worker can pass back. `meta.review_of` is the readable mirror (0025).
-    ["review_of", task.meta?.review_of ?? task.review_of_id ?? "-"],
+    ["review_of", task.review_of ?? task.review_of_id ?? "-"],
     ["review_round", task.review_round ?? "-"],
     ["parent", task.parent_id ?? "-"],
     ["awaiting_reason", task.awaiting_reason ?? "-"],
@@ -119,7 +119,7 @@ export const COMMANDS = [
       { flag: "assignee", key: "assignee", as: "string", value: "<name>", summary: "Resolved against the dictionary; an unknown name matches nothing (not everything)." },
       { flag: "assignee-id", key: "assigneeId", as: "string", value: "<id>", summary: "The structural spelling of --assignee; the two are refused together." },
       { flag: "parent", key: "parent", as: "string", value: "<ref>", summary: "Only the child cards of that parent (id or identifier)." },
-      { flag: "kind", key: "kind", as: "string", value: "<kind>", summary: "task|epic; an unknown kind is a VALIDATION_FAILED, not an empty page." },
+      { flag: "kind", key: "kind", as: "string", value: "<kind>", summary: "task|epic|review (review = cards that audit another card; an ordinary task still matches task); an unknown kind is a VALIDATION_FAILED, not an empty page." },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true, summary: "Exact display name; repeatable, every label must be present." },
       { flag: "target", key: "target", as: "string", value: "<value>", summary: "The card's `meta.target`, compared as text." },
       { flag: "meta", key: "meta", as: "string", value: "<key>=<value>", repeat: true, summary: "Filter on the card's meta; repeatable, every pair must hold. The key must match [A-Za-z0-9_.-]+." },

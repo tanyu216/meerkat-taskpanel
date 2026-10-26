@@ -353,9 +353,11 @@ is refused with `INVALID_TRANSITION`.
 
 ## 10. What is enforced, and what is practice
 
-The transition whitelist, the delivery gate, the terminal exits and the child-before-parent
-rule are enforced by the domain **and** the database triggers; acceptance authority and claim
-routing are service rules. Three things are **not** enforced, and an agent must honour them:
+The transition whitelist, the delivery gate, the terminal exits, the child-before-parent
+rule, and the review-card invariants (no reopen, no parent/child, no review of a review —
+0041) are enforced by the domain **and** the database triggers; acceptance authority and
+claim routing are service rules. Three things are **not** enforced, and an agent must honour
+them:
 
 | Rule | Kind |
 |---|---|
@@ -369,9 +371,12 @@ routing are service rules. Three things are **not** enforced, and an agent must 
 
 A **flow-A** card is an ordinary work card — `meta.flow` absent means A (fail-safe, so an
 unknown card is not exempted from review). A **flow-B** card is a review card the loop
-dispatched: it carries `meta.flow=B` and a delivery on it is never itself reviewed. One review
-card covers one `(original, delivery round)` pair, so a re-delivery after a rejection needs a
-new one. The identity marker, the two-round model and the reviewer's protocol are in
+dispatched: it carries the structural marker (`review_of_id` / `review_round`) and
+`meta.flow=B` as a readable label, and a delivery on it is never itself reviewed. The
+structural marker is the predicate: `meta.flow` is **not** a policy input, so a stray
+`flow=B` on an ordinary card cannot exempt it from dispatch or auto-accept. One review card
+covers one `(original, delivery round)` pair, so a re-delivery after a rejection needs a new
+one. The identity marker, the two-round model and the reviewer's protocol are in
 [`review-workflow.md`](review-workflow.md).
 
 The board decides what happens after a delivery; the loop executes. One command:

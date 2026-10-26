@@ -14,6 +14,7 @@ import {
   CARD_ACCEPTANCE_MODES,
   PROJECT_ACCEPTANCES,
   acceptanceAllows,
+  acceptanceAuthorityFor,
   assertAcceptanceAuthority,
   assertCardAcceptance,
   normalizeCardAcceptance,
@@ -137,5 +138,36 @@ describe("domain/acceptance-mode — assertAcceptanceAuthority", () => {
     for (const mode of CARD_ACCEPTANCE_MODES) {
       throwsCode(() => assertAcceptanceAuthority({ kind: "" }, { mode }), "ACCEPTANCE_FORBIDDEN");
     }
+  });
+});
+
+describe("domain/acceptance-mode — acceptanceAuthorityFor", () => {
+  it("derives review identity from the structural column", () => {
+    const authority = acceptanceAuthorityFor({ acceptanceMode: "off", reviewOfId: "orig-1", meta: {} });
+    assert.equal(authority.isReview, true);
+    assert.equal(authority.mode, "off");
+    assert.equal(authority.canAccept("claude"), false, "the reviewer never closes its own verdict");
+    assert.equal(authority.canAccept("taskd"), true);
+    assert.equal(authority.canAccept("human"), true);
+  });
+
+  it("lets an ordinary off card's deliverer close it", () => {
+    const authority = acceptanceAuthorityFor({ acceptanceMode: "off", meta: {} });
+    assert.equal(authority.isReview, false);
+    assert.equal(authority.canAccept("claude"), true);
+  });
+
+  it("reads a legacy meta-only review card", () => {
+    const authority = acceptanceAuthorityFor({ acceptanceMode: "off", meta: { review_of: "PROJ-1" } });
+    assert.equal(authority.isReview, true);
+    assert.equal(authority.canAccept("claude"), false);
+  });
+
+  it("reads the wire spelling", () => {
+    const authority = acceptanceAuthorityFor({ acceptance_mode: "agent", review_of_id: null, meta: {} });
+    assert.equal(authority.isReview, false);
+    assert.equal(authority.mode, "agent");
+    assert.equal(authority.canAccept("claude"), false);
+    assert.equal(authority.canAccept("taskd"), true);
   });
 });

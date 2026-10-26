@@ -21,7 +21,7 @@
 
 import { DomainError } from "../../foundation/errors.mjs";
 import { isTerminalStatus } from "../domain/status.mjs";
-import { assertAcceptanceAuthority, cardAcceptanceOf } from "../domain/acceptance-mode.mjs";
+import { acceptanceAuthorityFor, assertAcceptanceAuthority, cardAcceptanceOf } from "../domain/acceptance-mode.mjs";
 import { parseReviewVerdict } from "../domain/workflow.mjs";
 import { coverageOf } from "../domain/acceptance.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
@@ -39,10 +39,8 @@ import { assertEpicRollupReady, assertRollupCoverage } from "./rollup.mjs";
  * @param {{kind?: string, id?: string}} actor
  */
 export function assertAcceptance(ctx, task, actor) {
-  return assertAcceptanceAuthority(actor, {
-    mode: cardAcceptanceOf(task.acceptanceMode),
-    reviewCard: task.reviewOfId !== null && task.reviewOfId !== undefined,
-  });
+  const authority = acceptanceAuthorityFor(task);
+  return assertAcceptanceAuthority(actor, { mode: authority.mode, reviewCard: authority.isReview });
 }
 
 /**

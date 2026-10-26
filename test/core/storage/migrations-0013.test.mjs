@@ -83,6 +83,9 @@ const EXPECTED_TRIGGERS = [
   // 0025/0026 — the head's review-marker and children-terminal guards.
   "tr_tasks_review_marker_immutable",
   "tr_tasks_children_terminal",
+  // 0041 — the review-only invariants: no reopen, no review-of-review.
+  "tr_tasks_review_no_reopen",
+  "tr_tasks_review_not_review",
   // 0027 — the reopen edge releases the finished row's bookkeeping before the
   // terminal guard lets the status through.
   "tr_tasks_reopen_state",
@@ -136,7 +139,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -271,13 +274,15 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       // into `actors` — removing the four triggers on each old table and adding
       // `tr_dict_actors_delete` + `tr_rev_actors_{ins,upd,del}`; and
       // `0021_block_chain.sql` / `0022_block_pair_on_parent.sql` add the two
-      // relation guards `tr_rel_block_chain` + `tr_rel_parent_block_pair`.
+      // relation guards `tr_rel_block_chain` + `tr_rel_parent_block_pair`, and
+      // `0041_review_invariants.sql` adds the review-only guards.
       const LATER_MIGRATION_TRIGGERS = [
         "tr_deliver_gate_done",
         "tr_dict_actors_delete",
         "tr_rel_block_chain",
         "tr_rel_block_cycle",
         "tr_rel_parent_block_pair",
+        "tr_rel_review_no_parent",
         "tr_reports_not_applicable_note",
         "tr_reports_rollup_valid",
         "tr_rev_actors_del",
@@ -292,6 +297,8 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         "tr_tasks_epic_rollup_done",
         "tr_tasks_reopen_state",
         "tr_tasks_review_marker_immutable",
+        "tr_tasks_review_no_reopen",
+        "tr_tasks_review_not_review",
       ];
       const LATER_MIGRATION_TRIGGERS_REMOVED = [
         "tr_dict_assignees_delete",

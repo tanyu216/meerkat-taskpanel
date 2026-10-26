@@ -82,6 +82,27 @@ function reviewCard(fields = {}) {
   });
 }
 
+/**
+ * A review card whose identity lives only in the structural columns — the shape
+ * a raw insert (or a board assembled without the meta mirror) produces. The
+ * planners must resolve the original through the id index, not the meta.
+ */
+function columnOnlyReview(fields = {}) {
+  return card({
+    identifier: "T-2",
+    title: "Review T-1",
+    status: "in_review",
+    delivery_round: 0,
+    assignee_id: "agent-jobs",
+    assignee: { id: "agent-jobs", display_name: "jobs", kind: "agent" },
+    acceptance_mode: "off",
+    review_of_id: "id-T-1",
+    review_round: 1,
+    meta: { flow: "B" },
+    ...fields,
+  });
+}
+
 /** The author a verdict report must carry to be the configured reviewer's. */
 const REVIEWER_REPORT = {
   author: { id: "agent-jobs", display_name: "jobs", kind: "agent" },
@@ -317,13 +338,34 @@ describe("planReviewDispatch", () => {
     assert.equal(action.acceptance.length, 4, "the generic review checklist now includes coverage");
   });
 
-  it("never reviews a review card, a flow-B card, or a card not in review", () => {
+  it("never reviews a review card or a card not in review", () => {
     const result = planReviewDispatch({
       tasks: [
         reviewCard(),
-        card({ identifier: "T-3", meta: { flow: "B" } }),
         card({ identifier: "T-4", status: "in_progress" }),
       ],
+      config: CONFIG,
+    });
+    assert.deepEqual(result.actions, []);
+    assert.deepEqual(result.alerts, []);
+  });
+
+  it("does not let a patchable meta.flow exempt a card from review", () => {
+    // `flow` is a loop label, not the predicate. A card whose meta says B but
+    // which carries no structural marker is still reviewable — otherwise one
+    // meta write would bypass the independent review.
+    const result = planReviewDispatch({
+      tasks: [card({ identifier: "T-3", meta: { flow: "B" } })],
+      config: CONFIG,
+    });
+    assert.deepEqual(types(result), ["create_review"]);
+  });
+
+  it("resolves a column-only review card through the id index", () => {
+    // No `meta.review_of`: the marker is the only identity. The planner must
+    // still see that this round is already covered, not dispatch a second card.
+    const result = planReviewDispatch({
+      tasks: [card(), columnOnlyReview({ status: "in_progress" })],
       config: CONFIG,
     });
     assert.deepEqual(result.actions, []);
@@ -427,6 +469,18 @@ describe("planReviewDispatch", () => {
 describe("planReviewOutcomes", () => {
   const approve = { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT };
   const reject = { ok: true, verdict: "REJECT", findings: "- the gate is untested", report: REVIEWER_REPORT };
+
+  it("applies a verdict from a review whose identity is only in the column", () => {
+    // Without the id index, `reviewOf` would return null and the outcome would
+    // be `original_unseen`: the exact column-only hole this reader closes.
+    const result = planReviewOutcomes({
+      tasks: [card(), columnOnlyReview()],
+      verdicts: { "T-2": approve },
+      config: CONFIG,
+    });
+    assert.deepEqual(types(result), ["approve"]);
+    assert.equal(result.actions[0].originalRef, "T-1");
+  });
 
   it("approves the original and closes the review card", () => {
     const result = planReviewOutcomes({ tasks: [card(), reviewCard()], verdicts: { "T-2": approve }, config: CONFIG });
@@ -1040,7 +1094,7 @@ describe("planAutoAccept — no review required", () => {
     assert.deepEqual(result.alerts, [{ type: "auto_accept_skipped", reason: "board_truncated" }]);
   });
 
-  it("excludes review cards and flow-B cards", () => {
+  it("excludes review cards (the structural marker, not meta.flow)", () => {
     const result = planAutoAccept({
       tasks: [reviewCard({ status: "in_review", acceptance_mode: "off" })],
       config: { ...CONFIG },

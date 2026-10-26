@@ -69,24 +69,48 @@ const STATUS_COUNT = STATUSES.length;
  * be cleaned up between iterations, which is itself the invariant under test.
  *
  * @param {string} kind the card's `kind` (`TASK_KINDS`)
+ * @param {boolean} reviewCard whether the row carries the structural review marker
  * @returns {string} the task id
  */
-function boardWith(db, from, to, suffix = "", kind = "task", mode = "off") {
-  const id = `t_${from}_${to}${suffix}_${kind}_${mode}`;
+function boardWith(db, from, to, suffix = "", kind = "task", mode = "off", reviewCard = false) {
+  const id = `t_${from}_${to}${suffix}_${kind}_${mode}${reviewCard ? "_revcard" : ""}`;
   insertProject(db);
-  insertTask(db, {
-    id,
-    identifier: `PROJ-${from}-${to}${suffix}-${kind}-${mode}`.toUpperCase(),
-    status: from,
-    kind,
-    acceptance_mode: mode,
-  });
+  if (reviewCard) {
+    // A review card is always `kind=task` and `acceptance_mode=off`
+    // (`resolveCardAcceptance`, and the 0040 trigger). The FK needs a real
+    // original, so seed one in the state the app requires at creation.
+    const originalId = `orig_${id}`;
+    insertTask(db, {
+      id: originalId,
+      identifier: `PROJ-ORIG-${from}-${to}${suffix}`.toUpperCase(),
+      status: "in_review",
+      kind: "task",
+      acceptance_mode: "off",
+    });
+    insertTask(db, {
+      id,
+      identifier: `PROJ-${from}-${to}${suffix}-${kind}-${mode}-REV`.toUpperCase(),
+      status: from,
+      kind,
+      acceptance_mode: mode,
+      review_of_id: originalId,
+      review_round: 1,
+    });
+  } else {
+    insertTask(db, {
+      id,
+      identifier: `PROJ-${from}-${to}${suffix}-${kind}-${mode}`.toUpperCase(),
+      status: from,
+      kind,
+      acceptance_mode: mode,
+    });
+  }
   // 0033 — an epic's delivery row is a rollup, and its `done` row needs one for
   // the current round. The matrix tests the *transition* (the trigger only asks
   // that the row exists, not that it covers the children — the command layer
   // owns coverage), so an empty rollup is the right fixture here.
   const needsEpicRollup = kind === "epic" && (to === "in_review" || to === "done");
-  if (canTransition(from, to, kind, mode) && (to === "in_review" || needsEpicRollup)) {
+  if (canTransition(from, to, kind, mode, reviewCard) && (to === "in_review" || needsEpicRollup)) {
     insertReport(db, { task_id: id, round: 1, is_rollup: needsEpicRollup ? 1 : 0 });
   }
   // 0038 — an `agent` card reaching done owes a current-round review. The
@@ -144,33 +168,58 @@ describe("contract/state-machine — every pair, two paths", () => {
     }
   });
 
-  it("every pair is allowed or rejected identically by JS and by SQL — for every kind and mode", async () => {
+  it("every pair is allowed or rejected identically by JS and by SQL — for every kind, mode and review-card shape", async () => {
     await withBoard(({ db }) => {
       const disagreements = [];
       const codeMismatches = [];
+      // A review card is always `kind=task` and `acceptance_mode=off`, so the
+      // review-card axis is one cell on top of the kind × mode grid — not a
+      // third cross-product (an `agent` review card cannot even be inserted;
+      // the 0040 trigger refuses it).
+      const axes = [];
       for (const kind of TASK_KINDS) {
-        for (const mode of ACCEPTANCE_MODES) {
-          for (const [from, to] of PAIRS) {
-            if (from === to) continue; // a no-op is not a transition — asserted below
-            const taskId = boardWith(db, from, to, "", kind, mode);
-            const dbVerdict = move(db, taskId, to);
-            const dbAllowed = dbVerdict === "NO_ERROR";
-            const jsAllowed = canTransition(from, to, kind, mode);
+        for (const mode of ACCEPTANCE_MODES) axes.push({ kind, mode, reviewCard: false });
+      }
+      axes.push({ kind: "task", mode: "off", reviewCard: true });
 
-            if (dbAllowed !== jsAllowed) {
-              disagreements.push(`${kind}/${mode} ${from} → ${to}: js=${jsAllowed ? "allow" : "reject"} sql=${dbVerdict}`);
-            }
-            if (!jsAllowed) {
-              const expected = transitionReasonCode(from, to, kind, mode);
-              if (dbVerdict !== expected) {
-                codeMismatches.push(`${kind}/${mode} ${from} → ${to}: sql=${dbVerdict} js=${expected}`);
-              }
+      for (const { kind, mode, reviewCard } of axes) {
+        const label = `${kind}/${mode}${reviewCard ? "/review" : ""}`;
+        for (const [from, to] of PAIRS) {
+          if (from === to) continue; // a no-op is not a transition — asserted below
+          const taskId = boardWith(db, from, to, "", kind, mode, reviewCard);
+          const dbVerdict = move(db, taskId, to);
+          const dbAllowed = dbVerdict === "NO_ERROR";
+          const jsAllowed = canTransition(from, to, kind, mode, reviewCard);
+
+          if (dbAllowed !== jsAllowed) {
+            disagreements.push(`${label} ${from} → ${to}: js=${jsAllowed ? "allow" : "reject"} sql=${dbVerdict}`);
+          }
+          if (!jsAllowed) {
+            const expected = transitionReasonCode(from, to, kind, mode, reviewCard);
+            if (dbVerdict !== expected) {
+              codeMismatches.push(`${label} ${from} → ${to}: sql=${dbVerdict} js=${expected}`);
             }
           }
         }
       }
-      assert.deepEqual(disagreements, [], "service and trigger must agree on every pair, for every kind and mode");
+      assert.deepEqual(disagreements, [], "service and trigger must agree on every pair, kind, mode and review-card shape");
       assert.deepEqual(codeMismatches, [], "and must report the same reason code");
+    });
+  });
+
+  it("withholds the off direct-done edge from a review card, on both paths", async () => {
+    await withBoard(({ db }) => {
+      // The review-card axis is not merely "another kind": the same task in
+      // `off` mode gains the direct edge, while a review card must deliver its
+      // verdict through `in_review`.
+      assert.equal(canTransition("in_progress", "done", "task", "off", false), true);
+      assert.equal(canTransition("in_progress", "done", "task", "off", true), false);
+      assert.equal(transitionReasonCode("in_progress", "done", "task", "off", true), "INVALID_TRANSITION");
+
+      const plain = boardWith(db, "in_progress", "done", "_plain", "task", "off", false);
+      const review = boardWith(db, "in_progress", "done", "_review", "task", "off", true);
+      assert.equal(move(db, plain, "done"), "NO_ERROR", "the ordinary off card keeps the shortcut");
+      assert.equal(move(db, review, "done"), "INVALID_TRANSITION", "the review card does not");
     });
   });
 

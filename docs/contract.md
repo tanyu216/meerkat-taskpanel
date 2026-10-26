@@ -118,7 +118,11 @@ behaviour behind it:
 - **A declared enum is not a validator.** `GET /api/v1/tasks?kind=…` declares the
   task-kind vocabulary, but the handler refuses an unknown value itself
   (`VALIDATION_FAILED`) — the schema is never run. The declaration tells a client
-  what the route means; it does not make the route check it.
+  what the route means; it does not make the route check it. The read also takes
+  `kind=review`, which is a **filter over the review marker**
+  (`review_of_id IS NOT NULL`), not a third kind: create/update still accept only
+  `task|epic`, and `kind=task` keeps returning review cards. Each card's wire
+  carries the derived `role` (`task|epic|review`) for the readable word.
 - **A declared field does not imply the check on every path.**
   `POST /api/v1/tasks/:ref/claim` declares `check_blockers`, but only
   `issue claim --check-blockers` re-reads the dependency graph

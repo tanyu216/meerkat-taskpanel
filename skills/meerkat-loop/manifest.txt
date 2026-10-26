@@ -5,6 +5,7 @@ scripts/foundation/env-file.mjs
 scripts/foundation/errors.mjs
 scripts/foundation/project-dir.mjs
 scripts/foundation/redact.mjs
+scripts/foundation/review-identity.mjs
 scripts/foundation/role-prompt.mjs
 scripts/foundation/roles.mjs
 scripts/foundation/runtime-locator.mjs

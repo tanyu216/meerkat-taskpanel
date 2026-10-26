@@ -234,7 +234,7 @@ export function createTasksRepository(db) {
      * that a hand-edited row left malformed, so the read degrades to no match
      * rather than raising.
      *
-     * @param {{projectId?: string, kind?: string, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, reviewOfId?: string, parentId?: string, labels?: string[], target?: string, metaEquals?: {key: string, value: string}[], includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
+     * @param {{projectId?: string, kind?: string, hasReviewMarker?: boolean, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, reviewOfId?: string, parentId?: string, labels?: string[], target?: string, metaEquals?: {key: string, value: string}[], includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
      */
     list(filter = {}) {
       const clauses = [];
@@ -248,6 +248,11 @@ export function createTasksRepository(db) {
       if (filter.kind !== undefined) {
         clauses.push("kind = ?");
         values.push(filter.kind);
+      }
+      // `kind=review`'s translated form (`commands/tasks.mjs#readOrdered`): the
+      // review identity is the marker column, never a kind of its own.
+      if (filter.hasReviewMarker === true) {
+        clauses.push("review_of_id IS NOT NULL");
       }
       if (filter.status !== undefined) {
         const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];

@@ -13,7 +13,7 @@ import { DomainError } from "../../foundation/errors.mjs";
 import { assertWaiverRequest } from "../domain/delivery-gate.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
-import { assertTransition, isTerminalStatus } from "../domain/status.mjs";
+import { isTerminalStatus, transitionPolicyFor } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import {
   assertAcceptance,
@@ -155,13 +155,7 @@ export function deliver(ctx, input) {
       // (or stamping the waiver) below. The database trigger still checks that
       // it really happened — if the ordering here were wrong, the status update
       // would be refused.
-      assertTransition(
-        task.status,
-        to,
-        task.kind,
-        task.acceptanceMode,
-        task.reviewOfId !== null && task.reviewOfId !== undefined,
-      );
+      transitionPolicyFor(task).assert(to);
       // `deliver` accepts a wire-only `to`; a delivery that lands on `done` is
       // still an acceptance and obeys the card's own acceptance mode. In `off`
       // mode this is the direct `in_progress → done` path.

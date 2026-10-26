@@ -190,12 +190,17 @@ export function registerTaskRoutes(router, surface) {
       });
     }
     // An unknown kind is a caller mistake, not an empty page — the declaration
-    // states the vocabulary but does not enforce it.
+    // states the vocabulary but does not enforce it. `review` is a read-side
+    // alias for the review marker (`review_of_id IS NOT NULL`), not a third
+    // kind: a review card is an ordinary `kind=task` card, so `kind=task` keeps
+    // returning it and `kind=review` only narrows further. `POST`/`PATCH` still
+    // take `TASK_KINDS` alone, so no card can be created as `review`.
     const kind = query.get("kind");
-    if (kind !== null && !TASK_KINDS.includes(kind)) {
+    const listKinds = [...TASK_KINDS, "review"];
+    if (kind !== null && !listKinds.includes(kind)) {
       throw new DomainError("VALIDATION_FAILED", {
         message: `unknown kind ${JSON.stringify(kind)}`,
-        details: { field: "kind", received: kind, allowed: TASK_KINDS },
+        details: { field: "kind", received: kind, allowed: listKinds },
       });
     }
     const filter = {
