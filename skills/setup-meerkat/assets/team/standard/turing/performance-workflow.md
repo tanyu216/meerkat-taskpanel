@@ -36,10 +36,11 @@ regression from noise. Check for leaks and soak behaviour.
 Compare against the threshold or SLO. A regression beyond the threshold blocks delivery.
 Record the evidence and the environment.
 
-### 7. Self-check and deliver
+### 7. Deliver
 
-Deliver at `in_review` with the reproducible command and configuration, the raw results,
-the variance, the conclusion and the leftovers. Do not issue a verdict.
+Re-export the brief (`taskctl export md <id> --out .meerkat/<id>/card.md`), then deliver at
+`in_review` with the reproducible command and configuration, the raw results, the variance,
+the conclusion and the leftovers. Do not issue a verdict.
 
 ## Boundaries
 

@@ -1,23 +1,30 @@
 # Turing — self-check before delivery
 
-Run this after the branch work and before `issue deliver`. Use the section for the branch
-you ran; the shared checks apply to all.
+Run this after the branch work and before `issue deliver`. First re-export the brief so the
+check runs against the current card, then use the section for the branch you ran; the
+shared checks apply to all.
+
+```bash
+taskctl export md <id> --out .meerkat/<id>/card.md
+```
+
+Never hand-edit `card.md`; re-export it. This is the role's pre-delivery audit. It is not
+the `## Handoff` block: that block is a producer card's cross-card transfer (Jobs design,
+Linus architecture only).
 
 ## Shared
 
-1. Re-read `.meerkat/<id>/card.md`, the live card, the frozen `acceptance` snapshot and
-   this card's `.meerkat/<id>/plan.md`.
-2. Build an acceptance → test/evidence table in `plan.md`: every acceptance item, every
-   requirement in the description and comments, and every boundary or failure path.
-3. Each row names the test, the command, the exit code and the coverage.
-4. Any row with no proof is an **omission**: add the test, ask with an agent `question`, or
-   record a deliberate leftover with the reason.
-5. A failure is a failure, not a leftover. Do not issue a verdict; the reviewer is
+1. Re-read `.meerkat/<id>/card.md`, the live card, the frozen `acceptance` and this card's
+   `.meerkat/<id>/plan.md`.
+2. Build an acceptance → test/evidence table in `plan.md` for every acceptance item,
+   description requirement and boundary/failure path. Each row names the test, command,
+   exit code and coverage. A row with no proof is an **omission**: add the test, ask with an
+   agent `question`, or record a deliberate leftover.
+3. A failure is a failure, not a leftover. Do not issue a verdict; the reviewer is
    independent.
-6. The decision round is closed and its answers are recorded in the plan or `test-plan.md`.
-7. Test names and fixtures use the canonical terms; any term conflict is recorded, and no
-   glossary or ADR was edited.
-8. If the card has a `## Handoff` block or `meta.design_stage`, every named path/report
+4. The decision round is closed (answers in the plan or `test-plan.md`); test names and
+   fixtures use the canonical terms, and no glossary or ADR was edited.
+5. If the card has a `## Handoff` block or `meta.design_stage`, every named path/report
    exists and was used; the acceptance matrix cites the handoff's acceptance source. A
    regression card uses no design artifacts.
 
@@ -34,38 +41,32 @@ The reviewer re-runs them independently; a red gate is not a delivery.
 
 ## Test-design branch
 
-9. `.meerkat/<id>/test-plan.md` carries the traceability matrix and the entry/exit criteria.
-10. Every acceptance item has at least one test; API and browser-based flows are covered
-    where the change exposes them; no acceptance item is covered only by a mock or a
-    constructor.
-11. The test-case review is recorded with findings and dispositions.
-12. The hard rules hold: 100% pass, line/branch/function coverage >80%, mocks only at the
-    http/websocket/db/redis external boundaries and never an internal module or function,
-    no mocks in integration.
-13. The security review records findings with severity; a serious finding blocks.
-14. `.meerkat/<id>/test-plan.md` records the decision round's answers, and the scenarios use
-    the canonical terms.
-15. The commands and results are reproducible and offline.
+6. `.meerkat/<id>/test-plan.md` carries the traceability matrix, entry/exit criteria and the
+   decision-round answers, with canonical terms.
+7. Every acceptance item has at least one test; API and browser flows are covered where the
+   change exposes them; none is covered only by a mock or a constructor; the test-case review
+   is recorded.
+8. The hard rules hold: 100% pass, coverage >80%, mocks only at the http/websocket/db/redis
+   external boundaries and never internal, no mocks in integration.
+9. The security review records findings with severity; a serious finding blocks. Commands and
+   results are reproducible and offline.
 
 ## Regression branch
 
-9. The original case failed before the fix and passes after it; both outputs are recorded.
-10. The blast radius is covered: targeted, surrounding and contract/schema.
-11. For a production bug: the observation window and rollback trigger are recorded, and the
-    mitigation does not hide a new error signature.
-12. The regression test is committed and no unrelated change slipped into the fix.
-13. The fix card is still in the delivery round that was verified.
+6. The original case failed before the fix and passes after it; both outputs are recorded.
+7. The blast radius is covered: targeted, surrounding and contract/schema; for a production
+   bug, the observation window and rollback trigger are recorded.
+8. The regression test is committed, no unrelated change slipped in, and the fix card is
+   still in the verified delivery round.
 
 ## Performance branch
 
-9. The metric, load, baseline and threshold are stated.
-10. The environment and workload are recorded and reproducible.
-11. Multiple runs are reported with variance, not a single sample.
-12. The bottleneck analysis separates a regression from noise, and soak/leak behaviour is
-    checked.
-13. The conclusion compares against the threshold and states whether it blocks.
+6. The metric, load, baseline and threshold are stated; the environment and workload are
+   reproducible, and multiple runs are reported with variance.
+7. The bottleneck analysis separates a regression from noise, checks soak/leak behaviour, and
+   compares against the threshold.
 
 ## Delivery
 
-Confirm the report names the branch, the commands and results, the coverage, the evidence
-anchors and the leftovers. Deliver at `in_review`. Do not issue a verdict.
+Confirm the report names the branch, commands and results, coverage, evidence anchors and
+leftovers. Deliver at `in_review`. Do not issue a verdict.

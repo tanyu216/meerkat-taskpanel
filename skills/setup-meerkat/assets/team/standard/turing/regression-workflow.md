@@ -55,10 +55,11 @@ Never run a destructive production action without the human.
 Record the commands, exit codes, before/after results, the coverage delta and the production
 observations. The evidence must let the reviewer reproduce the verdict.
 
-### 7. Self-check and deliver
+### 7. Deliver
 
-Confirm there are no unrelated changes, the regression test is committed, and the fix card
-is still in the round you verified. Deliver at `in_review`; do not issue a verdict.
+Re-export the brief (`taskctl export md <id> --out .meerkat/<id>/card.md`). Confirm there
+are no unrelated changes, the regression test is committed, and the fix card is still in
+the round you verified. Deliver at `in_review`; do not issue a verdict.
 
 ## Boundaries
 

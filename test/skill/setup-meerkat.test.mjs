@@ -118,7 +118,7 @@ describe("skill frontmatter and assets", () => {
     }
   });
 
-  it("runs a design card as plan → prototype → PRD → self-check → review", () => {
+  it("runs a design card as plan → prototype → PRD → self-check → deliver", () => {
     const jobs = join(SKILL, "assets", "team", "standard", "jobs");
     const workflow = readFileSync(join(jobs, "workflow.md"), "utf8");
     const ui = readFileSync(join(jobs, "ui-workflow.md"), "utf8");
@@ -135,7 +135,7 @@ describe("skill frontmatter and assets", () => {
       "### 3. Write the PRD",
       "### 4. Archive the product artifacts",
       "### 5. Self-check the PRD and the archive",
-      "### 6. Review and handoff",
+      "### 6. Deliver",
     ];
     let at = -1;
     for (const stage of stages) {
@@ -185,7 +185,7 @@ describe("skill frontmatter and assets", () => {
       "Direction check",
       "Prototype check",
       "PRD check",
-      "Handoff and delivery check",
+      "Handoff block and delivery check",
     ]) {
       assert.match(jobsCheck, new RegExp(section), `Jobs self-check has a ${section}`);
     }
@@ -281,9 +281,8 @@ describe("skill frontmatter and assets", () => {
     assert.match(jobs, /stage_handoff/);
     assert.match(jobs, /product_change=none/);
     assert.match(jobs, /project session/i);
-    assert.match(jobs, /--type blocks --target/);
-    assert.match(jobs, /--type parent --target/);
-    assert.match(jobs, /backlog/);
+    assert.match(jobs, /references\/roles\.md/, "the create sequence stays in references/roles.md");
+    assert.match(jobs, /Card and plan lifecycle/, "the project session owns the triage lifecycle");
     assert.match(jobs, /do not create .*downstream card/i);
     assert.doesNotMatch(jobs, /five stages/i);
     assert.doesNotMatch(jobs, /inherit or extend/i);
@@ -374,6 +373,34 @@ describe("skill frontmatter and assets", () => {
     assert.match(skill, /100%/);
     assert.match(policy, /card-shape triage|triage/i);
     assert.match(policy, /epic/i);
+  });
+
+  it("names the pre-delivery audit and ends every worker flow in Deliver", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    for (const role of ["jobs", "linus", "turing"]) {
+      const check = readFileSync(join(team, role, "self-check.md"), "utf8");
+      assert.match(check, /pre-delivery audit/, `${role} self-check names the audit`);
+      assert.match(check, /not\s+the `## Handoff` block/, `${role} self-check is not the handoff`);
+      assert.match(check, /export md/, `${role} self-check re-exports the brief`);
+      assert.match(check, /card\.md/, `${role} self-check names the brief`);
+    }
+
+    for (const [file, heading] of [
+      ["linus/architecture-workflow.md", "### 9. Deliver"],
+      ["linus/implementation-workflow.md", "### 8. Deliver"],
+      ["turing/test-design-workflow.md", "### 9. Deliver"],
+      ["turing/regression-workflow.md", "### 7. Deliver"],
+      ["turing/performance-workflow.md", "### 7. Deliver"],
+    ]) {
+      const text = readFileSync(join(team, file), "utf8");
+      assert.ok(text.includes(heading), `${file} must end in ${heading}`);
+    }
+
+    const testDesign = readFileSync(join(team, "turing", "test-design-workflow.md"), "utf8");
+    assert.doesNotMatch(testDesign, /^### 4\. Self-check/m, "step 4 is a plan check, not the self-check");
+
+    const prompt = readFileSync(join(team, "reviewer", "reviewer-prompt.md"));
+    assert.ok(prompt.length <= 2400, "the reviewer prompt must fit its 2,400-character inline budget");
   });
 
   it("does not ship a roles/ directory inside the loop skill", () => {

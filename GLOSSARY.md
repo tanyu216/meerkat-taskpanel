@@ -451,6 +451,15 @@ at the exported `card.md` inside it.
 _中文_: 交接
 _Avoid_: prompt, context, briefing
 
+**Handoff block**:
+A `## Handoff` section in a producer card's delivery report `conclusion` — the archived
+spec/PRD/prototype paths, the acceptance source, the delivery shape and the proposed next
+cards. Only a producer card (Jobs design, Linus architecture) writes it; the project
+session copies it into the downstream card. Distinct from the wake **Handoff** above and
+from the role's **Self-check**.
+_中文_: 交接块
+_Avoid_: handoff, card handoff (both ambiguous here)
+
 **Card brief**:
 The loop's export of one card at `.meerkat/<identifier>/card.md`, under the project's
 working directory. It is the authoritative snapshot a worker or reviewer is handed; it is
@@ -466,6 +475,21 @@ the project session reads from. Distinct cards are never merged; a handoff is re
 after its subagent is recorded in the ledger.
 _中文_: 交接队列
 _Avoid_: job queue, work queue
+
+**Self-check**:
+A worker role's pre-delivery audit: re-read the card and frozen acceptance, map every
+requirement and acceptance item to evidence, record omissions, re-run the claimed gates,
+and confirm the report is complete. It is internal to the delivering card; it is not the
+**Handoff block**, which is the cross-card transfer.
+_中文_: 交付前自检
+_Avoid_: handoff check, review (the reviewer owns the independent verdict)
+
+**Deliver**:
+The terminal worker action: `taskctl issue deliver` a report and stop at `in_review`. The
+workflow's last stage is named Deliver; it runs the **Self-check** first and, on a producer
+card, writes the **Handoff block**.
+_中文_: 交付
+_Avoid_: done, approve, close (the reviewer and the loop own those)
 
 **Ledger**:
 The supervisor's own record of live subagents (`subagents.state.json`): project directory,

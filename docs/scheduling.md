@@ -582,9 +582,9 @@ A roles root is a directory with `manifest.json`:
 <roles-root>/
 ├── manifest.json
 ├── decision-policy.md          optional; overrides the loop's default ladder
-├── jobs/{workflow.md,self-check.md}
-├── linus/{workflow.md,self-check.md}
-├── turing/{workflow.md,self-check.md}
+├── jobs/{workflow.md,ui-workflow.md,self-check.md}
+├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,self-check.md}
+├── turing/{workflow.md,test-design-workflow.md,regression-workflow.md,performance-workflow.md,self-check.md}
 └── reviewer/{workflow.md,reviewer-prompt.md}
 ```
 
@@ -606,8 +606,8 @@ the poll or the wake.
 **Two layers.** The loop routes by the card's assignee and puts the role's title,
 responsibilities and boundaries into the handoff (layer 1); the spawned subagent reads the
 role's `workflow.md` (and `self-check.md`) before acting (layer 2). The reviewer's prompt is
-inlined at the start of the review handoff. Every role is told to write and maintain
-`.meerkat/<identifier>/plan.md`, which the reviewer reads.
+inlined at the start of the review handoff, bounded at 2,400 characters. Every role is told
+to write and maintain `.meerkat/<identifier>/plan.md`, which the reviewer reads.
 
 **Decisions.** A subagent does not decide an unauthorized question: it writes an agent
 `question` comment on the `in_progress` card and stops. The project session answers

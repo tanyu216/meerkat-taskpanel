@@ -40,8 +40,6 @@ complete decision, and ask again if it is not.
 
 ## The reviewer
 
-The reviewer never asks a blocking question and never enters `awaiting`. It answers the
-review card's acceptance and ends in `VERDICT: APPROVE` or `VERDICT: REJECT`; ambiguous or
-insufficient evidence is a REJECT with findings. It re-runs the mandatory gates (100% pass,
->80% coverage, mock boundaries, security scan) and audits the changed surface against CWE
-Top 25, OWASP Top 10 and OWASP ASVS; a red gate is a REJECT.
+The reviewer never asks a blocking question and never enters `awaiting`: it answers the
+review card's acceptance with `VERDICT: APPROVE` or `VERDICT: REJECT`, and re-runs the
+mandatory gates. A red gate or insufficient evidence is a REJECT.

@@ -143,6 +143,12 @@ project session and the human. The role self-checks its execution. The independe
 audits the delivered artifacts at `in_review` and never re-decides the direction. The
 reviewer also checks that acceptance items and test names use the canonical terms.
 
+The **self-check** is the role's own pre-delivery audit: the card's requirements and
+acceptance mapped to evidence, with the gates re-run. It is **not** the `## Handoff` block;
+that block is a producer card's cross-card transfer (Jobs design, Linus architecture only).
+The last stage of every workflow is **Deliver** — run the self-check, add the handoff block
+on a producer card, then `issue deliver` at `in_review`.
+
 ## Manifest
 
 ```json
@@ -188,8 +194,8 @@ not merged role-by-role.
 2. **Workflow** — the handoff carries the role workflow (and self-check) path; the spawned
    subagent reads them before acting.
 
-The reviewer's prompt is inlined at the start of the reviewer handoff (bounded); the
-worker workflow stays a path.
+The reviewer's prompt is inlined at the start of the reviewer handoff, bounded at 2,400
+characters; the worker workflow stays a path.
 
 ## Board names and the scan set
 

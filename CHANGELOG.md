@@ -9,6 +9,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The standard team's role workflows end in `Deliver`.** Every worker workflow's final
+  stage is now named `Deliver` (the board verb `issue deliver`): run the role's
+  `self-check.md` — its pre-delivery audit — then, on a producer card, write the
+  `## Handoff` block and deliver at `in_review`. The self-check and the handoff block are
+  now defined as distinct things in `GLOSSARY.md`, and every self-check / Deliver step
+  re-exports `card.md` before the final audit. The reviewer prompt is compressed to fit
+  inside its 2,400-character inline budget instead of being truncated mid-audit; the team
+  files themselves are shortened without changing role ids, manifest keys or file names.
+
 - **The container gate runs at `pre-push`, not as a merge step.** `.githooks/pre-push` now
   ends with `npm run verify:docker` on every branch push: after the static gates (a cheap
   failure never starts an image build) and only when a branch commit is actually moving (a

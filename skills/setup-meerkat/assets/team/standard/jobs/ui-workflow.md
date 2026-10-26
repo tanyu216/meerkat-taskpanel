@@ -1,7 +1,7 @@
 # UI workflow — validate a design with a prototype
 
-Read this in card mode before stage 2 of the role workflow, when a card changes what a user
-sees or does; read it directly in standalone mode for a single feature optimization or
+Read this in card mode before stage 2 of the role workflow, when a card changes what a
+user sees or does; read it directly in standalone mode for a single feature optimization or
 prototype revision. The prototype answers the design questions with evidence; it does not
 write the PRD unless the change is product-scoped, and it is not a delivery.
 
@@ -37,13 +37,11 @@ file paths.
 
 ## Inputs
 
-- in card mode: `card.md`, the live card and the frozen `acceptance` snapshot;
-- in standalone mode: the brief in `design/specs/<content-slug>.md` is the acceptance
-  source; there is no card workspace;
-- `.meerkat/<id>/spec.md` (card mode) or `design/specs/<content-slug>.md` (standalone): the
-  frozen direction, the states and the 1–3 assumptions;
-- `.meerkat/<id>/plan.md` (card mode) or the brief (standalone): the index (acceptance
-  mapping, risks, open questions);
+- card mode: `card.md`, the live card, the frozen `acceptance`, `.meerkat/<id>/spec.md`
+  (direction, states, assumptions) and `.meerkat/<id>/plan.md` (acceptance mapping, risks,
+  open questions);
+- standalone mode: the brief in `design/specs/<content-slug>.md` is the acceptance source
+  and the index; there is no card workspace;
 - the project's existing design system or tokens, if any. Extend it; never fork a second.
 
 ## Steps
@@ -51,25 +49,24 @@ file paths.
 ### 1. Question card
 
 Write the 1–3 questions the prototype answers. In standalone mode this is the one-page
-brief in `design/specs/<content-slug>.md`. A prototype that answers no question is waste. If
-the question is about state or logic rather than appearance, build a single clickable HTML
-demo instead of UI variants.
+brief. A prototype that answers no question is waste. If the question is about state or
+logic rather than appearance, build a single clickable HTML demo instead of UI variants.
 
 ### 2. Diverge
 
 Build 3 variants (max 5) in the real shell with representative data. Switch them with a
 URL parameter (`?variant=`) and a floating bar; keep the bar out of the deliverable.
-Variants must differ in at least two of: layout, information hierarchy, primary
-affordance, navigation model. Colour-only variants are not variants.
+Variants must differ in at least two of: layout, information hierarchy, primary affordance,
+navigation model. Colour-only variants are not variants.
 
 ### 3. Converge
 
 Pick one variant; mixing is allowed ("B's header with C's sidebar"). Record the choice, the
 rejected variants and why in `.meerkat/<id>/spec.md` (card mode) or
 `design/specs/<content-slug>.md` (standalone), and link the verdict from `plan.md` (card
-mode). Write the one token source: colour (named values),
-type and scale, spacing ladder, radius, elevation, motion, component states, accessibility
-baseline, and the anti-patterns that would be a failure.
+mode). Write the one token source: colour (named values), type and scale, spacing ladder,
+radius, elevation, motion, component states, accessibility baseline, and the anti-patterns
+that would be a failure.
 
 ### 4. Build
 
@@ -94,18 +91,13 @@ Run four gates in order; the expensive ones do not replace the cheap ones.
    acceptance; the independent reviewer still audits the PRD and the prototype evidence at
    delivery.
 
-### 6. Archive
+### 6. Archive evidence
 
 Put the verdict, the evidence (screenshots, commands, readings) and the rejected variants
 in `.meerkat/<id>/prototype/` (card mode) or `design/prototype/<content-slug>/`
 (standalone). Keep the chosen prototype as the reference for the PRD and the implementation
-handoff. The switcher and the losing variants do not ship.
-
-## Evidence
-
-A claim without evidence is an open question, not a decision. Store screenshots, geometry
-readings and check outputs in `.meerkat/<id>/prototype/` (card mode) or
-`design/prototype/<content-slug>/` (standalone), never in a scratch directory.
+handoff. The switcher and the losing variants do not ship. A claim without evidence is an
+open question, not a decision: never store evidence in a scratch directory.
 
 ## Boundaries
 

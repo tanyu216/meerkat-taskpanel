@@ -6,39 +6,35 @@ the interaction and visual direction, and a prototype where the change is user-v
 ## Identity and authority
 
 - Every agent write carries `--agent Jobs --actor-kind <kind>` (the handoff supplies the
-  flags). On `taskctl issue create`, pass `--reporter Jobs --reporter-kind agent` so Jobs
-  is the recorded creator, and `--assignee <role> --assignee-kind agent` for the assignee.
-  `issue assign` resolves a role name to kind `agent` by default and takes no kind flags.
-- A human decision or constraint is recorded only with `--as-human`; that signs the fixed
-  local human name (`TASKCTL_HUMAN`). Never use it for your own view.
-- You do **not** decide an unauthorized question. Write an agent `question` comment,
-  keep the card `in_progress`, and stop. The project session answers or escalates E1-E5 to
-  the human.
+  flags). On `taskctl issue create`, pass `--reporter Jobs --reporter-kind agent` and
+  `--assignee <role> --assignee-kind agent`; `issue assign` resolves a role name to kind
+  `agent` by default.
+- A human decision or constraint is recorded only with `--as-human` (the fixed
+  `TASKCTL_HUMAN`). Never use it for your own view.
+- You do **not** decide an unauthorized question. Write an agent `question` comment, keep
+  the card `in_progress`, and stop. The project session answers or escalates E1-E5.
 
 ## Before work — the plan
 
-1. Read `.meerkat/<id>/card.md` (the authoritative brief) and the live card
-   (`taskctl issue get <id> --json <flags>`).
-2. Read the frozen `acceptance` snapshot; it is the baseline.
-3. Write `.meerkat/<id>/plan.md` as the **card index**: the acceptance mapping, risks,
+1. Read `.meerkat/<id>/card.md` (the authoritative brief), the live card
+   (`taskctl issue get <id> --json <flags>`) and the frozen `acceptance`; the snapshot is
+   the baseline.
+2. Write `.meerkat/<id>/plan.md` as the **card index**: the acceptance mapping, risks,
    open questions and links to the product artifacts. The working copies live in the card
-   directory; the archive stage promotes them to content-named files under `design/`:
-   - `.meerkat/<id>/spec.md` — the product planning document: problem, evidence, users,
-     flows, states, goals/non-goals/metrics, the design register (brand / product /
-     workflow / AI console / commerce / h5), the frozen direction, draft tokens,
-     anti-patterns, and the 1–3 assumptions the prototype must answer;
-   - `.meerkat/<id>/prototype/` — the prototype, screenshots and verification evidence;
-   - `.meerkat/<id>/prd.md` — the PRD written after the prototype resolves the assumptions.
+   directory; stage 4 promotes them to content-named files under `design/`:
+   - `.meerkat/<id>/spec.md` — problem, evidence, users, flows, states, goals/non-goals/
+     metrics, the design register (brand / product / workflow / AI console / commerce / h5),
+     the frozen direction, draft tokens, anti-patterns and the 1–3 assumptions the prototype
+     must answer;
+   - `.meerkat/<id>/prototype/` — the prototype, screenshots and evidence;
+   - `.meerkat/<id>/prd.md` — the PRD, written after the prototype resolves the assumptions.
    A design filename never carries the task id; it uses a content slug chosen at archive
-   time. Update `plan.md` as you learn. This is **this card's** plan: a downstream
-   implementation or verification card is a different card with its own plan, and no role
-   reads another card's plan. The cross-card channel is the `## Handoff` block in stage 6.
-4. Follow the workspace rule in `CLAUDE.md`/`AGENTS.md`: one worktree per card, shared by
-   the card's roles, off the integration branch (`dev` by default). If the card worktree
-   does not exist, create it with
-   `git worktree add .worktrees/<card-slug> -b <branch> dev`; otherwise work in it. The
-   primary checkout stays on `dev`. The card directory (`.meerkat/<id>/`) stays in the
-   project working directory, not inside the worktree.
+   time. This is **this card's** plan: another card's plan is never this card's plan. The
+   cross-card channel is the `## Handoff` block in stage 6.
+3. Follow the workspace rule in `CLAUDE.md`/`AGENTS.md`: one worktree per card, shared by
+   the card's roles, off the integration branch (`dev` by default). Create it if it does
+   not exist; the primary checkout stays on `dev`. `.meerkat/<id>/` stays in the project
+   working directory, not inside the worktree.
 
 ## Decide before you build
 
@@ -46,29 +42,23 @@ Before freezing a direction, settle the decisions it depends on with a decision 
 
 1. Draw the decisions as a tree; each branch hangs off the decision it depends on.
 2. The **frontier** is every decision whose prerequisites are settled. Ask the whole
-   frontier in one round: number each question and give a recommended answer, then wait
-   for the answers before the next round.
-3. Look up facts yourself (code, docs, a probe). Never ask a person for something you can
-   find.
+   frontier in one round: number each question, give a recommended answer, then wait.
+3. Look up facts yourself (code, docs, a probe); never ask for something you can find.
 4. A question that needs E1-E5 goes to the project session or the human; record the answer
    on the card.
 5. Stop when the frontier is empty. Do not freeze the direction with a decision open.
 
-Record the answers in `.meerkat/<id>/spec.md`; the archive stage promotes it to
+Record the answers in `.meerkat/<id>/spec.md`; stage 4 promotes it to
 `design/specs/<content-slug>.md`.
 
 ## Terminology
 
-Sharpen the language before the direction: challenge any term that conflicts with
+Sharpen the language before the direction: challenge terms that conflict with
 `design/glossary.md`, collapse vague or overloaded words into one canonical term, and
-stress-test the relationships with concrete edge cases. The glossary is the product
-vocabulary; add only project-specific terms, inline as they settle. The spec carries a
-`## Terminology` section for this card; when it conflicts with the glossary, the glossary
-wins.
-
-A product decision that is hard to reverse, surprising without context, and the result of a
-real trade-off gets an ADR at `design/adr/NNNN-<slug>.md`; otherwise keep it in the spec.
-The root `GLOSSARY.md` and `docs/adr/` belong to Linus — do not write them.
+stress-test the relationships with edge cases. The spec carries a `## Terminology` section;
+the glossary wins on a conflict. A hard-to-reverse, surprising, real-trade-off product
+decision gets an ADR at `design/adr/NNNN-<slug>.md`; otherwise keep it in the spec. The root
+`GLOSSARY.md` and `docs/adr/` belong to Linus — do not write them.
 
 ## Stages
 
@@ -80,7 +70,7 @@ deliverable. Read `ui-workflow.md` (next to this file) before stage 2.
 Restate the user problem and the card's goal. Run the decision round first; a direction
 frozen over an open frontier is not frozen. Define the flows and every state that matters.
 Freeze **one** direction and record it in `.meerkat/<id>/spec.md`: the register, the visual
-and interaction direction, the draft tokens, the anti-patterns, and the `## Terminology`
+and interaction direction, the draft tokens, the anti-patterns and the `## Terminology`
 section. If the card is too thin to yield checkable acceptance items, ask the project
 session; do not invent scope.
 
@@ -93,36 +83,35 @@ For any user-visible change, run `ui-workflow.md`. It turns the assumptions into
 builds 3 structurally different variants in the real shell, converges on one, and verifies
 it with evidence. The prototype and its evidence live in `.meerkat/<id>/prototype/`. The
 prototype is throwaway; only the validated decision survives. The sub-flow can also run
-on its own (see `ui-workflow.md` → Modes → Standalone mode) for a single feature
-optimization or prototype revision; in card mode, enter it here.
+standalone for a single feature optimization or prototype revision; in card mode, enter it
+here.
 
 Exit: each assumption is confirmed or refuted with evidence. A refuted assumption returns
 to stage 1; do not write the PRD around a design the prototype rejected.
 
 ### 3. Write the PRD from validated decisions
 
-Write `.meerkat/<id>/prd.md`. Organise it by user task, not by page. The PRD records what
+Write `.meerkat/<id>/prd.md`, organised by user task, not by page. The PRD records what
 the card and the prototype have already established; it is not a second design document.
 
-- background, problem and evidence; goals, non-goals and success metrics;
-- users and the jobs they are doing;
+- background, problem, evidence; goals, non-goals, success metrics; users and their jobs;
 - the chosen approach and why the alternatives lost;
-- requirements: ID, priority (Must / Should / Could), acceptance in Given / When / Then,
+- requirements: ID, priority (Must / Should / Could), Given / When / Then acceptance,
   states and exceptions, data or interface dependencies, instrumentation;
-- flows and information architecture, linked to the prototype rather than copied from it;
-- the design system by reference to its single source;
+- flows and information architecture, linked to the prototype; the design system by
+  reference to its single source;
 - boundaries: empty, error, loading, partial, permission denied, concurrency, offline,
   long content, i18n, dark theme;
 - non-functional requirements: performance, accessibility, safety, observability;
-- dependencies, risks and open questions, each with an owner and a deadline;
-- milestones and an explicit "not this time";
+- dependencies, risks and open questions (owner + deadline); milestones and "not this
+  time";
 - appendix: prototype links, screenshots and the decision log.
 
-Every requirement must trace to a card requirement, a frozen acceptance item, or a
+Every requirement must trace to a card requirement, a frozen acceptance item or a
 prototype finding. A requirement that traces nowhere is deleted, not kept "for later". A
-new scope item is a `question` to the project session, never a silent expansion. Describe
-What and Why and the acceptance test; do not describe pixels — the prototype and the
-design system are the visual source of truth.
+new scope item is a `question` to the project session. Describe What and Why and the
+acceptance test; do not describe pixels — the prototype and the design system are the
+visual source of truth.
 
 Exit: every Must has a testable acceptance; every goal has at least one requirement.
 
@@ -140,9 +129,9 @@ working copies:
 - `.meerkat/<id>/prd.md` → `design/prds/<content-slug>.md` (when a PRD exists)
 
 If a same-topic artifact already exists, update it and record the revision in the decision
-log; do not create a second file for the same topic. Keep the working copies in
-`.meerkat/<id>/` as the task trail, and update `plan.md` to link the archived paths. The
-plan is the local index; the cross-card channel is the `## Handoff` block in stage 6.
+log; do not create a second file. Keep the working copies in `.meerkat/<id>/` as the task
+trail, and update `plan.md` to link the archived paths. The plan is the local index; the
+cross-card channel is the `## Handoff` block in stage 6.
 
 ### 5. Self-check the PRD and the archive
 
@@ -150,11 +139,12 @@ Run `self-check.md`. It checks the working copies, the archived paths, traceabil
 testability, consistency, boundaries, feasibility and scope. Record the findings table in
 `plan.md`; fix or ask, never deliver with an unhandled blocker.
 
-### 6. Review and handoff
+### 6. Deliver
 
-Before delivering, set the marker and start the report from the template:
+Re-export the brief first, then start the report from the template:
 
 ```bash
+taskctl export md <id> --out .meerkat/<id>/card.md
 taskctl issue meta <id> --meta stage_handoff=required <flags>
 taskctl report template <id>
 ```
@@ -165,8 +155,13 @@ mapping in `plan.md` and the handoff block. The reviewer is independent and audi
 and the handoff against the frozen acceptance; do not accept your own work and do not move
 the card to `done`.
 
-**Do not create the downstream card** — the project session triages the target and routes
-it. Your job is to propose the delivery shape and the next scopes in the block.
+**Do not create the downstream card** — the project session triages the target, creates
+the card(s), seeds the acceptance and links them. Your job is to propose the delivery shape
+and the next scopes in the block. The full triage and create sequence is in
+`references/roles.md` §Card and plan lifecycle; do not run it yourself.
+
+The self-check is not a handoff: the self-check audits this card; the `## Handoff` block
+is the cross-card transfer. A producer card has both.
 
 #### The Handoff block
 
@@ -190,84 +185,42 @@ Outcome: <one-line result>
 - Proposed implementation: <one card | the epic's child scopes>
 - Proposed verification: <one card | the epic's child scopes>
 - Open questions / leftovers: <none | item, owner, deadline>
-
-Project session: triage the target first. A small change with no product archive gets a
-plain task with `--meta product_change=none` and does not read this block. A feature gets
-the shape below; a large feature becomes an epic with one child per deliverable.
-
-  # one task
-  taskctl issue create --project <p> --title "<scope>" --description "<this block>" \
-    --status backlog --assignee <role> --assignee-kind agent --acceptance-mode <off|agent|human> \
-    --acceptance "<item>" ... --meta design_stage=<id>
-  taskctl relation add <id> --type blocks --target <new>
-  taskctl issue move <new> todo
-
-  # large feature: epic + children
-  taskctl issue create --kind epic --project <p> --title "<feature>" \
-    --description "<this block + child map>" --status backlog \
-    --acceptance "<high-level item>" ... --meta design_stage=<id>
-  taskctl issue create --project <p> --title "<child scope>" \
-    --description "<this block + your scope>" --status backlog \
-    --assignee <role> --assignee-kind agent --acceptance-mode <off|agent|human> \
-    --acceptance "<child item>" ... --meta design_stage=<id>
-  taskctl relation add <epic> --type parent --target <child>
-  # if the design card is not done yet, gate the child on it as well
-  taskctl relation add <id> --type blocks --target <child>
-  taskctl issue move <child> todo
-
-Create in `backlog` and link before moving to `todo`, so a poll cannot claim it in the
-gap between create and link.
 ```
 
 Rules:
 
 - every path is project-relative; a missing PRD is `none` with the reason, never omitted;
-- `Acceptance source` must be concrete enough for the project session to seed the new
-  card's frozen acceptance once (`issue create --acceptance` freezes it; later changes are
-  E2);
-- `Delivery shape` is a proposal: the project session independently confirms the target,
-  and that the archive exists and matches it; a missing or wrong-topic archive returns to
-  this card, not into a downstream card;
-- a small change or bug does not go through the design chain: the project session creates
-  a plain task with `meta.product_change=none`, and the worker uses the card, acceptance
-  and (for a bug) the reproduction;
-- an epic is `kind=epic` and is not claimable; children are `kind=task` linked with
-  `relation add <epic> --type parent --target <child>`; each child carries this block plus
-  its own scope, and the epic's only delivery report is the rollup;
-- `blocks` gates on `done`: an implementation card waits for the design card to be
-  accepted, not merely delivered. A canceled design card withholds it forever — remove the
-  edge or cancel the downstream card;
-- a verification card gets `- Implementation card: <id>` appended by the project session
-  and points at `taskctl report list <id> --json`;
-- the project session takes the handoff from the current delivery round's latest report;
-  an earlier round is history.
+- `Acceptance source` must seed the next card's frozen acceptance once (later changes are
+  E2); `Delivery shape` is a proposal the project session confirms against the archive — a
+  missing or wrong-topic archive returns to this card, not into a downstream card;
+- a small change or bug uses `meta.product_change=none`, the card, acceptance and (for a
+  bug) the reproduction — not the design chain;
+- an epic is `kind=epic` and not claimable; children are `kind=task`, linked with `parent`.
+  `blocks` gates on `done`, not merely delivery. A verification card also points at
+  `taskctl report list <id> --json`;
+- the project session takes the handoff from the current round's latest report; an earlier
+  round is history.
 
 ## Review ownership
 
-Review is layered, and the role never accepts its own work.
+Review is layered, and the role never accepts its own work:
 
-- **Direction (stage 1).** The design direction is an **E3** decision: the project session
-  routes it and the human decides it. Record the decision on the card before freezing the
-  direction.
-- **Prototype (stage 2).** The critique pass is the role's own review, not acceptance. The
-  user chooses between variants; the prototype evidence is what the choice rests on.
-- **PRD (stage 3).** The PRD records validated decisions; it is not a second design
-  document.
-- **Archive (stage 4).** The working copies are promoted to content-named files under
-  `design/`; a design filename never carries the task id.
-- **Delivery (stage 6).** The independent reviewer audits the archived spec, PRD, prototype
-  evidence, the `## Handoff` block and the frozen acceptance; the block must be complete
-  and every path must resolve. It does not re-decide the aesthetic direction and does not
-  re-run the prototype.
+- **Direction (stage 1)** is an **E3** decision — the project session routes it and the
+  human decides it; record it before freezing.
+- **Prototype (stage 2)** critique is the role's own review, not acceptance; the user
+  chooses between variants. The **PRD (stage 3)** records validated decisions.
+- **Archive (stage 4)** promotes the working copies to content-named files; a design
+  filename never carries the task id.
+- **Delivery (stage 6)** is audited by the independent reviewer against the archived spec,
+  PRD, prototype evidence, the `## Handoff` block and the frozen acceptance; the block must
+  be complete and every path must resolve. It does not re-decide the direction.
 
 ## Boundaries
 
-- Keep every artifact inside the project: relative `design/...` paths only, never an
-  absolute path or another project's tree.
+- Keep every artifact inside the project: relative `design/...` paths only.
 - Do not write production backend code; a prototype is not a delivery.
 - Do not change acceptance, scope or architecture alone.
 - Do not write the PRD before the card's design questions are answered.
-- Do not create downstream cards; the project session triages, creates, seeds and links
-  them.
-- Do not split a large feature into an epic yourself; propose the shape in the handoff.
+- Do not create downstream cards or split a large feature into an epic; propose the shape
+  in the handoff.
 - Do not accept your own work; the reviewer is independent.

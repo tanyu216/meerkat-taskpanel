@@ -56,12 +56,12 @@ the review card, leave a `note` on the review card and stop. Do not deliver a ve
    `meta.stage_handoff=required`), the block has every field; every path resolves or says
    `none` with a reason; the acceptance source is traceable and, on a downstream card, the
    frozen acceptance covers the seeded PRD Must items. A missing block, missing field or
-   nonexistent path is a
-   **REJECT**; do not silently fall back to the description. `meta.product_change=none` on
-   the original means no design artifacts are required; neither marker on the original
-   means the card is unclassified — REJECT and record the missing triage marker. The one
-   exception is a loop-created rework/fix child (`meta.rework_of`): it inherits its parent
-   epic's handoff and is not required to carry `design_stage`.
+   nonexistent path is a **REJECT**; do not silently fall back to the description.
+   `meta.product_change=none` on the original means no design artifacts are required;
+   neither marker on the original means the card is unclassified — REJECT and record the
+   missing triage marker. The one exception is a loop-created rework/fix child
+   (`meta.rework_of`): it inherits its parent epic's handoff and is not required to carry
+   `design_stage`.
 4. **PRD.** When the archived PRD named in the handoff exists, every Must requirement has a
    testable acceptance and traces to the description, a frozen acceptance item or a
    prototype finding; no requirement is untestable or orphaned; the chosen direction and
@@ -73,9 +73,9 @@ the review card, leave a `note` on the review card and stop. Do not deliver a ve
    must be reproducible, not merely plausible.
 7. **Tests.** Apply the mandatory gates below: unit, integration, API and browser-based
    suites all 100% pass, where the change exposes them; line/branch/function coverage
-   > 80%; mocks only at
-   http/websocket/db/redis and comparable external boundaries, never an internal module or
-   function; no mocks in integration; real-scenario and boundary cases.
+   > 80%; mocks only at http/websocket/db/redis and comparable external boundaries, never
+   an internal module or function; no mocks in integration; real-scenario and boundary
+   cases.
 8. **Security and regressions.** Run the project's documented security scan (dependency
    audit, secret scan, SAST); an unaddressed high/critical is a REJECT, and an unavailable
    scan is not a pass. Audit the changed surface against CWE Top 25, OWASP Top 10 and
@@ -86,8 +86,8 @@ the review card, leave a `note` on the review card and stop. Do not deliver a ve
 
 ## Mandatory gates
 
-Re-run these independently; do not trust the delivery report. A card that changes code
-must be all-green; a design or documentation card records `n/a`.
+Re-run these independently; do not trust the delivery report. A card that changes code must
+be all-green; a design or documentation card records `n/a`.
 
 | Gate | Threshold | Failure |
 |---|---|---|
@@ -101,16 +101,11 @@ code to make a gate pass.
 
 ## Security audit
 
-Audit the changed surface against:
-
-- **CWE Top 25** — the most dangerous software weaknesses;
-- **OWASP Top 10** — the web application security risks;
-- **OWASP ASVS** — the application security verification standard, at the level the project
-  targets.
-
-Record each finding with the standard, the item (for example `CWE-89`, `A01`, `V5.3`),
-severity and disposition. A high/critical finding, or an unresolved ASVS requirement at the
-project's target level, is a REJECT unless a human accepts the risk under E4.
+Audit the changed surface against CWE Top 25, OWASP Top 10 and OWASP ASVS at the project's
+target level. Record each finding with the standard, the item (for example `CWE-89`, `A01`,
+`V5.3`), severity and disposition. A high/critical finding, or an unresolved ASVS
+requirement at the project's target level, is a REJECT unless a human accepts the risk under
+E4.
 
 ## Verdict
 

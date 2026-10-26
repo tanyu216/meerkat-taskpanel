@@ -151,6 +151,13 @@ The standard template is `assets/team/standard/`:
 
 The template also ships `decision-policy.md` and the native agent templates.
 
+Each worker role's `self-check.md` is its **pre-delivery audit** — it maps the card's
+requirements and acceptance to evidence and re-runs the gates. It is not the `## Handoff`
+block: only a producer card (Jobs design, Linus architecture) writes that block, to carry
+cross-card inputs to the project session. The last stage of every workflow is **Deliver**:
+run the self-check, add the handoff block on a producer card, then `issue deliver` at
+`in_review`.
+
 A Jobs card keeps its working artifacts in `.meerkat/<id>/` — `spec.md`, `prototype/` and
 `prd.md` — and the workflow's **mandatory archive stage** promotes them to the **project's**
 `design/` tree under one content slug: `design/specs/<content-slug>.md`,
