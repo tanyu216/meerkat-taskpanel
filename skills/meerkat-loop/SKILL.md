@@ -1,6 +1,6 @@
 ---
 name: meerkat-loop
-description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation plus one project session per target directory. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the project session spawns the worker/reviewer subagent in the project directory. Installs launchd / systemd / cron units and the per-agent-kind wake glue for claude, codex and pi; OpenClaw is excluded.
+description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation plus one project session per target directory. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the project session spawns the worker/reviewer subagent in the project directory. Installs launchd / systemd / cron units for claude, codex and pi; OpenClaw is excluded.
 disable-model-invocation: true
 ---
 
@@ -299,8 +299,8 @@ bash install.sh --target all        # every agent kind; openclaw gets the board 
 ```
 
 The installer copies this skill into the agent's skill directory, copies the
-execution body into `<agent-dir>/meerkat-taskpanel/`, renders the units and wake
-glue, and prints the one command that loads a unit. Loading is opt-in:
+execution body into `<agent-dir>/meerkat-taskpanel/`, renders the units, and
+prints the one command that loads a unit. Loading is opt-in:
 `install.sh --supervisor=enable` (per agent kind with `--supervisor-actor-kinds`; also
 `--supervisor=status`, `--supervisor=disable`). Enabling loads one set — the resident
 pool, ping, continue and the event subscriber — and `status` reports each unit's load
@@ -318,10 +318,10 @@ references/operation.md   install paths, flags, workflow rules, compatibility
 manifest.txt              the execution body's file list (generated)
 scripts/board-check.mjs   the interface gate (authored)
 scripts/supervisor.mjs    the scheduler (generated)
-scripts/wake-cwd.mjs      the wake glue's resolver (generated)
+scripts/wake-cwd.mjs      the poll pass's directory resolver (generated)
 scripts/loop/*.mjs        the passes, subscriber and their seams (generated)
 scripts/foundation/**     modules the execution body imports (generated)
-templates/                units, wake glue, agent config (generated)
+templates/                units, agent config (generated)
 ```
 
 Everything except `SKILL.md`, `references/` and `scripts/board-check.mjs` is

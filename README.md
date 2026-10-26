@@ -332,7 +332,7 @@ prompt names them by absolute path.
 The loop ships as **its own skill** (`skills/meerkat-loop/`), and `install.sh` installs it
 for **every agent kind except OpenClaw** (claude, codex, pi) — OpenClaw gets the
 board and nothing else; see [OpenClaw](#openclaw). Alongside the skill the
-installer drops per-agent-kind launchd / systemd / cron units and a wake-glue script, and prints
+installer drops per-agent-kind launchd / systemd / cron units, and prints
 the exact load command — it never enables a daemon for you. The installer also asks once
 whether the supervisor may claim **unassigned** cards (default yes) and remembers the
 answer in `<agent-dir>/meerkat-taskpanel.env`. The loop skill declares the board interface

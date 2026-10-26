@@ -213,8 +213,8 @@ version control.
 
 | Artefact | Where | What |
 |---|---|---|
-| loop skill | `<agent-dir>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`manifest.txt` + `scripts/`, including `scripts/foundation/`), the unit/wake/config templates it is deployed with, and the authored board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
-| loop body | `<agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../scripts/foundation/**` | a **copy** of the scheduler, the deterministic passes, the glue's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `manifest.txt` |
+| loop skill | `<agent-dir>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`manifest.txt` + `scripts/`, including `scripts/foundation/`), the unit/config templates it is deployed with, and the authored board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
+| loop body | `<agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../scripts/foundation/**` | a **copy** of the scheduler, the deterministic passes, the poll pass's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `manifest.txt` |
 | launchd | `<agent-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist` | `KeepAlive` for the resident pool and the event subscriber; `StartInterval` 60 / 600 for the two clocks |
 | systemd | `<agent-dir>/scheduling/systemd/meerkat-taskpanel-{session,ping,continue,subscribe}.{service,timer}` | `Type=simple` + `Restart=always` for the pool and subscriber; 60s / 600s timers for the clocks |
 | cron | `<agent-dir>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue — **no pool**: no worker dispatch |
@@ -222,11 +222,10 @@ version control.
 Each unit names the **absolute `node`** that rendered it and carries a **`PATH`** holding
 the agent CLI's directory and node's ahead of the scheduler's own default. Neither is
 optional: a scheduler starts a unit with a minimal `PATH` that holds no nvm and no Homebrew
-directory, so `/usr/bin/env node` is exit 127 — and the wake glue's `exec claude`, and the
-worker's own tool tree, resolve on that same set. If the agent CLI is not on `PATH` at
+directory, so `/usr/bin/env node` is exit 127 — and the resident session's `exec claude`,
+and the worker's own tool tree, resolve on that same set. If the agent CLI is not on `PATH` at
 install time, the installer says so and renders node's directory alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
-| wake glue | `<agent-dir>/bin/wake-<actor-kind>.sh` | resolves the directory a worker for the card's project runs in (`local_path`, else `run_dir`) from the board skill's `projects.json` via the agent-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
 | agent config | `<agent-dir>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW` and `MEERKAT_TASKPANEL_REVIEWER`, the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE`, the concurrency cap's `MEERKAT_TASKPANEL_MAX_CONCURRENCY`, and the pool's `MEERKAT_TASKPANEL_RESIDENT`, `..._SESSION_MAX_AGE`, `..._SESSION_TURN_TIMEOUT`, `..._SESSION_POLL_MS`, `..._SESSION_POOL_MAX`, `..._PROJECT_CONCURRENCY`, `..._PROJECT_IDLE_MS` and `..._SUBAGENT_BACKGROUND`. Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
 | log (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
@@ -610,8 +609,8 @@ claude plugin validate "$PWD"       # validates the plugin + marketplace manifes
 Step 1 writes, merge-style and idempotently: the skill, `~/.claude/settings.json`
 (`env.TASKCTL_AGENT=alice` + a `SessionStart` hook that starts the board and lists
 claimable cards), `~/.claude/commands/{board,claim,deliver}.md`, the `taskctl` shim at
-`~/.claude/bin/taskctl`, and the scheduling set (`~/.claude/scheduling/*`, the
-`wake-claude.sh` glue and `~/.claude/meerkat-taskpanel.env`). Re-running is safe: existing
+`~/.claude/bin/taskctl`, and the scheduling set (`~/.claude/scheduling/*` and
+`~/.claude/meerkat-taskpanel.env`). Re-running is safe: existing
 `settings.json` keys and hooks are preserved, and `--force` is the only way to overwrite.
 
 Uninstall:
@@ -624,7 +623,6 @@ rm -rf ~/.claude/skills/meerkat-taskpanel ~/.claude/skills/meerkat-loop \
        ~/.claude/skills/setup-meerkat \
        ~/.claude/commands/{board,claim,deliver}.md \
        ~/.claude/hooks/meerkat-taskpanel-session-start.sh ~/.claude/bin/taskctl \
-       ~/.claude/bin/wake-claude.sh \
        ~/.claude/scheduling ~/.claude/meerkat-taskpanel.env ~/.claude/meerkat-taskpanel
 ```
 
@@ -694,7 +692,7 @@ codex plugin list
 Step 1 writes, merge-style and idempotently: the skill, a claim-first snippet appended to
 `~/.codex/AGENTS.md` (existing content is preserved), the schedulable claim trigger
 `~/.codex/meerkat-taskpanel-claim.sh`, the `taskctl` shim at `~/.codex/bin/taskctl`, and the
-scheduling set (`~/.codex/scheduling/*`, the `wake-codex.sh` glue and
+scheduling set (`~/.codex/scheduling/*` and
 `~/.codex/meerkat-taskpanel.env`). Codex has no hooks, so scheduling is the auto-claim
 mechanism — load one of the units (see
 [Scheduling units](#scheduling-units-claude-codex-pi)); the legacy trigger remains a
@@ -708,14 +706,13 @@ codex plugin remove meerkat-taskpanel
 codex plugin marketplace remove meerkat-taskpanel-marketplace
 rm -rf ~/.codex/skills/meerkat-taskpanel ~/.codex/skills/meerkat-loop \
        ~/.codex/meerkat-taskpanel-claim.sh ~/.codex/bin/taskctl \
-       ~/.codex/bin/wake-codex.sh \
        ~/.codex/scheduling ~/.codex/meerkat-taskpanel.env ~/.codex/meerkat-taskpanel
 ```
 
 ### Pi / Agent Skills
 
 ```bash
-# 1. skill + scheduling set (units, wake-pi.sh, ~/.agents/meerkat-taskpanel.env)
+# 1. skill + scheduling set (units, ~/.agents/meerkat-taskpanel.env)
 bash install.sh --target pi --link --force
 
 # 2. package — the repository's own package.json declares the pi manifest
@@ -737,8 +734,8 @@ four resource fields Pi reads from a package's `pi` object (`extensions`, `skill
 `prompts`, `themes`), which is why the board needs no Pi bundle directory of its own.
 
 Pi has no timer of its own, so step 1 also drops the units under
-`~/.agents/scheduling/` and the `~/.agents/bin/wake-pi.sh` glue; load one of them to
-run the supervisor (see [Scheduling units](#scheduling-units-claude-codex-pi)).
+`~/.agents/scheduling/`; load one of them to run the supervisor (see
+[Scheduling units](#scheduling-units-claude-codex-pi)).
 
 The loop dispatches one subagent per card, and Pi has no native subagent mechanism. A Pi
 host therefore needs an extension; the installer checks
@@ -756,7 +753,7 @@ Uninstall:
 ```bash
 pi remove "$PWD"
 rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/skills/meerkat-loop \
-       ~/.agents/scheduling ~/.agents/bin/wake-pi.sh ~/.agents/meerkat-taskpanel.env
+       ~/.agents/scheduling ~/.agents/meerkat-taskpanel.env
 ```
 
 ## Agent integration: skill only
@@ -825,14 +822,12 @@ node scripts/verify/kind-runtime.mjs --actor-kind claude
 ```
 
 It installs into a throwaway prefix (never `$HOME`), replaces the generated `taskctl`
-shim with a canned one and puts fake `claude`/`codex`/`pi` executables on `PATH` — both
-record their argv and working directory — then drives the generated SessionStart hook, the
-Codex claim trigger and each `wake-<actor-kind>.sh`, asserting the **actual invocation** (exit
-code + argv + cwd + output), not just "it ran". This is the step that covers the claim
-path in CI, where the real CLIs are absent. The full matrix, the argv-vs-`wakeCommand()`
-cross-check, the resolved-working-directory assertions and the
-per-agent-kind coverage boundary (Pi has no hook/trigger/shim) are in
-[`scheduling.md`](scheduling.md#verifying-the-generated-trigger--wake-glue).
+shim with a canned one — it records every argv — then drives the generated SessionStart
+hook and the Codex claim trigger, asserting the **actual invocation** (exit code + argv +
+output), not just "it ran". This is the step that covers the claim path in CI, where the
+real CLIs are absent. The full matrix and the per-agent-kind coverage boundary (Pi has no
+hook/trigger) are in
+[`scheduling.md`](scheduling.md#verifying-the-generated-trigger).
 
 ## Isolated installs and testing
 
@@ -886,7 +881,7 @@ Nothing is written outside those directories, and nothing is sent over the netwo
   `templates/` are generated. Run `node scripts/sync-skills.mjs`; `npm run
   check:skills` fails CI on drift.
 - **An older install still has `skills/meerkat-loop/body/` or `src/`** — those layouts were
-  retired. The leftovers are inert (units and wake glue read
+  retired. The leftovers are inert (units and the loop body read
   `<agent-dir>/meerkat-taskpanel/scripts/…`); re-run the install with `--force` to replace the
   skill directory, and delete `<agent-dir>/meerkat-taskpanel/src/` by hand if it is still there.
 - **OpenClaw does not list the plugin** — install the bundle at the repository root

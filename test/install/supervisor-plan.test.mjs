@@ -321,11 +321,15 @@ describe("supervisor: the docs and the implementation agree", () => {
       join(dir, "subagents.state.json"),
       JSON.stringify({
         version: 1,
-        subagents: [{ subagentId: "a-1", status: "running" }, { subagentId: "a-2", status: "completed" }],
+        subagents: [
+          { subagentId: "a-1", status: "running" },
+          { subagentId: "a-2", status: "completed" },
+          { subagentId: "a-3", status: "reattaching" },
+        ],
       }),
     );
     writeFileSync(
-      join(dir, "cards.pending.json"),
+      join(dir, "cards.queue.json"),
       JSON.stringify({ version: 1, cards: [{ id: "T-1-worker", status: "pending" }] }),
     );
     writeFileSync(join(dir, "continue.pending.json"), JSON.stringify({ version: 1, reason: "timer" }));
@@ -334,7 +338,7 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.equal(live.live, true);
     assert.equal(live.pid, 4242);
     assert.equal(live.heartbeatAgeMs, 3_000);
-    assert.equal(live.liveSubagents, 1, "only a running subagent occupies a slot");
+    assert.equal(live.liveSubagents, 2, "running and reattaching subagents occupy a slot");
     assert.equal(live.cardsQueued, 1);
     assert.equal(live.continueQueued, true);
 

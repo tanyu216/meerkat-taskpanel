@@ -18,17 +18,18 @@
  *
  * WHAT THIS DOES / WHY IT EXISTS
  * -----------------------------
- * The team twice mis-read the agent kinds: "codex/pi have no resume" was really our own wake
- * scripts not being wired. This script makes that claim falsifiable. It records, per agent kind
+ * The team twice mis-read the agent kinds: "codex/pi have no resume" was really our own headless
+ * invocation not being wired. This script makes that claim falsifiable. It records, per agent kind
  * and per capability dimension, the exact command, the matched help text and the exit code,
  * then optionally proves the capability end to end with a marker round trip.
  *
  * Dimensions (columns): version | continue-last | resume-by-id | fork | non-interactive.
  *
  * RELATION TO THE OTHER VERIFY ASSETS (the card asks for this explicitly)
- *   * scripts/verify/kind-runtime.mjs — OFFLINE mock harness: drives the generated glue
- *     (hooks, wake-*.sh) against FAKE CLIs and asserts argv. It never touches a real CLI,
- *     and it says nothing about resume. This script is the real-CLI counterpart.
+ *   * scripts/verify/kind-runtime.mjs — OFFLINE mock harness: drives the generated
+ *     SessionStart hook and claim trigger against a FAKE taskctl and asserts argv. It never
+ *     touches a real CLI, and it says nothing about resume. This script is the real-CLI
+ *     counterpart.
  *   * scripts/verify/kind-cli.mjs — drives the real CLIs too, but only for plugin/marketplace
  *     *recognition*; it has no resume dimension. Same isolation tricks are reused here
  *     (throwaway HOME, SKIP-on-absent), so the two are complementary and coexist.

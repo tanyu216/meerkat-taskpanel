@@ -4,10 +4,9 @@
  *
  * `scripts/verify/profiles.mjs` proves the *install* landed (skill paths, frontmatter,
  * wrapper, detector contract). It never runs what the install *generated*. This probe
- * closes that gap: it drives the generated runtime glue — the Claude SessionStart hook,
- * the Codex claim trigger, and each agent kind's `wake-*.sh` — against **fake agent CLIs and a
- * fake `taskctl` shim**, so the "trigger → claim → wake" path is executed and asserted
- * without a real `claude` / `codex` / `pi`, a board, or a network.
+ * closes that gap: it drives the generated runtime entry points — the Claude SessionStart
+ * hook and the Codex claim trigger — against a **fake `taskctl` shim**, so the
+ * "trigger → claim" path is executed and asserted without a board or a network.
  *
  *   node scripts/verify/kind-runtime.mjs [--home <dir>] [--actor-kind <kind>] [--quiet]
  *
@@ -16,10 +15,9 @@
  *   1. a temp *prefix* is the install root and the `HOME` of every spawned process;
  *   2. `install.sh --target <actor-kind> --prefix <tmp> --agent-name alice --skip-node-check`
  *      generates the real bundle from the real templates;
- *   3. the generated `taskctl` shim is replaced by a *canned* shim (the board boundary),
- *      and fake `claude` / `codex` / `pi` executables are
- *      put on `PATH` (the wake boundary). Both record their argv, so assertions read the
- *      *actual* invocation, never just the exit code;
+ *   3. the generated `taskctl` shim is replaced by a *canned* shim (the board boundary)
+ *      that records its argv, so assertions read the *actual* invocation, never just the
+ *      exit code;
  *   4. each scenario runs the generated script and asserts exit code + recorded argv +
  *      stdout.
  *
@@ -30,19 +28,17 @@
  * the supplementary `scripts/verify/kind-cli.mjs`, which skips when a CLI is absent) and
  * the real board's claim semantics (`docker/verify-in-container.sh` +
  * `scripts/verify/install-e2e.sh` drive the real `taskctl`/`taskd`). This probe pins the
- * *generated shell glue* between them.
+ * *generated shell entry points* between them.
  *
  * Exits 0 only when every assertion passes.
  */
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-
-import { wakeCommand } from "../../src/foundation/scheduling.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -51,9 +47,9 @@ const AGENT = "alice";
 
 /** Actor kind → {dot-dir, has detection of which generated forms exist}. */
 const KINDS = {
-  claude: { dir: ".claude", hook: ".claude/hooks/meerkat-taskpanel-session-start.sh", trigger: null, wake: ".claude/bin/wake-claude.sh", shim: ".claude/bin/taskctl", cli: "claude" },
-  codex: { dir: ".codex", hook: null, trigger: ".codex/meerkat-taskpanel-claim.sh", wake: ".codex/bin/wake-codex.sh", shim: ".codex/bin/taskctl", cli: "codex" },
-  pi: { dir: ".agents", hook: null, trigger: null, wake: ".agents/bin/wake-pi.sh", shim: ".agents/bin/taskctl", cli: "pi" },
+  claude: { dir: ".claude", hook: ".claude/hooks/meerkat-taskpanel-session-start.sh", trigger: null, shim: ".claude/bin/taskctl" },
+  codex: { dir: ".codex", hook: null, trigger: ".codex/meerkat-taskpanel-claim.sh", shim: ".codex/bin/taskctl" },
+  pi: { dir: ".agents", hook: null, trigger: null, shim: ".agents/bin/taskctl" },
 };
 
 /**
@@ -78,21 +74,6 @@ if (argv.includes("list")) {
 } else {
   write({ ok: true, data: {} });
 }
-`;
-
-/**
- * A fake agent CLI: records {bin, argv, cwd} and exits 0 — the wake boundary.
- * `cwd` is recorded because it is now load-bearing: the wake glue must `cd` into
- * the card's project target directory before it execs this.
- */
-const FAKE_CLI = `#!/usr/bin/env node
-// Fake agent CLI written by scripts/verify/kind-runtime.mjs — records argv+cwd, exits 0.
-import { appendFileSync } from "node:fs";
-import { basename } from "node:path";
-if (process.env.FAKE_KIND_LOG) {
-  appendFileSync(process.env.FAKE_KIND_LOG, JSON.stringify({ bin: basename(process.argv[1]), argv: process.argv.slice(2), cwd: process.cwd() }) + "\\n");
-}
-process.exit(0);
 `;
 
 // ---------------------------------------------------------------------------
@@ -139,7 +120,7 @@ function run(args, { env = {}, cwd = ROOT } = {}) {
     encoding: "utf8",
     env: baseEnv({
       HOME: ctx.home,
-      PATH: `${ctx.fakeBin}:${process.env.PATH}`,
+      PATH: process.env.PATH,
       NO_COLOR: "1",
       CI: "1",
       ...env,
@@ -182,7 +163,7 @@ function installKind(kind) {
   if (res.status !== 0) {
     throw new Error(`install.sh --target ${kind} exited ${res.status}\n${res.stdout}\n${res.stderr}`);
   }
-  // Swap in the canned shim at the boundary the generated glue actually calls.
+  // Swap in the canned shim at the boundary the generated entry points call.
   const spec = KINDS[kind];
   if (spec.shim) {
     const shimPath = join(ctx.home, spec.shim);
@@ -195,145 +176,6 @@ function installKind(kind) {
 // ---------------------------------------------------------------------------
 // Scenarios
 // ---------------------------------------------------------------------------
-
-/** Every wake script: the no-prompt guard, the resolved working directory, then argv. */
-function checkWake(kind) {
-  const spec = KINDS[kind];
-  const section = `wake (${kind})`;
-  const wakePath = join(ctx.home, spec.wake);
-  const log = freshLog(`wake-${kind}`);
-
-  // The map the glue resolves from: its own default (`../skills/…` beside the
-  // installed `bin/`), and a real directory to point the worker at.
-  const mapPath = join(ctx.home, spec.dir, "skills", "meerkat-taskpanel", "projects.json");
-  const target = join(ctx.tmp, `target-${kind}`);
-  mkdirSync(target, { recursive: true });
-  const PROJECT = "TaskPanel";
-  const writeMap = (entries) => {
-    mkdirSync(dirname(mapPath), { recursive: true });
-    writeFileSync(mapPath, JSON.stringify({ projects: entries }, null, 2));
-  };
-  writeMap([{ project: PROJECT, local_path: target }]);
-
-  check(section, `${spec.wake} installed and executable`, () => {
-    if (!existsSync(wakePath)) return `missing ${wakePath}`;
-    const text = readFileSync(wakePath, "utf8");
-    if (!text.startsWith("#!/usr/bin/env bash")) return "not a bash script";
-    return null;
-  }, spec.wake);
-
-  check(section, "no prompt → exit 2, agent CLI never invoked", () => {
-    writeFileSync(log, "");
-    const res = run(["bash", wakePath], { env: { FAKE_KIND_LOG: log } });
-    if (res.status !== 2) return `exit ${res.status} (want 2); stderr=${JSON.stringify(res.stderr)}`;
-    if (!/handoff prompt is required/.test(res.stderr)) return `stderr did not name the missing prompt: ${JSON.stringify(res.stderr)}`;
-    const calls = readJsonl(log);
-    if (calls.length) return `agent CLI was invoked ${calls.length} time(s) without a prompt: ${JSON.stringify(calls)}`;
-    return null;
-  }, "exit 2");
-
-  check(section, "mapped project → exact argv matches wakeCommand(), run in the mapped directory", () => {
-    const prompt = `do T-1 (agent ${AGENT})`;
-    writeFileSync(log, "");
-    // Only TP_PROJECT is set: the map path is the glue's own default, so this
-    // also proves the glue finds the map beside the skill it was installed with.
-    const res = run(["bash", wakePath, prompt], { env: { FAKE_KIND_LOG: log, TP_PROJECT: PROJECT } });
-    if (res.status !== 0) return `exit ${res.status}; stderr=${JSON.stringify(res.stderr)}`;
-    const calls = readJsonl(log);
-    if (calls.length !== 1) return `want 1 agent-CLI call, got ${calls.length}: ${JSON.stringify(calls)}`;
-    const want = wakeCommand({ actorKind: kind, prompt });
-    if (calls[0].bin !== want.command) return `invoked ${calls[0].bin}, expected ${want.command}`;
-    if (JSON.stringify(calls[0].argv) !== JSON.stringify(want.args)) {
-      return `argv ${JSON.stringify(calls[0].argv)} != wakeCommand().args ${JSON.stringify(want.args)}`;
-    }
-    // Compare canonically, not by spelling. The throwaway home lives under `os.tmpdir()`, which
-    // on macOS is already inside the `/var` → `/private/var` symlink, and a child's
-    // `process.cwd()` reports the *physical* path while the map carries the spelled one — so the
-    // spelled forms differ on a correct run. Same lesson as the guard under test.
-    if (realpathSync(calls[0].cwd) !== realpathSync(target)) {
-      return `ran in ${calls[0].cwd}, expected the mapped ${target}`;
-    }
-    return null;
-  }, `${spec.cli} ${wakeCommand({ actorKind: kind, prompt: "…" }).args.join(" ")} in the mapped directory`);
-
-  check(section, "unmapped project → exit 3, no worker started (no silent fallback)", () => {
-    writeFileSync(log, "");
-    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_KIND_LOG: log, TP_PROJECT: "ghost" } });
-    if (res.status !== 3) return `exit ${res.status} (want 3); stderr=${JSON.stringify(res.stderr)}`;
-    if (!/no local directory is registered for project ghost/.test(res.stderr)) {
-      return `stderr did not name the unresolvable project: ${JSON.stringify(res.stderr)}`;
-    }
-    const calls = readJsonl(log);
-    if (calls.length) return `started a worker anyway: ${JSON.stringify(calls)}`;
-    return null;
-  }, "exit 3");
-
-  check(section, "bad target directory (gone / not a directory) → exit 3, no worker started", () => {
-    const prompt = "do T-1";
-    writeFileSync(join(ctx.tmp, `file-${kind}`), "a file, not a directory\n");
-    const probes = [
-      [join(ctx.tmp, "not-there"), /does not exist/],
-      [join(ctx.tmp, `file-${kind}`), /is not a directory/],
-    ];
-    for (const [local_path, expected] of probes) {
-      writeMap([{ project: PROJECT, local_path }]);
-      writeFileSync(log, "");
-      const res = run(["bash", wakePath, prompt], { env: { FAKE_KIND_LOG: log, TP_PROJECT: PROJECT } });
-      if (res.status !== 3) return `${local_path}: exit ${res.status} (want 3); stderr=${JSON.stringify(res.stderr)}`;
-      if (!expected.test(res.stderr)) return `${local_path}: stderr did not match ${expected}: ${JSON.stringify(res.stderr)}`;
-      const calls = readJsonl(log);
-      if (calls.length) return `${local_path}: started a worker anyway: ${JSON.stringify(calls)}`;
-    }
-    writeMap([{ project: PROJECT, local_path: target }]);
-    return null;
-  }, "exit 3");
-
-  check(section, "entry naming no directory → exit 3, no worker started (a map's answer, not a wake's)", () => {
-    // The map is happy: an entry that names no directory is the complete answer
-    // "this project has no local directory". A *worker* still needs a cwd, so the
-    // wake refuses — and refuses with its own reason, not the unmapped one.
-    writeMap([{ project: PROJECT, kind: "ops" }]);
-    writeFileSync(log, "");
-    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_KIND_LOG: log, TP_PROJECT: PROJECT } });
-    writeMap([{ project: PROJECT, local_path: target }]);
-    if (res.status !== 3) return `exit ${res.status} (want 3); stderr=${JSON.stringify(res.stderr)}`;
-    if (!/no usable directory for project/.test(res.stderr)) {
-      return `stderr did not name the missing directory: ${JSON.stringify(res.stderr)}`;
-    }
-    const calls = readJsonl(log);
-    if (calls.length) return `started a worker anyway: ${JSON.stringify(calls)}`;
-    return null;
-  }, "exit 3");
-
-  check(section, "run_dir-only entry → exit 0, worker runs in the launch directory", () => {
-    const launch = join(ctx.tmp, `launch-${kind}`);
-    mkdirSync(launch, { recursive: true });
-    writeMap([{ project: PROJECT, run_dir: launch }]);
-    writeFileSync(log, "");
-    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_KIND_LOG: log, TP_PROJECT: PROJECT } });
-    writeMap([{ project: PROJECT, local_path: target }]);
-    if (res.status !== 0) return `exit ${res.status}; stderr=${JSON.stringify(res.stderr)}`;
-    const calls = readJsonl(log);
-    if (calls.length !== 1) return `want 1 agent-CLI call, got ${calls.length}: ${JSON.stringify(calls)}`;
-    if (realpathSync(calls[0].cwd) !== realpathSync(launch)) {
-      return `ran in ${calls[0].cwd}, expected the launch directory ${launch}`;
-    }
-    return null;
-  }, `exit 0 in ${join(ctx.tmp, `launch-${kind}`)}`);
-
-  check(section, "no permission-bypass flag in any executed command", () => {
-    // Comment lines are dropped first: the scripts *document* the boundary by naming the
-    // flag they must not use, and a naive substring scan would flag that comment.
-    const commands = readFileSync(wakePath, "utf8")
-      .split("\n")
-      .filter((line) => !/^\s*#/.test(line))
-      .join("\n");
-    for (const bad of ["--dangerously-skip-permissions", "--dangerously-bypass", "--yolo", "--full-auto"]) {
-      if (commands.includes(bad)) return `generated script runs ${bad}`;
-    }
-    return null;
-  }, "headless permission boundary held");
-}
 
 /** Claude: the SessionStart hook (claimable list + the eight rules), non-fatal. */
 function checkSessionStart() {
@@ -481,27 +323,20 @@ function checkAbsences() {
       if (existsSync(join(ctx.home, rel))) return `unexpected ${rel}`;
     }
     return null;
-  }, "N/A — pi has no hooks and no claim trigger; only its external wake path applies");
+  }, "N/A — pi has no hooks and no claim trigger; only its external supervisor applies");
 }
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-const ctx = { home: "", tmp: "", fakeBin: "" };
+const ctx = { home: "", tmp: "" };
 
 function setup(homeArg) {
   const tmp = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-kindruntime-"));
   ctx.tmp = tmp;
   ctx.home = homeArg ? resolve(homeArg) : join(tmp, "home");
   mkdirSync(ctx.home, { recursive: true });
-  ctx.fakeBin = join(tmp, "bin");
-  mkdirSync(ctx.fakeBin, { recursive: true });
-  for (const cli of ["claude", "codex", "pi"]) {
-    const p = join(ctx.fakeBin, cli);
-    writeFileSync(p, FAKE_CLI);
-    chmodSync(p, 0o755);
-  }
   return { tmp };
 }
 
@@ -522,8 +357,8 @@ async function main() {
   if (values.help) {
     process.stdout.write(
       "Usage: node scripts/verify/kind-runtime.mjs [--home <dir>] [--actor-kind <kind>] [--quiet]\n\n" +
-        "  Offline mock harness: drives the generated SessionStart hook / claim trigger /\n" +
-        "  wake scripts against fake agent CLIs. Never touches $HOME, never uses the network.\n" +
+        "  Offline mock harness: drives the generated SessionStart hook / claim trigger\n" +
+        "  against a canned taskctl. Never touches $HOME, never uses the network.\n" +
         `  --actor-kind <kind>  only these agent kinds (${Object.keys(KINDS).join(", ")}); repeatable or comma-separated\n`,
     );
     return 0;
@@ -552,17 +387,8 @@ async function main() {
     }
 
     if (!installError) {
-      if (kinds.includes("claude")) {
-        checkSessionStart();
-        checkWake("claude");
-      }
-      if (kinds.includes("codex")) {
-        checkTrigger();
-        checkWake("codex");
-      }
-      if (kinds.includes("pi")) {
-        checkWake("pi");
-      }
+      if (kinds.includes("claude")) checkSessionStart();
+      if (kinds.includes("codex")) checkTrigger();
       checkAbsences();
     }
   } finally {

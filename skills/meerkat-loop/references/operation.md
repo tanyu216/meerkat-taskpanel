@@ -12,7 +12,6 @@ For `<agent-dir>` = `~/.claude`, `~/.codex` or `~/.agents`:
 | loop skill | `<agent-dir>/skills/meerkat-loop/` | always **copied**, never symlinked |
 | execution body | `<agent-dir>/meerkat-taskpanel/scripts/…` and `scripts/foundation/…` | the copy the units run; closure in the skill's `manifest.txt` |
 | units | `<agent-dir>/scheduling/{launchd,systemd,cron}/` | the resident pool (`session`), ping 60s, continue 600s, and the event subscriber (launchd/systemd; part of the enable set). Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the agent CLI |
-| wake glue | `<agent-dir>/bin/wake-<actor-kind>.sh` | legacy one-shot wakes only: resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` |
 | agent config | `<agent-dir>/meerkat-taskpanel.env` | claim policy, stale recovery, `MEERKAT_TASKPANEL_REPO`, workflow answers, the pool's knobs, and the full-tool-access opt-in |
 | runtime | `<agent-dir>/meerkat-taskpanel/{supervisor.log,supervisor.state.json,sessions.state.json,subagents.state.json,subscribe.state.json,supervisor.session.json}` | tick log, legacy worker registry, pool sessions + heartbeat (+ `controlMode`), subagent ledger, subscriber liveness, the pool a live session started |
 
@@ -124,11 +123,9 @@ Configuration and transport:
 | `--env-file <path>` | `MEERKAT_TASKPANEL_ENV_FILE`, then `<repo>/.env` | config file for the loop's `taskctl` children |
 | `--token <token>` | `$TASKD_TOKEN` / `TASKD_TOKEN_FILE` / pointer tokenFile | board token; prefer the env or file form |
 | `--config <path>` | `<home>/<agent-dir>/meerkat-taskpanel.env` | agent config the installer writes |
-| `--projects-json <path>` | beside the board skill, or `MEERKAT_TASKPANEL_PROJECTS_JSON` | agent-local project map handed to the glue |
+| `--projects-json <path>` | beside the board skill, or `MEERKAT_TASKPANEL_PROJECTS_JSON` | agent-local project map the poll pass resolves a card's directory from |
 | `--home <path>` | `$HOME` | root the defaults resolve against |
 | `--cli <path>` | `<repo>/src/cli/index.mjs` | `taskctl` entry |
-| `--glue <path>` | `<home>/<agent-dir>/bin/wake-<actor-kind>.sh` | wake glue |
-| `--wake-command <cmd>` | — | your own wake command instead of the built-in agent form |
 
 Selectors, state and internals:
 
@@ -361,10 +358,10 @@ the acceptor.
 
 ## Headless permission boundary
 
-A wake is non-interactive, so the worker must run under a pre-declared boundary
-— a tool allowlist, a permission mode, a sandbox. The generated glues ship
-**no** permission bypass (no `--dangerously-skip-permissions`, no Codex
-approval bypass). Enabling one is a deliberate act that needs written
+A dispatched worker is non-interactive, so it must run under a pre-declared
+boundary — a tool allowlist, a permission mode, a sandbox. The resident
+adapters ship **no** permission bypass (no `--dangerously-skip-permissions`, no
+Codex approval bypass). Enabling one is a deliberate act that needs written
 authorization and must be documented at the point of use.
 
 The resident pool keeps role allowlists by default (control: read + `taskctl` +
@@ -380,8 +377,7 @@ MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON="<who authorized it and why>"
 The reason is required and recorded in `--supervisor=status`. With it, every
 control, project and subagent session runs with the installing user's full OS
 permissions; the project directory is a working directory, **not** an isolation
-boundary. The legacy one-shot wake glue never carries a bypass: full access is
-the resident pool's opt-in only.
+boundary. Full access is the resident pool's opt-in only.
 
 ## Compatibility
 

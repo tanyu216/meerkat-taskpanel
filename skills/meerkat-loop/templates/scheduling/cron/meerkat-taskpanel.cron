@@ -9,8 +9,8 @@
 #
 # Each job names the ABSOLUTE node that rendered this file; `env node` would
 # resolve against cron's minimal PATH and exit 127. The PATH= setting line below
-# covers everything a tick derives (the agent CLI, the wake glue, the worker's
-# own tree). Both are version-pinned: after a node or CLI upgrade, run
+# covers everything a tick derives (the agent CLI and the worker's own tree).
+# Both are version-pinned: after a node or CLI upgrade, run
 # `install.sh --force` and re-run `crontab`.
 
 PATH={{UNIT_PATH_CRON}}

@@ -64,13 +64,47 @@ rl.on("line", (line) => {
 });
 `;
 
-function fixture(t) {
+/**
+ * The same protocol, but it holds the `get_state` answer until the prompt arrives
+ * and then delivers every line in **one write**. A real pipe coalesces writes
+ * under load, so this pins the adapter's own ordering requirement: the id must be
+ * learned from the response line itself, not from a microtask that runs after
+ * `agent_settled` has already settled the turn.
+ */
+const BATCHED = `#!/usr/bin/env node
+import { createInterface } from "node:readline";
+
+let stateId = null;
+const send = (value) => JSON.stringify(value);
+const rl = createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.type === "get_state") {
+    stateId = msg.id;
+    return;
+  }
+  if (msg.type === "prompt") {
+    process.stdout.write(
+      [
+        send({ id: stateId, type: "response", command: "get_state", success: true, data: { sessionId: "pi-sid-batched" } }),
+        send({ id: msg.id, type: "response", command: "prompt", success: true, data: { disposition: "started" } }),
+        send({ type: "agent_start" }),
+        send({ type: "agent_settled" }),
+      ].join("\\n") + "\\n",
+    );
+    return;
+  }
+  if (msg.id !== undefined) process.stdout.write(send({ id: msg.id, type: "response", command: msg.type, success: true, data: {} }) + "\\n");
+});
+`;
+
+function fixture(t, source = FAKE) {
   const dir = mkdtempSync(join(tmpdir(), "tp-pi-session-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const project = join(dir, "project");
   mkdirSync(project, { recursive: true });
   const bin = join(dir, "fake-pi.mjs");
-  writeFileSync(bin, FAKE, "utf8");
+  writeFileSync(bin, source, "utf8");
   chmodSync(bin, 0o755);
   return {
     dir,
@@ -156,6 +190,16 @@ describe("pi resident session", () => {
     const session = pool.openSession({ cwd: f.project, role: "project" });
     const outcome = await session.send("hello", { timeoutMs: 5000 });
     assert.equal(outcome.sessionId, "pi-sid-1");
+    await session.close();
+  });
+
+  it("learns the id even when the response and the settle share one chunk", async (t) => {
+    const f = fixture(t, BATCHED);
+    const pool = createPiPool({ opts: {}, bin: f.bin, log: f.log });
+    t.after(() => pool.close());
+    const session = pool.openSession({ cwd: f.project, role: "project" });
+    const outcome = await session.send("hello", { timeoutMs: 5000 });
+    assert.equal(outcome.sessionId, "pi-sid-batched");
     await session.close();
   });
 

@@ -8,11 +8,12 @@
  * `node` nor the agent CLI. The loop's units hit that twice (T-20261014-020103-2):
  *
  *   1. **the unit's interpreter** — `/usr/bin/env node` exits 127, so no tick ever runs;
- *   2. **the glue the tick starts** — `exec claude` in `wake-<actor-kind>.sh` looks the agent
- *      CLI up on the *same* inherited `PATH` and exits 127 in turn. Fixing (1) alone
- *      makes the symptom worse, not better: the tick starts and the wake still fails.
- *      Underneath both sits the worker's own process tree (`git`, `node`, `taskctl`),
- *      which is blind to a PATH that never carried their directories.
+ *   2. **the agent process the tick starts** — the resident session launches `claude` /
+ *      `codex` / `pi`, and looks the CLI up on the *same* inherited `PATH`, exiting 127
+ *      in turn. Fixing (1) alone makes the symptom worse, not better: the tick starts and
+ *      the session still fails. Underneath both sits the worker's own process tree
+ *      (`git`, `node`, `taskctl`), which is blind to a PATH that never carried their
+ *      directories.
  *
  * So both layers get the same one fix: name the interpreter outright **and** hand the
  * unit a `PATH` whose head is the agent CLI's directory and node's, followed by the

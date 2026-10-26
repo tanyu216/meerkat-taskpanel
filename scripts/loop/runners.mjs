@@ -7,7 +7,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, existsSync, readFileSync } from "node:fs";
+import { closeSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,7 +18,6 @@ import {
   planContinueInvocation,
   planPatrol,
   planTick,
-  planWakeInvocation,
 } from "../../src/foundation/scheduling.mjs";
 import {
   BOARD_CARD_ID,
@@ -752,29 +751,6 @@ function readRoleText(path) {
   }
 }
 
-export function spawnWorkerReal(opts, config, log) {
-  return (action, card) => {
-    const { handoff: prompt } = wakeHandoff(opts, config, action, card);
-    // The parsed field is `opts.glue`; there is no `gluePath`.
-    const invocation = planWakeInvocation({
-      actorKind: opts.actorKind,
-      prompt,
-      wakeCommand: config.wakeCommand ?? null,
-      gluePath: opts.glue,
-      glueInstalled: opts.glue !== null && existsSync(opts.glue),
-      project: card?.project ?? null,
-      projectsJson: opts.projectsJson,
-      nodePath: process.execPath,
-      cwd: opts.repo,
-    });
-    if (invocation.warning) log(`wake ${action.identifier}: ${invocation.warning}`);
-
-    // A glue's refusal explains itself on stderr; append it to the loop log, or
-    // a refused wake is silent. A directly-spawned CLI's chatter is discarded.
-    const stderrFd = invocation.via === "glue" ? openAppendFd(opts.log) : null;
-    return spawnDetached(invocation, stderrFd);
-  };
-}
 
 /** A notify command may hang; the pass must not hang with it. */
 export const NOTIFY_TIMEOUT_MS = 10_000;

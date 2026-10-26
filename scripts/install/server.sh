@@ -2,7 +2,7 @@
 #
 # server — materialize the whole runtime at <target_home>/.meerkat-taskpanel.
 #
-# This is not an agent bundle: no skill, no loop units, no wake glue. It is the
+# This is not an agent bundle: no skill, no loop units. It is the
 # board program itself (src/** + the built frontend) plus the taskd/taskctl
 # launchers, and it is the same materializer the npm/npx installer drives.
 #

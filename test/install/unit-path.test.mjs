@@ -3,8 +3,8 @@
  *
  * A scheduler starts a unit with a minimal PATH of its own, so a unit whose interpreter
  * is `/usr/bin/env node` exits 127 on any machine whose node lives under nvm or Homebrew
- * — and fixing only that merely moves the failure: the wake glue the tick starts runs
- * `exec claude` on the *same* inherited PATH and exits 127 in turn. Both layers are
+ * — and fixing only that merely moves the failure: the agent process the tick starts
+ * runs `exec claude` on the *same* inherited PATH and exits 127 in turn. Both layers are
  * fixed by one lever, and this file is the red→green record of it:
  *
  *   * `unit-path.mjs` owns the recipe (one definition, three scheduler renderings);

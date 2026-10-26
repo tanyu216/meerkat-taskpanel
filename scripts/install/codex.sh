@@ -7,7 +7,7 @@
 #   3. claim-first snippet → merged into ~/.codex/AGENTS.md (identity + rules)
 #   4. claim trigger      → ~/.codex/meerkat-taskpanel-claim.sh (schedulable; --no-automation skips)
 #   5. scheduling         → ~/.codex/scheduling/{launchd,systemd,cron}, the loop body in
-#                           ~/.codex/meerkat-taskpanel/, wake-codex.sh and the agent config
+#                           ~/.codex/meerkat-taskpanel/ and the agent config
 #                           (~/.codex/meerkat-taskpanel.env)
 # plus the taskctl shim that injects --agent <name>. `--no-automation` skips the
 # claim trigger *and* the scheduling wiring — Codex has no hooks, so both are the

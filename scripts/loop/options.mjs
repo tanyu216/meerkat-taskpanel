@@ -212,9 +212,7 @@ flag("--trail-limit", (opts, value) => { opts.trailLimit = number("--trail-limit
 flag("--config", (opts, value) => { opts.config = value; });
 flag("--home", (opts, value) => { opts.home = resolve(value); });
 flag("--cli", (opts, value) => { opts.cli = value; });
-flag("--glue", (opts, value) => { opts.glue = value; });
 flag("--projects-json", (opts, value) => { opts.projectsJson = value; });
-flag("--wake-command", (opts, value) => { opts.wakeCommand = value; });
 
 /** Agent-local files derived from `--home` and `--actor-kind`. */
 export function agentPaths(home, actorKind) {
@@ -225,7 +223,6 @@ export function agentPaths(home, actorKind) {
     log: join(dir, "meerkat-taskpanel", "supervisor.log"),
     state: join(dir, "meerkat-taskpanel", "supervisor.state.json"),
     config: join(dir, "meerkat-taskpanel.env"),
-    glue: join(dir, "bin", `wake-${actorKind}.sh`),
     projectsJson: join(dir, "skills", "meerkat-taskpanel", "projects.json"),
     // The two skills the resident sessions need: the loop expands
     // `/meerkat-loop` in the control session; project subagents use the board
@@ -316,9 +313,7 @@ function defaultOptions(env) {
     config: null,
     home: env.HOME || env.USERPROFILE || homedir(),
     cli: null,
-    glue: null,
     projectsJson: null,
-    wakeCommand: null,
     help: false,
     rolesDir: null,
   };
@@ -522,7 +517,6 @@ export function parseArgs(argv, env = process.env) {
   opts.subagentBackground = background === true;
   opts.repo ??= defaultRepo(opts.config);
   opts.cli ??= join(opts.repo, "src", "cli", "index.mjs");
-  opts.glue ??= paths.glue;
   opts.projectsJson ??= paths.projectsJson;
   opts.sseIdleMs ??= SSE_SUBSCRIBE_IDLE_MS;
   opts.eventDebounceMs ??= EVENT_DEBOUNCE_MS;
@@ -663,7 +657,6 @@ export function resolveLoopConfig(opts, env = process.env) {
     recoverStale,
     patrolLlm: opts.patrolLlm,
     actorKind: opts.actorKind,
-    wakeCommand: opts.wakeCommand,
     workflow: workflow.workflow,
     reviewer: workflow.reviewer,
     reviewerIsWorker,
@@ -712,7 +705,6 @@ export function loopCommandArgs(opts) {
     config: paths.config,
     repo: defaultRepo(opts.config),
     cli: join(opts.repo, "src", "cli", "index.mjs"),
-    glue: paths.glue,
     projectsJson: paths.projectsJson,
     slaLedger: beside.slaLedger,
     workflowLedger: beside.workflowLedger,
@@ -722,7 +714,6 @@ export function loopCommandArgs(opts) {
     ["--config", "config"],
     ["--repo", "repo"],
     ["--cli", "cli"],
-    ["--glue", "glue"],
     ["--projects-json", "projectsJson"],
     ["--sla-ledger", "slaLedger"],
     ["--workflow-ledger", "workflowLedger"],
@@ -736,7 +727,6 @@ export function loopCommandArgs(opts) {
     ["--sla-peer", opts.slaPeer],
     ["--sla-leader", opts.slaLeader],
     ["--notify", opts.notify],
-    ["--wake-command", opts.wakeCommand],
     ["--claim-unassigned", opts.claimUnassigned],
     ["--recover-stale", opts.recoverStale],
     ["--workflow", opts.workflow],
@@ -883,9 +873,7 @@ Options:
   --config <path>           Agent config (default: <home>/<agent-dir>/meerkat-taskpanel.env).
   --home <path>             Home the defaults are resolved against (default: $HOME).
   --cli <path>              taskctl entry (default: <repo>/src/cli/index.mjs).
-  --glue <path>             Wake glue (default: <home>/<agent-dir>/bin/wake-<actor-kind>.sh).
-  --wake-command <cmd>      Your own wake command instead of the built-in agent forms.
-  --projects-json <path>    Agent-local project map handed to the glue.
+  --projects-json <path>    Agent-local project map used to resolve a card's directory.
   -h, --help                Show this help
 
 The deterministic passes are also runnable on their own:

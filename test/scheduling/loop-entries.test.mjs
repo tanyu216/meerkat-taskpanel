@@ -7,8 +7,8 @@
  *   * **ping is liveness only** — it prunes the registry and touches nothing
  *     else (a sentinel `--cli` proves no board call was made);
  *   * **continue is a judgment turn** — it starts the agent with a bounded
- *     `Continue` prompt, never goes through the wake glue, and a single-flight lock
- *     stops a second turn while one is still running.
+ *     `Continue` prompt, never goes through a project directory, and a single-flight
+ *     lock stops a second turn while one is still running.
  *
  * The deterministic entries are exercised in dry-run against a sentinel CLI:
  * this is enough to prove they build the right board calls without a database.

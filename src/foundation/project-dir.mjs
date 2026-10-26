@@ -6,9 +6,9 @@
  * identifier prefix, and nothing else. "Which directory does work for this
  * project happen in?" is decided **locally, per agent kind**, by `projects.json`, and
  * `skills/meerkat-taskpanel/references/projects-json.md` documents it. This
- * module is that document in code, so the wake glue, `taskctl` and the tests
- * all read one map the same way — and a project with no mapped directory is a
- * loud, coded answer instead of a silent guess.
+ * module is that document in code, so the `taskctl` shim, the poll pass and the
+ * tests all read one map the same way — and a project with no mapped directory
+ * is a loud, coded answer instead of a silent guess.
  *
  * The directory is a **worker's** directory, not a data location: taskpanel
  * neither stores nor cares where a project keeps its results. Two keys may name
@@ -46,9 +46,10 @@ import { statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
 /**
- * Point an installed shim / wake glue at the map beside its skill — the shim and
- * the glue both live in `<agent-dir>/bin/`, one level under the skill directory.
- * An explicit value always wins, so a user with a second board can point at it.
+ * Point an installed shim at the map beside its skill — the shim lives in
+ * `<agent-dir>/bin/`, one level under the skill directory, and the poll pass is
+ * handed the same path. An explicit value always wins, so a user with a second
+ * board can point at it.
  */
 export const PROJECTS_JSON_ENV = "MEERKAT_TASKPANEL_PROJECTS_JSON";
 
@@ -112,7 +113,7 @@ function failure(code, message, context = {}) {
  * This validates **one value** and is deliberately intolerant of `undefined`,
  * `null`, `""` and non-strings: `resolveProjectDir` decides *which* key answers
  * (and whether an entry naming none is the legitimate "no local directory"
- * answer), while the wake glue reuses this function's `REQUIRED` refusal when it
+ * answer), while the poll pass reuses this function's `REQUIRED` refusal when it
  * needs a launch directory that the entry does not supply.
  *
  * @param {unknown} value the value carried by `local_path` / `run_dir`

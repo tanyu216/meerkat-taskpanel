@@ -436,8 +436,3 @@ export function recoverStaleCards(stateDir, options = {}) {
   const result = requeueCards(stateDir, stale, { maxAttempts, error: "stale claim recovered" });
   return { ok: result.ok, recovered: result.requeued, failed: result.failed, error: result.error };
 }
-
-/** @param {string} stateDir */
-export function listCards(stateDir) {
-  return readCards(stateDir).value.cards;
-}

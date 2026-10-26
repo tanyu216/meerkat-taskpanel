@@ -5,9 +5,9 @@
  * The loop is a deployment, not a library: what an agent kind needs to run it is
  *
  *   * the **execution body** — `scripts/supervisor.mjs` (the tick), `scripts/wake-cwd.mjs`
- *     (the wake glue's directory resolver) and the `src/foundation/` modules those two import;
- *   * the **templates** the installer renders — the launchd / systemd / cron units, the
- *     three `wake-<actor-kind>.sh` glues, and the agent config.
+ *     (the poll pass's directory resolver) and the `src/foundation/` modules those two import;
+ *   * the **templates** the installer renders — the launchd / systemd / cron units and the
+ *     agent config.
  *
  * Both are *generated* here, from the single sources this repository already keeps
  * (`scripts/`, `src/foundation/`, `scripts/install/templates/`), into
@@ -75,7 +75,7 @@ export const LOOP_MANIFEST = "manifest.txt";
 /**
  * The entry points whose transitive relative imports make up the loop body.
  *
- * `supervisor.mjs` is the scheduler; `wake-cwd.mjs` is what the generated wake glue
+ * `supervisor.mjs` is the scheduler; `wake-cwd.mjs` is what the poll pass
  * calls to answer "which directory does this card's project live in?"; and
  * `scripts/loop/*.mjs` are the deterministic entries the continue turn invokes.
  * Every root must travel with the body, or an installed unit names a file the agent
@@ -105,7 +105,7 @@ export const LOOP_BODY_ROOTS = Object.freeze([
  * The installer templates the loop owns, as repository-relative paths under
  * `scripts/install/templates/`. Keys are the destination-relative paths under
  * `skills/meerkat-loop/templates/` — identical, so `emit_loop_file` renders the same
- * `scheduling/…`, `claude/wake-claude.sh`, `agent/meerkat-taskpanel.env` names either way.
+ * `scheduling/…`, `agent/meerkat-taskpanel.env` names either way.
  *
  * The board-side templates (the Claude session-start hook and slash commands, the Codex
  * trigger and `AGENTS.md` snippet, the `taskctl` shims) are deliberately **not** here:
@@ -123,9 +123,6 @@ export const LOOP_TEMPLATE_FILES = Object.freeze([
   "scheduling/systemd/meerkat-taskpanel-subscribe.service",
   "scheduling/systemd/meerkat-taskpanel-session.service",
   "scheduling/cron/meerkat-taskpanel.cron",
-  "claude/wake-claude.sh",
-  "codex/wake-codex.sh",
-  "pi/wake-pi.sh",
   "agent/meerkat-taskpanel.env",
 ]);
 

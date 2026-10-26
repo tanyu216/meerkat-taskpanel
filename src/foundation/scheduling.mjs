@@ -457,18 +457,14 @@ export function candidateArgs(agent, claimUnassigned, recoverStale = false) {
  *     `pi --print --session <sid> <prompt>` (`--session <path|id>`).
  *
  * These shapes are the ones verified against the real CLIs — the per-agent-kind
- * capability matrix in `scripts/verify/kind-resume-matrix.mjs`. An explicit
- * `wakeCommand` override lets an installer or a user plug in their own glue.
+ * capability matrix in `scripts/verify/kind-resume-matrix.mjs`.
  *
- * @param {{actorKind?: string, prompt: string, resumeSid?: string|null, wakeCommand?: string|null}} input
+ * @param {{actorKind?: string, prompt: string, resumeSid?: string|null}} input
  * @returns {{command: string, args: string[]}}
  */
 export function wakeCommand(input = {}) {
   const prompt = String(input.prompt ?? "");
   const resumeSid = input.resumeSid ?? null;
-  if (input.wakeCommand) {
-    return { command: String(input.wakeCommand), args: resumeSid ? [prompt, "--resume", String(resumeSid)] : [prompt] };
-  }
   switch (input.actorKind) {
     case "claude":
       return { command: "claude", args: resumeSid ? ["-p", prompt, "--resume", String(resumeSid)] : ["-p", prompt] };
@@ -490,101 +486,13 @@ export function wakeCommand(input = {}) {
 }
 
 /**
- * What the supervisor actually spawns to wake a card — and *where*.
- *
- * The supervisor knows a card's board **project identity** and nothing about
- * directories: the board holds none (O3). So the directory is not decided here.
- * It is decided by the agent kind's own wake glue, which reads the local
- * `projects.json` and `cd`s into the directory it names for the card's project —
- * `local_path`, else `run_dir` — before exec'ing the agent CLI (R1).
- *
- * Three shapes follow from that, in the order an operator's intent wins:
- *
- *   * **an explicit wake command** (`--wake-command`) — the operator's own glue,
- *     used verbatim: `<cmd> <handoff> [sid]`. It is the documented escape hatch
- *     for an agent kind this repo does not wire, so nothing here second-guesses it.
- *   * **glue installed** — spawn `bash <glue> <handoff> [sid]`, handing the
- *     project identity along in the environment (`TP_PROJECT`). The glue sets
- *     the working directory; if it cannot, it refuses the wake and the card
- *     stays unwoken rather than running in the wrong checkout.
- *   * **no glue** — the supervisor falls back to the agent CLI directly, pinned
- *     to `cwd` (the `--repo` root) and flagged with an explicit `warning`: the
- *     honest "no target directory was resolved for this wake" case, never a
- *     silent one.
- *
- * @param {{
- *   actorKind: string,
- *   prompt: string,
- *   resumeSid?: string|null,
- *   wakeCommand?: string|null,
- *   gluePath?: string|null,
- *   glueInstalled?: boolean,
- *   project?: string|null,
- *   projectsJson?: string|null,
- *   nodePath?: string|null,
- *   cwd?: string|null,
- * }} input
- * @returns {{command: string, args: string[], env: Record<string,string>, cwd: string|null, via: "glue"|"override"|"direct", warning?: string}}
- */
-export function planWakeInvocation(input = {}) {
-  const prompt = String(input.prompt ?? "");
-  const resumeSid = input.resumeSid ?? null;
-  const cwd = input.cwd ?? null;
-
-  // The identity travels in the environment, not in argv: the glue's argv is a
-  // fixed `[handoff, sid?]` shape the kind-resume matrix already pins.
-  const env = {};
-  if (input.project !== undefined && input.project !== null && String(input.project) !== "") {
-    env.TP_PROJECT = String(input.project);
-  }
-  if (input.projectsJson !== undefined && input.projectsJson !== null && String(input.projectsJson) !== "") {
-    env.TP_PROJECTS_JSON = String(input.projectsJson);
-  }
-  // The glue shell has to run a node to resolve the directory, and under cron /
-  // launchd `PATH` is minimal — so hand it the interpreter this supervisor is
-  // already running on rather than betting on `node` being findable.
-  if (input.nodePath !== undefined && input.nodePath !== null && String(input.nodePath) !== "") {
-    env.TP_NODE = String(input.nodePath);
-  }
-
-  // The operator's own wake command comes first: an explicit choice is never
-  // overridden by a default, and it is never second-guessed with a warning.
-  if (input.wakeCommand) {
-    const override = wakeCommand({ actorKind: input.actorKind, prompt, resumeSid, wakeCommand: input.wakeCommand });
-    return { ...override, env, cwd, via: "override" };
-  }
-
-  const glue = input.gluePath ?? null;
-  if (glue !== null && input.glueInstalled === true) {
-    return {
-      command: "bash",
-      args: [glue, prompt, ...(resumeSid === null ? [] : [String(resumeSid)])],
-      env,
-      cwd,
-      via: "glue",
-    };
-  }
-
-  return {
-    ...wakeCommand({ actorKind: input.actorKind, prompt, resumeSid }),
-    env,
-    cwd,
-    via: "direct",
-    warning:
-      `no wake glue at ${glue ?? "(unset)"} — the worker runs in ${cwd ?? "the supervisor's working directory"} ` +
-      "without a resolved project target directory",
-  };
-}
-
-/**
  * What the scheduler spawns for one **continue** turn.
  *
  * A continue turn is not a card wake: it has no card, no project identity and
- * no session to resume. So it always takes the agent kind's built-in headless form
- * and never the wake glue — the glue exists to resolve a card's project target
- * directory, and `wake-cwd.mjs` refuses an empty project rather than guessing
- * one. `TP_NODE` is still carried so a nested glue (started by the workers the
- * turn wakes) finds the interpreter this scheduler is running on.
+ * no session to resume. So it always takes the agent kind's built-in headless form.
+ * `TP_NODE` is carried so a process this turn starts finds the interpreter the
+ * scheduler is running on, rather than betting on `node` being on a minimal
+ * launchd/cron `PATH`.
  *
  * @param {{actorKind: string, prompt: string, cwd?: string|null, nodePath?: string|null}} input
  * @returns {{command: string, args: string[], env: Record<string,string>, cwd: string|null, via: "direct"}}

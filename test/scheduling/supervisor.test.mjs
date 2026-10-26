@@ -4,7 +4,7 @@
  * Two halves, deliberately:
  *
  *   * the **pure decision** — `planTick` / `planPatrol` / `parseHeartbeat` /
- *     `resolveClaimUnassigned` / `buildHandoff` / `wakeCommand` / `planWakeInvocation` —
+ *     `resolveClaimUnassigned` / `buildHandoff` / `wakeCommand` —
  *     is asserted directly. No process, no clock, no filesystem.
  *   * the **tick runner** — `runPollTick` / `runPatrolTick` — is driven with fully
  *     injected dependencies (candidate read, claim, worker spawn, clock, log), so the
@@ -34,7 +34,6 @@ import {
   parseHeartbeat,
   planPatrol,
   planTick,
-  planWakeInvocation,
   pruneRegistry,
   resolveClaimUnassigned,
   resolveRecoverStale,
@@ -43,7 +42,7 @@ import {
 import { emptySlaLedger, planSlaPatrol } from "../../src/foundation/sla-patrol.mjs";
 import { agentPaths, defaultRepo, loopCommandArgs, parseArgs, selectMode } from "../../scripts/loop/options.mjs";
 import { loadSlaLedger, readPeerLastOk, readPeerMarker, saveLastOk, saveSlaLedger } from "../../scripts/loop/runtime.mjs";
-import { notifyReal, runPatrolTick, runPollTick, runWorkflowTick, spawnWorkerReal } from "../../scripts/loop/runners.mjs";
+import { notifyReal, runPatrolTick, runPollTick, runWorkflowTick } from "../../scripts/loop/runners.mjs";
 import { resolveWakeDir } from "../../scripts/wake-cwd.mjs";
 import { PROJECT_DIR_CODES } from "../../src/foundation/project-dir.mjs";
 import { createCommands, createContext } from "../../src/core/commands/index.mjs";
@@ -396,105 +395,8 @@ describe("wakeCommand (pure)", () => {
     assert.deepEqual(resumed.args, ["--print", "--session", "sid-9", "do T-1"]);
   });
 
-  it("honours an explicit --wake-command override, with and without a session id", () => {
-    const overridden = wakeCommand({ actorKind: "claude", prompt: "do T-1", wakeCommand: "my-wake.sh" });
-    assert.equal(overridden.command, "my-wake.sh");
-    assert.deepEqual(overridden.args, ["do T-1"]);
-
-    const resumed = wakeCommand({ actorKind: "claude", prompt: "do T-1", resumeSid: "sid-9", wakeCommand: "my-wake.sh" });
-    assert.deepEqual(resumed.args, ["do T-1", "--resume", "sid-9"]);
-  });
 });
 
-// ---------------------------------------------------------------------------
-// Pure: planWakeInvocation — the glue owns the working directory (R1)
-// ---------------------------------------------------------------------------
-
-describe("planWakeInvocation (pure)", () => {
-  const GLUE = "/home/alice/.claude/bin/wake-claude.sh";
-  const MAP = "/home/alice/.claude/skills/meerkat-taskpanel/projects.json";
-
-  it("starts the agent kind's wake glue when one is installed", () => {
-    const plan = planWakeInvocation({
-      actorKind: "claude",
-      prompt: "do T-1",
-      gluePath: GLUE,
-      glueInstalled: true,
-      project: "TaskPanel",
-      projectsJson: MAP,
-      nodePath: "/usr/local/bin/node",
-      cwd: "/repo",
-    });
-    assert.equal(plan.via, "glue");
-    assert.equal(plan.command, "bash");
-    assert.deepEqual(plan.args, [GLUE, "do T-1"]);
-    // The glue gets everything it needs to resolve and run: the identity, the
-    // map, and a node it can trust (cron/launchd PATH is minimal).
-    assert.deepEqual(plan.env, {
-      TP_PROJECT: "TaskPanel",
-      TP_PROJECTS_JSON: MAP,
-      TP_NODE: "/usr/local/bin/node",
-    });
-    assert.equal(plan.cwd, "/repo");
-    assert.equal(plan.warning, undefined, "a glue means no warning");
-  });
-
-  it("passes a session id to the glue as its second argument", () => {
-    const plan = planWakeInvocation({
-      actorKind: "codex",
-      prompt: "do T-1",
-      resumeSid: "sid-9",
-      gluePath: "/home/alice/.codex/bin/wake-codex.sh",
-      glueInstalled: true,
-      project: "TaskPanel",
-    });
-    assert.deepEqual(plan.args, ["/home/alice/.codex/bin/wake-codex.sh", "do T-1", "sid-9"]);
-  });
-
-  it("falls back to the agent CLI — with an explicit warning — when no glue is installed", () => {
-    const plan = planWakeInvocation({
-      actorKind: "claude",
-      prompt: "do T-1",
-      gluePath: GLUE,
-      glueInstalled: false,
-      project: "TaskPanel",
-      cwd: "/repo",
-    });
-    assert.equal(plan.via, "direct");
-    assert.equal(plan.command, "claude");
-    assert.deepEqual(plan.args, ["-p", "do T-1"]);
-    // The fallback is pinned to a known directory and says so out loud: a silent
-    // run in an arbitrary cwd is the bug this whole path exists to remove.
-    assert.equal(plan.cwd, "/repo");
-    assert.match(plan.warning, /no wake glue at .*wake-claude\.sh/);
-    assert.match(plan.warning, /\/repo/);
-    // The identity still travels, so a user-supplied glue can use it.
-    assert.equal(plan.env.TP_PROJECT, "TaskPanel");
-  });
-
-  it("honours an explicit --wake-command over everything, without warning", () => {
-    const plan = planWakeInvocation({
-      actorKind: "claude",
-      prompt: "do T-1",
-      wakeCommand: "my-wake.sh",
-      // Even with a glue installed: an explicit choice is not overridden by a default.
-      gluePath: GLUE,
-      glueInstalled: true,
-      project: "TaskPanel",
-    });
-    assert.equal(plan.via, "override");
-    assert.equal(plan.command, "my-wake.sh");
-    assert.deepEqual(plan.args, ["do T-1"]);
-    assert.equal(plan.warning, undefined);
-    // The identity still travels, so an operator's glue can resolve it too.
-    assert.equal(plan.env.TP_PROJECT, "TaskPanel");
-  });
-
-  it("sends no project variables when the card carries no project identity", () => {
-    const plan = planWakeInvocation({ actorKind: "claude", prompt: "do T-1", gluePath: GLUE, glueInstalled: true });
-    assert.deepEqual(plan.env, {});
-  });
-});
 
 describe("buildHandoff (pure)", () => {
   it("carries the card, the attribution flags and the claim-first rules, bounded", () => {
@@ -1482,32 +1384,17 @@ describe("pruneRegistry (pure)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — the wake surface the glue decision is built from
+// parseArgs — the project map the poll pass resolves from
 // ---------------------------------------------------------------------------
 
-describe("parseArgs — the wake surface", () => {
+describe("parseArgs — the project map", () => {
   const ENV = { HOME: "/home/alice" };
 
-  it("defaults the glue and the project map under the agent's dot-directory", () => {
+  it("defaults the map under the agent's dot-directory, and accepts an explicit one", () => {
     const opts = parseArgs(["--actor-kind", "codex", "--once"], ENV);
-    assert.equal(opts.glue, "/home/alice/.codex/bin/wake-codex.sh");
     assert.equal(opts.projectsJson, "/home/alice/.codex/skills/meerkat-taskpanel/projects.json");
-    assert.equal(opts.wakeCommand, null, "no override unless the operator asks for one");
-  });
-
-  it("accepts an explicit glue, map and wake command", () => {
-    const opts = parseArgs(
-      [
-        "--actor-kind", "pi",
-        "--glue", "/tmp/my-wake.sh",
-        "--projects-json=/tmp/map.json",
-        "--wake-command", "my-wake.sh",
-      ],
-      ENV,
-    );
-    assert.equal(opts.glue, "/tmp/my-wake.sh");
-    assert.equal(opts.projectsJson, "/tmp/map.json");
-    assert.equal(opts.wakeCommand, "my-wake.sh");
+    const custom = parseArgs(["--actor-kind", "pi", "--projects-json=/tmp/map.json"], ENV);
+    assert.equal(custom.projectsJson, "/tmp/map.json");
   });
 
   it("defaults the SLA ledger beside the state file, and follows a custom one", () => {
@@ -1782,191 +1669,13 @@ describe("defaultRepo — the board a supervisor drives", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Wiring sanity: the exported runner lives in the repo
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// The wake wiring: the *resolved* glue is what a wake uses (R1, T-20261014-010025)
+// The poll pass's directory resolver: `wake-cwd.mjs`
 //
-// `planWakeInvocation` is pure and is covered above — but every one of those cases
-// *hands it* a `gluePath`. The defect lived one level out, in the I/O half that builds
-// that argument: `spawnWorkerReal` read `opts.gluePath`, a field `parseArgs` never
-// assigns (`opts.glue` is the resolved one), so the planner was handed `undefined`,
-// `existsSync(undefined)` (DEP0187) returned false, and `glueInstalled` was always
-// false. The glue was installed, named in the tick line, and still never used: R1's
-// "the worker runs in the card's project target directory" had silently stopped
-// happening. Both cases below fail on the pre-fix file and pass on the fixed one.
-// ---------------------------------------------------------------------------
-
-describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () => {
-  const tempDirs = [];
-  function tempDir(prefix) {
-    const dir = mkdtempSync(join(tmpdir(), prefix));
-    tempDirs.push(dir);
-    return dir;
-  }
-  after(() => {
-    for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-  });
-
-  const RUNNERS_URL = new URL("../../scripts/loop/runners.mjs", import.meta.url);
-
-  /** Write an executable stub script: shebang, `set -eu`, the given body, `exit 0`. */
-  function stub(dir, name, body) {
-    const path = join(dir, name);
-    writeFileSync(path, ["#!/usr/bin/env bash", "set -eu", ...body, "exit 0", ""].join("\n"), "utf8");
-    chmodSync(path, 0o755);
-    return path;
-  }
-
-  async function waitFor(predicate, ms = 5000) {
-    const deadline = Date.now() + ms;
-    for (;;) {
-      if (predicate()) return true;
-      if (Date.now() >= deadline) return predicate();
-      await new Promise((r) => setTimeout(r, 20));
-    }
-  }
-
-  /** A marker's text so far — empty while it does not exist yet. */
-  function readMarker(path) {
-    try {
-      return readFileSync(path, "utf8");
-    } catch {
-      return "";
-    }
-  }
-
-  it("runs the installed glue — not the direct fallback — and hands it the project identity", async () => {
-    const dir = tempDir("meerkat-wake-glue-");
-    // Two mutually exclusive stubs, so the case reports *which* branch ran rather than
-    // merely that something did. The `claude` stub goes first on PATH for the duration
-    // of the call: the direct fallback must resolve to it, never to a real agent CLI.
-    const glueMarker = join(dir, "glue.txt");
-    const directMarker = join(dir, "direct.txt");
-    const glue = stub(dir, "wake-claude.sh", [
-      `printf 'argv=%s\\n' "$*" > "${glueMarker}"`,
-      `printf 'project=%s\\n' "\${TP_PROJECT:-}" >> "${glueMarker}"`,
-    ]);
-    const bin = tempDir("meerkat-wake-bin-");
-    stub(bin, "claude", [`printf 'direct\\n' > "${directMarker}"`]);
-
-    const logs = [];
-    const spawnWorker = spawnWorkerReal(
-      { actorKind: "claude", repo: dir, glue, projectsJson: join(dir, "projects.json"), log: join(dir, "supervisor.log") },
-      { wakeCommand: null },
-      (line) => logs.push(line),
-    );
-
-    const originalPath = process.env.PATH;
-    process.env.PATH = `${bin}:${originalPath}`;
-    let result;
-    try {
-      result = await spawnWorker(
-        { identifier: "T-1", agent: "alice" },
-        { identifier: "T-1", title: "wire the glue", project: "TaskPanel" },
-      );
-      // Wait for the *complete* record, not merely for the file to appear. The stub
-      // writes `argv=` and `project=` as two separate opens, so a poll can land between
-      // them and the reads below would see a half-written file — `existsSync` is true
-      // from the first line on, which is exactly the race that made this case red under
-      // load. The glue's last line is the completion signal.
-      assert.ok(
-        await waitFor(() => /^project=TaskPanel$/m.test(readMarker(glueMarker))),
-        "the installed glue never ran to completion",
-      );
-    } finally {
-      process.env.PATH = originalPath;
-    }
-
-    assert.equal(result.ok, true, result.error);
-    assert.equal(existsSync(directMarker), false, "the direct fallback ran despite an installed glue");
-    const recorded = readFileSync(glueMarker, "utf8");
-    assert.match(recorded, /T-1/, "the glue is handed the handoff that names the card");
-    assert.match(recorded, /^project=TaskPanel$/m, "the identity the glue resolves the directory from must ride along");
-    // The silent half of the defect: the fallback announces itself, so a glue that
-    // exists and is still not used must never look like an ordinary wake.
-    assert.deepEqual(logs.filter((line) => /no wake glue/.test(line)), []);
-  });
-
-  it("hands a review card the reviewer handoff, not the worker handoff", async () => {
-    const dir = tempDir("meerkat-wake-review-");
-    const marker = join(dir, "prompt.txt");
-    const glue = stub(dir, "wake-claude.sh", [`printf '%s' "$*" > "${marker}"`]);
-    const spawnWorker = spawnWorkerReal(
-      { actorKind: "claude", repo: dir, glue, projectsJson: join(dir, "projects.json"), log: join(dir, "supervisor.log") },
-      { wakeCommand: null, reviewer: "jobs", reviewerIsWorker: false },
-      () => {},
-    );
-
-    const originalPath = process.env.PATH;
-    // An empty PATH would make a regression to the direct branch fail loudly rather
-    // than reach a real agent CLI; the glue path is absolute, so it still runs.
-    process.env.PATH = `${tempDir("meerkat-wake-review-bin-")}:${originalPath}`;
-    let result;
-    try {
-      result = await spawnWorker(
-        { identifier: "T-2", agent: "jobs" },
-        { identifier: "T-2", review_of: "T-1", review_round: 1, project: "P1" },
-      );
-      assert.ok(await waitFor(() => readMarker(marker).includes("review_not_ready")));
-    } finally {
-      process.env.PATH = originalPath;
-    }
-
-    assert.equal(result.ok, true, result.error);
-    const recorded = readFileSync(marker, "utf8");
-    assert.match(recorded, /Card under review: T-1 \(round 1\)/);
-    assert.doesNotMatch(recorded, /Step 0 — before working/, "a reviewer is not told to split the card");
-  });
-
-  it("names the configured glue, and probes no undefined path (DEP0187)", () => {
-    // In a child process: a deprecation warning is emitted once per process, so a fresh
-    // one is what turns its absence into a fact instead of a leftover. PATH is emptied
-    // so a regression to the direct branch cannot reach a real agent CLI — this case
-    // only observes what the glue decision was handed.
-    const dir = tempDir("meerkat-wake-probe-");
-    const missing = join(dir, "definitely-not-installed.sh");
-    const probe = join(dir, "probe.mjs");
-    writeFileSync(
-      probe,
-      [
-        `import { spawnWorkerReal } from ${JSON.stringify(RUNNERS_URL.href)};`,
-        "const logs = [];",
-        "const spawnWorker = spawnWorkerReal(",
-        `  { actorKind: "claude", repo: ${JSON.stringify(dir)}, glue: ${JSON.stringify(missing)}, projectsJson: ${JSON.stringify(join(dir, "map.json"))}, log: ${JSON.stringify(join(dir, "supervisor.log"))} },`,
-        "  { wakeCommand: null },",
-        "  (line) => logs.push(line),",
-        ");",
-        'spawnWorker({ identifier: "T-9", agent: "alice" }, { identifier: "T-9", project: "P1" }).then((result) => {',
-        '  process.stdout.write(JSON.stringify({ ok: result.ok, logs }) + "\\n");',
-        "});",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-
-    const emptyBin = tempDir("meerkat-wake-emptybin-");
-    const run = spawnSync(process.execPath, [probe], { encoding: "utf8", env: { ...process.env, PATH: emptyBin } });
-
-    assert.equal(run.status, 0, run.stderr);
-    assert.doesNotMatch(run.stderr, /DEP0187/, "must not probe existsSync() with a non-path");
-    const { logs } = JSON.parse(run.stdout.trim().split("\n").pop());
-    const warning = logs.find((line) => /no wake glue/.test(line));
-    assert.ok(warning, "a missing glue must still be announced");
-    assert.ok(warning.includes(missing), `the warning must name the configured glue, got: ${warning}`);
-    assert.ok(!warning.includes("(unset)"), "an unassigned opts field made the warning name '(unset)' instead");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// The glue's directory resolver: `wake-cwd.mjs`
-//
-// The map has three answers and the *wake* can only use two of them: a project
+// The map has three answers and *dispatch* can only use two of them: a project
 // absent from `projects.json` is unmapped (ask the user), and an entry that
 // exists but names no directory is a complete answer for the map — a project may
 // legitimately keep nothing on disk — but it is still no answer for a worker,
-// which has to be started somewhere. Both refuse the wake, and they refuse it
+// which has to be started somewhere. Both refuse dispatch, and they refuse it
 // with their own reason rather than one generic message.
 // ---------------------------------------------------------------------------
 
@@ -2041,11 +1750,11 @@ describe("supervisor module", () => {
       [SUPERVISOR_URL, ["main"]],
       [new URL("../../scripts/loop/options.mjs", import.meta.url), ["parseArgs", "selectMode"]],
       [new URL("../../scripts/loop/runtime.mjs", import.meta.url), ["loadRegistry", "saveRegistry", "runPingTick", "subscribeStatePath", "loadSubscribeState", "saveSubscribeState"]],
-      [new URL("../../scripts/loop/runners.mjs", import.meta.url), ["runPollTick", "runPatrolTick", "spawnWorkerReal"]],
+      [new URL("../../scripts/loop/runners.mjs", import.meta.url), ["runPollTick", "runPatrolTick"]],
       [new URL("../../scripts/loop/subscribe.mjs", import.meta.url), ["runSubscribe", "createDispatchScheduler"]],
       [new URL("../../scripts/loop/status.mjs", import.meta.url), ["probeSupervisor", "probeUnits", "takeOver", "stopSupervisor"]],
       [new URL("../../scripts/loop/console.mjs", import.meta.url), ["consoleCycle"]],
-      [new URL("../../src/foundation/scheduling.mjs", import.meta.url), ["buildContinuePrompt", "planContinueInvocation", "planWakeInvocation"]],
+      [new URL("../../src/foundation/scheduling.mjs", import.meta.url), ["buildContinuePrompt", "planContinueInvocation"]],
     ];
     for (const [url, names] of modules) {
       const mod = await import(url.href);

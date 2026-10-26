@@ -223,13 +223,6 @@ describe("loop skill: the generated payload", () => {
     }
   });
 
-  it("names no checkout path: the wake glues resolve through {{LOOP}}", () => {
-    for (const rel of ["claude/wake-claude.sh", "codex/wake-codex.sh", "pi/wake-pi.sh"]) {
-      const text = readFileSync(join(LOOP_SKILL, "templates", rel), "utf8");
-      assert.ok(text.includes("{{LOOP}}/scripts/wake-cwd.mjs"), `${rel} must resolve via {{LOOP}}`);
-      assert.equal(text.includes("{{REPO}}"), false, `${rel} must not name the board checkout`);
-    }
-  });
 });
 
 describe("loop skill: SKILL.md", () => {

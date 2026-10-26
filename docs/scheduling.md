@@ -667,7 +667,7 @@ own resume form: Claude resumes with `claude -p … --resume <sid>`, Codex with
 `codex exec resume <sid> <prompt>`, and Pi with `pi --print --session <sid>
 <prompt>`. All three are verified against the real CLIs;
 `scripts/verify/kind-resume-matrix.mjs` probes each binary's help output when the CLI
-is installed, and `--wake-command` remains the escape hatch for a custom glue.
+is installed.
 
 ## Where a worker runs
 
@@ -677,7 +677,7 @@ checkout supplies. The board cannot say which directory that is (it holds no
 directories, O3), and neither can the supervisor: it knows a project **identity** and
 nothing else.
 
-So the directory is resolved **locally by the wake glue**, against `projects.json`
+So the directory is resolved **locally by the poll pass**, against `projects.json`
 beside the skill (`references/projects-json.md`) as `local_path ?? run_dir`,
 **validated** (absolute, exists, is a directory).
 
@@ -688,25 +688,13 @@ loop state, not project data — where a project keeps its results is still its 
 not writable blocks dispatch: a claim with no brief has nowhere to run, so the card is
 deferred unclaimed.
 
-- **Resident (default).** Poll resolves the candidate's project before claiming it
-  and writes the result into the queue entry as `target_dir`; the pool launches the
-  project session in that directory, and the subagent inherits it. If the project
-  is unmapped or names no directory, the card is **deferred before the claim** —
-  it stays `todo`, where the next turn can offer it again, and the log says why.
-- **Legacy one-shot wake.** The supervisor starts the worker *through* the glue
-  (`<agent-dir>/bin/wake-<actor-kind>.sh`) when one is installed, handing it the card's
-  project identity in `TP_PROJECT` and the map path in `TP_PROJECTS_JSON`. The
-  glue resolves the same way, `cd`s into the directory, and only then execs the
-  agent CLI. If it cannot resolve it **refuses the wake** (exit 3, reason on
-  stderr) and the card stays unwoken. There is no fallback directory: a session
-  that runs in the wrong checkout produces confident, misplaced work, which is
-  worse than no session.
-- With **no glue installed**, the legacy path falls back to the agent CLI directly,
-  pins it to `--repo`, and logs an explicit warning that no target directory was
-  resolved. An explicit **`--wake-command`** outranks both.
-- The resident path never uses the glue, `--wake-command` or the CLI fallback.
-  Those remain for old installations and manual wakes; the units this installer
-  writes do not call them.
+Poll resolves the candidate's project before claiming it and writes the result into
+the queue entry as `target_dir`; the pool launches the project session in that
+directory, and the subagent inherits it. If the project is unmapped or names no
+directory, the card is **deferred before the claim** — it stays `todo`, where the
+next turn can offer it again, and the log says why. There is no fallback directory:
+a session that runs in the wrong checkout produces confident, misplaced work, which
+is worse than no session.
 
 The same map answers the interactive question: `taskctl project dir <project>` prints
 a project's registered directory, reports that the entry names none, or exits non-zero
@@ -738,7 +726,7 @@ than better:
 | Layer | What it is | What a minimal `PATH` does to it |
 |---|---|---|
 | ① the unit's interpreter | `/usr/bin/env node <supervisor.mjs>` | `env: node: No such file or directory` — exit 127, and no tick ever runs |
-| ② the glue the tick starts | `exec claude` in `wake-<actor-kind>.sh` | 127 again, on the *inherited* minimal `PATH` — the tick now starts and the wake still fails. Underneath it sits the worker's own process tree (`git`, `node`, `taskctl`), which is equally blind |
+| ② the agent process the tick starts | the resident session launches `claude` / `codex` / `pi` | 127 again, on the *inherited* minimal `PATH` — the tick now starts and the session still fails. Underneath it sits the worker's own process tree (`git`, `node`, `taskctl`), which is equally blind |
 
 So each loop unit names **both** things outright:
 
@@ -989,8 +977,8 @@ WantedBy=default.target
 - **No `PATH`, and that is specific to this unit family.** With an absolute `ExecStart` the
   guard never resolves another name: it starts node on the board server and nothing else, so
   a `PATH` of its own would only narrow systemd's own default. The **loop** units are the
-  other family — their tick *derives* executables (the wake glue's `exec claude`, and the
-  worker's own `git` / `node` / `taskctl` tree), so they carry an absolute interpreter *and*
+  other family — their tick *derives* executables (the resident session's agent CLI, and
+  the worker's own `git` / `node` / `taskctl` tree), so they carry an absolute interpreter *and*
   a `PATH`. Same scheduler, two answers, each for a stated reason: see
   [What the loop's units run with](#what-the-loops-units-run-with).
 - **`Restart=always`** — restart the server after it exits, whatever the reason. Only an
@@ -1215,7 +1203,7 @@ this checkout:
 ├── scripts/supervisor.mjs        the scheduler the units run
 ├── scripts/loop/*.mjs            the deterministic passes (patrol / workflow / poll), the subscriber,
 │                                 the resident pool (session.mjs), its queues + ledger, and the actor-kind adapters
-├── scripts/wake-cwd.mjs          what the wake glue calls to resolve a card's directory
+├── scripts/wake-cwd.mjs          what the poll pass calls to resolve a card's directory
 ├── scripts/foundation/*.mjs      the modules those import
 ├── supervisor.log                runtime
 ├── supervisor.state.json         runtime (legacy worker registry)
@@ -1239,12 +1227,12 @@ test, or an agent kind's copy silently behind. The installer refreshes a differi
 `--force` (merge, never clobber — the same contract as every other installed artefact),
 and `--dry-run` reports which members would be refreshed.
 
-The units, the wake glues and the agent config are rendered from the **loop skill's own
-templates** (`skills/meerkat-loop/templates/…`), not from a second copy under
+The units and the agent config are rendered from the **loop skill's own templates**
+(`skills/meerkat-loop/templates/…`), not from a second copy under
 `scripts/install/templates/` — the installer deploys what the loop distributes.
 
-What that buys: a unit a user has already **loaded** names no checkout path, and the wake
-glue resolves the card's directory through the agent-local `scripts/wake-cwd.mjs` rather
+What that buys: a unit a user has already **loaded** names no checkout path, and the poll
+pass resolves the card's directory through the agent-local `scripts/wake-cwd.mjs` rather
 than the checkout's — so moving, renaming or removing the checkout does not invalidate
 either. Pointing the loop at a new location is a re-run of `install.sh`, with no
 `launchctl` / `systemctl` / `crontab` reload.
@@ -1269,15 +1257,15 @@ rather than confirmed per call.
 
 The rule that follows from that is a **no-default-bypass** rule:
 
-- The supervisor and the generated wake scripts **must not** run workers with
+- The supervisor and the resident adapters **must not** run workers with
   permissions bypassed by default — no `claude --dangerously-skip-permissions`,
   no Codex `--dangerously-bypass-approvals-and-sandbox` (or equivalent), on by
-  default. Neither the repo's `scripts/supervisor.mjs` nor the agent kind wake glue
-  (`wake-claude.sh`, `wake-codex.sh`, `wake-pi.sh`) ships such a flag.
+  default. Neither the repo's `scripts/supervisor.mjs` nor any actor-kind adapter
+  ships such a flag.
 - Turning a bypass **on** is a deliberate act that requires **explicit written
-  authorization** and must be **documented at the point of use** — in the wake
-  script or agent config that carries it — so a reader can see the bypass, the
-  reason, and who authorized it. An undocumented bypass is a bug, not a config.
+  authorization** and must be **documented at the point of use** — in the agent
+  config that carries it — so a reader can see the bypass, the reason, and who
+  authorized it. An undocumented bypass is a bug, not a config.
 - The recommended mechanism is a **narrow allowlist or sandbox**, not a blanket
   bypass:
   - **Claude Code** — `claude -p` with `--permission-mode` (e.g. `acceptEdits`
@@ -1319,28 +1307,22 @@ the full-access sandbox, and Pi adds `--approve`. The flag is printed in `--supe
 installed units never carry it: the config file is where the authorization is
 recorded.
 
-The **legacy one-shot wake glue is deliberately excluded**: it keeps the
-no-default-bypass rule (`scripts/verify/kind-runtime.mjs` fails the build if any
-wake script carries a bypass flag), because it starts a process this deployment
-no longer supervises. Full access belongs to the resident pool, where the
-authorization and its reason travel with the config the pool reads.
-
 ## The three agent kinds: how each one is triggered
 
-Claude Code, Codex and Pi have no clock, and their wake surfaces
-differ. The supervisor's `--actor-kind` selects the wake command; the rest (scan, claim,
-patrol, registry) is identical.
+Claude Code, Codex and Pi have no clock, and their headless entry points
+differ. The supervisor's `--actor-kind` selects the one-shot continue command; the rest
+(scan, claim, patrol, registry) is identical.
 
 | Agent kind | Wake command | Trigger / scheduling | Continuity |
 |---|---|---|---|
 | **Claude Code** | `claude -p "<handoff>"` (headless) | external: launchd / systemd / cron running `supervisor.mjs --ping-only --once` / `--continue-only --once`, or the scheduler's own two clocks | `claude -p … --resume <sid>` — resume the session that owns the card |
 | **Codex** | `codex exec "<handoff>"` | external: the same units, or Codex app automation (`intervalMinutes`, `quotaAware`, `model`, `reasoningEffort`) | resume the thread with `codex exec resume <sid> <prompt>`; carry `$CODEX_THREAD_ID` as `--session-id` |
-| **Pi** | `pi --print "<handoff>"` | external units + `wake-pi.sh` | resume with `pi --print --session <sid> <prompt>`; pass the session id through the handoff |
+| **Pi** | `pi --print "<handoff>"` | external units | resume with `pi --print --session <sid> <prompt>`; pass the session id through the handoff |
 | **OpenClaw** | *n/a — no self-scheduler* | install **openclaw-team**; its `poll`/`patrol` automations are this design | the framework keeps the id stable across resumes |
 
-The wake command column is what the *agent CLI* is called with on the legacy
-one-shot path. When the agent kind's glue is installed, the supervisor starts **the
-glue** with that handoff and lets it set the working directory first — see
+The wake command column is what the *agent CLI* is called with for a one-shot
+continue turn. A resident pool spawns the provider CLI directly instead, and the
+project session spawns the worker subagent in the mapped directory — see
 [Where a worker runs](#where-a-worker-runs).
 
 **Resident adapters:** the pool ships one per agent kind, each on that agent kind's native
@@ -1367,12 +1349,11 @@ Pi has no native subagents. The pool's Pi adapter warns when
 project session cannot spawn worker/reviewer subagents.
 
 Installers also install the **loop skill** itself, at `<agent-dir>/skills/meerkat-loop/` —
-the payload the units and glues are rendered from, and the operator's documentation for
+the payload the units are rendered from, and the operator's documentation for
 running the loop. It is always a copy: `--link` names the board skill only.
 
-Installers write per-agent kind units under `<agent-dir>/scheduling/{launchd,systemd,cron}`
-and the wake glue at `<agent-dir>/bin/wake-<actor-kind>.sh`, then **print the load
-command** — they never enable a daemon or run `crontab` for you:
+Installers write per-agent kind units under `<agent-dir>/scheduling/{launchd,systemd,cron}`,
+then **print the load command** — they never enable a daemon or run `crontab` for you:
 
 ```bash
 # macOS
@@ -1439,7 +1420,7 @@ so an idle tick costs nothing) for the scan and a `task-patrol` for the stale pa
 Neither framework cadence is repeated here; the framework's `AUTOMATIONS.md` is the
 single source of truth for it.
 `install.sh --target openclaw` therefore installs the **board skill only**: no
-`meerkat-loop` skill, no scheduler, no wake glue, no agent config — permanently, by
+`meerkat-loop` skill, no scheduler, no agent config — permanently, by
 ruling, not as a gap to be filled later. Two supervisors on one board would only race
 each other for the same cards, and the board's claim is atomic, so the race is bounded
 but the second supervisor is pure waste. Point OpenClaw at the framework instead:
@@ -1617,25 +1598,25 @@ agent kind directory, so the three loop agent kinds get three independent blocks
 An enabled unit is just a clock: it runs the supervisor, and the supervisor claims and
 wakes. Enabling does **not** change the worker's permission boundary, which is documented
 in full at [Headless permission boundary](#headless-permission-boundary) — nothing here
-loosens it: the generated wake glues ship **no** bypass flag by default, and turning one on
+loosens it: the resident adapters ship **no** bypass flag by default, and turning one on
 still needs the written authorization, documented at the point of use, that section
 describes.
 
 - **Identity and parameters.** The units start the scheduler with `--agent <agent>`
   (`--agent-name`, default `$USER`), `--actor-kind <h>`, and one pass
   (`--ping-only --once` / `--continue-only --once`). The continue turn starts the
-  agent kind's headless entry point directly with the bounded `Continue` prompt — no glue, no
-  project directory. The workers it later wakes go through the wake glue
-  (`<agent-dir>/bin/wake-<actor-kind>.sh`), which runs the agent kind's headless entry point
-  non-interactively: `claude -p "<handoff>" [--resume <sid>]` /
-  `codex exec "<handoff>"` / `pi --print "<handoff>"`.
+  agent kind's headless entry point directly with the bounded `Continue` prompt — no
+  project directory. Poll claims a card and enqueues it; a resident project session
+  spawns the worker as a subagent of the provider CLI, which runs non-interactively
+  (`claude -p "<handoff>" [--resume <sid>]` / `codex exec "<handoff>"` /
+  `pi --print "<handoff>"` are the one-shot shapes).
 - **Logs.** `<agent-dir>/meerkat-taskpanel/supervisor.log` (the supervisor's `--log`). The
   unit's own stdout/stderr go to the **same** file — launchd `StandardOutPath` /
   `StandardErrorPath`, systemd `append:{{LOG}}`, and cron `>/dev/null 2>&1` because `--log`
   already writes it.
 - **State.** `<agent-dir>/meerkat-taskpanel/supervisor.state.json` — the running registry.
 - **Working directory.** A woken worker still `cd`s to the directory the map names for
-  the card's project (`local_path ?? run_dir`), resolved by the wake glue from the
+  the card's project (`local_path ?? run_dir`), resolved by the poll pass from the
   agent-local `projects.json`; enabling changes nothing here (see
   [Where a worker runs](#where-a-worker-runs)).
 - **Task process data.** A dispatched card's brief (`card.md`) and the subagent's files —
@@ -1725,9 +1706,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the agent config.
 | `--config <path>` | `<home>/<agent-dir>/meerkat-taskpanel.env` | agent config: the claim default, the concurrency cap (`MEERKAT_TASKPANEL_MAX_CONCURRENCY`), and (for an agent kind copy) `MEERKAT_TASKPANEL_REPO` |
 | `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber's `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
 | `--home <path>` | `$HOME` | base for those defaults |
-| `--glue <path>` | `<home>/<agent-dir>/bin/wake-<actor-kind>.sh` | the wake glue that resolves the project directory and starts the worker ([Where a worker runs](#where-a-worker-runs)) |
-| `--projects-json <path>` | `<home>/<agent-dir>/skills/meerkat-taskpanel/projects.json` | the agent-local map handed to the glue |
-| `--wake-command <cmd>` | — | your own wake command instead of the built-in agent kind forms; called as `<cmd> <handoff> [<sid>]` |
+| `--projects-json <path>` | `<home>/<agent-dir>/skills/meerkat-taskpanel/projects.json` | the agent-local map the poll pass resolves a card's directory from ([Where a worker runs](#where-a-worker-runs)) |
 
 **Fixed paths.** Logs and state always land at the paths in the table — a user
 who wants to know why a card did not start reads
@@ -1799,12 +1778,11 @@ launchd / systemd / cron  ──continue 600s──▶  supervisor --continue-on
                                                           … reads, works, reports, delivers …
 ```
 
-## Verifying the generated trigger / wake glue
+## Verifying the generated trigger
 
 The installer *generates* the per-agent kind claim entry points — the Claude SessionStart
-hook, the Codex claim trigger, and each `wake-<actor-kind>.sh`. `scripts/verify/profiles.mjs`
-only proves they *landed*; it never runs them. `scripts/verify/kind-runtime.mjs` runs
-them, offline, in CI:
+hook and the Codex claim trigger. `scripts/verify/profiles.mjs` only proves they *landed*;
+it never runs them. `scripts/verify/kind-runtime.mjs` runs them, offline, in CI:
 
 ```bash
 node scripts/verify/kind-runtime.mjs            # all agent kinds; exit 0 only if every assert passes
@@ -1812,35 +1790,23 @@ node scripts/verify/kind-runtime.mjs --actor-kind codex
 ```
 
 The harness installs into a throwaway prefix (never `$HOME`), then swaps in a **canned
-`taskctl` shim** (the board boundary) and fake `claude`/`codex`/`pi` executables (the
-wake boundary), both of which record their argv. It then asserts the actual invocation,
-not just the exit code:
+`taskctl` shim** (the board boundary), which records its argv. It then asserts the actual
+invocation, not just the exit code:
 
 | Path | Asserted |
 |---|---|
 | `session-start.sh` (claude) | calls `issue candidates --assignee <agent>`, prints candidates + the eight rules, and is **non-fatal** — a failing or missing shim still exits 0 with a PATH-independent fallback |
 | `meerkat-taskpanel-claim.sh` (codex) | claims the first candidate (`issue move <ref> in_progress`) when free; **skips** when a held card is mine (identity matched under the board's NFKC/whitespace/case rule); still claims when the held card is someone else's; exits 0 on an empty pool; exits 1 when the shim is missing |
-| `wake-claude.sh` | no prompt → exit 2; mapped project → `claude -p <prompt>` **run in the mapped directory** (`local_path`, else `run_dir`); plus `--resume <sid>` when a session is given; unmapped project / an entry that names no directory / bad target directory / a resolver that succeeds with an empty or relative directory → exit 3, no worker started; **no** permission-bypass flag |
-| `wake-codex.sh` | the same, with `codex exec <prompt>` (and `codex exec resume <sid> <prompt>`) |
-| `wake-pi.sh` | the same, with `pi --print <prompt>` (and `pi --print --session <sid> <prompt>`) |
 
-The wake assertions compare the recorded argv against `wakeCommand()` (the same pure
-function `scripts/supervisor.mjs` dispatches through), so the generated script and the
-supervisor can't drift apart — and they compare the **working directory** the mock agent kind
-CLI was actually started in, so "a woken worker runs in its project's directory" is
-executed, not merely documented. The harness drives each wake script with a prompt only; the
-**resume** branches (the `<sid>` column above) are asserted at the `wakeCommand()` level in
-`test/scheduling/`, not re-executed against a mock agent CLI.
-
-**Coverage boundary (what this does *not* prove).** It pins the generated *shell glue*
-against mocks. It does not drive the real agent CLIs (that is the supplementary
-`scripts/verify/kind-cli.mjs`, which SKIPs when a CLI is absent) and it does not exercise
-the real board's claim semantics (`scripts/verify/install-e2e.sh` drives the real
-`taskctl`/`taskd`). Per agent kind, only the forms the bundle actually ships are covered:
-Claude has a hook and no trigger, Codex has a trigger and no hook, and **Pi has neither a
-hook nor a trigger** — only the external `wake-pi.sh` applies, which is why its row above is
-the wake form alone. (The `taskctl` shim is not one of these forms and is not part of this
-boundary: every agent kind gets one — see `docs/install.md`.)
+**Coverage boundary (what this does *not* prove).** It pins the generated *shell entry
+points* against a mock board. It does not drive the real agent CLIs (that is the
+supplementary `scripts/verify/kind-cli.mjs`, which SKIPs when a CLI is absent) and it does
+not exercise the real board's claim semantics (`scripts/verify/install-e2e.sh` drives the
+real `taskctl`/`taskd`). Per agent kind, only the forms the bundle actually ships are
+covered: Claude has a hook and no trigger, Codex has a trigger and no hook, and **Pi has
+neither a hook nor a trigger** — its external supervisor is the only automation. (The
+`taskctl` shim is not one of these forms and is not part of this boundary: every agent kind
+gets one — see `docs/install.md`.)
 
 ## See also
 

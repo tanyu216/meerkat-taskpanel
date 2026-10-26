@@ -139,17 +139,24 @@ class PiSession {
     return this.child.pid ?? null;
   }
 
-  /** Ask Pi for the conversation id it created. A failure is not fatal. */
+  /**
+   * Ask Pi for the conversation id it created. A failure is not fatal.
+   *
+   * The id is learned in `handleLine`, on the response line itself — not in a
+   * `.then`. A pipe can deliver that response and `agent_settled` in one chunk,
+   * and the adapter reads the lines synchronously; a microtask would run only
+   * after the turn had already settled with `sessionId: null`.
+   */
   fetchState() {
-    this.command("get_state")
-      .then((data) => {
-        const id = data?.sessionId ?? data?.session_id ?? null;
-        if (typeof id === "string" && id !== "") {
-          this.sessionId = id;
-          this.onEvent?.({ type: "init", sessionId: id, cwd: this.cwd });
-        }
-      })
-      .catch(() => {});
+    this.command("get_state").catch(() => {});
+  }
+
+  /** @param {object} data */
+  learnSessionId(data) {
+    const id = data?.sessionId ?? data?.session_id ?? null;
+    if (typeof id !== "string" || id === "" || id === this.sessionId) return;
+    this.sessionId = id;
+    this.onEvent?.({ type: "init", sessionId: id, cwd: this.cwd });
   }
 
   /** @param {string} type @param {object} [params] */
@@ -157,7 +164,7 @@ class PiSession {
     if (this.closed) return Promise.reject(new Error("session is closed"));
     const id = String(this.nextId++);
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      this.pending.set(id, { type, resolve, reject });
       try {
         writeJsonLine(this.child.stdin, { id, type, ...params });
       } catch (err) {
@@ -180,8 +187,13 @@ class PiSession {
       const entry = this.pending.get(String(event.id));
       if (entry === undefined) return;
       this.pending.delete(String(event.id));
-      if (event.success === false) entry.reject(new Error(String(event.error ?? "pi command failed")));
-      else entry.resolve(event.data ?? {});
+      if (event.success === false) {
+        entry.reject(new Error(String(event.error ?? "pi command failed")));
+      } else {
+        const data = event.data ?? {};
+        if (entry.type === "get_state") this.learnSessionId(data);
+        entry.resolve(data);
+      }
       return;
     }
     // An extension asking for confirmation: approve, so an unattended turn never

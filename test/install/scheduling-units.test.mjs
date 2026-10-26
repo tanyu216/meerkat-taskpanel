@@ -2,8 +2,8 @@
  * Scheduling units the installer drops (T-20261010-013000).
  *
  * The supervisor is external, so each bundle agent kind gets a scheduling unit
- * (launchd / systemd / cron) plus a wake-glue script, all merge-style and
- * idempotent under an isolated `--prefix` home. The units are *installed*, but
+ * (launchd / systemd / cron), all merge-style and idempotent under an isolated
+ * `--prefix` home. The units are *installed*, but
  * a unit only starts when the user loads it, so the installer prints the exact
  * load command instead of running `launchctl` / `systemctl` / `crontab`.
  *
@@ -11,8 +11,7 @@
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { after, describe, it } from "node:test";
@@ -40,10 +39,6 @@ function installEnv(home, bin) {
 // the guard is the one exception to). `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE` is the
 // contract's test-only bypass; the guard's own cases live in `taskd-guard.test.mjs`.
 
-function isExecutable(path) {
-  return (statSync(path).mode & 0o111) !== 0;
-}
-
 /** Every scheduling artefact the installer is expected to drop for an agent kind. */
 function scheduledPaths(home, agentDir, kind) {
   const base = join(home, agentDir);
@@ -59,19 +54,15 @@ function scheduledPaths(home, agentDir, kind) {
     subscribeService: join(base, "scheduling", "systemd", "meerkat-taskpanel-subscribe.service"),
     sessionService: join(base, "scheduling", "systemd", "meerkat-taskpanel-session.service"),
     cron: join(base, "scheduling", "cron", "meerkat-taskpanel.cron"),
-    wake: join(base, "bin", `wake-${kind}.sh`),
   };
 }
 
 /**
  * The scheduling *units* proper — the files a user loads into launchd / systemd /
- * crontab. The wake glue is deliberately excluded: the supervisor runs it, not the
- * scheduler, and it is not part of "the unit names no checkout path".
+ * crontab.
  */
 function unitPaths(home, agentDir, kind) {
-  const all = scheduledPaths(home, agentDir, kind);
-  delete all.wake;
-  return all;
+  return scheduledPaths(home, agentDir, kind);
 }
 
 /**
@@ -111,7 +102,7 @@ describe("install.sh: scheduling units", () => {
     assert.equal(existsSync(join(home, ".claude")), false, "dry run must not write");
   });
 
-  it("installs launchd + systemd + cron + wake glue for claude", () => {
+  it("installs launchd + systemd + cron for claude", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
@@ -203,22 +194,6 @@ describe("install.sh: scheduling units", () => {
       assert.equal(existsSync(legacy), false, `legacy unit must not be written: ${legacy}`);
     }
 
-    // wake glue — headless claude with resume support.
-    assert.ok(isExecutable(paths.wake), "wake glue must be executable");
-    const wake = readFileSync(paths.wake, "utf8");
-    assert.ok(wake.includes("claude -p"), "wake-claude must drive headless claude");
-    assert.ok(wake.includes("--resume"), "wake-claude must support --resume <sid>");
-    assert.ok(!wake.includes("{{"), "templates must be rendered");
-    // The legacy one-shot glue stays inside the no-default-bypass rule; full
-    // access is the resident pool's opt-in, not this script's.
-    const commands = wake
-      .split("\n")
-      .filter((line) => !/^\s*#/.test(line))
-      .join("\n");
-    for (const bad of ["--dangerously-skip-permissions", "--dangerously-bypass", "--approve", "--force"]) {
-      assert.equal(commands.includes(bad), false, `wake-claude must not carry ${bad}`);
-    }
-
     // The exact load command is printed, not run.
     assert.match(run.stdout + run.stderr, /launchctl|systemctl|crontab/);
   });
@@ -268,14 +243,12 @@ describe("install.sh: scheduling units", () => {
       );
     }
 
-    // And the wake glue resolves the card's directory through the **agent-local**
-    // resolver, not through the checkout it was installed from: `{{LOOP}}/scripts/
-    // wake-cwd.mjs`, never `{{REPO}}/scripts/wake-cwd.mjs`. Both files exist because the
-    // body carries them; this asserts the glue names the one that survives a move.
-    const wake = readFileSync(join(home, ".claude", "bin", "wake-claude.sh"), "utf8");
+    // The poll pass resolves a card's directory through the **agent-local** copy of
+    // wake-cwd.mjs, not through the checkout it was installed from — the copy is what
+    // survives a moved checkout.
     assert.ok(
-      wake.includes(join(loopDir, "scripts", "wake-cwd.mjs")),
-      "the wake glue must resolve through the agent-local wake-cwd.mjs",
+      existsSync(join(loopDir, "scripts", "wake-cwd.mjs")),
+      "the installed body must carry wake-cwd.mjs for the poll pass",
     );
 
     // And it loads: importing the *agent copy* resolves that whole graph for real, from
@@ -324,70 +297,25 @@ describe("install.sh: scheduling units", () => {
     );
   });
 
-  it("installs codex wake glue driving `codex exec`", () => {
+  it("installs codex units", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "codex");
     const run = runInstall(["--target", "codex", "--agent-name", "alice"], installEnv(home, bin));
     assert.equal(run.status, 0, run.stderr);
 
-    const wake = scheduledPaths(home, ".codex", "codex").wake;
-    assert.ok(existsSync(wake), "wake-codex.sh missing");
-    assert.ok(readFileSync(wake, "utf8").includes("codex exec"));
+    const paths = scheduledPaths(home, ".codex", "codex");
+    assert.ok(existsSync(paths.pingPlist), "codex scheduling units missing");
   });
 
-  it("installs pi wake glue and units", () => {
+  it("installs pi units", () => {
     const home = makeTempDir();
     const run = runInstall(["--target", "pi", "--prefix", home]);
     assert.equal(run.status, 0, run.stderr);
 
     const paths = scheduledPaths(home, ".agents", "pi");
-    assert.ok(existsSync(paths.wake), "wake-pi.sh missing");
     assert.ok(existsSync(paths.pingPlist), "pi scheduling units missing");
     assert.ok(existsSync(join(home, ".agents", "meerkat-taskpanel.env")), "pi config missing");
-  });
-
-  it("refuses to wake when the resolver succeeds with an empty directory", () => {
-    // `wake-cwd.mjs`'s contract is "exit 0 means resolved, and the directory is the ONLY
-    // thing on stdout" — so an empty `$cwd` with exit 0 is an illegal state that the
-    // `if ! cwd=$(…)` guard cannot see, because `cd ""` succeeds in bash and would run the
-    // worker in the caller's directory: the exact wrong checkout this glue exists to
-    // refuse. A `TP_NODE` that prints nothing and exits 0 stands in for any resolver that
-    // succeeds emptily, whatever the reason.
-    const home = makeTempDir();
-    const bin = makeTempDir();
-    const log = join(makeTempDir(), "kind-cli.log");
-    const cli = join(bin, "claude");
-    writeFileSync(cli, `#!/usr/bin/env bash\necho "invoked $*" >> "${log}"\nexit 0\n`, "utf8");
-    chmodSync(cli, 0o755);
-    const emptyResolver = join(bin, "empty-resolver.sh");
-    writeFileSync(emptyResolver, "#!/usr/bin/env bash\nexit 0\n", "utf8");
-    chmodSync(emptyResolver, 0o755);
-
-    const install = runInstall(["--target", "claude"], installEnv(home, bin));
-    assert.equal(install.status, 0, install.stderr);
-
-    const wake = join(home, ".claude", "bin", "wake-claude.sh");
-    // Fixture precondition: the glue under test must be the one that calls the resolver.
-    assert.ok(readFileSync(wake, "utf8").includes("wake-cwd.mjs"), "the glue must call wake-cwd.mjs");
-
-    const run = spawnSync("bash", [wake, "do T-1"], {
-      cwd: ROOT,
-      encoding: "utf8",
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TP_PROJECT: "TaskPanel", TP_NODE: emptyResolver },
-    });
-
-    assert.equal(
-      run.status,
-      3,
-      `want exit 3 (a refused wake), got ${run.status}; stderr=${JSON.stringify(run.stderr)}`,
-    );
-    assert.match(run.stderr, /refusing to wake/);
-    assert.equal(
-      existsSync(log),
-      false,
-      `the agent CLI must not have been invoked at all: ${existsSync(log) ? readFileSync(log, "utf8") : ""}`,
-    );
   });
 
   it("--no-automation skips every codex automation artefact", () => {
@@ -503,14 +431,6 @@ describe("install.sh: the loop skill's distribution", () => {
       assert.ok(
         existsSync(join(home, agentDir, "bin", "taskctl")),
         `${kind}: the manual mode's taskctl shim must land`,
-      );
-
-      const wake = join(home, agentDir, "bin", `wake-${kind}.sh`);
-      assert.ok(existsSync(wake), `${kind}: the wake glue must land`);
-      assert.ok(isExecutable(wake), `${kind}: the wake glue must be executable`);
-      assert.ok(
-        readFileSync(wake, "utf8").includes("wake-cwd.mjs"),
-        `${kind}: the glue must resolve the card's project directory`,
       );
 
       // The setup command ships with the Claude bundle only; the repository bundle

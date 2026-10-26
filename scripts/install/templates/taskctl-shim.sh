@@ -18,7 +18,7 @@
 # write an agent makes on somebody else's behalf.
 #
 # It also points `taskctl project dir` at the map beside this agent's installed
-# skill, so the command resolves the same projects.json the wake glue uses —
+# skill, so the command resolves the same projects.json the poll pass uses —
 # `MEERKAT_TASKPANEL_PROJECTS_JSON` wins if a session sets it.
 set -u
 

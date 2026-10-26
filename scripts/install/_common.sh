@@ -188,7 +188,7 @@ resolve_agent_cli_dir() {
 # loop_src — the loop skill's source, which owns the loop body and the loop's templates.
 #
 # The loop is a skill of its own (skills/meerkat-loop/): its execution body and the units /
-# wake / config templates it is deployed with are *generated* into it from this repository's
+# config templates it is deployed with are *generated* into it from this repository's
 # scripts/, src/foundation/ and scripts/install/templates/, and guarded by
 # `node scripts/sync-skills.mjs --check`. The installer reads them from there rather than
 # from this repository's own scripts/ — so what is deployed is exactly what was distributed
@@ -265,7 +265,6 @@ export_tp_env() {
   TP_STATE="$TP_LOOP/supervisor.state.json"
   TP_ENV="$(target_home)/$agent_dir/meerkat-taskpanel.env"
   TP_SCHED="$(target_home)/$agent_dir/scheduling"
-  TP_WAKE="$(target_home)/$agent_dir/bin/wake-$label.sh"
   TP_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-yes}"
   TP_RECOVER_STALE="${MEERKAT_TASKPANEL_RECOVER_STALE:-yes}"
   # The workflow channel's remembered answers. An empty reviewer is deliberate and
@@ -321,9 +320,9 @@ export_tp_env() {
   #
   # A scheduler starts a unit with a minimal PATH of its own, so on a machine whose node
   # lives under nvm or Homebrew the unit hits the same wall twice (T-20261014-020103-2):
-  # `/usr/bin/env node` exits 127, and — fixing only that — the glue the tick starts then
-  # fails the same way, because `exec claude` looks the agent CLI up on the *inherited*
-  # minimal PATH. Both layers are therefore fixed by one lever: the unit names its
+  # `/usr/bin/env node` exits 127, and — fixing only that — the agent process the tick starts
+  # then fails the same way, because it looks the agent CLI up on the *inherited* minimal
+  # PATH. Both layers are therefore fixed by one lever: the unit names its
   # interpreter outright (`{{NODE}}`) **and** carries a PATH (`{{UNIT_PATH_*}}`) whose head
   # is the agent CLI's directory and node's. The recipe lives in lib/unit-path.mjs — one
   # definition, read here through its CLI, so bash cannot drift from the JS side.
@@ -356,7 +355,7 @@ export_tp_env() {
   fi
 
   export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
-  export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
+  export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED
   export TP_RECOVER_STALE TP_WORKFLOW TP_REVIEWER
   export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
   export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON TP_CLI_ON_PATH
@@ -502,7 +501,7 @@ apply_supervisor() {
 # The body now lives in the agent directory, and the units name that copy:
 #
 #   <home>/<agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs   the executor
-#   <home>/<agent-dir>/meerkat-taskpanel/scripts/wake-cwd.mjs     the glue's resolver
+#   <home>/<agent-dir>/meerkat-taskpanel/scripts/wake-cwd.mjs     the poll pass's resolver
 #   <home>/<agent-dir>/meerkat-taskpanel/scripts/foundation/**    their imports
 #
 # The `scripts/` + `scripts/foundation/` shape is load-bearing, not decoration: the body's
@@ -569,17 +568,16 @@ install_loop_body() {
   done < "$manifest"
 }
 
-# install_scheduling — drop the loop body, the poll/patrol units and the per-agent-kind wake
-# glue, then either print the exact command that loads them or — when the user asked for
-# it (`--supervisor=…`, i.e. MEERKAT_TASKPANEL_SUPERVISOR is set) — run that load. Without
-# a request the installer never runs `launchctl` / `systemctl` / `crontab` itself:
-# enabling a daemon is the user's call, and a plain install must have no side effects.
-# Requires export_tp_env first.
+# install_scheduling — drop the loop body and the scheduling units, then either print the
+# exact command that loads them or — when the user asked for it (`--supervisor=…`, i.e.
+# MEERKAT_TASKPANEL_SUPERVISOR is set) — run that load. Without a request the installer
+# never runs `launchctl` / `systemctl` / `crontab` itself: enabling a daemon is the user's
+# call, and a plain install must have no side effects. Requires export_tp_env first.
 #
 # Every template here comes from the **loop** skill (`emit_loop_file`), not from this
-# installer's own templates: the units, the wake glues and the agent config are the loop's
-# payload, and deploying the copy the loop skill distributes is what keeps "what shipped"
-# and "what was verified" the same bytes.
+# installer's own templates: the units and the agent config are the loop's payload, and
+# deploying the copy the loop skill distributes is what keeps "what shipped" and "what was
+# verified" the same bytes.
 # remove_legacy_unit_files — drop the poll/patrol templates this installer used to
 # write. A loaded legacy unit is taken down by `apply_supervisor enable`; these are
 # the on-disk copies, removed only after that so a user cannot accidentally reload
@@ -622,7 +620,6 @@ install_scheduling() {
   emit_loop_file "scheduling/systemd/meerkat-taskpanel-subscribe.service" "$TP_SCHED/systemd/meerkat-taskpanel-subscribe.service"
   emit_loop_file "scheduling/systemd/meerkat-taskpanel-session.service" "$TP_SCHED/systemd/meerkat-taskpanel-session.service"
   emit_loop_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
-  emit_loop_file "$TP_ACTOR_KIND/wake-$TP_ACTOR_KIND.sh" "$TP_WAKE" --exec
 
   echo "$TP_ACTOR_KIND: scheduling units installed under $TP_SCHED"
 
@@ -853,9 +850,9 @@ emit_file() { emit_from "$(script_dir)/templates" "$@"; }
 
 # emit_loop_file <template_rel> <dest> [--exec]
 #   Render the **loop** skill's template (skills/meerkat-loop/templates/<rel>) into <dest>:
-#   the scheduling units, the wake glues and the agent config. Same relative layout as the
-#   installer's own (claude/wake-claude.sh, scheduling/cron/…), so a call site reads the same
-#   either way — the difference is which skill owns the file.
+#   the scheduling units and the agent config. Same relative layout as the installer's own
+#   (scheduling/cron/…), so a call site reads the same either way — the difference is which
+#   skill owns the file.
 emit_loop_file() { emit_from "$(loop_src)/templates" "$@"; }
 
 # merge_settings <settings_file>
