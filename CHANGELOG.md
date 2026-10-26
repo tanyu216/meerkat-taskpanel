@@ -15,8 +15,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `references/`). The installed units run `taskctl loop run|subscribe|session`, so there is no
   generated payload to sync, and an upgrade removes the old copied body. `board-check.mjs`
   became `taskctl loop compat`; `export md --watch` / `export watch --out` share the hub's
-  one brief watch, which runs until the card is `done` or `canceled`. Installing an older
-  tree is not supported: re-run `install.sh` and reload the units.
+  one brief watch, which runs until the card is `done` or `canceled`. The loop's poll now
+  registers each card's brief before claiming (the review card and its original in one
+  registration), unregisters it if the claim is refused, and the subscriber no longer writes
+  briefs. Installing an older tree is not supported: re-run `install.sh` and reload the units.
 
 - **Decisions are asked as one frontier round.** The worker handoff and the continue turn
   now share one decision-round protocol: a round is the whole frontier of decisions whose

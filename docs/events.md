@@ -174,7 +174,7 @@ the hub connection rather than a board connection.
 
 An event-triggered turn requires a **live resident pool**: with none, poll could not
 dispatch anything, so the event path logs and skips and the continue timer remains the
-patrol + workflow path. (Brief refreshes are unaffected.) The process publishes
+patrol + workflow path. Brief refreshes belong to the hub registrations, not to this process. The process publishes
 `subscribe.state.json` beside the other loop state, and `--supervisor=status` reads it to
 report `streaming`, `reconnecting`, `starting` or `not running`.
 
@@ -218,18 +218,19 @@ refresh is a full re-render through `POST /api/v1/export` (`{ref: task_id}`), wr
 atomically — the event is the signal, never the payload.
 
 That map is **board-export sourced**, so it does not follow `review_of`: the export payload
-has no review link. The loop's subscriber maps the same UUID through
-`stateDir/cards.queue.json`, which does carry `review_of`, so a review event also refreshes
-its original. The two maps stay separate on purpose — see
-`src/orchestrator/card-file.mjs#identifiersForEvent`.
+has no review link. The loop therefore registers the review card and its original as two
+`cards[]` entries in the same registration — each with its own path — so an event on either
+refreshes its own file. The protocol is `cards: [{ref, out}, …]`; the CLI's `--out` /
+`--dir` spellings remain for one card and for a directory of cards.
 
 It shares the loop's cadence — 300 ms debounce, 2 s maximum wait, `CARD_REFRESH_MIN_MS`
 (5 s) between batches — and refreshes are serial. Per-card failures are reported in the
-NDJSON stream and keep the previous file. `done` is terminal: a card that reaches it is
-written once and dropped; when the last one is done the registration ends and a foreground
-stream writes `done`; a card that is already done at registration never causes a connection
-to open. `--ttl <ms>` bounds a registration (120 minutes by default, `0` disables it) and
-writes `ttl` when it expires.
+NDJSON stream and keep the previous file. `done` and `canceled` are terminal: a card that
+reaches either is written once and dropped; when the last one is terminal the registration
+ends and a foreground stream writes `done`; a card that is already terminal at registration
+never causes a connection to open. `--ttl <ms>` bounds a registration (120 minutes by default,
+`0` disables it) and writes `ttl` when it expires; the loop's registrations pass `0`, because
+their ending is the card's terminal state, not a timer.
 
 `--detach` is the worker form: it registers, prints the handle and exits; the hub keeps the
 file fresh, so no client process has to survive the harness. The registration is persisted

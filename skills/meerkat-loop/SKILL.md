@@ -36,7 +36,7 @@ The continue turn runs three deterministic commands, in this order:
    (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent config). An `agent` card with no
    effective reviewer fails the loop at startup: the board would have dispatched a review
    nobody can claim.
-3. **poll** — scan, **export the card brief**, atomically claim, **enqueue the handoff**. It
+3. **poll** — scan, **register the card brief watch**, atomically claim, **enqueue the handoff**. It
    also runs the **question lane**: an unanswered agent `question` on an `in_progress` card is
    enqueued for the project session (no claim, no subagent slot). It never spawns a worker: the
    resident project session does, as a subagent that inherits the project directory. Runs last
@@ -183,20 +183,21 @@ resolved `target_dir` (`local_path ?? run_dir`), which is also the subagent's cw
   …                the subagent's notes, logs, evidence, report drafts, attachments
 ```
 
-- **Before the claim**, poll exports the card with
-  `taskctl export md <identifier> --out <target_dir>/.meerkat/<identifier>/card.md` (a temp
-  file plus an atomic rename). A failed export **defers the card unclaimed**: a claim with no
-  brief has nowhere to run.
+- **Before the claim**, poll registers the card with the local event hub, naming
+  `<target_dir>/.meerkat/<identifier>/card.md` (and the original's brief for a review card).
+  The hub writes the first snapshot before it answers, then keeps the file fresh until the
+  card is `done` or `canceled`. A failed registration — or a card that is already terminal —
+  **defers the card unclaimed**; a refused claim unregisters it again. A claim with no brief
+  has nowhere to run.
 - `card.md` is the **authoritative brief** handed to the subagent and re-read on resume. It is
-  machine-generated: **never edit it**. Only the loop overwrites it, through
-  `taskctl export md`. It is a snapshot; `taskctl issue get <ref> --json` remains the live state
+  machine-generated: **never edit it**. The hub overwrites it from the board. It is a snapshot; `taskctl issue get <ref> --json` remains the live state
   and the source of the `version` a write needs.
 - Other process files — including **downloaded attachments** — go in the same directory:
   `taskctl attachment list <ref> --json`, then
   `taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>`.
-- The event subscriber batch-refreshes the briefs of active cards, debounced and rate-limited;
-  a failed refresh leaves the previous brief in place. Dispatch is separate: an event wakes a
-  continue turn only while the resident pool is live.
+- The hub owns the refresh, debounced and rate-limited, for every registration; a failed
+  refresh leaves the previous brief in place. Dispatch is separate: an event wakes a continue
+  turn only while the resident pool is live.
 - Workers maintain `plan.md` and the reviewer reads it. An unexplained deviation is grounds for
   `VERDICT: REJECT`; a missing plan is not itself a failure (the reviewer falls back to the
   description and the frozen acceptance snapshot).

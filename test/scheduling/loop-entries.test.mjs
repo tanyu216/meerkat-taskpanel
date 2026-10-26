@@ -609,24 +609,23 @@ describe("the resident poll dispatch", () => {
     const projectsJson = join(dir, "projects.json");
     writeFileSync(projectsJson, JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
     const opts = { projectsJson, actorKind: "claude", dryRun: false };
-    // Admission exports the card brief before the claim; these cases are about
-    // admission/dispatch, so the exporter is a stub (no board call).
-    const exportCard = () => ({ ok: true });
-    return { dir, app, projectsJson, opts, concurrency, exportCard };
+    // Admission registers the brief watch before the claim; these cases are
+    // about admission/dispatch, so the hub is a stub (no socket).
+    const watchCards = () => ({ ok: true, running: true });
+    return { dir, app, projectsJson, opts, concurrency, watchCards };
   }
 
   it("writes the worker handoff with the resolved project directory", async () => {
     const f = fixture();
-    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency, exportCard: f.exportCard });
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency, watchCards: f.watchCards });
     const action = { identifier: "T-1", agent: "alice", reason: "ready" };
     const card = { id: "uuid-1", identifier: "T-1", project: "P", title: "do it" };
-    assert.equal(admission.admit(action, card).ok, true);
+    assert.equal((await admission.admit(action, card)).ok, true);
     const dispatch = createQueueDispatch({
       opts: f.opts,
       config: { reviewers: [] },
       stateDir: f.dir,
       admission,
-      exportCard: f.exportCard,
     });
     const outcome = await dispatch(action, card);
     assert.equal(outcome.ok, true);
@@ -644,7 +643,7 @@ describe("the resident poll dispatch", () => {
     assert.equal(entry.handoff.includes("/meerkat-loop"), false, "a handoff is not a continue turn");
   });
 
-  it("warns once when parallel workers share a git checkout", () => {
+  it("warns once when parallel workers share a git checkout", async () => {
     const f = fixture();
     mkdirSync(join(f.app, ".git"), { recursive: true });
     assert.equal(isGitCheckout(f.app), true);
@@ -653,13 +652,13 @@ describe("the resident poll dispatch", () => {
     const admission = createProjectAdmission({
       opts: f.opts,
       projectConcurrency: 2,
-      exportCard: f.exportCard,
+      watchCards: f.watchCards,
       log: (line) => lines.push(line),
     });
     const admit = (ref) =>
       admission.admit({ identifier: ref, agent: "alice" }, { identifier: ref, project: "P" });
-    assert.equal(admit("T-1").ok, true);
-    assert.equal(admit("T-2").ok, true);
+    assert.equal((await admit("T-1")).ok, true);
+    assert.equal((await admit("T-2")).ok, true);
     assert.equal(
       lines.filter((line) => /shared git checkout/.test(line)).length,
       1,
@@ -670,10 +669,10 @@ describe("the resident poll dispatch", () => {
     const single = createProjectAdmission({
       opts: f.opts,
       projectConcurrency: 1,
-      exportCard: f.exportCard,
+      watchCards: f.watchCards,
       log: (line) => singleLines.push(line),
     });
-    single.admit({ identifier: "T-3", agent: "alice" }, { identifier: "T-3", project: "P" });
+    await single.admit({ identifier: "T-3", agent: "alice" }, { identifier: "T-3", project: "P" });
     assert.equal(
       singleLines.filter((line) => /shared git checkout/.test(line)).length,
       0,
@@ -681,17 +680,17 @@ describe("the resident poll dispatch", () => {
     );
   });
 
-  it("routes a review card to the reviewer handoff and exports both briefs", async () => {
+  it("routes a review card to the reviewer handoff and registers both briefs", async () => {
     const f = fixture();
-    const exported = [];
-    const exportCard = (input) => {
-      exported.push(input.identifier);
-      return { ok: true };
+    const watched = [];
+    const watchCards = (cards) => {
+      watched.push(cards.map((entry) => entry.ref));
+      return { ok: true, running: true };
     };
     const admission = createProjectAdmission({
       opts: f.opts,
       projectConcurrency: f.concurrency,
-      exportCard,
+      watchCards,
     });
     const action = { identifier: "T-2", agent: "jobs", reason: "ready" };
     const card = {
@@ -701,14 +700,13 @@ describe("the resident poll dispatch", () => {
       review_of: "T-1",
       review_round: 1,
     };
-    assert.equal(admission.admit(action, card).ok, true);
-    assert.deepEqual(exported, ["T-2", "T-1"], "the review card gates, the original follows");
+    assert.equal((await admission.admit(action, card)).ok, true);
+    assert.deepEqual(watched, [["T-2", "T-1"]], "one registration, the review card and its original");
     const dispatch = createQueueDispatch({
       opts: f.opts,
       config: { reviewers: ["jobs"], reviewerWorkers: [] },
       stateDir: f.dir,
       admission,
-      exportCard,
     });
     assert.equal((await dispatch(action, card)).ok, true);
     const [entry] = readCards(f.dir).value.cards;
@@ -720,13 +718,13 @@ describe("the resident poll dispatch", () => {
     assert.match(entry.handoff, /^You are a reviewer subagent of the P project session/);
     assert.match(entry.handoff, /Review brief: \.meerkat\/T-2\/card\.md/);
     assert.match(entry.handoff, /Original brief: \.meerkat\/T-1\/card\.md/);
-    assert.deepEqual(exported, ["T-2", "T-1", "T-2"], "the claim refreshes the review card");
+    assert.deepEqual(watched, [["T-2", "T-1"]], "the claim event refreshes it; no second export");
   });
 
-  it("defers an unmapped project before the claim", () => {
+  it("defers an unmapped project before the claim", async () => {
     const f = fixture();
-    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency, exportCard: f.exportCard });
-    const verdict = admission.admit(
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency, watchCards: f.watchCards });
+    const verdict = await admission.admit(
       { identifier: "T-3", agent: "alice" },
       { identifier: "T-3", project: "other" },
     );
@@ -735,28 +733,28 @@ describe("the resident poll dispatch", () => {
     assert.equal(admission.dirFor("T-3"), null, "nothing was admitted");
   });
 
-  it("defers a card that names no project", () => {
+  it("defers a card that names no project", async () => {
     const f = fixture();
-    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency, exportCard: f.exportCard });
-    const verdict = admission.admit({ identifier: "T-4", agent: "alice" }, { identifier: "T-4" });
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency, watchCards: f.watchCards });
+    const verdict = await admission.admit({ identifier: "T-4", agent: "alice" }, { identifier: "T-4" });
     assert.equal(verdict.ok, false);
     assert.match(verdict.why, /no project/);
   });
 
-  it("counts live and queued work against the per-project cap", () => {
+  it("counts live and queued work against the per-project cap", async () => {
     const f = fixture();
-    const exported = [];
-    const exportCard = (input) => {
-      exported.push(input.identifier);
-      return { ok: true };
+    const watched = [];
+    const watchCards = (cards) => {
+      watched.push(cards.map((entry) => entry.ref));
+      return { ok: true, running: true };
     };
     const full = createProjectAdmission({
       opts: f.opts,
       projectConcurrency: 1,
       liveByDir: new Map([[f.app, 1]]),
-      exportCard,
+      watchCards,
     });
-    const verdict = full.admit({ identifier: "T-5", agent: "alice" }, { identifier: "T-5", project: "P" });
+    const verdict = await full.admit({ identifier: "T-5", agent: "alice" }, { identifier: "T-5", project: "P" });
     assert.equal(verdict.ok, false);
     assert.match(verdict.why, /concurrency cap/);
 
@@ -764,36 +762,36 @@ describe("the resident poll dispatch", () => {
       opts: f.opts,
       projectConcurrency: 1,
       queuedByDir: new Map([[f.app, 1]]),
-      exportCard,
+      watchCards,
     });
     assert.equal(
-      queued.admit({ identifier: "T-6", agent: "alice" }, { identifier: "T-6", project: "P" }).ok,
+      (await queued.admit({ identifier: "T-6", agent: "alice" }, { identifier: "T-6", project: "P" })).ok,
       false,
     );
-    assert.deepEqual(exported, [], "a card at its cap is not exported");
+    assert.deepEqual(watched, [], "a card at its cap is not registered");
   });
 
-  it("admits at most the project cap within one pass", () => {
+  it("admits at most the project cap within one pass", async () => {
     const f = fixture();
     const admission = createProjectAdmission({
       opts: f.opts,
       projectConcurrency: 1,
-      exportCard: f.exportCard,
+      watchCards: f.watchCards,
     });
     const card = (id) => ({ identifier: id, project: "P" });
-    assert.equal(admission.admit(card("T-7"), card("T-7")).ok, true);
-    assert.equal(admission.admit(card("T-8"), card("T-8")).ok, false);
+    assert.equal((await admission.admit(card("T-7"), card("T-7"))).ok, true);
+    assert.equal((await admission.admit(card("T-8"), card("T-8"))).ok, false);
   });
 
-  it("exports the brief before the claim, and defers unclaimed if it fails", async () => {
+  it("registers the brief before the claim, and defers unclaimed if it fails", async () => {
     const f = fixture();
     const order = [];
     const admission = createProjectAdmission({
       opts: f.opts,
       projectConcurrency: f.concurrency,
-      exportCard: ({ identifier }) => {
-        order.push(`export:${identifier}`);
-        return { ok: true };
+      watchCards: (cards) => {
+        order.push(`watch:${cards[0].ref}`);
+        return { ok: true, running: true };
       },
     });
     const card = { id: "uuid-1", identifier: "T-1", project: "P", title: "do it" };
@@ -815,12 +813,12 @@ describe("the resident poll dispatch", () => {
       log: () => {},
     });
     assert.equal(result.claimed, 1);
-    assert.deepEqual(order, ["export:T-1", "claim", "dispatch"]);
+    assert.deepEqual(order, ["watch:T-1", "claim", "dispatch"]);
 
     const failed = createProjectAdmission({
       opts: f.opts,
       projectConcurrency: f.concurrency,
-      exportCard: () => ({ ok: false, error: "disk full" }),
+      watchCards: () => ({ ok: false, error: "disk full" }),
     });
     const touched = [];
     const second = await runPollTick({
@@ -846,23 +844,79 @@ describe("the resident poll dispatch", () => {
     assert.equal(failed.dirFor("T-9"), null, "nothing was admitted");
   });
 
+  it("defers a card whose brief is already terminal", async () => {
+    const f = fixture();
+    const admission = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: 1,
+      watchCards: () => ({ ok: true, running: false, reason: "terminal" }),
+    });
+    const verdict = await admission.admit(
+      { identifier: "T-10", agent: "alice" },
+      { identifier: "T-10", project: "P" },
+    );
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.why, /already terminal/);
+    assert.equal(admission.dirFor("T-10"), null);
+  });
+
+  it("gives the project slot back when a claim is refused", async () => {
+    const f = fixture(1);
+    const admission = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: 1,
+      watchCards: () => ({ ok: true, running: true }),
+      stopWatch: async () => ({ ok: true, stopped: true }),
+    });
+    assert.equal((await admission.admit({ identifier: "T-20", agent: "alice" }, { identifier: "T-20", project: "P" })).ok, true);
+    assert.equal((await admission.admit({ identifier: "T-21", agent: "alice" }, { identifier: "T-21", project: "P" })).ok, false);
+    await admission.release("T-20");
+    assert.equal(
+      (await admission.admit({ identifier: "T-22", agent: "alice" }, { identifier: "T-22", project: "P" })).ok,
+      true,
+      "the refused claim returned its slot",
+    );
+  });
+
+  it("releases the registration when the claim is refused", async () => {
+    const released = [];
+    const result = await runPollTick({
+      agents: ["alice"],
+      registry: { running: {} },
+      config: {},
+      readCandidates: () => [{ identifier: "T-11", agent: "alice", project: "P", reason: "ready" }],
+      claim: async () => ({ ok: false, error: "CLAIM_CONFLICT" }),
+      dispatch: async () => {
+        throw new Error("a refused claim must not dispatch");
+      },
+      admit: async () => ({ ok: true }),
+      release: async (identifier) => {
+        released.push(identifier);
+      },
+      now: () => "2026-10-22T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.equal(result.conflicts, 1);
+    assert.deepEqual(released, ["T-11"]);
+  });
+
   it("writes nothing in dry-run", async () => {
     const f = fixture();
     const opts = { ...f.opts, dryRun: true };
-    const exportCalls = [];
+    const watchCalls = [];
     const admission = createProjectAdmission({
       opts,
       projectConcurrency: f.concurrency,
-      exportCard: (input) => {
-        exportCalls.push(input.identifier);
-        return { ok: true };
+      watchCards: (cards) => {
+        watchCalls.push(cards);
+        return { ok: true, running: true };
       },
     });
     const action = { identifier: "T-9", agent: "alice" };
     const card = { identifier: "T-9", project: "P" };
-    admission.admit(action, card);
-    assert.deepEqual(exportCalls, [], "dry-run writes no brief");
-    const dispatch = createQueueDispatch({ opts, config: {}, stateDir: f.dir, admission, exportCard: f.exportCard });
+    await admission.admit(action, card);
+    assert.deepEqual(watchCalls, [], "dry-run registers no watch");
+    const dispatch = createQueueDispatch({ opts, config: {}, stateDir: f.dir, admission });
     const outcome = await dispatch(action, card);
     assert.equal(outcome.ok, true);
     assert.equal(outcome.dryRun, true);

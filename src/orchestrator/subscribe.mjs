@@ -24,7 +24,6 @@ import { dirname } from "node:path";
 
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import {
-  CARD_REFRESH_MIN_MS,
   EVENT_CONTINUE_MIN_MS,
   EVENT_DEBOUNCE_MAX_MS,
   EVENT_DEBOUNCE_MS,
@@ -36,7 +35,6 @@ import {
   TASKD_KIND,
 } from "../foundation/constants.mjs";
 
-import { refreshCardsForIds } from "./card-file.mjs";
 import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./options.mjs";
 import { createLogger, saveSubscribeState, streamCli, subscribeStatePath } from "./runtime.mjs";
 import { runContinueOnce } from "./runners.mjs";
@@ -157,24 +155,6 @@ export function classify(activity, context) {
     return fields.some((field) => UPDATED_FIELDS.has(field)) ? "dispatch" : "ignore";
   }
   return DISPATCH.has(event) ? "dispatch" : "ignore";
-}
-
-/**
- * Does this event change some active card's markdown?
- *
- * A brief refresh is **not** a dispatch decision: it is a file write, so it
- * follows every event for a card the loop is still working. Own writes are
- * deliberately **not** suppressed (`isOwnWrite` exists to avoid waking the LLM
- * on its own echo) — a worker's own comment or report is exactly what the brief
- * needs to reflect. Heartbeats are already filtered from the stream; an event
- * without a `task_id` cannot be mapped to a queue row.
- *
- * @param {object} activity an `activityToWire` payload
- * @returns {"refresh"|"ignore"}
- */
-export function classifyRefresh(activity) {
-  if (typeof activity?.task_id !== "string" || activity.task_id === "") return "ignore";
-  return activity.event === "task_heartbeat" ? "ignore" : "refresh";
 }
 
 /**
@@ -375,11 +355,8 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
     log,
   });
 
-  // The brief refresher is independent of the continue scheduler: it is cheap,
-  // it follows comments and reports (not just dispatch events), and it still
-  // works when `--event-continue=no`. It is debounced like a dispatch burst and
-  // bounded by its own (much smaller) minimum interval.
-  const pendingRefresh = new Set();
+  // The directory the subscriber's own state file lives in; the briefs are the
+  // hub's business now, not this process's.
   const stateDir =
     deps.stateDir ??
     (typeof opts.state === "string" && opts.state !== "" ? dirname(opts.state) : null);
@@ -431,25 +408,6 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
   };
   flushState(true);
 
-  const refreshCards =
-    deps.refreshCards ??
-    ((taskIds) => refreshCardsForIds({ opts, stateDir, taskIds, log }));
-  const refreshScheduler = createDispatchScheduler({
-    run: async () => {
-      const taskIds = [...pendingRefresh];
-      pendingRefresh.clear();
-      refreshCards(taskIds);
-    },
-    now,
-    setTimer: deps.setTimer,
-    clearTimer: deps.clearTimer,
-    debounceMs: opts.eventDebounceMs ?? EVENT_DEBOUNCE_MS,
-    maxWaitMs: opts.eventDebounceMaxMs ?? EVENT_DEBOUNCE_MAX_MS,
-    minIntervalMs: deps.refreshMinMs ?? CARD_REFRESH_MIN_MS,
-    retryMs: deps.retryMs ?? SUBSCRIBE_RETRY_MS,
-    log,
-  });
-
   // One connection attempt = one `taskctl events follow` child. It talks to the
   // local event hub, which owns the single board SSE connection (and its
   // reconnect ladder) for every consumer on this host. Board discovery, the
@@ -495,10 +453,6 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
           if (dispatchEnabled && classify(data, { agents: opts.agents }) === "dispatch") {
             scheduler.notify();
           }
-          if (classifyRefresh(data) === "refresh") {
-            pendingRefresh.add(data.task_id);
-            refreshScheduler.notify();
-          }
         },
       });
     } catch (err) {
@@ -528,7 +482,6 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
   state.nextAttemptAt = null;
   flushState(true);
   scheduler.stop();
-  refreshScheduler.stop();
   return 0;
 }
 

@@ -225,7 +225,7 @@ poll entry
  ├─ scan       taskctl issue candidates …        → no candidates? stop. 0 handoffs
  ├─ budget     max-concurrency − live − queued   → 0? defer, claim nothing
  ├─ admit      project → target_dir + per-project cap → no directory? defer before the claim
- ├─ brief      taskctl export md → .meerkat/<id>/card.md → failed? defer unclaimed
+ ├─ brief      register the watch → .meerkat/<id>/card.md → failed? defer unclaimed
  ├─ claim      taskctl issue claim …             → refused? stop. no handoff
  └─ enqueue    cards.queue.json (handoff, target_dir, role, task_id)
                      ↓
@@ -689,17 +689,18 @@ UUID session id) so a wake never drags an unbounded context into the model.
 
 It names the task's **process directory**, relative to the project session's cwd:
 `.meerkat/<identifier>/`. `card.md` inside it is the loop's authoritative export of the
-card, written by `taskctl export md` (a temp file plus an atomic rename) before the claim;
-the handoff tells the subagent to read it first, to re-read it on resume, and never to edit
-it. Every other process file — notes, logs, evidence, report drafts, downloaded
+card: poll registers it with the local event hub before the claim, the hub writes the first
+snapshot synchronously (a temp file plus an atomic rename), and the registration keeps it
+fresh until the card is `done` or `canceled`. The handoff tells the subagent to read it
+first, to re-read it on resume, and never to edit it. Every other process file — notes, logs, evidence, report drafts, downloaded
 attachments — belongs in the same directory. The board still holds no directory (O3): the
 project session's cwd **is** the directory, and `.meerkat/` is the loop's convention under
 it — see [Where a worker runs](#where-a-worker-runs).
 
-With `--subscribe`, the events arrive through the local event hub (`events follow`) and a
-debounced batch refreshes the brief of every active queued card (and a review card's
-original). The refresh is a file write, not an LLM turn; it runs even when
-`--event-continue=no` and a failure leaves the previous brief in place.
+The hub owns the refresh for every registration: a debounced batch updates each watched file
+(and a review card's original, because the loop registers both), independent of whether an
+event wakes a continue turn. The refresh is a file write, not an LLM turn; a failure leaves
+the previous brief in place.
 
 Continuity across wakes comes from the **board**, not the prompt: the card's
 comments, reports and session record are durable, so a resumed conversation can
@@ -725,9 +726,9 @@ beside the skill (`references/projects-json.md`) as `local_path ?? run_dir`,
 The directory is a **worker's** start directory. The loop writes its own per-task process
 data beneath it (`.meerkat/<identifier>/`: `card.md` plus the subagent's files). That is
 loop state, not project data — where a project keeps its results is still its own business
-— and a project should ignore `.meerkat/` in version control. A target directory that is
-not writable blocks dispatch: a claim with no brief has nowhere to run, so the card is
-deferred unclaimed.
+— and a project should ignore `.meerkat/` in version control. A target directory where the
+hub cannot write the brief blocks dispatch: a failed registration (or a card already
+terminal) defers the card unclaimed, and a refused claim unregisters it again.
 
 Poll resolves the candidate's project before claiming it and writes the result into
 the queue entry as `target_dir`; the pool launches the project session in that
@@ -1653,8 +1654,8 @@ describes.
   [Where a worker runs](#where-a-worker-runs)).
 - **Task process data.** A dispatched card's brief (`card.md`) and the subagent's files —
   including downloaded attachments — live under `.meerkat/<identifier>/` in that working
-  directory. Poll exports the brief before the claim; an unwritable directory defers the
-  card unclaimed.
+  directory. Poll registers the brief watch before the claim; a failed registration (or an
+  already-terminal card) defers the card unclaimed.
 
 ### One mechanism per agent kind, and the cost gate
 

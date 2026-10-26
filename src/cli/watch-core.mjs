@@ -79,19 +79,17 @@ export function writeCardFile(file, markdown) {
 /**
  * Coalescing, strictly serial refresh queue.
  *
- * The timing mirrors the loop's subscriber (300 ms debounce, 2 s max wait,
- * `CARD_REFRESH_MIN_MS` floor), but the payload is the set of task ids that
+ * The timing is the hub watch's cadence (300 ms debounce, 2 s max wait,
+ * `CARD_REFRESH_MIN_MS` floor), and the payload is the set of task ids that
  * changed. `notify()` never starts work synchronously; at most one `refresh()`
  * is in flight; `stop()` clears the timer, waits for the in-flight batch, then
  * force-drains whatever was pending (so an event seen just before EOF is not
  * lost).
  *
- * The shared contract with `src/orchestrator/subscribe.mjs` is only two
- * expressions: the debounce cap
- * `min(debounceMs, firstPendingAt + maxWaitMs - now)` and the interval floor
- * `lastRunAt + minIntervalMs - now`. This scheduler folds the floor into the
- * same arm; the subscriber arms the debounce and re-arms at the floor in its
- * `pump()`. Fire times are identical, arm counts are not — both are
+ * The loop's subscriber has a separate scheduler for continue turns. They share
+ * the debounce shape, not a contract: the watch scheduler folds the interval
+ * floor into the same arm, while the dispatch scheduler re-arms at the floor in
+ * its `pump()`. Fire times are identical, arm counts are not — both are
  * deliberate. Do not "fix" one to match the other; their stop/retry semantics
  * differ for the same reason.
  *

@@ -14,7 +14,6 @@ import {
   IGNORED_EVENTS,
   advanceCursor,
   classify,
-  classifyRefresh,
   createDispatchScheduler,
   followArgs,
   nextBackoff,
@@ -118,18 +117,6 @@ describe("loop/subscribe — event rules", () => {
     // Legacy rows used kind `system`; the same ids still classify correctly.
     assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "taskd" }), ctx), "ignore");
     assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "linus" }), ctx), "ignore");
-  });
-
-  it("refreshes a card's brief on any event with a task id, including own writes", () => {
-    assert.equal(classifyRefresh(activity("comment_added", { task_id: "u1" })), "refresh");
-    assert.equal(classifyRefresh(activity("task_updated", { task_id: "u1" })), "refresh");
-    assert.equal(
-      classifyRefresh(activity("report_written", { task_id: "u1", actor_kind: "claude", actor_id: "linus" })),
-      "refresh",
-      "a worker's own report must reach the brief",
-    );
-    assert.equal(classifyRefresh(activity("task_heartbeat", { task_id: "u1" })), "ignore");
-    assert.equal(classifyRefresh(activity("task_created")), "ignore", "no task id, no row to map");
   });
 
   it("advances the cursor monotonically", () => {
@@ -553,81 +540,6 @@ describe("loop/subscribe — the process loop", () => {
     assert.equal(runs, 0);
   });
 
-  it("batch-refreshes the cards named by events, even with event-continue off", async () => {
-    const controller = new AbortController();
-    const batches = [];
-    let runs = 0;
-    await runSubscribe(
-      { agents: ["linus"], eventDebounceMs: 0, eventDebounceMaxMs: 0, eventContinueMinMs: 0, sseIdleMs: 1_000 },
-      {},
-      {
-        controller,
-        dispatchEnabled: false,
-        loopConfig: { continueEnabled: true, eventContinueEnabled: false },
-        log: () => {},
-        stateDir: "/state",
-        writeSubscribeState: () => {},
-        refreshMinMs: 0,
-        refreshCards: (taskIds) => batches.push(taskIds),
-        streamEvents: async ({ onEvent }) => {
-          onEvent({
-            id: 1,
-            data: { event: "comment_added", task_id: "uuid-1", actor_kind: "claude", actor_id: "linus" },
-          });
-          onEvent({
-            id: 2,
-            data: { event: "report_written", task_id: "uuid-1", actor_kind: "claude", actor_id: "linus" },
-          });
-          onEvent({
-            id: 3,
-            data: { event: "task_heartbeat", task_id: "uuid-2", actor_kind: "claude", actor_id: "linus" },
-          });
-          await new Promise((resolve) => setTimeout(resolve, 20));
-          controller.abort();
-          return { reason: "aborted" };
-        },
-        runContinue: async () => {
-          runs += 1;
-        },
-        sleep: async () => {},
-      },
-    );
-    assert.equal(runs, 0, "a brief refresh is not a continue turn");
-    assert.deepEqual(batches, [["uuid-1"]], "one debounced batch; the heartbeat is ignored");
-  });
-
-  it("logs a failed refresh and keeps the stream alive", async () => {
-    const controller = new AbortController();
-    const logs = [];
-    await runSubscribe(
-      { agents: ["linus"], eventDebounceMs: 0, eventDebounceMaxMs: 0, eventContinueMinMs: 0, sseIdleMs: 1_000 },
-      {},
-      {
-        controller,
-        dispatchEnabled: false,
-        loopConfig: { continueEnabled: true, eventContinueEnabled: false },
-        log: (line) => logs.push(line),
-        stateDir: "/state",
-        writeSubscribeState: () => {},
-        refreshMinMs: 0,
-        refreshCards: () => {
-          throw new Error("disk full");
-        },
-        streamEvents: async ({ onEvent }) => {
-          onEvent({
-            id: 1,
-            data: { event: "comment_added", task_id: "uuid-1", actor_kind: "claude", actor_id: "linus" },
-          });
-          await new Promise((resolve) => setTimeout(resolve, 20));
-          controller.abort();
-          return { reason: "aborted" };
-        },
-        runContinue: async () => {},
-        sleep: async () => {},
-      },
-    );
-    assert.equal(logs.some((line) => line.includes("disk full")), true);
-  });
 });
 
 describe("the loop consumes the local event hub", () => {

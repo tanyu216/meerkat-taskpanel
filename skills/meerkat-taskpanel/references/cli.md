@@ -383,8 +383,9 @@ the loop's `--ttl 0` registrations. `--once` exports once and exits without a wa
 under the hub the hub owns the cursor and liveness; `--standalone` is where those flags take
 effect.
 
-One watcher per card is enough. The loop's `--subscribe` daemon consumes `events follow` and
-refreshes active queued briefs, so a loop-dispatched worker must not start a second watcher.
+One watcher per card is enough. The loop's poll registers each dispatched card's brief with
+the hub (the review card and its original as one registration), so a loop-dispatched worker
+must not start a second watcher for the same file.
 
 ### `token`
 

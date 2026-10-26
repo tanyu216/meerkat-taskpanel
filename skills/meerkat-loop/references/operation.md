@@ -109,29 +109,27 @@ resolved `target_dir`):
   …                notes, logs, evidence, report drafts, downloaded attachments
 ```
 
-**Export before claim.** `poll` resolves the project directory, then runs
-`taskctl export md <identifier> --out <target_dir>/.meerkat/<identifier>/card.md` before
-`issue claim`. The CLI writes a unique temp file in the same directory and the loop renames
-it over `card.md`, so a reader never sees a partial file. If the export fails, the card is
-**deferred unclaimed** and the next turn retries it. Patrol's `--patrol-llm=yes` lane claims
-the same way. A reviewer's dispatch also exports the original best-effort; a failure there is
-logged but does not block the review card.
+**Register before claim.** `poll` resolves the project directory, then registers the card
+with the local event hub, naming `<target_dir>/.meerkat/<identifier>/card.md` (and the
+original's brief when it is a review card). The hub writes the first snapshot before it
+answers `registered`, then keeps the file fresh until the card is `done` or `canceled`; the
+registration has no TTL. If registration fails — or the card is already terminal — it is
+**deferred unclaimed** and the next turn retries. A refused claim unregisters it again.
+Patrol's `--patrol-llm=yes` lane registers the same way.
 
 **The brief is authoritative for dispatch and resume.** The handoff names the relative path
 (its cwd is the project directory), says to read it first, and says never to edit it: only
-`taskctl export md` overwrites it. `taskctl issue get <ref> --json` stays in the handoff for
+the hub watch overwrites it (a manual `taskctl export md` produces the same file, but the loop never needs one). `taskctl issue get <ref> --json` stays in the handoff for
 live status and the `version` a write needs. A resumed session re-reads the brief before
 continuing.
 
 **Attachments go in the same directory:** `taskctl attachment list <ref> --json`, then
 `taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>`.
 
-**Refresh on events.** The event subscriber (`taskctl loop subscribe`) adds the `task_id` of
-every active queued card to a debounced batch; the batch **refreshes the briefs** of every
-matching card and, for a review card, its original. It runs even when `--event-continue=no`,
-is bounded by `CARD_REFRESH_MIN_MS`, and a failed refresh only logs and keeps the previous
-file. Dispatch is separate: an event wakes a continue turn only while the resident pool is
-live.
+**Refresh on events.** The hub refreshes every registered file on the board's events, with a
+debounced batch (300 ms, 2 s maximum wait) and a 5 s floor between batches; a failed refresh
+only logs and keeps the previous file. The loop's subscriber does not write briefs. Dispatch
+is separate: an event wakes a continue turn only while the resident pool is live.
 
 **The plan file.** Workers maintain `plan.md` beside the brief and update it as they learn; the
 reviewer reads it and treats an unexplained deviation as grounds for `VERDICT: REJECT`. A

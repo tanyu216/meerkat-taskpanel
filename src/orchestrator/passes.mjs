@@ -29,7 +29,7 @@ import {
   runSlaPass,
   runWorkflowPass,
 } from "./board.mjs";
-import { exportCardFile } from "./card-file.mjs";
+import { briefCards, openCardWatch, registerCardWatch, stopCardWatch } from "./card-watch.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { mergeReviewerSets, parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
@@ -99,16 +99,24 @@ async function runEntry(name, argv, env, run, validate = null) {
  * project is unmapped, names no directory, or has no free project slot is
  * deferred — it stays `todo`, where the next turn can offer it again.
  *
+ * The brief is the gate: admission **registers the card with the hub before the
+ * claim**. The hub writes the first snapshot synchronously, so a claimed card
+ * still has a brief, and the registration keeps writing that file until the card
+ * is `done` or `canceled` (no TTL). A registration that cannot be made, or a
+ * card already terminal, defers the claim; a refused claim releases it again.
+ *
  * @param {{
  *   opts: object,
  *   projectConcurrency: number,
  *   liveByDir?: Map<string, number>,
  *   queuedByDir?: Map<string, number>,
- *   exportCard?: Function,
+ *   watchCards?: (cards: Array<{ref: string, out: string}>) => Promise<{ok: boolean, running?: boolean, error?: string}>,
+ *   stopWatch?: (target: {ref?: string|null, out?: string|null}) => Promise<unknown>,
  *   log?: (line: string) => void,
  * }} input
  * @returns {{
- *   admit: (action: object, card: object|undefined) => {ok: boolean, why?: string},
+ *   admit: (action: object, card: object|undefined) => Promise<{ok: boolean, why?: string}>,
+ *   release: (identifier: string) => Promise<unknown>,
  *   dirFor: (identifier: string) => string|null,
  * }}
  */
@@ -120,14 +128,16 @@ export function createProjectAdmission(input) {
   const { opts, projectConcurrency } = input;
   const liveByDir = input.liveByDir ?? new Map();
   const queuedByDir = input.queuedByDir ?? new Map();
-  const exportCard = input.exportCard ?? exportCardFile;
+  const watchCards = input.watchCards ?? ((cards) => registerCardWatch(opts, cards));
+  const stopWatch = input.stopWatch ?? ((target) => stopCardWatch(opts, target));
   const log = input.log ?? (() => {});
   const admittedDirs = new Map();
+  const registrations = new Map();
   const claimedByDir = new Map();
   const warnedCheckouts = new Set();
 
   return {
-    admit(action, card) {
+    async admit(action, card) {
       const project = typeof card?.project === "string" ? card.project.trim() : "";
       if (project === "") return { ok: false, why: "the card names no project" };
       const resolved = resolveWakeDir({ project, projectsJson: opts.projectsJson });
@@ -157,41 +167,42 @@ export function createProjectAdmission(input) {
         );
       }
 
-      // The brief is the gate: a card whose working files cannot be written must
-      // stay `todo`, never become a claim that has nowhere to run. The export is
-      // before the claim, so this is the same "defer, do not claim" path as an
-      // unmapped project. It is deliberately before `admittedDirs.set` too.
-      if (opts.dryRun !== true) {
-        const exported = exportCard({
-          opts,
-          agent: action.agent,
-          targetDir: resolved.dir,
-          identifier: action.identifier,
-          log,
-        });
-        if (exported?.ok !== true) {
-          return { ok: false, why: `card brief export failed: ${exported?.error ?? "unknown error"}` };
+      // One registration covers the card and, for a review, its original; each
+      // gets its own exact file in the same target directory. The hub writes
+      // the first snapshot before this returns.
+      const identifier = typeof card?.identifier === "string" && card.identifier !== ""
+        ? card.identifier
+        : action.identifier;
+      const cards = opts.dryRun === true ? null : briefCards(resolved.dir, identifier, card?.review_of);
+      if (cards !== null) {
+        const watched = await watchCards(cards);
+        if (watched?.ok !== true) {
+          return { ok: false, why: `card brief watch failed: ${watched?.error ?? "unknown error"}` };
         }
-        if (typeof card?.review_of === "string" && card.review_of.trim() !== "") {
-          const original = exportCard({
-            opts,
-            agent: action.agent,
-            targetDir: resolved.dir,
-            identifier: card.review_of.trim(),
-            log,
-          });
-          if (original?.ok !== true) {
-            log(
-              `admit ${action.identifier}: original brief ${card.review_of} not exported: ` +
-                `${original?.error ?? "unknown error"}`,
-            );
-          }
+        if (watched.running === false) {
+          // The hub wrote the final brief and opened no stream. Claiming would
+          // leave a worker with nothing to keep fresh; the card is terminal.
+          return { ok: false, why: `card is already terminal (${watched.reason ?? "terminal"})` };
         }
+        registrations.set(action.identifier, { ref: cards[0].ref, out: cards[0].out });
       }
 
       admittedDirs.set(action.identifier, resolved.dir);
       claimedByDir.set(resolved.dir, (claimedByDir.get(resolved.dir) ?? 0) + 1);
       return { ok: true };
+    },
+    async release(identifier) {
+      const registered = registrations.get(identifier);
+      if (registered === undefined) return { ok: true, stopped: false };
+      registrations.delete(identifier);
+      const dir = admittedDirs.get(identifier);
+      admittedDirs.delete(identifier);
+      // Admission reserves the project slot before the claim; a refused claim
+      // must give it back, or one conflict would shrink the pass's capacity.
+      if (dir !== undefined) {
+        claimedByDir.set(dir, Math.max(0, (claimedByDir.get(dir) ?? 1) - 1));
+      }
+      return stopWatch({ ref: registered.ref, out: registered.out });
     },
     dirFor(identifier) {
       return admittedDirs.get(identifier) ?? null;
@@ -208,14 +219,12 @@ export function createProjectAdmission(input) {
  *   config: object,
  *   stateDir: string,
  *   admission: {dirFor: (id: string) => string|null},
- *   exportCard?: Function,
  *   log?: (line: string) => void,
  * }} input
  * @returns {(action: object, card: object|undefined) => Promise<{ok: boolean, pid?: null, queued?: boolean, dryRun?: boolean, error?: string}>}
  */
 export function createQueueDispatch(input) {
   const { opts, config, stateDir, admission } = input;
-  const exportCard = input.exportCard ?? exportCardFile;
   const log = input.log ?? (() => {});
   const loggedRoleWarnings = new Set();
   return async (action, card) => {
@@ -247,21 +256,8 @@ export function createQueueDispatch(input) {
     });
     if (!queued.ok) return { ok: false, error: queued.error };
 
-    // The pre-claim export is the gate; this refresh is the accurate snapshot.
-    // A failure here is not fatal: the pre-claim brief already exists.
-    const refreshed = exportCard({
-      opts,
-      agent: action.agent,
-      targetDir: dir,
-      identifier: action.identifier,
-      log,
-    });
-    if (refreshed?.ok !== true) {
-      log(
-        `dispatch ${action.identifier}: post-claim brief refresh failed: ` +
-          `${refreshed?.error ?? "unknown error"}`,
-      );
-    }
+    // No post-claim export: the claim itself is an event, and the registration
+    // made before it refreshes the brief. One writer, one path.
     return { ok: true, pid: null, queued: !queued.coalesced };
   };
 }
@@ -363,11 +359,39 @@ export async function runPollOnce(opts, env = process.env) {
     return 0;
   }
 
+  // One hub per poll pass: the first registration starts (or finds) it, and
+  // every later card rides the same connection. A failed start is remembered
+  // as a rejection for this pass, so each card defers instead of retrying a
+  // broken spawn once per candidate.
+  let hubPromise = null;
+  const owner = `${opts.actorKind}:${agents[0] ?? "-"}`;
+  const watchCards = async (cards) => {
+    try {
+      hubPromise ??= openCardWatch(opts, { env, log });
+      const hub = await hubPromise;
+      return await registerCardWatch(opts, cards, { hub, owner });
+    } catch (err) {
+      return { ok: false, error: err?.message ?? String(err) };
+    }
+  };
+  const stopWatch = async (target) => {
+    try {
+      if (hubPromise === null) return { ok: true, stopped: false };
+      const hub = await hubPromise;
+      return await stopCardWatch(opts, target, { hub });
+    } catch (err) {
+      log(`watch-stop failed: ${err?.message ?? String(err)}`);
+      return { ok: false, error: err?.message ?? String(err) };
+    }
+  };
+
   const admission = createProjectAdmission({
     opts,
     projectConcurrency,
     liveByDir,
     queuedByDir,
+    watchCards,
+    stopWatch,
     log,
   });
   const dispatch = createQueueDispatch({ opts, config, stateDir, admission, log });
@@ -405,6 +429,7 @@ export async function runPollOnce(opts, env = process.env) {
     },
     dispatch,
     admit: admission.admit,
+    release: admission.release,
     limit: budget,
     verb: "enqueued",
     now: () => new Date().toISOString(),
@@ -477,19 +502,18 @@ export async function runPatrolOnce(opts, env = process.env) {
       }
       const action = { identifier: alert.identifier, agent: alert.agent ?? opts.agents[0] };
 
-      // Same gate as poll: a card with no writable brief is not claimed.
+      // Same gate as poll: register the brief watch before the claim. The hub
+      // writes the first snapshot synchronously, and a terminal card opens no
+      // stream — that card is not claimed.
+      const cards = briefCards(resolved.dir, alert.identifier, task?.review_of);
       if (opts.dryRun !== true) {
-        const exported = exportCardFile({
-          opts,
-          agent: action.agent,
-          targetDir: resolved.dir,
-          identifier: alert.identifier,
-          log,
+        const watched = await registerCardWatch(opts, cards, {
+          owner: `${opts.actorKind}:${action.agent}`,
         });
-        if (!exported.ok) {
+        if (watched.ok !== true || watched.running === false) {
           log(
-            `patrol: ${alert.identifier} — card brief export failed: ${exported.error}; ` +
-              "notify-only, no LLM turn",
+            `patrol: ${alert.identifier} — card brief watch failed: ` +
+              `${watched.error ?? watched.reason ?? "unknown error"}; notify-only, no LLM turn`,
           );
           return { ok: false };
         }
@@ -500,6 +524,9 @@ export async function runPatrolOnce(opts, env = process.env) {
       });
       if (!claimed.ok) {
         log(`patrol: claim refused ${alert.identifier} (${claimed.error ?? "conflict"}) — not dispatching`);
+        if (opts.dryRun !== true) {
+          await stopCardWatch(opts, { ref: cards[0].ref, out: cards[0].out });
+        }
         return { ok: false };
       }
       const { role, handoff } = wakeHandoff(

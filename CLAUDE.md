@@ -13,36 +13,6 @@ same state on a kanban board (deliberately read-only). Persistence is a single S
 database (Node's built-in `node:sqlite`) — no external services. Node **>= 22**,
 **zero runtime dependencies**, MIT, public repo.
 
-**Status (honest):** the engine has landed in full — the core engine, the `taskctl` CLI and
-its local `taskd`, the four-agent-kind installers, and the board HTTP API + SSE plus the `web/`
-frontend. `src/core/` has the domain model, SQLite storage
-+ migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl` command surface
-and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` is the
-board HTTP API + SSE; `src/orchestrator/` is the external loop behind `taskctl loop …`;
-`web/` is the Vue 3 + Vite frontend that builds to `web/dist` and is served by `taskd`.
-Still planned: the **epic view** and **iteration management** — the roadmap lives in
-`README.md` / `README.zh-CN.md`.
-
-**Distribution:** `npx meerkat-taskpanel` (or `install.sh --target all` from a checkout)
-materializes the runtime at `~/.meerkat-taskpanel` — `src/`, the built `web/dist`,
-`bin/taskd`, `bin/taskctl`, one `.env` and `.data` — and installs the skill for every
-supported agent kind. `all` is the default and includes the server; `--no-server` (or an explicit
-comma list such as `--target claude,server,pi`) narrows it. The npm tarball therefore carries
-the built `web/dist`, and the tree is self-locating (the launchers exec the tree's own
-`src/`), so it survives the checkout moving or the npx cache being pruned. The Docker image
-is unchanged and keeps `/app/.data`. `docs/install.md` is the reference.
-
-The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/install.md`).
-The board owns the workflow decisions (`issue reconcile --workflow`); the loop executes the
-resulting plan. The external loop is part of the toolkit
-(`src/orchestrator/`, `taskctl loop …`); its skill (`skills/meerkat-loop/`) carries decisions
-only — `SKILL.md` + `references/`, no scripts or templates — is never installed for OpenClaw
-and is **not** distributed through the marketplace: `install.sh --target claude|codex|pi` is
-its only path, and it carries no version of its own. The third skill, **`setup-meerkat`**
-(`skills/setup-meerkat/`), is the user-invoked `/setup-meerkat` install/repair and team-setup
-command; `install.sh --target claude` copies it, the shared bundle carries it for the other
-kinds.
-
 ## How to work here
 
 **Decompose before executing.** Any request that is more than a couple of tool calls gets a
@@ -109,15 +79,8 @@ policy going forward.
 ## Commands
 
 ```bash
-node --test                                  # full suite (also: npm test)
 node --test test/core/index.test.mjs         # one file
 node --test "test/contract/**/*.test.mjs"    # one directory (a bare dir arg does NOT work here)
-npm run test:coverage                        # tap reporter + 80% line/branch/function floors
-npm run check                                # verify + test (fast, host-static)
-npm run verify                               # manifests + skill + migrations + paths + signposts checkers
-npm run verify:docker                        # AUTHORITATIVE gate: build image + in-container suite (also run by pre-push)
-npm run verify:docker:container              # run docker/verify-in-container.sh inside the image
-node scripts/build.mjs                       # produce dist/ (the npm release tree; deletes + recreates)
 node scripts/verify/contract.mjs             # API contract snapshot; --update refreshes it, drift exits 1
 node scripts/verify/cli-contract.mjs         # CLI surface snapshot (commands/flags/envelope); --update
 node scripts/verify/route-request.mjs        # declared request schema vs what the handler reads; --print
@@ -131,33 +94,9 @@ floors live once, in `package.json`. Other checkers: `verify:migrations`, `verif
 
 ## Repository layout
 
-```text
-meerkat-taskpanel/
-├── src/core/               # engine: domain (no Node builtins), storage (SQLite + migrations,
-│                           #   repositories, md export), commands (use-cases), bootstrap.openBoard()
-├── src/cli/                # taskctl (argv, usage, commands/, output/); reaches taskd via foundation/transport
-├── src/server/             # taskd: auth + CIDR, router, routes/, sse, static, writer lock, graceful stop
-├── src/orchestrator/       # the external loop behind `taskctl loop …`: passes, daemons,
-│                           #   session pool, actor kinds, compat gate
-├── src/foundation/             # DTOs, constants, errors, pure helpers + the taskd transport seam
-├── web/                    # Vue 3 + Vite board frontend (own lockfile) -> web/dist, served by taskd
-├── skills/                 # the three skills: meerkat-taskpanel (board), meerkat-loop (supervisor),
-│                           #   setup-meerkat (install/repair + team setup; Claude-only copy)
-├── .claude-plugin/ .pi/    # harness markers; the plugin root IS the repo root
-├── design/                 # DESIGN / BLOCKS, the interactive prototype/, brand/, assets/, fidelity-rNN.md
-├── scripts/                # build, install/, verify/{manifests,skill,migrations,paths,contract,
-│                           #   cli-contract,route-request,changelog,version,docker,…}
-├── docker/                 # Dockerfile (webbuild stage + runtime), compose, profiles, verify-in-container.sh
-├── monitoring/             # OTel / Prometheus exporter
-├── test/                   # contract, core, concurrency, server, web, install, scheduling, verify, skill, design
-├── docs/                   # install, development, docker, contract, migration, scheduling, observability,
-│                           #   projects, publishing, security, web-local-first
-└── .githooks/              # pre-commit / pre-push / pre-tag — offline gates (see below)
-```
-
 `dist/`, `.data/`, `node_modules/`, `coverage/` and `.meerkat/` are build/runtime output —
 gitignored, never committed. `.meerkat/<identifier>/` is the loop's per-task process
-directory under a project's working directory: `card.md` (exported by `taskctl export md`,
+directory under a project's working directory: `card.md` (kept fresh by the hub watch,
 never hand-edited), the subagent's notes/evidence, and downloaded attachments. Mind the two
 different `dist` trees: `dist/` is the **npm release tree**
 that `scripts/build.mjs` writes (and a stale M0 `dist/web/.gitkeep` placeholder lives there);
@@ -264,8 +203,11 @@ authoritative home, because the container image drops `design/`.
   SSE connection to a board and fans it out to local consumers (`events follow` and watch
   registrations); it binds loopback, publishes an owner-only pointer, and is started detached
   on demand. `export watch` registers with it (`--detach`), `--standalone` keeps the direct
-  stream, and the loop's subscriber consumes `events follow`. The board still never writes a
-  user directory: the hub is a client-side process.
+  stream, and the loop's subscriber consumes `events follow`. The loop's poll **registers the
+  card brief before the claim** (`cards[]`, per-card absolute paths, `ttl_ms: 0`) and unregisters
+  it if the claim is refused; the hub — not the subscriber — owns every brief write, until the
+  card is `done` or `canceled`. The board still never writes a user directory: the hub is a
+  client-side process.
 - The **delivery gate** requires a report **for the current delivery round** before a card can
   move to `in_review`; a report from an earlier round is history, not evidence. It is enforced by
   a DB trigger *and* a domain check, tested against each other under `test/contract/`. There is

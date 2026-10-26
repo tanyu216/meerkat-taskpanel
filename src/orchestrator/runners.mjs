@@ -58,7 +58,8 @@ const BOARD_LEVEL_ROWS = new Set(["leader_stalled", "inspector_liveness"]);
  *   claim: (identifier: string, agent: string) => Promise<{ok: boolean, error?: string}>,
  *   spawnWorker: (action: object, card: object|undefined) => Promise<{ok: boolean, pid?: number, error?: string}>,
  *   dispatch?: (action: object, card: object|undefined) => Promise<{ok: boolean, pid?: number, error?: string}>,
- *   admit?: (action: object, card: object|undefined) => {ok: boolean, why?: string},
+ *   admit?: (action: object, card: object|undefined) => Promise<{ok: boolean, why?: string}>,
+ *   release?: (identifier: string) => Promise<unknown>,
  *   limit?: number,
  *   verb?: string,
  *   now: () => string,
@@ -75,6 +76,7 @@ export async function runPollTick(deps) {
     spawnWorker,
     dispatch = spawnWorker,
     admit = null,
+    release = null,
     limit = Number.POSITIVE_INFINITY,
     verb = "woke",
     now,
@@ -110,8 +112,10 @@ export async function runPollTick(deps) {
 
     const card = cardById.get(action.identifier);
     // The claim budget is checked **before** the claim: a card with no place to
-    // run must stay `todo`, where the next turn can offer it again.
-    const admitted = admit === null ? { ok: true } : admit(action, card);
+    // run must stay `todo`, where the next turn can offer it again. Admission
+    // registers the brief watch first; a terminal card is written once and
+    // skipped, never claimed.
+    const admitted = admit === null ? { ok: true } : await admit(action, card);
     if (admitted?.ok !== true) {
       deferred += 1;
       log(`defer ${action.identifier} (${admitted?.why ?? "not admitted"})`);
@@ -123,6 +127,10 @@ export async function runPollTick(deps) {
     if (!verdict?.ok) {
       conflicts += 1;
       log(`claim refused ${action.identifier} (${verdict?.error ?? "conflict"}) — not dispatching`);
+      // The registration must not outlive the claim it was made for: nothing
+      // would ever move that card through this loop, so the watch would wait
+      // forever for a terminal state.
+      if (release !== null) await release(action.identifier);
       continue;
     }
     claimed += 1;

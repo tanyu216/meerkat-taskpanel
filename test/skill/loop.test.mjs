@@ -173,12 +173,12 @@ describe("loop skill: SKILL.md", () => {
     assert.match(text, /\.meerkat\/<identifier>\//);
     assert.match(text, /authoritative brief/);
     assert.match(text, /never edit it/i);
-    assert.match(text, /taskctl export md/);
     assert.match(text, /taskctl attachment download/);
 
     const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
-    assert.match(operation, /Export before claim/);
-    assert.match(operation, /refreshes the briefs/);
+    assert.match(operation, /taskctl export md/);
+    assert.match(operation, /Register before claim/);
+    assert.match(operation, /The hub refreshes every registered file/);
     assert.match(operation, /deferred\s+\*\*unclaimed\*\*|deferred\nunclaimed|deferred/);
   });
 

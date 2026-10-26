@@ -207,6 +207,46 @@ describe("hub server (in process)", () => {
     assert.equal(readFileSync(out, "utf8"), "# final\n");
   });
 
+  it("registers several cards with per-card paths in one request", async () => {
+    // The loop's registration: a review card and its original, one hub
+    // registration, two exact files. No `dir` and no single `out`.
+    board.add("DEMO-0060", "uuid-60", "# review\n");
+    board.add("DEMO-0061", "uuid-61", "# original\n");
+    const review = join(projectDir, "briefs", "DEMO-0060.md");
+    const original = join(projectDir, "briefs", "DEMO-0061.md");
+
+    const pointerFile = pointer();
+    const answer = await hubCall(
+      pointerFile,
+      pointerFile.token,
+      {
+        op: "watch",
+        cards: [
+          { ref: "DEMO-0060", out: review },
+          { ref: "DEMO-0061", out: original },
+        ],
+        ttl_ms: 0,
+        detach: true,
+      },
+      { match: (record) => record?.type === "registered" || record?.op === "error" },
+    );
+    assert.equal(answer.type, "registered", JSON.stringify(answer));
+    assert.equal(answer.running, true);
+    assert.deepEqual(answer.cards.map((card) => card.path).sort(), [original, review].sort());
+    assert.equal(readFileSync(review, "utf8"), "# review\n");
+    assert.equal(readFileSync(original, "utf8"), "# original\n");
+
+    board.update("DEMO-0060", { markdown: "# review v2\n", status: "canceled" });
+    board.emit("uuid-60");
+    await waitFor(() => readFileSync(review, "utf8").includes("v2"));
+
+    // One path addresses the whole registration, so a failed claim can undo it.
+    const stopped = await cli(["export", "watch", "DEMO-0060", "--out", review, "--stop", "--json"]);
+    assert.equal(JSON.parse(stopped.stdout).data.stopped, true);
+    const after = await cli(["export", "watch", "DEMO-0060", "--out", review, "--watch-status", "--json"]);
+    assert.equal(JSON.parse(after.stdout).data.running, false);
+  });
+
   it("registers the same watch through export md --watch", async () => {
     board.add("DEMO-0051", "uuid-51", "# md\n");
     const out = join(projectDir, "briefs", "DEMO-0051.md");
@@ -230,6 +270,38 @@ describe("hub server (in process)", () => {
     board.update("DEMO-0004", { markdown: "# resumed\n" });
     board.emit("uuid-4");
     await waitFor(() => readFileSync(cardPath("DEMO-0004"), "utf8").includes("resumed"));
+  });
+
+  it("resumes a matrix registration from its per-card paths", async () => {
+    board.add("DEMO-0070", "uuid-70", "# a\n");
+    board.add("DEMO-0071", "uuid-71", "# b\n");
+    const first = join(projectDir, "briefs", "DEMO-0070.md");
+    const second = join(projectDir, "briefs", "DEMO-0071.md");
+    const live = pointer();
+    await hubCall(
+      live,
+      live.token,
+      {
+        op: "watch",
+        cards: [
+          { ref: "DEMO-0070", out: first },
+          { ref: "DEMO-0071", out: second },
+        ],
+        ttl_ms: 0,
+        detach: true,
+      },
+      { match: (record) => record?.type === "registered" },
+    );
+    await server.stop();
+    server = await runHub({ client, board: { url: board.url, token: TOKEN }, env }, { log: () => {} });
+
+    await waitFor(async () => {
+      const status = await cli(["export", "watch", "DEMO-0070", "--out", first, "--watch-status", "--json"]);
+      return JSON.parse(status.stdout).data.running === true;
+    });
+    board.update("DEMO-0070", { markdown: "# a2\n" });
+    board.emit("uuid-70");
+    await waitFor(() => readFileSync(first, "utf8").includes("a2"));
   });
 
   it("closes a session that never authenticates", async () => {

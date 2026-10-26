@@ -10,7 +10,7 @@
  * The card brief is machine-generated: only `taskctl export md` and
  * `taskctl export watch` may write it.
  * This module is the single source of the path text, shared by the handoff
- * builders (foundation) and the loop's exporter (`src/orchestrator/card-file.mjs`),
+ * builders (foundation) and the two writers (`taskctl export md`, the hub watch),
  * so the brief a subagent is told to read is the file the loop actually writes.
  *
  * Pure: no Node builtins, no I/O.

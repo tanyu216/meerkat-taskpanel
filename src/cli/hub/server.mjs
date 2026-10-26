@@ -393,9 +393,14 @@ export function createHubServer(input) {
       if (previous !== undefined) {
         const existing = registrations.get(previous);
         const sameTarget = out !== null && out !== undefined ? existing?.out === out : existing?.dir === dir;
+        const samePaths =
+          paths === null ||
+          paths === undefined ||
+          [...paths].every(([ref, wanted]) => existing?.cards.get(ref)?.path === wanted);
         if (
           existing !== undefined &&
           sameTarget &&
+          samePaths &&
           [...existing.refs].length === refs.length &&
           refs.every((value) => existing.refs.has(value))
         ) {
@@ -493,39 +498,76 @@ export function createHubServer(input) {
   }
 
   async function handleWatch(session, record) {
-    const refs = Array.isArray(record.refs)
-      ? [...new Set(record.refs.filter((ref) => isNonEmptyString(ref)).map((ref) => String(ref).trim()))]
-      : [];
-    if (refs.length === 0) throw new DomainError("CLI_USAGE", { message: "export watch: at least one card ref is required" });
-    const out = isNonEmptyString(record.out) ? record.out : null;
-    const dir = isNonEmptyString(record.dir) ? record.dir : null;
-    if (out === null && dir === null) {
-      throw new DomainError("CLI_USAGE", {
-        message: "export watch: --dir or --out is required",
-        hint: { fix: "name a project directory (--dir) or an exact file (--out)" },
-      });
-    }
-    if (out !== null) {
-      if (refs.length !== 1) {
+    // A loop registration names several cards and gives each its own exact
+    // file; the CLI spellings (`--out` for one, `--dir` for many) stay as they
+    // are. `cards` and `out`/`dir` are mutually exclusive so a path can never
+    // be derived two ways in one request.
+    const requested = new Map();
+    for (const entry of Array.isArray(record.cards) ? record.cards : []) {
+      if (!isNonEmptyString(entry?.ref) || !isNonEmptyString(entry?.out)) {
         throw new DomainError("CLI_USAGE", {
-          message: "export watch: --out takes exactly one card ref",
-          hint: { fix: "pass one ref, or use --dir for several cards" },
+          message: "export watch: every cards[] entry needs a ref and an absolute out path",
         });
       }
-      if (!isAbsolute(out)) {
-        throw new DomainError("CLI_USAGE", { message: `export watch: --out ${out} is not an absolute path` });
+      const ref = String(entry.ref).trim();
+      const path = String(entry.out).trim();
+      if (!isAbsolute(path)) {
+        throw new DomainError("CLI_USAGE", { message: `export watch: ${path} is not an absolute path` });
       }
-      if (statSync(out, { throwIfNoEntry: false })?.isDirectory() === true) {
+      if (statSync(path, { throwIfNoEntry: false })?.isDirectory() === true) {
         throw new DomainError("CLI_USAGE", {
-          message: `export watch: --out ${out} is a directory`,
+          message: `export watch: ${path} is a directory`,
           hint: { fix: "name the file to keep fresh" },
         });
       }
-    } else if (!isAbsolute(dir) || statSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) {
+      if (requested.has(ref) || [...requested.values()].includes(path)) {
+        throw new DomainError("CLI_USAGE", { message: `export watch: ${ref} or ${path} is named twice` });
+      }
+      requested.set(ref, path);
+    }
+
+    const refs = requested.size > 0
+      ? [...requested.keys()]
+      : Array.isArray(record.refs)
+        ? [...new Set(record.refs.filter((ref) => isNonEmptyString(ref)).map((ref) => String(ref).trim()))]
+        : [];
+    if (refs.length === 0) throw new DomainError("CLI_USAGE", { message: "export watch: at least one card ref is required" });
+    const out = isNonEmptyString(record.out) ? record.out : null;
+    const dir = isNonEmptyString(record.dir) ? record.dir : null;
+    if (requested.size > 0 && (out !== null || dir !== null)) {
       throw new DomainError("CLI_USAGE", {
-        message: `export watch: --dir ${dir} is not an existing absolute directory`,
-        hint: { fix: "create the project working directory first" },
+        message: "export watch: cards[] cannot be combined with out or dir",
       });
+    }
+    if (requested.size === 0 && out === null && dir === null) {
+      throw new DomainError("CLI_USAGE", {
+        message: "export watch: --dir, --out or cards[] is required",
+        hint: { fix: "name a project directory (--dir), an exact file (--out), or per-card paths" },
+      });
+    }
+    if (requested.size === 0) {
+      if (out !== null) {
+        if (refs.length !== 1) {
+          throw new DomainError("CLI_USAGE", {
+            message: "export watch: --out takes exactly one card ref",
+            hint: { fix: "pass one ref, or use --dir for several cards" },
+          });
+        }
+        if (!isAbsolute(out)) {
+          throw new DomainError("CLI_USAGE", { message: `export watch: --out ${out} is not an absolute path` });
+        }
+        if (statSync(out, { throwIfNoEntry: false })?.isDirectory() === true) {
+          throw new DomainError("CLI_USAGE", {
+            message: `export watch: --out ${out} is a directory`,
+            hint: { fix: "name the file to keep fresh" },
+          });
+        }
+      } else if (!isAbsolute(dir) || statSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) {
+        throw new DomainError("CLI_USAGE", {
+          message: `export watch: --dir ${dir} is not an existing absolute directory`,
+          hint: { fix: "create the project working directory first" },
+        });
+      }
     }
     const ttlMs = nonNegativeInteger(record.ttl_ms) ? record.ttl_ms : CARD_WATCH_TTL_MS;
     const detached = record.detach === true;
@@ -534,6 +576,7 @@ export function createHubServer(input) {
       refs,
       dir,
       out,
+      paths: requested.size > 0 ? requested : null,
       ttlMs,
       detached,
       session: detached ? null : session,
@@ -767,7 +810,6 @@ export function createHubServer(input) {
     }
     for (const entry of state.registrations) {
       if (!Number.isInteger(entry?.ttl_ms)) continue;
-      if (!isNonEmptyString(entry?.dir) && !isNonEmptyString(entry?.out)) continue;
       if (Number.isInteger(entry.expires_at) && entry.expires_at <= now()) continue;
       try {
         const refs = Array.isArray(entry.refs) ? entry.refs.filter(isNonEmptyString) : [];
@@ -777,6 +819,9 @@ export function createHubServer(input) {
             .filter((card) => isNonEmptyString(card?.ref) && isNonEmptyString(card?.path))
             .map((card) => [card.ref, card.path]),
         );
+        // A matrix registration has neither `dir` nor `out`: its targets are
+        // the per-card paths persisted with it.
+        if (!isNonEmptyString(entry?.dir) && !isNonEmptyString(entry?.out) && paths.size === 0) continue;
         const ttlMs = entry.expires_at !== null && entry.expires_at !== undefined
           ? Math.max(0, entry.expires_at - now())
           : entry.ttl_ms;
