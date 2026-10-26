@@ -64,8 +64,8 @@ run them.
     are not recorded) and does not copy product terms; ADRs live at
     `docs/adr/NNNN-<slug>.md`.
 12. The design stance is evidenced: the simplest reliable option was chosen, every
-    abstraction and dependency names its forcing function, and no layer exists only for
-    symmetry.
+    abstraction and dependency names its forcing function, no layer exists only for
+    symmetry, modules have one reason to change and dependencies point one way.
 13. The architecture style is recorded and justified — DDD with its bounded contexts and
     aggregates, or a named simpler style with DDD's rejection and cost — and the boundaries
     and tree instantiate it.
@@ -79,8 +79,9 @@ run them.
     (`CLAUDE.md` or `AGENTS.md`) exists as the baseline every role reads, carrying a
     top-level map and a pointer to the full tree.
 17. The `/init` product carries the design principles as binding requirements every agent
-    follows — simple, reliable, efficient, elegant, not over-engineered, with the conflict
-    ordering — rather than leaving them in the architecture document only.
+    follows — simple, reliable, efficient, elegant, not over-engineered, high cohesion and
+    low coupling, with the conflict ordering — rather than leaving them in the architecture
+    document only.
 
 ## Implementation branch
 
@@ -93,6 +94,10 @@ run them.
    `branch -d`, and never `-D`.
 10. The gates were re-run on the integration result; the change uses the recorded stack (a
     new dependency or engine is a recorded decision).
+11. The change applies the six design principles from Step 2 of the branch workflow: it is
+    the smallest correct change, each module or function has one reason to change,
+    dependencies point one way, and every new abstraction or dependency names its forcing
+    function. A departure is a recorded decision.
 
 ## Delivery
 

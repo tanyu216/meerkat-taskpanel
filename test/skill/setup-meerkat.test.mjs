@@ -200,7 +200,7 @@ describe("skill frontmatter and assets", () => {
     assert.match(arch, /foundation decision/i, "the inclusion test is a foundation decision");
     assert.match(arch, /implementation-workflow\.md/, "out-of-scope cards route to implementation");
 
-    assert.match(arch, /design stance/i, "the five principles are a stance, not a slogan");
+    assert.match(arch, /design stance/i, "the design principles are a stance, not a slogan");
     for (const principle of ["simple|simplicity", "reliab", "efficien", "elegan", "over-?engineer"]) {
       assert.match(arch, new RegExp(principle, "i"), `the design stance covers ${principle}`);
     }
@@ -237,6 +237,47 @@ describe("skill frontmatter and assets", () => {
       /design principles[\s\S]{0,300}every agent/i,
       "the self-check audits the /init principles",
     );
+  });
+
+  it("applies the six design principles to a feature change", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+    const impl = readFileSync(join(team, "linus", "implementation-workflow.md"), "utf8");
+    const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    const roles = readFileSync(join(SKILL, "references", "roles.md"), "utf8");
+    const manifest = readFileSync(join(team, "manifest.json"), "utf8");
+
+    const stance = arch.slice(arch.indexOf("## Design stance"), arch.indexOf("## When this flow applies"));
+    const step2 = impl.slice(impl.indexOf("### 2."), impl.indexOf("### 3."));
+    const implCheck = check.slice(check.indexOf("## Implementation branch"), check.indexOf("## Delivery"));
+
+    assert.match(stance, /Six principles/i, "the stance names six principles");
+    assert.match(stance, /High cohesion, low coupling/i, "the stance carries the sixth principle");
+    assert.match(stance, /boundary is not traded for speed/i, "the sixth has its own conflict rule");
+
+    for (const principle of [
+      "simple|simplicity", "reliab", "efficien", "elegan", "over-?engineer",
+      "high cohesion", "low coupling",
+    ]) {
+      assert.match(step2, new RegExp(principle, "i"), `Step 2 applies ${principle}`);
+    }
+    assert.match(step2, /one reason to change/i, "cohesion has a testable form");
+    assert.match(step2, /recorded decision|silent drift/i, "a departure is recorded");
+    assert.match(step2, /docs\/architecture\.md/, "Step 2 points at the canonical definitions");
+
+    assert.match(implCheck, /six design principles/i, "the implementation self-check audits the principles");
+    assert.match(implCheck, /one reason to change/i, "the implementation self-check audits cohesion");
+
+    for (const [name, text] of [
+      ["SKILL.md", skill], ["roles.md", roles], ["manifest.json", manifest],
+      ["self-check.md", check], ["architecture-workflow.md", arch],
+    ]) {
+      assert.doesNotMatch(text, /\bfive (design )?principles\b/i, `${name} must not still say five principles`);
+    }
+    for (const [name, text] of [["SKILL.md", skill], ["roles.md", roles], ["manifest.json", manifest]]) {
+      assert.match(text, /high cohesion/i, `${name} names the sixth principle`);
+    }
   });
 
   it("carries the decision method, split glossaries and the worktree declaration", () => {

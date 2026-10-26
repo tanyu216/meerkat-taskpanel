@@ -13,7 +13,7 @@ from `.meerkat/<id>/plan.md`; do not start the next step while a decision is ope
 
 ## Design stance
 
-Five principles decide the architecture, and each one has a test and an artifact. They are
+Six principles decide the architecture, and each one has a test and an artifact. They are
 tie-breakers in the decision round, not an opening paragraph; Step 8 presents the evidence.
 
 | Principle | The question that tests it | Evidence in the design |
@@ -23,10 +23,12 @@ tie-breakers in the decision round, not an opening paragraph; Step 8 presents th
 | Efficient | Where is the cost (latency, memory, money) measured, and what is the bound? | A stated budget and a measurement point; no optimization without a number |
 | Elegant | Do the tree, the contract and the names tell one story? | One source of truth, consistent naming, boring technology, least surprise |
 | Not over-engineered | What happens if this layer, pattern or dependency is deleted? | Every abstraction names its forcing function; the smallest skeleton that proves the architecture; YAGNI |
+| High cohesion, low coupling | Does each module or function have one reason to change, with dependencies pointing one way? | One owner per module; a one-way dependency direction; no reach-through or shared mutable state; a change stays inside its boundary |
 
 When they conflict: **simplicity and reliability win; efficiency needs a measurement;
-elegance constrains how, it never adds machinery.** A pattern that cannot answer the
-deletion question is not introduced — or is recorded as an explicit decision with its cost.
+elegance constrains how, it never adds machinery.** A boundary is not traded for speed;
+crossing one is a recorded decision. A pattern that cannot answer the deletion question is
+not introduced — or is recorded as an explicit decision with its cost.
 
 ## When this flow applies
 
@@ -372,9 +374,11 @@ carry:
    find any file from this section.
 4. **Conventions** — dependency direction and module boundaries, the error model, the
    configuration surface, the external contract.
-5. **Design principles** — the five principles bind every agent, not only the architect:
-   simple, reliable, efficient, elegant and not over-engineered, with the conflict ordering.
-   A change that violates one is recorded as an explicit decision, never a silent drift.
+5. **Design principles** — the six principles bind every agent, not only the architect:
+   simple, reliable, efficient, elegant, not over-engineered, and high cohesion / low
+   coupling, with the conflict ordering including the boundary rule. Name all six in the
+   generated file, not "the six principles" as a phrase; a change that violates one is
+   recorded as an explicit decision, never a silent drift.
 6. **Gates** — what must pass before delivery, the exact commands, the coverage floor and
    the security scan.
 7. **Workspace** — the project uses one worktree per card, based on the integration branch
@@ -425,7 +429,8 @@ Run `self-check.md` (Architecture branch). The architecture proof is:
 
 - every requirement and quality attribute maps to the architecture document or an ADR;
 - the design stance is evidenced: the simplest reliable option was chosen, every abstraction
-  and dependency names its forcing function, and no layer exists only for symmetry;
+  and dependency names its forcing function, no layer exists only for symmetry, and modules
+  have one reason to change with dependencies pointing one way;
 - the architecture style is recorded and justified (DDD with its contexts and aggregates,
   or a named simpler style with DDD's rejection), and the boundaries and tree instantiate
   it;
