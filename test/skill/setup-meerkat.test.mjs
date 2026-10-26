@@ -191,7 +191,7 @@ describe("skill frontmatter and assets", () => {
     }
   });
 
-  it("carries the decision method, split glossaries and the worktree lifecycle", () => {
+  it("carries the decision method, split glossaries and the worktree declaration", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const jobs = readFileSync(join(team, "jobs", "workflow.md"), "utf8");
     const ui = readFileSync(join(team, "jobs", "ui-workflow.md"), "utf8");
@@ -227,10 +227,9 @@ describe("skill frontmatter and assets", () => {
     assert.match(arch, /\/init/);
     assert.match(arch, /AGENTS\.md/);
     assert.match(arch, /CLAUDE\.md/);
-    assert.match(arch, /git worktree add \.worktrees\/<card-slug> -b <branch> dev/);
-    assert.match(arch, /merge --no-ff/);
-    assert.match(arch, /worktree remove/);
-    assert.match(arch, /branch -d/);
+    assert.match(arch, /worktree/i, "the architecture branch declares the card worktree");
+    assert.match(arch, /integration branch/i, "the declaration names the integration branch");
+    assert.match(arch, /workflow\.md/, "the command lifecycle stays in the role workflow");
     assert.match(arch, /reviewer approves|operator confirms/i);
     assert.match(impl, /worktree/i);
     assert.match(jobs, /worktree/i, "Jobs shares the card worktree");
