@@ -217,6 +217,12 @@ project-level change) refreshes every watched card. An unknown UUID refreshes no
 refresh is a full re-render through `POST /api/v1/export` (`{ref: task_id}`), written
 atomically — the event is the signal, never the payload.
 
+That map is **board-export sourced**, so it does not follow `review_of`: the export payload
+has no review link. The loop's subscriber maps the same UUID through
+`stateDir/cards.queue.json`, which does carry `review_of`, so a review event also refreshes
+its original. The two maps stay separate on purpose — see
+`scripts/loop/card-file.mjs#identifiersForEvent`.
+
 It shares the loop's cadence — 300 ms debounce, 2 s maximum wait, `CARD_REFRESH_MIN_MS`
 (5 s) between batches — and refreshes are serial. Per-card failures are reported in the
 NDJSON stream and keep the previous file. `done` is terminal: a card that reaches it is

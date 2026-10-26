@@ -1,4 +1,5 @@
 scripts/foundation/card-brief.mjs
+scripts/foundation/card-write.mjs
 scripts/foundation/constants.mjs
 scripts/foundation/entry-guard.mjs
 scripts/foundation/env-file.mjs

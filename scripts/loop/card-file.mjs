@@ -8,21 +8,22 @@
  *
  * Every write is the CLI's markdown, byte for byte: `taskctl export md <ref>
  * --out <tmp>.md`, then an atomic rename over `card.md`. The loop never edits
- * the file. Two consequences of the temp+rename discipline are deliberate:
- *
- *   * a reader never sees a half-written brief, and
- *   * `export md`'s 4× growth guard (`MD_GROWTH_GUARD`) only inspects an
- *     existing target. A machine-generated brief legitimately grows when
- *     comments or a report land, so the guard must not turn a refresh into a
- *     refusal. The unique temp path is always fresh.
+ * the file. The temp+rename discipline — and why a fresh temp legitimately
+ * bypasses `export md`'s growth guard — lives once in
+ * `src/foundation/card-write.mjs`, shared with the CLI watchers.
  *
  * Node builtins only.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 import { CARD_BRIEF_FILE, cardDirRel } from "../../src/foundation/card-brief.mjs";
+import {
+  cardTempPath,
+  commitCardTemp,
+  removeCardTemp,
+} from "../../src/foundation/card-write.mjs";
 import { readCards } from "./queue.mjs";
 import { runCli } from "./runtime.mjs";
 
@@ -53,10 +54,7 @@ export function exportCardFile(input) {
 
   const dir = join(targetDir, cardDirRel(label));
   const final = join(dir, CARD_BRIEF_FILE);
-  const temp = join(
-    dir,
-    `card.${process.pid}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}.tmp.md`,
-  );
+  const temp = cardTempPath(final);
   let renamed = false;
 
   try {
@@ -65,30 +63,23 @@ export function exportCardFile(input) {
     if (exported?.ok !== true) {
       return { ok: false, error: exported?.error ?? "export md failed" };
     }
-    if (!existsSync(temp)) {
-      return { ok: false, error: "export md reported success but wrote no file" };
+    const outcome = commitCardTemp({ temp, final });
+    if (!outcome.ok) {
+      return {
+        ok: false,
+        error: outcome.reason === "empty"
+          ? "export md wrote an empty brief"
+          : "export md reported success but wrote no file",
+      };
     }
-    const next = readFileSync(temp, "utf8");
-    if (next.length === 0) {
-      return { ok: false, error: "export md wrote an empty brief" };
-    }
-    if (existsSync(final) && readFileSync(final, "utf8") === next) {
-      return { ok: true, path: final, unchanged: true };
-    }
-    renameSync(temp, final);
+    if (!outcome.changed) return { ok: true, path: final, unchanged: true };
     renamed = true;
     log(`card brief: wrote ${final}`);
     return { ok: true, path: final };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   } finally {
-    if (!renamed) {
-      try {
-        rmSync(temp, { force: true });
-      } catch {
-        /* best effort: a leftover temp is not the caller's problem */
-      }
-    }
+    if (!renamed) removeCardTemp(temp);
   }
 }
 
@@ -116,6 +107,12 @@ export function activeCards(rows) {
  * Which task identifiers an event refreshes: the card itself, plus the original
  * when the row is a review card. Events carry the card's UUID (`task_id`), not
  * its identifier; an unknown UUID refreshes nothing (never guess from prose).
+ *
+ * **Loop-local by design.** The map is built from `stateDir/cards.queue.json`,
+ * because only the queue carries `review_of` (so a review event also refreshes
+ * its original) and `target_dir`. The CLI watchers keep their own map from the
+ * board export they already hold; that payload has no `review_of`, so they
+ * cannot follow the review link. Do not unify the two data sources.
  *
  * @param {{task_id?: unknown}} event
  * @param {object[]} rows

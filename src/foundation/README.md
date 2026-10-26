@@ -21,6 +21,17 @@ dependency direction is `core/cli/server → foundation`, never the reverse.
 `src/server/main.mjs`); library callers receive the parsed
 values explicitly, so embedding the engine never reads a developer's `.env`.
 
+## The card brief
+
+Both writers of `.meerkat/<identifier>/card.md` — the loop's exporter and the CLI
+watchers — take their path text and their file discipline from here, so a subagent is
+never told to read a path, or a format, the other side does not write.
+
+| module | what it owns |
+|---|---|
+| `card-brief.mjs` | `MEERKAT_PROCESS_DIR`, `CARD_BRIEF_FILE`, `taskDirName`, `cardDirRel`, `cardFileRel` — the path text, pure |
+| `card-write.mjs` | `cardTempPath`, `commitCardTemp`, `removeCardTemp`, `writeCardFileAtomic` — the unique-temp + atomic-rename discipline, `node:fs` only; not an exporter |
+
 ## `transport/**`
 
 `foundation/transport/**` is the **taskd transport seam**, kept below the CLI surface rather
