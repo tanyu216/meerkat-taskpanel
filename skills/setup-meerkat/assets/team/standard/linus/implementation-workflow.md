@@ -30,8 +30,9 @@ List the blast radius: callers, contracts, migrations, configuration and data.
 
 ### 2. Design the smallest change
 
-Choose the smallest correct design. Run the decision round (role workflow) on the open
-design questions; check the terms against `GLOSSARY.md` and update it inline as they settle.
+Choose the smallest correct design. Run the decision round (the policy this handoff names)
+on the open design questions — one round, one question string, each with a recommendation;
+check the terms against `GLOSSARY.md` and update it inline as they settle.
 Name the files and contracts you will touch. If the card contains independent deliverables,
 do not split it yourself; ask the project session.
 

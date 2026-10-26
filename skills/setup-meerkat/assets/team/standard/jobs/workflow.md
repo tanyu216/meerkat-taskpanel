@@ -38,18 +38,18 @@ the interaction and visual direction, and a prototype where the change is user-v
 
 ## Decide before you build
 
-Before freezing a direction, settle the decisions it depends on with a decision round:
+Before freezing a direction, settle the decisions it depends on with a decision round — the
+protocol is the `decision-policy.md` this handoff names (§Decision rounds): the **frontier**
+of questions whose prerequisites are settled, one round at a time, each with a recommendation
+worded so "yes" accepts it.
 
-1. Draw the decisions as a tree; each branch hangs off the decision it depends on.
-2. The **frontier** is every decision whose prerequisites are settled. Ask the whole
-   frontier in one round: number each question, give a recommended answer, then wait.
-3. Look up facts yourself (code, docs, a probe); never ask for something you can find.
-4. A question that needs E1-E5 goes to the project session or the human; record the answer
-   on the card.
-5. Stop when the frontier is empty. Do not freeze the direction with a decision open.
+Jobs' frontier is the direction itself: the problem framing, the flows and states that
+matter, the design register, terminology conflicts, the 1–3 assumptions the prototype must
+answer, and anything that needs E3. Look up facts in the card, the archive and the code;
+never ask for something you can find.
 
 Record the answers in `.meerkat/<id>/spec.md`; stage 4 promotes it to
-`design/specs/<content-slug>.md`.
+`design/specs/<content-slug>.md`. Do not freeze the direction while a frontier item is open.
 
 ## Terminology
 

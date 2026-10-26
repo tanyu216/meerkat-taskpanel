@@ -240,6 +240,34 @@ describe("skill frontmatter and assets", () => {
     assert.match(jobsCheck, /Standalone mode/);
   });
 
+  it("makes the team decision policy the single home of the round protocol", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const policy = readFileSync(join(team, "decision-policy.md"), "utf8");
+    assert.match(policy, /## Decision rounds/);
+    assert.match(policy, /frontier/);
+    assert.match(policy, /worded so "yes" accepts/);
+    assert.match(policy, /Facts are the asker's job/i);
+
+    let protocolCopies = 0;
+    for (const rel of [
+      "decision-policy.md",
+      "jobs/workflow.md",
+      "linus/workflow.md",
+      "turing/workflow.md",
+    ]) {
+      protocolCopies += (readFileSync(join(team, rel), "utf8").match(/Draw the decision tree/g) ?? [])
+        .length;
+    }
+    assert.equal(protocolCopies, 1, "the six-step protocol lives only in decision-policy.md");
+
+    for (const rel of ["jobs/workflow.md", "linus/workflow.md", "turing/workflow.md"]) {
+      const workflow = readFileSync(join(team, rel), "utf8");
+      assert.match(workflow, /Decide before you build/);
+      assert.match(workflow, /frontier/i);
+      assert.match(workflow, /decision-policy\.md/);
+    }
+  });
+
   it("reads the design artifacts on a feature path, not on a bug path", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const impl = readFileSync(join(team, "linus", "implementation-workflow.md"), "utf8");

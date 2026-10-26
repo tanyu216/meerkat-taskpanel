@@ -30,9 +30,9 @@ card-local change.
 
 ### 2. Decide the direction
 
-Run the decision round (role workflow) before choosing. Draw the open questions as a tree,
-ask the whole frontier in one round with a recommended answer each, and record the answers
-in `plan.md`. Do not build while a decision is open.
+Run the decision round (the policy this handoff names) before choosing: the frontier of
+questions whose prerequisites are settled, one round, one question string, a recommended
+answer each. Record the answers in `plan.md`. Do not build while a frontier item is open.
 
 Put 2–3 viable options side by side: boundaries, data flow, operational cost, migration
 risk, and why the rejected ones lost. An option without rejected alternatives is not a

@@ -29,8 +29,9 @@ Use the canonical terms from `GLOSSARY.md`, `design/glossary.md` and the spec's
 
 ### 2. Plan
 
-Run the decision round (role workflow) on the open test questions and record the answers in
-the test plan. Write `.meerkat/<id>/test-plan.md`: scope and out-of-scope, environments,
+Run the decision round (the policy this handoff names) on the open test questions — one
+round, one question string, each with a recommendation — and record the answers in the test
+plan. Write `.meerkat/<id>/test-plan.md`: scope and out-of-scope, environments,
 data and fixtures, mock policy, risk-based priority, entry/exit criteria, a requirement →
 test traceability matrix, and the mandatory gates (100% pass, >80% coverage, mock boundary,
 security scan). The test plan is what the review reads; `plan.md` is the execution plan.

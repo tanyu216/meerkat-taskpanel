@@ -23,7 +23,8 @@ Linus architecture only).
 3. Any row with no proof is an **omission**: add the code/test, ask with an agent
    `question`, or record a deliberate leftover.
 4. Re-run the gates you claim; a red gate is a blocker, not a leftover. The decision round
-   is closed (answers in `plan.md` or an ADR).
+   is closed: every item answered or explicitly deferred, no frontier open (answers in
+   `plan.md` or an ADR).
 5. If the card has a `## Handoff` block or `meta.design_stage`, every named path exists and
    was used, and the handoff's acceptance source is in the frozen acceptance. A missing or
    invalid handoff is a `question`, not a silent fallback.

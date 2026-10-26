@@ -22,8 +22,9 @@ Linus architecture only).
    agent `question`, or record a deliberate leftover.
 3. A failure is a failure, not a leftover. Do not issue a verdict; the reviewer is
    independent.
-4. The decision round is closed (answers in the plan or `test-plan.md`); test names and
-   fixtures use the canonical terms, and no glossary or ADR was edited.
+4. The decision round is closed: every item answered or explicitly deferred, no frontier
+   open (answers in the plan or `test-plan.md`); test names and fixtures use the canonical
+   terms, and no glossary or ADR was edited.
 5. If the card has a `## Handoff` block or `meta.design_stage`, every named path/report
    exists and was used; the acceptance matrix cites the handoff's acceptance source. A
    regression card uses no design artifacts.

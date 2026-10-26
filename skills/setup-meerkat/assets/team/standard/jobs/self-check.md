@@ -21,7 +21,8 @@ Linus architecture only).
    non-goals, success metrics, users and their jobs are written; the 1–3 prototype
    assumptions and the anti-patterns are listed.
 3. The **E3** direction decision is recorded on the card (project session and human), and
-   the decision round is closed with no frontier open.
+   the decision round is closed: every item answered or explicitly deferred, no frontier
+   open.
 4. The spec has a `## Terminology` section; its terms agree with `design/glossary.md`, and
    product ADRs, if any, live under `design/adr/`.
 
