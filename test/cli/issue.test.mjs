@@ -6,11 +6,12 @@
  */
 
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { cleanupTempDirs, dataOf, errorOf, withCli } from "./helpers/cli-harness.mjs";
+import { cleanupTempDirs, dataOf, errorOf, makeTempDir, withCli } from "./helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);
 
@@ -24,6 +25,20 @@ async function board(fn) {
 
 const createIssue = (run, extra = []) =>
   dataOf(run(["issue", "create", "--project", "demo", "--title", "Ship M2", ...extra, "--json"]));
+
+/** Put a card in `in_review`; a review card may only be created for one. */
+const deliverIssue = (run, ref) => {
+  dataOf(run(["issue", "move", ref, "in_progress", "--json"]));
+  return dataOf(
+    run(["issue", "deliver", ref, "--report-file", "-", "--json"], {
+      input: JSON.stringify({
+        conclusion: "delivered",
+        acceptance: [{ text: "a", status: "met" }],
+        evidence: [{ kind: "path", path: "x" }],
+      }),
+    }),
+  );
+};
 
 describe("cli/issue — create, list, get", () => {
   it("creates a task with acceptance criteria and a free-text assignee", async () => {
@@ -49,16 +64,17 @@ describe("cli/issue — create, list, get", () => {
   it("create accepts --review-of and --review-round end to end", async () => {
     await board(async ({ run }) => {
       const original = createIssue(run, ["--title", "Original"]);
+      deliverIssue(run, original.task.identifier);
       const review = createIssue(run, [
         "--title", "Review",
         "--review-of", original.task.identifier,
-        "--review-round", "2",
+        "--review-round", "1",
       ]);
 
       assert.equal(review.task.review_of_id, original.task.id);
-      assert.equal(review.task.review_round, 2);
+      assert.equal(review.task.review_round, 1);
       assert.equal(review.task.meta.review_of, original.task.identifier);
-      assert.equal(review.task.meta.review_round, 2);
+      assert.equal(review.task.meta.review_round, 1);
     });
   });
 
@@ -94,9 +110,76 @@ describe("cli/issue — create, list, get", () => {
       const byId = dataOf(run(["issue", "get", created.task.id, "--json"]));
       assert.equal(byId.task.identifier, "DEMO-0001");
 
+      const human = run(["issue", "get", "DEMO-0001"]);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /^title\s+Ship M2$/m);
+
       const missing = run(["issue", "get", "NOPE-9999", "--json"]);
       assert.equal(missing.status, 1);
       assert.equal(JSON.parse(missing.stdout).error.code, "NOT_FOUND");
+    });
+  });
+
+  it("shows the whole card in the human read — title, labels, meta, description, snapshot", async () => {
+    await board(async ({ run }) => {
+      createIssue(run, [
+        "--acceptance", "cli works",
+        "--acceptance", "gate visible",
+        "--label", "infra",
+        "--label", "m2",
+        "--description", "The long story.",
+        "--meta", "team=panel",
+        "--target", "repo-a",
+      ]);
+
+      const human = run(["issue", "get", "DEMO-0001"]);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /^title\s+Ship M2$/m);
+      assert.match(human.stdout, /^labels\s+infra, m2$/m);
+      assert.match(human.stdout, /^description\s+The long story\.$/m);
+      assert.match(human.stdout, /^acceptance\s+1\) cli works; 2\) gate visible$/m);
+      assert.match(human.stdout, /^acceptance_revision\s+1$/m);
+      assert.match(human.stdout, /^parent\s+-$/m);
+      assert.match(human.stdout, /^awaiting_reason\s+-$/m);
+      assert.match(human.stdout, /^review_of\s+-$/m);
+      const metaLine = human.stdout.split("\n").find((line) => line.startsWith("meta"));
+      assert.ok(metaLine !== undefined, "meta is printed");
+      assert.match(metaLine, /"team":"panel"/);
+      assert.match(metaLine, /"target":"repo-a"/);
+    });
+  });
+
+  it("prints the reviewed card's identifier, not its internal id", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      deliverIssue(run, "DEMO-0001");
+      createIssue(run, ["--review-of", "DEMO-0001", "--review-round", "1"]);
+
+      const human = run(["issue", "get", "DEMO-0002"]);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /^review_of\s+DEMO-0001$/m);
+      assert.match(human.stdout, /^review_round\s+1$/m);
+    });
+  });
+
+  it("gets the card's attachments in both output shapes", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      assert.deepEqual(dataOf(run(["issue", "get", "DEMO-0001", "--json"])).attachments, []);
+
+      const dir = makeTempDir();
+      const file = join(dir, "notes.txt");
+      writeFileSync(file, "hello", "utf8");
+      const added = dataOf(run(["attachment", "add", "DEMO-0001", "--file", file, "--json"]));
+
+      const got = dataOf(run(["issue", "get", "DEMO-0001", "--json"]));
+      assert.equal(got.attachments.length, 1);
+      assert.equal(got.attachments[0].id, added.attachment.id);
+      assert.equal(got.attachments[0].filename, "notes.txt");
+
+      const human = run(["issue", "get", "DEMO-0001"]);
+      assert.match(human.stdout, /notes\.txt/);
+      assert.match(human.stdout, /5 B/);
     });
   });
 
@@ -122,11 +205,11 @@ describe("cli/issue — update, move, assign, archive", () => {
       createIssue(run);
 
       const updated = dataOf(run(["issue", "update", "DEMO-0001", "--acceptance", "a", "--acceptance", "b", "--json"]));
-      assert.deepEqual(updated.task.meta.acceptance, ["a", "b"]);
+      assert.deepEqual(updated.task.acceptance, ["a", "b"], "the frozen baseline is the authority");
 
       const merged = dataOf(run(["issue", "update", "DEMO-0001", "--meta", "team=panel", "--json"]));
       assert.equal(merged.task.meta.team, "panel");
-      assert.deepEqual(merged.task.meta.acceptance, ["a", "b"], "meta merge keeps what was there");
+      assert.deepEqual(merged.task.acceptance, ["a", "b"], "a meta merge keeps the baseline");
 
       const nothing = run(["issue", "update", "DEMO-0001"]);
       assert.equal(nothing.status, 0, "nothing to do is not an error");
@@ -149,7 +232,7 @@ describe("cli/issue — update, move, assign, archive", () => {
       );
 
       assert.equal(updated.task.status, "in_progress");
-      assert.deepEqual(updated.task.meta.acceptance, ["a", "b"]);
+      assert.deepEqual(updated.task.acceptance, ["a", "b"]);
       assert.equal(updated.task.meta.acceptance_derived, "yes");
       assert.equal(updated.task.meta.target, "src/x");
       assert.equal(updated.task.meta.epic_triage, "off");
@@ -296,6 +379,116 @@ describe("cli/issue — every flag the command declares", () => {
     });
   });
 
+  it("list pushes parent, kind, label, target and meta filters through to the board", async () => {
+    await board(async ({ run }) => {
+      // Only an epic may be a parent (`tr_rel_parent_epic`).
+      const parent = createIssue(run, ["--title", "Parent", "--kind", "epic"]);
+      const child = createIssue(run, [
+        "--title", "Child",
+        "--label", "ui",
+        "--meta", "flow=review",
+        "--target", "app",
+      ]);
+      const other = createIssue(run, ["--title", "Other", "--label", "api", "--assignee", "grace"]);
+      dataOf(
+        run(["relation", "add", parent.task.identifier, "--type", "parent", "--target", child.task.identifier, "--json"]),
+      );
+
+      const refs = (result) => result.tasks.map((task) => task.identifier);
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--parent", parent.task.identifier, "--json"]))), [child.task.identifier]);
+      assert.deepEqual(
+        refs(dataOf(run(["issue", "list", "--kind", "task", "--json"]))).sort(),
+        [child.task.identifier, other.task.identifier].sort(),
+      );
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--kind", "epic", "--json"]))), [parent.task.identifier]);
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--label", "ui", "--json"]))), [child.task.identifier]);
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--label", "ui", "--label", "api", "--json"]))), []);
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--target", "app", "--json"]))), [child.task.identifier]);
+      assert.deepEqual(
+        refs(dataOf(run(["issue", "list", "--meta", "flow=review", "--json"]))),
+        [child.task.identifier],
+      );
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--meta", "flow=nope", "--json"]))), []);
+      // The dictionary spelling of the assignee filter, not the id one.
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--assignee", "grace", "--json"]))), [other.task.identifier]);
+      assert.deepEqual(refs(dataOf(run(["issue", "list", "--assignee", "nobody", "--json"]))), []);
+
+      const both = run(["issue", "list", "--assignee", "grace", "--assignee-id", "x", "--json"]);
+      assert.equal(both.status, 1);
+      assert.equal(errorOf(both).code, "VALIDATION_FAILED");
+    });
+  });
+
+  it("list reads --kind review as the marker filter, and create still refuses it", async () => {
+    await board(async ({ run }) => {
+      const original = createIssue(run, ["--title", "Original"]);
+      deliverIssue(run, original.task.identifier);
+      const review = createIssue(run, [
+        "--title", "Review",
+        "--review-of", original.task.identifier,
+        "--review-round", "1",
+      ]);
+      const plain = createIssue(run, ["--title", "Plain"]);
+
+      const listed = dataOf(run(["issue", "list", "--kind", "review", "--json"]));
+      assert.deepEqual(listed.tasks.map((task) => task.identifier), [review.task.identifier]);
+      assert.equal(listed.tasks[0].role, "review");
+
+      // `kind=task` is unchanged — the review card is an ordinary task.
+      const tasks = dataOf(run(["issue", "list", "--kind", "task", "--json"]));
+      assert.deepEqual(
+        tasks.tasks.map((task) => task.identifier).sort(),
+        [original.task.identifier, review.task.identifier, plain.task.identifier].sort(),
+      );
+      assert.equal(tasks.tasks.find((task) => task.identifier === plain.task.identifier).role, "task");
+
+      // `review` is a read-side alias, not a third kind a card can be created as.
+      const refused = run(["issue", "create", "--project", "demo", "--title", "Nope", "--kind", "review", "--json"]);
+      assert.equal(refused.status, 1);
+      assert.equal(errorOf(refused).code, "VALIDATION_FAILED");
+    });
+  });
+
+  it("list filters by the card being reviewed", async () => {
+    await board(async ({ run }) => {
+      const original = createIssue(run);
+      deliverIssue(run, original.task.identifier);
+      const review = createIssue(run, [
+        "--title", "Review",
+        "--review-of", "DEMO-0001",
+        "--review-round", "1",
+        "--assignee", "linus",
+      ]);
+      createIssue(run, ["--title", "Unrelated"]);
+
+      const byIdentifier = dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--json"]));
+      assert.deepEqual(byIdentifier.tasks.map((task) => task.identifier), [review.task.identifier]);
+
+      const byId = dataOf(run(["issue", "list", "--review-of", original.task.id, "--json"]));
+      assert.deepEqual(byId.tasks.map((task) => task.identifier), [review.task.identifier]);
+
+      const byAssignee = dataOf(
+        run(["issue", "list", "--review-of", "DEMO-0001", "--assignee-id", review.task.assignee.id, "--json"]),
+      );
+      assert.deepEqual(byAssignee.tasks.map((task) => task.identifier), [review.task.identifier]);
+
+      const byStatus = dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--status", "done", "--json"]));
+      assert.deepEqual(byStatus.tasks, []);
+
+      dataOf(run(["issue", "move", review.task.identifier, "canceled", "--json"]));
+      dataOf(run(["issue", "archive", review.task.identifier, "--days", "0", "--json"]));
+      assert.equal(dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--json"])).tasks.length, 0);
+      assert.equal(
+        dataOf(run(["issue", "list", "--review-of", "DEMO-0001", "--include-archived", "--json"])).tasks.length,
+        1,
+      );
+
+      const missing = run(["issue", "list", "--review-of", "NOPE-9999", "--json"]);
+      assert.equal(missing.status, 1);
+      assert.equal(errorOf(missing).code, "NOT_FOUND");
+    });
+  });
+
   it("move and assign accept if_version and force-create", async () => {
     await board(async ({ run }) => {
       createIssue(run);
@@ -397,15 +590,12 @@ describe("cli/issue — the actor recorded on a report", () => {
 });
 
 describe("cli/issue — candidates (the poll read)", () => {
-  it("lists claimable cards and excludes unmet deps, epics and deployment cards", async () => {
+  it("lists claimable cards and excludes unmet deps and epics", async () => {
     await board(async ({ run }) => {
       // `--allow-dup` keeps the cards distinct: they share one assignee, so
       // the creation idempotency key would otherwise converge them onto one card.
       const ready = createIssue(run, ["--title", "Ready", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       createIssue(run, ["--title", "Epic", "--kind", "epic", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
-      // A deployment card (T-20261013-232004) assigned to the same poller: the
-      // poll's read must not offer it, even though it is a claimable `todo`.
-      const deploy = createIssue(run, ["--title", "Rebuild dist", "--kind", "deploy", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       const blocked = createIssue(run, ["--title", "Blocked", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       const blocker = createIssue(run, ["--title", "Blocker", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       // `blocks` source = blocker, target = blocked — the blocked card's depends_on.
@@ -415,7 +605,7 @@ describe("cli/issue — candidates (the poll read)", () => {
       assert.deepEqual(
         candidates.candidates.map((c) => c.identifier),
         [ready.task.identifier, blocker.task.identifier],
-        "the blocked card is excluded (depends_on unmet), and so are the epic and the deploy card",
+        "the blocked card is excluded (depends_on unmet) and so is the epic",
       );
       assert.equal(candidates.candidates[0].status, "todo");
       assert.equal(candidates.candidates[0].project, "demo");
@@ -424,22 +614,12 @@ describe("cli/issue — candidates (the poll read)", () => {
       const human = run(["issue", "candidates", "--assignee", "pollbot"]);
       assert.match(human.stdout, new RegExp(`${ready.task.identifier}\\s+todo\\s+medium`));
       assert.match(human.stdout, new RegExp(`${blocker.task.identifier}\\s+todo\\s+medium`));
-      assert.equal(human.stdout.includes(deploy.task.identifier), false, "the deploy card is withheld from the human read too");
 
-      // ...but it is a card like any other when it is dispatched explicitly: the
-      // refusal here is the **ordinary routing lock** (another actor, another
-      // card), never `not_claimable` — the marker keeps the poll off the card, it
-      // does not lock the claim gate. The documented override then takes it.
-      const asStranger = run(["issue", "move", deploy.task.identifier, "in_progress", "--json"]);
-      assert.equal(errorOf(asStranger).code, "not_assignee");
-      const dispatched = dataOf(
-        run([
-          "issue", "move", deploy.task.identifier, "in_progress",
-          "--allow-steal", "--reason", "explicit dispatch of a deployment card", "--json",
-        ]),
-      ).task;
-      assert.equal(dispatched.status, "in_progress");
-      assert.equal(dispatched.kind, "deploy", "the marker survives the claim");
+      // 0038 — the kind is retired: no read special-cases it, and a create that
+      // asks for it is refused at the flag layer (CLI_USAGE; the HTTP body path
+      // answers VALIDATION_FAILED for the same value).
+      const retired = run(["issue", "create", "--title", "Rebuild dist", "--kind", "deploy", "--assignee", "pollbot", "--assignee-kind", "agent", "--json"]);
+      assert.equal(errorOf(retired).code, "CLI_USAGE");
     });
   });
 
@@ -449,7 +629,6 @@ describe("cli/issue — candidates (the poll read)", () => {
       const pool = createIssue(run, ["--title", "Public pool", "--allow-dup"]);
       createIssue(run, ["--title", "Someone else", "--assignee", "terry", "--assignee-kind", "agent", "--allow-dup"]);
       createIssue(run, ["--title", "Pool epic", "--kind", "epic", "--allow-dup"]);
-      createIssue(run, ["--title", "Pool deploy", "--kind", "deploy", "--allow-dup"]);
 
       const without = dataOf(run(["issue", "candidates", "--assignee", "pollbot", "--json"]));
       assert.deepEqual(without.candidates.map((c) => c.identifier), [assigned.task.identifier]);
@@ -460,7 +639,7 @@ describe("cli/issue — candidates (the poll read)", () => {
       assert.deepEqual(
         withPool.candidates.map((c) => c.identifier),
         [assigned.task.identifier, pool.task.identifier],
-        "the public pool admits an unassigned card — but not the epic or the deploy card in it",
+        "the public pool admits an unassigned card — but not the epic in it",
       );
       assert.equal(withPool.candidates[1].reason, "unassigned");
     });
@@ -689,9 +868,11 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
     evidence: [{ kind: "commit", sha: "dcd7d15" }],
   };
   // Rule 8: every write carries the agent's attribution, so the claim below is
-  // made *by* the card's assignee rather than by whatever actor the host defaulted to.
+  // made *by* the card's assignee rather than by whatever actor the agent defaulted to.
   const AS = ["--agent", "linus"];
-  const forLinus = ["--assignee", "linus", "--assignee-kind", "agent", ...AS];
+  // 0038 — the container recipe's cards are the trusted path: no review, the
+  // agent closes its own child and the board closes the container.
+  const forLinus = ["--assignee", "linus", "--assignee-kind", "agent", "--acceptance-mode", "off", ...AS];
 
   const childReport = (sha) => ({
     conclusion: `Piece delivered (${sha}).`,
@@ -775,13 +956,24 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
       );
 
       // The manual path still works — the container is a human's to close here.
+      // 0033: the report on an epic is its rollup, so it must name the child.
       const delivered = dataOf(
         run(["issue", "deliver", card.task.identifier, "--report-file", "-", ...AS, "--json"], {
-          input: JSON.stringify(REPORT),
+          input: JSON.stringify({
+            ...REPORT,
+            acceptance: [
+              {
+                text: `${child.task.identifier} delivered`,
+                status: "met",
+                ref: child.task.identifier,
+              },
+            ],
+          }),
         }),
       );
       assert.equal(delivered.task.status, "in_review");
       assert.equal(delivered.report.round, 1);
+      assert.equal(delivered.report.is_rollup, true, "a report on an epic is its rollup");
     });
   });
 
@@ -849,6 +1041,21 @@ describe("cli/issue — claim and stale recovery", () => {
       const again = dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
       assert.equal(again.reused, true, "a second claim by the same holder keeps the claim");
       assert.equal(again.task.status, "in_progress");
+    });
+  });
+
+  it("claims an unassigned card as a name the board has never seen", async () => {
+    // No setup-meerkat, no team: the only thing a fresh agent has is its own
+    // name. An empty assignee is the open pool, so the claim must be accepted
+    // and attributed, without turning the claim into an assignment.
+    await board(async ({ run }) => {
+      const card = createIssue(run);
+      const claimed = dataOf(
+        run(["issue", "claim", card.task.identifier, "--agent", "ghost", "--actor-kind", "claude", "--json"]),
+      );
+      assert.equal(claimed.task.status, "in_progress");
+      assert.equal(claimed.task.claimed_by_actor.display_name, "ghost");
+      assert.equal(claimed.task.assignee, null, "a claim is not an assignment");
     });
   });
 
@@ -952,7 +1159,7 @@ describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
   it("re-closes a reopened epic unless a fix child exists first (the safe rejection path)", async () => {
     await board(async ({ run }) => {
       const epic = createIssue(run, ["--title", "Container", "--kind", "epic", "--allow-dup"]);
-      const child = createIssue(run, ["--title", "Piece", "--allow-dup"]);
+      const child = createIssue(run, ["--title", "Piece", "--allow-dup", "--acceptance-mode", "off"]);
       dataOf(run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", child.task.identifier, "--json"]));
       dataOf(run(["issue", "move", child.task.identifier, "in_progress", "--json"]));
       dataOf(run(["issue", "deliver", child.task.identifier, "--report-file", "-", "--json"], { input: report() }));
@@ -996,8 +1203,10 @@ describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
 
   it("cannot skip in_review: a review card goes in_progress → in_review → done", async () => {
     await board(async ({ run }) => {
-      // 0025 resolves `review_of` to a real card at creation.
+      // 0025 resolves `review_of` to a real card at creation; the original must
+      // be in_review first.
       const original = createIssue(run, ["--title", "Original"]);
+      deliverIssue(run, original.task.identifier);
       const review = createIssue(run, [
         "--title", `Review ${original.task.identifier}`,
         "--meta", `review_of=${original.task.identifier}`,
@@ -1095,7 +1304,7 @@ describe("cli/issue — reconcile (the container backstop)", () => {
       // The epic is started by the first child, then a second child is attached
       // afterwards: the container is in_progress with work still outstanding.
       const epic = createIssue(run, ["--title", "Container", "--kind", "epic", "--allow-dup"]);
-      const done = createIssue(run, ["--title", "Done"]);
+      const done = createIssue(run, ["--title", "Done", "--acceptance-mode", "off"]);
       const pending = createIssue(run, ["--title", "Pending", "--allow-dup"]);
       dataOf(
         run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", done.task.identifier, "--json"]),
@@ -1124,6 +1333,186 @@ describe("cli/issue — reconcile (the container backstop)", () => {
         `the report must name the child, got:\n${human.stdout}`,
       );
       assert.ok(!human.stdout.includes(`${done.task.identifier} (done)`), "a finished child is not blocking");
+    });
+  });
+});
+
+describe("cli/issue — `issue reopen` (done/canceled → todo)", () => {
+  /** A card accepted the normal way, so the reopen edge has something to leave. */
+  function doneCard(run) {
+    const created = createIssue(run);
+    const ref = created.task.identifier;
+    dataOf(run(["issue", "move", ref, "in_progress", "--json"]));
+    dataOf(
+      run(["issue", "move", ref, "in_review", "--no-report", "--reason", "no report for this fixture", "--json"]),
+    );
+    dataOf(run(["issue", "move", ref, "done", "--json"]));
+    return ref;
+  }
+
+  it("reopens a done card, requires a reason, and starts a new round", async () => {
+    await board(async ({ run }) => {
+      const ref = doneCard(run);
+
+      const missing = run(["issue", "reopen", ref, "--json"]);
+      assert.equal(missing.status, 2);
+      assert.equal(JSON.parse(missing.stdout).error.code, "CLI_USAGE");
+
+      const short = run(["issue", "reopen", ref, "--reason", "short", "--json"]);
+      assert.equal(short.status, 2);
+      assert.match(JSON.parse(short.stdout).error.message, /--reason/);
+
+      const reopened = dataOf(
+        run(["issue", "reopen", ref, "--reason", "customer found a regression", "--json"]),
+      );
+      assert.equal(reopened.task.status, "todo");
+      assert.equal(reopened.task.delivery_round, 2);
+      assert.equal(reopened.task.archived_at, null);
+    });
+  });
+
+  it("refuses to reopen an already-open card", async () => {
+    await board(async ({ run }) => {
+      const created = createIssue(run);
+      const refused = run([
+        "issue", "reopen", created.task.identifier, "--reason", "not finished yet", "--json",
+      ]);
+      assert.equal(refused.status, 1);
+      assert.equal(JSON.parse(refused.stdout).error.code, "INVALID_TRANSITION");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 0031 — the per-card review decision
+// ---------------------------------------------------------------------------
+
+describe("cli/issue — acceptance mode (0038)", () => {
+  it("carries --acceptance-mode on create, and refuses the retired --review alias", async () => {
+    await board(async ({ run }) => {
+      const agent = createIssue(run, ["--acceptance-mode", "agent"]);
+      assert.equal(agent.task.acceptance_mode, "agent");
+      const off = createIssue(run, ["--acceptance-mode", "off"]);
+      assert.equal(off.task.acceptance_mode, "off");
+
+      for (const value of ["yes", "no"]) {
+        const retired = run([
+          "issue", "create", "--project", "demo", "--title", "alias",
+          "--review", value, "--json",
+        ]);
+        assert.equal(retired.status, 2, "--review is no longer a flag");
+        assert.equal(errorOf(retired).code, "CLI_USAGE");
+      }
+    });
+  });
+
+  it("falls an unresolved card back to human", async () => {
+    await board(async ({ run }) => {
+      const result = createIssue(run, ["--title", "decide"]);
+      assert.equal(result.task.acceptance_mode, "human");
+    });
+  });
+
+  it("changes the mode through issue update, with a reason when leaving agent", async () => {
+    await board(async ({ run }) => {
+      const created = createIssue(run, ["--acceptance-mode", "off"]);
+
+      const escalated = dataOf(
+        run(["issue", "update", created.task.identifier, "--acceptance-mode", "agent", "--json"]),
+      );
+      assert.equal(escalated.task.acceptance_mode, "agent");
+
+      const missingReason = run([
+        "issue", "update", created.task.identifier, "--acceptance-mode", "off", "--json",
+      ]);
+      assert.equal(missingReason.status, 1);
+      assert.equal(errorOf(missingReason).code, "VALIDATION_FAILED");
+
+      const waived = dataOf(
+        run([
+          "issue", "update", created.task.identifier, "--acceptance-mode", "off",
+          "--reason", "documentation only", "--json",
+        ]),
+      );
+      assert.equal(waived.task.acceptance_mode, "off");
+    });
+  });
+
+  it("lets an explicit card value win over the project default", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "req", "--name", "Required", "--acceptance", "agent", "--json"]);
+      const result = createIssue(run, ["--project", "req", "--title", "no", "--acceptance-mode", "off"]);
+      assert.equal(result.task.acceptance_mode, "off");
+    });
+  });
+});
+
+describe("cli/issue — asking a question in awaiting (0034)", () => {
+  const AS = ["--agent", "linus", "--actor-kind", "claude"];
+
+  it("writes --question as a question comment, and needs one from an agent", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run, ["--title", "Ask", "--assignee", "linus", "--assignee-kind", "agent"]);
+      run(["issue", "move", card.task.identifier, "in_progress", ...AS, "--json"]);
+
+      const refused = run([
+        "issue", "move", card.task.identifier, "awaiting",
+        "--awaiting-reason", "E2", ...AS, "--json",
+      ]);
+      assert.equal(refused.status, 1);
+      assert.equal(JSON.parse(refused.stdout).error.code, "QUESTION_REQUIRED");
+
+      const waiting = dataOf(
+        run([
+          "issue", "move", card.task.identifier, "awaiting",
+          "--awaiting-reason", "E2", "--question", "which schema?", ...AS, "--json",
+        ]),
+      );
+      assert.equal(waiting.status, "awaiting");
+      const comments = dataOf(
+        run(["comment", "list", card.task.identifier, "--kind", "question", "--json"]),
+      );
+      assert.deepEqual(comments.comments.map((comment) => comment.body), ["which schema?"]);
+
+      // The human's decision re-queues the card automatically — a separate
+      // command, not a second move.
+      dataOf(
+        // No identity flags: the harness injects `--as-human`, and the board
+        // treats that as the human's decision.
+        run([
+          "comment", "add", card.task.identifier,
+          "--kind", "confirm", "--body", "v2", "--json",
+        ]),
+      );
+      const after = dataOf(run(["issue", "get", card.task.identifier, "--json"]));
+      assert.equal(after.task.status, "todo");
+      assert.equal(after.task.delivery_round, 1, "an answer is not a reopen");
+      assert.equal(after.task.claimed_by, null, "the dormant claim is released");
+    });
+  });
+});
+
+describe("cli/issue — claim --check-blockers (opt-in dependency re-read)", () => {
+  it("is off by default, and refuses a blocked card when asked", async () => {
+    await board(async ({ run }) => {
+      const blocker = createIssue(run, ["--title", "Blocker"]);
+      const blocked = createIssue(run, ["--title", "Blocked"]);
+      const ready = createIssue(run, ["--title", "Ready"]);
+      dataOf(
+        run(["relation", "add", blocker.task.identifier, "--type", "blocks", "--target", blocked.task.identifier, "--json"]),
+      );
+
+      // Default: unchanged — the claim goes through, because the poll already
+      // withholds blocked cards and the caller owns the move path.
+      const trusted = dataOf(run(["issue", "claim", ready.task.identifier, "--json"]));
+      assert.equal(trusted.task.status, "in_progress");
+
+      const refused = run(["issue", "claim", blocked.task.identifier, "--check-blockers", "--json"]);
+      assert.equal(refused.status, 1);
+      const error = errorOf(refused);
+      assert.equal(error.code, "BLOCKED_BY_PREDECESSOR");
+      assert.deepEqual(error.details.blockers.map((entry) => entry.identifier), [blocker.task.identifier]);
+      assert.equal(dataOf(run(["issue", "get", blocked.task.identifier, "--json"])).task.status, "todo");
     });
   });
 });

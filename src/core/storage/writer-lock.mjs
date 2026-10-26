@@ -90,7 +90,7 @@ export function acquireWriterLock(dataDir, options = {}) {
   // `openSync` fails with EEXIST and that process is the holder.
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const created = createLockFile(path, { pid, now: options.now });
-    if (created) return lockHandle(path, pid);
+    if (created) return lockHandle(path, pid, options.logger);
 
     const holder = readLock(path);
     if (holder !== null && isProcessAlive(holder.pid)) {
@@ -167,9 +167,9 @@ function readLock(path) {
  * makes the loser harmless: it may have read a stale lock, but it can never
  * delete the winner's. Returns whether the lock is gone.
  *
- * @param {string} path @param {number} pid
+ * @param {string} path @param {number} pid @param {Function} [logger]
  */
-function lockHandle(path, pid) {
+function lockHandle(path, pid, logger) {
   let released = false;
   return {
     path,
@@ -182,7 +182,21 @@ function lockHandle(path, pid) {
       try {
         unlinkSync(path);
       } catch (err) {
-        if (err?.code !== "ENOENT") return false;
+        if (err?.code !== "ENOENT") {
+          // The lock outlives the process that owned it. That is recoverable on
+          // the next start (`writer_lock_stale`), but it should not be a
+          // mystery: name the file and the reason.
+          if (typeof logger === "function") {
+            logger({
+              event: "writer_lock_release_failed",
+              level: "warn",
+              path,
+              code: err?.code ?? null,
+              message: err?.message ?? String(err),
+            });
+          }
+          return false;
+        }
       }
       released = true;
       return true;

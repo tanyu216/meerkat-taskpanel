@@ -15,8 +15,10 @@ import * as projects from "./projects.mjs";
 import * as relations from "./relations.mjs";
 import * as reports from "./reports.mjs";
 import * as rollup from "./rollup.mjs";
+import * as sla from "./sla.mjs";
 import * as tasks from "./tasks.mjs";
 import * as workflow from "./workflow.mjs";
+import { withCommandLogging } from "./logging.mjs";
 
 export { createContext, actorOf, BOARD_ACTOR } from "./context.mjs";
 
@@ -26,9 +28,10 @@ export { createContext, actorOf, BOARD_ACTOR } from "./context.mjs";
  * @param {object} ctx from `createContext`
  */
 export function createCommands(ctx) {
-  return {
+  const commands = {
     // projects ---------------------------------------------------------------
     createProject: (input) => projects.createProject(ctx, input),
+    ensureProject: (input) => projects.ensureProject(ctx, input),
     updateProject: (input) => projects.updateProject(ctx, input),
     getProject: (input) => projects.getProject(ctx, input),
     listProjects: (filter) => projects.listProjects(ctx, filter),
@@ -41,6 +44,7 @@ export function createCommands(ctx) {
     claim: (input) => tasks.claim(ctx, input),
     heartbeat: (input) => tasks.heartbeat(ctx, input),
     moveStatus: (input) => tasks.moveStatus(ctx, input),
+    reopenStatus: (input) => tasks.reopenStatus(ctx, input),
     canMove: (input) => tasks.canMove(ctx, input),
     archive: (input) => tasks.archive(ctx, input),
     listTasks: (filter) => tasks.listTasks(ctx, filter),
@@ -48,6 +52,9 @@ export function createCommands(ctx) {
     listOrderedTasks: (filter) => tasks.listOrderedTasks(ctx, filter),
     listCandidates: (input) => tasks.listCandidates(ctx, input),
     listOrderedCandidates: (input) => tasks.listOrderedCandidates(ctx, input),
+    // A free-text assignee → the dictionary ids it names (the board read's
+    // `--assignee` filter; an unknown name is the empty scope, not no filter).
+    resolveAssigneeIds: (name) => tasks.assigneeIdsFor(ctx, name),
     getTask: (input) => ctx.repos.tasks.get(input.id ?? input.taskId),
     getTaskByIdentifier: (input) => ctx.repos.tasks.findByIdentifierAnyProject(input.identifier),
     // The container backstop: replay the epic start/close rules over the board
@@ -56,6 +63,9 @@ export function createCommands(ctx) {
     // The board's workflow decisions (commands/workflow.mjs): reconcile, then
     // the review outcomes/dispatch plan the loop executes. No review writes.
     workflowTick: (input) => workflow.workflowTick(ctx, input),
+    // The SLA read (`docs/sla.md`): the six card/board rows over the board's
+    // own facts and the effective `TASKD_SLA_*` table. Read-only.
+    slaSnapshot: (input) => sla.slaSnapshot(ctx, input),
 
     // reports ----------------------------------------------------------------
     writeReport: (input) => reports.writeReport(ctx, input),
@@ -91,6 +101,7 @@ export function createCommands(ctx) {
     storeAttachmentContent: (input) => attachments.storeAttachmentContent(ctx, input),
     removeAttachment: (input) => attachments.removeAttachment(ctx, input),
   };
+  return withCommandLogging(commands, ctx.logger);
 }
 
 /** Names the dictionary deliberately does not expose (asserted in the tests). */

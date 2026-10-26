@@ -31,7 +31,7 @@ describe("cli/report template", () => {
     await boardWithIssue(
       async ({ run }) => {
         const data = dataOf(run(["report", "template", "DEMO-0001", "--commit", "dcd7d15", "--json"]));
-        assert.equal(data.acceptance_source, "meta.acceptance");
+        assert.equal(data.acceptance_source, "acceptance_json");
         assert.deepEqual(
           data.report.acceptance.map((item) => [item.text, item.status]),
           [["cli works", "not_met"], ["gate visible", "not_met"]],
@@ -44,10 +44,10 @@ describe("cli/report template", () => {
   });
 
   it("flags a worker-derived acceptance list without treating it as evidence", () => {
-    const derived = acceptanceFrom({ meta: { acceptance: ["a", "b"], acceptance_derived: "yes" } });
-    assert.equal(derived.source, "meta.acceptance");
+    const derived = acceptanceFrom({ acceptance: ["a", "b"], meta: { acceptance_derived: "yes" } });
+    assert.equal(derived.source, "acceptance_json");
     assert.match(derived.warning, /derived at claim/);
-    const human = acceptanceFrom({ meta: { acceptance: ["a"] } });
+    const human = acceptanceFrom({ acceptance: ["a"], meta: {} });
     assert.equal(human.warning, null);
   });
 
@@ -87,9 +87,10 @@ describe("cli/report template", () => {
     ]);
     assert.match(legacy.warning, /not evidence/);
 
-    // Modern `meta.acceptance` wins over the legacy list.
+    // Modern `meta.acceptance` wins over the legacy list; with no frozen
+    // snapshot it is a seed, and the template says so.
     const modern = acceptanceFrom({ meta: { acceptance: ["a"], acceptance_legacy: [{ text: "b" }] } });
-    assert.equal(modern.source, "meta.acceptance");
+    assert.equal(modern.source, "meta.acceptance (no frozen baseline)");
     assert.deepEqual(modern.items.map((i) => i.text), ["a"]);
 
     for (const task of [{ meta: {} }, { meta: { acceptance: [] } }, { meta: { acceptance_legacy: [] } }]) {
@@ -175,6 +176,42 @@ describe("cli/report template", () => {
       if (data.evidence_source === "placeholder") {
         assert.match(result.stderr, /placeholder you must replace/);
       }
+    });
+  });
+
+  it("builds an epic template from its children, one `ref` item each", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      const epic = dataOf(
+        run(["issue", "create", "--project", "demo", "--title", "Epic", "--kind", "epic", "--json"]),
+      ).task;
+      const one = dataOf(
+        run(["issue", "create", "--project", "demo", "--title", "One", "--allow-dup", "--json"]),
+      ).task;
+      const two = dataOf(
+        run(["issue", "create", "--project", "demo", "--title", "Two", "--allow-dup", "--json"]),
+      ).task;
+      for (const child of [one, two]) {
+        run([
+          "relation", "add", epic.identifier,
+          "--type", "parent", "--target", child.identifier, "--json",
+        ]);
+      }
+      run(["issue", "move", two.identifier, "canceled", "--json"]);
+
+      const data = dataOf(run(["report", "template", epic.identifier, "--commit", "dcd7d15", "--json"]));
+      assert.equal(data.acceptance_source, "children (rollup)");
+      assert.deepEqual(
+        data.report.acceptance.map((item) => [item.ref, item.status]),
+        [
+          [one.identifier, "not_met"],
+          [two.identifier, "not_applicable"],
+        ],
+        "an untouched template never claims met — even for a canceled child",
+      );
+      assert.match(data.report.acceptance[0].text, new RegExp(`^${one.identifier} One \\(todo\\)`));
+      assert.match(data.report.acceptance[1].text, /\(canceled\)$/);
+      assert.match(data.report.acceptance[1].note, /TODO/);
     });
   });
 

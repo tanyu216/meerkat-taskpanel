@@ -24,13 +24,17 @@ import { loadProjects, selectProject } from "../../stores/board.js";
 import { createProjectOpen, pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
 
-const form = reactive({ name: "", prefix: "" });
+// 0038 — one acceptance default, `auto` unless the creator says otherwise.
+const form = reactive({ name: "", prefix: "", acceptance: "auto", reviewer: "" });
 const canSubmit = computed(() => form.name.trim() !== "" && form.prefix.trim() !== "");
+const acceptances = ["auto", "off", "agent", "human"];
 
 watch(createProjectOpen, (open) => {
   if (open) {
     form.name = "";
     form.prefix = "";
+    form.acceptance = "auto";
+    form.reviewer = "";
   }
 });
 
@@ -53,7 +57,12 @@ function refusalText(err) {
 async function submit() {
   if (!canSubmit.value) return;
   try {
-    const data = await api.createProject({ name: form.name.trim(), meta: { prefix: form.prefix.trim() } });
+    const data = await api.createProject({
+      name: form.name.trim(),
+      meta: { prefix: form.prefix.trim() },
+      acceptance: form.acceptance,
+      reviewer: form.reviewer.trim() || null,
+    });
     await loadProjects();
     if (data?.project?.id) await selectProject(data.project.id);
     pushToast(t("toast.projectCreated"), "success");
@@ -96,6 +105,19 @@ async function submit() {
           <label class="flex flex-col gap-1 mb-3">
             <span data-i18n="createProject.field.prefix">{{ $t("createProject.field.prefix") }}</span>
             <input v-model="form.prefix" class="input input-sm td-input td-mono w-full" type="text" maxlength="4" data-create-project-prefix :placeholder="$t('createProject.field.prefixHint')" />
+          </label>
+          <label class="flex flex-col gap-1 mb-3">
+            <span data-i18n="createProject.field.acceptance">{{ $t("createProject.field.acceptance") }}</span>
+            <!-- 0038 — `data-create-project-review-policy` stays as the design's
+                 stable hook (B11's selector); the field it names is now the one
+                 acceptance vocabulary. -->
+            <select v-model="form.acceptance" class="select select-sm td-select w-full" data-create-project-acceptance data-create-project-review-policy>
+              <option v-for="acceptance in acceptances" :key="acceptance" :value="acceptance">{{ $t(`createProject.acceptance.${acceptance}`) }}</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1 mb-3">
+            <span data-i18n="createProject.field.reviewer">{{ $t("createProject.field.reviewer") }}</span>
+            <input v-model="form.reviewer" class="input input-sm td-input w-full" type="text" data-create-project-reviewer :placeholder="$t('createProject.field.reviewerHint')" />
           </label>
         </div>
         <footer class="flex justify-end gap-2 px-4 py-3 border-t border-t-(--brand-border)">

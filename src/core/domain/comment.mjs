@@ -13,7 +13,14 @@ import { DomainError } from "../../foundation/errors.mjs";
 import { COMMENT_KINDS, isActorKind } from "./enums.mjs";
 import { assertIsoMillis } from "./task.mjs";
 
-/** Comment kinds that record a human decision (I5). */
+/**
+ * Comment kinds that record a human decision (I5).
+ *
+ * This is the *record* vocabulary, not the `awaiting` resume gate: any human
+ * comment re-queues an awaiting card (`domain/awaiting.mjs#resumeDecision`),
+ * while these three are what `listDecisions` and the reviewer's decision trail
+ * read.
+ */
 export const DECISION_KINDS = Object.freeze(["decision", "confirm", "change"]);
 
 export const COMMENT_COLUMNS = Object.freeze([
@@ -81,7 +88,7 @@ export function normalizeCommentCreate(input, context) {
   }
   const author = input.author ?? {};
   // Open on purpose. A kind is `human`, or the platform an agent runs on, or
-  // whatever a host calls itself — the schema has no CHECK on this column
+  // whatever an actor kind calls itself — the schema has no CHECK on this column
   // (`0018` dropped it) and neither does this. What is refused is a *blank* one,
   // because that reads as neither.
   if (!isActorKind(author.kind)) {

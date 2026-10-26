@@ -125,7 +125,7 @@ export const DOMAINS = Object.freeze({
   ASSIGNEE_KIND: Object.freeze(["human", "agent"]),
   /**
    * The agent platforms the board renders (B03/B07/B16/B22/C07). The original
-   * four hosts plus the five the roster may name today; each carries an official
+   * four agent kinds plus the five the roster may name today; each carries an official
    * brand colour in the sidebar (`--brand-agent-*` in `tokens.css`).
    */
   PLATFORM: Object.freeze([
@@ -161,8 +161,8 @@ export const DOMAINS = Object.freeze({
   /**
    * B27 — the waiting queue's reason kinds (§30).
    *
-   * `acceptance` is M6's third kind: an `in_review` top-level card the board's
-   * policy leaves to a human. The prototype predates it, and the contract's
+   * `acceptance` is M6's third kind: an `in_review` card whose own
+   * `acceptance_mode` is `human`. The prototype predates it, and the contract's
    * `subset` direction is what lets the oracle stay a *sample* rather than a
    * closed list (the same reading `data-status` takes).
    */
@@ -1672,7 +1672,7 @@ const BLOCKS = [
       // driven pass, where a card with files is actually open.
       { kind: "count", selector: "[data-attachment-upload]", within: "[data-detail-attachments-section]", equals: 1 },
       { kind: "count", selector: "[data-attachment-file]", within: "[data-detail-attachments-section]", equals: 1 },
-      // ④ depends_on — one chip control over the `blocks` edge (PROTOCOL §①).
+      // ④ depends_on — one chip control over the `blocks` edge.
       { kind: "count", selector: "[data-detail-depends-input]", within: "[data-detail-depends]", equals: 1 },
       { kind: "count", selector: "[data-detail-depends-menu]", within: "[data-detail-depends]", equals: 1 },
       { kind: "count", selector: "[data-detail-depends-chips]", within: "[data-detail-depends]", equals: 1 },
@@ -1680,6 +1680,10 @@ const BLOCKS = [
       // no `data-readonly` until a terminal card is opened, so a drawer that
       // leaked the attribute would red here rather than on the next card.
       { kind: "count", selector: "[data-detail-readonly][hidden]", equals: 1 },
+      // A terminal card's one writable action exists in the document and is
+      // hidden at rest; the reason panel is rendered only while the prompt is
+      // open, so it is not counted here.
+      { kind: "count", selector: "[data-detail-reopen][hidden]", equals: 1 },
       { kind: "count", selector: "[data-detail-drawer][data-readonly=\"true\"]", equals: 0 },
       // R8 ③ — the drawer's identifier wears the same single-line guard as the
       // card's and the list row's (the cap itself is the render-layer slice), and
@@ -1880,13 +1884,15 @@ const BLOCKS = [
       // `data-i18n` attributes, one per label row"; since T-20261014-212017-4 the
       // grid also *contains* the status and priority menus, whose option labels
       // are seats too, so the seat count is the grid's own arithmetic over the
-      // design's own vocabulary: **8 property labels + 7 status options + 5
-      // priority options = 20**. That is a domain-fixed multiplicity of the kind
+      // design's own vocabulary: **9 property labels + 7 status options + 5
+      // priority options = 21**. That is a domain-fixed multiplicity of the kind
       // this file's header allows (7 statuses ⇒ 7 columns, 3 editor modes), and
       // it is a stronger statement than the old one: the grid holds exactly
-      // these seats and nothing else. A sixth priority or an eighth property row
-      // reds here, which is what the row-per-label rule meant all along.
-      { kind: "count", selector: "[data-i18n]", within: "[data-detail-props]", equals: 20 },
+      // these seats and nothing else. The ninth label is 0031's Review row —
+      // a read-only property, labelled like its eight neighbours. A sixth
+      // priority or a tenth property row reds here, which is what the
+      // row-per-label rule meant all along.
+      { kind: "count", selector: "[data-i18n]", within: "[data-detail-props]", equals: 21 },
       // R14 D32/D37/D38 (A13/A14/A15) — *where* each body hook rides: the
       // description hook is on the content container (`div.td-gfm`), the four
       // stream hooks are on a `div`, and the session hook is on the `section`
@@ -1951,6 +1957,7 @@ const BLOCKS = [
       "[data-create-task-description]",
       "[data-create-task-priority]",
       "[data-create-task-project]",
+      "[data-create-task-review-hint]",
       "[data-create-task-status]",
       "[data-modal-close]",
     ],
@@ -1991,6 +1998,15 @@ const BLOCKS = [
       // to resolve against — the second break in the chain, measured at 302px.
       { kind: "computed", probe: ".td-field-grow", property: "display", equals: "flex" },
       { kind: "computed", probe: ".td-field-grow", property: "flexDirection", equals: "column" },
+      // Terry 2026-10-21 — the chosen value in the routing column's status
+      // control reads from the field's own inline start, the way the two native
+      // `<select>`s above it do (a select's text is left-aligned). The trigger
+      // is the design's `.td-label-trigger` wearing daisyUI's `.btn`, whose
+      // `justify-content: center` centred the dot + name group inside the
+      // full-width box: the one field in the column whose value did not start
+      // on the column's text edge. The caret is absolutely positioned, so it is
+      // not part of what this centres/left-aligns.
+      { kind: "computed", probe: "[data-create-task-status-summary]", property: "justifyContent", equals: "flex-start" },
       {
         kind: "manual",
         note:
@@ -2024,6 +2040,8 @@ const BLOCKS = [
       "[data-create-project-form]",
       "[data-create-project-name]",
       "[data-create-project-prefix]",
+      "[data-create-project-review-policy]",
+      "[data-create-project-reviewer]",
       "[data-modal-close]",
     ],
     states: [],
@@ -2294,7 +2312,7 @@ const BLOCKS = [
           "together when the card has no session rows; the assignee kind is not the switch " +
           "(a human-assigned card can carry sessions — the server enforces no " +
           "assignee/session relationship). The `data-agent-platform` seat states the card's " +
-          "own platform; historical rows name their own `backend` in a plain badge. How many " +
+          "own platform; historical rows name their own `owner_kind` in a plain badge. How many " +
           "cards carry sessions is fixture data. [data-agent-platform-value] seats the " +
           "session's **platform id** (e.g. `claude`) — the seat is the id, not a CLI flag, " +
           "and that is what the app renders there. The prototype's static sample reads " +
@@ -3282,8 +3300,8 @@ const CONSISTENCY_ITEMS = [
 export const STALE_PROSE_COUNTS = Object.freeze([
   Object.freeze({
     claim: "252 `data-i18n*` hooks",
-    measured: 849,
-    detail: "543 `data-i18n` + 193 `-arg` + 85 `-aria-label` + 19 `-title` + 9 `-placeholder`",
+    measured: 851,
+    detail: "545 `data-i18n` + 193 `-arg` + 85 `-aria-label` + 19 `-title` + 9 `-placeholder`",
     verdict: "stale",
   }),
   Object.freeze({
@@ -3340,6 +3358,14 @@ export const AUXILIARY_HOOKS = Object.freeze([
   Object.freeze({ selector: "[data-attachment-preview-close]", purpose: "the dialog's close button" }),
   Object.freeze({ selector: "[data-attachment-preview-loading]", purpose: "the dialog's loading sentence" }),
   Object.freeze({ selector: "[data-attachment-preview-error]", purpose: "the dialog's failure sentence" }),
+  // The terminal card's one writable action — implementation-only, like the
+  // attachment preview: the prototype's terminal drawer deliberately offers no
+  // action, and the shipped board offers the audited reopen.
+  Object.freeze({ selector: "[data-detail-reopen]", purpose: "the terminal card's audited reopen control" }),
+  Object.freeze({ selector: "[data-detail-reopen-panel]", purpose: "the reopen reason prompt" }),
+  Object.freeze({ selector: "[data-detail-reopen-reason]", purpose: "the reopen reason draft" }),
+  Object.freeze({ selector: "[data-detail-reopen-confirm]", purpose: "the reopen confirmation button" }),
+  Object.freeze({ selector: "[data-detail-reopen-cancel]", purpose: "the reopen cancellation button" }),
   Object.freeze({ selector: "[data-label]", purpose: "one chip per card label" }),
   Object.freeze({ selector: "[data-assignee-value]", purpose: "the name an assignee roster option carries" }),
   Object.freeze({ selector: "[data-reporter-value]", purpose: "the name a reporter roster option carries" }),

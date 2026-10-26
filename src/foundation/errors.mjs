@@ -44,6 +44,34 @@ export const ERROR_CODES = Object.freeze({
   REPORT_ROUND_MISMATCH: spec(409, "Report round does not match the task's current delivery round."),
   REPORT_APPEND_ONLY: spec(409, "Reports are append-only; write a new round instead of editing history."),
   REPORT_TASK_MISMATCH: spec(409, "report_latest_id does not belong to this task."),
+  // ---- Acceptance baseline (0032) -------------------------------------------
+  // The card's frozen baseline is the thing a delivery report is evidence
+  // against. `ACCEPTANCE_INCOMPLETE` is the report-exists-but-does-not-cover
+  // case; `ACCEPTANCE_UNVERIFIED` is "no current-round report at all" (a waived
+  // delivery is not acceptance evidence).
+  ACCEPTANCE_INCOMPLETE: spec(409, "The current-round report does not cover every acceptance criterion."),
+  ACCEPTANCE_UNVERIFIED: spec(409, "This card has an acceptance baseline but no current-round delivery report."),
+  ACCEPTANCE_STALE_REVISION: spec(409, "Acceptance revision changed — re-read the card and retry."),
+  ACCEPTANCE_PRUNE_FORBIDDEN: spec(409, "Only a human may remove an acceptance criterion."),
+  ACCEPTANCE_LOCKED: spec(409, "The acceptance baseline is frozen while the card is in review or terminal."),
+  // Raised by 0032's triggers as well as by the command layer: a rewrite must
+  // advance `acceptance_revision`, and a shrink needs an audited reason.
+  ACCEPTANCE_SNAPSHOT_IMMUTABLE: spec(409, "The acceptance baseline can only grow; a prune needs an audited reason."),
+  // Raised by `validateReport` and by 0032's report trigger.
+  REPORT_NOT_APPLICABLE_NOTE: spec(422, "A not_applicable acceptance item needs a note saying why."),
+  // ---- Epic rollups (0033) --------------------------------------------------
+  // An epic's delivery is a rollup over its children, not a summary written
+  // beside them. The row is marked `is_rollup=1`; `ROLLUP_REQUIRED` is both the
+  // delivery-gate refusal and the DB trigger's done guard.
+  ROLLUP_REQUIRED: spec(409, "An epic needs a current-round rollup report before it can be delivered or accepted."),
+  ROLLUP_INVALID: spec(409, "Only a delivery report on an epic can carry the rollup marker."),
+  ROLLUP_STALE: spec(409, "The rollup no longer matches the epic's children."),
+
+  // ---- Questions (0034) ------------------------------------------------------
+  // An agent may only enter `awaiting` with something to wait on: a `--question`
+  // (written as a `question` comment) or an earlier unanswered one. A human may
+  // park a card silently; the state's payload promise is about workers.
+  QUESTION_REQUIRED: spec(422, "Entering awaiting needs a question (or an earlier unanswered one)."),
 
   // ---- Task state machine + lifecycle ---------------------------------------
   INVALID_TRANSITION: spec(409, "Status transition is not allowed."),
@@ -59,17 +87,32 @@ export const ERROR_CODES = Object.freeze({
   // set once, at creation, and never rewritten — the review-card exemption is a
   // privilege, so it must not be obtainable by editing a card afterwards.
   REVIEW_OF_IMMUTABLE: spec(409, "A card's review marker is set at creation and cannot be changed."),
-  // A human closing a top-level card before the review cards for its current
+  // A human closing an `agent` card before the review cards for its current
   // delivery round have resolved. `canceled` counts as resolved (an abandoned
   // review must not deadlock the original).
   REVIEW_PENDING: spec(
     409,
     "This card still has an open review for its current delivery round; close or cancel it first.",
   ),
+  // The card's own acceptance mode (`agent`) promises an independent review,
+  // but no approving review exists for the current round. Raised by the service
+  // layer *and* (coarsely, as "a current-round review card exists") by the
+  // `tr_tasks_acceptance_agent_done` trigger.
+  REVIEW_REQUIRED: spec(409, "This card requires an approved review for its current delivery round.", {
+    fix:
+      "let the loop dispatch a review, or a human may waive the requirement: " +
+      'taskctl issue update <ref> --acceptance-mode off --reason "<why>"',
+  }),
+  // A review card is flow B. Marking it as needing its own review would create an
+  // endless chain; the column is forced to 0 by the resolver and the trigger.
+  REVIEW_CARD_MARKER_INVALID: spec(
+    409,
+    "A review card can never be marked as requiring its own review.",
+  ),
   // A card may not enter `in_review`/`done` while one of its children is still
   // in flight. Manual and automatic paths apply the same rule.
   CHILDREN_OPEN: spec(409, "This card still has non-terminal child cards."),
-  TERMINAL_STATE: spec(409, "done/canceled are terminal; they cannot be left."),
+  TERMINAL_STATE: spec(409, "done/canceled are terminal; they may only be reopened to todo."),
   VERSION_CONFLICT: spec(409, "Version conflict — re-read the task and retry once."),
   CLAIM_LOST: spec(409, "Claim could not be taken: the task was taken concurrently."),
   EXECUTION_ACTIVE: spec(409, "Another actor holds a fresh claim on this task."),
@@ -85,6 +128,15 @@ export const ERROR_CODES = Object.freeze({
   ),
   // An epic is a grouping card: it carries no work, so nothing may claim it.
   not_claimable: spec(409, "Epics are grouping cards and cannot be claimed."),
+  // `issue claim --check-blockers` (opt-in): the default claim trusts the
+  // caller's own read of the dependency graph, and this is the refusal a caller
+  // asks the board to re-derive for it. It is a domain fact (the live `blocks`
+  // edges), not a row constraint, so no trigger raises it.
+  BLOCKED_BY_PREDECESSOR: spec(
+    409,
+    "A card this one depends on is not done yet.",
+    { fix: "wait for the predecessors (or drop their `blocks` edges) before claiming" },
+  ),
 
   // ---- Creation idempotency (T-20261009-175500-idem-meerkat-taskpanel) ---------------
   // Raised when the partial unique index is the one that refuses a write, i.e.
@@ -107,6 +159,10 @@ export const ERROR_CODES = Object.freeze({
   // ---- Comments / activities -------------------------------------------------
   COMMENT_APPEND_ONLY: spec(409, "Comments are append-only."),
   COMMENT_DUPLICATE: spec(409, "That comment was already imported."),
+  // 0042 — the audit log is the change feed; rewriting a row would change what
+  // a client already received, and deleting one would leave a hole the cursor
+  // can never replay.
+  ACTIVITY_APPEND_ONLY: spec(409, "Activities are append-only; never edit or delete history."),
 
   // ---- Dictionary entities ---------------------------------------------------
   DICTIONARY_ENTRY_IN_USE: spec(409, "Dictionary entry is referenced by existing tasks."),
@@ -119,9 +175,9 @@ export const ERROR_CODES = Object.freeze({
   // is the registry's own `UNIQUE(project_id, norm)`.
   LABEL_CONFLICT: spec(409, "Label already exists in this project."),
 
-  // ---- Project directories (host-local map) ---------------------------------
+  // ---- Project directories (agent-local map) ---------------------------------
   // The board holds no directory (O3), so "which directory does work for this
-  // project happen in?" is answered on the host, by `projects.json`, and
+  // project happen in?" is answered locally, by `projects.json`, and
   // *checked* before it is used. These codes say why a directory could not be
   // used; every one of them stops the caller — the alternative is a worker
   // running in the wrong checkout, which is worse than not starting one. (An
@@ -188,7 +244,7 @@ export const ERROR_CODES = Object.freeze({
   ACCESS_CONFIG_INVALID: spec(500, "Access configuration is malformed or could not be written."),
   // The client/server config file itself: unreadable, malformed, an unknown key
   // in our namespace, both token keys, or a bad URL/port. A bad *value* the
-  // server owns (a CIDR, an acceptance policy) keeps ACCESS_CONFIG_INVALID.
+  // server owns (a CIDR, an allow-list boolean) keeps ACCESS_CONFIG_INVALID.
   CONFIG_FILE_INVALID: spec(400, "The configuration file is malformed or could not be read."),
   CONFIG_FILE_INSECURE: spec(400, "The configuration file contains a secret but is accessible by other users."),
 
@@ -214,10 +270,21 @@ export const DB_RAISE_CODES = Object.freeze([
   "CROSS_PROJECT_RELATION",
   "RELATION_IMMUTABLE",
   "COMMENT_APPEND_ONLY",
+  // 0042 — the activity log joins the append-only tables.
+  "ACTIVITY_APPEND_ONLY",
   "DICTIONARY_ENTRY_IN_USE",
   // 0025 / 0026
   "REVIEW_OF_IMMUTABLE",
   "CHILDREN_OPEN",
+  // 0031 — the review-required done gate and the review-card marker invariant.
+  "REVIEW_REQUIRED",
+  "REVIEW_CARD_MARKER_INVALID",
+  // 0032 — the frozen acceptance baseline and the not_applicable note.
+  "ACCEPTANCE_SNAPSHOT_IMMUTABLE",
+  "REPORT_NOT_APPLICABLE_NOTE",
+  // 0033 — the rollup marker and the epic done guard.
+  "ROLLUP_REQUIRED",
+  "ROLLUP_INVALID",
 ]);
 
 /** Codes produced by mapping SQLite failures (constraints, and lock contention). */
@@ -251,6 +318,18 @@ export const JS_ONLY_CODES = Object.freeze([
   // policy and the review cards' current state), and the loop's own protocol is
   // exempt from it by design.
   "REVIEW_PENDING",
+  // 0032 — the coverage gate combines the task's baseline with a report body;
+  // the revision CAS and the human-only prune rule are service-layer facts.
+  "ACCEPTANCE_INCOMPLETE",
+  "ACCEPTANCE_UNVERIFIED",
+  "ACCEPTANCE_STALE_REVISION",
+  "ACCEPTANCE_PRUNE_FORBIDDEN",
+  "ACCEPTANCE_LOCKED",
+  // 0033 — staleness compares the report's `ref` set with the live children,
+  // which a trigger cannot do without duplicating the rollup's own rules.
+  "ROLLUP_STALE",
+  // 0034 — "a question is owed" reads the actor and the comment trail.
+  "QUESTION_REQUIRED",
   "REPORT_ROUND_MISMATCH",
   "VERSION_CONFLICT",
   "CLAIM_LOST",
@@ -258,6 +337,9 @@ export const JS_ONLY_CODES = Object.freeze([
   "EXECUTION_STATE_CORRUPT",
   "not_assignee",
   "not_claimable",
+  // The `--check-blockers` re-read walks the live `blocks` edges; a trigger
+  // cannot express "every predecessor is done" without duplicating the graph.
+  "BLOCKED_BY_PREDECESSOR",
   "DICTIONARY_AMBIGUOUS",
   "DICTIONARY_INVALID",
   "MIGRATION_CHECKSUM_MISMATCH",
@@ -276,7 +358,7 @@ export const JS_ONLY_CODES = Object.freeze([
   "CONFIG_FILE_INSECURE",
   // The single-writer guard: raised in JS, before any database is opened.
   "BOARD_ALREADY_RUNNING",
-  // Project directories: read from a host-local JSON file, never from a table,
+  // Project directories: read from a local JSON file, never from a table,
   // a trigger or a SQLite constraint.
   "PROJECT_MAP_UNREADABLE",
   "PROJECT_DIR_UNMAPPED",

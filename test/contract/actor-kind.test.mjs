@@ -1,11 +1,11 @@
 /**
  * The actor-kind rule: an actor's kind is `human`, or the concrete platform a
- * writer runs on (`claude`, `codex`, `pi`, `opencode`, `openclaw`, `cursor`, …),
+ * writer runs on (`claude`, `codex`, `pi`, `openclaw`, …),
  * or the board's own platform name `taskd`.
  *
  * What must not appear in our own writes is a vague role word. `system` names no
  * platform, and `agent` names a category ("not the human") rather than a
- * writer. The schema keeps the column open on purpose — a host may call itself
+ * writer. The schema keeps the column open on purpose — an agent kind may call itself
  * anything — so this is a **repository** rule, enforced statically, not a
  * runtime vocabulary.
  *
@@ -21,11 +21,11 @@ import { fileURLToPath } from "node:url";
 import test, { describe, it } from "node:test";
 
 import { BOARD_ACTOR } from "../../src/core/commands/context.mjs";
-import { ACCEPTANCE_ACTOR_KINDS } from "../../src/core/domain/status.mjs";
+import { acceptanceAllows } from "../../src/core/domain/acceptance-mode.mjs";
 import { HUMAN_KIND, TASKD_KIND } from "../../src/foundation/constants.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const SCAN_ROOTS = ["src", "scripts", "skills/meerkat-loop/scripts"];
+const SCAN_ROOTS = ["src", "scripts", "skills"];
 const SKIP_DIRS = new Set(["node_modules", "dist", "coverage", ".git", ".worktrees"]);
 
 /** Files this rule reads. Migrations are history, not a writer. */
@@ -64,7 +64,12 @@ describe("contract/actor-kind — concrete writers, not vague roles", () => {
     assert.equal(HUMAN_KIND, "human");
     assert.equal(TASKD_KIND, "taskd");
     assert.deepEqual({ ...BOARD_ACTOR }, { kind: "taskd", id: "taskd" });
-    assert.deepEqual(ACCEPTANCE_ACTOR_KINDS, ["human", "taskd"]);
+    // 0038 — the pair an `agent`-mode card accepts (replacing the retired
+    // `ACCEPTANCE_ACTOR_KINDS` constant).
+    assert.deepEqual(
+      [HUMAN_KIND, TASKD_KIND].filter((kind) => acceptanceAllows(kind, "agent")),
+      ["human", "taskd"],
+    );
   });
 
   it("leaves no `system` or `agent` kind in a production write", () => {

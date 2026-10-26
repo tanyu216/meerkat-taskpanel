@@ -137,6 +137,21 @@ describe("commands/dictionary — no management surface (V8)", () => {
 });
 
 describe("commands/relations", () => {
+  /** A review card for a delivered original, so the phase-1 creation guard passes. */
+  const makeReview = (commands) => {
+    const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+    commands.claim({ id: original.id, actor: AGENT });
+    commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
+    return commands.createTask({
+      projectId: "proj",
+      title: "Review",
+      allowDup: true,
+      reviewOf: original.identifier,
+      reviewRound: original.deliveryRound,
+      actor: AGENT,
+    });
+  };
+
   it("adds a parent edge, checking the epic rule first", async () => {
     await board(({ db, commands }) => {
       const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
@@ -249,6 +264,56 @@ describe("commands/relations", () => {
       assert.deepEqual(graph.ancestors.map((a) => a.identifier), [epic.identifier]);
     });
   });
+
+  it("refuses a parent edge whose child is a review card", async () => {
+    await board(({ commands }) => {
+      const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
+      const review = makeReview(commands);
+      assert.throws(
+        () => commands.addRelation({ type: "parent", source: epic.id, target: review.id, actor: AGENT }),
+        (err) =>
+          err.code === "VALIDATION_FAILED" &&
+          err.details.field === "target" &&
+          err.details.type === "parent" &&
+          err.details.identifier === review.identifier,
+      );
+    });
+  });
+
+  it("refuses the same review-child edge even with force", async () => {
+    await board(({ commands }) => {
+      const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
+      const review = makeReview(commands);
+      assert.throws(
+        () =>
+          commands.addRelation({
+            type: "parent",
+            source: epic.id,
+            target: review.id,
+            actor: AGENT,
+            force: true,
+          }),
+        (err) => err.code === "VALIDATION_FAILED" && err.details.field === "target",
+      );
+    });
+  });
+
+  it("refuses a parent edge whose source is a review card promoted to epic", async () => {
+    await board(({ commands }) => {
+      const review = makeReview(commands);
+      commands.updateTask({ id: review.id, patch: { kind: "epic" }, actor: AGENT });
+      const child = commands.createTask({
+        projectId: "proj",
+        title: "Child",
+        allowDup: true,
+        actor: AGENT,
+      });
+      assert.throws(
+        () => commands.addRelation({ type: "parent", source: review.id, target: child.id, actor: AGENT }),
+        (err) => err.code === "VALIDATION_FAILED" && err.details.field === "source",
+      );
+    });
+  });
 });
 
 describe("commands/comments", () => {
@@ -281,12 +346,83 @@ describe("commands/comments", () => {
       const task = commands.createTask({ projectId: "proj", title: "one", actor: AGENT });
       commands.addComment({ taskId: task.id, body: "ship it", kind: "confirm", actor: HUMAN });
       commands.addComment({ taskId: task.id, body: "noted", kind: "note", actor: AGENT });
+      commands.addComment({ taskId: task.id, body: "please confirm", kind: "confirm_request", actor: AGENT });
       const decisions = commands.listDecisions({ taskId: task.id });
       // author_id is an actor id since 0020 — the trail still reads as the person.
       assert.deepEqual(decisions.map((c) => actorName(db, c.authorId)), ["Terry"]);
       assert.equal(decisions[0].body, "ship it");
       assert.throws(() => commands.addComment({ taskId: "nope", body: "x", actor: AGENT }), (err) => err.code === "NOT_FOUND");
       assert.throws(() => commands.addComment({ taskId: task.id, body: "", actor: AGENT }), (err) => err.code === "VALIDATION_FAILED");
+    });
+  });
+
+  it("any human comment answers an awaiting question and re-queues the card", async () => {
+    await board(({ db, commands }) => {
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "Ask",
+        assignee: "linus",
+        assigneeKind: "agent",
+        actor: AGENT,
+      });
+      commands.claim({ id: task.id, actor: AGENT });
+      commands.moveStatus({
+        id: task.id,
+        to: "awaiting",
+        awaitingReason: "E2",
+        question: "which schema should the migration use?",
+        actor: AGENT,
+      });
+      assert.equal(commands.getTask({ id: task.id }).status, "awaiting");
+
+      // Any human comment is the answer now — the kind is not consulted.
+      commands.addComment({ taskId: task.id, body: "probably v2", kind: "discuss", actor: HUMAN });
+      const resumed = commands.getTask({ id: task.id });
+      assert.equal(resumed.status, "todo");
+      assert.equal(resumed.claimedBy, null);
+      assert.equal(resumed.awaitingReason, null);
+      assert.equal(resumed.deliveryRound, 1, "an answer is not a reopen");
+      assert.equal(
+        db.prepare("SELECT COUNT(*) n FROM task_activities WHERE event = 'task_resumed'").get().n,
+        1,
+      );
+      // ...and the poll offers it again, which is the whole point of `todo`.
+      assert.deepEqual(
+        commands.listCandidates({ assignee: "linus" }).map((candidate) => candidate.id),
+        [task.id],
+      );
+
+      // A later human comment on the now-todo card adds no second resume.
+      commands.addComment({ taskId: task.id, body: "and one more thing", kind: "note", actor: HUMAN });
+      assert.equal(commands.getTask({ id: task.id }).status, "todo");
+      assert.equal(
+        db.prepare("SELECT COUNT(*) n FROM task_activities WHERE event = 'task_resumed'").get().n,
+        1,
+      );
+
+      // Re-escalation: the earlier question now has a later human comment, so an
+      // agent entering awaiting must supply a NEW question.
+      commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
+      assert.throws(
+        () => commands.moveStatus({ id: task.id, to: "awaiting", awaitingReason: "E2", actor: AGENT }),
+        (err) => err.code === "QUESTION_REQUIRED",
+      );
+    });
+  });
+
+  it("an agent decision never resumes the card", async () => {
+    await board(async ({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Ask", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      commands.moveStatus({
+        id: task.id,
+        to: "awaiting",
+        awaitingReason: "E2",
+        question: "is this the right table?",
+        actor: AGENT,
+      });
+      commands.addComment({ taskId: task.id, body: "I decided v2 is fine", kind: "decision", actor: AGENT });
+      assert.equal(commands.getTask({ id: task.id }).status, "awaiting", "the human's is the only decision");
     });
   });
 });
@@ -299,23 +435,26 @@ describe("commands/agent-sessions", () => {
         taskId: task.id,
         seg: "seg2",
         owner: "linus",
-        backend: "claude",
+        ownerKind: "claude",
         sessionId: "ff309028",
         pid: 4242,
+        goal: "ship the drawer ordering",
       });
       assert.equal(session.status, "running");
       assert.equal(session.seg, "seg2");
+      assert.equal(session.goal, "ship the drawer ordering");
 
       const again = commands.registerSession({
         taskId: task.id,
         seg: "seg2",
         owner: "linus",
-        backend: "claude",
+        ownerKind: "claude",
         sessionId: "ff309028",
         phase: "verify",
       });
       assert.equal(again.id, session.id, "the natural key keeps one row");
       assert.equal(again.phase, "verify");
+      assert.equal(again.goal, "ship the drawer ordering", "re-registering without a goal keeps it");
 
       const closed = commands.closeSession({ sessionId: session.id, actor: AGENT });
       assert.equal(closed.status, "closed");
@@ -326,7 +465,7 @@ describe("commands/agent-sessions", () => {
       );
       assert.throws(() => commands.closeSession({ sessionId: "nope" }), (err) => err.code === "NOT_FOUND");
       assert.throws(
-        () => commands.registerSession({ taskId: "nope", seg: "s", backend: "claude", sessionId: "x" }),
+        () => commands.registerSession({ taskId: "nope", seg: "s", ownerKind: "claude", sessionId: "x" }),
         (err) => err.code === "NOT_FOUND",
       );
       // A session registered by identifier, with the owner defaulting to the actor.
@@ -334,7 +473,7 @@ describe("commands/agent-sessions", () => {
         taskId: task.identifier,
         seg: "seg3",
         owner: "linus",
-        backend: "codex",
+        ownerKind: "codex",
         sessionId: "abc",
         status: "failed",
       });
@@ -448,7 +587,7 @@ describe("commands/attachments — the write half of the attachment surface", ()
 });
 
 describe("commands/delivery-report — the one delivery-shaped insert", () => {
-  it("stamps origin=delivery and threads seg/sessionId through", async () => {
+  it("threads seg/sessionId through (0035 removed the origin stamp)", async () => {
     await board(({ ctx, repos, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "x", actor: AGENT });
       // `task_reports.author_id` references `actors(id)` (0020), so the author
@@ -465,7 +604,7 @@ describe("commands/delivery-report — the one delivery-shaped insert", () => {
         seg: "s1",
         sessionId: "sess",
       });
-      assert.equal(withSession.origin, "delivery");
+      assert.equal(withSession.origin, undefined, "0035 removed the provenance field");
       assert.equal(withSession.taskId, task.id);
       assert.equal(withSession.seg, "s1");
       assert.equal(withSession.sessionId, "sess");
@@ -473,9 +612,31 @@ describe("commands/delivery-report — the one delivery-shaped insert", () => {
       // One report per (task, round), so the no-session half gets its own card.
       const other = commands.createTask({ projectId: "proj", title: "y", actor: AGENT });
       const bare = insertDeliveryReport(ctx, { taskId: other.id, prepared });
-      assert.equal(bare.origin, "delivery");
       assert.equal(bare.seg, null);
       assert.equal(bare.sessionId, null);
+    });
+  });
+});
+
+describe("commands/projects — ensure", () => {
+  it("creates once, then returns the existing row untouched", async () => {
+    await board(async ({ commands, repos }) => {
+      const first = commands.ensureProject({ id: "ensured", name: "Ensured", meta: { team: "panel" }, actor: HUMAN });
+      assert.equal(first.created, true);
+      assert.equal(first.project.name, "Ensured");
+      assert.deepEqual(first.project.meta, { team: "panel" });
+
+      // The second call is a read: a different name and meta are ignored.
+      const second = commands.ensureProject({
+        id: "ensured",
+        name: "Renamed",
+        meta: { team: "other" },
+        actor: HUMAN,
+      });
+      assert.equal(second.created, false);
+      assert.equal(second.project.name, "Ensured");
+      assert.deepEqual(second.project.meta, { team: "panel" });
+      assert.equal(repos.projects.list().filter((p) => p.id === "ensured").length, 1);
     });
   });
 });
@@ -493,5 +654,34 @@ describe("commands — timestamps come from the context clock", () => {
       calls += 1;
       return TS;
     } });
+  });
+});
+
+describe("commands/projects — the acceptance default (0038)", () => {
+  it("stores an explicit acceptance and refuses a value outside the vocabulary", async () => {
+    await board(({ commands }) => {
+      const project = commands.createProject({ id: "acc", name: "Acc", acceptance: "human", actor: HUMAN });
+      assert.equal(project.acceptance, "human");
+      assert.throws(
+        () => commands.createProject({ id: "bad", name: "Bad", acceptance: "sometimes", actor: HUMAN }),
+        (err) => err.code === "VALIDATION_FAILED",
+      );
+    });
+  });
+
+  it("defaults to `auto` when no acceptance is given", async () => {
+    await board(({ commands }) => {
+      assert.equal(commands.createProject({ id: "r1", name: "R", actor: HUMAN }).acceptance, "auto");
+    });
+  });
+
+  it("updates the acceptance default, and refuses an unknown one", async () => {
+    await board(({ commands }) => {
+      assert.equal(commands.updateProject({ id: "proj", patch: { acceptance: "off" }, actor: HUMAN }).acceptance, "off");
+      assert.throws(
+        () => commands.updateProject({ id: "proj", patch: { acceptance: "never" }, actor: HUMAN }),
+        (err) => err.code === "VALIDATION_FAILED",
+      );
+    });
   });
 });

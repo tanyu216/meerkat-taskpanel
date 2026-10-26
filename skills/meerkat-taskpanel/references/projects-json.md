@@ -6,7 +6,10 @@ never written into the board, never sent to `taskd`. Losing it loses only the ma
 tasks, comments and reports are untouched.
 
 The directory is a **worker's** start directory, not a data location. Where a project keeps
-its results is the project's own business.
+its results is the project's own business. The exception is the loop's own process data: the
+supervisor exports each dispatched card to `.meerkat/<identifier>/` under this directory
+(and the subagent keeps its notes, evidence and downloaded attachments there). That is loop
+state, not a project-results store; a project should ignore `.meerkat/` in version control.
 
 ## Schema
 
@@ -29,9 +32,9 @@ empty, blank or not a string is a **failure**, not a reason to fall through.
 ```json
 {
   "projects": [
-    { "local_path": "/Users/you/code/meerkat-taskpanel", "project": "TaskPanel" },
-    { "local_path": "/Users/you/code/reporting", "project": "reporting" },
-    { "run_dir": "/Users/you/ops-inbox", "project": "Ops" },
+    { "project": "TaskPanel", "local_path": "/Users/you/code/meerkat-taskpanel" },
+    { "project": "reporting", "local_path": "/Users/you/code/reporting" },
+    { "project": "Ops", "run_dir": "/Users/you/ops-inbox" },
     { "project": "Community" }
   ]
 }
@@ -66,9 +69,9 @@ A lookup ends in one of three answers:
 | `PROJECT_DIR_UNMAPPED` | there is no entry for the project | stop and ask |
 
 Two surfaces apply the same file: `taskctl project dir <project>` (the map path is
-`$MEERKAT_TASKPANEL_PROJECTS_JSON` — which may also be set in the install-root `.env`, the
+`$MEERKAT_TASKPANEL_PROJECTS_JSON` — which may also be set in the program-root `.env`, the
 process environment winning — else the copy beside the skill), and the wake glue, which
-`cd`s into the directory before starting a host. A worker needs a directory, so a wake refuses
+`cd`s into the directory before starting an agent. A worker needs a directory, so a wake refuses
 both `dir: null` and an unmapped project.
 
 ## No directory is an answer
@@ -86,50 +89,14 @@ directory "so the command works". If a worker must start somewhere, give the ent
 
 ## Unregistered: no fallback — ask
 
-A project absent from the file has no registered directory, and the board cannot supply one —
-no `workspace_path`, no `context` command, no registry anchor. Do not invent, guess or derive
-one. When a step needs the directory, stop and ask:
-
-```text
-No local directory is registered for project <project>.
-Which directory does it work in? I will add it to projects.json beside this skill
-(references/projects-json.md) — the board cannot supply one.
-```
-
-The same prompt applies to a registered-but-unusable path, naming what is wrong. Work that
-needs no directory — claiming, moving, commenting, delivering — is unaffected.
+A project absent from the file has no registered directory (`PROJECT_DIR_UNMAPPED`), and the
+board cannot supply one — no `workspace_path`, no `context` command, no registry anchor. Do
+not invent, guess or derive one: stop and ask. `SKILL.md` carries the prompt to use; the same
+applies to a registered-but-unusable path, naming what is wrong.
 
 ## Metadata: the rest of the entry
 
 Anything beyond `project`, `local_path` and `run_dir` is **yours**; the skill reads the three
-and ignores the rest. Use it for what an agent should know about the project:
-
-```json
-{
-  "project": "TaskPanel",
-  "local_path": "/Users/you/code/meerkat-taskpanel",
-  "kind": "code",
-  "notes": "public repo, MIT; commits use explicit paths"
-}
-```
-
-The key set is not defined here and will not be: taskpanel neither prescribes nor interprets
-it, and nothing in the board or the skill depends on any of it.
-
-## Installing, re-installing and `--force`
-
-`projects.json` sits inside the installed skill directory:
-
-- **A plain re-run leaves it alone** — `install.sh` merges, never clobbers.
-- **`--force` replaces the whole directory**, so back the file up first.
-- **`--link` points the skill at a checkout**; the map then lands in that checkout — keep it
-  out of version control.
-
-## Three boundaries
-
-1. **No project-directory management.** The board does not store, validate, match or resolve a
-   project's directory — not in a column, not in a route, not in a command.
-2. **No project-data management.** Where results live is the business's decision; the board
-   keeps task data complete, reliable, traceable and auditable.
-3. **`meta` is optional.** Whether you manage a project's source data with it is your own
-   convention; this skill takes no position.
+and ignores the rest, so use it for what an agent should know about the project
+(`"kind": "code"`, a `notes` line, …). The key set is not defined here and will not be:
+taskpanel neither prescribes nor interprets it.

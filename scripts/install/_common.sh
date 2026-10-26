@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 #
-# Shared implementation for the per-host installers
-# (claude / openclaw / codex / pi / opencode / cursor).
+# Shared implementation for the per-agent-kind installers
+# (claude / openclaw / codex / pi).
 #
-# Two skills are distributed, and each host takes the ones that fit it:
+# Three skills are distributed, and each agent kind takes the ones that fit it:
 #
-#   * `meerkat-taskpanel` — the board. Every host installs it (`install_skill`).
-#   * `meerkat-loop` — the host-external supervisor. claude, codex and pi install it
-#     (`install_loop_skill` + `install_scheduling`); **OpenClaw does not**, because the
+#   * `meerkat-taskpanel` — the board. Every agent kind installs it (`install_skill`).
+#   * `meerkat-loop` — the external supervisor. The three non-OpenClaw agent kinds install
+#     it (`install_loop_skill` + `install_scheduling`); **OpenClaw does not**, because the
 #     openclaw-team framework already ships a per-agent poll and a `task-patrol`, which
 #     is the same design (its cadence is the framework's own AUTOMATIONS.md, not a
 #     number restated here) — see `scripts/install/openclaw.sh` and docs/scheduling.md.
-#     **OpenCode and Cursor do not either**: their headless forms are unverified from
-#     here, so pointing an unattended daemon at them is a different risk class — see
-#     `scripts/install/opencode.sh` and `cursor.sh`.
+#   * `setup-meerkat` — the install/repair and team-setup command. **Only the Claude
+#     bundle copies it** (`claude.sh`); the repository bundle and marketplace still carry
+#     it for the other kinds, but the bash installer does not copy it there.
 #
-# Each host script sources this file and calls the pieces it needs. The two bundle hosts
-# (claude, codex) add the config / command / trigger helpers below; the skill-only hosts
-# (openclaw, pi, opencode, cursor) do not (pi still takes the loop, the other three do not).
+# Each agent-kind script sources this file and calls the pieces it needs. The two bundle agent kinds
+# (claude, codex) add the config / command / trigger helpers below; the skill-only agent kinds
+# (openclaw, pi) do not (pi still takes the loop, OpenClaw does not).
 #
 # Honours:
 #
@@ -30,7 +30,7 @@
 #   MEERKAT_TASKPANEL_MIN_NODE     required Node major (default: 22)
 #   MEERKAT_TASKPANEL_SKIP_NODE_CHECK  "1" to skip the Node version check
 #   MEERKAT_TASKPANEL_SUPERVISOR   "enable"/"disable"/"status" — the opt-in supervisor
-#                                  action for this host (empty: only print the load command,
+#                                  action for this agent kind (empty: only print the load command,
 #                                  which is what a plain install does)
 #   MEERKAT_TASKPANEL_SCHEDULER    which mechanism that action acts on (default: auto)
 #
@@ -40,36 +40,29 @@
 
 set -eu
 
-# legacy-name-compat: the pre-rename TASKPANEL_* variables are still honoured —
-# the rename to MEERKAT_TASKPANEL_* is a migration, and an existing profile or
-# wrapper script must keep working. The new name wins when both are set. Read
-# once, here, so every helper below sees a single spelling.
-MEERKAT_TASKPANEL_TARGET_HOME="${MEERKAT_TASKPANEL_TARGET_HOME:-${TASKPANEL_TARGET_HOME:-}}"
-MEERKAT_TASKPANEL_AGENT_NAME="${MEERKAT_TASKPANEL_AGENT_NAME:-${TASKPANEL_AGENT_NAME:-}}"
-MEERKAT_TASKPANEL_LINK="${MEERKAT_TASKPANEL_LINK:-${TASKPANEL_LINK:-}}"
-MEERKAT_TASKPANEL_FORCE="${MEERKAT_TASKPANEL_FORCE:-${TASKPANEL_FORCE:-}}"
-MEERKAT_TASKPANEL_DRY_RUN="${MEERKAT_TASKPANEL_DRY_RUN:-${TASKPANEL_DRY_RUN:-}}"
-MEERKAT_TASKPANEL_NO_AUTOMATION="${MEERKAT_TASKPANEL_NO_AUTOMATION:-${TASKPANEL_NO_AUTOMATION:-}}"
-MEERKAT_TASKPANEL_MIN_NODE="${MEERKAT_TASKPANEL_MIN_NODE:-${TASKPANEL_MIN_NODE:-}}"
-MEERKAT_TASKPANEL_SKIP_NODE_CHECK="${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-${TASKPANEL_SKIP_NODE_CHECK:-}}"
-MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-${TASKPANEL_CLAIM_UNASSIGNED:-}}"
-# No pre-rename alias for these: the supervisor's flag surface is new in the opt-in
-# contract, so there is no TASKPANEL_SUPERVISOR spelling in the wild to keep working.
+# The installer speaks one spelling: MEERKAT_TASKPANEL_*. Read once, here, so every
+# helper below sees a single set of values.
+MEERKAT_TASKPANEL_TARGET_HOME="${MEERKAT_TASKPANEL_TARGET_HOME:-}"
+MEERKAT_TASKPANEL_AGENT_NAME="${MEERKAT_TASKPANEL_AGENT_NAME:-}"
+MEERKAT_TASKPANEL_LINK="${MEERKAT_TASKPANEL_LINK:-}"
+MEERKAT_TASKPANEL_FORCE="${MEERKAT_TASKPANEL_FORCE:-}"
+MEERKAT_TASKPANEL_DRY_RUN="${MEERKAT_TASKPANEL_DRY_RUN:-}"
+MEERKAT_TASKPANEL_NO_AUTOMATION="${MEERKAT_TASKPANEL_NO_AUTOMATION:-}"
+MEERKAT_TASKPANEL_MIN_NODE="${MEERKAT_TASKPANEL_MIN_NODE:-}"
+MEERKAT_TASKPANEL_SKIP_NODE_CHECK="${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-}"
+MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-}"
 MEERKAT_TASKPANEL_SUPERVISOR="${MEERKAT_TASKPANEL_SUPERVISOR:-}"
 MEERKAT_TASKPANEL_SCHEDULER="${MEERKAT_TASKPANEL_SCHEDULER:-}"
 # The workflow channel's persisted answers. Empty means "not given" and falls back to
-# the supervisor's default (workflow on, auto-accept on, no reviewer).
+# the supervisor's default (workflow on, no reviewer).
 MEERKAT_TASKPANEL_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-}"
-MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS="${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-}"
 MEERKAT_TASKPANEL_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
-MEERKAT_TASKPANEL_ACCEPTANCE_POLICY="${MEERKAT_TASKPANEL_ACCEPTANCE_POLICY:-}"
 MEERKAT_TASKPANEL_RECOVER_STALE="${MEERKAT_TASKPANEL_RECOVER_STALE:-}"
 export MEERKAT_TASKPANEL_TARGET_HOME MEERKAT_TASKPANEL_AGENT_NAME MEERKAT_TASKPANEL_LINK \
   MEERKAT_TASKPANEL_FORCE MEERKAT_TASKPANEL_DRY_RUN MEERKAT_TASKPANEL_NO_AUTOMATION \
   MEERKAT_TASKPANEL_MIN_NODE MEERKAT_TASKPANEL_SKIP_NODE_CHECK MEERKAT_TASKPANEL_CLAIM_UNASSIGNED \
   MEERKAT_TASKPANEL_SUPERVISOR MEERKAT_TASKPANEL_SCHEDULER \
-  MEERKAT_TASKPANEL_WORKFLOW MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS MEERKAT_TASKPANEL_REVIEWER \
-  MEERKAT_TASKPANEL_ACCEPTANCE_POLICY MEERKAT_TASKPANEL_RECOVER_STALE
+  MEERKAT_TASKPANEL_WORKFLOW MEERKAT_TASKPANEL_REVIEWER MEERKAT_TASKPANEL_RECOVER_STALE
 
 # is_int64 <value> — 0 when <value> is a non-negative integer that fits in a
 # signed 64-bit integer (the width bash's `[ … -lt … ]` test arithmetic uses),
@@ -100,8 +93,8 @@ is_int64() {
 # The engine stores to SQLite through the built-in `node:sqlite` module, which
 # the 22.x line is the first to ship. Without this check a machine below 22 —
 # or with no Node at all — "installs" the skill and then fails on first use.
-# It lives here, inside `install_skill`, because *every* host script calls that,
-# so a direct `scripts/install/<host>.sh` run is guarded exactly like a run
+# It lives here, inside `install_skill`, because *every* agent-kind script calls that,
+# so a direct `scripts/install/<actor-kind>.sh` run is guarded exactly like a run
 # through the `install.sh` dispatcher (which also calls it, once, up front).
 #
 # Uses only shell builtins and `command`, so it behaves the same on a bare PATH.
@@ -158,7 +151,7 @@ require_node() {
 }
 
 # ---------------------------------------------------------------------------
-# Shared context — resolved relative to the *host script* that sourced this file.
+# Shared context — resolved relative to the *agent-kind script* that sourced this file.
 # ---------------------------------------------------------------------------
 
 script_dir() { cd "$(dirname "$0")" && pwd; }
@@ -173,14 +166,14 @@ apply_helper() { printf '%s\n' "$(script_dir)/lib/apply.mjs"; }
 # preview, so bash and JS can differ only by a bug in it, never by drift.
 unit_path_helper() { printf '%s\n' "$(script_dir)/lib/unit-path.mjs"; }
 
-# resolve_host_cli_dir <cli> — the directory that holds <cli>, or nothing.
+# resolve_agent_cli_dir <cli> — the directory that holds <cli>, or nothing.
 #
 # `command -v` answers with the name that would run, which is often a symlink
 # (`~/.nvm/…/bin/claude` → `../lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe`).
 # The directory that has to be on a unit's PATH is the one the name resolves *from*, so
 # the symlink's own directory is the answer — never its target. A name with no slash is
 # not a PATH hit at all (a builtin, a function), so it yields nothing rather than a guess.
-resolve_host_cli_dir() {
+resolve_agent_cli_dir() {
   cli_path="$(command -v "$1" 2>/dev/null || true)"
   case "$cli_path" in
     */*) printf '%s\n' "${cli_path%/*}" ;;
@@ -188,21 +181,13 @@ resolve_host_cli_dir() {
   esac
 }
 
-# loop_src — the loop skill's source, which owns the loop body and the loop's templates.
-#
-# The loop is a skill of its own (skills/meerkat-loop/): its execution body and the units /
-# wake / config templates it is deployed with are *generated* into it from this repository's
-# scripts/, src/foundation/ and scripts/install/templates/, and guarded by
-# `node scripts/sync-skills.mjs --check`. The installer reads them from there rather than
-# from this repository's own scripts/ — so what is deployed is exactly what was distributed
-# and verified, not a second reading of the same inputs.
-loop_src() { printf '%s\n' "$(repo_root)/skills/meerkat-loop"; }
-
-# board_skill_name / loop_skill_name — the two skills this installer distributes.
+# board_skill_name / loop_skill_name / setup_skill_name — the skills this installer
+# distributes. The setup skill is copied only for the Claude bundle (see claude.sh).
 board_skill_name() { printf '%s\n' "meerkat-taskpanel"; }
 loop_skill_name() { printf '%s\n' "meerkat-loop"; }
+setup_skill_name() { printf '%s\n' "setup-meerkat"; }
 
-# agent_name — the identity written into the host bundle.
+# agent_name — the identity written into the agent bundle.
 #
 # `--agent-name` (MEERKAT_TASKPANEL_AGENT_NAME) wins; the default is $USER, then $LOGNAME,
 # then a stable "agent" placeholder. The name is the board assignee: claiming a card
@@ -224,7 +209,7 @@ agent_name() {
 # the one thing it must not do.
 #
 # The default is the OS user, which is who installs the board; never empty, so a
-# host with no `$USER`/`$LOGNAME` behaves exactly as it did before this existed.
+# agent with no `$USER`/`$LOGNAME` behaves exactly as it did before this existed.
 human_name() {
   local name="${MEERKAT_TASKPANEL_HUMAN_NAME:-}"
   [ -n "$name" ] || name="${USER:-}"
@@ -233,79 +218,68 @@ human_name() {
   printf '%s\n' "$name"
 }
 
-# export_tp_env <host_dir> <label> — export the TP_* variables the template renderer reads.
+# export_tp_env <agent_dir> <label> — export the TP_* variables the template renderer reads.
 #
 # {{AGENT}} <- TP_AGENT, {{REPO}} <- TP_REPO, {{SHIM}} <- TP_SHIM, and so on. The
 # destinations are absolute under the target home so the hook / trigger / shim / scheduling
 # units work regardless of the caller's working directory.
 export_tp_env() {
-  host_dir="$1"
+  agent_dir="$1"
   label="$2"
   TP_AGENT="$(agent_name)"
   TP_HUMAN="$(human_name)"
-  TP_REPO="$(repo_root)"
-  TP_SHIM="$(target_home)/$host_dir/bin/taskctl"
-  TP_HOOK="$(target_home)/$host_dir/hooks/meerkat-taskpanel-session-start.sh"
-  TP_TRIGGER="$(target_home)/$host_dir/meerkat-taskpanel-claim.sh"
-  # The host-external supervisor: the scheduling units run it, and it reads the config
-  # file written below. Log and state are fixed per host so a user always knows where
-  # they land (documented in docs/scheduling.md).
+  # A full server install materializes the runtime tree; the agent shims and the
+  # loop must drive *that* tree, not the npm cache / checkout they were copied
+  # from. Agent-only installs leave the override unset and keep the old behavior.
+  TP_REPO="${MEERKAT_TASKPANEL_REPO:-$(repo_root)}"
+  TP_SHIM="$(target_home)/$agent_dir/bin/taskctl"
+  TP_HOOK="$(target_home)/$agent_dir/hooks/meerkat-taskpanel-session-start.sh"
+  # The external loop is `taskctl loop …`, shipped by the runtime tree `TP_REPO`
+  # names. Log and state are fixed per agent kind so a user always knows where they
+  # land (documented in docs/scheduling.md).
   #
-  # The executor the units name is a **host-local copy**, not this checkout's own file:
-  # `install_scheduling` copies the loop body into `$TP_LOOP` (see `install_loop_body`),
-  # so a unit a user has already loaded keeps working after the checkout is moved,
-  # renamed or removed — and never has to be reloaded for that.
-  TP_HOST="$label"
-  TP_HOST_BASE="$(target_home)/$host_dir"
-  TP_LOOP="$(target_home)/$host_dir/meerkat-taskpanel"
-  TP_SUPERVISOR="$TP_LOOP/scripts/supervisor.mjs"
+  # The units name the CLI entry, not an agent-local copy of the loop body: the
+  # body now lives in the toolkit (`src/orchestrator/`), so there is one
+  # implementation to upgrade and the unit needs no reload when it changes.
+  TP_ACTOR_KIND="$label"
+  TP_AGENT_BASE="$(target_home)/$agent_dir"
+  TP_LOOP="$(target_home)/$agent_dir/meerkat-taskpanel"
+  TP_STATE_DIR="$TP_LOOP"
+  TP_CLI="$TP_REPO/src/cli/index.mjs"
   TP_LOG="$TP_LOOP/supervisor.log"
-  TP_STATE="$TP_LOOP/supervisor.state.json"
-  TP_ENV="$(target_home)/$host_dir/meerkat-taskpanel.env"
-  TP_SCHED="$(target_home)/$host_dir/scheduling"
-  TP_WAKE="$(target_home)/$host_dir/bin/wake-$label.sh"
+  TP_ENV="$(target_home)/$agent_dir/meerkat-taskpanel.env"
+  TP_SCHED="$(target_home)/$agent_dir/scheduling"
   TP_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-yes}"
   TP_RECOVER_STALE="${MEERKAT_TASKPANEL_RECOVER_STALE:-yes}"
   # The workflow channel's remembered answers. An empty reviewer is deliberate and
   # renders as `KEY=`, which the supervisor reads as "not configured".
   TP_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-yes}"
-  TP_AUTO_ACCEPT_REVIEWS="${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-yes}"
   TP_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
-  # Who may close a task (`human-only` | `both` | `agent-only`). The board reads
-  # its own copy from the install-root `.env`; this is the loop's remembered copy.
-  TP_ACCEPTANCE_POLICY="${MEERKAT_TASKPANEL_ACCEPTANCE_POLICY:-both}"
-  case "$TP_ACCEPTANCE_POLICY" in
-    human-only | both | agent-only) ;;
-    *)
-      echo "$TP_HOST: MEERKAT_TASKPANEL_ACCEPTANCE_POLICY must be human-only, both or agent-only (got '$TP_ACCEPTANCE_POLICY')" >&2
-      return 1
-      ;;
-  esac
   # The scheduler's two clocks. Ping only prunes dead worker pids; continue is
-  # the bounded `继续` judgment turn that runs poll/patrol/workflow.
+  # the bounded `Continue` judgment turn that runs poll/patrol/workflow.
   TP_PING_INTERVAL="${MEERKAT_TASKPANEL_PING_INTERVAL:-60}"
   TP_CONTINUE_INTERVAL="${MEERKAT_TASKPANEL_CONTINUE_INTERVAL:-600}"
   TP_CONTINUE="${MEERKAT_TASKPANEL_CONTINUE:-yes}"
   case "$TP_PING_INTERVAL" in
     "" | *[!0-9]*)
-      echo "$TP_HOST: MEERKAT_TASKPANEL_PING_INTERVAL must be a positive integer (got '$TP_PING_INTERVAL')" >&2
+      echo "$TP_ACTOR_KIND: MEERKAT_TASKPANEL_PING_INTERVAL must be a positive integer (got '$TP_PING_INTERVAL')" >&2
       return 1
       ;;
   esac
   case "$TP_CONTINUE_INTERVAL" in
     "" | *[!0-9]*)
-      echo "$TP_HOST: MEERKAT_TASKPANEL_CONTINUE_INTERVAL must be a positive integer (got '$TP_CONTINUE_INTERVAL')" >&2
+      echo "$TP_ACTOR_KIND: MEERKAT_TASKPANEL_CONTINUE_INTERVAL must be a positive integer (got '$TP_CONTINUE_INTERVAL')" >&2
       return 1
       ;;
   esac
   if [ "$TP_PING_INTERVAL" -le 0 ] || [ "$TP_CONTINUE_INTERVAL" -le 0 ]; then
-    echo "$TP_HOST: the ping and continue intervals must be positive" >&2
+    echo "$TP_ACTOR_KIND: the ping and continue intervals must be positive" >&2
     return 1
   fi
   case "$TP_CONTINUE" in
     yes | no | true | false | 1 | 0 | y | n | on | off) ;;
     *)
-      echo "$TP_HOST: MEERKAT_TASKPANEL_CONTINUE must be yes or no (got '$TP_CONTINUE')" >&2
+      echo "$TP_ACTOR_KIND: MEERKAT_TASKPANEL_CONTINUE must be yes or no (got '$TP_CONTINUE')" >&2
       return 1
       ;;
   esac
@@ -323,18 +297,18 @@ export_tp_env() {
     fi
   else
     TP_CONTINUE_CRON="*/10 * * * *"
-    echo "$TP_HOST: continue interval ${TP_CONTINUE_INTERVAL}s is not a whole number of minutes; cron falls back to */10" >&2
+    echo "$TP_ACTOR_KIND: continue interval ${TP_CONTINUE_INTERVAL}s is not a whole number of minutes; cron falls back to */10" >&2
   fi
 
   # --- what the scheduling units run with -------------------------------------
   #
   # A scheduler starts a unit with a minimal PATH of its own, so on a machine whose node
   # lives under nvm or Homebrew the unit hits the same wall twice (T-20261014-020103-2):
-  # `/usr/bin/env node` exits 127, and — fixing only that — the glue the tick starts then
-  # fails the same way, because `exec claude` looks the host CLI up on the *inherited*
-  # minimal PATH. Both layers are therefore fixed by one lever: the unit names its
+  # `/usr/bin/env node` exits 127, and — fixing only that — the agent process the tick starts
+  # then fails the same way, because it looks the agent CLI up on the *inherited* minimal
+  # PATH. Both layers are therefore fixed by one lever: the unit names its
   # interpreter outright (`{{NODE}}`) **and** carries a PATH (`{{UNIT_PATH_*}}`) whose head
-  # is the host CLI's directory and node's. The recipe lives in lib/unit-path.mjs — one
+  # is the agent CLI's directory and node's. The recipe lives in lib/unit-path.mjs — one
   # definition, read here through its CLI, so bash cannot drift from the JS side.
   #
   # `{{NODE}}` is version-pinned, exactly like the taskd unit's: after a node or CLI
@@ -345,7 +319,7 @@ export_tp_env() {
   # only where the values would actually be used. Where they are used, it is fatal: a unit
   # that renders an empty interpreter is the 127 this exists to remove.
   if TP_NODE="$(node "$(unit_path_helper)" node 2>/dev/null)"; then
-    TP_CLI_DIR="$(resolve_host_cli_dir "$label")"
+    TP_CLI_DIR="$(resolve_agent_cli_dir "$label")"
     if [ -n "$TP_CLI_DIR" ]; then
       TP_UNIT_PATH_LAUNCHD="$(node "$(unit_path_helper)" path --scheduler launchd --cli-dir "$TP_CLI_DIR")"
       TP_UNIT_PATH_CRON="$(node "$(unit_path_helper)" path --scheduler cron --cli-dir "$TP_CLI_DIR")"
@@ -353,20 +327,20 @@ export_tp_env() {
     else
       # Degrade loudly, never silently: the interpreter still resolves (that is `{{NODE}}`'s
       # job), but a woken worker would not — so *record* that, and let `install_scheduling`
-      # say it, because only it knows whether this host gets units at all. A host with no
-      # supervisor (OpenClaw, OpenCode, Cursor) renders no unit and must not be warned about one.
+      # say it, because only it knows whether this agent kind gets units at all. An agent kind with no
+      # supervisor (OpenClaw) renders no unit and must not be warned about one.
       TP_UNIT_PATH_LAUNCHD="$(node "$(unit_path_helper)" path --scheduler launchd)"
       TP_UNIT_PATH_CRON="$(node "$(unit_path_helper)" path --scheduler cron)"
       TP_CLI_ON_PATH="0"
     fi
   elif [ -z "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-    echo "$TP_HOST: could not resolve the interpreter for the scheduling units (is 'node' on PATH?)" >&2
+    echo "$TP_ACTOR_KIND: could not resolve the interpreter for the scheduling units (is 'node' on PATH?)" >&2
     return 1
   fi
 
-  export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
-  export TP_HOST TP_HOST_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
-  export TP_RECOVER_STALE TP_WORKFLOW TP_AUTO_ACCEPT_REVIEWS TP_REVIEWER TP_ACCEPTANCE_POLICY
+  export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK
+  export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_STATE_DIR TP_CLI TP_LOG TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED
+  export TP_RECOVER_STALE TP_WORKFLOW TP_REVIEWER
   export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
   export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON TP_CLI_ON_PATH
 }
@@ -411,48 +385,6 @@ claim_unassigned_value() {
   printf 'yes\n'
 }
 
-# acceptance_policy_value <flag> <interactive> — decide "who may close a task?".
-# Prints `human-only`, `both` or `agent-only`:
-#
-#   * an explicit <flag> wins, verbatim;
-#   * otherwise, when <interactive> is "1" (stdin is a TTY), ask once — default
-#     `both` on a blank answer (the historical rule);
-#   * otherwise (including --dry-run) default `both`.
-#
-# An unrecognised <flag> is a hard error, never a silent default: a misspelt
-# policy must not install a board that closes differently than asked.
-acceptance_policy_value() {
-  flag="$1"
-  interactive="$2"
-  case "$flag" in
-    human-only | both | agent-only)
-      printf '%s\n' "$flag"
-      return 0
-      ;;
-    "")
-      ;;
-    *)
-      echo "--acceptance must be human-only, both or agent-only (got '$flag')." >&2
-      return 1
-      ;;
-  esac
-
-  if [ "$interactive" = "1" ]; then
-    printf 'Who may close a task? [1] human (top-level only) [2] human or loop [3] agent only (default 2): ' >&2
-    answer=""
-    read -r answer || answer=""
-    case "$answer" in
-      "" | [2]*) printf 'both\n' ;;
-      [1]*) printf 'human-only\n' ;;
-      [3]*) printf 'agent-only\n' ;;
-      *) printf 'both\n' ;;
-    esac
-    return 0
-  fi
-
-  printf 'both\n'
-}
-
 # supervisor_value <flag> <interactive> — decide the opt-in supervisor action. Prints
 # `enable`, `disable`, `status`, or **empty** for "do nothing" (a plain install):
 #
@@ -494,15 +426,15 @@ supervisor_value() {
   printf ''
 }
 
-# apply_supervisor — perform this host's requested enable / disable / status action.
-# Requires export_tp_env first (TP_HOST, TP_AGENT, TP_HOST_BASE, TP_SCHED).
+# apply_supervisor — perform this agent kind's requested enable / disable / status action.
+# Requires export_tp_env first (TP_ACTOR_KIND, TP_AGENT, TP_AGENT_BASE, TP_SCHED).
 #
 # This is the opt-in path `docs/scheduling.md` defines, and the one place an installer
 # starts something: with no request (an empty MEERKAT_TASKPANEL_SUPERVISOR) nothing here
 # runs at all, so a plain install still only prints the load command.
 #
 # A refusal from the OS (`supervisor: not enabled …`, exit 1) is **reported, not fatal**:
-# the host's skills are installed either way, and the install summary's own remedy
+# the agent's skills are installed either way, and the install summary's own remedy
 # ("re-run with --force") would not apply to, say, a launchd bootstrap with no GUI
 # session. Anything else — a bad action or scheduler value, or a crashed helper — fails.
 apply_supervisor() {
@@ -531,175 +463,73 @@ apply_supervisor() {
 
   status=0
   node "$(script_dir)/lib/supervisor.mjs" "$action" \
-    --host "$TP_HOST" \
+    --actor-kind "$TP_ACTOR_KIND" \
     --agent "$TP_AGENT" \
-    --host-base "$TP_HOST_BASE" \
+    --agent-base "$TP_AGENT_BASE" \
     --scheduler "$scheduler" $dry || status=$?
 
   if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
-    echo "$TP_HOST: the supervisor helper failed (exit $status)" >&2
+    echo "$TP_ACTOR_KIND: the supervisor helper failed (exit $status)" >&2
     return "$status"
   fi
   return 0
 }
 
-# install_loop_body — copy the loop execution body into the host. Requires
-# export_tp_env first (TP_LOOP, TP_HOST).
+# install_scheduling — write the scheduling units, then either print the exact
+# command that loads them or — when the user asked for it (`--supervisor=…`, i.e.
+# MEERKAT_TASKPANEL_SUPERVISOR is set) — run that load. Without a request the installer
+# never runs `launchctl` / `systemctl` / `crontab` itself: enabling a daemon is the user's
+# call, and a plain install must have no side effects. Requires export_tp_env first.
 #
-# The scheduling units run whatever path `TP_SUPERVISOR` names. When that path was
-# this checkout's own `scripts/supervisor.mjs`, moving, renaming or deleting the
-# checkout left every loaded unit pointing at a file that was gone: the loop died
-# with the directory, and reviving it meant reinstalling *and* reloading the unit.
-# The body now lives in the host, and the units name that copy:
-#
-#   <home>/<host-dir>/meerkat-taskpanel/scripts/supervisor.mjs   the executor
-#   <home>/<host-dir>/meerkat-taskpanel/scripts/wake-cwd.mjs     the glue's resolver
-#   <home>/<host-dir>/meerkat-taskpanel/scripts/foundation/**    their imports
-#
-# The `scripts/` + `scripts/foundation/` shape is load-bearing, not decoration: the body's
-# modules import each other relatively (`../foundation/scheduling.mjs`), so a copy of
-# one file would resolve a relative import to nothing and the unit would die at load.
-# Foundation is copied byte-for-byte; the entry scripts are copied with only their
-# foundation specifiers rewritten to that shape.
-# The set to copy is **not** restated here — it is read from the loop skill's generated
-# `manifest.txt` at its root, which is the closure itself (computed from the two entry points'
-# imports by `scripts/sync-loop.mjs` and guarded by `--check`). One source, so a new
-# import in the body cannot leave bash — or the test that proves the copy is closed —
-# silently behind.
-#
-# The board engine the executor drives (`taskctl`) still lives in the checkout: the
-# host config records where, so a host-installed executor still finds it. Moving the
-# checkout is then a re-run of `install.sh` away — no unit reload, because the unit
-# never named the checkout in the first place.
-#
-# Merge-never-clobber like every other installed artefact: a member whose content
-# already matches is left untouched; a differing one is left alone without `--force`.
-# `--dry-run` says which of the two it would be, so drift is reportable without writing.
-install_loop_body() {
-  manifest="$(loop_src)/manifest.txt"
-  if [ ! -f "$manifest" ]; then
-    echo "$TP_HOST: loop body manifest not found: $manifest" >&2
-    echo "$TP_HOST: run 'node scripts/sync-skills.mjs' in the checkout and retry." >&2
-    return 1
-  fi
-
-  while read -r rel; do
-    [ -n "$rel" ] || continue
-    src="$(loop_src)/$rel"
-    dest="$TP_LOOP/$rel"
-
-    if [ ! -f "$src" ]; then
-      echo "$TP_HOST: loop source not found: $src" >&2
-      return 1
-    fi
-
-    if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
-      if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-        echo "would keep  $dest (already current)"
-      fi
-      continue
-    fi
-
-    if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-      if [ -f "$dest" ]; then
-        echo "would refresh $dest (differs from the loop skill — --force applies it)"
-      else
-        echo "would copy  $src -> $dest"
-      fi
-      continue
-    fi
-
-    if [ -f "$dest" ] && [ -z "${MEERKAT_TASKPANEL_FORCE:-}" ]; then
-      echo "$TP_HOST: loop body kept: $dest (differs from the loop skill — re-run with --force to refresh)"
-      continue
-    fi
-
-    mkdir -p "$(dirname "$dest")"
-    cp "$src" "$dest"
-    echo "$TP_HOST: copied  $dest"
-  done < "$manifest"
-}
-
-# install_scheduling — drop the loop body, the poll/patrol units and the per-host wake
-# glue, then either print the exact command that loads them or — when the user asked for
-# it (`--supervisor=…`, i.e. MEERKAT_TASKPANEL_SUPERVISOR is set) — run that load. Without
-# a request the installer never runs `launchctl` / `systemctl` / `crontab` itself:
-# enabling a daemon is the user's call, and a plain install must have no side effects.
-# Requires export_tp_env first.
-#
-# Every template here comes from the **loop** skill (`emit_loop_file`), not from this
-# installer's own templates: the units, the wake glues and the host config are the loop's
-# payload, and deploying the copy the loop skill distributes is what keeps "what shipped"
-# and "what was verified" the same bytes.
-# remove_legacy_unit_files — drop the poll/patrol templates this installer used to
-# write. A loaded legacy unit is taken down by `apply_supervisor enable`; these are
-# the on-disk copies, removed only after that so a user cannot accidentally reload
-# the old topology. `--dry-run` reports instead of deleting.
-remove_legacy_unit_files() {
-  for legacy in \
-    "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist" \
-    "$TP_SCHED/launchd/com.meerkat-taskpanel.patrol.plist" \
-    "$TP_SCHED/systemd/meerkat-taskpanel-poll.service" \
-    "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer" \
-    "$TP_SCHED/systemd/meerkat-taskpanel-patrol.service" \
-    "$TP_SCHED/systemd/meerkat-taskpanel-patrol.timer"; do
-    [ -e "$legacy" ] || continue
-    if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-      echo "would remove $legacy"
-    else
-      rm -f "$legacy"
-    fi
-  done
-}
-
+# The templates are this installer's own (`scripts/install/templates/`), the one place
+# they live: the loop skill carries decisions, not deployment files.
 install_scheduling() {
-  install_loop_body
-
-  # Said here, not in export_tp_env: this is the function that knows the host gets
-  # units, and the warning is about *them*. A host with no supervisor never reaches it.
-  if [ "${TP_CLI_ON_PATH:-1}" = "0" ]; then
-    echo "$TP_HOST: $TP_HOST is not on PATH — the scheduling units will carry node's directory only,"
-    echo "$TP_HOST:   so a woken $TP_HOST would not resolve. Install it, then re-run this install with --force."
+  # The loop's state directory (queue, ledger, locks, status files). It used to be
+  # created as a side effect of copying the body; now nothing else makes it.
+  if [ -z "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    mkdir -p "$TP_LOOP"
   fi
 
-  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.ping.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist"
-  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.continue.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.continue.plist"
-  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.subscribe.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.subscribe.plist"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.service" "$TP_SCHED/systemd/meerkat-taskpanel-ping.service"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.timer" "$TP_SCHED/systemd/meerkat-taskpanel-ping.timer"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.service" "$TP_SCHED/systemd/meerkat-taskpanel-continue.service"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.timer" "$TP_SCHED/systemd/meerkat-taskpanel-continue.timer"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-subscribe.service" "$TP_SCHED/systemd/meerkat-taskpanel-subscribe.service"
-  emit_loop_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
-  emit_loop_file "$TP_HOST/wake-$TP_HOST.sh" "$TP_WAKE" --exec
+  # Said here, not in export_tp_env: this is the function that knows the agent kind gets
+  # units, and the warning is about *them*. An agent kind with no supervisor never reaches it.
+  if [ "${TP_CLI_ON_PATH:-1}" = "0" ]; then
+    echo "$TP_ACTOR_KIND: $TP_ACTOR_KIND is not on PATH — the scheduling units will carry node's directory only,"
+    echo "$TP_ACTOR_KIND:   so a woken $TP_ACTOR_KIND would not resolve. Install it, then re-run this install with --force."
+  fi
 
-  echo "$TP_HOST: scheduling units installed under $TP_SCHED"
+  emit_file "scheduling/launchd/com.meerkat-taskpanel.ping.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist"
+  emit_file "scheduling/launchd/com.meerkat-taskpanel.continue.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.continue.plist"
+  emit_file "scheduling/launchd/com.meerkat-taskpanel.subscribe.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.subscribe.plist"
+  emit_file "scheduling/launchd/com.meerkat-taskpanel.session.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.session.plist"
+  emit_file "scheduling/systemd/meerkat-taskpanel-ping.service" "$TP_SCHED/systemd/meerkat-taskpanel-ping.service"
+  emit_file "scheduling/systemd/meerkat-taskpanel-ping.timer" "$TP_SCHED/systemd/meerkat-taskpanel-ping.timer"
+  emit_file "scheduling/systemd/meerkat-taskpanel-continue.service" "$TP_SCHED/systemd/meerkat-taskpanel-continue.service"
+  emit_file "scheduling/systemd/meerkat-taskpanel-continue.timer" "$TP_SCHED/systemd/meerkat-taskpanel-continue.timer"
+  emit_file "scheduling/systemd/meerkat-taskpanel-subscribe.service" "$TP_SCHED/systemd/meerkat-taskpanel-subscribe.service"
+  emit_file "scheduling/systemd/meerkat-taskpanel-session.service" "$TP_SCHED/systemd/meerkat-taskpanel-session.service"
+  emit_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
+
+  echo "$TP_ACTOR_KIND: scheduling units installed under $TP_SCHED"
 
   if [ -n "${MEERKAT_TASKPANEL_SUPERVISOR:-}" ]; then
     apply_supervisor
-    remove_legacy_unit_files
     return 0
   fi
 
-  if [ -e "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist" ] ||
-    [ -e "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer" ]; then
-    echo "$TP_HOST: legacy poll/patrol units are still present — re-run with --supervisor=enable to migrate them to ping/continue"
-  fi
-
-  echo "$TP_HOST: to start the supervisor, load one of these (nothing is loaded for you):"
+  echo "$TP_ACTOR_KIND: to start the supervisor, load one of these (nothing is loaded for you):"
   echo "  launchd:  launchctl load $TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist   # and .continue.plist + .subscribe.plist"
   echo "  systemd:  mkdir -p ~/.config/systemd/user && cp $TP_SCHED/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service"
   echo "  cron:     crontab $TP_SCHED/cron/meerkat-taskpanel.cron   # no event daemon: cron cannot host one"
 }
 
-# ensure_env_key <key> <value> — add a KEY=value line to the host config when the key
+# ensure_env_key <key> <value> — add a KEY=value line to the agent config when the key
 # is missing, and never touch one that is already there. That is the same
 # merge-not-clobber contract `merge_settings` follows for `env.TASKCTL_AGENT`: adding
-# a key the file lacks is not a clobber. Requires TP_ENV, TP_HOST.
+# a key the file lacks is not a clobber. Requires TP_ENV, TP_ACTOR_KIND.
 #
 # It exists because the config is written once and then left alone — a differing file
 # is skipped without `--force` — so without this an install that predates a key would
-# never learn it, and a host-installed executor would have no way to find the board
+# never learn it, and an agent-installed executor would have no way to find the board
 # engine it drives.
 ensure_env_key() {
   key="$1"
@@ -715,33 +545,35 @@ ensure_env_key() {
   fi
 
   printf '%s=%s\n' "$key" "$value" >> "$TP_ENV"
-  echo "$TP_HOST: recorded $key in $TP_ENV"
+  echo "$TP_ACTOR_KIND: recorded $key in $TP_ENV"
 }
 
 # seed_env_file — create the install-root `.env` on a fresh install.
 #
 # One file, read by taskd and taskctl (and the loop's SSE subscriber). It is a
-# *machine/install* config, not a per-host one: `--target all` must not write six
-# copies, so install.sh calls this once, outside the host loop.
+# *machine/install* config, not a per-agent-kind one: `--target all` must not write four
+# copies, so install.sh calls this once, outside the agent-kind loop.
 #
 # Never overwrites: the file may hold a token or deliberate edits, so even
 # `--force` leaves an existing one alone. `--dry-run` prints and writes nothing.
 # `MEERKAT_TASKPANEL_ENV_FILE` overrides the path (tests, containers, a read-only
 # package root).
 seed_env_file() {
-  env_file="${MEERKAT_TASKPANEL_ENV_FILE:-$ROOT/.env}"
+  # `$ROOT` when the caller has one: install.sh computes it absolutely, and a
+  # relative `bash install.sh` would make repo_root() resolve the checkout's
+  # parent (dirname "install.sh" is "."). server.sh has no $ROOT and calls with
+  # an explicit path, so repo_root() is the right fallback there.
+  seed_root="${ROOT:-$(repo_root)}"
+  if [ "$#" -ge 1 ] && [ -n "$1" ]; then
+    env_file="$1"
+  else
+    env_file="${MEERKAT_TASKPANEL_ENV_FILE:-$seed_root/.env}"
+  fi
   case "$env_file" in
     /*) ;;
-    *) env_file="$ROOT/$env_file" ;;
+    *) env_file="$seed_root/$env_file" ;;
   esac
-  template="$ROOT/scripts/install/templates/env.example"
-
-  # The old board file is no longer read (hard switch). Say so, but do not touch
-  # it: a human may still want to move its keys by hand.
-  legacy_dir="${TASKD_DATA_DIR:-$ROOT/.data}"
-  if [ -f "$legacy_dir/taskd.env" ]; then
-    echo "install.sh: note: $legacy_dir/taskd.env is no longer read; move its keys into $env_file" >&2
-  fi
+  template="$seed_root/scripts/install/templates/env.example"
 
   if [ -f "$env_file" ]; then
     echo "install.sh: kept $env_file (already exists)"
@@ -763,23 +595,20 @@ seed_env_file() {
   return 0
 }
 
-# write_host_config — persist the claim policy the supervisor reads by default, the
-# location of the board engine a host-installed executor drives, and the workflow
+# write_agent_config — persist the claim policy the supervisor reads by default, the
+# location of the board engine an agent-installed executor drives, and the workflow
 # channel's answers. Requires export_tp_env first (TP_ENV, TP_CLAIM_UNASSIGNED,
-# TP_REPO, TP_WORKFLOW, TP_AUTO_ACCEPT_REVIEWS, TP_REVIEWER). The template belongs to
-# the loop skill: the supervisor is what reads it.
+# TP_REPO, TP_WORKFLOW, TP_REVIEWER). The template belongs to the loop skill: the
+# supervisor is what reads it.
 #
-# The three workflow keys are added with `ensure_env_key` as well, so an install that
-# predates them learns them on the next run without any existing value being touched —
-# a host that had deliberately set `AUTO_ACCEPT_REVIEWS=no` keeps it.
-write_host_config() {
-  emit_loop_file "host/meerkat-taskpanel.env" "$TP_ENV"
+# The workflow keys are added with `ensure_env_key` as well, so an install that
+# predates them learns them on the next run without any existing value being touched.
+write_agent_config() {
+  emit_file "agent/meerkat-taskpanel.env" "$TP_ENV"
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
   ensure_env_key "MEERKAT_TASKPANEL_RECOVER_STALE" "$TP_RECOVER_STALE"
   ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"
-  ensure_env_key "MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS" "$TP_AUTO_ACCEPT_REVIEWS"
   ensure_env_key "MEERKAT_TASKPANEL_REVIEWER" "$TP_REVIEWER"
-  ensure_env_key "MEERKAT_TASKPANEL_ACCEPTANCE_POLICY" "$TP_ACCEPTANCE_POLICY"
   ensure_env_key "MEERKAT_TASKPANEL_PING_INTERVAL" "$TP_PING_INTERVAL"
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE_INTERVAL" "$TP_CONTINUE_INTERVAL"
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE" "$TP_CONTINUE"
@@ -789,13 +618,13 @@ write_host_config() {
 # Skill copy
 # ---------------------------------------------------------------------------
 
-# install_skill <host_dir> <label> [skill] [copy-only]
-#   <host_dir>   dot-directory under the target home, e.g. ".claude"
-#   <label>      human-readable host name, e.g. "claude"
+# install_skill <agent_dir> <label> [skill] [copy-only]
+#   <agent_dir>  the agent's config directory under the target home, e.g. ".claude"
+#   <label>      human-readable actor kind, e.g. "claude"
 #   <skill>      skill directory name under skills/ (default: the board skill)
 #   <copy-only>  "copy" to refuse `--link` for this skill (the loop uses it)
 install_skill() {
-  host_dir="$1"
+  agent_dir="$1"
   label="$2"
   skill="${3:-$(board_skill_name)}"
   mode="${4:-}"
@@ -805,7 +634,7 @@ install_skill() {
 
   src="$(repo_root)/skills/$skill"
   target_home="$(target_home)"
-  dest="$target_home/$host_dir/skills/$skill"
+  dest="$target_home/$agent_dir/skills/$skill"
 
   # `--link` names the **board** skill only (O6). The loop must always be a real copy:
   # a symlinked loop would put the checkout back in the load path of the very thing the
@@ -848,8 +677,8 @@ install_skill() {
   fi
 }
 
-# install_loop_skill <host_dir> <label>
-#   The loop skill, for the hosts that run an external supervisor. Always a copy (O6);
+# install_loop_skill <agent_dir> <label>
+#   The loop skill, for the agent kinds that run an external supervisor. Always a copy (O6);
 #   OpenClaw never calls this — its framework already ships an equivalent supervisor, so
 #   a second one would only race the first for the same cards.
 install_loop_skill() {
@@ -890,16 +719,10 @@ emit_from() {
 
 # emit_file <template_rel> <dest> [--exec]
 #   Render this installer's own template (scripts/install/templates/<rel>) into <dest>.
-#   These are the **board** templates: the host's session-start hook and slash commands,
-#   the Codex trigger and AGENTS.md snippet, the taskctl shims.
+#   These are every template the installer writes: the agent's session-start hook and
+#   slash commands, the Codex trigger and AGENTS.md snippet, the taskctl shims, the
+#   scheduling units and the agent config.
 emit_file() { emit_from "$(script_dir)/templates" "$@"; }
-
-# emit_loop_file <template_rel> <dest> [--exec]
-#   Render the **loop** skill's template (skills/meerkat-loop/templates/<rel>) into <dest>:
-#   the scheduling units, the wake glues and the host config. Same relative layout as the
-#   installer's own (host/wake-claude.sh, scheduling/cron/…), so a call site reads the same
-#   either way — the difference is which skill owns the file.
-emit_loop_file() { emit_from "$(loop_src)/templates" "$@"; }
 
 # merge_settings <settings_file>
 #   Merge env.TASKCTL_AGENT and the SessionStart hook into a Claude settings.json,
@@ -912,7 +735,7 @@ merge_settings() {
     return 0
   fi
 
-  # `--kind` is the host platform and it is required, not decoration: a settings
+  # `--kind` is the actor kind and it is required, not decoration: a settings
   # file that names an agent but not what it is leaves every write in that
   # session reading as a human's — and a human's `decision` is the one kind the
   # board acts on.
@@ -920,7 +743,7 @@ merge_settings() {
   [ -n "${MEERKAT_TASKPANEL_FORCE:-}" ] && force_flag="--force"
 
   node "$(apply_helper)" merge-settings "$settings_file" \
-    --agent "$TP_AGENT" --kind "$TP_HOST" --human "$TP_HUMAN" --hook "$TP_HOOK" $force_flag
+    --agent "$TP_AGENT" --kind "$TP_ACTOR_KIND" --human "$TP_HUMAN" --hook "$TP_HOOK" $force_flag
 }
 
 # append_snippet <file> <template_rel> <marker>

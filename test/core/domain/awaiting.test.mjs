@@ -21,9 +21,11 @@ import { AWAITING_REASONS, STATUSES } from "../../../src/core/domain/enums.mjs";
 import {
   assertAwaitingReason,
   firstSentence,
+  isAnsweredAfter,
   isAwaitingReason,
   isConsumed,
   isHumanComment,
+  latestQuestion,
   payloadOf,
   resumeDecision,
 } from "../../../src/core/domain/awaiting.mjs";
@@ -32,12 +34,21 @@ import { DomainError } from "../../../src/foundation/errors.mjs";
 const human = (id, body = "请问这一版的范围可以确认吗？后面还有一句。", extra = {}) => ({
   id,
   body,
+  // The kind is the I5 record, not the resume gate: any human comment answers.
+  kind: "discuss",
   authorKind: "human",
   authorId: "terry",
   createdAt: "2026-10-12T00:00:00.000Z",
   ...extra,
 });
-const agent = (id, body = "我觉得没问题") => ({ id, body, authorKind: "agent", authorId: "linus" });
+const agent = (id, body = "我觉得没问题") => ({ id, body, kind: "note", authorKind: "agent", authorId: "linus" });
+const question = (id, body = "which schema?") => ({
+  id,
+  body,
+  kind: "question",
+  authorKind: "agent",
+  authorId: "linus",
+});
 
 describe("domain/awaiting — the entry reason is an enumeration (§2.1)", () => {
   it("accepts every reason in the vocabulary and nothing else", () => {
@@ -85,6 +96,18 @@ describe("domain/awaiting — the payload is the human comment (§2.2)", () => {
     assert.equal(payloadOf({ comments: [human("h1"), agent("a2"), agent("a3")] }).id, "h1");
   });
 
+  it("prefers the newest question, and falls back to the newest human comment (0034)", () => {
+    // The worker's question is the payload even when it wrote notes afterwards,
+    // and even when the human's last comment is newer but answers nothing this
+    // row is showing.
+    assert.equal(
+      payloadOf({ comments: [human("h1"), agent("a2"), question("q3"), agent("a4")] }).id,
+      "q3",
+    );
+    // A card that predates the kind keeps the M1 reading.
+    assert.equal(payloadOf({ comments: [agent("a1"), human("h2")] }).id, "h2");
+  });
+
   it("cuts the first sentence at the design's punctuation or the first newline", () => {
     assert.equal(firstSentence("第一句。第二句"), "第一句。");
     assert.equal(firstSentence("First one. Second one"), "First one.");
@@ -112,7 +135,7 @@ describe("domain/awaiting — resume is human-only and idempotent (card D/F2)", 
     const comments = [human("h1")];
     const first = resumeDecision({ task: { status: "awaiting" }, comments, cursor: null });
     assert.equal(first.resume, true);
-    assert.equal(first.reason, "human_reply");
+    assert.equal(first.reason, "human_answer");
     assert.equal(first.nextCursor, "h1");
 
     // The replay: same board, the cursor the caller persisted.
@@ -133,6 +156,60 @@ describe("domain/awaiting — resume is human-only and idempotent (card D/F2)", 
     assert.equal(decision.resume, true);
     assert.equal(decision.comment.id, "h3");
     assert.equal(decision.nextCursor, "h3");
+  });
+
+  it("resumes on any human comment, whatever its kind", () => {
+    for (const kind of ["decision", "confirm", "change", "note", "discuss", "question", "confirm_request", "defect"]) {
+      const decision = resumeDecision({
+        task: { status: "awaiting" },
+        comments: [question("q1"), human("h2", "an answer", { kind })],
+        cursor: null,
+      });
+      assert.equal(decision.resume, true, kind);
+      assert.equal(decision.reason, "human_answer", kind);
+      assert.equal(decision.comment.id, "h2", kind);
+      assert.equal(decision.nextCursor, "h2", kind);
+    }
+    // An agent may not answer at all, whatever the kind.
+    const forged = { ...agent("a1", "I decided"), kind: "decision" };
+    const decision = resumeDecision({
+      task: { status: "awaiting" },
+      comments: [question("q1"), forged],
+      cursor: null,
+    });
+    assert.equal(decision.resume, false);
+    assert.equal(decision.reason, "not_human");
+    // The newest human comment is still the one judged.
+    assert.equal(
+      resumeDecision({
+        task: { status: "awaiting" },
+        comments: [agent("a1", "I decided"), human("h2", "ok", { kind: "decision" })],
+        cursor: null,
+      }).comment.id,
+      "h2",
+    );
+  });
+
+  it("judges the writer's own `newest` when it is supplied", () => {
+    // The comment just stored, even if the re-read would tie on `created_at`
+    // and order the list differently.
+    const stored = human("h9", "ship it", { kind: "confirm" });
+    const decision = resumeDecision({
+      task: { status: "awaiting" },
+      comments: [human("h1")],
+      newest: stored,
+      cursor: null,
+    });
+    assert.equal(decision.resume, true);
+    assert.equal(decision.comment.id, "h9");
+  });
+
+  it("answers after a question, across the trail", () => {
+    const comments = [question("q1"), agent("a2"), human("h3")];
+    assert.equal(isAnsweredAfter(comments, latestQuestion(comments)), true);
+    assert.equal(isAnsweredAfter([question("q1"), agent("a2")], latestQuestion([question("q1"), agent("a2")])), false);
+    assert.equal(isAnsweredAfter(comments, null), false);
+    assert.equal(isAnsweredAfter(comments, { id: "missing" }), false);
   });
 
   it("only speaks about an awaiting card", () => {

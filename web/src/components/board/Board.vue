@@ -66,8 +66,8 @@ const loadingNow = computed(() => projectLoading.value);
  * offering a move the delivery gate will refuse is the UI half of bypassing it.
  */
 const moveRows = computed(() => {
-  const status = moveMenu.value?.task?.status;
-  return allowedTargets(status).map((target) => ({ status: target, current: false }));
+  const task = moveMenu.value?.task;
+  return allowedTargets(task?.status, task).map((target) => ({ status: target, current: false }));
 });
 
 function onDragStart(task, event) {
@@ -86,6 +86,11 @@ function onDrop(status, event) {
   const task = board.tasks.find((item) => item.id === identifier || item.identifier === identifier);
   dragging.value = null;
   if (!task || task.status === status) return;
+  // The drop is a move command; it may not express the audited reopen edge
+  // (which needs a reason), so an illegal or terminal target is simply not a
+  // drop. Keeping the guard here means a terminal card cannot send a move the
+  // server would refuse for a missing reason.
+  if (!allowedTargets(task.status, task).includes(status)) return;
   moveTask(task, status).catch(() => {});
 }
 

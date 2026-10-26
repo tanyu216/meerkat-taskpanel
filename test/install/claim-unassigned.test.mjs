@@ -1,12 +1,12 @@
 /**
- * The "allow claiming unassigned tasks?" wizard and its persisted host config
+ * The "allow claiming unassigned tasks?" wizard and its persisted agent config
  * (T-20261010-013000).
  *
  * `install.sh` asks the question when stdin is a TTY and no flag was given,
  * defaults to **yes** everywhere else, and persists the answer as
- * `<target_home>/<host-dir>/meerkat-taskpanel.env` (`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=…`) —
- * the file `scripts/supervisor.mjs` reads as its default. OpenClaw is the one
- * host that gets no such file, because it does not build its own supervisor
+ * `<target_home>/<agent-dir>/meerkat-taskpanel.env` (`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=…`) —
+ * the file `taskctl loop …` reads as its default. OpenClaw is the one
+ * agent kind that gets no such file, because it does not build its own supervisor
  * (it installs openclaw-team, whose poll/patrol already implement the design).
  *
  * Run with: node --test
@@ -26,7 +26,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 after(cleanup);
 
-/** An executable fake host CLI that does nothing and exits 0. */
+/** An executable fake agent CLI that does nothing and exits 0. */
 function makeFakeCli(binDir, name) {
   const dest = join(binDir, name);
   writeFileSync(dest, `#!/usr/bin/env bash\nexit 0\n`, "utf8");
@@ -34,7 +34,7 @@ function makeFakeCli(binDir, name) {
   return dest;
 }
 
-/** An environment that sees fake host CLIs and installs into an isolated home. */
+/** An environment that sees fake agent CLIs and installs into an isolated home. */
 function installEnv(home, bin) {
   return {
     ...process.env,
@@ -46,8 +46,8 @@ function installEnv(home, bin) {
   };
 }
 
-function configOf(home, hostDir) {
-  const path = join(home, hostDir, "meerkat-taskpanel.env");
+function configOf(home, agentDir) {
+  const path = join(home, agentDir, "meerkat-taskpanel.env");
   return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
@@ -69,10 +69,10 @@ describe("install.sh: claim-unassigned flags and persisted config", () => {
     const run = runInstall(["--target", "claude,codex", "--agent-name", "alice"], installEnv(home, bin));
     assert.equal(run.status, 0, run.stderr);
 
-    for (const hostDir of [".claude", ".codex"]) {
-      const text = configOf(home, hostDir);
-      assert.ok(text !== null, `${hostDir}/meerkat-taskpanel.env must exist`);
-      assert.match(text, /^MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes$/m, `${hostDir} default must be yes`);
+    for (const agentDir of [".claude", ".codex"]) {
+      const text = configOf(home, agentDir);
+      assert.ok(text !== null, `${agentDir}/meerkat-taskpanel.env must exist`);
+      assert.match(text, /^MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes$/m, `${agentDir} default must be yes`);
     }
   });
 
@@ -174,19 +174,18 @@ describe("install.sh: the workflow config", () => {
     assert.equal(run.status, 0, run.stderr);
     const text = configOf(home, ".claude");
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m);
-    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=yes$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=$/m, "empty is 'not configured', deliberately");
     assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=yes$/m);
   });
 
-  it("persists --reviewer / --workflow=no / --auto-accept-reviews=no", () => {
+  it("persists --reviewer / --workflow=no", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "codex");
     const run = runInstall(
       [
         "--target", "codex", "--agent-name", "alice", "--reviewer", "jobs",
-        "--workflow=no", "--auto-accept-reviews=no", "--recover-stale=no",
+        "--workflow=no", "--recover-stale=no",
       ],
       installEnv(home, bin),
     );
@@ -194,7 +193,6 @@ describe("install.sh: the workflow config", () => {
     const text = configOf(home, ".codex");
     assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=no$/m);
-    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=no$/m);
   });
 
@@ -205,13 +203,11 @@ describe("install.sh: the workflow config", () => {
     const run = runInstall(["--target", "claude", "--agent-name", "alice"], {
       ...installEnv(home, bin),
       MEERKAT_TASKPANEL_WORKFLOW: "no",
-      MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS: "no",
       MEERKAT_TASKPANEL_REVIEWER: "jobs",
     });
     assert.equal(run.status, 0, run.stderr);
     const text = configOf(home, ".claude");
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=no$/m);
-    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
   });
 
@@ -219,13 +215,13 @@ describe("install.sh: the workflow config", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
-    for (const flag of ["--workflow=maybe", "--auto-accept-reviews=perhaps", "--recover-stale=sometimes"]) {
+    for (const flag of ["--workflow=maybe", "--recover-stale=sometimes"]) {
       const run = runInstall(["--target", "claude", "--prefix", home, flag], {
         ...process.env,
         PATH: `${bin}:${process.env.PATH}`,
       });
       assert.equal(run.status, 2, `${flag} must be a usage error`);
-      assert.match(run.stderr, flag.startsWith("--workflow") ? /--workflow/ : flag.startsWith("--recover") ? /--recover-stale/ : /--auto-accept-reviews/);
+      assert.match(run.stderr, flag.startsWith("--workflow") ? /--workflow/ : /--recover-stale/);
       assert.equal(existsSync(join(home, ".claude")), false);
     }
   });
@@ -238,21 +234,20 @@ describe("install.sh: the workflow config", () => {
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice", "--claim-unassigned=no"], env).status, 0);
 
     // Rewrite the file as a pre-workflow install: the two keys it always had, and a
-    // deliberate auto-accept choice the upgrade must not touch.
+    // deliberate reviewer choice the upgrade must not touch.
     const path = join(home, ".claude", "meerkat-taskpanel.env");
     writeFileSync(
       path,
-      "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no\nMEERKAT_TASKPANEL_REPO=/old/checkout\nMEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no\n",
+      "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no\nMEERKAT_TASKPANEL_REPO=/old/checkout\nMEERKAT_TASKPANEL_REVIEWER=old-reviewer\n",
       "utf8",
     );
 
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice", "--reviewer", "jobs"], env).status, 0);
     const text = readFileSync(path, "utf8");
-    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no$/m, "the existing choice is kept");
+    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=old-reviewer$/m, "the existing choice is kept");
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m, "the missing key is added");
     assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=yes$/m);
-    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
-    assert.equal(text.match(/^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=/gm).length, 1, "never duplicated");
+    assert.equal(text.match(/^MEERKAT_TASKPANEL_REVIEWER=/gm).length, 1, "never duplicated");
   });
 });
 
@@ -318,7 +313,7 @@ describe("install.sh: the scheduler's two clocks", () => {
     }
   });
 
-  it("adds the clock keys to an older host config without touching existing values", () => {
+  it("adds the clock keys to an older agent config without touching existing values", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");

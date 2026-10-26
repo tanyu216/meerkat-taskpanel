@@ -55,6 +55,16 @@ Anyone or anything that can be recorded as having done something — a human, an
 the system. Actors are created by use and are never renamed or deleted.
 _Avoid_: user, owner, person
 
+**Actor kind**:
+Which application wrote: a platform slug (`claude`, `codex`, `pi`, `openclaw`,
+`taskd`), with `human` the one reserved value a caller may not
+declare. It is recorded on every write and read back as `author_kind` / `owner_kind`;
+the CLI flag is `--actor-kind`. It is **not** the identity: that is the actor id
+(`--agent jobs|linus|…`).
+_中文_: actor kind（平台）
+_Avoid_: host (that is the machine), platform (the web layer's display badge), kind alone
+(card kind is a different word)
+
 ### The lifecycle
 
 **Status**:
@@ -68,9 +78,16 @@ The seven statuses that are the board's columns. `awaiting` is not among them: i
 attention overlay on a card that is otherwise in progress.
 _Avoid_: column, lane, swimlane, phase
 
+**Reopen**:
+The one exit from a terminal status: `done`/`canceled → todo`, with an audited reason. It
+starts a new delivery round. A review card cannot be reopened; reopen the card it reviews.
+_中文_: 重开
+_Avoid_: un-cancel, restore, retry
+
 **Kind**:
-What a card *is* — `task`, `epic` or `deploy` — as opposed to where it currently sits.
-Only an epic may be a parent; a deploy card is withheld from automatic claiming.
+What a card *is* — `task` or `epic` — as opposed to where it currently sits. Only an epic
+may be a parent, and only an epic is withheld from automatic claiming. `deploy` was a kind
+until 0039; whether a card belongs to a release line is the loop's decision, not a card kind.
 _Avoid_: type, category
 
 **Priority**:
@@ -80,7 +97,8 @@ _Avoid_: severity, importance
 
 **Comment**:
 An append-only note on a card, written by an actor and typed by intent (`discuss`,
-`decision`, `confirm`, `change`, `note`, `defect`). Comments are never edited or deleted.
+`decision`, `confirm`, `confirm_request`, `change`, `note`, `defect`). Comments are never
+edited or deleted.
 _中文_: 评论
 _Avoid_: message, post, reply
 
@@ -89,6 +107,20 @@ A comment of kind `decision`, `confirm` or `change` — the record of a human ch
 humans make decisions; not every comment is one.
 _中文_: 决策
 _Avoid_: approval, verdict
+
+**Decision round**:
+The way a question is asked: the frontier of decisions whose prerequisites are settled,
+numbered Q1..Qn with a recommendation each, asked in one question string per card and
+recomputed after the answers. It changes *how* a question is asked, never *who* decides.
+_中文_: 决策轮次
+_Avoid_: questionnaire, batch of questions
+
+**Frontier**:
+In a decision round, every decision whose prerequisites are settled — what can be asked now
+without guessing an answer not yet heard. A decision that depends on an open one waits for
+the next round.
+_中文_: 前沿
+_Avoid_: backlog, wish list
 
 ### Claim and execution
 
@@ -126,7 +158,9 @@ _Avoid_: ping, keepalive, poll
 
 **Session**:
 The record of which conversation is doing the work on a card. It is the trail that answers
-"which agent, in which run, touched this", and it is distinct from the actor.
+"which agent, in which run, touched this", and it is distinct from the actor. Its row pairs
+`owner` with `owner_kind` — the owner's platform kind, the same `kind` an actor reference
+carries elsewhere.
 _中文_: 会话
 _Avoid_: connection, run, thread
 
@@ -134,6 +168,13 @@ _Avoid_: connection, run, thread
 The discriminator that lets one card have several concurrent working conversations. A
 session is identified by the card, the owner and the segment together.
 _Avoid_: part, shard, chunk
+
+**Goal**:
+The one sentence a session registers to say what it is working on. It lives on the
+session row, so concurrent segments on one card each state their own; it is not a card
+field and does not replace the round's report.
+_中文_: 目标
+_Avoid_: description, note, summary
 
 **Candidate**:
 A card the loop may claim, with the reason it qualified — `ready` (assigned and unblocked),
@@ -163,24 +204,41 @@ tested against each other.
 _中文_: 交付门禁
 _Avoid_: review gate, checklist, policy
 
-**Acceptance authority**:
-The board policy and card scope that decide who may move a card into `done`. Under the
-default `both`, a human or the board (`taskd`) closes a **top-level** card, and a worker
-agent may not accept its own; a **child** card is the opposite, closed only by a non-human
-writer. Acceptance is a separate act from delivery, and the board refuses the shortcut.
-_中文_: 验收权限
-_Avoid_: approver role, reviewer (the reviewer reports; it does not accept)
+**Acceptance mode**:
+The one word that decides who may move a card into `done`: `off` (the deliverer may close it,
+and `in_progress → done` is allowed), `agent` (an independent review card must APPROVE first;
+`taskd` or a human closes), `human` (a person only). Resolved once at creation and stored on
+the card; a card **never** stores `auto`. Authority decides *who*; the acceptance baseline
+decides *whether* the evidence suffices.
+_中文_: 验收模式
+_Avoid_: acceptance policy, approver role, reviewer (the reviewer reports; it does not accept)
+
+**Project acceptance**:
+A project's default mode for new cards — `auto` (the default), `off`, `agent` or `human`.
+`auto` means the creator decides per card; an unresolved card falls back to `human`, except
+an epic, which falls back to `off` because the board closes containers itself. It is a
+default, not a mandate: an explicit `--acceptance-mode` wins.
+_中文_: 项目验收默认
+_Avoid_: review policy (retired), board policy
+
+**Effective reviewer**:
+The reviewer a card's review card is assigned to: `project.reviewer` when the project sets
+one, otherwise the deployment reviewer (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent
+config). The loop merges every project reviewer into its scan/wake set.
+_中文_: 实际审核人
+
+**Auto-accept**:
+The loop's `auto_accept` action for a delivered card whose `acceptance_mode` is `off`: it
+writes `meta.accepted_by=loop-auto` and moves the card `in_review → done`. A `human` card is
+left for the person; an `off` card may also be delivered straight to `done`. It is distinct
+from closing a review card.
+_中文_: 自动验收
 
 **Report**:
 The record of what was delivered — a conclusion, the acceptance items and their verdicts,
 and at least one piece of evidence. A report is evidence of work, not a promise of it.
 _中文_: 报告
 _Avoid_: summary, update, status
-
-**Report origin**:
-Whether a report was written on the delivery path (`delivery`) or imported from an older
-source (`import`). Only a delivery report opens the gate.
-_Avoid_: source, channel
 
 **Acceptance**:
 A stated condition for a card being done, together with whether it was met, partially met,
@@ -189,6 +247,15 @@ list, its worker may derive one at claim; `meta.acceptance_derived=yes` records 
 independent acceptor still has to audit its coverage.
 _中文_: 验收
 _Avoid_: criterion, requirement, DoD
+
+**Acceptance baseline**:
+The card's frozen acceptance list (`acceptance_json` + `acceptance_revision`), seeded once
+from `meta.acceptance` / the imported checkboxes. It can be appended to and only a human may
+prune an item (audited), so it cannot silently shrink under the work. `done` requires the
+current round's report to cover it; a review `APPROVE` requires the review report to cover the
+original's.
+_中文_: 验收基线
+_Avoid_: checklist, TODO list, meta.acceptance
 
 **Evidence**:
 A concrete pointer supporting a report — a commit, a path, a command or a coverage figure.
@@ -240,8 +307,25 @@ _Avoid_: severity, cause, note
 
 **Awaiting**:
 The overlay for a card that has stopped to ask a human a question. It is entered only from
-`in_progress` and left only by resuming or cancelling — it is not an eighth column.
+`in_progress` and left by resuming (a live worker), re-queueing to `todo` (the worker
+stopped; any human comment gets a fresh one) or cancelling — it is not an eighth column.
 _Avoid_: pending, on hold, blocked
+
+**Question**:
+The `question` comment a worker writes — on entering `awaiting` for an E1–E5, or while
+staying `in_progress` for a question the project session may answer (the question lane). It
+is the payload `awaiting` promises; **any human comment** answers it and the board re-queues
+the card. The board does not read the text — the resumed worker judges from its content
+whether the answer is a complete decision, and asks again if it is not.
+_中文_: 提问
+_Avoid_: awaiting reason (that is the category, not the question), issue
+
+**Question lane**:
+The loop's path for an unanswered agent `question` on an `in_progress` card: poll enqueues a
+question row and the project session answers with a `note` (then moves the card to `todo`)
+or escalates E1–E5 to `awaiting`. It is not a card state and it never claims a card.
+_中文_: 提问通道
+_Avoid_: awaiting (that is the human-only overlay), question queue (the queue is generic)
 
 **Awaiting reason**:
 The category of the question being asked — a fixed enumeration, never free text. It says
@@ -253,7 +337,14 @@ An append-only audit row recording that something happened on a card. Activities
 board's history and its change feed; they are the loosest, most deliberately untyped
 surface in the model.
 _中文_: 活动
-_Avoid_: event, log (see *the loop* for alerts)
+_Avoid_: event, log (that is *Log*)
+
+**Log**:
+The process's own operational record — leveled lines written by `taskd`, `taskctl` and the
+loop to stderr and, for the daemon and the loop, to a size-rotated file. A log is local and
+diagnostic; it is not the board's history and never reaches a client.
+_中文_: 日志
+_Avoid_: activity, audit log (that is *Activity*)
 
 **Idempotency key**:
 The value that makes creating the same card twice return the first one instead of a second.
@@ -268,11 +359,62 @@ The loop is the part that keeps a board moving when no agent is watching. Its vo
 its own and does not appear in the board's wire surface.
 
 **Supervisor**:
-The host-external **scheduler**. It owns two clocks — ping and continue — and performs no
-board I/O of its own. It runs outside the agent host, but it is neither the board service
-nor an agent itself.
+The external **scheduler**. It owns two clocks — ping and continue — and performs no
+board I/O of its own. It runs outside the agent application, but it is neither the board service
+nor an agent itself. In its resident shape it also runs the **session pool**.
 _中文_: 监督进程（调度器）
 _Avoid_: daemon (that is the board service), cron; and do not call it the thing that polls
+
+**Session pool**:
+The supervisor's long-lived `--session` manager: one **control session** in the taskpanel
+checkout, plus one **project session** per target directory. It owns the queues, the
+ledger, concurrency, idle eviction and resume. It is started by the session unit and it
+is the only thing that can dispatch a worker.
+_中文_: 常驻会话池
+_Avoid_: worker pool, daemon, agent team
+
+**Control session**:
+The board-wide conversation inside the pool whose cwd is the taskpanel checkout. It runs
+the `/meerkat-loop Continue` turn (patrol, workflow, poll). It never spawns a worker and
+never works a card itself.
+_中文_: 控制会话
+_Avoid_: supervisor session, main agent
+
+**Project session**:
+The per-project conversation inside the pool, launched with the project's target directory
+as its cwd. It receives a batch of claimed handoffs and spawns one worker **subagent** per
+card, which inherits that directory. It does not work the cards itself.
+_中文_: 项目会话
+_Avoid_: worker, project agent, runner
+
+**Reviewer session**:
+The second resident conversation in a project's directory, opened with the `reviewer`
+role when a review card is queued. It spawns one reviewer **subagent** per review card;
+where the adapter has a role allowlist, that surface has no Write.
+_中文_: 审核会话
+_Avoid_: review worker, project session (that is the worker lane)
+
+**Subagent**:
+A worker or reviewer started by a project or reviewer session through the agent kind's own
+subagent mechanism. It is not a separate supervisor process, and it inherits its parent
+session's cwd rather than being handed one.
+_中文_: 子代理
+_Avoid_: worker process, child session (that is an agent-kind API term), thread
+
+**Event hub**:
+The local process that owns a host's one SSE connection to a board and fans its events out
+to the loop's subscriber and to watch registrations. It is per user and per board, binds
+loopback, and is started on demand by `taskctl events follow` or `export watch --detach`.
+It is a client-side fan-out, not a server-side bus.
+_中文_: 事件中枢
+_Avoid_: event bus, broker, message queue, listener (a registration is the listener; the hub owns the connection)
+
+**Resident**:
+The loop's default shape: a live session pool that can claim and dispatch. Without it —
+cron, a stopped session unit, `--resident=no` — poll claims nothing and only patrol and
+workflow run. "Resident" describes the pool, not the board service.
+_中文_: 常驻
+_Avoid_: always-on, online, running
 
 **Ping**:
 The high-frequency liveness clock. It prunes worker-registry entries whose pid is gone:
@@ -281,15 +423,18 @@ _中文_: 存活检查
 _Avoid_: poll (it finds no work), heartbeat (that is the card's, not the process's)
 
 **Continue**:
-The low-frequency judgment clock. It wakes the host with a bounded `继续` prompt; that
+The low-frequency judgment clock. It hands the resident control session a bounded
+`/meerkat-loop Continue` prompt (or starts a one-shot turn when no pool is live); that
 turn runs the deterministic entries (patrol, workflow, poll). It is the one LLM turn the
 scheduler pays for per cadence.
 _中文_: 继续回合
 _Avoid_: patrol (patrol is one of the entries the turn runs), wake (a wake is for a card)
 
 **Poll**:
-The deterministic entry that scans for new claimable work, claims atomically and wakes a
-worker. It is **not scheduled**; the continue turn runs it, and a human can run it too.
+The deterministic entry that scans for new claimable work, claims atomically and writes
+the handoff to the card queue. It does **not** spawn a worker: the project session does
+that. It is **not scheduled**; the continue turn runs it, and a human can run it too.
+Without a resident pool it claims nothing.
 _中文_: 轮询
 _Avoid_: tick, scan, sweep; do not call the scheduler's ping clock a poll
 
@@ -302,9 +447,10 @@ _Avoid_: audit, sweep, health check; do not call the whole loop "the patrol"
 
 **Workflow**:
 The board's workflow decisions (`issue reconcile --workflow`: reconcile containers, review
-outcomes, review dispatch) and the loop's execution of that plan. The board decides; the
-loop creates the review card, applies the verdict and closes the review card as `taskd`.
-It is not scheduled; the continue turn runs it after patrol.
+outcomes, auto-accept and review dispatch) and the loop's execution of that plan. The board
+decides; the loop creates the review card, applies the verdict, auto-accepts a no-review
+delivery and closes the review card as `taskd`. It is not scheduled; the continue turn runs
+it after patrol.
 _中文_: 工作流通道
 _Avoid_: workflow engine, pipeline; SLA alerts are not part of it
 
@@ -315,13 +461,15 @@ report. Creation also stamps the immutable structural marker (`review_of_id`,
 `review_round`), which is what the acceptance gate reads; `meta.review_of` /
 `meta.review_round` are its readable mirror and are canonicalized from the columns on
 update. It is not a `kind` of its own, and it reaches `done` through `in_review` like every
-other card.
+other card. Its `acceptance_mode` is always `off` (flow B is never reviewed again), enforced
+by the resolver and a database trigger.
 _中文_: 审核卡
 _Avoid_: review task kind, acceptance card, approval
 
 **Reviewer**:
-The independent agent a review card is assigned to. It reads the original's evidence and
-reports a verdict; it moves no card. The loop is the acceptor.
+The independent agent a review card is assigned to — the project's `reviewer` when it sets
+one, otherwise the deployment reviewer. It reads the original's evidence and reports a
+verdict; it moves no card. The loop is the acceptor.
 _中文_: 审核员
 _Avoid_: approver, acceptor, QA
 
@@ -334,16 +482,67 @@ _Avoid_: planning, decomposition, estimation
 
 **Wake**:
 Starting one worker, once, with a bounded prompt. A wake is dispatched only for work the
-loop actually claimed, and it is idempotent.
+loop actually claimed, and it is idempotent. In the resident shape the wake is a project
+session spawning a subagent; the legacy one-shot shape starts an agent process through the
+glue.
 _中文_: 唤醒
 _Avoid_: spawn, launch, trigger
 
 **Handoff**:
 The fresh, bounded briefing a wake gives a worker — the card, the exact commands to run,
-and the identity to record. It is deliberately built new each time rather than resumed, and
-it names no workspace.
+the identity to record, and the statement that the claim is already held. It is
+deliberately built new each time rather than resumed. It names the task's **process
+directory** (`.meerkat/<identifier>/`), relative to the project session's cwd, and points
+at the exported `card.md` inside it.
 _中文_: 交接
 _Avoid_: prompt, context, briefing
+
+**Handoff block**:
+A `## Handoff` section in a producer card's delivery report `conclusion` — the archived
+spec/PRD/prototype paths, the acceptance source, the delivery shape and the proposed next
+cards. Only a producer card (Jobs design, Linus architecture) writes it; the project
+session copies it into the downstream card. Distinct from the wake **Handoff** above and
+from the role's **Self-check**.
+_中文_: 交接块
+_Avoid_: handoff, card handoff (both ambiguous here)
+
+**Card brief**:
+The loop's export of one card at `.meerkat/<identifier>/card.md`, under the project's
+working directory. It is the authoritative snapshot a worker or reviewer is handed; it is
+generated only by `taskctl export md` (atomic temp + rename), and an agent never edits it.
+The same directory holds the task's other process data — notes, logs, evidence, report
+drafts and downloaded attachments.
+_中文_: 卡片 brief / 任务过程目录
+_Avoid_: workspace, scratch dir, card copy
+
+**Card queue**:
+The durable file the poll entry writes a claimed handoff into (`cards.queue.json`), and
+the project session reads from. Distinct cards are never merged; a handoff is removed only
+after its subagent is recorded in the ledger.
+_中文_: 交接队列
+_Avoid_: job queue, work queue
+
+**Self-check**:
+A worker role's pre-delivery audit: re-read the card and frozen acceptance, map every
+requirement and acceptance item to evidence, record omissions, re-run the claimed gates,
+and confirm the report is complete. It is internal to the delivering card; it is not the
+**Handoff block**, which is the cross-card transfer.
+_中文_: 交付前自检
+_Avoid_: handoff check, review (the reviewer owns the independent verdict)
+
+**Deliver**:
+The terminal worker action: `taskctl issue deliver` a report and stop at `in_review`. The
+workflow's last stage is named Deliver; it runs the **Self-check** first and, on a producer
+card, writes the **Handoff block**.
+_中文_: 交付
+_Avoid_: done, approve, close (the reviewer and the loop own those)
+
+**Ledger**:
+The supervisor's own record of live subagents (`subagents.state.json`): project directory,
+actor kind, subagent id, role, card and status. It is written from agent events, never parsed
+from a transcript, and it is what frees a concurrency slot and drives reattach.
+_中文_: 子代理台账
+_Avoid_: registry (that is the legacy one-shot process registry), log
 
 **Tier**:
 A card's hard ordering band within the assignee weight order — movable, stalled, or with
@@ -357,7 +556,8 @@ _Avoid_: sort order (a different, stored value), ranking
 
 **SLA row**:
 One named rule the patrol checks — a stale heartbeat, a stalled leader, an overdue
-confirmation — each with its own threshold and its own repair.
+confirmation — each with its own threshold and its own repair. The board computes
+the row; the patrol delivers it.
 _Avoid_: rule, check, metric
 
 **Alert tuple**:
@@ -373,7 +573,8 @@ load-bearing in the same conversations and are easy to mistake for board vocabul
 
 **Container gate**:
 The authoritative verification run — the whole test suite executed inside a built image. It
-bakes the tree it finds when the build starts, so the commit must land before the run.
+runs from `.githooks/pre-push` on a branch push (and in CI), and bakes the tree it finds when
+the build starts, so the commit must land before the push.
 _Avoid_: CI, build, pipeline
 
 **Host-allowed check**:
@@ -421,9 +622,11 @@ card in the importer's sense — a markdown file — is a third, file-level mean
 _Avoid_: treating "card" as an entity name in code
 
 **Agent (as a type)**:
-There is no agent type. An agent is an actor whose kind is `agent`, together with the
-sessions it opens; the word names a role, not a structure.
-_Avoid_: `Agent`, `AgentService`, agent object
+There is no agent type. An agent is an actor id — the role or person recorded on writes
+(`--agent jobs`, `TASKCTL_AGENT`), which the shim names on every call. The word names a
+role, not a structure.
+_Avoid_: `Agent`, `AgentService`, agent object; and do not use it for the application
+(that is the actor kind)
 
 **Report digest**:
 Does not exist. Reports are stored whole. The word "digest" in this codebase means a hash,
@@ -432,10 +635,13 @@ report.
 _Avoid_: digest, report summary, report hash
 
 **Rollup**:
-Informal prose for how child results aggregate into an epic, and for the periodic report
-that summarises a window of work. It is a behaviour, not a field, command or type — do not
-look for a rollup object.
-_中文_: rollup（中文镜像沿用英文，非字段名）
+An epic's delivery report: the one report whose acceptance items name each child (`ref`) and
+say whether that child's terminal state is acceptable. It is a behaviour *and* a marker —
+`task_reports.is_rollup` (`report.is_rollup` on the wire, 0033) — and it is the epic's
+acceptance evidence: `done` and an `APPROVE` refuse a missing (`ROLLUP_REQUIRED`) or stale
+(`ROLLUP_STALE`) one. A stale rollup is repaired by reworking the epic to a new round.
+_中文_: 汇总报告（rollup）
+_Avoid_: summary, aggregate, container report
 
 **State**:
 Not a synonym for status. A card's status is where it sits in its lifecycle; its execution

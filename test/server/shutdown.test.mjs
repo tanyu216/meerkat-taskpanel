@@ -30,8 +30,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
 
+import { SSE_SHUTDOWN_EVENT } from "../../src/foundation/constants.mjs";
 import { SHUTDOWN_GRACE_MS, closeServer, createTaskd } from "../../src/server/index.mjs";
-import { SSE_SHUTDOWN_EVENT, formatShutdown } from "../../src/server/sse.mjs";
+import { formatShutdown } from "../../src/server/sse.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const tempDirs = [];
@@ -213,12 +214,15 @@ describe("server/shutdown — the real daemon, signalled for real", () => {
     const exited = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
 
     try {
+      // The address is a structured field on stderr now (`event=startup url=…`);
+      // stdout carries no daemon output.
       const deadline = Date.now() + 10_000;
-      while (!/listening on http:\/\//.test(stdout) && Date.now() < deadline) {
+      while (!/event=startup/.test(stderr) && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
-      const url = stdout.match(/listening on (http:\/\/\S+)/)?.[1];
+      const url = stderr.match(/url=(http:\/\/\S+)/)?.[1];
       assert.ok(url, `the daemon never reported a URL\n${stdout}\n${stderr}`);
+      assert.equal(stdout, "", "the daemon writes nothing to stdout");
 
       // The connection the defect hangs on: held open, deliberately.
       const controller = new AbortController();
@@ -238,7 +242,7 @@ describe("server/shutdown — the real daemon, signalled for real", () => {
 
       assert.notEqual(outcome, "timeout", `SIGTERM did not stop the daemon within 5 s (${elapsedMs}ms)`);
       assert.equal(outcome.code, 0, `exit code ${outcome.code}, signal ${outcome.signal}`);
-      assert.match(stdout, /SIGTERM — closing/, "the graceful path ran, rather than a kill");
+      assert.match(stderr, /event=shutdown_signal .*SIGTERM — closing/, "the graceful path ran, rather than a kill");
       assert.equal(
         readdirSync(dir).some((name) => name.endsWith("-wal")),
         false,

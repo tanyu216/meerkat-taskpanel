@@ -1,0 +1,323 @@
+/**
+ * The scheduler's continue turn — the pure half.
+ *
+ * The loop's deterministic entries (poll/patrol/workflow) are no longer their
+ * own scheduling units. A low-frequency "Continue" wake runs them instead, so the
+ * prompt is load-bearing: it must name the entries by absolute path, run them
+ * in the order that lets a fresh review card be claimed in the same turn, and
+ * carry the board rules a headless agent kind cannot infer.
+ *
+ * These tests pin the prompt's contract and the invocation shape. The process
+ * spawn, the lock and the registry pruning are covered by
+ * `test/orchestrator/loop-entries.test.mjs`.
+ *
+ * Run with: node --test
+ */
+
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import {
+  DEFAULT_CONTINUE_SECONDS,
+  DEFAULT_PING_SECONDS,
+  buildContinuePrompt,
+  planContinueInvocation,
+  quoteArg,
+  resolveContinueEnabled,
+  resolveIntervalSeconds,
+} from "../../src/foundation/scheduling.mjs";
+
+describe("resolveContinueEnabled", () => {
+  it("defaults to on", () => {
+    assert.equal(resolveContinueEnabled({}), true);
+  });
+
+  it("takes flag > env > config > default", () => {
+    assert.equal(resolveContinueEnabled({ flag: "no" }), false);
+    assert.equal(resolveContinueEnabled({ flag: "yes", env: "no" }), true);
+    assert.equal(
+      resolveContinueEnabled({ env: "no", file: { MEERKAT_TASKPANEL_CONTINUE: "yes" } }),
+      false,
+    );
+    assert.equal(
+      resolveContinueEnabled({ file: { MEERKAT_TASKPANEL_CONTINUE: "no" } }),
+      false,
+    );
+  });
+
+  it("ignores an unrecognised word rather than flipping the default", () => {
+    assert.equal(resolveContinueEnabled({ flag: "maybe" }), true);
+    assert.equal(resolveContinueEnabled({ flag: "maybe", env: "no" }), false);
+  });
+});
+
+describe("resolveIntervalSeconds", () => {
+  it("takes the first positive integer and otherwise falls back", () => {
+    assert.equal(resolveIntervalSeconds({ fallback: 60 }), 60);
+    assert.equal(resolveIntervalSeconds({ flag: 90, fallback: 60 }), 90);
+    assert.equal(resolveIntervalSeconds({ flag: "90", fallback: 60 }), 90);
+    assert.equal(resolveIntervalSeconds({ flag: "nope", env: "120", fallback: 60 }), 120);
+    assert.equal(resolveIntervalSeconds({ flag: "0", env: "-1", fallback: 60 }), 60);
+    assert.equal(resolveIntervalSeconds({ file: "600", fallback: 60 }), 600);
+    assert.equal(resolveIntervalSeconds({ file: "600", env: "120", fallback: 60 }), 120);
+  });
+});
+
+describe("quoteArg", () => {
+  it("leaves a plain path alone and single-quotes one with a space", () => {
+    assert.equal(quoteArg("/tmp/loop/poll.mjs"), "/tmp/loop/poll.mjs");
+    assert.equal(quoteArg("/tmp/my loop/poll.mjs"), "'/tmp/my loop/poll.mjs'");
+    assert.equal(quoteArg("it's"), "'it'\\''s'");
+  });
+});
+
+describe("buildContinuePrompt", () => {
+  const prompt = buildContinuePrompt({
+    actorKind: "claude",
+    agent: "alice",
+    continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+  });
+
+  it("starts with the command-only loop skill, then the continue cue", () => {
+    assert.ok(prompt.startsWith("/meerkat-loop "), prompt.slice(0, 48));
+    assert.match(prompt, /^\/meerkat-loop Continue\b/);
+    assert.match(prompt, /\(mode: supervised\)/, "the headless turn declares its mode");
+  });
+
+  it("carries the live-session mode, and asks the human in-chat before recording", () => {
+    const manual = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      mode: "manual",
+    });
+    assert.match(manual, /\(mode: manual\)/);
+    assert.match(manual, /Ask the human here when a question needs a/);
+    assert.match(manual, /--as-human/);
+    assert.match(manual, /board comment is authoritative/i);
+    // The pass order is the same contract in both modes.
+    const patrol = manual.indexOf(`taskctl loop patrol`);
+    const workflow = manual.indexOf(`taskctl loop workflow`);
+    const poll = manual.indexOf(`taskctl loop poll`);
+    assert.ok(patrol !== -1 && patrol < workflow && workflow < poll);
+  });
+
+  it("names every deterministic pass as a taskctl loop command", () => {
+    for (const pass of ["patrol", "workflow", "poll"]) {
+      assert.ok(prompt.includes(`taskctl loop ${pass}`), `missing ${pass}`);
+    }
+  });
+
+  it("uses the caller's absolute command, so a headless turn needs no PATH", () => {
+    const withCli = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      cliCommand: "/opt/node /opt/cli/index.mjs --actor-kind claude --agent alice",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+    });
+    for (const pass of ["patrol", "workflow", "poll"]) {
+      assert.ok(
+        withCli.includes(`/opt/node /opt/cli/index.mjs --actor-kind claude --agent alice loop ${pass}`),
+        `missing absolute ${pass}`,
+      );
+    }
+  });
+
+  it("runs patrol, then workflow, then poll", () => {
+    const patrol = prompt.indexOf(`taskctl loop patrol`);
+    const workflow = prompt.indexOf(`taskctl loop workflow`);
+    const poll = prompt.indexOf(`taskctl loop poll`);
+    assert.ok(patrol !== -1 && workflow !== -1 && poll !== -1);
+    assert.ok(patrol < workflow && workflow < poll, "a dispatched review must be claimable this turn");
+  });
+
+  it("names no card, no project and no session", () => {
+    assert.doesNotMatch(prompt, /--project\b/);
+    assert.doesNotMatch(prompt, /TP_PROJECT/);
+    assert.doesNotMatch(prompt, /--resume\b/);
+  });
+
+  it("states the acceptance boundary and keeps poll to claim-and-enqueue", () => {
+    assert.match(prompt, /Never move a card to done/);
+    assert.match(prompt, /reviewer moves nothing/i);
+    assert.match(prompt, /Stop work at in_review/);
+    // The resident model: the control turn hands off; it never spawns or works.
+    assert.match(prompt, /Poll only claims and enqueues/);
+    assert.match(prompt, /never spawns a worker or reviewer/);
+    assert.match(prompt, /spawns the subagent in the\s+project directory/);
+    assert.match(prompt, /the question lane/, "poll also hands open questions to the project session");
+    assert.match(prompt, /Do not answer it again in this turn/);
+    assert.doesNotMatch(prompt, /wake a worker/);
+    assert.doesNotMatch(prompt, /claim a ready card yourself/);
+  });
+
+  it("carries the question ladder and escalates where the loop was opened (0034)", () => {
+    // The ladder: subagent -> main session -> human. The main session answers
+    // what it can with a note + explicit move; E1-E5 stays for a human comment.
+    assert.match(prompt, /Questions and decision rights/);
+    assert.match(prompt, /issue list --status in_progress/);
+    assert.match(prompt, /issue list --status awaiting/);
+    assert.match(prompt, /comment list <ref> --kind question/);
+    // A human answer written while the card is still in_progress is not a
+    // `question`; the control turn needs the plain read to see it.
+    assert.match(prompt, /comment list <ref> --limit 20/);
+    assert.match(prompt, /comment add <ref> --kind note/);
+    assert.match(prompt, /issue move <ref> todo/);
+    assert.match(prompt, /A HUMAN comment of any kind resumes/);
+    assert.match(prompt, /Never write decision\/confirm\/change/);
+    assert.match(prompt, /E1-E5/);
+    assert.match(prompt, /--awaiting-reason E1\.\.E5/);
+    assert.match(prompt, /Why the main session cannot decide/);
+    assert.match(prompt, /Do not answer a question a later human comment already answered/);
+    // The default origin is a supervisor: an unanswerable question stays on the
+    // board for a human's comment.
+    assert.match(prompt, /The human answers on the board with a comment/);
+    assert.match(prompt, /re-queues it automatically/);
+    assert.doesNotMatch(prompt, /ask the human in this conversation/);
+
+    const openedByHuman = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      openedBy: "human",
+    });
+    assert.match(openedByHuman, /When the human answers in this conversation/);
+    assert.match(openedByHuman, /--as-human/);
+    assert.doesNotMatch(openedByHuman, /board re-queues it automatically/);
+  });
+
+  it("carries the decision policy path and the three-tier ladder", () => {
+    const withPolicy = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      decisionPolicy: { path: "/roles/decision-policy.md", text: "# Policy\n" },
+    });
+    assert.match(withPolicy, /## Decision policy/);
+    assert.match(withPolicy, /Subagents do not decide/);
+    assert.match(withPolicy, /\/roles\/decision-policy\.md/);
+    assert.match(withPolicy, /E1-E5/);
+  });
+
+  it("carries the decision round: one frontier, one note, one escalation string", () => {
+    // The round is how a question is asked; the ladder still says who decides.
+    // One round is ONE question string per card: `console.mjs` only surfaces the
+    // newest question comment, so a drip would orphan the earlier items.
+    assert.match(prompt, /Decision rounds/);
+    assert.match(prompt, /frontier/);
+    assert.match(prompt, /Q1\.\.Qn/);
+    assert.match(prompt, /ONE note/);
+    assert.match(prompt, /ONE new awaiting question/);
+    assert.match(prompt, /Verified already/);
+    assert.match(prompt, /Facts are the asker's job/i);
+    assert.match(prompt, /incomplete answer is not consent/i);
+    assert.match(prompt, /Only a human comment resumes awaiting/);
+    assert.match(prompt, /frontier item is open/i);
+  });
+
+  it("asks every waiting card in one manual message", () => {
+    const manual = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      mode: "manual",
+    });
+    assert.match(manual, /ask every waiting card in one message/i);
+    assert.match(manual, /one numbered block per card/i);
+    assert.match(manual, /one question string/i);
+  });
+
+  it("stays bounded", () => {
+    assert.ok(prompt.length < 6000, `prompt is ${prompt.length} chars`);
+  });
+
+  it("stays bounded in the longest manual + policy form", () => {
+    const longest = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      mode: "manual",
+      openedBy: "human",
+      decisionPolicy: { path: "/roles/decision-policy.md", text: "# Policy\n" },
+    });
+    assert.ok(longest.length < 6000, `longest prompt is ${longest.length} chars`);
+  });
+
+  it("omits poll entirely when no resident pool is running", () => {
+    const fallback = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      includePoll: false,
+    });
+    assert.ok(fallback.startsWith("/meerkat-loop "), "the command prefix survives the fallback");
+    // The fallback still runs the two passes it can run…
+    assert.ok(fallback.includes(`taskctl loop patrol`));
+    assert.ok(fallback.includes(`taskctl loop workflow`));
+    // …and never names the poll entry.
+    assert.ok(!fallback.includes(`taskctl loop poll`), "poll must not be named");
+    assert.doesNotMatch(fallback, /the question lane/, "without poll there is no question lane");
+    assert.match(fallback, /claims no card/);
+    assert.match(fallback, /dispatch is paused/);
+    assert.match(fallback, /review cards accumulate/);
+    assert.ok(fallback.length < prompt.length, "the fallback is the shorter turn");
+  });
+
+  it("carries the prefix into every agent kind's headless form", () => {
+    for (const actorKind of ["claude", "codex", "pi"]) {
+      const p = buildContinuePrompt({
+        actorKind,
+        agent: "alice",
+            continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      });
+      const plan = planContinueInvocation({ actorKind, prompt: p });
+      assert.ok(
+        String(plan.args.at(-1)).startsWith("/meerkat-loop "),
+        `${actorKind}: ${plan.args.join(" ")}`,
+      );
+    }
+  });
+});
+
+describe("planContinueInvocation", () => {
+  it("takes the agent kind's built-in headless form, not the glue", () => {
+    const plan = planContinueInvocation({ actorKind: "claude", prompt: "Continue", cwd: "/repo", nodePath: "/opt/node" });
+    assert.deepEqual(plan, {
+      command: "claude",
+      args: ["-p", "Continue"],
+      env: { TP_NODE: "/opt/node" },
+      cwd: "/repo",
+      via: "direct",
+    });
+    assert.equal(plan.warning, undefined);
+  });
+
+  for (const [actorKind, command, args] of [
+    ["codex", "codex", ["exec", "Continue"]],
+    ["pi", "pi", ["--print", "Continue"]],
+  ]) {
+    it(`uses ${command} for ${actorKind}`, () => {
+      const plan = planContinueInvocation({ actorKind, prompt: "Continue", cwd: "/repo" });
+      assert.equal(plan.command, command);
+      assert.deepEqual(plan.args, args);
+      assert.deepEqual(plan.env, {});
+    });
+  }
+
+  it("never carries a project identity", () => {
+    const plan = planContinueInvocation({ actorKind: "claude", prompt: "Continue", cwd: "/repo" });
+    assert.equal(plan.env.TP_PROJECT, undefined);
+    assert.equal(plan.env.TP_PROJECTS_JSON, undefined);
+  });
+
+  it("rejects an actor kind it does not wire", () => {
+    assert.throws(() => planContinueInvocation({ actorKind: "openclaw", prompt: "Continue" }), /unknown agent kind/);
+  });
+});
+
+describe("cadence defaults", () => {
+  it("pings every minute and continues every ten", () => {
+    assert.equal(DEFAULT_PING_SECONDS, 60);
+    assert.equal(DEFAULT_CONTINUE_SECONDS, 600);
+  });
+});

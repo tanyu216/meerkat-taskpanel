@@ -1,8 +1,8 @@
 # Publishing
 
 How a Meerkat TaskPanel version is packaged and published across its distribution surfaces:
-**npm**, **git + GitHub Release**, and the per-host bundles — Claude Code's marketplace,
-OpenClaw, Codex, Pi, Cursor and OpenCode.
+**npm**, **git + GitHub Release**, and the per-agent-kind bundles — Claude Code's marketplace,
+OpenClaw, Codex and Pi.
 
 > **Scope.** This page documents the steps only. **The actual `push`, tag and release are
 > performed by Elon** — nothing here is run as part of writing this document, and CI does
@@ -11,23 +11,22 @@ OpenClaw, Codex, Pi, Cursor and OpenCode.
 
 ## 1. Version consistency
 
-**Board** — four files, root `package.json` canonical:
+**Board** — three files, root `package.json` canonical:
 
 | # | File | Field |
 |---|---|---|
 | 1 | `package.json` | `version` |
 | 2 | `.claude-plugin/plugin.json` | `version` |
-| 3 | `.cursor-plugin/plugin.json` | `version` |
-| 4 | `.claude-plugin/marketplace.json` | `metadata.version` |
+| 3 | `.claude-plugin/marketplace.json` | `metadata.version` |
 
-Three hosts are not carriers. Codex and OpenClaw install the same
+Three agent kinds are not carriers. Codex and OpenClaw install the same
 `.claude-plugin/plugin.json` bundle through the repository-root marketplace, and Pi declares
 itself in the canonical `package.json` itself (its `pi` field) — a row for any would only
 restate one above.
 
 There is **no loop version**. `meerkat-loop` is distributed by `install.sh` from
 `skills/meerkat-loop/` rather than as a plugin, and it declares the *board interface
-generation* it requires (`task-interface v1`, enforced by its own `board-check.mjs`) instead
+generation* it requires (`task-interface v1`, enforced by `taskctl loop compat`) instead
 of a version of its own. Its two former carriers were the `plugins/loop` manifests, which
 this repository no longer ships — so ruling O4 (independent versions) is retired: the loop
 moves with the board.
@@ -36,9 +35,9 @@ moves with the board.
 `scripts/release/bump.mjs` moves the whole group at once:
 
 ```bash
-node scripts/release/bump.mjs 1.1.0                    # or: npm run release:bump 1.1.0
-node scripts/release/bump.mjs 1.1.0 --changelog        # + an empty CHANGELOG scaffold
-node scripts/release/bump.mjs 1.1.0 --changelog --tag
+node scripts/release/bump.mjs 0.1.1                    # or: npm run release:bump 0.1.1
+node scripts/release/bump.mjs 0.1.1 --changelog        # + an empty CHANGELOG scaffold
+node scripts/release/bump.mjs 0.1.1 --changelog --tag
 ```
 
 `--group` still exists as a seam — `--group loop` is now an unknown group rather than a
@@ -70,19 +69,39 @@ shipping. Run it before tagging — and after the bump, as the proof the bump wa
 ```bash
 node scripts/verify/version.mjs                  # both groups
 node scripts/verify/version.mjs --group loop     # narrow to one
-node scripts/release/bump.mjs 1.1.0 && node scripts/verify/version.mjs   # bump, then prove it
+node scripts/release/bump.mjs 0.1.1 && node scripts/verify/version.mjs   # bump, then prove it
 ```
 
-Then commit the six files (and the scaffold, once filled in) **in one commit**, and let CI
+Then commit the three files (and the scaffold, once filled in) **in one commit**, and let CI
 confirm.
 
 ## 2. npm
 
 The published tarball's contents are decided by the `files` whitelist in the root
-`package.json` — `src/`, `skills/`, `scripts/`, `docs/`, `install.sh`, `CHANGELOG.md`,
-`LICENSE` and the two READMEs. `web/`, `dist/` and the test/CI directories are **not** in it
-(the hosted board is a separate build; see
-[development.md](development.md#two-build-layers-engine-and-web)).
+`package.json` — `src/`, `skills/`, `scripts/`, `docs/`, `install.sh`, `web/dist`,
+`CHANGELOG.md`, `LICENSE` and the two READMEs. `web/dist` (the **built** frontend, produced
+by the image's `webbuild` stage) is included so the package is a runnable board; the rest of
+`web/`, `dist/` and the test/CI directories are **not**. See
+[development.md](development.md#two-build-layers-engine-and-web).
+
+> **`web/dist` needs `web/.npmignore`.** npm's packlist reads `.npmignore` in a directory
+> *instead of* `.gitignore`, and a `files` entry does not override either — verified against
+> npm itself. `web/.gitignore` ignores `dist/` (it is build output), so `web/.npmignore` must
+> stay present and must ignore nothing; without it `npm pack` silently ships no frontend and
+> the package would install an API-only server while every whitelist check still passed.
+> `test/verify/pack-manifest.test.mjs` pins both halves.
+
+The package is the **distribution**, not only a source drop. It declares three bins —
+`meerkat-taskpanel` (the installer), `taskctl` and `taskd` — so after a publish:
+
+```bash
+npx meerkat-taskpanel                      # install server + taskctl + every agent kind's skill
+npm install -g meerkat-taskpanel           # taskctl / taskd / the installer on PATH
+```
+
+The installer materializes the runtime at `~/.meerkat-taskpanel` and never runs from inside
+the npx cache; see [install.md § Install methods](install.md#install-methods). Because the
+tarball carries `web/dist`, that install needs no build step and no network.
 
 **Precondition — already enabled.** The root manifest is publishable: it carries no
 `private` flag (the flag that makes `npm publish` refuse with `EPRIVATE`), and its
@@ -92,9 +111,10 @@ package, and it does run the `prepare` lifecycle script.
 
 **Not yet a live surface.** What gates a publish is registry state, not the manifest: the
 package **name** must be one you control and the **version** must not exist yet. The
-unscoped name `meerkat-taskpanel` is already taken on the public registry by an unrelated
-package, so a real `npm publish` is refused today and a release needs a name decision
-first — most likely a scope, which the `publishConfig.access` above already covers.
+unscoped name `meerkat-taskpanel` is this project's (the maintainer confirmed the
+ownership), so a publish needs no name decision; it is still refused until the release
+bump's version is free and the publishing machine is authenticated. `npx
+meerkat-taskpanel` becomes usable only once that publish has happened.
 
 Self-check — dry-run only; nothing below uploads anything:
 
@@ -137,8 +157,9 @@ and it is not evidence about any release published before then.
 
 The release pipeline is **tag-driven**: `.github/workflows/release.yml` runs on
 `push` of a tag matching `v*`. It re-runs the checks, builds the release tree
-(`node scripts/build.mjs`), packages and verifies the npm tarball, generates the SBOM, and
-opens a GitHub Release **draft** carrying both artifacts. It does **not** publish anywhere
+(`node scripts/build.mjs`), copies the image's built `web/dist` into the packaging tree so the
+tarball carries a runnable frontend, packages and verifies the npm tarball, generates the
+SBOM, and opens a GitHub Release **draft** carrying both artifacts. It does **not** publish anywhere
 automatically — the draft is for a human to review and publish, and the workflow holds no
 credential that could publish.
 
@@ -159,7 +180,7 @@ Tags are cut from `main` — §3.3 states that policy and the repository setting
 
 ```bash
 # Run by Elon — not part of the document. Cut from a commit on `main`: see §3.3.
-git tag v<version>          # must match the six version fields above
+git tag v<version>          # must match the three version fields above
 git push origin v<version>  # triggers .github/workflows/release.yml
 ```
 
@@ -168,8 +189,12 @@ git push origin v<version>  # triggers .github/workflows/release.yml
 
 ### 3.1 The tag ↔ CHANGELOG gate
 
-A version tag is only cut when `CHANGELOG.md` documents it. The rule lives in one
-reusable, offline checker — `scripts/verify/changelog.mjs` — and every door calls it:
+A version tag is only cut when `CHANGELOG.md` documents it. The section is authored at the
+`dev` → `main` release merge, from `git log --no-merges <last-release-tag>..dev` and
+`git diff --stat <last-release-tag>..dev` (for the first release, `main..dev`); feature
+branches and `dev` itself never edit `CHANGELOG.md`, and `[Unreleased]` stays empty between
+releases. The rule lives in one reusable, offline checker —
+`scripts/verify/changelog.mjs` — and every door calls it:
 
 ```bash
 node scripts/verify/changelog.mjs v1.2.3     # exit 0 has an entry · 1 missing · 2 usage
@@ -270,7 +295,7 @@ git merge-base --is-ancestor "$(git rev-parse v1.2.3^{commit})" origin/main \
 
 | Plugin | Source | Carries |
 |---|---|---|
-| `meerkat-taskpanel` | `./` | both skills — the repository's one `skills/` tree, read in place |
+| `meerkat-taskpanel` | `./` | all three skills — the repository's one `skills/` tree, read in place |
 
 The loop used to be a second entry, sourced at a `plugins/loop` bundle that carried the loop
 skill and nothing else so it could be installed alone. That bundle is gone: `meerkat-loop`
@@ -287,11 +312,9 @@ claude plugin list                  # → the plugin, enabled
 claude plugin validate <path>       # validates the plugin + marketplace manifests
 ```
 
-Nothing under `skills/` is a generated copy any more, so there is nothing for
-`npm run check:skills` to compare against a plugin bundle. It still guards the loop skill's
-**payload** (`skills/meerkat-loop/{manifest.txt,scripts,templates}`, with foundation inside `scripts/foundation/`), which is generated from
-`scripts/supervisor.mjs`, `scripts/loop/`, `scripts/wake-cwd.mjs`, `src/foundation/` and
-`scripts/install/templates/`; run `node scripts/sync-skills.mjs` after any edit there.
+Nothing under `skills/` is a generated copy, and there is no generated loop payload: the
+loop is `src/orchestrator/` (reached through `taskctl loop …`) and the skills are source.
+Editing a skill or the loop is an ordinary source edit.
 
 ## 5. OpenClaw
 
@@ -342,82 +365,23 @@ pi install <path>                   # the board
 pi list
 ```
 
-## 8. Cursor
-
-`.cursor-plugin/plugin.json` declares `"skills": "./skills/"` — the repository's one
-`skills/` tree, read in place. Cursor registers a *directory*, so nothing is copied and both
-skills arrive together.
-
-```bash
-# consumer: in Cursor's agent chat
-/add-plugin meerkat-taskpanel     # or find it in the plugin marketplace
-
-# what this repository can verify without Cursor installed
-node scripts/verify/manifests.mjs   # the .cursor-plugin manifest row
-node scripts/verify/version.mjs     # the cursor row in the version-carrier table (§1)
-```
-
-Unlike Codex, Cursor **is** a version carrier: `.cursor-plugin/plugin.json` is a row in the
-table in §1, and the release runs `scripts/verify/version.mjs` before `npm pack`.
-`docker/profiles/cursor.yml` declares `bundle: .` / `bundle_kind: bundle` /
-`bundle_format: cursor`, so `scripts/verify/profiles.mjs` also asserts the repository root is
-detected as a cursor-format bundle exposing a loadable `meerkat-taskpanel` skill.
-
-**No hooks are shipped, deliberately.** Cursor's hook contract is its own schema (a lowercase
-`sessionStart` key, a relative `command`, `additional_context` rather than Claude Code's
-`hookSpecificOutput.additionalContext`), and upstream documents no uninstall or update path
-to follow — so rather than invent one, the plugin stays skills-only.
-
-**Unverified, and flagged as such.** Cursor's CLI is not installed in this repository's
-container or on the development host, so the *host integration* above has never been run from
-here; the in-chat gesture is transcribed from `obra/superpowers` rather than reproduced.
-
-## 9. OpenCode
-
-OpenCode is a *directory-granular* host: it is handed a skills directory, not a list of skill
-names, so `.opencode/plugins/meerkat-taskpanel.js` points it at the repository's own
-`skills/` and both skills arrive together. Nothing is copied — the directory is resolved from
-the plugin's own location, so it follows the package wherever OpenCode fetched it.
-
-```jsonc
-// opencode.json — consumer-side registration (V2 >= 2.0.4; V1 uses the singular `plugin` key)
-{
-  "plugin": ["meerkat-taskpanel@git+https://github.com/tanyu216/meerkat-taskpanel.git"]
-}
-```
-
-The plugin is dual-compatible: on V1 the named export pushes the directory into
-`config.skills.paths`; on V2 `default.setup(ctx)` registers one `Skill.Info` per
-`skills/<name>/SKILL.md`, because V2 dropped the directory form and made `config.skills` a
-flat array.
-
-OpenCode is **not** a version carrier and ships no manifest of its own — like Codex, it
-appears in neither the table in §1 nor a bundle directory of its own.
-`package.json#files` must still name `.opencode`, or the plugin never reaches the tarball.
-
-**Unverified, and flagged as such.** OpenCode's CLI is not installed in this repository's
-container or on the development host, so the host integration above has never been run from
-here. What *is* covered is the plugin's own logic:
-`test/install/opencode-plugin.test.mjs` drives it against a fake plugin context.
-
-## 10. Skill wrappers ship with the bundle
+## 8. Skill wrappers ship with the bundle
 
 Every manifest points at the repository's one `skills/` tree, so the npm whitelist ships the
 skills directly and no bundle carries a generated copy of its own (see
-[development.md](development.md#the-skill-is-generated-never-hand-edited)). A publish is
-still only correct if `node scripts/sync-skills.mjs --check` is green: the loop skill's
-generated payload (`manifest.txt` + `scripts/` + `src/` + `templates/`) must match the
-repository modules it is generated from.
+[development.md](development.md#the-skills-are-authored-never-generated)). The loop needs no
+payload step: it is `src/orchestrator/` inside the published tree, and the units run
+`taskctl loop …`.
 
 The `files` whitelist must also name each dot-directory the plugins live in
-(`.claude-plugin`, `.cursor-plugin`, `.opencode`, `.pi`): npm does not include dot files by
+(`.claude-plugin`, `.pi`): npm does not include dot files by
 default, so a manifest that is not listed never reaches the tarball, and
 `node scripts/release/pack-manifest.mjs` fails the release on it.
 
 ## See also
 
-- [install.md](install.md) — the per-host install and plugin-registration commands in full.
+- [install.md](install.md) — the per-agent-kind install and plugin-registration commands in full.
 - [development.md](development.md) — the two build layers, the offline policy and the
   generated-skill rule.
 - [`../README.md`](../README.md) / [`../README.zh-CN.md`](../README.zh-CN.md) — status and
-  the six-host support matrix.
+  the four-agent-kind support matrix.

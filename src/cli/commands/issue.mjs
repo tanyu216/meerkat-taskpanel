@@ -1,5 +1,5 @@
 /**
- * `issue create|list|get|update|meta|move|heartbeat|assign|archive|deliver` (A1–A5).
+ * `issue create|list|get|update|meta|move|reopen|heartbeat|assign|archive|deliver` (A1–A5).
  *
  * This module owns the two commands the milestone is really about:
  *
@@ -18,6 +18,7 @@ import { reportWarnings } from "../../foundation/report-warning.mjs";
 import { usageError } from "../../foundation/transport/errors.mjs";
 import { TASK_OPS } from "../../core/commands/tasks-input.mjs";
 import { fields, table, taskLine } from "../output/human.mjs";
+import { sizeLabel } from "./attachment.mjs";
 import { parseReport } from "./report.mjs";
 import { projectBody, projectFlags } from "./task-input.mjs";
 
@@ -26,14 +27,35 @@ const metaOf = (flags) => flags.meta;
 
 /** The task payload the service returns is `{task, report_waivers}`. */
 function taskHuman(task, extra) {
+  const acceptance = Array.isArray(task.acceptance) ? task.acceptance : [];
   return fields([
     ["identifier", task.identifier],
+    ["title", task.title],
     ["status", task.status],
     ["priority", task.priority],
     ["kind", task.kind],
+    ["labels", Array.isArray(task.labels) && task.labels.length > 0 ? task.labels.join(", ") : "-"],
     ["assignee", task.assignee === null ? "-" : `${task.assignee.display_name}#${task.assignee.id}`],
     ["reporter", task.reporter === null ? "-" : `${task.reporter.display_name}#${task.reporter.id}`],
+    ["claimed_by", task.claimed_by_actor === null ? "-" : `${task.claimed_by_actor.display_name}#${task.claimed_by_actor.id}`],
+    ["heartbeat_at", task.heartbeat_at ?? "-"],
     ["delivery_round", task.delivery_round],
+    ["acceptance_mode", task.acceptance_mode ?? "off"],
+    // The column is an internal id; the human read wants the identifier the
+    // worker can pass back. `meta.review_of` is the readable mirror (0025).
+    ["review_of", task.review_of ?? task.review_of_id ?? "-"],
+    ["review_round", task.review_round ?? "-"],
+    ["parent", task.parent_id ?? "-"],
+    ["awaiting_reason", task.awaiting_reason ?? "-"],
+    ["acceptance_revision", task.acceptance_revision ?? 0],
+    [
+      "acceptance",
+      acceptance.length === 0
+        ? "none (vacuous)"
+        : acceptance.map((text, index) => `${index + 1}) ${text}`).join("; "),
+    ],
+    ["meta", JSON.stringify(task.meta ?? {})],
+    ["description", task.description ?? ""],
     ["version", task.version],
     ...extra,
   ]);
@@ -44,7 +66,7 @@ export const COMMANDS = [
     name: "create",
     summary: "Create a task.",
     op: TASK_OPS.create,
-    usage: "issue create --project <id> --title <text> [--assignee <name>]",
+    usage: "issue create --project <id> --title <text> [--acceptance-mode off|agent|human] [--assignee <name>]",
     positionals: [],
     // The flags and the body are both projected from the command's input
     // declaration (`core/commands/tasks-input.mjs`), so neither is a second
@@ -76,6 +98,8 @@ export const COMMANDS = [
         idem: flags.idem,
         allow_dup: flags.allowDup === true,
         target: flags.target,
+        // 0038 — the single acceptance decision.
+        acceptance_mode: flags.acceptanceMode,
         review_of: flags.reviewOf,
         review_round: flags.reviewRound,
         parent: flags.parent,
@@ -87,12 +111,19 @@ export const COMMANDS = [
   {
     name: "list",
     summary: "List tasks.",
-    usage: "issue list [--project <id>] [--status <status>]… [--limit <n>] [--order board|weight] [--order-debug]",
+    usage: "issue list [--project <id>] [--status <status>]… [--assignee <name>|--assignee-id <id>] [--parent <ref>] [--kind <kind>] [--label <label>]… [--target <value>] [--meta <key>=<value>]… [--review-of <ref>] [--limit <n>] [--order board|weight] [--order-debug]",
     positionals: [],
     flags: [
       { flag: "project", key: "project", as: "string", value: "<id>" },
       { flag: "status", key: "statuses", as: "string", value: "<status>", repeat: true },
-      { flag: "assignee-id", key: "assigneeId", as: "string", value: "<id>" },
+      { flag: "assignee", key: "assignee", as: "string", value: "<name>", summary: "Resolved against the dictionary; an unknown name matches nothing (not everything)." },
+      { flag: "assignee-id", key: "assigneeId", as: "string", value: "<id>", summary: "The structural spelling of --assignee; the two are refused together." },
+      { flag: "parent", key: "parent", as: "string", value: "<ref>", summary: "Only the child cards of that parent (id or identifier)." },
+      { flag: "kind", key: "kind", as: "string", value: "<kind>", summary: "task|epic|review (review = cards that audit another card; an ordinary task still matches task); an unknown kind is a VALIDATION_FAILED, not an empty page." },
+      { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true, summary: "Exact display name; repeatable, every label must be present." },
+      { flag: "target", key: "target", as: "string", value: "<value>", summary: "The card's `meta.target`, compared as text." },
+      { flag: "meta", key: "meta", as: "string", value: "<key>=<value>", repeat: true, summary: "Filter on the card's meta; repeatable, every pair must hold. The key must match [A-Za-z0-9_.-]+." },
+      { flag: "review-of", key: "reviewOf", as: "string", value: "<ref>", summary: "Only the cards that review this task (id or identifier), across every round." },
       { flag: "limit", key: "limit", as: "number", value: "<n>" },
       { flag: "include-archived", key: "includeArchived", as: "boolean" },
       { flag: "order", key: "order", as: "string", value: "board|weight", summary: "`weight` = the assignee weight order (C-WEIGHT-1); the default is the board's own deterministic order." },
@@ -103,7 +134,14 @@ export const COMMANDS = [
         query: {
           project_id: ctx.flags.project,
           status: ctx.flags.statuses,
+          assignee: ctx.flags.assignee,
           assignee_id: ctx.flags.assigneeId,
+          parent: ctx.flags.parent,
+          kind: ctx.flags.kind,
+          label: ctx.flags.labels,
+          target: ctx.flags.target,
+          meta: ctx.flags.meta,
+          review_of: ctx.flags.reviewOf,
           limit: ctx.flags.limit,
           include_archived: ctx.flags.includeArchived === true ? "1" : undefined,
           order: ctx.flags.order,
@@ -180,19 +218,47 @@ export const COMMANDS = [
       if (payload.report_waivers.length > 0) {
         extra.push(["waivers", `${payload.report_waivers.length} on record`]);
       }
-      return { data: payload, human: taskHuman(task, extra) };
+      const human = taskHuman(task, extra);
+      const attachments = payload.attachments ?? [];
+      return {
+        data: payload,
+        human: attachments.length === 0
+          ? human
+          : `${human}\n\n${table(
+              ["id", "filename", "size", "type"],
+              attachments.map((row) => [row.id, row.filename, sizeLabel(row.size), row.content_type ?? "-"]),
+            )}`,
+      };
     },
   },
 
   {
     name: "update",
-    summary: "Update a task's title, description, priority, labels, metadata or acceptance list.",
+    summary:
+      "Update a task's title, description, priority, labels, metadata, acceptance list or acceptance mode.",
     op: TASK_OPS.update,
-    usage: "issue update <id|identifier> [--title <text>] [--acceptance <text>]…",
+    usage:
+      'issue update <id|identifier> [--title <text>] [--acceptance <text>]… ' +
+      '[--drop-acceptance <text> --reason "<why>" --acceptance-revision <n>] ' +
+      '[--acceptance-mode off|agent|human [--reason "<why>"]]',
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: projectFlags(TASK_OPS.update),
     async run(ctx) {
       const flags = ctx.flags;
+      if (
+        flags.reason !== undefined &&
+        flags.acceptanceMode === undefined &&
+        flags.acceptanceDrop === undefined
+      ) {
+        throw usageError(
+          "issue update: --reason is only used with --acceptance-mode or --drop-acceptance",
+          {
+            fix:
+              'pass --acceptance-mode off --reason "<why>" to waive a review, ' +
+              'or --drop-acceptance <text> --reason "<why>" to prune a baseline',
+          },
+        );
+      }
       // Every field is offered; `projectBody` drops the ones the caller did not
       // pass, so "nothing to update" stays measurable below.
       const body = projectBody(TASK_OPS.update, {
@@ -203,13 +269,17 @@ export const COMMANDS = [
         labels: flags.labels,
         meta: metaOf(flags),
         acceptance: flags.acceptance,
+        acceptance_drop: flags.acceptanceDrop,
+        acceptance_revision: flags.acceptanceRevision,
+        acceptance_mode: flags.acceptanceMode,
+        reason: flags.reason,
       });
       if (Object.keys(body).length === 0) {
         // Refuse locally: a round trip that changes nothing is never what was meant.
         return {
           data: null,
           human: "",
-          warnings: ["nothing to update: pass at least one of --title/--description/--priority/--kind/--label/--meta/--acceptance"],
+          warnings: ["nothing to update: pass at least one of --title/--description/--priority/--kind/--label/--meta/--acceptance/--drop-acceptance/--acceptance-mode"],
         };
       }
       const payload = await ctx.client.patch(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`, body);
@@ -250,7 +320,8 @@ export const COMMANDS = [
     op: TASK_OPS.move,
     usage:
       'issue move <id|identifier> <status> [--allow-steal --reason "<why>"] ' +
-      '[--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <class>]',
+      '[--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--question "<text>"] ' +
+      '[--blocked-reason <class>]',
     positionals: [
       { name: "ref", summary: "Task id or identifier." },
       { name: "to", summary: "Target status." },
@@ -281,6 +352,10 @@ export const COMMANDS = [
         allow_steal: allowSteal,
         reason: ctx.flags.reason,
         awaiting_reason: ctx.flags.awaitingReason,
+        // 0034 — the question is written as a `question` comment in the same
+        // transaction as the move. An agent entering `awaiting` must supply it
+        // (or have an unanswered question already); a human need not.
+        question: ctx.flags.question,
         // 0016 — a `blocked` card may name *what* it is waiting for (SLA
         // inspection contract §7). Optional, unlike `--awaiting-reason`: an
         // unstated class is legal (the inspector reads it as `clarify`), so the
@@ -299,10 +374,36 @@ export const COMMANDS = [
   },
 
   {
+    name: "reopen",
+    summary: "Reopen a done/canceled card to todo (audited: --reason required).",
+    op: TASK_OPS.reopen,
+    usage: 'issue reopen <id|identifier> --reason "<why>"',
+    positionals: [{ name: "ref", summary: "Task id or identifier." }],
+    flags: projectFlags(TASK_OPS.reopen),
+    async run(ctx) {
+      // Same audited-exception rule as --allow-steal; the service enforces it
+      // again with a DomainError, so a direct HTTP caller cannot skip it.
+      if (typeof ctx.flags.reason !== "string" || ctx.flags.reason.trim().length < 8) {
+        throw usageError('issue reopen: --reason "<why>" is required (at least 8 characters)', {
+          fix: "say why accepted/canceled work is being reopened",
+        });
+      }
+      const payload = await ctx.client.post(
+        `/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/reopen`,
+        projectBody(TASK_OPS.reopen, {
+          reason: ctx.flags.reason,
+          if_version: ctx.flags.ifVersion,
+        }),
+      );
+      return { data: payload, human: `reopened ${payload.task.identifier} → ${payload.task.status}` };
+    },
+  },
+
+  {
     name: "claim",
     summary: "Claim a card — including a stale in_progress claim (reuse, re-claim or takeover).",
     op: TASK_OPS.claim,
-    usage: 'issue claim <id|identifier> [--allow-steal --reason "<why>"]',
+    usage: 'issue claim <id|identifier> [--check-blockers] [--allow-steal --reason "<why>"]',
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: projectFlags(TASK_OPS.claim),
     async run(ctx) {
@@ -320,6 +421,7 @@ export const COMMANDS = [
           if_version: ctx.flags.ifVersion,
           allow_steal: allowSteal,
           reason: ctx.flags.reason,
+          check_blockers: ctx.flags.checkBlockers === true,
         }),
       );
       // `reuse` is not an error: the same holder asking again keeps the claim.
@@ -393,9 +495,11 @@ export const COMMANDS = [
 
   {
     name: "deliver",
-    summary: "Write a report and move to in_review, atomically. The compliant path.",
+    summary: "Write a report and move to in_review (or straight to done for an `off` card), atomically.",
     op: TASK_OPS.deliver,
-    usage: "issue deliver <id|identifier> --report-file <file|-> [--no-report --reason <why>]",
+    usage:
+      "issue deliver <id|identifier> --report-file <file|-> [--to done] " +
+      "[--no-report --reason <why>]",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: projectFlags(TASK_OPS.deliver),
     async run(ctx) {
@@ -414,6 +518,20 @@ export const COMMANDS = [
           fix: "taskctl issue deliver <id> --report-file -",
         });
       }
+      // 0038 — the only destination a delivery may name is `done` (the `off`
+      // card's direct acceptance). `in_review` is the default, and a waiver
+      // never reaches `done`: the direct path is the one that must carry the
+      // evidence.
+      if (flags.to !== undefined && flags.to !== "done") {
+        throw usageError(`issue deliver: --to accepts only "done" (got ${JSON.stringify(flags.to)})`, {
+          fix: "omit --to to deliver to in_review",
+        });
+      }
+      if (flags.to === "done" && waived) {
+        throw usageError("issue deliver: --to done needs a report; --no-report cannot accept a card", {
+          fix: "send the report, or deliver to in_review with the waiver",
+        });
+      }
 
       let report = null;
       const warnings = [];
@@ -429,6 +547,7 @@ export const COMMANDS = [
 
       const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/deliver`, projectBody(TASK_OPS.deliver, {
         report,
+        to: flags.to,
         if_version: flags.ifVersion,
         no_report: waived,
         reason: flags.reason,
@@ -450,8 +569,7 @@ export const COMMANDS = [
     summary: "Replay the epic rules and, with --workflow, return the board's workflow plan.",
     usage:
       'issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] ' +
-      "[--auto-accept-reviews yes|no] [--review-aging-ms <n>] [--max-actions <n>] " +
-      "[--board-limit <n>]",
+      "[--review-aging-ms <n>] [--max-actions <n>] [--board-limit <n>]",
     positionals: [],
     flags: [
       {
@@ -472,13 +590,6 @@ export const COMMANDS = [
         as: "string",
         value: "<agent>",
         summary: "The independent reviewer the plan dispatches to.",
-      },
-      {
-        flag: "auto-accept-reviews",
-        key: "autoAcceptReviews",
-        as: "string",
-        value: "yes|no",
-        summary: "Let the loop close a review card after applying its verdict.",
       },
       {
         flag: "review-aging-ms",
@@ -503,19 +614,6 @@ export const COMMANDS = [
       },
     ],
     async run(ctx) {
-      const autoAccept =
-        ctx.flags.autoAcceptReviews === undefined
-          ? undefined
-          : ctx.flags.autoAcceptReviews === "yes"
-            ? true
-            : ctx.flags.autoAcceptReviews === "no"
-              ? false
-              : null;
-      if (autoAccept === null) {
-        throw usageError("issue reconcile: --auto-accept-reviews takes yes or no", {
-          fix: "pass --auto-accept-reviews yes, or --auto-accept-reviews no",
-        });
-      }
       const integerFlag = (name, value) => {
         if (value === undefined) return undefined;
         if (!/^\d+$/.test(String(value).trim())) {
@@ -529,7 +627,6 @@ export const COMMANDS = [
         dry_run: ctx.flags.dryRun === true,
         workflow: ctx.flags.workflow === true ? true : undefined,
         reviewer: ctx.flags.reviewer,
-        auto_accept_reviews: autoAccept,
         review_aging_ms: integerFlag("--review-aging-ms", ctx.flags.reviewAgingMs),
         max_actions: integerFlag("--max-actions", ctx.flags.maxActions),
         board_limit: integerFlag("--board-limit", ctx.flags.boardLimit),

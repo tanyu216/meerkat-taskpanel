@@ -20,6 +20,7 @@ import {
   TASK_ORDER_DEFAULT,
   TASK_ORDER_MODES,
 } from "../../foundation/constants.mjs";
+import { reviewIdentityOf } from "../../foundation/review-identity.mjs";
 import { orderTasks, taskOrderDebugEntry } from "../../foundation/task-order.mjs";
 import {
   assertClaimable,
@@ -35,17 +36,33 @@ import {
   checkDeliveryGate,
   WAIVER_MIN_REASON_CHARS,
 } from "../domain/delivery-gate.mjs";
-import { assertTransition } from "../domain/status.mjs";
-import { assertAwaitingReason } from "../domain/awaiting.mjs";
+import { isReopen, isTerminalStatus, transitionPolicyFor } from "../domain/status.mjs";
+import { acceptanceKey, normalizeAcceptanceList } from "../domain/acceptance.mjs";
+import {
+  assertCardAcceptance,
+  cardAcceptanceOf,
+  resolveCardAcceptance,
+} from "../domain/acceptance-mode.mjs";
+import {
+  assertAwaitingReason,
+  isAnsweredAfter,
+  latestQuestion,
+} from "../domain/awaiting.mjs";
 import { normalizeBlockedReason } from "../domain/blocked-reason.mjs";
-import { STATUS } from "../domain/enums.mjs";
+import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { hasIdemDiscriminator, idemKey, idemSource, normalizeIdem } from "../domain/idem.mjs";
 import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
 import { assertEpicDowngradeAllowed } from "../domain/relation.mjs";
 import { normalizeLabelName } from "../domain/labels.mjs";
 import { normalizeName } from "../domain/dictionary.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
-import { assertAcceptance, assertChildrenTerminal, assertReviewReady } from "./acceptance.mjs";
+import {
+  assertAcceptance,
+  assertAcceptanceCoverage,
+  assertChildrenTerminal,
+  assertReviewReady,
+  currentRoundReviews,
+} from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
 import { addComment } from "./comments.mjs";
 import { resolveActorId, resolveAssignment } from "./dictionary.mjs";
@@ -60,7 +77,7 @@ export function createTask(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
 
-  return transaction(
+  const task = transaction(
     ctx.db,
     () => {
       const project = ctx.repos.projects.get(input.projectId);
@@ -173,17 +190,40 @@ export function createTask(ctx, input) {
       // 0025 — the structural review marker. `meta.review_of` holds an
       // identifier (`PROJ-0007`), which is what the loop and the SLA patrol
       // match on; the column holds the internal id, and that is what the
-      // acceptance policy reads. Resolve once, here, so a dangling reference is
+      // acceptance gate reads. Resolve once, here, so a dangling reference is
       // refused instead of silently producing a card that is not exempt.
       //
       // Both spellings are stamped from the same resolution. Before this, a
       // card created through the declared top-level `review_of` field carried
       // only the column, so `workflow.reviewOf`/the SLA patrol/candidate
       // projection (all meta readers) could not find its original.
-      const marker = resolveReviewMarker(ctx, input.projectId, input);
+      const marker = resolveReviewMarker(ctx, input.projectId, input, candidate.kind);
       candidate.reviewOfId = marker.reviewOfId;
       candidate.reviewRound = marker.reviewRound;
       if (marker.reviewOfId !== null) candidate.meta = mirrorReviewMeta(candidate.meta, marker);
+
+      // 0038 — one acceptance decision. The project is the default, an explicit
+      // card value wins, a review card is always `off`, and an unresolved
+      // `auto` project falls back to `human`.
+      const resolvedAcceptance = resolveCardAcceptance({
+        projectAcceptance: project.acceptance,
+        requested: input.acceptanceMode,
+        // The reader owns "is this a review card"; `marker.reviewOfId` is the
+        // structural result it reads, so the two cannot drift.
+        reviewCard: reviewIdentityOf(candidate).isReview,
+        kind: candidate.kind,
+      });
+      candidate.acceptanceMode = resolvedAcceptance.mode;
+
+      // 0032 — freeze the acceptance baseline at creation. `meta.acceptance` is
+      // the modern spelling; `acceptance_legacy` is the imported fallback. The
+      // review card's list is the original's baseline plus the generic checks,
+      // so it gets the 64-item ceiling; a normal card is capped at 60.
+      candidate.acceptance = normalizeAcceptanceList(
+        candidate.meta?.acceptance ?? candidate.meta?.acceptance_legacy ?? [],
+        { maxItems: marker.reviewOfId !== null ? 64 : 60 },
+      );
+      candidate.acceptanceRevision = candidate.acceptance.length > 0 ? 1 : 0;
 
       let task;
       try {
@@ -210,6 +250,7 @@ export function createTask(ctx, input) {
           identifier: task.identifier,
           status: task.status,
           priority: task.priority,
+          acceptance_mode: task.acceptanceMode,
           ...(task.idem === null ? {} : { idem: task.idem }),
           ...(dictionaryAudit.length > 0 ? { dictionaries: dictionaryAudit } : {}),
           ...(labelAudit.length > 0 ? { labels: labelAudit } : {}),
@@ -220,6 +261,18 @@ export function createTask(ctx, input) {
     },
     { op: "tasks.create" },
   );
+
+  if (typeof ctx.logger === "function") {
+    ctx.logger({
+      event: "task_created",
+      identifier: task.identifier,
+      project_id: task.projectId,
+      kind: task.kind,
+      status: task.status,
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return task;
 }
 
 /**
@@ -239,9 +292,10 @@ export function createTask(ctx, input) {
  * @param {object} ctx
  * @param {string} projectId
  * @param {{reviewOf?: unknown, reviewRound?: unknown, meta?: object}} input
+ * @param {string} [kind] the new card's kind (already normalized)
  * @returns {{reviewOfId: string|null, reviewRound: number|null, reviewOfIdentifier: string|null}}
  */
-function resolveReviewMarker(ctx, projectId, input) {
+function resolveReviewMarker(ctx, projectId, input, kind = TASK_KIND.TASK) {
   const rawRef = input.reviewOf ?? input.meta?.review_of;
   const ref = rawRef === undefined || rawRef === null ? "" : String(rawRef).trim();
   const rawRound = input.reviewRound ?? input.meta?.review_round;
@@ -256,6 +310,17 @@ function resolveReviewMarker(ctx, projectId, input) {
       });
     }
     return { reviewOfId: null, reviewRound: null, reviewOfIdentifier: null };
+  }
+
+  // A review is a work card the reviewer can claim. An epic cannot be claimed,
+  // so an epic review card would never be woken — it would only age; everything
+  // but `task` is refused.
+  if (kind !== TASK_KIND.TASK) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `a review card must be kind=task (got ${JSON.stringify(kind)})`,
+      details: { field: "kind", received: kind, allowed: [TASK_KIND.TASK] },
+      hint: { fix: "create the review card as a task; an epic cannot be claimed or reviewed" },
+    });
   }
 
   const original = ctx.repos.tasks.resolve(projectId, ref);
@@ -273,6 +338,40 @@ function resolveReviewMarker(ctx, projectId, input) {
     });
   }
 
+  // A review cannot itself be reviewed. One reader owns the predicate, so a
+  // column-only row (the structural shape) and a legacy meta-only row agree.
+  const originalIsReview = reviewIdentityOf(original).isReview;
+  if (originalIsReview) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `review_of ${JSON.stringify(ref)} names a review card; a review cannot itself be reviewed`,
+      details: { field: "review_of", received: rawRef, projectId, reviewed: original.identifier },
+      hint: { fix: "reopen or re-deliver the original card; the loop will issue a new review for the new round" },
+    });
+  }
+
+  // A review is evidence about a delivery. Creating one for a card that has not
+  // been delivered (or has already left review) lets the reviewer audit a state
+  // that does not exist, and `review_round` would describe a delivery that never
+  // happened. The loop only dispatches for `in_review` originals; this closes
+  // the race between its snapshot and the create.
+  if (original.status !== STATUS.IN_REVIEW) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message:
+        `review_of ${JSON.stringify(ref)} names ${original.identifier}, which is ${original.status}; ` +
+        "a review requires the original in in_review",
+      details: {
+        field: "review_of",
+        received: rawRef,
+        projectId,
+        original: original.identifier,
+        status: original.status,
+        expected: STATUS.IN_REVIEW,
+        deliveryRound: original.deliveryRound,
+      },
+      hint: { fix: "deliver the original first: taskctl issue deliver <ref> --report-file -" },
+    });
+  }
+
   let round = null;
   if (roundText !== "") {
     round = Number(roundText);
@@ -280,6 +379,22 @@ function resolveReviewMarker(ctx, projectId, input) {
       throw new DomainError("VALIDATION_FAILED", {
         message: `review_round must be a positive integer (got ${JSON.stringify(rawRound)})`,
         details: { field: "review_round", received: rawRound },
+      });
+    }
+    // The audited round is the original's current round. A future or stale
+    // round can never produce a satisfying outcome; catch it at creation
+    // instead of later as `round_mismatch` / `review_stale_round`.
+    if (round !== original.deliveryRound) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message:
+          `review_round ${round} does not match ${original.identifier}'s current delivery round ` +
+          `${original.deliveryRound}`,
+        details: { field: "review_round", received: rawRound, expected: original.deliveryRound },
+        hint: {
+          fix:
+            "use the original's current delivery_round, or omit review_round for a " +
+            "round-agnostic review",
+        },
       });
     }
   }
@@ -345,12 +460,134 @@ function canonicalReviewMeta(repos, current, meta) {
 }
 
 /**
+ * A review waiver is an audited exception, like a report waiver or a takeover:
+ * the reason is what a reader needs to understand why a required check was
+ * skipped.
+ *
+ * @param {unknown} reason
+ * @returns {string}
+ */
+function assertReviewOverrideReason(reason) {
+  const text = typeof reason === "string" ? reason.trim() : "";
+  if (text.length < WAIVER_MIN_REASON_CHARS) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `waiving a required review needs --reason with at least ${WAIVER_MIN_REASON_CHARS} characters`,
+      details: {
+        field: "reason",
+        received: typeof reason === "string" ? reason : null,
+        minLength: WAIVER_MIN_REASON_CHARS,
+      },
+      hint: { fix: 'e.g. --reason "documentation-only change; no independent reviewer is needed"' },
+    });
+  }
+  return text;
+}
+
+/**
+ * Apply the controlled acceptance-mode change.
+ *
+ * Asymmetric on purpose:
+ *
+ *   * `off → agent|human` — any writer may tighten; it only adds a gate.
+ *   * every other change — a human only. An agent must not be able to remove a
+ *     human gate or waive the review on its own work.
+ *   * leaving `agent` — needs a reason, and only when no current-round review
+ *     card is still open (an abandoned review blocks the waiver).
+ *
+ * Review cards and terminal cards are refused. The generic `updateCas` path
+ * cannot reach this column (`acceptanceMode` is not in `PATCHABLE`), so an
+ * override always leaves this one activity row.
+ *
  * @param {object} ctx
- * @param {{id: string, ifVersion?: number, patch?: object, actor: object, assignee?: string, reporter?: string, forceCreate?: boolean}} input
+ * @param {{task: object, value: string, reason?: string, actor: object, now: string, ifVersion?: number}} input
+ * @returns {object} the current task when the value did not change
+ */
+function applyAcceptanceOverride(ctx, input) {
+  const { task, value, reason, actor, now, ifVersion } = input;
+  if (task.reviewOfId !== null && task.reviewOfId !== undefined) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: "a review card's acceptance mode cannot be changed",
+      details: { field: "acceptance_mode", taskId: task.id, reviewOfId: task.reviewOfId },
+    });
+  }
+  if (isTerminalStatus(task.status)) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `cannot change acceptance mode on a ${task.status} card`,
+      details: { field: "acceptance_mode", status: task.status },
+    });
+  }
+
+  const next = assertCardAcceptance(value, "acceptance_mode");
+  const current = cardAcceptanceOf(task.acceptanceMode);
+  if (next === current) return task;
+
+  const human = String(actor.kind ?? "") === "human";
+  const tightening = current === "off" && (next === "agent" || next === "human");
+  if (!human && !tightening) {
+    throw new DomainError("ACCEPTANCE_FORBIDDEN", {
+      message: "an agent may only tighten a card's acceptance mode (off → agent|human)",
+      details: {
+        field: "acceptance_mode",
+        from: current,
+        to: next,
+        actorKind: actor.kind,
+        actorId: actor.id,
+      },
+      hint: { fix: "a human can run this with --as-human" },
+    });
+  }
+
+  const leavesReview = current === "agent" && next !== "agent";
+  const overrideReason = leavesReview ? assertReviewOverrideReason(reason) : null;
+  if (leavesReview) {
+    const open = currentRoundReviews(ctx, task).filter((review) => !isTerminalStatus(review.status));
+    if (open.length > 0) {
+      throw new DomainError("REVIEW_PENDING", {
+        message:
+          `${task.identifier} still has an open review for its current delivery round; ` +
+          "close or cancel it first",
+        details: {
+          taskId: task.id,
+          identifier: task.identifier,
+          round: task.deliveryRound,
+          pending: open.map((review) => ({ identifier: review.identifier, status: review.status })),
+        },
+      });
+    }
+  }
+
+  const updated = ctx.repos.tasks.setAcceptanceMode({
+    id: task.id,
+    value: next,
+    ifVersion,
+    now,
+  });
+  ctx.repos.activities.append({
+    taskId: updated.id,
+    actorKind: actor.kind,
+    actorId: actor.id,
+    event: "acceptance_override",
+    changes: {
+      from: current,
+      to: next,
+      ...(overrideReason === null ? {} : { reason: overrideReason }),
+    },
+    createdAt: now,
+  });
+  return updated;
+}
+
+/**
+ * @param {object} ctx
+ * @param {{id: string, ifVersion?: number, patch?: object, actor: object, assignee?: string, reporter?: string, forceCreate?: boolean, acceptanceMode?: string, reason?: string}} input
  */
 export function updateTask(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
+  const acceptanceTarget =
+    input.acceptanceMode !== undefined
+      ? assertCardAcceptance(input.acceptanceMode, "acceptance_mode")
+      : undefined;
   const base = input.patch ?? {};
   // An assignee change is a patch in its own right, so the payload may be empty
   // as long as *something* ends up changing (checked once the dictionary has
@@ -400,10 +637,150 @@ export function updateTask(ctx, input) {
         patch.meta = canonicalReviewMeta(ctx.repos, current, patch.meta);
       }
 
-      if (Object.keys(patch).length === 0) {
+      // 0032 — `meta` is a writable bag; the acceptance baseline is not. The
+      // CLI's `issue meta` re-sends the *whole* merged meta object, so an
+      // unchanged `acceptance` must pass (otherwise every `issue meta` on a card
+      // with a baseline would fail). Only a changed value is refused.
+      if (patch.meta !== undefined) {
+        for (const key of ["acceptance", "acceptance_legacy"]) {
+          if (!Object.hasOwn(patch.meta, key)) continue;
+          if (JSON.stringify(patch.meta[key]) === JSON.stringify(current.meta?.[key])) continue;
+          throw new DomainError("VALIDATION_FAILED", {
+            message: `${key} is frozen; use --acceptance / --drop-acceptance`,
+            details: { field: `meta.${key}` },
+            hint: {
+              fix:
+                "append with taskctl issue update --acceptance <text>; " +
+                "a human may prune with --drop-acceptance --reason",
+            },
+          });
+        }
+      }
+
+      let task = current;
+      let acceptanceApplied = false;
+      const wantsAcceptance =
+        input.acceptance !== undefined ||
+        input.acceptanceDrop !== undefined ||
+        input.acceptanceRevision !== undefined;
+      if (wantsAcceptance) {
+        if (input.acceptance !== undefined && input.acceptanceDrop !== undefined) {
+          throw new DomainError("VALIDATION_FAILED", {
+            message: "use --acceptance or --drop-acceptance, not both",
+            details: { fields: ["acceptance", "acceptance_drop"] },
+          });
+        }
+        if (input.acceptanceRevision !== undefined && input.acceptanceDrop === undefined) {
+          throw new DomainError("VALIDATION_FAILED", {
+            message: "--acceptance-revision is only used with --drop-acceptance",
+            details: { field: "acceptance_revision" },
+          });
+        }
+        if (current.status === STATUS.IN_REVIEW || isTerminalStatus(current.status)) {
+          throw new DomainError("ACCEPTANCE_LOCKED", {
+            message: `the acceptance baseline is frozen while ${current.identifier} is ${current.status}`,
+            details: { taskId: current.id, status: current.status },
+            hint: { fix: "rework the card first; the new delivery round re-opens the baseline" },
+          });
+        }
+        if (input.acceptanceDrop !== undefined) {
+          if (actor.kind !== "human") {
+            throw new DomainError("ACCEPTANCE_PRUNE_FORBIDDEN", {
+              message: "only a human may remove an acceptance criterion",
+              details: { actorKind: actor.kind, actorId: actor.id },
+              hint: { fix: "ask a human, or append a new criterion instead" },
+            });
+          }
+          const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+          if (reason.length < WAIVER_MIN_REASON_CHARS) {
+            throw new DomainError("VALIDATION_FAILED", {
+              message: `pruning the acceptance baseline needs --reason with at least ${WAIVER_MIN_REASON_CHARS} characters`,
+              details: {
+                field: "reason",
+                received: typeof input.reason === "string" ? input.reason : null,
+                minLength: WAIVER_MIN_REASON_CHARS,
+              },
+            });
+          }
+          const expected = input.acceptanceRevision ?? current.acceptanceRevision;
+          if (expected !== current.acceptanceRevision) {
+            throw new DomainError("ACCEPTANCE_STALE_REVISION", {
+              message: `acceptance revision changed for ${current.identifier}; re-read the card and retry`,
+              details: {
+                taskId: current.id,
+                expectedRevision: expected,
+                currentRevision: current.acceptanceRevision,
+              },
+            });
+          }
+          const dropKeys = new Set(
+            normalizeAcceptanceList(input.acceptanceDrop, { maxItems: 64 }).map(acceptanceKey),
+          );
+          const next = current.acceptance.filter((text) => !dropKeys.has(acceptanceKey(text)));
+          if (next.length !== current.acceptance.length) {
+            // The trigger reads this activity, so it must be written first.
+            ctx.repos.activities.append({
+              taskId: current.id,
+              actorKind: actor.kind,
+              actorId: actor.id,
+              event: "acceptance_pruned",
+              changes: {
+                reason,
+                removed: current.acceptance.filter((text) => dropKeys.has(acceptanceKey(text))),
+              },
+              createdAt: now,
+            });
+            task = ctx.repos.tasks.setAcceptance({
+              id: current.id,
+              acceptance: next,
+              expectedRevision: current.acceptanceRevision,
+              now,
+            });
+            acceptanceApplied = true;
+          }
+        } else if (input.acceptance !== undefined) {
+          const appended = normalizeAcceptanceList(input.acceptance, { maxItems: 60 });
+          const keys = new Set(current.acceptance.map(acceptanceKey));
+          const added = appended.filter((text) => !keys.has(acceptanceKey(text)));
+          if (added.length > 0) {
+            const next = normalizeAcceptanceList([...current.acceptance, ...added], { maxItems: 64 });
+            task = ctx.repos.tasks.setAcceptance({
+              id: current.id,
+              acceptance: next,
+              expectedRevision: current.acceptanceRevision,
+              now,
+            });
+            ctx.repos.activities.append({
+              taskId: current.id,
+              actorKind: actor.kind,
+              actorId: actor.id,
+              event: "acceptance_changed",
+              changes: { added, revision: task.acceptanceRevision },
+              createdAt: now,
+            });
+            acceptanceApplied = true;
+          }
+        }
+      }
+
+      if (Object.keys(patch).length === 0 && acceptanceTarget === undefined && !acceptanceApplied) {
         throw new DomainError("VALIDATION_FAILED", {
-          message: "nothing to update: pass a patch or an assignee/reporter",
-          details: { allowed: ["title", "description", "priority", "kind", "labels", "assignee", "reporter"] },
+          message:
+            "nothing to update: pass a patch, an assignee/reporter, --acceptance-mode, or an acceptance change",
+          details: {
+            allowed: [
+              "title",
+              "description",
+              "priority",
+              "kind",
+              "labels",
+              "assignee",
+              "reporter",
+              "acceptance_mode",
+              "acceptance",
+              "acceptance_drop",
+            ],
+          },
         });
       }
 
@@ -414,14 +791,34 @@ export function updateTask(ctx, input) {
         assertEpicDowngradeAllowed(current, patch.kind, ctx.repos.relations.listChildren(input.id));
       }
 
-      const task = ctx.repos.tasks.updateCas({
+      // The controlled review decision is a separate write with its own audit
+      // row. Doing it first means the generic patch's CAS runs against the
+      // returned version, so the two writes cannot be split by another writer.
+      let overrideApplied = false;
+      if (acceptanceTarget !== undefined) {
+        task = applyAcceptanceOverride(ctx, {
+          task,
+          value: acceptanceTarget,
+          reason: input.reason,
+          actor,
+          now,
+          ifVersion: acceptanceApplied ? task.version : input.ifVersion,
+        });
+        overrideApplied = task !== current;
+      }
+      if (Object.keys(patch).length === 0) return task;
+
+      const updated = ctx.repos.tasks.updateCas({
         id: input.id,
-        ifVersion: input.ifVersion,
+        // An acceptance write or a review override bumps the row; a no-op must
+        // not weaken the caller's CAS, so use the returned version only when
+        // something actually wrote.
+        ifVersion: overrideApplied || acceptanceApplied ? task.version : input.ifVersion,
         patch,
         now,
       });
       ctx.repos.activities.append({
-        taskId: task.id,
+        taskId: updated.id,
         actorKind: actor.kind,
         actorId: actor.id,
         event: "task_updated",
@@ -432,7 +829,7 @@ export function updateTask(ctx, input) {
         },
         createdAt: now,
       });
-      return task;
+      return updated;
     },
     { op: "tasks.update" },
   );
@@ -465,6 +862,30 @@ function assertStealReason(reason) {
         minLength: WAIVER_MIN_REASON_CHARS,
       },
       hint: { fix: 'e.g. --reason "linus is unavailable, taking the card over"' },
+    });
+  }
+  return text;
+}
+
+/**
+ * Reopening a finished card is an audited act — the same rule (and the same
+ * minimum length) as a takeover or a report waiver. The board records it as
+ * `task_reopened`, but the reason is what a reader needs to understand why
+ * accepted work became active again.
+ * @param {unknown} reason
+ * @returns {string} the trimmed reason
+ */
+function assertReopenReason(reason) {
+  const text = typeof reason === "string" ? reason.trim() : "";
+  if (text.length < WAIVER_MIN_REASON_CHARS) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `reopening a terminal card needs --reason with at least ${WAIVER_MIN_REASON_CHARS} characters`,
+      details: {
+        field: "reason",
+        received: typeof reason === "string" ? reason : null,
+        minLength: WAIVER_MIN_REASON_CHARS,
+      },
+      hint: { fix: 'e.g. --reason "customer found a regression in the accepted delivery"' },
     });
   }
   return text;
@@ -519,7 +940,22 @@ function stealCommentBody(task, verdict, actor, reason) {
  * @returns {{task: object, reused: boolean, stole: boolean}}
  */
 function performClaim(ctx, input) {
-  const { current, actor, now, allowSteal, reason, ifVersion } = input;
+  const { current, actor, now, allowSteal, reason, ifVersion, checkBlockers } = input;
+  // 0032 — a worker may have written its derived baseline just before claiming.
+  // Seed it once, then re-read: the seed bumps `version`, so the claim CAS must
+  // use the new row rather than the caller's pre-seed `ifVersion`.
+  let task = current;
+  let claimVersion = ifVersion;
+  if ((current.acceptance ?? []).length === 0) {
+    const seeded = normalizeAcceptanceList(
+      current.meta?.acceptance ?? current.meta?.acceptance_legacy ?? [],
+      { maxItems: 60 },
+    );
+    if (seeded.length > 0) {
+      task = ctx.repos.tasks.seedAcceptance({ id: current.id, acceptance: seeded, now });
+      claimVersion = task.version;
+    }
+  }
   const resolveAssignee = resolveAssigneeFor(ctx);
   // Since `0020` `tasks.claimed_by` holds an actor **id**, not a name. The claim
   // holder and the actor `--agent`/`$USER` named are the same person only through
@@ -531,7 +967,7 @@ function performClaim(ctx, input) {
     { repos: ctx.repos, now },
     { name: actor.id, actorKind: actor.kind },
   );
-  const verdict = assertClaimable(current, {
+  const verdict = assertClaimable(task, {
     actor: claimantId,
     now,
     allowSteal: allowSteal === true,
@@ -544,7 +980,26 @@ function performClaim(ctx, input) {
   if (verdict.action === "reuse") {
     // A second claim by the same actor is not an error and not an event:
     // returning the existing claim keeps agents from piling up activity rows.
-    return { task: current, reused: true, stole: false };
+    return { task, reused: true, stole: false };
+  }
+
+  // `--check-blockers` (opt-in): the board re-derives the dependency read the
+  // caller would otherwise do itself. It runs only when a claim is actually
+  // being taken — a `reuse` above is the same holder asking again, and a card
+  // already in flight is not refused for a predecessor that opened afterwards.
+  if (checkBlockers === true) {
+    const blockers = ctx.repos.relations.listOpenBlockers(task.id);
+    if (blockers.length > 0) {
+      throw new DomainError("BLOCKED_BY_PREDECESSOR", {
+        message: `${task.identifier} is blocked by ${blockers.map((blocker) => blocker.identifier).join(", ")}`,
+        details: {
+          taskId: task.id,
+          identifier: task.identifier,
+          blockers,
+        },
+        hint: { fix: "wait for the predecessors to reach done, or remove their `blocks` edges" },
+      });
+    }
   }
 
   // `--allow-steal` must say why. A >6h reclaim is audited too but needs no
@@ -552,14 +1007,14 @@ function performClaim(ctx, input) {
   const auditedTakeover = verdict.steal === true && verdict.reclaim !== true;
   const stealReason = auditedTakeover ? assertStealReason(reason) : null;
 
-  let task;
+  const fromStatus = task.status;
   if (verdict.reclaim === true) {
     // Re-claiming an in_progress card: the CAS must match status='in_progress'
     // *and* the heartbeat the verdict judged stale — the repository enforces the
     // bound rather than trusting this call site (R3).
     task = ctx.repos.tasks.stealStaleClaim({
-      id: current.id,
-      ifVersion,
+      id: task.id,
+      ifVersion: claimVersion,
       actor: claimantId,
       // The claim is a record, so it records the kind it was made under — the
       // acting platform, beside the holder (0023).
@@ -569,19 +1024,19 @@ function performClaim(ctx, input) {
     });
   } else {
     const result = ctx.repos.tasks.claimCas({
-      id: current.id,
-      ifVersion,
+      id: task.id,
+      ifVersion: claimVersion,
       actor: claimantId,
       claimedKind: actor.kind,
       now,
     });
     if (!result.claimed) {
       throw explainLostClaim({
-        before: current,
+        before: task,
         after: result.task,
         actor: claimantId,
         now,
-        ifVersion,
+        ifVersion: claimVersion,
         allowSteal: allowSteal === true,
         resolveAssignee,
         describeHolder: (id) => readableHolder(ctx, id),
@@ -596,7 +1051,7 @@ function performClaim(ctx, input) {
     actorId: actor.id,
     event: "task_claimed",
     changes: {
-      from: current.status,
+      from: fromStatus,
       to: task.status,
       ...(verdict.steal === true ? { stoleFrom: readableHolder(ctx, verdict.stolenFrom) } : {}),
       ...(stealReason === null ? {} : { reason: stealReason }),
@@ -652,7 +1107,7 @@ export function claim(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
 
-  return transaction(
+  const result = transaction(
     ctx.db,
     () => {
       const current = ctx.repos.tasks.get(input.id);
@@ -666,10 +1121,24 @@ export function claim(ctx, input) {
         allowSteal: input.allowSteal,
         reason: input.reason,
         ifVersion: input.ifVersion,
+        checkBlockers: input.checkBlockers === true,
       });
     },
     { op: "tasks.claim" },
   );
+
+  // A second claim by the same holder is not an event (`performClaim` says so by
+  // returning `reused`); a real claim is.
+  if (typeof ctx.logger === "function" && result.reused !== true) {
+    ctx.logger({
+      event: "task_claimed",
+      identifier: result.task.identifier,
+      status: result.task.status,
+      ...(result.stole === true ? { stole: true } : {}),
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return result;
 }
 
 /**
@@ -739,8 +1208,13 @@ export function heartbeat(ctx, input) {
  * gate for the current round and is recorded as `report_waived` instead of
  * `task_moved`, so the card's history says what actually happened.
  *
+ * A move out of `done`/`canceled` is a **reopen**: the only legal destination is
+ * `todo`, and it must carry a reason. `requireTerminalSource` is the internal
+ * flag `reopenStatus` sets so the dedicated command cannot be used as a generic
+ * `move … todo` for an already-open card.
+ *
  * @param {object} ctx
- * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string, allowSteal?: boolean, awaitingReason?: string|null, blockedReason?: string|null}} input
+ * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string, allowSteal?: boolean, awaitingReason?: string|null, blockedReason?: string|null, question?: string|null, requireTerminalSource?: boolean}} input
  */
 export function moveStatus(ctx, input) {
   const actor = actorOf(input.actor);
@@ -759,7 +1233,8 @@ export function moveStatus(ctx, input) {
   const blockedReason =
     input.to === STATUS.BLOCKED ? normalizeBlockedReason(input.blockedReason) : null;
 
-  return transaction(
+  let observed = null;
+  const movedTask = transaction(
     ctx.db,
     () => {
       const current = ctx.repos.tasks.get(input.id);
@@ -767,15 +1242,81 @@ export function moveStatus(ctx, input) {
         throw new DomainError("NOT_FOUND", { message: `no task ${input.id}`, details: { taskId: input.id } });
       }
 
-      assertTransition(current.status, input.to, current.kind);
-      // `done` is acceptance, not delivery. Who may perform it is the board's
-      // policy (`human-only` | `both` | `agent-only`) and the card's scope
-      // (child / review card / top-level original) — see
-      // `commands/acceptance.mjs` and `domain/status.mjs`.
+      // The dedicated command is terminal-only. Checked before the whitelist so
+      // an already-open card gets the reopen-specific refusal rather than the
+      // generic `todo → todo` one; a terminal card falls through to
+      // `assertTransition`, which is what keeps `done → in_progress` a
+      // `TERMINAL_STATE` on the plain move route too.
+      if (input.requireTerminalSource === true && !isTerminalStatus(current.status)) {
+        throw new DomainError("INVALID_TRANSITION", {
+          message: "only a done/canceled card can be reopened",
+          details: { from: current.status, to: input.to },
+          hint: { fix: "the card is already open; use a normal move" },
+        });
+      }
+
+      // Reopening is the `done|canceled → todo` edge. It is audited, and it is
+      // closed to review cards: a review is a loop artifact, and reopening the
+      // original is what produces the next round's review. Checked before the
+      // generic transition refusal so the caller gets the review-specific
+      // message (the code is `INVALID_TRANSITION` either way).
+      const reopen = isReopen(current.status, input.to);
+      const reopenReason = reopen ? assertReopenReason(input.reason) : null;
+      const isReviewCard = current.reviewOfId !== null && current.reviewOfId !== undefined;
+      if (reopen && isReviewCard) {
+        throw new DomainError("INVALID_TRANSITION", {
+          message: "a review card cannot be reopened; reopen the original card instead",
+          details: { from: current.status, to: input.to, reviewOf: current.reviewOfId },
+          hint: { fix: "reopen the reviewed card; the loop will issue a review for the new round" },
+        });
+      }
+
+      transitionPolicyFor(current).assert(input.to);
+
+      // 0034 — an agent entering `awaiting` must say what it is waiting for.
+      // The question is stored as a `question` comment in this same transaction,
+      // so a later gate refusal rolls it back with the move. A human may park a
+      // card silently; an agent that already has an unanswered question on the
+      // card need not repeat it.
+      let questionCommentId = null;
+      if (input.to === STATUS.AWAITING) {
+        const questionText = typeof input.question === "string" ? input.question.trim() : "";
+        if (questionText !== "") {
+          questionCommentId = addComment(ctx, {
+            taskId: current.id,
+            kind: "question",
+            body: questionText,
+            actor,
+          }).id;
+        } else if (actor.kind !== "human") {
+          const comments = ctx.repos.comments.list({ taskId: current.id, limit: 10_000 });
+          const openQuestion = latestQuestion(comments);
+          if (openQuestion === null || isAnsweredAfter(comments, openQuestion)) {
+            throw new DomainError("QUESTION_REQUIRED", {
+              message:
+                `${current.identifier}: an agent entering awaiting must ask a question ` +
+                "(or point at an earlier unanswered one)",
+              details: { taskId: current.id, identifier: current.identifier, field: "question" },
+              hint: {
+                fix: `taskctl issue move ${current.identifier} awaiting --awaiting-reason E2 --question "<what you need>"`,
+              },
+            });
+          }
+          questionCommentId = openQuestion.id ?? null;
+        }
+      }
+
+      // `done` is acceptance, not delivery. Who may perform it is the card's
+      // own `acceptance_mode` (a review card is the one structural override) —
+      // see `commands/acceptance.mjs` and `domain/status.mjs`.
       if (input.to === STATUS.DONE) assertAcceptance(ctx, current, actor);
       // A card is not delivered or accepted while a child is still in flight.
       // The same rule the automatic rollup applies; the DB trigger is 0026.
       assertChildrenTerminal(ctx, current, input.to);
+      // 0032 — acceptance is coverage, not just authority. The current-round
+      // delivery report must answer every frozen criterion. A waiver is not
+      // evidence; it only excuses the delivery gate.
+      if (input.to === STATUS.DONE) assertAcceptanceCoverage(ctx, current);
 
       // `todo → in_progress` **is** a claim (T-20261009-230500): it must respect
       // the routing lock and stamp `claimed_by/claimed_at/heartbeat_at`, so the
@@ -815,10 +1356,10 @@ export function moveStatus(ctx, input) {
         });
       }
 
-      // Last, after the delivery gate: a human accepting a top-level original
-      // needs the review cards of the current round resolved. The loop's own
-      // write order is original-first, review-last, so system/agent acceptances
-      // are deliberately exempt (the function checks the actor).
+      // Last, after the delivery gate: a human accepting an `agent` card needs
+      // the review cards of the current round resolved. The loop's own write
+      // order is original-first, review-last, so system/agent acceptances are
+      // deliberately exempt (the function checks the actor).
       if (input.to === STATUS.DONE) assertReviewReady(ctx, current, actor);
 
       const task = ctx.repos.tasks.moveCas({
@@ -829,32 +1370,48 @@ export function moveStatus(ctx, input) {
         waiver,
         awaitingReason,
         blockedReason,
+        // The repository clears the finished card's `idem`/`archived_at` in the
+        // same UPDATE — one revision, and no idempotency-index collision.
+        reopen,
       });
       ctx.repos.activities.append({
         taskId: task.id,
         actorKind: actor.kind,
         actorId: actor.id,
-        event: waiver === null ? "task_moved" : "report_waived",
+        // Kept on one line: the activity-vocabulary test reads the literals
+        // from the audit row's event-name line itself. Do not put that
+        // colon-suffixed key in a comment above it — the scanner finds the
+        // first matching line and would read the comment instead.
+        event: reopenReason !== null ? "task_reopened" : waiver === null ? "task_moved" : "report_waived",
         changes:
-          waiver === null
+          reopenReason !== null
             ? {
                 from: current.status,
                 to: task.status,
+                reason: reopenReason,
                 deliveryRound: task.deliveryRound,
-                // M1 — record the entry category alongside the move, so the
-                // card's history says *why* it stopped for a human.
-                ...(awaitingReason === null ? {} : { awaitingReason }),
-                // 0016 — and the same for a block's class, so the trail keeps
-                // the reason even after `blocked_reason` is cleared on exit.
-                ...(blockedReason === null ? {} : { blockedReason }),
               }
-            : {
-                from: current.status,
-                to: task.status,
-                round: waiver.round,
-                reason: waiver.reason,
-                deliveryRound: task.deliveryRound,
-              },
+            : waiver === null
+              ? {
+                  from: current.status,
+                  to: task.status,
+                  deliveryRound: task.deliveryRound,
+                  // M1 — record the entry category alongside the move, so the
+                  // card's history says *why* it stopped for a human.
+                  ...(awaitingReason === null ? {} : { awaitingReason }),
+                  // 0016 — and the same for a block's class, so the trail keeps
+                  // the reason even after `blocked_reason` is cleared on exit.
+                  ...(blockedReason === null ? {} : { blockedReason }),
+                  // 0034 — the question the worker stopped on.
+                  ...(questionCommentId === null ? {} : { questionCommentId }),
+                }
+              : {
+                  from: current.status,
+                  to: task.status,
+                  round: waiver.round,
+                  reason: waiver.reason,
+                  deliveryRound: task.deliveryRound,
+                },
         createdAt: now,
       });
       // A card that re-enters the work (a rework from `in_review`, an unblock)
@@ -872,10 +1429,59 @@ export function moveStatus(ctx, input) {
       if (task.status === STATUS.DONE || task.status === STATUS.CANCELED) {
         advanceContainerForChild(ctx, task.id, now);
       }
+      observed = {
+        identifier: task.identifier,
+        from: current.status,
+        to: task.status,
+      };
       return task;
     },
     { op: "tasks.move" },
   );
+
+  // The reopen entry has its own event (`task_reopened`); every other legal
+  // transition is a `task_moved`. Logged after the commit for the same reason as
+  // a delivery: a rolled-back move did not happen.
+  if (observed !== null && input.requireTerminalSource !== true && typeof ctx.logger === "function") {
+    ctx.logger({
+      event: "task_moved",
+      ...observed,
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return movedTask;
+}
+
+/**
+ * Reopen a `done`/`canceled` card to `todo`.
+ *
+ * The edge, the reason, the round bump and the bookkeeping (released `idem`,
+ * cleared `archived_at`) are all `moveStatus`'s; this exists so the command has
+ * its own name and so `requireTerminalSource` makes the dedicated route refuse
+ * an already-open card. Review cards are refused there.
+ *
+ * @param {object} ctx
+ * @param {{id: string, actor: object, ifVersion?: number, reason: string}} input
+ */
+export function reopenStatus(ctx, input) {
+  const task = moveStatus(ctx, { ...input, to: STATUS.TODO, requireTerminalSource: true });
+  // A terminal card re-entering work is rare and operationally significant; the
+  // `task_reopened` activity row is the audit, this is the record an operator
+  // watching the log wants.
+  if (typeof ctx.logger === "function") {
+    const actor = input.actor;
+    ctx.logger({
+      event: "task_reopened",
+      identifier: task.identifier,
+      to: task.status,
+      reason: input.reason ?? null,
+      actor:
+        actor !== null && typeof actor === "object"
+          ? `${actor.kind ?? "unknown"}:${actor.id ?? "unknown"}`
+          : null,
+    });
+  }
+  return task;
 }
 
 /**
@@ -887,7 +1493,7 @@ export function archive(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
 
-  return transaction(
+  const task = transaction(
     ctx.db,
     () => {
       const current = ctx.repos.tasks.get(input.id);
@@ -936,6 +1542,16 @@ export function archive(ctx, input) {
     },
     { op: "tasks.archive" },
   );
+
+  if (typeof ctx.logger === "function") {
+    ctx.logger({
+      event: "task_archived",
+      identifier: task.identifier,
+      status: task.status,
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return task;
 }
 
 /**
@@ -954,7 +1570,7 @@ export function archive(ctx, input) {
  * tests it.
  *
  * @param {object} ctx
- * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], includeArchived?: boolean, limit?: number, offset?: number, order?: string, orderDebug?: boolean}} [filter]
+ * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], reviewOfId?: string, includeArchived?: boolean, limit?: number, offset?: number, order?: string, orderDebug?: boolean}} [filter]
  */
 export function listTasks(ctx, filter = {}) {
   return readOrdered(ctx, filter).tasks;
@@ -1010,7 +1626,14 @@ function resolveOrder(value, debug) {
  * @returns {{tasks: object[], orderDebug: object[]|null}}
  */
 function readOrdered(ctx, filter) {
-  const { order: requestedOrder, orderDebug: debugFlag, ...scope } = filter;
+  const { order: requestedOrder, orderDebug: debugFlag, ...rest } = filter;
+  // `kind=review` is a filter over the review marker, not a third kind: a
+  // review card is an ordinary `kind=task` card carrying `review_of_id`. The
+  // translation lives here, at the one chokepoint both list use-cases share, so
+  // `kind=task` keeps its meaning (it still returns review cards) and the
+  // marker read is pushed into SQL — it holds under `limit`/`offset` and under
+  // the weight order, which pages in JS after a full read.
+  const scope = rest.kind === "review" ? { ...rest, kind: undefined, hasReviewMarker: true } : rest;
   const order = resolveOrder(requestedOrder, debugFlag === true);
   if (order !== "weight") return { tasks: ctx.repos.tasks.list(scope), orderDebug: null };
 
@@ -1045,8 +1668,8 @@ const NO_OPEN_EDGES = Object.freeze({ blockersOpen: 0, unblocksOpen: 0 });
  *
  * A candidate is:
  *   * `ready` — `todo`, assigned to `assignee`, **auto-claimable** (not an
- *     `epic`, not a `deploy`), and every `blocks` edge pointing at it (its
- *     `depends_on`) is `done`;
+ *     `epic`), and every `blocks` edge pointing at it (its `depends_on`) is
+ *     `done`;
  *   * `unassigned` — with `includeUnassigned: true`, a `todo`, auto-claimable,
  *     `depends_on`-done card with no assignee: the public pool any actor may
  *     claim (see `domain/claim.mjs#isAssignee`). This is the read a supervisor
@@ -1055,12 +1678,9 @@ const NO_OPEN_EDGES = Object.freeze({ blockersOpen: 0, unblocksOpen: 0 });
  *     holder after 30 minutes (`stale_same`) or anyone after 6 hours
  *     (`stale_any`) — the recovery pool.
  *
- * **Deployment cards are withheld** (T-20261013-232004): a `kind: deploy` card
- * runs against a live instance, so it is dispatched explicitly rather than
- * picked up by a poll. This read — the poll's read — never offers one, in any of
- * the three pools. The card stays claimable: the exclusion is
- * `domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`, a *read* rule, and the claim
- * gate deliberately does not refuse `deploy` (unlike `epic`, which it does).
+ * An `epic` is withheld from every pool: it is a container, not a unit of work
+ * (`domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`, and the claim gate refuses it
+ * too).
  *
  * Read-only: the returned rows are *never* claimed here; claiming still goes
  * through `claim` (and its steal/reuse semantics). The assignee is resolved the
@@ -1181,12 +1801,28 @@ function orderedCandidates(ctx, input = {}) {
   });
 
   return {
-    candidates: found.map(({ task, reason }) => candidateOf(task, reason)),
+    candidates: found.map(({ task, reason }) =>
+      candidateOf(task, reason, (id) => ctx.repos.tasks.get(id)?.identifier ?? null),
+    ),
     // In the order the caller receives them, so the two arrays reconcile
     // line for line; `reason` rides along because the bucket is the first key.
     orderDebug:
       byWeight === null ? null : found.map(({ task, reason }) => ({ ...taskOrderDebugEntry(byWeight.get(task.id)), reason })),
   };
+}
+
+/**
+ * The actor ids a free-text assignee names — the public half of
+ * `assigneeEntryIds`, for the board read's `--assignee` filter. An unknown name
+ * resolves to `[]`, which the repository reads as the empty scope (`1 = 0`)
+ * rather than as "no filter".
+ *
+ * @param {object} ctx
+ * @param {string} assignee
+ * @returns {string[]}
+ */
+export function assigneeIdsFor(ctx, assignee) {
+  return assigneeEntryIds(ctx, assignee);
 }
 
 /**
@@ -1237,17 +1873,24 @@ function staleReason(task, assigneeIds, now) {
 }
 
 /**
- * The candidate projection: exactly the card's fields, plus `reason` so the
- * poll can rank ready against recovery without re-deriving it.
+ * The candidate projection: the card's fields a poll needs, plus `reason` so it
+ * can rank ready against recovery without re-deriving it.
  *
- * There is no `target` here (O3): a project owns no directory, so the board has
- * no workspace to project onto a candidate. A dispatch consumer that needs a
- * location resolves one from `project` against its own mapping.
+ * `target` is the card's own opaque value (`meta.target`), not a project
+ * directory: the board still holds no workspace for a project (O3). `meta` is
+ * projected whole as the generic escape hatch for a consumer's own keys (a
+ * routing field, for example), so a poll does not need an `issue get` per
+ * candidate to read one.
  * @param {object} task
  * @param {string} reason
  */
-function candidateOf(task, reason) {
+function candidateOf(task, reason, resolveRef = null) {
   const meta = task.meta ?? {};
+  const identity = reviewIdentityOf(task);
+  const reviewOf =
+    identity.originalId === null
+      ? identity.originalRef
+      : (resolveRef?.(identity.originalId) ?? identity.originalRef ?? identity.originalId);
   return {
     id: task.id,
     identifier: task.identifier,
@@ -1256,14 +1899,16 @@ function candidateOf(task, reason) {
     priority: task.priority,
     project: task.projectId,
     sort: task.sortOrder ?? 0,
+    created_at: task.createdAt,
+    target: nonEmptyString(meta.target),
+    meta,
     reason,
-    // A review card names the card it audits (`meta.review_of`) and the round it
-    // audits (`meta.review_round`), so the supervisor can pick the review
-    // handoff at wake time without a second `issue get`. Both are `null` for a
-    // normal card; the round is coerced because `--meta` values arrive as
-    // strings while a JSON metadata write may carry a number.
-    review_of: nonEmptyString(meta.review_of),
-    review_round: integerOrNull(meta.review_round),
+    // A review card names the card it audits and the round it audits, so the
+    // supervisor can pick the review handoff at wake time without a second
+    // `issue get`. The identifier is resolved from the structural column; the
+    // id remains a valid fallback because `issue get` accepts either spelling.
+    review_of: reviewOf,
+    review_round: identity.auditedRound,
   };
 }
 
@@ -1272,13 +1917,6 @@ function nonEmptyString(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
-}
-
-/** A meta value as an integer, or `null` — numbers and digit strings both. */
-function integerOrNull(value) {
-  if (typeof value === "number" && Number.isInteger(value)) return value;
-  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number.parseInt(value, 10);
-  return null;
 }
 
 /**
@@ -1300,12 +1938,13 @@ export function canMove(ctx, input) {
   });
   if (!verdict.ok) return verdict;
   try {
-    assertTransition(task.status, input.to, task.kind);
+    transitionPolicyFor(task).assert(input.to);
     // The structural half of the new gates is actor-independent, so the
-    // pre-flight answer can carry it. The acceptance policy and the review-ready
-    // check need the writer's declared kind, which `canMove` is not given — the
+    // pre-flight answer can carry it. The acceptance mode's *writer* rule and
+    // the review-ready check need the actor, which `canMove` is not given — the
     // write itself still refuses those.
     assertChildrenTerminal(ctx, task, input.to);
+    if (input.to === STATUS.DONE) assertAcceptanceCoverage(ctx, task);
   } catch (err) {
     return { ok: false, reason: err.code, details: err.details };
   }

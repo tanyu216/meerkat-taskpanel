@@ -78,8 +78,17 @@ describe("cli-contract — the committed snapshot describes this tree", () => {
 
   it("freezes keys, never the release number", () => {
     const snapshot = buildSnapshot();
+    const release = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
     assert.deepEqual(snapshot.envelope.version_data, ["schema_version", "version"]);
-    assert.equal(serializeSnapshot(snapshot).includes('"1.1.0"'), false);
+    assert.deepEqual(snapshot.envelope.status_data, ["runtime", "schema_version", "version"]);
+    assert.deepEqual(snapshot.envelope.status_runtime, ["data_dir", "note", "pid", "pointer", "running", "url"]);
+    assert.equal(serializeSnapshot(snapshot).includes(`"${release}"`), false);
+  });
+
+  it("freezes the bare commands beside the groups", () => {
+    const snapshot = buildSnapshot();
+    assert.deepEqual(snapshot.top_level.map((command) => command.name), ["status"]);
+    assert.equal(snapshot.schema, 2);
   });
 });
 
@@ -138,6 +147,10 @@ describe("cli-contract — the skill documents what it freezes", () => {
         }
       }
     }
+    // A bare command is documented by its own name (`taskctl status`).
+    for (const command of snapshot.top_level) {
+      if (!doc.includes(command.name)) missingCommands.push(command.name);
+    }
     assert.deepEqual(missingCommands, [], "undocumented commands");
 
     const missingFlags = new Set();
@@ -146,6 +159,7 @@ describe("cli-contract — the skill documents what it freezes", () => {
     };
     collect(snapshot.globals);
     for (const group of snapshot.groups) for (const command of group.commands) collect(command.flags);
+    for (const command of snapshot.top_level) collect(command.flags);
     assert.deepEqual([...missingFlags], [], "undocumented flags");
   });
 });

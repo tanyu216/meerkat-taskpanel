@@ -10,35 +10,32 @@
 import { TASKD_KIND } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { newId } from "../../foundation/ids.mjs";
+import { DEFAULT_SLA_CONFIG } from "../../foundation/sla-config.mjs";
 import { isActorKind } from "../domain/enums.mjs";
-import { DEFAULT_ACCEPTANCE_POLICY } from "../domain/status.mjs";
 import { toIsoMillis } from "../domain/task.mjs";
 
 /**
- * @param {{db: import('node:sqlite').DatabaseSync, repos: object, clock?: () => Date|string, idFactory?: () => string, logger?: Function, acceptancePolicy?: () => string}} input
+ * @param {{db: import('node:sqlite').DatabaseSync, repos: object, clock?: () => Date|string, idFactory?: () => string, logger?: Function, slaConfig?: () => object}} input
  */
 export function createContext(input) {
   const { db, repos, clock, idFactory = newId, logger } = input;
-  // The board's acceptance policy (`human-only` | `both` | `agent-only`). A
-  // resolver rather than a value: the policy file may change while the board
-  // runs, and a decision must read the policy in force *now*. A context built
-  // without one (tests, embedding callers) runs the historical `both` rule.
-  const acceptancePolicy =
-    typeof input.acceptancePolicy === "function"
-      ? input.acceptancePolicy
-      : () => input.acceptancePolicy ?? DEFAULT_ACCEPTANCE_POLICY;
   if (db === undefined || repos === undefined) {
     throw new DomainError("VALIDATION_FAILED", {
       message: "createContext needs a database and a repository bag",
       details: { hasDb: db !== undefined, hasRepos: repos !== undefined },
     });
   }
+  // The SLA policy resolver — re-read per call, so a hand edit to `.env` must
+  // apply without a restart. A context built without one (tests, embedding
+  // callers) runs the defaults.
+  const slaConfig =
+    typeof input.slaConfig === "function" ? input.slaConfig : () => DEFAULT_SLA_CONFIG;
   return {
     db,
     repos,
     logger,
-    /** The acceptance policy in force for the next acceptance decision. */
-    acceptancePolicy,
+    /** The effective SLA table in force for the next SLA read. */
+    slaConfig,
     /** The one clock in the process. Always an ISO-8601 UTC millisecond string. */
     now() {
       return clock === undefined ? new Date().toISOString() : toIsoMillis(clock(), "clock");
@@ -85,7 +82,7 @@ export function actorOf(actor, options = {}) {
     });
   }
   // Open on purpose. A kind is `human`, or the platform an agent runs on, or
-  // whatever a host calls itself — the schema has no CHECK on it and neither
+  // whatever an actor kind calls itself — the schema has no CHECK on it and neither
   // does this. What is refused is a *blank* one, because that reads as neither.
   if (!isActorKind(kind)) {
     throw new DomainError("VALIDATION_FAILED", {

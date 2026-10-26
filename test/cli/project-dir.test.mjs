@@ -2,7 +2,7 @@
  * `taskctl project dir` — resolving a project to its local directory, and
  * asking instead of guessing when there is none.
  *
- * The board holds no directory (O3). The answer lives in the host-local
+ * The board holds no directory (O3). The answer lives in the agent-local
  * `projects.json` beside the skill, and the command is the CLI's door to it:
  * a registered project prints its directory, an entry that names none prints
  * `dir: null` (a project may legitimately have no local directory), and a
@@ -190,6 +190,46 @@ describe("cli/project dir", () => {
       const result = run(["project", "dir", "ghost", "--json"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
       assert.equal(result.status, 1, "a directory is not an excuse to invent a project");
       assert.equal(errorOf(result).code, "NOT_FOUND");
+    });
+  });
+
+  it("--require-dir is map-only and exits 3 when it cannot name a directory", async () => {
+    await withCli(async ({ run }) => {
+      // No board project is created: `--require-dir` must not ask the board.
+      const target = makeTarget();
+      const mapped = writeMap([{ project: "ghost", local_path: target }]);
+      const ok = run(["project", "dir", "ghost", "--require-dir", "--json"], {
+        env: { MEERKAT_TASKPANEL_PROJECTS_JSON: mapped.map },
+      });
+      assert.equal(ok.status, 0, ok.stderr);
+      assert.equal(dataOf(ok).dir, target);
+
+      // The local path must not contact a board: a dead URL and no autostart
+      // still resolve the map. This is the wake's "the board is down" case.
+      const offline = run(["project", "dir", "ghost", "--require-dir", "--json"], {
+        env: {
+          MEERKAT_TASKPANEL_PROJECTS_JSON: mapped.map,
+          TASKD_URL: "http://127.0.0.1:1",
+          TASKD_NO_AUTOSTART: "1",
+        },
+      });
+      assert.equal(offline.status, 0, offline.stderr);
+      assert.equal(dataOf(offline).dir, target);
+
+      const unmapped = writeMap([{ project: "other", local_path: target }]);
+      const missing = run(["project", "dir", "ghost", "--require-dir", "--json"], {
+        env: { MEERKAT_TASKPANEL_PROJECTS_JSON: unmapped.map },
+      });
+      assert.equal(missing.status, 3, "no verdict is exit 3, never a success");
+      assert.equal(dataOf(missing).code, "PROJECT_DIR_UNMAPPED");
+
+      const none = writeMap([{ project: "ghost", meta: { kind: "ops" } }]);
+      const noDir = run(["project", "dir", "ghost", "--require-dir"], {
+        env: { MEERKAT_TASKPANEL_PROJECTS_JSON: none.map },
+      });
+      assert.equal(noDir.status, 3, "a wake needs a directory, even when the entry is complete");
+      assert.equal(noDir.stdout, "", "no directory on stdout means no verdict");
+      assert.match(noDir.stderr, /PROJECT_DIR_REQUIRED/);
     });
   });
 });

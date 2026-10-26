@@ -36,19 +36,22 @@
  */
 
 import { spawn } from "node:child_process";
-import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   AUTOSTART_POLL_MS,
   AUTOSTART_TIMEOUT_MS,
-  LOG_FILENAME,
-  LOGS_DIRNAME,
   RUNTIME_POINTER_ENV,
   SPAWN_ENV_OMIT,
 } from "../constants.mjs";
-import { resolveDataDir, resolveRuntimePointerPath, runtimePointerPathForDataDir } from "../runtime-locator.mjs";
+import {
+  logFilePath,
+  resolveDataDir,
+  resolveRuntimePointerPath,
+  runtimePointerPathForDataDir,
+} from "../runtime-locator.mjs";
 import { ioError } from "./errors.mjs";
 
 /** Repository root, from `src/foundation/transport/`. */
@@ -109,9 +112,9 @@ export async function spawnTaskd(options) {
   } = options;
 
   const dataDir = resolveDataDir({ env });
-  const logDir = join(dataDir, LOGS_DIRNAME);
-  const logFile = join(logDir, LOG_FILENAME);
-  mkdirSync(logDir, { recursive: true });
+  // The daemon writes and rotates this file itself; `logFile` here is only the
+  // path a failed start points a reader at.
+  const logFile = logFilePath(dataDir);
 
   // A *named* pointer — the option, or `TASKD_RUNTIME_POINTER` — is the caller's
   // namespace: the child is told about it (it is obeyed verbatim by the write
@@ -147,28 +150,23 @@ export async function spawnTaskd(options) {
   // Named through the environment only: the variable is inherited exactly as the
   // caller set it, and the child resolves it to the same file this parent waits on.
 
-  // Append, so a second start does not erase the evidence of the first one's
-  // failure. The fd is closed in the parent immediately: the child holds it.
-  const fd = openSync(logFile, "a");
+  // The daemon owns its log: it opens `<dataDir>/logs/taskd.log` itself (with
+  // rotation) as soon as it has read the config. Nothing here redirects into
+  // that file — a second writer would duplicate every line. A crash so early
+  // that the logger has not started is the only thing lost, and `logFile` is
+  // still what the timeout below points a reader at.
   let child;
   try {
     child = spawnFn(process.execPath, [serverEntry()], {
       detached: true,
-      stdio: ["ignore", fd, fd],
+      stdio: ["ignore", "ignore", "ignore"],
       env: childEnv,
     });
   } catch (err) {
-    closeSync(fd);
     throw ioError(`could not start taskd: ${err.message}`, {
       details: { logFile },
       hint: { fix: "start it by hand (`node src/server/main.mjs`) to see the error" },
     });
-  } finally {
-    try {
-      closeSync(fd);
-    } catch {
-      /* already closed */
-    }
   }
   child.unref?.();
 

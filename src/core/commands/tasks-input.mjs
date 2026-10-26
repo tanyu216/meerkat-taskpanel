@@ -41,13 +41,15 @@
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
+import { CARD_ACCEPTANCE_MODES } from "../domain/acceptance-mode.mjs";
 import { PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
 
-/** The eight operations this module covers. */
+/** The nine operations this module covers. */
 export const TASK_OPS = Object.freeze({
   create: "tasks.create",
   update: "tasks.update",
   move: "tasks.move",
+  reopen: "tasks.reopen",
   claim: "tasks.claim",
   deliver: "tasks.deliver",
   assign: "tasks.assign",
@@ -123,6 +125,10 @@ const CREATE = Object.freeze([
   both("idem"),
   both("allow_dup", { type: BOOLEAN }),
   sugar("target", "meta.target"),
+  // 0038 — the per-card acceptance decision. `auto` is a project word, so a
+  // card states a concrete mode; an omitted value falls back to the project (or
+  // `human` when the project is `auto`).
+  both("acceptance_mode", { vocab: CARD_ACCEPTANCE_MODES }),
   both("review_of"),
   both("review_round", { type: INTEGER }),
   both("parent"),
@@ -145,6 +151,14 @@ const UPDATE = Object.freeze([
   both("labels", { repeat: true }),
   both("meta", { type: OBJECT }),
   both("acceptance", { repeat: true }),
+  // 0032 — a human's audited prune of the frozen baseline. `acceptance_revision`
+  // is the optimistic lock; `reason` is the audit row the DB trigger reads.
+  both("acceptance_drop", { repeat: true }),
+  both("acceptance_revision", { type: INTEGER }),
+  // 0038 — the controlled acceptance override. `reason` is required when the
+  // change leaves `agent` (waives a review).
+  both("acceptance_mode", { vocab: CARD_ACCEPTANCE_MODES }),
+  both("reason"),
   wireOnly("if_version", { type: INTEGER }),
   wireOnly("assignee"),
   wireOnly("reporter"),
@@ -159,6 +173,20 @@ const MOVE = Object.freeze([
   both("reason"),
   both("awaiting_reason"),
   both("blocked_reason"),
+  // 0034 — the question a worker asks when it stops in `awaiting`. Written as a
+  // `question` comment in the same transaction as the move.
+  both("question"),
+]);
+
+/**
+ * `tasks.reopen` — the one destination is `todo`, so it is a positional
+ * characteristic of the operation, not a wire field. The reason is required by
+ * the command layer (the same audited-exception pattern as `--allow-steal`);
+ * `if_version` rides the global flag.
+ */
+const REOPEN = Object.freeze([
+  both("reason"),
+  both("if_version", { type: INTEGER }),
 ]);
 
 /**
@@ -174,10 +202,16 @@ const CLAIM = Object.freeze([
   both("allow_steal", { type: BOOLEAN }),
   both("reason"),
   both("if_version", { type: INTEGER }),
+  // Opt-in: re-derive the `blocks` predecessors before taking the claim. The
+  // default claim trusts the caller's own read (the poll already withholds
+  // blocked cards), and `issue move … in_progress` stays the caller's business.
+  both("check_blockers", { type: BOOLEAN }),
 ]);
 
 const DELIVER = Object.freeze([
-  wireOnly("to", { vocab: STATUSES }),
+  // 0038 — `--to done` is the `off` card's direct acceptance: the report and the
+  // move land in one transaction, so the evidence the done gate reads exists.
+  both("to", { vocab: STATUSES }),
   both("report", { type: OBJECT, nested: REPORT }),
   both("if_version", { type: INTEGER }),
   both("no_report", { type: BOOLEAN }),
@@ -216,6 +250,7 @@ const FIELDS = Object.freeze({
   [TASK_OPS.create]: CREATE,
   [TASK_OPS.update]: UPDATE,
   [TASK_OPS.move]: MOVE,
+  [TASK_OPS.reopen]: REOPEN,
   [TASK_OPS.claim]: CLAIM,
   [TASK_OPS.deliver]: DELIVER,
   [TASK_OPS.assign]: ASSIGN,
@@ -233,6 +268,7 @@ const REQUIRED = Object.freeze({
   [TASK_OPS.create]: Object.freeze([]),
   [TASK_OPS.update]: Object.freeze([]),
   [TASK_OPS.move]: Object.freeze(["to"]),
+  [TASK_OPS.reopen]: Object.freeze([]),
   [TASK_OPS.claim]: Object.freeze([]),
   [TASK_OPS.deliver]: Object.freeze([]),
   [TASK_OPS.assign]: Object.freeze([]),

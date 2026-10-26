@@ -14,6 +14,8 @@
  */
 
 import { projectPrefix } from "./ids.mjs";
+import { reviewIdentityOf } from "./review-identity.mjs";
+import { slaToWire } from "./sla-config.mjs";
 
 /** Assignee/reporter ids are meaningless on their own; this is what resolves them. */
 export const NO_LOOKUP = () => null;
@@ -112,6 +114,23 @@ export function taskToWire(task, options = {}) {
   }
   out.labels = Array.isArray(task.labels) ? task.labels : [];
   out.meta = task.meta ?? {};
+  const identity = reviewIdentityOf(task);
+  // The readable word for what a card is *for* — `kind` plus the review marker.
+  // A review card is an ordinary `kind=task`, so this is derived on the wire,
+  // never stored as a third kind; `role=review` is also what `?kind=review`
+  // filters on.
+  out.role = identity.isReview ? "review" : task.kind === "epic" ? "epic" : "task";
+  // The readable review target. The reader prefers the structural column; a
+  // caller that holds the repository (the HTTP payload) replaces this with the
+  // resolved identifier when only the id is stored. `null` for an ordinary card.
+  out.review_of = identity.originalRef;
+  // 0032 — the frozen baseline, not `meta.acceptance`. The revision is the
+  // optimistic lock a prune sends back.
+  out.acceptance = Array.isArray(task.acceptance) ? task.acceptance : [];
+  out.acceptance_revision = Number(task.acceptanceRevision ?? 0);
+  // 0038 — the single acceptance decision. `auto` never appears here: the card
+  // stores a concrete mode.
+  out.acceptance_mode = task.acceptanceMode ?? "off";
   out.assignee = actorRef(task.assigneeId, task.assigneeKind, lookup);
   out.reporter = actorRef(task.reporterId, task.reporterKind, lookup);
   // `claimed_by` is an actor **id** since 0020 (the execution lock's holder),
@@ -180,6 +199,9 @@ export function projectToWire(project) {
     labels: Array.isArray(project.labels) ? project.labels : [],
     meta: project.meta ?? {},
     readme: project.readme ?? null,
+    // 0038 — the single project default and its optional reviewer override.
+    acceptance: project.acceptance ?? "auto",
+    reviewer: project.reviewer ?? null,
     // The sidebar badge's number (design/BLOCKS.md §Projects): the project's
     // **total** task count, served with the list and independent of the order.
     // `null` when the caller did not supply it — this projection counts nothing
@@ -225,6 +247,58 @@ export function commentToWire(comment, options = {}) {
   };
 }
 
+/**
+ * The §4 alert tuple, projected explicitly so the API contract freezes every
+ * field a notification consumer binds to.
+ *
+ * The engine already builds snake_case tuples; this is the one place that says
+ * *which* fields are the public shape (and keeps a future internal rename from
+ * silently changing the wire).
+ *
+ * @param {object|null} alert
+ */
+export function slaAlertToWire(alert) {
+  if (alert === null || alert === undefined) return null;
+  return {
+    alert_id: alert.alert_id,
+    dedup_key: alert.dedup_key,
+    card_id: alert.card_id,
+    sla_row: alert.sla_row,
+    sla_ref: alert.sla_ref,
+    severity: alert.severity,
+    measure_start_kind: alert.measure_start_kind,
+    measure_start_at: alert.measure_start_at,
+    measure_start_source: alert.measure_start_source,
+    elapsed_working_min: alert.elapsed_working_min,
+    elapsed_basis: alert.elapsed_basis,
+    threshold_min: alert.threshold_min,
+    due_at: alert.due_at,
+    action: alert.action,
+    target: alert.target,
+    notify: alert.notify,
+    releasable: alert.releasable,
+    releasable_basis: alert.releasable_basis,
+    blocked_reason: alert.blocked_reason,
+    confidence: alert.confidence,
+    mechanism: alert.mechanism,
+    mechanism_actor: alert.mechanism_actor,
+    first_seen: alert.first_seen,
+    last_seen: alert.last_seen,
+    observed_by: Array.isArray(alert.observed_by) ? alert.observed_by : [],
+    evidence: alert.evidence ?? null,
+  };
+}
+
+/**
+ * The effective SLA configuration, as `GET /api/v1/sla` and
+ * `/meta.capabilities.sla` publish it. Only numbers cross the wire.
+ *
+ * @param {object} config
+ */
+export function slaConfigToWire(config) {
+  return slaToWire(config);
+}
+
 /** @param {object} relation a core Relation DTO */
 export function relationToWire(relation) {
   if (relation === null || relation === undefined) return null;
@@ -268,12 +342,16 @@ export function sessionToWire(session) {
     task_id: session.taskId,
     seg: session.seg,
     owner: session.owner,
-    backend: session.backend,
+    owner_kind: session.ownerKind,
     session_id: session.sessionId,
     phase: session.phase ?? null,
     pid: session.pid ?? null,
     status: session.status,
     ts: session.ts,
+    goal: session.goal ?? "",
+    // 0036 — opaque host observations (harness, thread id, log path). The board
+    // stores and returns them verbatim; it does not interpret the keys.
+    meta: session.meta ?? {},
   };
 }
 
@@ -356,6 +434,10 @@ export function reportToWire(report, options = {}) {
     // As with a comment: the report's own `author_kind`.
     author: actorRef(report.authorId, report.authorKind, lookup),
     created_at: report.createdAt,
+    // 0033 — an epic's rollup. 0035 removed report provenance entirely, so
+    // there is no `origin` to expose or hide: the board records the report, and
+    // the consumer judges who wrote it.
+    is_rollup: report.isRollup === true,
   };
 }
 

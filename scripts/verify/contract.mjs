@@ -77,9 +77,12 @@ import {
   relationToWire,
   reportToWire,
   sessionToWire,
+  slaAlertToWire,
+  slaConfigToWire,
   taskToWire,
   workflowToWire,
 } from "../../src/foundation/wire.mjs";
+import { DEFAULT_SLA_CONFIG } from "../../src/foundation/sla-config.mjs";
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 /** Repository root, resolved from this file (`scripts/verify/`). */
@@ -235,6 +238,10 @@ const PROBE_PROJECT = {
   // integer on every row the list route serves; only a projection with no count
   // supplied (the local `taskctl project` read) emits `null`.
   taskCount: 1,
+  // Populated so the frozen type is `string` rather than `null`; a project with
+  // no override emits null, which the client treats as "use the deployment
+  // reviewer".
+  reviewer: "probe",
   archivedAt: "probe",
   createdAt: "probe",
   updatedAt: "probe",
@@ -264,17 +271,49 @@ const PROBE_REPORT = {
   createdAt: "probe",
 };
 
+/** One SLA alert tuple with every field populated, so the shape is complete. */
+const PROBE_SLA_ALERT = Object.freeze({
+  alert_id: "probe",
+  dedup_key: "probe",
+  card_id: "probe",
+  sla_row: "probe",
+  sla_ref: "probe",
+  severity: "probe",
+  measure_start_kind: "probe",
+  measure_start_at: "probe",
+  measure_start_source: "probe",
+  elapsed_working_min: 1,
+  elapsed_basis: "probe",
+  threshold_min: 1,
+  due_at: "probe",
+  action: "probe",
+  target: "probe",
+  notify: "probe",
+  releasable: false,
+  releasable_basis: "probe",
+  blocked_reason: "probe",
+  confidence: "probe",
+  mechanism: "probe",
+  mechanism_actor: "probe",
+  first_seen: "probe",
+  last_seen: "probe",
+  observed_by: ["probe"],
+  evidence: { status: "probe" },
+});
+
 const PROBE_SESSION = {
   id: "probe",
   taskId: "probe",
   seg: "probe",
   owner: "probe",
-  backend: "probe",
+  ownerKind: "probe",
   sessionId: "probe",
   phase: "probe",
   pid: 1,
   status: "probe",
   ts: "probe",
+  goal: "probe",
+  meta: { probe: true },
 };
 
 /**
@@ -367,9 +406,16 @@ export function collectWire() {
         acceptedBy: "loop-review",
         held: false,
       },
+      {
+        type: "auto_accept",
+        originalRef: "T-3",
+        round: 1,
+        acceptedBy: "loop-auto",
+        held: false,
+      },
     ],
     changes: [{ epic: "E-1", action: "close", reason: "all_children_terminal" }],
-    summary: { approved: 1, actions: 1, alerts: 1 },
+    summary: { approved: 1, actions: 2, alerts: 1, autoAccepted: 1 },
   });
   const shapes = {
     activity: activityToWire(PROBE_ACTIVITY),
@@ -380,6 +426,8 @@ export function collectWire() {
     relation: relationToWire(PROBE_RELATION),
     report,
     session: sessionToWire(PROBE_SESSION),
+    sla_alert: slaAlertToWire(PROBE_SLA_ALERT),
+    sla_config: slaConfigToWire(DEFAULT_SLA_CONFIG),
     task,
     workflow_plan: workflow,
   };
@@ -396,6 +444,22 @@ export function collectWire() {
   out.push({ shape: "task.reporter", fields: fieldTypes(task.reporter) });
   out.push({ shape: "task.report_waiver", fields: fieldTypes(task.report_waiver) });
   out.push({ shape: "workflow_plan.action", fields: fieldTypes(workflow.actions[0]) });
+  out.push({
+    shape: "workflow_plan.action_auto_accept",
+    fields: fieldTypes(
+      workflowToWire({
+        actions: [
+          {
+            type: "auto_accept",
+            originalRef: "T-3",
+            round: 1,
+            acceptedBy: "loop-auto",
+            held: false,
+          },
+        ],
+      }).actions[0],
+    ),
+  });
   out.push({
     shape: "workflow_plan.action_create",
     fields: fieldTypes(
@@ -433,6 +497,8 @@ export function collectWire() {
             assigneeId: "agent-1",
             originalTitle: "Epic",
             findings: "…",
+            // The real planner stamps the fix child's acceptance mode.
+            acceptanceMode: "off",
             closeReview: true,
           },
         ],

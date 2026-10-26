@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Host-bundle file writer used by the per-host installers.
+ * Agent-bundle file writer used by the per-agent-kind installers.
  *
  * The installers are thin bash orchestrators; everything that is fiddly to do in
  * `sh` — JSON merging, idempotent template rendering, delimited-block upserts —
@@ -277,7 +277,7 @@ export function cmdMergeSettings(argv) {
   // Required, not defaulted: a settings file that names an agent but not what it
   // is would leave every write in that session reading as a human's.
   if (typeof opts.kind !== "string" || opts.kind === "") {
-    throw new Error("merge-settings: --kind <name> is required (the host platform)");
+    throw new Error("merge-settings: --kind <name> is required (the actor kind)");
   }
 
   let data = {};

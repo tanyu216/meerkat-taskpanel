@@ -21,7 +21,7 @@
 
 import { orderDebugEntry, rankProjects } from "../../foundation/project-order.mjs";
 import { projectToWire } from "../../foundation/wire.mjs";
-import { arr, obj, shape, str, truthy } from "../requests.mjs";
+import { REQUEST, arr, obj, shape, str, truthy } from "../requests.mjs";
 
 // Declared request schemas — the shape the contract snapshot freezes
 // (`routes[].request`). See `src/server/requests.mjs` for the vocabulary and the
@@ -37,6 +37,18 @@ const CREATE_BODY = shape({
   labels: arr(str()),
   meta: obj(),
   readme: str(),
+  acceptance: REQUEST.projectAcceptance,
+  reviewer: str(),
+});
+
+/** `PUT /api/v1/projects/:id` — create if absent; an existing row is untouched. */
+const ENSURE_BODY = shape({
+  name: str(),
+  labels: arr(str()),
+  meta: obj(),
+  readme: str(),
+  acceptance: REQUEST.projectAcceptance,
+  reviewer: str(),
 });
 
 /** `PATCH /api/v1/projects/:id` — a partial update (`meta` merges, F-C3's sibling rule). */
@@ -45,6 +57,8 @@ const PATCH_BODY = shape({
   labels: arr(str()),
   readme: str(),
   meta: obj(),
+  acceptance: REQUEST.projectAcceptance,
+  reviewer: str(),
 });
 
 /** `PUT /api/v1/projects/:id/readme` — the whole document replaces whatever was there. */
@@ -83,10 +97,32 @@ export function registerProjectRoutes(router, surface) {
       labels: body.labels,
       meta: body.meta,
       readme: body.readme,
+      acceptance: body.acceptance,
+      reviewer: body.reviewer,
       actor,
     });
     return { project: projectToWire(project) };
   }, { body: CREATE_BODY });
+
+  router.put("/api/v1/projects/:id", ({ params, body, actor }) => {
+    const { project, created } = commands.ensureProject({
+      id: params.id,
+      name: body.name,
+      labels: body.labels,
+      meta: body.meta,
+      readme: body.readme,
+      acceptance: body.acceptance,
+      reviewer: body.reviewer,
+      actor,
+    });
+    // Same badge number as the list route, so an ensure response and a later
+    // list entry cannot disagree about how many tasks the project owns.
+    const counts = repos.projects.taskCountByProject(params.id);
+    return {
+      project: projectToWire({ ...project, taskCount: counts.get(project.id) ?? 0 }),
+      created,
+    };
+  }, { body: ENSURE_BODY });
 
   router.get("/api/v1/projects/:id", ({ params }) => {
     const project = commands.getProject({ id: params.id });
@@ -102,6 +138,8 @@ export function registerProjectRoutes(router, surface) {
     if (body.name !== undefined) patch.name = body.name;
     if (body.labels !== undefined) patch.labels = body.labels;
     if (body.readme !== undefined) patch.readme = body.readme;
+    if (body.acceptance !== undefined) patch.acceptance = body.acceptance;
+    if (body.reviewer !== undefined) patch.reviewer = body.reviewer;
     // `--meta k=v` merges, for the same reason it does on a task: a flag is a
     // delta, not a replacement document.
     if (body.meta !== undefined) {

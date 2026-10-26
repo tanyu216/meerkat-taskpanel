@@ -16,8 +16,13 @@
 import { resolve } from "node:path";
 
 import { DomainError } from "../../foundation/errors.mjs";
-import { PROJECTS_JSON_ENV, PROJECT_DIR_CODES, parseProjectMap, resolveProjectDir } from "../../foundation/project-dir.mjs";
-import { repoRoot } from "../../foundation/runtime-locator.mjs";
+import {
+  PROJECT_DIR_CODES,
+  defaultProjectsJson,
+  parseProjectMap,
+  resolveProjectDir,
+  resolveWakeDir,
+} from "../../foundation/project-dir.mjs";
 import { fields, table } from "../output/human.mjs";
 
 /** `--meta k=v` repeated, in order, as a plain object. */
@@ -32,9 +37,7 @@ function metaOf(flags) {
  */
 function projectsJsonPath(env = {}, flag = null) {
   if (typeof flag === "string" && flag.trim() !== "") return resolve(flag);
-  const override = env[PROJECTS_JSON_ENV];
-  if (typeof override === "string" && override.trim() !== "") return resolve(override);
-  return resolve(repoRoot(), "skills", "meerkat-taskpanel", "projects.json");
+  return defaultProjectsJson(env);
 }
 
 /**
@@ -85,7 +88,9 @@ export const COMMANDS = [
   {
     name: "create",
     summary: "Create a project.",
-    usage: "project create --id <id> --name <name> [--meta k=v]…",
+    usage:
+      "project create --id <id> --name <name> [--acceptance auto|off|agent|human] " +
+      "[--reviewer <agent>] [--meta k=v]…",
     positionals: [],
     flags: [
       { flag: "id", key: "id", as: "string", value: "<id>", required: true, summary: "Project id; also the identifier prefix (must be unique across projects after normalization)." },
@@ -93,6 +98,21 @@ export const COMMANDS = [
       { flag: "meta", key: "meta", as: "kv", summary: "Repeatable key=value metadata." },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
+      {
+        flag: "acceptance",
+        key: "acceptance",
+        as: "string",
+        value: "<auto|off|agent|human>",
+        summary:
+          "The acceptance default for cards created here (default: auto — the creator decides per card).",
+      },
+      {
+        flag: "reviewer",
+        key: "reviewer",
+        as: "string",
+        value: "<agent>",
+        summary: "Reviewer for this project; empty uses the deployment-level reviewer.",
+      },
     ],
     async run(ctx) {
       const { project } = await ctx.client.post("/api/v1/projects", {
@@ -101,24 +121,90 @@ export const COMMANDS = [
         labels: ctx.flags.labels,
         meta: metaOf(ctx.flags),
         readme: ctx.flags.readme,
+        acceptance: ctx.flags.acceptance,
+        reviewer: ctx.flags.reviewer,
       });
       return {
         data: { project },
-        human: `created project ${project.id}  ${project.name}`,
+        human: `created project ${project.id}  ${project.name}  acceptance=${project.acceptance}`,
+      };
+    },
+  },
+
+  {
+    name: "ensure",
+    summary: "Create a project if it does not exist; leave an existing one untouched.",
+    usage:
+      "project ensure <id> [--name <name>] [--acceptance auto|off|agent|human] " +
+      "[--reviewer <agent>] [--meta k=v]… [--label <label>]… [--readme <text>]",
+    positionals: [{ name: "id", summary: "Project id." }],
+    flags: [
+      { flag: "name", key: "name", as: "string", value: "<name>", summary: "Required only when the project does not exist yet." },
+      { flag: "meta", key: "meta", as: "kv", summary: "Repeatable key=value metadata (used only on creation)." },
+      { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
+      { flag: "readme", key: "readme", as: "string", value: "<text>" },
+      {
+        flag: "acceptance",
+        key: "acceptance",
+        as: "string",
+        value: "<auto|off|agent|human>",
+        summary: "Acceptance default for a newly created project (default: auto).",
+      },
+      {
+        flag: "reviewer",
+        key: "reviewer",
+        as: "string",
+        value: "<agent>",
+        summary: "Reviewer for a newly created project; empty uses the deployment-level reviewer.",
+      },
+    ],
+    async run(ctx) {
+      const { project, created } = await ctx.client.put(
+        `/api/v1/projects/${encodeURIComponent(ctx.args.id)}`,
+        {
+          name: ctx.flags.name,
+          labels: ctx.flags.labels,
+          meta: metaOf(ctx.flags),
+          readme: ctx.flags.readme,
+          acceptance: ctx.flags.acceptance,
+            reviewer: ctx.flags.reviewer,
+        },
+      );
+      return {
+        data: { project, created },
+        human: created
+          ? `created project ${project.id}  ${project.name}  acceptance=${project.acceptance}`
+          : `project ${project.id} already exists  ${project.name}`,
       };
     },
   },
 
   {
     name: "update",
-    summary: "Update a project's name, labels, metadata or readme.",
-    usage: "project update <id> [--name <name>] [--meta k=v]…",
+    summary: "Update a project's name, labels, metadata, readme, acceptance default or reviewer.",
+    usage:
+      "project update <id> [--name <name>] [--acceptance auto|off|agent|human] " +
+      "[--reviewer <agent>] [--meta k=v]…",
     positionals: [{ name: "id", summary: "Project id." }],
     flags: [
       { flag: "name", key: "name", as: "string", value: "<name>" },
       { flag: "meta", key: "meta", as: "kv" },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
+      {
+        flag: "acceptance",
+        key: "acceptance",
+        as: "string",
+        value: "<auto|off|agent|human>",
+        summary: "Change the acceptance default; it affects future cards only.",
+      },
+      {
+        flag: "reviewer",
+        key: "reviewer",
+        as: "string",
+        value: "<agent>",
+        summary: "Set this project's reviewer; pass an empty value to fall back to the deployment one.",
+      },
     ],
     async run(ctx) {
       const body = {};
@@ -126,8 +212,13 @@ export const COMMANDS = [
       if (ctx.flags.meta !== undefined) body.meta = ctx.flags.meta;
       if (ctx.flags.labels !== undefined) body.labels = ctx.flags.labels;
       if (ctx.flags.readme !== undefined) body.readme = ctx.flags.readme;
+      if (ctx.flags.acceptance !== undefined) body.acceptance = ctx.flags.acceptance;
+      if (ctx.flags.reviewer !== undefined) body.reviewer = ctx.flags.reviewer;
       const { project } = await ctx.client.patch(`/api/v1/projects/${ctx.args.id}`, body);
-      return { data: { project }, human: `updated project ${project.id}` };
+      return {
+        data: { project },
+        human: `updated project ${project.id}  acceptance=${project.acceptance}`,
+      };
     },
   },
 
@@ -143,7 +234,10 @@ export const COMMANDS = [
       });
       const human = projects.length === 0
         ? "no projects"
-        : table(["id", "name"], projects.map((p) => [p.id, p.name]));
+        : table(
+            ["id", "name", "acceptance", "reviewer"],
+            projects.map((p) => [p.id, p.name, p.acceptance, p.reviewer ?? "-"]),
+          );
       return { data: { projects }, human };
     },
   },
@@ -151,8 +245,12 @@ export const COMMANDS = [
   {
     name: "dir",
     summary: "Print the local directory a project's workers run in (from projects.json).",
-    usage: "project dir <id> [--projects-json <path>]",
+    usage: "project dir <id> [--projects-json <path>] [--require-dir]",
     positionals: [{ name: "id", summary: "Project id (or the name registered in projects.json)." }],
+    // `--require-dir` is the wake shape: map-only, no identity, no board. The
+    // dispatcher runs it on the local path so a wake still works with the board
+    // down; without the flag this stays an ordinary board command.
+    localWhen: (parsed) => parsed.flags.requireDir === true,
     flags: [
       {
         flag: "projects-json",
@@ -161,9 +259,33 @@ export const COMMANDS = [
         value: "<path>",
         summary: "Project map to read (default: beside the skill, or $MEERKAT_TASKPANEL_PROJECTS_JSON).",
       },
+      {
+        flag: "require-dir",
+        key: "requireDir",
+        as: "boolean",
+        summary:
+          "Resolve from the project map only (no board check); exit 3 when no directory is registered — the wake shape.",
+      },
     ],
     async run(ctx) {
       const id = ctx.args.id;
+      // The wake shape: a worker is started *somewhere*, so this is map-only and
+      // a `dir: null` / unmapped answer is a no-verdict exit 3, not a success.
+      // It deliberately does not ask the board: a wake must work with the board
+      // down, and the directory is a host-local fact.
+      if (ctx.flags.requireDir === true) {
+        const file = projectsJsonPath(ctx.env ?? {}, ctx.flags?.projectsJson ?? null);
+        const resolved = resolveWakeDir({ project: id, projectsJson: file, read: ctx.readFile });
+        if (!resolved.ok) {
+          return {
+            data: { project: id, dir: null, code: resolved.code, message: resolved.message, file },
+            human: "",
+            warnings: [`${resolved.code}: ${resolved.message}`],
+            exit: 3,
+          };
+        }
+        return { data: { project: id, dir: resolved.dir }, human: resolved.dir };
+      }
       // Ask the board first, so "unknown project" (a typo, a project from another
       // board) and "known project, no directory registered" (a question for the
       // user) stay distinguishable answers. `GET /projects/:id` answers `null`

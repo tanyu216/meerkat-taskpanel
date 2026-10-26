@@ -68,14 +68,17 @@ describe("server/main — shutdown", () => {
       taskd: { close: async () => closed.push(true) },
       pointerOptions: { path: pointerPath },
       exit: (code) => exits.push(code),
-      write: (text) => written.push(text),
+      logger: (event) => written.push(event),
     });
 
     await shutdown("SIGTERM");
     assert.deepEqual(closed, [true]);
     assert.deepEqual(exits, [0]);
     assert.equal(readRuntimePointer({ path: pointerPath }), null, "the pointer is gone");
-    assert.match(written.join(""), /SIGTERM/);
+    assert.equal(written[0].event, "shutdown_signal");
+    assert.equal(written[0].signal, "SIGTERM");
+    assert.match(written[0].message, /SIGTERM — closing/);
+    assert.equal(written.at(-1).event, "shutdown_complete");
   });
 
   it("ignores a second signal while the first is still closing", async () => {
@@ -89,7 +92,7 @@ describe("server/main — shutdown", () => {
       taskd: { close: async () => { closes += 1; } },
       pointerOptions: { path: pointerPath },
       exit: (code) => exits.push(code),
-      write: () => {},
+      logger: () => {},
     });
 
     await Promise.all([shutdown("SIGTERM"), shutdown("SIGINT"), shutdown("SIGTERM")]);
@@ -107,7 +110,7 @@ describe("server/main — shutdown", () => {
       taskd: { close: async () => { throw new Error("already gone"); } },
       pointerOptions: { path: pointerPath },
       exit: (code) => exits.push(code),
-      write: () => {},
+      logger: () => {},
     });
 
     await assert.rejects(() => shutdown("SIGTERM"));
@@ -209,7 +212,15 @@ describe("server/index — the label GC timer (F1-C)", () => {
       assert.equal(taskd.labelGc.enabled, true);
       assert.equal(taskd.labelGc.intervalMs, 0);
       assert.deepEqual(taskd.labelGc.last, { archived: [], kept: 0, mismatched: [] }, "startup sweep on an empty board");
-      assert.deepEqual(logs.filter((entry) => String(entry.event).startsWith("label_gc")), [], "a sweep that collects nothing is silent");
+      // The schedule is recorded once at startup; a *sweep* that collects
+      // nothing stays silent (that is what the timer relies on).
+      assert.equal(logs.filter((entry) => entry.event === "label_gc_scheduled").length, 1);
+      assert.deepEqual(
+        logs.filter((entry) =>
+          ["label_gc", "label_gc_failed", "label_gc_mismatch"].includes(entry.event)),
+        [],
+        "a sweep that collects nothing is silent",
+      );
 
       const { commands, repos } = taskd.board;
       commands.createProject({ id: "proj", name: "P", actor: AGENT });

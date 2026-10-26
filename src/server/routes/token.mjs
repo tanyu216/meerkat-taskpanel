@@ -23,6 +23,10 @@ export function registerTokenRoutes(router, surface) {
     // token immediately (a non-loopback caller holding the old one is locked
     // out the moment it rotates — which is the point of rotating).
     surface.token = rotated.token;
+    // A credential event worth keeping. The file is named; the token never is.
+    if (typeof board.ctx?.logger === "function") {
+      board.ctx.logger({ event: "token_rotated", token_file: rotated.file });
+    }
     return { token_file: rotated.file, rotated: true };
   });
 }

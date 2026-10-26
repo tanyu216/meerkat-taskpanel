@@ -18,9 +18,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
 
-import { listFiles, resolveSkillSource } from "../scripts/sync-skills.mjs";
 import { MANIFESTS, validateManifests } from "../scripts/verify/manifests.mjs";
-import { validateSkill } from "../scripts/verify/skill.mjs";
+import { validateSkills } from "../scripts/verify/skill.mjs";
 import { VERSION } from "../src/foundation/constants.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -73,13 +72,13 @@ async function skillDirsUnder(dir, rel = "") {
 }
 
 describe("plugin manifests", () => {
-  it("the board, Cursor, Pi and marketplace manifests parse and carry required keys", async () => {
-    // Three board manifests (the repository-root board plugin, Cursor's marker, and the Pi
-    // package) + the marketplace. Codex has no manifest of its own: it installs the same
-    // `./` bundle as Claude Code through the repository-root marketplace. OpenClaw has none
-    // either — it reads that same root bundle, so it ships no native manifest to keep in
-    // sync (it did until the `plugins/` directory was emptied).
-    assert.equal(MANIFESTS.length, 4);
+  it("the board, Pi and marketplace manifests parse and carry required keys", async () => {
+    // Two board manifests (the repository-root board plugin and the Pi package) + the
+    // marketplace. Codex has no manifest of its own: it installs the same `./` bundle as
+    // Claude Code through the repository-root marketplace. OpenClaw has none either — it
+    // reads that same root bundle, so it ships no native manifest to keep in sync (it did
+    // until the `plugins/` directory was emptied).
+    assert.equal(MANIFESTS.length, 3);
 
     const report = await validateManifests(ROOT);
     const failures = report.results.filter((r) => !r.ok);
@@ -91,54 +90,39 @@ describe("plugin manifests", () => {
     assert.equal(report.ok, true);
   });
 
-  it("every host manifest points its skills field at ./skills (or [./skills])", async () => {
+  it("every agent-kind manifest points its skills field at ./skills (or [./skills])", async () => {
     // Codex is absent on purpose: it ships no manifest, and installs the same
-    // repository-root bundle as Claude Code (HOST_BUNDLES.codex names that manifest).
+    // repository-root bundle as Claude Code (KIND_BUNDLES.codex names that manifest).
     // Pi's manifest is the repository's own `package.json`, whose `pi` field declares the
     // skills path — hence the `files`/`skills` fallback in the assertion below.
-    const hosts = ["claude", "cursor", "pi"];
+    const kinds = ["claude", "pi"];
     const paths = {
       claude: ".claude-plugin/plugin.json",
-      cursor: ".cursor-plugin/plugin.json",
       pi: "package.json",
     };
 
-    for (const host of hosts) {
-      const data = JSON.parse(await readFile(join(ROOT, paths[host]), "utf8"));
-      // Claude and Cursor declare `skills`; Pi's carrier is the root package's `files`.
+    for (const kind of kinds) {
+      const data = JSON.parse(await readFile(join(ROOT, paths[kind]), "utf8"));
+      // Claude declares `skills`; Pi's carrier is the root package's `files`.
       const value = data.skills ?? data.files;
       assert.ok(
         JSON.stringify(value).includes("./skills") ||
           JSON.stringify(value).includes("skills"),
-        `${host} manifest should reference its skills directory`,
+        `${kind} manifest should reference its skills directory`,
       );
     }
   });
 });
 
-describe("skill sync", () => {
-  it("resolveSkillSource / listFiles return what the sync expects", async () => {
-    const source = resolveSkillSource(ROOT);
-    assert.equal(source, join(ROOT, "skills", "meerkat-taskpanel"));
-
-    const files = await listFiles(source);
-    assert.ok(files.includes("SKILL.md"), "SKILL.md must be listed");
-    assert.ok(files.includes("references/cli.md"), "references/cli.md must be listed");
-    assert.ok(files.includes("scripts/run.mjs"), "scripts/run.mjs must be listed");
-
-    const sorted = [...files].sort();
-    assert.deepEqual(files, sorted, "listFiles output must be sorted");
-  });
-
+describe("skill distribution", () => {
   it("keeps exactly one skills tree: nothing is distributed as a copy", async () => {
     // The invariant the whole distribution story exists for, asserted against the
     // checkout rather than a table — a table can only describe the copies it knows about.
-    // Every harness (claude, codex, cursor, pi, opencode, openclaw) reads the repository's
+    // Every harness (claude, codex, pi, openclaw) reads the repository's
     // own `skills/` tree through its own manifest, so there is no generated copy anywhere.
     //
-    // This is now the *only* guard: with no copy targets left, `sync-skills.mjs --check`
-    // has nothing to compare and cannot notice an orphan `plugins/` tree. A harness that
-    // reintroduces one is exactly the regression this catches
+    // There is no generator to notice an orphan `plugins/` tree, so this is the guard:
+    // a harness that reintroduces one fails here
     // (design/plugin-distribution-plan.md §3.1 / §5.3, reversed for the floor by
     // design/plugin-distribution-plan.md's 2026-10-17 decision note).
     assert.deepEqual(await skillDirsUnder(ROOT), ["skills"]);
@@ -151,26 +135,44 @@ describe("skill sync", () => {
   });
 });
 
-describe("skill definition", () => {
-  it("SKILL.md has frontmatter with name: meerkat-taskpanel and a real description", async () => {
-    const result = await validateSkill(ROOT);
-    assert.equal(result.ok, true, result.error);
-    assert.equal(result.name, "meerkat-taskpanel");
-    assert.ok(
-      typeof result.description === "string" && result.description.length >= 20,
-      "description must be non-empty and at least 20 characters",
+describe("skill definitions", () => {
+  it("every SKILL.md names its directory and carries a real description", async () => {
+    const { ok, results } = await validateSkills(ROOT);
+    assert.equal(ok, true, results.filter((result) => !result.ok).map((result) => result.error).join("\n"));
+    assert.deepEqual(
+      results.map((result) => result.name).sort(),
+      ["meerkat-loop", "meerkat-taskpanel", "setup-meerkat"],
     );
+    for (const result of results) {
+      assert.ok(
+        typeof result.description === "string" && result.description.length >= 20,
+        `${result.skill}: description must be non-empty and at least 20 characters`,
+      );
+    }
   });
 });
 
 describe("package manifest", () => {
-  it("exposes bin.taskctl and engines.node >= 22", async () => {
+  it("exposes the installer, taskctl and taskd as bins, and ships web/dist", async () => {
     const pkg = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
 
     assert.equal(pkg.type, "module");
     assert.ok(pkg.bin, "package.json must declare a bin");
-    assert.equal(pkg.bin.taskctl, "./src/cli/index.mjs");
-    assert.ok(existsSync(join(ROOT, pkg.bin.taskctl)), "bin target must exist");
+    for (const [name, target] of [
+      ["meerkat-taskpanel", "./scripts/install/cli.mjs"],
+      ["taskctl", "./src/cli/index.mjs"],
+      ["taskd", "./src/server/main.mjs"],
+    ]) {
+      assert.equal(pkg.bin[name], target, `bin.${name}`);
+      const entry = join(ROOT, target);
+      assert.ok(existsSync(entry), `bin.${name} target must exist`);
+      assert.match(readFileSync(entry, "utf8"), /^#!\/usr\/bin\/env node\n/, `bin.${name} needs a shebang`);
+      assert.ok(
+        (statSync(entry).mode & 0o111) !== 0,
+        `bin.${name} must be executable (\`chmod +x\`)`,
+      );
+    }
+    assert.ok(pkg.files.includes("web/dist"), "the packaged server needs the built frontend");
 
     const range = String(pkg.engines?.node ?? "");
     const major = Number(range.match(/\d+/)?.[0]);
@@ -179,7 +181,7 @@ describe("package manifest", () => {
   });
 
   it("exposes the CLI as a bin that is ready to run", async () => {
-    // `taskctl` is a *program*, not just a library: a host config or an installer
+    // `taskctl` is a *program*, not just a library: a agent config or an installer
     // has to be able to start it without knowing where it lives. So it is a bin,
     // and a bin has to actually be runnable — two separate facts, both of them
     // easy to lose and neither visible from here without being written down.
@@ -199,7 +201,7 @@ describe("install.sh", () => {
   it("documents every --target value and supports --dry-run", async () => {
     const script = await readFile(join(ROOT, "install.sh"), "utf8");
 
-    for (const target of ["claude", "openclaw", "codex", "pi", "opencode", "cursor", "all"]) {
+    for (const target of ["claude", "openclaw", "codex", "pi", "server", "all"]) {
       assert.ok(script.includes(target), `install.sh must mention target "${target}"`);
     }
 
@@ -209,8 +211,8 @@ describe("install.sh", () => {
     assert.match(script, /--link/, "install.sh must accept --link");
     assert.match(script, /--force/, "install.sh must accept --force");
 
-    // It is a dispatcher: it must delegate to the per-host installers.
-    assert.match(script, /scripts\/install\/?\$?\{?host\}?\.sh|scripts\/install\//);
+    // It is a dispatcher: it must delegate to the per-agent-kind installers.
+    assert.match(script, /scripts\/install\/\$target\.sh/);
   });
 
   it("--dry-run prints destinations and creates nothing", async () => {
@@ -223,14 +225,36 @@ describe("install.sh", () => {
     });
 
     assert.equal(run.status, 0, run.stderr);
-    for (const hostDir of [".claude", ".openclaw", ".codex", ".agents"]) {
+    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
       assert.ok(
-        run.stdout.includes(join(fakeHome, hostDir, "skills", "meerkat-taskpanel")),
-        `dry run must print the ${hostDir} destination path`,
+        run.stdout.includes(join(fakeHome, agentDir, "skills", "meerkat-taskpanel")),
+        `dry run must print the ${agentDir} destination path`,
       );
     }
     assert.equal(existsSync(join(fakeHome, ".claude")), false, "dry run must not write");
     assert.equal(existsSync(join(fakeHome, ".agents")), false, "dry run must not write");
+  });
+
+  it("--target server --dry-run prints the runtime tree and creates nothing", async () => {
+    const fakeHome = await makeTempDir();
+    const run = spawnSync(
+      "bash",
+      [join(ROOT, "install.sh"), "--target", "server", "--dry-run", "--skip-node-check", "--skip-web-build"],
+      {
+        cwd: ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          MEERKAT_TASKPANEL_TARGET_HOME: fakeHome,
+          MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+        },
+      },
+    );
+    assert.equal(run.status, 0, run.stderr);
+    const tree = join(fakeHome, ".meerkat-taskpanel");
+    assert.ok(run.stdout.includes(tree), "dry run must print the server root");
+    assert.ok(run.stdout.includes(join(tree, "bin", "taskd")), "dry run must print the launchers");
+    assert.equal(existsSync(tree), false, "dry run must not write the tree");
   });
 
   it("installs into a temp home and re-installs idempotently", async () => {
@@ -305,7 +329,7 @@ describe("repository guard files", () => {
      * existence check. Pin the two facts a contributor cannot guess — the container
      * gate and the commit-before-you-run-it ordering — plus the generated-skills rule. */
     const text = await readFile(join(ROOT, "CONTRIBUTING.md"), "utf8");
-    for (const needle of ["npm run verify:docker", "commit", "sync-skills", "contract"]) {
+    for (const needle of ["npm run verify:docker", "commit", "skills", "contract"]) {
       assert.ok(text.includes(needle), `CONTRIBUTING.md must mention ${needle}`);
     }
   });

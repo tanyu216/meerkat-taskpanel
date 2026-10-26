@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "envelope": {
     "error": [
       "error",
@@ -19,6 +19,19 @@
     "version_data": [
       "schema_version",
       "version"
+    ],
+    "status_data": [
+      "runtime",
+      "schema_version",
+      "version"
+    ],
+    "status_runtime": [
+      "data_dir",
+      "note",
+      "pid",
+      "pointer",
+      "running",
+      "url"
     ]
   },
   "globals": [
@@ -111,6 +124,13 @@
       "short": null
     }
   ],
+  "top_level": [
+    {
+      "name": "status",
+      "positionals": [],
+      "flags": []
+    }
+  ],
   "groups": [
     {
       "name": "actors",
@@ -180,6 +200,25 @@
           ]
         },
         {
+          "name": "download",
+          "positionals": [
+            {
+              "name": "id",
+              "summary": "The attachment id (`attachment list` prints it)."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "out",
+              "as": "string",
+              "value": "<file>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
           "name": "list",
           "positionals": [
             {
@@ -237,6 +276,14 @@
               "required": false,
               "repeat": false,
               "short": null
+            },
+            {
+              "flag": "ref",
+              "as": "string",
+              "value": "<kind:id>",
+              "required": false,
+              "repeat": true,
+              "short": null
             }
           ]
         },
@@ -270,12 +317,73 @@
       ]
     },
     {
+      "name": "events",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "follow",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "after",
+              "as": "number",
+              "value": "<rev>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "idle",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "hub",
+          "positionals": [],
+          "flags": []
+        },
+        {
+          "name": "tail",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "after",
+              "as": "number",
+              "value": "<rev>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "idle",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "export",
       "default_command": "md",
       "commands": [
         {
           "name": "md",
-          "positionals": [],
+          "positionals": [
+            {
+              "name": "ref",
+              "required": false,
+              "summary": "Export only this task (id or identifier)."
+            }
+          ],
           "flags": [
             {
               "flag": "check",
@@ -296,7 +404,7 @@
             {
               "flag": "out",
               "as": "string",
-              "value": "<dir>",
+              "value": "<dir|file.md>",
               "required": false,
               "repeat": false,
               "short": null
@@ -305,6 +413,114 @@
               "flag": "project",
               "as": "string",
               "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "watch",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "watch",
+          "positionals": [
+            {
+              "name": "ref",
+              "required": false,
+              "summary": "Watch this card (id or identifier); at least one ref in total is required."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "after",
+              "as": "number",
+              "value": "<rev>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "detach",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "idle",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "once",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "out",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ref",
+              "as": "string",
+              "value": "<ref>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "standalone",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "stop",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ttl",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "watch-status",
+              "as": "boolean",
+              "value": null,
               "required": false,
               "repeat": false,
               "short": null
@@ -451,6 +667,14 @@
               "short": null
             },
             {
+              "flag": "check-blockers",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "reason",
               "as": "string",
               "value": null,
@@ -470,6 +694,14 @@
               "value": "<text>",
               "required": false,
               "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "acceptance-mode",
+              "as": "string",
+              "value": null,
+              "required": false,
+              "repeat": false,
               "short": null
             },
             {
@@ -531,7 +763,7 @@
             {
               "flag": "kind",
               "as": "string",
-              "value": "<task|epic|deploy>",
+              "value": "<task|epic>",
               "required": false,
               "repeat": false,
               "short": null
@@ -682,6 +914,14 @@
               "required": false,
               "repeat": false,
               "short": null
+            },
+            {
+              "flag": "to",
+              "as": "string",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
             }
           ]
         },
@@ -710,6 +950,14 @@
           "positionals": [],
           "flags": [
             {
+              "flag": "assignee",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "assignee-id",
               "as": "string",
               "value": "<id>",
@@ -726,11 +974,35 @@
               "short": null
             },
             {
+              "flag": "kind",
+              "as": "string",
+              "value": "<kind>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "label",
+              "as": "string",
+              "value": "<label>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
               "flag": "limit",
               "as": "number",
               "value": "<n>",
               "required": false,
               "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "meta",
+              "as": "string",
+              "value": "<key>=<value>",
+              "required": false,
+              "repeat": true,
               "short": null
             },
             {
@@ -750,9 +1022,25 @@
               "short": null
             },
             {
+              "flag": "parent",
+              "as": "string",
+              "value": "<ref>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "project",
               "as": "string",
               "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-of",
+              "as": "string",
+              "value": "<ref>",
               "required": false,
               "repeat": false,
               "short": null
@@ -763,6 +1051,14 @@
               "value": "<status>",
               "required": false,
               "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "target",
+              "as": "string",
+              "value": "<value>",
+              "required": false,
+              "repeat": false,
               "short": null
             }
           ]
@@ -832,6 +1128,14 @@
               "short": null
             },
             {
+              "flag": "question",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "reason",
               "as": "string",
               "value": "<why>",
@@ -845,14 +1149,6 @@
           "name": "reconcile",
           "positionals": [],
           "flags": [
-            {
-              "flag": "auto-accept-reviews",
-              "as": "string",
-              "value": "yes|no",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
             {
               "flag": "board-limit",
               "as": "string",
@@ -904,6 +1200,25 @@
           ]
         },
         {
+          "name": "reopen",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "reason",
+              "as": "string",
+              "value": "<why>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
           "name": "update",
           "positionals": [
             {
@@ -921,6 +1236,22 @@
               "short": null
             },
             {
+              "flag": "acceptance-mode",
+              "as": "string",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "acceptance-revision",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "description",
               "as": "string",
               "value": "<text>",
@@ -929,9 +1260,17 @@
               "short": null
             },
             {
+              "flag": "drop-acceptance",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
               "flag": "kind",
               "as": "string",
-              "value": "<task|epic|deploy>",
+              "value": "<task|epic>",
               "required": false,
               "repeat": false,
               "short": null
@@ -956,6 +1295,14 @@
               "flag": "priority",
               "as": "string",
               "value": "<priority>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reason",
+              "as": "string",
+              "value": "<why>",
               "required": false,
               "repeat": false,
               "short": null
@@ -1001,6 +1348,4040 @@
       ]
     },
     {
+      "name": "loop",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "compat",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "allow-all-tools",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "allow-all-tools-reason",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-only",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "board-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "claim-unassigned",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "cli",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "config",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "control",
+              "as": "string",
+              "value": "<internal|external>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue-min-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-max-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "home",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "log",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "max-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "notify",
+              "as": "string",
+              "value": "<cmd>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "opened-by",
+              "as": "string",
+              "value": "<human|supervisor>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-llm",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ping-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "projects-json",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "quiet",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "recover-stale",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "repo",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "resident",
+              "as": "string",
+              "value": "<auto|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-aging-minutes",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "roles-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-max-age",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-poll-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-pool-max",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-turn-timeout",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-last-ok",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-peer",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sse-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-max-actions",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "console",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "allow-all-tools",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "allow-all-tools-reason",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-only",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "board-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "claim-unassigned",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "cli",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "config",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "control",
+              "as": "string",
+              "value": "<internal|external>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue-min-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-max-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "home",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "log",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "max-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "notify",
+              "as": "string",
+              "value": "<cmd>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "opened-by",
+              "as": "string",
+              "value": "<human|supervisor>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-llm",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ping-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "projects-json",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "recover-stale",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "repo",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "resident",
+              "as": "string",
+              "value": "<auto|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-aging-minutes",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "roles-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-max-age",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-poll-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-pool-max",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-turn-timeout",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-last-ok",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-peer",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sse-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-max-actions",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "patrol",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "allow-all-tools",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "allow-all-tools-reason",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-only",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "board-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "claim-unassigned",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "cli",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "config",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "control",
+              "as": "string",
+              "value": "<internal|external>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue-min-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-max-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "home",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "log",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "max-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "notify",
+              "as": "string",
+              "value": "<cmd>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "opened-by",
+              "as": "string",
+              "value": "<human|supervisor>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-llm",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ping-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "projects-json",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "recover-stale",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "repo",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "resident",
+              "as": "string",
+              "value": "<auto|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-aging-minutes",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "roles-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-max-age",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-poll-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-pool-max",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-turn-timeout",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-last-ok",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-peer",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sse-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-max-actions",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "poll",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "allow-all-tools",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "allow-all-tools-reason",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-only",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "board-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "claim-unassigned",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "cli",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "config",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "control",
+              "as": "string",
+              "value": "<internal|external>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue-min-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-max-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "home",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "log",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "max-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "notify",
+              "as": "string",
+              "value": "<cmd>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "opened-by",
+              "as": "string",
+              "value": "<human|supervisor>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-llm",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ping-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "projects-json",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "recover-stale",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "repo",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "resident",
+              "as": "string",
+              "value": "<auto|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-aging-minutes",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "roles-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-max-age",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-poll-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-pool-max",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-turn-timeout",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-last-ok",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-peer",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sse-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-max-actions",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "run",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "allow-all-tools",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "allow-all-tools-reason",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-only",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "board-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "claim-unassigned",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "cli",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "config",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-once",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "control",
+              "as": "string",
+              "value": "<internal|external>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue-min-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-max-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "home",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "log",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "max-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "notify",
+              "as": "string",
+              "value": "<cmd>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "opened-by",
+              "as": "string",
+              "value": "<human|supervisor>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-llm",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ping-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ping-once",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "projects-json",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "recover-stale",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "repo",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "resident",
+              "as": "string",
+              "value": "<auto|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-aging-minutes",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "roles-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-max-age",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-poll-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-pool-max",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-turn-timeout",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-last-ok",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-peer",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sse-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-max-actions",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "session",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "allow-all-tools",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "allow-all-tools-reason",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-only",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "board-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "claim-unassigned",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "cli",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "config",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "control",
+              "as": "string",
+              "value": "<internal|external>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue-min-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-max-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "home",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "log",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "max-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "notify",
+              "as": "string",
+              "value": "<cmd>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "opened-by",
+              "as": "string",
+              "value": "<human|supervisor>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-llm",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ping-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "projects-json",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "recover-stale",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "repo",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "resident",
+              "as": "string",
+              "value": "<auto|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-aging-minutes",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "roles-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-max-age",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-poll-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-pool-max",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-turn-timeout",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-last-ok",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-peer",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sse-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-max-actions",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "status",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "allow-all-tools",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "allow-all-tools-reason",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-only",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "board-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "claim-unassigned",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "cli",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "config",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "control",
+              "as": "string",
+              "value": "<internal|external>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue-min-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-max-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "home",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "log",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "max-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "notify",
+              "as": "string",
+              "value": "<cmd>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "opened-by",
+              "as": "string",
+              "value": "<human|supervisor>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-llm",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ping-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "projects-json",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "recover-stale",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "repo",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "resident",
+              "as": "string",
+              "value": "<auto|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-aging-minutes",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "roles-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-max-age",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-poll-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-pool-max",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-turn-timeout",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-last-ok",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-peer",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sse-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "stop",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "take-over",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-max-actions",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "subscribe",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "allow-all-tools",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "allow-all-tools-reason",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-only",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "board-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "claim-unassigned",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "cli",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "config",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "control",
+              "as": "string",
+              "value": "<internal|external>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue-min-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-max-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "home",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "log",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "max-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "notify",
+              "as": "string",
+              "value": "<cmd>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "opened-by",
+              "as": "string",
+              "value": "<human|supervisor>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-llm",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ping-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "projects-json",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "recover-stale",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "repo",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "resident",
+              "as": "string",
+              "value": "<auto|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-aging-minutes",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "roles-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-max-age",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-poll-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-pool-max",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-turn-timeout",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-last-ok",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-peer",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sse-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-max-actions",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "tick",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "allow-all-tools",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "allow-all-tools-reason",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-only",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "board-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "claim-unassigned",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "cli",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "config",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "control",
+              "as": "string",
+              "value": "<internal|external>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue-min-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-max-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "home",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "log",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "max-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "notify",
+              "as": "string",
+              "value": "<cmd>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "opened-by",
+              "as": "string",
+              "value": "<human|supervisor>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "passes",
+              "as": "string",
+              "value": "<list>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-llm",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ping-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "projects-json",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "recover-stale",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "repo",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "resident",
+              "as": "string",
+              "value": "<auto|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-aging-minutes",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "roles-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-max-age",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-poll-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-pool-max",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-turn-timeout",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-last-ok",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-peer",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sse-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-max-actions",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "workflow",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "allow-all-tools",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "allow-all-tools-reason",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "assignee-only",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "board-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "claim-unassigned",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "cli",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "config",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "continue-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "control",
+              "as": "string",
+              "value": "<internal|external>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-continue-min-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-max-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "event-debounce-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "home",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "log",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "max-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "notify",
+              "as": "string",
+              "value": "<cmd>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "opened-by",
+              "as": "string",
+              "value": "<human|supervisor>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "patrol-llm",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "ping-interval",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-concurrency",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "projects-json",
+              "as": "string",
+              "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "recover-stale",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "repo",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "resident",
+              "as": "string",
+              "value": "<auto|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "review-aging-minutes",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "roles-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-max-age",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-poll-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-pool-max",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session-turn-timeout",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-last-ok",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sla-peer",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "sse-idle-ms",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "state-dir",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow",
+              "as": "string",
+              "value": "<yes|no>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-ledger",
+              "as": "string",
+              "value": "<file>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workflow-max-actions",
+              "as": "string",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "project",
       "default_command": null,
       "commands": [
@@ -1008,6 +5389,14 @@
           "name": "create",
           "positionals": [],
           "flags": [
+            {
+              "flag": "acceptance",
+              "as": "string",
+              "value": "<auto|off|agent|human>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
             {
               "flag": "id",
               "as": "string",
@@ -1047,6 +5436,14 @@
               "required": false,
               "repeat": false,
               "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
             }
           ]
         },
@@ -1063,6 +5460,73 @@
               "flag": "projects-json",
               "as": "string",
               "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "require-dir",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "ensure",
+          "positionals": [
+            {
+              "name": "id",
+              "summary": "Project id."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "acceptance",
+              "as": "string",
+              "value": "<auto|off|agent|human>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "label",
+              "as": "string",
+              "value": "<label>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "meta",
+              "as": "kv",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "name",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "readme",
+              "as": "string",
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
               "required": false,
               "repeat": false,
               "short": null
@@ -1120,6 +5584,14 @@
           ],
           "flags": [
             {
+              "flag": "acceptance",
+              "as": "string",
+              "value": "<auto|off|agent|human>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "label",
               "as": "string",
               "value": "<label>",
@@ -1147,6 +5619,14 @@
               "flag": "readme",
               "as": "string",
               "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "reviewer",
+              "as": "string",
+              "value": "<agent>",
               "required": false,
               "repeat": false,
               "short": null
@@ -1301,7 +5781,8 @@
             },
             {
               "name": "sessionId",
-              "summary": "Session row id."
+              "summary": "Session row id; omit when using --seg.",
+              "required": false
             }
           ],
           "flags": [
@@ -1309,6 +5790,57 @@
               "flag": "failed",
               "as": "boolean",
               "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "owner",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "seg",
+              "as": "string",
+              "value": "<seg>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "id",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "owner",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "seg",
+              "as": "string",
+              "value": "<seg>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "session",
+              "as": "string",
+              "value": "<task-id>",
               "required": false,
               "repeat": false,
               "short": null
@@ -1320,10 +5852,44 @@
           "positionals": [
             {
               "name": "ref",
-              "summary": "Task id or identifier."
+              "summary": "Task id or identifier; omit for the board-wide read.",
+              "required": false
             }
           ],
-          "flags": []
+          "flags": [
+            {
+              "flag": "limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "owner",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "owner-kind",
+              "as": "string",
+              "value": "<kind>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "status",
+              "as": "string",
+              "value": "<status>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
         },
         {
           "name": "set",
@@ -1335,10 +5901,18 @@
           ],
           "flags": [
             {
-              "flag": "backend",
+              "flag": "goal",
               "as": "string",
-              "value": "<name>",
-              "required": true,
+              "value": "<text>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "meta",
+              "as": "kv",
+              "value": null,
+              "required": false,
               "repeat": false,
               "short": null
             },
@@ -1347,6 +5921,14 @@
               "as": "string",
               "value": "<name>",
               "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "owner-kind",
+              "as": "string",
+              "value": "<name>",
+              "required": true,
               "repeat": false,
               "short": null
             },
@@ -1378,6 +5960,77 @@
               "flag": "session",
               "as": "string",
               "value": "<task-id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sla",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "get",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "period",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "leader",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "period",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "trail-limit",
+              "as": "number",
+              "value": "<n>",
               "required": false,
               "repeat": false,
               "short": null

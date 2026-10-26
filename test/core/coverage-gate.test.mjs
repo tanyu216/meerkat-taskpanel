@@ -79,6 +79,7 @@ const GATES = [
     include: "src/cli/**",
     tests: [
       "test/cli/",
+      "test/hub/",
     ],
   },
   {

@@ -27,10 +27,12 @@ import { readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import {
-  ACCEPTANCE_POLICIES,
   CLIENT_CONFIG_KEYS,
   CONFIG_NAMESPACES,
   ENV_FILE_ENV,
+  LOG_KEEP_ENV,
+  LOG_LEVEL_ENV,
+  LOG_MAX_BYTES_ENV,
   NO_AUTOSTART_ENV,
   PORT_ENV,
   TOKEN_ENV,
@@ -38,7 +40,9 @@ import {
   URL_ENV,
 } from "./constants.mjs";
 import { parseEnvBool, parseEnvText } from "./env-file.mjs";
+import { parseLogLevel } from "./log.mjs";
 import { DomainError } from "./errors.mjs";
+import { isSlaEnvKey, parseSlaEnvValue, readSlaConfig } from "./sla-config.mjs";
 import { resolveEnvFilePath } from "./runtime-locator.mjs";
 import { normalizeBoardUrl } from "./transport/board-url.mjs";
 import { isTokenShape } from "./transport/token.mjs";
@@ -58,13 +62,13 @@ function inOurNamespace(key) {
 /** @param {string} key */
 function unknownKeyMessage(key) {
   if (key === "TASKCTL_ACTOR_KIND" || key === "TASKCTL_SESSION_ID") {
-    return `${key} is identity, not install-wide configuration: pass it per host (the shim / harness settings) or per invocation`;
+    return `${key} is identity, not install-wide configuration: pass it per agent kind (the shim / harness settings) or per invocation`;
   }
   if (key === ENV_FILE_ENV) {
     return `${ENV_FILE_ENV} selects this file and cannot be set inside it`;
   }
   if (key.startsWith("MEERKAT_TASKPANEL_")) {
-    return `${key} is loop policy and belongs in <host>/meerkat-taskpanel.env, not the shared .env`;
+    return `${key} is loop policy and belongs in <agent-dir>/meerkat-taskpanel.env, not the shared .env`;
   }
   return `unknown configuration key "${key}"`;
 }
@@ -108,8 +112,37 @@ export function parseEnvConfig(text) {
   return parseEnvText(clean, { quoteMinLength: 2 });
 }
 
+/**
+ * Re-read one `KEY=VALUE` map from an env file, leniently.
+ *
+ * A per-request resolver (the SLA policy) needs the file's values *now* — a
+ * hand edit must apply without restarting `taskd` — but must not repeat the
+ * strict startup pre-scan on every request: a malformed line added by hand
+ * costs that request, not the process. A missing file is an empty map; an
+ * unreadable one is still an error.
+ *
+ * @param {string|null} envFile
+ * @returns {Map<string,string>}
+ */
+export function readConfigFileVars(envFile) {
+  if (typeof envFile !== "string" || envFile === "") return new Map();
+  let text;
+  try {
+    text = readFileSync(envFile, "utf8");
+  } catch (err) {
+    if (err?.code === "ENOENT") return new Map();
+    throw configError(`cannot read the configuration file: ${err?.message ?? String(err)}`, {
+      file: envFile,
+    });
+  }
+  return parseEnvText(text, { quoteMinLength: 2 });
+}
+
 /** @param {string} key @param {string} value */
 function validateValue(key, value) {
+  // `TASKD_SLA_*` values are integers with per-key ranges; `sla-config.mjs`
+  // owns the rules, and raises `CONFIG_FILE_INVALID` with the key in `details`.
+  if (isSlaEnvKey(key)) return String(parseSlaEnvValue(key, value));
   switch (key) {
     case URL_ENV:
       return normalizeBoardUrl(value);
@@ -137,6 +170,23 @@ function validateValue(key, value) {
       }
       return text;
     }
+    case LOG_LEVEL_ENV: {
+      // Aliases are normalised here, so the rest of the tree only ever sees
+      // `debug|info|warn|error|off`. A typo is a refusal, not a silent `info`.
+      const level = parseLogLevel(value);
+      if (level === null) {
+        throw configError(`${LOG_LEVEL_ENV} must be debug, info, warn, error or off`, { key });
+      }
+      return level;
+    }
+    case LOG_MAX_BYTES_ENV:
+    case LOG_KEEP_ENV: {
+      const text = value.trim();
+      if (!/^\d+$/.test(text) || Number(text) <= 0) {
+        throw configError(`${key} must be a positive integer`, { key });
+      }
+      return text;
+    }
     case "TASKD_ALLOW_CIDRS":
       // An explicit empty list is meaningful: enabled + empty = deny all.
       return value;
@@ -145,13 +195,6 @@ function validateValue(key, value) {
         throw configError(`${key} must be true or false`, { key });
       }
       return value;
-    case "TASKD_ACCEPTANCE_POLICY": {
-      const policy = value.trim();
-      if (!ACCEPTANCE_POLICIES.includes(policy)) {
-        throw configError(`${key} must be one of ${ACCEPTANCE_POLICIES.join(" | ")}`, { key });
-      }
-      return policy;
-    }
     default: {
       const text = value.trim();
       if (text === "") throw configError(`${key} is empty`, { key });
@@ -179,6 +222,9 @@ function validateVars(raw) {
       keys: [TOKEN_ENV, TOKEN_FILE_ENV],
     });
   }
+  // Cross-field SLA rules (a further bound below its normal limit) need the
+  // whole file at once; per-key range checks ran in `validateValue` above.
+  readSlaConfig({ envVars: vars });
   return vars;
 }
 

@@ -7,14 +7,12 @@
  */
 
 import assert from "node:assert/strict";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import { openBoard, readPointer } from "../../src/core/bootstrap.mjs";
 import { closeDatabase, openDatabase } from "../../src/core/storage/driver.mjs";
-import { applyMigrations } from "../../src/core/storage/migrations-runner.mjs";
 import { TOKEN_FORMAT } from "../../src/core/storage/secrets/token-store.mjs";
 import { ensureParentDir } from "../../src/core/storage/paths.mjs";
 import { cleanupTempDirs, makeTempDir, TS } from "../helpers/sqlite-fixture.mjs";
@@ -43,8 +41,7 @@ describe("core/bootstrap — openBoard", () => {
       pointerUrl: undefined,
     });
     try {
-      assert.deepEqual(board.migration.applied.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"]);
-      assert.equal(board.schema.ok, true);
+      assert.deepEqual(board.migration.applied.map((m) => m.version), ["0001"]);      assert.equal(board.schema.ok, true);
       assert.match(board.version, /^\d+\.\d+\.\d+$/);
       assert.equal(board.dbPath, join(dataDir, "board.sqlite"));
       assert.equal(existsSync(board.dbPath), true);
@@ -98,8 +95,7 @@ describe("core/bootstrap — openBoard", () => {
     const second = await openBoard({ dataDir, pointerPath, env: {} });
     try {
       assert.deepEqual(second.migration.applied, []);
-      assert.deepEqual(second.migration.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"]);
-      assert.equal(second.token.created, false);
+      assert.deepEqual(second.migration.skipped, ["0001"]);      assert.equal(second.token.created, false);
       assert.equal(readFileSync(join(dataDir, "token"), "utf8").trim(), token, "the token survives a restart");
       assert.equal(second.schema.ok, true);
       assert.deepEqual(
@@ -116,27 +112,12 @@ describe("core/bootstrap — openBoard", () => {
     const { dataDir, pointerPath } = scratch();
     const dbPath = join(dataDir, "board.sqlite");
 
-    // A database an older build created: the first four migrations, and nothing
-    // after them. A migration is allowed to assume its predecessors — the runner
-    // applies them contiguously — so a fixture that wants a *behind* board has to
-    // be a prefix, not a set with a hole in it.
-    const older = makeTempDir("bootstrap-old-");
-    const sources = join(dirname(fileURLToPath(import.meta.url)), "../../src/core/storage/migrations");
-    const shipped = readdirSync(sources)
-      .filter((n) => n.endsWith(".sql"))
-      .map((n) => n.slice(0, 4))
-      .sort();
-    const firstFour = shipped.filter((version) => version < "0005");
-    for (const name of readdirSync(sources).filter((n) => n.endsWith(".sql") && n.slice(0, 4) < "0005")) {
-      copyFileSync(join(sources, name), join(older, name));
-    }
-    /** Everything this older build never applied — derived, never transcribed. */
-    const behind = shipped.filter((version) => !firstFour.includes(version));
+    // An empty database file: no migration has run, so the schema is missing
+    // its one baseline. A read-only open must not migrate and must not pretend
+    // all is well.
     const db = await openDatabase({ path: dbPath });
-    applyMigrations(db, { dir: older });
     closeDatabase(db);
 
-    // A read-only open must not migrate, and must not pretend all is well.
     await assert.rejects(() => openBoard({ dataDir, pointerPath, env: {}, readonly: true }), (err) => {
       assert.equal(err.code, "SCHEMA_MISMATCH");
       return true;
@@ -144,17 +125,17 @@ describe("core/bootstrap — openBoard", () => {
     const stale = await openBoard({ dataDir, pointerPath, env: {}, readonly: true, allowStale: true });
     try {
       assert.equal(stale.schema.ok, false);
-      assert.deepEqual(stale.schema.missing, behind);
+      assert.deepEqual(stale.schema.missing, ["0001"]);
       assert.equal(stale.migration.applied.length, 0, "a read-only open never migrates");
-      // The repositories would build statements against columns that do not
+      // The repositories would build statements against tables that do not
       // exist yet, so they name the real problem instead.
       assert.throws(() => stale.repos.tasks, (err) => {
         assert.equal(err.code, "SCHEMA_MISMATCH");
-        assert.match(err.message, /0005/);
+        assert.match(err.message, /0001/);
         return true;
       });
       assert.throws(() => stale.commands.listTasks(), (err) => err.code === "SCHEMA_MISMATCH");
-      assert.equal(typeof stale.db.prepare("SELECT COUNT(*) AS n FROM tasks").get().n, "number", "raw SQL still works");
+      assert.equal(typeof stale.db.prepare("SELECT COUNT(*) AS n FROM sqlite_master").get().n, "number", "raw SQL still works");
     } finally {
       stale.close();
     }
@@ -163,7 +144,7 @@ describe("core/bootstrap — openBoard", () => {
     // apply" — and says exactly which file it applied.
     const upgraded = await openBoard({ dataDir, pointerPath, env: {} });
     try {
-      assert.deepEqual(upgraded.migration.applied.map((m) => m.version), behind);
+      assert.deepEqual(upgraded.migration.applied.map((m) => m.version), ["0001"]);
       assert.equal(upgraded.schema.ok, true);
     } finally {
       upgraded.close();

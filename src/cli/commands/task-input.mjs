@@ -68,7 +68,7 @@ export const SPELLING = Object.freeze({
     description: { value: "<text>" },
     status: { value: "<status>" },
     priority: { value: "<low|medium|high|urgent>" },
-    kind: { value: "<task|epic|deploy>" },
+    kind: { value: "<task|epic>" },
     labels: { flag: "label", value: "<label>" },
     meta: { as: "kv" },
     acceptance: { value: "<text>", summary: "Acceptance criterion; repeatable." },
@@ -99,10 +99,25 @@ export const SPELLING = Object.freeze({
     title: { value: "<text>" },
     description: { value: "<text>" },
     priority: { value: "<priority>" },
-    kind: { value: "<task|epic|deploy>" },
+    kind: { value: "<task|epic>" },
     labels: { flag: "label", value: "<label>" },
     meta: { as: "kv" },
-    acceptance: { value: "<text>" },
+    acceptance: { value: "<text>", summary: "Append a criterion; the baseline is frozen and only grows." },
+    acceptance_drop: {
+      flag: "drop-acceptance",
+      key: "acceptanceDrop",
+      value: "<text>",
+      summary: "Remove a criterion (human only; needs --reason and --acceptance-revision).",
+    },
+    acceptance_revision: {
+      key: "acceptanceRevision",
+      value: "<n>",
+      summary: "The acceptance revision you read; guards a prune against a concurrent change.",
+    },
+    reason: {
+      value: "<why>",
+      summary: "Why a required review is being waived, or why the acceptance baseline is being pruned (audited; ≥8 characters).",
+    },
   }),
   [TASK_OPS.move]: Object.freeze({
     // `to` is the command's second positional, not a flag: the CLI reads it as
@@ -117,6 +132,20 @@ export const SPELLING = Object.freeze({
       summary:
         "What a blocked card is waiting for — written on a move into `blocked`, cleared on any move out of it. " +
         "clarify · decision · dependency · out_of_bounds · defect · external · resource · unknown",
+    },
+    question: {
+      value: "<text>",
+      summary: "The question you need answered; written as a `question` comment with the move into `awaiting`.",
+    },
+  }),
+  [TASK_OPS.reopen]: Object.freeze({
+    reason: { value: "<why>", summary: "Why the card is being reopened (audited; at least 8 characters)." },
+  }),
+  [TASK_OPS.claim]: Object.freeze({
+    check_blockers: {
+      summary:
+        "Re-read this card's `blocks` predecessors before claiming; refuse with BLOCKED_BY_PREDECESSOR " +
+        "when one is not done. Off by default: the poll already withholds blocked cards.",
     },
   }),
   [TASK_OPS.deliver]: Object.freeze({

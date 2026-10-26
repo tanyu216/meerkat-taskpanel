@@ -3,11 +3,10 @@
  *
  * The export is the *canonical* card: a fixed key order and a fixed section
  * order, so an exported card is byte-identical no matter what the input looked
- * like. Two things are deliberately preserved from the input rather than
- * canonicalised:
- *
- *   * the legacy status word (`ready`/`failed`) — the author's own spelling;
- *   * unrecognised frontmatter keys, in their original order (`meta_json.legacy`).
+ * like. One thing is deliberately preserved from the input rather than
+ * canonicalised: unrecognised frontmatter keys, in their original order
+ * (`meta_json.legacy`). The status is always the canonical word — the old
+ * `ready`/`failed` aliases are gone.
  *
  * `target` is one of those unrecognised keys (O3): the board owns no project
  * directory, so an inbound `target:` is neither derived nor validated — it rides
@@ -26,15 +25,14 @@ import { join } from "node:path";
 import { MD_GROWTH_FACTOR } from "../../../foundation/constants.mjs";
 import { DomainError } from "../../../foundation/errors.mjs";
 import { serializeFrontmatter } from "./frontmatter.mjs";
-import { statusForExport } from "./legacy-status.mjs";
 import {
   joinSections,
   renderAcceptanceBlock,
+  renderAcceptanceList,
+  renderAttachmentsBlock,
   renderCommentsBlock,
-  renderProgressBlock,
   renderReportBlock,
   renderSessionsBlock,
-  splitProgressLine,
 } from "./sections.mjs";
 
 /**
@@ -51,6 +49,9 @@ export const CARD_KEY_ORDER = Object.freeze([
   "status",
   "priority",
   "kind",
+  // 0038 — emitted only when the card is not the default `off`; absence means
+  // "no review", so a card that never needs one does not grow a line.
+  "acceptance_mode",
   "labels",
   "project",
   "target",
@@ -65,9 +66,41 @@ export const CARD_KEY_ORDER = Object.freeze([
   "heartbeat_at",
   "blocked_at",
   "blocked_reason",
+  // 0032 — the acceptance baseline's revision and the delivery/review facts a
+  // reader needs to place the card in the workflow. All optional: a key is
+  // written only when it carries something.
+  "delivery_round",
+  "awaiting_reason",
+  "review_of",
+  "review_round",
+  "acceptance_revision",
+  "report_waiver_round",
+  "report_waiver_reason",
+  "report_waived_at",
+  "archived_at",
+  "acceptance_derived",
+  "accepted_by",
+  "accepted_round",
+  "auto_accepted",
+  "review_verdict",
+  "review_verdict_round",
+  "rework_round",
+  "flow",
   "depends_on",
   "parent",
   "notify_leader",
+]);
+
+/** The workflow meta keys the canonical card surfaces when present (0032). */
+const EXPORTED_TASK_META = Object.freeze([
+  "acceptance_derived",
+  "accepted_by",
+  "accepted_round",
+  "auto_accepted",
+  "review_verdict",
+  "review_verdict_round",
+  "rework_round",
+  "flow",
 ]);
 
 /**
@@ -116,13 +149,12 @@ export function exportMd(input) {
 export function renderCard(task, context) {
   const { repos } = context;
   const meta = decodeMeta(task);
-  const legacyStatus = meta.legacy_status ?? null;
 
   const data = {
     id: task.identifier,
     title: task.title,
     assignee: labelOf(repos, "assignee", task.assigneeId) ?? "",
-    status: statusForExport(task.status, legacyStatus),
+    status: task.status,
     priority: task.priority,
     kind: task.kind,
     project: task.projectId,
@@ -140,6 +172,12 @@ export function renderCard(task, context) {
     heartbeat_at: task.heartbeatAt ?? "",
     blocked_at: task.blockedAt ?? "",
   };
+  // 0038 — the acceptance mode the card carries. The default (`off`) stays
+  // absent: writing it on every card would grow every golden by a line for the
+  // default state.
+  if (task.acceptanceMode !== undefined && task.acceptanceMode !== null && task.acceptanceMode !== "off") {
+    data.acceptance_mode = task.acceptanceMode;
+  }
   // 0023 — the three reference kinds, each written **only when it says something**
   // the reader could not otherwise know. Writing an empty key would grow every
   // card that never carried one by a line and break the byte-for-byte goldens:
@@ -166,6 +204,33 @@ export function renderCard(task, context) {
   }
   if (task.labels.length > 0) data.labels = task.labels;
 
+  // 0032 — the modern `--target` lives in `meta.target`; the legacy bag is the
+  // fallback. The rest are optional workflow facts, written only when set.
+  const target = typeof meta.target === "string" ? meta.target : meta.legacy?.target;
+  if (typeof target === "string" && target.trim() !== "") data.target = target;
+  if (Number(task.deliveryRound ?? 1) > 1) data.delivery_round = task.deliveryRound;
+  if (task.awaitingReason !== null && task.awaitingReason !== undefined) {
+    data.awaiting_reason = task.awaitingReason;
+  }
+  if (task.reviewOfId !== null && task.reviewOfId !== undefined) {
+    data.review_of = repos.tasks.get(task.reviewOfId)?.identifier ?? task.reviewOfId;
+    if (task.reviewRound !== null && task.reviewRound !== undefined) data.review_round = task.reviewRound;
+  }
+  if (Number(task.acceptanceRevision ?? 0) > 0) data.acceptance_revision = task.acceptanceRevision;
+  if (task.reportWaiverRound !== null && task.reportWaiverRound !== undefined) {
+    data.report_waiver_round = task.reportWaiverRound;
+    if (task.reportWaiverReason !== null && task.reportWaiverReason !== undefined) {
+      data.report_waiver_reason = task.reportWaiverReason;
+    }
+    if (task.reportWaivedAt !== null && task.reportWaivedAt !== undefined) {
+      data.report_waived_at = task.reportWaivedAt;
+    }
+  }
+  if (task.archivedAt !== null && task.archivedAt !== undefined) data.archived_at = task.archivedAt;
+  for (const key of EXPORTED_TASK_META) {
+    if (meta[key] !== undefined) data[key] = meta[key];
+  }
+
   const dependents = repos.relations
     .listBlockerOf(task.id)
     .map((relation) => repos.tasks.get(relation.source)?.identifier)
@@ -186,16 +251,24 @@ export function renderCard(task, context) {
 
   const sections = new Map();
   sections.set("Background", task.description ?? "");
+  // 0032 — the frozen snapshot is the authority. `meta.acceptance` is the seed
+  // (and the visible fallback for a grandfathered card whose snapshot is still
+  // empty); the imported checkbox list is the last resort and keeps its
+  // checkboxes (the author's intent, not delivery evidence).
+  const snapshot = Array.isArray(task.acceptance) ? task.acceptance : [];
+  const modernAcceptance =
+    snapshot.length > 0
+      ? snapshot
+      : Array.isArray(meta.acceptance) && meta.acceptance.length > 0
+        ? meta.acceptance
+        : null;
+  const seedOnly = snapshot.length === 0 && modernAcceptance !== null;
   sections.set(
     "Acceptance",
-    renderAcceptanceBlock(meta.acceptance_legacy ?? []),
+    modernAcceptance !== null
+      ? `${renderAcceptanceList(modernAcceptance)}${seedOnly ? "\n\n_(seed; no frozen baseline)_" : ""}`
+      : renderAcceptanceBlock(meta.acceptance_legacy ?? []),
   );
-
-  const progress = repos.activities
-    .list({ taskId: task.id, limit: 10_000 })
-    .filter((activity) => activity.event === "progress")
-    .map((activity) => activity.changes?.line ?? `${activity.createdAt} ${JSON.stringify(activity.changes ?? {})}`);
-  sections.set("Progress", renderProgressBlock(progress.map((line) => splitProgressLine(line))));
 
   sections.set(
     "Comments",
@@ -216,8 +289,9 @@ export function renderCard(task, context) {
       repos.sessions.listByTask(task.id).map((session) => ({
         seg: session.seg,
         owner: session.owner,
-        backend: session.backend,
+        ownerKind: session.ownerKind,
         sessionId: session.sessionId,
+        goal: session.goal,
         phase: session.phase,
         status: session.status,
         pid: session.pid,
@@ -225,6 +299,13 @@ export function renderCard(task, context) {
       })),
     ),
   );
+
+  // Only when the card has files: a card without attachments keeps the same
+  // five-section shape it had before this section existed.
+  const attachments = repos.attachments.listByTask(task.id);
+  if (attachments.length > 0) {
+    sections.set("Attachments", renderAttachmentsBlock(attachments));
+  }
 
   sections.set(
     "Report",
@@ -238,6 +319,7 @@ export function renderCard(task, context) {
         acceptance: report.acceptance,
         evidence: report.evidence,
         leftovers: report.leftovers,
+        isRollup: report.isRollup === true,
       })),
     ),
   );

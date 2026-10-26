@@ -1,6 +1,6 @@
 {
   "name": "meerkat-taskpanel",
-  "version": "1.1.0",
+  "version": "0.1.0",
   "type": "module",
   "workspaces": [
     "web"
@@ -11,7 +11,9 @@
     "access": "public"
   },
   "bin": {
-    "taskctl": "./src/cli/index.mjs"
+    "meerkat-taskpanel": "./scripts/install/cli.mjs",
+    "taskctl": "./src/cli/index.mjs",
+    "taskd": "./src/server/main.mjs"
   },
   "engines": {
     "node": ">=22"
@@ -27,10 +29,9 @@
   "files": [
     "src",
     "skills",
+    "web/dist",
     ".claude-plugin",
     ".pi",
-    ".opencode",
-    ".cursor-plugin",
     "scripts",
     "docs",
     "install.sh",
@@ -44,15 +45,13 @@
     "build:web": "npm -w web run build",
     "dev:web": "npm -w web run dev",
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
-    "sync:skills": "node scripts/sync-skills.mjs",
-    "check:skills": "node scripts/sync-skills.mjs --check",
 "verify": "node scripts/verify/manifests.mjs && node scripts/verify/skill.mjs && node scripts/verify/migrations.mjs && node scripts/verify/paths.mjs && node scripts/verify/signposts.mjs && node scripts/verify/web-dist.mjs --build",
     "verify:web-dist": "node scripts/verify/web-dist.mjs --build --require=all",
     "verify:migrations": "node scripts/verify/migrations.mjs",
     "verify:changelog": "node scripts/verify/changelog.mjs",
     "release:bump": "node scripts/release/bump.mjs",
     "test": "node --test",
-    "check": "npm run check:skills && npm run verify && npm test",
+    "check": "npm run verify && npm test",
     "verify:docker": "node scripts/verify/docker.mjs",
     "verify:docker:container": "bash docker/verify-in-container.sh",
     "test:coverage": "node --test --test-reporter=tap --experimental-test-coverage --test-coverage-include='src/core/**' --test-coverage-include='src/foundation/**' --test-coverage-include='src/cli/**' --test-coverage-include='src/server/**' --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80"

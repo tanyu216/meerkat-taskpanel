@@ -18,11 +18,20 @@ by an explicit snapshot update; drift is a failure, not a warning.
 |---|---|---|
 | `routes` | `registerApiRoutes` in `src/server/index.mjs` (the same function `createTaskd` calls), plus the endpoints served outside the JSON router (`/health`, `/meta`, `/api/v1/events`, attachment bytes) | `METHOD /path`, and the route's **declared request schema** (`{query, body}`) down to `type`, `enum`, `items`, `anyOf`, `properties`, `required` and `additionalProperties` — recursively |
 | `errors` | `ERROR_CODES` in `src/foundation/errors.mjs` | the code and its HTTP status |
-| `wire` | every `*ToWire` projection in `src/foundation/wire.mjs` | the name **and JSON type** of every field each shape emits, including the nested `task.assignee` / `task.reporter` / `task.report_waiver` |
+| `wire` | every `*ToWire` projection in `src/foundation/wire.mjs` | the name **and JSON type** of every field each shape emits, including the nested `task.assignee` / `task.reporter` / `task.report_waiver`, and the `sla_alert` / `sla_config` shapes `GET /api/v1/sla` publishes |
 
 The config-file codes `CONFIG_FILE_INVALID` and `CONFIG_FILE_INSECURE` are in the
 same `errors` table, and `--env-file` is a frozen global CLI flag. A change to either
 surface is a snapshot update, not a documentation edit.
+
+The acceptance baseline (0032) is part of the same surface: `task.acceptance[]` and
+`task.acceptance_revision` on the wire, `acceptance` / `acceptance_drop` /
+`acceptance_revision` / `reason` on `PATCH /api/v1/tasks/:ref`, and the new refusal codes
+(`ACCEPTANCE_*`, `REPORT_NOT_APPLICABLE_NOTE`) in `errors`. The epic rollup (0033) adds
+`report.is_rollup` and its refusal codes (`ROLLUP_REQUIRED`, `ROLLUP_INVALID`, `ROLLUP_STALE`).
+The question protocol (0034) adds `question` to the `comments.kind` enum, `question` to the
+MOVE request body, and `QUESTION_REQUIRED` to `errors`. Both snapshots change exactly when
+`node scripts/verify/contract.mjs --update` says they do.
 
 Nothing is a second copy of a list. The routes are *enumerated* by registering
 them against a stub router (registration only records `{method, pattern, handler,
@@ -49,7 +58,7 @@ generator **reads** it rather than keeping a second copy — and the runtime
 publishes the same value:
 
 ```bash
-taskctl --version --json     # {"ok":true,"data":{"version":"1.1.0","schema_version":4}}
+taskctl --version --json     # {"ok":true,"data":{"version":"0.1.0","schema_version":4}}
 ```
 
 so a client can read the generation the provider actually speaks **at runtime**
@@ -102,6 +111,24 @@ Three things follow, and the third is the point:
   nothing a caller can observe. The schema is the shape the route *promises*, and
   the snapshot is what keeps a promise from changing silently. Validating against
   it would be a behavioural change and belongs in a card that says so.
+
+Two consequences worth naming, because the snapshot freezes the field and not the
+behaviour behind it:
+
+- **A declared enum is not a validator.** `GET /api/v1/tasks?kind=…` declares the
+  task-kind vocabulary, but the handler refuses an unknown value itself
+  (`VALIDATION_FAILED`) — the schema is never run. The declaration tells a client
+  what the route means; it does not make the route check it. The read also takes
+  `kind=review`, which is a **filter over the review marker**
+  (`review_of_id IS NOT NULL`), not a third kind: create/update still accept only
+  `task|epic`, and `kind=task` keeps returning review cards. Each card's wire
+  carries the derived `role` (`task|epic|review`) for the readable word.
+- **A declared field does not imply the check on every path.**
+  `POST /api/v1/tasks/:ref/claim` declares `check_blockers`, but only
+  `issue claim --check-blockers` re-reads the dependency graph
+  (`BLOCKED_BY_PREDECESSOR`). The default claim trusts the caller, because the
+  candidate scan (`issue candidates`) already withholds blocked cards; the opt-in
+  exists for a caller that did not read candidates.
 
 `test/verify/contract.test.mjs` pins the premise in both directions: every route
 must carry such a declaration, and each one is checked down to its facets — and
@@ -245,7 +272,7 @@ reached a client.
 
 ## The CLI contract snapshot
 
-`taskctl --json` is the surface the host-external loop binds to, and any user script may
+`taskctl --json` is the surface the external loop binds to, and any user script may
 too. `test/fixtures/contract/cli.snapshot.json` freezes it separately from the HTTP
 snapshot:
 

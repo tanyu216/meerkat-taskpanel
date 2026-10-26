@@ -32,7 +32,7 @@ import {
   allowedTargets,
   isTerminalStatus,
 } from "../../src/core/domain/status.mjs";
-import { ACCEPTANCE_POLICIES, acceptanceAllows } from "../../src/core/domain/status.mjs";
+import { acceptanceAllows } from "../../src/core/domain/acceptance-mode.mjs";
 
 const NON_TERMINAL = ["backlog", "todo", "in_progress", "in_review", "blocked", "awaiting"];
 
@@ -67,6 +67,13 @@ describe("contract/liveness — every non-terminal status can reach canceled", (
       });
     }
   }
+
+  it("a reopened terminal card can reach canceled again", () => {
+    for (const terminal of ["done", "canceled"]) {
+      assert.ok(allowedTargets(terminal).includes("todo"), `${terminal} → todo is the reopen edge`);
+      assert.ok(reachable(terminal, null).has("canceled"), `${terminal} → todo → canceled`);
+    }
+  });
 
   it("in_review reaches canceled in two moves (there is no direct edge)", () => {
     assert.equal(allowedTargets("in_review").includes("canceled"), false, "deliberate: no direct edge");
@@ -103,14 +110,36 @@ describe("contract/liveness — every non-terminal status can reach canceled", (
     }
   });
 
-  it("the acceptance policy decides writers, never reachability", () => {
-    // The policy changes *who* may take the `done` edge, not whether the state
-    // machine has it: `in_review → done` is present under all three policies.
+  it("a review-required card can leave in_review without passing the review gate", () => {
+    // 0031's `REVIEW_REQUIRED` gate blocks exactly one edge: `in_review → done`.
+    // Reaching `done` needs a current-round review (or a human waiver), but no
+    // reviewer being configured must still be recoverable: rework and cancel
+    // are the same exits they were before the gate existed.
+    const exits = allowedTargets("in_review");
+    assert.ok(exits.includes("in_progress"), "rework needs no reviewer");
+    assert.ok(exits.includes("blocked"), "a blocker found at review time needs none either");
+    assert.ok(reachable("in_review", null).has("canceled"), "cancellation is not gated");
+  });
+
+  it("a card refused by the acceptance-coverage gate can still finish or leave", () => {
+    // 0032 attaches the coverage gate to `in_review → done`. A refusal must not
+    // wedge: rework is the same exit it was before, and it starts a new delivery
+    // round, which is exactly what re-freezes the evidence the gate reads.
+    assert.ok(allowedTargets("in_review").includes("done"), "the edge exists; the gate decides");
+    assert.ok(allowedTargets("in_review").includes("in_progress"), "rework needs no new report");
+    assert.ok(allowedTargets("in_progress").includes("in_review"), "and the card can come back");
+    assert.ok(reachable("in_review", null).has("canceled"), "cancellation is never gated by coverage");
+    assert.ok(reachable("in_review", null).has("done"), "done stays reachable from the table");
+  });
+
+  it("the acceptance mode decides writers, never reachability", () => {
+    // The mode changes *who* may take the `done` edge, not whether the state
+    // machine has it: `in_review → done` is present under every mode.
     assert.ok(allowedTargets("in_review").includes("done"));
-    for (const policy of ACCEPTANCE_POLICIES) {
+    for (const mode of ["off", "agent", "human"]) {
       assert.ok(
-        ["human", "taskd", "agent"].some((kind) => acceptanceAllows(kind, policy, "top_level")),
-        `${policy} has at least one acceptor — a policy no actor satisfies is a guaranteed stall`,
+        ["human", "taskd", "agent"].some((kind) => acceptanceAllows(kind, mode)),
+        `${mode} has at least one acceptor — a mode no actor satisfies is a guaranteed stall`,
       );
     }
   });

@@ -17,7 +17,7 @@ import {
   isReviewCard,
   parseReviewVerdict,
   planWorkflowTick,
-  reviewRoundOf,
+  roundOf,
 } from "../domain/workflow.mjs";
 import { reconcileContainers } from "./rollup.mjs";
 
@@ -27,7 +27,6 @@ import { reconcileContainers } from "./rollup.mjs";
  * @param {object} ctx
  * @param {{
  *   reviewer?: string|null,
- *   autoAcceptReviews?: boolean,
  *   reviewAgingMs?: number,
  *   maxActions?: number,
  *   boardLimit?: number,
@@ -63,7 +62,24 @@ export function workflowTick(ctx, input = {}) {
     taskToWire(task, { lookup, parentId: parents.get(task.id) ?? null }),
   );
 
-  // A verdict is the review card's current-round report. Only in_review review
+  // 0032 — the current-round delivery report for every in_review non-review
+  // card. The planner needs its `acceptance` list to decide whether an
+  // auto-accept or an APPROVE is safe *before* the write gate refuses it.
+  const reportsByRef = {};
+  for (let i = 0; i < snapshot.length; i += 1) {
+    const card = tasks[i];
+    if (isReviewCard(card) || card.status !== "in_review") continue;
+    const ref = String(card.identifier ?? "");
+    if (ref === "") continue;
+    const report = ctx.repos.reports.latestForRound(snapshot[i].id, snapshot[i].deliveryRound);
+    if (report === null || report === undefined) continue;
+    reportsByRef[ref] = reportToWire(report, { lookup });
+  }
+
+  // A verdict is the review card's report for its OWN current delivery round
+  // (`delivery_round`), not the round it audits (`review_round`): every report
+  // is stamped with the card's own round, and a fresh review card's own round
+  // is 1 even when it audits the original's round 2+. Only in_review review
   // cards can carry one that matters; terminal cards are skipped by the planner.
   const verdicts = {};
   for (let i = 0; i < snapshot.length; i += 1) {
@@ -74,7 +90,7 @@ export function workflowTick(ctx, input = {}) {
     const reports = ctx.repos.reports
       .listByTask(snapshot[i].id)
       .map((report) => reportToWire(report, { lookup }));
-    verdicts[ref] = parseReviewVerdict(reports, reviewRoundOf(card));
+    verdicts[ref] = parseReviewVerdict(reports, roundOf(card));
   }
 
   const reviewer =
@@ -82,18 +98,27 @@ export function workflowTick(ctx, input = {}) {
       ? input.reviewer.trim()
       : null;
 
+  // 0031 — a project may override the deployment-level reviewer. Read every
+  // project (archived included: it can still own in-flight cards) so dispatch
+  // can resolve `project.reviewer ?? global` from the snapshot alone.
+  const projectReviewers = Object.fromEntries(
+    ctx.repos.projects
+      .list({ includeArchived: true })
+      .map((project) => [project.id, project.reviewer ?? null]),
+  );
+
   const workflow = planWorkflowTick({
     tasks,
     verdicts,
+    reportsByRef,
     reconcileActions: reconcile.actions,
     config: {
       reviewer,
-      autoAcceptReviews: input.autoAcceptReviews,
+      projectReviewers,
       reviewAgingMs: input.reviewAgingMs,
       maxActions: input.maxActions,
-      // The board is authoritative. A loop's `--acceptance` copy never reaches
-      // this decision.
-      acceptancePolicy: ctx.acceptancePolicy(),
+      // 0038 — the card's own `acceptance_mode` is the whole decision; there is
+      // no board-level policy and no loop-side advisory copy to merge.
     },
     boardTruncated,
     now: ctx.now(),

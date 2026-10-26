@@ -1,17 +1,16 @@
 /**
  * The `meerkat-loop` skill (T-20261012-163500-loopdecouple-b).
  *
- * The loop used to be an implicit side effect of installing the board skill. It is now a
- * skill of its own, with a **generated** payload: the execution body and the installer
- * templates are produced from this repository's own `scripts/`, `src/foundation/` and
- * `scripts/install/templates/`, and guarded by `node scripts/sync-skills.mjs --check`.
+ * The loop used to be an implicit side effect of installing the board skill. Its
+ * implementation now lives in `src/orchestrator/` (reached through `taskctl loop …`),
+ * and the skill carries decisions only: `SKILL.md` plus its references.
  *
- * These tests hold the three things that make that split real rather than cosmetic:
+ * These tests hold the things that make that split real rather than cosmetic:
  *
- *   1. the payload is in sync with its sources, and the body is **closed** under its own
- *      relative imports — a body missing a member loads in the repo and dies in a host;
- *   2. the skill declares the board interface it needs, and its gate enforces it against
- *      a board's own `--version --json` answer;
+ *   1. the skill carries a charter, not a second implementation — no scripts, templates
+ *      or manifest;
+ *   2. the skill declares the board interface it needs, and `taskctl loop compat`
+ *      enforces it against a board's own `--version --json` answer;
  *   3. the board skill no longer points into the repository root — a distributed skill's
  *      links have to resolve where the skill is installed, not where it was authored.
  *
@@ -19,24 +18,14 @@
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
-import { atLeastVersion, checkBoard, resolveBoardCommand } from "../../skills/meerkat-loop/scripts/board-check.mjs";
-import {
-  LOOP_BODY_ROOTS,
-  LOOP_SKILL_NAME,
-  LOOP_TEMPLATE_FILES,
-  loopSource,
-  relativeImports,
-  syncLoop,
-  transformBody,
-} from "../../scripts/sync-loop.mjs";
-import { resolveSkillSource } from "../../scripts/sync-skills.mjs";
 import { readFrontmatterField } from "../../scripts/verify/lib/frontmatter.mjs";
+import { LOOP_SKILL_COMMAND } from "../../src/foundation/scheduling.mjs";
+import { acceptanceAllows } from "../../src/core/domain/acceptance-mode.mjs";
 import {
   ALLOWED_TRANSITIONS,
   EPIC_ONLY_TRANSITIONS,
@@ -44,177 +33,19 @@ import {
 import { STATUSES } from "../../src/core/domain/enums.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const LOOP_SKILL = resolveSkillSource(ROOT, LOOP_SKILL_NAME);
-const GATE = join(LOOP_SKILL, "scripts", "board-check.mjs");
+const LOOP_SKILL = join(ROOT, "skills", "meerkat-loop");
+const LOOP_SKILL_NAME = "meerkat-loop";
 
-/** The body closure, read from the generated manifest the installer also reads. */
-function bodyClosure() {
-  return readFileSync(join(LOOP_SKILL, "manifest.txt"), "utf8")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-describe("loop skill: the generated payload", () => {
-  it("is in sync with the sources it is generated from", async () => {
-    const report = await syncLoop({ root: ROOT, check: true });
-    assert.equal(report.ok, true, JSON.stringify(report.files.filter((f) => f.state !== "equal"), null, 2));
-    assert.equal(report.manifest.state, "equal", "manifest.txt must match the computed closure");
-  });
-
-  it("generates the body as the closure of its entry points", async () => {
-    const report = await syncLoop({ root: ROOT, check: true });
-
-    for (const root of LOOP_BODY_ROOTS) {
-      assert.ok(report.body.includes(root), `${root} must be in the closure`);
-    }
-    assert.deepEqual(report.body, [...report.body].sort(), "the closure is reported sorted");
-
-    // The body's own imports all land inside the body: nothing it loads may be left
-    // behind in the repository, or a host copy would die at load with a relative import
-    // that resolves to nothing.
-    for (const rel of report.body) {
-      const text = readFileSync(join(LOOP_SKILL, rel), "utf8");
-      for (const specifier of relativeImports(text)) {
-        const target = resolve(dirname(join(LOOP_SKILL, rel)), specifier);
-        const targetRel = target.slice(LOOP_SKILL.length + 1);
-        assert.ok(
-          report.body.includes(targetRel),
-          `${rel} imports ${specifier}, which is not in the closure (${targetRel})`,
-        );
-      }
-    }
-  });
-
-  it("carries the foundation modules the supervisor and the wake resolver import", () => {
-    // Named explicitly as well as derived: the closure is a computation, and a
-    // computation with a bug would still look internally consistent.
-    const body = bodyClosure();
-    for (const rel of [
-      "scripts/supervisor.mjs",
-      "scripts/loop/options.mjs",
-      "scripts/loop/runtime.mjs",
-      "scripts/loop/runners.mjs",
-      "scripts/loop/board.mjs",
-      "scripts/loop/poll.mjs",
-      "scripts/loop/patrol.mjs",
-      "scripts/loop/workflow.mjs",
-      "scripts/loop/continue.mjs",
-      "scripts/loop/subscribe.mjs",
-      "scripts/loop/sse-parse.mjs",
-      "scripts/loop/sse-client.mjs",
-      "scripts/loop/endpoint.mjs",
-      "scripts/loop/event-rules.mjs",
-      "scripts/wake-cwd.mjs",
-      "scripts/foundation/scheduling.mjs",
-      "scripts/foundation/sla-patrol.mjs",
-      "scripts/foundation/env-config.mjs",
-      "scripts/foundation/constants.mjs",
-      "scripts/foundation/errors.mjs",
-      "scripts/foundation/redact.mjs",
-      "scripts/foundation/project-dir.mjs",
-      "scripts/foundation/runtime-locator.mjs",
-      "scripts/foundation/entry-guard.mjs",
-      "scripts/foundation/transport/autostart.mjs",
-      "scripts/foundation/transport/errors.mjs",
-      "scripts/foundation/transport/runtime.mjs",
-      "scripts/foundation/transport/token.mjs",
-      "scripts/foundation/transport/board-url.mjs",
-    ]) {
-      assert.ok(body.includes(rel), `${rel} must be part of the loop body`);
-    }
-  });
-
-  it("matches its sources: foundation byte for byte, entries after the documented rewrite", () => {
-    for (const rel of bodyClosure()) {
-      const sourceRel = loopSource(rel);
-      const source = readFileSync(join(ROOT, sourceRel), "utf8");
+describe("loop skill: docs only", () => {
+  it("carries SKILL.md and its references, and no execution body", () => {
+    assert.ok(existsSync(join(LOOP_SKILL, "SKILL.md")), "the skill must keep its prompt");
+    assert.ok(existsSync(join(LOOP_SKILL, "references", "operation.md")), "its references must land");
+    for (const retired of ["manifest.txt", "scripts", "templates", "src", "body"]) {
       assert.equal(
-        readFileSync(join(LOOP_SKILL, rel), "utf8"),
-        transformBody(source, sourceRel, ROOT),
-        `${rel} must match ${sourceRel} under the payload transform`,
-      );
-    }
-
-    // The transform is a no-op inside the foundation subtree, so those copies are exact.
-    for (const rel of bodyClosure().filter((item) => item.startsWith("scripts/foundation/"))) {
-      assert.equal(
-        readFileSync(join(LOOP_SKILL, rel), "utf8"),
-        readFileSync(join(ROOT, loopSource(rel)), "utf8"),
-        `${rel} must be an exact copy of its repository module`,
-      );
-    }
-
-    // And no generated module still points at the repository layout.
-    for (const rel of bodyClosure()) {
-      const text = readFileSync(join(LOOP_SKILL, rel), "utf8");
-      assert.equal(
-        relativeImports(text).some((specifier) => specifier.includes("/src/foundation/")),
+        existsSync(join(LOOP_SKILL, retired)),
         false,
-        `${rel} must not import through src/foundation`,
+        `the loop ships with the toolkit; the skill must not carry ${retired}`,
       );
-    }
-  });
-
-  it("keeps the payload at the skill root, with no body/ or src/ wrapper", () => {
-    assert.equal(
-      existsSync(join(LOOP_SKILL, "body")),
-      false,
-      "the legacy body/ wrapper must be gone — the manifest and generated trees sit at the skill root",
-    );
-    assert.equal(
-      existsSync(join(LOOP_SKILL, "src")),
-      false,
-      "foundation lives under scripts/foundation/; the skill has no src/ tree",
-    );
-    assert.ok(existsSync(join(LOOP_SKILL, "manifest.txt")), "the closure manifest sits at the skill root");
-  });
-
-  it("never treats the authored board gate as generated output", async () => {
-    const report = await syncLoop({ root: ROOT, check: true });
-
-    assert.ok(existsSync(GATE), "the authored gate must still exist");
-    assert.equal(
-      bodyClosure().includes("scripts/board-check.mjs"),
-      false,
-      "the hand-written gate is not part of the execution body",
-    );
-    assert.equal(
-      report.files.some((file) => file.dest === GATE),
-      false,
-      "the generator must not write the authored gate",
-    );
-    assert.equal(
-      report.files.some((file) => file.state === "extra" && file.dest === GATE),
-      false,
-      "the authored gate must not be reported as stale output",
-    );
-  });
-
-  it("carries the loop's installer templates, and only the loop's", () => {
-    for (const rel of LOOP_TEMPLATE_FILES) {
-      assert.equal(
-        readFileSync(join(LOOP_SKILL, "templates", rel), "utf8"),
-        readFileSync(join(ROOT, "scripts", "install", "templates", rel), "utf8"),
-        `templates/${rel} must be an exact copy`,
-      );
-    }
-
-    // The board-side templates stay with the installer that renders them for a board.
-    for (const boardOnly of ["claude/session-start.sh", "codex/trigger.sh", "taskctl-shim.sh"]) {
-      assert.equal(
-        existsSync(join(LOOP_SKILL, "templates", boardOnly)),
-        false,
-        `${boardOnly} is board-side and must not be in the loop's payload`,
-      );
-    }
-  });
-
-  it("names no checkout path: the wake glues resolve through {{LOOP}}", () => {
-    for (const rel of ["claude/wake-claude.sh", "codex/wake-codex.sh", "pi/wake-pi.sh"]) {
-      const text = readFileSync(join(LOOP_SKILL, "templates", rel), "utf8");
-      assert.ok(text.includes("{{LOOP}}/scripts/wake-cwd.mjs"), `${rel} must resolve via {{LOOP}}`);
-      assert.equal(text.includes("{{REPO}}"), false, `${rel} must not name the board checkout`);
     }
   });
 });
@@ -228,19 +59,97 @@ describe("loop skill: SKILL.md", () => {
     assert.ok(typeof description === "string" && description.length >= 20, "description must be substantial");
   });
 
-  it("declares the board interface it requires", () => {
-    assert.match(text, /task-interface v1/, "the required board interface generation must be stated");
-    assert.match(text, /board release >= 1\.1\.0/, "…and the release floor a machine can check");
-    assert.ok(text.includes("scripts/board-check.mjs"), "the gate must be named at the point of declaration");
+  it("is command-only: the model may not invoke it by description", () => {
+    assert.equal(readFrontmatterField(text, "disable-model-invocation"), "true");
   });
 
-  it("says out loud that OpenClaw never gets the loop", () => {
-    assert.match(text, /OpenClaw is deliberately excluded/);
-    // No host takes a generated copy of the loop: every harness reads the repository's own
-    // skills/ tree, and OpenClaw is excluded by ruling. `install.sh` is the loop's only
-    // distribution path — there is no loop bundle in the marketplace any more, and no
-    // `plugins/` tree for one to live in (asserted against the checkout in
-    // test/scaffold.test.mjs, which is where the "exactly one skills tree" invariant lives).
+  it("documents explicit invocation and takes no argument placeholder", () => {
+    assert.match(text, /^#{2,3} Invocation$/m);
+    assert.match(text, /\/meerkat-loop/);
+    assert.equal(text.includes("$ARGUMENTS"), false);
+  });
+
+  it("points the continue prompt at this skill's command", () => {
+    assert.equal(LOOP_SKILL_COMMAND, `/${LOOP_SKILL_NAME}`);
+  });
+
+  it("documents one control turn with two drivers, and the live-session console", () => {
+    const begin = text.indexOf("### Execution modes");
+    assert.notEqual(begin, -1, "the two execution modes must have their own section");
+    const next = text.indexOf("\n### ", begin + 1);
+    const section = text.slice(begin, next === -1 ? text.length : next);
+
+    assert.match(section, /mode: supervised/);
+    assert.match(section, /no marker/);
+    assert.match(section, /taskctl loop status/);
+    assert.match(section, /taskctl loop console/);
+    assert.match(section, /--take-over/);
+    assert.match(section, /--stop/);
+    assert.match(section, /external-control/);
+    assert.match(section, /--as-human/);
+    assert.match(section, /re-read/);
+    assert.match(section, /board UI/);
+    assert.match(section, /duplicate/i);
+    assert.match(section, /E1[–-]E5/);
+    assert.match(section, /never claim/i);
+  });
+
+  it("makes supervisor mode headless: questions only as board comments", () => {
+    assert.match(text, /mode: supervised/);
+    assert.match(text, /headless/i);
+    assert.match(text, /Never ask a question there/);
+    assert.match(text, /board comment/i);
+  });
+
+  it("documents the live-session mode in operation.md", () => {
+    const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
+    assert.match(operation, /## Manual mode/);
+    assert.match(operation, /taskctl loop status/);
+    assert.match(operation, /taskctl loop console/);
+    assert.match(operation, /--control=external/);
+    assert.match(operation, /--as-human/);
+    assert.match(operation, /re-read/);
+    assert.match(operation, /UI/);
+    assert.match(operation, /frontier/i);
+    assert.match(operation, /one numbered block per card/i);
+  });
+
+  it("batches the question frontier in manual mode", () => {
+    const begin = text.indexOf("#### Manual mode");
+    assert.notEqual(begin, -1, "manual mode must have its own sub-section");
+    const next = text.indexOf("\n### ", begin + 1);
+    const manual = text.slice(begin, next === -1 ? text.length : next);
+
+    assert.match(manual, /frontier/i);
+    assert.match(manual, /one message/i);
+    assert.match(manual, /one numbered block per card/i);
+    assert.match(manual, /one question string/i);
+    assert.match(manual, /Only a human comment resumes awaiting/);
+  });
+
+  it("documents the decision round in the decision policy", () => {
+    const policy = readFileSync(join(LOOP_SKILL, "references", "decision-policy.md"), "utf8");
+    assert.match(policy, /## Decision rounds/);
+    assert.match(policy, /frontier/);
+    assert.match(policy, /Facts are the asker's job/i);
+    assert.match(policy, /counterexample/i);
+    assert.match(policy, /Only a human comment resumes/);
+    assert.match(policy, /one question string/i);
+  });
+
+  it("declares the board interface it requires", () => {
+    assert.match(text, /task-interface v1/, "the required board interface generation must be stated");
+    assert.match(text, /board release >= 0\.1\.0/, "…and the release floor a machine can check");
+    assert.ok(text.includes("taskctl loop compat"), "the gate must be named at the point of declaration");
+  });
+
+  it("keeps installation out of the skill, and ships no committed loop bundle", () => {
+    assert.doesNotMatch(text, /install\.sh/, "the loop skill must not carry installation instructions");
+    assert.doesNotMatch(text, /--supervisor=/, "the loop skill must not carry the supervisor opt-in");
+    // No agent kind takes a generated copy of the loop: every harness reads the repository's own
+    // skills/ tree. There is no loop bundle in the marketplace any more, and no `plugins/` tree
+    // for one to live in (asserted against the checkout in test/scaffold.test.mjs, which is
+    // where the "exactly one skills tree" invariant lives).
     assert.equal(
       existsSync(join(ROOT, "plugins")),
       false,
@@ -248,110 +157,37 @@ describe("loop skill: SKILL.md", () => {
     );
   });
 
-  it("records what the loop still needs from a checkout, rather than implying it needs none", () => {
+  it("records what the loop needs from its runtime tree, rather than implying it needs none", () => {
     const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
     assert.match(operation, /MEERKAT_TASKPANEL_REPO/);
-    assert.match(operation, /remaining checkout dependency/);
-  });
-});
-
-describe("loop skill: the board gate", () => {
-  it("accepts a board at or above the floor, and reports what it saw", () => {
-    const ok = checkBoard({
-      command: "taskctl",
-      args: ["--version", "--json"],
-      run: () => ({ status: 0, stdout: '{"ok":true,"data":{"version":"1.4.2","schema_version":7}}', stderr: "" }),
-    });
-    assert.deepEqual(ok, {
-      ok: true,
-      version: "1.4.2",
-      schemaVersion: 7,
-      boardInterface: "task-interface v1",
-    });
+    assert.match(operation, /runtime tree/);
   });
 
-  it("refuses a board older than the floor, naming both numbers", () => {
-    const tooOld = checkBoard({
-      command: "taskctl",
-      args: [],
-      run: () => ({ status: 0, stdout: '{"ok":true,"data":{"version":"0.9.0"}}', stderr: "" }),
-    });
-    assert.equal(tooOld.ok, false);
-    assert.equal(tooOld.code, "BOARD_TOO_OLD");
-    assert.match(tooOld.message, /0\.9\.0/);
-    assert.match(tooOld.message, /1\.1\.0/);
+  it("documents the workflow alert ledger flag", () => {
+    const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
+    assert.match(operation, /--workflow-ledger/);
   });
 
-  it("does not count a prerelease as satisfying the floor", () => {
-    assert.equal(atLeastVersion("1.0.0", "1.0.0"), true);
-    assert.equal(atLeastVersion("1.0.0-rc.1", "1.0.0"), false);
-    assert.equal(atLeastVersion("2.0.0-rc.1", "1.0.0"), true);
-    assert.equal(atLeastVersion("not-a-version", "1.0.0"), false);
-    assert.equal(atLeastVersion(undefined, "1.0.0"), false);
+  it("documents the task process directory and the read-only card brief", () => {
+    assert.match(text, /\.meerkat\/<identifier>\//);
+    assert.match(text, /authoritative brief/);
+    assert.match(text, /never edit it/i);
+    assert.match(text, /taskctl attachment download/);
+
+    const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
+    assert.match(operation, /taskctl export md/);
+    assert.match(operation, /Register before claim/);
+    assert.match(operation, /The hub refreshes every registered file/);
+    assert.match(operation, /deferred\s+\*\*unclaimed\*\*|deferred\nunclaimed|deferred/);
   });
 
-  it("reports an unreachable or unreadable board as no verdict, never as a pass", () => {
-    const unreachable = checkBoard({
-      command: "taskctl",
-      args: [],
-      run: () => ({ status: null, stdout: "", stderr: "", error: new Error("ENOENT") }),
-    });
-    assert.equal(unreachable.ok, false);
-    assert.equal(unreachable.code, "BOARD_UNREACHABLE");
-
-    const garbage = checkBoard({
-      command: "taskctl",
-      args: [],
-      run: () => ({ status: 0, stdout: "not json at all", stderr: "" }),
-    });
-    assert.equal(garbage.ok, false);
-    assert.equal(garbage.code, "BOARD_UNREADABLE");
-
-    const shapeless = checkBoard({
-      command: "taskctl",
-      args: [],
-      run: () => ({ status: 0, stdout: '{"ok":true,"data":{}}', stderr: "" }),
-    });
-    assert.equal(shapeless.code, "BOARD_UNREADABLE");
-  });
-
-  it("resolves the board from --repo / MEERKAT_TASKPANEL_REPO before falling back to PATH", () => {
-    assert.deepEqual(resolveBoardCommand({ cli: "/x/taskctl" }), {
-      command: "/x/taskctl",
-      args: ["--version", "--json"],
-    });
-
-    const viaRepo = resolveBoardCommand({ repo: "/checkout", node: "/node" });
-    assert.equal(viaRepo.command, "/node");
-    assert.deepEqual(viaRepo.args, ["/checkout/src/cli/index.mjs", "--version", "--json"]);
-
-    const viaEnv = resolveBoardCommand({
-      env: { MEERKAT_TASKPANEL_REPO: "/from-env" },
-      node: "/node",
-    });
-    assert.deepEqual(viaEnv.args, ["/from-env/src/cli/index.mjs", "--version", "--json"]);
-
-    assert.deepEqual(resolveBoardCommand({ env: {}, node: "/node" }), {
-      command: "taskctl",
-      args: ["--version", "--json"],
-    });
-  });
-
-  it("exits 3 — not 0 — when no board answers", () => {
-    // `--repo` names a checkout whose CLI is not there: node runs, the module does not
-    // load, nothing reaches stdout. The gate must call that "no verdict" (3), never a pass.
-    const run = spawnSync(process.execPath, [GATE, "--repo", "/definitely/not/a/board"], { encoding: "utf8" });
-    assert.equal(run.status, 3, run.stderr);
-    assert.match(run.stderr, /board-check: BOARD_UNREADABLE/);
-
-    const missingCli = spawnSync(process.execPath, [GATE, "--cli", "/definitely/not/a/cli"], { encoding: "utf8" });
-    assert.equal(missingCli.status, 2, "a --cli typo is a usage error, not a verdict");
-  });
-
-  it("exits 0 against this repository's own board", () => {
-    const run = spawnSync(process.execPath, [GATE, "--repo", ROOT, "--quiet"], { encoding: "utf8" });
-    assert.equal(run.status, 0, run.stderr);
-    assert.equal(run.stdout, "");
+  it("names the attachment download command in the board skill's CLI reference", () => {
+    const cli = readFileSync(
+      join(ROOT, "skills", "meerkat-taskpanel", "references", "cli.md"),
+      "utf8",
+    );
+    assert.match(cli, /attachment download <attachment-id> --out <file>/);
+    assert.match(cli, /--out \.meerkat\/PROJ-0007\/shot\.png/);
   });
 });
 
@@ -393,15 +229,79 @@ describe("board skill: references resolve where the skill is installed", () => {
     }
   });
 
+  it("resolves every #fragment against the target file's headings", () => {
+    // GitHub's slug rules, as far as these pages use them: strip backticks and stars, keep
+    // letters, digits, spaces, underscores and hyphens, then turn each space into a hyphen.
+    // A punctuation run leaves the double hyphen that `policy × scope` produces.
+    const slug = (heading) =>
+      heading
+        .trim()
+        .toLowerCase()
+        .replace(/[`*]/g, "")
+        .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+        .replace(/ /g, "-");
+
+    const headings = (text) => {
+      const slugs = new Map();
+      let fence = null;
+      for (const line of text.split("\n")) {
+        const marker = /^\s*(```|~~~)/.exec(line);
+        if (marker !== null) {
+          fence = fence === null ? marker[1] : fence === marker[1] ? null : fence;
+          continue;
+        }
+        if (fence !== null) continue;
+        const heading = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
+        if (heading === null) continue;
+        const base = slug(heading[1]);
+        const seen = slugs.get(base) ?? 0;
+        slugs.set(base, seen + 1);
+        if (seen > 0) slugs.set(`${base}-${seen}`, 1);
+      }
+      return slugs;
+    };
+
+    const cache = new Map();
+    const slugsFor = (path) => {
+      if (!cache.has(path)) cache.set(path, headings(readFileSync(path, "utf8")));
+      return cache.get(path);
+    };
+
+    for (const file of files) {
+      for (const match of read(file).matchAll(/\]\(([^)]+)\)/g)) {
+        const target = match[1];
+        if (/^(https?:|mailto:)/.test(target) || !target.includes("#")) continue;
+        const [pathPart, fragment] = target.split("#");
+        if (fragment === "") continue;
+        const targetFile =
+          pathPart === "" ? join(skillDir, file) : join(dirname(join(skillDir, file)), pathPart);
+        assert.ok(existsSync(targetFile), `${file}: ${target} does not resolve`);
+        assert.ok(slugsFor(targetFile).has(fragment), `${file}: ${target} is not a heading anchor`);
+      }
+    }
+  });
+
   it("points the loop ownership it describes at the loop skill", () => {
     const text = read("SKILL.md");
     assert.match(text, /meerkat-loop/);
     assert.equal(text.includes("scripts/supervisor.mjs]("), false, "no relative link to the executor");
   });
+
+  it("teaches the review workflow in the main prompt, not only in a reference", () => {
+    const text = read("SKILL.md");
+    assert.match(text, /review_of_id/, "the structural review marker is named");
+    assert.match(text, /VERDICT/, "the verdict line is named");
+    assert.match(text, /flow B/i, "the flow vocabulary is present");
+    assert.match(
+      text,
+      /references\/review-workflow\.md/,
+      "the main prompt links the full protocol",
+    );
+  });
 });
 
 describe("board skill: the status whitelist matches the domain", () => {
-  const files = ["SKILL.md", "references/status-lifecycle.md"];
+  const file = "references/status-lifecycle.md";
 
   function block(text, file) {
     const begin = text.indexOf("<!-- status-whitelist:begin -->");
@@ -440,17 +340,17 @@ describe("board skill: the status whitelist matches the domain", () => {
     return { table, epic };
   }
 
-  it("re-encodes ALLOWED_TRANSITIONS and the epic overlay", () => {
-    const blocks = files.map((file) =>
-      block(readFileSync(join(ROOT, "skills/meerkat-taskpanel", file), "utf8"), file),
-    );
+  it("has one home and re-encodes ALLOWED_TRANSITIONS with the epic overlay", () => {
+    const skill = readFileSync(join(ROOT, "skills/meerkat-taskpanel/SKILL.md"), "utf8");
     assert.equal(
-      blocks[0].replace(/\s+/g, " ").trim(),
-      blocks[1].replace(/\s+/g, " ").trim(),
-      "the SKILL.md and reference copies must agree",
+      skill.includes("<!-- status-whitelist:begin -->"),
+      false,
+      "the whitelist has exactly one home (status-lifecycle.md §2)",
     );
+    assert.match(skill, /status-lifecycle\.md#2-the-whitelist/);
 
-    const { table, epic } = parse(blocks[1], files[1]);
+    const raw = block(readFileSync(join(ROOT, "skills/meerkat-taskpanel", file), "utf8"), file);
+    const { table, epic } = parse(raw, file);
     for (const status of STATUSES) {
       assert.deepEqual(
         [...table[status]].sort(),
@@ -458,11 +358,81 @@ describe("board skill: the status whitelist matches the domain", () => {
         `${status} row`,
       );
     }
-    assert.deepEqual(table.done, []);
-    assert.deepEqual(table.canceled, []);
+    assert.deepEqual(table.done, ["todo"]);
+    assert.deepEqual(table.canceled, ["todo"]);
     assert.equal(epic.length, 1, "exactly one epic-only overlay");
     const [from, to] = epic[0];
     assert.ok(EPIC_ONLY_TRANSITIONS[from]?.includes(to), `epic overlay ${from} → ${to}`);
+  });
+});
+
+describe("board skill: the acceptance matrix has one home", () => {
+  const BEGIN = "<!-- acceptance-matrix:begin -->";
+  const END = "<!-- acceptance-matrix:end -->";
+  const copies = [
+    ["status-lifecycle.md", join(ROOT, "skills/meerkat-taskpanel/references/status-lifecycle.md")],
+    ["review-workflow.md", join(ROOT, "skills/meerkat-taskpanel/references/review-workflow.md")],
+  ];
+
+  /** The raw block between the markers, asserting the markers appear exactly once. */
+  function marked(path) {
+    const text = readFileSync(path, "utf8");
+    const begin = text.indexOf(BEGIN);
+    const end = text.indexOf(END);
+    assert.ok(begin >= 0 && end > begin, `${path}: missing acceptance-matrix markers`);
+    assert.equal(text.indexOf(BEGIN, begin + 1), -1, `${path}: more than one begin marker`);
+    return text.slice(begin + BEGIN.length, end);
+  }
+
+  const cells = (line) =>
+    line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+
+  it("keeps both copies byte-identical after whitespace normalisation", () => {
+    const blocks = copies.map(([, path]) => marked(path));
+    for (let i = 1; i < blocks.length; i += 1) {
+      assert.equal(
+        blocks[i].replace(/\s+/g, " ").trim(),
+        blocks[0].replace(/\s+/g, " ").trim(),
+        `${copies[i][0]} and ${copies[0][0]} must agree`,
+      );
+    }
+  });
+
+  it("leaves the loop skill a charter, not another copy", () => {
+    const loopSkill = readFileSync(join(LOOP_SKILL, "SKILL.md"), "utf8");
+    assert.equal(loopSkill.includes(BEGIN), false, "the loop restates no matrix");
+    assert.match(loopSkill, /acceptance_mode[^\n]*authoritative/i);
+  });
+
+  it("re-encodes the board's acceptance modes", () => {
+    const raw = marked(copies[0][1]);
+    const rows = raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("|") && !/^\|[\s:|-]+\|$/.test(line))
+      .map(cells);
+    assert.equal(rows.length, 5, "one header plus four modes");
+
+    const data = rows.slice(1);
+    const modes = data.map((row) => row[0].replace(/`/g, "").trim());
+    assert.deepEqual(modes, ["off", "agent", "human", "a review card"]);
+
+    // Each mode row's `done` cell is read against the domain's own predicate.
+    const cellAllows = (cell) => cell.replace(/`/g, "").toLowerCase();
+    for (const [index, mode] of ["off", "agent", "human"].entries()) {
+      const cell = cellAllows(data[index][2]);
+      assert.equal(cell.includes("human"), acceptanceAllows("human", mode), `${mode} × human`);
+      assert.equal(cell.includes("taskd"), acceptanceAllows("taskd", mode), `${mode} × taskd`);
+      assert.equal(
+        cell.includes("deliverer") || cell.includes("any actor kind"),
+        acceptanceAllows("claude", mode),
+        `${mode} × an agent`,
+      );
+    }
+
+    const review = cellAllows(data[3][2]);
+    assert.ok(review.includes("human") && review.includes("taskd"), "the acceptor closes a review card");
+    assert.equal(acceptanceAllows("claude", "off", { reviewCard: true }), false, "never the reviewer");
   });
 });
 
@@ -473,11 +443,46 @@ describe("board skill: the acceptance list rule", () => {
     assert.match(text, /issue get <ref> --json/);
     assert.match(text, /acceptance_derived=yes/);
     assert.match(text, /1[–-]6/);
-    assert.match(text, /do not rewrite/i);
+    assert.match(text, /frozen/);
+    assert.match(text, /never replace or remove/i);
   });
 
   it("says an epic's acceptance is its children", () => {
     assert.match(text, /epic[^\n]*child/i);
     assert.match(text, /rollup/);
+  });
+});
+
+describe("board skill: the container decision", () => {
+  const skill = readFileSync(join(ROOT, "skills/meerkat-taskpanel/SKILL.md"), "utf8");
+  const lifecycle = readFileSync(
+    join(ROOT, "skills/meerkat-taskpanel/references/status-lifecycle.md"),
+    "utf8",
+  );
+
+  it("does not promote a card that already delivered", () => {
+    assert.match(skill, /current-round report/i);
+    assert.match(skill, /do \*\*not\*\* promote/i);
+    assert.match(lifecycle, /terminal container never rolls up/i);
+  });
+
+  it("takes rollup evidence from the children only", () => {
+    assert.match(lifecycle, /children's, not the container's/i);
+    assert.match(lifecycle, /delivery report/i);
+  });
+
+  it("leaves the board-enforced container codes to the refusal", () => {
+    assert.doesNotMatch(skill, /CHILDREN_OPEN/);
+    assert.doesNotMatch(skill, /ROLLUP_REQUIRED|ROLLUP_STALE/);
+    assert.match(skill, /status-lifecycle\.md#6-containers-epic/);
+  });
+
+  it("names the shape limits where the card schema defines them", () => {
+    const schema = readFileSync(
+      join(ROOT, "skills/meerkat-taskpanel/references/card-schema.md"),
+      "utf8",
+    );
+    assert.match(schema, /\*\*8\*\*\s+children/);
+    assert.match(schema, /\*\*8\*\*\s+deep/);
   });
 });

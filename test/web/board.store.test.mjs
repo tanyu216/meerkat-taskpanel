@@ -169,6 +169,48 @@ describe("web/board — optimistic move", () => {
   });
 });
 
+/* ------------------------------------------------------------- reopen (I3) */
+
+describe("web/board — reopening a terminal card", () => {
+  it("posts the reason with if_version, then adopts the returned row", async () => {
+    const { board, reopenTask } = await freshBoard();
+    seedTask(board, { status: "done" });
+    const calls = installFetch({
+      "POST /api/v1/tasks/TD-1/reopen": (call) =>
+        ok({
+          task: {
+            ...board.tasks[0],
+            status: "todo",
+            version: call.body.if_version + 1,
+            delivery_round: 2,
+            archived_at: null,
+          },
+        }),
+    });
+
+    const reopened = await reopenTask(board.tasks[0], "customer found a regression");
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].body, { reason: "customer found a regression", if_version: 3 });
+    assert.equal(reopened.status, "todo");
+    assert.equal(board.tasks[0].status, "todo");
+    assert.equal(board.tasks[0].delivery_round, 2);
+    assert.equal(toasts.value.at(-1).kind, "success");
+    assert.match(toasts.value.at(-1).text, /TD-1/);
+  });
+
+  it("surfaces a refusal by code and leaves the card terminal", async () => {
+    const { board, reopenTask } = await freshBoard();
+    seedTask(board, { status: "done" });
+    installFetch({
+      "POST /api/v1/tasks/TD-1/reopen": () => failure(409, "INVALID_TRANSITION", "not terminal"),
+    });
+
+    await assert.rejects(() => reopenTask(board.tasks[0], "why not"));
+    assert.equal(board.tasks[0].status, "done");
+    assert.equal(toasts.value.at(-1).kind, "danger");
+  });
+});
+
 /* ------------------------------------------- 409 rollback + conflict panel */
 
 describe("web/board — 409 rollback and the conflict panel", () => {
@@ -370,6 +412,19 @@ describe("web/board — move guards", () => {
   });
 });
 
+describe("web/board — the move menu's direct-done edge (0038)", () => {
+  it("offers `done` from in_progress only for an `off` card", async () => {
+    const { allowedTargets } = await freshBoard();
+    assert.ok(allowedTargets("in_progress", { acceptance_mode: "off" }).includes("done"));
+    assert.ok(!allowedTargets("in_progress", { acceptance_mode: "agent" }).includes("done"));
+    assert.ok(!allowedTargets("in_progress", { acceptance_mode: "human" }).includes("done"));
+    // No card in hand is the conservative reading: the base row only.
+    assert.ok(!allowedTargets("in_progress").includes("done"));
+    // The edge belongs to `in_progress` alone.
+    assert.ok(!allowedTargets("todo", { acceptance_mode: "off" }).includes("done"));
+  });
+});
+
 /* ------------------------------------------- events → store (global_revision) */
 
 describe("web/board — the live stream drives the revision", () => {
@@ -457,7 +512,7 @@ describe("web/board — the live stream drives the revision", () => {
     const { board, startEvents } = await freshBoard();
     seedTask(board);
     board.detail = { task: { id: "td_1", identifier: "TD-1" }, comments: [] };
-    installFetch({
+    const calls = installFetch({
       "GET /api/v1/tasks/TD-1/comments": () => ok({ comments: [{ id: "c1", body: "hi" }] }),
       "GET /api/v1/tasks/TD-1/activities": () => ok({ activities: [] }),
     });
@@ -467,6 +522,17 @@ describe("web/board — the live stream drives the revision", () => {
     mock.timers.tick(100);
     await settle();
     assert.equal(board.detail.comments.length, 1);
+    // The live re-read keeps the drawer's newest-first contract.
+    assert.match(
+      calls.find((call) => call.url.includes("/activities")).url,
+      /[?&]order=desc(&|$)/,
+      "the refresh activity read asks for descending order",
+    );
+    assert.match(
+      calls.find((call) => call.url.includes("/comments")).url,
+      /[?&]order=desc(&|$)/,
+      "the refresh comment read asks for descending order too",
+    );
   });
 
   it("invalidates and re-reads a waiting payload when the card's question can change", async () => {
@@ -524,6 +590,38 @@ describe("web/board — the live stream drives the revision", () => {
     await settle();
 
     assert.deepEqual(board.detail.relations.parent_chain, ["TD-2"]);
+  });
+
+  it("feeds the open drawer from the card refresh instead of a second task read", async () => {
+    const { board, startEvents } = await freshBoard();
+    seedTask(board);
+    board.detail = { task: { id: "td_1", identifier: "TD-1", version: 1 }, activities: [] };
+    const calls = installFetch({
+      "GET /api/v1/tasks/td_1": () =>
+        ok({ task: { id: "td_1", identifier: "TD-1", version: 2, title: "renamed" } }),
+      "GET /api/v1/tasks/TD-1/activities": () => ok({ activities: [] }),
+    });
+
+    startEvents();
+    FakeEventSource.instances.at(-1).emit(18, {
+      event: "task_updated",
+      task_id: "td_1",
+      changes: { fields: ["title"] },
+    });
+    mock.timers.tick(100);
+    await settle();
+
+    assert.equal(board.detail.task.version, 2, "the drawer sees the refreshed row");
+    assert.equal(
+      calls.filter((call) => call.url === "/api/v1/tasks/td_1").length,
+      1,
+      "one task read for the event",
+    );
+    assert.equal(
+      calls.some((call) => call.url === "/api/v1/tasks/TD-1"),
+      false,
+      "the drawer does not reread the same task",
+    );
   });
 
   it("seeds the first stream from /meta.revision instead of replaying from zero", async () => {
@@ -796,6 +894,45 @@ describe("web/board — the loading window", () => {
   });
 });
 
+/* ---------------------------------------------------------- posting a comment */
+
+describe("web/board — posting a comment", () => {
+  it("prepends the posted comment, so the newest is first", async () => {
+    const { board, addComment } = await freshBoard();
+    const task = seedTask(board, { identifier: "TD-1" });
+    board.detail = { task, comments: [{ id: "c1", body: "old" }] };
+    const calls = installFetch({
+      "POST /api/v1/tasks/TD-1/comments": () => ok({
+        comment: { id: "c2", body: "new", author: { display_name: "local", kind: "human" } },
+      }),
+    });
+
+    await addComment("TD-1", "new");
+
+    assert.deepEqual(board.detail.comments.map((comment) => comment.id), ["c2", "c1"]);
+    assert.equal(calls[0].body.kind, "discuss");
+    assert.equal(
+      board.detail.comments[0].author.display_name,
+      "local",
+      "the row uses the server's author, not the app's ME placeholder",
+    );
+    assert.equal(toasts.value.at(-1).kind, "success");
+  });
+
+  it("surfaces a refused comment instead of dropping it silently", async () => {
+    const { board, addComment } = await freshBoard();
+    const task = seedTask(board, { identifier: "TD-1", status: "awaiting" });
+    board.detail = { task, comments: [] };
+    installFetch({ "POST /api/v1/tasks/TD-1/comments": () => failure(503, "DB_BUSY") });
+
+    await assert.rejects(() => addComment("TD-1", "use v2"), (err) => err.code === "DB_BUSY");
+
+    assert.equal(toasts.value.at(-1).kind, "danger");
+    assert.equal(toasts.value.at(-1).text, resolveText("en", "error.busy"));
+    assert.equal(board.detail.comments.length, 0, "a refused comment is not optimistically added");
+  });
+});
+
 /* --------------------------------------------------------- the open drawer */
 
 /** Every read `openDetail()` fans out, happy-path. */
@@ -828,7 +965,7 @@ describe("web/board — opening the detail drawer", () => {
     board.currentProjectId = "p1";
 
     let release;
-    installFetch({
+    const calls = installFetch({
       ...detailRoutes("TD-1", wireTask("TD-1")),
       "GET /api/v1/tasks/TD-1": () => new Promise((resolve) => (release = resolve)),
     });
@@ -841,6 +978,18 @@ describe("web/board — opening the detail drawer", () => {
     release(ok({ task: wireTask("TD-1") }));
     await pending;
     assert.equal(board.detail.task.identifier, "TD-1");
+    // The drawer asks for the 50 newest, newest first — the server keeps ASC as
+    // its default for the SSE replay cursor.
+    assert.match(
+      calls.find((call) => call.url.includes("/activities")).url,
+      /[?&]order=desc(&|$)/,
+      "the drawer's activity read asks for descending order",
+    );
+    assert.match(
+      calls.find((call) => call.url.includes("/comments")).url,
+      /[?&]order=desc(&|$)/,
+      "the drawer's comment read asks for descending order too",
+    );
   });
 
   it("does not let a late card read replace the card opened after it", async () => {
@@ -1141,6 +1290,8 @@ describe("board store — the acceptance half of the waiting queue", () => {
     parent_id: null,
     review_of_id: null,
     review_round: null,
+    // 0038 — only a `human` card is the human's to accept.
+    acceptance_mode: "human",
     version: 1,
     labels: [],
     ...over,
@@ -1164,7 +1315,6 @@ describe("board store — the acceptance half of the waiting queue", () => {
     mod.board.currentProjectId = "p1";
     mod.board.loaded = true;
     mod.board.tasks = [original()];
-    mod.board.acceptancePolicy = "both";
     assert.deepEqual(mod.acceptanceTasks.value.map((task) => task.id), ["o1"]);
     assert.equal(mod.waitingCount.value, 1);
 
@@ -1173,8 +1323,8 @@ describe("board store — the acceptance half of the waiting queue", () => {
     assert.equal(mod.visibleTasks.value.length, 0);
     assert.deepEqual(mod.acceptanceTasks.value.map((task) => task.id), ["o1"]);
 
-    mod.board.acceptancePolicy = "agent-only";
-    assert.deepEqual(mod.acceptanceTasks.value, [], "an agent-only board asks the human for nothing");
+    mod.board.tasks = [original({ acceptance_mode: "agent" }), original({ id: "o2", identifier: "TD-2", acceptance_mode: "off" })];
+    assert.deepEqual(mod.acceptanceTasks.value, [], "agent and off cards ask the human for nothing");
     assert.equal(mod.waitingCount.value, 0);
     mod.writeStatusFilter(["all"]);
   });
@@ -1183,7 +1333,6 @@ describe("board store — the acceptance half of the waiting queue", () => {
     const mod = await freshBoard();
     mod.board.currentProjectId = "p1";
     mod.board.loaded = true;
-    mod.board.acceptancePolicy = "both";
     mod.board.tasks = [original(), review("todo")];
     assert.deepEqual(mod.acceptanceTasks.value, [], "a todo review holds it");
 
@@ -1201,7 +1350,6 @@ describe("board store — the acceptance half of the waiting queue", () => {
     const mod = await freshBoard();
     mod.board.currentProjectId = "p1";
     mod.board.loaded = true;
-    mod.board.acceptancePolicy = "both";
     const child = { ...original({ id: "c1", identifier: "TD-C", status: "todo", parent_id: "o1" }) };
     mod.board.tasks = [original(), child];
     assert.deepEqual(mod.acceptanceTasks.value, [], "an open child holds the container");
@@ -1217,7 +1365,6 @@ describe("board store — the acceptance half of the waiting queue", () => {
     const mod = await freshBoard();
     mod.board.currentProjectId = "p1";
     mod.board.loaded = true;
-    mod.board.acceptancePolicy = "both";
     mod.board.tasks = [original({ assignee: { display_name: "elon", kind: "claude" } })];
 
     assert.deepEqual(mod.visibleAcceptanceTasks.value.map((task) => task.id), ["o1"]);
@@ -1246,7 +1393,6 @@ describe("board store — the acceptance half of the waiting queue", () => {
     const mod = await freshBoard();
     mod.board.currentProjectId = "p1";
     mod.board.loaded = true;
-    mod.board.acceptancePolicy = "both";
     const child = original({
       id: "c1",
       identifier: "TD-C",

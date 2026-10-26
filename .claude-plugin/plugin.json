@@ -1,6 +1,6 @@
 {
   "name": "meerkat-taskpanel",
-  "version": "1.1.0",
+  "version": "0.1.0",
   "description": "Task management board for AI Agent teams.",
   "author": { "name": "tanyu216" },
   "license": "MIT",

@@ -105,59 +105,44 @@ describe("blocked_reason — the card field (0016)", () => {
     }
   });
 
-  it("keeps the migration's CHECK literals and the domain vocabulary the same list", () => {
-    const file = readMigrationFiles(MIGRATIONS_DIR).find((entry) => entry.version === "0016");
-    assert.ok(file !== undefined, "0016 must ship");
+  it("keeps the baseline's CHECK literals and the domain vocabulary the same list", () => {
+    const file = readMigrationFiles(MIGRATIONS_DIR).find((entry) => entry.version === "0001");
+    assert.ok(file !== undefined, "the 0.1.0 baseline must ship");
     const check = /CHECK\s*\(\s*blocked_reason\s+IN\s*\(([^)]*)\)\s*\)/i.exec(file.sql);
-    assert.ok(check !== null, "0016 must constrain the column to the vocabulary");
+    assert.ok(check !== null, "the baseline must constrain the column to the vocabulary");
     assert.deepEqual(
       [...check[1].matchAll(/'([^']*)'/g)].map((m) => m[1]),
       [...BLOCKED_REASONS],
       "same literals, same order, on both sides",
     );
 
-    // 0016's `ALTER TABLE … ADD COLUMN` constraint was invisible to the SQL-parity
-    // reader (it walks `CREATE TABLE` statements), so the value set had no JS
-    // side — the assertion above covered the pairing instead. `0019` rebuilds
-    // `tasks` and declares `blocked_reason` in the `CREATE TABLE` body, where the
-    // reader *does* see it, so the vocabulary is now declared in `SQL_ENUM_SETS`
-    // and compared **both** ways (the `0018`/`REPORT_ORIGINS` precedent).
+    // The baseline declares the CHECK in the `CREATE TABLE` body, so the
+    // SQL-parity reader sees it and the vocabulary is compared both ways.
     assert.equal(Object.hasOwn(SQL_ENUM_SETS, "tasks.blocked_reason"), true);
   });
 
-  it("pins the revision cursor's column list, which does not name the new column", () => {
-    // D3″ (T-20261014-022254-4). `tr_rev_tasks_upd` fires `AFTER UPDATE OF
-    // <list>` and 0016 deliberately does not re-declare it to add
-    // `blocked_reason`. The consequence is narrow and stated, so it is pinned
-    // here rather than left to be rediscovered:
+  it("pins the revision cursor's column list, which does not name blocked_reason", () => {
+    // `tr_rev_tasks_upd` fires `AFTER UPDATE OF <list>` and the list does not
+    // name `blocked_reason`. The consequence is narrow and stated, so it is
+    // pinned here rather than left to be rediscovered:
     //
     //   * every write the board itself performs sets `version` and `updated_at`,
     //     which *are* in the list — so a service-level write is always seen;
     //   * a hand-written `UPDATE tasks SET blocked_reason = …` alone is not, so
     //     it bumps no revision and a cursor-watching reader misses it.
-    //
-    // 0015 and 0019 own the trigger's text (both re-create it during a `tasks`
-    // rebuild — 0019's list loses the three columns 0019 drops); 0016's header owns
-    // the explanation. If a caller ever needs the bare-write case, this is the
-    // test that says so.
     const files = readMigrationFiles(MIGRATIONS_DIR);
     const declarations = files.flatMap((entry) =>
-      [...entry.sql.matchAll(/CREATE TRIGGER tr_rev_tasks_upd[\s\S]*?END;/g)].map((match) => ({
+      [...entry.sql.matchAll(/CREATE TRIGGER (?:IF NOT EXISTS )?tr_rev_tasks_upd[\s\S]*?END;/g)].map((match) => ({
         version: entry.version,
         sql: match[0],
       })),
     );
-    assert.ok(declarations.length >= 1, "the revision cursor is declared somewhere");
-    // `readMigrationFiles` sorts by filename, so the last declaration is the one
-    // a board at the head of the set actually has — 0019 re-declares it (during
-    // its `tasks` rebuild) and 0016 does not.
-    const live = declarations.at(-1);
-    assert.equal(live.version, "0020", "the live declaration is 0020's — the last `tasks` rebuild re-declares the trigger");
+    assert.equal(declarations.length, 1, "the baseline declares the revision cursor once");
+    const live = declarations[0];
+    assert.equal(live.version, "0001", "the live declaration is the baseline");
     assert.equal(/\bblocked_reason\b/.test(live.sql), false, "the cursor's column list does not name blocked_reason");
+    assert.ok(live.sql.includes("acceptance_mode"), "but it does name the acceptance decision");
     assert.ok(live.sql.includes("version") && live.sql.includes("updated_at"), "but it does name both CAS columns");
-
-    const ours = files.find((entry) => entry.version === "0016");
-    assert.match(ours.sql, /tr_rev_tasks_upd/, "0016's header states the consequence, so the hole is documented");
   });
 
   it("stores the reason as a nullable column the database itself constrains", async () => {

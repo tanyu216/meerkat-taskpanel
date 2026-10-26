@@ -71,10 +71,12 @@
  *     container open (`identifier` + `status`), never a bare "not closeable".
  */
 
+import { DomainError } from "../../foundation/errors.mjs";
+import { rollupGapOf } from "../domain/acceptance.mjs";
 import { normalizeCommentCreate } from "../domain/comment.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
-import { assertTransition, isTerminalStatus } from "../domain/status.mjs";
+import { isTerminalStatus, transitionPolicyFor } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { BOARD_ACTOR } from "./context.mjs";
 import { insertDeliveryReport } from "./delivery-report.mjs";
@@ -196,7 +198,7 @@ export function advanceContainer(ctx, containerId, now, options = {}) {
     { ...rollupReport(ctx, container, plan.children, plan.evidence), author },
     { taskRound: container.deliveryRound, now },
   );
-  const report = insertDeliveryReport(ctx, { taskId: container.id, prepared });
+  const report = insertDeliveryReport(ctx, { taskId: container.id, prepared, isRollup: true });
   const moved = ctx.repos.tasks.moveCas({
     id: container.id,
     to: STATUS.IN_REVIEW,
@@ -277,7 +279,7 @@ export function startContainer(ctx, containerId, now, options = {}) {
   const started = children.find((child) => CHILD_STARTED_STATUSES.includes(child.status));
   if (started === undefined) return null;
 
-  assertTransition(container.status, STATUS.IN_PROGRESS, container.kind);
+  transitionPolicyFor(container).assert(STATUS.IN_PROGRESS);
   const moved = ctx.repos.tasks.moveCas({
     id: container.id,
     to: STATUS.IN_PROGRESS,
@@ -380,6 +382,20 @@ export function reconcileContainers(ctx, options = {}) {
     }
 
     if (epic.status === STATUS.IN_REVIEW) {
+      // 0033 — a read-only staleness finding. The sweep never moves an
+      // `in_review` epic; it only says whether the rollup a human is about to
+      // accept still describes the children. A stale epic is repaired by
+      // reworking it (a new round rolls up again).
+      const rollup = currentRollup(ctx, epic);
+      if (rollup === null) {
+        record("none", "rollup_missing");
+        continue;
+      }
+      const gap = rollupGap(ctx, epic, rollup.acceptance);
+      if (!gap.ok) {
+        record("none", "rollup_stale", { blocking: rollupBlocking(gap) });
+        continue;
+      }
       record("none", "awaiting_acceptance");
       continue;
     }
@@ -600,11 +616,12 @@ function rollupReport(ctx, container, children, evidence) {
       `${done.length} done (${joinRefs(done)}), ${canceled.length} canceled (${joinRefs(canceled)}).`,
     acceptance: children.map((child) =>
       child.status === STATUS.DONE
-        ? { text: `${child.identifier} ${child.title} — done`, status: "met" }
+        ? { text: `${child.identifier} ${child.title} (done)`, status: "met", ref: child.identifier }
         : {
-            text: `${child.identifier} ${child.title} — canceled`,
+            text: `${child.identifier} ${child.title} (canceled)`,
             status: "not_applicable",
             note: `canceled: ${cancellationReason(ctx, child)}`,
+            ref: child.identifier,
           },
     ),
     evidence,
@@ -627,9 +644,10 @@ function rollupEvidence(ctx, children) {
   const seen = new Set();
   for (const child of children) {
     const reports = ctx.repos.reports.listByTask(child.id);
-    // `listByTask` is round-ascending: the last delivery report is the one the
-    // current round was accepted on.
-    const latest = [...reports].reverse().find((report) => report.origin === "delivery");
+    // `listByTask` is round-ascending: the last report is the one the current
+    // round was accepted on. 0035 removed the provenance filter, so the newest
+    // row is the evidence.
+    const latest = reports.at(-1);
     if (latest === undefined || latest === null) continue;
     for (const anchor of latest.evidence?.items ?? []) {
       const key = JSON.stringify(anchor);
@@ -639,4 +657,146 @@ function rollupEvidence(ctx, children) {
     }
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// 0033 — the rollup gate
+// ---------------------------------------------------------------------------
+
+/**
+ * The epic's rollup for its **current** round, or `null`.
+ *
+ * "Rollup" is structural: a row carrying `is_rollup` (0033). The round is the
+ * epic's current `delivery_round`, so a rework (`in_review → in_progress`, which
+ * bumps the round) makes the previous rollup history automatically — no
+ * invalidation write, no clock. 0035 removed the provenance filter; who wrote
+ * the row does not matter.
+ *
+ * @param {object} ctx
+ * @param {object} epic
+ * @returns {object|null}
+ */
+export function currentRollup(ctx, epic) {
+  if (epic === null || epic === undefined || epic.kind !== TASK_KIND.EPIC) return null;
+  const reports = ctx.repos.reports.listByTask(epic.id);
+  return (
+    [...reports]
+      .reverse()
+      .find((report) => report.round === epic.deliveryRound && report.isRollup === true) ?? null
+  );
+}
+
+/**
+ * Compare a rollup's acceptance items with the epic's **live** children.
+ *
+ * The report's `ref` is the join key, not its prose: a child renamed since the
+ * rollup (or a card whose title changed) is still the same card and must not
+ * read as stale. Every child appears exactly once; a `done` child is `met`, a
+ * `canceled` one is `not_applicable` with a note, and a child still in flight is
+ * a mismatch (a terminal rollup cannot describe open work). At least one child
+ * must be `done` — the same rule `assessClose` applies before writing an
+ * automatic rollup.
+ *
+ * @param {object} ctx
+ * @param {object} epic
+ * @param {unknown[]} items the report's acceptance list
+ * @returns {{ok: boolean, childCount: number, done: number, missingChildren: string[], unexpectedChildren: string[], statusMismatches: object[], duplicates: string[], reason?: string}}
+ */
+export function rollupGap(ctx, epic, items) {
+  const children = childrenOf(ctx, epic.id);
+  if (children === null) {
+    return {
+      ok: false,
+      childCount: 0,
+      done: 0,
+      missingChildren: [],
+      unexpectedChildren: [],
+      statusMismatches: [],
+      duplicates: [],
+      reason: "dangling_child_edge",
+    };
+  }
+  // One rule, two readers: this reads the live children, the workflow planner
+  // reads its board snapshot through the same pure function.
+  return rollupGapOf({ children, items });
+}
+
+/** The rows a reconcile record shows for a stale rollup. */
+export function rollupBlocking(gap) {
+  return [
+    ...gap.missingChildren.map((ref) => ({ identifier: ref, status: "missing" })),
+    ...gap.unexpectedChildren.map((ref) => ({ identifier: ref, status: "unexpected_child" })),
+    ...gap.statusMismatches.map((mismatch) => ({
+      identifier: mismatch.ref,
+      status: mismatch.childStatus,
+    })),
+  ];
+}
+
+/**
+ * Refuse a rollup that no longer describes the children.
+ *
+ * @param {object} ctx
+ * @param {object} epic
+ * @param {unknown[]} items
+ * @throws {DomainError} ROLLUP_STALE
+ */
+export function assertRollupCoverage(ctx, epic, items) {
+  const gap = rollupGap(ctx, epic, items);
+  if (gap.ok) return true;
+  const parts = [];
+  if (gap.missingChildren.length > 0) parts.push(`${gap.missingChildren.length} missing child(ren)`);
+  if (gap.unexpectedChildren.length > 0) parts.push(`${gap.unexpectedChildren.length} unexpected ref(s)`);
+  if (gap.statusMismatches.length > 0) parts.push(`${gap.statusMismatches.length} status mismatch(es)`);
+  if (gap.duplicates.length > 0) parts.push(`${gap.duplicates.length} duplicate ref(s)`);
+  if (gap.childCount === 0) parts.push("no children");
+  else if (gap.done === 0) parts.push("no done child");
+  throw new DomainError("ROLLUP_STALE", {
+    message:
+      `${epic.identifier}: the rollup for delivery round ${epic.deliveryRound} does not match ` +
+      `its children (${parts.join(", ") || "stale"})`,
+    details: {
+      taskId: epic.id,
+      identifier: epic.identifier,
+      round: epic.deliveryRound,
+      childCount: gap.childCount,
+      doneChildren: gap.done,
+      missingChildren: gap.missingChildren,
+      unexpectedChildren: gap.unexpectedChildren,
+      statusMismatches: gap.statusMismatches,
+      duplicates: gap.duplicates,
+      ...(gap.reason === undefined ? {} : { reason: gap.reason }),
+    },
+    hint: {
+      fix: `rework the epic (taskctl issue move ${epic.identifier} in_progress) and roll up again`,
+    },
+  });
+}
+
+/**
+ * The epic's acceptance evidence: a current-round rollup that covers it.
+ *
+ * Called by `done` (through `assertAcceptanceCoverage`) and by the delivery gate
+ * before `in_review`. The epic's own `acceptance_json` is informational — the
+ * children are the container's acceptance facts.
+ *
+ * @param {object} ctx
+ * @param {object} epic
+ * @throws {DomainError} ROLLUP_REQUIRED / ROLLUP_STALE
+ */
+export function assertEpicRollupReady(ctx, epic) {
+  const rollup = currentRollup(ctx, epic);
+  if (rollup === null) {
+    throw new DomainError("ROLLUP_REQUIRED", {
+      message:
+        `${epic.identifier}: no rollup report for delivery round ${epic.deliveryRound}`,
+      details: { taskId: epic.id, identifier: epic.identifier, round: epic.deliveryRound },
+      hint: {
+        command: `taskctl report template ${epic.identifier}`,
+        note: "the epic template lists every child; fill it, then deliver it on the epic",
+      },
+    });
+  }
+  assertRollupCoverage(ctx, epic, rollup.acceptance);
+  return true;
 }

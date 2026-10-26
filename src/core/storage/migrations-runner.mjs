@@ -224,13 +224,32 @@ export function applyMigrations(db, options = {}) {
       } catch {
         /* the statement failed hard enough that there is nothing to roll back */
       }
-      throw mapSqliteError(err, { op: `apply ${migration.file}` });
+      const mapped = mapSqliteError(err, { op: `apply ${migration.file}` });
+      // The process edge can only say "startup failed"; this record is the one
+      // that names *which* migration refused the board.
+      if (logger !== undefined) {
+        logger({
+          event: "migration_failed",
+          level: "error",
+          version: migration.version,
+          name: migration.name,
+          code: mapped.code,
+          message: mapped.message,
+        });
+      }
+      throw mapped;
     } finally {
       if (fkOff) db.exec(`PRAGMA foreign_keys = ${REQUIRED_PRAGMAS.foreign_keys}`);
     }
 
     applied.push({ version: migration.version, name: migration.name, ms: Date.now() - startedAt });
     if (logger !== undefined) logger({ event: "migration_applied", ...applied.at(-1) });
+  }
+
+  // "Already current" and "nothing ran" are different answers; the count is the
+  // cheap way to tell them apart on a restart.
+  if (logger !== undefined && skipped.length > 0) {
+    logger({ event: "migrations_skipped", level: "debug", count: skipped.length });
   }
 
   return { applied, skipped, checksums };

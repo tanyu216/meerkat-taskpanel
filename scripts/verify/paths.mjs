@@ -97,7 +97,7 @@ export const RESERVED_NAMES = Object.freeze(["you", "op", "alice", "tester", "te
  * Directories the walk skips. They mirror `.gitignore`, so the no-git file set matches
  * the tracked set rather than picking up build output and runtime state.
  */
-const SKIP_DIRS = Object.freeze(new Set([".git", "node_modules", "dist", ".data", "coverage", ".worktrees"]));
+const SKIP_DIRS = Object.freeze(new Set([".git", "node_modules", "dist", ".data", "coverage", ".worktrees", ".meerkat"]));
 
 /** `[/Users|/home]/<name>` — the name is what decides whether it is a finding. */
 const HOST_PATH = /\/(?:Users|home)\/([A-Za-z0-9_.-]+)/g;

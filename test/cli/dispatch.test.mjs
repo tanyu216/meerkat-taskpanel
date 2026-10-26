@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
 import { cleanupTempDirs, closedPortUrl, runCli, withCli } from "./helpers/cli-harness.mjs";
-import { allCommands, groups } from "../../src/cli/commands/index.mjs";
+import { allCommands, commandPath, groups, topLevel } from "../../src/cli/commands/index.mjs";
 
 after(cleanupTempDirs);
 
@@ -36,11 +36,15 @@ function globalBlock(stdout) {
 }
 
 describe("cli/dispatch — help", () => {
-  it("lists every group at the top level", () => {
+  it("lists every group and every bare command at the top level", () => {
     const run = runCli(["--help"], { noUrl: true });
     assert.equal(run.status, 0, run.stderr);
     for (const group of groups) {
       assert.match(run.stdout, new RegExp(`\\b${group.name}\\b`), `missing group ${group.name}`);
+    }
+    assert.match(run.stdout, /^Commands:$/m);
+    for (const command of topLevel) {
+      assert.match(run.stdout, new RegExp(`\\b${command.name}\\b`), `missing command ${command.name}`);
     }
     assert.match(run.stdout, /Global options:/);
   });
@@ -66,14 +70,11 @@ describe("cli/dispatch — help", () => {
     assert.match(top, /--if-version <n>/);
 
     for (const { group, command } of allCommands()) {
-      const run = runCli([group.name, command.name, "--help"], { noUrl: true });
-      assert.equal(run.status, 0, `${group.name} ${command.name}: ${run.stderr}`);
+      const path = commandPath(group, command);
+      const run = runCli([...path.split(" "), "--help"], { noUrl: true });
+      assert.equal(run.status, 0, `${path}: ${run.stderr}`);
       assert.match(run.stdout, /^Usage: taskctl /m);
-      assert.equal(
-        globalBlock(run.stdout),
-        top,
-        `${group.name} ${command.name} prints a different global-options block`,
-      );
+      assert.equal(globalBlock(run.stdout), top, `${path} prints a different global-options block`);
     }
   });
 

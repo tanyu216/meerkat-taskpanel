@@ -10,6 +10,7 @@ import {
   ancestorsOf,
   assertEpicDowngradeAllowed,
   assertParentEdgeAllowed,
+  assertParentEdgeHasNoReviewCard,
   assertParentIsEpic,
   chainDepthOf,
   normalizeRelation,
@@ -179,5 +180,48 @@ describe("domain/relation — epic downgrade", () => {
       assert.match(err.message, /PROJ-0001/);
       return true;
     });
+  });
+});
+
+describe("domain/relation — a review card is never a parent or a child", () => {
+  const task = (id, overrides = {}) => ({
+    id,
+    identifier: id.toUpperCase(),
+    reviewOfId: null,
+    meta: {},
+    ...overrides,
+  });
+
+  it("refuses a structural review source and a legacy review target", () => {
+    assert.throws(
+      () =>
+        assertParentEdgeHasNoReviewCard({
+          source: task("r", { reviewOfId: "o" }),
+          target: task("t"),
+        }),
+      (err) =>
+        err.code === "VALIDATION_FAILED" &&
+        err.details.field === "source" &&
+        err.details.type === "parent",
+    );
+
+    assert.throws(
+      () =>
+        assertParentEdgeHasNoReviewCard({
+          source: task("s"),
+          target: task("t", { meta: { review_of: "R-1" } }),
+        }),
+      (err) =>
+        err.code === "VALIDATION_FAILED" &&
+        err.details.field === "target" &&
+        err.details.type === "parent",
+    );
+  });
+
+  it("lets ordinary tasks through", () => {
+    assert.equal(
+      assertParentEdgeHasNoReviewCard({ source: task("s"), target: task("t") }),
+      true,
+    );
   });
 });

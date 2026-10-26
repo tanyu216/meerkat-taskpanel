@@ -2,9 +2,9 @@
 /**
  * The append-only SQL migration gate.
  *
- * `src/core/storage/migrations/*.sql` is an append-only history: the runner
- * records each file's checksum in `schema_migrations`, and a database refuses to
- * open if an applied migration changed. That check only fires at *runtime*, on a
+ * `src/core/storage/migrations/*.sql` is an append-only history from the 0.1.0
+ * baseline: the runner records each file's checksum in `schema_migrations`, and a
+ * database refuses to open if an applied migration changed. That check only fires at *runtime*, on a
  * database that already applied the old file. This script moves the same verdict
  * forward to the earliest possible point — the pre-commit hook — so a migration
  * that jumps a number, repeats one, silently edits a shipped file, or is deleted

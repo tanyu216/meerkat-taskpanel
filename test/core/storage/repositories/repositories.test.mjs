@@ -70,6 +70,20 @@ function makeTask(repos, overrides = {}) {
   return repos.tasks.insert(task);
 }
 
+/**
+ * A review card. `normalizeTaskCreate` does not carry the structural marker
+ * (it is resolved by the service layer), so the normalized DTO is stamped
+ * before insert — which is exactly the shape 0025 stores.
+ */
+function makeReview(repos, { id, status, reviewOfId, reviewRound } = {}) {
+  const { identifier } = repos.projects.allocateIdentifier("proj");
+  const task = normalizeTaskCreate(
+    { title: "A review", ...(status === undefined ? {} : { status }) },
+    { now: TS, id: id ?? `task-${identifier}`, identifier, projectId: "proj" },
+  );
+  return repos.tasks.insert({ ...task, reviewOfId, reviewRound });
+}
+
 describe("repositories/projects", () => {
   it("creates, reads and patches a project", async () => {
     await board(({ repos, project }) => {
@@ -416,6 +430,70 @@ describe("repositories/tasks", () => {
       assert.deepEqual(repos.tasks.list({ projectId: "nope" }), []);
     });
   });
+
+  it("pushes the parent/label/target/meta filters into the read", async () => {
+    await board(({ repos }) => {
+      const parent = makeTask(repos, { id: "parent", title: "Parent", kind: "epic" });
+      const child = makeTask(repos, {
+        id: "child",
+        title: "Child",
+        labels: ["ui", "api"],
+        meta: { target: "app", flow: "review", count: 3 },
+      });
+      const other = makeTask(repos, {
+        id: "other",
+        title: "Other",
+        labels: ["api"],
+        meta: { target: "lib" },
+      });
+      repos.relations.insert({ type: "parent", source: parent.id, target: child.id, now: TS });
+
+      const ids = (filter) => repos.tasks.list(filter).map((task) => task.id).sort();
+      assert.deepEqual(ids({ parentId: parent.id }), ["child"]);
+      assert.deepEqual(ids({ labels: ["ui"] }), ["child"]);
+      assert.deepEqual(ids({ labels: ["ui", "api"] }), ["child"]);
+      assert.deepEqual(ids({ labels: ["ui", "nope"] }), []);
+      assert.deepEqual(ids({ target: "lib" }), ["other"]);
+      // A JSON number is compared as text, so the caller's `"3"` matches it.
+      assert.deepEqual(ids({ metaEquals: [{ key: "count", value: "3" }] }), ["child"]);
+      assert.deepEqual(
+        ids({ metaEquals: [{ key: "flow", value: "review" }, { key: "target", value: "app" }] }),
+        ["child"],
+      );
+      assert.deepEqual(ids({ metaEquals: [{ key: "flow", value: "nope" }] }), []);
+      // Pushed down: the filter survives `limit`, rather than trimming a page —
+      // and `limit: null` (the weight order's "whole scoped set") filters too.
+      assert.deepEqual(repos.tasks.list({ labels: ["api"], limit: 1 }).length, 1);
+      assert.deepEqual(ids({ labels: ["api"], limit: null }), ["child", "other"]);
+      assert.deepEqual(ids({ kind: "task" }), ["child", "other"].sort());
+    });
+  });
+
+  it("filters the board read by the card being reviewed", async () => {
+    await board(({ repos }) => {
+      const original = makeTask(repos, { id: "original", title: "Original" });
+      const other = makeTask(repos, { id: "other", title: "Other" });
+
+      const live = makeReview(repos, { id: "review-live", reviewOfId: original.id, reviewRound: 1 });
+      const archived = makeReview(repos, {
+        id: "review-archived",
+        status: "done",
+        reviewOfId: original.id,
+        reviewRound: 2,
+      });
+      makeReview(repos, { id: "review-other", reviewOfId: other.id, reviewRound: 1 });
+      repos.tasks.archive({ id: archived.id, now: TS2 });
+
+      assert.deepEqual(repos.tasks.list({ reviewOfId: original.id }).map((task) => task.id), [live.id]);
+      assert.deepEqual(
+        repos.tasks.list({ reviewOfId: original.id, includeArchived: true }).map((task) => task.id).sort(),
+        [archived.id, live.id].sort(),
+      );
+      assert.deepEqual(repos.tasks.list({ reviewOfId: original.id, status: "todo" }).map((task) => task.id), [live.id]);
+      assert.deepEqual(repos.tasks.list({ reviewOfId: original.id, limit: 0 }), []);
+      assert.deepEqual(repos.tasks.list({ reviewOfId: "nope" }), []);
+    });
+  });
 });
 
 describe("repositories/relations", () => {
@@ -466,6 +544,21 @@ describe("repositories/relations", () => {
       assert.equal(repos.relations.listByTask(a.id).length, 1);
       assert.deepEqual(repos.relations.countByTask(b.id), { children: 0, blockers: 1 });
       assert.equal(repos.relations.get(999), null);
+    });
+  });
+
+  it("names the open predecessors of one card, and drops the done ones", async () => {
+    await board(({ repos }) => {
+      const open = makeTask(repos, { id: "open" });
+      const done = makeTask(repos, { id: "done", status: "done" });
+      const blocked = makeTask(repos, { id: "blocked" });
+      repos.relations.insert({ type: "blocks", source: open.id, target: blocked.id, now: TS });
+      repos.relations.insert({ type: "blocks", source: done.id, target: blocked.id, now: TS });
+
+      assert.deepEqual(repos.relations.listOpenBlockers(blocked.id), [
+        { id: open.id, identifier: open.identifier, status: "todo" },
+      ]);
+      assert.deepEqual(repos.relations.listOpenBlockers(open.id), [], "the other direction is not a predecessor");
     });
   });
 });
@@ -524,6 +617,12 @@ describe("repositories/comments", () => {
       assert.deepEqual(repos.comments.listDecisions(task.id).map((c) => c.authorId), ["Terry"]);
       assert.deepEqual(repos.comments.list({ taskId: task.id, kind: "note" }).map((c) => c.id), ["c2"]);
       assert.deepEqual(repos.comments.list({ taskId: task.id, limit: 1 }).map((c) => c.id), ["c1"]);
+      // The presentation read: newest first, and `limit` takes the newest N.
+      assert.deepEqual(repos.comments.list({ taskId: task.id, order: "desc" }).map((c) => c.id), ["c2", "c1"]);
+      assert.deepEqual(
+        repos.comments.list({ taskId: task.id, order: "desc", limit: 1 }).map((c) => c.id),
+        ["c2"],
+      );
     });
   });
 });
@@ -563,6 +662,30 @@ describe("repositories/reports", () => {
         return true;
       });
       assert.equal(countRows(db, "task_reports"), 1);
+    });
+  });
+
+  it("persists the rollup marker and exposes it to the gate (0033)", async () => {
+    await board(({ db, repos }) => {
+      ensureActor(db, "linus");
+      const epic = makeTask(repos, { title: "Container", kind: "epic" });
+      const rollup = repos.reports.insert({ ...prepared(epic.id, 1), isRollup: true });
+      assert.equal(rollup.isRollup, true, "the DTO reads the integer back as a boolean");
+      assert.equal(repos.reports.get(rollup.id).isRollup, true);
+      assert.deepEqual(repos.reports.listGateReports(epic.id), [
+        { round: 1, isRollup: true },
+      ]);
+
+      // A plain card's report is never a rollup, and the DB refuses a forged
+      // marker even when the repository is bypassed in spirit.
+      const task = makeTask(repos, { title: "Plain" });
+      const plain = repos.reports.insert(prepared(task.id, 1));
+      assert.equal(plain.isRollup, false);
+      assert.throws(
+        () => repos.reports.insert({ ...prepared(task.id, 2), isRollup: true }),
+        (err) => String(err.message).includes("ROLLUP_INVALID"),
+      );
+      assert.equal(countRows(db, "task_reports"), 2);
     });
   });
 });
@@ -675,23 +798,25 @@ describe("repositories/dictionary", () => {
 
 describe("repositories/sessions and attachments and activities", () => {
   it("upserts a session on its natural key and closes it", async () => {
-    await board(({ repos }) => {
+    await board(({ db, repos }) => {
       const task = makeTask(repos);
       const session = repos.sessions.upsertByNaturalKey({
         taskId: task.id,
         seg: "seg2",
         owner: "linus",
-        backend: "claude",
+        ownerKind: "claude",
         sessionId: "ff309028",
         pid: 42,
+        goal: "ship the drawer ordering",
         ts: TS,
       });
       assert.equal(session.status, "running");
+      assert.equal(session.goal, "ship the drawer ordering");
       const same = repos.sessions.upsertByNaturalKey({
         taskId: task.id,
         seg: "seg2",
         owner: "linus",
-        backend: "claude",
+        ownerKind: "claude",
         sessionId: "ff309028",
         phase: "verify",
         status: "running",
@@ -699,13 +824,58 @@ describe("repositories/sessions and attachments and activities", () => {
       });
       assert.equal(same.id, session.id, "the natural key keeps one row");
       assert.equal(same.phase, "verify");
+      assert.equal(same.goal, "ship the drawer ordering", "an omitted goal keeps the registered one");
+      const regraded = repos.sessions.upsertByNaturalKey({
+        taskId: task.id,
+        seg: "seg2",
+        owner: "linus",
+        ownerKind: "claude",
+        sessionId: "ff309028",
+        goal: "  verify the upgrade  ",
+        ts: TS2,
+      });
+      assert.equal(regraded.id, session.id);
+      assert.equal(regraded.goal, "verify the upgrade", "a new goal is trimmed and replaces the old one");
       assert.deepEqual(repos.sessions.listByTask(task.id).length, 1);
       assert.equal(repos.sessions.find(task.id, "seg2", "linus").id, session.id);
       assert.equal(repos.sessions.get(session.id).pid, 42, "an unspecified pid is not clobbered to null");
+
+      // 0036 — opaque meta merges across re-registrations, and a broken value
+      // reads as an empty object instead of breaking the read.
+      const withMeta = repos.sessions.upsertByNaturalKey({
+        taskId: task.id,
+        seg: "seg2",
+        owner: "linus",
+        ownerKind: "claude",
+        sessionId: "ff309028",
+        meta: { harness: "claude" },
+        ts: TS2,
+      });
+      assert.deepEqual(withMeta.meta, { harness: "claude" });
+      const merged = repos.sessions.upsertByNaturalKey({
+        taskId: task.id,
+        seg: "seg2",
+        owner: "linus",
+        ownerKind: "claude",
+        sessionId: "ff309028",
+        meta: { thread_id: "t1" },
+        ts: TS2,
+      });
+      assert.deepEqual(merged.meta, { harness: "claude", thread_id: "t1" }, "a partial meta merges");
+      assert.equal(repos.sessions.list({ owner: "linus" }).length, 1);
+      assert.equal(repos.sessions.list({ owner: "nobody" }).length, 0);
+      db.prepare("UPDATE agent_sessions SET meta_json = 'not json' WHERE id = ?").run(session.id);
+      assert.deepEqual(repos.sessions.get(session.id).meta, {}, "a broken value reads as empty");
+
       assert.equal(repos.sessions.close(session.id, { ts: TS2 }).status, "closed");
       assert.throws(() => repos.sessions.close("nope", { ts: TS2 }), (err) => err.code === "NOT_FOUND");
+      assert.equal(repos.sessions.closeByNaturalKey(task.id, "seg2", "linus", { ts: TS2 }).status, "closed");
       assert.throws(
-        () => repos.sessions.upsertByNaturalKey({ taskId: task.id, seg: "", owner: "x", backend: "claude", sessionId: "s", ts: TS }),
+        () => repos.sessions.closeByNaturalKey(task.id, "nope", "linus", { ts: TS2 }),
+        (err) => err.code === "NOT_FOUND",
+      );
+      assert.throws(
+        () => repos.sessions.upsertByNaturalKey({ taskId: task.id, seg: "", owner: "x", ownerKind: "claude", sessionId: "s", ts: TS }),
         (err) => err.code === "VALIDATION_FAILED",
       );
     });
@@ -746,14 +916,28 @@ describe("repositories/sessions and attachments and activities", () => {
       const first = repos.activities.append({ taskId: task.id, actorKind: "agent", actorId: "linus", event: "task_created", changes: { a: 1 }, createdAt: TS });
       assert.equal(first.event, "task_created");
       assert.deepEqual(first.changes, { a: 1 });
-      assert.equal(first.revision, revision(db) - 1, "the revision recorded is the one the change produced");
+      assert.equal(first.revision, revision(db), "records the revision its own insert produced");
 
-      repos.activities.append({ taskId: task.id, event: "task_updated", createdAt: TS2 });
+      const second = repos.activities.append({ taskId: task.id, event: "task_updated", createdAt: TS2 });
+      assert.equal(second.revision, first.revision + 1, "activity revisions are unique and strictly increasing");
       assert.deepEqual(repos.activities.list({ taskId: task.id }).map((a) => a.event), ["task_created", "task_updated"]);
-      assert.deepEqual(repos.activities.list({ taskId: task.id, afterId: first.id }).map((a) => a.event), ["task_updated"]);
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id, order: "desc" }).map((a) => a.event),
+        ["task_updated", "task_created"],
+        "order:desc reads newest first",
+      );
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id, order: "bogus" }).map((a) => a.event),
+        ["task_created", "task_updated"],
+        "an unknown order is defensively ASC",
+      );
+      assert.deepEqual(repos.activities.list({ taskId: task.id, afterRevision: first.revision }).map((a) => a.event), ["task_updated"]);
       assert.deepEqual(repos.activities.list({ afterRevision: 10_000 }), []);
-      assert.equal(repos.activities.count(task.id), 2);
-      assert.equal(repos.activities.count(), 2);
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id, order: "revision" }).map((a) => a.event),
+        ["task_created", "task_updated"],
+        "the SSE order reads the cursor column",
+      );
       assert.throws(() => repos.activities.append({ event: "", createdAt: TS }), (err) => err.code === "VALIDATION_FAILED");
 
       // A row someone wrote by hand with unreadable JSON: reading it must not

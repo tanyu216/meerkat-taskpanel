@@ -8,12 +8,12 @@
 
 import { table } from "../output/human.mjs";
 
-const KINDS = ["discuss", "decision", "confirm", "change", "note", "defect"];
+const KINDS = ["discuss", "decision", "confirm", "confirm_request", "change", "note", "defect", "question"];
 
 export const COMMANDS = [
   {
     name: "list",
-    summary: "List a task's comments, oldest first.",
+    summary: "List a task's comments, newest first.",
     usage: "comment list <id|identifier> [--kind <kind>] [--limit <n>]",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: [
@@ -21,9 +21,11 @@ export const COMMANDS = [
       { flag: "limit", key: "limit", as: "number", value: "<n>" },
     ],
     async run(ctx) {
+      // `order=desc` makes `--limit` mean "the newest N" and gives the table
+      // and `--json` the same newest-first order the drawer shows.
       const { comments } = await ctx.client.get(
         `/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/comments`,
-        { query: { kind: ctx.flags.kind, limit: ctx.flags.limit } },
+        { query: { kind: ctx.flags.kind, limit: ctx.flags.limit, order: "desc" } },
       );
       const human = comments.length === 0
         ? "no comments"
@@ -44,12 +46,20 @@ export const COMMANDS = [
   {
     name: "add",
     summary: "Append a comment.",
-    usage: "comment add <id|identifier> --body <text> [--kind <kind>]",
+    usage: "comment add <id|identifier> --body <text> [--kind <kind>] [--ref <kind:id>]…",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: [
       { flag: "body", key: "body", as: "string", value: "<text>", required: true },
-      { flag: "kind", key: "kind", as: "string", value: "<kind>", summary: `${KINDS.join("|")} (default: discuss)` },
+      { flag: "kind", key: "kind", as: "string", value: "<kind>", summary: `${KINDS.join("|")} (default: note)` },
       { flag: "file", key: "file", as: "string", value: "<path|->", summary: "Read the body from a file or stdin." },
+      {
+        flag: "ref",
+        key: "refs",
+        as: "string",
+        value: "<kind:id>",
+        repeat: true,
+        summary: "Attach a reference (repeatable); the wire stores it as a plain string.",
+      },
     ],
     async run(ctx) {
       const body = ctx.flags.file === undefined
@@ -59,7 +69,7 @@ export const COMMANDS = [
           : await ctx.readFile(ctx.flags.file);
       const { comment } = await ctx.client.post(
         `/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/comments`,
-        { body, kind: ctx.flags.kind },
+        { body, kind: ctx.flags.kind, refs: ctx.flags.refs },
       );
       return { data: { comment }, human: `commented on ${ctx.args.ref} (${comment.kind})` };
     },

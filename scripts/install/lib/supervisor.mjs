@@ -5,14 +5,14 @@
  * `install.sh` writes the loop's scheduling units and, by default, stops there: it prints
  * the load command and never starts a daemon. This module is the one deliberate exception
  * — the opt-in path the contract fixes in `docs/scheduling.md` §"Enabling the supervisor
- * (opt-in)" — run by `scripts/install/_common.sh` for each loop host when the user asked
+ * (opt-in)" — run by `scripts/install/_common.sh` for each loop agent kind when the user asked
  * for it (`--supervisor=enable|disable|status`, `MEERKAT_TASKPANEL_SUPERVISOR`, or a `y`
  * to the one-time TTY question, whose default is **N**).
  *
- * One mechanism per host, chosen by `--scheduler` (default `auto`: launchd on macOS,
+ * One mechanism per agent kind, chosen by `--scheduler` (default `auto`: launchd on macOS,
  * systemd `--user` on Linux, cron anywhere else). Every action is **idempotent**: a repeat
  * enable never loads a unit twice, and disabling something that is not loaded is a no-op.
- * Enabling a mechanism takes down any *other* one already loaded for the same host first —
+ * Enabling a mechanism takes down any *other* one already loaded for the same agent kind first —
  * the contract's "never leave two loaded", which also means this module only ever touches
  * the units it names (its own labels, its own unit files, its own cron marker block).
  *
@@ -26,10 +26,12 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { LIVE_STATUSES, QUEUE_FILES } from "../../../src/foundation/loop-paths.mjs";
 
 import { runStep, systemdUserDir } from "./taskd-guard.mjs";
 import { unitPath } from "./unit-path.mjs";
@@ -38,8 +40,8 @@ import { unitPath } from "./unit-path.mjs";
 export const ACTIONS = Object.freeze(["enable", "disable", "status"]);
 /** The mechanisms `--scheduler` may name, plus `auto` (this platform's one). */
 export const SCHEDULERS = Object.freeze(["auto", "launchd", "systemd", "cron"]);
-/** The hosts that run the supervisor. OpenClaw is never among them (D8). */
-export const LOOP_HOSTS = Object.freeze(["claude", "codex", "pi"]);
+/** The actor kinds that run the supervisor. OpenClaw is never among them (D8). */
+export const LOOP_KINDS = Object.freeze(["claude", "codex", "pi"]);
 /** Every systemd user unit the loop installs — copied before `daemon-reload`. */
 export const SYSTEMD_UNITS = Object.freeze([
   "meerkat-taskpanel-ping.service",
@@ -47,54 +49,237 @@ export const SYSTEMD_UNITS = Object.freeze([
   "meerkat-taskpanel-continue.service",
   "meerkat-taskpanel-continue.timer",
   "meerkat-taskpanel-subscribe.service",
+  "meerkat-taskpanel-session.service",
 ]);
 /** The timers `enable --now` / `disable --now` act on. */
 export const SYSTEMD_TIMERS = Object.freeze([
   "meerkat-taskpanel-ping.timer",
   "meerkat-taskpanel-continue.timer",
 ]);
-/** The long-lived service beside the two timers (the event subscriber). */
-export const SYSTEMD_SERVICES = Object.freeze(["meerkat-taskpanel-subscribe.service"]);
-/** The loop's two clocks plus the optional event daemon, in write order. */
-export const KINDS = Object.freeze(["ping", "continue", "subscribe"]);
 /**
- * The topology this installer used to ship. `enable` takes these down before it
- * loads the new units, because a loaded launchd/systemd job does not notice its
- * plist/unit file changing — leaving them loaded would keep the old 60s poll
- * running beside the new continue turn.
+ * The long-lived services beside the two timers: the resident session pool (the
+ * dispatcher) and the optional event subscriber.
  */
-export const LEGACY_KINDS = Object.freeze(["poll", "patrol"]);
-export const LEGACY_SYSTEMD_UNITS = Object.freeze([
-  "meerkat-taskpanel-poll.service",
-  "meerkat-taskpanel-poll.timer",
-  "meerkat-taskpanel-patrol.service",
-  "meerkat-taskpanel-patrol.timer",
+export const SYSTEMD_SERVICES = Object.freeze([
+  "meerkat-taskpanel-session.service",
+  "meerkat-taskpanel-subscribe.service",
 ]);
-export const LEGACY_SYSTEMD_TIMERS = Object.freeze([
-  "meerkat-taskpanel-poll.timer",
-  "meerkat-taskpanel-patrol.timer",
-]);
+/**
+ * The loop's resident pool, its two clocks and the optional event daemon, in
+ * write/bootstrap order. The pool comes first: the continue turn enqueues its
+ * judgment turn for the pool, and a timer that fires before the pool exists
+ * would fall back to "no resident — dispatch paused".
+ */
+export const KINDS = Object.freeze(["session", "ping", "continue", "subscribe"]);
+
+/** Is `pid` a live process? `EPERM` means it exists and belongs to someone else. */
+function pidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err?.code === "EPERM";
+  }
+}
+
+/** One `KEY=value` from the agent config, or `null`. */
+function agentConfigValue(path, key) {
+  try {
+    const lines = readFileSync(path, "utf8").split("\n");
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index].trim();
+      if (!line.startsWith(`${key}=`)) continue;
+      return line.slice(key.length + 1).trim();
+    }
+  } catch {
+    // No config file yet.
+  }
+  return null;
+}
 
 /**
- * The launchd label / systemd-name stem for one host — `com.meerkat-taskpanel.<agent>.<host>`.
+ * The resident pool's runtime state, for `--supervisor=status`. Best effort: a
+ * missing or unreadable file reads as "not running", never as a failure.
+ *
+ * @param {string} stateDir the directory holding `sessions.state.json` etc.
+ * @param {{isAlive?: (pid: number) => boolean, now?: () => number}} [options]
+ * @returns {{live: boolean, pid: number|null, heartbeatAgeMs: number|null, liveSubagents: number,
+ *            cardsQueued: number, continueQueued: boolean, reason: string}}
+ */
+export function poolReport(stateDir, options = {}) {
+  const isAlive = options.isAlive ?? pidAlive;
+  const now = options.now ?? Date.now;
+  const readJson = (name) => {
+    try {
+      return JSON.parse(readFileSync(join(stateDir, name), "utf8"));
+    } catch {
+      return null;
+    }
+  };
+  // The state-file names and the live-status set come from the loop itself: a
+  // status line that re-derives either drifts the moment the pool adds one.
+  const sessions = readJson(QUEUE_FILES.sessions);
+  const ledger = readJson(QUEUE_FILES.ledger);
+  const cards = readJson(QUEUE_FILES.cards);
+  const pendingContinue = readJson(QUEUE_FILES.continuePending);
+  const liveSubagents = Array.isArray(ledger?.subagents)
+    ? ledger.subagents.filter((row) => LIVE_STATUSES.includes(String(row?.status ?? ""))).length
+    : 0;
+  const cardsQueued = Array.isArray(cards?.cards)
+    ? cards.cards.filter(
+        (row) =>
+          (row?.status === "pending" || row?.status === "processing") &&
+          // A question row is a project-session turn, not a queued card.
+          String(row?.queue_kind ?? "handoff") === "handoff",
+      ).length
+    : 0;
+  const continueQueued = pendingContinue !== null;
+  const pid = Number.isInteger(sessions?.poolPid) ? sessions.poolPid : null;
+  const beat = Date.parse(String(sessions?.heartbeatAt ?? ""));
+  const heartbeatAgeMs = Number.isFinite(beat) ? Math.max(0, now() - beat) : null;
+  if (pid === null || !isAlive(pid)) {
+    return {
+      live: false,
+      pid,
+      heartbeatAgeMs,
+      liveSubagents,
+      cardsQueued,
+      continueQueued,
+      reason: pid === null ? "no session state" : `pool pid ${pid} is gone`,
+    };
+  }
+  return {
+    live: true,
+    pid,
+    heartbeatAgeMs,
+    liveSubagents,
+    cardsQueued,
+    continueQueued,
+    reason: "",
+  };
+}
+
+/**
+ * The event subscriber's runtime state, for `--supervisor=status`. Best effort:
+ * a missing or unreadable file reads as "not running", never as a failure.
+ *
+ * `unitLoaded` is the mechanism probe's answer; it distinguishes "the process
+ * died" from "the unit was never loaded" in the printed verdict.
+ *
+ * @param {string} stateDir the directory holding `subscribe.state.json`
+ * @param {{scheduler?: string, isAlive?: (pid: number) => boolean, now?: () => number,
+ *          unitLoaded?: boolean|null}} [options]
+ */
+export function subscribeReport(stateDir, options = {}) {
+  const scheduler = options.scheduler;
+  if (scheduler === "cron") {
+    return { state: "unavailable", reason: "scheduler=cron has no long-lived process" };
+  }
+  const isAlive = options.isAlive ?? pidAlive;
+  const now = options.now ?? Date.now;
+  const unitLoaded = options.unitLoaded;
+  let file = null;
+  try {
+    file = JSON.parse(readFileSync(join(stateDir, "subscribe.state.json"), "utf8"));
+  } catch {
+    file = null;
+  }
+  if (!file || typeof file !== "object" || file.version !== 1) return { state: "missing", unitLoaded };
+  const pid = Number.isInteger(file.pid) ? file.pid : null;
+  if (pid === null || !isAlive(pid)) return { state: "dead", pid, unitLoaded };
+  const dispatchEnabled = file.dispatchEnabled !== false;
+  if (file.nextAttemptAt) {
+    const next = Date.parse(String(file.nextAttemptAt));
+    return {
+      state: "reconnecting",
+      pid,
+      reconnects: Number.isInteger(file.reconnects) ? file.reconnects : 0,
+      nextInMs: Number.isFinite(next) ? Math.max(0, next - now()) : null,
+      lastError: typeof file.lastError === "string" ? file.lastError : null,
+      lastErrorAt: typeof file.lastErrorAt === "string" ? file.lastErrorAt : null,
+      dispatchEnabled,
+    };
+  }
+  if (!file.connectedAt) return { state: "starting", pid, dispatchEnabled };
+  return {
+    state: "streaming",
+    pid,
+    connectedAt: file.connectedAt,
+    lastEventAt: typeof file.lastEventAt === "string" ? file.lastEventAt : null,
+    lastEventId: Number.isInteger(file.lastEventId) ? file.lastEventId : null,
+    reconnects: Number.isInteger(file.reconnects) ? file.reconnects : 0,
+    dispatchEnabled,
+  };
+}
+
+/** The one-line verdict `--supervisor=status` prints for the subscriber. */
+export function subscribeStatusLine(report, now = Date.now) {
+  const at = typeof now === "function" ? now() : now;
+  const prefix = "supervisor:   subscribe: ";
+  const dispatch =
+    report.dispatchEnabled === false
+      ? "dispatch off (--continue=no or --event-continue=no)"
+      : "dispatch on";
+  const since = (iso) => {
+    const at0 = Date.parse(String(iso ?? ""));
+    if (!Number.isFinite(at0)) return null;
+    const ms = Math.max(0, at - at0);
+    if (ms < 60_000) return `${Math.round(ms / 1000)}s ago`;
+    if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`;
+    return `${Math.round(ms / 3_600_000)}h ago`;
+  };
+  const unitNote = report.unitLoaded === false ? "; unit not loaded" : "";
+  switch (report.state) {
+    case "unavailable":
+      return `${prefix}not available (${report.reason})`;
+    case "missing":
+      return `${prefix}not running (no subscribe state${unitNote})`;
+    case "dead":
+      return `${prefix}not running (pid ${report.pid} is gone${unitNote})`;
+    case "starting":
+      return `${prefix}running (starting; pid ${report.pid}, no connection yet, ${dispatch})`;
+    case "reconnecting": {
+      const parts = [`pid ${report.pid}`, `attempt ${report.reconnects}`];
+      if (report.nextInMs !== null) parts.push(`next in ${Math.max(0, Math.round(report.nextInMs / 1000))}s`);
+      if (report.lastError) {
+        const ago = since(report.lastErrorAt);
+        parts.push(`last error${ago === null ? "" : ` ${ago}`}: ${report.lastError}`);
+      }
+      return `${prefix}running (reconnecting; ${parts.join(", ")})`;
+    }
+    case "streaming": {
+      const parts = [`pid ${report.pid}`, `connected ${since(report.connectedAt) ?? "unknown"}`];
+      if (report.lastEventAt) parts.push(`last event ${since(report.lastEventAt)}`);
+      if (report.lastEventId !== null) parts.push(`id ${report.lastEventId}`);
+      parts.push(`reconnects ${report.reconnects}`, dispatch);
+      return `${prefix}running (streaming; ${parts.join(", ")})`;
+    }
+    default:
+      return `${prefix}unknown (${report.state})`;
+  }
+}
+
+/**
+ * The launchd label / systemd-name stem for one agent kind — `com.meerkat-taskpanel.<agent>.<actor-kind>`.
  *
  * @param {string} agent
- * @param {string} host
+ * @param {string} actorKind
  */
-export function supervisorBase(agent, host) {
-  return `com.meerkat-taskpanel.${agent}.${host}`;
+export function supervisorBase(agent, actorKind) {
+  return `com.meerkat-taskpanel.${agent}.${actorKind}`;
 }
 
 /**
  * The launchd Label of one tick, exactly as the installer's unit template renders it
- * (`com.meerkat-taskpanel.{{AGENT}}.{{HOST}}.{{poll|patrol}}`).
+ * (`com.meerkat-taskpanel.{{AGENT}}.{{ACTOR_KIND}}.{{poll|patrol}}`).
  *
  * @param {string} agent
- * @param {string} host
- * @param {string} kind
+ * @param {string} actorKind
+ * @param {string} unit
  */
-export function supervisorLabel(agent, host, kind) {
-  return `${supervisorBase(agent, host)}.${kind}`;
+export function supervisorLabel(agent, actorKind, unit) {
+  return `${supervisorBase(agent, actorKind)}.${unit}`;
 }
 
 /**
@@ -114,44 +299,44 @@ export function resolveScheduler(requested, platform) {
 }
 
 /**
- * Every path and name the action needs, from the host's own directory (`<home>/<host-dir>`,
+ * Every path and name the action needs, from the agent kind's own directory (`<home>/<agent-dir>`,
  * e.g. `~/.claude`). Pure arithmetic — nothing is created here.
  *
- * @param {{hostBase: string, agent: string, host: string, env?: NodeJS.ProcessEnv,
+ * @param {{agentBase: string, agent: string, actorKind: string, env?: NodeJS.ProcessEnv,
  *          home?: string}} options
  */
 export function supervisorPaths(options) {
-  const hostBase = resolve(options.hostBase);
+  const agentBase = resolve(options.agentBase);
   const env = options.env ?? process.env;
   const home = options.home ?? homedir();
 
   return {
-    hostBase,
-    hostDir: basename(hostBase),
+    agentBase,
+    agentDir: basename(agentBase),
     agent: options.agent,
-    host: options.host,
+    actorKind: options.actorKind,
     env,
     home,
-    loopDir: join(hostBase, "meerkat-taskpanel"),
-    supervisor: join(hostBase, "meerkat-taskpanel", "scripts", "supervisor.mjs"),
-    log: join(hostBase, "meerkat-taskpanel", "supervisor.log"),
-    state: join(hostBase, "meerkat-taskpanel", "supervisor.state.json"),
+    loopDir: join(agentBase, "meerkat-taskpanel"),
+    // The loop is `taskctl loop …`, shipped by the runtime tree. `install.sh` exports
+    // `TP_CLI` (the CLI entry) so the cron preview matches the rendered unit; without
+    // it the agent-local shim is the honest fallback (it needs no interpreter).
+    cli: env.TP_CLI || join(agentBase, "bin", "taskctl"),
+    cliNeedsNode: typeof env.TP_CLI === "string" && env.TP_CLI !== "",
+    stateDir: join(agentBase, "meerkat-taskpanel"),
+    log: join(agentBase, "meerkat-taskpanel", "supervisor.log"),
+    config: join(agentBase, "meerkat-taskpanel.env"),
     launchd: KINDS.map((kind) => ({
       kind,
-      label: supervisorLabel(options.agent, options.host, kind),
-      plist: join(hostBase, "scheduling", "launchd", `com.meerkat-taskpanel.${kind}.plist`),
+      label: supervisorLabel(options.agent, options.actorKind, kind),
+      plist: join(agentBase, "scheduling", "launchd", `com.meerkat-taskpanel.${kind}.plist`),
     })),
-    legacyLaunchd: LEGACY_KINDS.map((kind) => ({
-      kind,
-      label: supervisorLabel(options.agent, options.host, kind),
-      plist: join(hostBase, "scheduling", "launchd", `com.meerkat-taskpanel.${kind}.plist`),
-    })),
-    systemdSrcDir: join(hostBase, "scheduling", "systemd"),
+    systemdSrcDir: join(agentBase, "scheduling", "systemd"),
     systemdUnitDir: systemdUserDir(env, home),
-    cronFile: join(hostBase, "scheduling", "cron", "meerkat-taskpanel.cron"),
-    // The marker key the docs name — `~/.claude`, the host *directory*, so each host gets
+    cronFile: join(agentBase, "scheduling", "cron", "meerkat-taskpanel.cron"),
+    // The marker key the docs name — `~/.claude`, the agent *directory*, so each agent kind gets
     // its own block and the three never collide.
-    marker: `~/${basename(hostBase)}`,
+    marker: `~/${basename(agentBase)}`,
   };
 }
 
@@ -159,7 +344,7 @@ export function supervisorPaths(options) {
 // The cron managed block — the idempotency key (cron has no other "enabled" state)
 // ---------------------------------------------------------------------------
 
-/** The begin/end marker pair for one host's block. */
+/** The begin/end marker pair for one agent kind's block. */
 export function cronMarkers(marker) {
   return {
     begin: `# >>> meerkat-taskpanel (${marker}) >>>`,
@@ -213,22 +398,24 @@ export function cronContentLines(paths) {
   const node = env.TP_NODE || process.execPath;
   const cronPath = env.TP_UNIT_PATH_CRON || unitPath(dirname(node), { scheduler: "cron" });
 
-  const line = (schedule, mode) =>
+  // The unit runs `taskctl loop run …`; a bare shim needs no interpreter, a `.mjs`
+  // entry is named through the pinned node above.
+  const line = (schedule, once) =>
     [
       schedule,
-      node,
-      paths.supervisor,
-      `--host ${paths.host}`,
+      ...(paths.cliNeedsNode ? [node, paths.cli] : [paths.cli]),
+      "loop",
+      "run",
+      once,
+      `--actor-kind ${paths.actorKind}`,
       `--agent ${paths.agent}`,
-      mode,
-      "--once",
       `--log ${paths.log}`,
-      `--state ${paths.state}`,
+      `--state-dir ${paths.stateDir}`,
       ">/dev/null 2>&1",
     ].join(" ");
   const pingCron = env.TP_PING_CRON || "* * * * *";
   const continueCron = env.TP_CONTINUE_CRON || "*/10 * * * *";
-  return [`PATH=${cronPath}`, line(pingCron, "--ping-only"), line(continueCron, "--continue-only")];
+  return [`PATH=${cronPath}`, line(pingCron, "--ping-once"), line(continueCron, "--continue-once")];
 }
 
 /** The full cron block (markers + content lines). */
@@ -294,29 +481,17 @@ export function launchdMechanism({ paths, uid, run }) {
 
   return {
     name: "launchd",
-    unitsReport: `${supervisorBase(paths.agent, paths.host)}.ping,.continue,.subscribe`,
+    unitsReport: `${supervisorBase(paths.agent, paths.actorKind)}.session,.ping,.continue,.subscribe`,
 
     plan() {
-      return [
-        ...paths.legacyLaunchd.map((unit) => `launchctl bootout ${jobId(unit)}   # legacy poll/patrol`),
-        ...paths.launchd.map((unit) => `launchctl bootstrap ${domain} ${unit.plist}`),
-      ];
+      return paths.launchd.map((unit) => `launchctl bootstrap ${domain} ${unit.plist}`);
     },
 
     probe() {
       return probeUnits(paths.launchd);
     },
 
-    legacyProbe() {
-      return probeUnits(paths.legacyLaunchd);
-    },
-
     enable() {
-      // A loaded job does not notice its plist changing. Take the old topology
-      // down first, or its 60s poll keeps running beside the new continue turn.
-      const legacy = takeDown(paths.legacyLaunchd);
-      if (!legacy.ok) return legacy;
-
       let allAlready = true;
       for (const unit of paths.launchd) {
         if (runStep({ command: "launchctl", args: ["print", jobId(unit)] }, run).ok) continue;
@@ -346,7 +521,7 @@ export function launchdMechanism({ paths, uid, run }) {
     },
 
     disable() {
-      return takeDown([...paths.legacyLaunchd, ...paths.launchd]);
+      return takeDown(paths.launchd);
     },
   };
 }
@@ -364,7 +539,6 @@ export function systemdMechanism({ paths, run }) {
 
     plan() {
       return [
-        `rm -f ${LEGACY_SYSTEMD_UNITS.map((name) => join(paths.systemdUnitDir, name)).join(" ")}`,
         `mkdir -p ${paths.systemdUnitDir}`,
         `cp ${paths.systemdSrcDir}/* ${paths.systemdUnitDir}/`,
         "systemctl --user daemon-reload",
@@ -375,14 +549,6 @@ export function systemdMechanism({ paths, run }) {
     /** Copy the units where systemd reads them, then reload — nothing works before this. */
     install() {
       mkdirSync(paths.systemdUnitDir, { recursive: true });
-      // The old files would be picked up by a later `enable --now` if they stayed.
-      for (const name of LEGACY_SYSTEMD_UNITS) {
-        try {
-          rmSync(join(paths.systemdUnitDir, name), { force: true });
-        } catch {
-          // A unit directory we cannot fully clean is still worth copying into.
-        }
-      }
       for (const name of SYSTEMD_UNITS) {
         const source = join(paths.systemdSrcDir, name);
         if (existsSync(source)) copyFileSync(source, join(paths.systemdUnitDir, name));
@@ -398,14 +564,6 @@ export function systemdMechanism({ paths, run }) {
       return { loaded: states.every((state) => state.loaded), units: states };
     },
 
-    legacyProbe() {
-      const states = LEGACY_SYSTEMD_TIMERS.map((unit) => ({
-        unit,
-        loaded: runStep({ command: "systemctl", args: ["--user", "is-enabled", unit] }, run).ok,
-      }));
-      return { loaded: states.some((state) => state.loaded), units: states };
-    },
-
     disableTimers(timers) {
       const outcome = runStep(
         { command: "systemctl", args: ["--user", "disable", "--now", ...timers] },
@@ -418,12 +576,6 @@ export function systemdMechanism({ paths, run }) {
     },
 
     enable() {
-      // Take the old topology down before installing the new one: otherwise its
-      // 60s poll keeps running beside the continue turn until the operator
-      // notices. An absent legacy timer is a no-op.
-      const legacy = this.disableTimers(LEGACY_SYSTEMD_TIMERS);
-      if (!legacy.ok) return legacy;
-
       const prepared = this.install();
       if (prepared.missing) return { ok: false, reason: "systemctl is not available on this machine" };
 
@@ -455,8 +607,8 @@ export function systemdMechanism({ paths, run }) {
     disable() {
       // `is-enabled` first: `systemctl disable` is happy to be told to disable something
       // that was never enabled, and calling that "disabled" would overstate what happened.
-      const wasEnabled = this.probe().loaded || this.legacyProbe().loaded;
-      const outcome = this.disableTimers([...SYSTEMD_TIMERS, ...SYSTEMD_SERVICES, ...LEGACY_SYSTEMD_TIMERS]);
+      const wasEnabled = this.probe().loaded;
+      const outcome = this.disableTimers([...SYSTEMD_TIMERS, ...SYSTEMD_SERVICES]);
       if (outcome.ok) return { ok: true, already: !wasEnabled };
       return outcome;
     },
@@ -567,12 +719,12 @@ export function lingerState(options = {}) {
  * (without it, a `--scheduler=cron` enable on macOS would be undone on launchd).
  */
 function disableHint(paths, chosen, platform) {
-  const base = `install.sh --supervisor=disable --supervisor-hosts ${paths.host}`;
+  const base = `install.sh --supervisor=disable --supervisor-actor-kinds ${paths.actorKind}`;
   return chosen === resolveScheduler("auto", platform) ? base : `${base} --scheduler=${chosen}`;
 }
 
 /**
- * Run one action for one host. Everything is reported on `log`; the return value is the
+ * Run one action for one agent kind. Everything is reported on `log`; the return value is the
  * process exit code (non-zero only when an `enable`/`disable` the user asked for could
  * not be performed — a failure is never dressed up as a success).
  *
@@ -588,24 +740,48 @@ export function runSupervisorAction(options) {
   const log = options.log ?? ((line) => process.stdout.write(`${line}\n`));
   const requested = resolveScheduler(scheduler, platform);
   const withUnits = (mechanism) =>
-    `host=${paths.host}, scheduler=${mechanism.name}, units=${mechanism.unitsReport}`;
+    `kind=${paths.actorKind}, scheduler=${mechanism.name}, units=${mechanism.unitsReport}`;
   const all = mechanisms({ paths, uid: options.uid ?? process.getuid?.() ?? null, run });
 
   if (action === "status") {
-    log(`supervisor: status (host=${paths.host})`);
+    log(`supervisor: status (kind=${paths.actorKind})`);
     const names = scheduler === "auto" ? ["launchd", "systemd", "cron"] : [requested];
+    let subscribeUnitLoaded = null;
     for (const name of names) {
       const probe = all[name].probe();
+      if (name === requested) {
+        const unit = probe.units.find((u) => /(^|[.-])subscribe(\.service)?$/.test(u.unit));
+        subscribeUnitLoaded = unit === undefined ? null : unit.loaded;
+      }
       const listed = probe.units.map((u) => `${u.unit}=${u.loaded ? "loaded" : "not loaded"}`).join(", ");
       log(`supervisor:   ${name}: ${probe.loaded ? "loaded" : "not loaded"} (${listed})`);
-      const legacy = typeof all[name].legacyProbe === "function" ? all[name].legacyProbe() : null;
-      if (legacy?.loaded) {
-        const legacyListed = legacy.units.map((u) => `${u.unit}=${u.loaded ? "loaded" : "not loaded"}`).join(", ");
-        log(
-          `supervisor:   ${name}: legacy poll/patrol still loaded (${legacyListed}) — ` +
-            "re-run --supervisor=enable to migrate to ping/continue",
-        );
-      }
+    }
+    // The resident pool is a *runtime* fact, not a load state: say whether it is
+    // actually alive and what it is carrying.
+    const pool = poolReport(paths.stateDir, { now: options.now });
+    const detail = pool.live
+      ? `pid ${pool.pid}, ${pool.liveSubagents} live subagent(s), ${pool.cardsQueued} card(s) queued` +
+        `${pool.continueQueued ? ", continue queued" : ""}` +
+        `${pool.heartbeatAgeMs === null ? "" : `, heartbeat ${Math.round(pool.heartbeatAgeMs / 1000)}s`}`
+      : pool.reason;
+    log(`supervisor:   session: ${pool.live ? "running" : "not running"} (${detail})`);
+    // The subscriber is a *runtime* fact too: loaded tells you the unit exists,
+    // not whether it is streaming or stuck on the reconnect ladder.
+    const subscriber = subscribeReport(paths.stateDir, {
+      scheduler: requested,
+      now: options.now,
+      isAlive: options.isAlive,
+      unitLoaded: subscribeUnitLoaded,
+    });
+    log(subscribeStatusLine(subscriber, options.now ?? Date.now));
+    // The full-access opt-in is an authorization, so status states it — and who
+    // recorded it — rather than leaving a bypass invisible.
+    const allowAll = String(agentConfigValue(paths.config, "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS") ?? "").toLowerCase();
+    if (allowAll === "yes" || allowAll === "true" || allowAll === "1") {
+      const reason = agentConfigValue(paths.config, "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON") ?? "unrecorded";
+      log(`supervisor:   tools: all enabled (authorized by: ${reason}) — the project directory is not an isolation boundary`);
+    } else {
+      log("supervisor:   tools: role allowlists (full access is off)");
     }
     return 0;
   }
@@ -635,22 +811,21 @@ export function runSupervisorAction(options) {
     return 0;
   }
 
-  // One mechanism per host: take any *other* loaded one down first, so this can never
+  // One mechanism per agent kind: take any *other* loaded one down first, so this can never
   // leave two racing for the same cards. Only this module's own labels / unit names /
   // marker block are touched, and a take-down that did not happen is said so — a silent
   // failure here would leave exactly the double-load this is meant to prevent.
   for (const name of ["launchd", "systemd", "cron"]) {
     if (name === requested) continue;
     const other = all[name];
-    const legacyLoaded = typeof other.legacyProbe === "function" ? other.legacyProbe().loaded : false;
-    if (!other.probe().loaded && !legacyLoaded) continue;
+    if (!other.probe().loaded) continue;
     const taken = other.disable();
     if (taken.ok) {
-      log(`supervisor: disabled (host=${paths.host}, scheduler=${name}, units=${other.unitsReport}) — one mechanism per host`);
+      log(`supervisor: disabled (kind=${paths.actorKind}, scheduler=${name}, units=${other.unitsReport}) — one mechanism per agent kind`);
     } else {
       log(
-        `supervisor: warning — ${name} is also loaded (host=${paths.host}, units=${other.unitsReport}) and could not be ` +
-          `taken down (${taken.reason}); two loaded units for one host race for the same cards`,
+        `supervisor: warning — ${name} is also loaded (kind=${paths.actorKind}, units=${other.unitsReport}) and could not be ` +
+          `taken down (${taken.reason}); two loaded units for one agent kind race for the same cards`,
       );
     }
   }
@@ -681,10 +856,10 @@ export function runSupervisorAction(options) {
 // CLI
 // ---------------------------------------------------------------------------
 
-const USAGE = `Usage: node scripts/install/lib/supervisor.mjs <enable|disable|status> --host <host> \\
-         --agent <name> --host-base <dir> [--scheduler auto|launchd|systemd|cron] [--dry-run]
+const USAGE = `Usage: node scripts/install/lib/supervisor.mjs <enable|disable|status> --actor-kind <kind> \\
+         --agent <name> --agent-base <dir> [--scheduler auto|launchd|systemd|cron] [--dry-run]
 
-Loads, unloads or reports one loop host's supervisor units — the opt-in path
+Loads, unloads or reports one loop agent kind's supervisor units — the opt-in path
 docs/scheduling.md defines. Called by scripts/install/_common.sh; not meant to be
 run by hand.
 `;
@@ -705,9 +880,9 @@ function main(argv) {
     const arg = rest[i];
     const value = () => rest[++i];
     if (arg === "--dry-run") opts.dryRun = true;
-    else if (arg === "--host") opts.host = value();
+    else if (arg === "--actor-kind") opts.actorKind = value();
     else if (arg === "--agent") opts.agent = value();
-    else if (arg === "--host-base") opts.hostBase = value();
+    else if (arg === "--agent-base") opts.agentBase = value();
     else if (arg === "--scheduler") opts.scheduler = value();
     else {
       process.stderr.write(`supervisor: unknown option: ${arg}\n`);
@@ -715,7 +890,7 @@ function main(argv) {
     }
   }
 
-  for (const required of ["host", "agent", "hostBase"]) {
+  for (const required of ["actorKind", "agent", "agentBase"]) {
     if (opts[required] === undefined) {
       process.stderr.write(`supervisor: --${required.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} is required\n`);
       return 2;
@@ -730,7 +905,7 @@ function main(argv) {
   return runSupervisorAction({
     action,
     scheduler: opts.scheduler,
-    paths: supervisorPaths({ hostBase: opts.hostBase, agent: opts.agent, host: opts.host, env }),
+    paths: supervisorPaths({ agentBase: opts.agentBase, agent: opts.agent, actorKind: opts.actorKind, env }),
     user: env.USER ?? env.LOGNAME ?? "",
     dryRun: opts.dryRun,
   });

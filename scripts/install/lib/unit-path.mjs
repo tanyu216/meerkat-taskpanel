@@ -5,17 +5,18 @@
  * A scheduler starts a unit with a **minimal** `PATH` of its own (launchd:
  * `/usr/bin:/bin:/usr/sbin:/sbin`; systemd and cron: their own documented defaults),
  * and on any machine whose node lives under nvm or Homebrew that set holds neither
- * `node` nor the host CLI. The loop's units hit that twice (T-20261014-020103-2):
+ * `node` nor the agent CLI. The loop's units hit that twice (T-20261014-020103-2):
  *
  *   1. **the unit's interpreter** — `/usr/bin/env node` exits 127, so no tick ever runs;
- *   2. **the glue the tick starts** — `exec claude` in `wake-<host>.sh` looks the host
- *      CLI up on the *same* inherited `PATH` and exits 127 in turn. Fixing (1) alone
- *      makes the symptom worse, not better: the tick starts and the wake still fails.
- *      Underneath both sits the worker's own process tree (`git`, `node`, `taskctl`),
- *      which is blind to a PATH that never carried their directories.
+ *   2. **the agent process the tick starts** — the resident session launches `claude` /
+ *      `codex` / `pi`, and looks the CLI up on the *same* inherited `PATH`, exiting 127
+ *      in turn. Fixing (1) alone makes the symptom worse, not better: the tick starts and
+ *      the session still fails. Underneath both sits the worker's own process tree
+ *      (`git`, `node`, `taskctl`), which is blind to a PATH that never carried their
+ *      directories.
  *
  * So both layers get the same one fix: name the interpreter outright **and** hand the
- * unit a `PATH` whose head is the host CLI's directory and node's, followed by the
+ * unit a `PATH` whose head is the agent CLI's directory and node's, followed by the
  * scheduler's documented default. Prepending, never narrowing, is the contract the
  * taskd guard already follows — a child that asks for `sh` or `git` still finds them.
  *
@@ -52,10 +53,10 @@ export const SCHEDULER_DEFAULT_PATH = Object.freeze({
 });
 
 /**
- * The `PATH` a unit runs with: `[dir(host CLI), dir(node)]` — deduplicated, in that order
+ * The `PATH` a unit runs with: `[dir(agent CLI), dir(node)]` — deduplicated, in that order
  * — followed by the scheduler's documented default.
  *
- * `cliDir` is optional: an install whose host CLI is not on `PATH` still gets a usable
+ * `cliDir` is optional: an install whose agent CLI is not on `PATH` still gets a usable
  * `PATH` for the interpreter, and says so out loud rather than pretending (see
  * `_common.sh::export_tp_env`). `nodeDir` is the only required input, which is why the
  * taskd guard — a service that never derives another executable — can call this with one
@@ -74,7 +75,7 @@ export function unitPath(nodeDir, options = {}) {
     throw new Error(`unitPath: unknown scheduler '${scheduler}' (expected ${Object.keys(SCHEDULER_DEFAULT_PATH).join("|")})`);
   }
   const defaults = SCHEDULER_DEFAULT_PATH[scheduler];
-  // A `Set` deduplicates and keeps insertion order, so a machine where the host CLI and
+  // A `Set` deduplicates and keeps insertion order, so a machine where the agent CLI and
   // node share a directory (nvm puts its global bin there) gets one entry, not two.
   const dirs = [...new Set([cliDir, nodeDir].filter((dir) => typeof dir === "string" && dir !== ""))];
   return [...dirs, defaults].join(":");
@@ -84,7 +85,7 @@ const USAGE = `Usage: node scripts/install/lib/unit-path.mjs <what> [options]
 
   node                      print the absolute interpreter that rendered this file
   path --scheduler <name>   print the unit PATH for that scheduler
-       [--cli-dir <dir>]    the host CLI's directory (head of the PATH)
+       [--cli-dir <dir>]    the agent CLI's directory (head of the PATH)
        [--node-dir <dir>]   node's directory (defaults to this interpreter's)
 
 <name> is one of ${Object.keys(SCHEDULER_DEFAULT_PATH).join(", ")}.

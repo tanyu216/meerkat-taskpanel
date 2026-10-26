@@ -83,6 +83,27 @@ describe("contract/idem — partial unique index", () => {
     }
   });
 
+  it("releases the key when a terminal row is reopened", async () => {
+    // Another *active* card holds the key (legal: the terminal row is outside
+    // the partial index). The BEFORE reopen trigger clears the finished row's
+    // key before the outer UPDATE is index-checked, so the reopen succeeds and
+    // the key stays with the active card.
+    const board = await createTempBoard();
+    try {
+      insertProject(board.db);
+      insertWithIdem(board.db, { id: "active", identifier: "PROJ-0001", idem: "task | a |  | X" });
+      insertWithIdem(board.db, { id: "done", identifier: "PROJ-0002", idem: "task | a |  | X", status: "done" });
+
+      assert.equal(
+        reasonCode(() => board.db.prepare("UPDATE tasks SET status = 'todo' WHERE id = 'done'").run()),
+        "NO_ERROR",
+      );
+      assert.equal(board.db.prepare("SELECT idem FROM tasks WHERE id = 'done'").get().idem, null);
+    } finally {
+      board.close();
+    }
+  });
+
   it("treats NULL keys as distinct, so --allow-dup rows never collide", async () => {
     const board = await createTempBoard();
     try {

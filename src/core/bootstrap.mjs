@@ -15,8 +15,9 @@
  * alike, which is why it is the only place that knows all of the above.
  */
 
+import { readConfigFileVars } from "../foundation/env-config.mjs";
 import { DomainError } from "../foundation/errors.mjs";
-import { createAcceptancePolicy } from "./acceptance-policy.mjs";
+import { readSlaConfig } from "../foundation/sla-config.mjs";
 import { createCommands, createContext } from "./commands/index.mjs";
 import { closeDatabase, openDatabase, sqliteVersion } from "./storage/driver.mjs";
 import { applyMigrations, assertSchemaCurrent, listMigrations } from "./storage/migrations-runner.mjs";
@@ -40,7 +41,6 @@ import { readRuntimePointer, writeRuntimePointer } from "./storage/secrets/runti
  *   readonly?: boolean,
  *   allowStale?: boolean,
  *   busyTimeoutMs?: number,
- *   acceptancePolicy?: string,
  *   envFile?: string|null,          // the config file path, for errors / the Access panel
  *   envVars?: Map<string,string>|Record<string,string>|null, // the parsed `.env` layer
  *   processEnv?: NodeJS.ProcessEnv|null, // the *unmerged* environment (source decisions)
@@ -73,13 +73,30 @@ export async function openBoard(options = {}) {
   // `busyTimeoutMs` is an *override* of the pinned 5000ms (§4.3), not a new
   // default: only a caller that says so gets a different lock wait. The tests
   // that exercise lock contention use it to keep a 5s wait out of the suite.
-  const db = await openDatabase({
-    path: dbPath,
-    readonly,
-    ...(Number.isFinite(options.busyTimeoutMs)
-      ? { pragmas: { busy_timeout: Math.max(0, Math.trunc(options.busyTimeoutMs)) } }
-      : {}),
-  });
+  let db;
+  try {
+    db = await openDatabase({
+      path: dbPath,
+      readonly,
+      ...(Number.isFinite(options.busyTimeoutMs)
+        ? { pragmas: { busy_timeout: Math.max(0, Math.trunc(options.busyTimeoutMs)) } }
+        : {}),
+    });
+  } catch (err) {
+    // `node:sqlite` missing, an unopenable file, a pragma refused — the driver
+    // has no logger of its own, so its failure is named here.
+    if (logger !== undefined) {
+      logger({
+        event: "board_open_failed",
+        level: "error",
+        db_path: dbPath,
+        data_dir: dataDir,
+        code: err?.code ?? null,
+        message: err?.message ?? String(err),
+      });
+    }
+    throw err;
+  }
 
   let migration;
   let schema;
@@ -101,11 +118,26 @@ export async function openBoard(options = {}) {
     }
   } catch (err) {
     closeDatabase(db);
-    if (err instanceof DomainError) throw err;
+    // The process edge records that start-up died (`startup_failed`); this
+    // record names the step and the file behind it. A library caller that never
+    // reaches that edge gets the specific failure here.
+    if (logger !== undefined) {
+      logger({
+        event: "board_open_failed",
+        level: "error",
+        db_path: dbPath,
+        data_dir: dataDir,
+        code: err?.code ?? null,
+        message: err?.message ?? String(err),
+      });
+    }
     throw err;
   }
 
   const token = readonly ? null : ensureToken(dataDir);
+  if (token?.created === true && logger !== undefined) {
+    logger({ event: "token_created", token_file: token.file, data_dir: dataDir });
+  }
   const resolvedUrl = url ?? `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}`;
 
   let pointer = null;
@@ -132,19 +164,23 @@ export async function openBoard(options = {}) {
     schema.ok === false
       ? staleRepositoriesTrap(schema)
       : createRepositories(db);
-  // The acceptance policy is read per decision (`ctx.acceptancePolicy()`), not
-  // frozen here: `.env` may be rewritten by a re-install while the board keeps
-  // running, and a policy must apply from the next write. `envVars` is the file
-  // layer; `processEnv` stays separate so `source` can say which won.
-  const acceptancePolicy = createAcceptancePolicy({
-    env: processEnv ?? env,
-    envFile,
-    // Deliberately *not* the parsed snapshot: the policy must apply from the
-    // next decision after a re-install or a hand edit, so the resolver re-reads
-    // its key.
-    ...(options.acceptancePolicy === undefined ? {} : { acceptancePolicy: options.acceptancePolicy }),
+  // The SLA table is board configuration. It is re-read per call, so a hand
+  // edit (or a re-install) applies to the next `GET /api/v1/sla` without
+  // restarting `taskd`. A named env file wins; an embedder that passes parsed
+  // values instead gets those.
+  const slaConfig = () =>
+    readSlaConfig({
+      env: processEnv ?? env,
+      envVars: envFile ? readConfigFileVars(envFile) : (envVars ?? new Map()),
+    });
+  const ctx = createContext({
+    db,
+    repos,
+    slaConfig,
+    ...(clock === undefined ? {} : { clock }),
+    ...(idFactory === undefined ? {} : { idFactory }),
+    logger,
   });
-  const ctx = createContext({ db, repos, acceptancePolicy, ...(clock === undefined ? {} : { clock }), ...(idFactory === undefined ? {} : { idFactory }), logger });
   const commands = createCommands(ctx);
 
   return {

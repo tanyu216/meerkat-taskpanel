@@ -1,8 +1,8 @@
 /**
  * `require_node` boundary, exercised through the real dispatcher.
  *
- * `install.sh` checks the runtime *before* dispatching any host installer (the
- * per-host runs then inherit `MEERKAT_TASKPANEL_SKIP_NODE_CHECK=1`, so the one check that
+ * `install.sh` checks the runtime *before* dispatching any agent-kind installer (the
+ * per-agent-kind runs then inherit `MEERKAT_TASKPANEL_SKIP_NODE_CHECK=1`, so the one check that
  * matters is the dispatcher's own). The check lives in
  * `scripts/install/_common.sh` and uses only shell builtins plus `command`, so the
  * honest way to test it is a fake `node` on an isolated `PATH` — a real child,
@@ -23,7 +23,7 @@ import test, { after, describe, it } from "node:test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const INSTALL = join(ROOT, "install.sh");
-const HOST_INSTALLER = join(ROOT, "scripts/install/claude.sh");
+const KIND_INSTALLER = join(ROOT, "scripts/install/claude.sh");
 
 /** Standard tools the installer needs on PATH besides `node` (POSIX utilities). */
 const TOOLS = ["bash", "dirname", "tr", "sed"];
@@ -81,15 +81,15 @@ function runInstall(fakeBin, { args = ["--target", "all", "--dry-run"], env = {}
 }
 
 /**
- * Run a per-host installer *directly* (not through `install.sh`). The host
+ * Run a per-agent-kind installer *directly* (not through `install.sh`). The agent kind
  * script sources `_common.sh` and `install_skill` calls `require_node` on its
  * own, so this is the path a bare `bash scripts/install/claude.sh` takes. A dry
  * run never reaches the `node apply.mjs` helpers, so the fake `node` (which only
  * answers `-v`) is enough for both the refuse and the accept case.
  */
-function runHost(fakeBin, { env = {} } = {}) {
-  const home = makeTempDir("meerkat-taskpanel-host-home-");
-  return spawnSync(REAL.bash, [HOST_INSTALLER], {
+function runInstaller(fakeBin, { env = {} } = {}) {
+  const home = makeTempDir("meerkat-taskpanel-agent-home-");
+  return spawnSync(REAL.bash, [KIND_INSTALLER], {
     cwd: ROOT,
     encoding: "utf8",
     env: {
@@ -186,28 +186,44 @@ describe("require_node — the dispatcher's runtime check", () => {
     assert.match(run.stdout, /== install summary ==/);
   });
 
+  it("the server target names the missing node instead of a shell error", () => {
+    const run = runInstall(makeFakeBin(null), {
+      args: ["--target", "server", "--dry-run", "--skip-node-check"],
+    });
+    assert.equal(run.status, 1, run.stdout);
+    assert.match(run.stderr, /needs node on PATH/);
+  });
+
+  // Agent-only targets: the check is the dispatcher's, and a plain agent install is pure
+  // shell. `--target all` includes the server, whose materializer *is* a Node program,
+  // so no bypass can run it without node (server.sh says so instead of crashing).
   it("--skip-node-check bypasses the check even with no node", () => {
-    const run = runInstall(makeFakeBin(null), { args: ["--target", "all", "--dry-run", "--skip-node-check"] });
+    const run = runInstall(makeFakeBin(null), {
+      args: ["--target", "claude", "--dry-run", "--skip-node-check"],
+    });
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /== install summary ==/);
   });
 
   it("MEERKAT_TASKPANEL_SKIP_NODE_CHECK=1 bypasses the check even with no node", () => {
-    const run = runInstall(makeFakeBin(null), { env: { MEERKAT_TASKPANEL_SKIP_NODE_CHECK: "1" } });
+    const run = runInstall(makeFakeBin(null), {
+      args: ["--target", "claude", "--dry-run"],
+      env: { MEERKAT_TASKPANEL_SKIP_NODE_CHECK: "1" },
+    });
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /== install summary ==/);
   });
 });
 
-describe("require_node — a direct per-host installer run is guarded too", () => {
+describe("require_node — a direct per-agent-kind installer run is guarded too", () => {
   it("refuses a below-floor node on a direct run (exit 1)", () => {
-    const run = runHost(makeFakeBin("v20.0.0"));
+    const run = runInstaller(makeFakeBin("v20.0.0"));
     assert.equal(run.status, 1, run.stdout);
     assert.match(run.stderr, /too old/);
   });
 
   it("accepts an at-floor node and completes the dry run", () => {
-    const run = runHost(makeFakeBin("v22.0.0"));
+    const run = runInstaller(makeFakeBin("v22.0.0"));
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /would copy/);
   });

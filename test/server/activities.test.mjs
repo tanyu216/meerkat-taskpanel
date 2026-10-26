@@ -42,6 +42,7 @@ after(async () => {
 });
 
 const get = async (query = "") => (await (await fetch(`${base}/api/v1/tasks/${identifier}/activities${query}`)).json());
+const boardGet = async (query = "") => (await (await fetch(`${base}/api/v1/activities${query}`)).json());
 
 describe("server/routes — a task's audit trail", () => {
   it("returns the history in order, with the actor and the revision", async () => {
@@ -69,9 +70,77 @@ describe("server/routes — a task's audit trail", () => {
     assert.deepEqual(after.map((entry) => entry.event), ["comment_added", "task_claimed"]);
   });
 
+  it("returns the newest first when ?order=desc is asked for", async () => {
+    const body = await get("?order=desc");
+    assert.deepEqual(
+      body.data.activities.map((entry) => entry.event),
+      ["task_claimed", "comment_added", "task_created"],
+    );
+
+    // The drawer's contract: the 50 newest rows, newest first — not the oldest 50.
+    const newest = (await get("?limit=1&order=desc")).data.activities;
+    assert.deepEqual(newest.map((entry) => entry.event), ["task_claimed"]);
+
+    // `order` is validated like `GET /tasks?order=`, not silently ignored.
+    const response = await fetch(`${base}/api/v1/tasks/${identifier}/activities?order=bogus`);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error.code, "VALIDATION_FAILED");
+  });
+
+  it("refuses an unparseable or out-of-range cursor instead of guessing", async () => {
+    // A silently ignored `after` would replay the whole trail; `limit=-1`
+    // reaches SQLite as an unbounded LIMIT.
+    for (const query of ["?after=nope", "?after=-1", "?limit=nope", "?limit=0", "?limit=1001"]) {
+      const response = await fetch(`${base}/api/v1/tasks/${identifier}/activities${query}`);
+      assert.equal(response.status, 400, query);
+      const body = await response.json();
+      assert.equal(body.error.code, "VALIDATION_FAILED", query);
+      assert.ok(["after", "limit"].includes(body.error.details.field), query);
+    }
+    assert.equal((await get("?after=0&limit=1")).data.activities.length, 1);
+  });
+
   it("404s an unknown task reference", async () => {
     const response = await fetch(`${base}/api/v1/tasks/PROJ-9999/activities`);
     assert.equal(response.status, 404);
     assert.equal((await response.json()).error.code, "NOT_FOUND");
+  });
+});
+
+describe("server/routes — the board-wide activity trail", () => {
+  it("returns every row, including a task-less project event", async () => {
+    const body = await boardGet("?order=asc");
+    assert.equal(body.ok, true);
+    assert.deepEqual(body.data.activities.map((entry) => entry.event), [
+      "project_created",
+      "task_created",
+      "comment_added",
+      "task_claimed",
+    ]);
+    assert.equal(body.data.activities[0].task_id, null, "a project row has no task");
+    assert.equal(
+      body.data.activities[1].task_id,
+      taskd.board.repos.tasks.findByIdentifierAnyProject(identifier).id,
+    );
+  });
+
+  it("honours the revision cursor and the newest-first read", async () => {
+    const newest = (await boardGet("?limit=1&order=desc")).data.activities;
+    assert.deepEqual(newest.map((entry) => entry.event), ["task_claimed"]);
+    assert.deepEqual((await boardGet(`?after=${newest[0].revision}&order=asc`)).data.activities, []);
+
+    const first = (await boardGet("?limit=1&order=asc")).data.activities;
+    assert.deepEqual(
+      (await boardGet(`?after=${first[0].revision}&order=asc`)).data.activities.map((entry) => entry.event),
+      ["task_created", "comment_added", "task_claimed"],
+    );
+  });
+
+  it("refuses an unparseable or out-of-range cursor", async () => {
+    for (const query of ["?after=nope", "?limit=0", "?limit=1001"]) {
+      const response = await fetch(`${base}/api/v1/activities${query}`);
+      assert.equal(response.status, 400, query);
+      assert.equal((await response.json()).error.code, "VALIDATION_FAILED", query);
+    }
   });
 });

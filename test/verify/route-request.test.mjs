@@ -93,14 +93,21 @@ describe("route-request.mjs — the live surface", () => {
 
     const list = extractReads(byKey.get("GET /api/v1/tasks").handler);
     assert.deepEqual(list.query, [
+      "assignee",
       "assignee_id",
       "include_archived",
+      "kind",
+      "label",
       "limit",
+      "meta",
       "offset",
       "order",
       "order_debug",
+      "parent",
       "project_id",
+      "review_of",
       "status",
+      "target",
     ]);
 
     // The query/body split is real: nothing reads a body on a GET, and the one route that
@@ -348,10 +355,10 @@ describe("route-request.mjs — drift is caught (red → green)", () => {
     // the ones built from the domain's closed value sets.
     const result = checkRouteRequests(liveRouterRoutes());
     const move = liveRouterRoutes().find((entry) => routeKey(entry) === "POST /api/v1/tasks/:ref/move");
-    assert.deepEqual(declaredFields(move.request, "body"), ["allow_steal", "awaiting_reason", "blocked_reason", "if_version", "no_report", "reason", "to"]);
+    assert.deepEqual(declaredFields(move.request, "body"), ["allow_steal", "awaiting_reason", "blocked_reason", "if_version", "no_report", "question", "reason", "to"]);
     assert.ok(move.request.body.properties.to.enum.length > 0);
     assert.equal(result.ok, true);
-    assert.deepEqual(extractReads(move.handler).body, ["allow_steal", "awaiting_reason", "blocked_reason", "if_version", "no_report", "reason", "to"]);
+    assert.deepEqual(extractReads(move.handler).body, ["allow_steal", "awaiting_reason", "blocked_reason", "if_version", "no_report", "question", "reason", "to"]);
   });
 });
 
@@ -384,11 +391,17 @@ describe("route-request.mjs — the CLI", () => {
     // POST /tasks/:ref/heartbeat. 36 since the Access panel gained its
     // loopback-only GET + PUT /api/v1/access pair.
     // 37 since the claim/reclaim verb added POST /tasks/:ref/claim — the one
-    // claim path that is not a status transition (`in_progress → in_progress`).
-    assert.match(result.stdout, /route-request: OK — 37 routes/);
-    // Eight since the claim verb declared `tasks.claim` beside the seven
+    // claim path that is not a status transition (`in_progress → in_progress`);
+    // 38 since reopen added POST /tasks/:ref/reopen; 39 since the board's SLA
+    // read added GET /api/v1/sla; 41 since the session surface gained the
+    // board-wide GET /api/v1/sessions and the natural-key
+    // POST /tasks/:ref/sessions/close; 42 since project ensure added
+    // PUT /api/v1/projects/:id; 43 since the activity ledger gained the
+    // board-wide GET /api/v1/activities.
+    assert.match(result.stdout, /route-request: OK — 43 routes/);
+    // Nine since the reopen verb declared `tasks.reopen` beside the eight
     // commands that already projected their input.
-    assert.match(result.stdout, /8 command inputs paired/);
+    assert.match(result.stdout, /9 command inputs paired/);
     assert.match(result.stdout, /5 out-of-router endpoints acknowledged/);
   });
 
@@ -396,7 +409,7 @@ describe("route-request.mjs — the CLI", () => {
     const result = runCli(["--print"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /POST \/api\/v1\/tasks\/:ref\/move/);
-    assert.match(result.stdout, /declared \[allow_steal, awaiting_reason, blocked_reason, if_version, no_report, reason, to\]/);
+    assert.match(result.stdout, /declared \[allow_steal, awaiting_reason, blocked_reason, if_version, no_report, question, reason, to\]/);
     // The exemption is visible in the table, not hidden by it.
     assert.match(result.stdout, /status \(refused\)/);
   });
@@ -475,7 +488,7 @@ describe("route-request.mjs — the command-input pairing (red → green)", () =
     const result = check(routes, allCommands());
     assert.equal(result.ok, false);
     assert.deepEqual(result.lines, [
-      `op_shape_mismatch POST /api/v1/${TASK_OPS.move} body "${TASK_OPS.move}" declares [title] where its declaration's non-CLI fields are [allow_steal, awaiting_reason, blocked_reason, if_version, no_report, reason, to]`,
+      `op_shape_mismatch POST /api/v1/${TASK_OPS.move} body "${TASK_OPS.move}" declares [title] where its declaration's non-CLI fields are [allow_steal, awaiting_reason, blocked_reason, if_version, no_report, question, reason, to]`,
     ]);
   });
 
@@ -484,7 +497,7 @@ describe("route-request.mjs — the command-input pairing (red → green)", () =
     const result = check(allRoutes(), registry);
     assert.equal(result.ok, false);
     assert.deepEqual(result.lines, [
-      `op_shape_mismatch taskctl issue ${TASK_OPS.deliver} null "${TASK_OPS.deliver}" projects flags [report-file, no-report, reason, seg] where the command declares [report-file]`,
+      `op_shape_mismatch taskctl issue ${TASK_OPS.deliver} null "${TASK_OPS.deliver}" projects flags [to, report-file, no-report, reason, seg] where the command declares [report-file]`,
     ]);
   });
 

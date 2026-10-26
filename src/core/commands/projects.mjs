@@ -25,6 +25,8 @@
 
 import { DomainError } from "../../foundation/errors.mjs";
 import { PROJECT_PREFIX_META_KEY, identifierPrefix, projectPrefix } from "../../foundation/ids.mjs";
+import { assertProjectAcceptance } from "../domain/acceptance-mode.mjs";
+import { normalizeReviewer } from "../domain/reviewer.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 
@@ -153,6 +155,12 @@ function withoutPrefix(meta) {
  */
 export function createProject(ctx, input) {
   const actor = actorOf(input.actor ?? { kind: "human", id: "local" });
+  // An explicit acceptance wins; otherwise the column default (`auto`) applies.
+  const acceptance =
+    input.acceptance === undefined
+      ? undefined
+      : assertProjectAcceptance(input.acceptance, "acceptance");
+  const reviewer = normalizeReviewer(input.reviewer);
   return transaction(
     ctx.db,
     () => {
@@ -181,13 +189,23 @@ export function createProject(ctx, input) {
       const meta = declared === undefined
         ? input.meta
         : { ...(input.meta ?? {}), [PROJECT_PREFIX_META_KEY]: prefix };
-      const project = ctx.repos.projects.create({ ...input, meta, now: ctx.now() });
+      const project = ctx.repos.projects.create({
+        ...input,
+        meta,
+        acceptance,
+        reviewer,
+        now: ctx.now(),
+      });
       ctx.repos.activities.append({
         taskId: null,
         actorKind: actor.kind,
         actorId: actor.id,
         event: "project_created",
-        changes: { project: project.id },
+        changes: {
+          project: project.id,
+          acceptance: project.acceptance,
+          ...(reviewer === null ? {} : { reviewer }),
+        },
         createdAt: ctx.now(),
       });
       return project;
@@ -197,11 +215,46 @@ export function createProject(ctx, input) {
 }
 
 /**
+ * Create a project if its id is absent, or return the existing row untouched.
+ *
+ * "Ensure" is the idempotent form of `createProject`: the second call is a
+ * read, not an update. Nothing about an existing project changes — its name,
+ * labels, meta, readme, acceptance default and reviewer are the caller's
+ * earlier decisions, not this call's. A race that reaches `createProject`
+ * after another writer created the same id surfaces as `ID_CONFLICT`; it is
+ * read back as "already existed" rather than leaking a conflict to an
+ * idempotent caller.
+ *
+ * @param {object} ctx
+ * @param {{id: string, name: string, labels?: string[], meta?: object, readme?: string|null, acceptance?: string, reviewer?: string|null, actor?: object}} input
+ * @returns {{project: object, created: boolean}}
+ */
+export function ensureProject(ctx, input) {
+  const existing = getProject(ctx, { id: input.id });
+  if (existing !== null && existing !== undefined) return { project: existing, created: false };
+  try {
+    return { project: createProject(ctx, input), created: true };
+  } catch (err) {
+    if (err instanceof DomainError && err.code === "ID_CONFLICT") {
+      const project = getProject(ctx, { id: input.id });
+      if (project !== null && project !== undefined) return { project, created: false };
+    }
+    throw err;
+  }
+}
+
+/**
  * @param {object} ctx
  * @param {{id: string, patch: {name?: string, labels?: string[], meta?: object, readme?: string|null}, actor?: object}} input
  */
 export function updateProject(ctx, input) {
   const patch = { ...input.patch };
+  if (patch.acceptance !== undefined) {
+    patch.acceptance = assertProjectAcceptance(patch.acceptance, "acceptance");
+  }
+  if (patch.reviewer !== undefined) {
+    patch.reviewer = normalizeReviewer(patch.reviewer);
+  }
   if (patch.meta !== undefined) {
     // The stored prefix survives whatever the patch carried (M6).
     // The slot is read from the row, not from the patch — including when the

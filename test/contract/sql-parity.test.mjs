@@ -33,7 +33,7 @@ const allSql = files.map((f) => f.sql).join("\n");
 
 describe("contract/sql-parity — migration files", () => {
   it("finds the migration set and names every file NNNN_lower_snake.sql", () => {
-    assert.ok(files.length >= 4, `expected at least 4 migrations, found ${files.length}`);
+    assert.ok(files.length >= 1, `expected at least 1 migration, found ${files.length}`);
     for (const file of files) {
       assert.match(
         file.file,
@@ -66,10 +66,13 @@ describe("contract/sql-parity — migration files", () => {
     assert.equal(created.length, new Set(created).size, "a table is created twice");
   });
 
-  it("adds report_latest_id / delivery_round by ALTER, keeping migrations append-only", () => {
-    const added = addedColumns(allSql).map((c) => `${c.table}.${c.column}`);
-    assert.ok(added.includes("tasks.report_latest_id"), added.join(", "));
-    assert.ok(added.includes("tasks.delivery_round"), added.join(", "));
+  it("declares the whole schema in place, with no ALTER/rename history", () => {
+    assert.deepEqual(files.map((f) => f.file), ["0001_init.sql"]);
+    assert.deepEqual(addedColumns(allSql), [], "the baseline declares every column in its CREATE TABLE");
+    assert.equal(/DROP\s+TABLE/i.test(allSql), false, "the baseline drops no table");
+    assert.equal(/ALTER\s+TABLE\s+\S+\s+RENAME\s+TO/i.test(allSql), false, "the baseline renames no table");
+    assert.match(allSql, /report_latest_id/);
+    assert.match(allSql, /delivery_round/);
   });
 
   it("wires a revision trigger for every write table", () => {
@@ -85,8 +88,8 @@ describe("contract/sql-parity — migration files", () => {
         `revision trigger must not exist for ${excluded}`,
       );
     }
-    // 0019 merged `assignees` + `reporters` into `actors`: 13 tables → 12, and the
-    // eleven revision-carrying tables → ten.
+    // The baseline owns the merged `actors` table: 12 tables total, ten of them
+    // carrying the revision cursor.
     assert.equal(REVISION_TABLES.length, 10);
   });
 });
@@ -113,9 +116,8 @@ describe("contract/sql-parity — enums", () => {
     // only one side knows is drift, and a hand-copied list cannot see it.
     const statusLiterals = [...new Set(checkInSets(allSql).get("tasks.status") ?? [])].sort();
     assert.deepEqual(statusLiterals, [...STATUSES].sort());
-    // The table is rebuilt by 0013, so the *effective* CHECK is the last one —
-    // and it must be the widened one, not 0001's seven.
-    assert.equal(statusLiterals.includes("awaiting"), true, "0013 must widen tasks.status");
+    // The baseline declares the widened set directly.
+    assert.equal(statusLiterals.includes("awaiting"), true, "the baseline must include awaiting");
   });
 });
 

@@ -35,12 +35,14 @@ import {
   priorityOf,
   removeAttachment,
   removeDepends,
+  reopenTask,
   reporterRoster,
   saveDetailField,
   uploadAttachment,
 } from "../../stores/board.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { activityLine, relativeTime } from "../../lib/activity.js";
+import { newestFirst } from "../../lib/time.js";
 import { attachmentRows } from "../../lib/attachments.js";
 import { errorTextKey } from "../../i18n/messages.mjs";
 import { api, ApiError } from "../../services/api.js";
@@ -51,6 +53,8 @@ import ComboField from "../combo/ComboField.vue";
 import MarkdownEditor from "../create/MarkdownEditor.vue";
 
 const commentDraft = ref("");
+/** One comment at a time: the button is disabled while the POST is in flight. */
+const commentBusy = ref(false);
 const assigneeDraft = ref("");
 const reporterDraft = ref("");
 const labelDraft = ref([]);
@@ -62,6 +66,11 @@ const descriptionDraft = ref("");
 /** The two in-place property menus (status / priority). */
 const statusMenuOpen = ref(false);
 const priorityMenuOpen = ref(false);
+/** The reopen prompt — a terminal card's one writable surface. */
+const reopenOpen = ref(false);
+const reopenReason = ref("");
+const reopenBusy = ref(false);
+const reopenInput = ref(null);
 const fileInput = ref(null);
 /** The id of the attachment whose download is in flight (the row's busy beat). */
 const busyAttachment = ref("");
@@ -147,10 +156,14 @@ const PRIORITY_MENU = ["none", "low", "medium", "high", "urgent"];
 
 /**
  * `done`/`canceled` are terminal (E-2): the drawer opens read-only, every
- * writable control is disabled, and the badge says why. Elon's reopen is a
- * privileged path and is deliberately not offered here.
+ * field control is disabled, and the badge says why. The one exception is the
+ * audited **Reopen** control: it returns the card to `todo`, requires a reason,
+ * and is deliberately not part of the generic move menu (which cannot ask for
+ * one).
  */
 const readonly = computed(() => status.value === "done" || status.value === "canceled");
+/** The service's own minimum; the confirm button follows it so the refusal is local. */
+const reopenReady = computed(() => reopenReason.value.trim().length >= 8);
 
 /**
  * The activity rows: actor + a localised sentence + a relative timestamp whose
@@ -158,9 +171,13 @@ const readonly = computed(() => status.value === "done" || status.value === "can
  * event without a catalogue sentence reads as its own name (see `lib/activity.js`).
  * `agent` picks the actor's face — an agent's handle is monospaced, exactly as
  * the prototype's `font-medium td-mono` states it (R14 D46).
+ *
+ * The list reads **newest first** (nearest in time at the top) and the drawer
+ * owns that order: `newestFirst` sorts whatever the read answered, so a board
+ * that ignored the `order=desc` parameter cannot invert the trail.
  */
 const activityRows = computed(() =>
-  activities.value.map((row) => ({
+  newestFirst(activities.value).map((row) => ({
     id: row.id,
     actor: row.actor_id ?? "—",
     agent: row.actor_kind === "agent",
@@ -176,9 +193,13 @@ const activityRows = computed(() =>
  * (the catalogue's `comment.*` trio, R14 D40). A decision comment is *quoted*
  * (`[data-detail-comments] .td-comment-decision`) and its kind rides a chip, as
  * the prototype has it.
+ *
+ * Newest first, for the same reason as the activity trail: the composer sits
+ * above the list, so the freshest answer and the box that writes the next one
+ * stay together whichever order the read answered.
  */
 const commentRows = computed(() =>
-  comments.value.map((row) => {
+  newestFirst(comments.value).map((row) => {
     const name = row.author?.display_name ?? row.author_id ?? "—";
     const kind = row.author_kind ?? "human";
     const decision = row.kind === "decision";
@@ -238,7 +259,12 @@ function onTabKeydown(event) {
 }
 /* A different card starts on Details; a card without sessions can never leave
    a hidden Sessions tab selected. */
-watch(() => task.value?.id, () => { activeTab.value = "details"; });
+watch(() => task.value?.id, () => {
+  // A card that stopped for a human opens where the question and the comment
+  // box are; every other card keeps the design's Details default.
+  activeTab.value = task.value?.status === "awaiting" ? "activity" : "details";
+  cancelReopen();
+});
 watch(hasSessions, (present) => {
   if (!present && activeTab.value === "sessions") activeTab.value = "details";
 });
@@ -260,11 +286,12 @@ const sessionTrail = computed(() => {
   return rows.map((row) => ({
     id: row.id,
     status: row.status,
-    backend: row.backend ?? "—",
+    ownerKind: row.owner_kind ?? "—",
     sessionId: row.session_id ?? "—",
     owner: row.owner ?? "—",
     seg: row.seg ?? null,
     phase: row.phase ?? null,
+    goal: row.goal ?? "",
     running: row.status === "running",
     stamp: relativeTime(row.ts),
   }));
@@ -566,6 +593,41 @@ async function choosePriority(to) {
   await runCommit(() => saveDetailField("priority", to));
 }
 
+/* ------------------------------------------------------------- reopen (I3) */
+
+function openReopen() {
+  if (!readonly.value) return;
+  closePropMenus();
+  reopenReason.value = "";
+  reopenOpen.value = true;
+  nextTick(() => reopenInput.value?.focus());
+}
+
+function cancelReopen() {
+  reopenOpen.value = false;
+  reopenReason.value = "";
+}
+
+/**
+ * Reopen the card. `reopenTask` is not optimistic (the server also advances the
+ * delivery round and clears the archived/idem bookkeeping), and it surfaces the
+ * refusal through the board's toast; the panel stays open with the reason so a
+ * retry does not lose what the reader typed.
+ */
+async function confirmReopen() {
+  if (!reopenReady.value || reopenBusy.value || !task.value) return;
+  reopenBusy.value = true;
+  try {
+    await reopenTask(task.value, reopenReason.value.trim());
+    reopenOpen.value = false;
+    reopenReason.value = "";
+  } catch {
+    // Already reported by `reopenTask`.
+  } finally {
+    reopenBusy.value = false;
+  }
+}
+
 /* ------------------------------------------------- sentence (the md editor) */
 
 function startDescriptionEdit() {
@@ -746,6 +808,7 @@ watch(
 // region closes with the buttons rather than staying readable behind them.
 watch(readonly, (value) => {
   if (value) closePreview();
+  else cancelReopen();
 });
 
 /**
@@ -891,9 +954,17 @@ watch(dependsDraft, () => commitDepends(dependsDraft.value), { deep: true });
 
 async function submitComment() {
   const body = commentDraft.value.trim();
-  if (!body || !task.value) return;
-  await addComment(task.value.identifier, body);
-  commentDraft.value = "";
+  if (!body || !task.value || commentBusy.value) return;
+  commentBusy.value = true;
+  try {
+    await addComment(task.value.identifier, body);
+    commentDraft.value = "";
+  } catch {
+    // The store already reported the refusal in the one error vocabulary; the
+    // draft stays so the human can retry without retyping.
+  } finally {
+    commentBusy.value = false;
+  }
 }
 
 /** The prototype reports a toast without touching the clipboard; so do we. */
@@ -984,10 +1055,21 @@ function copyId() {
           <span data-detail-status-chip-label>{{ $t(`status.${statusValue}`) }}</span>
         </span>
         <!-- E-2 (T-20261014-212017-3) — a terminal card's drawer is read-only:
-             the root states it, this badge says so, and every writable control
-             below is disabled. Elon's reopen is a privileged path and is
-             deliberately not offered here. -->
+             the root states it, this badge says so, and every field control
+             below is disabled. Reopen is the one audited exception: a terminal
+             card's only writable action, kept out of the generic move menu
+             because it must carry a reason. It sits before the close button so
+             the R7/R14 head geometry (the close's right edge and centre line)
+             is untouched, and wears the badge's own shape. -->
         <span class="badge badge-sm td-chip" data-detail-readonly :hidden="!(readonly && open)">{{ $t("drawer.readonly") }}</span>
+        <button
+          type="button"
+          class="badge badge-sm td-chip cursor-pointer"
+          data-detail-reopen
+          :hidden="!(readonly && open)"
+          :aria-expanded="reopenOpen ? 'true' : 'false'"
+          @click="openReopen"
+        >{{ $t("drawer.reopen") }}</button>
         <!-- I-1 (T-20261014-154730) — the button **is** the design's `.td-iconbtn`,
              the same class the column header's `+` (F4) and the topbar filters
              toggle (F10) already wear. The design's `32×32` (§3) is that box, so
@@ -1051,6 +1133,39 @@ function copyId() {
     </div>
 
     <div v-else class="td-drawer-body">
+      <!-- The reopen prompt. A terminal card's only writable surface: the
+           service requires a reason of at least 8 characters, so the confirm
+           stays disabled until the draft meets the same minimum. The textarea
+           deliberately does **not** carry `data-detail-save-field` (the
+           contract counts exactly 8 of those, all on field controls). -->
+      <div v-if="reopenOpen && readonly" class="flex flex-col gap-2 mb-4" data-detail-reopen-panel>
+        <label class="td-prop-label" for="td-reopen-reason">{{ $t("drawer.reopenReason") }}</label>
+        <textarea
+          id="td-reopen-reason"
+          ref="reopenInput"
+          v-model="reopenReason"
+          class="textarea textarea-sm w-full"
+          data-detail-reopen-reason
+        ></textarea>
+        <p v-if="reopenReason.trim().length > 0 && !reopenReady" class="text-xs text-(--brand-danger)">
+          {{ $t("drawer.reopenTooShort") }}
+        </p>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            class="btn btn-sm"
+            data-detail-reopen-confirm
+            :disabled="!reopenReady || reopenBusy"
+            @click="confirmReopen"
+          >{{ $t("drawer.reopenConfirm") }}</button>
+          <button
+            type="button"
+            class="btn btn-sm btn-ghost"
+            data-detail-reopen-cancel
+            @click="cancelReopen"
+          >{{ $t("drawer.reopenCancel") }}</button>
+        </div>
+      </div>
       <!-- R10 ② — the drawer's save state, one region for all three editable
            fields. `data-save-state` is the source of truth (`idle` ships, as the
            resting state) and the alert below is its only visible half: hidden
@@ -1247,6 +1362,14 @@ function copyId() {
             <span class="td-mono" data-detail-project-label>{{ projectLabel }}</span>
           </button>
 
+          <!-- 0031/0038 — the card's acceptance mode. Read-only: the mode is
+               resolved at creation and changed through the audited
+               `--acceptance-mode` override, not by a drawer edit. -->
+          <span class="td-prop-label" data-i18n="review.label">{{ $t("review.label") }}</span>
+          <span class="td-prop-value" data-detail-acceptance-mode :data-acceptance-mode="task?.acceptance_mode ?? 'off'">
+            {{ $t(`review.mode.${task?.acceptance_mode ?? 'off'}`) }}
+          </span>
+
           <span class="td-prop-label" data-i18n="prop.labels">{{ $t("prop.labels") }}</span>
           <!-- R14 B16/D27 — the labels row's **root** is the value box itself
                (`.td-prop-value.td-prop-combo`): the row's 28px measure and its
@@ -1373,8 +1496,8 @@ function copyId() {
           <span v-else-if="dependsDraft.length === 0" class="text-xs text-(--brand-text-3)" data-i18n="relations.none">{{ $t("relations.none") }}</span>
         </div>
 
-        <!-- T-20261014-212017-3 §4.4 — `depends_on` ⇄ the `blocks` edge
-             (PROTOCOL §①). The card's prerequisites are an editable multi-select
+        <!-- T-20261014-212017-3 §4.4 — `depends_on` ⇄ the `blocks` edge.
+             The card's prerequisites are an editable multi-select
              of this project's cards; the value the control holds is each
              prerequisite's **identifier**, and the store resolves it to a task id
              to write the edge (`stores/board.js#addDepends`). A cycle, a
@@ -1519,6 +1642,23 @@ function copyId() {
       <section class="td-section">
         <h3 class="td-section-title" data-i18n="drawer.comments">{{ $t("drawer.comments") }}</h3>
         <div data-detail-comments>
+          <!-- The composer sits above the list: the comments are newest-first, so
+               the newest answer and the box that writes the next one stay together.
+               R14 D47 — the form is four pieces: the visually-hidden label (the
+               prototype's `.td-sr`, whose `for` names the field), the field, the
+               hint, and the submit button on the hint's line. -->
+          <form class="mt-2" data-comment-form @submit.prevent="submitComment">
+            <label class="td-sr" for="td-comment-input" data-i18n="drawer.comment">{{ $t("drawer.comment") }}</label>
+            <textarea id="td-comment-input" class="td-textarea" data-comment-input v-model="commentDraft" :placeholder="$t('drawer.commentPlaceholder')"></textarea>
+            <div class="mt-2 flex items-center justify-between">
+              <!-- On an awaiting card the same submit is the answer, so the
+                   consequence is stated where the human is about to act. -->
+              <span v-if="statusValue === 'awaiting'" class="text-[11px] text-(--brand-text-3)" data-i18n="drawer.commentHintAwaiting">{{ $t("drawer.commentHintAwaiting") }}</span>
+              <span v-else class="text-[11px] text-(--brand-text-3)" data-i18n="drawer.commentHint">{{ $t("drawer.commentHint") }}</span>
+              <button type="submit" class="btn btn-primary btn-sm" data-comment-submit :disabled="commentBusy">{{ $t("drawer.submit") }}</button>
+            </div>
+          </form>
+
           <!-- R14 D39/D40/D41 — avatar, meta line (author + kin + stamp) and the
                pre-lined body; a decision comment is quoted by `.td-comment-decision`
                and its kin is the chip the prototype gives it. -->
@@ -1534,18 +1674,6 @@ function copyId() {
               <div class="td-comment-body">{{ row.body }}</div>
             </div>
           </article>
-
-          <!-- R14 D47 — the form is four pieces: the visually-hidden label (the
-               prototype's `.td-sr`, whose `for` names the field), the field, the
-               hint, and the submit button on the hint's line. -->
-          <form class="mt-2" data-comment-form @submit.prevent="submitComment">
-            <label class="td-sr" for="td-comment-input" data-i18n="drawer.comment">{{ $t("drawer.comment") }}</label>
-            <textarea id="td-comment-input" class="td-textarea" data-comment-input v-model="commentDraft" :placeholder="$t('drawer.commentPlaceholder')"></textarea>
-            <div class="mt-2 flex items-center justify-between">
-              <span class="text-[11px] text-(--brand-text-3)" data-i18n="drawer.commentHint">{{ $t("drawer.commentHint") }}</span>
-              <button type="submit" class="btn btn-primary btn-sm" data-comment-submit>{{ $t("drawer.submit") }}</button>
-            </div>
-          </form>
         </div>
       </section>
 
@@ -1626,14 +1754,14 @@ function copyId() {
           <div data-detail-agent-session-body>
             <!-- The trail: running first, then newest-first. The first row
                  carries B16's platform seat; historical rows name their own
-                 backend in a plain badge. Resume is stated only for a running
+                 owner kind in a plain badge. Resume is stated only for a running
                  session (kept in the DOM with v-show so the contract's hook
                  survives a card whose sessions have all closed). -->
             <div v-for="(row, index) in sessionTrail" :key="row.id" class="td-session" :class="{ 'mt-2': index > 0 }" data-agent-session>
               <div class="flex items-center gap-2">
-                <span v-if="index === 0" class="badge badge-xs td-agent-badge" :data-agent-platform="isAgent ? platform : undefined">{{ isAgent ? platform : row.backend }}</span>
-                <span v-else class="badge badge-xs td-agent-badge">{{ row.backend }}</span>
-                <span class="td-mono text-xs text-(--brand-text-2)" :data-agent-platform-value="index === 0 ? platform || row.backend : undefined">{{ index === 0 ? (platform || row.backend) : row.backend }}</span>
+                <span v-if="index === 0" class="badge badge-xs td-agent-badge" :data-agent-platform="isAgent ? platform : undefined">{{ isAgent ? platform : row.ownerKind }}</span>
+                <span v-else class="badge badge-xs td-agent-badge">{{ row.ownerKind }}</span>
+                <span class="td-mono text-xs text-(--brand-text-2)" :data-agent-platform-value="index === 0 ? platform || row.ownerKind : undefined">{{ index === 0 ? (platform || row.ownerKind) : row.ownerKind }}</span>
                 <span class="badge badge-xs" :data-session-status="row.status">{{ $t(`drawer.session.status.${row.status}`) }}</span>
                 <button v-if="index === 0" v-show="row.running" type="button" class="btn btn-outline btn-xs ms-auto" data-agent-resume data-i18n="drawer.resume">{{ $t("drawer.resume") }}</button>
               </div>
@@ -1647,6 +1775,9 @@ function copyId() {
                 <span v-if="row.phase">{{ $t("drawer.session.phase") }} {{ row.phase }}</span>
                 <span v-if="row.stamp" class="td-activity-ts" :title="row.stamp.absolute">{{ $t(row.stamp.key, row.stamp.arg) }}</span>
               </div>
+              <!-- The one sentence the session registered for. No i18n key: this
+                   is the session's own data, not a label the board owns. -->
+              <p v-if="row.goal" class="mt-2 text-xs text-(--brand-text-2)" data-session-goal>{{ row.goal }}</p>
             </div>
             <!-- The contract's B16 hooks must exist at rest even when the card
                  has no session rows; the section is hidden in that case. -->

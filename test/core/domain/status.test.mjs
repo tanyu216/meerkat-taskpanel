@@ -26,6 +26,7 @@ import {
   isKnownStatus,
   isTerminalStatus,
   requiresReport,
+  transitionPolicyFor,
   transitionReasonCode,
 } from "../../../src/core/domain/status.mjs";
 import { DomainError } from "../../../src/foundation/errors.mjs";
@@ -38,11 +39,16 @@ const EXPECTED_ALLOWED = {
   // row below. The card's conversion rules: entry only from `in_progress`;
   // `→ canceled` allowed; `→ blocked` / `→ in_review` / `→ done` forbidden.
   in_progress: ["in_review", "blocked", "todo", "canceled", "awaiting"],
-  awaiting: ["in_progress", "canceled"],
+  // 0034 — the answered card re-queues (`todo`); `in_progress` stays for a live
+  // worker. `→ blocked` / `→ in_review` / `→ done` remain forbidden.
+  awaiting: ["in_progress", "todo", "canceled"],
   in_review: ["done", "in_progress", "blocked"],
   blocked: ["todo", "in_progress", "in_review", "canceled"],
-  done: [],
-  canceled: [],
+  // The reopen edge: a finished card may go back to the queue, and nowhere
+  // else. `in_progress` is deliberately absent — it would be a work state
+  // without the claim that a `todo → in_progress` move stamps.
+  done: ["todo"],
+  canceled: ["todo"],
 };
 
 /** Every ordered pair, derived: `statuses²`. */
@@ -86,7 +92,9 @@ describe("domain/status — the whitelist table", () => {
     assert.deepEqual([...ROUND_BUMPING_EXITS].sort(), ["blocked", "in_progress"]);
     assert.deepEqual(allowedTargets(STATUS.IN_REVIEW), ["done", "in_progress", "blocked"]);
     for (const [from, to] of ALL_PAIRS) {
-      const expected = from === STATUS.IN_REVIEW && ROUND_BUMPING_EXITS.includes(to);
+      const expected =
+        (from === STATUS.IN_REVIEW && ROUND_BUMPING_EXITS.includes(to)) ||
+        (isTerminalStatus(from) && to === STATUS.TODO);
       assert.equal(bumpsDeliveryRound(from, to), expected, `bump ${from} → ${to}`);
     }
   });
@@ -106,7 +114,11 @@ describe("domain/status — terminals, claimability, gate", () => {
     for (const status of STATUSES) {
       assert.equal(isTerminalStatus(status), TERMINAL_STATUSES.includes(status), status);
     }
-    assert.deepEqual(STATUSES.filter((s) => allowedTargets(s).length === 0), ["done", "canceled"]);
+    // Terminal statuses are no longer "no exit at all": their only exit is the
+    // reopen edge. Everything else still has at least one target.
+    assert.deepEqual(STATUSES.filter((s) => allowedTargets(s).length === 0), []);
+    assert.deepEqual(allowedTargets(STATUS.DONE), [STATUS.TODO]);
+    assert.deepEqual(allowedTargets(STATUS.CANCELED), [STATUS.TODO]);
   });
 
   it("only todo is claimable, and only in_review demands a report", () => {
@@ -138,10 +150,10 @@ describe("domain/status — rejection codes", () => {
     assert.equal(rejected, STATUSES.length ** 2 - WHITELISTED, "every pair minus the whitelisted ones");
   });
 
-  it("keeps `awaiting` a real exit with exactly two doors, and no gate bypass (M1)", () => {
-    // The card's three conversion rules, asserted against the independent table
-    // rather than against the module's own answer.
-    assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "canceled"]);
+  it("keeps `awaiting` a real exit with three doors, and no gate bypass (M1/0034)", () => {
+    // The card's conversion rules, asserted against the independent table rather
+    // than against the module's own answer. 0034 adds the re-queue door.
+    assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "todo", "canceled"]);
     assert.deepEqual(
       STATUSES.filter((from) => canTransition(from, "awaiting")),
       ["in_progress"],
@@ -169,14 +181,18 @@ describe("domain/status — rejection codes", () => {
 
   it("assertTransition returns the target or throws a DomainError with that code", () => {
     assert.equal(assertTransition("todo", "in_progress"), "in_progress");
+    // The reopen edge is a real transition, for a task and for an epic.
+    assert.equal(assertTransition("done", "todo"), "todo");
+    assert.equal(assertTransition("canceled", "todo"), "todo");
+    assert.equal(assertTransition("done", "todo", TASK_KIND.EPIC), "todo");
 
     assert.throws(
-      () => assertTransition("done", "todo"),
+      () => assertTransition("done", "in_progress"),
       (err) => {
         assert.ok(err instanceof DomainError);
         assert.equal(err.code, "TERMINAL_STATE");
         assert.equal(err.http, 409);
-        assert.deepEqual(err.details.allowed, []);
+        assert.deepEqual(err.details.allowed, ["todo"]);
         return true;
       },
     );
@@ -303,5 +319,85 @@ describe("domain/status — the epic overlay (0024)", () => {
   it("does not move the round or the gate with the pair", () => {
     assert.equal(bumpsDeliveryRound(STATUS.TODO, STATUS.IN_REVIEW), false, "todo is not a round-bumping source");
     assert.equal(requiresReport(STATUS.IN_REVIEW), true, "and the gate still asks for a report");
+  });
+});
+
+describe("domain/status — the card-derived policy", () => {
+  const CARD_SHAPES = [];
+  for (const from of STATUSES) {
+    for (const kind of ["task", "epic"]) {
+      for (const mode of ["off", "agent", "human"]) {
+        for (const reviewCard of [false, true]) {
+          CARD_SHAPES.push({
+            status: from,
+            kind,
+            acceptanceMode: mode,
+            reviewOfId: reviewCard ? "orig-1" : null,
+            meta: {},
+          });
+        }
+      }
+    }
+  }
+
+  it("agrees with the primitives on every pair, kind, mode and review shape", () => {
+    for (const card of CARD_SHAPES) {
+      const policy = transitionPolicyFor(card);
+      const reviewCard = card.reviewOfId !== null;
+      const label = `${card.status}/${card.kind}/${card.acceptanceMode}${reviewCard ? "/review" : ""}`;
+      assert.deepEqual(
+        policy.allowed,
+        allowedTargets(card.status, card.kind, card.acceptanceMode, reviewCard),
+        `${label}: allowed`,
+      );
+      for (const to of STATUSES) {
+        assert.equal(
+          policy.can(to),
+          canTransition(card.status, to, card.kind, card.acceptanceMode, reviewCard),
+          `${label}: can(${to})`,
+        );
+        assert.equal(
+          policy.reason(to),
+          transitionReasonCode(card.status, to, card.kind, card.acceptanceMode, reviewCard),
+          `${label}: reason(${to})`,
+        );
+      }
+    }
+  });
+
+  it("reads the wire spelling too", () => {
+    const policy = transitionPolicyFor({
+      status: "in_progress",
+      kind: "task",
+      acceptance_mode: "off",
+      review_of_id: null,
+    });
+    assert.equal(policy.can("done"), true, "an ordinary off card keeps the direct edge");
+  });
+
+  it("withholds the off direct edge from a review card", () => {
+    const policy = transitionPolicyFor({
+      status: "in_progress",
+      kind: "task",
+      acceptanceMode: "off",
+      reviewOfId: "orig-1",
+    });
+    assert.equal(policy.can("done"), false);
+    assert.equal(policy.reason("done"), "INVALID_TRANSITION");
+    assert.deepEqual(policy.allowed, ["in_review", "blocked", "todo", "canceled", "awaiting"]);
+  });
+
+  it("exposes the round bump and the report requirement", () => {
+    const policy = transitionPolicyFor({ status: "in_review", kind: "task", acceptanceMode: "agent", meta: {} });
+    assert.equal(policy.bumpsRound("in_progress"), true);
+    assert.equal(policy.bumpsRound("done"), false);
+    assert.equal(policy.requiresReport("in_review"), true);
+    assert.equal(policy.requiresReport("done"), false);
+  });
+
+  it("assert throws the same code the primitive would", () => {
+    const policy = transitionPolicyFor({ status: "done", kind: "task", acceptanceMode: "off", meta: {} });
+    assert.throws(() => policy.assert("in_progress"), (err) => err instanceof DomainError && err.code === "TERMINAL_STATE");
+    assert.equal(policy.assert("todo"), "todo", "the reopen edge is returned for chaining");
   });
 });

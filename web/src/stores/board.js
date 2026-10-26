@@ -27,7 +27,7 @@ import { isAgentKind, kindLabel, platformForActor, platformOfKind } from "../lib
 
 export { isAgentKind, kindLabel, platformForActor, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
-import { acceptanceWaitingTasks } from "../lib/waiting-queue.js";
+import { acceptanceWaitingTasks, payloadCommentOf } from "../lib/waiting-queue.js";
 import {
   detailRefetch,
   invalidatesWaitingPayload,
@@ -105,12 +105,19 @@ export function isAwaiting(task) {
  * the UI must not *offer* a move the server will refuse, and M1's rule is that
  * an `awaiting` card is offered no route to `in_review`, `done` or `blocked`
  * (design §6/§8-13) — the delivery gate's UI half.
+ *
+ * The terminal rows stay **empty** even though the domain now has the reopen
+ * edge: that edge is audited (it requires a reason), so it must not ride the
+ * generic move menu or a drag-and-drop, which cannot ask for one. The drawer's
+ * dedicated Reopen control (`reopenTask` below) is its UI.
  */
 export const ALLOWED_TRANSITIONS = Object.freeze({
   backlog: Object.freeze(["todo", "canceled"]),
   todo: Object.freeze(["backlog", "in_progress", "blocked", "canceled"]),
   in_progress: Object.freeze(["in_review", "blocked", "todo", "canceled", AWAITING]),
-  awaiting: Object.freeze(["in_progress", "canceled"]),
+  // 0034 — `todo` is the post-answer requeue (the asking worker had stopped);
+  // `in_progress` stays for a worker that is still live.
+  awaiting: Object.freeze(["in_progress", "todo", "canceled"]),
   in_review: Object.freeze(["done", "in_progress", "blocked"]),
   blocked: Object.freeze(["todo", "in_progress", "in_review", "canceled"]),
   done: Object.freeze([]),
@@ -122,8 +129,13 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
  * @param {string|undefined|null} status
  * @returns {readonly string[]}
  */
-export function allowedTargets(status) {
-  return ALLOWED_TRANSITIONS[status] ?? Object.freeze([]);
+export function allowedTargets(status, task = null) {
+  const base = ALLOWED_TRANSITIONS[status] ?? Object.freeze([]);
+  // 0038 — an `off` card may go straight to done from in_progress.
+  if (status === "in_progress" && task?.acceptance_mode === "off" && !base.includes("done")) {
+    return Object.freeze([...base, "done"]);
+  }
+  return base;
 }
 
 /** @type {Record<string, any>} */
@@ -169,13 +181,6 @@ export const board = reactive({
    * a flag, because the watcher can start a second read before the first lands.
    */
   waitingPending: 0,
-  /**
-   * The board's acceptance policy (`human-only` | `both` | `agent-only`), read
-   * from `/meta` (`capabilities.acceptance.policy`). `both` is the fallback for
-   * a board that predates the capability — the historical rule, and the one
-   * under which a human still has acceptance work.
-   */
-  acceptancePolicy: "both",
 });
 
 /* --------------------------------------------------------------- accessors */
@@ -385,9 +390,9 @@ export const projectLoading = computed(() => board.loading && !board.loaded);
 export const waitingTasks = computed(() => visibleTasks.value.filter(isAwaiting));
 
 /**
- * The cards whose **delivery** waits on this human: an `in_review` top-level
- * original whose current-round reviews and children are resolved, under a
- * policy that still asks a human to accept (`human-only` / `both`).
+ * The cards whose **delivery** waits on this human: an `in_review` card whose
+ * own `acceptance_mode` is `human`, with its current-round reviews and
+ * children resolved.
  *
  * Derived from `board.tasks` — the whole reading, unfiltered — rather than
  * `visibleTasks`: an acceptance is not a board column, so a status filter must
@@ -396,9 +401,7 @@ export const waitingTasks = computed(() => visibleTasks.value.filter(isAwaiting)
  * stream replaces a review card or a child, the original's row appears without
  * re-reading the original.
  */
-export const acceptanceTasks = computed(() =>
-  acceptanceWaitingTasks(board.tasks, board.acceptancePolicy),
-);
+export const acceptanceTasks = computed(() => acceptanceWaitingTasks(board.tasks));
 
 /**
  * The acceptance rows the assignee narrowing leaves.
@@ -490,9 +493,10 @@ export async function loadWaitingPayloads() {
         try {
           const data = await api.taskComments(task.identifier, { limit: 50 });
           const comments = data.comments ?? [];
-          // The payload is the *newest human* comment (design §2.2/§2.3): an agent
-          // comment written afterwards is commentary, not the question.
-          const payload = [...comments].reverse().find((comment) => comment.author_kind === "human") ?? null;
+          // 0034 — the payload is the newest **question**, falling back to the
+          // newest human comment for a card that predates the kind (the M1 rule).
+          // The selector is the domain's `payloadOf`, mirrored in lib/.
+          const payload = payloadCommentOf(comments);
           if ((waitingGen.get(task.id) ?? 0) === generation) {
             board.waitingPayload = { ...board.waitingPayload, [task.id]: payload };
           } else {
@@ -715,6 +719,9 @@ export async function refreshTask(taskId) {
       return;
     }
     replaceTask(task);
+    // The drawer's head is the same row. One event = one task read, applied to
+    // both surfaces; `refreshDetail` no longer reads `task` itself.
+    if (board.detail?.task?.id === taskId) board.detail = { ...board.detail, task };
   } catch {
     /* a task that vanished mid-flight is not worth a toast */
   }
@@ -816,6 +823,40 @@ export async function moveTask(task, to) {
   }
 }
 
+/**
+ * Reopen a terminal card to `todo`.
+ *
+ * Deliberately **not** optimistic: unlike a status flip, the server also
+ * advances the delivery round and releases the finished row's `idem` /
+ * `archived_at`, so the returned record is the only truthful one. The reason
+ * is required by the service and recorded as a `task_reopened` activity.
+ *
+ * @param {object} task the wire task
+ * @param {string} reason why the finished work is active again
+ */
+export async function reopenTask(task, reason) {
+  const baseVersion = task.version;
+  try {
+    const data = await api.reopenTask(task.identifier, { reason, if_version: baseVersion });
+    replaceTask(data.task);
+    pushToast(`${t("toast.reopened")} · ${task.identifier} → ${t("status.todo")}`, "success");
+    return data.task;
+  } catch (err) {
+    const conflict = err instanceof ApiError && err.isVersionConflict;
+    if (conflict) {
+      board.conflict = {
+        identifier: task.identifier,
+        expectedVersion: err.details?.expectedVersion ?? baseVersion,
+        currentVersion: err.details?.currentVersion ?? null,
+      };
+    }
+    const text = t(errorTextKey(err), task.identifier);
+    if (conflict) pushStickyToast(text, "danger");
+    else pushToast(text, "danger");
+    throw err;
+  }
+}
+
 /** Re-read the task in the conflict panel (the only recovery the UI offers). */
 export async function reloadConflict() {
   const identifier = board.conflict?.identifier;
@@ -833,13 +874,28 @@ export async function createTask(payload) {
 }
 
 export async function addComment(ref, body) {
-  const data = await api.addComment(ref, { body, kind: "discuss" });
-  if (board.detail && board.detail.task?.identifier === ref) {
-    board.detail = { ...board.detail, comments: [...board.detail.comments, { ...data.comment, author: { display_name: ME } }] };
-    patchTaskLocal(board.detail.task.id, {});
+  try {
+    const data = await api.addComment(ref, { body, kind: "discuss" });
+    if (board.detail && board.detail.task?.identifier === ref) {
+      // Newest first — the same order the drawer's read asks for (`order=desc`)
+      // and the order the activity trail already uses. The author is the wire's
+      // own ref (the browser is the local human), so the row does not flash a
+      // different name and then change when the re-read lands.
+      const author = data.comment?.author ?? { display_name: ME };
+      board.detail = {
+        ...board.detail,
+        comments: [{ ...data.comment, author }, ...board.detail.comments],
+      };
+      patchTaskLocal(board.detail.task.id, {});
+    }
+    pushToast(t("toast.commented"), "success");
+    return data.comment;
+  } catch (err) {
+    // One vocabulary for every refusal: the human sees why the comment did not
+    // land, and the caller keeps the draft so it can be retried without retyping.
+    pushToast(t(errorTextKey(err), ref), "danger");
+    throw err;
   }
-  pushToast(t("toast.commented"), "success");
-  return data.comment;
 }
 
 /* ------------------------------------------------------- detail auto-save */
@@ -1139,12 +1195,15 @@ export async function openDetail(identifier) {
     const [taskData, relations, activities, sessions, reports] = await Promise.all([
       api.task(identifier),
       api.taskRelations(identifier).catch(() => ({ relations: [] })),
-      api.taskActivities(identifier, { limit: 50 }).catch(() => ({ activities: [] })),
+      // Newest first: `limit` with ASC returned the OLDEST 50 rows.
+      api.taskActivities(identifier, { limit: 50, order: "desc" }).catch(() => ({ activities: [] })),
       api.taskSessions(identifier).catch(() => ({ sessions: [] })),
       api.taskReports(identifier).catch(() => ({ reports: [] })),
     ]);
     if (!current()) return;
-    const comments = await api.taskComments(identifier, { limit: 200 }).catch(() => ({ comments: [] }));
+    // Newest first, like the activity trail; the waiting-payload read below
+    // stays ascending because `payloadCommentOf` scans the trail from its tail.
+    const comments = await api.taskComments(identifier, { limit: 200, order: "desc" }).catch(() => ({ comments: [] }));
     if (!current()) return;
     // T-20261014-212017-4 / G2 — the attachment rows come from the `attachments`
     // **table**, not from `task.meta`. A board that predates the write surface
@@ -1219,16 +1278,13 @@ async function refreshDetail(wanted, taskId) {
     );
   };
 
-  read("task", () => api.task(identifier), (data) => {
-    if (data?.task) patch.task = data.task;
-  });
-  read("comments", () => api.taskComments(identifier, { limit: 200 }), (data) => {
+  read("comments", () => api.taskComments(identifier, { limit: 200, order: "desc" }), (data) => {
     patch.comments = data.comments ?? [];
   });
   read("relations", () => api.taskRelations(identifier), (data) => {
     patch.relations = data;
   });
-  read("activities", () => api.taskActivities(identifier, { limit: 50 }), (data) => {
+  read("activities", () => api.taskActivities(identifier, { limit: 50, order: "desc" }), (data) => {
     patch.activities = data.activities ?? [];
   });
   read("sessions", () => api.taskSessions(identifier), (data) => {
@@ -1246,14 +1302,8 @@ async function refreshDetail(wanted, taskId) {
   // refresh while these reads were in flight.
   if (detailToken !== token || board.detail?.task?.id !== taskId) return;
 
-  if (patch.task) {
-    if (patch.task.archived_at) {
-      board.tasks = board.tasks.filter((item) => item.id !== taskId);
-      closeDetail();
-      return;
-    }
-    replaceTask(patch.task);
-  }
+  // The task row itself arrives through `refreshTask` (one read for the card and
+  // the drawer); this path only patches the sub-resources it owns.
   board.detail = { ...board.detail, ...patch };
 }
 
@@ -1405,12 +1455,6 @@ export async function initBoard() {
   try {
     const meta = await api.meta();
     board.revision = Number(meta?.revision) || board.revision;
-    // The acceptance policy decides whether an `in_review` top-level card is a
-    // "waiting on me" item at all. A board that cannot read its policy reports
-    // `null`; fall back to the historical rule rather than hiding work.
-    const policy = meta?.capabilities?.acceptance?.policy;
-    board.acceptancePolicy =
-      policy === "human-only" || policy === "both" || policy === "agent-only" ? policy : "both";
   } catch {
     /* the board may be down; loadBoard reports it */
   }

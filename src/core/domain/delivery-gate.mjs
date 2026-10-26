@@ -1,17 +1,14 @@
 /**
- * The delivery gate: a **delivery** report for the **current round**, or an
- * audited waiver.
+ * The delivery gate: a report for the **current round**, or an audited waiver.
  *
  * Moving a task to `in_review` requires a report for the current delivery round.
  * A report from an earlier round is not a report: if work came back for rework,
  * the previous conclusion is history, not evidence.
  *
- * "Delivery" is part of the requirement too (0008). A historical report row
- * (`origin: "import"`) — a degraded narrative, or a structured report with no
- * evidence — was never checked by `normalizeReportCreate`, so it proves nothing
- * and must not open the gate. Only a row `writeReport`/`deliver` wrote (`origin: "delivery"`, whose
- * acceptance/evidence are non-empty by construction) counts. The trigger in
- * `0008_report_origin.sql` repeats exactly this rule.
+ * 0035 removed the `origin` distinction. The board records reports and enforces
+ * their shape (`normalizeReportCreate` on write, a non-empty `conclusion` at the
+ * database); whether the writer was the worker, a backfill or an importer is the
+ * consumer's judgement, not the board's. Any row for the current round counts.
  *
  * There is one other way through, added in M2 (F-B1) and deliberately narrow: a
  * waiver that names its round *and* carries a reason of at least
@@ -19,9 +16,10 @@
  * stamped on the task row and audited as a `report_waived` activity, so a
  * reviewer sees it. `--no-report --reason "<why>"` is the command.
  *
- * The same rules are a trigger in `0008_report_origin.sql`, so they hold for a
- * writer that bypasses this module. Two implementations, one meaning —
- * `test/contract/state-machine.test.mjs` and the command tests check they agree.
+ * The same rules are a trigger (`tr_deliver_gate`, last re-created by 0035), so
+ * they hold for a writer that bypasses this module. Two implementations, one
+ * meaning — `test/contract/state-machine.test.mjs` and the command tests check
+ * they agree.
  *
  * Pure: no `node:` specifiers.
  */
@@ -162,52 +160,54 @@ export function assertWaiverRequest(input) {
 }
 
 /**
- * Does this report count as a *delivery* — the only kind the gate accepts?
- *
- * A report's `origin` says who wrote it: `delivery` (via `writeReport`/`deliver`,
- * content validated non-empty) or `import` (a historical row written outside the
- * delivery path).
- * A missing `origin` defaults to `delivery` for backwards compatibility with
- * callers that pass `{round}` alone (`tasks.mjs` supplies the real `origin`).
- *
- * @param {unknown} report
- * @returns {boolean}
- */
-export function reportCountsAsDelivery(report) {
-  if (report === null || typeof report !== "object") return false;
-  const origin = report.origin ?? "delivery";
-  return origin === "delivery";
-}
-
-/**
  * Decide whether a move may proceed.
  *
- * Only *delivery* reports count (see `reportCountsAsDelivery`); imported history
- * rows are ignored, so `existingRounds` is the rounds a delivery actually covers
- * ("none" when nothing qualifies).
+ * 0035 removed the provenance filter: every report row for the current round
+ * counts, and `existingRounds` is the rounds the board has a report for ("none"
+ * when nothing qualifies). For an epic the row must additionally be its rollup
+ * marker — structure still matters, writer identity does not.
  *
- * @param {{task: {id: string, identifier?: string, deliveryRound: number}, reports: {round: number, origin?: string}[], to: string, waiver?: {round: number, reason: string}|null}} input
- * @returns {{ok: true, waived?: boolean}|{ok: false, reason: "REPORT_REQUIRED", round: number, existingRounds: number[], hint: object}}
+ * @param {{task: {id: string, identifier?: string, kind?: string, deliveryRound: number}, reports: {round: number, isRollup?: boolean}[], to: string, waiver?: {round: number, reason: string}|null}} input
+ * @returns {{ok: true, waived?: boolean}|{ok: false, reason: "REPORT_REQUIRED"|"ROLLUP_REQUIRED", round: number, existingRounds: number[], hint: object}}
  */
 export function checkDeliveryGate(input) {
   const { task, reports, to } = input;
 
   if (!requiresReport(to)) return { ok: true };
 
+  // 0033 — an epic's delivery evidence is its rollup. An unmarked report for the
+  // round is not the container's evidence, and a waiver cannot stand in: the
+  // container has nothing to deliver but its children's work.
+  const isEpic = task.kind === TASK_KIND.EPIC;
   const round = task.deliveryRound;
   const rounds = (Array.isArray(reports) ? reports : [])
-    .filter(reportCountsAsDelivery)
+    .filter((report) => report !== null && typeof report === "object")
+    .filter((report) => !isEpic || report.isRollup === true)
     .map((report) => report.round);
   if (rounds.includes(round)) return { ok: true };
-  if (waiverCovers(input.waiver, round)) return { ok: true, waived: true };
+  if (!isEpic && waiverCovers(input.waiver, round)) return { ok: true, waived: true };
 
   const existingRounds = [...new Set(rounds)].sort((a, b) => a - b);
+  const ref = task.identifier ?? task.id;
+  if (isEpic) {
+    return {
+      ok: false,
+      reason: "ROLLUP_REQUIRED",
+      round,
+      existingRounds,
+      hint: {
+        command: `taskctl report template ${ref}`,
+        note: "an epic template lists every child; fill it, then deliver it on the epic",
+        deliver: `taskctl issue deliver ${ref} --report-file -`,
+      },
+    };
+  }
   return {
     ok: false,
     reason: "REPORT_REQUIRED",
     round,
     existingRounds,
-    hint: deliverCommandHint(task.identifier ?? task.id),
+    hint: deliverCommandHint(ref),
   };
 }
 
@@ -223,6 +223,20 @@ export function assertDeliveryGate(input) {
   if (verdict.ok) return true;
 
   const rounds = verdict.existingRounds.length === 0 ? "none" : verdict.existingRounds.join(", ");
+  if (verdict.reason === "ROLLUP_REQUIRED") {
+    throw new DomainError("ROLLUP_REQUIRED", {
+      message:
+        `cannot move ${input.task.identifier ?? input.task.id} to ${input.to}: ` +
+        `no rollup report for delivery round ${verdict.round} (rollup rounds on file: ${rounds})`,
+      details: {
+        taskId: input.task.id,
+        identifier: input.task.identifier ?? null,
+        round: verdict.round,
+        existingRounds: verdict.existingRounds,
+      },
+      hint: verdict.hint,
+    });
+  }
   throw new DomainError("REPORT_REQUIRED", {
     message:
       `cannot move ${input.task.identifier ?? input.task.id} to ${input.to}: ` +

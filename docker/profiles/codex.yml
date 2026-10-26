@@ -1,5 +1,5 @@
-# Host profile: Codex. See docs/docker.md § Profiles and docs/install.md.
-host: codex
+# Agent-kind profile: Codex. See docs/docker.md § Profiles and docs/install.md.
+actor_kind: codex
 label: Codex
 installer: scripts/install/codex.sh
 target_dir: .codex/skills/meerkat-taskpanel
@@ -9,4 +9,4 @@ wrapper: scripts/run.mjs
 # repository-root marketplace and installs the same `./` bundle as Claude Code.
 bundle: .
 bundle_kind: bundle
-bundle_format: cursor
+bundle_format: claude

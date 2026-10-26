@@ -1,9 +1,11 @@
 /**
  * Step 6: the state machine, down both paths — and, since 0024, for every kind.
  *
- * `domain/status.mjs` is the fact source and `0024_epic_deliver_from_todo.sql`
- * re-encodes it as a trigger (0002's, rebuilt with M1's `awaiting` clause and
- * then with the epic overlay). This test walks **every ordered pair for every
+ * `domain/status.mjs` is the fact source; `0024_epic_deliver_from_todo.sql`
+ * re-encodes the non-terminal whitelist (0002's, rebuilt with M1's `awaiting`
+ * clause and then with the epic overlay), and `0027_reopen_terminal.sql` owns
+ * the terminal source — the one reopen edge — plus the round bump. This test
+ * walks **every ordered pair for every
  * kind** — `kinds × statuses²`, so 192 cells today — through the service helper
  * *and* through raw SQL, and requires the two verdicts to agree. No count is
  * written out by hand: the pair set is derived from `STATUSES`, the kind set
@@ -34,6 +36,7 @@ import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
 import { STATUSES, TASK_KINDS } from "../../src/core/domain/enums.mjs";
+import { CARD_ACCEPTANCE_MODES } from "../../src/core/domain/acceptance-mode.mjs";
 import {
   ALLOWED_TRANSITIONS,
   EPIC_ONLY_TRANSITIONS,
@@ -49,6 +52,7 @@ import { TS, TS2, cleanupTempDirs, ensureActor, insertProject, insertReport, ins
 after(cleanupTempDirs);
 
 const PAIRS = STATUSES.flatMap((from) => STATUSES.map((to) => [from, to]));
+const ACCEPTANCE_MODES = CARD_ACCEPTANCE_MODES;
 
 /** The whitelist, counted from the fact source — never a literal. */
 const WHITELISTED = Object.values(ALLOWED_TRANSITIONS).reduce((sum, list) => sum + list.length, 0);
@@ -65,21 +69,76 @@ const STATUS_COUNT = STATUSES.length;
  * be cleaned up between iterations, which is itself the invariant under test.
  *
  * @param {string} kind the card's `kind` (`TASK_KINDS`)
+ * @param {boolean} reviewCard whether the row carries the structural review marker
  * @returns {string} the task id
  */
-function boardWith(db, from, to, suffix = "", kind = "task") {
-  const id = `t_${from}_${to}${suffix}_${kind}`;
+function boardWith(db, from, to, suffix = "", kind = "task", mode = "off", reviewCard = false) {
+  const id = `t_${from}_${to}${suffix}_${kind}_${mode}${reviewCard ? "_revcard" : ""}`;
   insertProject(db);
-  insertTask(db, {
-    id,
-    identifier: `PROJ-${from}-${to}${suffix}-${kind}`.toUpperCase(),
-    status: from,
-    kind,
-  });
-  if (canTransition(from, to, kind) && to === "in_review") {
-    insertReport(db, { task_id: id, round: 1 });
+  if (reviewCard) {
+    // A review card is always `kind=task` and `acceptance_mode=off`
+    // (`resolveCardAcceptance`, and the 0040 trigger). The FK needs a real
+    // original, so seed one in the state the app requires at creation.
+    const originalId = `orig_${id}`;
+    insertTask(db, {
+      id: originalId,
+      identifier: `PROJ-ORIG-${from}-${to}${suffix}`.toUpperCase(),
+      status: "in_review",
+      kind: "task",
+      acceptance_mode: "off",
+    });
+    insertTask(db, {
+      id,
+      identifier: `PROJ-${from}-${to}${suffix}-${kind}-${mode}-REV`.toUpperCase(),
+      status: from,
+      kind,
+      acceptance_mode: mode,
+      review_of_id: originalId,
+      review_round: 1,
+    });
+  } else {
+    insertTask(db, {
+      id,
+      identifier: `PROJ-${from}-${to}${suffix}-${kind}-${mode}`.toUpperCase(),
+      status: from,
+      kind,
+      acceptance_mode: mode,
+    });
+  }
+  // 0033 — an epic's delivery row is a rollup, and its `done` row needs one for
+  // the current round. The matrix tests the *transition* (the trigger only asks
+  // that the row exists, not that it covers the children — the command layer
+  // owns coverage), so an empty rollup is the right fixture here.
+  const needsEpicRollup = kind === "epic" && (to === "in_review" || to === "done");
+  if (canTransition(from, to, kind, mode, reviewCard) && (to === "in_review" || needsEpicRollup)) {
+    insertReport(db, { task_id: id, round: 1, is_rollup: needsEpicRollup ? 1 : 0 });
+  }
+  // 0038 — an `agent` card reaching done owes a current-round review. The
+  // trigger is coarse (the row must exist and have reached the reviewer); the
+  // APPROVE verdict is the service layer's rule.
+  if (mode === "agent" && from === "in_review" && to === "done") {
+    insertTask(db, {
+      id: `${id}_rev`,
+      identifier: `PROJ-${from}-${to}${suffix}-${kind}-${mode}-REV`.toUpperCase(),
+      status: "in_review",
+      review_of_id: id,
+      review_round: 1,
+    });
   }
   return id;
+}
+
+/** Can `start` reach `done` without ever stepping through `in_review`? */
+function reachesDoneWithoutReview(start, kind, mode) {
+  const seen = new Set();
+  const queue = [...allowedTargets(start, kind, mode)];
+  while (queue.length > 0) {
+    const next = queue.shift();
+    if (next === "in_review" || seen.has(next)) continue;
+    seen.add(next);
+    queue.push(...allowedTargets(next, kind, mode));
+  }
+  return seen.has("done");
 }
 
 const move = (db, taskId, to) =>
@@ -101,39 +160,66 @@ describe("contract/state-machine — every pair, two paths", () => {
     for (const status of STATUSES) {
       const targets = allowedTargets(status);
       assert.equal(targets.includes(status), false, `${status} → ${status} must not be whitelisted`);
-      assert.equal(
-        targets.length === 0,
-        isTerminalStatus(status),
-        `${status}: a terminal status has no exit and a non-terminal one has at least one`,
-      );
+      if (isTerminalStatus(status)) {
+        assert.deepEqual([...targets], ["todo"], `${status}: the only exit is the reopen edge`);
+      } else {
+        assert.ok(targets.length > 0, `${status}: a non-terminal status has at least one exit`);
+      }
     }
   });
 
-  it("every pair is allowed or rejected identically by JS and by SQL — for every kind", async () => {
+  it("every pair is allowed or rejected identically by JS and by SQL — for every kind, mode and review-card shape", async () => {
     await withBoard(({ db }) => {
       const disagreements = [];
       const codeMismatches = [];
+      // A review card is always `kind=task` and `acceptance_mode=off`, so the
+      // review-card axis is one cell on top of the kind × mode grid — not a
+      // third cross-product (an `agent` review card cannot even be inserted;
+      // the 0040 trigger refuses it).
+      const axes = [];
       for (const kind of TASK_KINDS) {
+        for (const mode of ACCEPTANCE_MODES) axes.push({ kind, mode, reviewCard: false });
+      }
+      axes.push({ kind: "task", mode: "off", reviewCard: true });
+
+      for (const { kind, mode, reviewCard } of axes) {
+        const label = `${kind}/${mode}${reviewCard ? "/review" : ""}`;
         for (const [from, to] of PAIRS) {
           if (from === to) continue; // a no-op is not a transition — asserted below
-          const taskId = boardWith(db, from, to, "", kind);
+          const taskId = boardWith(db, from, to, "", kind, mode, reviewCard);
           const dbVerdict = move(db, taskId, to);
           const dbAllowed = dbVerdict === "NO_ERROR";
-          const jsAllowed = canTransition(from, to, kind);
+          const jsAllowed = canTransition(from, to, kind, mode, reviewCard);
 
           if (dbAllowed !== jsAllowed) {
-            disagreements.push(`${kind} ${from} → ${to}: js=${jsAllowed ? "allow" : "reject"} sql=${dbVerdict}`);
+            disagreements.push(`${label} ${from} → ${to}: js=${jsAllowed ? "allow" : "reject"} sql=${dbVerdict}`);
           }
           if (!jsAllowed) {
-            const expected = transitionReasonCode(from, to, kind);
+            const expected = transitionReasonCode(from, to, kind, mode, reviewCard);
             if (dbVerdict !== expected) {
-              codeMismatches.push(`${kind} ${from} → ${to}: sql=${dbVerdict} js=${expected}`);
+              codeMismatches.push(`${label} ${from} → ${to}: sql=${dbVerdict} js=${expected}`);
             }
           }
         }
       }
-      assert.deepEqual(disagreements, [], "service and trigger must agree on every pair, for every kind");
+      assert.deepEqual(disagreements, [], "service and trigger must agree on every pair, kind, mode and review-card shape");
       assert.deepEqual(codeMismatches, [], "and must report the same reason code");
+    });
+  });
+
+  it("withholds the off direct-done edge from a review card, on both paths", async () => {
+    await withBoard(({ db }) => {
+      // The review-card axis is not merely "another kind": the same task in
+      // `off` mode gains the direct edge, while a review card must deliver its
+      // verdict through `in_review`.
+      assert.equal(canTransition("in_progress", "done", "task", "off", false), true);
+      assert.equal(canTransition("in_progress", "done", "task", "off", true), false);
+      assert.equal(transitionReasonCode("in_progress", "done", "task", "off", true), "INVALID_TRANSITION");
+
+      const plain = boardWith(db, "in_progress", "done", "_plain", "task", "off", false);
+      const review = boardWith(db, "in_progress", "done", "_review", "task", "off", true);
+      assert.equal(move(db, plain, "done"), "NO_ERROR", "the ordinary off card keeps the shortcut");
+      assert.equal(move(db, review, "done"), "INVALID_TRANSITION", "the review card does not");
     });
   });
 
@@ -149,7 +235,8 @@ describe("contract/state-machine — every pair, two paths", () => {
       assert.deepEqual([...EPIC_ONLY_TRANSITIONS.todo], ["in_review"]);
       // ...and it is the *only* kind that gained anything: the DB walk above
       // would have caught a wider trigger, and this catches a wider table.
-      for (const kind of ["task", "deploy"]) {
+      // 0038 — `deploy` is retired; `task` is the only kind without an overlay.
+      for (const kind of ["task"]) {
         for (const [from, to] of PAIRS) {
           assert.equal(canTransition(from, to, kind), canTransition(from, to), `${kind} ${from} → ${to}`);
         }
@@ -181,32 +268,44 @@ describe("contract/state-machine — every pair, two paths", () => {
     });
   });
 
-  it("makes done reachable only from in_review — down both paths, for every kind", async () => {
+  it("makes done reachable only from in_review — except the off direct edge", async () => {
     await withBoard(({ db }) => {
+      const expected = { off: ["in_progress", "in_review"], agent: ["in_review"], human: ["in_review"] };
       for (const kind of TASK_KINDS) {
-        const viaSql = [];
-        for (const from of STATUSES) {
-          if (from === "done") continue; // done → done is a no-op, not an entry
-          const taskId = boardWith(db, from, "done", "_r", kind);
-          const verdict = move(db, taskId, "done");
-          if (verdict === "NO_ERROR") viaSql.push(from);
+        for (const mode of ACCEPTANCE_MODES) {
+          const viaSql = [];
+          for (const from of STATUSES) {
+            if (from === "done") continue; // done → done is a no-op, not an entry
+            const taskId = boardWith(db, from, "done", "_r", kind, mode);
+            const verdict = move(db, taskId, "done");
+            if (verdict === "NO_ERROR") viaSql.push(from);
+          }
+          assert.deepEqual(viaSql, expected[mode], `${kind}/${mode}`);
+          assert.deepEqual(
+            STATUSES.filter((from) => canTransition(from, "done", kind, mode)),
+            expected[mode],
+            `${kind}/${mode}`,
+          );
         }
-        assert.deepEqual(viaSql, ["in_review"], kind);
-        assert.deepEqual(
-          STATUSES.filter((from) => canTransition(from, "done", kind)),
-          ["in_review"],
-          kind,
-        );
       }
     });
   });
 
-  it("cannot leave a terminal status — down both paths (I3)", async () => {
+  it("reopens only to todo — down both paths (I3)", async () => {
     await withBoard(({ db }) => {
+      const round = (id) => db.prepare("SELECT delivery_round AS r FROM tasks WHERE id = ?").get(id).r;
       for (const terminal of ["done", "canceled"]) {
         for (const to of STATUSES) {
           if (to === terminal) continue;
           const taskId = boardWith(db, terminal, to, "_t");
+          if (to === "todo") {
+            const before = round(taskId);
+            assert.equal(move(db, taskId, to), "NO_ERROR", `${terminal} → todo is the reopen edge`);
+            assert.equal(round(taskId), before + 1, "a reopen starts a new delivery round");
+            assert.equal(canTransition(terminal, to), true);
+            assert.equal(transitionReasonCode(terminal, to), null);
+            continue;
+          }
           assert.equal(
             move(db, taskId, to),
             "TERMINAL_STATE",
@@ -252,6 +351,85 @@ describe("contract/state-machine — delivery rounds (F3)", () => {
   });
 });
 
+describe("contract/state-machine — the review-required done gate (0038)", () => {
+  /**
+   * A card at `in_review` carrying the 0031 snapshot, plus the review cards it
+   * has produced. The DB trigger is the machine floor: it demands that a
+   * current-round review *exists and has been entered*; whether that review
+   * approved is the JS rule (`REVIEW_PENDING`), stated as such.
+   */
+  function reviewable(db, { acceptanceMode = "agent", reviews = [] } = {}) {
+    insertProject(db);
+    insertTask(db, {
+      id: "orig",
+      identifier: "PROJ-0001",
+      status: "in_review",
+      acceptance_mode: acceptanceMode,
+    });
+    reviews.forEach((review, index) => {
+      insertTask(db, {
+        id: `rev-${index}`,
+        identifier: `PROJ-REV-${index + 1}`,
+        status: review.status ?? "in_review",
+        review_of_id: "orig",
+        review_round: review.round ?? 1,
+      });
+    });
+    return "orig";
+  }
+
+  it("refuses done when the card requires review and no review exists", async () => {
+    await withBoard(({ db }) => {
+      assert.equal(move(db, reviewable(db), "done"), "REVIEW_REQUIRED");
+    });
+  });
+
+  it("allows done when the card does not require review", async () => {
+    await withBoard(({ db }) => {
+      assert.equal(move(db, reviewable(db, { acceptanceMode: "off" }), "done"), "NO_ERROR");
+    });
+  });
+
+  it("accepts a current-round review that has been entered or finished", async () => {
+    await withBoard(({ db }) => {
+      assert.equal(move(db, reviewable(db, { reviews: [{ status: "in_review" }] }), "done"), "NO_ERROR");
+    });
+    await withBoard(({ db }) => {
+      assert.equal(move(db, reviewable(db, { reviews: [{ status: "done" }] }), "done"), "NO_ERROR");
+    });
+  });
+
+  it("does not accept a canceled review, or one from an earlier round", async () => {
+    await withBoard(({ db }) => {
+      assert.equal(move(db, reviewable(db, { reviews: [{ status: "canceled" }] }), "done"), "REVIEW_REQUIRED");
+    });
+    await withBoard(({ db }) => {
+      // The original is on delivery round 1; a review stamped round 2 is history.
+      assert.equal(move(db, reviewable(db, { reviews: [{ round: 2 }] }), "done"), "REVIEW_REQUIRED");
+    });
+  });
+
+  it("refuses to let a review card itself require review", async () => {
+    await withBoard(({ db }) => {
+      insertProject(db);
+      insertTask(db, { id: "orig2", identifier: "PROJ-0002", status: "in_review" });
+      assert.equal(
+        reasonCode(() =>
+          insertTask(db, {
+            id: "rev2",
+            identifier: "PROJ-0003",
+            status: "in_review",
+            review_of_id: "orig2",
+            review_round: 1,
+            acceptance_mode: "agent",
+          }),
+        ),
+        "REVIEW_CARD_MARKER_INVALID",
+      );
+    });
+  });
+});
+
 describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
   it("has in_progress → awaiting as the only entry, down both paths", async () => {
     await withBoard(({ db }) => {
@@ -270,11 +448,21 @@ describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
     });
   });
 
-  it("has awaiting → in_progress as the only way back into the work", async () => {
+  it("exits awaiting into the work, back to the queue, or out (0034)", async () => {
     await withBoard(({ db }) => {
       const taskId = boardWith(db, "awaiting", "in_progress");
       assert.equal(move(db, taskId, "in_progress"), "NO_ERROR");
-      assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "canceled"]);
+
+      // The answered card returns to `todo`, and that is not a reopen: the
+      // delivery round stays where it was.
+      const requeued = boardWith(db, "awaiting", "todo", "_requeue");
+      assert.equal(move(db, requeued, "todo"), "NO_ERROR");
+      assert.equal(
+        db.prepare("SELECT delivery_round FROM tasks WHERE id = ?").get(requeued).delivery_round,
+        1,
+        "re-queueing does not start a round",
+      );
+      assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "todo", "canceled"]);
     });
   });
 
@@ -315,7 +503,7 @@ describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
     });
   });
 
-  it("reaches done only through in_review — exhaustively, over the whole graph", () => {
+  it("reaches done only through in_review, except the off direct edge", () => {
     // Not a spot check: from every status, the whole reachable set is expanded
     // **without ever stepping through `in_review`**, and `done` must never be in
     // it. This is "no delivery without review" stated as reachability rather
@@ -323,25 +511,38 @@ describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
     // including the epic overlay's, which is why the walk is run per kind.
     //
     // `in_review` itself is exempt from the start set — it *is* the review, and
-    // `in_review → done` is precisely the exit the invariant is built on.
+    // `in_review → done` is precisely the exit the invariant is built on. `off`
+    // adds exactly one direct edge, `in_progress → done`; every other start still
+    // has to pass through `in_review`.
     for (const kind of TASK_KINDS) {
-      for (const start of STATUSES) {
-        if (start === "in_review") continue;
-        const seen = new Set();
-        const queue = [...allowedTargets(start, kind)];
-        while (queue.length > 0) {
-          const next = queue.shift();
-          if (next === "in_review" || seen.has(next)) continue;
-          seen.add(next);
-          queue.push(...allowedTargets(next, kind));
+      for (const mode of ["agent", "human"]) {
+        for (const start of STATUSES) {
+          if (start === "in_review") continue;
+          assert.equal(
+            reachesDoneWithoutReview(start, kind, mode),
+            false,
+            `${kind}/${mode} ${start} reaches done without passing in_review`,
+          );
         }
-        assert.equal(seen.has("done"), false, `${kind} ${start} reaches done without passing in_review`);
+        assert.deepEqual(
+          STATUSES.filter((from) => canTransition(from, "done", kind, mode)),
+          ["in_review"],
+          `${kind}/${mode}`,
+        );
       }
-      // And the direct-predicate form, down both paths.
+
+      // `off` adds exactly the one direct pair. "No done without in_review" is
+      // deliberately false here — that is what off means — so the property is
+      // "the only new entry into done is in_progress", not the old reachability
+      // invariant.
+      const extras = PAIRS.filter(
+        ([from, to]) => canTransition(from, to, kind, "off") && !canTransition(from, to, kind),
+      );
+      assert.deepEqual(extras, [["in_progress", "done"]], `${kind}/off`);
       assert.deepEqual(
-        STATUSES.filter((from) => canTransition(from, "done", kind)),
-        ["in_review"],
-        kind,
+        STATUSES.filter((from) => canTransition(from, "done", kind, "off")),
+        ["in_progress", "in_review"],
+        `${kind}/off`,
       );
     }
   });
@@ -380,6 +581,19 @@ describe("contract/state-machine — one move, one revision (plan §3.3.6③)", 
       const before = revision();
       assert.equal(move(db, "t", "in_progress"), "NO_ERROR");
       assert.equal(revision() - before, 1, "status move + nested round bump = 1 revision");
+      assert.equal(db.prepare("SELECT delivery_round AS r FROM tasks WHERE id='t'").get().r, 2);
+    });
+  });
+
+  it("costs exactly one revision when a terminal card is reopened", async () => {
+    await withBoard(({ db }) => {
+      insertProject(db);
+      insertTask(db, { id: "t", identifier: "PROJ-0001", status: "done" });
+      const revision = () => Number(db.prepare("SELECT revision AS r FROM global_revision WHERE singleton=1").get().r);
+
+      const before = revision();
+      assert.equal(move(db, "t", "todo"), "NO_ERROR");
+      assert.equal(revision() - before, 1, "status move + round bump = 1 revision");
       assert.equal(db.prepare("SELECT delivery_round AS r FROM tasks WHERE id='t'").get().r, 2);
     });
   });
@@ -422,7 +636,12 @@ describe("contract/state-machine — the execution claim follows the work cycle"
               // every other status seeds the claim the move must carry.
               ...(from === "backlog" ? {} : { claimed_by: "linus", claimed_at: TS, heartbeat_at: TS }),
             });
-            if (to === "in_review") insertReport(db, { task_id: id, round: 1 });
+            // 0033 — the epic rows that need a delivery row: entering review, and
+            // the legal done edge (which reads the current round's rollup).
+            const epicRollup = kind === "epic" && (to === "in_review" || to === "done");
+            if (to === "in_review" || epicRollup) {
+              insertReport(db, { task_id: id, round: 1, is_rollup: epicRollup ? 1 : 0 });
+            }
 
             try {
               repos.tasks.moveCas({ id, to, now: TS2 });

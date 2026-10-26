@@ -39,6 +39,7 @@ import {
   COMMENT_KINDS,
   inputOf,
   PRIORITIES,
+  PROJECT_ACCEPTANCES,
   RELATION_TYPES,
   SESSION_STATUSES,
   STATUSES,
@@ -91,6 +92,9 @@ export const REQUEST = Object.freeze({
   statuses: arr(oneOf(STATUSES)),
   priority: oneOf(PRIORITIES),
   taskKind: oneOf(TASK_KINDS),
+  // 0038 — the single acceptance vocabulary. A project may say `auto`; a card
+  // may not (an unresolved snapshot is refused at the domain boundary).
+  projectAcceptance: oneOf(PROJECT_ACCEPTANCES),
   relationType: oneOf(RELATION_TYPES),
   commentKind: oneOf(COMMENT_KINDS),
   sessionStatus: oneOf(SESSION_STATUSES),

@@ -1,15 +1,15 @@
-# Host profile: Claude Code. See docs/docker.md § Profiles and docs/install.md.
-host: claude
+# Agent-kind profile: Claude Code. See docs/docker.md § Profiles and docs/install.md.
+actor_kind: claude
 label: Claude Code
 installer: scripts/install/claude.sh
 target_dir: .claude/skills/meerkat-taskpanel
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
-# Distribution bundle this host installs from, and what the host's detector must report.
+# Distribution bundle this agent kind installs from, and what its detector must report.
 # Claude Code reads .claude-plugin/plugin.json; the repository-root marketplace
 # (.claude-plugin/marketplace.json) resolves this plugin to the repository root.
-# The format below is OpenClaw's, not Claude's: the root carries .cursor-plugin/ as well,
-# and OpenClaw's precedence (codex → cursor → claude) settles on cursor.
+# The format below is OpenClaw's, not Claude's: the root carries .claude-plugin/, which
+# OpenClaw's detector reports as claude.
 bundle: .
 bundle_kind: bundle
-bundle_format: cursor
+bundle_format: claude

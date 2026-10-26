@@ -45,14 +45,18 @@
 
 **改动前（散文口径 = 出边）** —— `workspace/T-20261014-212017-3/design-spec.md` §4.4：
 
-> **设计裁定**：`depends_on` ↔ 关系类型 `blocks`（PROTOCOL §①）。`Blocks` 组由只读链接升级为 **B24 chip 组合**（抽屉 hook 族），Parent/Related 保持只读。
+> **设计裁定**：`depends_on` ↔ 关系类型 `blocks`（……）。`Blocks` 组由只读链接升级为 **B24 chip 组合**（抽屉 hook 族），Parent/Related 保持只读。
+
+> 注：以上「改动前」引文中的外部协议章节锚已于 2026-10-22 略去（以 `（……）` 代记），命题不变；产品口径见 §3.1 与 `src/core/domain/relation.mjs`。
 
 > **种子**：openDetail 在 relations `fill()` 后，遍历 `.td-rel[data-detail-relations]` 中 `relations.blocks` 的 `.td-rel-item` 内的 `[data-relation-link]`，对每个标识符 `addComboChip($dependsInput, COMBO.detailDepends, id, "")`，随后**移除该 `.td-rel-item`**（Blocks 改由 chip 组合承载，避免双源）。
 
 **改动前（原型本体的同款写法）** —— `design/prototype/app.js`（`openDetail` 内，`depends_on` 注释与种子循环）：
 
-> `/* depends_on. The card's `blocks` relation and this control are the same fact (PROTOCOL §①), so the card is the seed: each read-only link becomes a chip, and the row that carried them goes — one fact, one source, from here on the chips. */`
+> `/* depends_on. The card's `blocks` relation and this control are the same fact, so the card is the seed: each read-only link becomes a chip, and the row that carried them goes — one fact, one source, from here on the chips. */`
 > `if (!$item.find('[data-i18n="relations.blocks"]').length) return;`
+
+> 注：该原型注释已随 `design/prototype/app.js` 同步刷新（2026-10-22）；只删去外部协议章节锚，句子其余部分不变。
 
 ⇒ 两侧的**种子源**都是抽屉 Relations 段里**标着 `relations.blocks`（`Blocks` / `阻塞`）那一行**（`design/prototype/index.html`：`<span class="td-rel-item">` 内 `data-i18n="relations.blocks"` + 若干 `[data-relation-link]`，例如 `TD-130`、`TD-126`）。该行的自然读法 =「本卡阻塞了谁」= **出边**；原型无真值后端，无法自证方向 ⇒ 散文把出边当成了 `depends_on` 的种子。
 
@@ -314,3 +318,12 @@ NaN        => "0 KB"
 | §2.3 / §3.3 | 尺寸文案 = **已声明的可见文案偏离**（三段式 vs 两段式），实现维持；附**口径精度**一条 | `-7` D6（准予维持）；本轮实测（§7） |
 | §4 | 与实现对齐的**可核判据**（含一条期望零命中的反证命令） | 卡面 Acceptance ② |
 | §5 | **未改动面**声明（原型 / DESIGN / BLOCKS / 实现 / 测试） | 卡面 Acceptance ③；`kind=decision` 落点裁定 |
+
+### v1.1 —— 2026-10-22（doc-only；写面 `design/contracts/**`）
+
+**一句话**：清除两处「改动前」引文中的外部协议文档章节锚；原型本体的同款注释已同步刷新。命题、判据与实现锚点一字未动。
+
+| 处 | 订正 / 登记 | 依据 |
+|---|---|---|
+| §2.1 第一段引文 | 外部章节锚以 `（……）` 代记，并加日期说明；命题不变 | 外部文档不在本仓库，锚点不可解析 |
+| §2.1 第二段引文 | 与 `design/prototype/app.js` 的新注释同步；仅删去外部锚 | 原型同步修改 |

@@ -1,112 +1,250 @@
 ---
 name: meerkat-loop
-description: The host-external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping and a 10-minute continue turn that wakes the host to run the notify-only SLA patrol, the board's review workflow, and the atomic claim-and-wake poll. Installs launchd / systemd / cron units and the per-host wake glue for claude, codex and pi; OpenClaw is excluded.
+description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation, one worker session per target directory, and a reviewer session there on demand. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the worker or reviewer session spawns the matching subagent in the project directory. Runs under launchd / systemd / cron units for claude, codex and pi; OpenClaw is excluded.
+disable-model-invocation: true
 ---
 
 # Meerkat Loop
 
-The loop runs when no agent is looking. Its scheduler owns two clocks:
+The loop runs when no agent is looking. Its scheduler owns two clocks and — in its default
+resident shape — a long-lived **session pool**:
 
-| Clock | Cadence | Job |
+| Part | Cadence | Job |
 |---|---|---|
-| **ping** | 60s | prune registry entries whose pid is gone. No board read, no claim, no LLM |
-| **continue** | 600s | wake the host with a bounded `继续` prompt; that turn runs the entries below |
+| **ping** (`taskctl loop run --ping-once`) | 60s | prune registry entries whose pid is gone. No board read, no claim, no LLM |
+| **continue** (`taskctl loop run --continue-once`) | 600s | hand the control session a bounded `/meerkat-loop` continue prompt (or run it one-shot when no pool is live); that turn runs the entries below |
+| **session** (`taskctl loop session`) | long-lived | one control conversation, one project conversation per target directory, and a reviewer conversation per directory on demand; each lane spawns its worker/reviewer subagent in that directory |
 
-The continue turn runs three deterministic entries, in this order:
+A subagent inherits the **launch cwd** of the session that spawns it, so one board-wide session
+cannot serve two project directories. That is why the pool keeps one worker session per
+directory, and a reviewer session in the same directory when a review card is queued. Without a
+live pool, poll claims nothing and only patrol and workflow run — see
+`references/operation.md` §No resident pool.
 
-1. **patrol** — notify-only SLA pass. Escalates stale claims, unreadable
-   heartbeats and the rest of the timeout table. No alert moves a card, and no
-   LLM turn starts by default.
-2. **workflow** — the write channel. The **board** computes the plan
-   (`issue reconcile --workflow`) and the **loop** applies its review actions:
-   for each delivery (`in_review` card, flow A) dispatch an independent
-   reviewer, apply the reviewer's `VERDICT:` report to the original, and close
-   the review card last. On by default; `--workflow=no` disables it, and
-   `--reviewer` is required for dispatch.
-3. **poll** — scan, atomically claim, wake one worker. Runs last so a review
-   card dispatched in this turn can be claimed immediately.
+The continue turn runs three deterministic commands, in this order:
+
+1. **patrol** — notify-only SLA pass. The board computes the SLA rows; the loop de-duplicates
+   them, re-reads a survivor and notifies the leader. It also emits the legacy stale-heartbeat
+   alerts and the peer-inspector liveness row. No alert moves a card, and no LLM turn starts by
+   default.
+2. **workflow** — the write channel. The **board** computes the plan and the **loop** applies
+   it. For a flow-A delivery whose card is `acceptance_mode: agent`, dispatch an independent
+   reviewer, apply the reviewer's `VERDICT:` report to the original, and close the review card
+   last. An `off` card is not dispatched: the plan emits `auto_accept` and the loop closes the
+   original directly (`loop-auto`). A `human` card is left for a person. On by default;
+   `--workflow=no` disables it. The reviewer is `project.reviewer ??` the deployment reviewer
+   (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent config). An `agent` card with no
+   effective reviewer fails the loop at startup: the board would have dispatched a review
+   nobody can claim.
+3. **poll** — scan, **register the card brief watch**, atomically claim, **enqueue the handoff**. It
+   also runs the **question lane**: an unanswered agent `question` on an `in_progress` card is
+   enqueued for the project session (no claim, no subagent slot). It never spawns a worker: the
+   resident project session does, as a subagent that inherits the project directory. Runs last
+   so a review card dispatched in this turn can be claimed immediately. At the concurrency cap,
+   with no project directory for the card, or when the brief cannot be written, nothing is
+   claimed.
+
+The exact `taskctl` invocations and the JSON keys each pass reads are the board skill's
+capability contract: `meerkat-taskpanel`, `references/capabilities.md`. This skill records only
+the decisions — when to patrol, dispatch, claim, wake or notify. **The board's plan is the
+authority on actions**; a refused call carries a named code and hint, and the loop acts on that
+rather than pre-checking board rules here.
+
+### Invocation
+
+This skill is **command-only**. Its frontmatter sets `disable-model-invocation: true`, so the
+model never sees it in its skill list and never loads it from a keyword or description match;
+only an explicit invocation runs it:
+
+```text
+/meerkat-loop
+```
+
+The text after the command is the turn's instruction, not a subcommand. A supervisor's continue
+turn passes `/meerkat-loop Continue — …`; the rest of that prompt (the three `taskctl loop`
+commands) is appended as the turn's input. There is no argument placeholder, no subcommand and
+no argument parsing.
+
+**Read the mode first.** The instruction's first line declares it:
+
+- `mode: supervised` — this session is the **headless supervisor's** control turn. There is no
+  interactive user in the session window. **Never ask a question there**; ask on the card with
+  a board comment.
+- **no marker** — a human invoked the skill in a live session. This is **manual** mode; the
+  human is present and can be asked in the conversation (the answer is still recorded as a
+  board comment).
+
+The two modes run the same control turn — see §Execution modes. On an agent kind that does not
+slash commands, the `/meerkat-loop` prefix stays literal text and the rest of the prompt still
+carries the work.
+
+### Execution modes
+
+There is **one control turn**: `patrol → workflow → poll`, the same question ladder and the
+same acceptance rules. Two drivers run it; the turn says which.
+
+- **Supervised** (`mode: supervised`). The scheduler (ping/continue/events) or a one-shot
+  supplies the prompt. This session is **headless**: no user is watching the session window, so
+  never ask a question there. The prompt is authoritative: run exactly the commands it lists —
+  poll is absent when no pool is live. Ask the human on the card, as a comment. Do not start a
+  clock, a pool, a subscriber or a watcher; return when the turn is done.
+- **Manual** (no marker). A human invoked the skill in a live session. The session is the
+  control turn and the pool is the dispatcher; the human is the clock and the question
+  front-end. Questions may be asked in the conversation and are recorded as board comments.
+
+#### Manual mode
+
+1. **Detect.** Run `taskctl loop status --json`:
+   - `running` — a pool is live. `pool.controlMode` says who owns the turn. `internal` means
+     the supervisor owns it: do **not** run a second control turn; you may attach as a question
+     console. `external` means a live session owns it; run the loop.
+   - `configured-idle` / `partial` / `busy` — report; do not start a pool and do not fight the
+     service manager.
+   - `absent` — nothing is running. Ask the human before taking over.
+2. **Take over (explicit only).** If `absent` and the human agrees, run
+   `taskctl loop status --take-over`: it starts the pool in **external-control** mode (project
+   sessions still dispatch) and records its pid. Stop it with `taskctl loop status --stop`. If
+   the human declines, stop after the read-only report.
+3. **Control tick.** Run the three commands the supervised prompt lists — `taskctl loop patrol`,
+   `taskctl loop workflow`, `taskctl loop poll`. With the external pool live, poll claims and
+   enqueues; the pool's project sessions spawn the workers/reviewers.
+4. **Question tick — one round across all waiting cards.**
+   `taskctl loop console --json` lists the `awaiting` cards, in-progress agent questions no
+   human has answered, and `in_review` cards pending acceptance. **Both
+   answer channels are the same record** — a human comment in the board UI and an answer typed
+   in this conversation:
+   - Before asking, re-read the card (`taskctl comment list <ref> --limit 20 --json`). If a
+     human comment is newer than the question, the human already answered — so do not ask
+     again, do not write a second comment, and run a control tick.
+   - Otherwise ask the whole frontier in **one message**: one numbered block per card, each item
+     Q1..Qn with a recommendation, worded so "yes" accepts it. Facts are yours to look up —
+     never ask for a fact the card, code or docs can establish. A question that depends on
+     another open one waits for the next round. One round is one question string per card:
+     never drip one comment per item.
+   - After they answer, re-read once more: if a human comment (a UI answer posted while you were
+     asking) is already newer than the question, do not duplicate it; otherwise record their
+     answer verbatim with `taskctl comment add <ref> --as-human …`. The board comment is
+     authoritative; the in-session question is only the front-end.
+   - Apply the move the question ladder prescribes (an awaiting card resumes on the human
+     comment; an in_progress agent question → `todo`/reattach) and run a control tick so the
+     resumed card is processed promptly. Only a human comment resumes awaiting.
+5. **Bound the loop.** Control ticks follow the continue cadence (default 600s); question ticks
+   default to 30s; stop at the requested TTL (default 30 min) or on "stop". On exit report the
+   pool pid and `taskctl loop status --stop`.
+
+**Never** decide an E1–E5 question yourself; never claim or move a work card; never start a
+second pool. Run at most one manual console per agent directory: `session.lock` guards the
+pool, but two consoles would still race the workflow ledger.
+
+```bash
+# The agent's own `taskctl` shim carries `--agent` and `--actor-kind`; a session
+# that overrides either passes the flag explicitly.
+taskctl loop status --json
+taskctl loop console --json
+taskctl loop patrol
+taskctl loop workflow
+taskctl loop poll
+```
+
+`--take-over`, `--stop`, `--dry-run` and the policy flags (`--workflow`, `--reviewer`,
+`--claim-unassigned`, …) belong to the verb they modify — `taskctl loop <verb> --help` is the
+list. An install that has no shim on `PATH` can use `<agent-dir>/bin/taskctl`, or
+`node <runtime>/src/cli/index.mjs loop …` with `--agent`/`--actor-kind`.
 
 ### Who may close
 
-The board's acceptance policy is authoritative and arrives in the plan.
-`--acceptance` / `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` is an advisory local copy,
-printed at startup for diagnostics only.
+The card's own `acceptance_mode` is authoritative and arrives on the card; the loop keeps no
+local copy and there is no board-level policy. In loop terms it closes what the plan lets
+`taskd` close: an `agent` original after a current-round `APPROVE`, its review card, and an
+`off` card the plan auto-accepts. A `human` card is never accepted by the loop — record the
+evidence, stop, and let the person close it. A worker always stops at `in_review`; review cards
+are never held, and the loop always closes the card it dispatched. The board skill's
+`references/review-workflow.md` is the semantic authority; this skill describes **when** the
+loop dispatches and **how** it executes the plan.
 
-| policy | top-level original | child card | review card |
-|---|---|---|---|
-| `human-only` | **hold** — record the verdict, close the review card, leave the card `in_review` | close | close |
-| `both` (default) | close | close | close |
-| `agent-only` | close | close | close |
+### Event subscriber
 
-A held approval is idempotent: `review_verdict=approve` +
-`review_verdict_round` means a second pass rewrites neither the comment nor the
-marker. A worker always stops at `in_review`; review cards are never held.
+On launchd/systemd, `taskctl loop subscribe` follows the board's event stream through
+`taskctl events follow` (the local event hub) and asks for a continue turn when a
+dispatch-relevant event arrives. The continue clock remains the fallback and the only path for
+time-based work; an event wakes a turn only while the resident pool is live (without one it
+logs and skips). Cron cannot host a long-lived process. The daemon publishes
+`subscribe.state.json`.
 
-### Event subscriber (optional)
+### Task process directory (`.meerkat/`)
 
-On launchd/systemd, `--subscribe` holds one SSE connection and asks for a
-continue turn when a dispatch-relevant event arrives. The continue clock remains
-the fallback and the only path for time-based work. Cron cannot host a
-long-lived process.
+Every task the loop dispatches gets one directory under the project's working directory — the
+resolved `target_dir` (`local_path ?? run_dir`), which is also the subagent's cwd:
+
+```text
+.meerkat/<identifier>/
+  card.md          the board card, exported by the loop (read-only)
+  plan.md          the worker's plan (goals, steps, risks, acceptance mapping)
+  …                the subagent's notes, logs, evidence, report drafts, attachments
+```
+
+- **Before the claim**, poll registers the card with the local event hub, naming
+  `<target_dir>/.meerkat/<identifier>/card.md` (and the original's brief for a review card).
+  The hub writes the first snapshot before it answers, then keeps the file fresh until the
+  card is `done` or `canceled`. A failed registration — or a card that is already terminal —
+  **defers the card unclaimed**; a refused claim unregisters it again. A claim with no brief
+  has nowhere to run.
+- `card.md` is the **authoritative brief** handed to the subagent and re-read on resume. It is
+  machine-generated: **never edit it**. The hub overwrites it from the board. It is a snapshot; `taskctl issue get <ref> --json` remains the live state
+  and the source of the `version` a write needs.
+- Other process files — including **downloaded attachments** — go in the same directory:
+  `taskctl attachment list <ref> --json`, then
+  `taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>`.
+- The hub owns the refresh, debounced and rate-limited, for every registration; a failed
+  refresh leaves the previous brief in place. Dispatch is separate: an event wakes a continue
+  turn only while the resident pool is live.
+- Workers maintain `plan.md` and the reviewer reads it. An unexplained deviation is grounds for
+  `VERDICT: REJECT`; a missing plan is not itself a failure (the reviewer falls back to the
+  description and the frozen acceptance snapshot).
+
+### Team roles (optional)
+
+A team is an optional roles root, authored by `setup-meerkat`. It adds routing (the role named
+by the card's assignee supplies responsibilities and boundaries) and a workflow path carried in
+the handoff. Precedence is whole-manifest: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, then
+`<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`, then the loop's
+state directory (`<agent-dir>/meerkat-taskpanel/roles/`). With no roles root the loop behaves
+exactly as before.
+`setup-meerkat` writes the team's board names to `MEERKAT_TASKPANEL_AGENTS`; without that list
+the loop only scans its default agent.
+
+### Questions and decision rights
+
+The ladder is **subagent → main session → human** (details:
+`references/decision-policy.md`). A subagent never decides an unauthorized question: it writes
+an agent `question` comment, keeps the card `in_progress`, and stops. Poll's **question lane**
+wakes the project session with the unanswered question (no claim, no subagent slot); it answers
+with a `note` and moves the card to `todo`, or escalates E1-E5 to the human with `awaiting`. Any
+human comment resumes an awaiting card, whatever its kind; the board does not read it, and the
+resumed worker judges from its content whether it is a complete decision (ask again if not).
+The loop never writes a decision kind for its own answer and never uses `--as-human` except to
+record what the human actually said. A question is asked as **one round**: the frontier of
+decisions whose prerequisites are settled, numbered Q1..Qn with a recommendation, worded so
+"yes" accepts it. One round is one question string per card; the full protocol is
+`references/decision-policy.md` §Decision rounds.
 
 ## Required board interface
 
 ```text
-requires: board task-interface v1   — board release >= 1.1.0
+requires: board task-interface v1   — board release >= 0.1.0
 ```
 
-The loop drives the board through `taskctl` (`issue candidates`, `issue move`,
-`issue list`, `issue reconcile --workflow`). `task-interface v1` first shipped
-in board 1.0.0; the board-side workflow plan landed in 1.1.0.
-
-Gate check before pointing a loop at a board:
+The loop drives the board only through `taskctl` — the capability subset is the board skill's
+`references/capabilities.md` (including `events follow` for the live stream; the loop never
+calls the HTTP API). `task-interface v1` and the board-side workflow plan both ship in the
+0.1.0 baseline. Gate check before pointing a loop at a board:
 
 ```bash
-node scripts/board-check.mjs                 # taskctl on PATH
-node scripts/board-check.mjs --repo <checkout>
-node scripts/board-check.mjs --json          # machine-readable verdict
+taskctl loop compat                 # taskctl on PATH
+taskctl loop compat --repo <path>   # the runtime tree / checkout to inspect
+taskctl loop compat --json          # machine-readable verdict
 ```
 
-Exit 3 means no verdict: the board could not be asked, or its declared version
-is below the floor. The gate does not prove that every command still behaves the
-same way; the compatibility table in `references/operation.md` records that
-pairing.
-
-## Installing
-
-```bash
-bash install.sh --target claude     # or codex, pi
-bash install.sh --target all        # claude, codex, pi, and openclaw (board only)
-```
-
-The installer copies this skill into the host's skill directory, copies the
-execution body into `<host>/meerkat-taskpanel/`, renders the units and wake
-glue, and prints the one command that loads a unit. Loading is opt-in:
-`install.sh --supervisor=enable` (per host with `--supervisor-hosts`; also
-`--supervisor=status`, `--supervisor=disable`).
-
-**OpenClaw is deliberately excluded.** `install.sh --target openclaw` installs
-the board skill only: the openclaw-team framework already runs an equivalent
-supervisor, and installing both would put two supervisors on one board.
-
-## Layout
-
-```text
-SKILL.md                  this file
-references/operation.md   install paths, flags, workflow rules, compatibility
-manifest.txt              the execution body's file list (generated)
-scripts/board-check.mjs   the interface gate (authored)
-scripts/supervisor.mjs    the scheduler (generated)
-scripts/wake-cwd.mjs      the wake glue's resolver (generated)
-scripts/loop/*.mjs        the deterministic entries (generated)
-scripts/foundation/**     modules the execution body imports (generated)
-templates/                units, wake glue, host config (generated)
-```
-
-Everything except `SKILL.md`, `references/` and `scripts/board-check.mjs` is
-generated by `node scripts/sync-skills.mjs` in the repository this skill is built
-from. Do not hand-edit it: edit `scripts/supervisor.mjs`, `scripts/loop/`,
-`scripts/wake-cwd.mjs`, `src/foundation/` or `scripts/install/templates/`, then
-regenerate. The foundation copy under `scripts/foundation/` is byte-for-byte the
-repository's `src/foundation/`; the entry scripts are copied with only their
-foundation import specifiers rewritten to point at `./foundation/`.
+Exit 3 means no verdict: the board could not be asked, or its declared version is below the
+floor. The gate does not prove that every command still behaves the same way; the compatibility
+table in `references/operation.md` records that pairing.

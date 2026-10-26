@@ -18,8 +18,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
+import { QUEUE_FILES } from "../../src/orchestrator/queue.mjs";
 
-import { ACTIONS, LOOP_HOSTS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, resolveScheduler, stripBlock, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
+import { ACTIONS, LOOP_KINDS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, poolReport, resolveScheduler, stripBlock, subscribeReport, subscribeStatusLine, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
 
 const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-plan-" });
 
@@ -117,47 +118,47 @@ describe("supervisor: the scheduler and the identifiers", () => {
     assert.equal(supervisorLabel("alice", "claude", "continue"), "com.meerkat-taskpanel.alice.claude.continue");
 
     // The template the installer writes is the single source of truth for the Label.
-    const plist = doc("skills/meerkat-loop/templates/scheduling/launchd/com.meerkat-taskpanel.ping.plist");
-    assert.match(plist, /<string>com\.meerkat-taskpanel\.\{\{AGENT\}\}\.\{\{HOST\}\}\.ping<\/string>/);
+    const plist = doc("scripts/install/templates/scheduling/launchd/com.meerkat-taskpanel.ping.plist");
+    assert.match(plist, /<string>com\.meerkat-taskpanel\.\{\{AGENT\}\}\.\{\{ACTOR_KIND\}\}\.ping<\/string>/);
   });
 
-  it("the three actions and the three hosts are the contract's, and openclaw is never one", () => {
+  it("the three actions and the three loop agent kinds are the contract's, and openclaw is never one", () => {
     assert.deepEqual([...ACTIONS], ["enable", "disable", "status"]);
     assert.deepEqual([...SCHEDULERS], ["auto", "launchd", "systemd", "cron"]);
-    assert.deepEqual([...LOOP_HOSTS], ["claude", "codex", "pi"]);
-    assert.ok(!LOOP_HOSTS.includes("openclaw"), "OpenClaw runs openclaw-team's own supervisor");
+    assert.deepEqual([...LOOP_KINDS], ["claude", "codex", "pi"]);
+    assert.ok(!LOOP_KINDS.includes("openclaw"), "OpenClaw runs openclaw-team's own supervisor");
   });
 
-  it("paths come from the host directory, with the marker the docs name", () => {
-    const paths = supervisorPaths({ hostBase: "/home/op/.claude", agent: "alice", host: "claude", env: {}, home: "/home/op" });
+  it("paths come from the agent directory, with the marker the docs name", () => {
+    const paths = supervisorPaths({ agentBase: "/home/op/.claude", agent: "alice", actorKind: "claude", env: {}, home: "/home/op" });
 
     assert.equal(paths.marker, "~/.claude");
-    assert.equal(paths.hostDir, ".claude");
-    assert.equal(paths.supervisor, "/home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs");
+    assert.equal(paths.agentDir, ".claude");
+    // With no `TP_CLI`, the cron preview names the agent-local shim; the loop's
+    // state now lives in the directory beside it.
+    assert.equal(paths.cli, "/home/op/.claude/bin/taskctl");
+    assert.equal(paths.cliNeedsNode, false);
     assert.equal(paths.log, "/home/op/.claude/meerkat-taskpanel/supervisor.log");
-    assert.equal(paths.state, "/home/op/.claude/meerkat-taskpanel/supervisor.state.json");
+    assert.equal(paths.stateDir, "/home/op/.claude/meerkat-taskpanel");
     assert.deepEqual(
       paths.launchd.map((unit) => unit.plist),
       [
+        "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.session.plist",
         "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist",
         "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.continue.plist",
         "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.subscribe.plist",
       ],
     );
     assert.deepEqual(paths.launchd.map((unit) => unit.label), [
+      "com.meerkat-taskpanel.alice.claude.session",
       "com.meerkat-taskpanel.alice.claude.ping",
       "com.meerkat-taskpanel.alice.claude.continue",
       "com.meerkat-taskpanel.alice.claude.subscribe",
     ]);
-    // The old topology is still addressable, so enable can boot it out.
-    assert.deepEqual(paths.legacyLaunchd.map((unit) => unit.label), [
-      "com.meerkat-taskpanel.alice.claude.poll",
-      "com.meerkat-taskpanel.alice.claude.patrol",
-    ]);
     // systemd reads the *user's* config directory, which `--prefix` never moves.
     assert.equal(paths.systemdUnitDir, "/home/op/.config/systemd/user");
     assert.equal(
-      supervisorPaths({ hostBase: "/p/.codex", agent: "a", host: "codex", env: { XDG_CONFIG_HOME: "/xdg" }, home: "/home/op" })
+      supervisorPaths({ agentBase: "/p/.codex", agent: "a", actorKind: "codex", env: { XDG_CONFIG_HOME: "/xdg" }, home: "/home/op" })
         .systemdUnitDir,
       "/xdg/systemd/user",
     );
@@ -171,7 +172,7 @@ describe("supervisor: the scheduler and the identifiers", () => {
 describe("supervisor: the cron marker block is the idempotency key", () => {
   const { begin, end } = cronMarkers("~/.claude");
 
-  it("names the host directory, exactly as the docs show", () => {
+  it("names the agent directory, exactly as the docs show", () => {
     assert.equal(begin, "# >>> meerkat-taskpanel (~/.claude) >>>");
     assert.equal(end, "# <<< meerkat-taskpanel (~/.claude) <<<");
     assert.ok(doc("docs/scheduling.md").includes(begin), "the docs quote the same marker");
@@ -209,9 +210,9 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
 
   it("carries the rendered cron unit when there is one, and the same lines otherwise", () => {
     const paths = supervisorPaths({
-      hostBase: "/home/op/.claude",
+      agentBase: "/home/op/.claude",
       agent: "alice",
-      host: "claude",
+      actorKind: "claude",
       env: {},
       home: "/home/op",
     });
@@ -226,24 +227,28 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
     const built = cronContentLines(paths);
     assert.equal(built.length, 3);
     assert.match(built[0], /^PATH=\S+$/);
-    assert.match(built[1], /^\* \* \* \* \* \/[^ ]*node \/home\/op\/\.claude\/meerkat-taskpanel\/scripts\/supervisor\.mjs --host claude --agent alice --ping-only --once /);
-    assert.match(built[2], /^\*\/10 \* \* \* \* .* --continue-only --once /);
+    assert.match(built[1], /^\* \* \* \* \* \/home\/op\/\.claude\/bin\/taskctl loop run --ping-once --actor-kind claude --agent alice /);
+    assert.match(built[2], /^\*\/10 \* \* \* \* .* loop run --continue-once /);
     assert.match(built[1], />\/dev\/null 2>&1$/);
 
     // Exported by `install.sh` before it calls this module: the preview then carries the
     // very values the rendered unit carries, not a second guess at them.
     const exported = supervisorPaths({
-      hostBase: "/home/op/.claude",
+      agentBase: "/home/op/.claude",
       agent: "alice",
-      host: "claude",
-      env: { TP_NODE: "/opt/node/bin/node", TP_UNIT_PATH_CRON: "/opt/cli/bin:/opt/node/bin:/usr/bin:/bin" },
+      actorKind: "claude",
+      env: {
+        TP_NODE: "/opt/node/bin/node",
+        TP_CLI: "/opt/repo/src/cli/index.mjs",
+        TP_UNIT_PATH_CRON: "/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
+      },
       home: "/home/op",
     });
     exported.cronFile = join(makeTempDir(), "meerkat-taskpanel.cron");
     assert.deepEqual(cronContentLines(exported), [
       "PATH=/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
-      "* * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --ping-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
-      "*/10 * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --continue-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
+      "* * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
+      "*/10 * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --continue-once --actor-kind claude --agent alice --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
     ]);
 
     // Once the installer has written the unit, that file is the source: the enable path
@@ -295,7 +300,7 @@ describe("supervisor: the docs and the implementation agree", () => {
       "--enable-supervisor",
       "--disable-supervisor",
       "--supervisor-status",
-      "--supervisor-hosts",
+      "--supervisor-actor-kinds",
       "--scheduler auto|launchd|systemd|cron",
       "MEERKAT_TASKPANEL_SUPERVISOR",
     ]) {
@@ -303,15 +308,140 @@ describe("supervisor: the docs and the implementation agree", () => {
     }
   });
 
+  it("reports the resident pool's runtime state, best effort", () => {
+    const dir = makeTempDir();
+    assert.deepEqual(
+      { live: poolReport(dir).live, reason: poolReport(dir).reason },
+      { live: false, reason: "no session state" },
+    );
+
+    const now = Date.parse("2026-01-01T00:00:00.000Z");
+    writeFileSync(
+      join(dir, "sessions.state.json"),
+      JSON.stringify({ version: 1, poolPid: 4242, heartbeatAt: new Date(now - 3_000).toISOString() }),
+    );
+    writeFileSync(
+      join(dir, "subagents.state.json"),
+      JSON.stringify({
+        version: 1,
+        subagents: [
+          { subagentId: "a-1", status: "running" },
+          { subagentId: "a-2", status: "completed" },
+          { subagentId: "a-3", status: "reattaching" },
+        ],
+      }),
+    );
+    writeFileSync(
+      join(dir, QUEUE_FILES.cards),
+      JSON.stringify({
+        version: 1,
+        cards: [
+          { id: "T-1-worker", status: "pending", queue_kind: "handoff" },
+          // The question lane is a project-session turn, not a queued card.
+          { id: "question:T-2:q-1", status: "pending", queue_kind: "question" },
+        ],
+      }),
+    );
+    writeFileSync(join(dir, "continue.pending.json"), JSON.stringify({ version: 1, reason: "timer" }));
+
+    const live = poolReport(dir, { isAlive: () => true, now: () => now });
+    assert.equal(live.live, true);
+    assert.equal(live.pid, 4242);
+    assert.equal(live.heartbeatAgeMs, 3_000);
+    assert.equal(live.liveSubagents, 2, "running and reattaching subagents occupy a slot");
+    assert.equal(live.cardsQueued, 1);
+    assert.equal(live.continueQueued, true);
+
+    assert.equal(poolReport(dir, { isAlive: () => false, now: () => now }).live, false);
+  });
+
+  it("reports the subscriber's runtime state, best effort", () => {
+    const dir = makeTempDir();
+    const now = Date.parse("2026-01-01T00:00:00.000Z");
+    assert.equal(subscribeReport(dir, { now: () => now }).state, "missing");
+
+    writeFileSync(
+      join(dir, "subscribe.state.json"),
+      JSON.stringify({
+        version: 1,
+        pid: 4242,
+        connectedAt: new Date(now - 12_000).toISOString(),
+        lastEventAt: new Date(now - 3_000).toISOString(),
+        lastEventId: 812,
+        reconnects: 0,
+        lastError: null,
+        lastErrorAt: null,
+        nextAttemptAt: null,
+        dispatchEnabled: true,
+      }),
+    );
+    const streaming = subscribeReport(dir, { isAlive: () => true, now: () => now, unitLoaded: true });
+    assert.equal(streaming.state, "streaming");
+    assert.equal(streaming.pid, 4242);
+    assert.equal(
+      subscribeStatusLine(streaming, now),
+      "supervisor:   subscribe: running (streaming; pid 4242, connected 12s ago, last event 3s ago, id 812, reconnects 0, dispatch on)",
+    );
+    assert.equal(subscribeReport(dir, { isAlive: () => false, now: () => now }).state, "dead");
+    assert.equal(
+      subscribeStatusLine({ state: "dead", pid: 4242, unitLoaded: false }, now),
+      "supervisor:   subscribe: not running (pid 4242 is gone; unit not loaded)",
+    );
+    assert.equal(
+      subscribeStatusLine({ state: "missing", unitLoaded: false }, now),
+      "supervisor:   subscribe: not running (no subscribe state; unit not loaded)",
+    );
+
+    writeFileSync(
+      join(dir, "subscribe.state.json"),
+      JSON.stringify({
+        version: 1,
+        pid: 4242,
+        connectedAt: new Date(now - 60_000).toISOString(),
+        lastEventAt: null,
+        lastEventId: null,
+        reconnects: 2,
+        lastError: "taskctl exited 1",
+        lastErrorAt: new Date(now - 300_000).toISOString(),
+        nextAttemptAt: new Date(now + 8_000).toISOString(),
+        dispatchEnabled: false,
+      }),
+    );
+    const reconnecting = subscribeReport(dir, { isAlive: () => true, now: () => now });
+    assert.equal(reconnecting.state, "reconnecting");
+    assert.equal(reconnecting.nextInMs, 8_000);
+    assert.match(
+      subscribeStatusLine(reconnecting, now),
+      /^supervisor:   subscribe: running \(reconnecting; pid 4242, attempt 2, next in 8s, last error 5m ago: taskctl exited 1\)$/,
+    );
+
+    writeFileSync(
+      join(dir, "subscribe.state.json"),
+      JSON.stringify({ version: 1, pid: 4242, nextAttemptAt: null, dispatchEnabled: true }),
+    );
+    const starting = subscribeReport(dir, { isAlive: () => true, now: () => now });
+    assert.equal(starting.state, "starting");
+    assert.equal(
+      subscribeStatusLine(starting, now),
+      "supervisor:   subscribe: running (starting; pid 4242, no connection yet, dispatch on)",
+    );
+
+    assert.equal(subscribeReport(dir, { scheduler: "cron" }).state, "unavailable");
+    assert.equal(
+      subscribeStatusLine({ state: "unavailable", reason: "scheduler=cron has no long-lived process" }, now),
+      "supervisor:   subscribe: not available (scheduler=cron has no long-lived process)",
+    );
+  });
+
   it("the enable report the docs print is the one the launchd plan produces", () => {
     // The doc's example (`docs/install.md` §Enabling the supervisor (opt-in)) is written
     // with `<agent>` as a placeholder; filling it in must give exactly the string the
     // launchd mechanism reports, or the doc is lying about what a user will see.
-    const documented = doc("docs/install.md").match(/^supervisor: enabled \(host=claude, scheduler=launchd, units=(.*)\)$/m);
+    const documented = doc("docs/install.md").match(/^supervisor: enabled \(kind=claude, scheduler=launchd, units=(.*)\)$/m);
     assert.notEqual(documented, null, "the enable report must be quoted in docs/install.md");
     assert.equal(
       documented[1].replace("<agent>", "alice"),
-      `${supervisorBase("alice", "claude")}.ping,.continue,.subscribe`,
+      `${supervisorBase("alice", "claude")}.session,.ping,.continue,.subscribe`,
       "the documented units= is the one the plan reports",
     );
   });
@@ -321,27 +451,30 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.ok(scheduling.includes("launchctl bootstrap gui/$(id -u)"), "launchd bootstrap");
     assert.ok(scheduling.includes("launchctl bootout gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.ping"), "launchd bootout");
     assert.ok(
-      scheduling.includes("systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service"),
+      scheduling.includes("systemctl --user enable --now meerkat-taskpanel-session.service meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service"),
       "systemd enable",
     );
     assert.ok(scheduling.includes("loginctl enable-linger"), "the lingering remedy");
   });
 
-  it("the opt-in is documented in the loop skill too, and nothing still calls it unwired", () => {
+  it("the opt-in is documented in the install docs, not in the skill", () => {
     for (const relative of ["docs/install.md", "docs/scheduling.md"]) {
       assert.doesNotMatch(doc(relative), /Not yet wired/, `${relative} still says the flag is not implemented`);
     }
+    const install = doc("docs/install.md");
+    assert.match(install, /--supervisor=enable/, "docs/install.md must name the opt-in");
+    assert.match(install, /disable/, "docs/install.md must name the way back out");
     for (const relative of ["skills/meerkat-loop/SKILL.md", "skills/meerkat-loop/references/operation.md"]) {
       const text = doc(relative);
-      assert.match(text, /--supervisor=enable/, `${relative} must name the opt-in`);
-      assert.match(text, /disable/, `${relative} must name the way back out`);
+      assert.doesNotMatch(text, /install\.sh/, `${relative} must not carry installation instructions`);
+      assert.doesNotMatch(text, /--supervisor=/, `${relative} must not carry supervisor enable/disable/status`);
     }
   });
 
-  it("OpenClaw's exclusion is still stated, and still true of the loop hosts", () => {
+  it("OpenClaw's exclusion is still stated, and still true of the loop agent kinds", () => {
     const scheduling = doc("docs/scheduling.md");
     assert.match(scheduling, /OpenClaw: do not build a supervisor/);
-    assert.match(scheduling, /--supervisor-hosts openclaw` is \*\*rejected\*\*/);
-    assert.ok(!LOOP_HOSTS.includes("openclaw"));
+    assert.match(scheduling, /--supervisor-actor-kinds openclaw` is \*\*rejected\*\*/);
+    assert.ok(!LOOP_KINDS.includes("openclaw"));
   });
 });

@@ -1,21 +1,19 @@
 /**
  * The card body: `## Sections` and the little line formats inside them.
  *
- * The shapes mirror the team's existing cards exactly, because the migrator's
- * job is to read *those* files:
- *
- *   ## Progress
- *   - 2026-10-08T15:31:25.161Z did a thing
+ * The shapes are the card's canonical body. The export writes them; there is
+ * no importer in this tree (the one-off markdown importer was removed), so the
+ * parsers below are the test-facing inverse of each renderer.
  *
  *   ## Comments
  *   - 2026-10-08T15:43:04.955Z · decision · elon — text with \n escapes
  *
  *   ## Sessions
- *   - seg:seg1 · owner:linus · backend:claude · id:<uuid> · phase:x · status:running · pid: · 2026-…
+ *   - seg:seg1 · owner:linus · owner_kind:claude · id:<uuid> · goal:<one sentence> · phase:x · status:running · pid: · 2026-…
  *
  *   ## Report           (or `### R2 · <ts> · <author>` per round)
  *
- * Everything here is pure text work; `import.mjs` turns it into rows.
+ * Everything here is pure text work.
  */
 
 import { DomainError } from "../../../foundation/errors.mjs";
@@ -25,9 +23,9 @@ import { ACCEPTANCE_STATUSES, EVIDENCE_KINDS } from "../../domain/enums.mjs";
 export const SECTION_ORDER = Object.freeze([
   "Background",
   "Acceptance",
-  "Progress",
   "Comments",
   "Sessions",
+  "Attachments",
   "Report",
 ]);
 
@@ -137,34 +135,18 @@ export function renderAcceptanceBlock(items) {
   return items.map((item) => `- [${item.checked ? "x" : " "}] ${item.text}`).join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// Progress
-// ---------------------------------------------------------------------------
-
-/** Each line is one progress note, order preserved. @param {string} text */
-export function parseProgressBlock(text) {
-  return String(text)
-    .split("\n")
-    .map((line) => line.replace(/^\s*-\s?/, "").trim())
-    .filter((line) => line !== "");
-}
-
 /**
- * @param {{ts: string, text: string}[]} entries
+ * Modern acceptance items (`meta.acceptance`, a string list) → plain bullets.
+ *
+ * There is no per-item checked state here, so none is invented; an imported
+ * card's `meta.acceptance_legacy` keeps its checkboxes through
+ * `renderAcceptanceBlock`. `escapeInline` keeps one criterion on one line, so a
+ * newline in the text cannot inject a second bullet or a heading.
+ *
+ * @param {unknown[]} items
  */
-export function renderProgressBlock(entries) {
-  return entries.map((entry) => `- ${entry.ts === "" ? "" : `${entry.ts} `}${entry.text}`).join("\n");
-}
-
-/**
- * Split `- <ts> <text>`. Only a timestamp-shaped first token is treated as one,
- * so a note that happens to start with a word keeps all of its text.
- * @param {string} line
- */
-export function splitProgressLine(line) {
-  const match = /^(\d{4}-\d{2}-\d{2}T\S*)\s+(.*)$/.exec(line);
-  if (match === null) return { ts: "", text: line };
-  return { ts: match[1], text: match[2] };
+export function renderAcceptanceList(items) {
+  return items.map((item) => `- ${escapeInline(item)}`).join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -243,10 +225,31 @@ export function renderCommentsBlock(comments) {
 // Sessions
 // ---------------------------------------------------------------------------
 
-const SESSION_FIELDS = ["seg", "owner", "backend", "id", "phase", "status", "pid"];
+const SESSION_FIELDS = ["seg", "owner", "owner_kind", "id", "goal", "phase", "status", "pid"];
 
 /**
- * `- seg:x · owner:y · backend:z · id:<uuid> · phase:p · status:s · pid:n · <ts>`
+ * The goal is free prose inside a line whose fields are separated by ` · `, so
+ * it gets its own escape set. One pass, because a two-pass backslash escape
+ * would corrupt a literal `·`: `\\` is handled by the same regex as `\\n`.
+ */
+const SESSION_ESCAPES = { "\\": "\\\\", "\n": "\\n", "\r": "\\r", "·": "\\u00b7" };
+const SESSION_UNESCAPES = { "\\\\": "\\", "\\n": "\n", "\\r": "\r", "\\u00b7": "·" };
+
+/**
+ * Escape a value so it stays inside one ` · `-separated field.
+ * @param {string} text
+ */
+export function escapeField(text) {
+  return String(text).replace(/[\\\n\r·]/g, (ch) => SESSION_ESCAPES[ch]);
+}
+
+/** @param {string} text */
+function unescapeSessionField(text) {
+  return String(text).replace(/\\(?:u00b7|n|r|\\)/g, (match) => SESSION_UNESCAPES[match]);
+}
+
+/**
+ * `- seg:x · owner:y · owner_kind:z · id:<uuid> · goal:g · phase:p · status:s · pid:n · <ts>`
  *
  * Tolerant like its siblings. A real card keeps the unedited template
  * placeholder comment in `## Sessions` (11 of the M5 drill's cards did), and a
@@ -309,7 +312,8 @@ export function parseSessionsBlock(text, options = {}) {
         wellFormed = false;
         break;
       }
-      entry[name] = part.slice(colon + 1).trim();
+      const value = part.slice(colon + 1).trim();
+      entry[name] = name === "goal" ? unescapeSessionField(value) : value;
     }
     if (!wellFormed) {
       notice();
@@ -321,22 +325,56 @@ export function parseSessionsBlock(text, options = {}) {
   return sessions;
 }
 
-/** @param {{seg: string, owner: string, backend: string, sessionId: string, phase?: string|null, status: string, pid?: number|null, ts: string}[]} sessions */
+/** @param {{seg: string, owner: string, ownerKind?: string, owner_kind?: string, sessionId: string, goal?: string|null, phase?: string|null, status: string, pid?: number|null, ts: string}[]} sessions */
 export function renderSessionsBlock(sessions) {
   return sessions
     .map((session) =>
       `- ${[
         `seg:${session.seg}`,
         `owner:${session.owner}`,
-        `backend:${session.backend}`,
+        // The parser produces `owner_kind`; database rows produce `ownerKind`.
+        `owner_kind:${session.ownerKind ?? session.owner_kind ?? ""}`,
         // The parser produces `id`; rows from the database produce `sessionId`.
         `id:${session.sessionId ?? session.id ?? ""}`,
+        `goal:${escapeField(session.goal ?? "")}`,
         `phase:${session.phase ?? ""}`,
         `status:${session.status}`,
         `pid:${session.pid ?? ""}`,
         session.ts,
       ].join(FIELD_SEP)}`,
     )
+    .join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Attachments
+// ---------------------------------------------------------------------------
+
+/**
+ * One ` · `-separated field list per attachment row.
+ *
+ * The filename is escaped with `escapeField` so a hand-named file cannot inject
+ * a heading, a new record, or split the line on ` · `. `comment_id` is appended
+ * only when the attachment belongs to a comment — the common case is a
+ * card-level file.
+ *
+ * @param {{id: string, filename: string, contentType?: string|null, size: number, commentId?: string|null, createdAt: string}[]} attachments
+ */
+export function renderAttachmentsBlock(attachments) {
+  return attachments
+    .map((attachment) => {
+      const fields = [
+        `id:${attachment.id}`,
+        `filename:${escapeField(attachment.filename)}`,
+        `type:${escapeField(attachment.contentType ?? "")}`,
+        `size:${attachment.size}`,
+        `created_at:${attachment.createdAt}`,
+      ];
+      if (attachment.commentId !== null && attachment.commentId !== undefined) {
+        fields.push(`comment_id:${attachment.commentId}`);
+      }
+      return `- ${fields.join(FIELD_SEP)}`;
+    })
     .join("\n");
 }
 
@@ -404,11 +442,24 @@ function parseReportBody(block, options = {}) {
   const conclusion = [];
   let leftovers = "";
   let mode = "conclusion";
+  let isRollup = null;
 
   for (const entry of block.lines) {
     const text = typeof entry === "string" ? entry : entry.text;
     const lineNo = typeof entry === "string" ? 0 : entry.line;
     const trimmed = text.trim();
+    // 0033 — the block's own markers, before any prose. Recognised only in the
+    // conclusion mode so an acceptance item can never be mistaken for one.
+    if (mode === "conclusion" && trimmed === "rollup: yes") {
+      isRollup = true;
+      continue;
+    }
+    // 0035 removed report provenance, but cards exported before it still carry
+    // this line. Swallow it instead of reading it as conclusion prose; it is not
+    // reproduced on the next export.
+    if (mode === "conclusion" && trimmed === "origin: import") {
+      continue;
+    }
     if (SUB_BLOCK.test(trimmed)) {
       mode = SUB_BLOCK.exec(trimmed)[1];
       continue;
@@ -463,17 +514,26 @@ function parseReportBody(block, options = {}) {
     leftovers: leftovers.trim() === "" ? null : leftovers.trim(),
     // No structured fields at all → a historical free-form narrative (fix ②).
     narrative: acceptance.length === 0 && evidence.length === 0,
+    // Only when the block carried the marker, so an old card round-trips to the
+    // same object it parsed from.
+    ...(isRollup === null ? {} : { isRollup }),
     notices: blockNotices,
   };
 }
 
 function splitNote(status, rest) {
   const at = rest.indexOf(" — ");
-  const text = at === -1 ? rest : rest.slice(0, at);
+  const head = at === -1 ? rest : rest.slice(0, at);
   const note = at === -1 ? null : rest.slice(at + 3);
+  // 0033 — ` · ref: <child>` is a rollup item's join key, not prose. It sits
+  // between the text and the note, exactly where the renderer puts it.
+  const refAt = head.lastIndexOf(" · ref: ");
+  const ref = refAt === -1 ? null : head.slice(refAt + " · ref: ".length).trim();
+  const text = refAt === -1 ? head : head.slice(0, refAt);
   return {
     status,
     text: text.trim(),
+    ...(ref === null || ref === "" ? {} : { ref }),
     ...(note === null ? {} : { note: note.trim() }),
   };
 }
@@ -512,6 +572,10 @@ export function renderReportBlock(reports) {
   for (const report of reports) {
     chunks.push(`### R${report.round} · ${report.ts} · ${report.authorId}`);
     chunks.push("");
+    // 0033 — the one fact a reader cannot infer from the content. (0035 removed
+    // `origin`; an old card's line is parsed and ignored, never re-emitted.)
+    if (report.isRollup === true) chunks.push("rollup: yes");
+    if (report.isRollup === true) chunks.push("");
     if (report.conclusion.trim() !== "") {
       chunks.push(report.conclusion.trim());
       chunks.push("");
@@ -520,7 +584,8 @@ export function renderReportBlock(reports) {
       chunks.push("acceptance:");
       for (const item of report.acceptance) {
         const status = ACCEPTANCE_STATUSES.includes(item.status) ? item.status : "not_met";
-        chunks.push(`- [${status}] ${item.text}${item.note ? ` — ${item.note}` : ""}`);
+        const ref = typeof item.ref === "string" && item.ref.trim() !== "" ? ` · ref: ${item.ref}` : "";
+        chunks.push(`- [${status}] ${item.text}${ref}${item.note ? ` — ${item.note}` : ""}`);
       }
       chunks.push("");
     }

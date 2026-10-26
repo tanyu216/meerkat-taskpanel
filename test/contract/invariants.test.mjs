@@ -8,7 +8,7 @@
  *
  *   I1 claim is atomic                 → exactly one winner, ever
  *   I2 execution uniqueness            → a live claim cannot be taken twice
- *   I3 terminal states are terminal    → done/canceled never move
+ *   I3 terminal states reopen to todo  → done/canceled have exactly one exit
  *   I4 comments are append-only        → no UPDATE, no DELETE
  *   I5 human decisions are on record   → readable, and just as immutable
  *   I6 archiving is for finished work  → and does not touch status
@@ -185,17 +185,32 @@ describe("contract/invariants — I1/I2 claim atomicity", () => {
 });
 
 describe("contract/invariants — I3 terminal states", () => {
-  it("never leaves done/canceled, by direct SQL", async () => {
+  it("leaves done/canceled only for todo, by direct SQL", async () => {
     await withBoard(({ db }) => {
       insertProject(db);
-      insertTask(db, { id: "done", identifier: "PROJ-DONE", status: "done" });
-      insertTask(db, { id: "canceled", identifier: "PROJ-CANCEL", status: "canceled" });
-      for (const id of ["done", "canceled"]) {
-        const other = id === "done" ? "canceled" : "done";
+      const forbidden = ["backlog", "in_progress", "in_review", "blocked", "awaiting", "done", "canceled"];
+      for (const from of ["done", "canceled"]) {
+        for (const to of forbidden) {
+          if (to === from) continue;
+          const id = `${from}_${to}`;
+          insertTask(db, { id, identifier: `PROJ-${id}`, status: from });
+          assert.equal(
+            reasonCode(() => db.prepare("UPDATE tasks SET status = ? WHERE id = ?").run(to, id)),
+            "TERMINAL_STATE",
+            `${from} → ${to} must be refused`,
+          );
+        }
+        // …and the one exit it has: back to the queue, with a new round.
+        const id = `${from}_todo`;
+        insertTask(db, { id, identifier: `PROJ-${id}`, status: from });
+        const round = () => db.prepare("SELECT delivery_round AS r FROM tasks WHERE id = ?").get(id).r;
+        const before = round();
         assert.equal(
-          reasonCode(() => db.prepare("UPDATE tasks SET status = ? WHERE id = ?").run(other, id)),
-          "TERMINAL_STATE",
+          reasonCode(() => db.prepare("UPDATE tasks SET status = 'todo' WHERE id = ?").run(id)),
+          "NO_ERROR",
+          `${from} → todo is the reopen edge`,
         );
+        assert.equal(round(), before + 1, "a reopen starts a new delivery round");
       }
     });
   });
@@ -264,6 +279,31 @@ describe("contract/invariants — I4/I5 the record is immutable", () => {
         "COMMENT_APPEND_ONLY",
       );
       assert.equal(countRows(db, "comments"), 1, "the record survived both attempts");
+    });
+  });
+});
+
+describe("contract/invariants — the activity log is append-only", () => {
+  it("inserts, reads, and refuses UPDATE/DELETE", async () => {
+    await withBoard(({ db }) => {
+      insertProject(db);
+      insertTask(db, { id: "t", identifier: "PROJ-0001" });
+      db.prepare(
+        "INSERT INTO task_activities(task_id,event,changes_json,revision,created_at) VALUES('t','task_created','{}',1,?)",
+      ).run(TS);
+
+      const row = db.prepare("SELECT event, revision FROM task_activities WHERE task_id='t'").get();
+      assert.deepEqual({ ...row }, { event: "task_created", revision: 1 });
+
+      assert.equal(
+        reasonCode(() => db.prepare("UPDATE task_activities SET event = 'rewritten'").run()),
+        "ACTIVITY_APPEND_ONLY",
+      );
+      assert.equal(
+        reasonCode(() => db.prepare("DELETE FROM task_activities").run()),
+        "ACTIVITY_APPEND_ONLY",
+      );
+      assert.equal(countRows(db, "task_activities"), 1, "the row survived both attempts");
     });
   });
 });
@@ -574,7 +614,7 @@ describe("contract/invariants — global_revision covers every write table", () 
         () => db.prepare("INSERT INTO comments(id,task_id,body,kind,author_kind,author_id,created_at) VALUES('c','t','b','note','agent','as',?)").run(TS),
         () => db.prepare("INSERT INTO task_activities(task_id,event,changes_json,created_at) VALUES('t','x','{}',?)").run(TS),
         () => db.prepare("INSERT INTO attachments(id,task_id,filename,kind,created_at) VALUES('at','t','f','attachment',?)").run(TS),
-        () => db.prepare("INSERT INTO agent_sessions(id,task_id,seg,owner,backend,session_id,status,ts) VALUES('s','t','seg1','linus','claude','sid','running',?)").run(TS),
+        () => db.prepare("INSERT INTO agent_sessions(id,task_id,seg,owner,owner_kind,session_id,status,ts) VALUES('s','t','seg1','linus','claude','sid','running',?)").run(TS),
         () => db.prepare("INSERT INTO task_reports(task_id,round,conclusion,acceptance_json,evidence_json,author_kind,author_id,created_at) VALUES('t',1,'c','[]','[]','agent','linus',?)").run(TS),
         () => db.prepare("UPDATE projects SET name = 'renamed' WHERE id = 'proj'").run(),
         () => db.prepare("UPDATE tasks SET title = 'renamed' WHERE id = 't'").run(),
@@ -624,6 +664,40 @@ describe("contract/invariants — indexes are actually used", () => {
         .join(" | ");
       assert.match(plan, /USING (COVERING )?INDEX/, plan);
       assert.equal(/SCAN task_reports/.test(plan), false, plan);
+    });
+  });
+
+  it("plans the event cursor through ix_activities_revision, not a scan", async () => {
+    await withBoard(({ db }) => {
+      const plan = db
+        .prepare("EXPLAIN QUERY PLAN SELECT * FROM task_activities WHERE revision > ? ORDER BY revision, id LIMIT 500")
+        .all(0)
+        .map((row) => String(row.detail))
+        .join(" | ");
+      assert.match(plan, /ix_activities_revision/, plan);
+    });
+  });
+
+  it("plans the project activity window through ix_activities_created", async () => {
+    await withBoard(({ db }) => {
+      // The real aggregation from `projects.mjs#activityByProject`: if this
+      // stops using the index, the project list is scanning the audit trail.
+      const plan = db
+        .prepare(
+          `EXPLAIN QUERY PLAN
+             SELECT t.project_id AS project_id,
+                    SUM(CASE WHEN a.created_at >= ? THEN 1 ELSE 0 END) AS a7,
+                    COUNT(*) AS a30,
+                    MAX(a.created_at) AS last_activity
+               FROM task_activities a
+               JOIN tasks t ON t.id = a.task_id
+              WHERE a.event NOT IN (?) AND a.created_at >= ?
+              GROUP BY t.project_id`,
+        )
+        .all("2026-01-01T00:00:00.000Z", "task_heartbeat", "2025-01-01T00:00:00.000Z")
+        .map((row) => String(row.detail))
+        .join(" | ");
+      assert.match(plan, /ix_activities_created/, plan);
     });
   });
 });

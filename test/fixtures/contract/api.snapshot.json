@@ -5,8 +5,36 @@
       "http": 409
     },
     {
+      "code": "ACCEPTANCE_INCOMPLETE",
+      "http": 409
+    },
+    {
+      "code": "ACCEPTANCE_LOCKED",
+      "http": 409
+    },
+    {
+      "code": "ACCEPTANCE_PRUNE_FORBIDDEN",
+      "http": 409
+    },
+    {
+      "code": "ACCEPTANCE_SNAPSHOT_IMMUTABLE",
+      "http": 409
+    },
+    {
+      "code": "ACCEPTANCE_STALE_REVISION",
+      "http": 409
+    },
+    {
+      "code": "ACCEPTANCE_UNVERIFIED",
+      "http": 409
+    },
+    {
       "code": "ACCESS_CONFIG_INVALID",
       "http": 500
+    },
+    {
+      "code": "ACTIVITY_APPEND_ONLY",
+      "http": 409
     },
     {
       "code": "ARCHIVE_NOT_TERMINAL",
@@ -19,6 +47,10 @@
     {
       "code": "ATTACHMENT_TYPE_UNSUPPORTED",
       "http": 422
+    },
+    {
+      "code": "BLOCKED_BY_PREDECESSOR",
+      "http": 409
     },
     {
       "code": "BOARD_ALREADY_RUNNING",
@@ -161,6 +193,10 @@
       "http": 422
     },
     {
+      "code": "QUESTION_REQUIRED",
+      "http": 422
+    },
+    {
       "code": "RELATION_CYCLE",
       "http": 422
     },
@@ -185,6 +221,10 @@
       "http": 422
     },
     {
+      "code": "REPORT_NOT_APPLICABLE_NOTE",
+      "http": 422
+    },
+    {
       "code": "REPORT_REQUIRED",
       "http": 422
     },
@@ -201,11 +241,31 @@
       "http": 413
     },
     {
+      "code": "REVIEW_CARD_MARKER_INVALID",
+      "http": 409
+    },
+    {
       "code": "REVIEW_OF_IMMUTABLE",
       "http": 409
     },
     {
       "code": "REVIEW_PENDING",
+      "http": 409
+    },
+    {
+      "code": "REVIEW_REQUIRED",
+      "http": 409
+    },
+    {
+      "code": "ROLLUP_INVALID",
+      "http": 409
+    },
+    {
+      "code": "ROLLUP_REQUIRED",
+      "http": 409
+    },
+    {
+      "code": "ROLLUP_STALE",
       "http": 409
     },
     {
@@ -306,6 +366,29 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/activities",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "string"
+            },
+            "order": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/actors",
       "request": {
         "body": null,
@@ -377,6 +460,9 @@
             },
             "project_id": {
               "type": "string"
+            },
+            "ref": {
+              "type": "string"
             }
           },
           "required": [],
@@ -438,6 +524,15 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "acceptance": {
+              "enum": [
+                "agent",
+                "auto",
+                "human",
+                "off"
+              ],
+              "type": "string"
+            },
             "id": {
               "type": "string"
             },
@@ -454,6 +549,9 @@
               "type": "string"
             },
             "readme": {
+              "type": "string"
+            },
+            "reviewer": {
               "type": "string"
             }
           },
@@ -478,6 +576,15 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "acceptance": {
+              "enum": [
+                "agent",
+                "auto",
+                "human",
+                "off"
+              ],
+              "type": "string"
+            },
             "labels": {
               "items": {
                 "type": "string"
@@ -491,6 +598,50 @@
               "type": "string"
             },
             "readme": {
+              "type": "string"
+            },
+            "reviewer": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/projects/:id",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "acceptance": {
+              "enum": [
+                "agent",
+                "auto",
+                "human",
+                "off"
+              ],
+              "type": "string"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "meta": {
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "readme": {
+              "type": "string"
+            },
+            "reviewer": {
               "type": "string"
             }
           },
@@ -527,20 +678,98 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/sessions",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "limit": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "owner_kind": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "closed",
+                "failed",
+                "running"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sla",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "card": {
+              "type": "string"
+            },
+            "leader": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "string"
+            },
+            "period": {
+              "type": "string"
+            },
+            "trail_limit": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/tasks",
       "request": {
         "body": null,
         "query": {
           "additionalProperties": true,
           "properties": {
+            "assignee": {
+              "type": "string"
+            },
             "assignee_id": {
               "type": "string"
             },
             "include_archived": {
               "type": "string"
             },
+            "kind": {
+              "type": "string"
+            },
+            "label": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "limit": {
               "type": "string"
+            },
+            "meta": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             },
             "offset": {
               "type": "string"
@@ -551,7 +780,13 @@
             "order_debug": {
               "type": "string"
             },
+            "parent": {
+              "type": "string"
+            },
             "project_id": {
+              "type": "string"
+            },
+            "review_of": {
               "type": "string"
             },
             "status": {
@@ -569,6 +804,9 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "target": {
+              "type": "string"
             }
           },
           "required": [],
@@ -583,6 +821,14 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "acceptance_mode": {
+              "enum": [
+                "agent",
+                "human",
+                "off"
+              ],
+              "type": "string"
+            },
             "allow_dup": {
               "type": "boolean"
             },
@@ -609,7 +855,6 @@
             },
             "kind": {
               "enum": [
-                "deploy",
                 "epic",
                 "task"
               ],
@@ -704,6 +949,23 @@
               },
               "type": "array"
             },
+            "acceptance_drop": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "acceptance_mode": {
+              "enum": [
+                "agent",
+                "human",
+                "off"
+              ],
+              "type": "string"
+            },
+            "acceptance_revision": {
+              "type": "integer"
+            },
             "assignee": {
               "type": "string"
             },
@@ -718,7 +980,6 @@
             },
             "kind": {
               "enum": [
-                "deploy",
                 "epic",
                 "task"
               ],
@@ -740,6 +1001,9 @@
                 "medium",
                 "urgent"
               ],
+              "type": "string"
+            },
+            "reason": {
               "type": "string"
             },
             "reporter": {
@@ -767,6 +1031,9 @@
               "type": "string"
             },
             "limit": {
+              "type": "string"
+            },
+            "order": {
               "type": "string"
             }
           },
@@ -871,6 +1138,9 @@
             "allow_steal": {
               "type": "boolean"
             },
+            "check_blockers": {
+              "type": "boolean"
+            },
             "if_version": {
               "type": "integer"
             },
@@ -899,14 +1169,19 @@
               "enum": [
                 "change",
                 "confirm",
+                "confirm_request",
                 "decision",
                 "defect",
                 "discuss",
-                "note"
+                "note",
+                "question"
               ],
               "type": "string"
             },
             "limit": {
+              "type": "string"
+            },
+            "order": {
               "type": "string"
             }
           },
@@ -932,10 +1207,12 @@
               "enum": [
                 "change",
                 "confirm",
+                "confirm_request",
                 "decision",
                 "defect",
                 "discuss",
-                "note"
+                "note",
+                "question"
               ],
               "type": "string"
             },
@@ -1057,6 +1334,9 @@
             "no_report": {
               "type": "boolean"
             },
+            "question": {
+              "type": "string"
+            },
             "reason": {
               "type": "string"
             },
@@ -1130,6 +1410,26 @@
       }
     },
     {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/reopen",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "if_version": {
+              "type": "integer"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
       "method": "GET",
       "path": "/api/v1/tasks/:ref/reports",
       "request": {
@@ -1152,10 +1452,16 @@
         "body": {
           "additionalProperties": true,
           "properties": {
-            "backend": {
+            "goal": {
               "type": "string"
             },
+            "meta": {
+              "type": "object"
+            },
             "owner": {
+              "type": "string"
+            },
+            "owner_kind": {
               "type": "string"
             },
             "phase": {
@@ -1192,6 +1498,34 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "status": {
+              "enum": [
+                "closed",
+                "failed",
+                "running"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/sessions/close",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "owner": {
+              "type": "string"
+            },
+            "seg": {
+              "type": "string"
+            },
             "status": {
               "enum": [
                 "closed",
@@ -1245,9 +1579,6 @@
         "body": {
           "additionalProperties": true,
           "properties": {
-            "auto_accept_reviews": {
-              "type": "boolean"
-            },
             "board_limit": {
               "type": "integer"
             },
@@ -1365,6 +1696,7 @@
     },
     {
       "fields": {
+        "acceptance": "string",
         "archived_at": "string",
         "created_at": "string",
         "id": "string",
@@ -1373,6 +1705,7 @@
         "name": "string",
         "prefix": "string",
         "readme": "string",
+        "reviewer": "string",
         "task_count": "number",
         "updated_at": "string"
       },
@@ -1400,6 +1733,7 @@
         "evidence": "array",
         "evidence_truncated": "boolean",
         "id": "string",
+        "is_rollup": "boolean",
         "leftovers": "string",
         "round": "number",
         "seg": "string",
@@ -1418,9 +1752,11 @@
     },
     {
       "fields": {
-        "backend": "string",
+        "goal": "string",
         "id": "string",
+        "meta": "object",
         "owner": "string",
+        "owner_kind": "string",
         "phase": "string",
         "pid": "number",
         "seg": "string",
@@ -1433,6 +1769,51 @@
     },
     {
       "fields": {
+        "action": "string",
+        "alert_id": "string",
+        "blocked_reason": "string",
+        "card_id": "string",
+        "confidence": "string",
+        "dedup_key": "string",
+        "due_at": "string",
+        "elapsed_basis": "string",
+        "elapsed_working_min": "number",
+        "evidence": "object",
+        "first_seen": "string",
+        "last_seen": "string",
+        "measure_start_at": "string",
+        "measure_start_kind": "string",
+        "measure_start_source": "string",
+        "mechanism": "string",
+        "mechanism_actor": "string",
+        "notify": "string",
+        "observed_by": "array",
+        "releasable": "boolean",
+        "releasable_basis": "string",
+        "severity": "string",
+        "sla_ref": "string",
+        "sla_row": "string",
+        "target": "string",
+        "threshold_min": "number"
+      },
+      "shape": "sla_alert"
+    },
+    {
+      "fields": {
+        "leader_lookback_days": "number",
+        "peer_liveness_k": "number",
+        "peer_period_min": "number",
+        "period_seconds": "number",
+        "rows": "object",
+        "version": "number"
+      },
+      "shape": "sla_config"
+    },
+    {
+      "fields": {
+        "acceptance": "array",
+        "acceptance_mode": "string",
+        "acceptance_revision": "number",
         "agent_session": "string",
         "archived_at": "string",
         "assignee": "object",
@@ -1462,8 +1843,10 @@
         "reporter": "object",
         "reporter_id": "string",
         "reporter_kind": "null",
+        "review_of": "null",
         "review_of_id": "null",
         "review_round": "null",
+        "role": "string",
         "sort_order": "number",
         "source_path": "string",
         "status": "string",
@@ -1532,6 +1915,16 @@
     },
     {
       "fields": {
+        "accepted_by": "string",
+        "held": "boolean",
+        "original_ref": "string",
+        "round": "number",
+        "type": "string"
+      },
+      "shape": "workflow_plan.action_auto_accept"
+    },
+    {
+      "fields": {
         "acceptance": "array",
         "description": "string",
         "idem": "string",
@@ -1547,6 +1940,7 @@
     },
     {
       "fields": {
+        "acceptance_mode": "string",
         "assignee_id": "string",
         "close_review": "boolean",
         "findings": "string",
@@ -1581,7 +1975,8 @@
       "fields": {
         "actions": "number",
         "alerts": "number",
-        "approved": "number"
+        "approved": "number",
+        "auto_accepted": "number"
       },
       "shape": "workflow_plan.summary"
     }

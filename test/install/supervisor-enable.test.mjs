@@ -5,8 +5,8 @@
  * (`test/install/scheduling-units.test.mjs`). This file is about the one deliberate
  * exception the contract fixes in `docs/scheduling.md` §"Enabling the supervisor
  * (opt-in)": `install.sh --supervisor=enable|disable|status` (+ aliases,
- * `--supervisor-hosts`, `--scheduler`, `MEERKAT_TASKPANEL_SUPERVISOR`) really does run
- * `launchctl` / `systemctl` / `crontab` — and is idempotent, per-host selectable, and
+ * `--supervisor-actor-kinds`, `--scheduler`, `MEERKAT_TASKPANEL_SUPERVISOR`) really does run
+ * `launchctl` / `systemctl` / `crontab` — and is idempotent, per-agent-kind selectable, and
  * silent (no load at all) unless asked.
  *
  * The service manager is **faked on PATH** — `launchctl`, `systemctl`, `crontab` and
@@ -20,7 +20,7 @@
  */
 
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
@@ -178,10 +178,10 @@ function loads(manager) {
 }
 
 /** The enable report the docs prescribe, as a regex — quoted literally, not as a pattern. */
-function enabledLine(host, scheduler, units) {
+function enabledLine(kind, scheduler, units) {
   const quote = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(
-    `^supervisor: enabled \\(host=${quote(host)}, scheduler=${quote(scheduler)}, units=${quote(units)}\\)$`,
+    `^supervisor: enabled \\(kind=${quote(kind)}, scheduler=${quote(scheduler)}, units=${quote(units)}\\)$`,
     "m",
   );
 }
@@ -196,7 +196,7 @@ function disableHintLine(scheduler) {
   const quote = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const suffix = scheduler === PLATFORM_DEFAULT ? "" : ` --scheduler=${scheduler}`;
   return new RegExp(
-    `^to disable:  install\\.sh --supervisor=disable --supervisor-hosts claude${quote(suffix)}$`,
+    `^to disable:  install\\.sh --supervisor=disable --supervisor-actor-kinds claude${quote(suffix)}$`,
     "m",
   );
 }
@@ -216,30 +216,47 @@ describe("install.sh: the supervisor flag surface", () => {
     assert.equal(existsSync(join(home, ".claude")), false, "a usage error must not install anything");
   });
 
-  it("rejects --supervisor-hosts openclaw, with the reason (exit 2)", () => {
+  it("rejects --supervisor-actor-kinds openclaw, with the reason (exit 2)", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const run = runInstall(
-      ["--target", "all", "--prefix", home, "--supervisor=enable", "--supervisor-hosts", "openclaw"],
+      ["--target", "all", "--prefix", home, "--supervisor=enable", "--supervisor-actor-kinds", "openclaw"],
       installEnv(home, manager),
     );
 
     assert.equal(run.status, 2);
-    assert.match(run.stderr, /--supervisor-hosts openclaw/);
+    assert.match(run.stderr, /--supervisor-actor-kinds openclaw/);
     assert.match(run.stderr, /OpenClaw has no meerkat-loop supervisor/);
     assert.equal(existsSync(join(home, ".claude")), false, "nothing is installed when the request is invalid");
     assert.deepEqual(loads(manager), [], "and nothing is loaded");
   });
 
-  it("rejects an unknown --supervisor-hosts entry and an unknown --scheduler", () => {
+  it("accepts a comma-separated --supervisor-actor-kinds list (dry run loads nothing)", () => {
     const home = makeTempDir();
     const manager = fakeManager();
-    const hosts = runInstall(
-      ["--target", "all", "--prefix", home, "--supervisor=enable", "--supervisor-hosts", "emacs"],
+    const run = runInstall(
+      [
+        "--target", "all", "--agent-name", "alice", "--prefix", home, "--dry-run",
+        "--supervisor=enable", "--supervisor-actor-kinds", "claude,pi", "--scheduler=launchd",
+      ],
       installEnv(home, manager),
     );
-    assert.equal(hosts.status, 2);
-    assert.match(hosts.stderr, /invalid --supervisor-hosts: emacs/);
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /supervisor: dry-run — would enable \(kind=claude,/);
+    assert.match(run.stdout, /supervisor: dry-run — would enable \(kind=pi,/);
+    assert.deepEqual(loads(manager), [], "a dry run asks no service manager");
+  });
+
+  it("rejects an unknown --supervisor-actor-kinds entry and an unknown --scheduler", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const run = runInstall(
+      ["--target", "all", "--prefix", home, "--supervisor=enable", "--supervisor-actor-kinds", "emacs"],
+      installEnv(home, manager),
+    );
+    assert.equal(run.status, 2);
+    assert.match(run.stderr, /invalid --supervisor-actor-kinds: emacs/);
 
     const scheduler = runInstall(
       ["--target", "claude", "--prefix", home, "--supervisor=enable", "--scheduler", "upstart"],
@@ -264,7 +281,7 @@ describe("install.sh: the supervisor flag surface", () => {
     const cases = [
       ["--enable-supervisor", /supervisor: enabled/],
       ["--disable-supervisor", /supervisor: (already )?disabled/],
-      ["--supervisor-status", /^supervisor: status \(host=claude\)$/m],
+      ["--supervisor-status", /^supervisor: status \(kind=claude\)$/m],
     ];
     for (const [flag, expected] of cases) {
       const home = makeTempDir();
@@ -284,7 +301,7 @@ describe("install.sh: the supervisor flag surface", () => {
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.ping,.continue,.subscribe"));
+    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.session,.ping,.continue,.subscribe"));
   });
 });
 
@@ -293,7 +310,7 @@ describe("install.sh: the supervisor flag surface", () => {
 // ---------------------------------------------------------------------------
 
 describe("install.sh: enable — launchd", () => {
-  it("bootstraps both units and reports host / scheduler / units", () => {
+  it("bootstraps both units and reports kind / scheduler / units", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const run = runInstall(
@@ -302,13 +319,14 @@ describe("install.sh: enable — launchd", () => {
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.ping,.continue,.subscribe"));
+    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.session,.ping,.continue,.subscribe"));
     assert.match(run.stdout, disableHintLine("launchd"));
 
     const scheduling = join(home, ".claude", "scheduling", "launchd");
     assert.deepEqual(
       loads(manager),
       [
+        `launchctl bootstrap gui/${UID} ${join(scheduling, "com.meerkat-taskpanel.session.plist")}`,
         `launchctl bootstrap gui/${UID} ${join(scheduling, "com.meerkat-taskpanel.ping.plist")}`,
         `launchctl bootstrap gui/${UID} ${join(scheduling, "com.meerkat-taskpanel.continue.plist")}`,
         `launchctl bootstrap gui/${UID} ${join(scheduling, "com.meerkat-taskpanel.subscribe.plist")}`,
@@ -327,7 +345,7 @@ describe("install.sh: enable — launchd", () => {
 
     const again = runInstall(args, installEnv(home, manager));
     assert.equal(again.status, 0, again.stderr);
-    assert.match(again.stdout, /supervisor: already enabled \(host=claude, scheduler=launchd, units=/);
+    assert.match(again.stdout, /supervisor: already enabled \(kind=claude, scheduler=launchd, units=/);
     assert.deepEqual(loads(manager), afterFirst, "no second load");
   });
 
@@ -340,11 +358,11 @@ describe("install.sh: enable — launchd", () => {
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /supervisor: enabled \(host=claude, scheduler=launchd, units=/);
+    assert.match(run.stdout, /supervisor: enabled \(kind=claude, scheduler=launchd, units=/);
     assert.doesNotMatch(run.stdout, /not enabled/);
   });
 
-  it("reports a load it cannot do instead of claiming success — and still installs the host", () => {
+  it("reports a load it cannot do instead of claiming success — and still installs the agent kind", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const run = runInstall(
@@ -353,11 +371,11 @@ describe("install.sh: enable — launchd", () => {
     );
 
     assert.equal(run.status, 0, `${run.stderr}\n${run.stdout}`);
-    assert.match(run.stdout, /supervisor: not enabled \(host=claude, scheduler=launchd, units=[^)]*\) — no GUI login session/);
+    assert.match(run.stdout, /supervisor: not enabled \(kind=claude, scheduler=launchd, units=[^)]*\) — no GUI login session/);
     assert.match(run.stdout, /supervisor: enable it with:/);
     assert.match(run.stdout, /supervisor:   launchctl bootstrap gui\/\d+ /);
     assert.doesNotMatch(run.stdout, /supervisor: enabled/);
-    // The host's own install is unaffected — the units are written, and the summary is OK.
+    // The agent kind's own install is unaffected — the units are written, and the summary is OK.
     assert.match(run.stdout, /OK   claude/);
     assert.ok(existsSync(join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist")));
   });
@@ -370,17 +388,17 @@ describe("install.sh: enable — launchd", () => {
 
     const disabled = runInstall([...base, "--supervisor=disable"], installEnv(home, manager));
     assert.equal(disabled.status, 0, disabled.stderr);
-    assert.match(disabled.stdout, /^supervisor: disabled \(host=claude, scheduler=launchd, units=/m);
+    assert.match(disabled.stdout, /^supervisor: disabled \(kind=claude, scheduler=launchd, units=/m);
     assert.equal(existsSync(manager.launchdState), false, "the job is gone");
     assert.equal(
       calls(manager).filter((line) => line.startsWith("launchctl bootout")).length,
-      7,
-      "two legacy bootouts during enable, then five during disable (legacy + new)",
+      4,
+      "the four new units are booted out on disable",
     );
 
     const again = runInstall([...base, "--supervisor=disable"], installEnv(home, manager));
     assert.equal(again.status, 0, again.stderr);
-    assert.match(again.stdout, /^supervisor: already disabled \(host=claude, scheduler=launchd, units=/m);
+    assert.match(again.stdout, /^supervisor: already disabled \(kind=claude, scheduler=launchd, units=/m);
   });
 
   it("status reports the per-mechanism load state and changes nothing", () => {
@@ -390,13 +408,69 @@ describe("install.sh: enable — launchd", () => {
 
     const before = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
     assert.equal(before.status, 0, before.stderr);
-    assert.match(before.stdout, /^supervisor: status \(host=claude\)$/m);
-    assert.match(before.stdout, /^supervisor:   launchd: not loaded \(com\.meerkat-taskpanel\.alice\.claude\.ping=not loaded, /m);
+    assert.match(before.stdout, /^supervisor: status \(kind=claude\)$/m);
+    assert.match(before.stdout, /^supervisor:   launchd: not loaded \(com\.meerkat-taskpanel\.alice\.claude\.session=not loaded, /m);
     assert.deepEqual(loads(manager), [], "status loads nothing");
 
     assert.equal(runInstall([...base, "--supervisor=enable"], installEnv(home, manager)).status, 0);
     const after = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
     assert.match(after.stdout, /^supervisor:   launchd: loaded \(/m);
+    assert.match(after.stdout, /^supervisor:   session: not running \(no session state\)$/m);
+    assert.match(after.stdout, /^supervisor:   tools: role allowlists \(full access is off\)$/m);
+
+    // The full-access opt-in is an authorization; status states it and who
+    // recorded it, so a bypass is never invisible.
+    const config = join(home, ".claude", "meerkat-taskpanel.env");
+    writeFileSync(
+      config,
+      `${readFileSync(config, "utf8")}MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes\n` +
+        "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON=operator authorized unattended runs\n",
+    );
+    const authorized = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
+    assert.match(
+      authorized.stdout,
+      /^supervisor:   tools: all enabled \(authorized by: operator authorized unattended runs\)/m,
+    );
+  });
+
+  it("status reports the subscriber's runtime state from its state file", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const base = ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--scheduler=launchd"];
+    assert.equal(runInstall([...base, "--supervisor=enable"], installEnv(home, manager)).status, 0);
+
+    const stateDir = join(home, ".claude", "meerkat-taskpanel");
+    const statePath = join(stateDir, "subscribe.state.json");
+    const now = Date.now();
+    writeFileSync(
+      statePath,
+      JSON.stringify({
+        version: 1,
+        pid: process.pid,
+        connectedAt: new Date(now - 12_000).toISOString(),
+        lastEventAt: new Date(now - 3_000).toISOString(),
+        lastEventId: 812,
+        reconnects: 0,
+        lastError: null,
+        lastErrorAt: null,
+        nextAttemptAt: null,
+        dispatchEnabled: true,
+        updatedAt: new Date(now).toISOString(),
+      }),
+    );
+    const streaming = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
+    assert.match(
+      streaming.stdout,
+      /^supervisor:   subscribe: running \(streaming; pid \d+, connected \d+s ago, last event \d+s ago, id 812, reconnects 0, dispatch on\)$/m,
+    );
+
+    writeFileSync(statePath, JSON.stringify({ version: 1, pid: 2147483646, nextAttemptAt: null }));
+    const dead = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
+    assert.match(dead.stdout, /^supervisor:   subscribe: not running \(pid 2147483646 is gone\)$/m);
+
+    rmSync(statePath);
+    const absent = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
+    assert.match(absent.stdout, /^supervisor:   subscribe: not running \(no subscribe state\)$/m);
   });
 });
 
@@ -414,7 +488,7 @@ describe("install.sh: enable — systemd", () => {
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, enabledLine("claude", "systemd", "meerkat-taskpanel-ping.timer,meerkat-taskpanel-continue.timer,meerkat-taskpanel-subscribe.service"));
+    assert.match(run.stdout, enabledLine("claude", "systemd", "meerkat-taskpanel-ping.timer,meerkat-taskpanel-continue.timer,meerkat-taskpanel-session.service,meerkat-taskpanel-subscribe.service"));
 
     // The units must land where systemd reads them (HOME, not --prefix-in-the-abstract).
     const unitDir = join(home, ".config", "systemd", "user");
@@ -423,6 +497,7 @@ describe("install.sh: enable — systemd", () => {
       "meerkat-taskpanel-ping.timer",
       "meerkat-taskpanel-continue.service",
       "meerkat-taskpanel-continue.timer",
+      "meerkat-taskpanel-session.service",
       "meerkat-taskpanel-subscribe.service",
     ]) {
       assert.ok(existsSync(join(unitDir, name)), `${name} must be copied into ${unitDir}`);
@@ -430,12 +505,12 @@ describe("install.sh: enable — systemd", () => {
 
     const sequence = calls(manager).filter((line) => line.startsWith("systemctl"));
     assert.deepEqual(sequence, [
-      "systemctl --user disable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer",
       "systemctl --user daemon-reload",
       "systemctl --user is-enabled meerkat-taskpanel-ping.timer",
       "systemctl --user is-enabled meerkat-taskpanel-continue.timer",
+      "systemctl --user is-enabled meerkat-taskpanel-session.service",
       "systemctl --user is-enabled meerkat-taskpanel-subscribe.service",
-      "systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service",
+      "systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-session.service meerkat-taskpanel-subscribe.service",
     ]);
     assert.match(run.stdout, /supervisor: warning — lingering is off.*loginctl enable-linger alice/s);
   });
@@ -452,7 +527,7 @@ describe("install.sh: enable — systemd", () => {
 
     const again = runInstall(args, env);
     assert.equal(again.status, 0, again.stderr);
-    assert.match(again.stdout, /supervisor: already enabled \(host=claude, scheduler=systemd, units=/);
+    assert.match(again.stdout, /supervisor: already enabled \(kind=claude, scheduler=systemd, units=/);
     assert.equal(calls(manager).filter((line) => line.includes("enable --now")).length, 1, "enabled once");
   });
 
@@ -506,14 +581,14 @@ describe("install.sh: enable — systemd", () => {
 
     const disabled = runInstall([...base, "--supervisor=disable"], env);
     assert.equal(disabled.status, 0, disabled.stderr);
-    assert.match(disabled.stdout, /^supervisor: disabled \(host=claude, scheduler=systemd, units=/m);
+    assert.match(disabled.stdout, /^supervisor: disabled \(kind=claude, scheduler=systemd, units=/m);
     assert.ok(
-      calls(manager).includes("systemctl --user disable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer"),
+      calls(manager).includes("systemctl --user disable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-session.service meerkat-taskpanel-subscribe.service"),
     );
 
     const again = runInstall([...base, "--supervisor=disable"], env);
     assert.equal(again.status, 0, again.stderr);
-    assert.match(again.stdout, /^supervisor: already disabled \(host=claude, scheduler=systemd, units=/m);
+    assert.match(again.stdout, /^supervisor: already disabled \(kind=claude, scheduler=systemd, units=/m);
   });
 });
 
@@ -548,8 +623,8 @@ describe("install.sh: enable — cron", () => {
     // PATH line sits *inside* the block, so `disable` takes it away with the block.
     const blockLines = table.split("# >>> meerkat-taskpanel (~/.claude) >>>\n")[1].split("\n");
     assert.match(blockLines[0], /^PATH=\S+$/);
-    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*supervisor\.mjs --host claude --agent alice --ping-only --once --log .* >\/dev\/null 2>&1$/);
-    assert.match(blockLines[2], /^\*\/10 \* \* \* \* \/[^ ]*node .*supervisor\.mjs --host claude --agent alice --continue-only --once /);
+    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --ping-once --actor-kind claude --agent alice --log .* >\/dev\/null 2>&1$/);
+    assert.match(blockLines[2], /^\*\/10 \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --continue-once --actor-kind claude --agent alice /);
     assert.equal(blockLines[3], "# <<< meerkat-taskpanel (~/.claude) <<<");
     assert.match(table, /^# <<< meerkat-taskpanel \(~\/\.claude\) <<<$/m);
 
@@ -565,7 +640,7 @@ describe("install.sh: enable — cron", () => {
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /supervisor: enabled \(host=claude, scheduler=cron, units=/);
+    assert.match(run.stdout, /supervisor: enabled \(kind=claude, scheduler=cron, units=/);
     assert.match(readFileSync(manager.crontab, "utf8"), /# >>> meerkat-taskpanel \(~\/\.claude\) >>>/);
   });
 
@@ -578,7 +653,7 @@ describe("install.sh: enable — cron", () => {
 
     const again = runInstall(args, installEnv(home, manager));
     assert.equal(again.status, 0, again.stderr);
-    assert.match(again.stdout, /supervisor: already enabled \(host=claude, scheduler=cron, units=/);
+    assert.match(again.stdout, /supervisor: already enabled \(kind=claude, scheduler=cron, units=/);
     assert.equal(calls(manager).filter((line) => line === "crontab -").length, writes, "no second write");
 
     const table = readFileSync(manager.crontab, "utf8");
@@ -594,16 +669,16 @@ describe("install.sh: enable — cron", () => {
 
     const disabled = runInstall([...base, "--supervisor=disable"], installEnv(home, manager));
     assert.equal(disabled.status, 0, disabled.stderr);
-    assert.match(disabled.stdout, /^supervisor: disabled \(host=claude, scheduler=cron, units=/m);
+    assert.match(disabled.stdout, /^supervisor: disabled \(kind=claude, scheduler=cron, units=/m);
     const table = readFileSync(manager.crontab, "utf8");
     assert.doesNotMatch(table, /meerkat-taskpanel/);
     assert.match(table, /^0 3 \* \* \* \/usr\/bin\/true$/m);
 
     const again = runInstall([...base, "--supervisor=disable"], installEnv(home, manager));
-    assert.match(again.stdout, /^supervisor: already disabled \(host=claude, scheduler=cron, units=/m);
+    assert.match(again.stdout, /^supervisor: already disabled \(kind=claude, scheduler=cron, units=/m);
   });
 
-  it("enabling a second mechanism takes the first down — never two loaded for one host", () => {
+  it("enabling a second mechanism takes the first down — never two loaded for one agent kind", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const base = ["--target", "claude", "--agent-name", "alice", "--prefix", home];
@@ -615,11 +690,11 @@ describe("install.sh: enable — cron", () => {
     assert.equal(moved.status, 0, moved.stderr);
     assert.match(
       moved.stdout,
-      /supervisor: disabled \(host=claude, scheduler=cron, units=crontab block \(~\/\.claude\)\) — one mechanism per host/,
+      /supervisor: disabled \(kind=claude, scheduler=cron, units=crontab block \(~\/\.claude\)\) — one mechanism per agent kind/,
     );
     assert.doesNotMatch(readFileSync(manager.crontab, "utf8"), /meerkat-taskpanel/, "the cron block is gone");
     assert.ok(existsSync(manager.launchdState), "launchd is the one loaded now");
-    assert.match(moved.stdout, /supervisor: enabled \(host=claude, scheduler=launchd, units=/);
+    assert.match(moved.stdout, /supervisor: enabled \(kind=claude, scheduler=launchd, units=/);
   });
 
   it("status reads the crontab without changing it", () => {
@@ -638,14 +713,14 @@ describe("install.sh: enable — cron", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5 — --dry-run, per-host selection, and the openclaw exclusion
+// 5 — --dry-run, per-agent-kind selection, and the openclaw exclusion
 // ---------------------------------------------------------------------------
 
-describe("install.sh: --dry-run and per-host selection", () => {
+describe("install.sh: --dry-run and per-agent-kind selection", () => {
   it("--dry-run prints the exact commands it would run, for every mechanism, and changes nothing", () => {
     const cases = [
       ["launchd", new RegExp(`^supervisor: would run: launchctl bootstrap gui/${UID} .*com\\.meerkat-taskpanel\\.ping\\.plist$`, "m")],
-      ["systemd", /^supervisor: would run: systemctl --user enable --now meerkat-taskpanel-ping\.timer meerkat-taskpanel-continue\.timer meerkat-taskpanel-subscribe\.service$/m],
+      ["systemd", /^supervisor: would run: systemctl --user enable --now meerkat-taskpanel-ping\.timer meerkat-taskpanel-continue\.timer meerkat-taskpanel-session\.service meerkat-taskpanel-subscribe\.service$/m],
       ["cron", /^supervisor: would run:   # >>> meerkat-taskpanel \(~\/\.claude\) >>>$/m],
     ];
     for (const [scheduler, expected] of cases) {
@@ -657,14 +732,14 @@ describe("install.sh: --dry-run and per-host selection", () => {
       );
 
       assert.equal(run.status, 0, `${scheduler}: ${run.stderr}`);
-      assert.match(run.stdout, new RegExp(`supervisor: dry-run — would enable \\(host=claude, scheduler=${scheduler}, units=`));
+      assert.match(run.stdout, new RegExp(`supervisor: dry-run — would enable \\(kind=claude, scheduler=${scheduler}, units=`));
       assert.match(run.stdout, expected, scheduler);
       assert.deepEqual(calls(manager), [], `${scheduler}: a dry run asks no service manager`);
       assert.equal(existsSync(join(home, ".claude")), false, `${scheduler}: and writes nothing`);
     }
   });
 
-  it("--supervisor-hosts acts on the named host only", () => {
+  it("--supervisor-actor-kinds acts on the named agent kind only", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const run = runInstall(
@@ -673,24 +748,24 @@ describe("install.sh: --dry-run and per-host selection", () => {
         "--agent-name", "alice",
         "--prefix", home,
         "--supervisor=enable",
-        "--supervisor-hosts", "claude",
+        "--supervisor-actor-kinds", "claude",
         "--scheduler=launchd",
       ],
       installEnv(home, manager),
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.ping,.continue,.subscribe"));
-    assert.doesNotMatch(run.stdout, /supervisor: enabled \(host=codex/);
-    assert.doesNotMatch(run.stdout, /supervisor: enabled \(host=pi/);
+    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.session,.ping,.continue,.subscribe"));
+    assert.doesNotMatch(run.stdout, /supervisor: enabled \(kind=codex/);
+    assert.doesNotMatch(run.stdout, /supervisor: enabled \(kind=pi/);
 
     const bootstraps = calls(manager).filter((line) => line.startsWith("launchctl bootstrap"));
-    assert.equal(bootstraps.length, 3, "only claude's three units are loaded");
+    assert.equal(bootstraps.length, 4, "only claude's units are loaded");
     for (const line of bootstraps) assert.ok(line.includes(join(".claude", "scheduling")), line);
 
-    // Every host is still installed — the selection is about the *action*, not the files.
-    for (const hostDir of [".claude", ".codex", ".agents"]) {
-      assert.ok(existsSync(join(home, hostDir, "skills", "meerkat-loop", "SKILL.md")), `${hostDir} loop skill`);
+    // Every loop agent kind is still installed — the selection is about the *action*, not the files.
+    for (const agentDir of [".claude", ".codex", ".agents"]) {
+      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-loop", "SKILL.md")), `${agentDir} loop skill`);
     }
   });
 
@@ -703,7 +778,7 @@ describe("install.sh: --dry-run and per-host selection", () => {
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /no loop host to act on \(OpenClaw runs openclaw-team's own poll\/patrol\)/);
+    assert.match(run.stdout, /no loop actor kind to act on \(OpenClaw runs openclaw-team's own poll\/patrol\)/);
     assert.doesNotMatch(run.stdout, /supervisor: enabled/);
     assert.equal(existsSync(join(home, ".openclaw", "scheduling")), false, "OpenClaw still gets no units");
     assert.equal(existsSync(join(home, ".openclaw", "skills", "meerkat-loop")), false, "and no loop skill");
@@ -721,13 +796,13 @@ describe("install.sh: --dry-run and per-host selection", () => {
     assert.equal(run.status, 0, run.stderr);
     const units =
       PLATFORM_DEFAULT === "launchd"
-        ? "com.meerkat-taskpanel.alice.claude.ping,.continue,.subscribe"
+        ? "com.meerkat-taskpanel.alice.claude.session,.ping,.continue,.subscribe"
         : PLATFORM_DEFAULT === "systemd"
-          ? "meerkat-taskpanel-ping.timer,meerkat-taskpanel-continue.timer,meerkat-taskpanel-subscribe.service"
+          ? "meerkat-taskpanel-ping.timer,meerkat-taskpanel-continue.timer,meerkat-taskpanel-session.service,meerkat-taskpanel-subscribe.service"
           : "crontab block (~/.claude)";
     assert.match(run.stdout, enabledLine("claude", PLATFORM_DEFAULT, units));
     // With `auto`, the printed remedy is the doc's own line — no `--scheduler` suffix, on
     // either platform, because the hint only carries one when auto would pick differently.
-    assert.match(run.stdout, /^to disable:  install\.sh --supervisor=disable --supervisor-hosts claude$/m);
+    assert.match(run.stdout, /^to disable:  install\.sh --supervisor=disable --supervisor-actor-kinds claude$/m);
   });
 });

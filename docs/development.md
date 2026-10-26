@@ -21,14 +21,13 @@
 | `src/core/` | Domain model, SQLite repository, state machine, invariants (M1) |
 | `src/cli/` | `taskctl` — the CLI entry point |
 | `src/server/` | Local HTTP API + SSE for the board (M6) |
+| `src/orchestrator/` | The external loop (`taskctl loop …`): passes, daemons, session pool, actor kinds |
 | `src/foundation/` | Foundation DTOs, constants, small pure helpers |
 | `web/` | Vue 3 + Vite board frontend → `web/dist` (the hosted frontend root) |
 | `skills/meerkat-taskpanel/` | The skill — **single source of truth** |
 | `.claude-plugin/` | The board plugin manifest and the marketplace; the plugin root is the repository root, which is how every harness shares the one `skills/` tree |
 | `.pi/` | The Pi extension, declared by the root `package.json`'s `pi` field (which also names the skills directory) |
-| `.opencode/` | The OpenCode plugin — a Shape-B host: it registers the shared `skills/` directory at runtime, so it too needs no copy |
-| `.cursor-plugin/` | Cursor's marker. Cursor reads `skills` out of its plugin root, which is why the repository root is a Cursor plugin root as well |
-| `scripts/` | Build, install, sync and verify scripts |
+| `scripts/` | Build, install and verify scripts |
 | `test/` | Smoke / contract tests |
 | `design/` | Product design artifacts — the DESIGN / BLOCKS documents, the interactive `prototype/`, brand assets and exported assets (see `design/README.md`) |
 | `docs/` | Usage and development documentation |
@@ -37,26 +36,33 @@ Dependency direction: `core`, `cli` and `server` may import from `foundation`;
 nothing imports from `cli` or `server`; `foundation` imports nothing from `src/`.
 `src/foundation/` is the **public SDK**: both the board and the loop may import it.
 
-The loop is an **orchestrator, not a co-owner**. `scripts/loop/**`, the supervisor and
-`scripts/wake-cwd.mjs` may import `foundation/` but never `src/core|cli|server`; the board may
-not import the loop's policy modules (`foundation/scheduling.mjs`, `foundation/sla-patrol.mjs`); and
-no shipped skill imports `src/core|cli|server` at all — an installed skill and a checkout are
-not co-located, so such an import would resolve here and fail on a host. All three directions
-are asserted by `test/cli/imports.test.mjs`.
+The loop is an **orchestrator, not a co-owner**. `src/orchestrator/**` may import
+`foundation/` but never `src/core|cli|server`; the board may
+not import the loop's clocks/wake policy (`foundation/scheduling.mjs`); and no shipped skill
+imports `src/core|cli|server` at all — an installed skill and a checkout are not co-located,
+so such an import would resolve here and fail on a host. All three directions are asserted by
+`test/cli/imports.test.mjs`.
+
+SLA is the one surface that moved sides. The board now **computes** the inspection rows
+(`foundation/sla-patrol.mjs` via `core/commands/sla.mjs`, published as `GET /api/v1/sla`), so
+`src/core` and `src/server` may import the engine — through that one command, which the
+import test names explicitly. `src/cli` remains a thin HTTP client and must not. The loop
+keeps the de-duplication ledger, the pre-emit re-read and the notification, plus
+`inspector_liveness` (a marker file on the loop's host).
 
 The ownership rule behind them: a rule that decides **what state is legal or required**
 belongs to the board; a rule that decides **when to act, whom to involve, or where to wake**
-belongs to the loop. The loop reaches the board only through its public surface (`taskctl
---json` / HTTP), never by importing it.
+belongs to the loop. The loop reaches the board only through `taskctl --json` — including
+`taskctl events follow` for the live stream (the local hub's client) — never by importing it and never by calling the
+HTTP API directly. Capability detail lives in the board skill's
+`references/capabilities.md`; the loop skill records decisions only.
 
 ## Commands
 
 ```bash
 node --test                          # smoke / contract test suite
-node scripts/sync-skills.mjs         # regenerate the loop payload (manifest + scripts/ + templates/)
-node scripts/sync-skills.mjs --check # verify both are in sync
-node scripts/verify/manifests.mjs    # validate the host + loop + marketplace manifests
-node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
+node scripts/verify/manifests.mjs    # validate the agent-kind + loop + marketplace manifests
+node scripts/verify/skill.mjs        # validate every shipped SKILL.md frontmatter
 node scripts/verify/web-dist.mjs     # are the two web/dist-guarded tests legs actually run?
 node scripts/build.mjs               # produce dist/ — the npm release tree (not web/dist)
 ```
@@ -65,11 +71,10 @@ Or via npm aliases:
 
 ```bash
 npm test          # node --test
-npm run check:skills
 npm run verify
 npm run verify:web-dist  # fail unless both web/dist-guarded legs ran (see below)
 npm run build
-npm run check     # check:skills + verify + test
+npm run check     # verify + test
 npm run test:coverage   # node --test + the coverage gate (see below)
 ```
 
@@ -88,6 +93,9 @@ thing.
   install + first-run end-to-end, which is a step *inside* that script rather than a
   separate CI-only `docker run`. (`verify:docker` then adds a local-only compose deploy
   smoke test, which is strictly extra.)
+- Locally, `.githooks/pre-push` runs that same `npm run verify:docker` on every branch push,
+  after the static gates and only when a branch commit is moving. Merging therefore no longer
+  ends with a separate container run; the push is the container gate.
 
 `verify:docker` is not a substitute for the **`check` job**, and does not reproduce two of
 its properties: the Node **22/24 matrix** (the image is Node 22 only, so a Node-24-only
@@ -106,7 +114,10 @@ and turns the job red.
 The mechanics:
 
 1. Branch off `main`.
-2. Push the branch and **open a pull request**.
+2. Push the branch and **open a pull request**. The push itself runs the container gate:
+   `.githooks/pre-push` builds the image and runs `docker/verify-in-container.sh` after the
+   static gates pass, so the merge step needs no separate container run. Commit first — the
+   image bakes the working tree. `SKIP_CONTAINER_VERIFY=1 git push …` opts out for one push.
 3. Wait for CI. Three workflows already carry a `pull_request` trigger, so no workflow
    change is needed for PR gating:
    - `.github/workflows/check.yml` — the Node 22/24 matrix plus the container job;
@@ -190,10 +201,11 @@ browser?" is printed rather than inferred. See
 | `/health`, `/meta` | GET | liveness + version/capabilities; `/health` is unauthenticated |
 | `/projects`, `/projects/:id`, `/projects/:id/readme` | GET/POST/PATCH/PUT | `/projects` is ordered server-side (DESIGN.md §20) and carries each project's `task_count` (the sidebar badge — total tasks, archived included, independent of the order) |
 | `/tasks`, `/tasks/:ref` | GET/POST/PATCH | `:ref` is an identifier or a UUID |
-| `/tasks/:ref/move`, `/tasks/:ref/deliver`, `/tasks/:ref/assign`, `/tasks/:ref/archive` | POST | the delivery gate bites on `/move` and `/deliver` |
-| `/tasks/:ref/comments`, `/tasks/:ref/relations`, `/tasks/:ref/sessions`, `/tasks/:ref/activities`, `/tasks/:ref/reports` | GET/POST/DELETE | activities is the audit cursor read |
+| `/tasks/:ref/move`, `/tasks/:ref/reopen`, `/tasks/:ref/deliver`, `/tasks/:ref/assign`, `/tasks/:ref/archive` | POST | the delivery gate bites on `/move` and `/deliver`; `/reopen` is the audited `done|canceled → todo` edge |
+| `/tasks/:ref/comments`, `/tasks/:ref/relations`, `/tasks/:ref/sessions`, `/tasks/:ref/activities`, `/tasks/:ref/reports` | GET/POST/DELETE | activities is the task-scoped audit cursor read |
+| `/activities` | GET | the board-wide audit cursor (`?after`, `?limit`, `?order`); the activity ledger's one-read backfill |
 | `/attachments/:id/content` | GET/PUT | raw bytes; not JSON — handled outside the router |
-| `/events` | GET (SSE) | `global_revision` increments; `?after=<rev>` replays; a deliberate stop sends a named `shutdown` frame (see [Stopping the daemon](#stopping-the-daemon)) |
+| `/events` | GET (SSE) | the `task_activities` revision cursor; `?after=<rev>` replays; a deliberate stop sends a named `shutdown` frame (see [Stopping the daemon](#stopping-the-daemon)) |
 | `/actors`, `/labels` | GET | read-only by design (§4.4) |
 | `/token` | POST | rotate; loopback only |
 | `/access` | GET/PUT | the persisted token + allow-list policy; loopback only (the read answers the credential) |
@@ -217,7 +229,7 @@ through `PUT /access` writes the file and applies the policy to the next request
 without a restart; `rotate_token: true` rotates the token in the same save.
 
 **One config file, environment first.** `<program root>/.env` is read by both
-`taskd` and `taskctl` (and the loop's SSE subscriber). The process environment
+`taskd` and `taskctl` (and the loop, through its `taskctl` children). The process environment
 wins key by key; CLI flags win over both. `--env-file <path>` or
 `MEERKAT_TASKPANEL_ENV_FILE` selects a different file (tests, containers, a
 read-only package root). A file named with `--env-file` that does not exist is an
@@ -233,6 +245,24 @@ writes it 0600. An inline `TASKD_TOKEN` requires that mode. The old
 `<dataDir>/taskd.env` is **no longer read** — this is a hard switch; move its
 keys into `.env`.
 
+**Which program root?** `.env` and `.data` resolve from the program that is running, so there
+are three roots in play and they are not interchangeable:
+
+| Root | Produced by | `.env` / `.data` |
+|---|---|---|
+| the checkout | `git clone` | `<checkout>/.env`, `<checkout>/.data` |
+| the container | `docker build` (program at `/app`) | `/app/.env`, `/app/.data` (the compose volume) |
+| the installed tree | `npx meerkat-taskpanel` or `install.sh --target server` | `~/.meerkat-taskpanel/.env`, `~/.meerkat-taskpanel/.data` |
+
+The installed tree is a copy of `src/**` plus the built `web/dist`, materialized by
+`scripts/install/lib/server-install.mjs`; `scripts/install/server.sh` is the shell entry, and
+the npm wrapper `scripts/install/cli.mjs` only translates flags and points a combined agent-kind
+install at the tree. `bin/taskd` and `bin/taskctl` are thin launchers that exec the tree's own
+`src/server/main.mjs` / `src/cli/index.mjs`, so the npx cache can be pruned and the checkout
+can move without disturbing an installed board. This is separate from `dist/`: that is the
+npm **release tree** written by `scripts/build.mjs`, while the tarball's runnable frontend is
+`web/dist` (see [publishing.md](publishing.md#2-npm)).
+
 Security-relevant environment variables:
 
 | Variable | Meaning |
@@ -246,6 +276,9 @@ Security-relevant environment variables:
 | `TASKD_TOKEN_FILE` | a token file the client reads (`TASKD_TOKEN` outranks it) |
 | `MEERKAT_TASKPANEL_ENV_FILE` | selects the config file; not a secret |
 | `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS` | label housekeeping (§4.4) |
+| `TASKD_LOG_LEVEL` | `debug`/`info`/`warn`/`error`/`off` (default `info`); `taskd` and the loop, and `taskctl` only when explicitly set |
+| `TASKD_LOG_MAX_BYTES` / `TASKD_LOG_KEEP` | size rotation of `<dataDir>/logs/taskd.log` (defaults 10 MiB, 5 files) |
+| `TASKD_SLA_*` | the SLA policy table (`docs/sla.md` §2.1): per-row `LIMIT_MIN`/`FURTHER_MIN`, `PERIOD_SECONDS`, `LEADER_LOOKBACK_DAYS`, `PEER_PERIOD_MIN`, `PEER_LIVENESS_K`. Validated as integers with `F ≥ L`; published by `GET /api/v1/sla` and `/meta` → `capabilities.sla`, re-read per request |
 
 ### One writer per data directory
 
@@ -342,7 +375,7 @@ fix is to shorten the hold, not to raise the timeout.
 The access token is never echoed in a response and never logged. The SSE stream
 filters `task_heartbeat` out of the increments, because a pulse changes no board
 state (§4.3); the row still exists in `task_activities` and under
-`/tasks/:ref/activities`.
+`/tasks/:ref/activities` (or the board-wide `/activities`).
 
 > **The built board is loopback-only.** It injects no token, so a browser reaching
 > `taskd` from a non-loopback address is answered 401 across the board — a known
@@ -350,65 +383,43 @@ state (§4.3); the row still exists in `task_activities` and under
 > [web-local-first.md](web-local-first.md) for what works, the SSH-forward
 > workaround, and what a fix would require.
 
-## The skills are generated, never hand-edited
+## The skills are authored, never generated
 
-There are two skills, and `scripts/sync-skills.mjs` owns the whole generated surface
-around them (it delegates the payload half to `scripts/sync-loop.mjs`):
+There are three skills, and each is plain source — there is no generated payload:
 
-| Skill | Authored in | Generated into |
+| Skill | Lives in | Notes |
 |---|---|---|
-| `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | nothing — every harness reads `skills/` in place |
-| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `manifest.txt` + `scripts/` (except the gate) + `templates/`; foundation is generated inside `scripts/foundation/` |
+| `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | `SKILL.md`, `references/`, its two helper scripts. Every harness reads `skills/` in place |
+| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` | `SKILL.md` + `references/` only. The loop itself is `src/orchestrator/`, reached through `taskctl loop …` |
+| `setup-meerkat` (install/repair + team setup) | `skills/setup-meerkat/` | Everything, including `scripts/` and `assets/`; standalone (Node builtins only), copied as-is with the Claude bundle |
+
+The loop used to ship an execution body generated into `skills/meerkat-loop/`
+(`manifest.txt` + `scripts/` + `templates/`). It now lives in `src/orchestrator/` and is
+installed and versioned with the toolkit, so there is nothing to regenerate and no
+payload-regeneration step. The installer's scheduling templates live once, under
+`scripts/install/templates/`; the enabled units run `taskctl loop …`.
+
+`setup-meerkat` may not import `src/core`, `src/cli` or `src/server`: it has to run from an
+installed copy that has only its own directory (`test/cli/imports.test.mjs` enforces that).
+The loop's decisions still come from the board, not from a copy: the workflow plan is
+`src/core/domain/workflow.mjs`, applied through `issue reconcile --workflow`. OpenClaw never
+receives the loop at all, by ruling: its framework already ships an equivalent supervisor,
+and `install.sh --target openclaw` copies the board skill only.
 
 There is exactly one `skills` tree in the repository. No harness receives a copy: each reads
 `skills/` in place through a manifest at the repository root, which is the board's plugin
-root. `test/scaffold.test.mjs` asserts that, since with no copy targets left
-`sync-skills.mjs --check` has nothing to compare and could not notice an orphan tree.
+root. `test/scaffold.test.mjs` asserts that.
 
-The loop's `manifest.txt` and `scripts/` are generated *from this repository*:
-`manifest.txt` is the transitive import closure of `scripts/supervisor.mjs`,
-`scripts/loop/*.mjs` and `scripts/wake-cwd.mjs` (the list the installer copies), `scripts/`
-holds those modules and `scripts/foundation/` holds the foundation modules they import.
-`templates/` mirrors the loop-side files under `scripts/install/templates/`.
-`scripts/board-check.mjs` is the one authored file inside a generated root —
-`sync-loop.mjs` never writes, prunes or reports it. That direction matters — the foundation
-modules in the repository's `src/foundation/` are **not** moved into the skill; they stay
-where the CLI imports them, and the skill's copy is generated and guarded. The vendored set
-is the loop's foundation closure only: the loop body never contains `src/core`, `src/cli`,
-`src/server`, or any foundation module the entry points do not import. Foundation copies are
-byte-for-byte; entry scripts differ only in their foundation import specifiers
-(`../src/foundation/x` → `./foundation/x`), and `--check` compares against that transform. The **workflow
-decisions** are not in
-the loop body at all: they live in `src/core/domain/workflow.mjs`, and the loop gets them
-from the board through `issue reconcile --workflow`. OpenClaw never receives the loop at
-all, by ruling: its framework already ships an equivalent supervisor, and `install.sh
---target openclaw` copies the board skill only.
-
-**After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/loop/`,
-`scripts/wake-cwd.mjs`, `src/foundation/`, or `scripts/install/templates/`, run:**
-
-```bash
-node scripts/sync-skills.mjs
-```
-
-CI runs `node scripts/sync-skills.mjs --check` and fails if the generated payload has
-drifted. The same reasoning applies to `dist/`: build output is never edited by hand and is
-gitignored.
-
-**One more rule for the skills, because they are distributed rather than read in place:** a
+**One rule for the skills, because they are distributed rather than read in place:** a
 link inside `skills/**` must resolve wherever the skill is *installed*, not where it was
-authored. A host's skill store holds `skills/<name>/` and nothing above it, so a
-`../../../docs/…` link dangles in every install — link out by absolute URL instead. (Sharing
-the tree across harnesses does not relax this: `install.sh` still lands one skill directory
-in the host's store.) `test/skill/loop.test.mjs` asserts no link climbs out of the skill
-tree.
+authored. An agent kind's skill store holds `skills/<name>/` and nothing above it, so a
+`../../../docs/…` link dangles in every install — link out by absolute URL instead.
+`test/skill/loop.test.mjs` asserts no link climbs out of the skill tree.
 
 ## Build output
 
 `node scripts/build.mjs` deletes and recreates `dist/` and writes a `dist/web/.gitkeep`
-placeholder. It verifies the loop payload is current (`sync-loop --check`) rather than
-regenerating it: a build must not rewrite the source tree, so a stale payload is a red build
-instead of a silent divergence. It copies no skill — every harness reads `skills/` in place,
+placeholder. It copies no skill — every harness reads `skills/` in place,
 so `dist/` carries the tree as-is through the npm `files` whitelist. `dist/` is gitignored, and
 **it is the npm release tree — not the hosted frontend.** The `dist/web/` placeholder is
 left over from the M0 scaffold; the real board frontend builds to `web/dist` (see

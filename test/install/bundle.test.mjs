@@ -1,10 +1,10 @@
 /**
- * Bundle / marketplace inspection + the per-host profile bundle assertions.
+ * Bundle / marketplace inspection + the per-agent-kind profile bundle assertions.
  *
- * The container cannot run the six host CLIs (they are not in the image and there is
- * no network), so `scripts/verify/lib/bundle.mjs` reproduces the hosts' detection
+ * The container cannot run the four agent CLIs (they are not in the image and there is
+ * no network), so `scripts/verify/lib/bundle.mjs` reproduces the agent kinds' detection
  * contract offline. These tests pin that reproduction: the shipped bundles must be
- * detected with the format each host's profile declares, and the detector must follow
+ * detected with the format each agent kind's profile declares, and the detector must follow
  * OpenClaw's documented precedence rather than accidentally matching the wrong format.
  *
  * Run with: node --test
@@ -17,9 +17,9 @@ import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-import { AGENT_BUNDLE_SCHEMA, CLAUDE_MANIFEST, CODEX_MANIFEST, HOST_BUNDLES, NATIVE_MANIFEST, detectBundle, findSkills, inspectBundle, normalizePathList, parseMarketplace, resolveSkillRoots } from "../../scripts/verify/lib/bundle.mjs";
-import { PROFILE_HOSTS, loadProfiles, runProfiles } from "../../scripts/verify/lib/profiles.mjs";
-import { LOOP_SKILL_NAME } from "../../scripts/sync-loop.mjs";
+import { AGENT_BUNDLE_SCHEMA, CLAUDE_MANIFEST, CODEX_MANIFEST, KIND_BUNDLES, NATIVE_MANIFEST, detectBundle, findSkills, inspectBundle, normalizePathList, parseMarketplace, resolveSkillRoots } from "../../scripts/verify/lib/bundle.mjs";
+import { PROFILE_KINDS, loadProfiles, runProfiles } from "../../scripts/verify/lib/profiles.mjs";
+import { SKILLS } from "../../scripts/verify/skill.mjs";
 import { SKILL_NAME } from "../../src/foundation/constants.mjs";
 
 const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-bundle-" });
@@ -63,10 +63,10 @@ describe("bundle: normalizePathList", () => {
 
 describe("bundle: detectBundle", () => {
   it("detects each shipped bundle with the format its profile declares", () => {
-    for (const [host, meta] of Object.entries(HOST_BUNDLES)) {
+    for (const [kind, meta] of Object.entries(KIND_BUNDLES)) {
       const info = detectBundle(join(ROOT, meta.dir));
-      assert.equal(info.kind, meta.openclawKind, `${host}: kind`);
-      assert.equal(info.format, meta.openclawFormat, `${host}: format`);
+      assert.equal(info.kind, meta.openclawKind, `${kind}: kind`);
+      assert.equal(info.format, meta.openclawFormat, `${kind}: format`);
     }
   });
 
@@ -149,11 +149,11 @@ describe("bundle: skill resolution", () => {
   });
 
   it("resolves the shipped bundles to a loadable meerkat-taskpanel skill", () => {
-    for (const [host, meta] of Object.entries(HOST_BUNDLES)) {
+    for (const [kind, meta] of Object.entries(KIND_BUNDLES)) {
       const info = inspectBundle(join(ROOT, meta.dir));
       const skill = info.skills.find((s) => s.name === SKILL_NAME);
-      assert.ok(skill, `${host}: expected a skill named ${SKILL_NAME} in ${meta.dir}`);
-      assert.match(skill.entry, /SKILL\.md$/, `${host}: entry must be a SKILL.md`);
+      assert.ok(skill, `${kind}: expected a skill named ${SKILL_NAME} in ${meta.dir}`);
+      assert.match(skill.entry, /SKILL\.md$/, `${kind}: entry must be a SKILL.md`);
     }
   });
 });
@@ -186,8 +186,8 @@ describe("bundle: parseMarketplace", () => {
     assert.equal(market.ok, true, market.error);
 
     // `source: "./"` — the board's plugin root IS the repository root, which is what lets
-    // claude / codex / cursor / pi / openclaw share the one `skills/` tree. It is the
-    // shared tree, so it exposes both skills; that is not a second marketplace plugin.
+    // claude / codex / pi / openclaw share the one `skills/` tree. It is the
+    // shared tree, so it exposes all three skills; that is not a second marketplace plugin.
     assert.deepEqual(market.entries.map((entry) => entry.name), [SKILL_NAME]);
     assert.equal(market.entries[0].dir, "", "the board's source directory");
 
@@ -195,8 +195,8 @@ describe("bundle: parseMarketplace", () => {
     assert.ok(names.includes(SKILL_NAME), `./ must expose ${SKILL_NAME}`);
     assert.deepEqual(
       [...names].sort(),
-      [LOOP_SKILL_NAME, SKILL_NAME].sort(),
-      "the root bundle is the shared tree and carries both skills",
+      [...SKILLS].sort(),
+      "the root bundle is the shared tree and carries all three skills",
     );
 
     // No entry may be sourced at a bundle directory: with `plugins/` gone, a second entry
@@ -265,32 +265,24 @@ describe("bundle: parseMarketplace", () => {
 // ---------------------------------------------------------------------------
 
 describe("profiles: bundle expectations", () => {
-  it("every shipped profile declares a bundle matching the host bundle table", async () => {
+  it("every shipped profile declares a bundle matching the agent bundle table", async () => {
     const { profiles, errors } = await loadProfiles(join(ROOT, "docker", "profiles"));
     assert.deepEqual(errors, []);
 
-    for (const host of PROFILE_HOSTS) {
-      const profile = profiles[host];
-      const meta = HOST_BUNDLES[host];
+    for (const kind of PROFILE_KINDS) {
+      const profile = profiles[kind];
+      const meta = KIND_BUNDLES[kind];
 
-      // A host may deliberately have no bundle of its own. OpenCode is one: its skills
-      // arrive through an in-process plugin rather than a bundle directory a detector
-      // classifies. Such a host must declare *no* bundle fields — the profile is where
-      // "skills only, no supervisor, no browser-checkable bundle" is recorded.
-      if (!meta) {
-        assert.equal(profile.bundle, undefined, `${host}: must not declare a bundle`);
-        assert.equal(profile.bundle_format, undefined, `${host}: must not declare a bundle format`);
-        assert.equal(profile.bundle_kind, undefined, `${host}: must not declare a bundle kind`);
-        continue;
-      }
-
-      assert.equal(profile.bundle, meta.dir, `${host}: bundle dir`);
-      assert.equal(profile.bundle_format, meta.openclawFormat, `${host}: bundle format`);
-      assert.equal(profile.bundle_kind, meta.openclawKind, `${host}: bundle kind`);
+      // Every profiled agent kind installs the repository-root bundle, so each must
+      // declare the bundle fields the detector checks.
+      assert.ok(meta, `${kind}: must have a bundle row`);
+      assert.equal(profile.bundle, meta.dir, `${kind}: bundle dir`);
+      assert.equal(profile.bundle_format, meta.openclawFormat, `${kind}: bundle format`);
+      assert.equal(profile.bundle_kind, meta.openclawKind, `${kind}: bundle kind`);
     }
   });
 
-  it("runProfiles asserts the bundle for each host (not just the skill copy)", async () => {
+  it("runProfiles asserts the bundle for each agent kind (not just the skill copy)", async () => {
     const home = await makeTempDir("meerkat-taskpanel-home-");
     const result = await runProfiles({ home, quiet: true });
 
@@ -298,36 +290,32 @@ describe("profiles: bundle expectations", () => {
 
     for (const entry of result.results) {
       const kinds = entry.steps.map((s) => s.name);
-      const hasBundle = HOST_BUNDLES[entry.host] !== undefined;
 
-      // The assertion follows the host: a bundle-less host (OpenCode) must NOT have
-      // these steps, and every other host must. Asserting both directions keeps the
-      // branch honest instead of letting a bundle silently go unchecked.
-      assert.equal(
+      // Every profiled agent kind installs the repository-root bundle, so both
+      // assertions must be present for each of them.
+      assert.ok(
         kinds.some((n) => n.includes("bundle detected as")),
-        hasBundle,
-        `${entry.host}: bundle-detection step presence`,
+        `${entry.kind}: bundle-detection step presence`,
       );
-      assert.equal(
+      assert.ok(
         kinds.some((n) => n.includes("manifest parses")),
-        hasBundle,
-        `${entry.host}: manifest-parse step presence`,
+        `${entry.kind}: manifest-parse step presence`,
       );
     }
 
     assert.ok(
-      result.results.find((r) => r.host === "claude").steps.some((s) => s.name.includes("marketplace.json")),
+      result.results.find((r) => r.kind === "claude").steps.some((s) => s.name.includes("marketplace.json")),
       "claude: expected the marketplace assertion",
     );
   });
 
-  it("--host narrows the run to the selected hosts", async () => {
+  it("--actor-kind narrows the run to the selected agent kinds", async () => {
     const home = await makeTempDir("meerkat-taskpanel-home-");
-    const result = await runProfiles({ home, quiet: true, hosts: ["codex"] });
+    const result = await runProfiles({ home, quiet: true, kinds: ["codex"] });
 
     assert.equal(result.ok, true);
     assert.deepEqual(
-      result.results.map((r) => r.host),
+      result.results.map((r) => r.kind),
       ["codex"],
     );
   });

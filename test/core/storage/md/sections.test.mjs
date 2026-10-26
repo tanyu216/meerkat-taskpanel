@@ -14,15 +14,14 @@ import {
   joinSections,
   parseAcceptanceBlock,
   parseCommentsBlock,
-  parseProgressBlock,
   parseReportBlock,
   parseSessionsBlock,
   renderAcceptanceBlock,
+  renderAcceptanceList,
+  renderAttachmentsBlock,
   renderCommentsBlock,
-  renderProgressBlock,
   renderReportBlock,
   renderSessionsBlock,
-  splitProgressLine,
   splitSections,
   unescapeInline,
 } from "../../../../src/core/storage/md/sections.mjs";
@@ -49,8 +48,8 @@ describe("md/sections — splitting", () => {
   });
 
   it("trims blank lines around a section and treats a heading with nothing under it as empty", () => {
-    const { sections } = splitSections("## Progress\n\n\n## Sessions\n- x\n\n");
-    assert.equal(sections.get("Progress"), "");
+    const { sections } = splitSections("## Comments\n\n\n## Sessions\n- x\n\n");
+    assert.equal(sections.get("Comments"), "");
     assert.equal(sections.get("Sessions"), "- x");
   });
 
@@ -65,9 +64,9 @@ describe("md/sections — splitting", () => {
     assert.deepEqual(SECTION_ORDER, [
       "Background",
       "Acceptance",
-      "Progress",
       "Comments",
       "Sessions",
+      "Attachments",
       "Report",
     ]);
     // Unknown sections are appended rather than dropped.
@@ -114,20 +113,14 @@ describe("md/sections — acceptance", () => {
     assert.deepEqual(parseAcceptanceBlock("just prose\nand more"), []);
     assert.deepEqual(parseAcceptanceBlock("- ordinary bullet"), []);
   });
-});
 
-describe("md/sections — progress", () => {
-  it("keeps one note per line and splits the timestamp off", () => {
-    const lines = parseProgressBlock("- 2026-10-08T00:00:00.000Z did a thing\n\n- plain note");
-    assert.deepEqual(lines, ["2026-10-08T00:00:00.000Z did a thing", "plain note"]);
-    assert.deepEqual(splitProgressLine(lines[0]), { ts: "2026-10-08T00:00:00.000Z", text: "did a thing" });
-    assert.deepEqual(splitProgressLine("no timestamp here"), { ts: "", text: "no timestamp here" });
-    assert.deepEqual(splitProgressLine(""), { ts: "", text: "" });
-    assert.equal(renderProgressBlock([{ ts: "", text: "no timestamp here" }]), "- no timestamp here");
+  it("renders modern string items as plain bullets, with no invented checkbox state", () => {
     assert.equal(
-      renderProgressBlock([{ ts: "2026-10-08T00:00:00.000Z", text: "did a thing" }]),
-      "- 2026-10-08T00:00:00.000Z did a thing",
+      renderAcceptanceList(["cli works", "gate visible", 7]),
+      "- cli works\n- gate visible\n- 7",
     );
+    assert.equal(renderAcceptanceList(["one line\nsecond line"]), "- one line\\nsecond line");
+    assert.equal(renderAcceptanceList([]), "");
   });
 });
 
@@ -190,8 +183,8 @@ describe("md/sections — sessions", () => {
   it("parses the team's key:value session lines, empty pid included", () => {
     const sessions = parseSessionsBlock(
       [
-        "- seg:seg1 · owner:linus · backend:claude · id:32306ef3-a9ad-5453-b300-5f12642ac16f · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z",
-        "- seg:seg2 · owner:linus · backend:claude · id:ff309028 · status:running · 2026-10-02T00:00:00.000Z",
+        "- seg:seg1 · owner:linus · owner_kind:claude · id:32306ef3-a9ad-5453-b300-5f12642ac16f · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z",
+        "- seg:seg2 · owner:linus · owner_kind:claude · id:ff309028 · status:running · 2026-10-02T00:00:00.000Z",
       ].join("\n"),
     );
     assert.equal(sessions[0].seg, "seg1");
@@ -200,15 +193,44 @@ describe("md/sections — sessions", () => {
     assert.equal(sessions[1].phase, "", "a missing field becomes an empty string");
     assert.equal(sessions[1].status, "running");
     assert.equal(renderSessionsBlock([sessions[0]]).startsWith("- seg:seg1 · owner:linus"), true);
-    assert.equal(renderSessionsBlock([sessions[0]]), `- seg:seg1 · owner:linus · backend:claude · id:32306ef3-a9ad-5453-b300-5f12642ac16f · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z`);
+    assert.equal(renderSessionsBlock([sessions[0]]), `- seg:seg1 · owner:linus · owner_kind:claude · id:32306ef3-a9ad-5453-b300-5f12642ac16f · goal: · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z`);
+  });
+
+  it("round-trips a goal that carries the field separator, a newline and a backslash", () => {
+    const goal = "fix a · b\nsecond line\r\\done: yes";
+    const rendered = renderSessionsBlock([
+      {
+        seg: "seg1",
+        owner: "linus",
+        ownerKind: "claude",
+        sessionId: "sess-1",
+        goal,
+        status: "running",
+        pid: null,
+        ts: "2026-10-01T00:00:00.000Z",
+      },
+    ]);
+    assert.equal(rendered.includes("\n"), false, "the record stays one line");
+    const [parsed] = parseSessionsBlock(rendered);
+    assert.equal(parsed.goal, goal);
+    assert.equal(parsed.seg, "seg1");
+    assert.equal(parsed.status, "running");
+  });
+
+  it("reads a pre-0028 session line without a goal as the empty sentence", () => {
+    const [parsed] = parseSessionsBlock(
+      "- seg:seg1 · owner:linus · owner_kind:claude · id:sess-1 · status:running · 2026-10-01T00:00:00.000Z",
+    );
+    assert.equal(parsed.goal, "");
+    assert.equal(parsed.status, "running");
   });
 
   it("tolerates the template placeholder comment and keeps the real sessions", () => {
     const notices = [];
     const sessions = parseSessionsBlock(
       [
-        "<!-- 子会话关联（resume 依据）：每段一行 · 字段 seg/owner/backend/id/phase/status/pid -->",
-        "- seg:seg1 · owner:linus · backend:claude · id:sess-1 · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z",
+        "<!-- 子会话关联（resume 依据）：每段一行 · 字段 seg/owner/owner_kind/id/phase/status/pid -->",
+        "- seg:seg1 · owner:linus · owner_kind:claude · id:sess-1 · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z",
       ].join("\n"),
       { notices },
     );
@@ -217,7 +239,7 @@ describe("md/sections — sessions", () => {
     assert.deepEqual(notices[0], {
       section: "Sessions",
       line: 1,
-      text: "<!-- 子会话关联（resume 依据）：每段一行 · 字段 seg/owner/backend/id/phase/status/pid -->",
+      text: "<!-- 子会话关联（resume 依据）：每段一行 · 字段 seg/owner/owner_kind/id/phase/status/pid -->",
     });
   });
 
@@ -226,7 +248,7 @@ describe("md/sections — sessions", () => {
     const sessions = parseSessionsBlock(
       [
         "- 2026-10-09T15:52+08:00 · change · author=elon · a comment that is not a session record",
-        "- seg:seg1 · owner:linus · backend:claude · id:sess-1 · status:running · 2026-10-02T00:00:00.000Z",
+        "- seg:seg1 · owner:linus · owner_kind:claude · id:sess-1 · status:running · 2026-10-02T00:00:00.000Z",
       ].join("\n"),
       { notices },
     );
@@ -243,7 +265,7 @@ describe("md/sections — sessions", () => {
         "- seg:seg2 · whatever:1 · 2026-10-01T00:00:00.000Z", // unknown field
         "- notakeyvalue · 2026-10-01T00:00:00.000Z", // field without `<name>:<value>`
         "plain prose with no bullet",
-        "- seg:seg3 · owner:linus · backend:claude · id:sess-3 · status:running · 2026-10-03T00:00:00.000Z",
+        "- seg:seg3 · owner:linus · owner_kind:claude · id:sess-3 · status:running · 2026-10-03T00:00:00.000Z",
       ].join("\n"),
       { notices },
     );
@@ -262,12 +284,43 @@ describe("md/sections — sessions", () => {
       [
         "<!-- a comment block",
         "that spans several lines -->",
-        "- seg:seg1 · owner:linus · backend:claude · id:sess-1 · status:running · 2026-10-01T00:00:00.000Z",
+        "- seg:seg1 · owner:linus · owner_kind:claude · id:sess-1 · status:running · 2026-10-01T00:00:00.000Z",
       ].join("\n"),
       { notices },
     );
     assert.deepEqual(sessions.map((session) => session.seg), ["seg1"]);
     assert.equal(notices.length, 2);
+  });
+});
+
+describe("md/sections — attachments", () => {
+  it("renders one escaped field list per row, including comment_id when present", () => {
+    assert.equal(
+      renderAttachmentsBlock([
+        {
+          id: "att-1",
+          filename: "notes.txt",
+          contentType: "text/plain",
+          size: 12,
+          kind: "attachment",
+          commentId: null,
+          createdAt: "2026-10-08T00:00:00.000Z",
+        },
+        {
+          id: "att-2",
+          filename: "a · b\nc.txt",
+          contentType: "application/pdf",
+          size: 99,
+          kind: "attachment",
+          commentId: "c-1",
+          createdAt: "2026-10-09T00:00:00.000Z",
+        },
+      ]),
+      [
+        "- id:att-1 · filename:notes.txt · type:text/plain · size:12 · created_at:2026-10-08T00:00:00.000Z",
+        "- id:att-2 · filename:a \\u00b7 b\\nc.txt · type:application/pdf · size:99 · created_at:2026-10-09T00:00:00.000Z · comment_id:c-1",
+      ].join("\n"),
+    );
   });
 });
 
@@ -354,6 +407,51 @@ describe("md/sections — report", () => {
         notices: [],
       },
     ]);
+  });
+
+  it("round-trips a rollup: marker and child refs", () => {
+    const reports = [
+      {
+        round: 2,
+        ts: "2026-10-08T02:00:00.000Z",
+        authorId: "taskd",
+        isRollup: true,
+        conclusion: "Rollup.",
+        acceptance: [
+          { text: "PROJ-0001 One (done)", status: "met", ref: "PROJ-0001" },
+          { text: "PROJ-0002 Two (canceled)", status: "not_applicable", note: "scope dropped", ref: "PROJ-0002" },
+        ],
+        evidence: { items: [{ kind: "path", path: "x" }], truncated: false },
+        leftovers: null,
+      },
+    ];
+    const rendered = renderReportBlock(reports);
+    assert.match(rendered, /^### R2 · .*\n\nrollup: yes\n\nRollup\./);
+    assert.doesNotMatch(rendered, /^origin: /m, "0035 removed the provenance marker");
+    assert.match(rendered, /- \[met\] PROJ-0001 One \(done\) · ref: PROJ-0001/);
+    assert.match(rendered, /- \[not_applicable\] PROJ-0002 Two \(canceled\) · ref: PROJ-0002 — scope dropped/);
+
+    const [back] = parseReportBlock(rendered);
+    assert.equal(back.isRollup, true);
+    assert.equal(back.origin, undefined);
+    assert.deepEqual(back.acceptance, reports[0].acceptance);
+  });
+
+  it("swallows a legacy `origin: import` line instead of reading it as prose", () => {
+    // Cards exported before 0035 still carry the line. It is not reproduced, and
+    // it must not leak into the conclusion on the way in.
+    const [back] = parseReportBlock("### R1 · 2026-10-08T00:00:00.000Z · taskd\n\norigin: import\n\nHistory.\n");
+    assert.equal(back.conclusion, "History.");
+    assert.equal(back.origin, undefined);
+  });
+
+  it("keeps the marker absent when the block carries none", () => {
+    const [plain] = parseReportBlock(
+      ["### R1 · t · a", "", "Done.", "", "acceptance:", "- [met] a · ref: not-a-marker"].join("\n"),
+    );
+    assert.equal("isRollup" in plain, false);
+    assert.equal("origin" in plain, false);
+    assert.equal(plain.acceptance[0].ref, "not-a-marker", "a ref is still read mid-line");
   });
 
   it("tolerates a report block it cannot fully parse — and records notices", () => {

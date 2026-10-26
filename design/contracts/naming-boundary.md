@@ -1,6 +1,6 @@
 # 框架名 / 产品名边界契约 · C-NAME-1
 
-> **唯一口径**：**产品对外契约名必须是产品自有的**——`taskctl` CLI 面 + board wire（`src/shared/wire.mjs`）+ 契约快照代号 `schema_version`。框架词只可在 **① 指针 / ② 兼容声明 / ③ 溯源** 三种角色下出现，且**任何角色下都不得充当产品自有契约的名字**；框架**内部机制名**（`PROTOCOL`、`task-ops`、`redlines`、框架内部文件/符号/花名册）**不得进入产品契约与对外文档**。
+> **唯一口径**：**产品对外契约名必须是产品自有的**——`taskctl` CLI 面 + board wire（`src/foundation/wire.mjs`）+ 契约快照代号 `schema_version`。框架词只可在 **① 指针 / ② 兼容声明 / ③ 溯源** 三种角色下出现，且**任何角色下都不得充当产品自有契约的名字**；框架**内部机制名**（外部协议文档名、`task-ops`、`redlines`、框架内部文件/符号/花名册）**不得进入产品契约与对外文档**。
 
 > 卡：`T-20261014-011057-2`（goal：裁定 `task-interface v1` 等 openclaw-team 框架名在产品仓的可用边界。范围 = operator 2026-10-14 拍板的 **(B) 命名耦合**。）
 > **裁定来源**：卡面 Background 的三问（① `task-interface` 作产品对外契约名是否合法；② 哪些框架内部名不得进产品契约/文档；③ 跨仓发版说明类引用如何标注方可保留）+ Acceptance ③ 的事实源口径。本文件是**执行方的落文**，不是新裁定。
@@ -10,11 +10,13 @@
 > 基线 commit：`61f7f3a`（= 本 lane 工作树 HEAD = `main` HEAD，开工时实测同一 sha）。
 > 本文件为**新增文件**：不改任何代码；`design/README.md` 仅按 `C-PREFIX-1` 先例补一行登记（见 §8）。**未 push**（§10）。
 
-> **⛔ 已退役（2026-10-17）。** 本裁定 2026-10-14 由 C1 落文，**§8 的双签从未取得，C2（清理）从未开工，C3（独立验证）从未执行**。2026-10-17 复核：其 §7 独立判据 ④⑤ PASS、**①②③ FAIL** —— `PROTOCOL` 的落点由本文件记录的 6 个文件涨到 **29 个**（约 13 个在已发布面）；`src/shared/**` 与 `src/core/domain/enums.mjs` 的 `task-interface` 未清零；`task-ops` 全仓非 0，命中全在本文件与其登记行。operator 2026-10-17 裁定 **退役并收窄**：不执行 §7 的 P0/P1/P2，把 ①②③ 换成本文件 §7.1 的**现状表**，只有 §7.2 的**两条禁令**继续生效并由 `scripts/verify/signposts.mjs` 机械执行。
+> **⛔ 已退役（2026-10-17）。** 本裁定 2026-10-14 由 C1 落文，**§8 的双签从未取得，C2（清理）从未开工，C3（独立验证）从未执行**。2026-10-17 复核：其 §7 独立判据 ④⑤ PASS、**①②③ FAIL** —— 外部协议文档名的落点由本文件记录的 6 个文件涨到 **29 个**（约 13 个在已发布面）；`src/shared/**` 与 `src/core/domain/enums.mjs` 的 `task-interface` 未清零；`task-ops` 全仓非 0，命中全在本文件与其登记行。operator 2026-10-17 裁定 **退役并收窄**：不执行 §7 的 P0/P1/P2，把 ①②③ 换成本文件 §7.1 的**现状表**，只有 §7.2 的**两条禁令**继续生效并由 `scripts/verify/signposts.mjs` 机械执行。
 >
 > **随之作废**：§2 的计数与文件清单锚在 `61f7f3a`（现落后 `dev` HEAD 数百个提交），只作当时的快照；§4 里 `plugins/**` 的全部生成副本目标（12 + 8 + 4 份）**在今天的树上不存在** —— `plugins/` 已由 `39a009d` 整目录删除，`skills/` 是仓库里唯一的 skills 树；§10 的 lane 分支持已消失。**§2–§6 保留为历史落点盘点，不再是工单。**
 >
 > **2026-10-20 后续**：OpenClaw 专用的 markdown 卡片导入器已整块移出产品 —— `src/core/storage/md/{import,migrate-cli,project-registry,invariants-check}.mjs`、`scripts/migrate/**`、`docker/migrate-in-container.sh`、`test/migrate/**` 均已删除，`docs/migration.md` 只保留 schema 迁移闸门与 MCP 移除记录。因此本文件 §2/§4/§7 中锚在 `project-registry.mjs`、`docs/migration.md` 的 `__team__` 段或 `test/migrate/**` 的行**只作历史记录**；当前事实源已不含这些文件。
+>
+> **2026-10-22 后续**：外部协议文档名的树内引用已清除 —— SLA 契约内化（`a4cc5e4`）后，`threshold_ref` 指向 `docs/sla.md` §2；本次又把 §①/§㉙ 等逻辑引用改指产品自有源码/文档。§7.1 的旧「R2 / 已发布接口数据」判定随之作废；本文件只在 §9 的原始输出中保留该词作历史证据。**门禁未改**：`scripts/verify/signposts.mjs` 仍不机械拦截该词，本次按「只清文件」执行。
 
 ---
 
@@ -23,7 +25,7 @@
 - **① 裁定 = 否：`task-interface` 不得作为产品的对外契约名。** 它是 **openclaw-team 的 ACL 代号**（框架侧的接口合同，版本记于该文件 §13），产品只是它的**参考实现（reference implementation）**。产品的对外契约名自有的那一套（`taskctl` / board wire / `schema_version`）**已经在位**（§5 实测），因此这是**纠正自述**，不是新建命名。
 - **① - 补：但 `task-interface v1` 可保留，且只保留在一个角色上 = 「兼容声明」。** 它陈述「本产物绑定框架 ACL 的哪一代」，只挂在**框架侧产物**（loop skill 及其 references / `board-check.mjs`）上，并**始终带归属**。这与 Acceptance ③「框架侧只保留 ACL 最小必需集 + 指针」是同一句话的两种说法。
 - **② 判据 = 三轴四条**（§3）：**J1 归属**（这个词命名的是产品自己的东西，还是别人家的东西）→ **J2 角色**（别人家的东西，在此处扮演 指针 R1 / 兼容声明 R2 / 溯源 R3 中的哪一个）→ 都不属三者且指向**框架内部机制**者 = **F1 泄漏**；**J3 事实源**（框架规范与产品 schema 同时描述一个形状时，产品 schema 是事实源，框架侧只放指针）。
-- **③ 逐类处置见 §4**（保留 / 改名 / 加标注，逐文件可执行）。一句话版本：**`openclaw-team` 指针类全保留**；**`task-interface` 分五个子角色**（兼容声明保留、自述改标注、自有 schema 改名、溯源改写、测试锁保留）；**`PROTOCOL` 六处全改写**（F1）；**`task-ops` 零落点 + 立禁**。
+- **③ 逐类处置见 §4**（保留 / 改名 / 加标注，逐文件可执行）。一句话版本：**`openclaw-team` 指针类全保留**；**`task-interface` 分五个子角色**（兼容声明保留、自述改标注、自有 schema 改名、溯源改写、测试锁保留）；**外部协议文档名六处全改写**（F1）；**`task-ops` 零落点 + 立禁**。
 - **④ 两处必须先说的精度：**
   1. **卡面基线与本 lane 实测有差**：`openclaw-team` **39 → 40 文件**、`task-ops` **1 → 0 文件**（§2）。`main` 在 Elon 排查与本 lane 开工点之间前进了。本文件一律以 `61f7f3a` 的实测为准。
   2. **`task-interface v1` 在产品里没有任何机器表示**：`git grep` 在 `src/server`、`src/cli`、`web/`、`scripts/verify` 全零命中；loop 的闸门读的是 board 自有的 `version` + `schema_version`（§5）。⇒ **命名耦合是纯散文层的**，这也正是本裁定可以把「保留作兼容声明」与「不得作产品契约名」同时说圆的原因。
@@ -65,7 +67,7 @@
 |---|---|---|---|
 | `task-interface` | 37 文件 | **37 文件** | — |
 | `openclaw-team` | 39 文件 | **40 文件** | +1 |
-| `PROTOCOL` | 6 文件 | **6 文件** | — |
+| 外部协议文档名 | 6 文件 | **6 文件** | — |
 | `task-ops` | 1 文件 | **0 文件** | −1 |
 
 **按「自撰（作者区）/ 生成副本（`plugins/**` + `skills/meerkat-loop/body/**`）」切分**（切法依据 CLAUDE.md「skills 是生成物，绝不手改」：作者区 = `skills/meerkat-taskpanel/**` + loop skill 的 `SKILL.md` / `references/` / `scripts/board-check.mjs`）：
@@ -79,16 +81,16 @@
 
 **两条差异的归因（不猜，只记事实）**：`task-ops` 归零说明该引用在 `main` 前进时已被清掉（本 lane 未做任何清理）；`openclaw-team` +1 说明新增了一处引用。两者都指向同一结论：**卡面的计数是某一次排查的快照，本文件的每条处置都必须以文件为锚，不能以计数为锚**。
 
-`PROTOCOL` 六处落点（全部为**实读**）：
+外部协议文档名的六处落点（全部为**实读**；下表「现文」引文中的专名已统一记为「外部协议文档」，原始行可用 `git show 61f7f3a:<path>` 复现）：
 
 | # | 落点 | 是否随 npm 发布 | 现文 |
 |---|---|---|---|
-| 1 | `docs/migration.md`（「The reserved `__team__` project」段）**（随 importer 删除）** | **是**（`docs` 在 `package.json#files`） | `__team__` is the reserved **team-internal** project (PROTOCOL §②): … |
-| 2 | `src/core/README.md` | **是**（`src` 在 `files`） | L1 reading: `PROTOCOL §㉙` + `guides/task-interface.md §14`. |
-| 3 | `src/core/domain/idem.mjs`（模块注释） | **是** | L1 reading: `PROTOCOL §㉙` + `guides/task-interface.md §14`. |
-| 4 | `src/core/storage/md/project-registry.mjs`（`BUILDIN_PROJECTS` 注释）**（文件已删除）** | **是** | `__team__` is the reserved team-internal project (PROTOCOL §②: …) |
-| 5 | `test/core/domain/idem.test.mjs` | 否（`test` 不在 `files`） | L1 reading: `PROTOCOL §㉙` + `guides/task-interface §14`. |
-| 6 | `test/migrate/import-hardening.test.mjs`（describe 名）**（已删除）** | 否 | … the buildin `__team__` project (PROTOCOL ②) |
+| 1 | `docs/migration.md`（「The reserved `__team__` project」段）**（随 importer 删除）** | **是**（`docs` 在 `package.json#files`） | `__team__` is the reserved **team-internal** project (外部协议文档 §②): … |
+| 2 | `src/core/README.md` | **是**（`src` 在 `files`） | L1 reading: 外部协议文档 §㉙ + `guides/task-interface.md §14`. |
+| 3 | `src/core/domain/idem.mjs`（模块注释） | **是** | L1 reading: 外部协议文档 §㉙ + `guides/task-interface.md §14`. |
+| 4 | `src/core/storage/md/project-registry.mjs`（`BUILDIN_PROJECTS` 注释）**（文件已删除）** | **是** | `__team__` is the reserved team-internal project (外部协议文档 §②: …) |
+| 5 | `test/core/domain/idem.test.mjs` | 否（`test` 不在 `files`） | L1 reading: 外部协议文档 §㉙ + `guides/task-interface §14`. |
+| 6 | `test/migrate/import-hardening.test.mjs`（describe 名）**（已删除）** | 否 | … the buildin `__team__` project (外部协议文档 ②) |
 
 **「随 npm 发布」这一列是本表的关键**：`package.json#files` = `src` / `skills` / `plugins` / `scripts` / `docs` / `install.sh` / 三个根散文。⇒ 上表 1–4 **是** npm 包的对外面，5–6 只面对**仓库读者**。
 
@@ -124,7 +126,7 @@
 |---|---|---|---|
 | **`task-interface` / `task-interface v1`** | 外部（openclaw-team 的 ACL 代号） | **仅 R2 兼容声明** | 它命名的是「loop 驱动的那一代接口」，是**跨仓绑定声明**；但它**不是**产品的 CLI 面的名字（那个叫 `taskctl`）。 |
 | **`openclaw-team`** | 外部（框架项目名） | **仅 R1 指针** | 它是第三方项目的名字，产品与它**互操作**（OpenClaw 上由它承担 supervisor）。带 URL 引用是正常的、必要的。 |
-| **`PROTOCOL`（及 `§N` 锚）** | 外部（框架的内部协议文档） | **无** | 它管的是框架的五角色 / 派单 / redlines——**产品用户不需要它**，而它在 npm 包里是一枚**悬空指针**。⇒ **F1**。 |
+| **外部协议文档名（及 `§N` 锚）** | 外部（框架的内部协议文档） | **无** | 它管的是框架的五角色 / 派单 / redlines——**产品用户不需要它**，而它在 npm 包里是一枚**悬空指针**。⇒ **F1**。 |
 | **`task-ops`** | 外部（框架的内部 skill + `lib/task.mjs`） | **无** | 框架的收口实现路径。⇒ **F1**（`61f7f3a` 已零落点）。 |
 | **`redlines.core.md`** | 外部（框架内部治理文档） | **无** | 同上。产品仓**零命中**，列为禁止项以防回潮。 |
 | 框架**内部符号**：`poll.mjs#scanCandidates`、`poll.mjs`、`board-adapter.mjs`、`wake-cwd.mjs` | 外部（框架实现） | **至多 R3** | 以 `文件#符号` 形式出现即**锁死对方的内部实现**——对方一次改名就让产品注释静默过期。⇒ 降级为**非规范性**注释，或删去符号名。 |
@@ -185,11 +187,11 @@
 
 | 落点 | 现文 | 改法 |
 |---|---|---|
-| `src/core/README.md`（§Creation idempotency） | L1 reading: `PROTOCOL §㉙` + `guides/task-interface.md §14`. | 删去 `PROTOCOL §㉙`（F1）；保留 ACL 指针：`L1 reading: task-interface v1 §14`（或 `guides/task-interface.md §14`），**并**保证同段已用产品语言复述规则（现文已复述，符合 R3）。 |
+| `src/core/README.md`（§Creation idempotency） | L1 reading: 外部协议文档 §㉙ + `guides/task-interface.md §14`. | 删去外部协议文档锚（F1）；保留 ACL 指针：`L1 reading: task-interface v1 §14`（或 `guides/task-interface.md §14`），**并**保证同段已用产品语言复述规则（现文已复述，符合 R3）。 |
 | `src/core/domain/idem.mjs`（模块注释） | 同上 | 同上 |
 | `test/core/domain/idem.test.mjs` | 同上 | 同上（一致性；该文件不随 npm 发布） |
 
-**理由**：J2 的 R3 + F1——溯源**可以**留 ACL 指针，但 `PROTOCOL §㉙` 是框架**内部**文档的章节锚，在 npm 包里打不开。
+**理由**：J2 的 R3 + F1——溯源**可以**留 ACL 指针，但外部协议文档的章节锚是框架**内部**文档的锚，在 npm 包里打不开。
 
 #### ①-e 测试锁（**保留**，条件性）
 
@@ -231,18 +233,18 @@
 **理由**：这是**项目 id 的示例数据**，不是框架引用——`openclaw-team` 在此处与框架**同名纯属巧合**（它演示的是「非 `[A-Z0-9]` 连续段折叠为单个 `-`」这条归一化规则，`demo_x`/`demo-x`/`demo.x` 是同一行里的另一组）。
 **建议（不建议本卡做）**：若要消歧，可把示例换成 `openclaw_team` 之外的第三组，但那会**改动测试断言值**（`assert.equal(identifierPrefix("openclaw-team"), "OPENCLAW-TEAM")` 等 5 处），属实现改动，须另卡。**本卡不处置**。
 
-### 4.3 类 ③：`PROTOCOL`（6 文件）——**全部改写**
+### 4.3 类 ③：外部协议文档名（6 文件）——**全部改写**
 
 | 落点 | 处置 | 改法（产品侧自足表述） |
 |---|---|---|
-| `docs/migration.md` | **改写（该段已随 importer 删除）** | `__team__` is the reserved **team-internal** project（团队框架自用的登记项，不对应任何仓库）；删去 `(PROTOCOL §②)`。 |
+| `docs/migration.md` | **改写（该段已随 importer 删除）** | `__team__` is the reserved **team-internal** project（团队框架自用的登记项，不对应任何仓库）；删去 `(外部协议文档 §②)`。 |
 | `src/core/storage/md/project-registry.mjs`（`BUILDIN_PROJECTS` 注释） | **改写（文件已删除）** | 同上。 |
 | `src/core/README.md` | **改写** | 见 ①-d。 |
 | `src/core/domain/idem.mjs` | **改写** | 见 ①-d。 |
 | `test/core/domain/idem.test.mjs` | **改写** | 见 ①-d。 |
-| `test/migrate/import-hardening.test.mjs`（describe 名） | **改写（文件已删除）** | describe 名去掉 `(PROTOCOL ②)`，改为 `(the reserved __team__ project)`。 |
+| `test/migrate/import-hardening.test.mjs`（describe 名） | **改写（文件已删除）** | describe 名去掉 `(外部协议文档 ②)`，改为 `(the reserved __team__ project)`。 |
 
-**理由**：全部 F1。4/6 处随 npm 发布，其中 `docs/migration.md` 的 `__team__` 段是**用户读得到的**——一个装完 npm 包的读者手里没有 `PROTOCOL.md`，`§②` 对他不可解析。**这不是「产品不能提框架」，而是「产品不能把框架的章节号当依据」**：`__team__` 为什么保留，产品**自己说得出**（见右列）。
+**理由**：全部 F1。4/6 处随 npm 发布，其中 `docs/migration.md` 的 `__team__` 段是**用户读得到的**——一个装完 npm 包的读者手里没有该外部文档，`§②` 对他不可解析。**这不是「产品不能提框架」，而是「产品不能把框架的章节号当依据」**：`__team__` 为什么保留，产品**自己说得出**（见右列）。
 **不触发**再生成（6 处均不在 loop payload 闭包内；`project-registry.mjs`、`idem.mjs`、`migration.md` 均无 `body/` 副本）。
 
 ### 4.4 类 ④：`task-ops`（0 文件）——**立禁，零落点**
@@ -299,7 +301,7 @@
 
 以下三条是本 lane 实测/实读时撞见的、**同一判据**能覆盖、但**不在卡面 4 类**内的问题。按 Boundary「只出契约文档；不直接改代码」，此处**只登记**，交 Elon 决定是否另开卡。
 
-1. **框架实例花名册被硬编进产品逻辑（读：F1，可判）**：`src/core/storage/md/import.mjs` 两处以字面量 `^(elon|terry|tanyu)$` 判定 comment 的 `author_kind`（human vs agent）。这是**某个框架实例的人员名单**进入了产品的导入逻辑——比 `PROTOCOL` 更实质（它影响**行为**，不只是注释）。它既非接口、也非产品配置；按 J1/J2 应判 **F1**。**建议**：另开卡，改为可由项目配置提供的名单（或 `author_kind` 显式携带）。
+1. **框架实例花名册被硬编进产品逻辑（读：F1，可判）**：`src/core/storage/md/import.mjs` 两处以字面量 `^(elon|terry|tanyu)$` 判定 comment 的 `author_kind`（human vs agent）。这是**某个框架实例的人员名单**进入了产品的导入逻辑——比外部协议文档名更实质（它影响**行为**，不只是注释）。它既非接口、也非产品配置；按 J1/J2 应判 **F1**。**建议**：另开卡，改为可由项目配置提供的名单（或 `author_kind` 显式携带）。
 2. **框架内部符号的 lockstep 注释**：见 §4.2-②-b（已在本卡 4 类内的 `openclaw-team` 引用里处置）；此处仅记「同一模式可能存在于其他耦合注释」，C2 扫一遍 `kept in lockstep with` 即可穷举（实测机制：`git grep -n 'lockstep with'`）。
 3. **生成副本的传播面**：`skills/meerkat-loop/**` 与 `plugins/*/skills/**` 是**生成物**（`sync-skills.mjs` / `sync-loop.mjs`），任一处置若落在其**源**上，必须跑 sync 并让 `check:skills` 绿。§4 每条已标「触发 sync」。**C2 不得手改生成副本**（CLAUDE.md 硬规则）。
 
@@ -311,26 +313,26 @@
 
 | 批 | 内容 | 理由 | 每批的 gate |
 |---|---|---|---|
-| **P0** | §4.3 全部（`PROTOCOL` 6 处）+ §4.1-①-d | **悬空指针**：npm 包里不可解析的章节锚，且 4/6 处在对外面。改注释/散文，**零行为**。 | `npm test`（`test/migrate/*`、`test/core/domain/idem.test.mjs`）；`npm run check:skills`（应零变更） |
+| **P0** | §4.3 全部（外部协议文档名 6 处）+ §4.1-①-d | **悬空指针**：npm 包里不可解析的章节锚，且 4/6 处在对外面。改注释/散文，**零行为**。 | `npm test`（`test/migrate/*`、`test/core/domain/idem.test.mjs`）；`npm run check:skills`（应零变更） |
 | **P1** | §4.1-①-c（自有 schema 改名）+ ①-b（自述加标注） | **本卡的主诉**：产品自述借用外部代号。①-b 改自撰 skill ⇒ 跑 sync。 | `npm run check:skills` 必须绿（生成副本已同步）；`node --test "test/skill/*.test.mjs"`；`node scripts/verify/contract.mjs` **必须 0 漂移**（只改注释，快照不动） |
 | **P2** | §4.2-②-b（内部符号降为溯源） | 只降低**脆性**，无对外可见变化；触及 `constants.mjs` ⇒ sync-loop。 | `npm run check:skills` + `npm test` |
 | **不动** | §4.1-①-a / ①-e、§4.2-②-a / ②-c、§4.4 | 判据判为「保留」/「零落点」。 | C3 只需**证明未动**（`git diff --stat` 对这些路径为空） |
 
 **C3（Turing）的独立判据**（逐条可核，不依赖本文件的措辞）——**未执行过，且已不是目标**；列出仅供对照：
 
-- ① `git grep -n 'PROTOCOL'` 在 `src/**`、`docs/**`、`README*`、`CHANGELOG.md`、`skills/**`、`plugins/**` **恒为 0**；
+- ① 对当时的外部协议文档名做 `git grep`，在 `src/**`、`docs/**`、`README*`、`CHANGELOG.md`、`skills/**`、`plugins/**` **恒为 0**（原始命令见 `git show 61f7f3a:<path>`）；
 - ② `git grep -n 'task-ops'` 全仓**恒为 0**；
 - ③ `task-interface` 的剩余落点**只**在 loop 侧兼容声明三文件及其生成副本 + `test/skill/loop.test.mjs` + （若 C2 选择保留括注）§4.1-①-b 的五个自述文件；**`src/shared/**` 与 `src/core/domain/enums.mjs` 必须清零**；
 - ④ `node scripts/verify/contract.mjs` **零漂移**，`schema_version` 仍为 4（本裁定是 doc-only：**注释与散文的改动不得移动契约**）；
 - ⑤ `npm run check:skills` 绿（无未同步的生成副本）。
 
-> ① 与 ③ 在退役时**已不成立**（见文首）。它们的错误在于把「**跨仓兼容声明**」当成「泄漏」来清零 —— 但 `PROTOCOL §⑮` 是产品**已发布**的接口数据（`threshold_ref` 字段），`task-interface` 是 loop 侧对框架接口代的绑定声明。这两样不是命名耦合，是**跨仓契约**，清掉它们等于清掉产品自己对外声明的事实。④⑤ 仍然成立，但它们守的是**通用不变量**（契约快照不漂移、生成副本已同步），与命名边界无关。
+> ① 与 ③ 在退役时**已不成立**（见文首）。它们的错误在于把「**跨仓兼容声明**」当成「泄漏」来清零 —— 当时的 SLA 章节锚确实是产品已发布的接口数据（`threshold_ref` 字段），`task-interface` 是 loop 侧对框架接口代的绑定声明。这两样当时不是命名耦合，是**跨仓契约**。**2026-10-22 订正**：SLA 契约内化（`a4cc5e4`）后，`threshold_ref` 已改指 `docs/sla.md` §2，测试现在断言外部名缺席；因此「已发布接口数据」的例外不再成立，外部协议文档名的树内引用已清除。④⑤ 仍然成立，但它们守的是**通用不变量**（契约快照不漂移、生成副本已同步），与命名边界无关。
 
 ### 7.1 现状表（取代判据 ①②③ —— 「现在是什么样」）
 
 | 框架词 | 今天的角色 | 今天的面（示例，非穷举） |
 |---|---|---|
-| `PROTOCOL` / `PROTOCOL §N` | **R2 跨仓兼容声明** + **已发布的接口数据** | `src/shared/sla-patrol.mjs` 产出 `threshold_ref`（`PROTOCOL §⑮`）并被 `test/scheduling/sla-patrol.test.mjs` 断言；`README*.md`、`docs/scheduling.md`、`skills/meerkat-loop/**` 说明超时表出处 |
+| 外部协议文档名 / `§N` 锚 | **已清除（2026-10-22）** | 曾是 R2 跨仓兼容声明 + 已发布的接口数据；SLA 内化后 `threshold_ref` 指向 `docs/sla.md` §2（`src/foundation/sla-patrol.mjs`），测试现在断言外部名缺席。树内引用已改指产品自有权威；仅 §9 原始输出保留该词作历史证据 |
 | `task-interface` / `task-interface v1` | **R2 兼容声明**（loop 侧）+ **R3 溯源**（注释） | loop 侧 `skills/meerkat-loop/**` 与 `test/skill/loop.test.mjs`；产品侧的**自述与注释**（`src/shared/**`、`src/core/domain/enums.mjs` 等） |
 | `openclaw-team` | **R1 指针**（带 URL） | 跨仓事实：OpenClaw 宿主由该框架承担 supervisor，本产品因此**不给它装 loop**（`README*.md`、`docs/{install,scheduling}.md`、`install.sh`） |
 | 框架**私有 store 路径** | **F1 —— 禁** | 无落点（2026-10-17 由本轮指路牌清理达成，见 §7.2 第一条） |
@@ -359,6 +361,8 @@
 ---
 
 ## 9. 原始输出（实测）
+
+> 本节是 `61f7f3a` 的原始转录。其中的外部协议文档名按原样保留，作为「当时确实有这些落点」的证据；2026-10-22 后树内引用已清除（见文首）。
 
 ```text
 $ git rev-parse --short HEAD ; git rev-parse --short refs/heads/main

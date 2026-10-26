@@ -13,6 +13,7 @@ import { ARCHIVE_AFTER_DAYS, HEARTBEAT_FRESH_MS, IDENTIFIER_PATTERN, LABEL_MAX_L
 import { DomainError } from "../../foundation/errors.mjs";
 import { identifierPrefix } from "../../foundation/ids.mjs";
 import { AWAITING_REASONS, STATUS, STATUSES, TASK_KINDS } from "./enums.mjs";
+import { acceptanceFromJson } from "./acceptance.mjs";
 import { normalizeBlockedReason } from "./blocked-reason.mjs";
 import { normalizeIdem } from "./idem.mjs";
 import { parsePriority } from "./priority.mjs";
@@ -70,6 +71,13 @@ export const TASK_COLUMNS = Object.freeze([
   // it audits. Written once at creation; the trigger refuses every later change.
   "review_of_id",
   "review_round",
+  // 0032 — the frozen acceptance baseline and its audit/optimistic-lock
+  // counter. Seeded once, then only appended (or pruned by an audited human).
+  "acceptance_json",
+  "acceptance_revision",
+  // 0038 — the single acceptance decision (`off | agent | human`). `auto` is a
+  // project word and is never stored here.
+  "acceptance_mode",
 ]);
 
 const ISO_MILLIS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -336,6 +344,13 @@ export function normalizeTaskCreate(input, context) {
     // reference (the importer stamps its own after resolving).
     reviewOfId: null,
     reviewRound: null,
+    // 0038 — the single acceptance decision. The column default is `off`; the
+    // create resolver writes the real value.
+    acceptanceMode: "off",
+    // 0032 — the acceptance baseline. `createTask` seeds it from the card's
+    // meta (or the review action's list); a direct write starts empty.
+    acceptance: [],
+    acceptanceRevision: 0,
     version: 1,
     idem: normalizeIdem(input.idem),
     createdAt: now,
@@ -489,6 +504,11 @@ const CAMEL = {
   // 0025 — the review marker's structural half.
   review_of_id: "reviewOfId",
   review_round: "reviewRound",
+  // 0038 — the single acceptance decision.
+  acceptance_mode: "acceptanceMode",
+  // 0032 — the frozen acceptance baseline and its revision.
+  acceptance_json: "acceptance",
+  acceptance_revision: "acceptanceRevision",
 };
 
 /**
@@ -504,6 +524,10 @@ export function taskFromRow(row) {
   }
   task.labels = normalizeLabels(row.labels ?? "[]");
   task.meta = decodeJsonObject(row.meta_json);
+  // The column is the JSON text; the DTO carries the parsed list. `acceptance`
+  // is the frozen baseline, never `meta.acceptance`.
+  task.acceptance = acceptanceFromJson(row.acceptance_json);
+  task.acceptanceRevision = Number(row.acceptance_revision ?? 0);
   return task;
 }
 

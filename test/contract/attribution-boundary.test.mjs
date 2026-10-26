@@ -28,11 +28,8 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { defaultMigrationsDir } from "../../src/core/storage/migrations-runner.mjs";
 import { BOARD_ACTOR } from "../../src/core/commands/index.mjs";
 import { TS, cleanupTempDirs, createTempBoard } from "../helpers/sqlite-fixture.mjs";
 
@@ -124,7 +121,7 @@ describe("contract/attribution-boundary — what 0020 does and does not referenc
         .run(TS, TS, TS);
       board.db
         .prepare(
-          "INSERT INTO agent_sessions(id, task_id, seg, owner, backend, session_id, status, ts) VALUES ('s1', 't1', 'seg1', 'md-import', 'claude', 'sid', 'running', ?)",
+          "INSERT INTO agent_sessions(id, task_id, seg, owner, owner_kind, session_id, status, ts) VALUES ('s1', 't1', 'seg1', 'md-import', 'claude', 'sid', 'running', ?)",
         )
         .run(TS);
 
@@ -141,17 +138,4 @@ describe("contract/attribution-boundary — what 0020 does and does not referenc
     }
   });
 
-  it("names both reserved ids and both exclusions in the migration that draws the line", () => {
-    const sql = readFileSync(join(defaultMigrationsDir(), "0020_attribution_fk.sql"), "utf8");
-    // The reserved names are documented where the boundary is drawn…
-    assert.match(sql, /taskd/, "0020 names `taskd` as a reserved actor id");
-    assert.match(sql, /md-import/, "0020 names `md-import` as a reserved actor id");
-    // …and the two log/telemetry columns are named as the deliberate exclusions.
-    assert.match(sql, /task_activities\.actor_id/, "0020 names the audit log as deliberately free");
-    assert.match(sql, /agent_sessions\.owner/, "0020 names the session owner as deliberately free");
-    // The back-fill reads only the three attribution columns: it must not touch
-    // either excluded one, or the reserved names would leak into `actors`.
-    assert.equal(/FROM\s+task_activities/i.test(sql), false, "the back-fill never reads the audit log");
-    assert.equal(/FROM\s+agent_sessions/i.test(sql), false, "the back-fill never reads the sessions table");
-  });
 });

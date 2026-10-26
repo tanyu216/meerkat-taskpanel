@@ -1,16 +1,16 @@
 # Migrations
 
-The board has one migration gate (its SQL schema) and one past surface removal
-(the MCP integration).
+The board's SQL schema is one baseline, `src/core/storage/migrations/0001_init.sql`,
+applied once by `src/core/storage/migrations-runner.mjs` when a database is opened
+read-write. From 0.1.0 the history is **append-only**: add the next
+`NNNN_lower_snake_name.sql` file and never edit or delete a committed one.
 
-## The append-only migration gate
-
-The schema is built by numbered SQL files applied once, in order, by
-`src/core/storage/migrations-runner.mjs`. The history is **append-only** and each
-file's SHA-256 (line endings normalised) is recorded in the `schema_migrations` table;
-at startup the runner refuses a database whose applied file has since changed
+Each file's SHA-256 (line endings normalised) is recorded in the `schema_migrations`
+table; at startup the runner refuses a database whose applied file has since changed
 (`MIGRATION_CHECKSUM_MISMATCH`). That verdict only fires at *runtime*, against a
 database that already applied the old file.
+
+## The pre-commit gate
 
 The **pre-commit hook** (`.githooks/pre-commit`) moves the same verdict to the earliest
 possible point. It runs `scripts/verify/migrations.mjs`, which reuses the runner's own
@@ -38,6 +38,13 @@ degrades to the numbering/name rules rather than failing. The same script runs i
 `npm run check` (it is part of `npm run verify`) and therefore inside the container job
 of `.github/workflows/check.yml`.
 
+## Pre-0.1.0 databases
+
+The 0.1.0 baseline replaces the pre-release `0001..0042` history. There is **no adoption
+path**: a database stamped by an older build is refused — its `0001` checksum differs,
+and the later versions it recorded are unknown to this build. Archive the data directory
+and recreate the board; do not hand-edit `schema_migrations`.
+
 ## Separate migration: the MCP integration is gone
 
 **The MCP integration has been removed — agent integration is skill-only.** The stdio MCP
@@ -45,7 +52,7 @@ server (the `meerkat-taskpanel-mcp` bin, `src/mcp/**`), the installer's MCP regi
 and the API contract snapshot's tool section (which moves `schema_version` 3 → 4) are
 gone.
 
-A host left with a registration should drop it — `claude mcp remove meerkat-taskpanel`,
+An agent kind left with a registration should drop it — `claude mcp remove meerkat-taskpanel`,
 `codex mcp remove meerkat-taskpanel`, or the matching entry in OpenClaw's or Pi's MCP
 configuration. Nothing else changes: the skill drives the `taskctl` CLI directly, and the
 board's HTTP API, CLI and delivery gate are untouched. So an existing board needs no data

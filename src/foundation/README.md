@@ -13,12 +13,24 @@ dependency direction is `core/cli/server → foundation`, never the reverse.
 | module | what it owns |
 |---|---|
 | `env-file.mjs` | `parseEnvText` — the `KEY=VALUE` text format, no I/O |
-| `env-config.mjs` | `loadEnvFile` — locate the install-root `.env`, parse and validate the allowed keys, and merge file values under the process environment |
+| `env-config.mjs` | `loadEnvFile` — locate the install-root `.env`, parse and validate the allowed keys, and merge file values under the process environment; `readConfigFileVars` re-reads the file for a per-request resolver |
+| `sla-config.mjs` | the `TASKD_SLA_*` vocabulary: `DEFAULT_SLA_ROWS`, `readSlaConfig` (process env > `.env` > default), validation, and the `/api/v1/sla` wire shape |
 | `runtime-locator.mjs` | `resolveEnvFilePath`, `repoRoot` — the install root and the env-file path |
 
 `loadEnvFile` is called by the entry points only (`src/cli/index.mjs#run`,
-`src/server/main.mjs`, `scripts/loop/endpoint.mjs`); library callers receive the parsed
+`src/server/main.mjs`); library callers receive the parsed
 values explicitly, so embedding the engine never reads a developer's `.env`.
+
+## The card brief
+
+Both writers of `.meerkat/<identifier>/card.md` — the loop's exporter and the CLI
+watchers — take their path text and their file discipline from here, so a subagent is
+never told to read a path, or a format, the other side does not write.
+
+| module | what it owns |
+|---|---|
+| `card-brief.mjs` | `MEERKAT_PROCESS_DIR`, `CARD_BRIEF_FILE`, `taskDirName`, `cardDirRel`, `cardFileRel` — the path text, pure |
+| `card-write.mjs` | `cardTempPath`, `commitCardTemp`, `removeCardTemp`, `writeCardFileAtomic` — the unique-temp + atomic-rename discipline, `node:fs` only; not an exporter |
 
 ## `transport/**`
 

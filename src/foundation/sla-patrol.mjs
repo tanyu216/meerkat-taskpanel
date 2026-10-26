@@ -1,5 +1,5 @@
 /**
- * The SLA patrol — `PROTOCOL §⑮`'s wait rows as a *pure* decision.
+ * The SLA patrol — the wait rows of `docs/sla.md` §2 as a *pure* decision.
  *
  * The loop's patrol used to watch exactly one row of the SLA table: an
  * `in_progress` card whose heartbeat went stale. That is one of six rows, and
@@ -7,8 +7,7 @@
  * cron) were both blind to the other five — a card parked on the leader, a
  * delivery nobody ever accepted, an unanswered confirmation gate, a defect
  * whose fix card was never created. This module is the loop's half of the fix,
- * written against the shared contract
- * (`team/guides/sla-inspection-contract.md`, "C1"): the **same alert tuple**,
+ * written against this repository's own SLA contract (`docs/sla.md`): the **same alert tuple**,
  * the **same tier ladder**, the **same de-duplication key** and the **same
  * working-hours basis** as the peer mechanism, so the two can never label one
  * card differently.
@@ -17,14 +16,14 @@
  *
  *   * **notify-only.** Every alert carries `target: "leader"` and there is no
  *     code path here that writes a card. The releasability hint says "this card
- *     *looks* releasable"; releasing it stays the leader's act (`§⑦`).
+ *     *looks* releasable"; releasing it stays the leader's act (`docs/sla.md` §7).
  *   * **zero-cost idle.** Nothing crossing a tier produces no alert at all, so
  *     a quiet board costs no notification and no model turn.
  *   * **fail-safe, never false-green.** An unreadable origin alerts (at `warn`,
  *     with no threshold) rather than staying quiet, and an undecidable
  *     open/closed predicate is treated as **open**.
  *
- * Thresholds are *not* invented here: `SLA_ROWS` carries `PROTOCOL §⑮`'s
+ * Thresholds are *not* invented here: `SLA_ROWS` carries `docs/sla.md` §2's
  * published limits next to a reference string, which is the runtime mapping
  * table the contract requires (§2, hook H6). `L` = the row's normal limit, `F` =
  * its further timeout, `P` = this mechanism's own period. `warn` is `L − P`
@@ -49,10 +48,20 @@
  *     because "a silent inspector reads exactly like a healthy board".
  *
  * Pure: no `node:` specifiers, no clock of its own (`now` is always an input),
- * no filesystem. `scripts/supervisor.mjs` owns the I/O half.
+ * no filesystem. The board owns the reading half (`src/core/commands/sla.mjs`
+ * behind `GET /api/v1/sla`); the loop keeps the de-duplication ledger, the
+ * pre-emit re-read and the notification. The defaults table lives in
+ * `sla-config.mjs`, which is also the `TASKD_SLA_*` parser.
  */
 
-import { CLAIM_STALE_ANY_MS, CLAIM_STALE_SAME_MS, LOOP_ACCEPTOR } from "./constants.mjs";
+import { AUTOMATED_ACCEPTORS, LOOP_ACCEPTOR } from "./constants.mjs";
+import { reviewIdentityIndex, reviewIdentityOf } from "./review-identity.mjs";
+import {
+  DEFAULT_SLA_ROWS,
+  LEADER_LOOKBACK_DAYS,
+  PEER_LIVENESS_K,
+  PEER_PERIOD_MIN,
+} from "./sla-config.mjs";
 
 /** This mechanism's identity in the shared tuple (§4 #21). */
 export const MECHANISM = "loop-patrol";
@@ -60,32 +69,9 @@ export const MECHANISM = "loop-patrol";
 /** The other half of the mutual watchdog (§8.4) — the openclaw-side cron inspector. */
 export const PEER_MECHANISM = "openclaw-cron";
 
-/**
- * The peer's own cadence, in minutes — **a mechanism parameter, never an SLA
- * number** (§2). The peer (`sla-scan`) registers itself at 15 min, which its own
- * card pinned so that `warn = L − P` stays inside the tightest `§⑮` limit
- * (`heartbeat_stale`, 30 min); taking the same number here is what makes the two
- * mechanisms' derived liveness bounds comparable at all.
- */
-export const PEER_PERIOD_MIN = 15;
-
-/**
- * How many of the peer's own periods it may miss before it counts as down
- * (§5.3: `peer_stale ⇔ now − peer.last_ok > k × P_peer`). A small integer: one
- * missed period is a scheduling hiccup, three is a stopped inspector.
- */
-export const PEER_LIVENESS_K = 3;
-
-/**
- * The leader's action lookback, in days (a mechanism parameter, §6.3-D).
- *
- * A board whose whole history is older than this shows *no* leader event to the
- * inspector, and the contract's answer there is not silence: the row is emitted
- * with `confidence: "low"` and the origin recorded as unverifiable — "an
- * inspector that has never seen the leader act must say so rather than stay
- * quiet".
- */
-export const LEADER_LOOKBACK_DAYS = 7;
+// The mechanism parameters now live in `sla-config.mjs` (the board reads them
+// too); re-exported here so the loop's existing imports keep working.
+export { LEADER_LOOKBACK_DAYS, PEER_LIVENESS_K, PEER_PERIOD_MIN };
 
 /**
  * The comment kinds the contract counts as a leader's *action* (§6.3-D set (a)).
@@ -137,6 +123,49 @@ export function isLeaderTrailEntry(comment, leaderId = null) {
   return String(comment?.author_kind ?? "").trim() === LEADER_AUTHOR_KIND;
 }
 
+/**
+ * A configuration hint for `--sla-leader`, or `null` when the configured value
+ * looks usable.
+ *
+ * The attribution test compares **actor ids**, never display names. A deployment
+ * that passes a person's name gets a board on which no leader event is ever
+ * observed — and `leader_stalled` then fires on every pass with leader-owed
+ * work, which reads like a board problem rather than a typo. This function is a
+ * pure observation: it changes no attribution result, it only lets the runner
+ * say what it sees.
+ *
+ * @param {string|null} leaderId
+ * @param {object[]} cards
+ * @param {Record<string, object[]>} trails
+ * @returns {string|null}
+ */
+export function leaderAttributionWarning(leaderId, cards, trails) {
+  const wanted = String(leaderId ?? "").trim();
+  if (wanted === "") return null;
+
+  let idHit = false;
+  let displayNameHit = false;
+  const see = (id, displayName) => {
+    if (String(id ?? "").trim() === wanted) idHit = true;
+    if (String(displayName ?? "").trim() === wanted) displayNameHit = true;
+  };
+
+  for (const card of Array.isArray(cards) ? cards : []) {
+    see(card?.reporter?.id, card?.reporter?.display_name);
+  }
+  for (const trail of Object.values(trails ?? {})) {
+    for (const comment of commentsOf(trail)) {
+      see(comment?.author?.id ?? comment?.author_id, comment?.author?.display_name);
+    }
+  }
+
+  if (idHit) return null;
+  if (displayNameHit) {
+    return `--sla-leader "${wanted}" matches a display name, not an actor id; the attribution test compares ids — use the actor's id.`;
+  }
+  return `--sla-leader "${wanted}" matches no author on this board; if the leader writes as an agent, check the id (a display name will never match).`;
+}
+
 /** The reassignment shape the `assignee_changed` basis reads (§7.4, "F7"). */
 const REASSIGN_SHAPE = /改派|reassign|assignee\s*[:=]/i;
 
@@ -177,110 +206,23 @@ function intOrNull(value) {
   return null;
 }
 
-/** `blocked_reason` values the contract gives **no** `§⑮` row (gap G-3). */
+/** `blocked_reason` values the contract gives **no** row (gap G-3). */
 const VISIBILITY_ONLY_BLOCK_REASONS = new Set(["dependency", "external", "resource"]);
 
 /**
- * The `PROTOCOL §⑮` runtime mapping table.
+ * The `docs/sla.md` §2 runtime mapping table — the **defaults**.
  *
- * One entry per published row **plus** the two the contract adds or preserves:
- * `inspector_liveness` is carried for completeness even though this mechanism
- * does not emit it (the peer's marker does not exist on this board yet), and
- * `heartbeat_stale` is carried because the loop already covers it — through the
- * *existing* stale alert, which is a published consumer contract and must not
- * be re-shaped (§10.4). `coveredBy` says which code path emits each row, so
- * "is row X covered?" is answered by the table rather than by reading around.
- *
- * Values are `PROTOCOL §⑮`'s, referenced — never re-derived, never invented.
+ * The table itself lives in `sla-config.mjs` (the board reads it for
+ * `GET /api/v1/sla`); re-exported here under its historical name so the
+ * contract tests and the document-drift check keep one source. An install's
+ * `TASKD_SLA_*` overrides produce an effective table via
+ * `sla-config.mjs#applySlaOverrides`; this constant stays the contract's.
  */
-export const SLA_ROWS = Object.freeze({
-  blocked_clarification: Object.freeze({
-    ref: "PROTOCOL §⑮ · blocked awaiting the leader's clarification",
-    thresholdRef: "PROTOCOL §⑮ · blocked awaiting the leader's clarification · Normal limit",
-    limitMin: 120,
-    furtherMin: 1440,
-    warnLead: true,
-    origin: "blocked_at",
-    coveredBy: "sla-patrol",
-    action: "the leader must clarify / revise / reassign this card",
-  }),
-  confirmation_gate: Object.freeze({
-    ref: "PROTOCOL §⑮ · Confirmation gate awaiting review (§⑭)",
-    thresholdRef: "PROTOCOL §⑮ · Confirmation gate awaiting review (§⑭) · Normal limit",
-    limitMin: 240,
-    furtherMin: 1440,
-    warnLead: true,
-    origin: "gate_at",
-    coveredBy: "sla-patrol",
-    action: "the leader must review the confirmation request (§⑭)",
-  }),
-  defect_card_creation: Object.freeze({
-    ref: "PROTOCOL §⑮ · Defect fix card creation (§⑨)",
-    thresholdRef: "PROTOCOL §⑮ · Defect fix card creation (§⑨) · Normal limit",
-    limitMin: 1440,
-    furtherMin: 2880,
-    warnLead: true,
-    origin: "trail_event",
-    coveredBy: "sla-patrol",
-    action: "the leader must create the defect fix card and dispatch it (§⑨)",
-  }),
-  acceptance_card_creation: Object.freeze({
-    ref: "PROTOCOL §⑮ · Product/UX acceptance queued (§⑨.1)",
-    thresholdRef: "PROTOCOL §⑮ · Product/UX acceptance queued (§⑨.1) · Normal limit",
-    limitMin: 1440,
-    furtherMin: 2880,
-    warnLead: true,
-    origin: "status_changed_at",
-    coveredBy: "sla-patrol",
-    action: "the leader must create the acceptance review card and dispatch it (§⑨.1)",
-  }),
-  heartbeat_stale: Object.freeze({
-    ref: "PROTOCOL §⑮ · Worker heartbeat stale (§①)",
-    thresholdRef: "PROTOCOL §⑮ · Worker heartbeat stale (§①) · Normal limit",
-    limitMin: CLAIM_STALE_SAME_MS / MS_PER_MINUTE,
-    furtherMin: CLAIM_STALE_ANY_MS / MS_PER_MINUTE,
-    warnLead: true,
-    origin: "heartbeat_at",
-    // The legacy `stale` / `heartbeat-unreadable` alert keeps its published
-    // envelope, untouched — but it is **not** the SLA channel (§10.4, "F4"): a
-    // row that never emits the §4 tuple cannot take part in the shared ledger,
-    // so the peer's identical finding would be notified twice. Both go out; this
-    // is the half the ledger can de-duplicate across mechanisms.
-    coveredBy: "sla-patrol+legacy-stale-alert",
-    action: "the same assignee may re-claim; past the further bound any agent may claim and report",
-  }),
-  leader_stalled: Object.freeze({
-    ref: "PROTOCOL §⑮ · Leader patrol stalled",
-    thresholdRef: "PROTOCOL §⑮ · Leader patrol stalled · Normal limit",
-    limitMin: 60,
-    furtherMin: 360,
-    // §5.2 rule 5: this row's published bound is already a "no action for"
-    // bound, so the `−P` lead is deliberately NOT applied and there is no
-    // `overdue` state — only `warn` (at `L`) and `escalate` (at `F`).
-    warnLead: false,
-    origin: "trail_event",
-    coveredBy: "sla-patrol",
-    action: "the leader should be reminded that no leader action is observable on the board",
-  }),
-  inspector_liveness: Object.freeze({
-    ref: "shared contract §5.3 · inspector liveness (not a PROTOCOL §⑮ row)",
-    thresholdRef: null,
-    limitMin: null,
-    furtherMin: null,
-    warnLead: false,
-    origin: "unverifiable",
-    // Emitted when the deployment points the pass at the peer's last-successful-
-    // run marker (§8.4). The peer's marker has not landed yet, so an unwired
-    // deployment registers that as an explicit dependency instead of alarming
-    // every period — see `inspectorLivenessDetection` and `planSlaPatrol`.
-    coveredBy: "sla-patrol",
-    action: "tell the leader that one of the two inspectors is not running",
-  }),
-});
+export const SLA_ROWS = DEFAULT_SLA_ROWS;
 
-/** A `PROTOCOL §⑮`-stamped constant, for the drift check and for error messages. */
-export function slaRowRef(row) {
-  return SLA_ROWS[row]?.ref ?? null;
+/** A `docs/sla.md`-stamped constant, for the drift check and for error messages. */
+export function slaRowRef(row, rows = SLA_ROWS) {
+  return rows[row]?.ref ?? null;
 }
 
 /**
@@ -289,10 +231,11 @@ export function slaRowRef(row) {
  *
  * @param {string} row
  * @param {number} periodSeconds this mechanism's own period
+ * @param {Record<string, object>} [rows] the effective table (defaults: `SLA_ROWS`)
  * @returns {number|null}
  */
-export function warnLeadMinutes(row, periodSeconds) {
-  const spec = SLA_ROWS[row];
+export function warnLeadMinutes(row, periodSeconds, rows = SLA_ROWS) {
+  const spec = rows[row];
   if (spec === undefined || spec.limitMin === null) return null;
   if (!spec.warnLead) return spec.limitMin;
   const periodMin = Number.isFinite(periodSeconds) && periodSeconds > 0 ? periodSeconds / 60 : 0;
@@ -337,14 +280,15 @@ export const DEFAULT_TRAIL_LIMIT = 200;
 export function trailReadCandidates(cards, input = {}) {
   const now = input.now;
   const periodSeconds = input.periodSeconds;
-  const blockedLead = warnLeadMinutes("blocked_clarification", periodSeconds);
-  const gateLead = warnLeadMinutes("confirmation_gate", periodSeconds);
-  const defectLead = warnLeadMinutes("defect_card_creation", periodSeconds);
+  const rows = input.rows ?? SLA_ROWS;
+  const blockedLead = warnLeadMinutes("blocked_clarification", periodSeconds, rows);
+  const gateLead = warnLeadMinutes("confirmation_gate", periodSeconds, rows);
+  const defectLead = warnLeadMinutes("defect_card_creation", periodSeconds, rows);
   const out = [];
   for (const card of Array.isArray(cards) ? cards : []) {
     const id = String(card?.identifier ?? card?.id ?? "");
     if (id === "") continue;
-    // A finished card owes no defect fix card on this board (`§⑨` step 1 parks
+    // A finished card owes no defect fix card on this board (`§6.3` step 1 parks
     // the origin card in `blocked` / `canceled`), so it is not read at all —
     // otherwise every archived card would be fetched on every pass forever.
     if (card?.status === "done") continue;
@@ -459,7 +403,7 @@ export function addWorkingMinutes(from, minutes) {
  *
  *   * `warn`     ⇔ `T ≥ L − P` (clamped at 0) — "到点提醒", **no breach**
  *   * `overdue`  ⇔ `T ≥ L`
- *   * `escalate` ⇔ `T ≥ F`, where `§⑮` publishes a further bound
+ *   * `escalate` ⇔ `T ≥ F`, where the contract publishes a further bound
  *
  * `leader_stalled` is exempt from the `−P` lead and never reports `overdue`
  * (§5.2 rule 5).
@@ -467,10 +411,11 @@ export function addWorkingMinutes(from, minutes) {
  * @param {string} row a key of `SLA_ROWS`
  * @param {number|null} elapsedMin
  * @param {number} periodMin this mechanism's own period
+ * @param {Record<string, object>} [rows] the effective table (defaults: `SLA_ROWS`)
  * @returns {"warn"|"overdue"|"escalate"|null}
  */
-export function tierFor(row, elapsedMin, periodMin) {
-  const spec = SLA_ROWS[row];
+export function tierFor(row, elapsedMin, periodMin, rows = SLA_ROWS) {
+  const spec = rows[row];
   if (spec === undefined || spec.limitMin === null) return null;
   if (!Number.isFinite(elapsedMin) || elapsedMin < 0) return null;
   const period = Number.isFinite(periodMin) && periodMin > 0 ? periodMin : 0;
@@ -503,14 +448,17 @@ function commentAt(comment) {
   return instant(comment?.created_at);
 }
 
-/** The proposed stable `§⑭` marker for a confirmation request (gap G-5). */
+/** The formal comment kind that opens a confirmation gate (`docs/sla.md` §11). */
+export const CONFIRM_REQUEST_KIND = "confirm_request";
+
+/** The legacy body marker, kept as a fallback for deployments without the kind. */
 const CONFIRM_MARKER = /\[confirm-request\]/i;
 const MD_PATH = /\.(md|markdown)\b/i;
 const CONFIRM_WORD = /(确认|confirm)/i;
 const OPEN_ITEMS = /(open item|open question|待决|未决|决策|decision)/i;
 
 /**
- * Does this comment look like the `§⑭` "send back to the leader" request — a
+ * Does this comment look like the `§6.2` "send back to the leader" request — a
  * doc/plan path, a confirmation ask, and the open items? The contract's priority
  * 2, used **only** because the stable marker is not standard yet; the marker
  * alone (priority 1) is exact, and matching this shape sets `confidence: "low"`.
@@ -523,11 +471,12 @@ export function looksLikeConfirmRequest(body) {
 /**
  * The latest confirmation request on a card, or `null` when there is none.
  *
- * Priority order (§6.3-A): an explicit gate-start field (forward-compatible, no
- * such field exists today), then the `[confirm-request]` marker, then the
- * request shape. **No detectable request means no trigger** — the row is about
- * an *unanswered request*, not about a card's age, and inventing a gate would
- * alert on every card on the board.
+ * Priority order (§6.2): an explicit gate-start field (forward-compatible),
+ * then a `confirm_request` comment, then the legacy `[confirm-request]` marker,
+ * then the prose shape. Within one channel the latest `created_at` wins.
+ * **No detectable request means no trigger** — the row is about an *unanswered
+ * request*, not about a card's age, and inventing a gate would alert on every
+ * card on the board.
  *
  * @returns {{at: string|number, source: string, confidence: "high"|"low"}|null}
  */
@@ -535,28 +484,47 @@ export function findConfirmRequest(card, trail) {
   const explicit = card?.meta?.gate_at;
   if (instant(explicit) !== null) return { at: explicit, source: "frontmatter", confidence: "high" };
 
+  const latest = (current, comment) => {
+    if (comment === null) return current;
+    const at = commentAt(comment);
+    if (current === null) return comment;
+    return at > (commentAt(current) ?? -Infinity) ? comment : current;
+  };
+
+  let kindEntry = null;
   let marker = null;
   let shaped = null;
   for (const comment of commentsOf(trail)) {
-    const at = commentAt(comment);
-    if (at === null) continue;
-    if (CONFIRM_MARKER.test(String(comment?.body ?? ""))) marker = comment;
-    else if (looksLikeConfirmRequest(comment?.body)) shaped = comment;
+    if (commentAt(comment) === null) continue;
+    if (comment?.kind === CONFIRM_REQUEST_KIND) {
+      kindEntry = latest(kindEntry, comment);
+    } else if (CONFIRM_MARKER.test(String(comment?.body ?? ""))) {
+      marker = latest(marker, comment);
+    } else if (looksLikeConfirmRequest(comment?.body)) {
+      shaped = latest(shaped, comment);
+    }
   }
-  const found = marker ?? shaped;
+  const found = kindEntry ?? marker ?? shaped;
   if (found === null) return null;
   return {
     at: found.created_at,
     source: "comments",
-    confidence: marker === null ? "low" : "high",
+    confidence: kindEntry === null && marker === null ? "low" : "high",
   };
 }
 
-/** Has the gate been answered since `since`? A later `kind=confirm` entry closes it. */
-export function confirmAnsweredAfter(trail, since) {
+/**
+ * Has the gate been answered since `since`? A later **leader-authored**
+ * `kind=confirm` entry closes it. A worker's confirmation does not: the gate is
+ * the leader's to answer, and letting any worker close it would be a false-green.
+ */
+export function confirmAnsweredAfter(trail, since, leaderId = null) {
   const bound = instant(since);
   if (bound === null) return false;
-  return commentsOf(trail).some((comment) => comment?.kind === "confirm" && (commentAt(comment) ?? -Infinity) > bound);
+  return commentsOf(trail).some((comment) =>
+    comment?.kind === "confirm"
+    && (commentAt(comment) ?? -Infinity) > bound
+    && isLeaderTrailEntry(comment, leaderId));
 }
 
 /** The earliest `kind=defect` trail entry's timestamp, or `null`. */
@@ -571,13 +539,17 @@ export function firstDefectEntryAt(trail) {
   return earliest;
 }
 
-/** A trail entry that answers a blocked card (a newer `change`/`confirm` entry). */
-export function trailAnsweredAfter(trail, since) {
+/**
+ * A trail entry that answers a blocked card: a newer leader-authored
+ * `change` / `confirm` / `decision`. The author test is the same one the stall
+ * clock uses — a worker narrating its own progress is not the leader answering.
+ */
+export function trailAnsweredAfter(trail, since, leaderId = null) {
   const bound = instant(since);
   if (bound === null) return false;
   return commentsOf(trail).some((comment) => {
-    if (comment?.kind !== "change" && comment?.kind !== "confirm") return false;
-    return (commentAt(comment) ?? -Infinity) > bound;
+    if ((commentAt(comment) ?? -Infinity) <= bound) return false;
+    return isLeaderTrailEntry(comment, leaderId);
   });
 }
 
@@ -588,7 +560,7 @@ export function trailAnsweredAfter(trail, since) {
  * The board snapshot carries only the *current* `assignee`, so a pre-emit read
  * can never show that it changed; the trail is the only machine-readable change
  * channel, and both mechanisms read **the same one** — the substantive-change
- * entries, written by the leader (a reassignment is the leader's act, §⑪). The
+ * entries, written by the leader (a reassignment is the leader's act, §7.4). The
  * body then has to say it *is* a reassignment: a card can be `change`d a dozen
  * times for other reasons, and reporting each of those as "the assignee moved"
  * would be a false hint rather than a fail-safe one — a releasability hint is a
@@ -657,19 +629,20 @@ function hasBugLabel(card) {
 }
 
 /**
- * A fix card that references the origin card. Both halves of the `§⑨`
+ * A fix card that references the origin card. Both halves of the `§6.3`
  * convention are required — the `category:bug` label **and** a structural
  * reference back — because either alone is guesswork.
  */
-function hasFixCardFor(cards, card) {
+function hasFixCardFor(cards, card, byId = null) {
   const ids = idsOf(card);
   return cards.some((other) => {
     if (other === card) return false;
     if (!hasBugLabel(other)) return false;
     const meta = other?.meta ?? {};
+    const identity = reviewIdentityOf(other, { byId });
     return (
       referencesAny(meta.fixes, ids) ||
-      referencesAny(meta.review_of, ids) ||
+      referencesAny(identity.originalRef ?? identity.originalId, ids) ||
       referencesAny(meta.origin, ids) ||
       referencesAny(meta.parent, ids)
     );
@@ -733,7 +706,7 @@ function blockedDetection(card, trail, context) {
   let releasable = false;
   let releasableBasis = null;
   if (reason === null || reason === "clarify" || reason === "decision") {
-    if (blockedAt !== null && trailAnsweredAfter(trail, blockedAt)) {
+    if (blockedAt !== null && trailAnsweredAfter(trail, blockedAt, context.leaderId ?? null)) {
       releasable = true;
       releasableBasis = "clarification_trail_after_block";
     }
@@ -750,8 +723,8 @@ function blockedDetection(card, trail, context) {
     }
   }
 
-  const spec = SLA_ROWS.blocked_clarification;
-  // `dependency` / `external` / `resource` have **no** `§⑮` row (gap G-3), so
+  const spec = context.rows.blocked_clarification;
+  // `dependency` / `external` / `resource` have **no** contract row (gap G-3), so
   // they get visibility without a due point rather than an invented limit.
   const noThreshold = visibilityOnly || origin.kind === "unverifiable";
   const openPredicate = origin.kind === "unverifiable" ? "unverifiable" : "blocked";
@@ -766,26 +739,26 @@ function blockedDetection(card, trail, context) {
     blockedReason: reason,
     openPredicate,
     action: visibilityOnly
-      ? `${spec.action} — blocked on ${reason}; no PROTOCOL §⑮ limit applies, visibility only`
+      ? `${spec.action} — blocked on ${reason}; no contract limit applies, visibility only`
       : spec.action,
     evidence: evidenceOf(card, noThreshold ? null : spec.thresholdRef, openPredicate),
   };
 }
 
 /**
- * The `confirmation gate awaiting review` row (§⑭).
+ * The `confirmation gate awaiting review` row (§6.2).
  *
  * Trigger and origin both come from the gate request, not from the card's age:
  * a card with no detectable request has no gate, and the row stays silent. An
  * unreadable request timestamp falls back to `status_changed_at` with
  * `confidence: "low"` — the admissible direction again.
  */
-function confirmDetection(card, trail) {
+function confirmDetection(card, trail, context) {
   const request = findConfirmRequest(card, trail);
   if (request === null) return null;
-  if (confirmAnsweredAfter(trail, request.at)) return null;
+  if (confirmAnsweredAfter(trail, request.at, context.leaderId ?? null)) return null;
 
-  const spec = SLA_ROWS.confirmation_gate;
+  const spec = context.rows.confirmation_gate;
   const at = instant(request.at) === null ? null : request.at;
   const origin = at !== null
     ? { kind: "gate_at", at, source: request.source, confidence: request.confidence }
@@ -809,7 +782,7 @@ function confirmDetection(card, trail) {
 }
 
 /**
- * The `defect fix card creation` row (§⑨).
+ * The `defect fix card creation` row (§6.3).
  *
  * Trigger: a defect is recorded on the card (a `kind=defect` trail entry — the
  * defect ticket itself lives in the Report, which carries no timestamp, so the
@@ -822,7 +795,7 @@ function confirmDetection(card, trail) {
 function defectDetection(card, trail, context) {
   const defectAt = firstDefectEntryAt(trail);
   if (defectAt === null) return null;
-  if (hasFixCardFor(context.cards, card)) return null;
+  if (hasFixCardFor(context.cards, card, context.byId ?? null)) return null;
 
   const enteredBlocked = card?.status === "blocked" || card?.status === "canceled";
   const changedAt = enteredBlocked && instant(card?.status_changed_at) !== null ? instant(card.status_changed_at) : null;
@@ -840,7 +813,7 @@ function defectDetection(card, trail, context) {
   const undecidable = context.boardTruncated === true;
   const openPredicate = undecidable ? "no_fix_card_undecidable" : "no_fix_card";
 
-  const spec = SLA_ROWS.defect_card_creation;
+  const spec = context.rows.defect_card_creation;
   return {
     row: "defect_card_creation",
     origin: {
@@ -864,33 +837,51 @@ function defectDetection(card, trail, context) {
 }
 
 /**
- * The `product/UX acceptance queued` row (§⑨.1 tail).
+ * The `product/UX acceptance queued` row (§6.4).
  *
- * Applies to **flow A** only; an absent `flow` is treated as A (fail-safe). The
- * wait starts when the card entered delivery (`in_review`) and is open while no
- * card records `review_of = <this card>`.
+ * Applies to **flow A** only — a review card is excluded by its structural
+ * marker, not by the patchable `meta.flow` label. The wait starts when the card
+ * entered delivery (`in_review`) and is open while no card records
+ * `review_of = <this card>`.
  */
 function acceptanceDetection(card, context) {
   if (card?.status !== "in_review") return null;
-  const flow = card?.meta?.flow ?? "A";
-  if (String(flow).toUpperCase() !== "A") return null;
-  // A review card suppresses this row only for the round it audits. A card that
-  // was rejected and re-delivered is a *new* round with no review card yet — a
-  // last round's review card must not silence it (the rejection path relies on
-  // this: the next delivery has to be reviewed again). A review card written
-  // before `review_round` existed carries `null`, which still suppresses — that
-  // was the pre-round behaviour and the only honest reading of such a card.
+  if (reviewIdentityOf(card).isReview) return null;
+  // An **open** review card suppresses this row only for the round it audits.
+  // A card that was rejected and re-delivered is a *new* round with no review
+  // card yet — a last round's review card must not silence it (the rejection
+  // path relies on this: the next delivery has to be reviewed again). A review
+  // card written before `review_round` existed carries `null`, which still
+  // suppresses while it is open — that was the pre-round behaviour and the only
+  // honest reading of such a card.
   const round = intOrNull(card?.delivery_round);
   for (const id of idsOf(card)) {
     const rounds = context.reviewOfRefs.get(id);
     if (rounds !== undefined && (rounds.has(null) || rounds.has(round))) return null;
   }
+  // A closed review does not silence the wait. A `done` review means the verdict
+  // landed but the original is still `in_review` — the human-mode hold, or a
+  // crash before the original moved. The row becomes the acceptance reminder.
+  const reviewDone = idsOf(card).some((id) => {
+    const rounds = context.doneReviewRefs?.get(id);
+    return rounds !== undefined && (rounds.has(null) || rounds.has(round));
+  });
 
   const changedAt = instant(card?.status_changed_at) === null ? null : card.status_changed_at;
-  const spec = SLA_ROWS.acceptance_card_creation;
+  const spec = context.rows.acceptance_card_creation;
+  // A capped board read can hide the review card that would have closed this
+  // wait. The row is still reported — an unknown must not become silence — but
+  // it says the predicate was undecidable instead of claiming "no review card".
+  const undecidable = context.boardTruncated === true;
   const origin = changedAt !== null
-    ? { kind: "status_changed_at", at: changedAt, source: "frontmatter", confidence: "high" }
+    ? {
+        kind: "status_changed_at",
+        at: changedAt,
+        source: "frontmatter",
+        confidence: undecidable ? "low" : "high",
+      }
     : { kind: "unverifiable", at: null, source: "missing", confidence: "low" };
+  const openPredicate = undecidable ? "no_review_card_undecidable" : "no_review_card";
 
   return {
     row: "acceptance_card_creation",
@@ -901,9 +892,13 @@ function acceptanceDetection(card, context) {
     releasable: false,
     releasableBasis: null,
     blockedReason: blockedReasonOf(card),
-    openPredicate: "no_review_card",
-    action: spec.action,
-    evidence: evidenceOf(card, spec.thresholdRef, "no_review_card"),
+    openPredicate,
+    action: undecidable
+      ? `${spec.action} — the board read was incomplete, so the review-card check could not be decided; the wait is treated as open`
+      : reviewDone
+        ? "the review is done but the original is still in_review — the leader must accept it, or reopen it for another round"
+        : spec.action,
+    evidence: evidenceOf(card, spec.thresholdRef, openPredicate),
   };
 }
 
@@ -931,7 +926,7 @@ function acceptanceDetection(card, context) {
  */
 function leaderStalledDetection(context) {
   if (!context.pendingLeaderWork) return null;
-  const spec = SLA_ROWS.leader_stalled;
+  const spec = context.rows.leader_stalled;
   const anchor = context.anchorCard ?? {};
   const event = context.leaderEvent;
   if (event === null) {
@@ -986,9 +981,9 @@ function leaderStalledDetection(context) {
  * `measure_start_kind: "unverifiable"` and no threshold, mirroring the legacy
  * `heartbeat-unreadable` alert rather than replacing it.
  */
-function heartbeatStaleDetection(card) {
+function heartbeatStaleDetection(card, context) {
   if (card?.status !== "in_progress") return null;
-  const spec = SLA_ROWS.heartbeat_stale;
+  const spec = context.rows.heartbeat_stale;
   const hb = instant(card?.heartbeat_at);
   if (hb === null) {
     return {
@@ -1044,7 +1039,7 @@ function heartbeatStaleDetection(card) {
  * @returns {{row: string, origin: object, ...}|null}
  */
 export function inspectorLivenessDetection(input = {}) {
-  const spec = SLA_ROWS.inspector_liveness;
+  const spec = (input.rows ?? SLA_ROWS).inspector_liveness;
   const k = Number.isFinite(input.k) && input.k > 0 ? input.k : PEER_LIVENESS_K;
   const peerPeriod = Number.isFinite(input.peerPeriodMinutes) && input.peerPeriodMinutes > 0
     ? input.peerPeriodMinutes
@@ -1096,7 +1091,7 @@ export function inspectorLivenessDetection(input = {}) {
   return {
     row: "inspector_liveness",
     origin: { kind: "trail_event", at: new Date(lastOk).toISOString(), source: "mechanism-marker", confidence: "high" },
-    // No §⑮ row ⇒ no due point: `warn` is the only tier this can ever reach
+    // No contract row ⇒ no due point: `warn` is the only tier this can ever reach
     // (§5.3), which is why the threshold is null rather than a guessed bound.
     thresholdMin: null,
     thresholdRef: null,
@@ -1162,6 +1157,7 @@ function boardContext(cards, trails, options = {}) {
   // A set rather than a boolean: a stale review card from round 1 must not
   // suppress the round-2 delivery (see `acceptanceDetection`).
   const reviewOfRefs = new Map();
+  const doneReviewRefs = new Map();
   const terminalRefs = new Set();
   const leaderId = options.leaderId ?? null;
   const truncated = options.boardTruncated === true;
@@ -1201,29 +1197,49 @@ function boardContext(cards, trails, options = {}) {
     return String(reporter?.kind ?? "").trim() === LEADER_AUTHOR_KIND;
   };
 
+  const byId = reviewIdentityIndex(cards);
   for (const card of cards) {
-    const reviewOf = card?.meta?.review_of;
-    if (typeof reviewOf === "string" && reviewOf.trim() !== "") {
-      const ref = reviewOf.trim();
-      const rounds = reviewOfRefs.get(ref) ?? new Set();
-      // No `review_round` on an older card is `null`, not 0: it means "the
-      // round this card audits was never recorded", which suppresses every
-      // round (the conservative reading — silence, not a false alarm).
-      rounds.add(intOrNull(card?.meta?.review_round));
-      reviewOfRefs.set(ref, rounds);
+    const identity = reviewIdentityOf(card, { byId });
+    if (identity.isReview) {
+      const ref = identity.originalRef ?? identity.originalId;
+      if (ref !== null) {
+        // Only an open review covers the wait. A `done` review means the verdict
+        // landed but the original is still `in_review` (the human-mode hold, or a
+        // crash); a `canceled` one means the review was abandoned. Neither may
+        // silence the original's only watcher.
+        const bucket =
+          card?.status === "done"
+            ? doneReviewRefs
+            : TERMINAL_STATUSES.includes(card?.status)
+              ? null
+              : reviewOfRefs;
+        if (bucket !== null) {
+          const rounds = bucket.get(ref) ?? new Set();
+          // No `review_round` on an older card is `null`, not 0: it means "the
+          // round this card audits was never recorded", which covers every round
+          // (the conservative reading — silence, not a false alarm, while the
+          // review is still open).
+          rounds.add(identity.auditedRound);
+          bucket.set(ref, rounds);
+        }
+      }
     }
     if (TERMINAL_STATUSES.includes(card?.status)) {
       for (const id of idsOf(card)) terminalRefs.add(id);
     }
-    // Creating a card is the leader's act (§⑩: the sole dispatcher) — and it is
+    // Creating a card is the leader's act (§6.3: the sole dispatcher) — and it is
     // attributed like every other leader event: by who did it.
     if (createdByLeader(card)) note(instant(card?.created_at), "created_at", "frontmatter");
     // `done` is a leader-only transition (task-interface §4), so no author test
     // can narrow it further: the transition itself is the attribution. The one
     // exception is the loop's own automated acceptance: a `done` the workflow
-    // pass wrote carries `meta.accepted_by = "loop-review"`, and counting it
-    // would let the loop mask a stalled leader indefinitely.
-    if (card?.status === "done" && card?.meta?.accepted_by !== LOOP_ACCEPTOR) {
+    // pass wrote carries `meta.accepted_by = "loop-review"` (after a verdict) or
+    // `"loop-auto"` (no review was required), and counting it would let the loop
+    // mask a stalled leader indefinitely.
+    if (
+      card?.status === "done" &&
+      !AUTOMATED_ACCEPTORS.includes(card?.meta?.accepted_by)
+    ) {
       note(instant(card?.status_changed_at), "status_changed_at", "frontmatter");
     }
 
@@ -1236,13 +1252,104 @@ function boardContext(cards, trails, options = {}) {
     }
   }
 
-  return { cards, reviewOfRefs, terminalRefs, leaderEvent, leaderId, boardTruncated: truncated };
+  return {
+    cards,
+    byId,
+    reviewOfRefs,
+    doneReviewRefs,
+    terminalRefs,
+    leaderEvent,
+    leaderId,
+    boardTruncated: truncated,
+    rows: options.rows ?? SLA_ROWS,
+  };
+}
+
+/**
+ * Assemble one §4 alert tuple from a detection.
+ *
+ * Extracted so the mechanism that computes the six card/board rows (the board)
+ * and the mechanism that computes the peer-liveness row (the loop) build the
+ * same 26-field object. Returns `null` when the wait is still inside its lead —
+ * a quiet card is not a candidate at all (§9.4).
+ *
+ * @param {{
+ *   id: string, detection: object, rows?: object, periodMin?: number,
+ *   mechanism?: string, mechanismActor?: string|null, now: string|number,
+ * }} input
+ * @returns {object|null}
+ */
+export function buildSlaAlert(input) {
+  const {
+    id,
+    detection,
+    rows = SLA_ROWS,
+    periodMin = 0,
+    mechanism = MECHANISM,
+    mechanismActor = null,
+    now,
+  } = input;
+  // The elapsed value is computed here, once per detection, so every row
+  // shares one working-hours function rather than each detector carrying its
+  // own idea of "how long".
+  const elapsed = elapsedWorkingMinutes(detection.origin.at, now);
+  // A row with no threshold has no due point, so its only tier is `warn`
+  // (§5.3 / §6.5 / §7.4): visibility without a verdict, never a silent drop.
+  const tier = detection.thresholdMin === null
+    ? "warn"
+    : tierFor(detection.row, elapsed, periodMin, rows);
+  // Inside its lead: not a candidate at all, so it is neither an alert nor a
+  // *drop* — `dropped` is for candidates the pre-emit re-check removed (§10.1),
+  // and filling it with a line per quiet card every tick would bury them.
+  if (tier === null) return null;
+
+  const measureStartAt = detection.origin.at === null
+    ? null
+    : new Date(instant(detection.origin.at)).toISOString();
+  const alertId = alertIdFor(id, detection.row, tier);
+  const spec = rows[detection.row] ?? SLA_ROWS[detection.row];
+  const action = detection.releasable
+    ? `${detection.action} — releasable hint: ${detection.releasableBasis} (the leader decides; the inspector never moves a card)`
+    : detection.action;
+  return {
+    alert_id: alertId,
+    dedup_key: dedupKeyFor(alertId, measureStartAt),
+    card_id: id,
+    sla_row: detection.row,
+    sla_ref: spec.ref,
+    severity: tier,
+    measure_start_kind: detection.origin.kind,
+    measure_start_at: measureStartAt,
+    measure_start_source: detection.origin.source,
+    elapsed_working_min: elapsed === null ? null : Math.round(elapsed * 1000) / 1000,
+    elapsed_basis: "working_hours",
+    threshold_min: detection.thresholdMin,
+    due_at: detection.thresholdMin === null
+      ? null
+      : addWorkingMinutes(measureStartAt, detection.thresholdMin),
+    action,
+    target: "leader",
+    notify: tier === "escalate" ? "immediate" : "digest",
+    releasable: detection.releasable,
+    releasable_basis: detection.releasableBasis,
+    blocked_reason: detection.blockedReason ?? null,
+    confidence: detection.origin.confidence,
+    mechanism,
+    mechanism_actor: mechanismActor,
+    // The ledger owns these three (§8.3): a plan on its own has not been
+    // observed yet, so the runner overwrites them from the recorded entry
+    // before the tuple goes out.
+    first_seen: measureStartAt,
+    last_seen: null,
+    observed_by: [mechanism],
+    evidence: detection.evidence ?? null,
+  };
 }
 
 /**
  * Decide the SLA patrol over the board.
  *
- * One entry per **(card, `§⑮` row)** at its highest newly-crossed tier. A card
+ * One entry per **(card, contract row)** at its highest newly-crossed tier. A card
  * still inside its lead contributes nothing at all — that is the zero-cost-idle
  * property, and it is a property of this function rather than of how the runner
  * chooses to log.
@@ -1252,7 +1359,7 @@ function boardContext(cards, trails, options = {}) {
  *   trails?: Record<string, object[]>,
  *   now: string|number,
  *   periodSeconds?: number,
- *   mechanismHost?: string|null,
+ *   mechanismActor?: string|null,
  *   mechanism?: string,
  *   leaderId?: string|null,
  *   lookbackDays?: number,
@@ -1270,13 +1377,15 @@ export function planSlaPatrol(input = {}) {
   const trails = input.trails ?? {};
   const now = input.now;
   const mechanism = input.mechanism ?? MECHANISM;
-  const mechanismHost = input.mechanismHost ?? null;
+  const mechanismActor = input.mechanismActor ?? null;
   const periodMin = Number.isFinite(input.periodSeconds) ? input.periodSeconds / 60 : 0;
+  const rows = input.rows ?? SLA_ROWS;
   const context = boardContext(cards, trails, {
     leaderId: input.leaderId ?? null,
     lookbackDays: input.lookbackDays,
     boardTruncated: input.boardTruncated,
     now,
+    rows,
   });
 
   const detections = [];
@@ -1286,10 +1395,10 @@ export function planSlaPatrol(input = {}) {
     const trail = trails[id] ?? [];
     const found = [
       blockedDetection(card, trail, context),
-      confirmDetection(card, trail),
+      confirmDetection(card, trail, context),
       defectDetection(card, trail, context),
       acceptanceDetection(card, context),
-      heartbeatStaleDetection(card),
+      heartbeatStaleDetection(card, context),
     ];
     for (const entry of found) {
       if (entry !== null) detections.push({ card, id, ...entry });
@@ -1324,126 +1433,26 @@ export function planSlaPatrol(input = {}) {
     k: input.peerLivenessK,
     peerPeriodMinutes: input.peerPeriodMinutes,
     peerRequired: input.peerRequired,
+    rows,
   });
   if (liveness !== null) detections.push({ card: null, id: BOARD_CARD_ID, ...liveness });
 
   const alerts = [];
   for (const entry of detections) {
-    // The elapsed value is computed here, once per detection, so every row
-    // shares one working-hours function rather than each detector carrying its
-    // own idea of "how long".
-    const elapsed = elapsedWorkingMinutes(entry.origin.at, now);
-    // A row with no threshold has no due point, so its only tier is `warn`
-    // (§5.3 / §6.5 / §7.4): visibility without a verdict, never a silent drop.
-    const tier = entry.thresholdMin === null ? "warn" : tierFor(entry.row, elapsed, periodMin);
-    // Inside its lead: not a candidate at all, so it is neither an alert nor a
-    // *drop* — `dropped` is for candidates the pre-emit re-check removed (§10.1),
-    // and filling it with a line per quiet card every tick would bury them.
-    if (tier === null) continue;
-    const measureStartAt = entry.origin.at === null ? null : new Date(instant(entry.origin.at)).toISOString();
-    const alertId = alertIdFor(entry.id, entry.row, tier);
-    const spec = SLA_ROWS[entry.row];
-    const action = entry.releasable
-      ? `${entry.action} — releasable hint: ${entry.releasableBasis} (the leader decides; the inspector never moves a card)`
-      : entry.action;
-    alerts.push({
-      alert_id: alertId,
-      dedup_key: dedupKeyFor(alertId, measureStartAt),
-      card_id: entry.id,
-      sla_row: entry.row,
-      sla_ref: spec.ref,
-      severity: tier,
-      measure_start_kind: entry.origin.kind,
-      measure_start_at: measureStartAt,
-      measure_start_source: entry.origin.source,
-      elapsed_working_min: elapsed === null ? null : Math.round(elapsed * 1000) / 1000,
-      elapsed_basis: "working_hours",
-      threshold_min: entry.thresholdMin,
-      due_at: entry.thresholdMin === null ? null : addWorkingMinutes(measureStartAt, entry.thresholdMin),
-      action,
-      target: "leader",
-      notify: tier === "escalate" ? "immediate" : "digest",
-      releasable: entry.releasable,
-      releasable_basis: entry.releasableBasis,
-      blocked_reason: entry.blockedReason ?? null,
-      confidence: entry.origin.confidence,
+    const alert = buildSlaAlert({
+      id: entry.id,
+      detection: entry,
+      rows,
+      periodMin,
       mechanism,
-      mechanism_host: mechanismHost,
-      // The ledger owns these three (§8.3): a plan on its own has not been
-      // observed yet, so the runner overwrites them from the recorded entry
-      // before the tuple goes out.
-      first_seen: measureStartAt,
-      last_seen: null,
-      observed_by: [mechanism],
-      evidence: entry.evidence ?? null,
+      mechanismActor,
+      now,
     });
+    if (alert !== null) alerts.push(alert);
   }
 
   alerts.sort((a, b) => (a.card_id === b.card_id ? a.sla_row.localeCompare(b.sla_row) : a.card_id.localeCompare(b.card_id)));
   return { alerts };
-}
-
-// ---------------------------------------------------------------------------
-// Pre-emit re-check (§9.6)
-// ---------------------------------------------------------------------------
-
-/**
- * Does an alert survive a live second look at the card?
- *
- * The scan above works from a board snapshot that may already be a few seconds
- * old; the contract requires the survivor set to be re-checked against the
- * card's *current* state immediately before the notification goes out, and the
- * two to share one decision rule. The rule restated here is deliberately the
- * narrow, structural half of each detector — the half a fresh single-card read
- * can answer:
- *
- *   * `blocked_clarification` — the card must still be `blocked`;
- *   * `confirmation_gate` — a request must still be the card's latest word;
- *   * `defect_card_creation` — the card must still not be closed out;
- *   * `acceptance_card_creation` — the card must still be `in_review`;
- *   * `heartbeat_stale` — the card must still be `in_progress` (the live read
- *     cannot see the heartbeat's age, but it *can* see the card having left the
- *     only status this row applies to, and that alone is grounds to drop);
- *   * `leader_stalled` — nothing: the live read cannot see the rest of the board,
- *     so a single-card re-check has no evidence either way;
- *   * `inspector_liveness` — nothing, for the same reason: the peer's marker is
- *     not on the card the re-check reads.
- *
- * A drop is always *returned*, never swallowed — the existing patrol's
- * "绝不静默丢弃" discipline.
- *
- * @param {object} alert a tuple from `planSlaPatrol`
- * @param {object|null} liveCard the card as re-read now (`null` when gone)
- * @returns {{ok: true}|{ok: false, reason: string}}
- */
-export function stillQualifies(alert, liveCard) {
-  if (liveCard === null || liveCard === undefined) {
-    return { ok: false, reason: `live_status:${liveCard === undefined ? "missing" : "gone"}` };
-  }
-  const status = liveCard?.status ?? null;
-  switch (alert?.sla_row) {
-    case "blocked_clarification":
-      return status === "blocked" ? { ok: true } : { ok: false, reason: `live_status:${status}` };
-    case "confirmation_gate":
-      // A gate lives on a card still being worked. Whether it has been *answered*
-      // is a trail fact a single-card read cannot see, so only the card's leaving
-      // the working states is decidable here — and a card that stopped being
-      // worked no longer owes the leader a review.
-      return status === "blocked" || status === "done" || status === "canceled"
-        ? { ok: false, reason: `live_status:${status}` }
-        : { ok: true };
-    case "defect_card_creation":
-      return status === "done" ? { ok: false, reason: "live_status:done" } : { ok: true };
-    case "acceptance_card_creation":
-      return status === "in_review" ? { ok: true } : { ok: false, reason: `live_status:${status}` };
-    case "heartbeat_stale":
-      return status === "in_progress" ? { ok: true } : { ok: false, reason: `live_status:${status}` };
-    case "leader_stalled":
-    case "inspector_liveness":
-      return { ok: true };
-    default:
-      return { ok: true };
-  }
 }
 
 // ---------------------------------------------------------------------------

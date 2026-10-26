@@ -36,13 +36,19 @@ export const REQUIRED = Object.freeze([
   "README.zh-CN.md",
   "install.sh",
   "src/cli/index.mjs",
+  "src/cli/commands/loop.mjs",
+  "src/orchestrator/supervisor.mjs",
   "src/server/main.mjs",
+  "scripts/install/cli.mjs",
+  "scripts/install/templates/server/taskd",
+  "scripts/install/templates/server/taskctl",
+  "web/dist/index.html",
   "skills/meerkat-taskpanel/SKILL.md",
+  "skills/meerkat-loop/SKILL.md",
+  "skills/setup-meerkat/SKILL.md",
   ".claude-plugin/plugin.json",
   ".claude-plugin/marketplace.json",
-  ".cursor-plugin/plugin.json",
   ".pi/extensions/meerkat-taskpanel.ts",
-  ".opencode/plugins/meerkat-taskpanel.js",
 ]);
 
 /**

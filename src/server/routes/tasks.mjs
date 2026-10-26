@@ -13,10 +13,10 @@
  * answer with a task too.
  */
 
-import { TASK_OPS } from "../../core/index.mjs";
+import { TASK_KINDS, TASK_OPS } from "../../core/index.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
-import { reportToWire, taskToWire, workflowToWire } from "../../foundation/wire.mjs";
-import { bool, int, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
+import { attachmentToWire, reportToWire, taskToWire, workflowToWire } from "../../foundation/wire.mjs";
+import { arr, bool, int, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
 import { lookupFor, resolveTask, taskPayload } from "../task-view.mjs";
 
 // Declared request schemas — what the contract snapshot freezes
@@ -36,12 +36,48 @@ const LIST_QUERY = shape({
   project_id: str(),
   status: REQUEST.statuses, // `?status=a&status=b` — a repeated query param
   assignee_id: str(),
+  // `assignee` is a free-text name resolved against the dictionary; it and
+  // `assignee_id` are two spellings of the same filter and are refused together.
+  assignee: str(),
+  review_of: str(), // a task ref; resolved below to the structural id
+  parent: str(), // a task ref; the child cards of that parent
+  kind: str(),
+  label: arr(str()), // repeated: every label must be present (exact display name)
+  target: str(), // meta.target, compared as text
+  meta: arr(str()), // repeated `key=value`; every pair must hold
   include_archived: str(),
   limit: str(),
   offset: str(),
   order: str(),
   order_debug: str(),
 });
+
+/** A `--meta` key the JSON path can name as one top-level property. */
+const META_KEY = /^[A-Za-z0-9_.-]+$/;
+
+/**
+ * `?meta=key=value` pairs → `{key, value}`.
+ *
+ * The key whitelist keeps the JSON path well-formed (the path is a *bound
+ * parameter*, never interpolated, so this is about correctness, not injection).
+ * A value may itself contain `=`; only the first one splits.
+ *
+ * @param {string[]} pairs
+ * @returns {{key: string, value: string}[]}
+ */
+function parseMetaFilters(pairs) {
+  return pairs.map((pair) => {
+    const at = pair.indexOf("=");
+    const key = at === -1 ? "" : pair.slice(0, at);
+    if (key === "" || !META_KEY.test(key)) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: `meta filter ${JSON.stringify(pair)} is not key=value with a [A-Za-z0-9_.-] key`,
+        details: { field: "meta", received: pair },
+      });
+    }
+    return { key, value: pair.slice(at + 1) };
+  });
+}
 
 /** `GET /api/v1/tasks/candidates` — `assignee` is the one field the route insists on. */
 const CANDIDATES_QUERY = shape(
@@ -65,13 +101,12 @@ const CREATE_BODY = project(TASK_OPS.create);
  * Without `workflow`, only `dry_run` is read: the sweep takes no scope, because
  * "every non-terminal epic" is the scope (commands/rollup.mjs#reconcileContainers).
  * `workflow` adds the review outcomes/dispatch decisions; the loop supplies its
- * own reviewer/policy knobs, while the acceptance policy stays the board's.
+ * own reviewer/age/cap knobs; the cards carry their own acceptance mode.
  */
 const RECONCILE_BODY = shape({
   dry_run: bool(),
   workflow: bool(),
   reviewer: str(),
-  auto_accept_reviews: bool(),
   review_aging_ms: int(),
   max_actions: int(),
   board_limit: int(),
@@ -88,6 +123,14 @@ const PATCH_BODY = project(TASK_OPS.update);
 
 /** `POST /api/v1/tasks/:ref/move` — the transition, plus the audited waiver (F-B1). */
 const MOVE_BODY = project(TASK_OPS.move);
+/**
+ * `POST /api/v1/tasks/:ref/reopen` — `done|canceled → todo`, with its reason.
+ *
+ * The destination is not on the wire: reopening has exactly one target, and a
+ * caller that wants a general move uses `/move`. `reason` is the audited
+ * exception; `if_version` is the same CAS the other writes carry.
+ */
+const REOPEN_BODY = project(TASK_OPS.reopen);
 /**
  * `POST /api/v1/tasks/:ref/claim` — the claim/reclaim verb.
  *
@@ -129,10 +172,50 @@ export function registerTaskRoutes(router, surface) {
 
   router.get("/api/v1/tasks", ({ query }) => {
     const statuses = query.getAll("status").filter((value) => value !== "");
+    // The filter names a card the caller has in hand, so it accepts either
+    // spelling. `requireAnyRef` refuses an identifier that exists in two
+    // projects rather than guessing, and a miss is `NOT_FOUND` — an empty page
+    // would read as "this card has no reviews".
+    const reviewOfRef = query.get("review_of");
+    const parentRef = query.get("parent");
+    const labels = query.getAll("label").filter((value) => value !== "");
+    // Two spellings of one filter. Accepting both would silently pick one; the
+    // caller has to say which scope it means.
+    const assigneeName = query.get("assignee");
+    const assigneeId = query.get("assignee_id");
+    if (assigneeName !== null && assigneeId !== null) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: "assignee and assignee_id are two spellings of one filter; send one",
+        details: { fields: ["assignee", "assignee_id"] },
+      });
+    }
+    // An unknown kind is a caller mistake, not an empty page — the declaration
+    // states the vocabulary but does not enforce it. `review` is a read-side
+    // alias for the review marker (`review_of_id IS NOT NULL`), not a third
+    // kind: a review card is an ordinary `kind=task` card, so `kind=task` keeps
+    // returning it and `kind=review` only narrows further. `POST`/`PATCH` still
+    // take `TASK_KINDS` alone, so no card can be created as `review`.
+    const kind = query.get("kind");
+    const listKinds = [...TASK_KINDS, "review"];
+    if (kind !== null && !listKinds.includes(kind)) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: `unknown kind ${JSON.stringify(kind)}`,
+        details: { field: "kind", received: kind, allowed: listKinds },
+      });
+    }
     const filter = {
       ...(query.get("project_id") === null ? {} : { projectId: query.get("project_id") }),
       ...(statuses.length === 0 ? {} : { status: statuses.length === 1 ? statuses[0] : statuses }),
-      ...(query.get("assignee_id") === null ? {} : { assigneeId: query.get("assignee_id") }),
+      ...(assigneeId === null ? {} : { assigneeId }),
+      // A name resolves to every dictionary entry it matches; no match is the
+      // empty scope (`assigneeId: []` reads as `1 = 0`), never "no filter".
+      ...(assigneeName === null ? {} : { assigneeId: commands.resolveAssigneeIds(assigneeName) }),
+      ...(kind === null ? {} : { kind }),
+      ...(labels.length === 0 ? {} : { labels }),
+      ...(query.get("target") === null ? {} : { target: query.get("target") }),
+      ...(query.getAll("meta").length === 0 ? {} : { metaEquals: parseMetaFilters(query.getAll("meta")) }),
+      ...(reviewOfRef === null ? {} : { reviewOfId: resolveTask(repos, reviewOfRef).id }),
+      ...(parentRef === null ? {} : { parentId: resolveTask(repos, parentRef).id }),
       includeArchived: truthy(query.get("include_archived")),
       ...(intOrUndefined(query.get("limit")) === undefined ? {} : { limit: intOrUndefined(query.get("limit")) }),
       ...(intOrUndefined(query.get("offset")) === undefined ? {} : { offset: intOrUndefined(query.get("offset")) }),
@@ -185,6 +268,8 @@ export function registerTaskRoutes(router, surface) {
       // so a re-submitted create is a no-op, not a second card.
       idem: body.idem,
       allowDup: body.allow_dup === true,
+      // 0038 — the single acceptance decision.
+      acceptanceMode: body.acceptance_mode,
       reviewOf: body.review_of,
       reviewRound: body.review_round,
       parent: body.parent,
@@ -201,7 +286,6 @@ export function registerTaskRoutes(router, surface) {
     if (body.workflow === true) {
       const result = commands.workflowTick({
         reviewer: body.reviewer ?? null,
-        autoAcceptReviews: body.auto_accept_reviews,
         reviewAgingMs: body.review_aging_ms,
         maxActions: body.max_actions,
         boardLimit: body.board_limit,
@@ -242,7 +326,16 @@ export function registerTaskRoutes(router, surface) {
     return { candidates, ...(orderDebug === null ? {} : { order_debug: orderDebug }) };
   }, { query: CANDIDATES_QUERY });
 
-  router.get("/api/v1/tasks/:ref", ({ params }) => taskPayload(repos, resolveTask(repos, params.ref)));
+  router.get("/api/v1/tasks/:ref", ({ params }) => {
+    const task = resolveTask(repos, params.ref);
+    // The detail read carries the attachment metadata. The board list does not
+    // (an unbounded array on every card), and neither do mutation responses —
+    // `taskPayload` stays lean; this route composes the extra collection.
+    return {
+      ...taskPayload(repos, task),
+      attachments: repos.attachments.listByTask(task.id).map(attachmentToWire),
+    };
+  });
 
   router.patch("/api/v1/tasks/:ref", ({ params, body, actor }) => {
     const current = resolveTask(repos, params.ref);
@@ -250,19 +343,15 @@ export function registerTaskRoutes(router, surface) {
     for (const field of ["title", "description", "priority", "kind", "labels"]) {
       if (body[field] !== undefined) patch[field] = body[field];
     }
-    // `--meta k=v` **merges** into what the task already carries, and
-    // `--acceptance` is sugar over `meta.acceptance` (F-D1). Both are merges
-    // because a CLI flag is a delta, not a document: sending
-    // `--meta team=panel` must not silently erase everything else, and the
-    // caller should not have to read-modify-write to say one thing.
+    // `--meta k=v` **merges** into what the task already carries. The
+    // acceptance baseline is not a meta key since 0032: `acceptance` appends to
+    // `tasks.acceptance_json`, and `acceptance_drop` is the audited human prune.
+    // Sending `--meta team=panel` must not silently erase anything else, so the
+    // merge itself stays.
     const meta = {};
     let metaTouched = false;
     if (body.meta !== undefined) {
       Object.assign(meta, body.meta);
-      metaTouched = true;
-    }
-    if (body.acceptance !== undefined) {
-      meta.acceptance = body.acceptance;
       metaTouched = true;
     }
     if (metaTouched) patch.meta = { ...(current.meta ?? {}), ...meta };
@@ -281,6 +370,11 @@ export function registerTaskRoutes(router, surface) {
       assignee: body.assignee,
       reporter: body.reporter,
       forceCreate: body.force_create === true,
+      acceptanceMode: body.acceptance_mode,
+      reason: body.reason,
+      acceptance: body.acceptance,
+      acceptanceDrop: body.acceptance_drop,
+      acceptanceRevision: body.acceptance_revision,
       actor,
     });
     return taskPayload(repos, task);
@@ -300,6 +394,9 @@ export function registerTaskRoutes(router, surface) {
       // M1 — the `awaiting` entry category (`E1..E5`), required only when the
       // destination is `awaiting`; the command layer is what enforces that.
       awaitingReason: body.awaiting_reason,
+      // 0034 — the question an agent asks when it stops in `awaiting`; written
+      // as a `question` comment in the same transaction as the move.
+      question: body.question,
       // 0016 — the `blocked` card's class (`clarify`…`unknown`, SLA-inspection
       // contract §7), optional; written when the destination is `blocked`, and
       // cleared on any other destination. The command layer enforces both.
@@ -308,6 +405,19 @@ export function registerTaskRoutes(router, surface) {
     });
     return { ...taskPayload(repos, task), status: task.status };
   }, { body: MOVE_BODY });
+
+  // The reopen verb. Its own route (rather than a `/move` shape) so the reason
+  // is part of the contract and the UI's drawer has a single, auditable action.
+  router.post("/api/v1/tasks/:ref/reopen", ({ params, body, actor }) => {
+    const current = resolveTask(repos, params.ref);
+    const task = commands.reopenStatus({
+      id: current.id,
+      ifVersion: body.if_version,
+      reason: body.reason,
+      actor,
+    });
+    return { ...taskPayload(repos, task), status: task.status };
+  }, { body: REOPEN_BODY });
 
   // The claim/reclaim verb. `performClaim` decides between reuse, a stale
   // re-claim, and a takeover; the route only forwards the actor's intent.
@@ -318,6 +428,7 @@ export function registerTaskRoutes(router, surface) {
       ifVersion: body.if_version,
       allowSteal: body.allow_steal === true,
       reason: body.reason,
+      checkBlockers: body.check_blockers === true,
       actor,
     });
     return {

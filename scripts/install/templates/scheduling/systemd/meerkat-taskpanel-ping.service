@@ -9,10 +9,10 @@
 #   cp <scheduling>/systemd/* ~/.config/systemd/user/
 #   systemctl --user enable --now meerkat-taskpanel-ping.timer
 [Unit]
-Description=Meerkat TaskPanel supervisor ping ({{AGENT}} on {{HOST}})
+Description=Meerkat TaskPanel supervisor ping ({{AGENT}} on {{ACTOR_KIND}})
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/env node {{SUPERVISOR}} --host {{HOST}} --agent {{AGENT}} --ping-only --once --log {{LOG}} --state {{STATE}}
-StandardOutput=append:{{LOG}}
-StandardError=append:{{LOG}}
+ExecStart={{NODE}} {{CLI}} loop run --ping-once --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
+# No stdout/stderr redirect: the loop writes --log itself (with rotation).
+# A redirect into the same file would duplicate every line.

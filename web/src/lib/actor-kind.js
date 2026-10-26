@@ -27,13 +27,13 @@
 
 /**
  * The platforms the design gives a badge and a colour to (`DOMAINS.PLATFORM`).
- * A kind is an *open* string on the wire — a host may call itself anything — so
+ * A kind is an *open* string on the wire — a kind may call itself anything — so
  * this is where the board decides which of them it can render, and anything else
  * leaves the badge **absent** rather than putting an unstyled value into a
  * closed attribute.
  *
  * The list carries the mainstream agent platforms the sidebar pre-styles: the
- * four original hosts plus the five the roster may name today. A platform is an
+ * four original kinds plus the five the roster may name today. A platform is an
  * identity, not an install target — `cursor` here does not imply a cursor
  * installer.
  */

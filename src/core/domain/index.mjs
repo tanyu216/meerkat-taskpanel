@@ -9,6 +9,8 @@
 
 export * from "./enums.mjs";
 export * from "./status.mjs";
+export * from "./reviewer.mjs";
+export * from "./acceptance-mode.mjs";
 export * from "./awaiting.mjs";
 export * from "./blocked-reason.mjs";
 export * from "./priority.mjs";

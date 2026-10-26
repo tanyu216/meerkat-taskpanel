@@ -1,0 +1,7 @@
+# npm's packlist reads this file *instead of* .gitignore in this directory, and the root
+# `files` whitelist does not override either. .gitignore here ignores `dist/` (it is build
+# output), but the published tarball IS the runnable board — it must carry the built
+# frontend, or `npx meerkat-taskpanel` would install an API-only server.
+#
+# Keep this file so web/dist survives `npm pack`, and do not ignore `dist` in it.
+# test/verify/pack-manifest.test.mjs pins both halves. See docs/publishing.md §2.

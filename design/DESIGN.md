@@ -2074,12 +2074,13 @@ Three things the rows state, and how:
 |---|---|---|
 | `question` | someone asked, and the answer is yours — an `awaiting` card | `--color-td-st-review`, through `--status-color` |
 | `blocked` | the task cannot move without you | `--color-td-st-blocked`, through `--status-color` |
-| `acceptance` | the work is delivered and the board's policy leaves the closing to you — an `in_review` top-level card (`human-only` / `both`) | `--color-td-st-done`, through `--status-color` |
+| `acceptance` | the work is delivered and the card's own mode leaves the closing to you — an `in_review` card whose `acceptance_mode` is `human` | `--color-td-st-done`, through `--status-color` |
 
 The third kind is a **ruling change, recorded here** (revision 2026-10-19, M6): the queue asks
-"what is on my side", and on a policy-driven board a delivered card waiting for a human to close
-it is on the reader's side in exactly that sense. It is not a fourth stage and not a second
-`awaiting`: the card keeps its `in_review` column and only the queue lists it. Each kind reads a
+"what is on my side", and on a card whose `acceptance_mode` is `human` a delivered card
+waiting for a human to close it is on the reader's side in exactly that sense. It is not a
+fourth stage and not a second `awaiting`: the card keeps its `in_review` column and only the
+queue lists it. Each kind reads a
 *status* token because the reason **is** the task's own state; `acceptance` borrows the `done`
 token because the work is delivered and the outstanding act is the acceptance. The chip is still
 one attribute → one custom property, the rule the `[data-status]` and `[data-priority]` bindings

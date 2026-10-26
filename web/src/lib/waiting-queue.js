@@ -18,7 +18,7 @@
  *     `datetime` its visible stamp is printed from, so the two cannot disagree.
  *   * **The reason is an attribute.** `data-waiting-reason-kind` is `question`
  *     or `blocked` for the `awaiting` overlay, and `acceptance` for an
- *     `in_review` card the board's policy leaves to a human; the chip's copy
+ *     `in_review` card whose own `acceptance_mode` is `human`; the chip's copy
  *     comes from `waiting.reason.<kind>`.
  *
  * **One data note, stated rather than papered over.** The core's awaiting
@@ -43,14 +43,11 @@ import { identifierText } from "./identifier.js";
  * B27's reason domain.
  *
  * `question` and `blocked` are the `awaiting` overlay's two readings; M6 adds
- * `acceptance` — an `in_review` top-level card the board's policy says a human
- * must close (`human-only` / `both`). It shares the view (both are "on my
- * side") but not the trigger: nothing was asked, a delivery is waiting.
+ * `acceptance` — an `in_review` card whose own `acceptance_mode` is `human`, so
+ * a person must close it. It shares the view (both are "on my side") but not
+ * the trigger: nothing was asked, a delivery is waiting.
  */
 export const WAITING_REASON_KINDS = Object.freeze(["question", "blocked", "acceptance"]);
-
-/** The policies under which a human still has acceptance work on the board. */
-export const HUMAN_ACCEPTANCE_POLICIES = Object.freeze(["human-only", "both"]);
 
 const TERMINAL = new Set(["done", "canceled"]);
 
@@ -62,7 +59,8 @@ export function isTerminalTask(task) {
 /**
  * Does this card still have acceptance work for a human?
  *
- * The predicate is the client-side twin of the board's gates
+ * 0038 — the card's own `acceptance_mode` is the answer: only `human` waits for
+ * a person. The predicate is the client-side twin of the board's gates
  * (`commands/acceptance.mjs`), deliberately: the board refuses the human's
  * accept when these are false, so listing the card would be offering an action
  * that cannot succeed. It is derived from the **whole task list** rather than a
@@ -72,16 +70,13 @@ export function isTerminalTask(task) {
  *
  * @param {object} task a wire task
  * @param {object[]} tasks the whole board reading
- * @param {string} policy `human-only` | `both` | `agent-only`
  * @returns {boolean}
  */
-export function isAcceptanceWaiting(task, tasks, policy) {
-  if (!HUMAN_ACCEPTANCE_POLICIES.includes(policy)) return false;
+export function isAcceptanceWaiting(task, tasks) {
+  if (task?.acceptance_mode !== "human") return false;
   if (task?.status !== "in_review") return false;
   // A review card is the loop's/human's bookkeeping, never an acceptance item.
   if (task.review_of_id !== null && task.review_of_id !== undefined) return false;
-  // Children are the agents' to close; only top-level cards are a human's.
-  if (task.parent_id !== null && task.parent_id !== undefined) return false;
 
   const others = Array.isArray(tasks) ? tasks : [];
   const children = others.filter((other) => other?.parent_id === task.id);
@@ -101,16 +96,36 @@ export function isAcceptanceWaiting(task, tasks, policy) {
  * applies later).
  *
  * @param {object[]} tasks the whole board reading
- * @param {string} policy
  * @returns {object[]}
  */
-export function acceptanceWaitingTasks(tasks, policy) {
-  return (Array.isArray(tasks) ? tasks : []).filter((task) => isAcceptanceWaiting(task, tasks, policy));
+export function acceptanceWaitingTasks(tasks) {
+  return (Array.isArray(tasks) ? tasks : []).filter((task) => isAcceptanceWaiting(task, tasks));
 }
 
 /** The instant an acceptance wait began: the delivery that put it in review. */
 export function acceptanceSinceOf(task) {
   return task?.status_changed_at ?? task?.updated_at ?? "";
+}
+
+/**
+ * The comment a waiting row is showing: the newest `question`, else the newest
+ * human comment (the M1 reading, for a card that predates the kind).
+ *
+ * Mirrors `src/core/domain/awaiting.mjs#payloadOf` — the web cannot import
+ * `src/`, so this is a copy held in step by `test/web/waiting.queue.test.mjs`.
+ *
+ * @param {object[]} comments wire comments (`kind`, `author_kind`, …)
+ * @returns {object|null}
+ */
+export function payloadCommentOf(comments) {
+  const list = Array.isArray(comments) ? comments : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i]?.kind === "question") return list[i];
+  }
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i]?.author_kind === "human") return list[i];
+  }
+  return null;
 }
 
 /** The awaiting categories the core writes, all of them questions to a human. */
@@ -234,11 +249,10 @@ export function acceptanceRowsFrom(tasks, now = Date.now()) {
  *
  * @param {object[]} tasks the **whole** board reading (the derivation needs
  *   children and review cards, not only the cards it returns)
- * @param {string} policy
  * @param {number} [now]
  */
-export function acceptanceRows(tasks, policy, now = Date.now()) {
-  return acceptanceRowsFrom(acceptanceWaitingTasks(tasks, policy), now);
+export function acceptanceRows(tasks, now = Date.now()) {
+  return acceptanceRowsFrom(acceptanceWaitingTasks(tasks), now);
 }
 
 /**

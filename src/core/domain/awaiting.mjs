@@ -22,6 +22,14 @@
  *      `author_kind === "human"` test is the whole point and is explicit rather
  *      than implied.
  *
+ *      The comment's **kind is not consulted**: any human comment answers the
+ *      question and re-queues the card. Whether that answer is a complete
+ *      decision — approve, reject, or still incomplete — is judged from its
+ *      content by the loop, whose worker reads it when the card is claimed; the
+ *      board deliberately does not read prose for consent. A `decision` /
+ *      `confirm` / `change` kind remains the I5 record (`comment.mjs`), not the
+ *      resume gate.
+ *
  * What this module deliberately does **not** do: persist anything, and take a
  * lock. The cursor is the loop's own watermark (design §2.3: "the loop cursor
  * `?after=<revision>` … the 'already consumed' test persisted"); this is the
@@ -78,17 +86,58 @@ export function isHumanComment(comment) {
 }
 
 /**
+ * The newest `question` comment, or `null`.
+ *
+ * 0034 — since a worker can *ask*, the payload `awaiting` shows is the question,
+ * not whatever human comment happens to be last (the asking worker's own
+ * `note`/`progress` comments must not displace it).
+ *
+ * @param {object[]} comments in `created_at` order
+ * @returns {object|null}
+ */
+export function latestQuestion(comments) {
+  const list = Array.isArray(comments) ? comments : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i]?.kind === "question") return list[i];
+  }
+  return null;
+}
+
+/**
+ * Is there a human comment after `question`?
+ *
+ * Any human comment counts as having answered (the plan's rule): the board
+ * re-queues the card on it, whatever its kind, and the resumed worker judges
+ * from the content whether the answer is a complete decision. A question with
+ * no later human comment is still open.
+ *
+ * @param {object[]} comments
+ * @param {object|null} question
+ * @returns {boolean}
+ */
+export function isAnsweredAfter(comments, question) {
+  const list = Array.isArray(comments) ? comments : [];
+  if (question === null || question === undefined) return false;
+  const index = list.findIndex((comment) => comment?.id === question.id);
+  if (index === -1) return false;
+  return list.slice(index + 1).some((comment) => isHumanComment(comment));
+}
+
+/**
  * The comment that `awaiting` is showing, or `null`.
  *
- * Reads only — "the newest human comment on the card". Which comment that is
- * belongs to the caller (`repos.comments.list({ author_kind: "human" })`), so
- * this stays a pure projection.
+ * 0034 — the newest **question** wins; a card that predates the kind falls back
+ * to the newest human comment (the M1 reading), so old cards keep their payload.
+ * The caller supplies the comment list (`repos.comments.list`), so this stays a
+ * pure projection.
  *
  * @param {{comments?: object[]}} input
  * @returns {object|null}
  */
 export function payloadOf(input = {}) {
   const comments = Array.isArray(input.comments) ? input.comments : [];
+  const question = latestQuestion(comments);
+  if (question !== null) return question;
   for (let i = comments.length - 1; i >= 0; i -= 1) {
     if (isHumanComment(comments[i])) return comments[i];
   }
@@ -144,7 +193,9 @@ export function isConsumed(cursor, commentId) {
  *   task?: {status?: string},
  *   comments?: object[],
  *   cursor?: string|number|null,
- * }} input
+ *   newest?: object|null,
+ * }} input `newest` lets the writer decide on the comment it just stored,
+ *   instead of re-reading a list whose `created_at` ties could reorder it.
  * @returns {{resume: boolean, reason: string, comment: object|null, nextCursor: string|number|null}}
  *   `resume: true` only when **all** of these hold:
  *
@@ -155,6 +206,11 @@ export function isConsumed(cursor, commentId) {
  *     * that comment is **strictly after the cursor**, so the same comment can
  *       never resume the card twice — the second read returns `resume: false`
  *       with the cursor unmoved (the idempotence the card's F2 asks for).
+ *
+ *   The comment's kind is deliberately **not** a condition: any human comment
+ *   is an answer, and whether it is a complete decision is judged from its
+ *   content by the loop. `decision` / `confirm` / `change` are the I5 record,
+ *   not the resume gate.
  *
  *   `nextCursor` is always safe to persist: it only advances when a resume is
  *   decided, so a rejected comment cannot silently swallow a later one.
@@ -169,8 +225,12 @@ export function resumeDecision(input = {}) {
     return { resume: false, reason: "not_awaiting", ...settled };
   }
 
-  const newest = comments.length > 0 ? comments[comments.length - 1] : null;
-  if (newest === null) {
+  const newest = input.newest !== undefined
+    ? input.newest
+    : comments.length > 0
+      ? comments[comments.length - 1]
+      : null;
+  if (newest === null || newest === undefined) {
     return { resume: false, reason: "no_comment", ...settled };
   }
   if (!isHumanComment(newest)) {
@@ -179,5 +239,5 @@ export function resumeDecision(input = {}) {
   if (isConsumed(cursor, newest.id)) {
     return { resume: false, reason: "already_consumed", comment: newest, nextCursor: cursor };
   }
-  return { resume: true, reason: "human_reply", comment: newest, nextCursor: newest.id ?? cursor };
+  return { resume: true, reason: "human_answer", comment: newest, nextCursor: newest.id ?? cursor };
 }

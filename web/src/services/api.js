@@ -164,10 +164,14 @@ export const api = {
   createTask: (body) => post("/tasks", body),
   patchTask: (ref, body) => patch(`/tasks/${encodeURIComponent(ref)}`, body),
   moveTask: (ref, body) => post(`/tasks/${encodeURIComponent(ref)}/move`, body),
+  reopenTask: (ref, body) => post(`/tasks/${encodeURIComponent(ref)}/reopen`, body),
   taskComments: (ref, query) => get(`/tasks/${encodeURIComponent(ref)}/comments`, query),
   addComment: (ref, body) => post(`/tasks/${encodeURIComponent(ref)}/comments`, body),
   taskRelations: (ref) => get(`/tasks/${encodeURIComponent(ref)}/relations`),
   taskActivities: (ref, query) => get(`/tasks/${encodeURIComponent(ref)}/activities`, query),
+  // The activity ledger's backfill: every project's rows, newest first. The feed
+  // scopes them to the board's own task set.
+  boardActivities: (query) => get("/activities", query),
   taskSessions: (ref) => get(`/tasks/${encodeURIComponent(ref)}/sessions`),
   taskReports: (ref) => get(`/tasks/${encodeURIComponent(ref)}/reports`),
 

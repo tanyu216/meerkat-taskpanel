@@ -12,7 +12,7 @@
 
 export const CLI_NAME = "taskctl";
 export const SKILL_NAME = "meerkat-taskpanel";
-export const VERSION = "1.1.0";
+export const VERSION = "0.1.0";
 
 /**
  * The board's **contract schema generation** — which generation of the API/wire
@@ -83,6 +83,89 @@ export const ENV_FILE_FILENAME = ".env";
 /** The URL a fresh install seeds into `.env`; a default value, not a code fallback. */
 export const DEFAULT_BOARD_URL = "http://localhost:9527";
 
+// ---------------------------------------------------------------------------
+// SLA configuration (`docs/sla.md` §2)
+// ---------------------------------------------------------------------------
+
+/**
+ * The SLA measurement period, seconds — the deployment default (`P`). The
+ * loop's `--patrol-interval` overrides it per pass; it schedules nothing.
+ */
+export const DEFAULT_PATROL_SECONDS = 300;
+
+/**
+ * Every `TASKD_SLA_*` key, grouped the way the contract's table is: one
+ * `limit`/`further` pair per limited row, plus the mechanism's own parameters.
+ *
+ * Declared here, **before** `CLIENT_CONFIG_KEYS`, because that allowlist is
+ * built from `SLA_ENV_KEY_LIST` and an ESM constant cannot be read before its
+ * declaration. `src/foundation/sla-config.mjs` owns parsing and defaults.
+ */
+export const SLA_ENV_KEYS = Object.freeze({
+  periodSeconds: "TASKD_SLA_PERIOD_SECONDS",
+  leaderLookbackDays: "TASKD_SLA_LEADER_LOOKBACK_DAYS",
+  peerPeriodMin: "TASKD_SLA_PEER_PERIOD_MIN",
+  peerLivenessK: "TASKD_SLA_PEER_LIVENESS_K",
+  rows: Object.freeze({
+    blocked_clarification: Object.freeze({
+      limitMin: "TASKD_SLA_BLOCKED_CLARIFICATION_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_BLOCKED_CLARIFICATION_FURTHER_MIN",
+    }),
+    confirmation_gate: Object.freeze({
+      limitMin: "TASKD_SLA_CONFIRMATION_GATE_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_CONFIRMATION_GATE_FURTHER_MIN",
+    }),
+    defect_card_creation: Object.freeze({
+      limitMin: "TASKD_SLA_DEFECT_CARD_CREATION_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_DEFECT_CARD_CREATION_FURTHER_MIN",
+    }),
+    acceptance_card_creation: Object.freeze({
+      limitMin: "TASKD_SLA_ACCEPTANCE_CARD_CREATION_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_ACCEPTANCE_CARD_CREATION_FURTHER_MIN",
+    }),
+    heartbeat_stale: Object.freeze({
+      limitMin: "TASKD_SLA_HEARTBEAT_STALE_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_HEARTBEAT_STALE_FURTHER_MIN",
+    }),
+    leader_stalled: Object.freeze({
+      limitMin: "TASKD_SLA_LEADER_STALLED_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_LEADER_STALLED_FURTHER_MIN",
+    }),
+  }),
+});
+
+/** The rows that carry a configurable threshold pair. */
+export const SLA_ROW_KEYS = Object.freeze(Object.keys(SLA_ENV_KEYS.rows));
+
+/** Every SLA key, flat — what the `.env` allowlist and the template use. */
+export const SLA_ENV_KEY_LIST = Object.freeze([
+  SLA_ENV_KEYS.periodSeconds,
+  SLA_ENV_KEYS.leaderLookbackDays,
+  SLA_ENV_KEYS.peerPeriodMin,
+  SLA_ENV_KEYS.peerLivenessK,
+  ...SLA_ROW_KEYS.flatMap((row) => [
+    SLA_ENV_KEYS.rows[row].limitMin,
+    SLA_ENV_KEYS.rows[row].furtherMin,
+  ]),
+]);
+
+/**
+ * Logging controls (`src/foundation/log.mjs`).
+ *
+ * The level is a server *and* loop input, so it lives in the shared `.env`
+ * allowlist; the two rotation numbers belong to the file sink the daemon owns
+ * (`<dataDir>/logs/taskd.log`). A value that is not a level, or not a positive
+ * integer, is a `CONFIG_FILE_INVALID` refusal rather than a silent fallback.
+ */
+export const LOG_LEVEL_ENV = "TASKD_LOG_LEVEL";
+/** Largest `taskd.log` before it is rotated. */
+export const LOG_MAX_BYTES_ENV = "TASKD_LOG_MAX_BYTES";
+/** How many rotated files are kept (`taskd.log.1` … `.N`). */
+export const LOG_KEEP_ENV = "TASKD_LOG_KEEP";
+export const LOG_LEVEL_DEFAULT = "info";
+export const LOG_MAX_BYTES_DEFAULT = 10 * 1024 * 1024;
+export const LOG_KEEP_DEFAULT = 5;
+
 /**
  * Keys `.env` may carry. Anything else in our namespaces is a typo; keys
  * outside them (Vite's `VITE_*`, `NODE_ENV`, …) are ignored and never merged.
@@ -99,12 +182,15 @@ export const CLIENT_CONFIG_KEYS = Object.freeze([
   PORT_ENV,
   "TASKD_ALLOW_CIDRS",
   "TASKD_ALLOW_LIST_ENABLED",
-  "TASKD_ACCEPTANCE_POLICY",
   "TASKD_LABEL_GC",
   "TASKD_LABEL_TTL_DAYS",
+  LOG_LEVEL_ENV,
+  LOG_MAX_BYTES_ENV,
+  LOG_KEEP_ENV,
   "TASKCTL_AGENT",
   "TASKCTL_HUMAN",
   "MEERKAT_TASKPANEL_PROJECTS_JSON",
+  ...SLA_ENV_KEY_LIST,
 ]);
 
 /** Namespaces that belong to this project; an unknown key in one is an error. */
@@ -356,6 +442,29 @@ export const SSE_REPLAY_LIMIT = 500;
 export const SSE_NOISE_EVENTS = Object.freeze(["task_heartbeat"]);
 
 /**
+ * The one **named** SSE frame: the server's notice that it is ending the stream
+ * on purpose. A named frame is invisible to `onmessage`, which is the point —
+ * it is not an activity and must never be mistaken for one.
+ */
+export const SSE_SHUTDOWN_EVENT = "shutdown";
+
+/**
+ * The terminal/control line types the event-stream commands (`events tail`,
+ * `events follow`) write as NDJSON.
+ *
+ * Shared with the loop's `streamCli` so the producer and the consumer cannot
+ * drift on a string literal.
+ */
+export const EVENT_STREAM_LINE = Object.freeze({
+  OPEN: "open",
+  EVENT: "event",
+  IDLE: "idle",
+  SHUTDOWN: "shutdown",
+  EOF: "eof",
+  ERROR: "error",
+});
+
+/**
  * How long the loop's SSE subscriber tolerates a silent stream before it
  * reconnects. Three missed 15 s heartbeats is a dead connection, not a quiet
  * board.
@@ -367,10 +476,23 @@ export const EVENT_DEBOUNCE_MS = 300;
 export const EVENT_DEBOUNCE_MAX_MS = 2_000;
 /** At most one event-triggered continue turn per this interval. */
 export const EVENT_CONTINUE_MIN_MS = 60_000;
+/**
+ * At most one event-triggered **card-brief refresh** batch per this interval.
+ *
+ * The brief is a file, not an LLM turn: it can follow events far more cheaply
+ * than a continue turn, while still coalescing a worker's comment/report burst.
+ */
+export const CARD_REFRESH_MIN_MS = 5_000;
 /** How soon to retry a dispatch whose continue turn was already in flight. */
 export const SUBSCRIBE_RETRY_MS = 5_000;
 /** The reconnect ladder's ceiling, matching the web client's 30 s. */
 export const SUBSCRIBE_BACKOFF_MAX_MS = 30_000;
+/**
+ * At most one `subscribe.state.json` write per this interval from traffic. A
+ * quiet board writes nothing; `--supervisor=status` still sees the last open or
+ * the pending reconnect because those flushes are forced.
+ */
+export const SUBSCRIBE_STATE_WRITE_MIN_MS = 2_000;
 
 // ---------------------------------------------------------------------------
 // Static hosting (ARCHITECTURE §8, M6a)
@@ -495,8 +617,10 @@ export const TASK_ORDER_SEVERITY_ENABLED = false;
  * `min(value / cap, 1)`: a card's score depends on that card alone, which is
  * what lets the order be paginated and keeps one card's arrival from re-scoring
  * everybody else. `dwell`/`age` are hours; `unblocks` is a count of open
- * downstream cards, capped at 3 because `0/1/2/3+` are the only meaningful
- * buckets (`PROTOCOL §①` limits fan-in and chain length to 8).
+ * downstream cards, capped at 3 by `TASK_ORDER_CAPS.unblocks` below because
+ * `0/1/2/3+` are the only meaningful buckets (the relation graph itself caps
+ * parent fan-in and chain length at 8 — `RELATION_FANIN_MAX` /
+ * `RELATION_CHAIN_MAX`).
  */
 export const TASK_ORDER_CAPS = Object.freeze({ dwellHours: 72, ageHours: 720, unblocks: 3 });
 
@@ -504,12 +628,12 @@ export const TASK_ORDER_CAPS = Object.freeze({ dwellHours: 72, ageHours: 720, un
  * SLA thresholds in **hours of wall clock**, by card status (contract §5.2 / R3).
  *
  * There is no product-side SLA constant anywhere else in the tree; these mirror
- * the rows of the team `PROTOCOL §⑮` that can be mapped onto a status. A status
+ * the status-mappable rows of `docs/sla.md` §2. A status
  * **absent** from this table has no threshold and scores `S = 0` — not a skip,
  * not a `NaN` ("no definition" is reported, not faked). v1 measures wall clock;
- * `PROTOCOL §⑮`'s Asia/Shanghai working-hours calendar is a v2 extension Terry
- * still has to rule on (§5.4 question 2), and is the one place a strict reading
- * would add real engineering.
+ * the inspection contract's Asia/Shanghai working-hours basis (`docs/sla.md` §3)
+ * is not applied here — that is a v2 extension, and the one place a strict
+ * reading would add real engineering.
  */
 export const TASK_ORDER_SLA_HOURS = Object.freeze({ blocked: 2, in_review: 24, awaiting: 24 });
 
@@ -559,8 +683,8 @@ export const HUMAN_KIND = "human";
  * The board's own platform name.
  *
  * `taskd` is a concrete writer, not a role: it names the process that performs
- * the board's housekeeping (rollup, the label GC, the markdown importer) and
- * the automation that applies an acceptance verdict. It is the value
+ * the board's housekeeping (rollup, the label GC) and the automation that
+ * applies an acceptance verdict. It is the value
  * `HUMAN_KIND`'s documentation has always pointed at — "or `taskd` for the board
  * itself" — and the one the `system` placeholder in older rows is replaced by.
  *
@@ -570,31 +694,23 @@ export const HUMAN_KIND = "human";
 export const TASKD_KIND = "taskd";
 
 /**
- * The board's acceptance policies — "who may move a card to `done`".
- *
- * Declared in `foundation` because **both** sides of the board read the same
- * vocabulary: `src/core/domain/status.mjs` enforces it, and
- * `src/foundation/scheduling.mjs` resolves the loop's copy from its host config
- * (which is what the loop believes before the board tells it otherwise).
- *
- *   * `human-only` — only a human accepts a top-level original;
- *   * `both` — a human or the board (`taskd`);
- *   * `agent-only` — any non-human writer.
- *
- * In every mode a human closes only **top-level** cards, and a review card is
- * closed by the human or the board (any non-human under `agent-only`).
- */
-export const ACCEPTANCE_POLICIES = Object.freeze(["human-only", "both", "agent-only"]);
-
-/** The policy used when none is configured (`both`, the historical rule). */
-export const DEFAULT_ACCEPTANCE_POLICY = "both";
-
-/**
  * The `meta.accepted_by` marker the workflow pass writes when the board's
  * automated acceptance (not a human) closes a card after a review verdict.
  * One source for the core decision, the SLA patrol and the loop's executor.
  */
 export const LOOP_ACCEPTOR = "loop-review";
+
+/**
+ * The `meta.accepted_by` marker an automatic acceptance writes when the card did
+ * **not** need an independent review (`acceptance_mode = off`) and the loop closed
+ * it directly after delivery. Kept distinct from `LOOP_ACCEPTOR` so the SLA
+ * patrol and the activity trail can tell "a review approved this" from "no
+ * review was required".
+ */
+export const LOOP_AUTO_ACCEPTOR = "loop-auto";
+
+/** Every marker an automated (non-human) acceptance may write. */
+export const AUTOMATED_ACCEPTORS = Object.freeze([LOOP_ACCEPTOR, LOOP_AUTO_ACCEPTOR]);
 
 /**
  * Default cap on cards read in one pass — the loop's patrol/board read and the
@@ -616,7 +732,7 @@ export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
  * This is a real gap the SLA pass cannot cover: creating the review card
  * suppresses the original's `acceptance_card_creation` row, so a reviewer that
  * is never woken (or keeps failing to report) would otherwise be silent. The
- * default is generous: an hour of wall clock is well inside the `§⑮` day-long
+ * default is generous: an hour of wall clock is well inside the contract's day-long
  * acceptance limit, and a faster threshold would page on a normal queue.
  *
  * The board's planner and the loop's config resolver both read it — one number,

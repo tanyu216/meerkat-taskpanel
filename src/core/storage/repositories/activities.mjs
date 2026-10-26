@@ -1,8 +1,11 @@
 /**
  * `task_activities` — the audit trail every write command leaves behind.
  *
- * One row per command (asserted in the command tests), carrying the global
- * revision the command produced so a client holding a cursor can find it.
+ * Each row carries the global revision its own insert produced (see
+ * `unit-of-work.mjs#recordActivity`), so the stream's cursor is a plain
+ * `revision > ?` range. A command may write more than one row (`updateTask` can
+ * record a review override, an acceptance change and the patch's own
+ * `task_updated`), and each is a separate increment.
  */
 
 import { recordActivity } from "../unit-of-work.mjs";
@@ -48,7 +51,13 @@ export function createActivitiesRepository(db) {
     },
 
     /**
-     * @param {{taskId?: string, afterRevision?: number, afterId?: number, limit?: number}} [filter]
+     * @param {{taskId?: string, afterRevision?: number, limit?: number, order?: "asc"|"desc"|"revision"}} [filter]
+     *
+     * `order: "desc"` is the drawer's read (newest first, paired with `limit` so
+     * the newest N are returned). `order: "revision"` orders by the cursor
+     * column itself (`revision ASC, id ASC`) — the SSE stream's read, which the
+     * `ix_activities_revision` index satisfies without a sort. The default is
+     * `id ASC`, matching the per-task route.
      */
     list(filter = {}) {
       const clauses = [];
@@ -61,24 +70,13 @@ export function createActivitiesRepository(db) {
         clauses.push("revision > ?");
         values.push(filter.afterRevision);
       }
-      if (filter.afterId !== undefined) {
-        clauses.push("id > ?");
-        values.push(filter.afterId);
-      }
       const limit = Number.isInteger(filter.limit) ? filter.limit : 500;
+      const direction =
+        filter.order === "desc" ? "id DESC" : filter.order === "revision" ? "revision ASC, id ASC" : "id ASC";
       const sql = `SELECT * FROM task_activities
                    ${clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : ""}
-                   ORDER BY id ASC LIMIT ?`;
+                   ORDER BY ${direction} LIMIT ?`;
       return db.prepare(sql).all(...values, limit).map(activityFromRow);
-    },
-
-    /** @param {string} taskId */
-    count(taskId) {
-      const row =
-        taskId === undefined
-          ? db.prepare("SELECT COUNT(*) AS n FROM task_activities").get()
-          : db.prepare("SELECT COUNT(*) AS n FROM task_activities WHERE task_id = ?").get(taskId);
-      return Number(row.n);
     },
   };
 }

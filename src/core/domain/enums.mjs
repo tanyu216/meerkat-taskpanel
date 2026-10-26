@@ -2,12 +2,17 @@
  * Enumerations — the single source of truth for every closed value set in the
  * domain, and the JS side of the SQL `CHECK (... IN (...))` parity contract.
  *
- * Cardinal rule (F2 ruling): the card's seven states are canonical. The
- * `task-interface v1` words `ready`/`failed` are aliases only and are resolved
- * by `src/foundation/status-alias.mjs` — never stored.
+ * Cardinal rule: the card's statuses are canonical. The old
+ * `task-interface v1` words `ready`/`failed` are gone — neither stored nor
+ * accepted on any surface.
  *
  * This module is pure: no `node:` specifiers.
  */
+
+// The 0.1.0 baseline declares both acceptance CHECKs in its CREATE TABLE bodies,
+// so the SQL-parity reader sees them and the vocabulary must be declared below.
+// `acceptance-mode.mjs` is pure and imports nothing from here.
+import { CARD_ACCEPTANCE_MODES, PROJECT_ACCEPTANCES } from "./acceptance-mode.mjs";
 
 /**
  * Canonical task statuses (F2 — the card's seven stage statuses, plus M1's
@@ -63,7 +68,7 @@ export const AWAITING_REASONS = Object.freeze(["E1", "E2", "E3", "E4", "E5"]);
  * (a timestamp) cannot say; it is not a severity and not an explanation, because
  * those are read from the comment trail.
  *
- * The vocabulary is the SLA-inspection contract's (`§7`), which both the board
+ * The vocabulary is `docs/sla.md` §6.1's, which both the board
  * and the two inspection mechanisms share — the board must not invent its own
  * spelling for a value the inspectors switch on:
  *
@@ -113,20 +118,15 @@ export const PRIORITY = Object.freeze({
 });
 
 /**
- * Task kinds. Only `epic` may be a parent (see `domain/relation.mjs`), and
- * `deploy` is a **work card that no automatic read may offer** (see
+ * Task kinds. Only `epic` may be a parent (see `domain/relation.mjs`) and only
+ * `epic` is withheld from the automatic candidate read (see
  * `domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`).
  *
- * `deploy` is the marker for a *deployment* card — work that runs against a live
- * instance rather than in the repository (rebuilding `dist`, restarting `taskd`,
- * a full `install.sh` run). It is a `kind` and not a label on purpose: `kind` is
- * the vocabulary the schema, the enum-parity contract and the claim rules all
- * already read, so the marker is checkable at every layer — exactly the shape
- * `epic` uses. It is **not** a third claimability rule: a `deploy` card stays
- * claimable by an explicit dispatch, it is only withheld from the *automatic*
- * candidate read (the difference from `epic`, which is never claimable at all).
+ * 0038 retired `deploy` from the card model. Whether a card belongs to a
+ * release line — and what confirming that means — is the loop's own decision;
+ * a card that needs an independent gate says so with `acceptance_mode: agent`.
  */
-export const TASK_KINDS = Object.freeze(["task", "epic", "deploy"]);
+export const TASK_KINDS = Object.freeze(["task", "epic"]);
 
 /**
  * Named access to the kinds. Callers that mean "the grouping card" say
@@ -136,7 +136,6 @@ export const TASK_KINDS = Object.freeze(["task", "epic", "deploy"]);
 export const TASK_KIND = Object.freeze({
   TASK: "task",
   EPIC: "epic",
-  DEPLOY: "deploy",
 });
 
 /** Relation types. */
@@ -152,15 +151,23 @@ export const COMMENT_KINDS = Object.freeze([
   "discuss",
   "decision",
   "confirm",
+  // `confirm_request` is a *request*, not a decision: it opens a confirmation
+  // gate (`docs/sla.md` §11). It is deliberately absent from DECISION_KINDS.
+  "confirm_request",
   "change",
   "note",
   "defect",
+  // 0034 — a worker's question. The `awaiting` payload is a `question` comment;
+  // any human comment answers it. `decision` / `confirm` / `change`
+  // (DECISION_KINDS) are the I5 record, not the resume gate.
+  // Deliberately absent from DECISION_KINDS: asking is not deciding.
+  "question",
 ]);
 
 /**
  * **There is no actor-kind vocabulary.** An actor's kind is `human`, or the
- * platform an agent runs on (`claude`, `codex`, `pi`, `opencode`, …), or
- * whatever a host calls itself — and `0018` already dropped the enumeration from
+ * platform an agent runs on (`claude`, `codex`, `pi`, …), or
+ * whatever an actor kind calls itself — and `0018` already dropped the enumeration from
  * `comments.author_kind` and `task_reports.author_kind` for exactly that reason.
  *
  * What stood here instead was `ACTOR_KINDS = ["agent", "human", "system"]`, and
@@ -211,22 +218,15 @@ export const EVIDENCE_KINDS = Object.freeze(["commit", "path", "command", "cover
 /** Attachment kinds. */
 export const ATTACHMENT_KINDS = Object.freeze(["inline", "attachment"]);
 
+/**
+ * `task_reports.is_rollup` (0033) — a 0/1 storage marker, not a word set. 0035
+ * declares it in a `CREATE TABLE` body (the rebuild), so the SQL-parity reader
+ * sees it; this is the JS side of that CHECK.
+ */
+export const REPORT_ROLLUP_MARKERS = Object.freeze([0, 1]);
+
 /** Agent session lifecycle. */
 export const SESSION_STATUSES = Object.freeze(["running", "closed", "failed"]);
-
-/**
- * Who wrote a report (0008). The delivery path writes `delivery`; the markdown
- * importer writes `import`, because an imported narrative is history and must
- * never satisfy the delivery gate.
- *
- * Declared here for the first time by `0018`: the constraint was added by
- * `ALTER TABLE … ADD COLUMN`, which the SQL-parity reader does not see, so the
- * value set had no JS side to be compared against. `0018` rebuilds the table and
- * the constraint moves into a `CREATE TABLE` body — where the reader *does* see
- * it, and would report it as "a CHECK in SQL that nothing declares" if this were
- * not here.
- */
-export const REPORT_ORIGINS = Object.freeze(["delivery", "import"]);
 
 /** Activity event names written to `task_activities`. */
 export const ACTIVITY_EVENTS = Object.freeze([
@@ -237,10 +237,22 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "task_claimed",
   "task_heartbeat",
   "task_moved",
+  "task_reopened",
+  // 0034 — a human comment answered an `awaiting` question and the board moved
+  // the card back to `todo` in the same transaction.
+  "task_resumed",
   "task_archived",
   "report_written",
   "task_delivered",
   "report_waived",
+  // 0032 — the frozen acceptance baseline: a successful append, and the audited
+  // prune a human performs with a reason.
+  "acceptance_changed",
+  "acceptance_pruned",
+  // A card's acceptance mode was changed after creation (an agent tightening
+  // it, or a human waiving a review with a reason). The card column is the
+  // decision; this event is the audit trail for changing that decision.
+  "acceptance_override",
   // The container's own start: a child entered the work and the board moved
   // its epic `todo → in_progress` (an automated move, never a claim).
   "epic_auto_start",
@@ -252,9 +264,9 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "session_registered",
   "session_closed",
   "progress",
-  // The attachment surface writes through its own routes, so its changes need
-  // their own rows: the activity stream is a cursor over this table, and a
-  // `global_revision` bump alone produces no frame.
+  // The attachment commands write their own rows: the activity stream is a
+  // cursor over this table, and a `global_revision` bump alone produces no
+  // frame.
   "attachment_added",
   "attachment_updated",
   "attachment_removed",
@@ -262,6 +274,16 @@ export const ACTIVITY_EVENTS = Object.freeze([
   // storm the stream; the counters are enough to make a client reload.
   "import_completed",
 ]);
+
+/**
+ * Declared words whose writer is gone (the markdown importer was removed).
+ *
+ * They stay in `ACTIVITY_EVENTS` so historical rows remain readable, and this
+ * list is what keeps a second writer from appearing — see
+ * `test/contract/activity-events.test.mjs`. Consumers must classify them, but
+ * no surface should expect a new one.
+ */
+export const HISTORICAL_ACTIVITY_EVENTS = Object.freeze(["progress", "import_completed"]);
 
 /**
  * `table.column` → allowed literals, as checked by the migration SQL. The
@@ -275,24 +297,21 @@ export const ACTIVITY_EVENTS = Object.freeze([
  * still free to validate a narrower set on its own write paths (`ACTOR_KINDS`
  * below), and being stricter than the schema is safe; what must not linger is a
  * *declaration* here, which the parity test would read as "declared in JS but no
- * CHECK in SQL".
- * `test/core/storage/migrations-0018.test.mjs` closes that gap from the other
- * side: it reads `0018`'s text and asserts both columns really are open.
+ * CHECK in SQL". The baseline declares every CHECK in its `CREATE TABLE` bodies,
+ * so the reader sees them all; `BLOCKED_REASONS` and the acceptance vocabularies
+ * own the literals.
  */
 export const SQL_ENUM_SETS = Object.freeze({
   "tasks.status": STATUSES,
   "tasks.awaiting_reason": AWAITING_REASONS,
   "tasks.priority": PRIORITIES,
   "tasks.kind": TASK_KINDS,
-  // `0019` rebuilds `tasks` and moves `blocked_reason`'s `CHECK` (0016, added by
-  // `ALTER TABLE … ADD COLUMN`, invisible to the SQL-parity reader) into the
-  // `CREATE TABLE` body, where the reader *does* see it. Declaring its literals
-  // here is what keeps the two sides paired — exactly the `0018`/`REPORT_ORIGINS`
-  // precedent. `BLOCKED_REASONS` above owns the vocabulary.
   "tasks.blocked_reason": BLOCKED_REASONS,
+  "tasks.acceptance_mode": CARD_ACCEPTANCE_MODES,
+  "projects.acceptance": PROJECT_ACCEPTANCES,
   "task_relations.relation_type": RELATION_TYPES,
   "comments.kind": COMMENT_KINDS,
   "attachments.kind": ATTACHMENT_KINDS,
   "agent_sessions.status": SESSION_STATUSES,
-  "task_reports.origin": REPORT_ORIGINS,
+  "task_reports.is_rollup": REPORT_ROLLUP_MARKERS,
 });

@@ -11,15 +11,25 @@
 
 import { DomainError } from "../../foundation/errors.mjs";
 import { assertWaiverRequest } from "../domain/delivery-gate.mjs";
-import { STATUS } from "../domain/enums.mjs";
+import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
-import { assertTransition } from "../domain/status.mjs";
+import { isTerminalStatus, transitionPolicyFor } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
-import { assertAcceptance, assertChildrenTerminal, assertReviewReady } from "./acceptance.mjs";
+import {
+  assertAcceptance,
+  assertAcceptanceCoverage,
+  assertChildrenTerminal,
+  assertReviewReady,
+} from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
 import { insertDeliveryReport } from "./delivery-report.mjs";
 import { resolveActorId } from "./dictionary.mjs";
-import { advanceContainerForChild, hasChildStarted, startContainerForChild } from "./rollup.mjs";
+import {
+  advanceContainerForChild,
+  assertRollupCoverage,
+  hasChildStarted,
+  startContainerForChild,
+} from "./rollup.mjs";
 
 /** The task must exist, and its delivery round is what the report is judged against. */
 function loadTask(ctx, taskRef) {
@@ -54,10 +64,12 @@ export function writeReport(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
 
-  return transaction(
+  let identifier = null;
+  const result = transaction(
     ctx.db,
     () => {
       const task = loadTask(ctx, input.taskId);
+      identifier = task.identifier;
       const prepared = normalizeReportCreate(
         { ...input.report, author: resolveAuthor(ctx, input.report?.author ?? actor, now) },
         {
@@ -66,11 +78,16 @@ export function writeReport(ctx, input) {
         },
       );
 
+      // 0033 — a report on an epic *is* its rollup: it must describe every live
+      // child, and it is marked as such. A plain `task` report is never a rollup.
+      const isRollup = task.kind === TASK_KIND.EPIC;
+      if (isRollup) assertRollupCoverage(ctx, task, prepared.acceptance);
       const report = insertDeliveryReport(ctx, {
         taskId: task.id,
         prepared,
         seg: prepared.seg ?? input.seg ?? null,
         sessionId: prepared.sessionId ?? input.sessionId ?? null,
+        isRollup,
       });
       const updated = ctx.repos.tasks.setReportLatest({ id: task.id, reportId: report.id, now });
 
@@ -86,6 +103,17 @@ export function writeReport(ctx, input) {
     },
     { op: "reports.write" },
   );
+
+  if (typeof ctx.logger === "function") {
+    ctx.logger({
+      event: "report_written",
+      identifier,
+      round: result.report.round,
+      report_id: result.report.id,
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return result;
 }
 
 /**
@@ -117,20 +145,36 @@ export function deliver(ctx, input) {
     });
   }
 
-  return transaction(
+  // Logged only after the transaction commits: a rolled-back delivery must not
+  // leave a record that says it happened.
+  let observed = null;
+  const result = transaction(
     ctx.db,
     () => {
       const task = loadTask(ctx, input.taskId);
+
+      // A terminal card has nothing to deliver. `to` is wire-only (the CLI does
+      // not offer it), and the reopen edge now makes `to: "todo"` a legal
+      // transition — without this guard, `POST /deliver {"to":"todo"}` would be
+      // a reasonless reopen that also writes a report. Reopening is `issue
+      // reopen`, which is audited.
+      if (isTerminalStatus(task.status)) {
+        throw new DomainError("TERMINAL_STATE", {
+          message: `task is ${task.status} (terminal); it cannot be delivered`,
+          details: { from: task.status, to, taskId: task.id },
+          hint: { fix: `taskctl issue reopen ${task.identifier} --reason "<why>"` },
+        });
+      }
 
       // The move must be legal at all. The *gate* is deliberately not consulted
       // here: this transaction is what satisfies it, by inserting the report
       // (or stamping the waiver) below. The database trigger still checks that
       // it really happened — if the ordering here were wrong, the status update
       // would be refused.
-      assertTransition(task.status, to, task.kind);
-      // `deliver` accepts a wire-only `to`; a delivery that lands on `done`
-      // (from `in_review`) is still an acceptance and obeys the same policy and
-      // scope as `moveStatus`.
+      transitionPolicyFor(task).assert(to);
+      // `deliver` accepts a wire-only `to`; a delivery that lands on `done` is
+      // still an acceptance and obeys the card's own acceptance mode. In `off`
+      // mode this is the direct `in_progress → done` path.
       if (to === STATUS.DONE) assertAcceptance(ctx, task, actor);
       // No delivery to review, and no acceptance, while a child is in flight.
       // Checked before the report is written, so a refusal costs nothing.
@@ -138,6 +182,24 @@ export function deliver(ctx, input) {
       if (to === STATUS.DONE) assertReviewReady(ctx, task, actor);
 
       if (waived) {
+        // 0033 — a container has no report of its own to waive: its evidence is
+        // the rollup over its children. The deliberate exit is to roll up (or
+        // cancel the epic), never to skip the evidence.
+        if (task.kind === TASK_KIND.EPIC) {
+          throw new DomainError("ROLLUP_REQUIRED", {
+            message:
+              `${task.identifier}: an epic cannot be delivered under a report waiver — ` +
+              "its delivery evidence is the rollup over its children",
+            details: { taskId: task.id, identifier: task.identifier, round: task.deliveryRound },
+            hint: {
+              command: `taskctl report template ${task.identifier}`,
+              note: "fill the child list, then deliver it on the epic",
+            },
+          });
+        }
+        // A waiver excuses the *delivery* gate, never the acceptance gate: a
+        // non-empty baseline still needs a current-round report before done.
+        if (to === STATUS.DONE) assertAcceptanceCoverage(ctx, task);
         const waiver = { round: task.deliveryRound, reason: waiverReason, at: now };
         const moved = ctx.repos.tasks.moveCas({ id: task.id, ifVersion: input.ifVersion, to, now, waiver });
         ctx.repos.activities.append({
@@ -159,6 +221,13 @@ export function deliver(ctx, input) {
         // child; both hooks live in commands/rollup.mjs.
         if (hasChildStarted(moved.status)) startContainerForChild(ctx, task.id, now);
         if (moved.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
+        observed = {
+          identifier: task.identifier,
+          from: task.status,
+          to: moved.status,
+          round: waiver.round,
+          reportId: null,
+        };
         return { task: moved, report: null, waived: true };
       }
 
@@ -169,11 +238,18 @@ export function deliver(ctx, input) {
           now,
         },
       );
+      // The prepared row is not in the repository yet, so the gate is given it
+      // directly; if it fails, the transaction rolls back and no report is left
+      // behind.
+      if (to === STATUS.DONE) assertAcceptanceCoverage(ctx, task, { report: prepared });
+      const isRollup = task.kind === TASK_KIND.EPIC;
+      if (isRollup) assertRollupCoverage(ctx, task, prepared.acceptance);
       const report = insertDeliveryReport(ctx, {
         taskId: task.id,
         prepared,
         seg: prepared.seg ?? input.seg ?? null,
         sessionId: prepared.sessionId ?? input.sessionId ?? null,
+        isRollup,
       });
 
       const moved = ctx.repos.tasks.moveCas({
@@ -202,10 +278,31 @@ export function deliver(ctx, input) {
       // container can start), and a delivery straight to `done` can finish one.
       if (hasChildStarted(moved.status)) startContainerForChild(ctx, task.id, now);
       if (moved.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
+      observed = {
+        identifier: task.identifier,
+        from: task.status,
+        to: moved.status,
+        round: report.round,
+        reportId: report.id,
+      };
       return { task: moved, report, waived: false };
     },
     { op: "reports.deliver" },
   );
+
+  if (typeof ctx.logger === "function" && observed !== null) {
+    ctx.logger({
+      event: "task_delivered",
+      identifier: observed.identifier,
+      from: observed.from,
+      to: observed.to,
+      round: observed.round,
+      report_id: observed.reportId,
+      waived: result.waived,
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return result;
 }
 
 /** @param {object} ctx @param {{taskId: string}} input */

@@ -45,8 +45,16 @@ export function parentIdOf(repos, taskId) {
 
 /** A task plus the audit trail a reviewer needs: who waived delivery, and why. */
 export function taskPayload(repos, task) {
+  const wire = taskToWire(task, { lookup: lookupFor(repos), parentId: parentIdOf(repos, task.id) });
+  // The review card's readable target, resolved from the structural column.
+  // `meta.review_of` is only a mirror; a column-only row must still display the
+  // original's identifier rather than its internal id.
+  wire.review_of =
+    task.reviewOfId === null || task.reviewOfId === undefined
+      ? null
+      : (repos.tasks.get(task.reviewOfId)?.identifier ?? null);
   return {
-    task: taskToWire(task, { lookup: lookupFor(repos), parentId: parentIdOf(repos, task.id) }),
+    task: wire,
     report_waivers: waiversFromActivities(repos.activities.list({ taskId: task.id, limit: 1000 })),
   };
 }

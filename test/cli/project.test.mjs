@@ -44,6 +44,40 @@ describe("cli/project", () => {
     });
   });
 
+  it("ensures idempotently: creates once, then returns the existing project untouched", async () => {
+    await withCli(async ({ run }) => {
+      const first = dataOf(run([
+        "project", "ensure", "demo",
+        "--name", "Demo",
+        "--meta", "team=panel",
+        "--json",
+      ]));
+      assert.equal(first.created, true);
+      assert.equal(first.project.id, "demo");
+      assert.equal(first.project.name, "Demo");
+      assert.deepEqual(first.project.meta, { team: "panel" });
+
+      // The second call is a read: a different name/meta is ignored.
+      const second = dataOf(run([
+        "project", "ensure", "demo",
+        "--name", "Renamed",
+        "--meta", "team=other",
+        "--json",
+      ]));
+      assert.equal(second.created, false);
+      assert.equal(second.project.name, "Demo", "an existing project is not updated");
+      assert.deepEqual(second.project.meta, { team: "panel" });
+
+      // No name is needed when the project already exists.
+      const bare = dataOf(run(["project", "ensure", "demo", "--json"]));
+      assert.equal(bare.created, false);
+      assert.equal(bare.project.name, "Demo");
+
+      const listed = dataOf(run(["project", "list", "--json"]));
+      assert.deepEqual(listed.projects.map((p) => p.id), ["demo"], "one row, not two");
+    });
+  });
+
   it("no longer accepts --workspace-path (O3: the board holds no directory)", async () => {
     await withCli(async ({ run }) => {
       const result = run([
@@ -178,6 +212,42 @@ describe("cli/project — the identifier prefix (C-PREFIX-1)", () => {
       assert.equal(refused.status, 1);
       assert.equal(JSON.parse(refused.stdout).error.code, "VALIDATION_FAILED");
       assert.equal(dataOf(run(["project", "list", "--json"])).projects.length, 0);
+    });
+  });
+});
+
+describe("cli/project — acceptance default and reviewer (0038)", () => {
+  it("creates and updates the acceptance default and reviewer", async () => {
+    await withCli(async ({ run }) => {
+      const created = dataOf(
+        run([
+          "project", "create", "--id", "flow", "--name", "Flow",
+          "--acceptance", "agent", "--reviewer", "jobs", "--json",
+        ]),
+      );
+      assert.equal(created.project.acceptance, "agent");
+      assert.equal(created.project.reviewer, "jobs");
+
+      const updated = dataOf(
+        run(["project", "update", "flow", "--acceptance", "off", "--reviewer", "", "--json"]),
+      );
+      assert.equal(updated.project.acceptance, "off");
+      assert.equal(updated.project.reviewer, null);
+
+      const invalid = run([
+        "project", "create", "--id", "bad", "--name", "Bad",
+        "--acceptance", "sometimes", "--json",
+      ]);
+      assert.equal(invalid.status, 1);
+      assert.equal(JSON.parse(invalid.stdout).error.code, "VALIDATION_FAILED");
+
+      // The compatibility spelling is gone: an unknown flag is a usage error.
+      const retired = run([
+        "project", "create", "--id", "legacy", "--name", "Legacy",
+        "--review-policy", "required", "--json",
+      ]);
+      assert.equal(retired.status, 2);
+      assert.equal(JSON.parse(retired.stdout).error.code, "CLI_USAGE");
     });
   });
 });

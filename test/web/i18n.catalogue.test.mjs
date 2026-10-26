@@ -18,7 +18,7 @@
  *      still checked against the source rather than against a number written
  *      down here. `.dockerignore` excludes `design/prototype/`, so this half self-skips
  *      in the image, following the "absent tool ⇒ SKIP, never FAIL" precedent
- *      from `scripts/verify/host-cli.mjs`.
+ *      from `scripts/verify/kind-cli.mjs`.
  *   3. **Purity** — the data module imports nothing, touches no global and
  *      cannot be mutated in place, so the frontend build and `node --test`
  *      can both consume it without ordering hazards.
@@ -27,7 +27,7 @@
  * key counts via `t.diagnostic`. See the module header for the recorded
  * numbers and for the `BLOCKS.md` header discrepancy: its line quotes 626 hooks
  * (four of the five `data-i18n*` attributes, the 193 `data-i18n-arg` seats left
- * out) and 282 keys, while the documents measure 849 hooks and 288 prototype
+ * out) and 282 keys, while the documents measure 851 hooks and 288 prototype
  * `MESSAGES` keys, of which this catalogue ships the 271 that are not
  * prototype-only.
  */

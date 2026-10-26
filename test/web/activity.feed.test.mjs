@@ -97,6 +97,7 @@ describe("B26 · admission is an allow-list", () => {
     assert.deepEqual(kindOf(wire("a1", "task_created")), { kind: "created", verb: "created", group: "meta" });
     assert.deepEqual(kindOf(wire("a1", "task_claimed")), { kind: "claimed", verb: "claimed", group: "meta" });
     assert.deepEqual(kindOf(wire("a1", "task_moved")), { kind: "status", verb: "status", group: "status" });
+    assert.deepEqual(kindOf(wire("a1", "task_reopened")), { kind: "status", verb: "status", group: "status" });
     assert.deepEqual(kindOf(wire("a1", "task_delivered")), { kind: "delivery", verb: "delivered", group: "delivery" });
     assert.deepEqual(kindOf(wire("a1", "report_written")), { kind: "delivery", verb: "delivered", group: "delivery" });
     assert.deepEqual(kindOf(wire("a1", "report_waived")), { kind: "delivery", verb: "delivered", group: "delivery" });

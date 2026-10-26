@@ -1,0 +1,127 @@
+{
+  "skill_name": "setup-meerkat",
+  "evals": [
+    {
+      "id": 1,
+      "name": "remote-board",
+      "prompt": "Set up meerkat for Claude on this repo. The board is at http://board.internal:9527.",
+      "expected_output": "A detection report that classifies the board as remote, asks before configuring, and runs the installer with --target claude --no-automation (never starting a local taskd). A --dry-run writes nothing.",
+      "files": [],
+      "assertions": [
+        "The detection report names the requested board URL (or the reachable non-loopback stand-in used for an unresolvable hostname) and classifies it as remote (not loopback).",
+        "The plan asks the user to confirm the remote address before writing anything.",
+        "The chosen install invocation does not include the server target and does not enable the supervisor.",
+        "No file under the temporary HOME is created by the detection or dry-run step."
+      ]
+    },
+    {
+      "id": 2,
+      "name": "standard-team",
+      "prompt": "Install meerkat here and build the standard team.",
+      "expected_output": "Board, loop and setup skills installed for Claude with the server; the standard team installed under the loop skill's roles/ directory, with Claude and Codex native agent definitions. A second run reports every action as unchanged.",
+      "files": [],
+      "assertions": [
+        "The install uses --target claude and includes the server (or explains why it skipped it).",
+        "<home>/.claude/skills/setup-meerkat/SKILL.md exists after installation.",
+        "The roles root is <home>/.claude/skills/meerkat-loop/roles with manifest.json, a decision policy, and four roles.",
+        ".claude/agents/jobs.md and .codex/agents/reviewer.toml exist.",
+        "A second identical run leaves the role files and native agent definitions unchanged (content-hash identical), and the role installer reports every action as unchanged."
+      ]
+    },
+    {
+      "id": 3,
+      "name": "project-scoped-reviewer",
+      "prompt": "Use a project-scoped team with a reviewer named Grace.",
+      "expected_output": "The team is installed under <project>/.meerkat/roles, the global roles skill directory is untouched, the manifest's reviewer agent is Grace, and the effective roles root is the project's.",
+      "files": [],
+      "assertions": [
+        "<project>/.meerkat/roles/manifest.json exists.",
+        "The global <home>/.claude/skills/meerkat-loop/roles is not created or modified.",
+        "The reviewer role's agent in the manifest is Grace.",
+        "Detection after the install reports the project roles root as the effective root."
+      ]
+    },
+    {
+      "id": 4,
+      "name": "existing-tracker",
+      "prompt": "I already have docs/agents/issue-tracker.md for GitHub. Set up the Matt integration.",
+      "expected_output": "Detection finds the existing unrelated tracker and asks before overwriting; nothing is overwritten without consent. The Matt skill is not invoked through the Skill tool, and the skill does not claim it ran.",
+      "files": [],
+      "assertions": [
+        "The agent reports that an existing tracker was found and that it is unrelated to taskpanel.",
+        "No write to docs/agents/issue-tracker.md happens before the user's confirmation.",
+        "The response offers the /setup-matt-pocock-skills command or the manual-read route rather than claiming the skill ran.",
+        "A tracker that mentions taskctl or taskpanel is reported as already integrated and skipped."
+      ]
+    },
+    {
+      "id": 5,
+      "name": "decision-ladder",
+      "prompt": "A subagent asks an operational question, an epic-split question, and an E2 acceptance question. Show how the loop handles each.",
+      "expected_output": "The operational and epic-split questions are answered by the project session (a note plus reattach/requeue, no awaiting); the E2 question is escalated to awaiting with options and a recommendation. The subagent writes no decision comment and the loop never uses --as-human for its own answer.",
+      "files": [],
+      "assertions": [
+        "Each subagent question is recorded as an agent question comment on an in_progress card.",
+        "The operational and epic-split items are answered in a note (never a decision kind or awaiting), and the card's single move is the E2 escalation to awaiting; the note preserves the operational answers for the resumed worker.",
+        "The epic split is presented as the project session's decision; only a scope expansion is said to be E1 for the human.",
+        "The E2 question becomes issue move ... awaiting --awaiting-reason E2 --question with options and a recommendation.",
+        "No example has the subagent writing decision, confirm or change.",
+        "The questions are one round: one question string per card (one question comment), not one comment per item."
+      ]
+    },
+    {
+      "id": 6,
+      "name": "identity",
+      "prompt": "Show who is recorded as creator, assignee and report author for a Jobs card, and what a human decision records.",
+      "expected_output": "Jobs is the board agent name (with --assignee-kind agent / --reporter-kind agent where applicable); a human decision is recorded with --as-human and signs the fixed TASKCTL_HUMAN name, never the role name.",
+      "files": [],
+      "assertions": [
+        "The example creator, assignee and report author are the role's board agent name (Jobs).",
+        "Assignee and reporter writes carry --assignee-kind agent / --reporter-kind agent.",
+        "The human decision example uses --as-human and does not use a role name as the human identity."
+      ]
+    },
+    {
+      "id": 7,
+      "name": "setup-interview",
+      "prompt": "Set up Meerkat TaskPanel for Claude on this repo. The board is remote at http://board.internal:9527, I want a project-scoped team, and I am not sure the standard team fits. Do not install or write anything - show me the setup interview you would run first.",
+      "expected_output": "Detection first, used as facts; one numbered frontier round with recommended answers worded so 'yes' accepts them; the standard-team fit is challenged with a counterexample card shape; no install, write or daemon before the frontier closes.",
+      "files": [],
+      "assertions": [
+        "The response runs detection (or names the facts it would detect) before asking, and never asks for a fact detection can establish.",
+        "The open decisions are one numbered round (Q1..Qn), each with a recommended answer worded so 'yes' accepts it.",
+        "The team question is adversarial: it asks for a counterexample card or a card shape that would fall between roles.",
+        "The interview states that installation, writes and daemon starts wait until the frontier is empty and the answers are confirmed - the gate is part of the procedure, not just a promise not to execute.",
+        "--yes is described as accepting only recommended non-destructive answers."
+      ]
+    },
+    {
+      "id": 8,
+      "name": "custom-team-co-design",
+      "prompt": "Design a custom team for a product with heavy docs and mobile work. We have Jobs/Linus/Turing today, but docs changes and release notes keep falling through, and nobody is clearly testing the mobile app. Do not install anything; show the team design and the questions you would settle first.",
+      "expected_output": "A card-shape ownership matrix with exactly one accountable role per shape; at least one unowned or double-owned shape named as a finding; a counterexample card; an independent reviewer; one numbered round; no install before the frontier closes.",
+      "files": [],
+      "assertions": [
+        "The design lists card shapes and gives each exactly one accountable role.",
+        "At least one shape (docs/release notes or mobile testing) is named as unowned or double-owned, as a finding.",
+        "It asks for a concrete counterexample card the proposed split would get wrong.",
+        "The reviewer remains independent and the ladder (subagent -> main session -> human) is unchanged.",
+        "The questions are one numbered round with recommendations, and the answer states that installation waits for the frontier to close."
+      ]
+    },
+    {
+      "id": 9,
+      "name": "decision-round",
+      "prompt": "A Jobs card has four open decisions: the design register, the mobile breakpoint, a terminology conflict, and whether to expand scope to cover a second persona. Show the decision round Jobs sends and how the loop handles each answer.",
+      "expected_output": "One question comment carrying Q1..Q4 with recommendations; the operational items answered by the project session in one note with one move; E3 (register) and E1 (scope expansion) escalated in one awaiting string; the subagent writes no decision kind and never enters awaiting; only a human comment resumes.",
+      "files": [],
+      "assertions": [
+        "The open frontier is one question comment (Q1..Qn) with a recommendation each; a dependent decision is explicitly deferred to a later round rather than dripped as a second comment, and an item closable by a fact is closed by lookup.",
+        "The design register (E3) and the scope expansion (E1) are escalated to the human, not decided by the subagent or the project session.",
+        "Every item the project session is authorized to answer is settled by the lookup or in one note, and the card is moved at most once for the round.",
+        "The subagent keeps the card in_progress, writes no decision/confirm/change, and does not enter awaiting.",
+        "Only a human comment resumes awaiting; an incomplete answer is not consent."
+      ]
+    }
+  ]
+}

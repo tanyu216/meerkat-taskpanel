@@ -4,7 +4,7 @@
 #
 # Where `docker/verify-in-container.sh` proves the repository is healthy, this
 # script proves a *fresh machine* can use it: it installs the skill into all four
-# hosts with a throwaway HOME, then drives the real `taskctl` through its real
+# agent kinds with a throwaway HOME, then drives the real `taskctl` through its real
 # `taskd` — create a project, create a card, get refused by the delivery gate,
 # satisfy the gate with a report, and read the dictionaries back.
 #
@@ -59,7 +59,7 @@ export TASKD_RUNTIME_POINTER="$POINTER"
 export TASKD_PORT=0
 export TASKD_HOST=127.0.0.1
 export TASKCTL_AGENT="$AGENT_ID"
-# Every command needs a platform kind; this script is automation, not a host shim.
+# Every command needs an actor kind; this script is automation, not an agent shim.
 export TASKCTL_ACTOR_KIND=system
 unset TASKD_NO_AUTOSTART
 
@@ -70,22 +70,26 @@ step "install.sh --target all --prefix <throwaway home>"
 # covered by test/install/taskd-guard.test.mjs, with the supervisor faked on PATH.
 MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1 bash install.sh --target all --prefix "$THROWAWAY_HOME"
 
-for host_dir in .claude .openclaw .codex .agents .config/opencode .cursor; do
-  target="$THROWAWAY_HOME/$host_dir/skills/meerkat-taskpanel/SKILL.md"
+for agent_dir in .claude .openclaw .codex .agents; do
+  target="$THROWAWAY_HOME/$agent_dir/skills/meerkat-taskpanel/SKILL.md"
   if [ ! -f "$target" ]; then
     echo "FAIL: install did not write $target" >&2
     exit 1
   fi
-  echo "  OK  $host_dir/skills/meerkat-taskpanel/SKILL.md"
+  echo "  OK  $agent_dir/skills/meerkat-taskpanel/SKILL.md"
 done
 
 step "taskctl project create"
 node "$CLI" project create --id demo --name "E2E Demo"
 
 step "taskctl issue create"
+# `optional` is the default project policy, and this actor is non-human, so the
+# review decision is explicit. `no` keeps the card on the delivery-gate path this
+# script is about; a `yes` here would dispatch a review card first.
 CREATE_JSON="$(node "$CLI" --json issue create \
   --project demo \
   --title "Install e2e card" \
+  --acceptance-mode off \
   --acceptance "the delivery gate refuses an empty report" \
   --label e2e \
   --assignee "$AGENT_ID")"

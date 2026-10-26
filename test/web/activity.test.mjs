@@ -3,10 +3,11 @@
  *
  * Two pure functions the drawer leans on, tested without a browser:
  *
- *   * `relativeTime` — the prototype's two-step ladder (`time.hoursAgo` under a
- *     day, `time.daysAgo` from a day up) plus the absolute stamp the `title`
- *     carries. It is a *view* function: the board's own clock never enters the
- *     record, so the same activity can be re-read under any language.
+ *   * `relativeTime` — the drawer's four-step ladder: `time.justNow` under a
+ *     minute, `time.minutesAgo` under an hour, `time.hoursAgo` under a day,
+ *     `time.daysAgo` from a day up, plus the absolute stamp the `title` carries.
+ *     It is a *view* function: the board's own clock never enters the record, so
+ *     the same activity can be re-read under any language.
  *   * `activityLine` — an activity row's sentence: a catalogue key for the
  *     events the prototype names (`activity.created` / `claimed` / `commented`),
  *     the prototype's `status: <from> → <to>` mono line for a move, and a
@@ -18,7 +19,8 @@ import { describe, it } from "node:test";
 import { ACTIVITY_SENTENCES, activityLine, relativeTime } from "../../web/src/lib/activity.js";
 import { resolveText } from "../../web/src/i18n/messages.mjs";
 
-const HOUR = 3_600_000;
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 /** A fixed "now" so the ladder is asserted, not the wall clock. */
 const NOW = Date.parse("2026-10-08T11:20:00Z");
@@ -30,13 +32,19 @@ const ladder = (iso) => {
 };
 
 describe("web/activity — relative time", () => {
-  it("uses hours under a day and days from a day up", () => {
+  it("uses minutes under an hour, hours under a day and days from a day up", () => {
+    assert.deepEqual(ladder(new Date(NOW - 5 * MINUTE).toISOString()), { key: "time.minutesAgo", arg: 5 });
+    assert.deepEqual(ladder(new Date(NOW - 59 * MINUTE).toISOString()), { key: "time.minutesAgo", arg: 59 });
+    assert.deepEqual(ladder(new Date(NOW - 61 * MINUTE).toISOString()), { key: "time.hoursAgo", arg: 1 });
     assert.deepEqual(ladder(new Date(NOW - 2 * HOUR).toISOString()), { key: "time.hoursAgo", arg: 2 });
     assert.deepEqual(ladder(new Date(NOW - 3 * DAY).toISOString()), { key: "time.daysAgo", arg: 3 });
   });
 
-  it("never reads as zero — a just-now stamp is one hour, not `0h`", () => {
-    assert.deepEqual(ladder(new Date(NOW - 1_000).toISOString()), { key: "time.hoursAgo", arg: 1 });
+  it("reads under a minute as `just now`, not as `1m` or `1h`", () => {
+    assert.deepEqual(ladder(new Date(NOW - 1_000).toISOString()), { key: "time.justNow", arg: 1 });
+    assert.deepEqual(ladder(new Date(NOW - 59_000).toISOString()), { key: "time.justNow", arg: 1 });
+    // Exactly a minute is the minutes rung, so the boundary is not swallowed.
+    assert.deepEqual(ladder(new Date(NOW - MINUTE).toISOString()), { key: "time.minutesAgo", arg: 1 });
   });
 
   it("rounds to the nearest unit, so the row does not drift a unit late", () => {
@@ -45,7 +53,7 @@ describe("web/activity — relative time", () => {
   });
 
   it("treats a timestamp in the future as the freshest row, not a negative", () => {
-    assert.deepEqual(ladder(new Date(NOW + 5 * HOUR).toISOString()), { key: "time.hoursAgo", arg: 1 });
+    assert.deepEqual(ladder(new Date(NOW + 5 * HOUR).toISOString()), { key: "time.justNow", arg: 1 });
   });
 
   it("returns null for a stamp it cannot read, so the row drops the node instead of printing NaN", () => {
@@ -78,8 +86,16 @@ describe("web/activity — the row sentence", () => {
   });
 
   it("renders a move as the prototype's `status: from → to` line", () => {
+    assert.deepEqual(activityLine({ event: "task_reopened", changes: { from: "done", to: "todo" } }), {
+      text: "status: done → todo",
+    });
     assert.deepEqual(activityLine({ event: "task_moved", changes: { from: "backlog", to: "todo" } }), {
       text: "status: backlog → todo",
+    });
+    // A human answer resumes the card in the same transaction; the trail reads
+    // as the transition, not as the generic "recorded an event".
+    assert.deepEqual(activityLine({ event: "task_resumed", changes: { from: "awaiting", to: "todo" } }), {
+      text: "status: awaiting → todo",
     });
   });
 

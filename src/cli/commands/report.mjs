@@ -53,18 +53,29 @@ export function parseReport(raw) {
  */
 export function acceptanceFrom(task) {
   const meta = task.meta ?? {};
-  const modern = Array.isArray(meta.acceptance) ? meta.acceptance : null;
-  if (modern !== null && modern.length > 0) {
+  // 0032 — the frozen snapshot is the authority. The meta list is only a seed
+  // (and the fallback for a grandfathered card whose snapshot is still empty).
+  const snapshot = Array.isArray(task.acceptance) ? task.acceptance : null;
+  if (snapshot !== null && snapshot.length > 0) {
     return {
-      items: modern.map((text) => ({ text: String(text), status: "not_met", note: "TODO: met / partial / not_met" })),
-      source: "meta.acceptance",
-      // The marker is a flag, not a verdict (see `meta.epic_triage=off`): it
-      // says the worker derived the list when the card had none, so the report
-      // is still evidence against items the acceptor may want to re-check.
+      items: snapshot.map((text) => ({ text: String(text), status: "not_met", note: "TODO: met / partial / not_met" })),
+      source: "acceptance_json",
+      // The marker is a flag, not a verdict: it says the worker derived the list
+      // at claim, so the reviewer may want to re-check its coverage.
       warning:
         meta.acceptance_derived === "yes"
           ? "these acceptance items were derived at claim (meta.acceptance_derived=yes); make sure your report answers each one"
           : null,
+    };
+  }
+
+  const modern = Array.isArray(meta.acceptance) ? meta.acceptance : null;
+  if (modern !== null && modern.length > 0) {
+    return {
+      items: modern.map((text) => ({ text: String(text), status: "not_met", note: "TODO: met / partial / not_met" })),
+      source: "meta.acceptance (no frozen baseline)",
+      warning:
+        "this card has no frozen acceptance baseline; meta.acceptance is a seed and the card is treated as vacuously covered until it is reworked",
     };
   }
 
@@ -154,8 +165,15 @@ export function runSync(cmd, args) {
 }
 
 /** The report a human fills in. */
-export function buildTemplate(task, options = {}) {
-  const acceptance = acceptanceFrom(task);
+export function buildTemplate(task, options = {}, context = {}) {
+  // 0033 — an epic's report *is* its rollup: one item per child, joined by
+  // `ref`. The template lists the live children so the author cannot deliver a
+  // rollup that never mentions one.
+  const children = Array.isArray(context.children) ? context.children : null;
+  const acceptance =
+    task.kind === "epic" && children !== null
+      ? { items: children.map(childTemplateItem), source: "children (rollup)", warning: null }
+      : acceptanceFrom(task);
   const evidence = evidenceFor({ ...options, task });
   const warnings = [];
   if (acceptance.warning !== null) warnings.push(acceptance.warning);
@@ -176,6 +194,31 @@ export function buildTemplate(task, options = {}) {
     leftovers: TODO_PLACEHOLDER,
   };
   return { report, warnings, acceptanceSource: acceptance.source, evidenceSource: evidence.source };
+}
+
+/**
+ * One child line in an epic rollup template. `done` → `met` **only after the
+ * author confirms it** — the template writes `not_met` like every other line,
+ * because an untouched template must never be a passing report. A `canceled`
+ * child is `not_applicable` with a TODO note: the cancellation is a fact, the
+ * reason it was acceptable is the author's to state.
+ */
+function childTemplateItem(child) {
+  const label = `${child.ref} ${child.title ?? ""}`.trim();
+  if (child.status === "canceled") {
+    return {
+      ref: child.ref,
+      text: `${label} (canceled)`,
+      status: "not_applicable",
+      note: "TODO: why it was acceptable to finish without this child",
+    };
+  }
+  return {
+    ref: child.ref,
+    text: `${label} (${child.status ?? "unknown"})`,
+    status: "not_met",
+    note: "TODO: met for a done child, or explain the state",
+  };
 }
 
 /**
@@ -244,12 +287,30 @@ export const COMMANDS = [
     ],
     async run(ctx) {
       const task = (await ctx.client.get(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`)).task;
-      const template = buildTemplate(task, {
-        commit: ctx.flags.commit,
-        paths: ctx.flags.paths,
-        commands: ctx.flags.commands,
-        coverage: ctx.flags.coverage,
-      });
+      // 0033 — an epic template is a rollup over its children. The relations
+      // route names them by id; the parent cap is 8, so resolving each one is a
+      // bounded read, and the template needs the identifier + title + state.
+      let children = null;
+      if (task.kind === "epic") {
+        const relations = await ctx.client.get(
+          `/api/v1/tasks/${encodeURIComponent(task.id)}/relations`,
+        );
+        children = [];
+        for (const edge of relations.children) {
+          const child = (await ctx.client.get(`/api/v1/tasks/${encodeURIComponent(edge.target)}`)).task;
+          children.push({ ref: child.identifier, title: child.title, status: child.status });
+        }
+      }
+      const template = buildTemplate(
+        task,
+        {
+          commit: ctx.flags.commit,
+          paths: ctx.flags.paths,
+          commands: ctx.flags.commands,
+          coverage: ctx.flags.coverage,
+        },
+        { children },
+      );
       return {
         data: { report: template.report, acceptance_source: template.acceptanceSource, evidence_source: template.evidenceSource, ref: task.identifier },
         // The human output is *exactly* the report, so the obvious thing a user

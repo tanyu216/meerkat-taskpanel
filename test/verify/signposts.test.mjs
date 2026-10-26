@@ -102,7 +102,7 @@ describe("verify/signposts — the store-root rule", () => {
   });
 
   it("leaves the vendor's own skills root alone — that is an install target", () => {
-    // `~/.openclaw/skills/…` is where the board gets installed *into* the vendor's host,
+    // `~/.openclaw/skills/…` is where the board gets installed *into* the vendor's agent,
     // which is a product capability, not the framework's private store.
     assert.deepEqual(signpostsIn(`cp -r skills/meerkat-taskpanel ~/${VENDOR_DIR}/skills/`), []);
     assert.deepEqual(signpostsIn("~/.claude/skills/meerkat-taskpanel"), []);
@@ -133,10 +133,12 @@ describe("verify/signposts — the mechanism-word rule", () => {
 });
 
 describe("verify/signposts — what the gate deliberately does not ban", () => {
-  // These pin the judgement calls the naming-boundary contract makes. Each one is a
-  // shipped surface or a pinned test assertion; a later change that bans them would red
-  // code or a suite, and these assertions are the tripwire that says so *here* instead.
-  it("keeps the framework's published protocol anchors", () => {
+  // These pin the judgement calls the gate makes. The external project name and the
+  // interface codename are sanctioned cross-repository references; the external protocol
+  // document name is no longer used by the tree (2026-10-22), but the gate still does not
+  // ban it — the ban is editorial, not mechanical. A later change that adds a rule would
+  // red these assertions first.
+  it("does not flag the external document name or its anchors — the ban is editorial, not mechanical", () => {
     assert.deepEqual(signpostsIn("the PROTOCOL §⑮ timeout table"), []);
     assert.deepEqual(signpostsIn('assert.match(row.ref, /^PROTOCOL §⑮/)'), []);
   });

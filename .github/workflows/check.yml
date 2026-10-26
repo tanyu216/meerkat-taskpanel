@@ -44,9 +44,6 @@ jobs:
         # job goes red.
         run: npm run test:coverage
 
-      - name: Skill sync is up to date
-        run: node scripts/sync-skills.mjs --check
-
       - name: Manifests
         run: node scripts/verify/manifests.mjs
 
@@ -56,12 +53,12 @@ jobs:
       - name: Skill definition
         run: node scripts/verify/skill.mjs
 
-      - name: Host runtime claim path (offline mock harness)
+      - name: Agent-kind runtime claim path (offline mock harness)
         # Drives the generated SessionStart hook / Codex claim trigger / wake scripts
-        # against fake host CLIs and a canned shim, in a throwaway home. Runs with no
+        # against fake agent CLIs and a canned shim, in a throwaway home. Runs with no
         # `claude`/`codex`/`pi` and no network — the runtime claim path is covered here
-        # even though the real CLIs are absent (see scripts/verify/host-runtime.mjs).
-        run: node scripts/verify/host-runtime.mjs
+        # even though the real CLIs are absent (see scripts/verify/kind-runtime.mjs).
+        run: node scripts/verify/kind-runtime.mjs
 
       - name: Shell script syntax
         run: bash -n install.sh scripts/install/*.sh scripts/verify/install-e2e.sh

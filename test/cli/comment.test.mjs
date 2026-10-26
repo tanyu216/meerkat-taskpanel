@@ -42,6 +42,56 @@ describe("cli/comment", () => {
     });
   });
 
+  it("lists newest first, so --limit takes the newest N", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
+      run(["comment", "add", "DEMO-0001", "--body", "first", "--kind", "note", "--json"]);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      run(["comment", "add", "DEMO-0001", "--body", "second", "--kind", "note", "--json"]);
+
+      const listed = dataOf(run(["comment", "list", "DEMO-0001", "--json"]));
+      assert.deepEqual(listed.comments.map((c) => c.body), ["second", "first"]);
+
+      const newest = dataOf(run(["comment", "list", "DEMO-0001", "--limit", "1", "--json"]));
+      assert.deepEqual(newest.comments.map((c) => c.body), ["second"], "--limit takes the newest N");
+    });
+  });
+
+  it("attaches repeatable --ref values to the comment's wire refs", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
+
+      const added = dataOf(run([
+        "comment", "add", "DEMO-0001",
+        "--body", "see the two anchors",
+        "--ref", "issue:DEMO-0002",
+        "--ref", "commit:abc1234",
+        "--json",
+      ]));
+      assert.deepEqual(added.comment.refs, ["issue:DEMO-0002", "commit:abc1234"]);
+    });
+  });
+
+  it("accepts the confirm_request kind", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
+
+      const added = dataOf(run([
+        "comment", "add", "DEMO-0001",
+        "--body", "docs/plan.md is ready — please confirm the open items",
+        "--kind", "confirm_request",
+        "--json",
+      ]));
+      assert.equal(added.comment.kind, "confirm_request");
+
+      const filtered = dataOf(run(["comment", "list", "DEMO-0001", "--kind", "confirm_request", "--json"]));
+      assert.equal(filtered.comments.length, 1);
+    });
+  });
+
   it("reads the body from stdin, and records the agent that wrote it", async () => {
     await withCli(async ({ run }) => {
       run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);

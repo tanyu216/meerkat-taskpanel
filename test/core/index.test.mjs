@@ -21,14 +21,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const PLANNED = [
   "index.mjs",
   "bootstrap.mjs",
-  // M6 — the board's acceptance policy (read from the install-root .env, per decision).
-  "acceptance-policy.mjs",
   "domain/enums.mjs",
   "domain/status.mjs",
   "domain/awaiting.mjs",
   "domain/blocked-reason.mjs",
   "domain/priority.mjs",
   "domain/task.mjs",
+  // 0032 — the frozen acceptance baseline's normalisation and coverage gate.
+  "domain/acceptance.mjs",
   "domain/idem.mjs",
   "domain/comment.mjs",
   "domain/relation.mjs",
@@ -39,6 +39,10 @@ const PLANNED = [
   "domain/claim.mjs",
   "domain/invariants.mjs",
   "domain/workflow.mjs",
+  // 0031 — a project's optional reviewer override.
+  "domain/reviewer.mjs",
+  // 0038 — the single acceptance vocabulary and the card/project resolvers.
+  "domain/acceptance-mode.mjs",
   "domain/index.mjs",
   "storage/paths.mjs",
   "storage/driver.mjs",
@@ -60,7 +64,6 @@ const PLANNED = [
   "storage/repositories/index.mjs",
   "storage/md/frontmatter.mjs",
   "storage/md/sections.mjs",
-  "storage/md/legacy-status.mjs",
   "storage/md/export.mjs",
   "storage/secrets/token-store.mjs",
   "storage/secrets/runtime-pointer.mjs",
@@ -77,11 +80,16 @@ const PLANNED = [
   "commands/relations.mjs",
   "commands/rollup.mjs",
   "commands/workflow.mjs",
+  // The board's SLA read (`docs/sla.md`): the six card/board rows.
+  "commands/sla.mjs",
   "commands/dictionary.mjs",
   "commands/labels.mjs",
   "commands/agent-sessions.mjs",
   // The attachment surface's write half (bytes + row, one transaction).
   "commands/attachments.mjs",
+  // The one logging wrapper over the command table (success=debug, refusal=warn,
+  // fault=error) — see `src/foundation/log.mjs`.
+  "commands/logging.mjs",
   "commands/index.mjs",
 ];
 

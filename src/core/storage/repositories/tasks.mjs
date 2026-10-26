@@ -222,7 +222,19 @@ export function createTasksRepository(db) {
      * needs before it paginates: sorting a page and slicing it is how you get a
      * beautifully ordered wrong page.
      *
-     * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
+     * `reviewOfId` is the structural half of 0025's review marker: the cards
+     * whose `review_of_id` points at that row (the review cards, not the card
+     * being reviewed). The partial index `ix_tasks_review_of` serves it.
+     *
+     * `parentId`, `labels`, `target` and `metaEquals` are the CLI's `issue list`
+     * filters, pushed here (never read into JS and filtered there) so they hold
+     * under `LIMIT`/`OFFSET` as well. `labels` matches the **exact display name**
+     * stored in the JSON column; `target` reads `meta.target`; `metaEquals` is a
+     * list of `{key, value}` compared as text. `json_valid` guards a meta column
+     * that a hand-edited row left malformed, so the read degrades to no match
+     * rather than raising.
+     *
+     * @param {{projectId?: string, kind?: string, hasReviewMarker?: boolean, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, reviewOfId?: string, parentId?: string, labels?: string[], target?: string, metaEquals?: {key: string, value: string}[], includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
      */
     list(filter = {}) {
       const clauses = [];
@@ -236,6 +248,11 @@ export function createTasksRepository(db) {
       if (filter.kind !== undefined) {
         clauses.push("kind = ?");
         values.push(filter.kind);
+      }
+      // `kind=review`'s translated form (`commands/tasks.mjs#readOrdered`): the
+      // review identity is the marker column, never a kind of its own.
+      if (filter.hasReviewMarker === true) {
+        clauses.push("review_of_id IS NOT NULL");
       }
       if (filter.status !== undefined) {
         const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
@@ -253,6 +270,41 @@ export function createTasksRepository(db) {
       }
       if (filter.unassignedOnly === true) {
         clauses.push("(assignee_id IS NULL OR assignee_id = '')");
+      }
+      if (filter.reviewOfId !== undefined) {
+        clauses.push("review_of_id = ?");
+        values.push(filter.reviewOfId);
+      }
+      // `--parent`: the parent edge points from the parent (source) at the child
+      // (target) — `repositories/relations.mjs` normalises it that way.
+      if (filter.parentId !== undefined) {
+        clauses.push(
+          `EXISTS (SELECT 1 FROM task_relations r
+                    WHERE r.relation_type = 'parent'
+                      AND r.target_task_id = tasks.id
+                      AND r.source_task_id = ?)`,
+        );
+        values.push(filter.parentId);
+      }
+      // `tasks.labels` is a JSON array of display names (`domain/task.mjs`), not
+      // a join table; each requested label is one more AND-ed EXISTS.
+      for (const label of filter.labels ?? []) {
+        clauses.push("EXISTS (SELECT 1 FROM json_each(tasks.labels) WHERE json_each.value = ?)");
+        values.push(label);
+      }
+      // `target` lives in the card's opaque meta (`meta.target`), so it is read
+      // out of the JSON column and compared as text — a card that wrote it as a
+      // number still matches the string the caller typed.
+      if (filter.target !== undefined) {
+        clauses.push(`json_valid(tasks.meta_json) AND CAST(json_extract(tasks.meta_json, '$.target') AS TEXT) = ?`);
+        values.push(filter.target);
+      }
+      // `--meta k=v`, repeated; every pair must hold (AND). The path is a bound
+      // parameter, never interpolated — the caller's key whitelist keeps it a
+      // well-formed top-level path.
+      for (const { key, value } of filter.metaEquals ?? []) {
+        clauses.push("json_valid(tasks.meta_json) AND CAST(json_extract(tasks.meta_json, ?) AS TEXT) = ?");
+        values.push(`$."${key}"`, value);
       }
       if (!filter.includeArchived) clauses.push("archived_at IS NULL");
 
@@ -312,6 +364,51 @@ export function createTasksRepository(db) {
           return requireTask(id);
         },
         { op: "tasks.updateCas" },
+      );
+    },
+
+    /**
+     * Rewrite the single acceptance decision (0038). Kept out of `PATCHABLE`
+     * on purpose: the generic update path must not be able to change an
+     * acceptance-relevant decision without the command layer's audit
+     * (`acceptance_override`).
+     *
+     * @param {{id: string, value: "off"|"agent"|"human", ifVersion?: number, now: string}} input
+     * @returns {object} the updated Task DTO
+     */
+    setAcceptanceMode(input) {
+      const { id, value, ifVersion, now } = input;
+      if (!["off", "agent", "human"].includes(value)) {
+        throw new DomainError("VALIDATION_FAILED", {
+          message: `unknown acceptance mode ${JSON.stringify(value)}`,
+          details: { field: "acceptance_mode", received: value, allowed: ["off", "agent", "human"] },
+        });
+      }
+      const where = ["id = ?"];
+      const whereValues = [id];
+      if (ifVersion !== undefined) {
+        where.push("version = ?");
+        whereValues.push(ifVersion);
+      }
+
+      return transaction(
+        db,
+        () => {
+          let info;
+          try {
+            info = db
+              .prepare(
+                `UPDATE tasks SET acceptance_mode = ?, ` +
+                  `version = version + 1, updated_at = ? WHERE ${where.join(" AND ")}`,
+              )
+              .run(value, now, ...whereValues);
+          } catch (err) {
+            throw mapSqliteError(err, { op: "tasks.setAcceptanceMode", table: "tasks" });
+          }
+          if (Number(info.changes) === 0) throw lostUpdate(db, id, ifVersion);
+          return requireTask(id);
+        },
+        { op: "tasks.setAcceptanceMode" },
       );
     },
 
@@ -390,10 +487,16 @@ export function createTasksRepository(db) {
      * `domain/status.mjs#CLAIM_HOLDING_STATUSES` for why `in_review`/`blocked`
      * count as *inside* the cycle.
      *
-     * @param {{id: string, ifVersion?: number, to: string, now: string, reportLatestId?: number|null, waiver?: {round: number, reason: string}|null, awaitingReason?: string|null, blockedReason?: string|null}} input
+     * A `reopen` move (terminal → `todo`) also clears the two columns the
+     * finished row released: `idem` (so the row does not re-enter
+     * `ux_tasks_idem_active` and collide) and `archived_at` (so the card is back
+     * on the board's default reads). Both are written in this same UPDATE, not
+     * by a second one: one move, one row revision.
+     *
+     * @param {{id: string, ifVersion?: number, to: string, now: string, reportLatestId?: number|null, waiver?: {round: number, reason: string}|null, awaitingReason?: string|null, blockedReason?: string|null, reopen?: boolean}} input
      */
     moveCas(input) {
-      const { id, ifVersion, to, now, reportLatestId, waiver, awaitingReason, blockedReason } = input;
+      const { id, ifVersion, to, now, reportLatestId, waiver, awaitingReason, blockedReason, reopen } = input;
       return transaction(
         db,
         () => {
@@ -417,6 +520,9 @@ export function createTasksRepository(db) {
           // no longer owns — and the backlog CHECK cannot be reached from here.
           if (!holdsClaim(to)) {
             sets.push("claimed_by = NULL", "claimed_kind = NULL", "claimed_at = NULL", "heartbeat_at = NULL");
+          }
+          if (reopen === true) {
+            sets.push("archived_at = NULL", "idem = NULL");
           }
           if (reportLatestId !== undefined) {
             sets.push("report_latest_id = ?");
@@ -598,6 +704,74 @@ export function createTasksRepository(db) {
         }
       } catch (err) {
         throw mapSqliteError(err, { op: "tasks.setReportLatest", table: "tasks" });
+      }
+      return requireTask(input.id);
+    },
+
+    /**
+     * Seed the acceptance baseline if it is still empty (0032).
+     *
+     * The snapshot is written once, from the card's meta/legacy list at
+     * creation or from the baseline the worker derived at claim. A later call
+     * with a different list is a no-op: the baseline is frozen, and the append
+     * path is `setAcceptance`.
+     *
+     * The `version` bump matters: a claim that seeded the baseline must re-read
+     * the row before its CAS, or the claim would lose to its own seed.
+     *
+     * @param {{id: string, acceptance: string[], now: string}} input
+     */
+    seedAcceptance(input) {
+      const json = JSON.stringify(input.acceptance ?? []);
+      try {
+        db.prepare(
+          `UPDATE tasks
+              SET acceptance_json = ?,
+                  acceptance_revision = acceptance_revision + 1,
+                  version = version + 1,
+                  updated_at = ?
+            WHERE id = ? AND json_array_length(acceptance_json) = 0`,
+        ).run(json, input.now, input.id);
+      } catch (err) {
+        throw mapSqliteError(err, { op: "tasks.seedAcceptance", table: "tasks" });
+      }
+      return requireTask(input.id);
+    },
+
+    /**
+     * Write a new acceptance baseline with an optimistic lock on its revision.
+     *
+     * The caller is responsible for taking the ordered list (append merged by
+     * the command layer) and for writing the `acceptance_pruned` audit row when
+     * the write removes an old item; 0032's triggers enforce both.
+     *
+     * @param {{id: string, acceptance: string[], expectedRevision: number, now: string}} input
+     */
+    setAcceptance(input) {
+      try {
+        const info = db
+          .prepare(
+            `UPDATE tasks
+                SET acceptance_json = ?,
+                    acceptance_revision = acceptance_revision + 1,
+                    version = version + 1,
+                    updated_at = ?
+              WHERE id = ? AND acceptance_revision = ?`,
+          )
+          .run(
+            JSON.stringify(input.acceptance ?? []),
+            input.now,
+            input.id,
+            input.expectedRevision,
+          );
+        if (Number(info.changes) === 0) {
+          throw new DomainError("ACCEPTANCE_STALE_REVISION", {
+            message: `acceptance revision changed for ${input.id}; re-read the card and retry`,
+            details: { taskId: input.id, expectedRevision: input.expectedRevision },
+          });
+        }
+      } catch (err) {
+        throw mapSqliteError(err, { op: "tasks.setAcceptance", table: "tasks" });
       }
       return requireTask(input.id);
     },

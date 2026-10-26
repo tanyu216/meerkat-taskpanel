@@ -25,7 +25,6 @@ import {
   validateCidrs,
   writeAccessConfig,
 } from "../../src/server/access-config.mjs";
-import { readAcceptancePolicy, writeAcceptancePolicy } from "../../src/core/acceptance-policy.mjs";
 import { createTaskd } from "../../src/server/index.mjs";
 import { loadEnvFile } from "../../src/foundation/env-config.mjs";
 import { ALLOW_CIDRS_ENV } from "../../src/foundation/constants.mjs";
@@ -264,44 +263,5 @@ describe("server/access — the HTTP surface", () => {
     assert.equal(verdict.ok, false);
     assert.equal(verdict.status, 403);
     assert.equal(verdict.payload.error.details.reason, "loopback_only");
-  });
-});
-
-describe("server/access-config — the shared .env", () => {
-  it("a policy save keeps the acceptance policy, and vice versa", () => {
-    const envFile = join(tempDir(), ".env");
-    writeAcceptancePolicy({ envFile, policy: "human-only" });
-    writeAccessConfig({ envFile, enabled: true, cidrs: ["10.0.0.0/8"] });
-    assert.equal(readAcceptancePolicy({ envFile, env: {} }).policy, "human-only", "the access save merged");
-
-    writeAcceptancePolicy({ envFile, policy: "agent-only" });
-    assert.deepEqual(
-      readAccessConfig({ envFile, envVars: varsOf(envFile), env: {} }).cidrs,
-      ["10.0.0.0/8"],
-      "the acceptance save merged too",
-    );
-    const text = readFileSync(envFile, "utf8");
-    assert.equal((text.match(/^TASKD_ACCEPTANCE_POLICY=/gm) ?? []).length, 1);
-    assert.equal((text.match(/^TASKD_ALLOW_CIDRS=/gm) ?? []).length, 1);
-  });
-});
-
-describe("server/meta — the acceptance capability", () => {
-  it("reports the policy in force, and re-reads it on each request", async () => {
-    const dataDir = tempDir();
-    const envFile = join(dataDir, ".env");
-    writeAcceptancePolicy({ envFile, policy: "human-only" });
-    const taskd = await start({ dataDir });
-    assert.equal(
-      dataOf(await call(taskd, "GET", "/meta")).capabilities.acceptance.policy,
-      "human-only",
-    );
-    // A re-install rewrites the file; the running board reports the new value
-    // without a restart (the policy is read per decision, not cached).
-    writeAcceptancePolicy({ envFile, policy: "agent-only" });
-    assert.equal(
-      dataOf(await call(taskd, "GET", "/meta")).capabilities.acceptance.policy,
-      "agent-only",
-    );
   });
 });

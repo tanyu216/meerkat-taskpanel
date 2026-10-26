@@ -81,6 +81,11 @@ function fixture(projectId, status, overrides = {}) {
     labels: overrides.labels ?? ["bug"],
     // M1 — the `awaiting` entry category (`null` on every other card).
     awaiting_reason: overrides.awaiting_reason ?? null,
+    // 0038 — the acceptance decision. The fixture is a wire reading, so the
+    // field has to be present: the waiting queue derives "a human still owes
+    // this" from `acceptance_mode === "human"`, and an absent field would read
+    // as `off` and silently empty the queue.
+    acceptance_mode: overrides.acceptance_mode ?? "off",
     meta: overrides.meta ?? {},
     assignee: overrides.assignee ?? { id: "a1", display_name: "linus", kind: "agent" },
     reporter: { id: "h1", display_name: "Terry", kind: "human" },
@@ -210,8 +215,8 @@ export function fixtureApi() {
     fixture("p1", "todo", { identifier: "TD-4", title: "Polish the empty states", priority: "medium", labels: ["ui"], assignee: AGENT.codex }),
     fixture("p1", "in_progress", { identifier: "TD-5", title: "Fix the renderer", priority: "urgent", labels: ["bug", "ui"], assignee: AGENT.codex }),
     fixture("p1", "in_progress", { identifier: "TD-6", title: "Profile the board scroll", priority: "high", labels: ["perf"], assignee: AGENT.claude }),
-    fixture("p1", "in_review", { identifier: "TD-7", title: "Audit the token store", priority: "medium", labels: ["security"], assignee: AGENT.openclaw }),
-    fixture("p1", "in_review", { identifier: "TD-8", title: "Redesign the sidebar rail", priority: "low", labels: ["design", "ui"], assignee: AGENT.pi }),
+    fixture("p1", "in_review", { identifier: "TD-7", title: "Audit the token store", priority: "medium", labels: ["security"], assignee: AGENT.openclaw, acceptance_mode: "human" }),
+    fixture("p1", "in_review", { identifier: "TD-8", title: "Redesign the sidebar rail", priority: "low", labels: ["design", "ui"], assignee: AGENT.pi, acceptance_mode: "human" }),
     fixture("p1", "blocked", { identifier: "TD-9", title: "Waiting on review", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
     // M1 · the 「等你回复」card. Its status is the overlay, so it is *listed* under
     // in_progress (the seventh column count does not change) and it wears the
@@ -242,6 +247,13 @@ export function fixtureApi() {
   // the card's own history (design §2.2). Keyed by identifier; the visible card
   // history is what the waiting view renders, so the fixture must serve it.
   const comments = {
+    // TD-1 · the drawer's comment list (B09), served **oldest-first** on
+    // purpose: the route's `order` parameter is not honoured by this fixture, so
+    // the drawer's own newest-first ordering is what the interaction pass reads.
+    "TD-1": [
+      { id: "cm-4", task_id: "td_TD_1", kind: "note", author_kind: "agent", author_id: "jobs", body: "先起草第一段。", refs: [], created_at: "2026-10-12T00:03:00Z" },
+      { id: "cm-5", task_id: "td_TD_1", kind: "note", author_kind: "human", author_id: "Terry", body: "补上第二段，再走一遍。", refs: [], created_at: "2026-10-12T00:04:00Z" },
+    ],
     "TD-13": [
       { id: "cm-1", task_id: "TD-13", kind: "note", author_kind: "agent", author_id: "linus", body: "我先把迁移写完了。", refs: [], created_at: "2026-10-12T00:01:00Z" },
       { id: "cm-2", task_id: "TD-13", kind: "decision", author_kind: "human", author_id: "Terry", body: "范围确认：这一版不做第 8 列。后面还有一句不该出现在摘要里。", refs: [], created_at: "2026-10-12T00:02:00Z" },
@@ -359,8 +371,8 @@ export function fixtureApi() {
   // internal id, exactly as `agent-sessions.mjs` / `reports.mjs` list them.
   const sessions = {
     td_TD_1: [
-      { id: "sess-2", task_id: "td_TD_1", seg: "3", owner: "turing", backend: "pi", session_id: "sess_pi_01HQ8ZM4K2", phase: "implement", pid: 4242, status: "running", ts: minutes(4) },
-      { id: "sess-1", task_id: "td_TD_1", seg: "2", owner: "linus", backend: "claude", session_id: "sess_claude_01HQ18W7T4M2", phase: "review", pid: null, status: "closed", ts: minutes(60) },
+      { id: "sess-2", task_id: "td_TD_1", seg: "3", owner: "turing", owner_kind: "pi", session_id: "sess_pi_01HQ8ZM4K2", phase: "implement", pid: 4242, status: "running", goal: "implement the session goal field", ts: minutes(4) },
+      { id: "sess-1", task_id: "td_TD_1", seg: "2", owner: "linus", owner_kind: "claude", session_id: "sess_claude_01HQ18W7T4M2", phase: "review", pid: null, status: "closed", goal: "review the drawer ordering", ts: minutes(60) },
     ],
   };
   const reports = {
@@ -528,6 +540,23 @@ export function startServer() {
         activities: data.activities.filter((activity) => activity.task_id === task?.id),
       });
     }
+    // The board-wide trail (`GET /api/v1/activities`): the Activity view's
+    // backfill reads one newest-first page and scopes it to the board's own
+    // task set. Without this route the fixture's fallback answers `{}` and the
+    // ledger looks legitimately empty.
+    if (path === "/api/v1/activities") {
+      const order = url.searchParams.get("order") === "asc" ? "asc" : "desc";
+      const limit = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+      const after = Number.parseInt(url.searchParams.get("after") ?? "", 10);
+      let rows = data.activities.filter(
+        (activity) => !Number.isFinite(after) || activity.revision > after,
+      );
+      rows = [...rows].sort((a, b) =>
+        order === "asc" ? a.revision - b.revision : b.revision - a.revision,
+      );
+      if (Number.isFinite(limit) && limit > 0) rows = rows.slice(0, limit);
+      return ok({ activities: rows });
+    }
     // R14 ① — the real route's shape (`src/server/routes/relations.mjs` →
     // `{ relations: [...] }`, each row `relationToWire`: id/type/source/target).
     // Scoped to the card asked for, like `/activities`: the drawer renders the
@@ -615,6 +644,32 @@ export function startServer() {
     // points, which needs both ends to resolve to it. The `/comments` and
     // `/activities` sub-paths are matched above and never reach here; a sub-path
     // that does keeps the old shape.
+    // The reopen verb the terminal drawer posts. It mutates the fixture row so
+    // the returned record and the board agree; the suite's zero-console-error
+    // rule means it must not fall through to the `ok({})` catch-all below.
+    if (req.method === "POST" && /^\/api\/v1\/tasks\/[^/]+\/reopen$/.test(path)) {
+      const ref = decodeURIComponent(path.slice("/api/v1/tasks/".length).split("/")[0]);
+      const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref) ?? data.tasks[0];
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(chunk));
+      req.on("end", () => {
+        // The probe always sends a reason; parsing keeps the handler shaped
+        // like the real one rather than pretending the body is absent.
+        try {
+          JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+        } catch {
+          // A malformed body is refused by the real route; the probe never sends one.
+        }
+        if (task) {
+          task.status = "todo";
+          task.version = (task.version ?? 1) + 1;
+          task.archived_at = null;
+          task.delivery_round = (task.delivery_round ?? 1) + 1;
+        }
+        ok({ task, status: "todo" });
+      });
+      return;
+    }
     if (path.startsWith("/api/v1/tasks/")) {
       const ref = decodeURIComponent(path.slice("/api/v1/tasks/".length).split("/")[0]);
       const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref) ?? data.tasks[0];
@@ -948,14 +1003,18 @@ export async function run() {
       await route.continue();
     });
     // The skeleton legs need the *other* two reads held open as well. Playwright's
-    // `*` does not cross a `/`, so the task-list pattern above matches neither the
-    // per-card activity fan-out nor the card read (only the list request, whose
-    // `?project_id=` follows the path directly). Three knobs, three patterns.
+    // `*` does not cross a `/`, so the task-list pattern above matches neither
+    // the board-wide activity read nor the card read (only the list request, whose
+    // `?project_id=` follows the path directly). The ledger backfills through
+    // `GET /activities`; the drawer still reads per-card `/tasks/:ref/activities`.
+    // Three knobs, four patterns.
     let activitiesDelayMs = 0;
-    await page.route("**/api/v1/tasks/*/activities*", async (route) => {
+    const holdActivities = async (route) => {
       if (activitiesDelayMs > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, activitiesDelayMs));
       await route.continue();
-    });
+    };
+    await page.route("**/api/v1/activities*", holdActivities);
+    await page.route("**/api/v1/tasks/*/activities*", holdActivities);
     let detailDelayMs = 0;
     await page.route("**/api/v1/tasks/*", async (route) => {
       if (detailDelayMs > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, detailDelayMs));
@@ -1202,6 +1261,7 @@ export async function run() {
       visiblePanels: [...document.querySelectorAll("[data-detail-panel]")].filter((p) => !p.hidden).map((p) => p.getAttribute("data-detail-panel")),
       ids: [...document.querySelectorAll("[data-detail-agent-session-body] [data-agent-session-id]")].map((e) => e.textContent.trim()),
       statuses: [...document.querySelectorAll("[data-detail-agent-session-body] [data-session-status]")].map((e) => e.getAttribute("data-session-status")),
+      goals: [...document.querySelectorAll("[data-detail-agent-session-body] [data-session-goal]")].map((e) => e.textContent.trim()),
       resumes: document.querySelectorAll("[data-detail-agent-session-body] [data-agent-resume]").length,
     }));
     drawerTabsCheck(
@@ -1213,6 +1273,10 @@ export async function run() {
       `trail rows ${trailRead.ids.length} / ${trailRead.statuses.join("/")}`,
     );
     drawerTabsCheck(trailRead.resumes === 1, `Resume count is ${trailRead.resumes}, expected 1 (running only)`);
+    drawerTabsCheck(
+      trailRead.goals.join("|") === "implement the session goal field|review the drawer ordering",
+      `session goals read ${JSON.stringify(trailRead.goals)}`,
+    );
 
     await page.click('[data-detail-tab="reports"]');
     await page.waitForTimeout(120);
@@ -1294,6 +1358,28 @@ export async function run() {
       card?.click();
     });
     await page.waitForTimeout(300);
+
+    /* The drawer's two chronological lists read **newest-first** whichever
+       order the read answered. The fixture serves the comments and the activity
+       trail in ascending order (its `/comments` route ignores `order`), so an
+       unsorted drawer would put the oldest line on top — the reported defect.
+       The absolute stamp in each row's `title` is `YYYY-MM-DD HH:mm`, so a
+       lexicographic comparison is a chronological one. */
+    await page.click('[data-detail-tab="activity"]');
+    await page.waitForTimeout(150);
+    const chronoRead = await page.evaluate(() => {
+      const stamps = (selector) =>
+        [...document.querySelectorAll(selector)].map((el) => el.getAttribute("title") ?? "").filter(Boolean);
+      const descending = (values) => values.every((value, index) => index === 0 || values[index - 1] >= value);
+      const comments = stamps("[data-detail-comments] .td-comment .td-comment-meta [title]");
+      const activities = stamps("[data-detail-activity] [data-activity-row] [data-activity-ts]");
+      return { comments, activities, commentsDesc: descending(comments), activitiesDesc: descending(activities) };
+    });
+    drawerTabsCheck(chronoRead.comments.length === 2, `drawer comments ${chronoRead.comments.length}, expected 2`);
+    drawerTabsCheck(chronoRead.commentsDesc, `drawer comments are not newest-first: ${chronoRead.comments.join(" | ")}`);
+    drawerTabsCheck(chronoRead.activities.length === 4, `drawer activity rows ${chronoRead.activities.length}, expected 4`);
+    drawerTabsCheck(chronoRead.activitiesDesc, `drawer activity rows are not newest-first: ${chronoRead.activities.join(" | ")}`);
+
     await page.click('[data-detail-tab="details"]');
     await page.waitForTimeout(120);
     /* These tab interactions are a browser focus model of their own: clicking a
@@ -1450,7 +1536,7 @@ export async function run() {
     // fallback (that one prints the bare lowercase enum word).
     // T-20261014-212017-3 §4.4 — `Blocks` is no longer one of these rows. The
     // card's `depends_on` is an editable chip control of its own (the `blocks`
-    // edge, PROTOCOL §①), and the read-only row was withdrawn so the same fact
+    // edge), and the read-only row was withdrawn so the same fact
     // has one source. `parent` and `related` stay read-only, which is what this
     // reader still walks.
     const R14_RELATION_ROWS = ["Parent · PROJ-0007", "Related · TD-4"];
@@ -1716,6 +1802,27 @@ export async function run() {
     await page.evaluate(() => document.querySelector('[data-lang-option="en"]')?.click());
     await page.waitForTimeout(150);
     const langAfterEn = await page.evaluate(() => document.documentElement.getAttribute("lang"));
+
+    // P1 — a card that stopped for a human opens where the question and the
+    // comment box are. The composer sits above the newest-first list, and the
+    // hint states what submitting does on this card.
+    await page.click('[data-card][data-identifier="TD-13"] [data-card-title]');
+    await page.waitForTimeout(200);
+    const awaitingDrawer = await page.evaluate(() => ({
+      selected: [...document.querySelectorAll("[data-detail-tab]")]
+        .filter((tab) => tab.getAttribute("aria-selected") === "true")
+        .map((tab) => tab.getAttribute("data-detail-tab")),
+      formFirst: document.querySelector("[data-detail-comments]")?.firstElementChild?.matches("[data-comment-form]") ?? false,
+      hint: document.querySelector("[data-detail-comments] [data-i18n='drawer.commentHintAwaiting']")?.textContent?.trim() ?? "",
+    }));
+    drawerTabsCheck(
+      awaitingDrawer.selected.join(",") === "activity",
+      `an awaiting card opens on ${awaitingDrawer.selected.join("/")}, expected activity`,
+    );
+    drawerTabsCheck(awaitingDrawer.formFirst, "the comment form must sit above the comment list");
+    drawerTabsCheck(/Submitting answers/.test(awaitingDrawer.hint), `awaiting hint ${JSON.stringify(awaitingDrawer.hint)}`);
+    await page.click("[data-detail-close]");
+    await page.waitForTimeout(150);
 
     // ---- R6 · the eight findings, checked in the browser ---------------------
     //
@@ -4633,8 +4740,8 @@ export async function run() {
       const countPill = document.querySelector('[data-nav-count="waiting"]');
       const rows = [...document.querySelectorAll("[data-waiting-item]")];
       // M6 — the queue now has two producers: the awaiting card (TD-13) and the
-      // delivered top-level cards the board's `both` policy leaves to a human
-      // (TD-7, TD-8). The six-field rule below is about the awaiting row, so it
+      // delivered cards whose own `acceptance_mode` is `human` (TD-7, TD-8).
+      // The six-field rule below is about the awaiting row, so it
       // selects that row explicitly; the order rule is asserted separately.
       const item = rows.find((row) => row.getAttribute("data-task") === "TD-13") ?? null;
       // Resolve the accent the same way the stylesheet does, so the comparison is
@@ -4788,7 +4895,7 @@ export async function run() {
       JSON.stringify(m1.itemIds) === JSON.stringify(["TD-7", "TD-8", "TD-13"]),
       `waiting row order ${JSON.stringify(m1.itemIds)}`,
     );
-    check(m1.acceptance !== null, "the delivered top-level card must be in the queue");
+    check(m1.acceptance !== null, "the delivered human-mode card must be in the queue");
     check(m1.acceptance.reason === "Ready for acceptance" && m1.acceptance.reasonKind === "acceptance", `acceptance reason ${m1.acceptance?.reason} (${m1.acceptance?.reasonKind})`);
     check(m1.acceptance.actor === "elon", `acceptance row's actor ${m1.acceptance?.actor} — the assignee that delivered it`);
     check(m1.acceptance.since === "2026-10-01T00:00:00Z", `acceptance row's since ${m1.acceptance?.since} — the delivery instant`);
@@ -5238,7 +5345,6 @@ export async function run() {
       "session_closed",
       "progress",
       "label_gc",
-      "anomaly",
       "project_created",
       "project_updated",
       "attachment_updated",
@@ -5756,8 +5862,8 @@ export async function run() {
       await page.click('[data-view="board"]');
       await page.waitForTimeout(120);
 
-      // S4 — activity: the per-card fan-out. Switch away from the ledger first so
-      // the next entry is a real backfill, then hold the fan-out open.
+      // S4 — activity: the board-wide backfill. Switch away from the ledger first
+      // so the next entry is a real backfill, then hold the read open.
       await page.click('[data-nav-item="activity"]');
       await waitForViewSettled("[data-activity-view]");
       await page.waitForTimeout(150);
@@ -6241,6 +6347,67 @@ export async function run() {
       uiFailures.push(`the UI-fix pass could not run: ${err.message}`);
     }
 
+    /* I3 · reopen — a terminal card's one writable action. The fixture's TD-10
+       is `done`; the probe opens it, proves the field controls are still
+       read-only, checks the reason minimum, and reopens it. It runs after the
+       other passes because it changes the fixture row's status. */
+    const reopenFailures = [];
+    const reopenCheck = (ok, message) => { if (!ok) reopenFailures.push(message); };
+    try {
+      await page.evaluate(() => document.querySelector('[data-card][data-identifier="TD-10"]')?.click());
+      await page.waitForTimeout(300);
+
+      const before = await page.evaluate(() => {
+        const button = document.querySelector("[data-detail-reopen]");
+        return {
+          visible: !!button && !button.hidden,
+          readonlyRoot: document.querySelector("[data-detail-drawer]")?.getAttribute("data-readonly") ?? null,
+          statusDisabled: document.querySelector("[data-detail-status]")?.disabled ?? null,
+        };
+      });
+      reopenCheck(before.visible, "the terminal drawer does not offer the reopen control");
+      reopenCheck(before.readonlyRoot === "true", `the terminal drawer root does not state data-readonly (${before.readonlyRoot})`);
+      reopenCheck(before.statusDisabled === true, "the terminal drawer's status control is not disabled");
+
+      await page.evaluate(() => document.querySelector("[data-detail-reopen]")?.click());
+      await page.waitForTimeout(80);
+
+      const setReason = (value) =>
+        page.evaluate((text) => {
+          const input = document.querySelector("[data-detail-reopen-reason]");
+          if (!input) return false;
+          input.value = text;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        }, value);
+
+      reopenCheck(await setReason("short"), "the reopen prompt did not render");
+      await page.waitForTimeout(40);
+      const shortDisabled = await page.evaluate(() => document.querySelector("[data-detail-reopen-confirm]")?.disabled ?? null);
+      reopenCheck(shortDisabled === true, "the confirm is enabled with a reason shorter than 8 characters");
+
+      await setReason("customer found a regression");
+      await page.waitForTimeout(40);
+      const longDisabled = await page.evaluate(() => document.querySelector("[data-detail-reopen-confirm]")?.disabled ?? null);
+      reopenCheck(longDisabled === false, "the confirm stays disabled with a valid reason");
+
+      await page.evaluate(() => document.querySelector("[data-detail-reopen-confirm]")?.click());
+      await page.waitForTimeout(400);
+      const after = await page.evaluate(() => ({
+        chip: document.querySelector("[data-detail-status-chip]")?.getAttribute("data-status") ?? null,
+        card: document.querySelector('[data-card][data-identifier="TD-10"]')?.getAttribute("data-status") ?? null,
+        readonlyRoot: document.querySelector("[data-detail-drawer]")?.getAttribute("data-readonly") ?? null,
+      }));
+      reopenCheck(after.chip === "todo", `the drawer still shows ${after.chip} after reopening`);
+      reopenCheck(after.card === "todo", `the card still reads ${after.card} after reopening`);
+      reopenCheck(after.readonlyRoot === null, "the drawer stayed read-only after the reopen");
+
+      await page.evaluate(() => document.querySelector("[data-detail-close]")?.click());
+      await page.waitForTimeout(150);
+    } catch (err) {
+      reopenFailures.push(`the reopen probe could not run: ${err.message}`);
+    }
+
     const results = [
       ...boardResults,
       ...listResults,
@@ -6264,6 +6431,7 @@ export async function run() {
       viewports,
       viewportFailures,
       interactions,
+      reopen: { failures: reopenFailures },
       m1,
       m1Failures,
       r6: { failures: r6Failures, themeSweep, titleGeometry, listDetail, panel: panelGeometry, rail },
@@ -6308,6 +6476,7 @@ export async function run() {
         failures: drawerTabsFailures,
         tabs: tabsRead,
         trail: trailRead,
+        chronology: chronoRead,
         reports: reportsRead,
         acceptance: acceptanceRead,
         leftovers: leftoversRead,
@@ -6527,6 +6696,15 @@ if (isEntryPoint) run().then(
             `, and the feed's task anchor opens its drawer in place with ${report.r16.afterAnchor.pathname}${report.r16.afterAnchor.search} left as it was`,
         );
       }
+      if (report.reopen.failures.length > 0) {
+        console.log(`I3 (reopen) — ${report.reopen.failures.length} failed:`);
+        for (const failure of report.reopen.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          "I3 (reopen) — a terminal drawer offers one audited action: the fields stay read-only, " +
+            "the confirm enforces the 8-character reason, and the card returns to todo",
+        );
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -6559,6 +6737,7 @@ if (isEntryPoint) run().then(
       report.m7.failures.length === 0 &&
       report.ui.failures.length === 0 &&
       report.r16.failures.length === 0 &&
+      report.reopen.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

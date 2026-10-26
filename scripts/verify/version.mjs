@@ -9,10 +9,9 @@
  *                                                       root package's `pi` field)
  *   2. .claude-plugin/plugin.json                      (the board plugin — claude,
  *                                                       and codex via the marketplace)
- *   3. .cursor-plugin/plugin.json                      (the board plugin, Cursor's marker)
- *   4. .claude-plugin/marketplace.json  → metadata.version
+ *   3. .claude-plugin/marketplace.json  → metadata.version
  *
- * Every host reads *its own* manifest to decide what version it installed, so a drift
+ * Every agent kind reads its own manifest to decide what version it installed, so a drift
  * within the group ships a release that calls itself two different things. This script
  * reads every carrier, checks the group against its canonical entry, prints any offending
  * file and exits non-zero on drift — wired into CI so the mistake is caught at
@@ -41,13 +40,13 @@ import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /**
- * The board's four manifests, in reporting order. The first entry is the canonical
+ * The board's three manifests, in reporting order. The first entry is the canonical
  * one: every other entry in the group must equal it.
  *
  * `field` names the property that carries the version (so the diagnostic for the
  * marketplace, whose version hides under `metadata`, says so).
  *
- * Three hosts are not carriers: Codex and OpenClaw install the same
+ * Three agent kinds are not carriers: Codex and OpenClaw install the same
  * `.claude-plugin/plugin.json` bundle through the repository marketplace, and Pi declares
  * itself in the canonical `package.json` itself. A row for any would only restate one
  * already above.
@@ -57,7 +56,6 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const VERSION_SOURCES = Object.freeze([
   { label: "package.json", path: "package.json", field: "version", canonical: true, pick: (doc) => doc.version },
   { label: "claude", path: ".claude-plugin/plugin.json", field: "version", pick: (doc) => doc.version },
-  { label: "cursor", path: ".cursor-plugin/plugin.json", field: "version", pick: (doc) => doc.version },
   { label: "marketplace", path: ".claude-plugin/marketplace.json", field: "metadata.version", pick: (doc) => doc.metadata?.version },
 ]);
 
@@ -206,8 +204,8 @@ async function main(argv) {
         `  --group <name> check one group only (${groupNames.join(", ")}; default: all)\n` +
         "  --base <dir>   check a tree rooted at <dir> (default: this checkout)\n\n" +
         "There is one version group, the board; its canonical carrier is the root\n" +
-        "package.json. The loop carries no version of its own — it is distributed by\n" +
-        "install.sh from skills/meerkat-loop/ and declares the board interface it needs.\n",
+        "package.json. The loop carries no version of its own — it is part of the toolkit\n" +
+        "and declares the board interface it needs.\n",
     );
     return 0;
   }

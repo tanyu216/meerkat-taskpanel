@@ -9,7 +9,7 @@
  *   * `test/web/blocks.dom.test.mjs`    — the browser layer, via `web/scripts/dom-smoke.mjs`.
  *
  * Both **skip with a printed reason** when there is no build, which is the right call for
- * an absent tool (`scripts/verify/host-cli.mjs` set the precedent) — but it also means
+ * an absent tool (`scripts/verify/kind-cli.mjs` set the precedent) — but it also means
  * `node --test`'s `fail 0` is true of a gate that never exercised them. A lane worktree has
  * no `web/dist` (it is a gitignored build product), so every lane reports `0 fail / 2 skip`
  * and reads the same as a run that covered both legs. The container adds a second blind

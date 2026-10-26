@@ -2,13 +2,13 @@
 /**
  * One-shot release version bump.
  *
- * A release version lives in six manifests at once. The list is *not* redeclared
+ * A release version lives in three manifests at once. The list is *not* redeclared
  * here: it is imported from `scripts/verify/version.mjs`, so the checker and the
  * bumper can never disagree about which files carry the version or where.
- * Bumping those six by hand is the long-term source of exactly the drift that
+ * Bumping those three by hand is the long-term source of exactly the drift that
  * `version.mjs` exists to catch; this script makes the bump one command.
  *
- *   node scripts/release/bump.mjs 1.1.0                    # six manifests
+ *   node scripts/release/bump.mjs 1.1.0                    # three manifests
  *   node scripts/release/bump.mjs 1.1.0 --changelog        # + a scaffold section
  *   node scripts/release/bump.mjs 1.1.0 --changelog --tag  # + an annotated ref
  *
@@ -77,7 +77,7 @@ const toBumpSources = (sources) =>
     ),
   );
 
-/** The board's four carriers, derived from the checker's declaration so the two agree by
+/** The board's three carriers, derived from the checker's declaration so the two agree by
  * construction. */
 export const SOURCES = toBumpSources(VERSION_SOURCES);
 

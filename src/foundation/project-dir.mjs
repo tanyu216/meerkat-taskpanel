@@ -1,14 +1,14 @@
 /**
- * The host-local project → directory map — the *rule* behind `projects.json`
+ * The agent-local project → directory map — the *rule* behind `projects.json`
  * (the file that lives beside the installed skill).
  *
  * The board holds no directory (O3): a board project is an id, a name and an
  * identifier prefix, and nothing else. "Which directory does work for this
- * project happen in?" is decided **locally, per host**, by `projects.json`, and
+ * project happen in?" is decided **locally, per agent kind**, by `projects.json`, and
  * `skills/meerkat-taskpanel/references/projects-json.md` documents it. This
- * module is that document in code, so the wake glue, `taskctl` and the tests
- * all read one map the same way — and a project with no mapped directory is a
- * loud, coded answer instead of a silent guess.
+ * module is that document in code, so the `taskctl` shim, the poll pass and the
+ * tests all read one map the same way — and a project with no mapped directory
+ * is a loud, coded answer instead of a silent guess.
  *
  * The directory is a **worker's** directory, not a data location: taskpanel
  * neither stores nor cares where a project keeps its results. Two keys may name
@@ -42,13 +42,16 @@
  * already uses for the supervisor's decision half.
  */
 
-import { statSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { readFileSync, statSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
+
+import { repoRoot } from "./runtime-locator.mjs";
 
 /**
- * Point an installed shim / wake glue at the map beside its skill — the shim and
- * the glue both live in `<host-dir>/bin/`, one level under the skill directory.
- * An explicit value always wins, so a user with a second board can point at it.
+ * Point an installed shim at the map beside its skill — the shim lives in
+ * `<agent-dir>/bin/`, one level under the skill directory, and the poll pass is
+ * handed the same path. An explicit value always wins, so a user with a second
+ * board can point at it.
  */
 export const PROJECTS_JSON_ENV = "MEERKAT_TASKPANEL_PROJECTS_JSON";
 
@@ -112,7 +115,7 @@ function failure(code, message, context = {}) {
  * This validates **one value** and is deliberately intolerant of `undefined`,
  * `null`, `""` and non-strings: `resolveProjectDir` decides *which* key answers
  * (and whether an entry naming none is the legitimate "no local directory"
- * answer), while the wake glue reuses this function's `REQUIRED` refusal when it
+ * answer), while the poll pass reuses this function's `REQUIRED` refusal when it
  * needs a launch directory that the entry does not supply.
  *
  * @param {unknown} value the value carried by `local_path` / `run_dir`
@@ -251,4 +254,80 @@ export function resolveProjectDir(input = {}) {
   });
   if (!checked.ok) return checked;
   return { ok: true, dir: checked.dir, project, entry };
+}
+
+/**
+ * The map beside the installed skill, unless a flag or the environment names
+ * another one. An explicit value always wins, so a user with a second board can
+ * point at it.
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string} an absolute path
+ */
+export function defaultProjectsJson(env = process.env) {
+  const fromEnv = env[PROJECTS_JSON_ENV];
+  if (typeof fromEnv === "string" && fromEnv.trim() !== "") return resolve(fromEnv);
+  return resolve(repoRoot(), "skills", "meerkat-taskpanel", "projects.json");
+}
+
+/**
+ * The directory a **woken worker** must run in, or a coded refusal.
+ *
+ * This is the wake shape, not the `project dir` answer: a wake is started
+ * *somewhere*, so the map's `dir: null` ("this project has no local directory")
+ * is refused with `PROJECT_DIR_REQUIRED` rather than passed on. A caller that
+ * only wants to report "no directory" keeps using `resolveProjectDir`.
+ *
+ * The map text is read through an injected `read`, so the rule is testable
+ * without a disk. It never asks a board: the directory is a host-local fact.
+ *
+ * @param {{
+ *   project?: unknown,
+ *   projectsJson?: string,
+ *   env?: NodeJS.ProcessEnv,
+ *   read?: (path: string, encoding: string) => string,
+ *   inspect?: (path: string) => string,
+ * }} [input]
+ * @returns {{ok: true, dir: string} | {ok: false, code: string, message: string, project?: string|null, path?: string|null, file?: string|null}}
+ */
+export function resolveWakeDir(input = {}) {
+  const read = input.read ?? readFileSync;
+  const projectsJson = input.projectsJson ?? defaultProjectsJson(input.env ?? process.env);
+  const where = projectsJson ? ` at ${projectsJson}` : "";
+
+  let text;
+  try {
+    text = read(projectsJson, "utf8");
+  } catch (err) {
+    return failure(
+      PROJECT_DIR_CODES.MAP_UNREADABLE,
+      `cannot read the project map${where} (${err?.code ?? err?.message ?? "unknown error"}). ` +
+        `Create it beside the installed skill — see references/projects-json.md — or point ` +
+        `${PROJECTS_JSON_ENV} / --projects-json at it.`,
+      { file: projectsJson },
+    );
+  }
+
+  const map = parseProjectMap(text, { file: projectsJson });
+  if (!map.ok) return map;
+
+  const resolved = resolveProjectDir({
+    entries: map.entries,
+    project: input.project,
+    file: projectsJson,
+    ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
+  });
+  if (!resolved.ok) return resolved;
+
+  // A worker is started *somewhere*: the map's "no directory" answer is a
+  // complete answer for `project dir`, but not for a wake.
+  if (resolved.dir === null) {
+    return checkTargetDirectory(undefined, {
+      project: typeof input.project === "string" ? input.project : null,
+      file: projectsJson,
+      ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
+    });
+  }
+
+  return { ok: true, dir: resolved.dir };
 }

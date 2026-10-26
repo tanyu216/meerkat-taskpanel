@@ -5,7 +5,7 @@
  * it over loopback HTTP. Since M6 the whole §5.1 table is here — the command
  * surface, `/health` and `/meta`, plus the three things only a *board* needs:
  *
- *   * **`/api/v1/events`** — SSE over `global_revision` (`sse.mjs`);
+ *   * **`/api/v1/events`** — SSE over the `task_activities` cursor (`sse.mjs`);
  *   * **static hosting** of `web/dist` when the frontend has been built
  *     (`static.mjs`); absence is normal and must not be an error;
  *   * **the board projection** — `/projects` ordered by the DESIGN.md §20 weight
@@ -25,11 +25,19 @@
  * registry. See `startLabelGc` below.
  */
 
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { currentRevision, openBoard, readToken } from "../core/index.mjs";
+import {
+  CARD_ACCEPTANCE_MODES,
+  DEFAULT_PROJECT_ACCEPTANCE,
+  PROJECT_ACCEPTANCES,
+  currentRevision,
+  openBoard,
+  readToken,
+} from "../core/index.mjs";
 import {
   LABEL_GC_ENV,
   HUMAN_KIND,
@@ -42,6 +50,8 @@ import {
   TASK_ORDER_CAPABILITY,
   VERSION,
 } from "../foundation/constants.mjs";
+import { withLogContext } from "../foundation/log.mjs";
+import { slaConfigToWire } from "../foundation/wire.mjs";
 import { allowListFrom, readAccessConfig } from "./access-config.mjs";
 import { authorize } from "./auth.mjs";
 import { shape, str } from "./requests.mjs";
@@ -56,6 +66,7 @@ import { registerLabelRoutes } from "./routes/labels.mjs";
 import { registerProjectRoutes } from "./routes/projects.mjs";
 import { registerRelationRoutes } from "./routes/relations.mjs";
 import { registerSessionRoutes } from "./routes/sessions.mjs";
+import { registerSlaRoutes } from "./routes/sla.mjs";
 import { registerTaskRoutes } from "./routes/tasks.mjs";
 import { registerTokenRoutes } from "./routes/token.mjs";
 import { openEventStream, revisionFromRequest } from "./sse.mjs";
@@ -68,6 +79,34 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** Kept for the M0 scaffold contract test; the surface is real now. */
 export const STAGE = "taskd";
+
+/**
+ * The per-request id and path, carried on the response.
+ *
+ * The error exit in `createServer` is outside `handle`, so the id has to travel
+ * with the response; a symbol keeps it out of the way of `node:http`'s own
+ * properties.
+ */
+const REQUEST_ID = Symbol("meerkat.requestId");
+
+/** An inbound `x-request-id` is believed only in this shape. */
+const REQUEST_ID_SHAPE = /^[A-Za-z0-9._-]{1,64}$/;
+
+/**
+ * `x-request-id`, when a client supplied a usable one, else a fresh UUID.
+ *
+ * A supplied value becomes part of a log line, so it is bounded and stripped of
+ * whitespace and separators — a header must not be able to forge a second line.
+ *
+ * @param {import('node:http').IncomingMessage} req
+ */
+function requestIdOf(req) {
+  const header = req.headers["x-request-id"];
+  const supplied = Array.isArray(header) ? header[0] : header;
+  return typeof supplied === "string" && REQUEST_ID_SHAPE.test(supplied)
+    ? supplied
+    : randomUUID();
+}
 
 /**
  * Endpoints the daemon answers **outside** the JSON router.
@@ -113,6 +152,7 @@ export function registerApiRoutes(router, surface) {
   registerCommentRoutes(router, surface);
   registerRelationRoutes(router, surface);
   registerSessionRoutes(router, surface);
+  registerSlaRoutes(router, surface);
   registerDictionaryRoutes(router, surface);
   registerLabelRoutes(router, surface);
   registerExportRoutes(router, surface);
@@ -216,6 +256,18 @@ export async function createTaskd(options = {}) {
     ...(options.busyTimeoutMs === undefined ? {} : { busyTimeoutMs: options.busyTimeoutMs }),
   });
 
+  // One record for "the board is open and at the schema this build expects" —
+  // the first thing an operator wants when a restart goes wrong.
+  if (typeof logger === "function") {
+    logger({
+      event: "board_opened",
+      db_path: board.dbPath,
+      data_dir: board.dataDir,
+      migrations_applied: board.migration?.applied?.length ?? 0,
+      schema_ok: board.schema?.ok ?? true,
+    });
+  }
+
   // §7 / the Access panel: the allow-list is *optional*. It comes from the
   // process environment when an operator set one, else from the install-root
   // `.env`, else the safe defaults (off + two private ranges). The policy is
@@ -308,11 +360,15 @@ export async function createTaskd(options = {}) {
       // is what this capability's `upload_url` points at.
       attachments: true,
       allow_list: allowList.configured,
-      // The acceptance policy in force (`human-only` | `both` | `agent-only`).
-      // A client feature-detects the closing rule instead of assuming one; an
-      // unreadable policy reports `policy: null` here while every acceptance
-      // write still fails closed (`ACCESS_CONFIG_INVALID`).
-      acceptance: acceptanceCapability(board),
+      // 0038 — the acceptance vocabulary, stated once: a project default
+      // (`auto` included) and a card snapshot (never `auto`). A client
+      // feature-detects the fields instead of assuming them.
+      acceptance: ACCEPTANCE_CAPABILITY,
+      // The effective SLA table (`GET /api/v1/sla` publishes the same values
+      // with the alerts). A client feature-detects the configured thresholds
+      // instead of assuming the defaults; an unreadable table reports `error`
+      // here while the SLA read itself fails closed.
+      sla: slaCapability(board),
     },
   }));
 
@@ -332,6 +388,22 @@ export async function createTaskd(options = {}) {
         return;
       }
       const { status, payload, headers } = errorResponse(err);
+      // One owner for `error`: only a failure the caller could not fix (a 5xx or
+      // an unmapped throw) is logged here. A 4xx is the caller's error and the
+      // command layer already marked the refusal; the `request` line carries the
+      // status either way.
+      if (typeof logger === "function" && status >= 500) {
+        logger({
+          event: "request_failed",
+          level: "error",
+          method: req.method ?? "GET",
+          path: res[REQUEST_ID]?.path ?? null,
+          status,
+          request_id: res[REQUEST_ID]?.id ?? null,
+          code: payload.error?.code ?? null,
+          message: payload.error?.message ?? null,
+        });
+      }
       sendJson(res, status, payload, headers);
     });
   });
@@ -339,6 +411,38 @@ export async function createTaskd(options = {}) {
   async function handle(req, res) {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${host}`}`);
     const pathname = url.pathname.replace(/\/+$/, "") || "/";
+
+    // One id per request, echoed to the client and carried into every command
+    // record through `withLogContext`. An inbound id is believed only when it is
+    // a bounded, separator-free token, so a client cannot smuggle a log line.
+    const requestId = requestIdOf(req);
+    const actor = actorFromRequest(req);
+    if (typeof logger === "function") {
+      const started = Date.now();
+      res[REQUEST_ID] = { id: requestId, path: pathname };
+      res.setHeader("x-request-id", requestId);
+      let logged = false;
+      const record = (aborted) => {
+        if (logged) return;
+        logged = true;
+        logger({
+          event: "request",
+          // A liveness probe and a static asset are traffic, not signal.
+          level: pathname === "/health" || !pathname.startsWith("/api/") ? "debug" : "info",
+          method: req.method ?? "GET",
+          path: pathname,
+          status: res.statusCode,
+          duration_ms: Date.now() - started,
+          request_id: requestId,
+          actor: `${actor.kind}:${actor.id}`,
+          ...(aborted ? { aborted: true } : {}),
+          ...(pathname === "/api/v1/events" ? { stream: "sse" } : {}),
+        });
+      };
+      res.once("finish", () => record(false));
+      // `close` without `finish` is a client that hung up mid-response.
+      res.once("close", () => record(!res.writableEnded));
+    }
 
     // `/health` is deliberately unauthenticated: it is the liveness probe the
     // CLI's autostart polls, and it exposes nothing but "I am here".
@@ -368,23 +472,65 @@ export async function createTaskd(options = {}) {
     // envelope, so it is matched and handled before the router (see the module).
     const attachment = ATTACHMENT_CONTENT_PATH.exec(pathname);
     if (attachment !== null && (req.method === "GET" || req.method === "PUT")) {
-      await handleAttachmentContent(req, res, board, safeDecode(attachment[1]), actorFromRequest(req));
+      await withLogContext({ request_id: requestId, actor }, () =>
+        handleAttachmentContent(req, res, board, safeDecode(attachment[1]), actor));
       return;
     }
 
     // The SSE stream owns its response for as long as the client stays connected;
     // it never returns a value for the envelope to wrap.
     if (pathname === "/api/v1/events" && req.method === "GET") {
+      const after = revisionFromRequest(url, req);
+      const openedAt = Date.now();
+      let closeLogged = false;
       const stream = openEventStream({
         res,
         board,
-        after: revisionFromRequest(url, req),
+        after,
         pollMs: events.pollMs,
         heartbeatMs: events.heartbeatMs,
         // Registered so `close()` can end it deliberately; forgotten by the
         // stream itself, whichever side ends it.
-        onClose: () => streams.delete(stream),
+        onClose: () => {
+          streams.delete(stream);
+          // `close()` may be called more than once (the response's own `close`
+          // re-enters it); the record is emitted once.
+          if (closeLogged) return;
+          closeLogged = true;
+          // The `request` line records the end too, but without the stream's
+          // own lifetime; this pairs with `sse_stream_opened`.
+          if (typeof logger === "function") {
+            logger({
+              event: "sse_stream_closed",
+              request_id: requestId,
+              duration_ms: Date.now() - openedAt,
+              after,
+            });
+          }
+        },
+        // A read failure must not become an unhandled exception in the poll
+        // timer; the stream closes itself and the client reconnects.
+        ...(typeof logger === "function"
+          ? {
+              onError: (err) =>
+                logger({
+                  event: "sse_stream_failed",
+                  request_id: requestId,
+                  code: err?.code ?? null,
+                  message: err?.message ?? String(err),
+                }),
+            }
+          : {}),
       });
+      if (typeof logger === "function") {
+        logger({
+          event: "sse_stream_opened",
+          request_id: requestId,
+          after,
+          poll_ms: events.pollMs,
+          heartbeat_ms: events.heartbeatMs,
+        });
+      }
       streams.add(stream);
       // The response may have ended between `openEventStream` and this line (a
       // client that hung up at exactly the wrong moment); `close` is idempotent
@@ -418,16 +564,22 @@ export async function createTaskd(options = {}) {
       ? await readJsonBody(req)
       : {};
 
-    const data = await route.handler({
-      params: route.params,
-      query: url.searchParams,
-      body,
-      actor: actorFromRequest(req),
-      session: headerOf(req, "x-taskctl-session"),
-      seg: headerOf(req, "x-taskctl-seg"),
-      board,
-      token: surface.token,
-    });
+    const session = headerOf(req, "x-taskctl-session");
+    const seg = headerOf(req, "x-taskctl-seg");
+    // The ambient context is what lets a command logged deeper in the stack
+    // carry `request_id` without every handler passing it down by hand.
+    const data = await withLogContext({ request_id: requestId, actor, session, seg }, () =>
+      route.handler({
+        params: route.params,
+        query: url.searchParams,
+        body,
+        actor,
+        session,
+        seg,
+        board,
+        token: surface.token,
+      }),
+    );
     sendJson(res, 200, { ok: true, data: data === undefined ? null : data });
   }
 
@@ -548,19 +700,48 @@ export async function closeServer(server, graceMs = SHUTDOWN_GRACE_MS) {
  * 500, so the raw text is returned and fails the id lookup instead.
  */
 /**
- * The `/meta` view of the acceptance policy.
+ * The `/meta` view of the acceptance vocabulary (0038).
  *
- * Read through the board's own resolver so `/meta` reports exactly the policy a
- * write would use (explicit option → env → install-root `.env` → default). It
- * is re-read per request on purpose: a re-install may rewrite the file while the
- * server keeps running. A malformed value reports `null` instead of failing the
- * whole meta read; the acceptance write is where it fails closed.
+ * It is a constant: there is no board-level policy to read, and the project
+ * default is board data (`projects.acceptance`) rather than configuration.
  */
-function acceptanceCapability(board) {
+const ACCEPTANCE_CAPABILITY = Object.freeze({
+  modes: [...CARD_ACCEPTANCE_MODES],
+  project_modes: [...PROJECT_ACCEPTANCES],
+  default: DEFAULT_PROJECT_ACCEPTANCE,
+  card_field: "acceptance_mode",
+  project_field: "acceptance",
+});
+
+/**
+ * The `/meta` view of the SLA table.
+ *
+ * Read through the board's own resolver, so `/meta` reports exactly the table
+ * `GET /api/v1/sla` would compute with (process env → install-root `.env` →
+ * defaults), re-read per request. A malformed value reports `error` here
+ * instead of failing the whole meta read; the SLA read is where it fails
+ * closed.
+ */
+function slaCapability(board) {
   try {
-    return { policy: board.ctx.acceptancePolicy() };
+    return slaConfigToWire(board.ctx.slaConfig());
   } catch (err) {
-    return { policy: null, error: err?.code ?? "ACCESS_CONFIG_INVALID" };
+    // `/meta` still answers, so this is a degraded read, not a failed request:
+    // a warn is the right weight, and without it the degradation is invisible.
+    const logger = board.ctx?.logger;
+    if (typeof logger === "function") {
+      logger({
+        event: "sla_config_invalid",
+        level: "warn",
+        code: err?.code ?? null,
+        message: err?.message ?? String(err),
+      });
+    }
+    return {
+      version: 1,
+      error: err?.code ?? "CONFIG_FILE_INVALID",
+      message: err?.message ?? "invalid SLA configuration",
+    };
   }
 }
 
@@ -647,6 +828,16 @@ export function startLabelGc(input) {
   const intervalMs = enabled ? labelGcIntervalMs(env, options.gcIntervalMs) : 0;
   const ttlDays = labelGcTtlDays(env, options.gcTtlDays);
   const state = { intervalMs, ttlDays, last: null, timer: null };
+
+  // Whether housekeeping is on, and on what schedule, is a startup fact an
+  // operator should be able to read back without inferring it from silence.
+  if (typeof logger === "function") {
+    logger({
+      event: enabled ? "label_gc_scheduled" : "label_gc_disabled",
+      interval_ms: intervalMs,
+      ttl_days: ttlDays,
+    });
+  }
 
   const run = () => {
     let result;

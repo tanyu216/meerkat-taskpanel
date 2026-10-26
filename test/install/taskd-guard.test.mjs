@@ -26,7 +26,7 @@
  *      themselves instead of failing the install.
  *
  * The service manager is **faked on PATH**, the way `scheduling-units.test.mjs` fakes a
- * host CLI: an install must never load a real unit during a test run. The readiness probe
+ * agent CLI: an install must never load a real unit during a test run. The readiness probe
  * is answered by a **real loopback `/health` server in its own process** — `spawnSync`
  * blocks this one's event loop, so a server in-process could never reply.
  *
@@ -141,8 +141,10 @@ describe("taskd guard: the unit templates are the contract's", () => {
     assert.match(text, /<key>RunAtLoad<\/key>\s*<true\/>/);
     assert.match(text, /<key>KeepAlive<\/key>\s*<true\/>/);
     assert.match(text, /<key>ThrottleInterval<\/key>\s*<integer>10<\/integer>/);
-    assert.match(text, /<key>StandardOutPath<\/key>\s*<string>\{\{LOG\}\}<\/string>/);
-    assert.match(text, /<key>StandardErrorPath<\/key>\s*<string>\{\{LOG\}\}<\/string>/);
+    // The daemon writes and rotates taskd.log itself; a redirect into the same
+    // file would duplicate every line.
+    assert.doesNotMatch(text, /<key>StandardOutPath<\/key>/);
+    assert.doesNotMatch(text, /<key>StandardErrorPath<\/key>/);
     // No scheduled tick: a long-running owner of the write lock, not an interval job.
     assert.doesNotMatch(text, /<key>(StartInterval|StartCalendarInterval)<\/key>/);
 
@@ -178,8 +180,9 @@ describe("taskd guard: the unit templates are the contract's", () => {
     assert.match(text, /Type=simple/);
     assert.match(text, /Restart=always/);
     assert.match(text, /RestartSec=5/);
-    assert.match(text, /StandardOutput=append:\{\{LOG\}\}/);
-    assert.match(text, /StandardError=append:\{\{LOG\}\}/);
+    // The application owns its log file (and its rotation).
+    assert.doesNotMatch(text, /^StandardOutput=/m);
+    assert.doesNotMatch(text, /^StandardError=/m);
     assert.match(text, /WantedBy=default\.target/);
 
     // The header comment mentions `.timer` to say there is none; the *effective* unit
@@ -212,7 +215,7 @@ describe("taskd guard: the unit templates are the contract's", () => {
     }
   });
 
-  it("the label and unit name carry no agent or host segment (one guard per machine)", () => {
+  it("the label and unit name carry no agent or actor-kind segment (one guard per machine)", () => {
     for (const name of [TASKD_LABEL, TASKD_UNIT]) {
       assert.doesNotMatch(name, /\{\{|AGENT|HOST/i);
     }
@@ -272,7 +275,7 @@ function assertWellFormedPlist(xml) {
 // ---------------------------------------------------------------------------
 
 describe("taskd guard: rendering", () => {
-  it("lands in the neutral directory, never under a host's own scheduling tree", () => {
+  it("lands in the neutral directory, never under an agent kind's own scheduling tree", () => {
     const prefix = makeTempDir();
     const dataDir = makeTempDir();
     const paths = guardPaths({ prefix, env: { TASKD_DATA_DIR: dataDir } });
@@ -281,9 +284,27 @@ describe("taskd guard: rendering", () => {
     assert.equal(paths.systemdUnit, join(prefix, "taskpanel", "scheduling", "systemd", TASKD_UNIT));
     assert.equal(paths.serverEntry, join(ROOT, "src", "server", "main.mjs"));
     assert.equal(paths.logFile, join(dataDir, "logs", "taskd.log"));
-    for (const hostDir of [".claude", ".codex", ".openclaw", ".agents"]) {
-      assert.ok(!paths.launchdUnit.includes(join(prefix, hostDir)), `never under ${hostDir}/`);
+    for (const agentDir of [".claude", ".codex", ".openclaw", ".agents"]) {
+      assert.ok(!paths.launchdUnit.includes(join(prefix, agentDir)), `never under ${agentDir}/`);
     }
+  });
+
+  it("points at the installed tree and pins its data dir when asked", () => {
+    const prefix = makeTempDir();
+    const tree = makeTempDir();
+    const dataDir = join(tree, ".data");
+    const paths = guardPaths({ prefix, root: tree, dataDir });
+
+    assert.equal(paths.serverEntry, join(tree, "src", "server", "main.mjs"));
+    assert.equal(paths.logFile, join(dataDir, "logs", "taskd.log"));
+    assert.equal(paths.pinDataDir, true);
+    assert.match(unitVars(paths).ENV_SYSTEMD, new RegExp(`TASKD_DATA_DIR=${escapeRegExp(dataDir)}`));
+
+    // The default guard is still unpinned and names this checkout.
+    const plain = guardPaths({ prefix, env: {} });
+    assert.equal(plain.pinDataDir, false);
+    assert.equal(plain.serverEntry, join(ROOT, "src", "server", "main.mjs"));
+    assert.deepEqual(unitEnv({ env: {}, dataDir: plain.dataDir, pinDataDir: plain.pinDataDir }), []);
   });
 
   it("the interpreter is this node, absolute — not a name to be looked up", () => {
@@ -1000,7 +1021,7 @@ describe("taskd guard: the readiness gate", () => {
 // helpers
 // ---------------------------------------------------------------------------
 
-/** Run `install.sh` for one host into `prefix`, with the guard's paths isolated. */
+/** Run `install.sh` for one agent kind into `prefix`, with the guard's paths isolated. */
 function runGuardInstall(prefix, env, extra = []) {
   return runInstall(["--target", "claude", "--prefix", prefix, ...extra], env);
 }

@@ -54,6 +54,20 @@ const dataOf = (result) => {
   return result.body.data;
 };
 
+/** Put a card in `in_review`; a review card may only be created for one. */
+async function deliverCard(ref) {
+  dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }));
+  return dataOf(
+    await call("POST", `/api/v1/tasks/${ref}/deliver`, {
+      report: {
+        conclusion: "delivered",
+        acceptance: [{ text: "a", status: "met" }],
+        evidence: [{ kind: "path", path: "x" }],
+      },
+    }),
+  );
+}
+
 describe("server/routes — health and meta", () => {
   it("keeps the /health contract the compose healthcheck depends on", async () => {
     const result = await call("GET", "/health");
@@ -120,6 +134,28 @@ describe("server/routes — projects", () => {
     // A read must not have created anything.
     const listed = dataOf(await call("GET", "/api/v1/projects"));
     assert.deepEqual(listed.projects.map((p) => p.id), ["demo"]);
+  });
+
+  it("ensures a project: creates once, then returns the existing row untouched", async () => {
+    const fresh = dataOf(
+      await call("PUT", "/api/v1/projects/ensured", {
+        name: "Ensured",
+        meta: { team: "panel" },
+      }),
+    );
+    assert.equal(fresh.created, true);
+    assert.equal(fresh.project.id, "ensured");
+    assert.deepEqual(fresh.project.meta, { team: "panel" });
+
+    const again = dataOf(
+      await call("PUT", "/api/v1/projects/ensured", {
+        name: "Renamed",
+        meta: { team: "other" },
+      }),
+    );
+    assert.equal(again.created, false);
+    assert.equal(again.project.name, "Ensured", "an existing project is not updated");
+    assert.deepEqual(again.project.meta, { team: "panel" });
   });
 });
 
@@ -224,11 +260,58 @@ describe("server/routes — tasks, the gate and deliver", () => {
     assert.match(result.body.error.hint.fix, /issue move/);
   });
 
-  it("merges --acceptance into meta without clobbering the rest", async () => {
+  it("reopens a done card to todo with a reason — and only that way", async () => {
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "demo", title: "Reopen me" }),
+    );
+    const ref = created.task.identifier;
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }));
+    dataOf(
+      await call("POST", `/api/v1/tasks/${ref}/deliver`, {
+        report: {
+          conclusion: "landed",
+          acceptance: [{ text: "works", status: "met" }],
+          evidence: [{ kind: "path", path: "x" }],
+        },
+      }),
+    );
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "done" }));
+
+    // `/deliver` is not a reasonless reopen backdoor.
+    const backdoor = await call("POST", `/api/v1/tasks/${ref}/deliver`, {
+      to: "todo",
+      report: {
+        conclusion: "sneaky",
+        acceptance: [{ text: "works", status: "met" }],
+        evidence: [{ kind: "path", path: "x" }],
+      },
+    });
+    assert.equal(backdoor.status, 409, JSON.stringify(backdoor.body));
+    assert.equal(backdoor.body.error.code, "TERMINAL_STATE");
+
+    const noReason = await call("POST", `/api/v1/tasks/${ref}/reopen`, {});
+    assert.equal(noReason.status, 400, JSON.stringify(noReason.body));
+    assert.equal(noReason.body.error.code, "VALIDATION_FAILED");
+
+    const reopened = dataOf(
+      await call("POST", `/api/v1/tasks/${ref}/reopen`, { reason: "customer found a regression" }),
+    );
+    assert.equal(reopened.status, "todo");
+    assert.equal(reopened.task.delivery_round, 2);
+    assert.equal(reopened.task.archived_at, null);
+
+    // The dedicated route is terminal-only: an already-open card is refused.
+    const again = await call("POST", `/api/v1/tasks/${ref}/reopen`, { reason: "still open" });
+    assert.equal(again.status, 409, JSON.stringify(again.body));
+    assert.equal(again.body.error.code, "INVALID_TRANSITION");
+  });
+
+  it("appends --acceptance to the frozen baseline without clobbering meta", async () => {
     const updated = dataOf(
       await call("PATCH", `/api/v1/tasks/${identifier}`, { acceptance: ["a", "b"], title: "Ship M2 (final)" }),
     );
-    assert.deepEqual(updated.task.meta.acceptance, ["a", "b"]);
+    assert.deepEqual(updated.task.acceptance, ["cli works", "gate visible", "a", "b"]);
+    assert.deepEqual(updated.task.meta.acceptance, ["cli works", "gate visible"]);
     assert.equal(updated.task.title, "Ship M2 (final)");
   });
 });
@@ -245,6 +328,7 @@ describe("server/routes — the workflow plan on reconcile", () => {
         title: "Work awaiting review",
         assignee: "ada",
         assignee_kind: "agent",
+        acceptance_mode: "agent",
       }),
     );
     originalRef = original.task.identifier;
@@ -455,6 +539,57 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
     assert.equal(added.comment.author.kind, "agent", "the ref carries the actor's kind");
   });
 
+  it("re-queues an awaiting card on any human comment, including the UI's discuss kind", async () => {
+    const linus = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "linus" }) };
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Any human answer",
+        assignee: "linus",
+        assignee_kind: "agent",
+        allow_dup: true,
+      }, linus),
+    );
+    const ref = created.task.identifier;
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }, linus));
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, {
+      to: "awaiting",
+      awaiting_reason: "E2",
+      question: "which schema?",
+    }, linus));
+
+    // No actor header: `actorFromRequest` treats the browser as the local human.
+    const added = dataOf(
+      await call("POST", `/api/v1/tasks/${ref}/comments`, { body: "use v2", kind: "discuss" }),
+    );
+    assert.equal(added.comment.author_kind, "human");
+
+    const after = dataOf(await call("GET", `/api/v1/tasks/${ref}`));
+    assert.equal(after.task.status, "todo");
+    assert.equal(after.task.claimed_by, null);
+    assert.equal(after.task.awaiting_reason, null);
+  });
+
+  it("reads comments newest first with ?order=desc, and limit takes the newest N", async () => {
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "demo", title: "Comment order", allow_dup: true }),
+    );
+    const ref = created.task.identifier;
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/comments`, { body: "first", kind: "note" }));
+    // A distinct millisecond, so the newest-first assertion does not hinge on
+    // the id tie-break the repository uses for equal timestamps.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/comments`, { body: "second", kind: "note" }));
+
+    const asc = dataOf(await call("GET", `/api/v1/tasks/${ref}/comments`)).comments;
+    const desc = dataOf(await call("GET", `/api/v1/tasks/${ref}/comments?order=desc`)).comments;
+    assert.deepEqual(desc.map((c) => c.id), asc.map((c) => c.id).reverse());
+    assert.equal(desc[0].body, "second", "the newest comment is first");
+
+    const newest = dataOf(await call("GET", `/api/v1/tasks/${ref}/comments?order=desc&limit=1`)).comments;
+    assert.deepEqual(newest.map((c) => c.body), ["second"], "--limit takes the newest N");
+  });
+
   it("adds, lists and removes a relation", async () => {
     // Only an `epic` may be a parent (§4.2), so the fixture is an epic + a child.
     sibling = dataOf(
@@ -498,19 +633,59 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
       await call("POST", `/api/v1/tasks/${REF}/sessions`, {
         seg: "seg2",
         owner: "linus",
-        backend: "claude",
+        owner_kind: "claude",
         session_id: "d144dea1-f923-5ed8-8e6e-6e889abf76e5",
+        goal: "ship the drawer ordering",
+        meta: { harness: "claude" },
       }),
     );
     assert.equal(registered.session.status, "running");
+    assert.equal(registered.session.goal, "ship the drawer ordering");
+    assert.deepEqual(registered.session.meta, { harness: "claude" });
+
+    // A re-registration that omits the goal keeps the one already recorded; a
+    // partial meta merges into the recorded object.
+    dataOf(
+      await call("POST", `/api/v1/tasks/${REF}/sessions`, {
+        seg: "seg2",
+        owner: "linus",
+        owner_kind: "claude",
+        session_id: "d144dea1-f923-5ed8-8e6e-6e889abf76e5",
+        phase: "verify",
+        meta: { thread_id: "t1" },
+      }),
+    );
 
     const listed = dataOf(await call("GET", `/api/v1/tasks/${REF}/sessions`));
     assert.equal(listed.sessions.length, 1);
+    assert.equal(listed.sessions[0].goal, "ship the drawer ordering");
+    assert.equal(listed.sessions[0].phase, "verify");
+    assert.deepEqual(listed.sessions[0].meta, { harness: "claude", thread_id: "t1" });
 
     const closed = dataOf(
       await call("POST", `/api/v1/tasks/${REF}/sessions/${registered.session.id}/close`, {}),
     );
     assert.equal(closed.session.status, "closed");
+
+    // The natural-key close, and the board-wide read. A second session makes
+    // the owner filter non-vacuous.
+    const second = dataOf(
+      await call("POST", `/api/v1/tasks/${REF}/sessions`, {
+        seg: "seg3",
+        owner: "linus",
+        owner_kind: "codex",
+        session_id: "c0ffee00-0000-5000-8000-000000000003",
+      }),
+    );
+    const closedByKey = dataOf(
+      await call("POST", `/api/v1/tasks/${REF}/sessions/close`, { seg: "seg3", owner: "linus" }),
+    );
+    assert.equal(closedByKey.session.id, second.session.id);
+    assert.equal(closedByKey.session.status, "closed");
+
+    const boardWide = dataOf(await call("GET", "/api/v1/sessions?owner=linus"));
+    assert.deepEqual(boardWide.sessions.map((s) => s.id).sort(), [registered.session.id, second.session.id].sort());
+    assert.equal((await call("GET", "/api/v1/sessions")).body.error.code, "VALIDATION_FAILED");
   });
 
   it("reads the dictionary, and offers no way to write it", async () => {
@@ -691,7 +866,7 @@ describe("server/routes — the edges a happy path never reaches", () => {
       await call("POST", "/api/v1/tasks/DEMO-0001/sessions", {
         seg: "s-extra",
         owner: "linus",
-        backend: "claude",
+        owner_kind: "claude",
         session_id: "session-x",
         phase: "review",
         pid: 4242,
@@ -815,7 +990,7 @@ describe("server/routes — a session registered from headers only", () => {
       await call(
         "POST",
         "/api/v1/tasks/DEMO-0001/sessions",
-        { backend: "codex", owner: "linus" },
+        { owner_kind: "codex", owner: "linus" },
         { "x-taskctl-session": "session-from-header", "x-taskctl-seg": "seg-from-header" },
       ),
     );
@@ -917,8 +1092,10 @@ describe("server/routes — candidates (the poll read)", () => {
     assert.deepEqual(
       Object.keys(candidates.candidates[0]).sort(),
       [
+        "created_at",
         "id",
         "identifier",
+        "meta",
         "priority",
         "project",
         "reason",
@@ -926,9 +1103,10 @@ describe("server/routes — candidates (the poll read)", () => {
         "review_round",
         "sort",
         "status",
+        "target",
         "title",
       ],
-      "no `target` — the board owns no project directory (O3)",
+      "the card's fields, its opaque meta, and `reason`",
     );
     assert.equal(candidates.candidates[0].status, "todo");
     assert.equal(candidates.candidates[0].project, "cand");
@@ -1088,6 +1266,45 @@ describe("server/routes — blocked_reason over HTTP (0016)", () => {
     dataOf(await call("POST", `/api/v1/tasks/${REF}/move`, { to: "canceled" }));
     assert.equal(columnOf(REF), null);
   });
+
+  it("writes the question on an agent's awaiting move, and refuses one without it (0034)", async () => {
+    const AS = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "linus" }) };
+    dataOf(await call("POST", "/api/v1/projects", { id: "ask", name: "Ask" }));
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "ask",
+        title: "Ask me",
+        assignee: "linus",
+        assignee_kind: "agent",
+        // The idem key is kind|assignee|source|target; an earlier test's card
+        // has the same shape, so opt out of the reuse.
+        allow_dup: true,
+      }),
+    );
+    const ref = created.task.identifier;
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }, AS));
+
+    const refused = await call(
+      "POST",
+      `/api/v1/tasks/${ref}/move`,
+      { to: "awaiting", awaiting_reason: "E2" },
+      AS,
+    );
+    assert.equal(refused.status, 422, JSON.stringify(refused.body));
+    assert.equal(refused.body.error.code, "QUESTION_REQUIRED");
+
+    const waiting = dataOf(
+      await call(
+        "POST",
+        `/api/v1/tasks/${ref}/move`,
+        { to: "awaiting", awaiting_reason: "E2", question: "which schema?" },
+        AS,
+      ),
+    );
+    assert.equal(waiting.task.status, "awaiting");
+    const comments = dataOf(await call("GET", `/api/v1/tasks/${ref}/comments?kind=question`));
+    assert.deepEqual(comments.comments.map((comment) => comment.body), ["which schema?"]);
+  });
 });
 
 // Last, and on its own project: T-20261015-063755 asked for the wire-level
@@ -1184,13 +1401,14 @@ describe("server/routes — the acceptance wire (M6)", () => {
         target: child.id,
       }),
     );
+    await deliverCard(child.identifier);
     const review = dataOf(
       await call("POST", "/api/v1/tasks", {
         project_id: "demo",
         title: "Wire review",
         allow_dup: true,
         review_of: child.identifier,
-        meta: { review_round: 2, flow: "B" },
+        meta: { review_round: 1, flow: "B" },
       }),
     ).task;
 
@@ -1202,10 +1420,10 @@ describe("server/routes — the acceptance wire (M6)", () => {
     assert.equal(byId.get(child.id).parent_id, epic.id, "the child names its container");
     assert.equal(byId.get(epic.id).parent_id, null);
     assert.equal(byId.get(review.id).review_of_id, child.id, "the id, not the identifier");
-    assert.equal(byId.get(review.id).review_round, 2);
+    assert.equal(byId.get(review.id).review_round, 1);
     assert.equal(byId.get(review.id).parent_id, null);
     assert.equal(review.meta.review_of, child.identifier, "creation stamps the identifier into meta");
-    assert.equal(review.meta.review_round, 2, "and the integer round");
+    assert.equal(review.meta.review_round, 1, "and the integer round");
     assert.equal(review.meta.flow, "B", "other meta keys survive");
 
     const single = dataOf(await call("GET", `/api/v1/tasks/${child.identifier}`));
@@ -1220,20 +1438,185 @@ describe("server/routes — the acceptance wire (M6)", () => {
         allow_dup: true,
       }),
     ).task;
+    await deliverCard(original.identifier);
     const review = dataOf(
       await call("POST", "/api/v1/tasks", {
         project_id: "demo",
         title: "Wire review round",
         allow_dup: true,
         review_of: original.identifier,
-        review_round: 3,
+        review_round: 1,
       }),
     ).task;
 
     assert.equal(review.review_of_id, original.id);
-    assert.equal(review.review_round, 3, "the top-level field reached the marker resolver");
+    assert.equal(review.review_round, 1, "the top-level field reached the marker resolver");
     assert.equal(review.meta.review_of, original.identifier);
-    assert.equal(review.meta.review_round, 3);
+    assert.equal(review.meta.review_round, 1);
+  });
+});
+
+describe("server/routes — exporting one card", () => {
+  let original;
+  let archived;
+
+  before(async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "exportref", name: "Export ref" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "exportref2", name: "Export ref two" }));
+    original = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "exportref", title: "Original" }),
+    ).task;
+    dataOf(await call("POST", "/api/v1/tasks", { project_id: "exportref", title: "Other" }));
+    archived = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "exportref", title: "Archived" }),
+    ).task;
+    dataOf(await call("POST", `/api/v1/tasks/${archived.identifier}/move`, { to: "canceled" }));
+    dataOf(await call("POST", `/api/v1/tasks/${archived.identifier}/archive`, { days: 0 }));
+  });
+
+  it("returns exactly the referenced card, by identifier and by uuid", async () => {
+    for (const ref of [original.identifier, original.id]) {
+      const exported = dataOf(await call("POST", "/api/v1/export", { ref }));
+      assert.equal(exported.cards.length, 1);
+      assert.equal(exported.cards[0].identifier, original.identifier);
+      assert.equal(exported.cards[0].task_id, original.id);
+      assert.equal(exported.cards[0].status, original.status);
+      assert.match(exported.cards[0].markdown, /^---\n/);
+      assert.match(exported.cards[0].markdown, new RegExp(`id: ${original.identifier}`));
+    }
+  });
+
+  it("exports an archived card by ref even when include_archived is false", async () => {
+    const exported = dataOf(
+      await call("POST", "/api/v1/export", { ref: archived.identifier, include_archived: false }),
+    );
+    assert.equal(exported.cards.length, 1);
+    assert.equal(exported.cards[0].identifier, archived.identifier);
+  });
+
+  it("refuses ref with project_id, a missing ref, and an ambiguous identifier", async () => {
+    const both = await call("POST", "/api/v1/export", {
+      ref: original.identifier,
+      project_id: "exportref",
+    });
+    assert.equal(both.status, 400, JSON.stringify(both.body));
+    assert.equal(both.body.error.code, "VALIDATION_FAILED");
+
+    const missing = await call("POST", "/api/v1/export", { ref: "NOPE-9999" });
+    assert.equal(missing.status, 404);
+    assert.equal(missing.body.error.code, "NOT_FOUND");
+
+    dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "exportref",
+        title: "Ambiguous one",
+        identifier: "AMBIG-EXP-7777",
+      }),
+    );
+    dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "exportref2",
+        title: "Ambiguous two",
+        identifier: "AMBIG-EXP-7777",
+      }),
+    );
+    const ambiguous = await call("POST", "/api/v1/export", { ref: "AMBIG-EXP-7777" });
+    assert.equal(ambiguous.status, 400);
+    assert.equal(ambiguous.body.error.code, "VALIDATION_FAILED");
+  });
+
+  it("keeps the whole-project export when no ref is given", async () => {
+    const exported = dataOf(await call("POST", "/api/v1/export", { project_id: "exportref" }));
+    const listed = dataOf(await call("GET", "/api/v1/tasks?project_id=exportref&include_archived=1"));
+    assert.equal(exported.cards.length, listed.tasks.length);
+  });
+});
+
+describe("server/routes — the review filter", () => {
+  let original;
+  let review;
+
+  before(async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "revfilter", name: "Review filter" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "revfilter2", name: "Review filter two" }));
+    original = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "revfilter", title: "Original" }),
+    ).task;
+    await deliverCard(original.identifier);
+    review = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "revfilter",
+        title: "Review",
+        review_of: original.identifier,
+        review_round: 1,
+        assignee: "linus",
+      }),
+    ).task;
+    dataOf(await call("POST", "/api/v1/tasks", { project_id: "revfilter", title: "Unrelated" }));
+  });
+
+  it("returns the review cards by identifier and by uuid", async () => {
+    const byIdentifier = dataOf(
+      await call("GET", `/api/v1/tasks?review_of=${encodeURIComponent(original.identifier)}`),
+    );
+    assert.deepEqual(byIdentifier.tasks.map((task) => task.identifier), [review.identifier]);
+
+    const byId = dataOf(await call("GET", `/api/v1/tasks?review_of=${original.id}`));
+    assert.deepEqual(byId.tasks.map((task) => task.identifier), [review.identifier]);
+  });
+
+  it("intersects with the other list filters", async () => {
+    const scoped = dataOf(
+      await call(
+        "GET",
+        `/api/v1/tasks?review_of=${original.id}&project_id=revfilter&status=todo&assignee_id=${review.assignee.id}`,
+      ),
+    );
+    assert.deepEqual(scoped.tasks.map((task) => task.identifier), [review.identifier]);
+
+    const empty = dataOf(await call("GET", `/api/v1/tasks?review_of=${original.id}&status=done`));
+    assert.deepEqual(empty.tasks, []);
+  });
+
+  it("reads the marker as `kind=review`, without narrowing `kind=task`", async () => {
+    const reviews = dataOf(await call("GET", "/api/v1/tasks?project_id=revfilter&kind=review"));
+    assert.deepEqual(reviews.tasks.map((task) => task.identifier), [review.identifier]);
+
+    // A review card is an ordinary `kind=task` card: the alias is an **added**
+    // filter over the marker, never a replacement for `kind=task`.
+    const tasks = dataOf(await call("GET", "/api/v1/tasks?project_id=revfilter&kind=task"));
+    assert.ok(tasks.tasks.some((task) => task.identifier === review.identifier));
+    assert.ok(tasks.tasks.some((task) => task.identifier === original.identifier));
+
+    // The readable word, derived on the wire from kind + the marker.
+    assert.equal(reviews.tasks[0].role, "review");
+    assert.equal(tasks.tasks.find((task) => task.identifier === original.identifier).role, "task");
+  });
+
+  it("reports a missing ref, and refuses an ambiguous identifier", async () => {
+    for (const ref of ["NOPE-9999", ""]) {
+      const result = await call("GET", `/api/v1/tasks?review_of=${encodeURIComponent(ref)}`);
+      assert.equal(result.status, 404, JSON.stringify(result.body));
+      assert.equal(result.body.error.code, "NOT_FOUND");
+    }
+
+    dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "revfilter",
+        title: "Ambiguous one",
+        identifier: "AMBIG-7777",
+      }),
+    );
+    dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "revfilter2",
+        title: "Ambiguous two",
+        identifier: "AMBIG-7777",
+      }),
+    );
+    const ambiguous = await call("GET", "/api/v1/tasks?review_of=AMBIG-7777");
+    assert.equal(ambiguous.status, 400, JSON.stringify(ambiguous.body));
+    assert.equal(ambiguous.body.error.code, "VALIDATION_FAILED");
   });
 });
 
@@ -1251,5 +1634,205 @@ describe("server/requests — query-string coercions", () => {
     for (const value of ["", null, undefined, "x"]) {
       assert.equal(intOrUndefined(value), undefined, String(value));
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 0031 — project review policy, reviewer override, task decision
+// ---------------------------------------------------------------------------
+
+describe("server/routes — project acceptance (0038)", () => {
+  const AGENT = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "agent-a" }) };
+
+  it("round-trips a project's acceptance default and reviewer", async () => {
+    const created = dataOf(
+      await call("POST", "/api/v1/projects", {
+        id: "flow-req",
+        name: "Flow Required",
+        acceptance: "agent",
+        reviewer: "jobs",
+      }),
+    );
+    assert.equal(created.project.acceptance, "agent");
+    assert.equal(created.project.reviewer, "jobs");
+
+    const updated = dataOf(
+      await call("PATCH", "/api/v1/projects/flow-req", {
+        acceptance: "off",
+        reviewer: "",
+      }),
+    );
+    assert.equal(updated.project.acceptance, "off");
+    assert.equal(updated.project.reviewer, null);
+  });
+
+  it("refuses an unknown acceptance value", async () => {
+    const result = await call("POST", "/api/v1/projects", {
+      id: "flow-bad",
+      name: "Bad",
+      acceptance: "sometimes",
+    });
+    assert.equal(result.status, 400);
+    assert.equal(result.body.error.code, "VALIDATION_FAILED");
+  });
+
+  it("derives the card mode from the project, and lets an explicit value win", async () => {
+    dataOf(
+      await call("POST", "/api/v1/projects", {
+        id: "flow-required",
+        name: "Required",
+        acceptance: "agent",
+      }),
+    );
+    const required = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "flow-required",
+        title: "required card",
+      }),
+    );
+    assert.equal(required.task.acceptance_mode, "agent");
+
+    dataOf(
+      await call("POST", "/api/v1/projects", {
+        id: "flow-optional",
+        name: "Optional",
+        acceptance: "auto",
+      }),
+    );
+    // 0038 — an unresolved card under an `auto` project falls back to human.
+    const omitted = dataOf(
+      await call(
+        "POST",
+        "/api/v1/tasks",
+        { project_id: "flow-optional", title: "agent omitted" },
+        AGENT,
+      ),
+    );
+    assert.equal(omitted.task.acceptance_mode, "human");
+
+    const stated = dataOf(
+      await call(
+        "POST",
+        "/api/v1/tasks",
+        { project_id: "flow-optional", title: "agent stated", acceptance_mode: "off" },
+        AGENT,
+      ),
+    );
+    assert.equal(stated.task.acceptance_mode, "off");
+  });
+
+  it("plans an auto_accept for a delivered card in an off project", async () => {
+    dataOf(
+      await call("POST", "/api/v1/projects", {
+        id: "flow-off",
+        name: "Off",
+        acceptance: "off",
+      }),
+    );
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "flow-off", title: "no review" }),
+    );
+    assert.equal(created.task.acceptance_mode, "off");
+    const delivered = await deliverCard(created.task.identifier);
+    assert.equal(delivered.task.status, "in_review");
+
+    const plan = dataOf(
+      await call("POST", "/api/v1/tasks/reconcile", { workflow: true, reviewer: "jobs" }),
+    );
+    const action = plan.workflow.actions.find(
+      (item) => item.type === "auto_accept" && item.original_ref === created.task.identifier,
+    );
+    assert.ok(action, JSON.stringify(plan.workflow.actions));
+    assert.equal(action.accepted_by, "loop-auto");
+  });
+});
+
+describe("server/routes — the board read's filters (GET /api/v1/tasks)", () => {
+  /** One project whose cards differ on exactly one filter each. */
+  async function filterBoard() {
+    dataOf(await call("POST", "/api/v1/projects", { id: "flt", name: "Filters" }));
+    // Only an epic may be a parent (`tr_rel_parent_epic`).
+    const parent = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "flt", title: "Parent", kind: "epic" }),
+    ).task;
+    const child = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "flt",
+        title: "Child",
+        labels: ["ui", "api"],
+        meta: { target: "app", flow: "review", count: 3 },
+      }),
+    ).task;
+    const other = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "flt",
+        title: "Other",
+        labels: ["api"],
+        meta: { target: "lib" },
+      }),
+    ).task;
+    dataOf(
+      await call("POST", `/api/v1/tasks/${parent.identifier}/relations`, {
+        type: "parent",
+        target: child.identifier,
+      }),
+    );
+    return { parent, child, other };
+  }
+
+  const ids = (data) => data.tasks.map((task) => task.id).sort();
+
+  it("filters by parent, kind, label, target and meta, and combines them", async () => {
+    const { parent, child, other } = await filterBoard();
+
+    assert.deepEqual(ids(dataOf(await call("GET", `/api/v1/tasks?project_id=flt&parent=${parent.identifier}`))), [child.id]);
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&kind=task"))), [child.id, other.id].sort());
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&kind=epic"))), [parent.id]);
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&label=ui"))), [child.id]);
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&label=ui&label=api"))), [child.id]);
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&label=ui&label=nope"))), []);
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&target=lib"))), [other.id]);
+    // `count` is stored as a JSON number; the comparison is textual, so the
+    // caller's `3` matches it.
+    assert.deepEqual(
+      ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&meta=flow%3Dreview&meta=count%3D3"))),
+      [child.id],
+    );
+    assert.deepEqual(ids(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&meta=flow%3Dnope"))), []);
+  });
+
+  it("resolves --assignee through the dictionary, and refuses it beside assignee_id", async () => {
+    await call("POST", "/api/v1/tasks", {
+      project_id: "flt",
+      title: "Assigned",
+      assignee: "grace",
+      assignee_kind: "agent",
+    });
+    assert.equal(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&assignee=grace")).tasks.length, 1);
+    // An unknown name is the empty scope, never "no filter".
+    assert.deepEqual(dataOf(await call("GET", "/api/v1/tasks?project_id=flt&assignee=nobody")).tasks, []);
+
+    const both = await call("GET", "/api/v1/tasks?project_id=flt&assignee=grace&assignee_id=abc");
+    assert.equal(both.status, 400);
+    assert.equal(both.body.error.code, "VALIDATION_FAILED");
+  });
+
+  it("refuses an unknown kind and a malformed meta pair", async () => {
+    const kind = await call("GET", "/api/v1/tasks?kind=nope");
+    assert.equal(kind.status, 400);
+    assert.equal(kind.body.error.code, "VALIDATION_FAILED");
+
+    const meta = await call("GET", "/api/v1/tasks?meta=naked");
+    assert.equal(meta.status, 400);
+    assert.equal(meta.body.error.code, "VALIDATION_FAILED");
+    assert.equal(meta.body.error.details.field, "meta");
+  });
+
+  it("keeps the filter under the limit: the page is filtered, not truncated first", async () => {
+    // `limit=1` after the filter must still find the matching card even though a
+    // non-matching card sorts first in the board order.
+    const filtered = dataOf(await call("GET", "/api/v1/tasks?project_id=flt&target=lib&limit=1"));
+    assert.equal(filtered.tasks.length, 1);
+    assert.equal(filtered.tasks[0].meta.target, "lib");
   });
 });
