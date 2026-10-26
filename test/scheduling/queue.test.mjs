@@ -22,7 +22,9 @@ import {
   recoverStaleCards,
   requeueCards,
   pruneCards,
+  questionDispatches,
   requeueContinue,
+  retireLegacyDispatched,
 } from "../../scripts/loop/queue.mjs";
 
 function dirFor(t) {
@@ -157,6 +159,55 @@ describe("card queue", () => {
     assert.equal(readCards(dir).value.cards.filter((entry) => entry.status === "done").length, 2);
   });
 
+  it("claims only the listed ids", (t) => {
+    const dir = dirFor(t);
+    for (const ref of ["A-1", "B-1", "A-2"]) enqueueCard(dir, card(ref));
+    const ids = readCards(dir)
+      .value.cards.filter((entry) => String(entry.card).startsWith("A-"))
+      .map((entry) => entry.id);
+    const claimed = claimCards(dir, { claimedBy: "/work/app", ids, limit: 5 });
+    assert.deepEqual(claimed.cards.map((entry) => entry.card).sort(), ["A-1", "A-2"]);
+    const left = readCards(dir).value.cards.filter((entry) => entry.status === "pending").map((entry) => entry.card);
+    assert.deepEqual(left, ["B-1"]);
+  });
+
+  it("filters by queue_kind, treating an absent one as handoff", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    enqueueCard(dir, { ...card("Q-1"), queue_kind: "question", role: "question" });
+    const questions = claimCards(dir, { claimedBy: "/work/app", queueKind: "question", limit: 5 });
+    assert.deepEqual(questions.cards.map((entry) => entry.card), ["Q-1"]);
+    const handoffs = claimCards(dir, { claimedBy: "/work/app", queueKind: "handoff", limit: 5 });
+    assert.deepEqual(handoffs.cards.map((entry) => entry.card), ["T-1"]);
+  });
+
+  it("never copies the board card kind onto a queue row", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, { ...card("T-1"), kind: "task" });
+    const [row] = readCards(dir).value.cards;
+    assert.equal("kind" in row, false, "the board kind is not a queue field");
+    assert.equal(row.queue_kind, "handoff");
+  });
+
+  it("keys a question row by the question, not by the card", (t) => {
+    const dir = dirFor(t);
+    const row = (questionId) => ({
+      card: "T-1",
+      queue_kind: "question",
+      role: "question",
+      question_id: questionId,
+    });
+    assert.deepEqual(enqueueCard(dir, row("q-1")), { ok: true, coalesced: false, error: null });
+    assert.deepEqual(enqueueCard(dir, row("q-1")), { ok: true, coalesced: true, error: null });
+    assert.deepEqual(enqueueCard(dir, row("q-2")), { ok: true, coalesced: false, error: null });
+    assert.equal(readCards(dir).value.cards.length, 2, "two questions on one card are two rows");
+
+    assert.equal(questionDispatches(dir, "q-1"), 1);
+    const [claimed] = claimCards(dir, { claimedBy: "/work/app", queueKind: "question", limit: 5 }).cards;
+    completeCards(dir, [claimed.id]);
+    assert.equal(questionDispatches(dir, "q-1"), 1, "a completed dispatch still counts against the bound");
+  });
+
   it("requeues below the attempt cap and fails at it", (t) => {
     const dir = dirFor(t);
     enqueueCard(dir, card("T-1"));
@@ -180,5 +231,35 @@ describe("card queue", () => {
     const recovered = recoverStaleCards(dir, { isAlive: () => false, maxAttempts: 3 });
     assert.deepEqual({ recovered: recovered.recovered, failed: recovered.failed }, { recovered: 1, failed: 0 });
     assert.equal(readCards(dir).value.cards[0].status, "pending");
+  });
+
+  it("retires a legacy dispatched row to done", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    const file = join(dir, "cards.queue.json");
+    const value = JSON.parse(readFileSync(file, "utf8"));
+    value.cards[0].status = "dispatched";
+    writeFileSync(file, JSON.stringify(value), "utf8");
+
+    const retired = retireLegacyDispatched(dir);
+    assert.equal(retired.retired, 1);
+    const [row] = readCards(dir).value.cards;
+    assert.equal(row.status, "done");
+    assert.equal(row.lastError, "background dispatch retired");
+    assert.ok(Number.isFinite(Date.parse(row.completedAt)), "a completed row carries its timestamp");
+
+    const pruned = pruneCards(dir, { ttlMs: 0, now: Date.parse(row.completedAt) + 1 });
+    assert.equal(pruned.dropped, 1, "the converted row is terminal and can be pruned");
+  });
+
+  it("leaves pending and processing rows alone when retiring", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    enqueueCard(dir, card("T-2"));
+    claimCards(dir, { claimedBy: "/work/app", limit: 1 });
+    const retired = retireLegacyDispatched(dir);
+    assert.equal(retired.retired, 0);
+    const statuses = readCards(dir).value.cards.map((row) => row.status).sort();
+    assert.deepEqual(statuses, ["pending", "processing"]);
   });
 });

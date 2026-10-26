@@ -88,7 +88,19 @@ describe("pi session args", () => {
     const args = sessionArgs({ opts: {}, role: "worker", sessionId: "sid-1" });
     assert.deepEqual(args.slice(0, 2), ["--mode", "rpc"]);
     assert.equal(args[args.indexOf("--session-id") + 1], "sid-1");
-    assert.equal(args[args.indexOf("--tools") + 1], "read,bash,edit,write");
+    assert.equal(
+      args[args.indexOf("--tools") + 1],
+      "read,bash,edit,write,subagent,subagents_enable",
+      "the project lane must be able to spawn through pi-subagents",
+    );
+  });
+
+  it("keeps the reviewer read-only but able to spawn its subagent", () => {
+    const args = sessionArgs({ opts: {}, role: "reviewer" });
+    const tools = args[args.indexOf("--tools") + 1];
+    assert.doesNotMatch(tools, /edit|write/);
+    assert.match(tools, /subagent/);
+    assert.match(tools, /subagents_enable/);
   });
 
   it("trusts project files when all tools are authorized", () => {

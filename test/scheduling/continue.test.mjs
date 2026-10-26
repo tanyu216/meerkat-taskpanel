@@ -137,6 +137,8 @@ describe("buildContinuePrompt", () => {
     assert.match(prompt, /Poll only claims and enqueues/);
     assert.match(prompt, /never spawns a worker or reviewer/);
     assert.match(prompt, /spawns the subagent in the\s+project directory/);
+    assert.match(prompt, /the question lane/, "poll also hands open questions to the project session");
+    assert.match(prompt, /Do not answer it again in this turn/);
     assert.doesNotMatch(prompt, /wake a worker/);
     assert.doesNotMatch(prompt, /claim a ready card yourself/);
   });
@@ -227,6 +229,7 @@ describe("buildContinuePrompt", () => {
     assert.ok(fallback.includes(`${passesScript} workflow`));
     // …and never names the poll entry.
     assert.ok(!fallback.includes(`${passesScript} poll`), "poll must not be named");
+    assert.doesNotMatch(fallback, /the question lane/, "without poll there is no question lane");
     assert.match(fallback, /claims no card/);
     assert.match(fallback, /dispatch is paused/);
     assert.match(fallback, /review cards accumulate/);

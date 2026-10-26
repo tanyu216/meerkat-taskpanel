@@ -28,6 +28,7 @@ import { after, describe, it } from "node:test";
 import {
   DEFAULT_MAX_CONCURRENCY,
   buildHandoff,
+  buildQuestionPrompt,
   buildReviewHandoff,
   candidateArgs,
   parseEnvFile,
@@ -517,6 +518,39 @@ describe("planWakeInvocation (pure)", () => {
   });
 });
 
+describe("buildQuestionPrompt (pure)", () => {
+  const text = buildQuestionPrompt(
+    [
+      {
+        card: "T-1",
+        project: "P",
+        target_dir: "/work/app",
+        agent: "alice",
+        question_id: "q-1",
+        question: "Which option?",
+        asked_at: "2026-01-01T00:00:00Z",
+      },
+    ],
+    { actorKind: "claude", decisionPolicyPath: "/roles/decision-policy.md" },
+  );
+
+  it("checks the card is still in progress before writing anything", () => {
+    assert.match(text, /taskctl issue get T-1 --json/);
+    assert.match(text, /status is not `in_progress`/);
+    assert.match(text, /do nothing/);
+  });
+
+  it("carries the answer-or-escalate protocol and the lane's prohibitions", () => {
+    assert.match(text, /do not spawn a subagent for this row/);
+    assert.match(text, /--kind note/);
+    assert.match(text, /issue move T-1 todo/);
+    assert.match(text, /awaiting --awaiting-reason/);
+    assert.match(text, /never use --as-human/);
+    assert.match(text, /Never move a card to done/);
+    assert.match(text, /Decision policy: \/roles\/decision-policy\.md/);
+  });
+});
+
 describe("buildHandoff (pure)", () => {
   it("carries the card, the attribution flags and the claim-first rules, bounded", () => {
     const text = buildHandoff({
@@ -686,7 +720,8 @@ describe("buildReviewHandoff (pure)", () => {
     assert.match(text, /Review brief: \.meerkat\/T-2\/card\.md/);
     assert.match(text, /Original brief: \.meerkat\/T-1\/card\.md/);
     assert.match(text, /Never edit a card\.md/);
-    assert.match(text, /taskctl attachment download <attachment-id> --out \.meerkat\/T-2\//);
+    assert.match(text, /This lane has no Write/);
+    assert.doesNotMatch(text, /Put your process files|attachment download/);
     assert.match(text, /On resume, re-read \.meerkat\/T-2\/card\.md/);
   });
 
@@ -2210,7 +2245,7 @@ describe("the resident session pool surface", () => {
     assert.equal(opts.projectConcurrency, opts.maxConcurrency, "a project is not capped below the pool by default");
     assert.equal(opts.sessionState, join(dirname(opts.state), "sessions.state.json"));
     assert.equal(opts.allowAllTools, false, "full tool access is opt-in");
-    assert.equal(opts.subagentBackground, false);
+    assert.equal(opts.subagentBackground, undefined, "background subagents are retired");
   });
 
   it("takes the pool knobs from flags, environment and the agent config", () => {
@@ -2329,14 +2364,25 @@ describe("the resident session pool surface", () => {
     assert.equal(fromEnv.allowAllToolsReason, "fleet policy");
   });
 
-  it("turns on background subagents from the flag or the environment", () => {
-    assert.equal(parseArgs(["--actor-kind", "claude", "--subagent-background"], ENV).subagentBackground, true);
-    assert.equal(
-      parseArgs(["--actor-kind", "claude"], { ...ENV, MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND: "yes" }).subagentBackground,
-      true,
+  it("retires background subagents", () => {
+    // No adapter reports a per-subagent completion, so the switch can only leak
+    // slots. An explicit "yes" fails loudly; "no" (the shipped config) is inert.
+    for (const argv of [["--subagent-background"], ["--subagent-background=yes"]]) {
+      assert.throws(
+        () => parseArgs(["--actor-kind", "claude", ...argv], ENV),
+        /background subagents are retired/,
+      );
+    }
+    assert.throws(
+      () => parseArgs(["--actor-kind", "claude"], { ...ENV, MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND: "yes" }),
+      /background subagents are retired/,
     );
     assert.equal(
       parseArgs(["--actor-kind", "claude", "--subagent-background=no"], ENV).subagentBackground,
+      false,
+    );
+    assert.equal(
+      parseArgs(["--actor-kind", "claude"], { ...ENV, MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND: "no" }).subagentBackground,
       false,
     );
   });

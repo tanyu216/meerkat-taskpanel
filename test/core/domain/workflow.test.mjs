@@ -501,7 +501,8 @@ describe("planReviewOutcomes", () => {
       verdicts: { "T-2": verdict },
       config: CONFIG,
     });
-    assert.deepEqual(result.actions, []);
+    assert.deepEqual(result.actions.map((action) => action.type), ["reopen_review"]);
+    assert.equal(result.actions[0].reason, "acceptance_incomplete");
     assert.equal(result.alerts[0].type, "verdict_incomplete");
     assert.deepEqual(result.alerts[0].missing, ["b"]);
   });
@@ -516,7 +517,7 @@ describe("planReviewOutcomes", () => {
       verdicts: { "T-2": approve },
       config: CONFIG,
     });
-    assert.deepEqual(missing.actions, []);
+    assert.deepEqual(missing.actions.map((action) => action.type), ["reopen_review"]);
     assert.equal(missing.alerts[0].type, "verdict_incomplete");
     assert.equal(missing.alerts[0].reason, "rollup_unverified");
 
@@ -526,7 +527,7 @@ describe("planReviewOutcomes", () => {
       reportsByRef: { "E-1": { is_rollup: true, acceptance: [] } },
       config: CONFIG,
     });
-    assert.deepEqual(stale.actions, []);
+    assert.deepEqual(stale.actions.map((action) => action.type), ["reopen_review"]);
     assert.equal(stale.alerts[0].reason, "rollup_stale");
     assert.deepEqual(stale.alerts[0].missingChildren, ["T-9"]);
 
@@ -602,12 +603,77 @@ describe("planReviewOutcomes", () => {
     assert.equal(result.actions[0].reason, "original_canceled");
   });
 
-  it("alerts and moves nothing when the verdict cannot be read", () => {
-    for (const verdicts of [{}, { "T-2": { ok: false, reason: "no_verdict" } }]) {
+  it("reopens a review card whose verdict cannot be read, within the bound", () => {
+    for (const [verdicts, reason] of [
+      [{}, "not_read"],
+      [{ "T-2": { ok: false, reason: "no_verdict" } }, "no_verdict"],
+    ]) {
       const result = outcomes({ tasks: [card(), reviewCard()], verdicts, config: CONFIG });
-      assert.deepEqual(result.actions, []);
+      assert.deepEqual(result.actions.map((action) => action.type), ["reopen_review"]);
+      assert.equal(result.actions[0].retry, 1);
+      assert.equal(result.actions[0].reason, reason);
+      assert.equal(result.actions[0].reviewStatus, "in_review");
       assert.deepEqual(result.alerts.map((alert) => alert.type), ["verdict_unreadable"]);
     }
+  });
+
+  it("does not reopen a review whose original is already done", () => {
+    const result = outcomes({
+      tasks: [card({ status: "done" }), reviewCard()],
+      verdicts: {},
+      config: CONFIG,
+    });
+    assert.deepEqual(result.actions, []);
+    assert.deepEqual(result.alerts.map((alert) => alert.type), ["verdict_unreadable"]);
+  });
+
+  it("stops reopening at the bound and leaves the card to a human", () => {
+    const review = reviewCard({
+      meta: { review_of: "T-1", flow: "B", review_round: 1, review_retry: "2" },
+    });
+    const result = outcomes({ tasks: [card(), review], verdicts: {}, config: CONFIG });
+    assert.deepEqual(result.actions, []);
+    assert.ok(result.alerts.some((alert) => alert.type === "review_retries_exhausted"));
+  });
+
+  it("finishes an interrupted reopen without touching a re-claimed card", () => {
+    const interrupted = reviewCard({
+      status: "in_progress",
+      heartbeat_at: "2026-10-19T09:00:00.000Z",
+      meta: {
+        review_of: "T-1",
+        flow: "B",
+        review_round: 1,
+        review_retry: "1",
+        review_reopen_at: "2026-10-19T10:00:00.000Z",
+      },
+    });
+    const result = outcomes({
+      tasks: [card(), interrupted],
+      verdicts: {},
+      config: CONFIG,
+      now: NOW,
+    });
+    assert.deepEqual(result.actions.map((action) => action.type), ["reopen_review"]);
+    assert.equal(result.actions[0].reviewStatus, "in_progress");
+    assert.equal(result.actions[0].reason, "reopen_interrupted");
+
+    const reclaimed = reviewCard({
+      status: "in_progress",
+      heartbeat_at: "2026-10-19T11:00:00.000Z",
+      meta: {
+        review_of: "T-1",
+        flow: "B",
+        review_round: 1,
+        review_retry: "1",
+        review_reopen_at: "2026-10-19T10:00:00.000Z",
+      },
+    });
+    assert.deepEqual(
+      outcomes({ tasks: [card(), reclaimed], verdicts: {}, config: CONFIG, now: NOW }).actions,
+      [],
+      "a fresh heartbeat means someone re-claimed it after the marker",
+    );
   });
 
   it("says nothing while the reviewer has not delivered yet", () => {

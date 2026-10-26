@@ -96,6 +96,14 @@ describe("claude session args", () => {
     assert.doesNotMatch(allowedToolsFor("control"), /Edit|Write/);
     assert.match(allowedToolsFor("worker"), /Edit/);
   });
+
+  it("lets each lane spawn its subagent", () => {
+    // A project/reviewer session that cannot spawn has no way to dispatch the
+    // card it was handed. `Agent` is the current CLI's tool; `Task` is the alias
+    // older builds use, and an unmatched allowlist entry is inert.
+    assert.match(allowedToolsFor("reviewer"), /Agent/);
+    assert.match(allowedToolsFor("worker"), /Agent/);
+  });
 });
 
 describe("claude resident session", () => {
