@@ -54,3 +54,40 @@ own answer.
 Assert: the role names `Jobs`/`Linus`/`Turing` are the agent identities, `--assignee-kind
 agent` / `--reporter-kind agent` are used where applicable, and `--as-human` signs the
 fixed `TASKCTL_HUMAN`, never a role name.
+
+## 7. Setup interview
+
+> Set up Meerkat TaskPanel for Claude on this repo. The board is remote at
+> `http://board.internal:9527`, I want a project-scoped team, and I am not sure the standard
+> team fits. Do not install or write anything — show me the setup interview you would run
+> first.
+
+Assert: detection runs first and its facts are used rather than re-asked; the open decisions
+are one numbered round (Q1..Qn) with a recommendation each, worded so "yes" accepts it; the
+team question is adversarial and asks for a counterexample card; nothing is installed,
+written or started before the frontier is empty; `--yes` accepts only recommended
+non-destructive answers.
+
+## 8. Custom-team co-design
+
+> Design a custom team for a product with heavy docs and mobile work. We have
+> Jobs/Linus/Turing today, but docs changes and release notes keep falling through, and
+> nobody is clearly testing the mobile app. Do not install anything; show the team design
+> and the questions you would settle first.
+
+Assert: an ownership matrix gives every card shape exactly one accountable role; the
+docs/release-notes and mobile-testing gaps are named as unowned or double-owned findings; a
+concrete counterexample card is requested; the reviewer stays independent and the ladder is
+unchanged; the questions are one numbered round and nothing is installed.
+
+## 9. Decision round
+
+> A Jobs card has four open decisions: the design register, the mobile breakpoint, a
+> terminology conflict, and whether to expand scope to cover a second persona. Show the
+> decision round Jobs sends and how the loop handles each answer.
+
+Assert: one agent `question` comment carries Q1..Q4 with recommendations; the project session
+answers the operational items in one `note` and moves the card once; the E3 register and the
+E1 scope expansion go to the human in one `awaiting` string; the subagent writes no decision
+kind and never enters awaiting; only a human comment resumes, and an incomplete answer is not
+consent.

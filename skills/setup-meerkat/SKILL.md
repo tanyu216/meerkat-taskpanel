@@ -63,6 +63,30 @@ Report the important rows, not the raw JSON:
 
 If the JSON is malformed, stop and report; never guess a path.
 
+## The setup interview
+
+Run the setup as one decision round. Detection is the fact-gatherer: never ask the user for
+a board URL, role root, actor kind or human name that `detect.mjs` can establish. The
+**frontier** is every setup *decision* detection leaves open — the board target, the install
+set, the team shape, the role set, the scope, the identity and the tracker integration.
+
+Ask the whole frontier in **one numbered round**, each question carrying a recommended
+answer and worded so "yes" accepts it; `--yes` is the same shorthand for the recommended
+non-destructive answers. A question that depends on another open one belongs to a later
+round: the daemon question waits for "local + unreachable", and the custom-team questions
+wait for "custom". Recompute after the answers.
+
+The team choice is adversarial. Ask what the standard team would get wrong here, demand a
+concrete counterexample card — a real card that would fall between two roles or belong to
+none — and list the card shapes the project actually has. Require an ownership matrix: every
+card shape has exactly one accountable role, and the reviewer is independent of the
+producer. An unowned card shape is a finding, not a detail for later.
+
+The round closes only when the frontier is empty. Do not install, write a file or start a
+daemon before that, and never treat an incomplete answer as consent. `--yes` never authorizes
+starting a daemon, replacing a different existing file, overwriting an unrelated tracker, or
+a remote server the user did not name.
+
 ## 2. Install or repair
 
 Pick the source, in this order:
@@ -138,7 +162,10 @@ labels: the registry is read-only and grows when a card names a label.
 
 ## 4. Team
 
-Ask: **standard** / **custom** / **skip**.
+The team shape is one frontier question in the setup round (§The setup interview):
+**standard** / **custom** / **skip**, with a recommendation and the trade-off. Ask it once,
+with the rest of the frontier; the standard template below is the recommended answer unless
+the project's card shapes contradict it.
 
 The standard template is `assets/team/standard/`:
 

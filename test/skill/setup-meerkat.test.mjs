@@ -430,6 +430,27 @@ describe("skill frontmatter and assets", () => {
     assert.ok(prompt.length <= 2400, "the reviewer prompt must fit its 2,400-character inline budget");
   });
 
+  it("runs the setup interview as one adversarial frontier round", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    assert.match(skill, /## The setup interview/);
+    assert.match(skill, /frontier/);
+    assert.match(skill, /numbered round/i);
+    assert.match(skill, /"yes" accepts/);
+    assert.match(skill, /counterexample/i);
+    assert.match(skill, /unowned card shape/i);
+    assert.match(skill, /frontier is empty[\s\S]*install/i);
+    assert.match(skill, /--yes.*never authorizes/);
+  });
+
+  it("co-designs a custom team against card shapes", () => {
+    const roles = readFileSync(join(SKILL, "references", "roles.md"), "utf8");
+    assert.match(roles, /counterexample/i);
+    assert.match(roles, /card shape/i);
+    assert.match(roles, /exactly one accountable role/i);
+    assert.match(roles, /independent reviewer/i);
+    assert.match(roles, /subagent → main session → human|only a human comment resumes/i);
+  });
+
   it("does not ship a roles/ directory inside the loop skill", () => {
     assert.equal(existsSync(join(ROOT, "skills", "meerkat-loop", "roles")), false);
   });
@@ -437,11 +458,15 @@ describe("skill frontmatter and assets", () => {
   it("keeps the skill-creator eval prompts parseable", () => {
     const evals = JSON.parse(readFileSync(join(SKILL, "evals", "evals.json"), "utf8"));
     assert.equal(evals.skill_name, "setup-meerkat");
-    assert.equal(evals.evals.length, 6);
+    assert.equal(evals.evals.length, 9);
     for (const entry of evals.evals) {
       assert.equal(typeof entry.prompt, "string");
       assert.ok(entry.prompt.length > 20, `eval ${entry.id}: prompt`);
       assert.ok(Array.isArray(entry.assertions) && entry.assertions.length > 0, `eval ${entry.id}: assertions`);
+    }
+    const names = new Set(evals.evals.map((entry) => entry.name));
+    for (const name of ["setup-interview", "custom-team-co-design", "decision-round"]) {
+      assert.ok(names.has(name), `eval ${name} must exist`);
     }
   });
 

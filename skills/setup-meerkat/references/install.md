@@ -53,6 +53,10 @@ not authorization; a data command (`taskctl project list`) proves the token.
 
 ## Confirmation gates
 
+These gates are asked inside the setup interview's frontier (`SKILL.md` §The setup
+interview); `--yes` accepts the recommended non-destructive answers and never authorizes a
+gate on its own.
+
 - Show `--dry-run` output before writing.
 - Ask before loading/enabling the supervisor (`--supervisor=enable`).
 - Ask before `--force`; forcing the loop skill replaces its `roles/` directory, so re-run

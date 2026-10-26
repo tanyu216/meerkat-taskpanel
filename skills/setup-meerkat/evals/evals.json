@@ -79,6 +79,48 @@
         "Assignee and reporter writes carry --assignee-kind agent / --reporter-kind agent.",
         "The human decision example uses --as-human and does not use a role name as the human identity."
       ]
+    },
+    {
+      "id": 7,
+      "name": "setup-interview",
+      "prompt": "Set up Meerkat TaskPanel for Claude on this repo. The board is remote at http://board.internal:9527, I want a project-scoped team, and I am not sure the standard team fits. Do not install or write anything - show me the setup interview you would run first.",
+      "expected_output": "Detection first, used as facts; one numbered frontier round with recommended answers worded so 'yes' accepts them; the standard-team fit is challenged with a counterexample card shape; no install, write or daemon before the frontier closes.",
+      "files": [],
+      "assertions": [
+        "The response runs detection (or names the facts it would detect) before asking, and never asks for a fact detection can establish.",
+        "The open decisions are one numbered round (Q1..Qn), each with a recommended answer worded so 'yes' accepts it.",
+        "The team question is adversarial: it asks for a counterexample card or a card shape that would fall between roles.",
+        "No install, file write or daemon start happens before the frontier is empty and the answers are confirmed.",
+        "--yes is described as accepting only recommended non-destructive answers."
+      ]
+    },
+    {
+      "id": 8,
+      "name": "custom-team-co-design",
+      "prompt": "Design a custom team for a product with heavy docs and mobile work. We have Jobs/Linus/Turing today, but docs changes and release notes keep falling through, and nobody is clearly testing the mobile app. Do not install anything; show the team design and the questions you would settle first.",
+      "expected_output": "A card-shape ownership matrix with exactly one accountable role per shape; at least one unowned or double-owned shape named as a finding; a counterexample card; an independent reviewer; one numbered round; no install before the frontier closes.",
+      "files": [],
+      "assertions": [
+        "The design lists card shapes and gives each exactly one accountable role.",
+        "At least one shape (docs/release notes or mobile testing) is named as unowned or double-owned, as a finding.",
+        "It asks for a concrete counterexample card the proposed split would get wrong.",
+        "The reviewer remains independent and the ladder (subagent -> main session -> human) is unchanged.",
+        "The questions are one numbered round with recommendations, and nothing is installed."
+      ]
+    },
+    {
+      "id": 9,
+      "name": "decision-round",
+      "prompt": "A Jobs card has four open decisions: the design register, the mobile breakpoint, a terminology conflict, and whether to expand scope to cover a second persona. Show the decision round Jobs sends and how the loop handles each answer.",
+      "expected_output": "One question comment carrying Q1..Q4 with recommendations; the operational items answered by the project session in one note with one move; E3 (register) and E1 (scope expansion) escalated in one awaiting string; the subagent writes no decision kind and never enters awaiting; only a human comment resumes.",
+      "files": [],
+      "assertions": [
+        "The four items are one question comment (Q1..Q4), each with a recommendation, not four separate comments.",
+        "The design register (E3) and the scope expansion (E1) are escalated to the human, not decided by the subagent or the project session.",
+        "The terminology conflict and the breakpoint are answered by the project session in one note, then the card moves once.",
+        "The subagent keeps the card in_progress, writes no decision/confirm/change, and does not enter awaiting.",
+        "Only a human comment resumes awaiting; an incomplete answer is not consent."
+      ]
     }
   ]
 }
