@@ -295,6 +295,16 @@ session answers what it can with a `note` (then reattaches the subagent or moves
 to `todo`), or escalates E1-E5 to the human with
 `issue move <ref> awaiting --awaiting-reason E1..E5 --question "…"`.
 
+A question is asked as a **round**: the frontier is every open decision whose prerequisites
+are settled, numbered Q1..Qn with a recommendation, worded so "yes" accepts it. One round is
+one question string per card — the subagent puts the whole frontier in one `question`
+comment, the project session answers the decidable items in one `note`, and an escalation
+names the E1-E5 items in one `awaiting` string. Facts are the asker's job; never ask the
+human for a fact the card, code or docs can establish. In manual mode the console lists
+every waiting card, so ask them in one message with one numbered block per card, then
+recompute and ask only the newly unblocked round. The full protocol is
+`references/decision-policy.md` §Decision rounds.
+
 Any human comment auto-resumes an awaiting card — the kind does not matter and the board
 does not read it. Approve, reject and direction are judged from the content by the resumed
 worker; an incomplete or ambiguous answer is not consent, and the card goes back to

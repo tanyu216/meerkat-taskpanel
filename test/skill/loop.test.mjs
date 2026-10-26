@@ -287,6 +287,31 @@ describe("loop skill: SKILL.md", () => {
     assert.match(operation, /--as-human/);
     assert.match(operation, /re-read/);
     assert.match(operation, /UI/);
+    assert.match(operation, /frontier/i);
+    assert.match(operation, /one numbered block per card/i);
+  });
+
+  it("batches the question frontier in manual mode", () => {
+    const begin = text.indexOf("#### Manual mode");
+    assert.notEqual(begin, -1, "manual mode must have its own sub-section");
+    const next = text.indexOf("\n### ", begin + 1);
+    const manual = text.slice(begin, next === -1 ? text.length : next);
+
+    assert.match(manual, /frontier/i);
+    assert.match(manual, /one message/i);
+    assert.match(manual, /one numbered block per card/i);
+    assert.match(manual, /one question string/i);
+    assert.match(manual, /Only a human comment resumes awaiting/);
+  });
+
+  it("documents the decision round in the decision policy", () => {
+    const policy = readFileSync(join(LOOP_SKILL, "references", "decision-policy.md"), "utf8");
+    assert.match(policy, /## Decision rounds/);
+    assert.match(policy, /frontier/);
+    assert.match(policy, /Facts are the asker's job/i);
+    assert.match(policy, /counterexample/i);
+    assert.match(policy, /Only a human comment resumes/);
+    assert.match(policy, /one question string/i);
   });
 
   it("declares the board interface it requires", () => {
