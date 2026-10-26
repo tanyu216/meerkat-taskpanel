@@ -9,6 +9,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Decisions are asked as one frontier round.** The worker handoff and the continue turn
+  now share one decision-round protocol: a round is the whole frontier of decisions whose
+  prerequisites are settled, numbered Q1..Qn with a recommendation worded so "yes" accepts
+  it, and the asker looks the facts up. One round is one question string per card, so the
+  console's newest-question read never orphans an item. The standard team keeps the protocol
+  in its `decision-policy.md` and the role workflows point at it. `/setup-meerkat` runs its
+  setup interview and custom-team co-design in adversarial mode, requiring a counterexample
+  card and an ownership matrix before anything is installed.
+
 - **One event, one task read, even with the drawer open.** A task event used to refresh the
   card and the open drawer's task separately. The card refresh now patches both; the drawer's
   incremental refresh only rereads the sub-resource the event invalidated.
