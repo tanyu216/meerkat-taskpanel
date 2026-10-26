@@ -12,15 +12,7 @@
  * Pure file I/O and timers only — no `src/core`, no transport.
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 
 import {
   CARD_REFRESH_MIN_MS,
@@ -29,6 +21,7 @@ import {
   EVENT_STREAM_LINE,
 } from "../foundation/constants.mjs";
 import { CARD_BRIEF_FILE, cardDirRel } from "../foundation/card-brief.mjs";
+import { writeCardFileAtomic } from "../foundation/card-write.mjs";
 import { DomainError } from "../foundation/errors.mjs";
 
 /**
@@ -64,11 +57,10 @@ export function watchPath(dir, identifier) {
 /**
  * Write the server's markdown over a card brief, atomically.
  *
- * **No growth guard here, deliberately.** A machine-generated brief
- * legitimately grows when comments or a report land; the loop's refresher has
- * the same exemption (`scripts/loop/card-file.mjs`), and the unique temp path is
- * always fresh anyway. A byte-identical file is left untouched so mtime does not
- * churn on every unrelated event.
+ * The file discipline — unique temp, byte-identical skip, growth-guard
+ * exemption — is documented once in `src/foundation/card-write.mjs`, shared
+ * with the loop's exporter. This wrapper keeps the CLI's error contract: an
+ * empty render is a `DomainError`, not a silent no-op.
  *
  * @param {string} file
  * @param {string} markdown
@@ -81,29 +73,7 @@ export function writeCardFile(file, markdown) {
       details: { path: file },
     });
   }
-  const dir = dirname(file);
-  mkdirSync(dir, { recursive: true });
-  if (existsSync(file) && readFileSync(file, "utf8") === markdown) {
-    return { path: file, changed: false };
-  }
-
-  const temp = join(
-    dir,
-    `card.${process.pid}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}.tmp.md`,
-  );
-  try {
-    writeFileSync(temp, markdown, "utf8");
-    renameSync(temp, file);
-  } finally {
-    if (existsSync(temp)) {
-      try {
-        rmSync(temp, { force: true });
-      } catch {
-        /* best effort: a leftover temp is not the caller's problem */
-      }
-    }
-  }
-  return { path: file, changed: true };
+  return writeCardFileAtomic({ file, content: markdown });
 }
 
 /**
@@ -115,6 +85,15 @@ export function writeCardFile(file, markdown) {
  * is in flight; `stop()` clears the timer, waits for the in-flight batch, then
  * force-drains whatever was pending (so an event seen just before EOF is not
  * lost).
+ *
+ * The shared contract with `scripts/loop/subscribe.mjs` is only two
+ * expressions: the debounce cap
+ * `min(debounceMs, firstPendingAt + maxWaitMs - now)` and the interval floor
+ * `lastRunAt + minIntervalMs - now`. This scheduler folds the floor into the
+ * same arm; the subscriber arms the debounce and re-arms at the floor in its
+ * `pump()`. Fire times are identical, arm counts are not — both are
+ * deliberate. Do not "fix" one to match the other; their stop/retry semantics
+ * differ for the same reason.
  *
  * @param {{
  *   refresh: (batch: {taskIds: string[], all: boolean, revision: number|null}) => Promise<void>|void,

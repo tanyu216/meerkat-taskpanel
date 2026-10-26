@@ -414,6 +414,11 @@ export function createHubServer(input) {
       outcome: writeCardFile(card.path, card.markdown),
     }));
 
+    // The hub's UUID → identifier view comes from the board export it already
+    // holds, and keeps a card only while it is not `done`. It deliberately does
+    // not follow `review_of` (the export payload does not carry it); the loop
+    // maps the same UUID through `stateDir/cards.queue.json` instead. See
+    // `scripts/loop/card-file.mjs#identifiersForEvent` and `docs/events.md`.
     const watched = new Map();
     for (const card of cards) {
       if (card.status !== "done") watched.set(card.task_id, card.identifier);

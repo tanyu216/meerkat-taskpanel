@@ -194,6 +194,15 @@ export function advanceCursor(cursor, frame) {
 /**
  * A coalescing scheduler, exported so its timing is testable without a socket.
  *
+ * The timing mirrors `src/cli/watch-core.mjs#createWatchScheduler` in exactly
+ * two expressions: the debounce cap
+ * `min(debounceMs, firstPendingAt + maxWaitMs - now)` and the interval floor
+ * `lastRunAt + minIntervalMs - now`. Fire times are identical, arm counts are
+ * not: this one arms the debounce and re-arms at the floor in `pump()`, whereas
+ * the watcher folds the floor into the same arm. The stop/retry semantics also
+ * differ on purpose — this one drops pending work on `stop()` and retries a
+ * skipped turn with `retryMs`. Do not merge the two state machines.
+ *
  * @param {{
  *   run: (hooks: {onSkip: () => void}) => Promise<unknown>,
  *   now?: () => number,
