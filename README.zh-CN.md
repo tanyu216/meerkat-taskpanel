@@ -32,7 +32,7 @@ Meerkat TaskPanel 是为 AI Agent 团队而生的任务看板。它关注的是 
 >
 > `src/core/` 包含领域模型、SQLite 存储与迁移、用例和 `openBoard()`。`src/cli/` 与 `src/server/` 提供真实的 `taskctl` 命令面，以及 CLI 在回环地址上自动启动的本地 `taskd` HTTP 服务（`TASKD_NO_AUTOSTART=1` 可禁用）。`src/server/` 提供看板 HTTP API 与 SSE 事件流。`web/` 是 Vue 3 看板，构建到 `web/dist`，由 `taskd` 提供。Agent 集成只走 skill，驱动 `taskctl` CLI（见 [`docs/install.md`](docs/install.md)）。
 >
-> 仍待实现：Epic 视图与迭代管理（见[路线图](#路线图)）。更多细节见 `CLAUDE.md` 与 [`docs/development.md`](docs/development.md)。
+> 仍待实现（按优先级）：IM 集成（通道插件）、Epic 视图与迭代管理（见[路线图](#路线图)）。更多细节见 `CLAUDE.md` 与 [`docs/development.md`](docs/development.md)。
 
 ## 亮点
 
@@ -279,6 +279,8 @@ npm run check
 
 ## 路线图
 
+按优先级排序；IM 集成是下一项。
+
 | 能力域 | 内容 | 状态 |
 |---|---|---|
 | **引擎** | `src/core/` —— 领域模型、SQLite 存储与迁移、状态机、下沉到数据库触发器的各项不变量、`openBoard()` | *已落地* |
@@ -287,6 +289,7 @@ npm run check
 | **md 导出** | `src/core/storage/md/` —— `taskctl export md` 为每张卡写一份规范 markdown | *已落地* |
 | **看板 API 与前端** | `src/server/` —— 完整的看板 HTTP API 及其 SSE 流；`web/` —— 构建到 `web/dist` 的 Vue 3 看板 | *已落地* |
 | **meerkat-loop** | `skills/meerkat-loop/` —— 外部调度器：60 秒 ping、600 秒 continue 回合（SLA 巡检 → workflow → poll）与常驻会话池；只通过 `taskctl` 驱动看板 | *已落地* |
+| **IM 集成** | 把“需要人”的项（awaiting / agent question / 待验收）推到 IM，在 IM 里记录决策与验收，并回答进展查询。引擎只提供插件宿主 + `channel-kit`；每个平台（飞书、Slack、微信、WhatsApp、Teams、Telegram）是独立适配器包，基于第三方 SDK。见 [docs/im-integration.md](docs/im-integration.md)。 | *（规划中 —— 优先于下列项）* |
 | **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合 | *（规划中）* |
 | **迭代管理** | 迭代（sprint）周期管理：任务归入迭代、迭代内进度与容量 | *（规划中）* |
 | **OpenClaw 的 loop 支持** | 为 `openclaw` 目标安装并运行 `meerkat-loop`（调度单元 + 会话池）。当前 `--target openclaw` 只装看板 skill；与 OpenClaw 自带 poll/patrol 如何共存仍待设计 | *（规划中）* |

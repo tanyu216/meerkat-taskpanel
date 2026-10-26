@@ -32,7 +32,7 @@ Meerkat TaskPanel is a task board built for AI-agent teams. Its subject is the c
 >
 > `src/core/` holds the domain model, SQLite storage and migrations, use-cases and `openBoard()`. `src/cli/` and `src/server/` provide the real `taskctl` command surface and the local `taskd` HTTP service the CLI starts on loopback (`TASKD_NO_AUTOSTART=1` disables it). `src/server/` serves the board HTTP API and its SSE stream. `web/` is the Vue 3 board, built to `web/dist` and served by `taskd`. Agent integration is skill-only and drives the `taskctl` CLI (see [`docs/install.md`](docs/install.md)).
 >
-> Still planned: the Epic view and iteration management (see the [roadmap](#roadmap)). More detail: `CLAUDE.md` and [`docs/development.md`](docs/development.md).
+> Still planned (in priority order): IM integration (channel plugins), the Epic view, and iteration management (see the [roadmap](#roadmap)). More detail: `CLAUDE.md` and [`docs/development.md`](docs/development.md).
 
 ## Highlights
 
@@ -279,6 +279,8 @@ npm run check
 
 ## Roadmap
 
+Ordered by priority; IM integration is the next planned item.
+
 | Area | Contents | Status |
 |---|---|---|
 | **Engine** | `src/core/` — domain model, SQLite storage + migrations, state machine, invariants pushed down into database triggers, `openBoard()` | *landed* |
@@ -287,6 +289,7 @@ npm run check
 | **Markdown export** | `src/core/storage/md/` — `taskctl export md` writes one canonical card per task | *landed* |
 | **Board API & frontend** | `src/server/` — the full board HTTP API and its SSE stream; `web/` — the Vue 3 board built to `web/dist` | *landed* |
 | **meerkat-loop** | `skills/meerkat-loop/` — the external scheduler: a 60s ping, a 600s continue turn (SLA patrol → workflow → poll) and the resident session pool; drives the board through `taskctl` only | *landed* |
+| **IM integration** | Push “needs a human” items (awaiting / agent questions / pending acceptance) to IM, record decisions and acceptances from IM, and answer progress questions. The engine gets a plugin host + `channel-kit`; each platform (Feishu, Slack, WeChat, WhatsApp, Teams, Telegram) is an independent adapter package built on a third-party SDK. See [docs/im-integration.md](docs/im-integration.md). | *(planned — priority above the items below)* |
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate | *(planned)* |
 | **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity | *(planned)* |
 | **OpenClaw loop support** | Install and run `meerkat-loop` for the `openclaw` target (scheduling units + session pool). Today `--target openclaw` installs the board skill only; how it should coexist with OpenClaw's own poll/patrol still needs design | *(planned)* |

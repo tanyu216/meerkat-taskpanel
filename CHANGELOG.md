@@ -91,6 +91,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `report write` command. The migration rebuilds `task_reports` to drop the column,
   preserving every row.
 
+- **IM integration is on the roadmap.** A requirements/design document
+  (`docs/im-integration.md`) specifies a plugin host + `channel-kit` contract: push the three
+  “needs a human” classes to IM, record decisions and acceptances from IM, and answer
+  progress questions. Platform adapters are independent packages built on third-party SDKs;
+  no IM code lands in this pass. The roadmap lists it above the Epic view and iteration
+  management.
+
 ### Removed
 
 - **The acceptance compatibility layer (migration `0040`).** `projects.review_policy` and
