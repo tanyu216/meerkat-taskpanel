@@ -15,6 +15,7 @@ import {
   pruneSlaLedger,
 } from "../../src/foundation/sla-patrol.mjs";
 
+import { isQuestionSettled, newestQuestion } from "./questions.mjs";
 import { notifySlaAlerts, runWorkflowTick, notifyReal } from "./runners.mjs";
 import {
   loadSlaLedger,
@@ -73,6 +74,69 @@ export function readProjectReviewers(opts, log) {
     return { ok: false, projects: [], error: read.error };
   }
   return { ok: true, projects: Array.isArray(read.data?.projects) ? read.data.projects : [] };
+}
+
+/** A non-empty trimmed string, or `null`. */
+function textOf(value) {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+/**
+ * Every `in_progress` card whose newest agent question nobody has answered.
+ *
+ * The question lane's input. A review card is skipped (a reviewer never asks)
+ * and so is an epic (it is not a worker's card). The read is bounded by
+ * `--board-limit`; one card whose comments cannot be read is logged and
+ * skipped, not fatal.
+ *
+ * @param {object} opts
+ * @param {(message: string) => void} log
+ * @param {Function} [run] the `runCli` seam, injectable for tests
+ * @returns {{ok: boolean, rows: object[], error: string|null}}
+ */
+export function readOpenQuestions(opts, log, run = runCli) {
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, rows: [], error: "no agent configured" };
+  const read = run(opts, agent, [
+    "issue",
+    "list",
+    "--status",
+    "in_progress",
+    "--limit",
+    String(opts.boardLimit),
+  ]);
+  if (!read.ok) {
+    log(`question lane: issue list failed: ${read.error}`);
+    return { ok: false, rows: [], error: read.error };
+  }
+  const tasks = Array.isArray(read.data?.tasks) ? read.data.tasks : [];
+  const rows = [];
+  for (const task of tasks) {
+    if (textOf(task?.kind) === "epic") continue;
+    if (textOf(task?.review_of_id) !== null || textOf(task?.meta?.review_of) !== null) continue;
+    const project = textOf(task?.project);
+    const ref = textOf(task?.identifier);
+    if (project === null || ref === null) continue;
+
+    const comments = run(opts, agent, ["comment", "list", ref, "--limit", "20"]);
+    if (!comments.ok) {
+      log(`question lane: ${ref} comments unreadable: ${comments.error}`);
+      continue;
+    }
+    const list = Array.isArray(comments.data?.comments) ? comments.data.comments : [];
+    const question = newestQuestion(list);
+    if (question === null || isQuestionSettled(list, question)) continue;
+
+    rows.push({
+      ref,
+      project,
+      agent: textOf(task?.assignee?.display_name) ?? textOf(task?.assignee?.id) ?? agent,
+      question_id: textOf(question?.id) ?? `${ref}:${String(question?.created_at ?? "")}`,
+      body: String(question?.body ?? ""),
+      asked_at: textOf(question?.created_at),
+    });
+  }
+  return { ok: true, rows, error: null };
 }
 
 /**

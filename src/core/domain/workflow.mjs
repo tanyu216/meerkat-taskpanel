@@ -92,6 +92,13 @@ export { LOOP_ACCEPTOR, LOOP_AUTO_ACCEPTOR };
 /** The most evidence a verdict's findings may carry into a comment. */
 export const FINDINGS_MAX_CHARS = 4_000;
 
+/**
+ * How many times the loop re-dispatches a reviewer for a verdict it cannot
+ * apply (unreadable, or an APPROVE that does not cover its baseline). After
+ * this bound the card is left for a human rather than looping a broken reviewer.
+ */
+export const DEFAULT_REVIEW_REOPEN_MAX = 2;
+
 /** Statuses a card never leaves. */
 const TERMINAL_STATUSES = new Set(["done", "canceled"]);
 
@@ -689,6 +696,38 @@ export function planReviewOutcomes(input = {}) {
   const alerts = [];
   const actions = [];
 
+  const reopenMax =
+    Number.isFinite(input.config?.reviewReopenMax) && input.config.reviewReopenMax >= 0
+      ? input.config.reviewReopenMax
+      : DEFAULT_REVIEW_REOPEN_MAX;
+  const retriesOf = (review) => intOrNull(review?.meta?.review_retry) ?? 0;
+  // A verdict the loop cannot apply is re-dispatched, not parked. The retry
+  // marker is written by the runner before the two-hop move, so a crash between
+  // the hops is recovered (see the `in_progress` branch below).
+  const reopenOrExhausted = ({ review, reviewRef, originalRef, round, reason }) => {
+    const retry = retriesOf(review);
+    if (retry < reopenMax) {
+      actions.push({
+        type: "reopen_review",
+        reviewStatus: review.status,
+        reviewRef,
+        originalRef,
+        round,
+        retry: retry + 1,
+        reason,
+      });
+      return;
+    }
+    alerts.push({
+      type: "review_retries_exhausted",
+      review: reviewRef,
+      original: originalRef,
+      reason,
+      retries: retry,
+      dedupKey: alertKey("review_retries_exhausted", reviewRef, reason),
+    });
+  };
+
   for (const review of tasks) {
     if (!isReviewCard(review, byId)) continue;
     const reviewRef = String(review.identifier ?? "");
@@ -768,22 +807,50 @@ export function planReviewOutcomes(input = {}) {
       continue;
     }
 
+    // Crash recovery: the retry marker is written before the two-hop move. An
+    // `in_progress` review card whose heartbeat is not newer than that marker
+    // died between the hops; a fresh heartbeat means it was re-claimed after
+    // the marker, so leave it alone.
+    if (review.status === "in_progress") {
+      const marker = instant(review.meta?.review_reopen_at);
+      const beat = instant(review.heartbeat_at);
+      if (marker !== null && (beat === null || beat <= marker)) {
+        actions.push({
+          type: "reopen_review",
+          reviewStatus: "in_progress",
+          reviewRef,
+          originalRef,
+          round,
+          retry: retriesOf(review),
+          reason: "reopen_interrupted",
+        });
+        continue;
+      }
+    }
+
     const verdict = verdicts[reviewRef];
     if (verdict === undefined || verdict?.ok !== true) {
       // A review card that has not reported yet is simply in flight. One that
-      // *has* a report the loop cannot read is a fail-safe alarm: move nothing,
-      // retry (or let a human read it) next pass. And one that never reports at
-      // all is now the loop's own wait — the SLA pass stopped watching the
-      // original when this card was created, so the aging check is what keeps
-      // a silent reviewer from disappearing.
+      // *has* a report the loop cannot read is re-dispatched for a bounded
+      // second review; after the bound it is a human's. One that never reports
+      // at all is now the loop's own wait — the SLA pass stopped watching the
+      // original when this card was created, so the aging check keeps a silent
+      // reviewer from disappearing.
       if (review.status === "in_review") {
+        const reason = verdict?.reason ?? "not_read";
         alerts.push({
           type: "verdict_unreadable",
           review: reviewRef,
           original: originalRef,
-          reason: verdict?.reason ?? "not_read",
-          dedupKey: alertKey("verdict_unreadable", reviewRef, verdict?.reason ?? "not_read"),
+          reason,
+          dedupKey: alertKey("verdict_unreadable", reviewRef, reason),
         });
+        // A done original has nothing left to review: re-dispatching would send
+        // the reviewer to a card whose Step 0 fails every time. Leave it for a
+        // human to cancel.
+        if (original.status !== "done") {
+          reopenOrExhausted({ review, reviewRef, originalRef, round, reason });
+        }
       } else if (now !== null) {
         const age = now - (instant(review.status_changed_at) ?? instant(review.created_at) ?? now);
         if (age >= agingMs) {
@@ -843,6 +910,13 @@ export function planReviewOutcomes(input = {}) {
               ...issue.detail,
               dedupKey: alertKey("verdict_incomplete", reviewRef, issue.reason, issue.key),
             });
+            reopenOrExhausted({
+              review,
+              reviewRef,
+              originalRef,
+              round,
+              reason: issue.reason,
+            });
             continue;
           }
         }
@@ -870,6 +944,13 @@ export function planReviewOutcomes(input = {}) {
               missing: coverage.missing.map((item) => item.text),
               blocking: coverage.blocking.map((item) => item.text),
               dedupKey: alertKey("verdict_incomplete", reviewRef, key),
+            });
+            reopenOrExhausted({
+              review,
+              reviewRef,
+              originalRef,
+              round,
+              reason: "acceptance_incomplete",
             });
             continue;
           }

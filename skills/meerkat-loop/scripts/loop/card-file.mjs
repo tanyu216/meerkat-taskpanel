@@ -27,7 +27,7 @@ import { readCards } from "./queue.mjs";
 import { runCli } from "./runtime.mjs";
 
 /** Queue rows whose card may still be worked (and whose brief should follow). */
-export const ACTIVE_CARD_STATUSES = Object.freeze(["pending", "processing", "dispatched"]);
+export const ACTIVE_CARD_STATUSES = Object.freeze(["pending", "processing"]);
 
 /**
  * Export one card to `<targetDir>/.meerkat/<identifier>/card.md`.

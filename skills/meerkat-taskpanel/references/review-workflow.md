@@ -75,12 +75,17 @@ on the review card:
 What the loop does next depends on why the target moved:
 
 - **The original was canceled** — the loop cancels the review card (`cancel_review`).
-- **The original is on a later round** — the verdict is history. With review auto-accept on
-  the loop closes the review card; with it off the loop raises `review_stale_round` and
-  writes nothing.
+- **The original is on a later round** — the verdict is history; the loop closes the review
+  card (`round_mismatch`) without touching the original.
 - **The original is `done` at the same round** — the loop raises `verdict_unreadable` and
   leaves the review card open. A human must cancel it with the two-hop
   `in_review → in_progress → canceled`.
+- **The verdict cannot be read, or an `APPROVE` does not cover its baseline** — the loop
+  re-dispatches the review card for a second review (`meta.review_retry`, at most two
+  reopens). A reopen is the two-hop `in_review → in_progress → todo`; the card is claimed
+  again and reviewed from scratch. When the bound is reached the loop raises
+  `review_retries_exhausted` and leaves the card for a human. A done original is not
+  reopened: there is nothing left to review.
 
 ### Read
 

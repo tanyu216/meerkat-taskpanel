@@ -96,6 +96,7 @@ export function upsertSubagent(ledger, record) {
     actorKind: record.actorKind ?? null,
     subagentId: id ?? (index === -1 ? null : next.subagents[index].subagentId ?? null),
     role: record.role ?? (index === -1 ? "worker" : next.subagents[index].role ?? "worker"),
+    lane: record.lane ?? (index === -1 ? null : next.subagents[index].lane ?? null),
     card: record.card ?? (index === -1 ? null : next.subagents[index].card ?? null),
     type: record.type ?? (index === -1 ? null : next.subagents[index].type ?? null),
     queueId: record.queueId ?? (index === -1 ? null : next.subagents[index].queueId ?? null),
@@ -177,37 +178,35 @@ export function extractAgentIds(text) {
 }
 
 /**
- * Reconcile live rows against the board. A subagent whose card is no longer in
- * progress (or whose lastSeenAt is older than the bound) is marked `stale`, so
- * a missed agent event cannot pin a concurrency slot forever.
+ * Release a slot no event can close.
  *
- * `cardStatus` is a map `card -> status` read from the board; a missing card is
- * treated as unknown, not as finished.
+ * Every live row is either a turn in flight or an orphan: background dispatch
+ * is retired, and a synchronous project turn marks its subagents completed
+ * before it returns. A row whose last sighting (or start, when it never
+ * reported one) is older than the bound is therefore an orphan; mark it
+ * `stale` so it stops consuming a concurrency slot. A fresh row is untouched.
+ *
+ * `sessionTurnTimeoutMs < LEDGER_STALE_MS` (asserted in
+ * `test/scheduling/time-contract.test.mjs`) keeps this from reaping a live turn.
  *
  * @param {{subagents: object[]}} ledger
- * @param {{cardStatus?: Record<string,string>, now?: number, staleAfterMs?: number}} [options]
- * @returns {{ledger: object, stale: string[]}}
+ * @param {{now?: number, staleAfterMs?: number}} [options]
+ * @returns {{ledger: object, reaped: string[]}}
  */
-export function reconcile(ledger, options = {}) {
+export function reap(ledger, options = {}) {
   const next = normalise(ledger);
-  const cardStatus = options.cardStatus ?? {};
   const now = options.now ?? Date.now();
   const staleAfterMs = Number(options.staleAfterMs ?? LEDGER_STALE_MS);
-  const stale = [];
+  const reaped = [];
   for (const entry of next.subagents) {
     if (!isLive(entry)) continue;
-    const card = String(entry.card ?? "");
-    const status = cardStatus[card];
     const lastSeen = Date.parse(String(entry.lastSeenAt ?? entry.startedAt ?? ""));
-    const old = Number.isFinite(lastSeen) && now - lastSeen > staleAfterMs;
-    const finished = status !== undefined && status !== "in_progress" && status !== "in_review";
-    if (finished && old) {
-      entry.status = "stale";
-      entry.lastSeenAt = new Date(now).toISOString();
-      stale.push(String(entry.subagentId ?? `${entry.sessionKey}:${entry.card}:${entry.role}`));
-    }
+    if (!Number.isFinite(lastSeen) || now - lastSeen <= staleAfterMs) continue;
+    entry.status = "stale";
+    entry.lastSeenAt = new Date(now).toISOString();
+    reaped.push(String(entry.subagentId ?? `${entry.sessionKey}:${entry.card}:${entry.role}`));
   }
-  return { ledger: next, stale };
+  return { ledger: next, reaped };
 }
 
 /**

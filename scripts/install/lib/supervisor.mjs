@@ -145,7 +145,12 @@ export function poolReport(stateDir, options = {}) {
     ? ledger.subagents.filter((row) => LIVE_STATUSES.includes(String(row?.status ?? ""))).length
     : 0;
   const cardsQueued = Array.isArray(cards?.cards)
-    ? cards.cards.filter((row) => row?.status === "pending" || row?.status === "processing").length
+    ? cards.cards.filter(
+        (row) =>
+          (row?.status === "pending" || row?.status === "processing") &&
+          // A question row is a project-session turn, not a queued card.
+          String(row?.queue_kind ?? "handoff") === "handoff",
+      ).length
     : 0;
   const continueQueued = pendingContinue !== null;
   const pid = Number.isInteger(sessions?.poolPid) ? sessions.poolPid : null;

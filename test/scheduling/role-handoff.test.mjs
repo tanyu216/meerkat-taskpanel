@@ -75,16 +75,22 @@ describe("handoffs without a role stay byte-identical", () => {
     // and again when the handoff was told to read every human comment after the
     // last question rather than only the newest one. With no role input the role
     // renderer contributes nothing; this hash is the post-rewrite base.
+    // Re-pinned when the question lane landed: the worker is told the loop
+    // hands its question to the project session, and that the project session's
+    // `decision:` note counts as an answer on re-claim.
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "5a8a80d19ad5c3fb1156fe138940a8ae2760b05c7f3a1bfcb6d6c85d990e4bf3",
+      "d6cc170579db2cbd808e823cc0d9b3fa6abb1af202373384f2ee4acfcca12d87",
     );
   });
 
   it("keeps the reviewer handoff unchanged", () => {
+    // Re-pinned when the reviewer lane became a real tool boundary: a reviewer
+    // subagent inherits a session with no Write, so the handoff no longer
+    // promises a process directory or asks it to download attachments.
     assert.equal(
       hash(buildReviewHandoff(REVIEW_INPUT)),
-      "88c2b7c3a17d3327f4a6d8ee903e4b6b8e2706ba1bd70cf89377cbd58ba63a33",
+      "c6556352586a80407e5a553eab4c3e6ecaa280b64c9fdbc7bab6ef14082f9e2e",
     );
   });
 });

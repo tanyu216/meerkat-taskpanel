@@ -18,6 +18,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
+import { QUEUE_FILES } from "../../scripts/loop/queue.mjs";
 
 import { ACTIONS, LOOP_KINDS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, poolReport, resolveScheduler, stripBlock, subscribeReport, subscribeStatusLine, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
 
@@ -329,8 +330,15 @@ describe("supervisor: the docs and the implementation agree", () => {
       }),
     );
     writeFileSync(
-      join(dir, "cards.queue.json"),
-      JSON.stringify({ version: 1, cards: [{ id: "T-1-worker", status: "pending" }] }),
+      join(dir, QUEUE_FILES.cards),
+      JSON.stringify({
+        version: 1,
+        cards: [
+          { id: "T-1-worker", status: "pending", queue_kind: "handoff" },
+          // The question lane is a project-session turn, not a queued card.
+          { id: "question:T-2:q-1", status: "pending", queue_kind: "question" },
+        ],
+      }),
     );
     writeFileSync(join(dir, "continue.pending.json"), JSON.stringify({ version: 1, reason: "timer" }));
 

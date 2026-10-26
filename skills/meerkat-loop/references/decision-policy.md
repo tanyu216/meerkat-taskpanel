@@ -16,9 +16,11 @@ subagent  →  main session (control/project)  →  human
 ```
 
 A subagent does **not** decide an unauthorized question. It writes an agent
-`question` comment on the card, keeps the card `in_progress`, and stops. The project
-session answers what it can, or escalates. Only the project session may move a card
-to `awaiting`, and only for an E1-E5 decision it cannot make.
+`question` comment on the card, keeps the card `in_progress`, and stops. Poll's
+**question lane** sees the unanswered question and wakes the project session with it (no
+claim, no subagent slot); the session answers with an agent `note` and moves the card to
+`todo`, or escalates. Only the project session may move a card to `awaiting`, and only for
+an E1-E5 decision it cannot make.
 
 ## Who decides what
 
@@ -129,7 +131,8 @@ E-code.
 ## Recording
 
 - Subagent question: `taskctl comment add <ref> --kind question --body "..." <flags>`
-  while the card stays `in_progress`.
+  while the card stays `in_progress`. The loop's question lane hands it to the project
+  session on the next poll.
 - Main-session decision: `taskctl comment add <ref> --kind note --body "decision: ..."`,
   then answer the subagent or `taskctl issue move <ref> todo`.
 - Human escalation:

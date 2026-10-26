@@ -17,12 +17,13 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { enqueueCard, enqueueContinue, readCards, readContinue } from "../../scripts/loop/queue.mjs";
-import { upsertSubagent, writeLedger } from "../../scripts/loop/ledger.mjs";
+import { readLedger, upsertSubagent, writeLedger } from "../../scripts/loop/ledger.mjs";
 import {
   POOL_HEARTBEAT_MS,
   POOL_STALE_MS,
   buildProjectBatchPrompt,
   createSessionPool,
+  matchEventSession,
   poolStatus,
   runSession,
 } from "../../scripts/loop/session.mjs";
@@ -75,7 +76,7 @@ function fakePool({ behavior } = {}) {
         prompts: [],
         async send(prompt) {
           this.prompts.push(prompt);
-          const result = behavior?.({ handle: this, prompt }) ?? {};
+          const result = (await behavior?.({ handle: this, prompt })) ?? {};
           if (result.ok === false) {
             return { ok: false, error: result.error ?? "fake failure", sessionId: this.sessionId, cwd };
           }
@@ -109,6 +110,35 @@ const card = (f, ref, dir, role = "worker") => ({
   target_dir: dir,
   handoff: `work ${ref}`,
 });
+
+/** Force a queue row's attempt counter (a retry of a previous turn). */
+function setAttempts(dir, ref, attempts) {
+  const file = join(dir, "cards.queue.json");
+  const value = JSON.parse(readFileSync(file, "utf8"));
+  const row = value.cards.find((entry) => entry.card === ref);
+  row.attempts = attempts;
+  writeFileSync(file, JSON.stringify(value), "utf8");
+}
+
+/** Seed one live ledger row, as a crashed turn would leave behind. */
+function seedLive(f, { sessionKey, ref, role = "worker" }) {
+  const now = new Date().toISOString();
+  writeLedger(f.dir, {
+    version: 1,
+    subagents: [
+      {
+        sessionKey,
+        actorKind: "claude",
+        subagentId: `live-${ref}`,
+        role,
+        card: ref,
+        status: "running",
+        startedAt: now,
+        lastSeenAt: now,
+      },
+    ],
+  });
+}
 
 describe("session pool", () => {
   it("runs the control turn and opens a project session per target dir", async (t) => {
@@ -175,13 +205,13 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("respects the global concurrency cap while subagents are live", async (t) => {
+  it("counts a live subagent against the global concurrency cap", async (t) => {
     const f = fixture(t);
     const fake = fakePool();
-    // Background mode keeps the first subagent live, so the second project's
-    // card must wait for a slot.
+    // A row that outlived a crashed turn still holds its slot until it is reaped.
+    seedLive(f, { sessionKey: f.app, ref: "T-0", role: "worker" });
     const pool = createSessionPool({
-      opts: optsFor(f, { maxConcurrency: 1, subagentBackground: true }),
+      opts: optsFor(f, { maxConcurrency: 2 }),
       kindPool: fake,
     });
     t.after(() => pool.stop());
@@ -190,7 +220,7 @@ describe("session pool", () => {
     enqueueCard(join(f.dir), card(f, "T-2", f.api));
     await pool.tick();
     const cards = readCards(f.dir).value.cards;
-    assert.equal(cards.filter((entry) => entry.status === "dispatched").length, 1);
+    assert.equal(cards.filter((entry) => entry.status === "done").length, 1);
     assert.equal(cards.filter((entry) => entry.status === "pending").length, 1);
     await pool.stop();
   });
@@ -198,9 +228,9 @@ describe("session pool", () => {
   it("shares one budget between workers and reviewers", async (t) => {
     const f = fixture(t);
     const fake = fakePool();
-    // Background mode keeps both subagents live, so the remaining cards have no slot.
+    seedLive(f, { sessionKey: f.app, ref: "R-0", role: "reviewer" });
     const pool = createSessionPool({
-      opts: optsFor(f, { maxConcurrency: 2, subagentBackground: true }),
+      opts: optsFor(f, { maxConcurrency: 2 }),
       kindPool: fake,
     });
     t.after(() => pool.stop());
@@ -211,17 +241,21 @@ describe("session pool", () => {
     enqueueCard(join(f.dir), card(f, "R-2", f.api, "reviewer"));
     await pool.tick();
     const cards = readCards(f.dir).value.cards;
-    const dispatched = cards.filter((entry) => entry.status === "dispatched").map((entry) => entry.card);
-    assert.deepEqual(dispatched.sort(), ["R-1", "W-1"], "workers and reviewers compete for the same slots");
-    assert.equal(cards.filter((entry) => entry.status === "pending").length, 2);
+    assert.equal(
+      cards.filter((entry) => entry.status === "done").length,
+      1,
+      "one slot is taken, so workers and reviewers compete for the remaining one",
+    );
+    assert.equal(cards.filter((entry) => entry.status === "pending").length, 3);
     await pool.stop();
   });
 
-  it("lets reviewers consume the whole cap", async (t) => {
+  it("lets a live reviewer consume the whole cap", async (t) => {
     const f = fixture(t);
     const fake = fakePool();
+    seedLive(f, { sessionKey: f.app, ref: "R-0", role: "reviewer" });
     const pool = createSessionPool({
-      opts: optsFor(f, { maxConcurrency: 1, subagentBackground: true }),
+      opts: optsFor(f, { maxConcurrency: 1 }),
       kindPool: fake,
     });
     t.after(() => pool.stop());
@@ -229,7 +263,288 @@ describe("session pool", () => {
     enqueueCard(join(f.dir), card(f, "R-1", f.app, "reviewer"));
     await pool.tick();
     const cards = readCards(f.dir).value.cards;
-    assert.equal(cards.filter((entry) => entry.status === "dispatched").length, 1);
+    assert.equal(cards.filter((entry) => entry.status === "pending").length, 1);
+    await pool.stop();
+  });
+
+  it("completes every handoff row when the turn succeeds — never writes dispatched", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+    const cards = readCards(f.dir).value.cards;
+    assert.equal(cards.find((entry) => entry.card === "T-1").status, "done");
+    assert.equal(cards.filter((entry) => entry.status === "dispatched").length, 0);
+    await pool.stop();
+  });
+
+  it("opens a separate reviewer session and gives it only review cards", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app, "worker"));
+    enqueueCard(join(f.dir), card(f, "R-1", f.app, "reviewer"));
+    await pool.tick();
+
+    const worker = fake.opened.find((handle) => handle.role === "project" && handle.cwd === f.app);
+    const reviewer = fake.opened.find((handle) => handle.role === "reviewer" && handle.cwd === f.app);
+    assert.ok(worker, "the worker lane keeps its project session");
+    assert.ok(reviewer, "the review card gets its own reviewer conversation");
+    assert.match(worker.prompts[0], /You are the project session/);
+    assert.match(worker.prompts[0], /T-1 \(worker\) handoff/);
+    assert.doesNotMatch(worker.prompts[0], /R-1 \(reviewer\) handoff/);
+    assert.match(reviewer.prompts[0], /You are the reviewer session/);
+    assert.match(reviewer.prompts[0], /R-1 \(reviewer\) handoff/);
+    assert.doesNotMatch(reviewer.prompts[0], /T-1 \(worker\) handoff/);
+    assert.doesNotMatch(reviewer.prompts[0], /Subagent questions/, "reviewers never answer questions");
+    await pool.stop();
+  });
+
+  it("claims each directory's own rows, not the first rows in the queue", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "A-1", f.app));
+    enqueueCard(join(f.dir), card(f, "B-1", f.api));
+    enqueueCard(join(f.dir), card(f, "A-2", f.app));
+    enqueueCard(join(f.dir), card(f, "B-2", f.api));
+    await pool.tick();
+
+    const appPrompt = fake.opened.find((handle) => handle.cwd === f.app).prompts[0];
+    const apiPrompt = fake.opened.find((handle) => handle.cwd === f.api).prompts[0];
+    assert.match(appPrompt, /A-1 \(worker\) handoff/);
+    assert.match(appPrompt, /A-2 \(worker\) handoff/);
+    assert.doesNotMatch(appPrompt, /B-1 \(worker\) handoff/);
+    assert.match(apiPrompt, /B-1 \(worker\) handoff/);
+    assert.match(apiPrompt, /B-2 \(worker\) handoff/);
+    assert.doesNotMatch(apiPrompt, /A-1 \(worker\) handoff/);
+    await pool.stop();
+  });
+
+  it("reattaches a legacy reviewer row to the reviewer lane", async (t) => {
+    const f = fixture(t);
+    const now = new Date().toISOString();
+    writeLedger(f.dir, {
+      version: 1,
+      subagents: [
+        {
+          sessionKey: f.app,
+          actorKind: "claude",
+          subagentId: "rev-1",
+          role: "reviewer",
+          card: "R-1",
+          status: "running",
+          startedAt: now,
+          lastSeenAt: now,
+        },
+      ],
+    });
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+
+    const reviewer = fake.opened.find((handle) => handle.role === "reviewer");
+    assert.ok(reviewer, "a reviewer row resumes the reviewer lane, not the worker one");
+    assert.equal(reviewer.cwd, f.app);
+    assert.match(reviewer.prompts[0], /rev-1/);
+    assert.match(reviewer.prompts[0], /You are the reviewer session/);
+    await pool.stop();
+  });
+
+  it("answers a question in the worker lane even when the subagent budget is zero", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f, { maxConcurrency: 0 }), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "question:T-1:q-1",
+      queue_kind: "question",
+      role: "question",
+      card: "T-1",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      question_id: "q-1",
+      question: "Which option?",
+      asked_at: "2026-01-01T00:00:00Z",
+    });
+    await pool.tick();
+
+    const project = fake.opened.find((handle) => handle.role === "project" && handle.cwd === f.app);
+    assert.ok(project, "a question wakes the worker lane, not the reviewer lane");
+    assert.match(project.prompts[0], /Which option\?/);
+    assert.match(project.prompts[0], /do not spawn a subagent for this row/);
+    assert.match(project.prompts[0], /--kind note/);
+    assert.match(project.prompts[0], /issue move T-1 todo/);
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+
+    const ledgerFile = join(f.dir, "subagents.state.json");
+    const ledger = existsSync(ledgerFile)
+      ? JSON.parse(readFileSync(ledgerFile, "utf8"))
+      : { subagents: [] };
+    assert.deepEqual(ledger.subagents, [], "a question turn is not a subagent");
+    await pool.stop();
+  });
+
+  it("completes a timed-out handoff when the card already moved", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool({
+      behavior: ({ prompt }) =>
+        prompt.startsWith("/meerkat-loop")
+          ? { ids: [] }
+          : { ok: false, error: "turn timed out after 1ms" },
+    });
+    const checks = [];
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: ({ card: ref }) => {
+        checks.push(ref);
+        return { ok: true, status: "in_review", error: null };
+      },
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "done", "a delivered card is not retried");
+    assert.equal(row.lastError, "not re-dispatched: card is in_review");
+    assert.deepEqual(checks, ["T-1"]);
+    const handle = fake.opened.find((entry) => entry.role === "project");
+    assert.equal(handle.closed, true, "a timed-out session is closed");
+    await pool.stop();
+  });
+
+  it("checks a retried handoff against the board before dispatching it", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: () => ({ ok: true, status: "in_review", error: null }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    setAttempts(f.dir, "T-1", 1);
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "done");
+    const project = fake.opened.find((entry) => entry.role === "project");
+    assert.equal(
+      project?.prompts.length ?? 0,
+      0,
+      "no project turn is sent for a delivered card",
+    );
+    await pool.stop();
+  });
+
+  it("re-dispatches a retried handoff only while the card is still claimable", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: () => ({ ok: true, status: "todo", error: null }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    setAttempts(f.dir, "T-1", 1);
+    await pool.tick();
+
+    const project = fake.opened.find((entry) => entry.role === "project");
+    assert.ok(project, "a still-claimable card is retried");
+    assert.match(project.prompts[0], /T-1 \(worker\) handoff/);
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+    await pool.stop();
+  });
+
+  it("requeues a retried handoff when the board check cannot be read", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: () => ({ ok: false, status: null, error: "down" }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    setAttempts(f.dir, "T-1", 1);
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "pending", "an unreadable check does not spawn a worker");
+    assert.equal(row.attempts, 2);
+    const project = fake.opened.find((entry) => entry.role === "project");
+    assert.equal(project?.prompts.length ?? 0, 0, "no turn is sent on an unreadable check");
+    await pool.stop();
+  });
+
+  it("warns once when the actor kind has no per-role allowlist", async (t) => {
+    const f = fixture(t);
+    const lines = [];
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f, { actorKind: "codex" }),
+      kindPool: fake,
+      log: (line) => lines.push(line),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "R-1", f.app, "reviewer"));
+    enqueueCard(join(f.dir), card(f, "R-2", f.api, "reviewer"));
+    await pool.tick();
+
+    const warnings = lines.filter((line) => /no per-role tool allowlist/.test(line));
+    assert.equal(warnings.length, 1, "the missing boundary is reported once, not every batch");
+    await pool.stop();
+  });
+
+  it("runs project turns concurrently instead of serializing directories", async (t) => {
+    const f = fixture(t);
+    let active = 0;
+    let maxActive = 0;
+    const fake = fakePool({
+      behavior: async ({ prompt }) => {
+        if (prompt.startsWith("/meerkat-loop")) return { ids: [] };
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        active -= 1;
+        return {};
+      },
+    });
+    const pool = createSessionPool({ opts: optsFor(f, { maxConcurrency: 2 }), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "A-1", f.app));
+    enqueueCard(join(f.dir), card(f, "B-1", f.api));
+    await pool.tick();
+
+    assert.equal(maxActive, 2, "both directories' turns were in flight at once");
+    const cards = readCards(f.dir).value.cards;
+    assert.deepEqual(cards.map((entry) => entry.status), ["done", "done"]);
+    const ledger = readLedger(f.dir).value;
+    assert.equal(ledger.subagents.length, 2, "both concurrent turns recorded their subagent");
+    assert.deepEqual(ledger.subagents.map((entry) => entry.status), ["completed", "completed"]);
+    assert.deepEqual(
+      new Set(ledger.subagents.map((entry) => entry.card)),
+      new Set(["A-1", "B-1"]),
+    );
     await pool.stop();
   });
 
@@ -497,6 +812,39 @@ describe("session pool", () => {
     assert.match(prompt, /T-2 \(reviewer\) handoff/);
     assert.match(prompt, /review two/);
     assert.match(prompt, /Do not work the cards yourself/);
+    assert.match(prompt, /in the exact order listed/, "the id-to-card mapping is positional");
+  });
+
+  it("builds the reviewer batch without the question ladder", () => {
+    const prompt = buildProjectBatchPrompt(
+      [{ card: "R-1", role: "reviewer", project: "P", target_dir: "/work/app", handoff: "review it" }],
+      null,
+      { lane: "reviewer" },
+    );
+    assert.match(prompt, /You are the reviewer session for P at \/work\/app/);
+    assert.match(prompt, /Review cards in this batch/);
+    assert.doesNotMatch(prompt, /Subagent questions/);
+    assert.match(prompt, /Do not answer questions/);
+    assert.match(prompt, /does not move any card|do not move any card/);
+  });
+
+  it("routes an event by session id when two lanes share a cwd", () => {
+    const worker = { key: "/work/app", cwd: "/work/app", handle: { sessionId: "w" } };
+    const reviewer = { key: "/work/app#reviewer", cwd: "/work/app", handle: { sessionId: "r" } };
+    const other = { key: "/work/api", cwd: "/work/api", handle: { sessionId: "a" } };
+
+    assert.equal(
+      matchEventSession([worker, reviewer, other], { sessionId: "r", cwd: "/work/app" }),
+      reviewer,
+      "the session id wins over the shared cwd",
+    );
+    assert.equal(matchEventSession([worker, reviewer], { sessionId: "w", cwd: "/work/app" }), worker);
+    assert.equal(
+      matchEventSession([worker, reviewer], { cwd: "/work/app" }),
+      null,
+      "an id-less event on a shared cwd is not guessed onto one lane",
+    );
+    assert.equal(matchEventSession([worker, other], { cwd: "/work/api" }), other);
   });
 
   it("names the selected role agents and carries the question-first rule", () => {
