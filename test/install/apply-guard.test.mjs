@@ -172,13 +172,14 @@ describe("apply.mjs self-dispatch guard is symlink-safe (T-20261012-175712)", ()
  */
 const ENTRY_POINTS = [
   ["src/cli/index.mjs", ["--help"]],
-  ["scripts/supervisor.mjs", ["--help"]],
-  ["scripts/loop/passes.mjs", ["--help"]],
-  ["scripts/wake-cwd.mjs", ["--help"]],
+  ["src/orchestrator/supervisor.mjs", ["--help"]],
+  ["src/orchestrator/passes.mjs", ["--help"]],
+  ["src/orchestrator/status.mjs", ["--help"]],
+  ["src/orchestrator/console.mjs", ["--help"]],
+  ["src/orchestrator/subscribe.mjs", ["--help"]],
   ["scripts/verify/version.mjs", []],
   ["scripts/verify/paths.mjs", []],
   ["scripts/verify/signposts.mjs", []],
-  ["scripts/sync-loop.mjs", ["--check"]],
 ];
 
 /**
@@ -230,10 +231,10 @@ describe("every entry point is symlink-safe (the guard cannot silently no-op)", 
 });
 
 describe("no entry point reverts to a symlink-fragile guard", () => {
-  // Generated trees are excluded from the scan because scanning them is not what keeps them
-  // honest — `sync-loop --check` is. `plugins/` and `dist/` are excluded by not being scan
-  // roots at all, `web/node_modules` by taking only `web/scripts`, and `test/` because tests are
+  // `plugins/` and `dist/` are excluded by not being scan roots at all,
+  // `web/node_modules` by taking only `web/scripts`, and `test/` because tests are
   // not entry points (and because this file, which *defines* the tripwire, lives there).
+  // No tree is generated any more: the skills are authored docs beside their scripts.
   const SCAN_ROOTS = [
     join(ROOT, "src"),
     join(ROOT, "scripts"),
@@ -241,16 +242,7 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
     join(ROOT, "skills"),
     join(ROOT, "web", "scripts"),
   ];
-  // Only the generated output is excluded. `skills/meerkat-loop/scripts/board-check.mjs`
-  // is authored and shares that directory, so the exclusion names files and subdirectories
-  // rather than the whole `scripts/` tree.
-  const GENERATED = [
-    join(ROOT, "skills", "meerkat-loop", "scripts", "foundation"),
-    join(ROOT, "skills", "meerkat-loop", "templates"),
-    join(ROOT, "skills", "meerkat-loop", "scripts", "loop"),
-    join(ROOT, "skills", "meerkat-loop", "scripts", "supervisor.mjs"),
-    join(ROOT, "skills", "meerkat-loop", "scripts", "wake-cwd.mjs"),
-  ];
+  const GENERATED = [];
 
   /**
    * The three shapes the fragile guard came in. Each compares a path *as invoked* against
@@ -270,14 +262,15 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
   const MUST_BE_SCANNED = [
     "src/cli/index.mjs",
     "src/server/main.mjs",
-    "scripts/wake-cwd.mjs",
-    "scripts/supervisor.mjs",
-    "scripts/loop/passes.mjs",
+    "src/orchestrator/supervisor.mjs",
+    "src/orchestrator/passes.mjs",
+    "src/orchestrator/status.mjs",
+    "src/orchestrator/console.mjs",
+    "src/orchestrator/subscribe.mjs",
     "scripts/verify/contract.mjs",
     "scripts/verify/web-dist.mjs",
     "scripts/security/scan-gate.mjs",
     "monitoring/exporter.mjs",
-    "skills/meerkat-loop/scripts/board-check.mjs",
     "skills/setup-meerkat/scripts/detect.mjs",
     "skills/setup-meerkat/scripts/install-roles.mjs",
     "skills/setup-meerkat/scripts/configure-env.mjs",

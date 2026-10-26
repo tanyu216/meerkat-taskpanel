@@ -58,7 +58,7 @@ import {
   buildSlaAlert,
 } from "../../src/foundation/sla-patrol.mjs";
 import { applySlaOverrides } from "../../src/foundation/sla-config.mjs";
-import { notifySlaAlerts } from "../../scripts/loop/runners.mjs";
+import { notifySlaAlerts } from "../../src/orchestrator/runners.mjs";
 
 /**
  * A fixed clock inside the Asia/Shanghai working window (18:00 local), placed

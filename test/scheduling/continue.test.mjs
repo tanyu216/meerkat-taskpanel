@@ -72,13 +72,9 @@ describe("quoteArg", () => {
 });
 
 describe("buildContinuePrompt", () => {
-  const passesScript = "/opt/loop/scripts/loop/passes.mjs";
   const prompt = buildContinuePrompt({
     actorKind: "claude",
     agent: "alice",
-    nodePath: "/opt/node/bin/node",
-    passesScript,
-    commonArgs: ["--actor-kind", "claude", "--agent", "alice"],
     continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
   });
 
@@ -92,9 +88,6 @@ describe("buildContinuePrompt", () => {
     const manual = buildContinuePrompt({
       actorKind: "claude",
       agent: "alice",
-      nodePath: "/opt/node/bin/node",
-      passesScript,
-      commonArgs: ["--actor-kind", "claude", "--agent", "alice"],
       continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
       mode: "manual",
     });
@@ -103,22 +96,37 @@ describe("buildContinuePrompt", () => {
     assert.match(manual, /--as-human/);
     assert.match(manual, /board comment is authoritative/i);
     // The pass order is the same contract in both modes.
-    const patrol = manual.indexOf(`${passesScript} patrol`);
-    const workflow = manual.indexOf(`${passesScript} workflow`);
-    const poll = manual.indexOf(`${passesScript} poll`);
+    const patrol = manual.indexOf(`taskctl loop patrol`);
+    const workflow = manual.indexOf(`taskctl loop workflow`);
+    const poll = manual.indexOf(`taskctl loop poll`);
     assert.ok(patrol !== -1 && patrol < workflow && workflow < poll);
   });
 
-  it("names every deterministic pass by absolute path", () => {
+  it("names every deterministic pass as a taskctl loop command", () => {
     for (const pass of ["patrol", "workflow", "poll"]) {
-      assert.ok(prompt.includes(`${passesScript} ${pass}`), `missing ${pass}`);
+      assert.ok(prompt.includes(`taskctl loop ${pass}`), `missing ${pass}`);
+    }
+  });
+
+  it("uses the caller's absolute command, so a headless turn needs no PATH", () => {
+    const withCli = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      cliCommand: "/opt/node /opt/cli/index.mjs --actor-kind claude --agent alice",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+    });
+    for (const pass of ["patrol", "workflow", "poll"]) {
+      assert.ok(
+        withCli.includes(`/opt/node /opt/cli/index.mjs --actor-kind claude --agent alice loop ${pass}`),
+        `missing absolute ${pass}`,
+      );
     }
   });
 
   it("runs patrol, then workflow, then poll", () => {
-    const patrol = prompt.indexOf(`${passesScript} patrol`);
-    const workflow = prompt.indexOf(`${passesScript} workflow`);
-    const poll = prompt.indexOf(`${passesScript} poll`);
+    const patrol = prompt.indexOf(`taskctl loop patrol`);
+    const workflow = prompt.indexOf(`taskctl loop workflow`);
+    const poll = prompt.indexOf(`taskctl loop poll`);
     assert.ok(patrol !== -1 && workflow !== -1 && poll !== -1);
     assert.ok(patrol < workflow && workflow < poll, "a dispatched review must be claimable this turn");
   });
@@ -170,9 +178,6 @@ describe("buildContinuePrompt", () => {
     const openedByHuman = buildContinuePrompt({
       actorKind: "claude",
       agent: "alice",
-      nodePath: "/opt/node/bin/node",
-      passesScript,
-      commonArgs: [],
       continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
       openedBy: "human",
     });
@@ -185,9 +190,6 @@ describe("buildContinuePrompt", () => {
     const withPolicy = buildContinuePrompt({
       actorKind: "claude",
       agent: "alice",
-      nodePath: "/opt/node/bin/node",
-      passesScript,
-      commonArgs: [],
       continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
       decisionPolicy: { path: "/roles/decision-policy.md", text: "# Policy\n" },
     });
@@ -217,9 +219,6 @@ describe("buildContinuePrompt", () => {
     const manual = buildContinuePrompt({
       actorKind: "claude",
       agent: "alice",
-      nodePath: "/opt/node/bin/node",
-      passesScript,
-      commonArgs: ["--actor-kind", "claude", "--agent", "alice"],
       continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
       mode: "manual",
     });
@@ -236,9 +235,6 @@ describe("buildContinuePrompt", () => {
     const longest = buildContinuePrompt({
       actorKind: "claude",
       agent: "alice",
-      nodePath: "/opt/node/bin/node",
-      passesScript,
-      commonArgs: ["--actor-kind", "claude", "--agent", "alice"],
       continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
       mode: "manual",
       openedBy: "human",
@@ -247,34 +243,19 @@ describe("buildContinuePrompt", () => {
     assert.ok(longest.length < 6000, `longest prompt is ${longest.length} chars`);
   });
 
-  it("quotes a passes path that contains a space", () => {
-    const spaced = buildContinuePrompt({
-      actorKind: "claude",
-      agent: "alice",
-      nodePath: "/opt/node/bin/node",
-      commonArgs: [],
-      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
-      passesScript: "/tmp/my loop/passes.mjs",
-    });
-    assert.ok(spaced.includes("'/tmp/my loop/passes.mjs' poll"));
-  });
-
   it("omits poll entirely when no resident pool is running", () => {
     const fallback = buildContinuePrompt({
       actorKind: "claude",
       agent: "alice",
-      nodePath: "/opt/node/bin/node",
-      passesScript,
-      commonArgs: [],
       continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
       includePoll: false,
     });
     assert.ok(fallback.startsWith("/meerkat-loop "), "the command prefix survives the fallback");
     // The fallback still runs the two passes it can run…
-    assert.ok(fallback.includes(`${passesScript} patrol`));
-    assert.ok(fallback.includes(`${passesScript} workflow`));
+    assert.ok(fallback.includes(`taskctl loop patrol`));
+    assert.ok(fallback.includes(`taskctl loop workflow`));
     // …and never names the poll entry.
-    assert.ok(!fallback.includes(`${passesScript} poll`), "poll must not be named");
+    assert.ok(!fallback.includes(`taskctl loop poll`), "poll must not be named");
     assert.doesNotMatch(fallback, /the question lane/, "without poll there is no question lane");
     assert.match(fallback, /claims no card/);
     assert.match(fallback, /dispatch is paused/);
@@ -287,9 +268,7 @@ describe("buildContinuePrompt", () => {
       const p = buildContinuePrompt({
         actorKind,
         agent: "alice",
-        passesScript,
-        commonArgs: [],
-        continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+            continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
       });
       const plan = planContinueInvocation({ actorKind, prompt: p });
       assert.ok(

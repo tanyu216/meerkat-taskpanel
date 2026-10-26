@@ -162,7 +162,7 @@ board URL** (plus a token fingerprint): if taskd comes back on a different addre
 client starts a new hub, and a detached registration for the old address must be created
 again.
 
-### The loop subscriber (`scripts/loop/subscribe.mjs`)
+### The loop subscriber (`taskctl loop subscribe`)
 
 Included in every launchd/systemd supervisor (cron cannot host a long-lived process). It
 consumes `taskctl events follow` (NDJSON from the local event hub) and turns a **signal**
@@ -221,7 +221,7 @@ That map is **board-export sourced**, so it does not follow `review_of`: the exp
 has no review link. The loop's subscriber maps the same UUID through
 `stateDir/cards.queue.json`, which does carry `review_of`, so a review event also refreshes
 its original. The two maps stay separate on purpose — see
-`scripts/loop/card-file.mjs#identifiersForEvent`.
+`src/orchestrator/card-file.mjs#identifiersForEvent`.
 
 It shares the loop's cadence — 300 ms debounce, 2 s maximum wait, `CARD_REFRESH_MIN_MS`
 (5 s) between batches — and refreshes are serial. Per-card failures are reported in the

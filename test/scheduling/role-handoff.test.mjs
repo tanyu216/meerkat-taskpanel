@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { buildHandoff, buildReviewHandoff } from "../../src/foundation/scheduling.mjs";
-import { wakeHandoff } from "../../scripts/loop/runners.mjs";
+import { wakeHandoff } from "../../src/orchestrator/runners.mjs";
 
 const hash = (text) => createHash("sha256").update(text).digest("hex");
 

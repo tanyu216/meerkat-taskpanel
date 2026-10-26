@@ -31,8 +31,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { LIVE_STATUSES } from "../../loop/ledger.mjs";
-import { QUEUE_FILES } from "../../loop/queue.mjs";
+import { LIVE_STATUSES, QUEUE_FILES } from "../../../src/foundation/loop-paths.mjs";
 
 import { runStep, systemdUserDir } from "./taskd-guard.mjs";
 import { unitPath } from "./unit-path.mjs";
@@ -336,9 +335,13 @@ export function supervisorPaths(options) {
     env,
     home,
     loopDir: join(agentBase, "meerkat-taskpanel"),
-    supervisor: join(agentBase, "meerkat-taskpanel", "scripts", "supervisor.mjs"),
+    // The loop is `taskctl loop …`, shipped by the runtime tree. `install.sh` exports
+    // `TP_CLI` (the CLI entry) so the cron preview matches the rendered unit; without
+    // it the agent-local shim is the honest fallback (it needs no interpreter).
+    cli: env.TP_CLI || join(agentBase, "bin", "taskctl"),
+    cliNeedsNode: typeof env.TP_CLI === "string" && env.TP_CLI !== "",
+    stateDir: join(agentBase, "meerkat-taskpanel"),
     log: join(agentBase, "meerkat-taskpanel", "supervisor.log"),
-    state: join(agentBase, "meerkat-taskpanel", "supervisor.state.json"),
     config: join(agentBase, "meerkat-taskpanel.env"),
     launchd: KINDS.map((kind) => ({
       kind,
@@ -417,22 +420,24 @@ export function cronContentLines(paths) {
   const node = env.TP_NODE || process.execPath;
   const cronPath = env.TP_UNIT_PATH_CRON || unitPath(dirname(node), { scheduler: "cron" });
 
-  const line = (schedule, mode) =>
+  // The unit runs `taskctl loop run …`; a bare shim needs no interpreter, a `.mjs`
+  // entry is named through the pinned node above.
+  const line = (schedule, once) =>
     [
       schedule,
-      node,
-      paths.supervisor,
+      ...(paths.cliNeedsNode ? [node, paths.cli] : [paths.cli]),
+      "loop",
+      "run",
+      once,
       `--actor-kind ${paths.actorKind}`,
       `--agent ${paths.agent}`,
-      mode,
-      "--once",
       `--log ${paths.log}`,
-      `--state ${paths.state}`,
+      `--state-dir ${paths.stateDir}`,
       ">/dev/null 2>&1",
     ].join(" ");
   const pingCron = env.TP_PING_CRON || "* * * * *";
   const continueCron = env.TP_CONTINUE_CRON || "*/10 * * * *";
-  return [`PATH=${cronPath}`, line(pingCron, "--ping-only"), line(continueCron, "--continue-only")];
+  return [`PATH=${cronPath}`, line(pingCron, "--ping-once"), line(continueCron, "--continue-once")];
 }
 
 /** The full cron block (markers + content lines). */
@@ -818,7 +823,7 @@ export function runSupervisorAction(options) {
     }
     // The resident pool is a *runtime* fact, not a load state: say whether it is
     // actually alive and what it is carrying.
-    const pool = poolReport(dirname(paths.state), { now: options.now });
+    const pool = poolReport(paths.stateDir, { now: options.now });
     const detail = pool.live
       ? `pid ${pool.pid}, ${pool.liveSubagents} live subagent(s), ${pool.cardsQueued} card(s) queued` +
         `${pool.continueQueued ? ", continue queued" : ""}` +
@@ -827,7 +832,7 @@ export function runSupervisorAction(options) {
     log(`supervisor:   session: ${pool.live ? "running" : "not running"} (${detail})`);
     // The subscriber is a *runtime* fact too: loaded tells you the unit exists,
     // not whether it is streaming or stuck on the reconnect ladder.
-    const subscriber = subscribeReport(dirname(paths.state), {
+    const subscriber = subscribeReport(paths.stateDir, {
       scheduler: requested,
       now: options.now,
       isAlive: options.isAlive,

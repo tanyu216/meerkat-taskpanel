@@ -1,10 +1,10 @@
 /**
- * The actor-kind directory map, mirrored from the loop's `AGENT_DIRS`.
+ * The actor-kind directory map, mirrored from `src/foundation/loop-paths.mjs`.
  *
- * The setup skill runs from the installed skill directory and from the repo, so it
- * cannot import `scripts/loop/options.mjs` (the installed copy has no checkout). The
- * map is therefore duplicated here; `test/skill/setup-meerkat.test.mjs` asserts the
- * loop subset matches the loop's own table.
+ * The setup skill runs from the installed skill directory, where the toolkit's `src/`
+ * tree is not a sibling, so it cannot import the shared table. The map is therefore
+ * duplicated here; `test/skill/setup-meerkat.test.mjs` asserts the loop subset matches
+ * the toolkit's own table.
  */
 
 import { join } from "node:path";
@@ -64,8 +64,8 @@ export function loopSkillDir(home, kind) {
   return skillDir(home, kind, "meerkat-loop");
 }
 
-/** @param {string} home @param {string} kind */
-export function loopBodyDir(home, kind) {
+/** The loop's per-agent state directory (queue, ledger, locks, status files). */
+export function loopStateDir(home, kind) {
   return join(agentBase(home, kind), "meerkat-taskpanel");
 }
 

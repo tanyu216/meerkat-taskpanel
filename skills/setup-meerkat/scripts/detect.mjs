@@ -3,7 +3,7 @@
  * Read-only detection for `/setup-meerkat`.
  *
  * It answers: what is installed, which board is this CLI pointed at, is that
- * board local or remote, which skills/loop body/supervisor exist, which roles
+ * board local or remote, which skills/loop state/supervisor exist, which roles
  * root is effective, what is the fixed human name, and is the Matt Pocock setup
  * skill present. It never writes, never starts a board (`TASKD_NO_AUTOSTART=1`)
  * and never calls a board command other than `--version`.
@@ -22,7 +22,7 @@ import {
   agentBase,
   configFile,
   isAgentKind,
-  loopBodyDir,
+  loopStateDir,
   loopSkillDir,
   serverRoot,
   shimFile,
@@ -255,8 +255,10 @@ function detectSkill(home, kind, name) {
   return { installed: existsSync(path), path: existsSync(path) ? path : null };
 }
 
-function detectLoopBody(home, kind) {
-  const path = join(loopBodyDir(home, kind), "scripts", "supervisor.mjs");
+function detectLoopState(home, kind) {
+  // The loop itself ships with the toolkit; what an install leaves here is its
+  // state directory (queue, ledger, sessions.state.json).
+  const path = loopStateDir(home, kind);
   return { installed: existsSync(path), path: existsSync(path) ? path : null };
 }
 
@@ -273,7 +275,7 @@ function detectSupervisor(home, kind) {
       // ignore
     }
   }
-  const state = readJson(join(loopBodyDir(home, kind), "sessions.state.json"));
+  const state = readJson(join(loopStateDir(home, kind), "sessions.state.json"));
   const pid = Number.isInteger(state?.poolPid) ? state.poolPid : null;
   let alive = false;
   if (pid !== null) {
@@ -287,8 +289,8 @@ function detectSupervisor(home, kind) {
   const beat = Date.parse(String(state?.heartbeatAt ?? ""));
   const fresh = Number.isFinite(beat) && Date.now() - beat <= STALE_POOL_MS;
   return {
-    installed: existsSync(join(loopBodyDir(home, kind), "scripts", "supervisor.mjs")),
-    body: join(loopBodyDir(home, kind), "scripts", "supervisor.mjs"),
+    installed: units.length > 0,
+    state: loopStateDir(home, kind),
     units,
     running: alive && fresh,
     poolPid: pid,
@@ -399,7 +401,7 @@ function humanReport(report) {
   lines.push(`  taskctl:   ${report.taskctl.found ? `${report.taskctl.path} ${report.taskctl.version ?? ""}` : "not found"}`);
   lines.push(`  server:    ${report.server.url} (${report.server.urlSource}); ${report.server.class}; ${report.server.probed ? (report.server.reachable ? "reachable" : "unreachable") : "not probed"}`);
   lines.push(`  skills:    board=${report.skills.board.installed} loop=${report.skills.loop.installed} setup=${report.skills.setup.installed}`);
-  lines.push(`  loop body: ${report.loopBody.installed ? report.loopBody.path : "not installed"}`);
+  lines.push(`  loop state: ${report.loopState.installed ? report.loopState.path : "not installed"}`);
   lines.push(`  supervisor: ${report.supervisor.running ? "running" : "not running"}${report.supervisor.reason ? ` (${report.supervisor.reason})` : ""}`);
   lines.push(`  roles:     global=${report.roles.global.present} project=${report.roles.project.present}${report.roles.explicit.present ? ` explicit=${report.roles.explicit.present}` : ""}`);
   lines.push(`  human:     ${report.human.name}${report.human.configured ? ` (${report.human.source})` : " (fallback; confirm)"}`);
@@ -457,14 +459,14 @@ async function main(argv) {
       setup: detectSkill(opts.home, candidate, "setup-meerkat").installed,
     };
   }
-  const loopBody = detectLoopBody(opts.home, kind);
+  const loopState = detectLoopState(opts.home, kind);
   const supervisor = detectSupervisor(opts.home, kind);
   const explicitRoles = opts.rolesDir
     ?? (env.MEERKAT_TASKPANEL_ROLES_DIR ? resolve(env.MEERKAT_TASKPANEL_ROLES_DIR) : null);
   const roles = {
     global: rolesAt(join(loopSkillDir(opts.home, kind), "roles")),
     project: rolesAt(join(opts.project, ".meerkat", "roles")),
-    state: rolesAt(join(loopBodyDir(opts.home, kind), "roles")),
+    state: rolesAt(join(loopStateDir(opts.home, kind), "roles")),
     explicit: rolesAt(explicitRoles),
   };
   // The loader's precedence, resolved once so a caller need not re-derive it.
@@ -489,7 +491,7 @@ async function main(argv) {
   if (!skills.board.installed) missing.push("board-skill");
   if (!skills.loop.installed) missing.push("loop-skill");
   if (!skills.setup.installed) missing.push("setup-skill");
-  if (!loopBody.installed) missing.push("loop-body");
+  if (!loopState.installed) missing.push("loop-state");
   if (!supervisor.installed) missing.push("supervisor");
   if (
     !roles.global.present &&
@@ -552,7 +554,7 @@ async function main(argv) {
     human,
     skills,
     skillsByKind,
-    loopBody,
+    loopState,
     supervisor,
     roles,
     mattPocock,

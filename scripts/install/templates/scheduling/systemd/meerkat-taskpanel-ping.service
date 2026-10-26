@@ -13,6 +13,6 @@ Description=Meerkat TaskPanel supervisor ping ({{AGENT}} on {{ACTOR_KIND}})
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/env node {{SUPERVISOR}} --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --ping-only --once --log {{LOG}} --state {{STATE}}
+ExecStart={{NODE}} {{CLI}} loop run --ping-once --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
 StandardOutput=append:{{LOG}}
 StandardError=append:{{LOG}}

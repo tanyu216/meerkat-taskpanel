@@ -9,12 +9,8 @@
  *
  * Nothing is copied into `dist/plugins/`: no skill is distributed as a committed copy, and
  * every harness reads the repository's own `skills/` tree through a manifest at the root.
- *
- * The loop payload (`skills/meerkat-loop/{manifest.txt,scripts,templates}`, with foundation
- * under `scripts/foundation/`) is a
- * *generated* artefact that a release ships as-is; `scripts/board-check.mjs` in that tree
- * is authored. The build verifies the payload is current rather than rewriting the source
- * tree, so a stale payload is a red build instead of a silent divergence.
+ * The loop is part of the toolkit (`src/orchestrator/`), so the release carries no loop
+ * payload: the three skills are `SKILL.md` + `references/`, copied by `install.sh`.
  *
  * No network access. Node builtins only.
  */
@@ -23,22 +19,11 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { syncLoop } from "./loop-payload.mjs";
-
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
 
 async function main() {
   console.log(`Building into ${dist}`);
-
-  const loop = await syncLoop({ root, check: true });
-  if (!loop.ok) {
-    console.error(
-      `build: FAILED — the loop payload in ${loop.skill} is out of date. ` +
-        "Run `node scripts/sync-loop.mjs` and commit the result.",
-    );
-    return 1;
-  }
 
   await rm(dist, { recursive: true, force: true });
 

@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 
-import { reviewCreateArgs } from "../../scripts/loop/board.mjs";
+import { reviewCreateArgs } from "../../src/orchestrator/board.mjs";
 import { cleanupTempDirs, dataOf, withCli } from "../cli/helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);
@@ -89,7 +89,7 @@ describe("the review-card protocol", () => {
   });
 
   it("board.mjs carries no hand-written review meta key", () => {
-    const source = readFileSync(join(ROOT, "scripts/loop/board.mjs"), "utf8");
+    const source = readFileSync(join(ROOT, "src/orchestrator/board.mjs"), "utf8");
     assert.equal(
       /--meta",\s*`review_(of|round)=/.test(source),
       false,

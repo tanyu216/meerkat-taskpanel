@@ -21,7 +21,7 @@ import {
   reattachCandidates,
   upsertSubagent,
   writeLedger,
-} from "../../scripts/loop/ledger.mjs";
+} from "../../src/orchestrator/ledger.mjs";
 
 function dirFor(t) {
   const dir = mkdtempSync(join(tmpdir(), "tp-ledger-"));

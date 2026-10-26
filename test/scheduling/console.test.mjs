@@ -14,8 +14,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import { parseArgs } from "../../scripts/loop/options.mjs";
-import { consoleCycle } from "../../scripts/loop/console.mjs";
+import { parseArgs } from "../../src/orchestrator/options.mjs";
+import { consoleCycle } from "../../src/orchestrator/console.mjs";
 
 const dirs = [];
 function tempDir() {

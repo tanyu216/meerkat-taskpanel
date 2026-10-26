@@ -35,7 +35,8 @@ actor kind's shim (`<home>/<agent-dir>/bin/taskctl`), the checkout's
 ## Skills and supervisor
 
 - Board/loop/setup skills: `<home>/<agent-dir>/skills/<name>/SKILL.md`.
-- Loop body: `<home>/<agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs`.
+- Loop state: `<home>/<agent-dir>/meerkat-taskpanel/` (`sessions.state.json`, the queue and ledger).
+  The loop itself runs as `taskctl loop …`, so there is no copied body to probe.
 - Supervisor units: `<agent-dir>/scheduling/{launchd,systemd,cron}`.
 - Live pool: `<agent-dir>/meerkat-taskpanel/sessions.state.json` (`poolPid` alive and a
   heartbeat fresher than five minutes).
@@ -76,7 +77,7 @@ the actor-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the rend
   "human": {"configured": true, "name": "…", "source": "env|settings|config|shim|env-file|fallback"},
   "skills": {"board": {}, "loop": {}, "setup": {}},
   "skillsByKind": {"claude": {"board": true, "loop": true, "setup": true}},
-  "loopBody": {"installed": true, "path": "…"},
+  "loopState": {"installed": true, "path": "…"},
   "supervisor": {"installed": true, "body": "…", "units": [], "running": false, "poolPid": null, "reason": "…"},
   "roles": {"global": {}, "project": {}, "state": {}, "explicit": {}, "effective": {}},
   "mattPocock": {"skill": {}, "tracker": {"path": null, "exists": false, "mentionsTaskpanel": false, "unrelated": false}},

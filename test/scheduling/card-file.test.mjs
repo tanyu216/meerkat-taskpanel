@@ -25,8 +25,8 @@ import {
   exportCardFile,
   identifiersForEvent,
   refreshCardsForIds,
-} from "../../scripts/loop/card-file.mjs";
-import { enqueueCard } from "../../scripts/loop/queue.mjs";
+} from "../../src/orchestrator/card-file.mjs";
+import { enqueueCard } from "../../src/orchestrator/queue.mjs";
 
 const dirs = [];
 after(() => {

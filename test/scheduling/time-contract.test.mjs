@@ -30,9 +30,9 @@ import {
   PATROL_STALE_MS,
   planPatrol,
 } from "../../src/foundation/scheduling.mjs";
-import { POOL_HEARTBEAT_MS, POOL_STALE_MS } from "../../scripts/loop/session.mjs";
+import { POOL_HEARTBEAT_MS, POOL_STALE_MS } from "../../src/orchestrator/session.mjs";
 
-/** The documented turn default and the bounds `scripts/loop/options.mjs` enforces. */
+/** The documented turn default and the bounds `src/orchestrator/options.mjs` enforces. */
 const TURN_DEFAULT_MS = 30 * 60 * 1000;
 const TURN_MIN_MS = 1200 * 1000;
 const TURN_MAX_EXCLUSIVE_MS = 7200 * 1000;

@@ -32,14 +32,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 
-import { readOpenQuestions } from "../../scripts/loop/board.mjs";
+import { readOpenQuestions } from "../../src/orchestrator/board.mjs";
 import {
   createProjectAdmission,
   createQueueDispatch,
   isGitCheckout,
-} from "../../scripts/loop/passes.mjs";
-import { QUEUE_FILES, readCards } from "../../scripts/loop/queue.mjs";
-import { runContinue, runPollTick, runQuestionTick } from "../../scripts/loop/runners.mjs";
+} from "../../src/orchestrator/passes.mjs";
+import { QUEUE_FILES, readCards } from "../../src/orchestrator/queue.mjs";
+import { runContinue, runPollTick, runQuestionTick } from "../../src/orchestrator/runners.mjs";
 import {
   acquireContinueLock,
   loadContinueLock,
@@ -47,7 +47,7 @@ import {
   recordContinuePid,
   releaseContinueLock,
   runPingTick,
-} from "../../scripts/loop/runtime.mjs";
+} from "../../src/orchestrator/runtime.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const tempDirs = [];
@@ -105,7 +105,7 @@ function runEntry(entry, args, env = {}, subcommand = null) {
   return spawnSync(
     process.execPath,
     [
-      join(ROOT, "scripts", "loop", entry),
+      join(ROOT, "src", "orchestrator", entry),
       ...(subcommand === null ? [] : [subcommand]),
       ...args,
     ],
@@ -117,7 +117,7 @@ function runEntry(entry, args, env = {}, subcommand = null) {
 }
 
 function runSupervisor(args, env = {}) {
-  return spawnSync(process.execPath, [join(ROOT, "scripts", "supervisor.mjs"), ...args], {
+  return spawnSync(process.execPath, [join(ROOT, "src", "orchestrator", "supervisor.mjs"), ...args], {
     encoding: "utf8",
     env: { ...process.env, ...env },
   });
@@ -277,7 +277,7 @@ describe("ping and continue entries", () => {
     const sup = spawnSync(
       process.execPath,
       [
-        join(ROOT, "scripts", "supervisor.mjs"),
+        join(ROOT, "src", "orchestrator", "supervisor.mjs"),
         "--actor-kind", "claude", "--agent", "alice", "--ping-only", "--once",
         "--state", state, "--log", join(dir, "log"),
         "--cli", script,

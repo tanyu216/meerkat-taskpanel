@@ -11,9 +11,9 @@ resident shape — a long-lived **session pool**:
 
 | Part | Cadence | Job |
 |---|---|---|
-| **ping** | 60s | prune registry entries whose pid is gone. No board read, no claim, no LLM |
-| **continue** | 600s | hand the control session a bounded `/meerkat-loop` continue prompt (or run it one-shot when no pool is live); that turn runs the entries below |
-| **session** (`--session`) | long-lived | one control conversation, one project conversation per target directory, and a reviewer conversation per directory on demand; each lane spawns its worker/reviewer subagent in that directory |
+| **ping** (`taskctl loop run --ping-once`) | 60s | prune registry entries whose pid is gone. No board read, no claim, no LLM |
+| **continue** (`taskctl loop run --continue-once`) | 600s | hand the control session a bounded `/meerkat-loop` continue prompt (or run it one-shot when no pool is live); that turn runs the entries below |
+| **session** (`taskctl loop session`) | long-lived | one control conversation, one project conversation per target directory, and a reviewer conversation per directory on demand; each lane spawns its worker/reviewer subagent in that directory |
 
 A subagent inherits the **launch cwd** of the session that spawns it, so one board-wide session
 cannot serve two project directories. That is why the pool keeps one worker session per
@@ -21,7 +21,7 @@ directory, and a reviewer session in the same directory when a review card is qu
 live pool, poll claims nothing and only patrol and workflow run — see
 `references/operation.md` §No resident pool.
 
-The continue turn runs three deterministic passes, in this order:
+The continue turn runs three deterministic commands, in this order:
 
 1. **patrol** — notify-only SLA pass. The board computes the SLA rows; the loop de-duplicates
    them, re-reads a survivor and notifies the leader. It also emits the legacy stale-heartbeat
@@ -61,9 +61,9 @@ only an explicit invocation runs it:
 ```
 
 The text after the command is the turn's instruction, not a subcommand. A supervisor's continue
-turn passes `/meerkat-loop Continue — …`; the rest of that prompt (the three passes, with
-absolute entry paths) is appended as the turn's input. There is no argument placeholder, no
-subcommand and no argument parsing.
+turn passes `/meerkat-loop Continue — …`; the rest of that prompt (the three `taskctl loop`
+commands) is appended as the turn's input. There is no argument placeholder, no subcommand and
+no argument parsing.
 
 **Read the mode first.** The instruction's first line declares it:
 
@@ -85,7 +85,7 @@ same acceptance rules. Two drivers run it; the turn says which.
 
 - **Supervised** (`mode: supervised`). The scheduler (ping/continue/events) or a one-shot
   supplies the prompt. This session is **headless**: no user is watching the session window, so
-  never ask a question there. The prompt is authoritative: run exactly the passes it lists —
+  never ask a question there. The prompt is authoritative: run exactly the commands it lists —
   poll is absent when no pool is live. Ask the human on the card, as a comment. Do not start a
   clock, a pool, a subscriber or a watcher; return when the turn is done.
 - **Manual** (no marker). A human invoked the skill in a live session. The session is the
@@ -94,23 +94,23 @@ same acceptance rules. Two drivers run it; the turn says which.
 
 #### Manual mode
 
-1. **Detect.** Run `node <body>/scripts/loop/status.mjs --json` (body resolution below):
+1. **Detect.** Run `taskctl loop status --json`:
    - `running` — a pool is live. `pool.controlMode` says who owns the turn. `internal` means
      the supervisor owns it: do **not** run a second control turn; you may attach as a question
      console. `external` means a live session owns it; run the loop.
    - `configured-idle` / `partial` / `busy` — report; do not start a pool and do not fight the
      service manager.
    - `absent` — nothing is running. Ask the human before taking over.
-2. **Take over (explicit only).** If `absent` and the human agrees, run `status.mjs --take-over`:
-   it starts the pool in **external-control** mode (project sessions still dispatch) and records
-   its pid. Stop it with `status.mjs --stop`. If the human declines, stop after the read-only
-   report.
-3. **Control tick.** Run the three passes the supervised prompt lists — `passes.mjs patrol`,
-   `workflow`, `poll` — by absolute path (below). With the external pool live, poll claims and
+2. **Take over (explicit only).** If `absent` and the human agrees, run
+   `taskctl loop status --take-over`: it starts the pool in **external-control** mode (project
+   sessions still dispatch) and records its pid. Stop it with `taskctl loop status --stop`. If
+   the human declines, stop after the read-only report.
+3. **Control tick.** Run the three commands the supervised prompt lists — `taskctl loop patrol`,
+   `taskctl loop workflow`, `taskctl loop poll`. With the external pool live, poll claims and
    enqueues; the pool's project sessions spawn the workers/reviewers.
 4. **Question tick — one round across all waiting cards.**
-   `node <body>/scripts/loop/console.mjs --once --json` lists the `awaiting` cards, in-progress
-   agent questions no human has answered, and `in_review` cards pending acceptance. **Both
+   `taskctl loop console --json` lists the `awaiting` cards, in-progress agent questions no
+   human has answered, and `in_review` cards pending acceptance. **Both
    answer channels are the same record** — a human comment in the board UI and an answer typed
    in this conversation:
    - Before asking, re-read the card (`taskctl comment list <ref> --limit 20 --json`). If a
@@ -130,42 +130,26 @@ same acceptance rules. Two drivers run it; the turn says which.
      resumed card is processed promptly. Only a human comment resumes awaiting.
 5. **Bound the loop.** Control ticks follow the continue cadence (default 600s); question ticks
    default to 30s; stop at the requested TTL (default 30 min) or on "stop". On exit report the
-   pool pid and `status.mjs --stop`.
+   pool pid and `taskctl loop status --stop`.
 
 **Never** decide an E1–E5 question yourself; never claim or move a work card; never start a
 second pool. Run at most one manual console per agent directory: `session.lock` guards the
 pool, but two consoles would still race the workflow ledger.
 
 ```bash
-# <agent-dir> is the directory containing skills/meerkat-loop/:
-# claude ~/.claude, codex ~/.codex, pi ~/.agents. TASKCTL_ACTOR_KIND disambiguates
-# more than one agent directory.
-kind="${TASKCTL_ACTOR_KIND:-}"
-for pair in claude:.claude codex:.codex pi:.agents; do
-  k="${pair%%:*}"; d="$HOME/${pair#*:}"
-  [ -f "$d/skills/meerkat-loop/scripts/loop/passes.mjs" ] || continue
-  [ -z "$kind" ] || [ "$kind" = "$k" ] || continue
-  agent_dir="$d"; kind="$k"; break
-done
-[ -n "${agent_dir:-}" ] || { echo "meerkat-loop: no loop body found" >&2; exit 1; }
-body="$agent_dir/meerkat-taskpanel/scripts"
-[ -f "$body/loop/passes.mjs" ] || body="$agent_dir/skills/meerkat-loop/scripts"
-agent="${TASKCTL_AGENT:-}"
-[ -n "$agent" ] || agent="$(sed -n 's/^MEERKAT_TASKPANEL_AGENTS=//p' \
-  "$agent_dir/meerkat-taskpanel.env" 2>/dev/null | head -1)"
-agent="${agent%%,*}"; agent="${agent:-${USER:-$(id -un)}}"
-cli="$agent_dir/bin/taskctl"; [ -x "$cli" ] || cli=taskctl
-
-node "$body/loop/status.mjs"  --json --agent "$agent" --actor-kind "$kind"
-node "$body/loop/console.mjs" --once --json --agent "$agent" --actor-kind "$kind"
-node "$body/loop/passes.mjs" patrol   --actor-kind "$kind" --agent "$agent"
-node "$body/loop/passes.mjs" workflow --actor-kind "$kind" --agent "$agent"
-node "$body/loop/passes.mjs" poll     --actor-kind "$kind" --agent "$agent"
+# The agent's own `taskctl` shim carries `--agent` and `--actor-kind`; a session
+# that overrides either passes the flag explicitly.
+taskctl loop status --json
+taskctl loop console --json
+taskctl loop patrol
+taskctl loop workflow
+taskctl loop poll
 ```
 
-If the agent config names a custom agent and `TASKCTL_AGENT` is unset, pass `--agent <name>`
-explicitly. A deployment without the agent config or shim needs an explicit `--repo` and
-`taskctl`.
+`--take-over`, `--stop`, `--dry-run` and the policy flags (`--workflow`, `--reviewer`,
+`--claim-unassigned`, …) belong to the verb they modify — `taskctl loop <verb> --help` is the
+list. An install that has no shim on `PATH` can use `<agent-dir>/bin/taskctl`, or
+`node <runtime>/src/cli/index.mjs loop …` with `--agent`/`--actor-kind`.
 
 ### Who may close
 
@@ -180,11 +164,12 @@ loop dispatches and **how** it executes the plan.
 
 ### Event subscriber
 
-On launchd/systemd, `--subscribe` follows the board's event stream through `taskctl events
-follow` (the local event hub) and asks for a continue turn when a dispatch-relevant event
-arrives. The continue clock remains the fallback and the only path for time-based work; an
-event wakes a turn only while the resident pool is live (without one it logs and skips). Cron
-cannot host a long-lived process. The daemon publishes `subscribe.state.json`.
+On launchd/systemd, `taskctl loop subscribe` follows the board's event stream through
+`taskctl events follow` (the local event hub) and asks for a continue turn when a
+dispatch-relevant event arrives. The continue clock remains the fallback and the only path for
+time-based work; an event wakes a turn only while the resident pool is live (without one it
+logs and skips). Cron cannot host a long-lived process. The daemon publishes
+`subscribe.state.json`.
 
 ### Task process directory (`.meerkat/`)
 
@@ -209,9 +194,9 @@ resolved `target_dir` (`local_path ?? run_dir`), which is also the subagent's cw
 - Other process files — including **downloaded attachments** — go in the same directory:
   `taskctl attachment list <ref> --json`, then
   `taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>`.
-- `--subscribe` batch-refreshes the briefs of active cards, debounced and rate-limited; a failed
-  refresh leaves the previous brief in place. Dispatch is separate: an event wakes a continue
-  turn only while the resident pool is live.
+- The event subscriber batch-refreshes the briefs of active cards, debounced and rate-limited;
+  a failed refresh leaves the previous brief in place. Dispatch is separate: an event wakes a
+  continue turn only while the resident pool is live.
 - Workers maintain `plan.md` and the reviewer reads it. An unexplained deviation is grounds for
   `VERDICT: REJECT`; a missing plan is not itself a failure (the reviewer falls back to the
   description and the frozen acceptance snapshot).
@@ -221,8 +206,9 @@ resolved `target_dir` (`local_path ?? run_dir`), which is also the subagent's cw
 A team is an optional roles root, authored by `setup-meerkat`. It adds routing (the role named
 by the card's assignee supplies responsibilities and boundaries) and a workflow path carried in
 the handoff. Precedence is whole-manifest: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, then
-`<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`, then
-`<agent-dir>/meerkat-taskpanel/roles/`. With no roles root the loop behaves exactly as before.
+`<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`, then the loop's
+state directory (`<agent-dir>/meerkat-taskpanel/roles/`). With no roles root the loop behaves
+exactly as before.
 `setup-meerkat` writes the team's board names to `MEERKAT_TASKPANEL_AGENTS`; without that list
 the loop only scans its default agent.
 
@@ -253,9 +239,9 @@ calls the HTTP API). `task-interface v1` first shipped in board 1.0.0; the board
 plan landed in 1.1.0. Gate check before pointing a loop at a board:
 
 ```bash
-node scripts/board-check.mjs                 # taskctl on PATH
-node scripts/board-check.mjs --repo <checkout>
-node scripts/board-check.mjs --json          # machine-readable verdict
+taskctl loop compat                 # taskctl on PATH
+taskctl loop compat --repo <path>   # the runtime tree / checkout to inspect
+taskctl loop compat --json          # machine-readable verdict
 ```
 
 Exit 3 means no verdict: the board could not be asked, or its declared version is below the

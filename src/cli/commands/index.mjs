@@ -23,6 +23,7 @@ import { COMMANDS as eventCommands } from "./events.mjs";
 import { COMMANDS as exportCommands } from "./export.mjs";
 import { COMMANDS as issueCommands } from "./issue.mjs";
 import { COMMANDS as labelCommands } from "./labels.mjs";
+import { COMMANDS as loopCommands } from "./loop.mjs";
 import { COMMANDS as projectCommands } from "./project.mjs";
 import { COMMANDS as relationCommands } from "./relation.mjs";
 import { COMMANDS as reportCommands } from "./report.mjs";
@@ -57,6 +58,11 @@ export const groups = Object.freeze([
     name: "events",
     summary: "The board's live activity stream (read-only, NDJSON).",
     commands: eventCommands,
+  },
+  {
+    name: "loop",
+    summary: "The external loop: passes, daemons, status and the board gate.",
+    commands: loopCommands,
   },
 ]);
 

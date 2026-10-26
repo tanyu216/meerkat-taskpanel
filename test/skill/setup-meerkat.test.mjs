@@ -24,7 +24,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
-import { AGENT_DIRS } from "../../scripts/loop/options.mjs";
+import { AGENT_DIRS } from "../../src/orchestrator/options.mjs";
 import { LOOP_KINDS } from "../../skills/setup-meerkat/scripts/lib/agent-kinds.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");

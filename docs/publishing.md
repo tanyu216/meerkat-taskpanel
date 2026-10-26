@@ -26,7 +26,7 @@ restate one above.
 
 There is **no loop version**. `meerkat-loop` is distributed by `install.sh` from
 `skills/meerkat-loop/` rather than as a plugin, and it declares the *board interface
-generation* it requires (`task-interface v1`, enforced by its own `board-check.mjs`) instead
+generation* it requires (`task-interface v1`, enforced by `taskctl loop compat`) instead
 of a version of its own. Its two former carriers were the `plugins/loop` manifests, which
 this repository no longer ships — so ruling O4 (independent versions) is retired: the loop
 moves with the board.
@@ -308,11 +308,9 @@ claude plugin list                  # → the plugin, enabled
 claude plugin validate <path>       # validates the plugin + marketplace manifests
 ```
 
-Nothing under `skills/` is a generated copy any more, so there is nothing for
-`npm run check:loop` to compare against a plugin bundle. It still guards the loop skill's
-**payload** (`skills/meerkat-loop/{manifest.txt,scripts,templates}`, with foundation inside `scripts/foundation/`), which is generated from
-`scripts/supervisor.mjs`, `scripts/loop/`, `scripts/wake-cwd.mjs`, `src/foundation/` and
-`scripts/install/templates/`; run `node scripts/sync-loop.mjs` after any edit there.
+Nothing under `skills/` is a generated copy, and there is no generated loop payload: the
+loop is `src/orchestrator/` (reached through `taskctl loop …`) and the skills are source.
+Editing a skill or the loop is an ordinary source edit.
 
 ## 5. OpenClaw
 
@@ -367,10 +365,9 @@ pi list
 
 Every manifest points at the repository's one `skills/` tree, so the npm whitelist ships the
 skills directly and no bundle carries a generated copy of its own (see
-[development.md](development.md#the-skill-is-generated-never-hand-edited)). A publish is
-still only correct if `node scripts/sync-loop.mjs --check` is green: the loop skill's
-generated payload (`manifest.txt` + `scripts/` + `src/` + `templates/`) must match the
-repository modules it is generated from.
+[development.md](development.md#the-skills-are-authored-never-generated)). The loop needs no
+payload step: it is `src/orchestrator/` inside the published tree, and the units run
+`taskctl loop …`.
 
 The `files` whitelist must also name each dot-directory the plugins live in
 (`.claude-plugin`, `.pi`): npm does not include dot files by

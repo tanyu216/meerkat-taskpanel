@@ -5,7 +5,7 @@
  *
  *   * the loop asks the CLI to render
  *     (`taskctl export md <ref> --out <temp>`) and commits that temp file
- *     (`scripts/loop/card-file.mjs`);
+ *     (`src/orchestrator/card-file.mjs`);
  *   * the CLI watchers already hold the board's markdown in memory and write it
  *     through the same temp (`src/cli/watch-core.mjs`).
  *

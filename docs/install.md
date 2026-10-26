@@ -27,8 +27,8 @@ There are three layers, and it is worth keeping them straight:
 1. **The skills** — `SKILL.md` + `references/` + a wrapper, copied (or, for the board
    skill, symlinked) into the agent's skill directory by `install.sh`. This is
    deterministic, offline, and needs no agent tooling. The board skill is what makes the
-   agent able to drive `taskctl`; the loop skill carries the supervisor's execution body
-   and the templates the units are rendered from.
+   agent able to drive `taskctl`; the loop skill carries the decisions the loop applies,
+   and the loop itself runs as `taskctl loop …`.
 2. **The agent bundle** (Claude Code and Codex) — `install.sh --target claude|codex`
    deploys the rest of that agent's setup too, not just the skill: the agent config
    (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
@@ -157,9 +157,10 @@ bundle of its own.
 Every agent above has both routes: a `--target` that lands the skill on disk, and a
 plugin/bundle that agent's own plugin system reads in place.
 
-`--link` applies to the **board** skill only. The loop is always copied: a symlinked
-execution body would put the checkout back into the load path of the very thing the split
-exists to make independent of it (`skills/meerkat-loop/scripts/`).
+`--link` applies to the **board** skill only. The loop skill is always copied: it is small
+and standalone (docs plus decisions), and a symlink would put a checkout into the load path
+of a skill that is meant to read the same in every install. The loop's execution body is not
+in the skill at all — it is `taskctl loop …`, shipped with the runtime tree.
 
 **Every agent kind gets a `taskctl` shim**, at `<agent-dir>/bin/taskctl`
 (`~/.claude/bin/taskctl`, `~/.codex/bin/taskctl`, `~/.agents/bin/taskctl`, …), and it injects
@@ -213,8 +214,8 @@ version control.
 
 | Artefact | Where | What |
 |---|---|---|
-| loop skill | `<agent-dir>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`manifest.txt` + `scripts/`, including `scripts/foundation/`), the unit/config templates it is deployed with, and the authored board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
-| loop body | `<agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../scripts/foundation/**` | a **copy** of the scheduler, the deterministic passes, the poll pass's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `manifest.txt` |
+| loop skill | `<agent-dir>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md` and `references/`. The execution body is `taskctl loop …` in the runtime tree, not a copy. Always **copied**, never symlinked |
+| loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, `continue.state.json`, `supervisor.log` (see [`scheduling.md §The loop's state directory`](scheduling.md#the-loops-state-directory)) |
 | launchd | `<agent-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist` | `KeepAlive` for the resident pool and the event subscriber; `StartInterval` 60 / 600 for the two clocks |
 | systemd | `<agent-dir>/scheduling/systemd/meerkat-taskpanel-{session,ping,continue,subscribe}.{service,timer}` | `Type=simple` + `Restart=always` for the pool and subscriber; 60s / 600s timers for the clocks |
 | cron | `<agent-dir>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue — **no pool**: no worker dispatch |
@@ -270,7 +271,7 @@ bash install.sh --supervisor=disable --supervisor-actor-kinds claude  # stop and
 subset of the loop actor kinds the install covers (default: the loop actor kinds present in
 `--target`). The flag selects *which* kinds an action applies to, rather than naming the kind
 the installer itself runs as, which is why it is not called `--actor-kind` here: that name is
-the wake selector on `scripts/supervisor.mjs --actor-kind claude|codex|pi`.
+the per-command identity flag (`taskctl loop … --actor-kind claude|codex|pi`).
 **`openclaw` is rejected** in this list (reason on stderr, exit 2) — it has no loop
 supervisor to enable (see
 [`scheduling.md §OpenClaw: do not build a supervisor`](scheduling.md#openclaw-do-not-build-a-supervisor)).
@@ -462,9 +463,9 @@ Non-interactive installs default to **yes**; `--claim-unassigned=no` /
 `MEERKAT_TASKPANEL_RECOVER_STALE=no`, and the supervisor then never takes over an
 `in_progress` card — the same holder's 30-minute re-claim included. The file is merge-style: a re-run without
 `--force` keeps the existing value, and it also records where the board engine
-lives (`MEERKAT_TASKPANEL_REPO=<checkout>`) — a key the installer adds when it is
+lives (`MEERKAT_TASKPANEL_REPO=<runtime tree>`) — a key the installer adds when it is
 missing, so an install made before that key existed still learns it (see
-[`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)).
+[`scheduling.md §The loop's state directory`](scheduling.md#the-loops-state-directory)).
 
 The same merge rule covers the workflow channel's two keys, written with their defaults when
 the file is created and added only when missing on an upgrade:
@@ -527,10 +528,10 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the agent kind with a bounded `Continue` prompt; that turn runs poll, patrol and workflow. |
 | `--continue=yes\|no` | Enable the continue turn. Persisted to the agent config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
 | `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints the per-agent-kind load state and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
-| `--supervisor-actor-kinds <list>` | Which loop agent kinds the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}` (default: the loop actor kinds present in `--target`). Not `--actor-kind`: that is the **wake** selector on `scripts/supervisor.mjs`, and this flag selects a set. `openclaw` is **rejected** (reason on stderr, exit 2). |
+| `--supervisor-actor-kinds <list>` | Which loop agent kinds the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}` (default: the loop actor kinds present in `--target`). Not `--actor-kind`: that is the loop's per-command identity flag, and this flag selects a set. `openclaw` is **rejected** (reason on stderr, exit 2). |
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per agent kind — see [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in). |
 | `MEERKAT_TASKPANEL_SUPERVISOR=enable\|disable\|status` | The non-interactive form of `--supervisor` (an explicit flag wins) — the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`. |
-| `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied, because the loop's whole point is that its execution body does not live in a checkout. For `--target server` it only warns: the runtime tree is always copied, because it must survive the checkout and the npx cache. |
+| `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied (it is standalone docs + decisions). For `--target server` it only warns: the runtime tree is always copied, because it must survive the checkout and the npx cache. |
 | `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags. |
 | `--dry-run` | Print every path that would be written/changed and change nothing. |
 | `--skip-node-check` | Skip the Node version check (see below). |
@@ -877,12 +878,9 @@ Nothing is written outside those directories, and nothing is sent over the netwo
   [Idempotence](#idempotence-re-running-and-force).
 - **`skill source not found`** — run `install.sh` from this checkout (it resolves
   `skills/meerkat-taskpanel/` relative to itself); a `dist/` bundle must be unpacked first.
-- **`loop payload out of date`** — `skills/meerkat-loop/manifest.txt`, `scripts/` and
-  `templates/` are generated. Run `node scripts/sync-loop.mjs`; `npm run
-  check:loop` fails CI on drift.
-- **An older install still has `skills/meerkat-loop/body/` or `src/`** — those layouts were
-  retired. The leftovers are inert (units and the loop body read
-  `<agent-dir>/meerkat-taskpanel/scripts/…`); re-run the install with `--force` to replace the
-  skill directory, and delete `<agent-dir>/meerkat-taskpanel/src/` by hand if it is still there.
+- **An older install still has `skills/meerkat-loop/scripts/`, `templates/` or
+  `manifest.txt`** — those were the generated payload, retired when the loop moved into
+  `taskctl`. Re-run the install with `--force` to replace the skill directory; a re-run also
+  removes the old copied body under `<agent-dir>/meerkat-taskpanel/scripts/`.
 - **OpenClaw does not list the plugin** — install the bundle at the repository root
   (`openclaw plugins install "$PWD" ...`); see the OpenClaw section above.

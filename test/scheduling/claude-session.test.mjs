@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { allowedToolsFor, createClaudePool, sessionArgs } from "../../scripts/loop/actor-kinds/claude.mjs";
+import { allowedToolsFor, createClaudePool, sessionArgs } from "../../src/orchestrator/actor-kinds/claude.mjs";
 
 const FAKE = `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";

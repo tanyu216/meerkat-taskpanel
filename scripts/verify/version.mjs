@@ -204,8 +204,8 @@ async function main(argv) {
         `  --group <name> check one group only (${groupNames.join(", ")}; default: all)\n` +
         "  --base <dir>   check a tree rooted at <dir> (default: this checkout)\n\n" +
         "There is one version group, the board; its canonical carrier is the root\n" +
-        "package.json. The loop carries no version of its own — it is distributed by\n" +
-        "install.sh from skills/meerkat-loop/ and declares the board interface it needs.\n",
+        "package.json. The loop carries no version of its own — it is part of the toolkit\n" +
+        "and declares the board interface it needs.\n",
     );
     return 0;
   }

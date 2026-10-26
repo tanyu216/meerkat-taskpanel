@@ -41,10 +41,10 @@ import {
   wakeCommand,
 } from "../../src/foundation/scheduling.mjs";
 import { emptySlaLedger, planSlaPatrol } from "../../src/foundation/sla-patrol.mjs";
-import { agentPaths, defaultRepo, loopCommandArgs, parseArgs, selectMode } from "../../scripts/loop/options.mjs";
-import { loadSlaLedger, readPeerLastOk, readPeerMarker, saveLastOk, saveSlaLedger } from "../../scripts/loop/runtime.mjs";
-import { notifyReal, runPatrolTick, runPollTick, runWorkflowTick } from "../../scripts/loop/runners.mjs";
-import { resolveWakeDir } from "../../scripts/wake-cwd.mjs";
+import { agentPaths, defaultRepo, loopCommandArgs, parseArgs, selectMode } from "../../src/orchestrator/options.mjs";
+import { loadSlaLedger, readPeerLastOk, readPeerMarker, saveLastOk, saveSlaLedger } from "../../src/orchestrator/runtime.mjs";
+import { notifyReal, runPatrolTick, runPollTick, runWorkflowTick } from "../../src/orchestrator/runners.mjs";
+import { resolveWakeDir } from "../../src/foundation/project-dir.mjs";
 import { PROJECT_DIR_CODES } from "../../src/foundation/project-dir.mjs";
 import { createCommands, createContext } from "../../src/core/commands/index.mjs";
 import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
@@ -1769,7 +1769,7 @@ describe("supervisor module", () => {
   // Resolved *relative to this test file*, never from a directory name — the
   // checkout is mounted at /app inside the container, so any assertion keyed on
   // the repo being named "meerkat-taskpanel" would hold on the host and fail there.
-  const SUPERVISOR_URL = new URL("../../scripts/supervisor.mjs", import.meta.url);
+  const SUPERVISOR_URL = new URL("../../src/orchestrator/supervisor.mjs", import.meta.url);
   const SUPERVISOR_PATH = fileURLToPath(SUPERVISOR_URL);
 
   it("is a repo-relative ESM file that exists", () => {
@@ -1783,12 +1783,12 @@ describe("supervisor module", () => {
     // is importable in place; the export check proves the modules are real, not stubs.
     const modules = [
       [SUPERVISOR_URL, ["main"]],
-      [new URL("../../scripts/loop/options.mjs", import.meta.url), ["parseArgs", "selectMode"]],
-      [new URL("../../scripts/loop/runtime.mjs", import.meta.url), ["loadRegistry", "saveRegistry", "runPingTick", "subscribeStatePath", "loadSubscribeState", "saveSubscribeState"]],
-      [new URL("../../scripts/loop/runners.mjs", import.meta.url), ["runPollTick", "runPatrolTick"]],
-      [new URL("../../scripts/loop/subscribe.mjs", import.meta.url), ["runSubscribe", "createDispatchScheduler"]],
-      [new URL("../../scripts/loop/status.mjs", import.meta.url), ["probeSupervisor", "probeUnits", "takeOver", "stopSupervisor"]],
-      [new URL("../../scripts/loop/console.mjs", import.meta.url), ["consoleCycle"]],
+      [new URL("../../src/orchestrator/options.mjs", import.meta.url), ["parseArgs", "selectMode"]],
+      [new URL("../../src/orchestrator/runtime.mjs", import.meta.url), ["loadRegistry", "saveRegistry", "runPingTick", "subscribeStatePath", "loadSubscribeState", "saveSubscribeState"]],
+      [new URL("../../src/orchestrator/runners.mjs", import.meta.url), ["runPollTick", "runPatrolTick"]],
+      [new URL("../../src/orchestrator/subscribe.mjs", import.meta.url), ["runSubscribe", "createDispatchScheduler"]],
+      [new URL("../../src/orchestrator/status.mjs", import.meta.url), ["probeSupervisor", "probeUnits", "takeOver", "stopSupervisor"]],
+      [new URL("../../src/orchestrator/console.mjs", import.meta.url), ["consoleCycle"]],
       [new URL("../../src/foundation/scheduling.mjs", import.meta.url), ["buildContinuePrompt", "planContinueInvocation"]],
     ];
     for (const [url, names] of modules) {
@@ -2278,6 +2278,6 @@ describe("parseArgs — the team scan set and roles root", () => {
   it("exposes the loop-skill and body roles paths for every actor kind", () => {
     const paths = agentPaths("/home/alice", "pi");
     assert.equal(paths.loopRoles, "/home/alice/.agents/skills/meerkat-loop/roles");
-    assert.equal(paths.bodyRoles, "/home/alice/.agents/meerkat-taskpanel/roles");
+    assert.equal(paths.stateRoles, "/home/alice/.agents/meerkat-taskpanel/roles");
   });
 });

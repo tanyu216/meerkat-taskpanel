@@ -19,7 +19,7 @@ import {
   threadResumeParams,
   threadStartParams,
   turnStartParams,
-} from "../../scripts/loop/actor-kinds/codex.mjs";
+} from "../../src/orchestrator/actor-kinds/codex.mjs";
 
 const FAKE = `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";

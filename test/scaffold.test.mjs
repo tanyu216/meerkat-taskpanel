@@ -18,7 +18,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
 
-import { listFiles, resolveSkillSource } from "../scripts/sync-loop.mjs";
 import { MANIFESTS, validateManifests } from "../scripts/verify/manifests.mjs";
 import { validateSkills } from "../scripts/verify/skill.mjs";
 import { VERSION } from "../src/foundation/constants.mjs";
@@ -115,29 +114,15 @@ describe("plugin manifests", () => {
   });
 });
 
-describe("skill sync", () => {
-  it("resolveSkillSource / listFiles return what the sync expects", async () => {
-    const source = resolveSkillSource(ROOT);
-    assert.equal(source, join(ROOT, "skills", "meerkat-taskpanel"));
-
-    const files = await listFiles(source);
-    assert.ok(files.includes("SKILL.md"), "SKILL.md must be listed");
-    assert.ok(files.includes("references/cli.md"), "references/cli.md must be listed");
-    assert.ok(files.includes("scripts/run.mjs"), "scripts/run.mjs must be listed");
-
-    const sorted = [...files].sort();
-    assert.deepEqual(files, sorted, "listFiles output must be sorted");
-  });
-
+describe("skill distribution", () => {
   it("keeps exactly one skills tree: nothing is distributed as a copy", async () => {
     // The invariant the whole distribution story exists for, asserted against the
     // checkout rather than a table — a table can only describe the copies it knows about.
     // Every harness (claude, codex, pi, openclaw) reads the repository's
     // own `skills/` tree through its own manifest, so there is no generated copy anywhere.
     //
-    // This is now the *only* guard: with no copy targets left, `sync-loop.mjs --check`
-    // has nothing to compare and cannot notice an orphan `plugins/` tree. A harness that
-    // reintroduces one is exactly the regression this catches
+    // There is no generator to notice an orphan `plugins/` tree, so this is the guard:
+    // a harness that reintroduces one fails here
     // (design/plugin-distribution-plan.md §3.1 / §5.3, reversed for the floor by
     // design/plugin-distribution-plan.md's 2026-10-17 decision note).
     assert.deepEqual(await skillDirsUnder(ROOT), ["skills"]);
@@ -344,7 +329,7 @@ describe("repository guard files", () => {
      * existence check. Pin the two facts a contributor cannot guess — the container
      * gate and the commit-before-you-run-it ordering — plus the generated-skills rule. */
     const text = await readFile(join(ROOT, "CONTRIBUTING.md"), "utf8");
-    for (const needle of ["npm run verify:docker", "commit", "sync-loop", "contract"]) {
+    for (const needle of ["npm run verify:docker", "commit", "skills", "contract"]) {
       assert.ok(text.includes(needle), `CONTRIBUTING.md must mention ${needle}`);
     }
   });

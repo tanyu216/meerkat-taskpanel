@@ -16,8 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { enqueueCard, enqueueContinue, readCards, readContinue } from "../../scripts/loop/queue.mjs";
-import { readLedger, upsertSubagent, writeLedger } from "../../scripts/loop/ledger.mjs";
+import { enqueueCard, enqueueContinue, readCards, readContinue } from "../../src/orchestrator/queue.mjs";
+import { readLedger, upsertSubagent, writeLedger } from "../../src/orchestrator/ledger.mjs";
 import {
   POOL_HEARTBEAT_MS,
   POOL_STALE_MS,
@@ -26,7 +26,7 @@ import {
   matchEventSession,
   poolStatus,
   runSession,
-} from "../../scripts/loop/session.mjs";
+} from "../../src/orchestrator/session.mjs";
 
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), "tp-session-pool-"));
@@ -735,7 +735,7 @@ describe("session pool", () => {
     const child = spawn(
       process.execPath,
       [
-        join(import.meta.dirname, "../../scripts/supervisor.mjs"),
+        join(import.meta.dirname, "../../src/orchestrator/supervisor.mjs"),
         "--session",
         "--control=external",
         "--actor-kind",

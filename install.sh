@@ -137,7 +137,7 @@ Options:
                     (default: the loop actor kinds in --target).
                     'openclaw' is rejected (exit 2) — it runs openclaw-team's own
                     poll/patrol. The values are actor kinds — the same vocabulary
-                    scripts/supervisor.mjs takes on --actor-kind.
+                    taskctl loop takes on --actor-kind.
   --scheduler <m>   auto | launchd | systemd | cron   (default: auto — launchd on
                     macOS, systemd --user on Linux, cron elsewhere). Only one
                     mechanism may be loaded per machine.

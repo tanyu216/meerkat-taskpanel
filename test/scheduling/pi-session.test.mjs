@@ -17,7 +17,7 @@ import {
   createPiPool,
   piSubagentsInstalled,
   sessionArgs,
-} from "../../scripts/loop/actor-kinds/pi.mjs";
+} from "../../src/orchestrator/actor-kinds/pi.mjs";
 
 const FAKE = `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";

@@ -8,8 +8,8 @@
 #   4. settings.json    → merged: env.TASKCTL_AGENT + a SessionStart hook, preserving
 #                         every other key and hook
 #   5. slash commands   → ~/.claude/commands/{board,claim,deliver}.md
-#   6. scheduling       → ~/.claude/scheduling/{launchd,systemd,cron}, the loop body in
-#                         ~/.claude/meerkat-taskpanel/ and the agent config
+#   6. scheduling       → ~/.claude/scheduling/{launchd,systemd,cron}, the loop state
+#                         directory (~/.claude/meerkat-taskpanel/) and the agent config
 #                         (~/.claude/meerkat-taskpanel.env)
 # plus the reproducible hook script and the taskctl shim that injects --agent <name>.
 set -eu

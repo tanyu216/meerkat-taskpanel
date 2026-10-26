@@ -18,9 +18,10 @@ its local `taskd`, the four-agent-kind installers, and the board HTTP API + SSE 
 frontend. `src/core/` has the domain model, SQLite storage
 + migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl` command surface
 and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` is the
-board HTTP API + SSE; `web/` is the Vue 3 + Vite frontend that builds to `web/dist` and is
-served by `taskd`. Still planned: the **epic view** and **iteration management** — the
-roadmap lives in `README.md` / `README.zh-CN.md`.
+board HTTP API + SSE; `src/orchestrator/` is the external loop behind `taskctl loop …`;
+`web/` is the Vue 3 + Vite frontend that builds to `web/dist` and is served by `taskd`.
+Still planned: the **epic view** and **iteration management** — the roadmap lives in
+`README.md` / `README.zh-CN.md`.
 
 **Distribution:** `npx meerkat-taskpanel` (or `install.sh --target all` from a checkout)
 materializes the runtime at `~/.meerkat-taskpanel` — `src/`, the built `web/dist`,
@@ -33,10 +34,11 @@ is unchanged and keeps `/app/.data`. `docs/install.md` is the reference.
 
 The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/install.md`).
 The board owns the workflow decisions (`issue reconcile --workflow`); the loop executes the
-resulting plan. The external supervisor is a **skill of its own**
-(`skills/meerkat-loop/`), never installed for OpenClaw and **not** distributed through the
-marketplace: `install.sh --target claude|codex|pi` is its only path, and it
-carries no version of its own. The third skill, **`setup-meerkat`**
+resulting plan. The external loop is part of the toolkit
+(`src/orchestrator/`, `taskctl loop …`); its skill (`skills/meerkat-loop/`) carries decisions
+only — `SKILL.md` + `references/`, no scripts or templates — is never installed for OpenClaw
+and is **not** distributed through the marketplace: `install.sh --target claude|codex|pi` is
+its only path, and it carries no version of its own. The third skill, **`setup-meerkat`**
 (`skills/setup-meerkat/`), is the user-invoked `/setup-meerkat` install/repair and team-setup
 command; `install.sh --target claude` copies it, the shared bundle carries it for the other
 kinds.
@@ -111,11 +113,10 @@ node --test                                  # full suite (also: npm test)
 node --test test/core/index.test.mjs         # one file
 node --test "test/contract/**/*.test.mjs"    # one directory (a bare dir arg does NOT work here)
 npm run test:coverage                        # tap reporter + 80% line/branch/function floors
-npm run check                                # check:loop + verify + test (fast, host-static)
+npm run check                                # verify + test (fast, host-static)
 npm run verify                               # manifests + skill + migrations + paths + signposts checkers
 npm run verify:docker                        # AUTHORITATIVE gate: build image + in-container suite (also run by pre-push)
 npm run verify:docker:container              # run docker/verify-in-container.sh inside the image
-node scripts/sync-loop.mjs                   # regenerate the loop payload (manifest + scripts/ + templates/)
 node scripts/build.mjs                       # produce dist/ (the npm release tree; deletes + recreates)
 node scripts/verify/contract.mjs             # API contract snapshot; --update refreshes it, drift exits 1
 node scripts/verify/cli-contract.mjs         # CLI surface snapshot (commands/flags/envelope); --update
@@ -136,14 +137,16 @@ meerkat-taskpanel/
 │                           #   repositories, md export), commands (use-cases), bootstrap.openBoard()
 ├── src/cli/                # taskctl (argv, usage, commands/, output/); reaches taskd via foundation/transport
 ├── src/server/             # taskd: auth + CIDR, router, routes/, sse, static, writer lock, graceful stop
+├── src/orchestrator/       # the external loop behind `taskctl loop …`: passes, daemons,
+│                           #   session pool, actor kinds, compat gate
 ├── src/foundation/             # DTOs, constants, errors, pure helpers + the taskd transport seam
 ├── web/                    # Vue 3 + Vite board frontend (own lockfile) -> web/dist, served by taskd
 ├── skills/                 # the three skills: meerkat-taskpanel (board), meerkat-loop (supervisor),
 │                           #   setup-meerkat (install/repair + team setup; Claude-only copy)
 ├── .claude-plugin/ .pi/    # harness markers; the plugin root IS the repo root
 ├── design/                 # DESIGN / BLOCKS, the interactive prototype/, brand/, assets/, fidelity-rNN.md
-├── scripts/                # build, install/, sync-loop + loop-payload, supervisor, verify/{manifests,skill,
-│                           #   migrations,paths,contract,cli-contract,route-request,changelog,version,docker,…}
+├── scripts/                # build, install/, verify/{manifests,skill,migrations,paths,contract,
+│                           #   cli-contract,route-request,changelog,version,docker,…}
 ├── docker/                 # Dockerfile (webbuild stage + runtime), compose, profiles, verify-in-container.sh
 ├── monitoring/             # OTel / Prometheus exporter
 ├── test/                   # contract, core, concurrency, server, web, install, scheduling, verify, skill, design
@@ -181,19 +184,13 @@ the release workflow stages the image's build there before `npm pack`.
   `webbuild` stage run `npm ci --offline`, so the image builds with no network. The cache is a
   **generated artefact** (linux/arm64) — after a dependency bump, re-vendor per `docs/docker.md`
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
-- **The skills are generated, never hand-edited.** Author only under `skills/meerkat-taskpanel/`
-  and the loop's hand-written surface (`skills/meerkat-loop/`: `SKILL.md`, `references/`,
-  `scripts/board-check.mjs`). `skills/setup-meerkat/` is authored whole (it is standalone and
-  generates nothing); `node scripts/sync-loop.mjs --check` does not touch it. The loop's
-  `manifest.txt` + `scripts/` (except the gate) +
-  `src/` + `templates/` are generated from `scripts/supervisor.mjs`, `scripts/loop/`,
-  `scripts/wake-cwd.mjs`, `src/foundation/` and
-  `scripts/install/templates/` (the workflow decisions live in
-  `src/core/domain/workflow.mjs` and are not in the body — the loop gets them from
-  `issue reconcile --workflow`). After any edit touching those inputs run
-  `node scripts/sync-loop.mjs`; CI runs `--check` and fails on drift. There are **no committed
-  copies of a skill** anywhere: `skills/` is the only `skills` tree in the repository, and
-  `test/scaffold.test.mjs` asserts it.
+- **The skills are authored source, never generated.** `skills/meerkat-taskpanel/`,
+  `skills/meerkat-loop/` (docs + decisions only) and `skills/setup-meerkat/` (standalone)
+  are edited in place; there is no payload generator and no `manifest.txt`. The loop itself
+  is `src/orchestrator/` (the workflow decisions live in
+  `src/core/domain/workflow.mjs`; the loop gets them from `issue reconcile --workflow`).
+  There are **no committed copies of a skill** anywhere: `skills/` is the only `skills`
+  tree in the repository, and `test/scaffold.test.mjs` asserts it.
 - **Migrations are append-only.** Never edit or delete a committed
   `src/core/storage/migrations/*.sql`; add a new numbered file. The DB runner refuses a database
   whose applied file changed, and adding a migration reds several hand-kept version lists — see
@@ -258,9 +255,9 @@ authoritative home, because the container image drops `design/`.
   `TASKD_DATA_DIR=<home>/.meerkat-taskpanel/.data` in the unit; without it the unit runs the
   checkout's entry. One guard per machine, and switching layout is a deliberate `--force`
   (a mismatched unit is refused with exit 3, non-fatal).
-- **The loop speaks only `taskctl`.** `scripts/loop/**` and `scripts/supervisor.mjs` never call
-  the board's HTTP API directly — the live event stream is `taskctl events follow` (the local event hub), not `fetch`,
-  and the loop carries no board discovery or token code. Board capability detail (invocations,
+- **The loop speaks only `taskctl`.** `src/orchestrator/**` never calls the board's HTTP API
+  directly — the live event stream is `taskctl events follow` (the local event hub), not
+  `fetch`, and the loop carries no board discovery or token code. Board capability detail (invocations,
   JSON keys) lives in `skills/meerkat-taskpanel/references/capabilities.md`; the loop skill
   records decisions only.
 - **One local event hub per user and board.** `taskctl events hub` owns the host's single

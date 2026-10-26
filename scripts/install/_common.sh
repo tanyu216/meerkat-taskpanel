@@ -185,16 +185,6 @@ resolve_agent_cli_dir() {
   esac
 }
 
-# loop_src — the loop skill's source, which owns the loop body and the loop's templates.
-#
-# The loop is a skill of its own (skills/meerkat-loop/): its execution body and the units /
-# config templates it is deployed with are *generated* into it from this repository's
-# scripts/, src/foundation/ and scripts/install/templates/, and guarded by
-# `node scripts/sync-loop.mjs --check`. The installer reads them from there rather than
-# from this repository's own scripts/ — so what is deployed is exactly what was distributed
-# and verified, not a second reading of the same inputs.
-loop_src() { printf '%s\n' "$(repo_root)/skills/meerkat-loop"; }
-
 # board_skill_name / loop_skill_name / setup_skill_name — the skills this installer
 # distributes. The setup skill is copied only for the Claude bundle (see claude.sh).
 board_skill_name() { printf '%s\n' "meerkat-taskpanel"; }
@@ -249,20 +239,19 @@ export_tp_env() {
   TP_SHIM="$(target_home)/$agent_dir/bin/taskctl"
   TP_HOOK="$(target_home)/$agent_dir/hooks/meerkat-taskpanel-session-start.sh"
   TP_TRIGGER="$(target_home)/$agent_dir/meerkat-taskpanel-claim.sh"
-  # The external supervisor: the scheduling units run it, and it reads the config
-  # file written below. Log and state are fixed per agent kind so a user always knows where
-  # they land (documented in docs/scheduling.md).
+  # The external loop is `taskctl loop …`, shipped by the runtime tree `TP_REPO`
+  # names. Log and state are fixed per agent kind so a user always knows where they
+  # land (documented in docs/scheduling.md).
   #
-  # The executor the units name is an **agent-local copy**, not this checkout's own file:
-  # `install_scheduling` copies the loop body into `$TP_LOOP` (see `install_loop_body`),
-  # so a unit a user has already loaded keeps working after the checkout is moved,
-  # renamed or removed — and never has to be reloaded for that.
+  # The units name the CLI entry, not an agent-local copy of the loop body: the
+  # body now lives in the toolkit (`src/orchestrator/`), so there is one
+  # implementation to upgrade and the unit needs no reload when it changes.
   TP_ACTOR_KIND="$label"
   TP_AGENT_BASE="$(target_home)/$agent_dir"
   TP_LOOP="$(target_home)/$agent_dir/meerkat-taskpanel"
-  TP_SUPERVISOR="$TP_LOOP/scripts/supervisor.mjs"
+  TP_STATE_DIR="$TP_LOOP"
+  TP_CLI="$TP_REPO/src/cli/index.mjs"
   TP_LOG="$TP_LOOP/supervisor.log"
-  TP_STATE="$TP_LOOP/supervisor.state.json"
   TP_ENV="$(target_home)/$agent_dir/meerkat-taskpanel.env"
   TP_SCHED="$(target_home)/$agent_dir/scheduling"
   TP_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-yes}"
@@ -355,7 +344,7 @@ export_tp_env() {
   fi
 
   export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
-  export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED
+  export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_STATE_DIR TP_CLI TP_LOG TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED
   export TP_RECOVER_STALE TP_WORKFLOW TP_REVIEWER
   export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
   export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON TP_CLI_ON_PATH
@@ -491,93 +480,38 @@ apply_supervisor() {
   return 0
 }
 
-# install_loop_body — copy the loop execution body into the agent directory. Requires
-# export_tp_env first (TP_LOOP, TP_ACTOR_KIND).
+# remove_legacy_loop_body — drop the execution body the installer used to copy into
+# the agent directory. The loop now ships with the toolkit (`src/orchestrator/`, reached
+# through `taskctl loop …`), so the copy is dead weight: a loaded unit names the CLI, and
+# leaving a stale body behind would only invite someone to run it.
 #
-# The scheduling units run whatever path `TP_SUPERVISOR` names. When that path was
-# this checkout's own `scripts/supervisor.mjs`, moving, renaming or deleting the
-# checkout left every loaded unit pointing at a file that was gone: the loop died
-# with the directory, and reviving it meant reinstalling *and* reloading the unit.
-# The body now lives in the agent directory, and the units name that copy:
-#
-#   <home>/<agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs   the executor
-#   <home>/<agent-dir>/meerkat-taskpanel/scripts/wake-cwd.mjs     the poll pass's resolver
-#   <home>/<agent-dir>/meerkat-taskpanel/scripts/foundation/**    their imports
-#
-# The `scripts/` + `scripts/foundation/` shape is load-bearing, not decoration: the body's
-# modules import each other relatively (`../foundation/scheduling.mjs`), so a copy of
-# one file would resolve a relative import to nothing and the unit would die at load.
-# Foundation is copied byte-for-byte; the entry scripts are copied with only their
-# foundation specifiers rewritten to that shape.
-# The set to copy is **not** restated here — it is read from the loop skill's generated
-# `manifest.txt` at its root, which is the closure itself (computed from the two entry points'
-# imports by `scripts/loop-payload.mjs` and guarded by `--check`). One source, so a new
-# import in the body cannot leave bash — or the test that proves the copy is closed —
-# silently behind.
-#
-# The board engine the executor drives (`taskctl`) still lives in the checkout: the
-# agent config records where, so an agent-installed executor still finds it. Moving the
-# checkout is then a re-run of `install.sh` away — no unit reload, because the unit
-# never named the checkout in the first place.
-#
-# Merge-never-clobber like every other installed artefact: a member whose content
-# already matches is left untouched; a differing one is left alone without `--force`.
-# `--dry-run` says which of the two it would be, so drift is reportable without writing.
-install_loop_body() {
-  manifest="$(loop_src)/manifest.txt"
-  if [ ! -f "$manifest" ]; then
-    echo "$TP_ACTOR_KIND: loop body manifest not found: $manifest" >&2
-    echo "$TP_ACTOR_KIND: run 'node scripts/sync-loop.mjs' in the checkout and retry." >&2
+# Only the body is removed. `$TP_LOOP` also holds the loop's state, log and queue, which
+# outlive an upgrade. `--dry-run` reports instead of deleting.
+remove_legacy_loop_body() {
+  if [ -z "${TP_LOOP:-}" ]; then
+    echo "$TP_ACTOR_KIND: TP_LOOP is unset; refusing to remove a loop body" >&2
     return 1
   fi
-
-  while read -r rel; do
-    [ -n "$rel" ] || continue
-    src="$(loop_src)/$rel"
-    dest="$TP_LOOP/$rel"
-
-    if [ ! -f "$src" ]; then
-      echo "$TP_ACTOR_KIND: loop source not found: $src" >&2
-      return 1
-    fi
-
-    if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
-      if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-        echo "would keep  $dest (already current)"
-      fi
-      continue
-    fi
-
+  for legacy in "$TP_LOOP/scripts" "$TP_LOOP/templates" "$TP_LOOP/manifest.txt"; do
+    [ -e "$legacy" ] || continue
     if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-      if [ -f "$dest" ]; then
-        echo "would refresh $dest (differs from the loop skill — --force applies it)"
-      else
-        echo "would copy  $src -> $dest"
-      fi
-      continue
+      echo "would remove $legacy (the loop now ships with taskctl)"
+    else
+      rm -rf "$legacy"
+      echo "$TP_ACTOR_KIND: removed  $legacy (the loop now ships with taskctl)"
     fi
-
-    if [ -f "$dest" ] && [ -z "${MEERKAT_TASKPANEL_FORCE:-}" ]; then
-      echo "$TP_ACTOR_KIND: loop body kept: $dest (differs from the loop skill — re-run with --force to refresh)"
-      continue
-    fi
-
-    mkdir -p "$(dirname "$dest")"
-    cp "$src" "$dest"
-    echo "$TP_ACTOR_KIND: copied  $dest"
-  done < "$manifest"
+  done
 }
 
-# install_scheduling — drop the loop body and the scheduling units, then either print the
-# exact command that loads them or — when the user asked for it (`--supervisor=…`, i.e.
-# MEERKAT_TASKPANEL_SUPERVISOR is set) — run that load. Without a request the installer
-# never runs `launchctl` / `systemctl` / `crontab` itself: enabling a daemon is the user's
-# call, and a plain install must have no side effects. Requires export_tp_env first.
+# install_scheduling — drop the retired loop body, write the scheduling units, then either
+# print the exact command that loads them or — when the user asked for it
+# (`--supervisor=…`, i.e. MEERKAT_TASKPANEL_SUPERVISOR is set) — run that load. Without a
+# request the installer never runs `launchctl` / `systemctl` / `crontab` itself: enabling a
+# daemon is the user's call, and a plain install must have no side effects. Requires
+# export_tp_env first.
 #
-# Every template here comes from the **loop** skill (`emit_loop_file`), not from this
-# installer's own templates: the units and the agent config are the loop's payload, and
-# deploying the copy the loop skill distributes is what keeps "what shipped" and "what was
-# verified" the same bytes.
+# The templates are this installer's own (`scripts/install/templates/`), the one place they
+# live: the loop skill carries decisions, not deployment files.
 # remove_legacy_unit_files — drop the poll/patrol templates this installer used to
 # write. A loaded legacy unit is taken down by `apply_supervisor enable`; these are
 # the on-disk copies, removed only after that so a user cannot accidentally reload
@@ -600,7 +534,12 @@ remove_legacy_unit_files() {
 }
 
 install_scheduling() {
-  install_loop_body
+  remove_legacy_loop_body
+  # The loop's state directory (queue, ledger, locks, status files). It used to be
+  # created as a side effect of copying the body; now nothing else makes it.
+  if [ -z "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    mkdir -p "$TP_LOOP"
+  fi
 
   # Said here, not in export_tp_env: this is the function that knows the agent kind gets
   # units, and the warning is about *them*. An agent kind with no supervisor never reaches it.
@@ -609,17 +548,17 @@ install_scheduling() {
     echo "$TP_ACTOR_KIND:   so a woken $TP_ACTOR_KIND would not resolve. Install it, then re-run this install with --force."
   fi
 
-  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.ping.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist"
-  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.continue.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.continue.plist"
-  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.subscribe.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.subscribe.plist"
-  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.session.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.session.plist"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.service" "$TP_SCHED/systemd/meerkat-taskpanel-ping.service"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.timer" "$TP_SCHED/systemd/meerkat-taskpanel-ping.timer"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.service" "$TP_SCHED/systemd/meerkat-taskpanel-continue.service"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.timer" "$TP_SCHED/systemd/meerkat-taskpanel-continue.timer"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-subscribe.service" "$TP_SCHED/systemd/meerkat-taskpanel-subscribe.service"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-session.service" "$TP_SCHED/systemd/meerkat-taskpanel-session.service"
-  emit_loop_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
+  emit_file "scheduling/launchd/com.meerkat-taskpanel.ping.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist"
+  emit_file "scheduling/launchd/com.meerkat-taskpanel.continue.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.continue.plist"
+  emit_file "scheduling/launchd/com.meerkat-taskpanel.subscribe.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.subscribe.plist"
+  emit_file "scheduling/launchd/com.meerkat-taskpanel.session.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.session.plist"
+  emit_file "scheduling/systemd/meerkat-taskpanel-ping.service" "$TP_SCHED/systemd/meerkat-taskpanel-ping.service"
+  emit_file "scheduling/systemd/meerkat-taskpanel-ping.timer" "$TP_SCHED/systemd/meerkat-taskpanel-ping.timer"
+  emit_file "scheduling/systemd/meerkat-taskpanel-continue.service" "$TP_SCHED/systemd/meerkat-taskpanel-continue.service"
+  emit_file "scheduling/systemd/meerkat-taskpanel-continue.timer" "$TP_SCHED/systemd/meerkat-taskpanel-continue.timer"
+  emit_file "scheduling/systemd/meerkat-taskpanel-subscribe.service" "$TP_SCHED/systemd/meerkat-taskpanel-subscribe.service"
+  emit_file "scheduling/systemd/meerkat-taskpanel-session.service" "$TP_SCHED/systemd/meerkat-taskpanel-session.service"
+  emit_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
 
   echo "$TP_ACTOR_KIND: scheduling units installed under $TP_SCHED"
 
@@ -729,7 +668,7 @@ seed_env_file() {
 # The workflow keys are added with `ensure_env_key` as well, so an install that
 # predates them learns them on the next run without any existing value being touched.
 write_agent_config() {
-  emit_loop_file "agent/meerkat-taskpanel.env" "$TP_ENV"
+  emit_file "agent/meerkat-taskpanel.env" "$TP_ENV"
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
   ensure_env_key "MEERKAT_TASKPANEL_RECOVER_STALE" "$TP_RECOVER_STALE"
   ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"
@@ -844,16 +783,10 @@ emit_from() {
 
 # emit_file <template_rel> <dest> [--exec]
 #   Render this installer's own template (scripts/install/templates/<rel>) into <dest>.
-#   These are the **board** templates: the agent's session-start hook and slash commands,
-#   the Codex trigger and AGENTS.md snippet, the taskctl shims.
+#   These are every template the installer writes: the agent's session-start hook and
+#   slash commands, the Codex trigger and AGENTS.md snippet, the taskctl shims, the
+#   scheduling units and the agent config.
 emit_file() { emit_from "$(script_dir)/templates" "$@"; }
-
-# emit_loop_file <template_rel> <dest> [--exec]
-#   Render the **loop** skill's template (skills/meerkat-loop/templates/<rel>) into <dest>:
-#   the scheduling units and the agent config. Same relative layout as the installer's own
-#   (scheduling/cron/…), so a call site reads the same either way — the difference is which
-#   skill owns the file.
-emit_loop_file() { emit_from "$(loop_src)/templates" "$@"; }
 
 # merge_settings <settings_file>
 #   Merge env.TASKCTL_AGENT and the SessionStart hook into a Claude settings.json,

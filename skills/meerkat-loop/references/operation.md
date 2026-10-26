@@ -6,53 +6,53 @@ board/loop compatibility contract.
 ## Run by hand
 
 ```bash
-node <agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --session
-node <agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice
-node <agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once
-node <agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --continue-only --once
+taskctl loop session                         # the resident pool
+taskctl loop run                             # both clocks
+taskctl loop run --ping-once                 # one liveness pass
+taskctl loop run --continue-once             # one judgment turn
 
-node <agent-dir>/meerkat-taskpanel/scripts/loop/passes.mjs patrol   --actor-kind claude --agent alice
-node <agent-dir>/meerkat-taskpanel/scripts/loop/passes.mjs workflow --actor-kind claude --agent alice
-node <agent-dir>/meerkat-taskpanel/scripts/loop/passes.mjs poll     --actor-kind claude --agent alice
+taskctl loop patrol
+taskctl loop workflow
+taskctl loop poll
+taskctl loop tick                            # patrol → workflow → poll in one command
 
 # The live-session mode: status, an explicit pool takeover, the console cycle.
-node <agent-dir>/meerkat-taskpanel/scripts/loop/status.mjs  --json
-node <agent-dir>/meerkat-taskpanel/scripts/loop/status.mjs  --take-over
-node <agent-dir>/meerkat-taskpanel/scripts/loop/status.mjs  --stop
-node <agent-dir>/meerkat-taskpanel/scripts/loop/console.mjs --once --json
-node <agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice \
-  --session --control=external
+taskctl loop status --json
+taskctl loop status --take-over
+taskctl loop status --stop
+taskctl loop console --json
+taskctl loop session --control=external
 ```
 
-A bare `node` is right in your own shell; the units name an absolute interpreter.
-`--control=external` is the pool half of the manual mode: it opens no control session and skips
-`continue.pending`; the live session runs the control turn and the pool keeps only the project
-sessions. `status.mjs --take-over` starts exactly that, records its pid, and `--stop` stops only
-that process.
+The agent's `taskctl` shim carries `--agent` / `--actor-kind`; add them explicitly from a shell
+that does not go through the shim. `--control=external` is the pool half of the manual mode: it
+opens no control session and skips `continue.pending`; the live session runs the control turn
+and the pool keeps only the project sessions. `loop status --take-over` starts exactly that,
+records its pid, and `--stop` stops only that process.
 
 ### Main flags
 
 Precedence: flag > process env > agent config > default. The complete surface is
-`node …/supervisor.mjs --help`; the flags a human actually sets:
+`taskctl loop <verb> --help`; the flags a human actually sets:
 
 | Flag | Meaning |
 |---|---|
 | `--agent <name>` | agent(s) to work for; repeatable / comma-separated |
 | `--actor-kind claude\|codex\|pi` | which worker to wake |
-| `--session` / `--control=internal\|external` | the resident pool; who owns the control turn |
+| `--control=internal\|external` | who owns the control turn (session mode) |
 | `--reviewer <agent>` | deployment reviewer; a project's `reviewer` overrides it, and an `agent` card with no effective reviewer fails startup |
 | `--workflow=yes\|no` / `--workflow-max-actions <n>` | the write channel and its per-pass cap |
 | `--workflow-ledger <path>` | alert de-duplication ledger; an unreadable one suppresses nothing |
 | `--max-concurrency <n>` / `--project-concurrency <n>` | workers and reviewers share the budget |
 | `--recover-stale=yes\|no` | also claim stale `in_progress` |
 | `--allow-all-tools` | full tool access; requires `--allow-all-tools-reason "<who and why>"` |
-| `--subscribe` | the event subscriber (launchd/systemd only) |
-| `--dry-run` / `--once` | print intended actions; one pass and exit |
+| `--dry-run` | print intended actions; write nothing |
+| `--ping-once` / `--continue-once` | one clock and exit (on `loop run`) |
 
 Transport (`--url`, `--env-file`, `--token`, `--config`, `--projects-json`, `--home`, `--cli`)
-and the state/log paths are in `--help`. `--poll-interval` is the deprecated alias of
-`--ping-interval`; `--assignee-only` is `--claim-unassigned=no`. There is no
-`--acceptance-policy` flag: the card's own `acceptance_mode` is authoritative.
+and the state/log paths are in `--help`. `--state-dir <dir>` derives the loop's state files;
+`--assignee-only` is `--claim-unassigned=no`. There is no `--acceptance-policy` flag: the
+card's own `acceptance_mode` is authoritative.
 
 ## No resident pool
 
@@ -73,16 +73,16 @@ started with `--control=external`, so it opens no control session and leaves
 `continue.pending` alone. Nothing else changes: the same `patrol → workflow → poll`, the same
 question ladder, the same acceptance rules.
 
-1. `status.mjs --json` → `running | busy | starting | configured-idle | partial | absent`.
+1. `taskctl loop status --json` → `running | busy | starting | configured-idle | partial | absent`.
    - `running` + `pool.controlMode: internal`: the supervisor owns the turn; do not run a
      second one. You may attach as a question console.
    - `configured-idle` / `partial` / `busy`: report; the service manager or an in-flight turn
      owns it.
-   - `absent`: ask the human, then `status.mjs --take-over` (explicit; the pool persists until
-     `status.mjs --stop`).
-2. Control ticks run `passes.mjs patrol → workflow → poll`. With the external pool live, poll
+   - `absent`: ask the human, then `taskctl loop status --take-over` (explicit; the pool
+     persists until `taskctl loop status --stop`).
+2. Control ticks run `taskctl loop patrol → workflow → poll`. With the external pool live, poll
    claims and enqueues; the pool's project sessions spawn the workers/reviewers.
-3. Question ticks run `console.mjs --once --json`: `awaiting` cards, in_progress agent
+3. Question ticks run `taskctl loop console --json`: `awaiting` cards, in_progress agent
    questions with no later human comment, and `in_review` cards pending acceptance. The UI
    comment and the in-session answer are the **same record**: re-read the card before asking
    and again before recording; if a human comment is already newer than the question, do not
@@ -126,11 +126,12 @@ continuing.
 **Attachments go in the same directory:** `taskctl attachment list <ref> --json`, then
 `taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>`.
 
-**Refresh on events.** With `--subscribe`, every event that names an active queued card adds
-its `task_id` to a debounced batch; the batch **refreshes the briefs** of every matching card
-and, for a review card, its original. It runs even when `--event-continue=no`, is bounded by
-`CARD_REFRESH_MIN_MS`, and a failed refresh only logs and keeps the previous file. Dispatch is
-separate: an event wakes a continue turn only while the resident pool is live.
+**Refresh on events.** The event subscriber (`taskctl loop subscribe`) adds the `task_id` of
+every active queued card to a debounced batch; the batch **refreshes the briefs** of every
+matching card and, for a review card, its original. It runs even when `--event-continue=no`,
+is bounded by `CARD_REFRESH_MIN_MS`, and a failed refresh only logs and keeps the previous
+file. Dispatch is separate: an event wakes a continue turn only while the resident pool is
+live.
 
 **The plan file.** Workers maintain `plan.md` beside the brief and update it as they learn; the
 reviewer reads it and treats an unexplained deviation as grounds for `VERDICT: REJECT`. A
@@ -243,14 +244,16 @@ project directory is a working directory, **not** an isolation boundary.
 ## Compatibility
 
 The loop declares `task-interface v1` and board release ≥ 1.1.0 in `SKILL.md`, enforced by
-`scripts/board-check.mjs`; the board declares its release and contract `schema_version` through
+`taskctl loop compat`; the board declares its release and contract `schema_version` through
 `taskctl --version --json`. The gate is deliberately coarse: it answers "is this a board of the
 generation I was written against?", not "does every command still behave identically". A change
 to the `task-interface` surface means a new generation on both sides.
 
-### What the loop still needs from a checkout
+### What the loop needs from its runtime tree
 
-One thing: the **board engine**. The copied body drives `taskctl`, which lives in the board's
-checkout, found through `MEERKAT_TASKPANEL_REPO` in the agent config. The body loads with no
-checkout present, but a *tick* needs the engine reachable. If the checkout moves, update the
-config key; no reload is needed. This is the one remaining checkout dependency.
+The loop **is** part of the toolkit now (`taskctl loop …`), so it needs no separate body and no
+checkout of its own: the installed tree (or the checkout, for a development run) is enough, and
+`MEERKAT_TASKPANEL_REPO` in the agent config names it. A combined install (`--target all`,
+npm/npx) records `~/.meerkat-taskpanel`; an agent-only install records the checkout. Moving the
+tree is a re-install — the units need no reload because they name the CLI entry through that
+key.

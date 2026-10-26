@@ -397,8 +397,7 @@ The container rule covers *running the project and its installs*. These stay on 
 host, because they are static or pure and touch nothing:
 
 - `node --test` and `node --check` (parsing and unit tests);
-- `node scripts/verify/manifests.mjs`, `node scripts/verify/skill.mjs`,
-  `node scripts/sync-loop.mjs --check`;
+- `node scripts/verify/manifests.mjs`, `node scripts/verify/skill.mjs`;
 - `git` operations, file listing and inspection;
 - static rendering/screenshots of the design prototype under `design/prototype/`;
 - browser-rendered frontend checks — the DOM/selector contract assertions and the

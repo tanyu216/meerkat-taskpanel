@@ -3,7 +3,7 @@
  *
  * A supervisor tick has two halves that must not be tangled: what to do (this
  * file, pure) and doing it (spawning `claude -p` / `codex exec`, reading the
- * board — `scripts/supervisor.mjs`, I/O). Keeping the decision pure means the
+ * board — `src/orchestrator/`, I/O). Keeping the decision pure means the
  * load-bearing rules are decided without a clock, a process or a database:
  *
  *   * **fire-only.** A scan with no candidates plans no work, so no worker is
@@ -804,9 +804,7 @@ export function buildQuestionPrompt(rows, input = {}) {
  * @param {{
  *   actorKind?: string,
  *   agent?: string,
- *   nodePath?: string|null,
- *   passesScript?: string,
- *   commonArgs?: string[],
+ *   cliCommand?: string,
  *   continueIntervalSeconds?: number,
  *   includePoll?: boolean,
  *   openedBy?: "human"|"supervisor",
@@ -815,11 +813,8 @@ export function buildQuestionPrompt(rows, input = {}) {
  * @returns {string}
  */
 export function buildContinuePrompt(input = {}) {
-  const node = quoteArg(input.nodePath ?? "node");
   const agent = String(input.agent ?? "agent");
   const actorKind = String(input.actorKind ?? "claude");
-  const script = quoteArg(input.passesScript ?? "passes.mjs");
-  const common = (input.commonArgs ?? []).map(quoteArg).join(" ");
   const includePoll = input.includePoll !== false;
   // The one control-turn template, two drivers. `supervised` is the headless
   // scheduler (the human reads the board); `manual` is the live session (the
@@ -830,7 +825,14 @@ export function buildContinuePrompt(input = {}) {
     1,
     Math.round((input.continueIntervalSeconds ?? DEFAULT_CONTINUE_SECONDS) / 60),
   );
-  const run = (pass) => `${node} ${script} ${pass}${common === "" ? "" : ` ${common}`}`;
+  // The loop ships with the toolkit now; the turn names the command, not a script
+  // path inside a copied body. A caller that knows the runtime tree passes an
+  // absolute `cliCommand` (interpreter + CLI entry + the loop's state flags), so a
+  // headless turn does not depend on `taskctl` happening to be on the unit's PATH.
+  const command = typeof input.cliCommand === "string" && input.cliCommand.trim() !== ""
+    ? input.cliCommand.trim()
+    : "taskctl";
+  const run = (pass) => `${command} loop ${pass}`;
 
   const lines = [
     `${LOOP_SKILL_COMMAND} Continue — Meerkat TaskPanel loop, judgment turn (mode: ${mode}).`,

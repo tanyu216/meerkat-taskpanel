@@ -12,7 +12,7 @@ Description=Meerkat TaskPanel event subscriber ({{AGENT}} on {{ACTOR_KIND}})
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env node {{SUPERVISOR}} --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --subscribe --log {{LOG}} --state {{STATE}}
+ExecStart={{NODE}} {{CLI}} loop subscribe --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
 Restart=always
 RestartSec=5
 StandardOutput=append:{{LOG}}

@@ -18,7 +18,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
-import { QUEUE_FILES } from "../../scripts/loop/queue.mjs";
+import { QUEUE_FILES } from "../../src/orchestrator/queue.mjs";
 
 import { ACTIONS, LOOP_KINDS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, poolReport, resolveScheduler, stripBlock, subscribeReport, subscribeStatusLine, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
 
@@ -118,7 +118,7 @@ describe("supervisor: the scheduler and the identifiers", () => {
     assert.equal(supervisorLabel("alice", "claude", "continue"), "com.meerkat-taskpanel.alice.claude.continue");
 
     // The template the installer writes is the single source of truth for the Label.
-    const plist = doc("skills/meerkat-loop/templates/scheduling/launchd/com.meerkat-taskpanel.ping.plist");
+    const plist = doc("scripts/install/templates/scheduling/launchd/com.meerkat-taskpanel.ping.plist");
     assert.match(plist, /<string>com\.meerkat-taskpanel\.\{\{AGENT\}\}\.\{\{ACTOR_KIND\}\}\.ping<\/string>/);
   });
 
@@ -134,9 +134,12 @@ describe("supervisor: the scheduler and the identifiers", () => {
 
     assert.equal(paths.marker, "~/.claude");
     assert.equal(paths.agentDir, ".claude");
-    assert.equal(paths.supervisor, "/home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs");
+    // With no `TP_CLI`, the cron preview names the agent-local shim; the loop's
+    // state now lives in the directory beside it.
+    assert.equal(paths.cli, "/home/op/.claude/bin/taskctl");
+    assert.equal(paths.cliNeedsNode, false);
     assert.equal(paths.log, "/home/op/.claude/meerkat-taskpanel/supervisor.log");
-    assert.equal(paths.state, "/home/op/.claude/meerkat-taskpanel/supervisor.state.json");
+    assert.equal(paths.stateDir, "/home/op/.claude/meerkat-taskpanel");
     assert.deepEqual(
       paths.launchd.map((unit) => unit.plist),
       [
@@ -229,8 +232,8 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
     const built = cronContentLines(paths);
     assert.equal(built.length, 3);
     assert.match(built[0], /^PATH=\S+$/);
-    assert.match(built[1], /^\* \* \* \* \* \/[^ ]*node \/home\/op\/\.claude\/meerkat-taskpanel\/scripts\/supervisor\.mjs --actor-kind claude --agent alice --ping-only --once /);
-    assert.match(built[2], /^\*\/10 \* \* \* \* .* --continue-only --once /);
+    assert.match(built[1], /^\* \* \* \* \* \/home\/op\/\.claude\/bin\/taskctl loop run --ping-once --actor-kind claude --agent alice /);
+    assert.match(built[2], /^\*\/10 \* \* \* \* .* loop run --continue-once /);
     assert.match(built[1], />\/dev\/null 2>&1$/);
 
     // Exported by `install.sh` before it calls this module: the preview then carries the
@@ -239,14 +242,18 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
       agentBase: "/home/op/.claude",
       agent: "alice",
       actorKind: "claude",
-      env: { TP_NODE: "/opt/node/bin/node", TP_UNIT_PATH_CRON: "/opt/cli/bin:/opt/node/bin:/usr/bin:/bin" },
+      env: {
+        TP_NODE: "/opt/node/bin/node",
+        TP_CLI: "/opt/repo/src/cli/index.mjs",
+        TP_UNIT_PATH_CRON: "/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
+      },
       home: "/home/op",
     });
     exported.cronFile = join(makeTempDir(), "meerkat-taskpanel.cron");
     assert.deepEqual(cronContentLines(exported), [
       "PATH=/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
-      "* * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
-      "*/10 * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --continue-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
+      "* * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
+      "*/10 * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --continue-once --actor-kind claude --agent alice --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
     ]);
 
     // Once the installer has written the unit, that file is the source: the enable path

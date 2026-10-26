@@ -1,7 +1,7 @@
 /**
  * The board → loop seam, end to end.
  *
- * The planner (`domain/workflow.mjs`) and the executor (`scripts/loop/runners.mjs`)
+ * The planner (`domain/workflow.mjs`) and the executor (`src/orchestrator/runners.mjs`)
  * are each tested well on their own, but their tests meet in the middle only by
  * convention: the planner's tests hand-build wire tasks, the executor's tests
  * hand-build snake_case actions, and the API contract fixture is a third
@@ -20,7 +20,7 @@ import { describe, it } from "node:test";
 
 import { planWorkflowTick } from "../../src/core/domain/workflow.mjs";
 import { workflowToWire } from "../../src/foundation/wire.mjs";
-import { runWorkflowTick } from "../../scripts/loop/runners.mjs";
+import { runWorkflowTick } from "../../src/orchestrator/runners.mjs";
 
 const NOW = "2026-10-08T00:05:00.000Z";
 const CONFIG = Object.freeze({ reviewer: "jobs", maxActions: 20, reviewAgingMs: 60 * 60_000 });

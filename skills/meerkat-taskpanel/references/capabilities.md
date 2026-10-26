@@ -25,7 +25,7 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `taskctl --version --json` | `data.version`, `data.schema_version` | `scripts/board-check.mjs` |
+| `taskctl --version --json` | `data.version`, `data.schema_version` | `taskctl loop compat` |
 
 ## 2. Project rows — `project list`
 

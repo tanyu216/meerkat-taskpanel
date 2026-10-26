@@ -12,8 +12,8 @@ Tick what applies. Anything left unticked should say why in the notes below.
       uncommitted change is not what CI will see; `SKIP_CONTAINER_VERIFY=1` skips it)
 - [ ] If a route, error code or wire field moved: the contract snapshot was refreshed with
       `node scripts/verify/contract.mjs --update` and the diff was read, not rubber-stamped
-- [ ] If anything under `skills/` was edited: `node scripts/sync-loop.mjs` was run and
-      `npm run check:loop` is green
+- [ ] If anything under `skills/` was edited: the prose still matches `taskctl` (the skills
+      carry decisions; the loop runs as `taskctl loop …`, so there is no payload to regenerate)
 - [ ] If a `src/core/storage/migrations/*.sql` file was added: it is a **new** numbered file
       and no committed migration was edited or deleted
 - [ ] If behaviour changed: a `## [Unreleased]` entry was added to `CHANGELOG.md`

@@ -86,7 +86,7 @@ export function writeCardFile(file, markdown) {
  * force-drains whatever was pending (so an event seen just before EOF is not
  * lost).
  *
- * The shared contract with `scripts/loop/subscribe.mjs` is only two
+ * The shared contract with `src/orchestrator/subscribe.mjs` is only two
  * expressions: the debounce cap
  * `min(debounceMs, firstPendingAt + maxWaitMs - now)` and the interval floor
  * `lastRunAt + minIntervalMs - now`. This scheduler folds the floor into the

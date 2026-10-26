@@ -27,7 +27,7 @@ Only pure static checks may run on the host: `node --check`, `node --test`, the
 ## Before you open a pull request
 
 ```sh
-npm run check                  # check:loop + verify + test  (host-static, fast)
+npm run check                  # verify + test  (host-static, fast)
 ```
 
 The authoritative gate is `npm run verify:docker`, and you do not have to run it by hand:
@@ -76,7 +76,7 @@ These are checked, not merely preferred. Skipping one turns CI red.
 | **Commit with explicit paths** (`git commit -- <path>`), never a blanket `git commit -a` | review |
 | **The API contract snapshot is explicit.** A route, error code or wire-field change must update `test/fixtures/contract/api.snapshot.json` via `node scripts/verify/contract.mjs --update` — never let it drift silently | `contract-gate.yml`, `.githooks/pre-push` |
 | **A route's *declared* request shape must equal what its handler reads** | `scripts/verify/route-request.mjs` |
-| **The skills are generated.** Author only under `skills/meerkat-taskpanel/` and the loop's hand-written surface; then run `node scripts/sync-loop.mjs`. No skill is distributed as a committed copy — `skills/` is the only `skills` tree in the repository | `npm run check:loop`, `test/scaffold.test.mjs` |
+| **The skills are source.** Author them in `skills/`; nothing is generated, and no skill is distributed as a committed copy — `skills/` is the only `skills` tree in the repository. The loop runs as `taskctl loop …` (`src/orchestrator/`) | `test/scaffold.test.mjs`, `test/skill/loop.test.mjs` |
 | **Migrations are append-only.** Never edit or delete a committed `src/core/storage/migrations/*.sql`; add a new numbered file. The runner refuses a database whose applied file has changed | `migrations-runner.mjs`, `.githooks/pre-commit` |
 | **The container gate runs before a branch push leaves the machine** (`SKIP_CONTAINER_VERIFY=1` opts out for one push) | `.githooks/pre-push` |
 | **A version tag needs a `## [X.Y.Z]` CHANGELOG section** | `version-gate.yml`, `.githooks/pre-push` |

@@ -25,7 +25,7 @@ import {
   questionDispatches,
   requeueContinue,
   retireLegacyDispatched,
-} from "../../scripts/loop/queue.mjs";
+} from "../../src/orchestrator/queue.mjs";
 
 function dirFor(t) {
   const dir = mkdtempSync(join(tmpdir(), "tp-queue-"));

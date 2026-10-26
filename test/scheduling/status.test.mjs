@@ -15,13 +15,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import { parseArgs } from "../../scripts/loop/options.mjs";
+import { parseArgs } from "../../src/orchestrator/options.mjs";
 import {
   probeSupervisor,
   probeUnits,
   stopSupervisor,
   takeOver,
-} from "../../scripts/loop/status.mjs";
+} from "../../src/orchestrator/status.mjs";
 
 const dirs = [];
 function tempDir() {

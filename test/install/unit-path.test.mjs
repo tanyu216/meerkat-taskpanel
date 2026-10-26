@@ -291,8 +291,8 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
     const loop = join(home, ".claude", "meerkat-taskpanel");
     const expected = [
       `PATH=${unitPath(NODE_DIR, { cliDir: bin, scheduler: "cron" })}`,
-      `* * * * * ${NODE} ${loop}/scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once --log ${loop}/supervisor.log --state ${loop}/supervisor.state.json >/dev/null 2>&1`,
-      `*/10 * * * * ${NODE} ${loop}/scripts/supervisor.mjs --actor-kind claude --agent alice --continue-only --once --log ${loop}/supervisor.log --state ${loop}/supervisor.state.json >/dev/null 2>&1`,
+      `* * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log ${loop}/supervisor.log --state-dir ${loop} >/dev/null 2>&1`,
+      `*/10 * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --continue-once --actor-kind claude --agent alice --log ${loop}/supervisor.log --state-dir ${loop} >/dev/null 2>&1`,
     ];
 
     const dry = runInstall(
@@ -307,7 +307,7 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
       .map((line) => line.trim())
       .filter((line) => line.startsWith("supervisor: would run:"))
       .map((line) => line.slice("supervisor: would run:".length).trim())
-      .filter((line) => line.startsWith("PATH=") || /^\*.*\* .*supervisor\.mjs/.test(line));
+      .filter((line) => line.startsWith("PATH=") || /^\*.*\* .*loop run/.test(line));
     assert.deepEqual(previewed, expected, `the preview must show the setting line and both jobs:\n${dry.stdout}`);
 
     // The real install writes the same three lines into the unit file.
@@ -318,7 +318,7 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
     const written = readFileSync(join(home, ".claude", "scheduling", "cron", "meerkat-taskpanel.cron"), "utf8")
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.startsWith("PATH=") || /^\*.*\* .*supervisor\.mjs/.test(line));
+      .filter((line) => line.startsWith("PATH=") || /^\*.*\* .*loop run/.test(line));
     assert.deepEqual(written, expected);
   });
 });

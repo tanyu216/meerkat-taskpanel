@@ -169,7 +169,7 @@ The loop has two clocks and a resident session pool:
 - **continue**, every 600 seconds: one bounded LLM turn that runs three deterministic passes in order.
 - **session pool**, long-lived: one control conversation, one project conversation per target directory, and a reviewer conversation there on demand.
 
-The skill lives in [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md). Its execution body is [`scripts/supervisor.mjs`](scripts/supervisor.mjs) plus `scripts/loop/`.
+The skill lives in [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md) and carries the decisions. The loop itself is part of the toolkit — [`src/orchestrator/`](src/orchestrator/) — and runs as `taskctl loop …`.
 
 ### Invoke it manually
 
@@ -215,7 +215,7 @@ install.sh --supervisor=disable    # unload
 
 `--supervisor-actor-kinds` limits which agent kinds an action applies to. The installer also asks once whether the supervisor may claim unassigned cards (default yes) and remembers the answer in `<agent-dir>/meerkat-taskpanel.env`.
 
-The loop declares the board interface it needs: `task-interface v1`, board release >= 1.1.0. It carries no version of its own. Its `scripts/board-check.mjs` checks the board against its own `--version --json` and exits 3 when it cannot get a verdict.
+The loop declares the board interface it needs: `task-interface v1`, board release >= 1.1.0. It carries no version of its own. Its `taskctl loop compat` checks the board against its own `--version --json` and exits 3 when it cannot get a verdict.
 
 The cost model is simple. Ping is $0. Continue is one bounded LLM turn per cadence. Inside it, poll is the deterministic cost gate: a worker or reviewer turn starts only after a successful claim. On cron there is no pool, so there is no worker dispatch.
 
@@ -264,8 +264,6 @@ Requires **Node >= 22** (the `node:sqlite` era). The engine is runtime zero-depe
 
 ```bash
 node --test                          # run the smoke / contract test suite
-node scripts/sync-loop.mjs           # the loop payload (execution body + installer templates)
-node scripts/sync-loop.mjs --check   # verify the generated payload is in sync
 node scripts/verify/manifests.mjs    # validate plugin manifests
 node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
 node scripts/build.mjs               # produce dist/

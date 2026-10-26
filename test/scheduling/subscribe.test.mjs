@@ -19,7 +19,7 @@ import {
   followArgs,
   nextBackoff,
   runSubscribe,
-} from "../../scripts/loop/subscribe.mjs";
+} from "../../src/orchestrator/subscribe.mjs";
 
 const activity = (event, overrides = {}) => ({
   event,

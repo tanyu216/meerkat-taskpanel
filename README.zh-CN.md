@@ -169,7 +169,7 @@ loop 有两个时钟和一个常驻会话池：
 - **continue**，每 600 秒：一个有界的模型回合，按顺序跑三个确定性 pass。
 - **会话池**，常驻：一个控制会话，每个目标目录一个项目会话，按需一个 reviewer 会话。
 
-skill 在 [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md)。执行体是 [`scripts/supervisor.mjs`](scripts/supervisor.mjs) 加 `scripts/loop/`。
+skill 在 [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md)，只承载决策。loop 本身属于工具链（[`src/orchestrator/`](src/orchestrator/)），以 `taskctl loop …` 运行。
 
 ### 手动调用
 
@@ -215,7 +215,7 @@ install.sh --supervisor=disable    # 卸载
 
 `--supervisor-actor-kinds` 限定动作作用于哪些 agent kind。安装时还会问一次是否允许 supervisor 认领未分配的卡（默认允许），并把答案记在 `<agent-dir>/meerkat-taskpanel.env`。
 
-loop 会声明它需要的看板接口：`task-interface v1`、board 版本 >= 1.1.0。loop 自身不带版本号。它的 `scripts/board-check.mjs` 会对着看板自己的 `--version --json` 检查，拿不到结论时退出码为 3。
+loop 会声明它需要的看板接口：`task-interface v1`、board 版本 >= 1.1.0。loop 自身不带版本号。它的 `taskctl loop compat` 会对着看板自己的 `--version --json` 检查，拿不到结论时退出码为 3。
 
 成本模型很简单。ping 是 $0。continue 每个周期一个有界模型回合。回合里的 poll 是确定性的成本闸门：只有认领成功，才会起 worker 或 reviewer 回合。cron 上没有会话池，也就没有 worker 派发。
 
@@ -264,8 +264,6 @@ agent kind 之间的差异，只在**由谁执行这些规则**。
 
 ```bash
 node --test                          # 运行冒烟 / 契约测试
-node scripts/sync-loop.mjs           # 生成 loop 载荷（执行体 + 安装模板）
-node scripts/sync-loop.mjs --check   # 校验生成载荷是否与来源同步
 node scripts/verify/manifests.mjs    # 校验插件清单
 node scripts/verify/skill.mjs        # 校验看板 skill 的 SKILL.md frontmatter
 node scripts/build.mjs               # 产出 dist/

@@ -26,7 +26,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env node {{SUPERVISOR}} --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --session --log {{LOG}} --state {{STATE}}
+ExecStart={{NODE}} {{CLI}} loop session --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
 Restart=always
 RestartSec=5
 StandardOutput=append:{{LOG}}

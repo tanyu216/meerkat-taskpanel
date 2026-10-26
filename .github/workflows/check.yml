@@ -44,9 +44,6 @@ jobs:
         # job goes red.
         run: npm run test:coverage
 
-      - name: Loop payload is up to date
-        run: node scripts/sync-loop.mjs --check
-
       - name: Manifests
         run: node scripts/verify/manifests.mjs
 

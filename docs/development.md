@@ -21,12 +21,13 @@
 | `src/core/` | Domain model, SQLite repository, state machine, invariants (M1) |
 | `src/cli/` | `taskctl` — the CLI entry point |
 | `src/server/` | Local HTTP API + SSE for the board (M6) |
+| `src/orchestrator/` | The external loop (`taskctl loop …`): passes, daemons, session pool, actor kinds |
 | `src/foundation/` | Foundation DTOs, constants, small pure helpers |
 | `web/` | Vue 3 + Vite board frontend → `web/dist` (the hosted frontend root) |
 | `skills/meerkat-taskpanel/` | The skill — **single source of truth** |
 | `.claude-plugin/` | The board plugin manifest and the marketplace; the plugin root is the repository root, which is how every harness shares the one `skills/` tree |
 | `.pi/` | The Pi extension, declared by the root `package.json`'s `pi` field (which also names the skills directory) |
-| `scripts/` | Build, install, sync and verify scripts |
+| `scripts/` | Build, install and verify scripts |
 | `test/` | Smoke / contract tests |
 | `design/` | Product design artifacts — the DESIGN / BLOCKS documents, the interactive `prototype/`, brand assets and exported assets (see `design/README.md`) |
 | `docs/` | Usage and development documentation |
@@ -35,8 +36,8 @@ Dependency direction: `core`, `cli` and `server` may import from `foundation`;
 nothing imports from `cli` or `server`; `foundation` imports nothing from `src/`.
 `src/foundation/` is the **public SDK**: both the board and the loop may import it.
 
-The loop is an **orchestrator, not a co-owner**. `scripts/loop/**`, the supervisor and
-`scripts/wake-cwd.mjs` may import `foundation/` but never `src/core|cli|server`; the board may
+The loop is an **orchestrator, not a co-owner**. `src/orchestrator/**` may import
+`foundation/` but never `src/core|cli|server`; the board may
 not import the loop's clocks/wake policy (`foundation/scheduling.mjs`); and no shipped skill
 imports `src/core|cli|server` at all — an installed skill and a checkout are not co-located,
 so such an import would resolve here and fail on a host. All three directions are asserted by
@@ -60,8 +61,6 @@ HTTP API directly. Capability detail lives in the board skill's
 
 ```bash
 node --test                          # smoke / contract test suite
-node scripts/sync-loop.mjs         # regenerate the loop payload (manifest + scripts/ + templates/)
-node scripts/sync-loop.mjs --check # verify the payload is in sync
 node scripts/verify/manifests.mjs    # validate the agent-kind + loop + marketplace manifests
 node scripts/verify/skill.mjs        # validate every shipped SKILL.md frontmatter
 node scripts/verify/web-dist.mjs     # are the two web/dist-guarded tests legs actually run?
@@ -72,11 +71,10 @@ Or via npm aliases:
 
 ```bash
 npm test          # node --test
-npm run check:loop
 npm run verify
 npm run verify:web-dist  # fail unless both web/dist-guarded legs ran (see below)
 npm run build
-npm run check     # check:loop + verify + test
+npm run check     # verify + test
 npm run test:coverage   # node --test + the coverage gate (see below)
 ```
 
@@ -383,71 +381,43 @@ state (§4.3); the row still exists in `task_activities` and under
 > [web-local-first.md](web-local-first.md) for what works, the SSH-forward
 > workaround, and what a fix would require.
 
-## The skills are generated, never hand-edited
+## The skills are authored, never generated
 
-There are three skills, and `scripts/sync-loop.mjs` owns the whole generated surface
-around them (it delegates the payload half to `scripts/loop-payload.mjs`):
+There are three skills, and each is plain source — there is no generated payload:
 
-| Skill | Authored in | Generated into |
+| Skill | Lives in | Notes |
 |---|---|---|
-| `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | nothing — every harness reads `skills/` in place |
-| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `manifest.txt` + `scripts/` (except the gate) + `templates/`; foundation is generated inside `scripts/foundation/` |
-| `setup-meerkat` (install/repair + team setup) | `skills/setup-meerkat/` — everything, including its `scripts/` and `assets/` | nothing — it is standalone (Node builtins only) and is copied as-is with the Claude bundle |
+| `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | `SKILL.md`, `references/`, its two helper scripts. Every harness reads `skills/` in place |
+| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` | `SKILL.md` + `references/` only. The loop itself is `src/orchestrator/`, reached through `taskctl loop …` |
+| `setup-meerkat` (install/repair + team setup) | `skills/setup-meerkat/` | Everything, including `scripts/` and `assets/`; standalone (Node builtins only), copied as-is with the Claude bundle |
 
-`setup-meerkat` is the one skill whose scripts are **not** generated: it may not import
-`src/core`, `src/cli` or `src/server`, because it has to run from an installed copy that
-has only its own directory (`test/cli/imports.test.mjs` enforces that).
+The loop used to ship an execution body generated into `skills/meerkat-loop/`
+(`manifest.txt` + `scripts/` + `templates/`). It now lives in `src/orchestrator/` and is
+installed and versioned with the toolkit, so there is nothing to regenerate and no
+payload-regeneration step. The installer's scheduling templates live once, under
+`scripts/install/templates/`; the enabled units run `taskctl loop …`.
+
+`setup-meerkat` may not import `src/core`, `src/cli` or `src/server`: it has to run from an
+installed copy that has only its own directory (`test/cli/imports.test.mjs` enforces that).
+The loop's decisions still come from the board, not from a copy: the workflow plan is
+`src/core/domain/workflow.mjs`, applied through `issue reconcile --workflow`. OpenClaw never
+receives the loop at all, by ruling: its framework already ships an equivalent supervisor,
+and `install.sh --target openclaw` copies the board skill only.
 
 There is exactly one `skills` tree in the repository. No harness receives a copy: each reads
 `skills/` in place through a manifest at the repository root, which is the board's plugin
-root. `test/scaffold.test.mjs` asserts that, since with no copy targets left
-`sync-loop.mjs --check` has nothing to compare and could not notice an orphan tree.
+root. `test/scaffold.test.mjs` asserts that.
 
-The loop's `manifest.txt` and `scripts/` are generated *from this repository*:
-`manifest.txt` is the transitive import closure of `scripts/supervisor.mjs`,
-`scripts/loop/*.mjs` and `scripts/wake-cwd.mjs` (the list the installer copies), `scripts/`
-holds those modules and `scripts/foundation/` holds the foundation modules they import.
-`templates/` mirrors the loop-side files under `scripts/install/templates/`.
-`scripts/board-check.mjs` is the one authored file inside a generated root —
-`loop-payload.mjs` never writes, prunes or reports it. That direction matters — the foundation
-modules in the repository's `src/foundation/` are **not** moved into the skill; they stay
-where the CLI imports them, and the skill's copy is generated and guarded. The vendored set
-is the loop's foundation closure only: the loop body never contains `src/core`, `src/cli`,
-`src/server`, or any foundation module the entry points do not import. Foundation copies are
-byte-for-byte; entry scripts differ only in their foundation import specifiers
-(`../src/foundation/x` → `./foundation/x`), and `--check` compares against that transform. The **workflow
-decisions** are not in
-the loop body at all: they live in `src/core/domain/workflow.mjs`, and the loop gets them
-from the board through `issue reconcile --workflow`. OpenClaw never receives the loop at
-all, by ruling: its framework already ships an equivalent supervisor, and `install.sh
---target openclaw` copies the board skill only.
-
-**After editing the generated skill surfaces (`skills/meerkat-loop/` except its authored
-files, `skills/meerkat-taskpanel/`), `scripts/supervisor.mjs`, `scripts/loop/`,
-`scripts/wake-cwd.mjs`, `src/foundation/`, or `scripts/install/templates/`, run:**
-
-```bash
-node scripts/sync-loop.mjs
-```
-
-CI runs `node scripts/sync-loop.mjs --check` and fails if the generated payload has
-drifted. The same reasoning applies to `dist/`: build output is never edited by hand and is
-gitignored.
-
-**One more rule for the skills, because they are distributed rather than read in place:** a
+**One rule for the skills, because they are distributed rather than read in place:** a
 link inside `skills/**` must resolve wherever the skill is *installed*, not where it was
 authored. An agent kind's skill store holds `skills/<name>/` and nothing above it, so a
-`../../../docs/…` link dangles in every install — link out by absolute URL instead. (Sharing
-the tree across harnesses does not relax this: `install.sh` still lands one skill directory
-in the agent kind's store.) `test/skill/loop.test.mjs` asserts no link climbs out of the skill
-tree.
+`../../../docs/…` link dangles in every install — link out by absolute URL instead.
+`test/skill/loop.test.mjs` asserts no link climbs out of the skill tree.
 
 ## Build output
 
 `node scripts/build.mjs` deletes and recreates `dist/` and writes a `dist/web/.gitkeep`
-placeholder. It verifies the loop payload is current (`sync-loop --check`) rather than
-regenerating it: a build must not rewrite the source tree, so a stale payload is a red build
-instead of a silent divergence. It copies no skill — every harness reads `skills/` in place,
+placeholder. It copies no skill — every harness reads `skills/` in place,
 so `dist/` carries the tree as-is through the npm `files` whitelist. `dist/` is gitignored, and
 **it is the npm release tree — not the hosted frontend.** The `dist/web/` placeholder is
 left over from the M0 scaffold; the real board frontend builds to `web/dist` (see

@@ -6,13 +6,13 @@
 #   2. loop skill         → ~/.codex/skills/meerkat-loop (always a copy; --link is board-only)
 #   3. claim-first snippet → merged into ~/.codex/AGENTS.md (identity + rules)
 #   4. claim trigger      → ~/.codex/meerkat-taskpanel-claim.sh (schedulable; --no-automation skips)
-#   5. scheduling         → ~/.codex/scheduling/{launchd,systemd,cron}, the loop body in
-#                           ~/.codex/meerkat-taskpanel/ and the agent config
+#   5. scheduling         → ~/.codex/scheduling/{launchd,systemd,cron}, the loop state
+#                           directory (~/.codex/meerkat-taskpanel/) and the agent config
 #                           (~/.codex/meerkat-taskpanel.env)
 # plus the taskctl shim that injects --agent <name>. `--no-automation` skips the
 # claim trigger *and* the scheduling wiring — Codex has no hooks, so both are the
 # automation, and the flag means "install none of it". The loop *skill* is not
-# automation: it is the payload those units run, and it is always installed.
+# automation: it is the decision layer those units load, and it is always installed.
 set -eu
 . "$(cd "$(dirname "$0")" && pwd)/_common.sh"
 

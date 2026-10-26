@@ -3,15 +3,15 @@
 How a board gets worked **continuously** when the agent kind that does the work has no
 clock: a liveness ping, a periodic judgment turn, the atomic claim, the resident
 session that spawns the worker, and the notify-only patrol that catches what the
-scan misses. The scheduler lives **outside** the agent application — `scripts/supervisor.mjs`,
-which `install.sh` copies into the agent directory out of the
-**[`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill** — and the application is only
-ever the worker that gets woken. The deterministic passes live under
-`scripts/loop/` and are run by the continue turn.
+scan misses. The scheduler lives **outside** the agent application — `taskctl loop …`
+(`src/orchestrator/`), which ships with the toolkit; the
+**[`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill** carries the decisions — and the
+application is only ever the worker that gets woken. The deterministic passes are
+`taskctl loop patrol|workflow|poll`, run by the continue turn.
 
 There are two execution shapes, and the same supervisor serves both:
 
-- **resident** (default on launchd/systemd): `--session` runs a long-lived *session
+- **resident** (default on launchd/systemd): `taskctl loop session` runs a long-lived *session
   pool* — one control conversation that runs the continue turn, plus one *project
   session* per target directory whose subagents do the work. Poll claims a card and
   **enqueues** the handoff; the pool spawns the worker/reviewer as a subagent of the
@@ -34,7 +34,7 @@ Claude Code, Codex and Pi add on top.
 
 The supervisor is a **scheduler**. It owns two clocks and performs no board I/O
 of its own. The deterministic work — poll, patrol, workflow — lives in
-independent entries under `scripts/loop/`, and the continue turn invokes them.
+separate `taskctl loop` verbs, and the continue turn invokes them.
 
 | | **ping** | **continue** | **session** |
 |---|---|---|---|
@@ -48,7 +48,7 @@ independent entries under `scripts/loop/`, and the continue turn invokes them.
 The split is deliberate. A 60-second clock that read the board would be a poll
 again; a 10-minute clock that ran the entries itself would keep the loop's
 responsibilities inside the scheduler. On launchd/systemd the **event subscriber**
-(`--subscribe`) follows the local event hub through `taskctl events follow` and asks for a
+(`taskctl loop subscribe`) follows the local event hub through `taskctl events follow` and asks for a
 continue turn when a dispatch-relevant event arrives, so a new card or a completed dependency
 is seen within seconds; the hub owns the host's single board connection and its reconnect
 ladder, and the subscriber's `follow` child sees the same records `events tail` would. It is
@@ -63,9 +63,9 @@ The deterministic passes are **not scheduled individually**:
 
 | Entry | Job | Writes |
 |---|---|---|
-| `scripts/loop/passes.mjs poll` | scan → atomic claim → **enqueue the handoff**; also enqueues open agent questions (the question lane) | claims, card queue |
-| `scripts/loop/passes.mjs patrol` | heartbeat alerts + SLA rows | card queue only with `--patrol-llm=yes` |
-| `scripts/loop/passes.mjs workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `taskd` |
+| `taskctl loop poll` | scan → atomic claim → **enqueue the handoff**; also enqueues open agent questions (the question lane) | claims, card queue |
+| `taskctl loop patrol` | heartbeat alerts + SLA rows | card queue only with `--patrol-llm=yes` |
+| `taskctl loop workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `taskd` |
 
 The continue prompt runs them in the order **patrol → workflow → poll**: the
 workflow pass dispatches a review card, and the poll that follows in the same
@@ -80,17 +80,17 @@ is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `1800
 
 | Clock | Default | Where |
 |---|---:|---|
-| agent turn timeout | 30 min (`--session-turn-timeout`) | `scripts/loop/options.mjs`, `scripts/loop/session.mjs` |
+| agent turn timeout | 30 min (`--session-turn-timeout`) | `src/orchestrator/options.mjs`, `src/orchestrator/session.mjs` |
 | worker heartbeat interval | ≤ 10 min | worker handoff (`src/foundation/scheduling.mjs`) |
 | `HEARTBEAT_FRESH_MS` | 10 min | `src/foundation/constants.mjs` |
 | `CLAIM_STALE_SAME_MS` | 30 min | `src/foundation/constants.mjs` |
 | `CLAIM_STALE_ANY_MS` | 6 h | `src/foundation/constants.mjs` |
 | patrol stale (scans `in_progress` only) | 30 min (= `CLAIM_STALE_SAME_MS`) | `src/foundation/scheduling.mjs` |
-| continue interval | 10 min | `scripts/loop/options.mjs` |
-| queue `recoverStaleCards` | `2 × turn` | `scripts/loop/session.mjs` |
+| continue interval | 10 min | `src/orchestrator/options.mjs` |
+| queue `recoverStaleCards` | `2 × turn` | `src/orchestrator/session.mjs` |
 | ledger live-row reap | 2 h (`LEDGER_STALE_MS`) | `src/foundation/scheduling.mjs` |
-| pool heartbeat / stale | 15 s / 60 s | `scripts/loop/session.mjs` |
-| project idle / session max age | 30 min / 24 h | `scripts/loop/options.mjs` |
+| pool heartbeat / stale | 15 s / 60 s | `src/orchestrator/session.mjs` |
+| project idle / session max age | 30 min / 24 h | `src/orchestrator/options.mjs` |
 
 The contract:
 
@@ -404,7 +404,7 @@ What that means concretely:
 The SLA half notifies. Everything after that — accepting a delivery, rejecting it and
 opening a rework, rolling a container up, splitting a card into one — used to wait for a
 human. The **board** now owns those decisions; the loop's **workflow pass**
-(`scripts/loop/passes.mjs workflow`) executes them. It is a pass of its own, run by the
+(`taskctl loop workflow`) executes them. It is a pass of its own, run by the
 continue turn after patrol.
 
 The board computes one plan through `issue reconcile --workflow` (see
@@ -748,8 +748,8 @@ timers** — their hooks fire only on session events. So the loop lives outside:
 
 | Option | Shape |
 |---|---|
-| `scripts/supervisor.mjs` (this repo) | the scheduler: `--ping-only --once` / `--continue-only --once` for cron, `--session` for the resident pool, or its own daemon clocks |
-| the agent-installed copy | what `install.sh` deploys, out of the [`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill: the body is copied under `<agent-dir>/meerkat-taskpanel/`, and the scheduling units name *that* path |
+| `taskctl loop …` (this tree) | the scheduler: `loop run --ping-once` / `--continue-once` for the clocks, `loop session` for the resident pool, `loop run` for its own daemon clocks |
+| the installed runtime tree | what `install.sh` deploys; the units name `<tree>/src/cli/index.mjs loop …`, and an agent-only install names the checkout |
 | the local `taskd` process | a natural home for the same loop in a future milestone |
 | [openclaw-team](https://github.com/tanyu216/openclaw-team) | on OpenClaw, the framework *is* the supervisor |
 
@@ -766,7 +766,7 @@ than better:
 
 | Layer | What it is | What a minimal `PATH` does to it |
 |---|---|---|
-| ① the unit's interpreter | `/usr/bin/env node <supervisor.mjs>` | `env: node: No such file or directory` — exit 127, and no tick ever runs |
+| ① the unit's interpreter | `/usr/bin/env node <cli>/index.mjs` | `env: node: No such file or directory` — exit 127, and no tick ever runs |
 | ② the agent process the tick starts | the resident session launches `claude` / `codex` / `pi` | 127 again, on the *inherited* minimal `PATH` — the tick now starts and the session still fails. Underneath it sits the worker's own process tree (`git`, `node`, `taskctl`), which is equally blind |
 
 So each loop unit names **both** things outright:
@@ -800,7 +800,7 @@ never by drift.
 # cron: ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 PATH=/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
 
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
 ```
 
 (Both are rendered for the agent CLI you installed *for*, and only for it: a unit that wakes
@@ -1234,59 +1234,41 @@ cost lands on the unit identity, which is the one thing every client-facing addr
 (`9527`, the pointer, the compose healthcheck) is built on. Kept here only so a future
 decision starts from the analysis rather than from scratch.
 
-### The loop body is installed, not referenced
+### The loop's state directory
 
-`install.sh` **copies** the executor into the agent directory rather than pointing a unit at
-this checkout:
+The loop ships with the toolkit, so there is no copied execution body to install and no
+checkout path in a unit. What the installer creates beside the skill is the loop's **state
+directory**:
 
 ```text
 <home>/<agent-dir>/meerkat-taskpanel/
-├── scripts/supervisor.mjs        the scheduler the units run
-├── scripts/loop/*.mjs            the deterministic passes (patrol / workflow / poll), the subscriber,
-│                                 the resident pool (session.mjs), its queues + ledger, and the actor-kind adapters
-├── scripts/wake-cwd.mjs          what the poll pass calls to resolve a card's directory
-├── scripts/foundation/*.mjs      the modules those import
-├── supervisor.log                runtime
 ├── supervisor.state.json         runtime (legacy worker registry)
+├── supervisor.log                runtime
 ├── sessions.state.json           runtime (resident pool: pids, session ids, heartbeat)
+├── continue.state.json           runtime (the single-flight continue lock)
+├── subscribe.state.json          runtime (the event subscriber's last connection)
+├── cards.queue.json              runtime (claim → handoff dispatch queue)
 └── subagents.state.json          runtime (ledger: subagent id → project, role, card, status)
 ```
 
-The `scripts/` + `scripts/foundation/` shape is load-bearing: `supervisor.mjs` imports
-`./foundation/scheduling.mjs`, and that module in turn imports `constants.mjs` and
-`errors.mjs` (which imports `redact.mjs`). One file alone would leave a relative import
-resolving to nothing, so the transitive closure travels with it.
+The units name the runtime tree's CLI entry, not this directory:
 
-**The list is not restated anywhere.** `scripts/loop-payload.mjs` computes the closure from
-the body's entry points (`scripts/supervisor.mjs`, `scripts/loop/*.mjs` and
-`scripts/wake-cwd.mjs`) and
-writes it into the loop skill as `manifest.txt`; the installer copies exactly what
-that manifest lists, and `test/install/scheduling-units.test.mjs` proves the same list is
-closed under its own imports. So the loop skill's payload is generated and guarded
-(`node scripts/sync-loop.mjs --check`), and a new import cannot leave the installer, the
-test, or an agent kind's copy silently behind. The installer refreshes a differing copy only with
-`--force` (merge, never clobber — the same contract as every other installed artefact),
-and `--dry-run` reports which members would be refreshed.
+```text
+program: <absolute node> <runtime>/src/cli/index.mjs loop run --ping-once
+                                  --actor-kind <kind> --agent <name>
+                                  --log <state>/supervisor.log --state-dir <state>
+```
 
-The units and the agent config are rendered from the **loop skill's own templates**
-(`skills/meerkat-loop/templates/…`), not from a second copy under
-`scripts/install/templates/` — the installer deploys what the loop distributes.
+`<runtime>` is `MEERKAT_TASKPANEL_REPO`: `~/.meerkat-taskpanel` for a combined install
+(`--target all`, npm/npx), or the checkout for an agent-only install. The agent config records
+it, so moving the tree is a re-install — no `launchctl` / `systemctl` / `crontab` reload,
+because the unit never hard-codes a versioned body path.
 
-What that buys: a unit a user has already **loaded** names no checkout path, and the poll
-pass resolves the card's directory through the agent-local `scripts/wake-cwd.mjs` rather
-than the checkout's — so moving, renaming or removing the checkout does not invalidate
-either. Pointing the loop at a new location is a re-run of `install.sh`, with no
-`launchctl` / `systemctl` / `crontab` reload.
-
-What it does not buy (yet): the **board engine** still lives in the checkout. The copied
-executor drives `taskctl`, and the shim that names it (`<agent-dir>/bin/taskctl`) is
-checkout-resident, so a moved checkout still needs `install.sh` re-run (or `--force`) for
-that to follow. The agent config records where the board is — `MEERKAT_TASKPANEL_REPO` in
-`<agent-dir>/meerkat-taskpanel.env` — which is what lets an agent-installed executor find its
-CLI at all. That one remaining dependency is named rather than hidden: the loop skill's
-`references/operation.md` §"What the loop still needs from a checkout" is where it is
-recorded, and the loop's interface requirement on the board (which release/interface
-generation it drives) is declared in its `SKILL.md`.
+`--state-dir <dir>` is the documented spelling; the loop derives every file above from it.
+`--state <file>` still names the registry file explicitly, and `--log` the log. The installer
+removes an execution body left by an older install (`<state>/scripts/`, `<state>/templates/`,
+`<state>/manifest.txt`) on its next run, so an upgrade leaves no second implementation
+behind.
 
 ## Headless permission boundary
 
@@ -1301,7 +1283,7 @@ The rule that follows from that is a **no-default-bypass** rule:
 - The supervisor and the resident adapters **must not** run workers with
   permissions bypassed by default — no `claude --dangerously-skip-permissions`,
   no Codex `--dangerously-bypass-approvals-and-sandbox` (or equivalent), on by
-  default. Neither the repo's `scripts/supervisor.mjs` nor any actor-kind adapter
+  default. Neither `taskctl loop` nor any actor-kind adapter
   ships such a flag.
 - Turning a bypass **on** is a deliberate act that requires **explicit written
   authorization** and must be **documented at the point of use** — in the agent
@@ -1363,7 +1345,7 @@ differ. The supervisor's `--actor-kind` selects the one-shot continue command; t
 
 | Agent kind | Wake command | Trigger / scheduling | Continuity |
 |---|---|---|---|
-| **Claude Code** | `claude -p "<handoff>"` (headless) | external: launchd / systemd / cron running `supervisor.mjs --ping-only --once` / `--continue-only --once`, or the scheduler's own two clocks | `claude -p … --resume <sid>` — resume the session that owns the card |
+| **Claude Code** | `claude -p "<handoff>"` (headless) | external: launchd / systemd / cron running `taskctl loop run --ping-once` / `--continue-once`, or the scheduler's own two clocks | `claude -p … --resume <sid>` — resume the session that owns the card |
 | **Codex** | `codex exec "<handoff>"` | external: the same units, or Codex app automation (`intervalMinutes`, `quotaAware`, `model`, `reasoningEffort`) | resume the thread with `codex exec resume <sid> <prompt>`; carry `$CODEX_THREAD_ID` as `--session-id` |
 | **Pi** | `pi --print "<handoff>"` | external units | resume with `pi --print --session <sid> <prompt>`; pass the session id through the handoff |
 | **OpenClaw** | *n/a — no self-scheduler* | install **openclaw-team**; its `poll`/`patrol` automations are this design | the framework keeps the id stable across resumes |
@@ -1388,7 +1370,7 @@ schema is pinned by `codex app-server generate-json-schema`);
 CLI lacks the resident protocol keeps the one-shot
 path: patrol + workflow run, dispatch is paused. The seam is agent-kind-agnostic by
 design — an adapter implements `openSession({cwd, sessionId, role}) →
-{send, interrupt, close}` in `scripts/loop/agent kinds/`, and the pool manager never
+{send, interrupt, close}` in `src/orchestrator/actor-kinds/`, and the pool manager never
 names a CLI.
 
 Pi has no native subagents. The pool's Pi adapter warns when
@@ -1397,8 +1379,9 @@ Pi has no native subagents. The pool's Pi adapter warns when
 project session cannot spawn worker/reviewer subagents.
 
 Installers also install the **loop skill** itself, at `<agent-dir>/skills/meerkat-loop/` —
-the payload the units are rendered from, and the operator's documentation for
-running the loop. It is always a copy: `--link` names the board skill only.
+the operator's documentation and the decisions the loop applies. It is always a copy:
+`--link` names the board skill only. The execution body is `taskctl loop …`, not a file the
+skill carries.
 
 Installers write per-agent kind units under `<agent-dir>/scheduling/{launchd,systemd,cron}`,
 then **print the load command** — they never enable a daemon or run `crontab` for you:
@@ -1603,8 +1586,8 @@ it is idempotent and cleanly removable:
 ```cron
 # >>> meerkat-taskpanel (~/.claude) >>>
 PATH=/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
-*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --continue-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
+*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --continue-once --actor-kind claude --agent alice --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
 # <<< meerkat-taskpanel (~/.claude) <<<
 ```
 
@@ -1653,7 +1636,7 @@ describes.
 
 - **Identity and parameters.** The units start the scheduler with `--agent <agent>`
   (`--agent-name`, default `$USER`), `--actor-kind <h>`, and one pass
-  (`--ping-only --once` / `--continue-only --once`). The continue turn starts the
+  (`taskctl loop run --ping-once` / `--continue-once`). The continue turn starts the
   agent kind's headless entry point directly with the bounded `Continue` prompt — no
   project directory. Poll claims a card and enqueues it; a resident project session
   spawns the worker as a subagent of the provider CLI, which runs non-interactively
@@ -1708,16 +1691,15 @@ ruling](#openclaw-do-not-build-a-supervisor). `--target openclaw` still installs
 ## Running the supervisor
 
 ```bash
-node scripts/supervisor.mjs --actor-kind claude --agent alice               # both clocks (daemon), in the checkout
-node scripts/supervisor.mjs --actor-kind claude --agent alice --ping-only --once   # one ping
-node scripts/supervisor.mjs --agent alice,bob --actor-kind codex            # loop
-node scripts/supervisor.mjs --agent alice --dry-run --ping-only --once   # plan only
-
-node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --actor-kind claude --agent alice --continue-only --once   # the installed copy
+taskctl loop run --actor-kind claude --agent alice                  # both clocks (daemon)
+taskctl loop run --actor-kind claude --agent alice --ping-once      # one ping
+taskctl loop run --agent alice,bob --actor-kind codex               # loop
+taskctl loop run --agent alice --dry-run --ping-once                # plan only
+taskctl loop run --actor-kind claude --agent alice --continue-once  # one continue turn
 ```
 
-The flags are the same either way; the installed copy is what a loaded unit names, and it
-takes the board's location from `MEERKAT_TASKPANEL_REPO` in the agent config.
+The flags are the same either way; a loaded unit names the runtime tree's CLI entry and
+`MEERKAT_TASKPANEL_REPO` in the agent config is what tells it where that tree is.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -1736,9 +1718,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the agent config.
 | `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
 | `--continue=yes\|no` | from agent config → `yes` | enable the continue turn |
 | `--continue-state <path>` | `continue.state.json` beside `--state` | the single-flight lock for the continue turn |
-| `--once` | off | one pass, then exit. With no selector this is the **legacy poll pass**; the installed units use `--ping-only` / `--continue-only` |
-| `--ping-only` / `--continue-only` | off | with `--once`, run only that clock's pass |
-| `--patrol-only` | off | with `--once`, run only the SLA patrol pass (legacy) |
+| `--ping-once` / `--continue-once` | off | on `loop run`: run only that clock's pass, then exit |
 | `--patrol-interval <sec>` | `300` | the SLA **measurement** period (it no longer schedules anything) |
 | `--patrol-llm=yes\|no` | `no` | let patrol start an LLM turn on a stale card |
 | `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin — both the legacy heartbeat alert and the SLA tuple |
@@ -1809,11 +1789,11 @@ an older config lacks and never overwrites one it already has.
 ## The end-to-end path
 
 ```
-launchd / systemd / cron  ──ping 60s──▶  supervisor --ping-only --once
+launchd / systemd / cron  ──ping 60s──▶  taskctl loop run --ping-once
                                             prune registry entries whose pid is gone
                                             no board, no claim, no LLM
 
-launchd / systemd / cron  ──continue 600s──▶  supervisor --continue-only --once
+launchd / systemd / cron  ──continue 600s──▶  taskctl loop run --continue-once
                                             claude -p "Continue …"   ← the judgment turn (no card, no project)
                                                 ├─ passes.mjs patrol    notify-only SLA
                                                 ├─ passes.mjs workflow  apply board workflow plan (taskd)

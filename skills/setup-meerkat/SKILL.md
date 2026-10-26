@@ -55,7 +55,7 @@ Report the important rows, not the raw JSON:
 
 - `taskctl` path/version; `server.url`, its source (`flag`/`env`/`env-file`/`pointer`/
   `default`), `loopback` vs `remote`, and `/health`;
-- board/loop/setup skills per actor kind; loop body; supervisor units and live pool;
+- board/loop/setup skills per actor kind; loop state and live pool; supervisor units;
 - effective roles root (explicit/project/global) and role count;
 - the fixed human name and its source (`env`/`settings`/`config`/`shim`/`env-file`/
   `fallback`);

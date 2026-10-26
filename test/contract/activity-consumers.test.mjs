@@ -18,7 +18,7 @@ import test, { describe, it } from "node:test";
 
 import { ACTIVITY_EVENTS, HISTORICAL_ACTIVITY_EVENTS } from "../../src/core/domain/enums.mjs";
 import { SSE_NOISE_EVENTS } from "../../src/foundation/constants.mjs";
-import { classify, DISPATCH_EVENTS, IGNORED_EVENTS } from "../../scripts/loop/subscribe.mjs";
+import { classify, DISPATCH_EVENTS, IGNORED_EVENTS } from "../../src/orchestrator/subscribe.mjs";
 import { ADMITTED_EVENTS, FEED_EXCLUDED_EVENTS } from "../../web/src/lib/activity-feed.js";
 import { isKnownEvent } from "../../web/src/lib/events.js";
 

@@ -37,9 +37,6 @@ jobs:
       - name: Tests
         run: node --test
 
-      - name: Loop payload is up to date
-        run: node scripts/sync-loop.mjs --check
-
       - name: Manifests
         run: node scripts/verify/manifests.mjs
 

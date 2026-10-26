@@ -57,6 +57,7 @@ const PLANNED_CLI = [
   "commands/labels.mjs",
   "commands/export.mjs",
   "commands/token.mjs",
+  "commands/loop.mjs",
 ];
 
 const PLANNED_SERVER = [
@@ -194,12 +195,8 @@ describe("cli/imports — the loop consumes the toolkit, it does not implement i
     return resolved.startsWith(`${ROOT}/`) ? resolved.slice(ROOT.length + 1) : resolved;
   }
 
-  it("scripts/loop and the supervisor never import src/core, src/cli or src/server", () => {
-    const files = [
-      ...listModuleFiles(join(ROOT, "scripts/loop")),
-      join(ROOT, "scripts/supervisor.mjs"),
-      join(ROOT, "scripts/wake-cwd.mjs"),
-    ].filter((file) => existsSync(file));
+  it("src/orchestrator never imports src/core, src/cli or src/server", () => {
+    const files = listModuleFiles(join(ROOT, "src/orchestrator"));
     assert.ok(files.length >= 5, `expected the loop module set, found ${files.length}`);
 
     const violations = [];
@@ -213,6 +210,17 @@ describe("cli/imports — the loop consumes the toolkit, it does not implement i
       }
     }
     assert.deepEqual(violations, []);
+  });
+
+  it("only the loop command reaches the orchestrator, and the orchestrator reaches no command", () => {
+    // One seam in each direction: `src/cli/commands/loop.mjs` imports the
+    // orchestrator; the orchestrator imports no `src/cli/**` at all.
+    const callers = filesUnder("src/cli").filter((file) =>
+      importedSpecifiers(readSource(file)).some(
+        (specifier) => specifierTarget(file, specifier)?.startsWith("src/orchestrator/") === true,
+      ),
+    );
+    assert.deepEqual(callers.map((file) => file.slice(ROOT.length + 1)), ["src/cli/commands/loop.mjs"]);
   });
 
   it("the board imports the SLA engine only through its one command, and never the loop's clocks", () => {
@@ -264,8 +272,8 @@ describe("cli/imports — the loop consumes the toolkit, it does not implement i
   it("no shipped skill imports the board's implementation", () => {
     // An installed skill and the board's source tree are not co-located.
     // `skills/**` may only use Node builtins and relative links inside its own
-    // tree — the loop body's vendored `src/foundation/**` included. Reaching
-    // `src/core|cli|server` would resolve in a checkout and fail on a host.
+    // tree. Reaching `src/core|cli|server` would resolve in a checkout and fail
+    // on a host.
     const files = listModuleFiles(join(ROOT, "skills"));
     assert.ok(files.length >= 3, `expected the shipped skill modules, found ${files.length}`);
 
@@ -280,19 +288,14 @@ describe("cli/imports — the loop consumes the toolkit, it does not implement i
     }
     assert.deepEqual(violations, []);
 
-    // The payload has no `src/` tree at all: foundation travels under scripts/foundation.
-    // Asserting each `src/{core,cli,server}` path separately would pass vacuously once the
-    // parent directory is gone, so assert the parent itself.
-    assert.equal(
-      existsSync(join(ROOT, "skills/meerkat-loop/src")),
-      false,
-      "the loop payload must not carry a src/ tree",
-    );
-    for (const dir of ["core", "cli", "server"]) {
+    // The loop is part of the toolkit now, so its skill carries docs only. A
+    // reintroduced `scripts/` or `src/` tree under it would mean a second
+    // implementation shipped beside the real one.
+    for (const dir of ["scripts", "templates", "src", "manifest.txt"]) {
       assert.equal(
-        existsSync(join(ROOT, "skills/meerkat-loop/scripts/foundation", dir)),
+        existsSync(join(ROOT, "skills/meerkat-loop", dir)),
         false,
-        `the foundation payload must not vendor ${dir}`,
+        `the loop skill must not carry ${dir}`,
       );
     }
   });
