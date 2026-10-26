@@ -189,6 +189,56 @@ describe("skill frontmatter and assets", () => {
     }
   });
 
+  it("designs the system initialization surface before implementation", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+    const linus = readFileSync(join(team, "linus", "workflow.md"), "utf8");
+    const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+
+    assert.match(arch, /system initialization/i, "the flow is system initialization");
+    assert.match(arch, /feature or module design/i, "the flow says what it is not");
+    assert.match(arch, /foundation decision/i, "the inclusion test is a foundation decision");
+    assert.match(arch, /implementation-workflow\.md/, "out-of-scope cards route to implementation");
+
+    assert.match(arch, /design stance/i, "the five principles are a stance, not a slogan");
+    for (const principle of ["simple|simplicity", "reliab", "efficien", "elegan", "over-?engineer"]) {
+      assert.match(arch, new RegExp(principle, "i"), `the design stance covers ${principle}`);
+    }
+    assert.match(
+      arch,
+      /Design principles[\s\S]{0,400}every agent/i,
+      "the /init product carries the principles as a baseline",
+    );
+
+    assert.match(arch, /domain-driven design|DDD/i, "the style decision names DDD");
+    assert.match(arch, /bounded context/i, "the style decision names bounded contexts");
+
+    assert.match(arch, /RESTful/, "the API default is RESTful");
+    assert.match(arch, /envelope/i, "the API contract designs one envelope");
+    for (const key of ["code", "message", "data", "errors"]) {
+      assert.match(arch, new RegExp(`"${key}"`), `the envelope carries ${key}`);
+    }
+    assert.match(arch, /pagination/i, "collections define pagination");
+    assert.match(arch, /hot.?reload/i, "the configuration surface defines reload");
+    assert.match(arch, /directory tree|directory structure/i, "the tree is planned");
+    assert.match(arch, /baseline requirement for every agent/i, "/init is the agent baseline");
+
+    assert.match(linus, /foundation decision/i, "the routing table is foundation-level");
+    assert.match(linus, /feature or module/i, "the routing table names the implementation side");
+
+    assert.match(check, /design stance|over-?engineer/i, "the self-check audits the stance");
+    assert.match(check, /architecture style|domain-driven/i, "the self-check audits the style");
+    assert.match(check, /external contract/i, "the self-check audits the contract");
+    assert.match(check, /configuration surface/i, "the self-check audits configuration");
+    assert.match(check, /directory tree/i, "the self-check audits the tree");
+    assert.match(check, /\/init/, "the self-check audits the agent baseline");
+    assert.match(
+      check,
+      /design principles[\s\S]{0,300}every agent/i,
+      "the self-check audits the /init principles",
+    );
+  });
+
   it("carries the decision method, split glossaries and the worktree declaration", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const jobs = readFileSync(join(team, "jobs", "workflow.md"), "utf8");
