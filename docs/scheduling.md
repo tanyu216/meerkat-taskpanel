@@ -867,9 +867,12 @@ agent kinds does not multiply the guard. Which board it serves is chosen **at in
 a second board is the unguarded case; see
 [One guard per machine](#one-guard-per-machine).
 
-The unit writes its stdout/stderr into `<dataDir>/logs/taskd.log` — the **same file the
-lazy-start path uses**. `install.sh` creates `<dataDir>/logs` before writing the unit,
-because neither scheduler creates a missing log directory.
+`taskd` writes its own log at `<dataDir>/logs/taskd.log` — one line per event, rotated
+by size (see [Observability](observability.md#structured-logs)). The unit deliberately
+**does not** redirect stdout/stderr into that file: the application is the only writer,
+and a redirect would duplicate every line. `install.sh` still creates `<dataDir>/logs`
+before writing the unit, and anything written before the logger starts (an unreadable
+config file, say) lands in the journal or the macOS unified log.
 
 #### launchd unit (macOS)
 
@@ -891,7 +894,7 @@ expands to the operator's `TASKD_DATA_DIR` / `TASKD_RUNTIME_POINTER` as `<key>`/
 
      This is NOT a scheduled tick (no StartInterval): it is the single long-running
      owner of the data directory's write lock (R1). `install.sh` writes this plist and
-     loads it immediately. Logs append to the same file the lazy-start path uses.
+     loads it immediately. taskd writes and rotates its own log file (`{{LOG}}`).
 
      ProgramArguments[0] is the ABSOLUTE node that rendered this file — never
      `/usr/bin/env node`. launchd runs a job with PATH=/usr/bin:/bin:/usr/sbin:/sbin,
@@ -925,10 +928,9 @@ expands to the operator's `TASKD_DATA_DIR` / `TASKD_RUNTIME_POINTER` as `<key>`/
   <true/>
   <key>ThrottleInterval</key>
   <integer>10</integer>
-  <key>StandardOutPath</key>
-  <string>{{LOG}}</string>
-  <key>StandardErrorPath</key>
-  <string>{{LOG}}</string>
+  <!-- No StandardOutPath/StandardErrorPath: taskd writes and rotates {{LOG}}
+       itself. A redirect into the same file would duplicate every line;
+       anything written before the logger starts goes to the unified log. -->
 </dict>
 </plist>
 ```
@@ -941,7 +943,8 @@ expands to the operator's `TASKD_DATA_DIR` / `TASKD_RUNTIME_POINTER` as `<key>`/
 - **`ThrottleInterval` (`10`)** — launchd's own back-off: it will not restart the job
   more than once every 10 seconds, so a crash loop cannot spin (see
   [Robustness](#robustness)).
-- **`StandardOutPath` / `StandardErrorPath`** — both point at the one runtime log.
+- **no `StandardOutPath` / `StandardErrorPath`** — the daemon owns that file; a redirect
+  into it would write every line twice.
 - **`ProgramArguments`** — `[{{NODE}}, {{SERVER_ENTRY}}]`: the absolute interpreter, then
   the absolute entry point. **Never `/usr/bin/env node`**, and never a bare `node`. A
   launchd job runs with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, which contains no nvm and
@@ -1005,8 +1008,10 @@ Type=simple
 ExecStart={{NODE}} {{SERVER_ENTRY}}
 Restart=always
 RestartSec=5
-StandardOutput=append:{{LOG}}
-StandardError=append:{{LOG}}
+# No StandardOutput/StandardError redirect: taskd writes and rotates
+# {{LOG}} itself. A redirect into the same file would duplicate every line;
+# the journal keeps anything written before the logger starts (a config file
+# that cannot be read).
 {{ENV_SYSTEMD}}
 [Install]
 WantedBy=default.target
@@ -1190,11 +1195,12 @@ one write lock, so they never fight over the slot:
   systemctl --user reset-failed meerkat-taskpanel-taskd.service
   systemctl --user start meerkat-taskpanel-taskd.service
   ```
-- **Log rotation is the OS's job.** The unit appends to `<dataDir>/logs/taskd.log`, the
-  same file the lazy start writes, both in append mode. The contract ships **no rotator**:
-  on macOS, point `newsyslog` (or a user `logrotate`) at that file by size or time; on
-  Linux, replace the two `StandardOutput=append:` / `StandardError=append:` lines with
-  `StandardOutput=journal` / `StandardError=journal` and let journald own rotation.
+- **Log rotation belongs to the application.** `taskd` appends to
+  `<dataDir>/logs/taskd.log` itself and rotates it by size (`TASKD_LOG_MAX_BYTES`,
+  default 10 MiB, keeping `TASKD_LOG_KEEP`, default 5). Neither the unit nor the lazy
+  start writes that file — there is one writer and one rotation policy, and no
+  `newsyslog`/`logrotate` rule is needed. The journal (systemd) and the unified log
+  (launchd) keep only what is written before the logger starts.
 - **One guard per machine** — see [One guard per machine](#one-guard-per-machine).
 
 #### One guard per machine
@@ -1643,10 +1649,10 @@ describes.
   spawns the worker as a subagent of the provider CLI, which runs non-interactively
   (`claude -p "<handoff>" [--resume <sid>]` / `codex exec "<handoff>"` /
   `pi --print "<handoff>"` are the one-shot shapes).
-- **Logs.** `<agent-dir>/meerkat-taskpanel/supervisor.log` (the supervisor's `--log`). The
-  unit's own stdout/stderr go to the **same** file — launchd `StandardOutPath` /
-  `StandardErrorPath`, systemd `append:{{LOG}}`, and cron `>/dev/null 2>&1` because `--log`
-  already writes it.
+- **Logs.** `<agent-dir>/meerkat-taskpanel/supervisor.log` (the supervisor's `--log`),
+  written and rotated by the loop itself. The units do **not** redirect their
+  stdout/stderr into it — that would duplicate every line; cron sends the same output to
+  `/dev/null` because `--log` already writes it.
 - **State.** `<agent-dir>/meerkat-taskpanel/supervisor.state.json` — the running registry.
 - **Working directory.** A woken worker still `cd`s to the directory the map names for
   the card's project (`local_path ?? run_dir`), resolved by the poll pass from the

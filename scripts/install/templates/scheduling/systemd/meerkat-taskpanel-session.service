@@ -29,8 +29,8 @@ Type=simple
 ExecStart={{NODE}} {{CLI}} loop session --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
 Restart=always
 RestartSec=5
-StandardOutput=append:{{LOG}}
-StandardError=append:{{LOG}}
+# No stdout/stderr redirect: the loop writes --log itself (with rotation).
+# A redirect into the same file would duplicate every line.
 
 [Install]
 WantedBy=default.target

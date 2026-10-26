@@ -7,6 +7,89 @@ dependency-free, all runnable offline.
 The whole stack is a **sidecar**. `monitoring/` never touches `src/core` or `src/server`,
 so no business semantic changed to make the board observable.
 
+Logs are the other half and are **not** part of the sidecar: the processes write them
+themselves (see [Structured logs](#structured-logs)). The two signals are deliberately
+separate — the sidecar is fed observations from outside, while the log is the process's
+own account of what it did.
+
+## Structured logs
+
+One facility, `src/foundation/log.mjs`, for `taskd`, `taskctl` and the loop. It implements
+the `logger({ event, ... })` seam that `openBoard`, the write lock, the migration runner,
+the command context and the server already used — before this existed, `taskd` supplied no
+logger and every one of those events was dropped.
+
+### Levels and the default
+
+`debug < info < warn < error < off`, selected by `TASKD_LOG_LEVEL` (default `info`).
+
+- `info` — the core paths: startup/shutdown, a request, a migration applied, label GC and
+  container sweeps.
+- `warn` — recovered or suspicious: a stale write lock taken over, a stale schema, a
+  label-count mismatch, a refused command (a 4xx `DomainError`).
+- `error` — the exception boundaries: a 5xx or unmapped request failure, a failed
+  background job, a startup failure, an SSE read failure, a 5xx command failure.
+- `debug` — per-command success, SSE open/close, `/health` and static traffic, CLI
+  dispatch. Silent unless asked for.
+
+A 4xx is the **caller's** error, so it is a `warn` at most; the rendered CLI error is not
+duplicated into the log. The CLI is `off` unless `TASKD_LOG_LEVEL` is set, because its
+stdout is the data plane and its stderr is the product's error surface.
+
+### The line
+
+Human-readable text, one line per event, deterministic field order:
+
+```
+2026-10-27T12:34:56.789Z INFO  startup service=taskd version=1.1.0 pid=1234 data_dir=/…/.data url=http://127.0.0.1:9527 message="listening on http://127.0.0.1:9527"
+2026-10-27T12:34:56.790Z INFO  request method=GET path=/api/v1/tasks status=200 duration_ms=3 request_id=9f1c… actor=human:local
+2026-10-27T12:34:56.791Z WARN  command_failed command=moveStatus code=VERSION_CONFLICT http=409 duration_ms=1
+2026-10-27T12:34:56.792Z ERROR request_failed method=POST path=/api/v1/tasks status=500 request_id=9f1c… code=VALIDATION_FAILED
+```
+
+- The timestamp is ISO-8601 with milliseconds; the level is padded to five columns.
+- `event=` comes first, then `message=` when present, then the fields.
+- Bare values (`/api/v1/tasks`, `200`) are unquoted; anything with spaces or punctuation is
+  JSON-quoted. Long values are truncated.
+- The whole line is **redacted last**: a `td_…` token in a message or a field becomes
+  `td_****`, and a secret-named key (`token`, `secret`, `password`) is blanked outright.
+  `token_source` and `token_file` stay readable — they say *where* a token came from.
+- The loop's lines keep their `supervisor: ` prefix (`… INFO  supervisor: …`), which is
+  what its own tests read.
+
+### Correlation
+
+Every HTTP request gets a `request_id` (a supplied `x-request-id` when it matches
+`^[A-Za-z0-9._-]{1,64}$`, else a UUID), which is echoed on the response and carried into
+the command layer through `AsyncLocalStorage`. A `command_failed` therefore names the
+request it belongs to without any handler passing an id down by hand.
+
+### Where it goes, and rotation
+
+- **stderr** — always. Under systemd that is the journal; under launchd, the unified log.
+- **`<dataDir>/logs/taskd.log`** — written and rotated by `taskd` itself. `taskd` is the
+  only writer: the systemd/launchd units and the CLI's lazy start deliberately do **not**
+  redirect into it, which would duplicate every line. Rotation is by size:
+  `TASKD_LOG_MAX_BYTES` (default 10 MiB) into `taskd.log.1 … .N`, with `TASKD_LOG_KEEP`
+  (default 5). Files are created `0600` in a `0700` directory.
+- **`--log <path>`** — the loop's own file, same sink and rotation, skipped by `--dry-run`.
+
+The log holds no token, no request headers and no argv.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `TASKD_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` or `off` (`warning`/`silent` accepted) |
+| `TASKD_LOG_MAX_BYTES` | `10485760` | Largest `taskd.log` before rotation |
+| `TASKD_LOG_KEEP` | `5` | Rotated files kept |
+
+An unusable value in `.env` is a `CONFIG_FILE_INVALID` refusal, not a silent fallback.
+
+### Logs are not activities
+
+The board's `task_activities` rows are the **audit trail** — business facts, append-only,
+replicated to clients. Log events are operational and local. A new event name belongs in
+`EVENT_LEVELS` in `src/foundation/log.mjs`, never in `ACTIVITY_EVENTS`.
+
 ## What runs
 
 | Piece | Path | What it does |

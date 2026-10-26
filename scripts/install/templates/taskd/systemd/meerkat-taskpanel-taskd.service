@@ -32,8 +32,10 @@ Type=simple
 ExecStart={{NODE}} {{SERVER_ENTRY}}
 Restart=always
 RestartSec=5
-StandardOutput=append:{{LOG}}
-StandardError=append:{{LOG}}
+# No StandardOutput/StandardError redirect: taskd writes and rotates
+# {{LOG}} itself. A redirect into the same file would duplicate every line;
+# the journal keeps anything written before the logger starts (a config file
+# that cannot be read).
 {{ENV_SYSTEMD}}
 [Install]
 WantedBy=default.target

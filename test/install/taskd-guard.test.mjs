@@ -141,8 +141,10 @@ describe("taskd guard: the unit templates are the contract's", () => {
     assert.match(text, /<key>RunAtLoad<\/key>\s*<true\/>/);
     assert.match(text, /<key>KeepAlive<\/key>\s*<true\/>/);
     assert.match(text, /<key>ThrottleInterval<\/key>\s*<integer>10<\/integer>/);
-    assert.match(text, /<key>StandardOutPath<\/key>\s*<string>\{\{LOG\}\}<\/string>/);
-    assert.match(text, /<key>StandardErrorPath<\/key>\s*<string>\{\{LOG\}\}<\/string>/);
+    // The daemon writes and rotates taskd.log itself; a redirect into the same
+    // file would duplicate every line.
+    assert.doesNotMatch(text, /<key>StandardOutPath<\/key>/);
+    assert.doesNotMatch(text, /<key>StandardErrorPath<\/key>/);
     // No scheduled tick: a long-running owner of the write lock, not an interval job.
     assert.doesNotMatch(text, /<key>(StartInterval|StartCalendarInterval)<\/key>/);
 
@@ -178,8 +180,9 @@ describe("taskd guard: the unit templates are the contract's", () => {
     assert.match(text, /Type=simple/);
     assert.match(text, /Restart=always/);
     assert.match(text, /RestartSec=5/);
-    assert.match(text, /StandardOutput=append:\{\{LOG\}\}/);
-    assert.match(text, /StandardError=append:\{\{LOG\}\}/);
+    // The application owns its log file (and its rotation).
+    assert.doesNotMatch(text, /^StandardOutput=/m);
+    assert.doesNotMatch(text, /^StandardError=/m);
     assert.match(text, /WantedBy=default\.target/);
 
     // The header comment mentions `.timer` to say there is none; the *effective* unit

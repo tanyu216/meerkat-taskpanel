@@ -337,7 +337,14 @@ An append-only audit row recording that something happened on a card. Activities
 board's history and its change feed; they are the loosest, most deliberately untyped
 surface in the model.
 _中文_: 活动
-_Avoid_: event, log (see *the loop* for alerts)
+_Avoid_: event, log (that is *Log*)
+
+**Log**:
+The process's own operational record — leveled lines written by `taskd`, `taskctl` and the
+loop to stderr and, for the daemon and the loop, to a size-rotated file. A log is local and
+diagnostic; it is not the board's history and never reaches a client.
+_中文_: 日志
+_Avoid_: activity, audit log (that is *Activity*)
 
 **Idempotency key**:
 The value that makes creating the same card twice return the first one instead of a second.

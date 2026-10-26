@@ -23,11 +23,59 @@
  */
 
 import { acquireWriterLock, removeRuntimePointer, resolveDataDir, writeRuntimePointer } from "../core/index.mjs";
-import { DEFAULT_HOST, DEFAULT_PORT, HOST_ENV, PORT_ENV, VERSION } from "../foundation/constants.mjs";
+import {
+  DEFAULT_HOST,
+  DEFAULT_PORT,
+  HOST_ENV,
+  LOG_KEEP_DEFAULT,
+  LOG_KEEP_ENV,
+  LOG_MAX_BYTES_DEFAULT,
+  LOG_MAX_BYTES_ENV,
+  PORT_ENV,
+  VERSION,
+} from "../foundation/constants.mjs";
 import { loadEnvFile } from "../foundation/env-config.mjs";
-import { repoRoot } from "../foundation/runtime-locator.mjs";
+import { createFileSink, createLogger, levelFromEnv, stderrSink } from "../foundation/log.mjs";
+import { logFilePath, repoRoot } from "../foundation/runtime-locator.mjs";
 import { createTaskd } from "./index.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
+
+/** A positive integer from the environment, else the default. `0` means "unset". */
+function positiveInt(raw, fallback) {
+  if (typeof raw !== "string" || !/^\d+$/.test(raw.trim())) return fallback;
+  const value = Number.parseInt(raw, 10);
+  return value > 0 ? value : fallback;
+}
+
+/**
+ * The daemon's logger: stderr for the console, `<dataDir>/logs/taskd.log` for
+ * the durable record, rotated by size.
+ *
+ * The application owns the file. The service manager and the CLI's lazy start
+ * deliberately do not redirect into it any more — one writer, one history.
+ *
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} dataDir
+ */
+export function createDaemonLogger(env, dataDir) {
+  const level = levelFromEnv(env);
+  const logger = createLogger({
+    level: level.level,
+    sinks: [
+      stderrSink,
+      createFileSink({
+        path: logFilePath(dataDir),
+        maxBytes: positiveInt(env[LOG_MAX_BYTES_ENV], LOG_MAX_BYTES_DEFAULT),
+        keep: positiveInt(env[LOG_KEEP_ENV], LOG_KEEP_DEFAULT),
+      }),
+    ],
+    meta: { service: "taskd", version: VERSION, pid: process.pid, data_dir: dataDir },
+  });
+  if (!level.valid) {
+    logger({ event: "log_level_invalid", value: level.raw, fallback: level.level });
+  }
+  return logger;
+}
 
 /**
  * `TASKD_PORT` may be 0 (ephemeral) — do not treat it as "unset".
@@ -64,7 +112,10 @@ export async function main(env = process.env, options = {}) {
   // what turns "two daemons fight over the pointer" into "the second one never
   // started".
   const dataDir = resolveDataDir({ dataDir: options.dataDir ?? null, env: effectiveEnv });
-  const lock = acquireWriterLock(dataDir);
+  // Before the lock: a stale-lock takeover is the first event worth recording,
+  // and it is raised by the lock itself.
+  const logger = createDaemonLogger(effectiveEnv, dataDir);
+  const lock = acquireWriterLock(dataDir, { logger });
 
   let taskd;
   try {
@@ -78,6 +129,7 @@ export async function main(env = process.env, options = {}) {
       // seeded one still gets a writable policy file.
       envFile: config.file,
       envVars: config.vars,
+      logger,
       ...(options.dataDir === undefined ? {} : { dataDir: options.dataDir }),
     });
   } catch (err) {
@@ -116,17 +168,23 @@ export async function main(env = process.env, options = {}) {
   );
   const pointerOptions = { path: written.path, pid: process.pid, dataDir: taskd.board.dataDir };
 
-  process.stdout.write(`taskd ${VERSION} listening on ${taskd.url}\n`);
-  process.stdout.write(`runtime pointer: ${written.path}\n`);
-  if (written.heldBy !== undefined) {
-    process.stdout.write(
-      `runtime pointer note: the machine-wide pointer names pid ${written.heldBy}, another board — ` +
-        `this one is addressed beside its data directory, so that board is left alone\n`,
-    );
-  }
-  process.stdout.write(`write lock: ${lock.path}\n`);
+  // One record per fact: the address a human needs, where the pointer went, and
+  // which lock this process owns. `url` is a bare field so it stays parseable.
+  logger({
+    event: "startup",
+    url: taskd.url,
+    host: taskd.host,
+    port: taskd.port,
+    message: `listening on ${taskd.url}`,
+  });
+  logger({
+    event: "runtime_pointer",
+    path: written.path,
+    ...(written.heldBy === undefined ? {} : { held_by: written.heldBy }),
+  });
+  logger({ event: "write_lock", path: lock.path });
 
-  const shutdown = createShutdown({ taskd, pointerOptions });
+  const shutdown = createShutdown({ taskd, pointerOptions, logger });
   if (register) {
     // One handler for both signals: the signal name is a label, not behaviour.
     const onSignal = (signal) => {
@@ -152,11 +210,18 @@ export async function main(env = process.env, options = {}) {
  * process removes the pointer while it still names this process *and this
  * board*, and leaves a stranger's pointer alone.
  *
- * @param {{taskd: {close: Function}, pointerOptions: object, exit?: Function, write?: Function}} input
+ * @param {{taskd: {close: Function}, pointerOptions: object, exit?: Function, logger?: Function}} input
  * @returns {(signal: string) => Promise<void>}
  */
 export function createShutdown(input) {
-  const { taskd, pointerOptions, exit = (code) => process.exit(code), write = (text) => process.stdout.write(text) } = input;
+  const {
+    taskd,
+    pointerOptions,
+    exit = (code) => process.exit(code),
+    // A caller that supplied no logger (a library close) gets silence rather
+    // than an unexpected stderr line.
+    logger = () => {},
+  } = input;
   let closing = false;
   return async function shutdown(signal) {
     // A second signal while the first is still closing must not close twice —
@@ -164,11 +229,21 @@ export function createShutdown(input) {
     // rewritten it.
     if (closing) return;
     closing = true;
-    write(`\ntaskd: ${signal} — closing\n`);
+    const started = Date.now();
+    logger({ event: "shutdown_signal", signal, message: `${signal} — closing` });
     try {
       await taskd.close();
+    } catch (err) {
+      logger({
+        event: "shutdown_failed",
+        level: "error",
+        code: err?.code ?? null,
+        message: err?.message ?? String(err),
+      });
+      throw err;
     } finally {
       removeRuntimePointer(pointerOptions);
+      logger({ event: "shutdown_complete", duration_ms: Date.now() - started });
       exit(0);
     }
   };
@@ -178,7 +253,25 @@ export function createShutdown(input) {
 // not bind a port.
 if (isEntryPoint(import.meta.url)) {
   main().catch((err) => {
-    process.stderr.write(`taskd: ${err?.stack ?? err}\n`);
+    // The daemon never came up, so this record is the only evidence. It gets the
+    // same sinks as a running daemon when the data directory can be resolved;
+    // otherwise stderr is still there. The stack is included here deliberately:
+    // a startup crash is the one case where debug output is not optional.
+    const failure = err instanceof Error
+      ? {
+          name: err.name,
+          ...(typeof err.code === "string" ? { code: err.code } : {}),
+          message: err.message,
+          stack: err.stack,
+        }
+      : String(err);
+    let logger;
+    try {
+      logger = createDaemonLogger(process.env, resolveDataDir({ env: process.env }));
+    } catch {
+      logger = createLogger({ level: levelFromEnv(process.env).level });
+    }
+    logger({ event: "startup_failed", level: "error", error: failure });
     process.exit(1);
   });
 }

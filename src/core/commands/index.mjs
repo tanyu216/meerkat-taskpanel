@@ -18,6 +18,7 @@ import * as rollup from "./rollup.mjs";
 import * as sla from "./sla.mjs";
 import * as tasks from "./tasks.mjs";
 import * as workflow from "./workflow.mjs";
+import { withCommandLogging } from "./logging.mjs";
 
 export { createContext, actorOf, BOARD_ACTOR } from "./context.mjs";
 
@@ -27,7 +28,7 @@ export { createContext, actorOf, BOARD_ACTOR } from "./context.mjs";
  * @param {object} ctx from `createContext`
  */
 export function createCommands(ctx) {
-  return {
+  const commands = {
     // projects ---------------------------------------------------------------
     createProject: (input) => projects.createProject(ctx, input),
     ensureProject: (input) => projects.ensureProject(ctx, input),
@@ -100,6 +101,7 @@ export function createCommands(ctx) {
     storeAttachmentContent: (input) => attachments.storeAttachmentContent(ctx, input),
     removeAttachment: (input) => attachments.removeAttachment(ctx, input),
   };
+  return withCommandLogging(commands, ctx.logger);
 }
 
 /** Names the dictionary deliberately does not expose (asserted in the tests). */

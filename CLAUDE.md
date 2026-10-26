@@ -240,6 +240,12 @@ authoritative home, because the container image drops `design/`.
 - **Auth:** a loopback caller is trusted; a remote caller must be inside `TASKD_ALLOW_CIDRS` and
   present the token. `POST /token` is loopback-only. The built board injects no token, so serving
   it to a remote browser is 401 by design (`docs/web-local-first.md`).
+- **Diagnostics go through `src/foundation/log.mjs`.** The logger is callable as the long-standing
+  `logger({ event, ... })` seam and also carries `.debug/.info/.warn/.error`. `taskd` owns and
+  rotates `<dataDir>/logs/taskd.log`; the service units and the lazy start do **not** redirect
+  into it. Levels: success is `info` (or `debug` for per-command detail), a 4xx refusal is
+  `warn`, a 5xx/unmapped failure is `error`. Logger events are **not** activity events — new
+  names go in `EVENT_LEVELS`, never `ACTIVITY_EVENTS`.
 - **Stopping `taskd`:** `SIGTERM`/`SIGINT` is graceful and bounded — it ends SSE streams with a
   named `shutdown` frame before closing, because `/api/v1/events` never ends on its own.
 

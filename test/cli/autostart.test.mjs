@@ -279,8 +279,8 @@ describe("cli/autostart — a guarded board is reused, never doubled (T-20261013
       assert.equal(resolved.url, board.url.replace(/\/+$/, ""));
       assert.equal(readJsonFile(board.pointerPath).pid, board.pid, "still the same server");
 
-      // Nothing spawned means no second log writer: the lazy start creates this file
-      // before it spawns, so its absence is the honest evidence.
+      // Nothing spawned means no second log writer: the running daemon owns this
+      // file, so its length not moving is the honest evidence.
       const boardLog = join(board.dataDir, "logs", "taskd.log");
       const before = existsSync(boardLog) ? readFileSync(boardLog, "utf8").length : 0;
       const again = await ensureBoard({ env: boardEnv(board), pointerPath: board.pointerPath });

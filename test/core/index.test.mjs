@@ -87,6 +87,9 @@ const PLANNED = [
   "commands/agent-sessions.mjs",
   // The attachment surface's write half (bytes + row, one transaction).
   "commands/attachments.mjs",
+  // The one logging wrapper over the command table (success=debug, refusal=warn,
+  // fault=error) — see `src/foundation/log.mjs`.
+  "commands/logging.mjs",
   "commands/index.mjs",
 ];
 

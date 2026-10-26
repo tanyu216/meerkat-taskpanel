@@ -30,6 +30,9 @@ import {
   CLIENT_CONFIG_KEYS,
   CONFIG_NAMESPACES,
   ENV_FILE_ENV,
+  LOG_KEEP_ENV,
+  LOG_LEVEL_ENV,
+  LOG_MAX_BYTES_ENV,
   NO_AUTOSTART_ENV,
   PORT_ENV,
   TOKEN_ENV,
@@ -37,6 +40,7 @@ import {
   URL_ENV,
 } from "./constants.mjs";
 import { parseEnvBool, parseEnvText } from "./env-file.mjs";
+import { parseLogLevel } from "./log.mjs";
 import { DomainError } from "./errors.mjs";
 import { isSlaEnvKey, parseSlaEnvValue, readSlaConfig } from "./sla-config.mjs";
 import { resolveEnvFilePath } from "./runtime-locator.mjs";
@@ -163,6 +167,23 @@ function validateValue(key, value) {
       const text = value.trim();
       if (!/^\d+$/.test(text) || Number(text) > 65535) {
         throw configError(`${PORT_ENV} must be an integer 0–65535`, { key });
+      }
+      return text;
+    }
+    case LOG_LEVEL_ENV: {
+      // Aliases are normalised here, so the rest of the tree only ever sees
+      // `debug|info|warn|error|off`. A typo is a refusal, not a silent `info`.
+      const level = parseLogLevel(value);
+      if (level === null) {
+        throw configError(`${LOG_LEVEL_ENV} must be debug, info, warn, error or off`, { key });
+      }
+      return level;
+    }
+    case LOG_MAX_BYTES_ENV:
+    case LOG_KEEP_ENV: {
+      const text = value.trim();
+      if (!/^\d+$/.test(text) || Number(text) <= 0) {
+        throw configError(`${key} must be a positive integer`, { key });
       }
       return text;
     }

@@ -68,14 +68,17 @@ describe("server/main — shutdown", () => {
       taskd: { close: async () => closed.push(true) },
       pointerOptions: { path: pointerPath },
       exit: (code) => exits.push(code),
-      write: (text) => written.push(text),
+      logger: (event) => written.push(event),
     });
 
     await shutdown("SIGTERM");
     assert.deepEqual(closed, [true]);
     assert.deepEqual(exits, [0]);
     assert.equal(readRuntimePointer({ path: pointerPath }), null, "the pointer is gone");
-    assert.match(written.join(""), /SIGTERM/);
+    assert.equal(written[0].event, "shutdown_signal");
+    assert.equal(written[0].signal, "SIGTERM");
+    assert.match(written[0].message, /SIGTERM — closing/);
+    assert.equal(written.at(-1).event, "shutdown_complete");
   });
 
   it("ignores a second signal while the first is still closing", async () => {
@@ -89,7 +92,7 @@ describe("server/main — shutdown", () => {
       taskd: { close: async () => { closes += 1; } },
       pointerOptions: { path: pointerPath },
       exit: (code) => exits.push(code),
-      write: () => {},
+      logger: () => {},
     });
 
     await Promise.all([shutdown("SIGTERM"), shutdown("SIGINT"), shutdown("SIGTERM")]);
@@ -107,7 +110,7 @@ describe("server/main — shutdown", () => {
       taskd: { close: async () => { throw new Error("already gone"); } },
       pointerOptions: { path: pointerPath },
       exit: (code) => exits.push(code),
-      write: () => {},
+      logger: () => {},
     });
 
     await assert.rejects(() => shutdown("SIGTERM"));

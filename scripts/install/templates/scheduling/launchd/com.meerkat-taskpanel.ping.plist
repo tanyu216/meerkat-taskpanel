@@ -38,9 +38,7 @@
   <integer>{{PING_INTERVAL}}</integer>
   <key>RunAtLoad</key>
   <false/>
-  <key>StandardOutPath</key>
-  <string>{{LOG}}</string>
-  <key>StandardErrorPath</key>
-  <string>{{LOG}}</string>
+  <!-- No StandardOutPath/StandardErrorPath: the loop writes --log itself.
+       A redirect into the same file would duplicate every line. -->
 </dict>
 </plist>

@@ -12,7 +12,6 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import {
-  appendFileSync,
   closeSync,
   mkdirSync,
   openSync,
@@ -25,6 +24,12 @@ import {
 import { dirname, join } from "node:path";
 
 import { EVENT_STREAM_LINE } from "../foundation/constants.mjs";
+import {
+  createFileSink,
+  createLogger as createFoundationLogger,
+  levelFromEnv,
+  stderrSink,
+} from "../foundation/log.mjs";
 import { pruneRegistry } from "../foundation/scheduling.mjs";
 import { emptySlaLedger } from "../foundation/sla-patrol.mjs";
 
@@ -433,24 +438,31 @@ export function readPeerLastOk(path) {
 
 /**
  * One process's log sink: stderr always, the loop log unless this is a dry run.
- * Logging must never take the loop down, so a failed append is swallowed.
  *
- * @param {{log: string, dryRun?: boolean}} opts
- * @returns {(line: string) => void}
+ * The formatter, the level filter, the rotation and the redaction all come from
+ * `foundation/log.mjs`; this wrapper only keeps the loop's calling convention —
+ * `log(line)` — and its `supervisor: ` prefix, which the loop's own tests read.
+ * A failure site may mark its line with a second argument
+ * (`log(line, { level: "warn" })`); an injected plain function ignores it.
+ *
+ * Logging must never take the loop down: a failed write is swallowed by the
+ * sinks, and the file is rotated rather than growing without bound.
+ *
+ * @param {{log: string, dryRun?: boolean, logLevel?: string}} opts
+ * @returns {((line: string, meta?: {level?: string}) => void) & {close: () => void}}
  */
 export function createLogger(opts) {
-  return (line) => {
-    const stamped = `${new Date().toISOString()} ${line}`;
-    process.stderr.write(`supervisor: ${line}\n`);
-    if (!opts.dryRun) {
-      try {
-        mkdirSync(dirname(opts.log), { recursive: true });
-        appendFileSync(opts.log, `${stamped}\n`);
-      } catch {
-        // A full disk must not stop the tick.
-      }
-    }
-  };
+  const level = opts.logLevel ?? levelFromEnv(process.env).level;
+  const file = opts.dryRun ? null : createFileSink({ path: opts.log });
+  const base = createFoundationLogger({
+    level,
+    prefix: "supervisor",
+    ...(file === null ? {} : { sinks: [stderrSink, file] }),
+  });
+
+  const log = (line, meta) => base({ level: meta?.level ?? "info", message: String(line) });
+  log.close = () => base.close();
+  return log;
 }
 
 // ---------------------------------------------------------------------------

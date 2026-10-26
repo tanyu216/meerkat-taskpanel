@@ -178,6 +178,26 @@ describe("loadEnvFile — namespaces and values", () => {
     }
   });
 
+  it("validates the logging controls and normalises a level alias", () => {
+    for (const [text, pattern] of [
+      ["TASKD_LOG_LEVEL=verbose\n", /debug, info, warn, error or off/],
+      ["TASKD_LOG_MAX_BYTES=0\n", /positive integer/],
+      ["TASKD_LOG_KEEP=-1\n", /positive integer/],
+      ["TASKD_LOG_KEEP=2.5\n", /positive integer/],
+    ]) {
+      const root = tempDir();
+      writeEnv(root, text);
+      assert.throws(() => loadEnvFile({ root, env: {} }), pattern, text);
+    }
+
+    const root = tempDir();
+    writeEnv(root, "TASKD_LOG_LEVEL=warning\nTASKD_LOG_MAX_BYTES=2048\nTASKD_LOG_KEEP=2\n");
+    const config = loadEnvFile({ root, env: {} });
+    assert.equal(config.vars.get("TASKD_LOG_LEVEL"), "warn");
+    assert.equal(config.env.TASKD_LOG_LEVEL, "warn");
+    assert.equal(config.vars.get("TASKD_LOG_MAX_BYTES"), "2048");
+  });
+
   it("allows an explicitly empty allow-list", () => {
     const root = tempDir();
     writeEnv(root, "TASKD_ALLOW_CIDRS=\n");

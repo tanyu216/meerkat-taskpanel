@@ -10,5 +10,5 @@ Description=Meerkat TaskPanel supervisor continue turn ({{AGENT}} on {{ACTOR_KIN
 [Service]
 Type=oneshot
 ExecStart={{NODE}} {{CLI}} loop run --continue-once --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
-StandardOutput=append:{{LOG}}
-StandardError=append:{{LOG}}
+# No stdout/stderr redirect: the loop writes --log itself (with rotation).
+# A redirect into the same file would duplicate every line.

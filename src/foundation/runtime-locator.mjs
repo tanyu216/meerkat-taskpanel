@@ -28,6 +28,7 @@ import {
   DEFAULT_DATA_DIR,
   ENV_FILE_ENV,
   ENV_FILE_FILENAME,
+  LOG_FILENAME,
   LOGS_DIRNAME,
   RUNTIME_FILENAME,
   RUNTIME_POINTER_ENV,
@@ -88,6 +89,19 @@ export function tokenPath(dataDir) {
 /** @param {string} dataDir */
 export function logsDir(dataDir) {
   return join(resolve(dataDir), LOGS_DIRNAME);
+}
+
+/**
+ * The daemon's own log file: `<dataDir>/logs/taskd.log`.
+ *
+ * The application writes it (the rotating sink in `foundation/log.mjs`) — the
+ * service manager and the CLI's lazy start no longer redirect into it, because
+ * two writers would duplicate every line.
+ *
+ * @param {string} dataDir
+ */
+export function logFilePath(dataDir) {
+  return join(logsDir(dataDir), LOG_FILENAME);
 }
 
 /**

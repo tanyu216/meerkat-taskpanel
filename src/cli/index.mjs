@@ -24,9 +24,10 @@
 
 import { readFileSync } from "node:fs";
 
-import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, VERSION } from "../foundation/constants.mjs";
+import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, LOG_LEVEL_ENV, VERSION } from "../foundation/constants.mjs";
 import { loadEnvFile } from "../foundation/env-config.mjs";
 import { DomainError } from "../foundation/errors.mjs";
+import { createLogger, parseLogLevel } from "../foundation/log.mjs";
 import { repoRoot } from "../foundation/runtime-locator.mjs";
 import { isSupportedNode, unsupportedNodeMessage } from "../foundation/node-version.mjs";
 import { redactDeep, redactText } from "../foundation/redact.mjs";
@@ -111,6 +112,27 @@ export function createContext(parsed, options) {
 }
 
 /**
+ * The CLI's diagnostic logger.
+ *
+ * Off unless `TASKD_LOG_LEVEL` names a level, and silent when it names `off`.
+ * It writes through the injected stderr sink, so a `--json` document on stdout
+ * is never touched and a test can capture the line.
+ *
+ * @param {(text: string) => void} err
+ * @param {Record<string, string|undefined>} env
+ */
+function cliLogger(err, env) {
+  const raw = env?.[LOG_LEVEL_ENV];
+  const level = typeof raw === "string" && raw.trim() !== "" ? parseLogLevel(raw) : null;
+  if (level === null || level === "off") return () => {};
+  return createLogger({
+    level,
+    sinks: [(line) => err(`${line}\n`)],
+    meta: { service: "taskctl" },
+  });
+}
+
+/**
  * Run one command line.
  *
  * @param {string[]} argv
@@ -122,6 +144,11 @@ export async function run(argv, io) {
   const err = io.stderr;
   const env = io.env ?? process.env;
   const json = wantsJson(argv);
+  // The CLI is quiet unless asked: its stdout is the data plane and its stderr
+  // is the product's error surface, so a log line is only wanted when someone
+  // is diagnosing. `TASKD_LOG_LEVEL=debug` turns it on; every event below is
+  // debug, so `info`/`warn` never add a line either.
+  const log = cliLogger(err, env);
   /** @type {string|null} */
   let tokenSource = null;
 
@@ -129,9 +156,15 @@ export async function run(argv, io) {
   try {
     parsed = parseArgv(argv, registry);
   } catch (failure) {
+    log({ event: "cli_failure", command: null, code: failure?.code ?? null });
     renderFailure(failure, { json, out, err });
     return exitCodeFor(failure);
   }
+  log({
+    event: "cli_command",
+    command: parsed.command?.name ?? null,
+    group: parsed.group?.name ?? null,
+  });
 
   if (parsed.version === true) {
     // The version leg, in machine form: `--json` publishes the contract schema
@@ -194,6 +227,7 @@ export async function run(argv, io) {
       renderResult(result, { json, out, err });
       return result.exit ?? CLI_EXIT.OK;
     } catch (failure) {
+      log({ event: "cli_failure", command: parsed.command?.name ?? null, code: failure?.code ?? null });
       renderFailure(failure, { json, out, err });
       return exitCodeFor(failure);
     }
@@ -260,6 +294,7 @@ export async function run(argv, io) {
     if (tokenSource !== null && failure !== null && typeof failure === "object") {
       failure.details = { ...(failure.details ?? {}), token_source: tokenSource };
     }
+    log({ event: "cli_failure", command: parsed.command?.name ?? null, code: failure?.code ?? null });
     renderFailure(failure, { json, out, err });
     return exitCodeFor(failure);
   }

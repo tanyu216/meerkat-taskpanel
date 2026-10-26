@@ -25,6 +25,7 @@
  * registry. See `startLabelGc` below.
  */
 
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,6 +50,7 @@ import {
   TASK_ORDER_CAPABILITY,
   VERSION,
 } from "../foundation/constants.mjs";
+import { withLogContext } from "../foundation/log.mjs";
 import { slaConfigToWire } from "../foundation/wire.mjs";
 import { allowListFrom, readAccessConfig } from "./access-config.mjs";
 import { authorize } from "./auth.mjs";
@@ -77,6 +79,34 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** Kept for the M0 scaffold contract test; the surface is real now. */
 export const STAGE = "taskd";
+
+/**
+ * The per-request id and path, carried on the response.
+ *
+ * The error exit in `createServer` is outside `handle`, so the id has to travel
+ * with the response; a symbol keeps it out of the way of `node:http`'s own
+ * properties.
+ */
+const REQUEST_ID = Symbol("meerkat.requestId");
+
+/** An inbound `x-request-id` is believed only in this shape. */
+const REQUEST_ID_SHAPE = /^[A-Za-z0-9._-]{1,64}$/;
+
+/**
+ * `x-request-id`, when a client supplied a usable one, else a fresh UUID.
+ *
+ * A supplied value becomes part of a log line, so it is bounded and stripped of
+ * whitespace and separators — a header must not be able to forge a second line.
+ *
+ * @param {import('node:http').IncomingMessage} req
+ */
+function requestIdOf(req) {
+  const header = req.headers["x-request-id"];
+  const supplied = Array.isArray(header) ? header[0] : header;
+  return typeof supplied === "string" && REQUEST_ID_SHAPE.test(supplied)
+    ? supplied
+    : randomUUID();
+}
 
 /**
  * Endpoints the daemon answers **outside** the JSON router.
@@ -226,6 +256,18 @@ export async function createTaskd(options = {}) {
     ...(options.busyTimeoutMs === undefined ? {} : { busyTimeoutMs: options.busyTimeoutMs }),
   });
 
+  // One record for "the board is open and at the schema this build expects" —
+  // the first thing an operator wants when a restart goes wrong.
+  if (typeof logger === "function") {
+    logger({
+      event: "board_opened",
+      db_path: board.dbPath,
+      data_dir: board.dataDir,
+      migrations_applied: board.migration?.applied?.length ?? 0,
+      schema_ok: board.schema?.ok ?? true,
+    });
+  }
+
   // §7 / the Access panel: the allow-list is *optional*. It comes from the
   // process environment when an operator set one, else from the install-root
   // `.env`, else the safe defaults (off + two private ranges). The policy is
@@ -346,6 +388,22 @@ export async function createTaskd(options = {}) {
         return;
       }
       const { status, payload, headers } = errorResponse(err);
+      // One owner for `error`: only a failure the caller could not fix (a 5xx or
+      // an unmapped throw) is logged here. A 4xx is the caller's error and the
+      // command layer already marked the refusal; the `request` line carries the
+      // status either way.
+      if (typeof logger === "function" && status >= 500) {
+        logger({
+          event: "request_failed",
+          level: "error",
+          method: req.method ?? "GET",
+          path: res[REQUEST_ID]?.path ?? null,
+          status,
+          request_id: res[REQUEST_ID]?.id ?? null,
+          code: payload.error?.code ?? null,
+          message: payload.error?.message ?? null,
+        });
+      }
       sendJson(res, status, payload, headers);
     });
   });
@@ -353,6 +411,38 @@ export async function createTaskd(options = {}) {
   async function handle(req, res) {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${host}`}`);
     const pathname = url.pathname.replace(/\/+$/, "") || "/";
+
+    // One id per request, echoed to the client and carried into every command
+    // record through `withLogContext`. An inbound id is believed only when it is
+    // a bounded, separator-free token, so a client cannot smuggle a log line.
+    const requestId = requestIdOf(req);
+    const actor = actorFromRequest(req);
+    if (typeof logger === "function") {
+      const started = Date.now();
+      res[REQUEST_ID] = { id: requestId, path: pathname };
+      res.setHeader("x-request-id", requestId);
+      let logged = false;
+      const record = (aborted) => {
+        if (logged) return;
+        logged = true;
+        logger({
+          event: "request",
+          // A liveness probe and a static asset are traffic, not signal.
+          level: pathname === "/health" || !pathname.startsWith("/api/") ? "debug" : "info",
+          method: req.method ?? "GET",
+          path: pathname,
+          status: res.statusCode,
+          duration_ms: Date.now() - started,
+          request_id: requestId,
+          actor: `${actor.kind}:${actor.id}`,
+          ...(aborted ? { aborted: true } : {}),
+          ...(pathname === "/api/v1/events" ? { stream: "sse" } : {}),
+        });
+      };
+      res.once("finish", () => record(false));
+      // `close` without `finish` is a client that hung up mid-response.
+      res.once("close", () => record(!res.writableEnded));
+    }
 
     // `/health` is deliberately unauthenticated: it is the liveness probe the
     // CLI's autostart polls, and it exposes nothing but "I am here".
@@ -382,7 +472,8 @@ export async function createTaskd(options = {}) {
     // envelope, so it is matched and handled before the router (see the module).
     const attachment = ATTACHMENT_CONTENT_PATH.exec(pathname);
     if (attachment !== null && (req.method === "GET" || req.method === "PUT")) {
-      await handleAttachmentContent(req, res, board, safeDecode(attachment[1]), actorFromRequest(req));
+      await withLogContext({ request_id: requestId, actor }, () =>
+        handleAttachmentContent(req, res, board, safeDecode(attachment[1]), actor));
       return;
     }
 
@@ -405,6 +496,7 @@ export async function createTaskd(options = {}) {
               onError: (err) =>
                 logger({
                   event: "sse_stream_failed",
+                  request_id: requestId,
                   code: err?.code ?? null,
                   message: err?.message ?? String(err),
                 }),
@@ -444,16 +536,22 @@ export async function createTaskd(options = {}) {
       ? await readJsonBody(req)
       : {};
 
-    const data = await route.handler({
-      params: route.params,
-      query: url.searchParams,
-      body,
-      actor: actorFromRequest(req),
-      session: headerOf(req, "x-taskctl-session"),
-      seg: headerOf(req, "x-taskctl-seg"),
-      board,
-      token: surface.token,
-    });
+    const session = headerOf(req, "x-taskctl-session");
+    const seg = headerOf(req, "x-taskctl-seg");
+    // The ambient context is what lets a command logged deeper in the stack
+    // carry `request_id` without every handler passing it down by hand.
+    const data = await withLogContext({ request_id: requestId, actor, session, seg }, () =>
+      route.handler({
+        params: route.params,
+        query: url.searchParams,
+        body,
+        actor,
+        session,
+        seg,
+        board,
+        token: surface.token,
+      }),
+    );
     sendJson(res, 200, { ok: true, data: data === undefined ? null : data });
   }
 

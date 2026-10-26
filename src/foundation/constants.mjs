@@ -150,6 +150,23 @@ export const SLA_ENV_KEY_LIST = Object.freeze([
 ]);
 
 /**
+ * Logging controls (`src/foundation/log.mjs`).
+ *
+ * The level is a server *and* loop input, so it lives in the shared `.env`
+ * allowlist; the two rotation numbers belong to the file sink the daemon owns
+ * (`<dataDir>/logs/taskd.log`). A value that is not a level, or not a positive
+ * integer, is a `CONFIG_FILE_INVALID` refusal rather than a silent fallback.
+ */
+export const LOG_LEVEL_ENV = "TASKD_LOG_LEVEL";
+/** Largest `taskd.log` before it is rotated. */
+export const LOG_MAX_BYTES_ENV = "TASKD_LOG_MAX_BYTES";
+/** How many rotated files are kept (`taskd.log.1` … `.N`). */
+export const LOG_KEEP_ENV = "TASKD_LOG_KEEP";
+export const LOG_LEVEL_DEFAULT = "info";
+export const LOG_MAX_BYTES_DEFAULT = 10 * 1024 * 1024;
+export const LOG_KEEP_DEFAULT = 5;
+
+/**
  * Keys `.env` may carry. Anything else in our namespaces is a typo; keys
  * outside them (Vite's `VITE_*`, `NODE_ENV`, …) are ignored and never merged.
  */
@@ -168,6 +185,9 @@ export const CLIENT_CONFIG_KEYS = Object.freeze([
   "TASKD_ACCEPTANCE_POLICY",
   "TASKD_LABEL_GC",
   "TASKD_LABEL_TTL_DAYS",
+  LOG_LEVEL_ENV,
+  LOG_MAX_BYTES_ENV,
+  LOG_KEEP_ENV,
   "TASKCTL_AGENT",
   "TASKCTL_HUMAN",
   "MEERKAT_TASKPANEL_PROJECTS_JSON",

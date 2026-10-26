@@ -276,6 +276,8 @@ Security-relevant environment variables:
 | `TASKD_TOKEN_FILE` | a token file the client reads (`TASKD_TOKEN` outranks it) |
 | `MEERKAT_TASKPANEL_ENV_FILE` | selects the config file; not a secret |
 | `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS` | label housekeeping (§4.4) |
+| `TASKD_LOG_LEVEL` | `debug`/`info`/`warn`/`error`/`off` (default `info`); `taskd` and the loop, and `taskctl` only when explicitly set |
+| `TASKD_LOG_MAX_BYTES` / `TASKD_LOG_KEEP` | size rotation of `<dataDir>/logs/taskd.log` (defaults 10 MiB, 5 files) |
 | `TASKD_SLA_*` | the SLA policy table (`docs/sla.md` §2.1): per-row `LIMIT_MIN`/`FURTHER_MIN`, `PERIOD_SECONDS`, `LEADER_LOOKBACK_DAYS`, `PEER_PERIOD_MIN`, `PEER_LIVENESS_K`. Validated as integers with `F ≥ L`; published by `GET /api/v1/sla` and `/meta` → `capabilities.sla`, re-read per request |
 
 ### One writer per data directory
