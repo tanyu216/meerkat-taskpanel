@@ -115,7 +115,7 @@ README.
 ### 5. Initialize the agent instructions
 
 Generate the agent instructions with the host's built-in init command when it has one:
-`/init` in Claude Code, Codex and OpenCode writes `CLAUDE.md` or `AGENTS.md` per the host's
+`/init` in Claude Code and Codex writes `CLAUDE.md` or `AGENTS.md` per the host's
 read order. Review the generated file — `/init` guesses commands and layout — and correct
 it. Keep one source of truth; do not maintain `CLAUDE.md` and `AGENTS.md` as competing
 copies. Without an init command, write the file directly and say so.

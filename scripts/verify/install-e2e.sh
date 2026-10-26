@@ -3,7 +3,7 @@
 # Install + first-run end-to-end, run *inside* the container.
 #
 # Where `docker/verify-in-container.sh` proves the repository is healthy, this
-# script proves a *fresh machine* can use it: it installs the skill into all six
+# script proves a *fresh machine* can use it: it installs the skill into all four
 # agent kinds with a throwaway HOME, then drives the real `taskctl` through its real
 # `taskd` — create a project, create a card, get refused by the delivery gate,
 # satisfy the gate with a report, and read the dictionaries back.
@@ -70,7 +70,7 @@ step "install.sh --target all --prefix <throwaway home>"
 # covered by test/install/taskd-guard.test.mjs, with the supervisor faked on PATH.
 MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1 bash install.sh --target all --prefix "$THROWAWAY_HOME"
 
-for agent_dir in .claude .openclaw .codex .agents .config/opencode .cursor; do
+for agent_dir in .claude .openclaw .codex .agents; do
   target="$THROWAWAY_HOME/$agent_dir/skills/meerkat-taskpanel/SKILL.md"
   if [ ! -f "$target" ]; then
     echo "FAIL: install did not write $target" >&2

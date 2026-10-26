@@ -11,25 +11,23 @@
  *   codex    `app-server generate-json-schema` must publish thread/turn methods,
  *            and a live app-server must answer `initialize`
  *   pi       `pi --mode rpc` must answer `get_state`
- *   opencode `serve` must answer `GET /session` (per-directory server design)
- *   cursor   `cursor-agent acp` must answer `initialize`
  *
  * An agent kind whose CLI is missing is SKIPped. Exit 0 when every available agent kind
  * answered, 1 when one did not, 3 when nothing could be probed at all.
  *
  * Usage:
- *   node scripts/verify/kind-session-matrix.mjs [--actor-kind claude,codex,pi,opencode,cursor]
+ *   node scripts/verify/kind-session-matrix.mjs [--actor-kind claude,codex,pi]
  */
 
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
-import { freePort } from "../loop/actor-kinds/opencode.mjs";
 
-export const KINDS = Object.freeze(["claude", "codex", "pi", "opencode", "cursor"]);
+export const KINDS = Object.freeze(["claude", "codex", "pi"]);
 
 const TIMEOUT_MS = 20_000;
 
@@ -37,6 +35,19 @@ const TIMEOUT_MS = 20_000;
 export function installed(bin) {
   const probe = spawnSync(bin, ["--version"], { encoding: "utf8", timeout: 10_000 });
   return !probe.error;
+}
+
+/** A free loopback port for one probe server. */
+export function freePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address !== null ? address.port : null;
+      server.close(() => (port === null ? reject(new Error("could not allocate a port")) : resolve(port)));
+    });
+  });
 }
 
 /** Run one JSONL handshake against a spawned CLI. */
@@ -149,68 +160,10 @@ async function probePi() {
   });
 }
 
-async function probeOpenCode() {
-  if (!installed("opencode")) return { ok: false, skipped: true, error: "not installed" };
-  const dir = mkdtempSync(join(tmpdir(), "tp-opencode-probe-"));
-  const port = await freePort();
-  const child = spawn("opencode", ["serve", "--hostname", "127.0.0.1", "--port", String(port)], {
-    cwd: dir,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const deadline = Date.now() + TIMEOUT_MS;
-  try {
-    let last = "no answer";
-    while (Date.now() < deadline) {
-      try {
-        const response = await fetch(`http://127.0.0.1:${port}/session`, {
-          signal: AbortSignal.timeout(5_000),
-        });
-        if (response.ok) return { ok: true, detail: `serve answered GET /session on ${port}` };
-        last = `GET /session → ${response.status}`;
-      } catch (err) {
-        last = err.message;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    return { ok: false, error: last };
-  } finally {
-    try {
-      child.kill("SIGTERM");
-    } catch {
-      // Already gone.
-    }
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-async function probeCursor() {
-  if (!installed("cursor-agent")) return { ok: false, skipped: true, error: "not installed" };
-  return handshake({
-    bin: "cursor-agent",
-    args: ["acp"],
-    start: (send) =>
-      send({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "initialize",
-        params: { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true } },
-      }),
-    steps: (message, send, done) => {
-      if (message.id === 1 && message.result !== undefined) {
-        done({ ok: true, detail: "initialize answered" });
-      } else if (message.id === 1) {
-        done({ ok: false, error: "initialize returned an error" });
-      }
-    },
-  }).then((result) => result, (err) => ({ ok: false, error: err.message }));
-}
-
 const PROBES = Object.freeze({
   claude: probeClaude,
   codex: probeCodex,
   pi: probePi,
-  opencode: probeOpenCode,
-  cursor: probeCursor,
 });
 
 /**
@@ -269,7 +222,7 @@ export function parseArgs(argv) {
   return { help: false, kinds };
 }
 
-const USAGE = `Usage: node scripts/verify/kind-session-matrix.mjs [--actor-kind claude,codex,pi,opencode,cursor]
+const USAGE = `Usage: node scripts/verify/kind-session-matrix.mjs [--actor-kind claude,codex,pi]
 
 Probes each installed agent CLI on the resident session protocol the loop uses.
 No model turn is made. Exit 0 = every available agent kind answered, 1 = a failure,

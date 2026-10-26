@@ -17,7 +17,7 @@
  *   2. `install.sh --target <actor-kind> --prefix <tmp> --agent-name alice --skip-node-check`
  *      generates the real bundle from the real templates;
  *   3. the generated `taskctl` shim is replaced by a *canned* shim (the board boundary),
- *      and fake `claude` / `codex` / `pi` / `opencode` / `cursor-agent` executables are
+ *      and fake `claude` / `codex` / `pi` executables are
  *      put on `PATH` (the wake boundary). Both record their argv, so assertions read the
  *      *actual* invocation, never just the exit code;
  *   4. each scenario runs the generated script and asserts exit code + recorded argv +
@@ -54,8 +54,6 @@ const KINDS = {
   claude: { dir: ".claude", hook: ".claude/hooks/meerkat-taskpanel-session-start.sh", trigger: null, wake: ".claude/bin/wake-claude.sh", shim: ".claude/bin/taskctl", cli: "claude" },
   codex: { dir: ".codex", hook: null, trigger: ".codex/meerkat-taskpanel-claim.sh", wake: ".codex/bin/wake-codex.sh", shim: ".codex/bin/taskctl", cli: "codex" },
   pi: { dir: ".agents", hook: null, trigger: null, wake: ".agents/bin/wake-pi.sh", shim: ".agents/bin/taskctl", cli: "pi" },
-  opencode: { dir: ".config/opencode", hook: null, trigger: null, wake: ".config/opencode/bin/wake-opencode.sh", shim: ".config/opencode/bin/taskctl", cli: "opencode" },
-  cursor: { dir: ".cursor", hook: null, trigger: null, wake: ".cursor/bin/wake-cursor.sh", shim: ".cursor/bin/taskctl", cli: "cursor-agent" },
 };
 
 /**
@@ -499,7 +497,7 @@ function setup(homeArg) {
   mkdirSync(ctx.home, { recursive: true });
   ctx.fakeBin = join(tmp, "bin");
   mkdirSync(ctx.fakeBin, { recursive: true });
-  for (const cli of ["claude", "codex", "pi", "opencode", "cursor-agent"]) {
+  for (const cli of ["claude", "codex", "pi"]) {
     const p = join(ctx.fakeBin, cli);
     writeFileSync(p, FAKE_CLI);
     chmodSync(p, 0o755);
@@ -564,12 +562,6 @@ async function main() {
       }
       if (kinds.includes("pi")) {
         checkWake("pi");
-      }
-      if (kinds.includes("opencode")) {
-        checkWake("opencode");
-      }
-      if (kinds.includes("cursor")) {
-        checkWake("cursor");
       }
       checkAbsences();
     }

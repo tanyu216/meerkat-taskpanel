@@ -24,7 +24,7 @@ Meerkat TaskPanel 就是回答这些问题的记录：
 
 Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题是 **Agent 之间的任务协作** —— 拆分工作、声明依赖、交接结果；而对围绕它们的人来说，它把这种协作变成**可可视化、可追溯**的东西，而不是锁在模型的上下文里。真正干这些事的机制 —— 只增不改的审计轨迹、一等公民的依赖与 epic 关系、可续接的会话 —— 正是下方[亮点](#亮点)所描述的。
 
-> **状态：引擎已整体落地 —— 核心引擎、`taskctl` CLI 与其本地 `taskd`、六个 agent kind 的安装器、
+> **状态：引擎已整体落地 —— 核心引擎、`taskctl` CLI 与其本地 `taskd`、四个 agent kind 的安装器、
 > 以及完整的看板后端与 `web/` 前端。**
 > `src/core/` 已包含领域模型、SQLite 存储与迁移、用例与 `openBoard()`；`src/cli/` +
 > `src/server/` 提供了真实的 `taskctl` 命令面，以及 CLI 会在回环地址上自动启动的本地
@@ -54,7 +54,7 @@ Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题
 6. **local-first、运行时零依赖。** 唯一持久化是一个 SQLite 文件（Node 内置
    `node:sqlite`）；引擎不依赖其它库，且完全可离线运行。
 7. **同一块看板，多个入口。** 可用 `taskctl` CLI 驱动，也可走本地 `taskd` HTTP API ——
-   并为 Claude Code、Codex、OpenClaw、pi、OpenCode、Cursor 提供 skill/插件安装。
+   并为 Claude Code、Codex、OpenClaw、pi 提供 skill/插件安装。
 8. **设计上 provider-agnostic。** Meerkat TaskPanel 是 openclaw-team 框架的默认看板基座 —— 其
    认领 / 候选判定与框架的 poll 保持同步，因此更换看板底座（Jira、Plane、Linear……）无需
    改动 Agent。访问由 token 与可选的 CIDR 白名单把关。
@@ -88,7 +88,7 @@ meerkat-taskpanel/
 ├── CHANGELOG.md / CONTRIBUTING.md
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # 工作区根 + bin(taskctl) + scripts
-├── install.sh                    # 安装分发器：--target claude|openclaw|codex|pi|opencode|cursor|server|all
+├── install.sh                    # 安装分发器：--target claude|openclaw|codex|pi|server|all
 ├── src/                          # 工程源码
 │   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量 / md 导出
 │   ├── cli/                      #   taskctl（CLI 出口）
@@ -99,8 +99,6 @@ meerkat-taskpanel/
 │                                 #   setup-meerkat（安装/修复 + 团队配置；仅复制给 Claude）
 ├── .claude-plugin/               # marketplace + board 插件清单（插件根 = 仓根）
 ├── .pi/                          # Pi 扩展（由 package.json 的 `pi` 字段声明）
-├── .opencode/                    # OpenCode 插件（就地读那一份 skills/）
-├── .cursor-plugin/               # Cursor 标记 —— 让仓根同时也是一个 Cursor 插件
 ├── design/                       # 设计文档：DESIGN / BLOCKS、prototype/、brand/、assets/
 ├── docker/                       # Dockerfile、compose、profiles、verify-in-container.sh
 ├── monitoring/                   # OTel / Prometheus 导出器
@@ -157,7 +155,7 @@ bash install.sh --target server           # 只装 server + taskctl
 ## 安装（agent kind 细节）
 
 ```bash
-bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all
+bash install.sh --target claude|openclaw|codex|pi|server|all
 ```
 
 `all` 是默认值：下面每个 agent kind **加上** server 运行时。`--no-server` 去掉 server；
@@ -178,15 +176,13 @@ agent 配置（`~/.claude/settings.json` / `~/.codex/AGENTS.md`）、slash 命�
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | 同一个仓根 bundle |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | 同一个仓根 bundle，经 marketplace 解析 |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | 仓根 `package.json` 的 `pi` 字段 |
-| OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | `.opencode/plugins/`（进程内注册） |
-| Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | `.` —— 仓根（`.cursor-plugin/plugin.json`） |
 
 仓根就是 board 的插件根，每个 harness 都**就地读**那一份 `skills/`，不再各拿一份副本。
 OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的安装路线 —— 见
 [`docs/install.md`](docs/install.md#openclaw)。
 
 `meerkat-loop` 监督进程**不走** marketplace 分发：它由
-`install.sh --target claude|codex|pi|opencode|cursor` 安装，且永不进入 OpenClaw。
+`install.sh --target claude|codex|pi` 安装，且永不进入 OpenClaw。
 
 第三个 skill **`setup-meerkat`** 就是 `/setup-meerkat` 命令：它探测已安装的部分、补齐缺失、
 提供 Matt Pocock issue-tracker 集成，并按需安装 Jobs/Linus/Turing 加独立 reviewer 的团队
@@ -248,7 +244,7 @@ Claude Code 与 Codex **本身没有定时器**，因此循环活在它们
 收到可派发事件时请求一个 continue 回合，因此工作发现是事件驱动的；continue 周期仍是兜底，也是基于时间的检查（过期认领、审核老化、
 SLA）的唯一路径。cron 无法承载长驻进程，因此没有会话池：巡检与工作流照常运行，
 但 poll 不再认领，worker 派发暂停；`--continue-interval` 是发现节奏的旋钮。**启用方式**：运行
-`install.sh --target claude|codex|pi|opencode|cursor` —— 它会安装 `meerkat-loop` skill、投放该 agent kind 的
+`install.sh --target claude|codex|pi` —— 它会安装 `meerkat-loop` skill、投放该 agent kind 的
 launchd / systemd / cron 单元，并**打印加载命令**（绝不替你启动守护进程；安装时还会问一次
 是否允许认领**未分配**的卡，默认允许）。
 
@@ -260,14 +256,14 @@ ping 只读一个小 registry，$0；continue 每个周期产生一个有界模�
 确定性入口都是普通程序，可单独运行；continue 提示词用绝对路径点名它们。
 
 这个循环本身也是一个 skill（`skills/meerkat-loop/`），并且 `install.sh` **为除 OpenClaw 外的全部 agent kind
-安装它**（claude / codex / pi / opencode / cursor）；OpenClaw 只拿到看板、不拿 loop
+安装它**（claude / codex / pi）；OpenClaw 只拿到看板、不拿 loop
 （原因见 [OpenClaw](#openclaw)）。除 skill 之外，
 安装器还会写入各 agent kind 的 launchd / systemd / cron 调度单元与唤醒脚本，并**打印**加载
 命令 —— 绝不替你启用守护进程。安装时还会问一次是否允许认领**未分配**的卡（默认允许），
 并把答案记到 `<agent-dir>/meerkat-taskpanel.env`。loop skill 会声明它所需的 board
 `task-interface` 版本，并由 `scripts/board-check.mjs` 对着看板自己的 `--version --json` 强制执行；
 完整设计 —— 两个时钟、仅触发才计费的成本闸门、
-幂等唤醒、并发上限、失效兜底，以及五个非 OpenClaw agent kind 的触发差异 —— 见
+幂等唤醒、并发上限、失效兜底，以及三个非 OpenClaw agent kind 的触发差异 —— 见
 [`docs/scheduling.md`](docs/scheduling.md)。
 
 ### OpenClaw
@@ -353,7 +349,7 @@ PR 流程，以及 CI 强制执行的约定。贡献以 MIT 许可落库。
 |---|---|---|
 | **引擎** | `src/core/` —— 领域模型、SQLite 存储与迁移、状态机、下沉到数据库触发器的各项不变量、`openBoard()` | *已落地* |
 | **CLI 与本地服务** | `src/cli/` —— 对齐 `task-interface v1` 的 `taskctl` 命令面，以及 CLI 自动启动的回环 `taskd` | *已落地* |
-| **安装器** | `install.sh` + `scripts/install/<actor-kind>.sh` —— 六个 agent kind 目标外加 `server` 运行时，幂等且合并式写入 | *已落地* |
+| **安装器** | `install.sh` + `scripts/install/<actor-kind>.sh` —— 四个 agent kind 目标外加 `server` 运行时，幂等且合并式写入 | *已落地* |
 | **md 导出** | `src/core/storage/md/` —— `taskctl export md` 为每张卡写一份规范 markdown | *已落地* |
 | **看板 API 与前端** | `src/server/` —— 完整的看板 HTTP API 及其 SSE 流；`web/` —— 构建到 `web/dist` 的 Vue 3 看板 | *已落地* |
 | **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合 | *（规划中）* |

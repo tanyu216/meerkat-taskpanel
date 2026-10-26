@@ -34,7 +34,7 @@ import { MiniYamlError, parseMiniYaml } from "./mini-yaml.mjs";
 export { readFrontmatterField };
 
 /** Actor kinds that must each ship a profile. */
-export const PROFILE_KINDS = ["claude", "openclaw", "codex", "pi", "opencode", "cursor"];
+export const PROFILE_KINDS = ["claude", "openclaw", "codex", "pi"];
 
 /** Required keys of the flat profile schema. */
 export const REQUIRED_PROFILE_FIELDS = ["actor_kind", "label", "installer", "target_dir", "skill_entry", "wrapper"];

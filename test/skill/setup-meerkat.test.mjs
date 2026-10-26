@@ -110,8 +110,6 @@ describe("skill frontmatter and assets", () => {
       "reviewer/reviewer-prompt.md",
       "agents/claude/role.md.tmpl",
       "agents/codex/role.toml.tmpl",
-      "agents/opencode/role.md.tmpl",
-      "agents/cursor/role.md.tmpl",
       "agents/pi/role.md.tmpl",
     ]) {
       assert.ok(existsSync(join(team, rel)), `${rel} must exist`);
@@ -657,16 +655,6 @@ describe("install-roles.mjs — project scope", () => {
     assert.match(codex, /^name = "reviewer"$/m);
     assert.match(codex, /\.meerkat\/roles\/reviewer\/workflow\.md/);
 
-    const opencode = readFileSync(join(project, ".opencode", "agents", "jobs.md"), "utf8");
-    assert.match(opencode, /^description:/m);
-    assert.match(opencode, /^mode: subagent$/m);
-    assert.match(opencode, /\.meerkat\/roles\/jobs\/workflow\.md/);
-    const cursorWorker = readFileSync(join(project, ".cursor", "agents", "jobs.md"), "utf8");
-    assert.match(cursorWorker, /^name: jobs$/m);
-    assert.match(cursorWorker, /^readonly: false$/m);
-    const cursorReviewer = readFileSync(join(project, ".cursor", "agents", "reviewer.md"), "utf8");
-    assert.match(cursorReviewer, /^readonly: true$/m);
-
     const piWorker = readFileSync(join(project, ".pi", "agents", "jobs.md"), "utf8");
     assert.match(piWorker, /^name: jobs$/m);
     assert.match(piWorker, /^tools: read, grep, find, ls, bash, edit, write$/m);
@@ -694,7 +682,7 @@ describe("install-roles.mjs — project scope", () => {
     );
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.body.agentDefs.length, 0);
-    for (const kindDir of [".claude", ".codex", ".opencode", ".cursor", ".pi"]) {
+    for (const kindDir of [".claude", ".codex", ".pi"]) {
       assert.equal(
         existsSync(join(project, kindDir, "agents")),
         false,
@@ -754,8 +742,6 @@ describe("install-roles.mjs — project scope", () => {
     assert.ok(existsSync(join(roles, "reviewer", "reviewer-prompt.md")));
     assert.ok(existsSync(join(home, ".claude", "agents", "jobs.md")));
     assert.ok(existsSync(join(home, ".codex", "agents", "jobs.toml")));
-    assert.ok(existsSync(join(home, ".config", "opencode", "agents", "jobs.md")));
-    assert.ok(existsSync(join(home, ".cursor", "agents", "jobs.md")));
     assert.ok(existsSync(join(home, ".pi", "agent", "agents", "jobs.md")));
     assert.equal(existsSync(join(project, ".meerkat", "roles")), false, "global must not write into the project");
   });

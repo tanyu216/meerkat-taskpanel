@@ -26,8 +26,6 @@
 | `skills/meerkat-taskpanel/` | The skill — **single source of truth** |
 | `.claude-plugin/` | The board plugin manifest and the marketplace; the plugin root is the repository root, which is how every harness shares the one `skills/` tree |
 | `.pi/` | The Pi extension, declared by the root `package.json`'s `pi` field (which also names the skills directory) |
-| `.opencode/` | The OpenCode plugin — a Shape-B agent kind: it registers the shared `skills/` directory at runtime, so it too needs no copy |
-| `.cursor-plugin/` | Cursor's marker. Cursor reads `skills` out of its plugin root, which is why the repository root is a Cursor plugin root as well |
 | `scripts/` | Build, install, sync and verify scripts |
 | `test/` | Smoke / contract tests |
 | `design/` | Product design artifacts — the DESIGN / BLOCKS documents, the interactive `prototype/`, brand assets and exported assets (see `design/README.md`) |

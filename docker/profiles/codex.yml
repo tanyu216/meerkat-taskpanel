@@ -9,4 +9,4 @@ wrapper: scripts/run.mjs
 # repository-root marketplace and installs the same `./` bundle as Claude Code.
 bundle: .
 bundle_kind: bundle
-bundle_format: cursor
+bundle_format: claude

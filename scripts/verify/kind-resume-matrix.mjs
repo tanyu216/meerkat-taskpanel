@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * SUPPLEMENTARY verification: the five-agent-kind SESSION-RESUME capability matrix.
+ * SUPPLEMENTARY verification: the three-agent-kind SESSION-RESUME capability matrix.
  *
  *   node scripts/verify/kind-resume-matrix.mjs [options]
  *
  * Options:
- *   --actor-kind <k1,k2>       restrict to a subset of claude,codex,pi,opencode,cursor (default: all)
+ *   --actor-kind <k1,k2>       restrict to a subset of claude,codex,pi (default: all)
  *   --timeout <ms>       per-probe timeout (default 60000)
  *   --e2e                also run the "new session -> remember a marker -> resume reads it
  *                        back" round trip (needs working credentials; OFF by default)
@@ -35,20 +35,18 @@
  *   * src/foundation/scheduling.mjs#wakeCommand — the production consumer. It emits
  *     `claude -p [--resume <sid>]` / `codex exec [resume <sid>]` /
  *     `pi --print [--session <sid>]` (pi has no `run` subcommand — `--print` is its
- *     headless entry) / `opencode run [--session <sid>]` /
- *     `cursor-agent -p [--resume <sid>]`; this matrix is the evidence that those flags
+ *     headless entry); this matrix is the evidence that those flags
  *     are real in the CLI versions we pin.
  *
- * A `null` dimension means the agent kind does not offer that capability (Cursor has no fork
- * flag); it renders as `➖` and is excluded from the row's pass/fail decision.
+ * A `null` dimension means the agent kind does not offer that capability; it renders as
+ * `➖` and is excluded from the row's pass/fail decision.
  *
  * EVIDENCE DISCIPLINE
  *   * Every probe runs in a throwaway HOME. Nothing touches the real ~/.claude, ~/.codex,
- *     ~/.pi, ~/.config/opencode, ~/.cursor.
+ *     ~/.pi.
  *   * `--e2e` copies ONLY the minimum provider config / auth into the throwaway home and
  *     deletes it afterwards. Credentials are never printed into stdout or evidence; the
  *     e2e fixtures below are generated literals ("MK-<KIND>-<rand>"), not secrets.
- *     Cursor's e2e reads `CURSOR_API_KEY` from the environment and SKIPs without it.
  *   * An agent kind whose CLI is absent is SKIPPED (blocked), not failed — safe to run anywhere.
  */
 
@@ -115,37 +113,6 @@ export const KINDS = [
       nonInteractive: /--print, -p\b/,
     },
     headless: "pi --print <prompt>",
-  },
-  {
-    actorKind: "opencode",
-    bin: "opencode",
-    dotDir: ".config/opencode",
-    configEnv: null,
-    help: [["--help"], ["run", "--help"]],
-    dims: {
-      continueLast: /--continue\b|-c, --continue/,
-      resumeById: /--session\b/,
-      fork: /--fork\b/,
-      nonInteractive: /run\b/,
-    },
-    headless: "opencode run <prompt>",
-  },
-  {
-    // Cursor's documented flag surface (`-p/--print`, `--resume [chatId]`,
-    // `--continue`, `--workspace`). It has no fork flag, so `fork: null` records
-    // "not offered" rather than inventing a capability. An absent CLI SKIPs.
-    actorKind: "cursor",
-    bin: "cursor-agent",
-    dotDir: ".cursor",
-    configEnv: null,
-    help: [["--help"]],
-    dims: {
-      continueLast: /--continue\b/,
-      resumeById: /--resume\b/,
-      fork: null,
-      nonInteractive: /-p, --print\b/,
-    },
-    headless: "cursor-agent -p <prompt>",
   },
 ];
 
@@ -247,11 +214,10 @@ const E2E_FIXTURES = {
   claude: [], // auth arrives via ANTHROPIC_* env
   codex: ["config.toml", "cc-switch-model-catalog.json"],
   pi: ["agent/auth.json", "agent/models-store.json"],
-  cursor: [], // auth arrives via CURSOR_API_KEY
 };
 
 /** The per-agent-kind dot-directory under an isolated HOME. */
-const E2E_DIRS = { claude: ".claude", codex: ".codex", pi: ".pi", opencode: ".config/opencode", cursor: ".cursor" };
+const E2E_DIRS = { claude: ".claude", codex: ".codex", pi: ".pi" };
 
 function isolatedHome(kind) {
   const home = mkdtempSync(join(tmpdir(), `trm-e2e-${kind}-`));
@@ -339,38 +305,13 @@ export function e2eKind(kindName, timeoutMs) {
       push("new session (pi --print)", a);
       const b = runIn("pi", ["--print", "--continue", RECALL], env, cwd, timeoutMs);
       push("continue-last (pi --print --continue)", b);
-    } else if (kindName === "cursor") {
-      // Cursor's headless auth is `CURSOR_API_KEY`; without one the turn would be
-      // refused upstream, so say so instead of spending a call.
-      if (!process.env.CURSOR_API_KEY) {
-        return { actorKind: kindName, marker: mark, status: "blocked", reason: "CURSOR_API_KEY is not set", steps: [] };
-      }
-      const a = runIn("cursor-agent", ["-p", "--trust", "--output-format", "json", ASK(mark)], env, cwd, timeoutMs);
-      let sid = null;
-      try {
-        const parsed = JSON.parse(a.out);
-        sid = parsed.session_id ?? parsed.sessionId ?? null;
-      } catch {
-        /* non-JSON = refused turn */
-      }
-      push("new session (cursor-agent -p)", a, { sessionId: sid });
-      if (sid) {
-        push("resume-by-id (cursor-agent -p --resume <sid>)",
-          runIn("cursor-agent", ["-p", "--trust", "--resume", sid, "--output-format", "json", RECALL], env, cwd, timeoutMs));
-        push("continue-last (cursor-agent -p --continue)",
-          runIn("cursor-agent", ["-p", "--trust", "--continue", "--output-format", "json", RECALL], env, cwd, timeoutMs));
-      }
     } else {
       return { actorKind: kindName, marker: mark, status: "blocked", reason: "no CLI (see flag-level probe)", steps: [] };
     }
 
     const recalled = steps.filter((s) => /resume-by-id|continue-last/.test(s.step));
-    // Cursor's proof is the documented one-shot `-p` call; a resume is a bonus when
-    // the JSON output carries a session id. Every step that ran must read the marker.
-    const green =
-      kindName === "cursor"
-        ? steps.length > 0 && steps.every((s) => s.readBack)
-        : recalled.length > 0 && recalled.every((s) => s.readBack);
+    // Every resume step that ran must read the marker back.
+    const green = recalled.length > 0 && recalled.every((s) => s.readBack);
     const refused = steps.some((s) => s.rc !== 0 && !s.readBack && /4\d\d|forbidden|unauthor|not allowed|api key/i.test(s.excerpt));
     return {
       actorKind: kindName,
@@ -398,22 +339,19 @@ function containerProbe(image, timeoutMs) {
     'export NPM_CONFIG_PREFIX="$HOME/.npm-global"',
     'export PATH="$HOME/.npm-global/bin:$PATH"',
     'echo "NODE=$(node -v) USER=$(id -un) PREFIX=$NPM_CONFIG_PREFIX"',
-    "for b in claude codex pi opencode; do printf '%s=' $b; command -v $b || echo MISSING; done",
+    "for b in claude codex pi; do printf '%s=' $b; command -v $b || echo MISSING; done",
     "echo '--- install ---'",
     "npm i -g @anthropic-ai/claude-code@2.1.292 @openai/codex@0.161.0 @earendil-works/pi-coding-agent@1.0.4 2>&1 | tail -5",
     // Each probe is wrapped in `timeout` — a CLI that ignores --help and opens a TUI
-    // (opencode does) would otherwise block the whole container run.
+    // would otherwise block the whole container run.
     "tt() { timeout 30 \"$@\" 2>&1 | head -40; }",
     "echo '--- versions ---'",
-    "for b in claude codex pi opencode; do printf '## %s :: ' $b; tt $b --version | head -1 || echo MISSING; done",
+    "for b in claude codex pi; do printf '## %s :: ' $b; tt $b --version | head -1 || echo MISSING; done",
     "echo '--- resume flags ---'",
     "echo '-- claude --help --'; tt claude --help | grep -iE -- '--resume|--continue|--fork-session|--print' | head -6",
     "echo '-- codex exec resume --help --'; tt codex exec resume --help | grep -iE 'SESSION_ID|--last' | head -4",
     "echo '-- codex exec fork --help --'; tt codex exec fork --help | grep -iE 'SESSION_ID' | head -2",
     "echo '-- pi --help --'; tt pi --help | grep -iE -- '--continue|--resume|--fork|--print' | head -6",
-    "echo '--- opencode (separate, may need a TTY) ---'",
-    "timeout 120 npm i -g opencode-ai 2>&1 | tail -3; printf 'opencode bin='; command -v opencode || echo MISSING",
-    "printf 'opencode --version :: '; timeout 30 opencode --version 2>&1 | head -1 || echo '(timed out / needs TTY)'",
   ].join("\n");
 
   const r = spawnSync("docker", ["run", "--rm", image, "bash", "-lc", inner], { encoding: "utf8", timeout: timeoutMs });
@@ -456,9 +394,9 @@ async function main() {
 
   if (values.help) {
     process.stdout.write(
-      "Usage: node scripts/verify/kind-resume-matrix.mjs [--actor-kind claude,codex] [--e2e] [--container]\n" +
+      "Usage: node scripts/verify/kind-resume-matrix.mjs [--actor-kind claude,codex,pi] [--e2e] [--container]\n" +
         "       [--json] [--evidence-dir DIR]\n\n" +
-        "  Flag-level resume matrix for claude|codex|pi|opencode|cursor; --e2e adds marker round trips.\n",
+        "  Flag-level resume matrix for claude|codex|pi; --e2e adds marker round trips.\n",
     );
     return 0;
   }
@@ -473,8 +411,7 @@ async function main() {
   if (values.e2e) {
     e2e = [];
     for (const k of kinds) {
-      if (k.actorKind === "opencode") continue; // handled by the flag-level probe / blocked conclusion
-      if (!which(h.bin)) continue;
+      if (!which(k.bin)) continue;
       e2e.push(e2eKind(k.actorKind, Math.max(timeoutMs, 240_000)));
     }
   }

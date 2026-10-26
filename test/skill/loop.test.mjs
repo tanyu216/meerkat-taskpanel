@@ -274,7 +274,7 @@ describe("loop skill: SKILL.md", () => {
     assert.match(section, /duplicate/i);
     assert.match(section, /E1[–-]E5/);
     assert.match(section, /never claim/i);
-    assert.match(section, /\.config\/opencode/);
+    assert.match(section, /\.agents/);
     assert.match(section, /bin\/taskctl/);
   });
 

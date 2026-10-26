@@ -280,7 +280,7 @@ describe("buildContinuePrompt", () => {
   });
 
   it("carries the prefix into every agent kind's headless form", () => {
-    for (const actorKind of ["claude", "codex", "pi", "opencode", "cursor"]) {
+    for (const actorKind of ["claude", "codex", "pi"]) {
       const p = buildContinuePrompt({
         actorKind,
         agent: "alice",
@@ -313,8 +313,6 @@ describe("planContinueInvocation", () => {
   for (const [actorKind, command, args] of [
     ["codex", "codex", ["exec", "Continue"]],
     ["pi", "pi", ["--print", "Continue"]],
-    ["opencode", "opencode", ["run", "Continue"]],
-    ["cursor", "cursor-agent", ["-p", "Continue"]],
   ]) {
     it(`uses ${command} for ${actorKind}`, () => {
       const plan = planContinueInvocation({ actorKind, prompt: "Continue", cwd: "/repo" });

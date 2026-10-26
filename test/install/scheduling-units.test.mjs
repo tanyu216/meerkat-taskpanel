@@ -447,7 +447,7 @@ describe("install.sh: scheduling units", () => {
 // The loop skill: installed by the three agent kinds that can be woken, never by OpenClaw
 //
 // The loop is a skill of its own (T-20261012-163500-loopdecouple-b), distributed to the
-// five non-OpenClaw agent kinds. OpenClaw is excluded **permanently** (ruling O3): the
+// three non-OpenClaw agent kinds. OpenClaw is excluded **permanently** (ruling O3): the
 // openclaw-team framework already ships a per-agent poll and a `task-patrol` — the same
 // design (cadence: the framework's own AUTOMATIONS.md, not a number restated here); two
 // supervisors on one board would only race each other for the same cards.
@@ -458,8 +458,6 @@ const LOOP_KINDS = [
   ["claude", ".claude", "claude"],
   ["codex", ".codex", "codex"],
   ["pi", ".agents", "pi"],
-  ["opencode", ".config/opencode", "opencode"],
-  ["cursor", ".cursor", "cursor-agent"],
 ];
 
 describe("install.sh: the loop skill's distribution", () => {
@@ -552,31 +550,6 @@ describe("install.sh: the loop skill's distribution", () => {
     );
     assert.equal(existsSync(join(home, ".openclaw", "scheduling")), false);
     assert.equal(existsSync(join(home, ".openclaw", "meerkat-taskpanel")), false);
-  });
-
-  it("wires OpenCode's glue to `opencode run`, with the session form for a resume", () => {
-    const home = makeTempDir();
-    const bin = makeTempDir();
-    makeFakeCli(bin, "opencode");
-    const run = runInstall(["--target", "opencode"], installEnv(home, bin));
-    assert.equal(run.status, 0, run.stderr);
-
-    const glue = readFileSync(join(home, ".config/opencode", "bin", "wake-opencode.sh"), "utf8");
-    assert.match(glue, /exec opencode run "\$prompt"/);
-    assert.match(glue, /exec opencode run --session "\$sid" "\$prompt"/);
-  });
-
-  it("wires Cursor's glue to `cursor-agent -p`, and names the real-CLI probe", () => {
-    const home = makeTempDir();
-    const bin = makeTempDir();
-    makeFakeCli(bin, "cursor-agent");
-    const run = runInstall(["--target", "cursor"], installEnv(home, bin));
-    assert.equal(run.status, 0, run.stderr);
-
-    const glue = readFileSync(join(home, ".cursor", "bin", "wake-cursor.sh"), "utf8");
-    assert.match(glue, /exec cursor-agent -p "\$prompt"/);
-    assert.match(glue, /exec cursor-agent -p --resume "\$sid" "\$prompt"/);
-    assert.match(glue, /CURSOR_API_KEY/, "the real-CLI probe must be named, with its credential gate");
   });
 
   it("copies the loop skill even under --link, which names the board skill only", () => {

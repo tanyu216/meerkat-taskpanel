@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
 #
 # Shared implementation for the per-agent-kind installers
-# (claude / openclaw / codex / pi / opencode / cursor).
+# (claude / openclaw / codex / pi).
 #
 # Three skills are distributed, and each agent kind takes the ones that fit it:
 #
 #   * `meerkat-taskpanel` — the board. Every agent kind installs it (`install_skill`).
-#   * `meerkat-loop` — the external supervisor. The five non-OpenClaw agent kinds install
+#   * `meerkat-loop` — the external supervisor. The three non-OpenClaw agent kinds install
 #     it (`install_loop_skill` + `install_scheduling`); **OpenClaw does not**, because the
 #     openclaw-team framework already ships a per-agent poll and a `task-patrol`, which
 #     is the same design (its cadence is the framework's own AUTOMATIONS.md, not a
 #     number restated here) — see `scripts/install/openclaw.sh` and docs/scheduling.md.
-#     OpenCode's `opencode run` and Cursor's `cursor-agent -p` are wired as their headless
-#     forms; Cursor's **resume** flag is unverified and labelled, with `--wake-command` as
-#     the escape hatch — see `scripts/install/opencode.sh` and `cursor.sh`.
 #   * `setup-meerkat` — the install/repair and team-setup command. **Only the Claude
 #     bundle copies it** (`claude.sh`); the repository bundle and marketplace still carry
 #     it for the other kinds, but the bash installer does not copy it there.
 #
 # Each agent-kind script sources this file and calls the pieces it needs. The two bundle agent kinds
 # (claude, codex) add the config / command / trigger helpers below; the skill-only agent kinds
-# (openclaw, pi, opencode, cursor) do not (pi still takes the loop, the other three do not).
+# (openclaw, pi) do not (pi still takes the loop, OpenClaw does not).
 #
 # Honours:
 #
@@ -188,17 +185,6 @@ resolve_agent_cli_dir() {
   esac
 }
 
-# agent_cli_name <kind> — the executable an agent kind runs as.
-#
-# The label names the install target; the binary is not always the same word.
-# Cursor's CLI is `cursor-agent`, not `cursor`; every other agent kind matches.
-agent_cli_name() {
-  case "$1" in
-    cursor) printf '%s\n' "cursor-agent" ;;
-    *) printf '%s\n' "$1" ;;
-  esac
-}
-
 # loop_src — the loop skill's source, which owns the loop body and the loop's templates.
 #
 # The loop is a skill of its own (skills/meerkat-loop/): its execution body and the units /
@@ -350,7 +336,7 @@ export_tp_env() {
   # only where the values would actually be used. Where they are used, it is fatal: a unit
   # that renders an empty interpreter is the 127 this exists to remove.
   if TP_NODE="$(node "$(unit_path_helper)" node 2>/dev/null)"; then
-    TP_CLI_DIR="$(resolve_agent_cli_dir "$(agent_cli_name "$label")")"
+    TP_CLI_DIR="$(resolve_agent_cli_dir "$label")"
     if [ -n "$TP_CLI_DIR" ]; then
       TP_UNIT_PATH_LAUNCHD="$(node "$(unit_path_helper)" path --scheduler launchd --cli-dir "$TP_CLI_DIR")"
       TP_UNIT_PATH_CRON="$(node "$(unit_path_helper)" path --scheduler cron --cli-dir "$TP_CLI_DIR")"
@@ -686,7 +672,7 @@ ensure_env_key() {
 # seed_env_file — create the install-root `.env` on a fresh install.
 #
 # One file, read by taskd and taskctl (and the loop's SSE subscriber). It is a
-# *machine/install* config, not a per-agent-kind one: `--target all` must not write six
+# *machine/install* config, not a per-agent-kind one: `--target all` must not write four
 # copies, so install.sh calls this once, outside the agent-kind loop.
 #
 # Never overwrites: the file may hold a token or deliberate edits, so even

@@ -264,9 +264,7 @@ empty value — ask before replacing it. Without `MEERKAT_TASKPANEL_AGENTS` the 
 only its default agent and a role card is never claimed.
 
 Native agent definitions are written for every host with a native format: Claude
-(`.claude/agents/<name>.md`), Codex (`.codex/agents/<name>.toml`), OpenCode
-(`~/.config/opencode/agents/<name>.md`, or `.opencode/agents/<name>.md` in a project),
-Cursor (`~/.cursor/agents/<name>.md`, or `.cursor/agents/<name>.md`) and Pi
+(`.claude/agents/<name>.md`), Codex (`.codex/agents/<name>.toml`) and Pi
 (`~/.pi/agent/agents/<name>.md`, or `.pi/agents/<name>.md`). Pi's subagents come from the
 `pi-subagents` extension (`pi install npm:pi-subagents`); the definition is inert until
 that extension is installed. The loop's project session also uses that extension to spawn

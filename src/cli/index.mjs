@@ -198,11 +198,11 @@ export async function run(argv, io) {
     if (declaredKind === null || String(declaredKind).trim() === "") {
       throw new DomainError("CLI_USAGE", {
         message:
-          "--actor-kind is required (claude|codex|openclaw|pi|opencode|cursor); " +
+          "--actor-kind is required (claude|codex|openclaw|pi); " +
           "pass it, export TASKCTL_ACTOR_KIND, or use --as-human",
         details: {
           field: "actorKind",
-          examples: ["claude", "codex", "openclaw", "pi", "opencode", "cursor"],
+          examples: ["claude", "codex", "openclaw", "pi"],
           alternative: "--as-human",
         },
         hint: {

@@ -1,6 +1,6 @@
 /**
  * The actor-kind rule: an actor's kind is `human`, or the concrete platform a
- * writer runs on (`claude`, `codex`, `pi`, `opencode`, `openclaw`, `cursor`, …),
+ * writer runs on (`claude`, `codex`, `pi`, `openclaw`, …),
  * or the board's own platform name `taskd`.
  *
  * What must not appear in our own writes is a vague role word. `system` names no

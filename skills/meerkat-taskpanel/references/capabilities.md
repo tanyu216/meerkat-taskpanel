@@ -13,7 +13,7 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 ```
 
 - `--actor-kind` is required. The loop uses the actor kind (`claude`, `codex`,
-  `pi`, `opencode`, `cursor`) for reads and claims, and `taskd` for the workflow
+  `pi`) for reads and claims, and `taskd` for the workflow
   writes so an automated acceptance is attributable to the board, not a human.
 - The token rides in `TASKD_TOKEN` in the child environment, never on argv.
 - stdout is `{ok:true,data}` or `{ok:false,error{code,message,http,details,hint}}`;

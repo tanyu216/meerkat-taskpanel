@@ -55,7 +55,6 @@ function manifests(version) {
   return {
     "package.json": { name: "meerkat-taskpanel", version, private: true },
     ".claude-plugin/plugin.json": { name: "meerkat-taskpanel", version },
-    ".cursor-plugin/plugin.json": { name: "meerkat-taskpanel", version },
     ".claude-plugin/marketplace.json": { name: "meerkat-taskpanel-marketplace", metadata: { version } },
   };
 }
@@ -84,8 +83,8 @@ function runCli(args) {
 }
 
 describe("version.mjs — the shipped manifests", () => {
-  it("declares the board's four sources, exactly one canonical, in one group", () => {
-    assert.equal(VERSION_SOURCES.length, 4);
+  it("declares the board's three sources, exactly one canonical, in one group", () => {
+    assert.equal(VERSION_SOURCES.length, 3);
     assert.equal(VERSION_SOURCES[0].path, "package.json", "package.json is the board's canonical source");
     assert.equal(VERSION_SOURCES.filter((s) => s.canonical === true).length, 1, "exactly one source is canonical");
 
@@ -105,7 +104,7 @@ describe("version.mjs — the shipped manifests", () => {
     const board = await validateVersions(ROOT);
     assert.equal(board.ok, true, board.error);
     assert.equal(board.version, declared);
-    assert.equal(board.sources.length, 4);
+    assert.equal(board.sources.length, 3);
     assert.ok(board.sources.every((entry) => entry.version === declared));
     assert.equal(await currentVersion(ROOT), declared);
 
@@ -125,7 +124,7 @@ describe("version.mjs — validateVersions(base)", () => {
     const result = await validateVersions(dir);
     assert.equal(result.ok, true, result.error);
     assert.equal(result.version, "9.9.9");
-    assert.equal(result.sources.length, 4);
+    assert.equal(result.sources.length, 3);
   });
 
   it("fails, naming the file, when one manifest drifts", async () => {
@@ -140,7 +139,7 @@ describe("version.mjs — validateVersions(base)", () => {
     assert.equal(result.version, "1.0.0", "the canonical version is still reported");
     assert.match(result.error, /\.claude-plugin\/marketplace\.json/);
     assert.match(result.error, /0\.9\.9/);
-    assert.equal(result.sources.length, 4, "every source is still listed so the diff is legible");
+    assert.equal(result.sources.length, 3, "every source is still listed so the diff is legible");
   });
 
   it("fails when a nested field is missing (marketplace metadata.version)", async () => {
@@ -184,13 +183,13 @@ describe("version.mjs — validateVersions(base)", () => {
   it("fails when a manifest is not valid JSON", async () => {
     const dir = await makeTree();
     const files = manifests("1.0.0");
-    files[".cursor-plugin/plugin.json"] = "{ not json";
+    files[".claude-plugin/plugin.json"] = "{ not json";
     await writeTree(dir, files);
 
     const result = await validateVersions(dir);
     assert.equal(result.ok, false);
     assert.equal(result.kind, "read");
-    assert.match(result.error, /\.cursor-plugin\/plugin\.json: not valid JSON/);
+    assert.match(result.error, /\.claude-plugin\/plugin\.json: not valid JSON/);
   });
 });
 
@@ -207,7 +206,7 @@ describe("version.mjs — the CLI", () => {
     await writeTree(dir, manifests("2.0.0"));
     const result = runCli(["--base", dir]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /all 4 board manifests agree on 2\.0\.0/);
+    assert.match(result.stdout, /all 3 board manifests agree on 2\.0\.0/);
   });
 
   it("exits 1 and prints the drift on a drifted tree", async () => {
@@ -237,7 +236,7 @@ describe("version.mjs — the CLI", () => {
 
     const boardOnly = runCli(["--base", dir, "--group", "board"]);
     assert.equal(boardOnly.status, 0, boardOnly.stderr);
-    assert.match(boardOnly.stdout, /all 4 board manifests agree on 2\.0\.0/);
+    assert.match(boardOnly.stdout, /all 3 board manifests agree on 2\.0\.0/);
 
     const boardPrint = runCli(["--base", dir, "--print"]);
     assert.equal(boardPrint.stdout.trim(), "2.0.0");

@@ -8,9 +8,7 @@
  * repository root (the root *is* the board's plugin root):
  *
  *   * `.claude-plugin/plugin.json` — claude, and codex (the same `./` marketplace bundle);
- *   * `.cursor-plugin/plugin.json` — Cursor's marker;
- *   * the root `package.json`'s `pi` field — Pi;
- *   * `.opencode/plugins/` — registers the directory at runtime, copying nothing.
+ *   * the root `package.json`'s `pi` field — Pi.
  *
  * OpenClaw reads that same root bundle too. It receives the board skill only, **never**
  * `meerkat-loop` — it already runs an equivalent supervisor in the openclaw-team

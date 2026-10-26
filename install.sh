@@ -7,7 +7,7 @@
 # through MEERKAT_TASKPANEL_* environment variables.
 #
 # Usage:
-#   install.sh [--target claude|openclaw|codex|pi|opencode|cursor|server|all] [--prefix <home>]
+#   install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 #              [--agent-name <name>] [--no-automation]
 #              [--claim-unassigned=yes|no] [--assignee-only]
 #              [--supervisor=enable|disable|status] [--supervisor-actor-kinds <list>]
@@ -15,7 +15,7 @@
 #              [--link] [--force] [--dry-run] [--skip-node-check] [--skip-web-build] [-h|--help]
 #
 # `--target` also accepts a comma-separated list (e.g. `--target claude,codex`).
-# Default target is "all": the six agents plus the server runtime tree at
+# Default target is "all": the four agents plus the server runtime tree at
 # <home>/.meerkat-taskpanel. `--no-server` leaves the server out.
 #
 # It also asks (when stdin is a TTY and no flag was given) whether the supervisor
@@ -43,8 +43,8 @@
 #
 # Three skills are distributed, and they do not go to the same agent kinds:
 #
-#   meerkat-taskpanel  the board                    → all six agent kinds
-#   meerkat-loop       the external supervisor  → claude, codex, pi, opencode, cursor
+#   meerkat-taskpanel  the board                    → all four agent kinds
+#   meerkat-loop       the external supervisor  → claude, codex, pi
 #                                                     (never openclaw)
 #   setup-meerkat      install/repair + team setup  → the Claude bundle only
 #                                                     (the bundle/marketplace still
@@ -87,7 +87,7 @@ Install the Meerkat TaskPanel skills into one or more agent kinds, and
 the server runtime tree.
 
 Options:
-  --target <agent-kind>  claude | openclaw | codex | pi | opencode | cursor | server | all
+  --target <agent-kind>  claude | openclaw | codex | pi | server | all
                     (default: all — every agent above plus the server)
                     A comma-separated list is also accepted (claude,codex).
                     `server` materializes the runtime at <home>/.meerkat-taskpanel
@@ -133,8 +133,8 @@ Options:
                     Aliases: --enable-supervisor, --disable-supervisor,
                     --supervisor-status.
   --supervisor-actor-kinds <list>
-                    Which loop actor kinds the action applies to: claude, codex, pi,
-                    opencode or cursor (default: the loop actor kinds in --target).
+                    Which loop actor kinds the action applies to: claude, codex or pi
+                    (default: the loop actor kinds in --target).
                     'openclaw' is rejected (exit 2) — it runs openclaw-team's own
                     poll/patrol. The values are actor kinds — the same vocabulary
                     scripts/supervisor.mjs takes on --actor-kind.
@@ -157,18 +157,14 @@ Destinations:
   openclaw   <home>/.openclaw/skills/meerkat-taskpanel
   codex      <home>/.codex/skills/meerkat-taskpanel
   pi         <home>/.agents/skills/meerkat-taskpanel
-  opencode   <home>/.config/opencode/skills/meerkat-taskpanel
-  cursor     <home>/.cursor/skills/meerkat-taskpanel
 
 The **board** and **loop** skills share two distribution surfaces. The board skill goes
-to all six agent kinds; the loop skill (the external supervisor) goes to the five
+to all four agent kinds; the loop skill (the external supervisor) goes to the three
 non-OpenClaw agent kinds:
 
   claude     <home>/.claude/skills/meerkat-loop
   codex      <home>/.codex/skills/meerkat-loop
   pi         <home>/.agents/skills/meerkat-loop
-  opencode   <home>/.config/opencode/skills/meerkat-loop
-  cursor     <home>/.cursor/skills/meerkat-loop
   openclaw   — none, on purpose: the openclaw-team framework's poll / task-patrol
               automations already are this design (see docs/scheduling.md).
 
@@ -184,7 +180,7 @@ skill only, or a symlinked loop would put the checkout back into the load path t
 removes.
 
 The claim policy is written to <home>/<agent-dir>/meerkat-taskpanel.env for the agent kinds that
-build a supervisor (claude, codex, pi, opencode, cursor); OpenClaw installs
+build a supervisor (claude, codex, pi); OpenClaw installs
 openclaw-team instead.
 
 The supervisor stays opt-in (--supervisor, above): without it, and without the
@@ -388,7 +384,7 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --supervisor-actor-kinds)
-      [ "$#" -ge 2 ] || die "--supervisor-actor-kinds requires a value (claude,codex,pi,opencode,cursor)"
+      [ "$#" -ge 2 ] || die "--supervisor-actor-kinds requires a value (claude,codex,pi)"
       SUPERVISOR_ACTOR_KINDS_FLAG="$2"
       shift 2
       ;;
@@ -483,15 +479,13 @@ for raw in $TARGET; do
       add_target openclaw
       add_target codex
       add_target pi
-      add_target opencode
-      add_target cursor
       add_target server
       ;;
-    claude | openclaw | codex | pi | opencode | cursor | server)
+    claude | openclaw | codex | pi | server)
       add_target "$entry"
       ;;
     *)
-      die "invalid --target: $entry (expected claude|openclaw|codex|pi|opencode|cursor|server|all)"
+      die "invalid --target: $entry (expected claude|openclaw|codex|pi|server|all)"
       ;;
   esac
 done
@@ -617,14 +611,14 @@ if [ -n "$SUPERVISOR_ACTOR_KINDS_FLAG" ]; then
     IFS=','
     case "$entry" in
       "") ;;
-      claude | codex | pi | opencode | cursor) SUPERVISOR_ACTOR_KINDS="$SUPERVISOR_ACTOR_KINDS $entry " ;;
+      claude | codex | pi) SUPERVISOR_ACTOR_KINDS="$SUPERVISOR_ACTOR_KINDS $entry " ;;
       openclaw)
         die "--supervisor-actor-kinds openclaw: OpenClaw has no meerkat-loop supervisor to enable (it runs openclaw-team's own poll/patrol — see docs/scheduling.md)"
         ;;
       server)
         die "--supervisor-actor-kinds server: the server target has no meerkat-loop supervisor (the taskd guard is separate)"
         ;;
-      *) die "invalid --supervisor-actor-kinds: $entry (expected claude|codex|pi|opencode|cursor)" ;;
+      *) die "invalid --supervisor-actor-kinds: $entry (expected claude|codex|pi)" ;;
     esac
   done
   IFS="$OLD_IFS"
@@ -632,7 +626,7 @@ else
   SUPERVISOR_ACTOR_KINDS=""
   for target in $TARGETS; do
     case "$target" in
-      claude | codex | pi | opencode | cursor) SUPERVISOR_ACTOR_KINDS="$SUPERVISOR_ACTOR_KINDS $target " ;;
+      claude | codex | pi) SUPERVISOR_ACTOR_KINDS="$SUPERVISOR_ACTOR_KINDS $target " ;;
     esac
   done
 fi

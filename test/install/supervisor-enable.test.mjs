@@ -231,20 +231,20 @@ describe("install.sh: the supervisor flag surface", () => {
     assert.deepEqual(loads(manager), [], "and nothing is loaded");
   });
 
-  it("accepts --supervisor-actor-kinds opencode,cursor (dry run loads nothing)", () => {
+  it("accepts a comma-separated --supervisor-actor-kinds list (dry run loads nothing)", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const run = runInstall(
       [
         "--target", "all", "--agent-name", "alice", "--prefix", home, "--dry-run",
-        "--supervisor=enable", "--supervisor-actor-kinds", "opencode,cursor", "--scheduler=launchd",
+        "--supervisor=enable", "--supervisor-actor-kinds", "claude,pi", "--scheduler=launchd",
       ],
       installEnv(home, manager),
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /supervisor: dry-run — would enable \(kind=opencode,/);
-    assert.match(run.stdout, /supervisor: dry-run — would enable \(kind=cursor,/);
+    assert.match(run.stdout, /supervisor: dry-run — would enable \(kind=claude,/);
+    assert.match(run.stdout, /supervisor: dry-run — would enable \(kind=pi,/);
     assert.deepEqual(loads(manager), [], "a dry run asks no service manager");
   });
 
@@ -765,7 +765,7 @@ describe("install.sh: --dry-run and per-agent-kind selection", () => {
     for (const line of bootstraps) assert.ok(line.includes(join(".claude", "scheduling")), line);
 
     // Every loop agent kind is still installed — the selection is about the *action*, not the files.
-    for (const agentDir of [".claude", ".codex", ".agents", ".config/opencode", ".cursor"]) {
+    for (const agentDir of [".claude", ".codex", ".agents"]) {
       assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-loop", "SKILL.md")), `${agentDir} loop skill`);
     }
   });

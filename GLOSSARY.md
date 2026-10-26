@@ -56,8 +56,8 @@ the system. Actors are created by use and are never renamed or deleted.
 _Avoid_: user, owner, person
 
 **Actor kind**:
-Which application wrote: a platform slug (`claude`, `codex`, `pi`, `opencode`,
-`openclaw`, `cursor`, `taskd`), with `human` the one reserved value a caller may not
+Which application wrote: a platform slug (`claude`, `codex`, `pi`, `openclaw`,
+`taskd`), with `human` the one reserved value a caller may not
 declare. It is recorded on every write and read back as `author_kind` / `owner_kind`;
 the CLI flag is `--actor-kind`. It is **not** the identity: that is the actor id
 (`--agent jobs|linus|…`).

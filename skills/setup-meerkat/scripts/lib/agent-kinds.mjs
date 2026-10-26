@@ -23,16 +23,6 @@ export const AGENT_KINDS = Object.freeze({
     nativeDir: ".pi/agent/agents",
     nativeProjectDir: ".pi/agents",
   },
-  // OpenCode reads global agents from `~/.config/opencode/agents/` and project agents
-  // from `.opencode/agents/`; the project base differs from the skills base.
-  opencode: {
-    dir: ".config/opencode",
-    loop: true,
-    native: "markdown",
-    nativeProjectDir: ".opencode/agents",
-  },
-  // Cursor reads both `~/.cursor/agents/` and `.cursor/agents/`.
-  cursor: { dir: ".cursor", loop: true, native: "markdown" },
 });
 
 /** The actor kinds that run the external loop (OpenClaw does not). */
@@ -114,11 +104,6 @@ export function nativeAgentFile(input) {
     ? join(input.projectDir, info.nativeProjectDir ?? join(info.dir, "agents"))
     : join(input.home, info.nativeDir ?? join(info.dir, "agents"));
   return join(base, `${input.name}.${ext}`);
-}
-
-/** The `readonly` flag Cursor's agent definition expects. */
-export function readonlyForLanes(lanes) {
-  return lanes.includes("worker") ? "false" : "true";
 }
 
 /** The `tools` allowlist the `pi-subagents` extension expects. */

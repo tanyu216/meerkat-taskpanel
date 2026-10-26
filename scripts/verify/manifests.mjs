@@ -4,7 +4,6 @@
  *
  * Each agent kind has its own conventional manifest location and its own required keys:
  *   .claude-plugin/plugin.json                    (the board plugin; root = repo root)
- *   .cursor-plugin/plugin.json                    (Cursor's marker for the same root)
  *   package.json                                  (the `pi` field — Pi has no manifest of
  *                                                  its own, it reads the root package)
  * plus the repository-root Claude marketplace: .claude-plugin/marketplace.json
@@ -39,19 +38,6 @@ export const MANIFESTS = [
       "homepage",
       "repository",
       "keywords",
-      "skills",
-    ],
-  },
-  {
-    label: "cursor",
-    path: ".cursor-plugin/plugin.json",
-    required: [
-      "name",
-      "displayName",
-      "description",
-      "version",
-      "author",
-      "license",
       "skills",
     ],
   },

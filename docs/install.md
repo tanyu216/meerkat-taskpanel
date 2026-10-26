@@ -3,11 +3,11 @@
 Meerkat TaskPanel ships as **a local server**, **three Agent Skills** and **one plugin root**
 — the repository itself, which every harness reads in place:
 
-- **`meerkat-taskpanel`** (`skills/meerkat-taskpanel/`) — the board. Installed for all six
+- **`meerkat-taskpanel`** (`skills/meerkat-taskpanel/`) — the board. Installed for all four
   agents.
 - **`meerkat-loop`** (`skills/meerkat-loop/`) — the external supervisor that keeps a
   board moving when no agent is looking. Installed for **every agent except OpenClaw**
-  (claude, codex, pi, opencode, cursor); OpenClaw gets the board on its own, because the
+  (claude, codex, pi); OpenClaw gets the board on its own, because the
   openclaw-team framework already runs an equivalent poll / patrol (see
   [`scheduling.md`](scheduling.md#openclaw-do-not-build-a-supervisor)).
 - **`setup-meerkat`** (`skills/setup-meerkat/`) — the user-invoked `/setup-meerkat`
@@ -17,7 +17,7 @@ Meerkat TaskPanel ships as **a local server**, **three Agent Skills** and **one 
   bundle and marketplace still carry it for the other agent kinds.
 
 > **"Actor kind" and "agent".** An **actor kind** is the application that runs the agent — Claude
-> Code, OpenClaw, Codex, Pi / Agent Skills, OpenCode or Cursor: the values `--target` takes.
+> Code, OpenClaw, Codex or Pi / Agent Skills: the values `--target` takes.
 > An **agent** is the identity recorded on the board (`--agent jobs|linus|turing`,
 > `install.sh --agent-name`). Kind answers *which application*, agent answers *who*. A
 > **host** in this repository means the machine, never the application.
@@ -44,7 +44,7 @@ There are three layers, and it is worth keeping them straight:
    one `skills/` tree instead of receiving a copy. The marketplace has a single entry —
    `meerkat-taskpanel`, sourced at `./`. `meerkat-loop` and `setup-meerkat` are **not**
    separate marketplace plugins: the root bundle carries them from the same tree, and
-   `install.sh` copies them into an agent's skill directory (the loop for the five
+   `install.sh` copies them into an agent's skill directory (the loop for the three
    non-OpenClaw agents, the setup command for Claude).
 
 > **Status: the engine has landed in full.** The skill is discoverable, the `taskctl`
@@ -144,8 +144,6 @@ match the assignee the board uses for it; it defaults to `$USER`.
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `.` — the same root bundle |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `~/.codex/skills/meerkat-loop` | `.` — the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `~/.agents/skills/meerkat-loop` | `.` — the root `package.json`'s `pi` field |
-| OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | `~/.config/opencode/skills/meerkat-loop` | `.opencode/plugins/` (in-process registration) |
-| Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | `~/.cursor/skills/meerkat-loop` | `.` — the repository root (`.cursor-plugin/plugin.json`) |
 
 The **setup skill** is an extra row with no column of its own: `install.sh --target claude`
 copies `setup-meerkat` to `~/.claude/skills/setup-meerkat`, and no other target copies it.
@@ -157,8 +155,7 @@ plugin, `./` (the board); Codex reads the same marketplace manifest, which is wh
 bundle of its own.
 
 Every agent above has both routes: a `--target` that lands the skill on disk, and a
-plugin/bundle that agent's own plugin system reads in place. OpenCode and Cursor are no
-exception — see [OpenCode](#opencode) and [Cursor](#cursor).
+plugin/bundle that agent's own plugin system reads in place.
 
 `--link` applies to the **board** skill only. The loop is always copied: a symlinked
 execution body would put the checkout back into the load path of the very thing the split
@@ -212,7 +209,7 @@ re-create it afterwards). With `--link` the skill directory is a symlink into a
 checkout, so the file lands in `skills/meerkat-taskpanel/` there — keep it out of
 version control.
 
-### Scheduling units (claude, codex, pi, opencode, cursor)
+### Scheduling units (claude, codex, pi)
 
 | Artefact | Where | What |
 |---|---|---|
@@ -270,11 +267,11 @@ bash install.sh --supervisor=status                             # what is loaded
 bash install.sh --supervisor=disable --supervisor-actor-kinds claude  # stop and remove it
 ```
 
-**Per-agent-kind selection is `--supervisor-actor-kinds claude,codex,pi,opencode,cursor`** — a
+**Per-agent-kind selection is `--supervisor-actor-kinds claude,codex,pi`** — a
 subset of the loop actor kinds the install covers (default: the loop actor kinds present in
 `--target`). The flag selects *which* kinds an action applies to, rather than naming the kind
 the installer itself runs as, which is why it is not called `--actor-kind` here: that name is
-the wake selector on `scripts/supervisor.mjs --actor-kind claude|codex|pi|opencode|cursor`.
+the wake selector on `scripts/supervisor.mjs --actor-kind claude|codex|pi`.
 **`openclaw` is rejected** in this list (reason on stderr, exit 2) — it has no loop
 supervisor to enable (see
 [`scheduling.md §OpenClaw: do not build a supervisor`](scheduling.md#openclaw-do-not-build-a-supervisor)).
@@ -503,7 +500,7 @@ is the full contract.
 ## install.sh reference
 
 ```text
-install.sh [--target claude|openclaw|codex|pi|opencode|cursor|server|all] [--prefix <home>]
+install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
            [--agent-name <name>] [--no-automation]
            [--claim-unassigned=yes|no] [--assignee-only] [--recover-stale=yes|no]
            [--workflow=yes|no] [--reviewer <agent>]
@@ -648,17 +645,15 @@ openclaw plugins inspect meerkat-taskpanel
 
 ```text
 Format: bundle
-Bundle format: cursor
+Bundle format: claude
 Bundle capabilities: skills
 ```
 
-**Why `cursor`?** The repository root carries two client markers — `.cursor-plugin/` and
-`.claude-plugin/` — and OpenClaw's detection precedence is **codex → cursor → claude**. The
-root is therefore reported as a cursor bundle. That is the only line the second marker
-changes: `Format: bundle`, `Shape`, `Capability mode` and `Bundle capabilities: skills` are
-identical either way (measured against OpenClaw 2026.9.8 with and without the marker).
+**Why `claude`?** The repository root carries `.claude-plugin/`, and OpenClaw's detection
+precedence is **codex → cursor → claude**; with no Codex or Cursor marker present, the root
+is reported as a claude bundle.
 
-> **No supervisor for OpenClaw.** Unlike the other five agent kinds, OpenClaw gets **no**
+> **No supervisor for OpenClaw.** Unlike the other three agent kinds, OpenClaw gets **no**
 > scheduling unit and **no `meerkat-loop` skill**: it already has a scheduler in the
 > [openclaw-team](https://github.com/tanyu216/openclaw-team) framework, whose
 > per-agent poll and `task-patrol` automations *are* the design in
@@ -764,122 +759,6 @@ rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/skills/meerkat-loop \
        ~/.agents/scheduling ~/.agents/bin/wake-pi.sh ~/.agents/meerkat-taskpanel.env
 ```
 
-### OpenCode
-
-```bash
-# 1. skill + agent config
-bash install.sh --target opencode --link --force
-
-# 2. plugin (optional — it delivers the same skills, read in place)
-#    see the registration below
-```
-
-Step 1 writes the board skill to `~/.config/opencode/skills/meerkat-taskpanel`, the loop
-skill and its execution body, the scheduling units and `~/.config/opencode/bin/wake-opencode.sh`,
-and the agent config `~/.config/opencode/meerkat-taskpanel.env`, whose
-`MEERKAT_TASKPANEL_REPO` is what lets the skill's wrapper find the board engine once the
-skill no longer sits beside the checkout (see the resolution ladder in
-[the wrapper](../skills/meerkat-taskpanel/scripts/run.mjs)).
-
-**The loop, and its evidence.** OpenCode's headless form is `opencode run <prompt>`; a
-resume is `opencode run --session <sid> <prompt>`. That shape is recorded in
-[`scripts/verify/kind-resume-matrix.mjs`](../scripts/verify/kind-resume-matrix.mjs), the
-flag-level matrix this repository keeps for exactly this question. It is **not** a run on
-this machine: OpenCode's CLI is absent here and in the container, so the resume form stays
-flagged and `--wake-command` remains the escape hatch (`docs/scheduling.md`).
-
-Uninstall:
-
-```bash
-rm -rf ~/.config/opencode/skills/meerkat-taskpanel ~/.config/opencode/skills/meerkat-loop \
-       ~/.config/opencode/meerkat-taskpanel ~/.config/opencode/scheduling \
-       ~/.config/opencode/bin/wake-opencode.sh ~/.config/opencode/meerkat-taskpanel.env
-```
-
-#### The plugin route
-
-The step above copies the skill; the plugin hands OpenCode the repository's own copy
-*in place*, so an agent kind that registers it needs no step 1 at all. Register it in
-`opencode.json` (V2 `>= 2.0.4`; V1 uses the singular `plugin` key):
-
-```jsonc
-{
-  // V2: { "plugins": ["meerkat-taskpanel@git+https://github.com/tanyu216/meerkat-taskpanel.git"] }
-  "plugin": ["meerkat-taskpanel@git+https://github.com/tanyu216/meerkat-taskpanel.git"]
-}
-```
-
-`.opencode/plugins/meerkat-taskpanel.js` then hands OpenCode the repository's own
-`skills/` directory — nothing is copied. On V1 it pushes that directory into
-`config.skills.paths`; on V2, where `config.skills` is a flat array, it registers one
-`Skill.Info` per `skills/<name>/SKILL.md` instead. Both skills arrive together, because
-OpenCode's registration unit is a directory.
-
-```bash
-# verify — a session should list meerkat-taskpanel as a skill
-opencode run --standalone --print-logs "hello" 2>&1 | grep -i meerkat
-```
-
-Uninstall: remove the entry from `opencode.json`. Update: restart OpenCode; some OpenCode
-and Bun versions pin the resolved git dependency in a lockfile or cache, in which case a
-restart alone picks up nothing — clear that cache, or pin explicitly with `#vX.Y.Z`.
-
-**Unverified, and flagged as such.** OpenCode's CLI is not installed in this repository's
-container or on the development host, so the *agent integration* above has never been run
-from here. The plugin's own logic is covered by `test/install/opencode-plugin.test.mjs`,
-which drives it against a fake plugin context.
-
-### Cursor
-
-```bash
-# 1. skill + agent config
-bash install.sh --target cursor --link --force
-
-# 2. plugin (optional — it delivers the same skills, read in place)
-#    in Cursor's agent chat:  /add-plugin meerkat-taskpanel
-#    or search for it in the plugin marketplace
-```
-
-Step 1 writes the board skill to `~/.cursor/skills/meerkat-taskpanel`, the loop skill and
-its execution body, the scheduling units and `~/.cursor/bin/wake-cursor.sh`, and the agent kind
-config `~/.cursor/meerkat-taskpanel.env`, whose `MEERKAT_TASKPANEL_REPO` is what lets the
-skill's wrapper find the board engine once the skill no longer sits beside the checkout.
-
-> **Rank of the evidence.** `~/.cursor/skills/` is where Cursor reads user skills, per
-> secondary sources (Cursor's help index and a third-party agent-skills guide agree;
-> Cursor also reads `~/.agents/skills/` and the `~/.claude` / `~/.codex` compatibility
-> directories, so an existing `--target claude` install is already visible to it). It is a
-> *skill directory*, so a wrong guess leaves an inert folder — which is why this target
-> ships while the supervisor below does not.
-
-Uninstall:
-
-```bash
-rm -rf ~/.cursor/skills/meerkat-taskpanel ~/.cursor/skills/meerkat-loop \
-       ~/.cursor/meerkat-taskpanel ~/.cursor/scheduling \
-       ~/.cursor/bin/wake-cursor.sh ~/.cursor/meerkat-taskpanel.env
-```
-
-> **The loop, and how its flags are checked.** Cursor's headless forms are
-> `cursor-agent -p <prompt>` (fresh) and `cursor-agent -p --resume <sid> <prompt>`
-> (resume), alongside `--continue`. Cursor's CLI reference documents those flags; the wake
-> glue labels them as the shapes it builds. `scripts/verify/kind-resume-matrix.mjs --actor-kind
-> cursor` probes the real binary's help output when `cursor-agent` is installed (an absent
-> CLI SKIPs), and `--e2e` adds one real `-p` call when `CURSOR_API_KEY` is present.
-> `--wake-command` remains the escape hatch for a build that differs. What no CLI probe can
-> prove is Cursor's **hook dispatch**: that half still needs the real agent CLI, as noted below.
-
-#### The plugin route
-
-`.cursor-plugin/plugin.json` declares `"skills": "./skills/"` — the repository's one
-`skills/` tree, read in place, so Cursor needs no `skills/` directory of its own. Like
-OpenCode, Cursor registers a *directory*, so all three skills arrive together.
-
-**What the probe proves.** The flag shape is probed by
-`scripts/verify/kind-resume-matrix.mjs --actor-kind cursor` (plus `--e2e` for a real `-p` call
-when `CURSOR_API_KEY` is set). Cursor's plugin runtime itself — how it loads the manifest
-and its skills — is the agent kind's domain, not something the CLI binary can prove.
-
 ## Agent integration: skill only
 
 > **The MCP integration has been removed — agent integration is skill-only.** The stdio
@@ -904,12 +783,12 @@ as does `npm link` or a global install.
 ## Verifying the install
 
 **Everything that runs is verified inside the container** (see
-[`docker.md`](docker.md) and ARCHITECTURE §9.1): the six agent CLIs are not installed in
+[`docker.md`](docker.md) and ARCHITECTURE §9.1): the four agent CLIs are not installed in
 the image and there is no network, so the container asserts each agent kind's *detection
 contract* offline instead.
 
 ```bash
-npm run verify:docker                     # the full container suite, all six agent kinds
+npm run verify:docker                     # the full container suite, all four agent kinds
 ```
 
 That run includes `scripts/verify/profiles.mjs`, which for each agent kind installs into a

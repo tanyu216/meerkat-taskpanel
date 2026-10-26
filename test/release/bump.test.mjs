@@ -1,8 +1,8 @@
 /**
- * Tests for `scripts/release/bump.mjs` — the one-shot, four-manifest version bump.
+ * Tests for `scripts/release/bump.mjs` — the one-shot, three-manifest version bump.
  *
  * Every case builds a real tree on disk (a temp dir) with the *hand-written
- * bytes* of the four manifests, then calls the real planning/apply functions; the
+ * bytes* of the three manifests, then calls the real planning/apply functions; the
  * CLI cases spawn the real script. Nothing is mocked, because the property under
  * test is precisely "what bytes land on disk": a stub would prove nothing.
  *
@@ -49,7 +49,7 @@ async function makeTree() {
 }
 
 /**
- * The four manifests as literal text, in the *mixed* formatting the real files
+ * The three manifests as literal text, in the *mixed* formatting the real files
  * use: 2-space indent, inline objects (`{ "name": "tanyu216" }`), and arrays on
  * one line. That formatting is the thing a JSON round trip destroys, so it is
  * spelled out byte for byte rather than produced by `stringify`.
@@ -72,13 +72,6 @@ function manifests(version) {
   "version": "${version}",
   "author": { "name": "tanyu216" },
   "keywords": ["task-management", "ai-agent", "kanban"]
-}
-`,
-    ".cursor-plugin/plugin.json": `{
-  "name": "meerkat-taskpanel",
-  "version": "${version}",
-  "author": { "name": "tanyu216" },
-  "skills": "./skills/"
 }
 `,
     ".claude-plugin/marketplace.json": `{
@@ -147,15 +140,15 @@ function run(script, args) {
 // ---------------------------------------------------------------------------
 
 describe("bump.mjs — declarations", () => {
-  it("carries the same four manifests as version.mjs, package.json canonical", () => {
-    assert.equal(SOURCES.length, 4);
+  it("carries the same three manifests as version.mjs, package.json canonical", () => {
+    assert.equal(SOURCES.length, 3);
     assert.equal(SOURCES[0].path, "package.json");
     assert.equal(SOURCES[0].canonical, true);
     assert.equal(SOURCES.filter((source) => source.canonical).length, 1);
     assert.deepEqual(
       SOURCES.map((source) => source.path),
       PATHS,
-      "the declared paths are the four files the fixture writes",
+      "the declared paths are the three files the fixture writes",
     );
   });
 
@@ -171,7 +164,7 @@ describe("bump.mjs — declarations", () => {
     // were removed, and `--group loop` is now an unknown group rather than a silent no-op.
     assert.deepEqual(Object.keys(BUMP_GROUPS), ["board"]);
     assert.equal(BUMP_GROUPS.board.sources, SOURCES);
-    assert.equal(BUMP_GROUPS.board.checkers.length, 4);
+    assert.equal(BUMP_GROUPS.board.checkers.length, 3);
     assert.ok(BUMP_GROUPS.board.checkers.every((source) => typeof source.pick === "function"));
   });
 });
@@ -307,7 +300,7 @@ describe("red→green — the naive round trip reformats, the splice does not", 
 });
 
 describe("bump.mjs — planBump", () => {
-  it("plans all four edits against a consistent tree", async () => {
+  it("plans all three edits against a consistent tree", async () => {
     const dir = await makeTree();
     await writeTree(dir, manifests("1.0.0"));
 
@@ -315,7 +308,7 @@ describe("bump.mjs — planBump", () => {
     assert.equal(planned.ok, true, planned.error);
     assert.equal(planned.previous, "1.0.0");
     assert.equal(planned.version, "1.1.0");
-    assert.equal(planned.entries.length, 4);
+    assert.equal(planned.entries.length, 3);
   });
 
   it("refuses a non-semver target", async () => {
@@ -359,13 +352,13 @@ describe("bump.mjs — planBump", () => {
   it("refuses a tree with a missing manifest", async () => {
     const dir = await makeTree();
     const files = manifests("1.0.0");
-    delete files[".cursor-plugin/plugin.json"];
+    delete files[".claude-plugin/marketplace.json"];
     await writeTree(dir, files);
 
     const planned = await planBump({ version: "2.0.0", base: dir });
     assert.equal(planned.ok, false);
     assert.equal(planned.code, "unreadable-tree");
-    assert.match(planned.error, /cursor-plugin\/plugin\.json/);
+    assert.match(planned.error, /marketplace\.json/);
   });
 
   it("refuses when the version field itself is gone", async () => {
@@ -543,7 +536,7 @@ describe("bump.mjs — atomicity", () => {
 });
 
 describe("bump.mjs — runBump", () => {
-  it("bumps the four manifests and satisfies version.mjs afterwards", async () => {
+  it("bumps the three manifests and satisfies version.mjs afterwards", async () => {
     const dir = await makeTree();
     await writeTree(dir, fullTree("1.0.0"));
 
@@ -551,13 +544,13 @@ describe("bump.mjs — runBump", () => {
     assert.equal(result.ok, true, result.error);
     assert.equal(result.previous, "1.0.0");
     assert.equal(result.version, "1.1.0");
-    assert.equal(result.entries.length, 4);
+    assert.equal(result.entries.length, 3);
 
     // "串联绿": the checker the repo trusts now passes on the bumped tree — the group at
     // the new version, internally consistent.
     const checked = run(VERSION_CHECK, ["--base", dir]);
     assert.equal(checked.status, 0, checked.stderr);
-    assert.match(checked.stdout, /all 4 board manifests agree on 1\.1\.0/);
+    assert.match(checked.stdout, /all 3 board manifests agree on 1\.1\.0/);
   });
 
   it("bumps this repository's own manifests, byte for byte", async () => {
@@ -586,7 +579,7 @@ describe("bump.mjs — runBump", () => {
 
     const checked = run(VERSION_CHECK, ["--base", dir]);
     assert.equal(checked.status, 0, checked.stderr);
-    assert.match(checked.stdout, new RegExp(`all 4 board manifests agree on ${target.replace(/\./g, "\\.")}`));
+    assert.match(checked.stdout, new RegExp(`all 3 board manifests agree on ${target.replace(/\./g, "\\.")}`));
     assert.equal(run(CHANGELOG_CHECK, [`v${target}`, "--base", dir]).status, 0);
   });
 
@@ -607,7 +600,7 @@ describe("bump.mjs — runBump", () => {
 
     const result = await runBump({ version: "1.1.0", base: dir, changelog: true, date: "2026-10-10" });
     assert.equal(result.ok, true, result.error);
-    assert.equal(result.entries.length, 5, "four manifests + the changelog");
+    assert.equal(result.entries.length, 4, "three manifests + the changelog");
     assert.equal(result.changelog.path, CHANGELOG_FILE);
 
     const body = await readFile(join(dir, CHANGELOG_FILE), "utf8");
@@ -691,7 +684,7 @@ describe("bump.mjs — the CLI", () => {
     const result = run(BUMP, ["1.1.0", "--base", dir]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /bump: 1\.0\.0 → 1\.1\.0 \(board\)/);
-    assert.match(result.stdout, /4 board manifests now at 1\.1\.0/);
+    assert.match(result.stdout, /3 board manifests now at 1\.1\.0/);
     assert.equal(run(VERSION_CHECK, ["--base", dir]).status, 0);
   });
 
@@ -728,6 +721,6 @@ describe("bump.mjs — the CLI", () => {
     assert.equal(result.status, 3, `stdout: ${result.stdout}\nstderr: ${result.stderr}`);
     assert.match(result.stderr, /git tag v1\.1\.0 failed/);
     assert.match(result.stderr, /git checkout --/);
-    assert.equal(run(VERSION_CHECK, ["--base", dir]).status, 0, "the five board manifests were written");
+    assert.equal(run(VERSION_CHECK, ["--base", dir]).status, 0, "the four board files were written");
   });
 });

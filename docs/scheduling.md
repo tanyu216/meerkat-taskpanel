@@ -147,7 +147,7 @@ session service (supervisor --session)
 - **Resume** — the control and project sessions resume by session id. Subagents do
   not: on start the pool sends a re-attach prompt (native reattach where the agent kind
   supports it — Claude `SendMessage`, Codex child `thread/resume`, Pi subagent
-  resume, OpenCode child session, Cursor `agentId`), and anything that cannot be
+  resume), and anything that cannot be
   reattached is marked stale and left to the board's claim recovery.
 - **Capacity** — `--session-pool-max` (8), `--project-concurrency`
   (default `--max-concurrency`) and `--max-concurrency` bound the pool. Poll's
@@ -664,13 +664,10 @@ Continuity across wakes comes from the **board**, not the prompt: the card's
 comments, reports and session record are durable, so a resumed conversation can
 re-attach to the same work. When a session id is known, the wake adds the agent kind's
 own resume form: Claude resumes with `claude -p … --resume <sid>`, Codex with
-`codex exec resume <sid> <prompt>`, Pi with `pi --print --session <sid>
-<prompt>`, OpenCode with `opencode run --session <sid> <prompt>`, and Cursor with
-`cursor-agent -p --resume <sid> <prompt>`. The first three are verified against the real
-CLIs; OpenCode's and Cursor's shapes are recorded in `scripts/verify/kind-resume-matrix.mjs`,
-which probes the real binary's help output when the CLI is installed. For Cursor, `--e2e`
-adds one real `-p` call when `CURSOR_API_KEY` is present; without the CLI or the key the
-probe SKIPs, and `--wake-command` remains the escape hatch.
+`codex exec resume <sid> <prompt>`, and Pi with `pi --print --session <sid>
+<prompt>`. All three are verified against the real CLIs;
+`scripts/verify/kind-resume-matrix.mjs` probes each binary's help output when the CLI
+is installed, and `--wake-command` remains the escape hatch for a custom glue.
 
 ## Where a worker runs
 
@@ -1318,9 +1315,7 @@ it the Claude adapter runs `--permission-mode bypassPermissions`, and the contro
 project and subagent sessions alike have the installing user's full OS
 permissions. **The project directory is not an isolation boundary** — cwd is
 where the work happens, not a sandbox. Codex uses `approvalPolicy: "never"` with
-the full-access sandbox, Pi adds `--approve`, Cursor answers every
-`session/request_permission` with an allow option, and OpenCode's permission rules
-stay its own configuration. The flag is printed in `--supervisor=status`, and the
+the full-access sandbox, and Pi adds `--approve`. The flag is printed in `--supervisor=status`, and the
 installed units never carry it: the config file is where the authorization is
 recorded.
 
@@ -1330,9 +1325,9 @@ wake script carries a bypass flag), because it starts a process this deployment
 no longer supervises. Full access belongs to the resident pool, where the
 authorization and its reason travel with the config the pool reads.
 
-## The five agent kinds: how each one is triggered
+## The three agent kinds: how each one is triggered
 
-Claude Code, Codex, Pi, OpenCode and Cursor have no clock, and their wake surfaces
+Claude Code, Codex and Pi have no clock, and their wake surfaces
 differ. The supervisor's `--actor-kind` selects the wake command; the rest (scan, claim,
 patrol, registry) is identical.
 
@@ -1341,8 +1336,6 @@ patrol, registry) is identical.
 | **Claude Code** | `claude -p "<handoff>"` (headless) | external: launchd / systemd / cron running `supervisor.mjs --ping-only --once` / `--continue-only --once`, or the scheduler's own two clocks | `claude -p … --resume <sid>` — resume the session that owns the card |
 | **Codex** | `codex exec "<handoff>"` | external: the same units, or Codex app automation (`intervalMinutes`, `quotaAware`, `model`, `reasoningEffort`) | resume the thread with `codex exec resume <sid> <prompt>`; carry `$CODEX_THREAD_ID` as `--session-id` |
 | **Pi** | `pi --print "<handoff>"` | external units + `wake-pi.sh` | resume with `pi --print --session <sid> <prompt>`; pass the session id through the handoff |
-| **OpenCode** | `opencode run "<handoff>"` | external units + `wake-opencode.sh` | resume with `opencode run --session <sid> <prompt>` (recorded in the flag matrix; the CLI was not run here) |
-| **Cursor** | `cursor-agent -p "<handoff>"` | external units + `wake-cursor.sh` | `cursor-agent -p --resume <sid> <prompt>` (documented flags; matrix probe SKIPs without the CLI) |
 | **OpenClaw** | *n/a — no self-scheduler* | install **openclaw-team**; its `poll`/`patrol` automations are this design | the framework keeps the id stable across resumes |
 
 The wake command column is what the *agent CLI* is called with on the legacy
@@ -1358,14 +1351,11 @@ persistent protocol.
 | Claude Code | one `claude -p --input-format stream-json --output-format stream-json` process per session | `--resume <session_id>` | Agent tool's `agentId`; reattach with `SendMessage` |
 | Codex | one `codex app-server --listen stdio://`; one **thread** per session | `thread/resume` | child thread (`receiverThreadIds`) |
 | Pi | one `pi --mode rpc` process per session | `--session-id <id>` | the `pi-subagents` extension's `agentId` |
-| OpenCode | one `opencode serve` **per directory** (its API has no per-session cwd) | `GET /session/:id` + the stored id | child session id |
-| Cursor | one `cursor-agent acp`; one `session/new {cwd}` per session | `session/load` | `agentId` in a task update |
 
 Claude, Codex and Pi are verified against the real CLIs (Codex's app-server
-schema is pinned by `codex app-server generate-json-schema`); OpenCode and Cursor
-are written to their published protocol and covered by fake-transport tests —
+schema is pinned by `codex app-server generate-json-schema`);
 `node scripts/verify/kind-session-matrix.mjs` is the agent-kind-only probe. An agent kind whose
-CLI lacks the resident protocol (an old Cursor without ACP) keeps the one-shot
+CLI lacks the resident protocol keeps the one-shot
 path: patrol + workflow run, dispatch is paused. The seam is agent-kind-agnostic by
 design — an adapter implements `openSession({cwd, sessionId, role}) →
 {send, interrupt, close}` in `scripts/loop/agent kinds/`, and the pool manager never
@@ -1480,16 +1470,14 @@ and the env var are documented once in
 this section is the per-OS detail, the failure modes, and what an enabled daemon runs.
 
 The switch is `--supervisor=enable|disable|status` with
-`--supervisor-actor-kinds claude,codex,pi,opencode,cursor` (which agent kinds; default: the loop agent kinds
+`--supervisor-actor-kinds claude,codex,pi` (which agent kinds; default: the loop agent kinds
 in `--target`) and `--scheduler auto|launchd|systemd|cron` (which mechanism; default
 `auto`). On `--target all`, `--supervisor=enable` enables **every non-OpenClaw loop agent kind**
-(see [OpenClaw stays excluded](#openclaw-stays-excluded)). OpenCode and Cursor are among
-the loop agent kinds; Cursor's resume flag is still unverified, so its glue labels it and
-`--wake-command` is the escape hatch (see [Cursor](install.md#cursor)).
+(see [OpenClaw stays excluded](#openclaw-stays-excluded)).
 
-Per-OS commands below are written for the Claude install (`~/.claude`); for Codex, Pi,
-OpenCode and Cursor substitute `~/.codex` / `~/.agents` / `~/.config/opencode` / `~/.cursor`
-for the agent kind directory and `codex` / `pi` / `opencode` / `cursor` for `--actor-kind`. `<agent>` is the `--agent-name` from the install (default `$USER`), and
+Per-OS commands below are written for the Claude install (`~/.claude`); for Codex and Pi
+substitute `~/.codex` / `~/.agents` for the agent kind directory and `codex` / `pi` for
+`--actor-kind`. `<agent>` is the `--agent-name` from the install (default `$USER`), and
 `<uid>` is `id -u`.
 
 ### macOS — launchd
@@ -1596,7 +1584,7 @@ cron's own minimal `PATH`, not yours.
 
 (The manual path above — `crontab <file>` — drops the same lines in *without* a marker
 block; the enable path is the one that wraps them. The `(~/.claude)` in the marker is the
-agent kind directory, so the five loop agent kinds get five independent blocks.)
+agent kind directory, so the three loop agent kinds get three independent blocks.)
 
 - **Enable** reads `crontab -l`, strips any existing `meerkat-taskpanel (~/.claude)` block,
   appends the fresh one, and writes it back with `crontab -`. Re-enabling **replaces**,

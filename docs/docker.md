@@ -2,7 +2,7 @@
 
 ## Why
 
-Local verification, deployment and the six-agent-kind skill installs all happen **inside a
+Local verification, deployment and the four-agent-kind skill installs all happen **inside a
 container**, never on the operator's machine. This is a hard constraint for this repository
 (Terry, 2026-10-08) and it is recorded in `ARCHITECTURE.md §9.1`:
 
@@ -351,8 +351,6 @@ Each step prints an `== ... ==` header and the script aborts on the first failur
 | `openclaw` | `.openclaw/skills/meerkat-taskpanel` | `scripts/install/openclaw.sh` |
 | `codex` | `.codex/skills/meerkat-taskpanel` | `scripts/install/codex.sh` |
 | `pi` | `.agents/skills/meerkat-taskpanel` | `scripts/install/pi.sh` |
-| `opencode` | `.config/opencode/skills/meerkat-taskpanel` | `scripts/install/opencode.sh` |
-| `cursor` | `.cursor/skills/meerkat-taskpanel` | `scripts/install/cursor.sh` |
 
 Each file has the same six keys: `actor_kind`, `label`, `installer`, `target_dir`,
 `skill_entry`, `wrapper`. They are read by a tiny flat-map parser
@@ -379,7 +377,7 @@ node scripts/verify/profiles.mjs --home "$(mktemp -d)"
 The default is `$TMPDIR/meerkat-taskpanel-profiles-<pid>`, and the installer is driven through
 the same `MEERKAT_TASKPANEL_TARGET_HOME` variable that `install.sh --prefix <dir>` sets — so the
 check is equivalent to a real install while touching only a temp directory. This is how
-the six-agent-kind matrix is verified on a machine that does not (and should not) have those
+the four-agent-kind matrix is verified on a machine that does not (and should not) have those
 agent kinds installed: the profile's `target_dir` and `installer` are exercised for real, and
 the installed skill is executed through its own wrapper.
 

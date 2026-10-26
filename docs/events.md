@@ -256,7 +256,7 @@ trailing debounce.
 
 `actor_kind` is an **open string**. The only value with built-in meaning is `human`; the
 board's own writes use the concrete platform name `taskd` (`BOARD_ACTOR`). An actor kind names
-itself (`claude`, `codex`, `pi`, `opencode`, …). `system` and `agent` are not kinds we
+itself (`claude`, `codex`, `pi`, …). `system` and `agent` are not kinds we
 write: `test/contract/actor-kind.test.mjs` scans source for them. Historical rows that
 carried `system` are kept as recorded; consumers classify by actor **id**, so they still
 work.

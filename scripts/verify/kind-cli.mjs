@@ -53,11 +53,10 @@ export const PROBES = [
     ],
     expect: (output) => {
       if (!/Format:\s*bundle/.test(output)) return "expected `Format: bundle`";
-      // The repository root carries both `.claude-plugin/` and `.cursor-plugin/`, and
-      // OpenClaw's detection precedence is codex → cursor → claude, so it reports cursor.
-      // Measured: that is the *only* line the Cursor marker changes — `Format: bundle`,
+      // The repository root carries `.claude-plugin/`, and OpenClaw's detection
+      // precedence is codex → cursor → claude, so it reports claude. `Format: bundle`,
       // `Shape`, `Capability mode` and `Bundle capabilities: skills` are untouched.
-      if (!/Bundle format:\s*cursor/.test(output)) return "expected `Bundle format: cursor`";
+      if (!/Bundle format:\s*claude/.test(output)) return "expected `Bundle format: claude`";
       if (!/Bundle capabilities:\s*skills/.test(output)) return "expected `Bundle capabilities: skills`";
       return null;
     },

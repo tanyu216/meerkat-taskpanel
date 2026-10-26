@@ -72,23 +72,19 @@ export const KIND_BUNDLES = {
   // ship no marker of their own, which is why their rows name the Claude manifest.
   //
   // `openclawFormat` is what the detector reports for the row's `dir` — not what the agent kind
-  // calls itself. Five agent kinds share this one directory, and the root carries two client
-  // markers (`.cursor-plugin/` and `.claude-plugin/`), so OpenClaw's precedence picks
-  // cursor for all five. Measured: adding the Cursor marker changes exactly one line of
-  // `openclaw plugins inspect` — `Bundle format: claude` → `cursor` — while
-  // `Format: bundle`, `Shape`, `Capability mode` and `Bundle capabilities: skills` are
-  // unchanged.
+  // calls itself. Four agent kinds share this one directory, and the root carries only
+  // `.claude-plugin/`, so OpenClaw's precedence settles on claude for all four.
   claude: {
     dir: ".",
     manifest: CLAUDE_MANIFEST,
     openclawKind: "bundle",
-    openclawFormat: "cursor",
+    openclawFormat: "claude",
   },
   codex: {
     dir: ".",
     manifest: CLAUDE_MANIFEST,
     openclawKind: "bundle",
-    openclawFormat: "cursor",
+    openclawFormat: "claude",
   },
   // OpenClaw used to get its own native bundle (`plugins/openclaw/`). A native OpenClaw
   // plugin is an in-process runtime module needing `package.json#openclaw.extensions` and
@@ -99,7 +95,7 @@ export const KIND_BUNDLES = {
     dir: ".",
     manifest: CLAUDE_MANIFEST,
     openclawKind: "bundle",
-    openclawFormat: "cursor",
+    openclawFormat: "claude",
   },
   pi: {
     dir: ".",
@@ -107,13 +103,7 @@ export const KIND_BUNDLES = {
     // Pi declares itself in the root package's `pi` field, so its bundle IS the
     // repository root, and the detector reports that root's format for it as well.
     openclawKind: "bundle",
-    openclawFormat: "cursor",
-  },
-  cursor: {
-    dir: ".",
-    manifest: CURSOR_MANIFEST,
-    openclawKind: "bundle",
-    openclawFormat: "cursor",
+    openclawFormat: "claude",
   },
 };
 
@@ -190,6 +180,8 @@ export function detectBundle(rootDir) {
   }
 
   // 2. Client-specific bundle markers (OpenClaw checks codex/cursor/claude in order).
+  //    Cursor stays in the table for detector fidelity: this repository no longer ships
+  //    a Cursor bundle, but OpenClaw's contract still recognizes one.
   for (const [manifest, format] of [
     [CODEX_MANIFEST, "codex"],
     [CURSOR_MANIFEST, "cursor"],
@@ -244,6 +236,7 @@ export function resolveSkillRoots(rootDir, format, raw = {}) {
     case "codex":
       return pick(["skills"]);
     case "cursor":
+      // Kept for detector fidelity: the repository no longer ships a Cursor bundle.
       return pick(["skills", ".cursor/commands"]);
     case "agent":
       return pick(["skills"]);

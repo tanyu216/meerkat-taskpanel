@@ -8,8 +8,8 @@ wrapper: scripts/run.mjs
 # Distribution bundle this agent kind installs from, and what its detector must report.
 # Claude Code reads .claude-plugin/plugin.json; the repository-root marketplace
 # (.claude-plugin/marketplace.json) resolves this plugin to the repository root.
-# The format below is OpenClaw's, not Claude's: the root carries .cursor-plugin/ as well,
-# and OpenClaw's precedence (codex → cursor → claude) settles on cursor.
+# The format below is OpenClaw's, not Claude's: the root carries .claude-plugin/, which
+# OpenClaw's detector reports as claude.
 bundle: .
 bundle_kind: bundle
-bundle_format: cursor
+bundle_format: claude

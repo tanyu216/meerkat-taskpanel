@@ -212,10 +212,8 @@ listed with repeated `--agent` flags.
 
 ## Native agent definitions
 
-Claude (`~/.claude/agents/<name>.md` or `<project>/.claude/agents/`), Codex
-(`~/.codex/agents/<name>.toml` or `<project>/.codex/agents/`), OpenCode
-(`~/.config/opencode/agents/<name>.md` or `<project>/.opencode/agents/`) and Cursor
-(`~/.cursor/agents/<name>.md` or `<project>/.cursor/agents/`) are generated from
+Claude (`~/.claude/agents/<name>.md` or `<project>/.claude/agents/`) and Codex
+(`~/.codex/agents/<name>.toml` or `<project>/.codex/agents/`) are generated from
 `assets/team/standard/agents/<kind>/role.*.tmpl`. The definition points at the installed
 workflow and self-check. `--native-agent-defs none` suppresses all of them; `auto` and
 `all` write every kind that has a native format.

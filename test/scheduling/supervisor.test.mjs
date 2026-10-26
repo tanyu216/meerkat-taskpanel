@@ -396,27 +396,6 @@ describe("wakeCommand (pure)", () => {
     assert.deepEqual(resumed.args, ["--print", "--session", "sid-9", "do T-1"]);
   });
 
-  it("builds an opencode run wake, resuming a session when an id is known", () => {
-    const fresh = wakeCommand({ actorKind: "opencode", prompt: "do T-1" });
-    assert.equal(fresh.command, "opencode");
-    assert.deepEqual(fresh.args, ["run", "do T-1"]);
-
-    const resumed = wakeCommand({ actorKind: "opencode", prompt: "do T-1", resumeSid: "sid-9" });
-    assert.deepEqual(resumed.args, ["run", "--session", "sid-9", "do T-1"]);
-  });
-
-  it("builds a cursor-agent -p wake, resuming a session when an id is known", () => {
-    // Cursor's headless form is the documented `cursor-agent -p`; the resume flag
-    // is the unverified half (there is no Cursor CLI here), kept behind the same
-    // `--wake-command` escape hatch as every other agent kind.
-    const fresh = wakeCommand({ actorKind: "cursor", prompt: "do T-1" });
-    assert.equal(fresh.command, "cursor-agent");
-    assert.deepEqual(fresh.args, ["-p", "do T-1"]);
-
-    const resumed = wakeCommand({ actorKind: "cursor", prompt: "do T-1", resumeSid: "sid-9" });
-    assert.deepEqual(resumed.args, ["-p", "--resume", "sid-9", "do T-1"]);
-  });
-
   it("honours an explicit --wake-command override, with and without a session id", () => {
     const overridden = wakeCommand({ actorKind: "claude", prompt: "do T-1", wakeCommand: "my-wake.sh" });
     assert.equal(overridden.command, "my-wake.sh");
@@ -2545,6 +2524,5 @@ describe("parseArgs — the team scan set and roles root", () => {
     const paths = agentPaths("/home/alice", "pi");
     assert.equal(paths.loopRoles, "/home/alice/.agents/skills/meerkat-loop/roles");
     assert.equal(paths.bodyRoles, "/home/alice/.agents/meerkat-taskpanel/roles");
-    assert.equal(agentPaths("/home/alice", "opencode").loopRoles, "/home/alice/.config/opencode/skills/meerkat-loop/roles");
   });
 });

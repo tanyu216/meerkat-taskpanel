@@ -1,7 +1,7 @@
 /**
  * Bundle / marketplace inspection + the per-agent-kind profile bundle assertions.
  *
- * The container cannot run the six agent CLIs (they are not in the image and there is
+ * The container cannot run the four agent CLIs (they are not in the image and there is
  * no network), so `scripts/verify/lib/bundle.mjs` reproduces the agent kinds' detection
  * contract offline. These tests pin that reproduction: the shipped bundles must be
  * detected with the format each agent kind's profile declares, and the detector must follow
@@ -187,7 +187,7 @@ describe("bundle: parseMarketplace", () => {
     assert.equal(market.ok, true, market.error);
 
     // `source: "./"` — the board's plugin root IS the repository root, which is what lets
-    // claude / codex / cursor / pi / openclaw share the one `skills/` tree. It is the
+    // claude / codex / pi / openclaw share the one `skills/` tree. It is the
     // shared tree, so it exposes all three skills; that is not a second marketplace plugin.
     assert.deepEqual(market.entries.map((entry) => entry.name), [SKILL_NAME]);
     assert.equal(market.entries[0].dir, "", "the board's source directory");
@@ -274,17 +274,9 @@ describe("profiles: bundle expectations", () => {
       const profile = profiles[kind];
       const meta = KIND_BUNDLES[kind];
 
-      // An agent kind may deliberately have no bundle of its own. OpenCode is one: its skills
-      // arrive through an in-process plugin rather than a bundle directory a detector
-      // classifies. Such an agent kind must declare *no* bundle fields — the profile is where
-      // "skills only, no supervisor, no browser-checkable bundle" is recorded.
-      if (!meta) {
-        assert.equal(profile.bundle, undefined, `${kind}: must not declare a bundle`);
-        assert.equal(profile.bundle_format, undefined, `${kind}: must not declare a bundle format`);
-        assert.equal(profile.bundle_kind, undefined, `${kind}: must not declare a bundle kind`);
-        continue;
-      }
-
+      // Every profiled agent kind installs the repository-root bundle, so each must
+      // declare the bundle fields the detector checks.
+      assert.ok(meta, `${kind}: must have a bundle row`);
       assert.equal(profile.bundle, meta.dir, `${kind}: bundle dir`);
       assert.equal(profile.bundle_format, meta.openclawFormat, `${kind}: bundle format`);
       assert.equal(profile.bundle_kind, meta.openclawKind, `${kind}: bundle kind`);
@@ -299,19 +291,15 @@ describe("profiles: bundle expectations", () => {
 
     for (const entry of result.results) {
       const kinds = entry.steps.map((s) => s.name);
-      const hasBundle = KIND_BUNDLES[entry.kind] !== undefined;
 
-      // The assertion follows the agent kind: a bundle-less agent kind (OpenCode) must NOT have
-      // these steps, and every other agent kind must. Asserting both directions keeps the
-      // branch honest instead of letting a bundle silently go unchecked.
-      assert.equal(
+      // Every profiled agent kind installs the repository-root bundle, so both
+      // assertions must be present for each of them.
+      assert.ok(
         kinds.some((n) => n.includes("bundle detected as")),
-        hasBundle,
         `${entry.kind}: bundle-detection step presence`,
       );
-      assert.equal(
+      assert.ok(
         kinds.some((n) => n.includes("manifest parses")),
-        hasBundle,
         `${entry.kind}: manifest-parse step presence`,
       );
     }

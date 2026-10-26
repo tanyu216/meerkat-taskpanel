@@ -14,7 +14,7 @@
  * (T-20261014-214002) — a path the user never had, reported as a crash rather than as a
  * condition of the deployment.
  *
- * Per agent kind (all six the board goes to — see `KINDS` below), against a real
+ * Per agent kind (all four the board goes to — see `KINDS` below), against a real
  * copy-mode install into a throwaway prefix, this asserts the wrapper:
  *
  *   1. with no CLI reachable refuses **controllably** — non-zero, an actionable remedy on
@@ -47,7 +47,7 @@ const SKILL = "meerkat-taskpanel";
 const WRAPPER = join("scripts", "run.mjs");
 
 /**
- * The six agent kinds the board skill is distributed to, and the dot-directory each one's skill
+ * The four agent kinds the board skill is distributed to, and the dot-directory each one's skill
  * lands in. These are `docker/profiles/<agent-dir>.yml`'s `target_dir`s — the same destinations
  * `scripts/verify/profiles.mjs` asserts — restated here because this file drives the
  * installs itself.
@@ -57,8 +57,6 @@ const KINDS = Object.freeze([
   { kind: "codex", dir: ".codex" },
   { kind: "openclaw", dir: ".openclaw" },
   { kind: "pi", dir: ".agents" },
-  { kind: "opencode", dir: ".config/opencode" },
-  { kind: "cursor", dir: ".cursor" },
 ]);
 
 after(cleanup);
@@ -273,7 +271,7 @@ for (const { kind, dir } of KINDS) {
 }
 
 describe("the resolution ladder is checked, not assumed", () => {
-  /** The claude copy stands in for all six here — the ladder lives in one shared file. */
+  /** The claude copy stands in for all four here — the ladder lives in one shared file. */
   const dir = KINDS[0].dir;
   /** The wrapper inside the checkout: its own rung resolves, so it is the control case. */
   const checkoutWrapper = join(ROOT, "skills", SKILL, WRAPPER);

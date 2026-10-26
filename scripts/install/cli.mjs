@@ -28,7 +28,7 @@ Installs the board server at <home>/.meerkat-taskpanel, the taskctl/taskd
 launchers, and the agent-kind skills. Run through npx or a global npm install.
 
 Options:
-  --target <list>     agent kinds to install (claude,openclaw,codex,pi,opencode,cursor),
+  --target <list>     agent kinds to install (claude,openclaw,codex,pi),
                       "server", or "all" (default: every agent + the server)
   --no-server         install only the agent-kind skills
   --prefix <home>     install under <home> instead of $HOME

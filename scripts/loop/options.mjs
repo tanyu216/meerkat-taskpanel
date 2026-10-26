@@ -42,8 +42,6 @@ export const AGENT_DIRS = Object.freeze({
   claude: ".claude",
   codex: ".codex",
   pi: ".agents",
-  opencode: ".config/opencode",
-  cursor: ".cursor",
 });
 
 /** Parse a `KEY=value` env file, or `{}` when it is absent/unreadable. */
@@ -359,7 +357,7 @@ export function parseArgs(argv, env = process.env) {
   }
 
   if (!(opts.actorKind in AGENT_DIRS)) {
-    throw new Error(`unknown actor kind '${opts.actorKind}' (expected claude|codex|pi|opencode|cursor)`);
+    throw new Error(`unknown actor kind '${opts.actorKind}' (expected claude|codex|pi)`);
   }
 
   const paths = agentPaths(opts.home, opts.actorKind);
@@ -794,7 +792,7 @@ Options:
                             then $USER.
   --roles-dir <path>        Optional team roles root. Default: the project's
                             .meerkat/roles, then the loop skill's roles/.
-  --actor-kind claude|codex|pi|opencode|cursor
+  --actor-kind claude|codex|pi
                             Which actor kind to wake (default: claude).
   --repo <path>             Repository root (default: this checkout; an agent-installed
                             copy takes it from --config — MEERKAT_TASKPANEL_REPO).

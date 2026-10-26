@@ -1,6 +1,6 @@
 ---
 name: meerkat-loop
-description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation plus one project session per target directory. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the project session spawns the worker/reviewer subagent in the project directory. Installs launchd / systemd / cron units and the per-agent-kind wake glue for claude, codex, pi, opencode and cursor; OpenClaw is excluded.
+description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation plus one project session per target directory. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the project session spawns the worker/reviewer subagent in the project directory. Installs launchd / systemd / cron units and the per-agent-kind wake glue for claude, codex and pi; OpenClaw is excluded.
 disable-model-invocation: true
 ---
 
@@ -141,10 +141,10 @@ unattended operation, point at `install.sh --supervisor=enable`.
 
 ```bash
 # <agent-dir> is the directory containing skills/meerkat-loop/:
-# claude ~/.claude, codex ~/.codex, pi ~/.agents, opencode ~/.config/opencode,
-# cursor ~/.cursor. TASKCTL_ACTOR_KIND disambiguates more than one install.
+# claude ~/.claude, codex ~/.codex, pi ~/.agents. TASKCTL_ACTOR_KIND disambiguates
+# more than one install.
 kind="${TASKCTL_ACTOR_KIND:-}"
-for pair in claude:.claude codex:.codex pi:.agents opencode:.config/opencode cursor:.cursor; do
+for pair in claude:.claude codex:.codex pi:.agents; do
   k="${pair%%:*}"; d="$HOME/${pair#*:}"
   [ -f "$d/skills/meerkat-loop/scripts/loop/passes.mjs" ] || continue
   [ -z "$kind" ] || [ "$kind" = "$k" ] || continue
@@ -294,7 +294,7 @@ pairing.
 ## Installing
 
 ```bash
-bash install.sh --target claude     # or codex, pi, opencode, cursor
+bash install.sh --target claude     # or codex, pi
 bash install.sh --target all        # every agent kind; openclaw gets the board only
 ```
 

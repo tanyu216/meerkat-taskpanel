@@ -140,8 +140,6 @@ describe("profiles: loadProfiles", () => {
       openclaw: { dir: ".openclaw/skills/meerkat-taskpanel", installer: "scripts/install/openclaw.sh" },
       codex: { dir: ".codex/skills/meerkat-taskpanel", installer: "scripts/install/codex.sh" },
       pi: { dir: ".agents/skills/meerkat-taskpanel", installer: "scripts/install/pi.sh" },
-      opencode: { dir: ".config/opencode/skills/meerkat-taskpanel", installer: "scripts/install/opencode.sh" },
-      cursor: { dir: ".cursor/skills/meerkat-taskpanel", installer: "scripts/install/cursor.sh" },
     };
 
     for (const kind of PROFILE_KINDS) {
@@ -302,8 +300,6 @@ describe("profiles: runProfiles", () => {
     await writeFile(join(dir, "openclaw.yml"), `actor_kind: openclaw\nlabel: OpenClaw\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
     await writeFile(join(dir, "codex.yml"), `actor_kind: codex\nlabel: Codex\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
     await writeFile(join(dir, "pi.yml"), `actor_kind: pi\nlabel: Pi\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
-    await writeFile(join(dir, "opencode.yml"), `actor_kind: opencode\nlabel: OpenCode\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
-    await writeFile(join(dir, "cursor.yml"), `actor_kind: cursor\nlabel: Cursor\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
 
     const result = await runProfiles({ home, profilesDir: dir, root: ROOT, quiet: true });
     assert.equal(result.ok, false);

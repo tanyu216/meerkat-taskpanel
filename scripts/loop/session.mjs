@@ -248,8 +248,7 @@ export function buildReattachPrompt(input) {
   lines.push(
     "",
     "Reattach each one with the agent kind's native mechanism (Claude: SendMessage with the agent",
-    "id; Codex: thread/resume; Pi: subagent resume; OpenCode: resume the child session;",
-    "Cursor: pass the agentId back to the subagent task). Verify side effects before",
+    "id; Codex: thread/resume; Pi: subagent resume). Verify side effects before",
     "continuing. If a handle cannot be reattached, say so; do not repeat work blindly.",
   );
   return lines.join("\n");

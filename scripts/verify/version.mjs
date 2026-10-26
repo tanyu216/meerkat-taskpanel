@@ -9,8 +9,7 @@
  *                                                       root package's `pi` field)
  *   2. .claude-plugin/plugin.json                      (the board plugin — claude,
  *                                                       and codex via the marketplace)
- *   3. .cursor-plugin/plugin.json                      (the board plugin, Cursor's marker)
- *   4. .claude-plugin/marketplace.json  → metadata.version
+ *   3. .claude-plugin/marketplace.json  → metadata.version
  *
  * Every agent kind reads its own manifest to decide what version it installed, so a drift
  * within the group ships a release that calls itself two different things. This script
@@ -41,7 +40,7 @@ import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /**
- * The board's four manifests, in reporting order. The first entry is the canonical
+ * The board's three manifests, in reporting order. The first entry is the canonical
  * one: every other entry in the group must equal it.
  *
  * `field` names the property that carries the version (so the diagnostic for the
@@ -57,7 +56,6 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const VERSION_SOURCES = Object.freeze([
   { label: "package.json", path: "package.json", field: "version", canonical: true, pick: (doc) => doc.version },
   { label: "claude", path: ".claude-plugin/plugin.json", field: "version", pick: (doc) => doc.version },
-  { label: "cursor", path: ".cursor-plugin/plugin.json", field: "version", pick: (doc) => doc.version },
   { label: "marketplace", path: ".claude-plugin/marketplace.json", field: "metadata.version", pick: (doc) => doc.metadata?.version },
 ]);
 

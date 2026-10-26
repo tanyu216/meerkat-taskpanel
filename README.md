@@ -49,7 +49,7 @@ append-only audit trail, first-class dependency and epic edges, resumable sessio
 the [Highlights](#highlights) below describe.
 
 > **Status: the engine has landed in full — the core engine, the `taskctl` CLI and its
-> local `taskd`, the installers for the six supported agents, and the full board backend plus the `web/`
+> local `taskd`, the installers for the four supported agents, and the full board backend plus the `web/`
 > frontend.**
 > `src/core/` holds the domain model, SQLite storage and migrations, use-cases and
 > `openBoard()`; `src/cli/` + `src/server/` provide the real `taskctl` command surface and
@@ -88,8 +88,7 @@ the [Highlights](#highlights) below describe.
    `node:sqlite`) is the only persistence. The engine needs no other dependencies and works
    fully offline.
 7. **One board, many front doors.** Drive it from the `taskctl` CLI or over the local
-   `taskd` HTTP API — with skill/plugin installers for Claude Code, Codex, OpenClaw, pi,
-   OpenCode and Cursor.
+   `taskd` HTTP API — with skill/plugin installers for Claude Code, Codex, OpenClaw and pi.
 8. **Provider-agnostic by design.** Meerkat TaskPanel is the default board base for the
    openclaw-team framework — its claim and candidate criteria are kept in lockstep with the
    framework's poll, so the board can be swapped (Jira, Plane, Linear, …) without changing
@@ -130,7 +129,7 @@ meerkat-taskpanel/
 ├── CHANGELOG.md / CONTRIBUTING.md
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # workspace root, bin(meerkat-taskpanel/taskctl/taskd), scripts
-├── install.sh                    # install dispatcher: --target claude|openclaw|codex|pi|opencode|cursor|server|all
+├── install.sh                    # install dispatcher: --target claude|openclaw|codex|pi|server|all
 ├── src/                          # engineering source
 │   ├── core/                     #   domain model / SQLite repo / state machine / invariants / md export
 │   ├── cli/                      #   taskctl (CLI entry)
@@ -141,8 +140,6 @@ meerkat-taskpanel/
 │                                 #   setup-meerkat (install/repair + team setup; Claude-only copy)
 ├── .claude-plugin/               # marketplace + the board plugin manifest (plugin root = the repo root)
 ├── .pi/                          # the Pi extension (declared by package.json's `pi` field)
-├── .opencode/                    # the OpenCode plugin (reads the one skills/ tree in place)
-├── .cursor-plugin/               # Cursor's marker — makes the root a Cursor plugin too
 ├── design/                       # design artifacts: DESIGN / BLOCKS, prototype/, brand/, assets/
 ├── docker/                       # Dockerfile, compose, profiles, verify-in-container.sh
 ├── monitoring/                   # OTel / Prometheus exporter
@@ -203,7 +200,7 @@ bash install.sh --target server           # server + taskctl only
 ## Agent-kind install details
 
 ```bash
-bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all
+bash install.sh --target claude|openclaw|codex|pi|server|all
 ```
 
 `all` is the default: every agent kind below **plus** the server runtime. `--no-server` leaves
@@ -227,15 +224,13 @@ the agent's own plugin system consumes — registering it needs that agent's CLI
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | the same root bundle |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | the root `package.json`'s `pi` field |
-| OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | `.opencode/plugins/` (in-process) |
-| Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | `.` — the root (`.cursor-plugin/plugin.json`) |
 
 The repository root is the board's plugin root, so every harness reads the one `skills/`
 tree instead of receiving a copy. OpenClaw consumes that Claude-format bundle too, which
 is its supported route — see [`docs/install.md`](docs/install.md#openclaw).
 
 The `meerkat-loop` supervisor skill is **not** distributed through the marketplace: it is
-installed by `install.sh --target claude|codex|pi|opencode|cursor`, and it never reaches
+installed by `install.sh --target claude|codex|pi`, and it never reaches
 OpenClaw.
 
 The third skill, **`setup-meerkat`**, is the `/setup-meerkat` command: it detects what is
@@ -320,7 +315,7 @@ the fallback and the only path for time-based work (stale claims, review aging, 
 cron — which cannot host a long-lived process — there is no pool:
 patrol and workflow still run, but poll claims nothing and worker dispatch is paused;
 `--continue-interval` is the discovery lever. **To turn it on,** run
-`install.sh --target claude|codex|pi|opencode|cursor`: it installs the `meerkat-loop` skill and
+`install.sh --target claude|codex|pi`: it installs the `meerkat-loop` skill and
 drops that agent kind's launchd / systemd / cron units, then **prints the load command** — it
 never starts a daemon for you (it also asks once whether the supervisor may claim
 **unassigned** cards, default yes).
@@ -335,7 +330,7 @@ source). The deterministic entries are ordinary programs, runnable by hand, and 
 prompt names them by absolute path.
 
 The loop ships as **its own skill** (`skills/meerkat-loop/`), and `install.sh` installs it
-for **every agent kind except OpenClaw** (claude, codex, pi, opencode, cursor) — OpenClaw gets the
+for **every agent kind except OpenClaw** (claude, codex, pi) — OpenClaw gets the
 board and nothing else; see [OpenClaw](#openclaw). Alongside the skill the
 installer drops per-agent-kind launchd / systemd / cron units and a wake-glue script, and prints
 the exact load command — it never enables a daemon for you. The installer also asks once
@@ -449,7 +444,7 @@ Contributions land under the MIT license.
 |---|---|---|
 | **Engine** | `src/core/` — domain model, SQLite storage + migrations, state machine, invariants pushed down into database triggers, `openBoard()` | *landed* |
 | **CLI & local service** | `src/cli/` — the `taskctl` command surface aligned with `task-interface v1`; the loopback `taskd` it auto-starts | *landed* |
-| **Installers** | `install.sh` + `scripts/install/<actor-kind>.sh` — the six agent-kind targets plus the `server` runtime, idempotent and merge-style | *landed* |
+| **Installers** | `install.sh` + `scripts/install/<actor-kind>.sh` — the four agent-kind targets plus the `server` runtime, idempotent and merge-style | *landed* |
 | **Markdown export** | `src/core/storage/md/` — `taskctl export md` writes one canonical card per task | *landed* |
 | **Board API & frontend** | `src/server/` — the full board HTTP API and its SSE stream; `web/` — the Vue 3 board built to `web/dist` | *landed* |
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate | *(planned)* |

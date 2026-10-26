@@ -15,8 +15,6 @@
 
 import { createClaudePool } from "./actor-kinds/claude.mjs";
 import { createCodexPool } from "./actor-kinds/codex.mjs";
-import { createCursorPool } from "./actor-kinds/cursor.mjs";
-import { createOpenCodePool } from "./actor-kinds/opencode.mjs";
 import { createPiPool } from "./actor-kinds/pi.mjs";
 
 /** Split a stream into LF-delimited lines, preserving no partial line. */
@@ -47,8 +45,6 @@ export const RESIDENT_KINDS = Object.freeze({
   claude: createClaudePool,
   codex: createCodexPool,
   pi: createPiPool,
-  opencode: createOpenCodePool,
-  cursor: createCursorPool,
 });
 
 /**

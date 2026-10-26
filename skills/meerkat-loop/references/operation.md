@@ -5,14 +5,14 @@ board/loop compatibility contract.
 
 ## What the installer writes
 
-For `<agent-dir>` = `~/.claude`, `~/.codex`, `~/.agents`, `~/.config/opencode` or `~/.cursor`:
+For `<agent-dir>` = `~/.claude`, `~/.codex` or `~/.agents`:
 
 | Artefact | Where | Notes |
 |---|---|---|
 | loop skill | `<agent-dir>/skills/meerkat-loop/` | always **copied**, never symlinked |
 | execution body | `<agent-dir>/meerkat-taskpanel/scripts/…` and `scripts/foundation/…` | the copy the units run; closure in the skill's `manifest.txt` |
 | units | `<agent-dir>/scheduling/{launchd,systemd,cron}/` | the resident pool (`session`), ping 60s, continue 600s, and the event subscriber (launchd/systemd; part of the enable set). Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the agent CLI |
-| wake glue | `<agent-dir>/bin/wake-<actor-kind>.sh` | legacy one-shot wakes only: resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` / `opencode run` / `cursor-agent -p` |
+| wake glue | `<agent-dir>/bin/wake-<actor-kind>.sh` | legacy one-shot wakes only: resolves the card's directory from `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` |
 | agent config | `<agent-dir>/meerkat-taskpanel.env` | claim policy, stale recovery, `MEERKAT_TASKPANEL_REPO`, workflow answers, the pool's knobs, and the full-tool-access opt-in |
 | runtime | `<agent-dir>/meerkat-taskpanel/{supervisor.log,supervisor.state.json,sessions.state.json,subagents.state.json,subscribe.state.json,supervisor.session.json}` | tick log, legacy worker registry, pool sessions + heartbeat (+ `controlMode`), subagent ledger, subscriber liveness, the pool a live session started |
 
@@ -36,7 +36,7 @@ crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
 `install.sh --supervisor=enable` (alias `--enable-supervisor`) is the opt-in;
-`--supervisor-actor-kinds claude,codex,pi,opencode,cursor` limits the agent kinds and `--scheduler
+`--supervisor-actor-kinds claude,codex,pi` limits the agent kinds and `--scheduler
 auto|launchd|systemd|cron` picks the mechanism. `--supervisor=disable` and
 `--supervisor=status` use the same entry point. On a TTY with no flag it asks
 once and defaults to **no**; `MEERKAT_TASKPANEL_SUPERVISOR` is the
@@ -84,7 +84,7 @@ Precedence: flag > process env > agent config > default.
 |---|---|---|
 | `--agent <name>` | `MEERKAT_TASKPANEL_AGENTS` → `$TASKCTL_AGENT` → `$USER` | agent(s) to work for; repeatable / comma-separated |
 | `--roles-dir <path>` | project `.meerkat/roles`, then the loop skill's `roles/` | optional team roles root; see “Team roles” |
-| `--actor-kind claude\|codex\|pi\|opencode\|cursor` | `claude` | which worker to wake |
+| `--actor-kind claude\|codex\|pi` | `claude` | which worker to wake |
 | `--repo <path>` | `MEERKAT_TASKPANEL_REPO`, else this checkout | where `--cli` resolves from; fallback cwd |
 | `--ping-interval <sec>` | 60 | liveness clock |
 | `--continue-interval <sec>` | 600 | judgment clock |
@@ -174,9 +174,8 @@ and heartbeat younger than 60s) or when `--resident=no` is set:
 - `workflow` runs, and review cards accumulate until the pool returns.
 
 That is the cron shape, and the shape on an agent kind whose CLI lacks the resident
-protocol. Start the session unit to get dispatch. All five agent kinds have an adapter:
-Claude Code (stream-json), Codex (app-server threads), Pi (`--mode rpc`),
-OpenCode (`serve`, one per directory), Cursor (ACP).
+protocol. Start the session unit to get dispatch. All three agent kinds have an adapter:
+Claude Code (stream-json), Codex (app-server threads), Pi (`--mode rpc`).
 
 ## Manual mode (a live session hosts the control turn)
 

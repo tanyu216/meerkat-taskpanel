@@ -73,13 +73,13 @@ async function skillDirsUnder(dir, rel = "") {
 }
 
 describe("plugin manifests", () => {
-  it("the board, Cursor, Pi and marketplace manifests parse and carry required keys", async () => {
-    // Three board manifests (the repository-root board plugin, Cursor's marker, and the Pi
-    // package) + the marketplace. Codex has no manifest of its own: it installs the same
-    // `./` bundle as Claude Code through the repository-root marketplace. OpenClaw has none
-    // either — it reads that same root bundle, so it ships no native manifest to keep in
-    // sync (it did until the `plugins/` directory was emptied).
-    assert.equal(MANIFESTS.length, 4);
+  it("the board, Pi and marketplace manifests parse and carry required keys", async () => {
+    // Two board manifests (the repository-root board plugin and the Pi package) + the
+    // marketplace. Codex has no manifest of its own: it installs the same `./` bundle as
+    // Claude Code through the repository-root marketplace. OpenClaw has none either — it
+    // reads that same root bundle, so it ships no native manifest to keep in sync (it did
+    // until the `plugins/` directory was emptied).
+    assert.equal(MANIFESTS.length, 3);
 
     const report = await validateManifests(ROOT);
     const failures = report.results.filter((r) => !r.ok);
@@ -96,16 +96,15 @@ describe("plugin manifests", () => {
     // repository-root bundle as Claude Code (KIND_BUNDLES.codex names that manifest).
     // Pi's manifest is the repository's own `package.json`, whose `pi` field declares the
     // skills path — hence the `files`/`skills` fallback in the assertion below.
-    const kinds = ["claude", "cursor", "pi"];
+    const kinds = ["claude", "pi"];
     const paths = {
       claude: ".claude-plugin/plugin.json",
-      cursor: ".cursor-plugin/plugin.json",
       pi: "package.json",
     };
 
     for (const kind of kinds) {
       const data = JSON.parse(await readFile(join(ROOT, paths[kind]), "utf8"));
-      // Claude and Cursor declare `skills`; Pi's carrier is the root package's `files`.
+      // Claude declares `skills`; Pi's carrier is the root package's `files`.
       const value = data.skills ?? data.files;
       assert.ok(
         JSON.stringify(value).includes("./skills") ||
@@ -133,7 +132,7 @@ describe("skill sync", () => {
   it("keeps exactly one skills tree: nothing is distributed as a copy", async () => {
     // The invariant the whole distribution story exists for, asserted against the
     // checkout rather than a table — a table can only describe the copies it knows about.
-    // Every harness (claude, codex, cursor, pi, opencode, openclaw) reads the repository's
+    // Every harness (claude, codex, pi, openclaw) reads the repository's
     // own `skills/` tree through its own manifest, so there is no generated copy anywhere.
     //
     // This is now the *only* guard: with no copy targets left, `sync-skills.mjs --check`
@@ -217,7 +216,7 @@ describe("install.sh", () => {
   it("documents every --target value and supports --dry-run", async () => {
     const script = await readFile(join(ROOT, "install.sh"), "utf8");
 
-    for (const target of ["claude", "openclaw", "codex", "pi", "opencode", "cursor", "server", "all"]) {
+    for (const target of ["claude", "openclaw", "codex", "pi", "server", "all"]) {
       assert.ok(script.includes(target), `install.sh must mention target "${target}"`);
     }
 

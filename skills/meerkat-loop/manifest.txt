@@ -14,8 +14,6 @@ scripts/foundation/sla-config.mjs
 scripts/foundation/sla-patrol.mjs
 scripts/loop/actor-kinds/claude.mjs
 scripts/loop/actor-kinds/codex.mjs
-scripts/loop/actor-kinds/cursor.mjs
-scripts/loop/actor-kinds/opencode.mjs
 scripts/loop/actor-kinds/pi.mjs
 scripts/loop/board.mjs
 scripts/loop/card-file.mjs

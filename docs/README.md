@@ -4,10 +4,10 @@ Documentation for Meerkat TaskPanel.
 
 | Document | Contents |
 |---|---|
-| [install.md](install.md) | Installing: `npx` / npm and source-checkout methods, the server runtime tree at `~/.meerkat-taskpanel`, and installing the skill into Claude Code, OpenClaw, Codex or Pi; `install.sh` usage, the per-agent-kind table and flags. OpenCode has a `--target` of its own; Cursor is plugin-only — their sections show both routes. |
-| [publishing.md](publishing.md) | Releasing a version: npm packaging / publish (the tarball is a runnable board carrying `web/dist`), the git tag + GitHub Release pipeline, and the per-agent publication steps (Claude Code marketplace / OpenClaw / Codex / Pi / Cursor / OpenCode). |
+| [install.md](install.md) | Installing: `npx` / npm and source-checkout methods, the server runtime tree at `~/.meerkat-taskpanel`, and installing the skill into Claude Code, OpenClaw, Codex or Pi; `install.sh` usage, the per-agent-kind table and flags. |
+| [publishing.md](publishing.md) | Releasing a version: npm packaging / publish (the tarball is a runnable board carrying `web/dist`), the git tag + GitHub Release pipeline, and the per-agent publication steps (Claude Code marketplace / OpenClaw / Codex / Pi). |
 | [development.md](development.md) | Repository layout, Node requirement, test / verify / build commands, the two build layers (engine vs `web/`) and the offline / dependency policy. |
-| [docker.md](docker.md) | Why verification and the six-agent-kind installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
+| [docker.md](docker.md) | Why verification and the four-agent-kind installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
 | [migration.md](migration.md) | The append-only SQL schema gate, and the note recording the MCP integration's removal. |
 | [projects.md](projects.md) | What a project is, how its id becomes the identifier prefix, and why that prefix must be unique across projects. |
 | [contract.md](contract.md) | The contract snapshots — the HTTP API (routes, error codes, wire fields) and the CLI surface (`taskctl` commands, flags, envelope keys): what each freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |

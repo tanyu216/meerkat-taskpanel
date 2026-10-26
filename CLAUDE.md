@@ -14,7 +14,7 @@ database (Node's built-in `node:sqlite`) — no external services. Node **>= 22*
 **zero runtime dependencies**, MIT, public repo.
 
 **Status (honest):** the engine has landed in full — the core engine, the `taskctl` CLI and
-its local `taskd`, the six-agent-kind installers, and the board HTTP API + SSE plus the `web/`
+its local `taskd`, the four-agent-kind installers, and the board HTTP API + SSE plus the `web/`
 frontend. `src/core/` has the domain model, SQLite storage
 + migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl` command surface
 and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` is the
@@ -35,7 +35,7 @@ The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/in
 The board owns the workflow decisions (`issue reconcile --workflow`); the loop executes the
 resulting plan. The external supervisor is a **skill of its own**
 (`skills/meerkat-loop/`), never installed for OpenClaw and **not** distributed through the
-marketplace: `install.sh --target claude|codex|pi|opencode|cursor` is its only path, and it
+marketplace: `install.sh --target claude|codex|pi` is its only path, and it
 carries no version of its own. The third skill, **`setup-meerkat`**
 (`skills/setup-meerkat/`), is the user-invoked `/setup-meerkat` install/repair and team-setup
 command; `install.sh --target claude` copies it, the shared bundle carries it for the other
@@ -121,7 +121,7 @@ node scripts/verify/contract.mjs             # API contract snapshot; --update r
 node scripts/verify/cli-contract.mjs         # CLI surface snapshot (commands/flags/envelope); --update
 node scripts/verify/route-request.mjs        # declared request schema vs what the handler reads; --print
 node src/server/main.mjs                     # start taskd directly (taskctl also auto-starts it)
-bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|server|all   # --prefix --link --force --dry-run --skip-web-build
+bash install.sh --target claude|openclaw|codex|pi|server|all   # --prefix --link --force --dry-run --skip-web-build
 npx meerkat-taskpanel [install] [--target …] [--no-server] [--prefix <home>]   # defaults to all: server + every agent
 ```
 
@@ -140,7 +140,7 @@ meerkat-taskpanel/
 ├── web/                    # Vue 3 + Vite board frontend (own lockfile) -> web/dist, served by taskd
 ├── skills/                 # the three skills: meerkat-taskpanel (board), meerkat-loop (supervisor),
 │                           #   setup-meerkat (install/repair + team setup; Claude-only copy)
-├── .claude-plugin/ .pi/ .opencode/ .cursor-plugin/   # harness markers; the plugin root IS the repo root
+├── .claude-plugin/ .pi/    # harness markers; the plugin root IS the repo root
 ├── design/                 # DESIGN / BLOCKS, the interactive prototype/, brand/, assets/, fidelity-rNN.md
 ├── scripts/                # build, install/, sync-skills + sync-loop, supervisor, verify/{manifests,skill,
 │                           #   migrations,paths,contract,cli-contract,route-request,changelog,version,docker,…}

@@ -21,7 +21,6 @@ import {
   nativeAgentFile,
   nativeAgentFormat,
   piToolsForLanes,
-  readonlyForLanes,
   toolsForLanes,
 } from "./lib/agent-kinds.mjs";
 import { readTeam, relativeTo, validateRolesRoot } from "./lib/validate.mjs";
@@ -154,7 +153,6 @@ function renderTemplate(template, role, workflow, selfCheck) {
     .replaceAll("{{TOOLS}}", toolsForLanes(role.lanes))
     .replaceAll("{{WORKFLOW}}", workflow)
     .replaceAll("{{SELF_CHECK_LINE}}", selfLine)
-    .replaceAll("{{READONLY}}", readonlyForLanes(role.lanes))
     .replaceAll("{{PI_TOOLS}}", piToolsForLanes(role.lanes));
 }
 

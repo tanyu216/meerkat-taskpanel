@@ -46,22 +46,22 @@ describe("install.sh: targets", () => {
     for (const agentDir of [".claude", ".codex"]) {
       assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-taskpanel", "SKILL.md")), `${agentDir} install missing`);
     }
-    for (const agentDir of [".openclaw", ".agents", ".config/opencode", ".cursor"]) {
+    for (const agentDir of [".openclaw", ".agents"]) {
       assert.equal(existsSync(join(home, agentDir)), false, `${agentDir} must not be installed`);
     }
   });
 
-  it("accepts the later two agent kinds in a comma-separated --target list", () => {
-    // opencode and cursor joined the target set after claude/codex/pi, so the comma path
-    // is pinned for them too: their skill must land, and nothing else may come along.
+  it("accepts a comma-separated --target list and installs exactly those kinds", () => {
+    // The comma path is pinned for a pair that is not the default set: their skill must
+    // land, and nothing else may come along.
     const home = makeTempDir();
-    const run = runInstall(["--target", "opencode,cursor", "--prefix", home]);
+    const run = runInstall(["--target", "pi,openclaw", "--prefix", home]);
 
     assert.equal(run.status, 0, run.stderr);
-    for (const agentDir of [".config/opencode", ".cursor"]) {
+    for (const agentDir of [".agents", ".openclaw"]) {
       assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-taskpanel", "SKILL.md")), `${agentDir} install missing`);
     }
-    for (const agentDir of [".claude", ".codex", ".openclaw", ".agents"]) {
+    for (const agentDir of [".claude", ".codex"]) {
       assert.equal(existsSync(join(home, agentDir)), false, `${agentDir} must not be installed`);
     }
   });
@@ -128,7 +128,7 @@ describe("install.sh: targets", () => {
     assert.ok(existsSync(join(tree, ".env")));
     assert.ok(existsSync(join(tree, ".data")));
     assert.match(run.stdout, new RegExp(`OK   server — ${tree.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents", ".config/opencode", ".cursor"]) {
+    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
       assert.equal(existsSync(join(home, agentDir)), false, `${agentDir} must not be installed`);
     }
   });
@@ -162,7 +162,7 @@ describe("install.sh: targets", () => {
     assert.equal(run.status, 0, run.stderr);
     const tree = join(home, ".meerkat-taskpanel");
     assert.ok(existsSync(join(tree, "src", "server", "main.mjs")), "all includes the server");
-    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents", ".config/opencode", ".cursor"]) {
+    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
       assert.ok(
         existsSync(join(home, agentDir, "skills", "meerkat-taskpanel", "SKILL.md")),
         `${agentDir} must be installed`,
@@ -184,7 +184,7 @@ describe("install.sh: targets", () => {
     for (const target of ["server", "claude", "pi"]) {
       assert.ok(run.stdout.includes(`install.sh: ${target}`), `${target} must be selected`);
     }
-    for (const absent of ["openclaw", "codex", "opencode", "cursor"]) {
+    for (const absent of ["openclaw", "codex"]) {
       assert.equal(run.stdout.includes(`install.sh: ${absent}`), false, `${absent} must not be selected`);
     }
   });
