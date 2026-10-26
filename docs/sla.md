@@ -52,7 +52,7 @@ values are **working minutes**.
 The table is a **transcription**: `DEFAULT_SLA_ROWS` in
 `src/foundation/sla-config.mjs` (re-exported as `SLA_ROWS` by
 `src/foundation/sla-patrol.mjs`) carries the same numbers next to a reference
-string, and `test/scheduling/sla-patrol.test.mjs` pins both sides so the document
+string, and `test/orchestrator/sla-patrol.test.mjs` pins both sides so the document
 and the code cannot drift apart. Changing a **default** is a contract change:
 update the table, the constant and the test together.
 

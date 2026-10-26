@@ -2,7 +2,7 @@
  * The SLA policy vocabulary: the documented defaults, the `TASKD_SLA_*`
  * overrides, and the wire round-trip the loop consumes.
  *
- * The defaults are pinned again in `test/scheduling/sla-patrol.test.mjs`
+ * The defaults are pinned again in `test/orchestrator/sla-patrol.test.mjs`
  * against `docs/sla.md`; here they are checked as *defaults* — the values an
  * unconfigured board publishes.
  */

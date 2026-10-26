@@ -189,7 +189,7 @@ export function extractAgentIds(text) {
  * `stale` so it stops consuming a concurrency slot. A fresh row is untouched.
  *
  * `sessionTurnTimeoutMs < LEDGER_STALE_MS` (asserted in
- * `test/scheduling/time-contract.test.mjs`) keeps this from reaping a live turn.
+ * `test/orchestrator/time-contract.test.mjs`) keeps this from reaping a live turn.
  *
  * @param {{subagents: object[]}} ledger
  * @param {{now?: number, staleAfterMs?: number}} [options]

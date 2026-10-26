@@ -4,7 +4,7 @@
  * It is transport-free on purpose: split chunks, multi-line `data:` values and
  * `retry:` lines are proven without a socket. The streaming client that feeds
  * it is tested at the CLI layer (`test/cli/events.test.mjs`) and at the loop's
- * `streamCli` seam (`test/scheduling/stream-cli.test.mjs`).
+ * `streamCli` seam (`test/orchestrator/stream-cli.test.mjs`).
  */
 
 import assert from "node:assert/strict";

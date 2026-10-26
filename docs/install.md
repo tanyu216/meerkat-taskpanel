@@ -307,8 +307,8 @@ to disable:  install.sh --supervisor=disable --supervisor-actor-kinds claude
 ```
 
 Enabling installs the resident pool, the two clocks **and the event daemon**: a long-lived
-`--session` manager, a $0 ping, one bounded `Continue` judgment turn per continue cadence
-that the pool runs in its control session, and the `--subscribe` daemon on launchd/systemd.
+`taskctl loop session` manager, a $0 ping, one bounded `Continue` judgment turn per continue cadence
+that the pool runs in its control session, and the `taskctl loop subscribe` daemon on launchd/systemd.
 The daemon is part of that set, not a separate flag: it is the low-latency path, the
 continue cadence remains the fallback, and an event wakes a turn only while the pool is
 live. It is not a closure component — with no pool it skips the turn and the timer still

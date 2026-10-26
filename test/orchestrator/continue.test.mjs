@@ -9,7 +9,7 @@
  *
  * These tests pin the prompt's contract and the invocation shape. The process
  * spawn, the lock and the registry pruning are covered by
- * `test/scheduling/loop-entries.test.mjs`.
+ * `test/orchestrator/loop-entries.test.mjs`.
  *
  * Run with: node --test
  */

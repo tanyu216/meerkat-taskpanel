@@ -75,7 +75,7 @@ by a whole cadence.
 ## The time contract
 
 The clocks below are not independent knobs: each one is a bound on another, and the
-inequalities are asserted in `test/scheduling/time-contract.test.mjs`. `--session-turn-timeout`
+inequalities are asserted in `test/orchestrator/time-contract.test.mjs`. `--session-turn-timeout`
 is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `1800`).
 
 | Clock | Default | Where |
@@ -126,7 +126,7 @@ directory**, opened with the `reviewer` role: a subagent inherits its session's
 permission surface, and only that lane's surface excludes Write.
 
 ```text
-session service (supervisor --session)
+session service (`taskctl loop session`)
 ├── control session        cwd = the taskpanel checkout
 │     /meerkat-loop Continue → patrol → workflow → poll
 │     poll: export .meerkat/<id>/card.md, claim, write the handoff queue
@@ -179,7 +179,7 @@ session service (supervisor --session)
   share it. A per-card `git worktree add .worktrees/<id>` is a deployment/role convention;
   the pool only logs one warning per directory when it admits parallel work in a git
   checkout (see "No workspace isolation" below).
-- **One lock** — a second `--session` on the same state directory is refused
+- **One lock** — a second `taskctl loop session` on the same state directory is refused
   (`session.lock`). The pool writes a heartbeat every 15 s so a pass in another
   process can tell "busy" from "gone".
 

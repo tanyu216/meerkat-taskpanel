@@ -257,9 +257,9 @@ A card exported into a project directory is a **snapshot**. Register it once wit
 event hub — `export watch <ref> --dir <dir> --detach` — and check it with `--watch-status`.
 The hub, not your shell, owns the board connection, so never use a plain `&`; the portable
 form is `--once`, and `--stop` ends it. It writes `.meerkat/<identifier>/card.md`, stops at
-`done`, and is one-way — re-read the brief before a decision, and never hand-edit it. **A
-loop-dispatched worker starts no watcher**: the loop's `--subscribe` already refreshes active
-briefs. Detail:
+`done` or `canceled`, and is one-way — re-read the brief before a decision, and never hand-edit it. **A
+loop-dispatched worker starts no watcher**: the loop's poll already registered the hub watch for
+its brief. Detail:
 [`references/cli.md#export-watch`](references/cli.md#export-watch).
 
 ## Where to look

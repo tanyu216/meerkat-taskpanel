@@ -36,6 +36,8 @@ export const REQUIRED = Object.freeze([
   "README.zh-CN.md",
   "install.sh",
   "src/cli/index.mjs",
+  "src/cli/commands/loop.mjs",
+  "src/orchestrator/supervisor.mjs",
   "src/server/main.mjs",
   "scripts/install/cli.mjs",
   "scripts/install/templates/server/taskd",
