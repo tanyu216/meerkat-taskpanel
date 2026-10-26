@@ -69,7 +69,7 @@ A lookup ends in one of three answers:
 | `PROJECT_DIR_UNMAPPED` | there is no entry for the project | stop and ask |
 
 Two surfaces apply the same file: `taskctl project dir <project>` (the map path is
-`$MEERKAT_TASKPANEL_PROJECTS_JSON` — which may also be set in the install-root `.env`, the
+`$MEERKAT_TASKPANEL_PROJECTS_JSON` — which may also be set in the program-root `.env`, the
 process environment winning — else the copy beside the skill), and the wake glue, which
 `cd`s into the directory before starting an agent. A worker needs a directory, so a wake refuses
 both `dir: null` and an unmapped project.
@@ -100,12 +100,3 @@ Anything beyond `project`, `local_path` and `run_dir` is **yours**; the skill re
 and ignores the rest, so use it for what an agent should know about the project
 (`"kind": "code"`, a `notes` line, …). The key set is not defined here and will not be:
 taskpanel neither prescribes nor interprets it.
-
-## Installing, re-installing and `--force`
-
-`projects.json` sits inside the installed skill directory:
-
-- **A plain re-run leaves it alone** — `install.sh` merges, never clobbers.
-- **`--force` replaces the whole directory**, so back the file up first.
-- **`--link` points the skill at a checkout**; the map then lands in that checkout — keep it
-  out of version control.

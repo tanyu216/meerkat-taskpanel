@@ -1,49 +1,7 @@
 # Operating the loop
 
-Install paths, start/stop, the flags that matter, the review workflow, and the
+Running the loop by hand, the flags that matter, the review workflow, and the
 board/loop compatibility contract.
-
-## What the installer writes
-
-For `<agent-dir>` = `~/.claude`, `~/.codex` or `~/.agents`:
-
-| Artefact | Where | Notes |
-|---|---|---|
-| loop skill | `<agent-dir>/skills/meerkat-loop/` | always **copied**, never symlinked |
-| execution body | `<agent-dir>/meerkat-taskpanel/scripts/…` and `scripts/foundation/…` | the copy the units run; closure in the skill's `manifest.txt` |
-| units | `<agent-dir>/scheduling/{launchd,systemd,cron}/` | the resident pool (`session`), ping 60s, continue 600s, and the event subscriber (launchd/systemd; part of the enable set). Each names the **absolute `node`** it was rendered with and sets `PATH` — a scheduler's minimal `PATH` has neither `node` nor the agent CLI |
-| agent config | `<agent-dir>/meerkat-taskpanel.env` | claim policy, stale recovery, `MEERKAT_TASKPANEL_REPO`, workflow answers, the pool's knobs, and the full-tool-access opt-in |
-| runtime | `<agent-dir>/meerkat-taskpanel/{supervisor.log,supervisor.state.json,sessions.state.json,subagents.state.json,subscribe.state.json,supervisor.session.json}` | tick log, legacy worker registry, pool sessions + heartbeat (+ `controlMode`), subagent ledger, subscriber liveness, the pool a live session started |
-
-`--link` applies to the board skill only: a symlinked loop body would
-reintroduce the checkout dependency the copied body exists to remove.
-
-## Start and stop
-
-Nothing is loaded unless asked. The installer prints these commands; the opt-in
-flag below runs them.
-
-```bash
-# macOS
-launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.session.plist # the pool
-launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist   # and .continue.plist
-# Linux user units
-mkdir -p ~/.config/systemd/user && cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
-systemctl --user enable --now meerkat-taskpanel-session.service meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer
-# Anywhere — no pool: patrol + workflow only, no worker dispatch
-crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
-```
-
-`install.sh --supervisor=enable` (alias `--enable-supervisor`) is the opt-in;
-`--supervisor-actor-kinds claude,codex,pi` limits the agent kinds and `--scheduler
-auto|launchd|systemd|cron` picks the mechanism. `--supervisor=disable` and
-`--supervisor=status` use the same entry point. On a TTY with no flag it asks
-once and defaults to **no**; `MEERKAT_TASKPANEL_SUPERVISOR` is the
-non-interactive form.
-
-A loaded unit names no checkout: it runs
-`<agent-dir>/meerkat-taskpanel/scripts/supervisor.mjs`, so moving, renaming or
-deleting the checkout does not require a reload.
 
 ## Run by hand
 
@@ -108,7 +66,7 @@ Precedence: flag > process env > agent config > default.
 | `--project-concurrency <n>` | `--max-concurrency` | live subagents per project |
 | `--project-idle-ms <ms>` | 1800000 | close an idle project session (keeps its session id) |
 | `--allow-all-tools` | off | full agent tool access; requires `--allow-all-tools-reason "<who authorized it and why>"` |
-| `--subscribe` | off | run the event subscriber (`taskctl events follow`, the local event hub); launchd/systemd only — the installed units pass it |
+| `--subscribe` | off | run the event subscriber (`taskctl events follow`, the local event hub); launchd/systemd only — the scheduler units pass it |
 | `--event-continue=yes\|no` | yes | let events wake a continue turn |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--sla-peer <path>` | unset | peer inspector's last-ok marker; unset registers a dependency, not an alarm |
@@ -118,10 +76,10 @@ Configuration and transport:
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--url <url>` | `TASKD_URL` (env or install-root `.env`), then the runtime pointer | board address |
+| `--url <url>` | `TASKD_URL` (env or the program-root `.env`), then the runtime pointer | board address |
 | `--env-file <path>` | `MEERKAT_TASKPANEL_ENV_FILE`, then `<repo>/.env` | config file for the loop's `taskctl` children |
 | `--token <token>` | `$TASKD_TOKEN` / `TASKD_TOKEN_FILE` / pointer tokenFile | board token; prefer the env or file form |
-| `--config <path>` | `<home>/<agent-dir>/meerkat-taskpanel.env` | agent config the installer writes |
+| `--config <path>` | `<home>/<agent-dir>/meerkat-taskpanel.env` | agent config file |
 | `--projects-json <path>` | beside the board skill, or `MEERKAT_TASKPANEL_PROJECTS_JSON` | agent-local project map the poll pass resolves a card's directory from |
 | `--home <path>` | `$HOME` | root the defaults resolve against |
 | `--cli <path>` | `<repo>/src/cli/index.mjs` | `taskctl` entry |
@@ -152,7 +110,7 @@ Selectors, state and internals:
 There is no `--acceptance-policy` (nor `--acceptance`) flag: the card's own
 `acceptance_mode` is authoritative and the loop keeps no copy.
 
-`--once` with no selector runs the legacy poll pass; installed units use
+`--once` with no selector runs the legacy poll pass; the scheduler units use
 `--ping-only` / `--continue-only`. `--patrol-only` remains for legacy units.
 
 ## No resident pool
@@ -181,7 +139,7 @@ started with `--control=external`, so it opens no control session and leaves
 same question ladder, the same acceptance rules.
 
 1. `status.mjs --json` → `running | busy | starting | configured-idle | partial | absent`.
-   - `running` + `pool.controlMode: internal`: the installed supervisor owns the turn; do
+   - `running` + `pool.controlMode: internal`: the supervisor owns the turn; do
      not run a second one. You may attach as a question console.
    - `configured-idle` / `partial` / `busy`: report; the service manager or an in-flight
      turn owns it.
@@ -245,9 +203,7 @@ its `task_id` to a debounced batch. The batch refreshes the briefs of every matc
 and, for a review card, its original. It runs even when `--event-continue=no`; it is bounded by its own minimum
 interval (`CARD_REFRESH_MIN_MS`) and a failed refresh only logs and keeps the previous file.
 Dispatch is separate: an event wakes a continue turn only while the resident pool is live.
-The daemon publishes `subscribe.state.json` (pid, last connection/event, pending reconnect),
-which `install.sh --supervisor=status` reports as `streaming` / `reconnecting` /
-`starting` / `not running`.
+The daemon publishes `subscribe.state.json` (pid, last connection/event, pending reconnect).
 
 The queue row carries the event UUID (`task_id`) and `review_of`/`review_round` so this
 mapping needs no board read. Rows written before this convention have no `task_id` and are
@@ -270,8 +226,8 @@ checkout.
 
 ## Team roles (optional)
 
-A team is an optional roles root authored by `setup-meerkat`; `install.sh` never ships one.
-The loop reads `manifest.json` there and adds two layers:
+A team is an optional roles root authored by `setup-meerkat`. The loop reads
+`manifest.json` there and adds two layers:
 
 1. **Routing** — the role named by the card's assignee (`Jobs`, `Linus`, `Turing`,
    `Reviewer`) supplies the responsibilities and boundaries.
@@ -287,8 +243,8 @@ role; it never wedges a tick. With no roles root the prompts are unchanged.
 config. Without that list the loop scans only its default agent, so a role card is never
 claimed. A role may also be listed explicitly with repeated `--agent` flags.
 
-`install.sh --force` replaces the loop skill directory, including an installed `roles/`;
-re-run `/setup-meerkat` after a forced reinstall.
+If the loop skill directory is replaced, its `roles/` goes with it; re-run `/setup-meerkat`
+afterwards.
 
 ## Questions and decision rights
 
@@ -390,10 +346,9 @@ MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes
 MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON="<who authorized it and why>"
 ```
 
-The reason is required and recorded in `--supervisor=status`. With it, every
-control, project and subagent session runs with the installing user's full OS
-permissions; the project directory is a working directory, **not** an isolation
-boundary. Full access is the resident pool's opt-in only.
+The reason is required. With it, every control, project and subagent session runs with
+the user's full OS permissions; the project directory is a working directory, **not** an
+isolation boundary. Full access is the resident pool's opt-in only.
 
 ## Compatibility
 
@@ -415,27 +370,5 @@ change to the `task-interface` surface means a new generation on both sides.
 One thing: the **board engine**. The copied body drives `taskctl`, which lives
 in the board's checkout, found through `MEERKAT_TASKPANEL_REPO` in the agent
 config. The body loads with no checkout present, but a *tick* needs the engine
-reachable. Re-running `install.sh` after the checkout moves re-points the config
-key; no unit reload is needed. This is the one remaining checkout dependency.
-
-## Skill source layout
-
-```text
-SKILL.md                  the operating manual
-references/operation.md   install paths, flags, workflow rules, compatibility
-manifest.txt              the execution body's file list (generated)
-scripts/board-check.mjs   the interface gate (authored)
-scripts/supervisor.mjs    the scheduler (generated)
-scripts/wake-cwd.mjs      the poll pass's directory resolver (generated)
-scripts/loop/*.mjs        the passes, subscriber and their seams (generated)
-scripts/foundation/**     modules the execution body imports (generated)
-templates/                units, agent config (generated)
-```
-
-Everything except `SKILL.md`, `references/` and `scripts/board-check.mjs` is
-generated by `node scripts/sync-loop.mjs` in the repository this skill is built
-from. Do not hand-edit it: edit `scripts/supervisor.mjs`, `scripts/loop/`,
-`scripts/wake-cwd.mjs`, `src/foundation/` or `scripts/install/templates/`, then
-regenerate. The foundation copy under `scripts/foundation/` is byte-for-byte the
-repository's `src/foundation/`; the entry scripts are copied with only their
-foundation import specifiers rewritten to point at `./foundation/`.
+reachable. If the checkout moves, update the config key; no reload is needed. This is
+the one remaining checkout dependency.

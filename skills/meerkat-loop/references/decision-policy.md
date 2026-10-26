@@ -1,6 +1,6 @@
 # Decision policy — who may decide what
 
-This is the loop's default question policy. A team installed by `setup-meerkat` may
+This is the loop's default question policy. A team authored by `setup-meerkat` may
 ship `decision-policy.md` in its roles root; the project-level copy
 (`.meerkat/roles/decision-policy.md`) wins over the global one, and either wins over
 this file. The policy is prompt guidance, not a board gate: the board still enforces
@@ -89,8 +89,8 @@ only a human comment resumes an `awaiting` card.
    the questions downstream of it; ask the rest of the frontier now.
 5. **Reshape and repeat.** Answers settle branches and unblock the next frontier. Recompute
    it and ask the next round. The round closes only when the frontier is empty.
-6. **Do not act early.** Do not build, freeze a direction, install or write files while a
-   frontier item is open. Record the settled answers in `plan.md`, `spec.md` or
+6. **Do not act early.** Do not build, add dependencies, freeze a direction or write files
+   while a frontier item is open. Record the settled answers in `plan.md`, `spec.md` or
    `test-plan.md` (and on the card), and confirm the shared understanding with the decider.
 
 **Card mode — collaborative.** For card execution (Jobs/Linus/Turing) lead with the

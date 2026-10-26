@@ -64,44 +64,45 @@ match; only an explicit invocation runs it:
 /meerkat-loop
 ```
 
-The text after the command is the turn's instruction, not a subcommand. The supervisor's
+The text after the command is the turn's instruction, not a subcommand. A supervisor's
 continue turn passes `/meerkat-loop Continue — …`; the rest of that prompt (the three
 passes, with absolute entry paths) is appended as the turn's input. There is no
 argument placeholder, no subcommand and no argument parsing.
 
-The instruction declares its **mode** in its first line: `mode: supervised` is the
-scheduler's control turn; no marker is a **manual** turn hosted by this live session.
-The two run the same control turn — see §Execution modes.
+**Read the mode first.** The instruction's first line declares it:
 
-`install.sh` copies the skill to `<agent-dir>/skills/meerkat-loop/`, so the bare
-`/meerkat-loop` resolves there. On an agent kind that does not slash commands, the prefix
-stays literal text and the rest of the prompt still carries the work.
+- `mode: supervised` — this session is the **headless supervisor's** control turn. There is
+  no interactive user in the session window. **Never ask a question there**; ask on the
+  card with a board comment.
+- **no marker** — a human invoked the skill in a live session. This is **manual** mode; the
+  human is present and can be asked in the conversation (the answer is still recorded as a
+  board comment).
 
-**This turn never installs, starts or enables the scheduler.** A plain install only writes
-the units and prints the load command; enabling is the human's explicit
-`install.sh --supervisor=enable` (and `--supervisor=disable` to stop it). Install and
-start/stop detail lives in `references/operation.md`. **OpenClaw is deliberately excluded**:
-`install.sh --target openclaw` installs the board skill only.
+The two modes run the same control turn — see §Execution modes.
+
+On an agent kind that does not slash commands, the `/meerkat-loop` prefix stays literal
+text and the rest of the prompt still carries the work.
 
 ### Execution modes
 
 There is **one control turn**: `patrol → workflow → poll`, the same question ladder and
 the same acceptance rules. Two drivers run it; the turn says which.
 
-- **Supervised** (`mode: supervised`). The installed scheduler (ping/continue/events) or
-  a one-shot supplies the prompt. The prompt is authoritative: run exactly the passes it
-  lists — poll is absent when no pool is live. The human reads the board, so questions are
-  board comments. Do not start a clock, a pool, a subscriber or a watcher; return when
-  the turn is done.
+- **Supervised** (`mode: supervised`). The scheduler (ping/continue/events) or a one-shot
+  supplies the prompt. This session is **headless**: no user is watching the session
+  window, so never ask a question there. The prompt is authoritative: run exactly the
+  passes it lists — poll is absent when no pool is live. Ask the human on the card, as a
+  comment. Do not start a clock, a pool, a subscriber or a watcher; return when the turn
+  is done.
 - **Manual** (no marker). A human invoked the skill in a live session. The session is the
   control turn and the pool is the dispatcher; the human is the clock and the question
-  front-end.
+  front-end. Questions may be asked in the conversation and are recorded as board comments.
 
 #### Manual mode
 
 1. **Detect.** Run `node <body>/scripts/loop/status.mjs --json` (body resolution below):
    - `running` — a pool is live. `pool.controlMode` in the report says who owns the turn.
-     `internal` means the installed supervisor owns it: do **not** run a second control
+     `internal` means the supervisor owns it: do **not** run a second control
      turn; you may attach as a question console. `external` means a live session owns it;
      run the loop.
    - `configured-idle` / `partial` / `busy` — report; do not start a pool and do not fight
@@ -145,13 +146,12 @@ the same acceptance rules. Two drivers run it; the turn says which.
 
 **Never** decide an E1–E5 question yourself; never claim or move a work card; never start
 a second pool. Run at most one manual console per agent directory: `session.lock` guards
-the pool, but two consoles would still race the workflow ledger. If the human wants
-unattended operation, point at `install.sh --supervisor=enable`.
+the pool, but two consoles would still race the workflow ledger.
 
 ```bash
 # <agent-dir> is the directory containing skills/meerkat-loop/:
 # claude ~/.claude, codex ~/.codex, pi ~/.agents. TASKCTL_ACTOR_KIND disambiguates
-# more than one install.
+# more than one agent directory.
 kind="${TASKCTL_ACTOR_KIND:-}"
 for pair in claude:.claude codex:.codex pi:.agents; do
   k="${pair%%:*}"; d="$HOME/${pair#*:}"
@@ -159,7 +159,7 @@ for pair in claude:.claude codex:.codex pi:.agents; do
   [ -z "$kind" ] || [ "$kind" = "$k" ] || continue
   agent_dir="$d"; kind="$k"; break
 done
-[ -n "${agent_dir:-}" ] || { echo "meerkat-loop: no installed loop body; run install.sh" >&2; exit 1; }
+[ -n "${agent_dir:-}" ] || { echo "meerkat-loop: no loop body found" >&2; exit 1; }
 body="$agent_dir/meerkat-taskpanel/scripts"
 [ -f "$body/loop/passes.mjs" ] || body="$agent_dir/skills/meerkat-loop/scripts"
 agent="${TASKCTL_AGENT:-}"
@@ -175,9 +175,9 @@ node "$body/loop/passes.mjs" workflow --actor-kind "$kind" --agent "$agent"
 node "$body/loop/passes.mjs" poll     --actor-kind "$kind" --agent "$agent"
 ```
 
-If the install used a custom `--agent-name` and `TASKCTL_AGENT` is unset, pass
-`--agent <name>` explicitly. `--no-automation` installs skip the agent config and shim;
-the manual mode then needs an explicit `--repo` and `taskctl`.
+If the agent config names a custom agent and `TASKCTL_AGENT` is unset, pass `--agent <name>`
+explicitly. A deployment without the agent config or shim needs an explicit `--repo` and
+`taskctl`.
 
 ### Who may close
 
@@ -207,12 +207,11 @@ executes the plan.
 
 On launchd/systemd, `--subscribe` follows the board's event stream through
 `taskctl events follow` (the local event hub) and asks for a continue turn when a
-dispatch-relevant event arrives. It ships with the supervisor's enable set — the continue
-clock remains the fallback and the only path for time-based work, and an event wakes a turn
-only while the resident pool is live (without one it logs and skips). The loop carries no
-HTTP code of its own: board discovery, the token and the stream all belong to the CLI. Cron
-cannot host a long-lived process. The daemon publishes `subscribe.state.json`, which
-`install.sh --supervisor=status` reads.
+dispatch-relevant event arrives. The continue clock remains the fallback and the only path
+for time-based work, and an event wakes a turn only while the resident pool is live
+(without one it logs and skips). The loop carries no HTTP code of its own: board discovery,
+the token and the stream all belong to the CLI. Cron cannot host a long-lived process. The
+daemon publishes `subscribe.state.json`.
 
 ### Task process directory (`.meerkat/`)
 
@@ -247,8 +246,7 @@ the resolved `target_dir` (`local_path ?? run_dir`), which is also the subagent'
 
 ### Team roles (optional)
 
-A team is an optional roles root, authored by `setup-meerkat` and never shipped by
-`install.sh`. It adds two layers:
+A team is an optional roles root, authored by `setup-meerkat`. It adds two layers:
 
 1. **Routing** — the loop reads the manifest's role responsibilities and selects the role
    named by the card's assignee (`Jobs`, `Linus`, `Turing`, `Reviewer`).

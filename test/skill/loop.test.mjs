@@ -271,6 +271,13 @@ describe("loop skill: SKILL.md", () => {
     assert.match(section, /bin\/taskctl/);
   });
 
+  it("makes supervisor mode headless: questions only as board comments", () => {
+    assert.match(text, /mode: supervised/);
+    assert.match(text, /headless/i);
+    assert.match(text, /Never ask a question there/);
+    assert.match(text, /board comment/i);
+  });
+
   it("documents the live-session mode in operation.md", () => {
     const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
     assert.match(operation, /## Manual mode/);
@@ -313,13 +320,13 @@ describe("loop skill: SKILL.md", () => {
     assert.ok(text.includes("scripts/board-check.mjs"), "the gate must be named at the point of declaration");
   });
 
-  it("says out loud that OpenClaw never gets the loop", () => {
-    assert.match(text, /OpenClaw is deliberately excluded/);
+  it("keeps installation out of the skill, and ships no committed loop bundle", () => {
+    assert.doesNotMatch(text, /install\.sh/, "the loop skill must not carry installation instructions");
+    assert.doesNotMatch(text, /--supervisor=/, "the loop skill must not carry the supervisor opt-in");
     // No agent kind takes a generated copy of the loop: every harness reads the repository's own
-    // skills/ tree, and OpenClaw is excluded by ruling. `install.sh` is the loop's only
-    // distribution path — there is no loop bundle in the marketplace any more, and no
-    // `plugins/` tree for one to live in (asserted against the checkout in
-    // test/scaffold.test.mjs, which is where the "exactly one skills tree" invariant lives).
+    // skills/ tree. There is no loop bundle in the marketplace any more, and no `plugins/` tree
+    // for one to live in (asserted against the checkout in test/scaffold.test.mjs, which is
+    // where the "exactly one skills tree" invariant lives).
     assert.equal(
       existsSync(join(ROOT, "plugins")),
       false,

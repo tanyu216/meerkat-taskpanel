@@ -22,17 +22,17 @@ executes them.
 
 ```bash
 node scripts/run.mjs --help          # this skill's launcher
-taskctl --help                       # when the install shim is on PATH
+taskctl --help                       # when the shim is on PATH
 ```
 
 `scripts/run.mjs` spawns the board CLI, pipes stdio and propagates the exit code; it resolves
-the CLI from `$MEERKAT_TASKPANEL_ROOT`, then `$MEERKAT_TASKPANEL_REPO` (recorded by
-`install.sh`), then the checkout this skill sits in, then the `taskctl` shim, then `PATH`.
+the CLI from `$MEERKAT_TASKPANEL_ROOT`, then `$MEERKAT_TASKPANEL_REPO` (recorded in the
+agent config), then the checkout this skill sits in, then the `taskctl` shim, then `PATH`.
 
 The shim passes `--actor-kind <kind>` and a default `--agent <name>` on every call.
 `--actor-kind` is required on every command except `--help` / `--version` (and the local
 `status` read); a team passes `--agent jobs` / `linus` / `turing` to override the default, and
-a human writes with `--as-human`. Configuration is one install-root `.env`, read by both
+a human writes with `--as-human`. Configuration is one `.env` at the program root, read by both
 `taskctl` and `taskd` (the process environment wins key by key; `--env-file` /
 `MEERKAT_TASKPANEL_ENV_FILE` selects another). If no board is running, `taskctl` starts one —
 `TASKD_NO_AUTOSTART=1` forbids that. Flags, env keys and exit codes:
@@ -286,11 +286,10 @@ rejection needs a new review card for the new round. Full protocol:
   derives it before a session starts; with no board reachable,
   [`scripts/session-id.mjs`](scripts/session-id.mjs) computes the same value from the resolved
   task UUID (`--task-id`, from `issue get <ref> --json` → `data.task.id`).
-- **The board runs no timer.** On an agent kind with the loop installed, the `meerkat-loop`
-  skill owns the scheduler — do not add a second poller or schedule its entries yourself. An
-  agent kind or service that owns its own timer drives one tick of
-  `candidates → claim → heartbeat`, and binds scripts to `error.code` and
-  `error.hint.command`, never to prose.
+- **The board runs no timer.** The `meerkat-loop` skill owns the scheduler — do not add a
+  second poller or schedule its entries yourself. An agent kind or service that owns its own
+  timer drives one tick of `candidates → claim → heartbeat`, and binds scripts to
+  `error.code` and `error.hint.command`, never to prose.
 
 ## Configuring project directories
 
