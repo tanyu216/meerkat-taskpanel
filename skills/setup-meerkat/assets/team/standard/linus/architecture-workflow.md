@@ -293,6 +293,43 @@ For a library, a static site or anything with no long-running process, record
 Output: the configuration section of the architecture document, the `.env.example`, the
 loader path and the reloadable-key list.
 
+#### Logging
+
+Logging is a contract with the operator, like configuration: designed once here, scaffolded
+in Step 4, and binding on every role through `/init`.
+
+- **One logging module.** Application code gets a logger from one factory and never writes
+  to `console` directly; the factory is configured once at startup from the configuration
+  surface (`LOG_LEVEL` and the format) and fails fast on an invalid level.
+- **Levels have one meaning.** `error` — the operation failed and a human must know;
+  `warn` — degraded but handled; `info` — a key flow started, finished or changed state;
+  `debug` — diagnosis, off by default. The level is configuration; the choice at a call
+  site is not.
+- **Key flows log `info` — mandatory.** Process start and stop (version and a secret-free
+  config summary); every inbound request, task or job at entry and completion (correlation
+  id, outcome, duration); every outbound dependency call (target, outcome, duration); every
+  recorded state transition; every background pass; every configuration load or reload
+  decision. A key flow with no `info` line is an omission, not a style choice.
+- **Exceptions log `error` — mandatory.** Every caught exception is logged once, at the
+  boundary that decides its fate, with the error taxonomy code, the correlation id and the
+  operation context — never a bare message, and never a stack trace on a success path. A
+  layer that only rethrows does not log; one incident produces one `error` line. Startup
+  failure and a failed health check are `error`.
+- **Structured, one event per line.** Timestamp, level, a stable event name, a correlation
+  or request id, and the relevant ids as fields; the human message does not carry data a
+  consumer would parse. One correlation id threads a flow.
+- **Never a secret or PII.** Tokens, passwords, keys, full request bodies and personal data
+  are redacted at the logger boundary, not at each call site.
+- **Test it.** The scaffold ships a test that a key flow emits its `info` line and a thrown
+  exception emits one `error` line carrying its code.
+
+For a library or a static site with no long-running process, record
+`n/a — no runtime logging`; the host application owns its own start/stop and health
+logging, and a library still logs its caught exceptions through the caller's logger.
+
+Output: the logging section of the architecture document, the logger path, the level and
+format keys, the mandatory `info` and `error` call sites, and the correlation id.
+
 #### Directory structure
 
 Plan the tree before creating it. The tree makes the architecture visible: a reader should
@@ -315,10 +352,10 @@ never invent it silently.
 
 Output: the directory tree in the architecture document, each directory with its purpose.
 
-The observability plan names what is logged, measured and alerted, without inventing a
-platform before a consumer needs it. The security boundaries name what is trusted and what
-is validated at each edge. The vertical slice is the smallest end-to-end path that proves
-the skeleton — not a product feature.
+The observability plan names what is measured and alerted, without inventing a platform
+before a consumer needs it; logging is designed above. The security boundaries name what is
+trusted and what is validated at each edge. The vertical slice is the smallest end-to-end
+path that proves the skeleton — not a product feature.
 
 Output: the skeleton design in the architecture document — boundaries and data model, the
 external contract, the configuration surface and the directory tree — with the vertical
@@ -335,6 +372,7 @@ written `n/a — <reason>`, never a missing file.
 | Layout and entry points | the directory tree planned in Step 3, instantiated exactly; source tree, test tree, docs, migrations, entry files | a newcomer finds the entry from the README and every planned directory exists |
 | Contracts | when the system exposes an HTTP API: the envelope and error helper, the boundary validator, the pagination helper, the canonical contract document and one smoke request; otherwise the recorded `n/a` | a request round-trips through the envelope and a validation failure returns the documented error shape |
 | Configuration surface | `.env.example` naming every key the app reads, the typed loader and schema, the load order, the reload policy, no secret | a missing required key fails loudly, never a silent default |
+| Logging | the logger module and factory, the startup level and format keys, the correlation-id helper, and the mandatory `info`/`error` call sites wired into the vertical slice | a key flow emits its `info` line, a thrown exception emits one `error` line with its code, and no application module calls `console` directly |
 | Build and manifests | package/build manifest, lockfile, scripts for install / build / run / test / lint / typecheck / migrate | a clean environment builds with one command |
 | Quality tooling | formatter, linter and type checker configuration | all three run locally and fail non-zero |
 | Test harness | runner configuration, fixture conventions, one smoke test that boots the skeleton | the smoke test passes |
@@ -375,9 +413,10 @@ carry:
    one line of purpose each, with a pointer to the canonical tree in `docs/architecture.md`.
    Do not restate the full tree: `ls` and the architecture document already carry it.
 4. **Conventions** — the one-line rule for dependency direction and module boundaries, the
-   error model, the configuration surface and the external contract, each pointing at its
-   canonical artifact (the architecture document, `.env.example`, the contract file) rather
-   than restating it.
+   error model, the configuration surface, the external contract and the logging contract
+   (key flows log `info`, a caught exception logs one `error` with its code, never a
+   secret), each pointing at its canonical artifact (the architecture document,
+   `.env.example`, the contract file) rather than restating it.
 5. **Design principles** — the six principles bind every agent, not only the architect:
    simple, reliable, efficient, elegant, not over-engineered, and high cohesion / low
    coupling, with the conflict ordering including the boundary rule. Name all six in the
@@ -446,6 +485,9 @@ Run `self-check.md` (Architecture branch). The architecture proof is:
   are recorded, one helper implements the envelope, and the canonical contract matches;
 - the configuration surface is recorded: `.env.example` names every key, the loader fails
   loudly, and the reload policy lists reloadable and restart-required keys;
+- the logging contract is recorded and scaffolded: one logger module, key flows emit
+  `info`, caught exceptions emit one `error` with their code and correlation id, and no
+  secret is logged;
 - the directory tree is planned, scaffolded exactly, and carried by the `/init` output as a
   top-level map with a pointer;
 - `CLAUDE.md`/`AGENTS.md` exists as the baseline every role reads, carries the entry

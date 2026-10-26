@@ -220,11 +220,11 @@ Linus and Turing all work a card in one linked worktree off `dev`, created with
 
 The architecture branch is the project's **system-initialization design flow**, not a
 feature or module design. It decides the architecture style (DDD or a named simpler style),
-the external contract when one exists, the configuration surface and the planned directory
-tree against the design stance — simple, reliable, efficient, elegant, not over-engineered,
-and high cohesion / low coupling — records the evidence in the architecture document and
-ADRs, and carries the top-level tree map and the six design principles into `/init`, where
-they bind every agent. A feature or module inside the recorded architecture is
+the external contract when one exists, the configuration surface, the logging contract and
+the planned directory tree against the design stance — simple, reliable, efficient, elegant,
+not over-engineered, and high cohesion / low coupling — records the evidence in the
+architecture document and ADRs, and carries the top-level tree map and the six design
+principles into `/init`, where they bind every agent. A feature or module inside the recorded architecture is
 implementation work. The same six principles are applied as questions in
 `implementation-workflow.md` Step 2 and audited by the implementation branch of
 `self-check.md`.

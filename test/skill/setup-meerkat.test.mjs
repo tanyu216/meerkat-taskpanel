@@ -222,6 +222,21 @@ describe("skill frontmatter and assets", () => {
     assert.match(arch, /hot.?reload/i, "the configuration surface defines reload");
     assert.match(arch, /directory tree|directory structure/i, "the tree is planned");
     assert.match(arch, /baseline requirement for every agent/i, "/init is the agent baseline");
+    assert.match(arch, /one logging module/i, "logging is one module, not console calls");
+    assert.match(
+      arch,
+      /key flows?[^\n]*\binfo\b/i,
+      "key flows must log at info, not by taste",
+    );
+    assert.match(
+      arch,
+      /exceptions?[^\n]*\berror\b/i,
+      "exceptions must log at error, not by taste",
+    );
+    const scaffold = arch.slice(arch.indexOf("### 4."), arch.indexOf("### 5."));
+    assert.match(scaffold, /^\| Logging \|/m, "the scaffold checklist carries a logging row");
+    const init = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
+    assert.match(init, /logging contract/i, "/init carries the logging contract as a convention");
 
     assert.match(linus, /foundation decision/i, "the routing table is foundation-level");
     assert.match(linus, /feature or module/i, "the routing table names the implementation side");
@@ -230,6 +245,12 @@ describe("skill frontmatter and assets", () => {
     assert.match(check, /architecture style|domain-driven/i, "the self-check audits the style");
     assert.match(check, /external contract/i, "the self-check audits the contract");
     assert.match(check, /configuration surface/i, "the self-check audits configuration");
+    assert.match(check, /logging/i, "the self-check audits the logging contract");
+    assert.match(
+      check,
+      /key flows?[^\n]*\binfo\b/i,
+      "the self-check audits the mandatory info logs",
+    );
     assert.match(check, /directory tree/i, "the self-check audits the tree");
     assert.match(check, /\/init/, "the self-check audits the agent baseline");
     assert.match(

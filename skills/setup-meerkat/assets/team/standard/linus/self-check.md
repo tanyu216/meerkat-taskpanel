@@ -83,6 +83,9 @@ run them.
     follows — simple, reliable, efficient, elegant, not over-engineered, high cohesion and
     low coupling, with the conflict ordering — rather than leaving them in the architecture
     document only.
+18. The logging contract holds: one logger module, key flows emit an `info` line, every
+    caught exception emits one `error` line with its code and correlation id, and no secret
+    or personal data is logged. Otherwise the recorded `n/a` is present.
 
 ## Implementation branch
 

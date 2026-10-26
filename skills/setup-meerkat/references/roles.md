@@ -125,8 +125,8 @@ carries the canonical `## Tech stack` table (frontend, backend, persistence and
 container/build), and an implementation card inherits that table rather than re-choosing.
 It also carries the design-stance evidence (simple, reliable, efficient, elegant, not
 over-engineered, high cohesion and low coupling), the architecture-style decision (DDD or a
-named simpler style), the external contract, the configuration surface and the planned
-directory tree. The contract artifact is canonical, `CLAUDE.md`/`AGENTS.md` carry a top-level
+named simpler style), the external contract, the configuration surface, the logging
+contract and the planned directory tree. The contract artifact is canonical, `CLAUDE.md`/`AGENTS.md` carry a top-level
 tree map and a pointer, and the `/init` product is the baseline every role reads, carrying
 the six design principles as binding requirements for every agent. A feature or module change
 applies the same six in `implementation-workflow.md` Step 2.

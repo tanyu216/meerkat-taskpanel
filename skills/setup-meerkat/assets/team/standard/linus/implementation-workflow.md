@@ -72,8 +72,10 @@ or irreversible command without the human.
 
 ### 5. Code review
 
-Check correctness, published contracts, migrations, error paths, dead code and tests.
-Remove dead code only when it is proven dead. Do not mix a refactor into a bug fix.
+Check correctness, published contracts, migrations, error paths, dead code, logging and
+tests. A new key flow emits its `info` line and a new failure path emits one `error` line
+with its code; never log a secret. Remove dead code only when it is proven dead. Do not mix
+a refactor into a bug fix.
 
 ### 6. Gates
 
