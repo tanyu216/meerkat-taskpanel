@@ -540,6 +540,23 @@ export function startServer() {
         activities: data.activities.filter((activity) => activity.task_id === task?.id),
       });
     }
+    // The board-wide trail (`GET /api/v1/activities`): the Activity view's
+    // backfill reads one newest-first page and scopes it to the board's own
+    // task set. Without this route the fixture's fallback answers `{}` and the
+    // ledger looks legitimately empty.
+    if (path === "/api/v1/activities") {
+      const order = url.searchParams.get("order") === "asc" ? "asc" : "desc";
+      const limit = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+      const after = Number.parseInt(url.searchParams.get("after") ?? "", 10);
+      let rows = data.activities.filter(
+        (activity) => !Number.isFinite(after) || activity.revision > after,
+      );
+      rows = [...rows].sort((a, b) =>
+        order === "asc" ? a.revision - b.revision : b.revision - a.revision,
+      );
+      if (Number.isFinite(limit) && limit > 0) rows = rows.slice(0, limit);
+      return ok({ activities: rows });
+    }
     // R14 ① — the real route's shape (`src/server/routes/relations.mjs` →
     // `{ relations: [...] }`, each row `relationToWire`: id/type/source/target).
     // Scoped to the card asked for, like `/activities`: the drawer renders the
@@ -986,14 +1003,18 @@ export async function run() {
       await route.continue();
     });
     // The skeleton legs need the *other* two reads held open as well. Playwright's
-    // `*` does not cross a `/`, so the task-list pattern above matches neither the
-    // per-card activity fan-out nor the card read (only the list request, whose
-    // `?project_id=` follows the path directly). Three knobs, three patterns.
+    // `*` does not cross a `/`, so the task-list pattern above matches neither
+    // the board-wide activity read nor the card read (only the list request, whose
+    // `?project_id=` follows the path directly). The ledger backfills through
+    // `GET /activities`; the drawer still reads per-card `/tasks/:ref/activities`.
+    // Three knobs, four patterns.
     let activitiesDelayMs = 0;
-    await page.route("**/api/v1/tasks/*/activities*", async (route) => {
+    const holdActivities = async (route) => {
       if (activitiesDelayMs > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, activitiesDelayMs));
       await route.continue();
-    });
+    };
+    await page.route("**/api/v1/activities*", holdActivities);
+    await page.route("**/api/v1/tasks/*/activities*", holdActivities);
     let detailDelayMs = 0;
     await page.route("**/api/v1/tasks/*", async (route) => {
       if (detailDelayMs > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, detailDelayMs));
@@ -5841,8 +5862,8 @@ export async function run() {
       await page.click('[data-view="board"]');
       await page.waitForTimeout(120);
 
-      // S4 — activity: the per-card fan-out. Switch away from the ledger first so
-      // the next entry is a real backfill, then hold the fan-out open.
+      // S4 — activity: the board-wide backfill. Switch away from the ledger first
+      // so the next entry is a real backfill, then hold the read open.
       await page.click('[data-nav-item="activity"]');
       await waitForViewSettled("[data-activity-view]");
       await page.waitForTimeout(150);

@@ -206,7 +206,8 @@ browser?" is printed rather than inferred. See
 | `/projects`, `/projects/:id`, `/projects/:id/readme` | GET/POST/PATCH/PUT | `/projects` is ordered server-side (DESIGN.md §20) and carries each project's `task_count` (the sidebar badge — total tasks, archived included, independent of the order) |
 | `/tasks`, `/tasks/:ref` | GET/POST/PATCH | `:ref` is an identifier or a UUID |
 | `/tasks/:ref/move`, `/tasks/:ref/reopen`, `/tasks/:ref/deliver`, `/tasks/:ref/assign`, `/tasks/:ref/archive` | POST | the delivery gate bites on `/move` and `/deliver`; `/reopen` is the audited `done|canceled → todo` edge |
-| `/tasks/:ref/comments`, `/tasks/:ref/relations`, `/tasks/:ref/sessions`, `/tasks/:ref/activities`, `/tasks/:ref/reports` | GET/POST/DELETE | activities is the audit cursor read |
+| `/tasks/:ref/comments`, `/tasks/:ref/relations`, `/tasks/:ref/sessions`, `/tasks/:ref/activities`, `/tasks/:ref/reports` | GET/POST/DELETE | activities is the task-scoped audit cursor read |
+| `/activities` | GET | the board-wide audit cursor (`?after`, `?limit`, `?order`); the activity ledger's one-read backfill |
 | `/attachments/:id/content` | GET/PUT | raw bytes; not JSON — handled outside the router |
 | `/events` | GET (SSE) | the `task_activities` revision cursor; `?after=<rev>` replays; a deliberate stop sends a named `shutdown` frame (see [Stopping the daemon](#stopping-the-daemon)) |
 | `/actors`, `/labels` | GET | read-only by design (§4.4) |
@@ -376,7 +377,7 @@ fix is to shorten the hold, not to raise the timeout.
 The access token is never echoed in a response and never logged. The SSE stream
 filters `task_heartbeat` out of the increments, because a pulse changes no board
 state (§4.3); the row still exists in `task_activities` and under
-`/tasks/:ref/activities`.
+`/tasks/:ref/activities` (or the board-wide `/activities`).
 
 > **The built board is loopback-only.** It injects no token, so a browser reaching
 > `taskd` from a non-loopback address is answered 401 across the board — a known

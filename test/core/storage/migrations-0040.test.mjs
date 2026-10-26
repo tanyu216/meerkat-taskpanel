@@ -77,7 +77,7 @@ describe("storage/migrations — 0040 retires the review compatibility layer", (
   it("drops both legacy columns and keeps every row's decisions", async () => {
     const { board, up } = await upgradedBoard();
     try {
-      assert.deepEqual(up.applied.map((m) => m.version), ["0040", "0041"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0040", "0041", "0042"]);
       assert.equal(columnsOf(board.db, "tasks").includes("review_required"), false);
       assert.equal(columnsOf(board.db, "projects").includes("review_policy"), false);
 

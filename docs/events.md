@@ -15,6 +15,11 @@ cursor. Rows written before migration 0037 keep their historical value; the log 
 strictly increasing across the boundary. A hand-written row with no revision is readable
 through the per-task route but is never replayed by the stream.
 
+The table is **append-only in the schema** since migration 0042:
+`tr_activities_no_update` / `tr_activities_no_delete` raise `ACTIVITY_APPEND_ONLY`. An edit
+would rewrite history a client already received, and a delete would leave a gap the cursor
+can never replay; a wrong row is corrected by writing the next one.
+
 This document is the event catalogue: who writes each event, what it carries, which
 consumer reads it, and which events are deliberately excluded from a surface.
 
@@ -27,7 +32,10 @@ tests:
 
 - `test/contract/activity-events.test.mjs` — every `activities.append({ event: "…" })` in
   `src/` names a declared event, and every declared event has a writer (except the
-  historical pair);
+  historical pair); and every mutating repository call in `src/core/commands/` sits in a
+  function that appends an activity of its own. The helpers that hand their audit to the
+  caller (`resolveOrCreate`, `resolveActorId`, `resolveLabels`, `insertDeliveryReport`)
+  are a named exemption table that fails when it goes stale;
 - `test/contract/activity-consumers.test.mjs` — every declared event is an explicit
   decision at each reader: the board's `isKnownEvent`, the human feed's admit/exclude
   lists, the loop's dispatch/ignore lists, the wire noise filter, and this catalogue.
@@ -81,7 +89,9 @@ whole audit trail.
 - **Task events** refresh the card. `task_created`/`updated`/`claimed`/`moved`/`reopened`/
   `resumed`/`archived`/`delivered`/`report_*`/`epic_auto_start`/`acceptance_changed`/
   `acceptance_pruned`/`acceptance_override` cost a `GET /tasks/:ref` (100 ms per-card debounce,
-  newest response wins). An archived card is removed from the board.
+  newest response wins). The same response patches an open drawer's task head, so one event
+  still costs one task read; the drawer's incremental refresh only rereads sub-resources. An
+  archived card is removed from the board.
 - **Sub-resource events** refresh only the open drawer's affected tab:
   `comment_added` → comments; `relation_*` → relations (both endpoints, because the
   activity hangs off the target); `report_written`/`task_delivered`/`report_waived` →
@@ -98,6 +108,13 @@ whole audit trail.
 - An unknown event name is logged once (`console.warn`) and takes the safe refresh path.
   `test/contract/activity-consumers.test.mjs` is what keeps a declared event out of this
   branch.
+
+### The activity ledger (`web/src/stores/activity.js`)
+
+The ledger backfills with **one** `GET /activities` (`limit=1000&order=desc`) instead of
+one read per card. The response is board-wide; the feed scopes it to the board's own task
+set (the current project) at derivation, and the live stream keeps merging rows by id. A
+project switch invalidates the read, not a per-card pool.
 
 ### The human activity feed (`web/src/lib/activity-feed.js`)
 

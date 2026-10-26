@@ -134,7 +134,7 @@ describe("storage/migrations — 0020 gives the attribution columns a reference"
       seedAttributionBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042"]);
 
       // 1 — the back-fill. Four keys that were free strings with no actor row:
       //     `linus` (reused), plus `local`, `terry` and `unknown` (created). The

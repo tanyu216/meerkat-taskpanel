@@ -1,12 +1,16 @@
 /**
- * `GET /api/v1/tasks/:ref/activities` — a task's audit trail (§5.1).
+ * `GET /api/v1/tasks/:ref/activities` — a task's audit trail (§5.1);
+ * `GET /api/v1/activities` — the same rows across the board.
  *
  * The same rows the SSE stream pushes, read on demand: "what happened to this
  * card, and who did it". It is also the honest answer to "was this delivered
  * without a report" — the `report_waived` events are here, in order.
  *
  * `?after=<revision>` makes it a cursor read, which is what a client that lost
- * the stream (or never had it) uses to catch up one card at a time.
+ * the stream (or never had it) uses to catch up. The board-wide read is the
+ * activity ledger's backfill: one request instead of one per card. It carries
+ * every project's rows; a caller scopes them by the task set it already has
+ * (the web feed does exactly that).
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
@@ -82,6 +86,20 @@ export function registerActivityRoutes(router, surface) {
       activities: repos.activities
         .list({
           taskId: task.id,
+          ...(after === undefined ? {} : { afterRevision: after }),
+          ...(limit === undefined ? {} : { limit }),
+          order: readOrder(query.get("order")),
+        })
+        .map(activityToWire),
+    };
+  }, { query: LIST_QUERY });
+
+  router.get("/api/v1/activities", ({ query }) => {
+    const after = readBoundedInt(query.get("after"), { field: "after", min: 0, max: MAX_REVISION });
+    const limit = readBoundedInt(query.get("limit"), { field: "limit", min: 1, max: MAX_LIMIT });
+    return {
+      activities: repos.activities
+        .list({
           ...(after === undefined ? {} : { afterRevision: after }),
           ...(limit === undefined ? {} : { limit }),
           order: readOrder(query.get("order")),

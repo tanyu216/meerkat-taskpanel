@@ -100,7 +100,7 @@ describe("storage/migrations — 0034 questions and awaiting → todo", () => {
         triggers: triggerNames(board.db),
       };
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042"]);
 
       const kinds = board.db
         .prepare("SELECT id, kind, body FROM comments ORDER BY id")
@@ -133,7 +133,10 @@ describe("storage/migrations — 0034 questions and awaiting → todo", () => {
         "tr_tasks_review_no_reopen",
         "tr_tasks_review_not_review",
       ];
-      const LATER_ADDED = [...LATER_0038_ADDED, ...LATER_0041_ADDED];
+      // 0042 makes the activity log append-only; like the other later files, it
+      // adds its own guards rather than moving 0034's rebuild.
+      const LATER_0042_ADDED = ["tr_activities_no_delete", "tr_activities_no_update"];
+      const LATER_ADDED = [...LATER_0038_ADDED, ...LATER_0041_ADDED, ...LATER_0042_ADDED];
       const LATER_REMOVED = [...LATER_0038_REMOVED, ...LATER_0040_REMOVED];
       assert.deepEqual(
         triggerNames(board.db).filter((name) => !LATER_ADDED.includes(name)),

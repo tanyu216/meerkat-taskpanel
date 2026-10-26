@@ -210,6 +210,9 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       // rebuild may not do is lose one or invent one of its own. 0021/0022 add the
       // two relation guards `tr_rel_block_chain` / `tr_rel_parent_block_pair`.
       const LATER_TRIGGERS_ADDED = [
+        // 0042 makes the activity log append-only.
+        "tr_activities_no_delete",
+        "tr_activities_no_update",
         "tr_deliver_gate_done",
         "tr_dict_actors_delete",
         "tr_rel_block_chain",

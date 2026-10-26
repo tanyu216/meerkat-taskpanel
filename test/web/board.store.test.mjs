@@ -592,6 +592,38 @@ describe("web/board — the live stream drives the revision", () => {
     assert.deepEqual(board.detail.relations.parent_chain, ["TD-2"]);
   });
 
+  it("feeds the open drawer from the card refresh instead of a second task read", async () => {
+    const { board, startEvents } = await freshBoard();
+    seedTask(board);
+    board.detail = { task: { id: "td_1", identifier: "TD-1", version: 1 }, activities: [] };
+    const calls = installFetch({
+      "GET /api/v1/tasks/td_1": () =>
+        ok({ task: { id: "td_1", identifier: "TD-1", version: 2, title: "renamed" } }),
+      "GET /api/v1/tasks/TD-1/activities": () => ok({ activities: [] }),
+    });
+
+    startEvents();
+    FakeEventSource.instances.at(-1).emit(18, {
+      event: "task_updated",
+      task_id: "td_1",
+      changes: { fields: ["title"] },
+    });
+    mock.timers.tick(100);
+    await settle();
+
+    assert.equal(board.detail.task.version, 2, "the drawer sees the refreshed row");
+    assert.equal(
+      calls.filter((call) => call.url === "/api/v1/tasks/td_1").length,
+      1,
+      "one task read for the event",
+    );
+    assert.equal(
+      calls.some((call) => call.url === "/api/v1/tasks/TD-1"),
+      false,
+      "the drawer does not reread the same task",
+    );
+  });
+
   it("seeds the first stream from /meta.revision instead of replaying from zero", async () => {
     const { board, initBoard } = await freshBoard();
     installFetch({

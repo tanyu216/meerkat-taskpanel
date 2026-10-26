@@ -65,7 +65,7 @@ describe("storage/migrations — 0041 review invariants", () => {
   it("applies only 0041 and keeps the ordinary reopen edge", async () => {
     const { board, up } = await upgradedBoard();
     try {
-      assert.deepEqual(up.applied.map((m) => m.version), ["0041"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0041", "0042"]);
       assert.equal(
         reasonCode(() =>
           board.db.prepare("UPDATE tasks SET status = 'todo' WHERE id = 'done-task'").run(),

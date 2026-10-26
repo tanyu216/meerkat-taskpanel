@@ -37,6 +37,10 @@
       "http": 500
     },
     {
+      "code": "ACTIVITY_APPEND_ONLY",
+      "http": 409
+    },
+    {
       "code": "ARCHIVE_NOT_TERMINAL",
       "http": 409
     },
@@ -362,6 +366,29 @@
           "type": "object"
         },
         "query": null
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/activities",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "string"
+            },
+            "order": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
       }
     },
     {

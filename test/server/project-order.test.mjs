@@ -17,6 +17,7 @@ import test, { after, before, describe, it } from "node:test";
 import { PROJECT_ORDER_WEIGHTS } from "../../src/foundation/constants.mjs";
 import { normalise, orderDebugEntry, rankProjects } from "../../src/foundation/project-order.mjs";
 import { createTaskd } from "../../src/server/index.mjs";
+import { insertTask } from "../helpers/sqlite-fixture.mjs";
 
 const AGENT = { kind: "agent", id: "linus" };
 const tempDirs = [];
@@ -39,12 +40,18 @@ before(async () => {
   // in `old` (which is the case the window bound exists for).
   for (let i = 1; i <= 3; i += 1) createTask(commands, { projectId: "busy", title: `b${i}` });
   createTask(commands, { projectId: "quiet", title: "q1" });
-  for (let i = 1; i <= 5; i += 1) createTask(commands, { projectId: "old", title: `o${i}` });
 
+  // `old` needs tasks whose *only* activities predate both windows. The audit
+  // log is append-only (0038), so the fixture writes the rows with the stamp
+  // they need instead of creating them and rewriting time.
   const longAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString();
-  db.prepare(
-    "UPDATE task_activities SET created_at = ? WHERE task_id IN (SELECT id FROM tasks WHERE project_id = 'old')",
-  ).run(longAgo);
+  for (let i = 1; i <= 5; i += 1) {
+    const id = `old-${i}`;
+    insertTask(db, { id, identifier: `OLD-000${i}`, project_id: "old" });
+    db.prepare(
+      "INSERT INTO task_activities(task_id,event,changes_json,created_at) VALUES(?,'task_created','{}',?)",
+    ).run(id, longAgo);
+  }
 });
 
 after(async () => {

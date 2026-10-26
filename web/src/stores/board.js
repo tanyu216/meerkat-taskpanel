@@ -719,6 +719,9 @@ export async function refreshTask(taskId) {
       return;
     }
     replaceTask(task);
+    // The drawer's head is the same row. One event = one task read, applied to
+    // both surfaces; `refreshDetail` no longer reads `task` itself.
+    if (board.detail?.task?.id === taskId) board.detail = { ...board.detail, task };
   } catch {
     /* a task that vanished mid-flight is not worth a toast */
   }
@@ -1275,9 +1278,6 @@ async function refreshDetail(wanted, taskId) {
     );
   };
 
-  read("task", () => api.task(identifier), (data) => {
-    if (data?.task) patch.task = data.task;
-  });
   read("comments", () => api.taskComments(identifier, { limit: 200, order: "desc" }), (data) => {
     patch.comments = data.comments ?? [];
   });
@@ -1302,14 +1302,8 @@ async function refreshDetail(wanted, taskId) {
   // refresh while these reads were in flight.
   if (detailToken !== token || board.detail?.task?.id !== taskId) return;
 
-  if (patch.task) {
-    if (patch.task.archived_at) {
-      board.tasks = board.tasks.filter((item) => item.id !== taskId);
-      closeDetail();
-      return;
-    }
-    replaceTask(patch.task);
-  }
+  // The task row itself arrives through `refreshTask` (one read for the card and
+  // the drawer); this path only patches the sub-resources it owns.
   board.detail = { ...board.detail, ...patch };
 }
 

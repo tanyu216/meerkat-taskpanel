@@ -103,7 +103,7 @@ describe("storage/migrations — 0033 rollup reports", () => {
       applyMigrations(board.db, { dir: before0033() });
       seed(board.db);
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042"]);
 
       const rows = board.db
         .prepare("SELECT task_id, is_rollup FROM task_reports ORDER BY task_id")

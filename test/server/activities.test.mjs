@@ -42,6 +42,7 @@ after(async () => {
 });
 
 const get = async (query = "") => (await (await fetch(`${base}/api/v1/tasks/${identifier}/activities${query}`)).json());
+const boardGet = async (query = "") => (await (await fetch(`${base}/api/v1/activities${query}`)).json());
 
 describe("server/routes — a task's audit trail", () => {
   it("returns the history in order, with the actor and the revision", async () => {
@@ -103,5 +104,43 @@ describe("server/routes — a task's audit trail", () => {
     const response = await fetch(`${base}/api/v1/tasks/PROJ-9999/activities`);
     assert.equal(response.status, 404);
     assert.equal((await response.json()).error.code, "NOT_FOUND");
+  });
+});
+
+describe("server/routes — the board-wide activity trail", () => {
+  it("returns every row, including a task-less project event", async () => {
+    const body = await boardGet("?order=asc");
+    assert.equal(body.ok, true);
+    assert.deepEqual(body.data.activities.map((entry) => entry.event), [
+      "project_created",
+      "task_created",
+      "comment_added",
+      "task_claimed",
+    ]);
+    assert.equal(body.data.activities[0].task_id, null, "a project row has no task");
+    assert.equal(
+      body.data.activities[1].task_id,
+      taskd.board.repos.tasks.findByIdentifierAnyProject(identifier).id,
+    );
+  });
+
+  it("honours the revision cursor and the newest-first read", async () => {
+    const newest = (await boardGet("?limit=1&order=desc")).data.activities;
+    assert.deepEqual(newest.map((entry) => entry.event), ["task_claimed"]);
+    assert.deepEqual((await boardGet(`?after=${newest[0].revision}&order=asc`)).data.activities, []);
+
+    const first = (await boardGet("?limit=1&order=asc")).data.activities;
+    assert.deepEqual(
+      (await boardGet(`?after=${first[0].revision}&order=asc`)).data.activities.map((entry) => entry.event),
+      ["task_created", "comment_added", "task_claimed"],
+    );
+  });
+
+  it("refuses an unparseable or out-of-range cursor", async () => {
+    for (const query of ["?after=nope", "?limit=0", "?limit=1001"]) {
+      const response = await fetch(`${base}/api/v1/activities${query}`);
+      assert.equal(response.status, 400, query);
+      assert.equal((await response.json()).error.code, "VALIDATION_FAILED", query);
+    }
   });
 });

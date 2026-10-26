@@ -9,6 +9,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **One event, one task read, even with the drawer open.** A task event used to refresh the
+  card and the open drawer's task separately. The card refresh now patches both; the drawer's
+  incremental refresh only rereads the sub-resource the event invalidated.
+
+- **The activity log is append-only in the schema (migration `0042`).** `UPDATE` and `DELETE` on
+  `task_activities` now raise `ACTIVITY_APPEND_ONLY`, the same rule `comments` and
+  `task_reports` already enforce. The log is the change feed: an edit would rewrite history a
+  client already received, and a delete would leave a gap the revision cursor can never replay.
+  Every production writer inserts only; the triggers keep it that way, and a wrong row is
+  corrected by writing the next one.
+
 - **The standard team's role workflows end in `Deliver`.** Every worker workflow's final
   stage is now named `Deliver` (the board verb `issue deliver`): run the role's
   `self-check.md` — its pre-delivery audit — then, on a producer card, write the
@@ -86,6 +97,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   replay pages instead of draining a long backlog synchronously.
 
 ### Added
+
+- **A writer-coverage contract gate.** `test/contract/activity-events.test.mjs` used to prove
+  only that the vocabulary and its writers agree. It now also fails when a function in
+  `src/core/commands/` calls a mutating repository method without appending an activity in the
+  same function, and when a repository method reaches a command without being classified as a
+  read or a write. The four helpers that hand their audit row to the caller
+  (`resolveOrCreate`, `resolveActorId`, `resolveLabels`, `insertDeliveryReport`) are a named
+  exemption table that fails once it no longer describes a real delegation.
+
+- **A board-wide activity cursor (`GET /api/v1/activities`).** The activity ledger used to
+  backfill by reading every card's trail separately; it now makes one newest-first read
+  (limit 1000) and scopes the rows through the board's own task set. The route takes the same
+  `?after=<revision>`, `?limit`, `?order` contract as the per-card trail, including the strict
+  cursor validation.
 
 - **A live session can host the loop's control turn (manual mode).** The loop still has
   one control turn and one dispatcher. When no supervisor is enabled, a bare
