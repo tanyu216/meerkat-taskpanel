@@ -63,7 +63,7 @@ The deterministic passes are **not scheduled individually**:
 
 | Entry | Job | Writes |
 |---|---|---|
-| `scripts/loop/passes.mjs poll` | scan → atomic claim → **enqueue the handoff** | claims, card queue |
+| `scripts/loop/passes.mjs poll` | scan → atomic claim → **enqueue the handoff**; also enqueues open agent questions (the question lane) | claims, card queue |
 | `scripts/loop/passes.mjs patrol` | heartbeat alerts + SLA rows | card queue only with `--patrol-llm=yes` |
 | `scripts/loop/passes.mjs workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `taskd` |
 
@@ -107,8 +107,8 @@ The contract:
   alert — it holds a *dormant* claim;
 - `issue candidates --stale` returns `in_progress` recoveries only, so an awaiting card is
   never offered as a stealable claim;
-- the ledger treats `awaiting` as "left the work state" for its finished-row check, so a
-  stopped worker's concurrency slot is reclaimed by the 2-hour reap at the latest.
+- the ledger's live-row reap is age-based, so a stopped worker's concurrency slot is
+  reclaimed by the 2-hour bound at the latest regardless of which state the card is in.
 
 After a human answers, the card is `todo`; dispatch happens on the next continue/poll (the
 default 10-minute cadence, or sooner when the event subscriber fires). That delay is the
@@ -119,18 +119,23 @@ continue interval, not a new clock.
 A subagent inherits the **launch cwd of the session that spawns it**; a main
 session that `cd`s later does not move its subagents. Claude Code's Agent tool
 also ignores a per-call `cwd`. One board-wide session therefore cannot give two
-projects two directories — so the pool keeps **one project session per target
+projects two directories — so the pool keeps **one worker session per target
 directory**, each launched in that directory, and the subagents it spawns are
-already where they belong.
+already where they belong. A review card gets a **second conversation in the same
+directory**, opened with the `reviewer` role: a subagent inherits its session's
+permission surface, and only that lane's surface excludes Write.
 
 ```text
 session service (supervisor --session)
 ├── control session        cwd = the taskpanel checkout
 │     /meerkat-loop Continue → patrol → workflow → poll
 │     poll: export .meerkat/<id>/card.md, claim, write the handoff queue
-└── project session        cwd = <project target_dir>   (one per directory)
-      batch prompt → spawn one worker/reviewer subagent per card
-      worker/reviewer inherit the project directory
+├── project session        cwd = <project target_dir>   (one per directory)
+│     batch prompt → spawn one worker subagent per card
+│     worker subagents inherit the project directory
+└── reviewer session       cwd = the same target_dir     (opened on demand)
+      batch prompt → spawn one reviewer subagent per review card
+      the reviewer allowlist has no Write
 ```
 
 - **Control session** — runs the judgment turn; it never spawns a worker and never
@@ -139,11 +144,18 @@ session service (supervisor --session)
   `projects.json` (`local_path ?? run_dir`, through the same `resolveWakeDir` the
   glue uses). A card whose project is unmapped or names no directory is **deferred
   before the claim**, so the board never shows a claim that has nowhere to run.
-  The batch prompt tells the session to spawn one subagent per card and return
+  The batch prompt tells the session to spawn one subagent per card, **in the
+  listed order** (the loop pairs agent ids with cards by position), and return
   without working them.
+- **Reviewer sessions** — keyed `<dir>#reviewer`, opened only when a review card
+  is queued and evicted by the same idle clock. The batch prompt is the reviewer
+  variant: no question ladder, verdict-only. The allowlist is real for Claude and
+  Pi; Codex, OpenCode and Cursor adapters have no per-role tool surface, and the
+  pool logs a one-time warning for them.
 - **Ledger** (`subagents.state.json`) — the application-level record of each
-  subagent: `sessionKey` (the project directory), actor kind, subagent id, role, card,
-  status. It is written from the agent's events, never parsed out of a transcript.
+  subagent: `sessionKey` (the project directory), `lane` (`worker`/`reviewer`),
+  actor kind, subagent id, role, card, status. The live-row reap is the only
+  completion signal the supervisor trusts beyond a finished turn.
 - **Resume** — the control and project sessions resume by session id. Subagents do
   not: on start the pool sends a re-attach prompt (native reattach where the agent kind
   supports it — Claude `SendMessage`, Codex child `thread/resume`, Pi subagent
@@ -156,13 +168,29 @@ session service (supervisor --session)
   subagents**: workers and reviewers share it and compete for slots by demand —
   the loop reserves no slots per role, so a review backlog may take the whole cap
   (at the default 8, 6 workers + 2 reviewers is the nominal steady state, not a
-  guarantee). A card spanning more target directories than `--session-pool-max`
-  meets the project-session pool first. An idle project session closes after
+  guarantee). `--session-pool-max` bounds **lanes**, so a directory running both
+  a worker and a reviewer session holds two of them. An idle lane closes after
   `--project-idle-ms` (30 min) and keeps its session id; every session gets a
   fresh conversation after `--session-max-age` (24 h).
+- **Concurrency and the working tree.** Planning and claiming are sequential; the project
+  turns then fan out, so one slow project does not serialize the others. The per-tick
+  budget is fixed before the first send, and `--project-concurrency` counts both lanes of a
+  directory. The loop does **not** isolate the working tree: parallel cards in one checkout
+  share it. A per-card `git worktree add .worktrees/<id>` is a deployment/role convention;
+  the pool only logs one warning per directory when it admits parallel work in a git
+  checkout (see "No workspace isolation" below).
 - **One lock** — a second `--session` on the same state directory is refused
   (`session.lock`). The pool writes a heartbeat every 15 s so a pass in another
   process can tell "busy" from "gone".
+
+### No workspace isolation
+
+The loop schedules conversations, not sandboxes. Every card in a project runs in that
+project's working directory, so `--project-concurrency` above 1 means parallel workers share
+one checkout. If two cards can touch the same files, the deployment gives each its own
+`git worktree add .worktrees/<id>` and delivers from there — the loop neither creates nor
+merges worktrees, and it does not detect conflicts. It logs one warning per directory the
+first time it admits parallel work in a git checkout.
 
 ### No resident pool: what still runs
 
@@ -256,10 +284,14 @@ line) double-starts work. Guards:
   up handoffs.
 - **Crash recovery.** The **ping** clock prunes the legacy registry of pids that
   are gone every 60 seconds. The resident path releases a slot from the ledger:
-  a subagent whose card is no longer claimed, or whose record outlives the turn
-  timeout, is marked stale and its slot freed; a stalled queue entry is
-  requeued up to three attempts, then failed and left to the board's stale-claim
-  recovery.
+  every live row is either a turn in flight or an orphan, so a row whose last
+  sighting outlives the 2-hour bound is marked stale and its slot freed; a
+  stalled queue entry is requeued up to three attempts, then failed and left to
+  the board's stale-claim recovery. A **retried** handoff (and every card of a
+  failed or timed-out turn) re-reads the card first: one that has already left
+  `todo`/`in_progress` — the worker delivered just before the interrupt — is
+  completed locally instead of being re-dispatched. A timed-out turn also closes
+  its session rather than reusing it.
 
 ## Fresh heartbeat is a no-op; a broken one is never silent
 
@@ -473,10 +505,13 @@ authenticating agents, not adding a rule to the same layer.
   agent CLI as the workers; a reviewer on a different agent kind (there is no cross-kind reviewer flag) is not implemented.
   If review needs a different runtime, run a second supervisor with its own `--reviewer`
   on that machine.
-- **The reviewer's tool surface is a prompt boundary.** The board enforces acceptance
-  authority, and the loop checks report attribution, but the reviewer's own permission
-  model is the agent kind's (the wake handoff tells it to move nothing; a hard tool allowlist is
-  deployment work, not something this loop configures).
+- **The reviewer's tool surface is enforced only where the adapter can enforce it.**
+  A review card runs in its own `role=reviewer` conversation, so Claude and Pi apply
+  the reviewer allowlist (no `Edit`/`Write`) to the subagent it spawns. Codex,
+  OpenCode and Cursor adapters have no per-role tool surface; there the boundary is
+  the prompt plus the board's acceptance authority and the loop's report-attribution
+  check. The pool logs a one-time warning when it opens a reviewer lane on such a
+  kind.
 
 ### Rejecting an epic: the fix child comes first
 
@@ -514,7 +549,9 @@ the container; with it, the container stays `in_progress` and names the child bl
 - **A silent reviewer is not silent forever.** An **open** review card suppresses the
   original's `acceptance_card_creation` row, so a reviewer that is never woken would
   otherwise have no watcher at all. A review card in `in_review` whose report has no readable
-  verdict raises `verdict_unreadable` immediately; a review card that is not `in_review`
+  verdict raises `verdict_unreadable` and is re-dispatched (`reopen_review`, bounded by
+  `meta.review_retry`, at most two reopens; the exhaustion alert is
+  `review_retries_exhausted`). A review card that is not `in_review`
   (todo / in_progress / blocked / awaiting) older than `--review-aging-minutes` (default 60)
   raises `review_aging`.
 - **Notified only when actionable.** Standing state — no reviewer configured, a
@@ -615,12 +652,16 @@ inlined at the start of the review handoff, bounded at 2,400 characters. Every r
 to write and maintain `.meerkat/<identifier>/plan.md`, which the reviewer reads.
 
 **Decisions.** A subagent does not decide an unauthorized question: it writes an agent
-`question` comment on the `in_progress` card and stops. The project session answers
-operationally with a `note` (and reattaches or requeues), or escalates to the human with
+`question` comment on the `in_progress` card and stops. Poll's **question lane** sees the
+unanswered question and enqueues a question row for the directory, so the project session is
+woken without waiting for the claim to go stale. It answers operationally with a `note`
+(and moves the card to `todo`), or escalates to the human with
 `issue move <ref> awaiting --awaiting-reason E1..E5`; any human comment resumes an awaiting
 card, whatever its kind, and the resumed worker judges from its content whether it is a
-complete decision. The ladder is the loop's `references/decision-policy.md`, overridable per
-team.
+complete decision. A question row is not a card handoff: it is never claimed, never opens a
+reviewer lane, and does not consume a subagent slot. The read is bounded by `--board-limit`
+and costs one `comment list` per `in_progress` card per poll. The ladder is the loop's
+`references/decision-policy.md`, overridable per team.
 
 The scan set is still explicit: write `MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing` (and
 `MEERKAT_TASKPANEL_REVIEWER=Reviewer`) to the agent config, or the loop scans only its
@@ -1295,8 +1336,15 @@ allowlist:
 | Role | Tools (Claude adapter, default) |
 |---|---|
 | control | `Read`, `Bash(taskctl *)`, `Bash(node *)` |
-| reviewer | `Read`, `Grep`, `Glob`, `Bash(taskctl *)`, `Bash(git *)` |
-| worker | `Read`, `Edit`, `Write`, `Grep`, `Glob`, `Bash(taskctl *)`, `Bash(node *)`, `Bash(git *)` |
+| reviewer | `Read`, `Grep`, `Glob`, `Agent`, `Bash(taskctl *)`, `Bash(git *)` |
+| worker | `Read`, `Edit`, `Write`, `Grep`, `Glob`, `Agent`, `Bash(taskctl *)`, `Bash(node *)`, `Bash(git *)` |
+
+`Agent` is the subagent-spawning tool (older CLIs spell it `Task`; both are listed
+so one adapter serves either). The Pi adapter carries the same split through
+`--tools`, and its lists also include `subagent` / `subagents_enable` — the
+`pi-subagents` extension's tools (inert when the extension is not installed, but
+a lane without them could not spawn). Codex, OpenCode and Cursor have no
+equivalent option.
 
 An operator who needs unattended runs that edit and execute without prompts can
 opt into **full tool access** — `--allow-all-tools`, or, for the installed
@@ -1389,9 +1437,10 @@ systemctl --user enable --now meerkat-taskpanel-session.service meerkat-taskpane
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
-The `.session` unit is the **resident pool** — one manager, a control session and
-one project session per target directory. It is the only unit that can dispatch a
-worker; without it the continue turn still runs patrol and workflow, and poll
+The `.session` unit is the **resident pool** — one manager, a control session, one
+worker session per target directory, and a reviewer session in the same directory
+when a review card is queued. It is the only unit that can dispatch a worker or a
+reviewer; without it the continue turn still runs patrol and workflow, and poll
 stops at "no resident pool".
 
 The `.subscribe` unit is the **event daemon**. launchd (`KeepAlive`) and systemd

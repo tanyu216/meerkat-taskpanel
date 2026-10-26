@@ -298,12 +298,20 @@ stopped; any human comment gets a fresh one) or cancelling — it is not an eigh
 _Avoid_: pending, on hold, blocked
 
 **Question**:
-The `question` comment a worker writes on entering `awaiting` (0034). It is the payload the
-state promises; **any human comment** answers it and the board re-queues the card. The board
-does not read the text — the resumed worker judges from its content whether the answer is a
-complete decision, and asks again if it is not.
+The `question` comment a worker writes — on entering `awaiting` for an E1–E5, or while
+staying `in_progress` for a question the project session may answer (the question lane). It
+is the payload `awaiting` promises; **any human comment** answers it and the board re-queues
+the card. The board does not read the text — the resumed worker judges from its content
+whether the answer is a complete decision, and asks again if it is not.
 _中文_: 提问
 _Avoid_: awaiting reason (that is the category, not the question), issue
+
+**Question lane**:
+The loop's path for an unanswered agent `question` on an `in_progress` card: poll enqueues a
+question row and the project session answers with a `note` (then moves the card to `todo`)
+or escalates E1–E5 to `awaiting`. It is not a card state and it never claims a card.
+_中文_: 提问通道
+_Avoid_: awaiting (that is the human-only overlay), question queue (the queue is generic)
 
 **Awaiting reason**:
 The category of the question being asked — a fixed enumeration, never free text. It says
@@ -353,15 +361,22 @@ _Avoid_: supervisor session, main agent
 
 **Project session**:
 The per-project conversation inside the pool, launched with the project's target directory
-as its cwd. It receives a batch of claimed handoffs and spawns one worker/reviewer
-**subagent** per card, which inherits that directory. It does not work the cards itself.
+as its cwd. It receives a batch of claimed handoffs and spawns one worker **subagent** per
+card, which inherits that directory. It does not work the cards itself.
 _中文_: 项目会话
 _Avoid_: worker, project agent, runner
 
+**Reviewer session**:
+The second resident conversation in a project's directory, opened with the `reviewer`
+role when a review card is queued. It spawns one reviewer **subagent** per review card;
+where the adapter has a role allowlist, that surface has no Write.
+_中文_: 审核会话
+_Avoid_: review worker, project session (that is the worker lane)
+
 **Subagent**:
-A worker or reviewer started by a project session through the agent kind's own subagent
-mechanism. It is not a separate supervisor process, and it inherits its parent session's
-cwd rather than being handed one.
+A worker or reviewer started by a project or reviewer session through the agent kind's own
+subagent mechanism. It is not a separate supervisor process, and it inherits its parent
+session's cwd rather than being handed one.
 _中文_: 子代理
 _Avoid_: worker process, child session (that is an agent-kind API term), thread
 
