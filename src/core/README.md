@@ -116,7 +116,7 @@ card with no assignee/source/target derives no key at all, so two ordinary cards
 never refuse each other.
 
 **The machine guarantee.** The read above is a race; the arbiter is the partial
-unique index `ux_tasks_idem_active` (`storage/migrations/0009_task_idem.sql`),
+unique index `ux_tasks_idem_active` (`storage/migrations/0001_init.sql`),
 which covers only non-terminal rows and lets `NULL` rows collide. A lost race
 surfaces as `IDEM_EXISTS` and `commands/tasks.mjs#createTask` converges onto the
 existing row (or re-throws if there is genuinely nothing to reuse).

@@ -232,12 +232,10 @@ die() {
 # install: the agent-kind skills are installed either way, and the operator gets the one
 # command that finishes the job. Never fatal, so it cannot mask an agent-kind failure.
 install_taskd_guard() {
-  # Automation off means this guard is off too, whichever way it was said. `NO_AUTOMATION`
-  # is already normalised from the flag or `MEERKAT_TASKPANEL_NO_AUTOMATION` above, so one
-  # test covers both spellings of the documented bypass; `TASKPANEL_NO_AUTOMATION` is the
-  # pre-rename alias `_common.sh` still honours for the agent kinds. `=1` is the same test
-  # `codex.sh` uses — a value that is not `1` is not a bypass.
-  if [ "${NO_AUTOMATION:-}" = "1" ] || [ "${TASKPANEL_NO_AUTOMATION:-}" = "1" ]; then
+  # Automation off means this guard is off too. `NO_AUTOMATION` is already
+  # normalised from the flag or `MEERKAT_TASKPANEL_NO_AUTOMATION` above. `=1` is
+  # the same test `codex.sh` uses — a value that is not `1` is not a bypass.
+  if [ "${NO_AUTOMATION:-}" = "1" ]; then
     echo "taskd guard: skipped (--no-automation)"
     return 0
   fi
@@ -441,9 +439,7 @@ done
 # run (from scripts/install/_common.sh); doing it here first means one message appears
 # before any "install.sh: <target>" line, and --skip-node-check resolves in one place.
 # Only builtins are used, so a PATH with no node still reaches a clear message.
-# legacy-name-compat: honour the pre-rename TASKPANEL_SKIP_NODE_CHECK too (this
-# read runs before scripts/install/_common.sh, which normalises the rest).
-SKIP_NODE_CHECK="${SKIP_NODE_CHECK:-${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-${TASKPANEL_SKIP_NODE_CHECK:-}}}"
+SKIP_NODE_CHECK="${SKIP_NODE_CHECK:-${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-}}"
 [ -f "$ROOT/scripts/install/_common.sh" ] || die "missing installer helper: $ROOT/scripts/install/_common.sh"
 . "$ROOT/scripts/install/_common.sh"
 if [ "$SKIP_NODE_CHECK" = "1" ]; then
@@ -504,8 +500,7 @@ DRY_RUN="${DRY_RUN:-${MEERKAT_TASKPANEL_DRY_RUN:-}}"
 # Same for --no-automation: the flag, else the inherited environment. Without this the
 # forwarding below would hand each agent-kind installer an *empty* MEERKAT_TASKPANEL_NO_AUTOMATION
 # and silently overwrite the one the caller set, so the documented environment form of the
-# bypass would skip nothing. (The pre-rename TASKPANEL_NO_AUTOMATION needs no line here:
-# `_common.sh` still normalises it inside each agent-kind installer.)
+# bypass would skip nothing.
 NO_AUTOMATION="${NO_AUTOMATION:-${MEERKAT_TASKPANEL_NO_AUTOMATION:-}}"
 SKIP_WEB_BUILD="${SKIP_WEB_BUILD:-${MEERKAT_TASKPANEL_SKIP_WEB_BUILD:-}}"
 

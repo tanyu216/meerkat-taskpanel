@@ -58,7 +58,7 @@ node scripts/verify/profiles.mjs
 step "server install (npm/npx + source, throwaway home; tree + launchers + /health)"
 node scripts/verify/server-install.mjs
 
-step "agent-kind runtime claim path (offline mock harness: hook / trigger)"
+step "agent-kind runtime claim path (offline mock harness: hook)"
 node scripts/verify/kind-runtime.mjs
 
 # The deepest step: a fresh machine's first run — install the skill for all six agent kinds

@@ -39,9 +39,11 @@ export function splitStatements(sql) {
     .filter((s) => s.length > 0);
 }
 
-const CREATE_TABLE_RE = /^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z_][A-Za-z0-9_]*)/i;
-const DROP_TABLE_RE = /^DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?([A-Za-z_][A-Za-z0-9_]*)/i;
-const RENAME_RE = /^ALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+RENAME\s+TO\s+([A-Za-z_][A-Za-z0-9_]*)/i;
+/** A bare or `"quoted"` identifier; the first group wins, else the second. */
+const IDENT = String.raw`(?:"([A-Za-z_][A-Za-z0-9_]*)"|([A-Za-z_][A-Za-z0-9_]*))`;
+const CREATE_TABLE_RE = new RegExp(`^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${IDENT}`, "i");
+const DROP_TABLE_RE = new RegExp(`^DROP\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?${IDENT}`, "i");
+const RENAME_RE = new RegExp(`^ALTER\\s+TABLE\\s+${IDENT}\\s+RENAME\\s+TO\\s+${IDENT}`, "i");
 
 /**
  * One pass over the statements, following **drops and renames**, so the reader
@@ -71,7 +73,7 @@ function readSchema(sql) {
   for (const stmt of splitStatements(sql)) {
     const create = CREATE_TABLE_RE.exec(stmt);
     if (create !== null) {
-      const entry = { name: create[1].toLowerCase(), dropped: false };
+      const entry = { name: (create[1] ?? create[2]).toLowerCase(), dropped: false };
       created.push(entry);
       byName.set(entry.name, entry);
       // A fresh regex per statement: `lastIndex` is state, and this reader must
@@ -103,7 +105,7 @@ function readSchema(sql) {
 
     const dropped = DROP_TABLE_RE.exec(stmt);
     if (dropped !== null) {
-      const name = dropped[1].toLowerCase();
+      const name = (dropped[1] ?? dropped[2]).toLowerCase();
       const entry = byName.get(name);
       if (entry !== undefined) {
         entry.dropped = true;
@@ -114,10 +116,10 @@ function readSchema(sql) {
 
     const renamed = RENAME_RE.exec(stmt);
     if (renamed !== null) {
-      const entry = byName.get(renamed[1].toLowerCase());
+      const entry = byName.get((renamed[1] ?? renamed[2]).toLowerCase());
       if (entry !== undefined) {
         byName.delete(entry.name);
-        entry.name = renamed[2].toLowerCase();
+        entry.name = (renamed[3] ?? renamed[4]).toLowerCase();
         byName.set(entry.name, entry);
       }
     }

@@ -32,7 +32,7 @@ There are three layers, and it is worth keeping them straight:
 2. **The agent bundle** (Claude Code and Codex) — `install.sh --target claude|codex`
    deploys the rest of that agent's setup too, not just the skill: the agent config
    (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
-   or a claim trigger (Codex), and a `taskctl` shim that pins the agent identity. Writes
+   or the scheduling units (Codex), and a `taskctl` shim that pins the agent identity. Writes
    are **merge-style and idempotent**: a repeat install **exits 0**, leaves every managed
    file and config key at its existing value, and prints a
    `left unchanged — use --force to overwrite` notice; `--force` is the *only* way to
@@ -176,7 +176,7 @@ The two bundle agent kinds write more than the skill. **Claude** additionally wr
 `env.TASKCTL_HUMAN` + a `SessionStart` hook),
 `~/.claude/hooks/meerkat-taskpanel-session-start.sh`, `~/.claude/commands/{board,claim,deliver}.md`
 and `~/.claude/bin/taskctl`. **Codex** writes `~/.codex/AGENTS.md` (a claim-first snippet),
-`~/.codex/meerkat-taskpanel-claim.sh` (the schedulable trigger) and `~/.codex/bin/taskctl`.
+the scheduling units under `~/.codex/scheduling/`, and `~/.codex/bin/taskctl`.
 (Their shims are the same file described above — every agent kind gets one.)
 
 The kind is not decoration. It is what the board reads to tell a person from an agent:
@@ -475,13 +475,10 @@ MEERKAT_TASKPANEL_WORKFLOW=yes
 MEERKAT_TASKPANEL_REVIEWER=
 ```
 
-Acceptance is **not** install configuration any more (0038): each project stores a default
+Acceptance is **not** install configuration any more: each project stores a default
 (`auto | off | agent | human`) and each card a snapshot, both set through
-`taskctl project update <id> --acceptance …` / `issue create --acceptance-mode …`. The retired
-`TASKD_ACCEPTANCE_POLICY` key makes `taskd` refuse to start until it is removed — that refusal
-is deliberate, so a board configured `human-only` cannot silently become something else.
-The file is merged, never rewritten. The old `<dataDir>/taskd.env` is no longer read: move any
-keys it has into `.env`.
+`taskctl project update <id> --acceptance …` / `issue create --acceptance-mode …`.
+The file is merged, never rewritten.
 
 `MEERKAT_TASKPANEL_ENV_FILE` points the installer and both binaries at a different file (a
 read-only package root, a container, or the test suite).
@@ -517,7 +514,7 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`; the server tree lands at `<home>/.meerkat-taskpanel`. |
 | `--skip-web-build` | Never try to build `web/dist`. A server install without a prebuilt `web/dist` is then API-only (with a warning) instead of building it. |
 | `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `$USER`). Must equal the board assignee for the agent to claim cards. |
-| `--no-automation` | Skip **all** Codex automation — the claim trigger *and* the scheduling units — **and** the `taskd` keepalive guard; the Claude/OpenClaw/Pi skill bundles are otherwise unaffected. |
+| `--no-automation` | Skip the Codex scheduling units **and** the `taskd` keepalive guard; the Claude/OpenClaw/Pi skill bundles are otherwise unaffected. |
 | `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each agent-kind installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<agent-dir>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
@@ -679,7 +676,7 @@ rm -rf ~/.openclaw/skills/meerkat-taskpanel
 ### Codex
 
 ```bash
-# 1. skill + agent bundle (AGENTS.md snippet, claim trigger, shim)
+# 1. skill + agent bundle (AGENTS.md snippet, scheduling units, shim)
 bash install.sh --target codex --link --agent-name alice
 
 # 2. plugin
@@ -691,14 +688,12 @@ codex plugin list
 ```
 
 Step 1 writes, merge-style and idempotently: the skill, a claim-first snippet appended to
-`~/.codex/AGENTS.md` (existing content is preserved), the schedulable claim trigger
-`~/.codex/meerkat-taskpanel-claim.sh`, the `taskctl` shim at `~/.codex/bin/taskctl`, and the
-scheduling set (`~/.codex/scheduling/*` and
+`~/.codex/AGENTS.md` (existing content is preserved), the `taskctl` shim at
+`~/.codex/bin/taskctl`, and the scheduling set (`~/.codex/scheduling/*` and
 `~/.codex/meerkat-taskpanel.env`). Codex has no hooks, so scheduling is the auto-claim
 mechanism — load one of the units (see
-[Scheduling units](#scheduling-units-claude-codex-pi)); the legacy trigger remains a
-minimal fallback you can schedule yourself. `--no-automation` (or its environment form
-`MEERKAT_TASKPANEL_NO_AUTOMATION=1`) skips the trigger *and* the scheduling set.
+[Scheduling units](#scheduling-units-claude-codex-pi)). `--no-automation` (or its environment
+form `MEERKAT_TASKPANEL_NO_AUTOMATION=1`) skips the scheduling set.
 
 Uninstall:
 
@@ -706,7 +701,7 @@ Uninstall:
 codex plugin remove meerkat-taskpanel
 codex plugin marketplace remove meerkat-taskpanel-marketplace
 rm -rf ~/.codex/skills/meerkat-taskpanel ~/.codex/skills/meerkat-loop \
-       ~/.codex/meerkat-taskpanel-claim.sh ~/.codex/bin/taskctl \
+       ~/.codex/bin/taskctl \
        ~/.codex/scheduling ~/.codex/meerkat-taskpanel.env ~/.codex/meerkat-taskpanel
 ```
 
@@ -824,11 +819,10 @@ node scripts/verify/kind-runtime.mjs --actor-kind claude
 
 It installs into a throwaway prefix (never `$HOME`), replaces the generated `taskctl`
 shim with a canned one — it records every argv — then drives the generated SessionStart
-hook and the Codex claim trigger, asserting the **actual invocation** (exit code + argv +
-output), not just "it ran". This is the step that covers the claim path in CI, where the
-real CLIs are absent. The full matrix and the per-agent-kind coverage boundary (Pi has no
-hook/trigger) are in
-[`scheduling.md`](scheduling.md#verifying-the-generated-trigger).
+hook, asserting the **actual invocation** (exit code + argv + output), not just "it ran".
+This is the step that covers the claim path in CI, where the real CLIs are absent. The full
+matrix and the per-agent-kind coverage boundary (Pi has no hook) are in
+[`scheduling.md`](scheduling.md#verifying-the-generated-hook).
 
 ## Isolated installs and testing
 

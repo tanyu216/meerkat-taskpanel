@@ -241,7 +241,7 @@ project directory is a working directory, **not** an isolation boundary.
 
 ## Compatibility
 
-The loop declares `task-interface v1` and board release ≥ 1.1.0 in `SKILL.md`, enforced by
+The loop declares `task-interface v1` and board release ≥ 0.1.0 in `SKILL.md`, enforced by
 `taskctl loop compat`; the board declares its release and contract `schema_version` through
 `taskctl --version --json`. The gate is deliberately coarse: it answers "is this a board of the
 generation I was written against?", not "does every command still behave identically". A change

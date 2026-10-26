@@ -35,9 +35,9 @@ moves with the board.
 `scripts/release/bump.mjs` moves the whole group at once:
 
 ```bash
-node scripts/release/bump.mjs 1.1.0                    # or: npm run release:bump 1.1.0
-node scripts/release/bump.mjs 1.1.0 --changelog        # + an empty CHANGELOG scaffold
-node scripts/release/bump.mjs 1.1.0 --changelog --tag
+node scripts/release/bump.mjs 0.1.1                    # or: npm run release:bump 0.1.1
+node scripts/release/bump.mjs 0.1.1 --changelog        # + an empty CHANGELOG scaffold
+node scripts/release/bump.mjs 0.1.1 --changelog --tag
 ```
 
 `--group` still exists as a seam — `--group loop` is now an unknown group rather than a
@@ -69,7 +69,7 @@ shipping. Run it before tagging — and after the bump, as the proof the bump wa
 ```bash
 node scripts/verify/version.mjs                  # both groups
 node scripts/verify/version.mjs --group loop     # narrow to one
-node scripts/release/bump.mjs 1.1.0 && node scripts/verify/version.mjs   # bump, then prove it
+node scripts/release/bump.mjs 0.1.1 && node scripts/verify/version.mjs   # bump, then prove it
 ```
 
 Then commit the three files (and the scaffold, once filled in) **in one commit**, and let CI
@@ -189,8 +189,12 @@ git push origin v<version>  # triggers .github/workflows/release.yml
 
 ### 3.1 The tag ↔ CHANGELOG gate
 
-A version tag is only cut when `CHANGELOG.md` documents it. The rule lives in one
-reusable, offline checker — `scripts/verify/changelog.mjs` — and every door calls it:
+A version tag is only cut when `CHANGELOG.md` documents it. The section is authored at the
+`dev` → `main` release merge, from `git log --no-merges <last-release-tag>..dev` and
+`git diff --stat <last-release-tag>..dev` (for the first release, `main..dev`); feature
+branches and `dev` itself never edit `CHANGELOG.md`, and `[Unreleased]` stays empty between
+releases. The rule lives in one reusable, offline checker —
+`scripts/verify/changelog.mjs` — and every door calls it:
 
 ```bash
 node scripts/verify/changelog.mjs v1.2.3     # exit 0 has an entry · 1 missing · 2 usage

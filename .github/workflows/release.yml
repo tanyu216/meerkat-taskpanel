@@ -1,6 +1,6 @@
 name: release
 
-# A tag push (`v1.0.0`) is the release trigger. The job re-runs the same checks
+# A tag push (`v0.1.0`) is the release trigger. The job re-runs the same checks
 # as `check.yml`, then builds the frontend and the release tree, packages the
 # npm tarball, verifies the tarball's contents, generates the SBOM, and opens a
 # **draft** GitHub Release carrying both artifacts.

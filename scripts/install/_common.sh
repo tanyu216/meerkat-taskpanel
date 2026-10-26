@@ -40,21 +40,17 @@
 
 set -eu
 
-# legacy-name-compat: the pre-rename TASKPANEL_* variables are still honoured —
-# the rename to MEERKAT_TASKPANEL_* is a migration, and an existing profile or
-# wrapper script must keep working. The new name wins when both are set. Read
-# once, here, so every helper below sees a single spelling.
-MEERKAT_TASKPANEL_TARGET_HOME="${MEERKAT_TASKPANEL_TARGET_HOME:-${TASKPANEL_TARGET_HOME:-}}"
-MEERKAT_TASKPANEL_AGENT_NAME="${MEERKAT_TASKPANEL_AGENT_NAME:-${TASKPANEL_AGENT_NAME:-}}"
-MEERKAT_TASKPANEL_LINK="${MEERKAT_TASKPANEL_LINK:-${TASKPANEL_LINK:-}}"
-MEERKAT_TASKPANEL_FORCE="${MEERKAT_TASKPANEL_FORCE:-${TASKPANEL_FORCE:-}}"
-MEERKAT_TASKPANEL_DRY_RUN="${MEERKAT_TASKPANEL_DRY_RUN:-${TASKPANEL_DRY_RUN:-}}"
-MEERKAT_TASKPANEL_NO_AUTOMATION="${MEERKAT_TASKPANEL_NO_AUTOMATION:-${TASKPANEL_NO_AUTOMATION:-}}"
-MEERKAT_TASKPANEL_MIN_NODE="${MEERKAT_TASKPANEL_MIN_NODE:-${TASKPANEL_MIN_NODE:-}}"
-MEERKAT_TASKPANEL_SKIP_NODE_CHECK="${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-${TASKPANEL_SKIP_NODE_CHECK:-}}"
-MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-${TASKPANEL_CLAIM_UNASSIGNED:-}}"
-# No pre-rename alias for these: the supervisor's flag surface is new in the opt-in
-# contract, so there is no TASKPANEL_SUPERVISOR spelling in the wild to keep working.
+# The installer speaks one spelling: MEERKAT_TASKPANEL_*. Read once, here, so every
+# helper below sees a single set of values.
+MEERKAT_TASKPANEL_TARGET_HOME="${MEERKAT_TASKPANEL_TARGET_HOME:-}"
+MEERKAT_TASKPANEL_AGENT_NAME="${MEERKAT_TASKPANEL_AGENT_NAME:-}"
+MEERKAT_TASKPANEL_LINK="${MEERKAT_TASKPANEL_LINK:-}"
+MEERKAT_TASKPANEL_FORCE="${MEERKAT_TASKPANEL_FORCE:-}"
+MEERKAT_TASKPANEL_DRY_RUN="${MEERKAT_TASKPANEL_DRY_RUN:-}"
+MEERKAT_TASKPANEL_NO_AUTOMATION="${MEERKAT_TASKPANEL_NO_AUTOMATION:-}"
+MEERKAT_TASKPANEL_MIN_NODE="${MEERKAT_TASKPANEL_MIN_NODE:-}"
+MEERKAT_TASKPANEL_SKIP_NODE_CHECK="${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-}"
+MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-}"
 MEERKAT_TASKPANEL_SUPERVISOR="${MEERKAT_TASKPANEL_SUPERVISOR:-}"
 MEERKAT_TASKPANEL_SCHEDULER="${MEERKAT_TASKPANEL_SCHEDULER:-}"
 # The workflow channel's persisted answers. Empty means "not given" and falls back to
@@ -238,7 +234,6 @@ export_tp_env() {
   TP_REPO="${MEERKAT_TASKPANEL_REPO:-$(repo_root)}"
   TP_SHIM="$(target_home)/$agent_dir/bin/taskctl"
   TP_HOOK="$(target_home)/$agent_dir/hooks/meerkat-taskpanel-session-start.sh"
-  TP_TRIGGER="$(target_home)/$agent_dir/meerkat-taskpanel-claim.sh"
   # The external loop is `taskctl loop …`, shipped by the runtime tree `TP_REPO`
   # names. Log and state are fixed per agent kind so a user always knows where they
   # land (documented in docs/scheduling.md).
@@ -343,7 +338,7 @@ export_tp_env() {
     return 1
   fi
 
-  export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
+  export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK
   export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_STATE_DIR TP_CLI TP_LOG TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED
   export TP_RECOVER_STALE TP_WORKFLOW TP_REVIEWER
   export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
@@ -480,61 +475,15 @@ apply_supervisor() {
   return 0
 }
 
-# remove_legacy_loop_body — drop the execution body the installer used to copy into
-# the agent directory. The loop now ships with the toolkit (`src/orchestrator/`, reached
-# through `taskctl loop …`), so the copy is dead weight: a loaded unit names the CLI, and
-# leaving a stale body behind would only invite someone to run it.
+# install_scheduling — write the scheduling units, then either print the exact
+# command that loads them or — when the user asked for it (`--supervisor=…`, i.e.
+# MEERKAT_TASKPANEL_SUPERVISOR is set) — run that load. Without a request the installer
+# never runs `launchctl` / `systemctl` / `crontab` itself: enabling a daemon is the user's
+# call, and a plain install must have no side effects. Requires export_tp_env first.
 #
-# Only the body is removed. `$TP_LOOP` also holds the loop's state, log and queue, which
-# outlive an upgrade. `--dry-run` reports instead of deleting.
-remove_legacy_loop_body() {
-  if [ -z "${TP_LOOP:-}" ]; then
-    echo "$TP_ACTOR_KIND: TP_LOOP is unset; refusing to remove a loop body" >&2
-    return 1
-  fi
-  for legacy in "$TP_LOOP/scripts" "$TP_LOOP/templates" "$TP_LOOP/manifest.txt"; do
-    [ -e "$legacy" ] || continue
-    if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-      echo "would remove $legacy (the loop now ships with taskctl)"
-    else
-      rm -rf "$legacy"
-      echo "$TP_ACTOR_KIND: removed  $legacy (the loop now ships with taskctl)"
-    fi
-  done
-}
-
-# install_scheduling — drop the retired loop body, write the scheduling units, then either
-# print the exact command that loads them or — when the user asked for it
-# (`--supervisor=…`, i.e. MEERKAT_TASKPANEL_SUPERVISOR is set) — run that load. Without a
-# request the installer never runs `launchctl` / `systemctl` / `crontab` itself: enabling a
-# daemon is the user's call, and a plain install must have no side effects. Requires
-# export_tp_env first.
-#
-# The templates are this installer's own (`scripts/install/templates/`), the one place they
-# live: the loop skill carries decisions, not deployment files.
-# remove_legacy_unit_files — drop the poll/patrol templates this installer used to
-# write. A loaded legacy unit is taken down by `apply_supervisor enable`; these are
-# the on-disk copies, removed only after that so a user cannot accidentally reload
-# the old topology. `--dry-run` reports instead of deleting.
-remove_legacy_unit_files() {
-  for legacy in \
-    "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist" \
-    "$TP_SCHED/launchd/com.meerkat-taskpanel.patrol.plist" \
-    "$TP_SCHED/systemd/meerkat-taskpanel-poll.service" \
-    "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer" \
-    "$TP_SCHED/systemd/meerkat-taskpanel-patrol.service" \
-    "$TP_SCHED/systemd/meerkat-taskpanel-patrol.timer"; do
-    [ -e "$legacy" ] || continue
-    if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-      echo "would remove $legacy"
-    else
-      rm -f "$legacy"
-    fi
-  done
-}
-
+# The templates are this installer's own (`scripts/install/templates/`), the one place
+# they live: the loop skill carries decisions, not deployment files.
 install_scheduling() {
-  remove_legacy_loop_body
   # The loop's state directory (queue, ledger, locks, status files). It used to be
   # created as a side effect of copying the body; now nothing else makes it.
   if [ -z "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
@@ -564,13 +513,7 @@ install_scheduling() {
 
   if [ -n "${MEERKAT_TASKPANEL_SUPERVISOR:-}" ]; then
     apply_supervisor
-    remove_legacy_unit_files
     return 0
-  fi
-
-  if [ -e "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist" ] ||
-    [ -e "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer" ]; then
-    echo "$TP_ACTOR_KIND: legacy poll/patrol units are still present — re-run with --supervisor=enable to migrate them to ping/continue"
   fi
 
   echo "$TP_ACTOR_KIND: to start the supervisor, load one of these (nothing is loaded for you):"
@@ -631,13 +574,6 @@ seed_env_file() {
     *) env_file="$seed_root/$env_file" ;;
   esac
   template="$seed_root/scripts/install/templates/env.example"
-
-  # The old board file is no longer read (hard switch). Say so, but do not touch
-  # it: a human may still want to move its keys by hand.
-  legacy_dir="${TASKD_DATA_DIR:-$seed_root/.data}"
-  if [ -f "$legacy_dir/taskd.env" ]; then
-    echo "install.sh: note: $legacy_dir/taskd.env is no longer read; move its keys into $env_file" >&2
-  fi
 
   if [ -f "$env_file" ]; then
     echo "install.sh: kept $env_file (already exists)"

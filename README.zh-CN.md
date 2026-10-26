@@ -151,7 +151,7 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 第三个 skill **`setup-meerkat`** 就是 `/setup-meerkat` 命令。它会探测已安装的部分、补齐缺失、提供 Matt Pocock issue-tracker 集成，并按需安装 Jobs/Linus/Turing 加独立 reviewer 的团队（角色 workflow、原生 agent 定义、计划文件与遗漏检查的约定）。`install.sh --target claude` 会把它复制到 `~/.claude/skills/setup-meerkat`。其他 agent kind（包括 OpenClaw）可以从共享 bundle 就地读到；为 OpenClaw 提供专门支持列在[路线图](#路线图)里。
 
-常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，默认 `$USER`，须与其 assignee 一致；对既有安装改名需配 `--force` 才生效）、`--no-automation`（跳过 Codex 认领触发脚本）、`--link`（软链而非拷贝）、`--force`（**唯一**的覆盖手段 —— 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`（预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
+常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，默认 `$USER`，须与其 assignee 一致；对既有安装改名需配 `--force` 才生效）、`--no-automation`（跳过 Codex 调度单元与 taskd guard）、`--link`（软链而非拷贝）、`--force`（**唯一**的覆盖手段 —— 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`（预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
 **配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的 `.env`，取看板 URL、客户端 token、allow-list 与 SLA 阈值（`TASKD_SLA_*`，由看板校验并通过 `GET /api/v1/sla` 发布）。进程环境逐键优先，CLI 参数再优先于两者。`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每条 `taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其中的键搬进 `.env`。详见 [`docs/install.md`](docs/install.md) 与 [`docs/development.md`](docs/development.md)。
 
@@ -215,7 +215,7 @@ install.sh --supervisor=disable    # 卸载
 
 `--supervisor-actor-kinds` 限定动作作用于哪些 agent kind。安装时还会问一次是否允许 supervisor 认领未分配的卡（默认允许），并把答案记在 `<agent-dir>/meerkat-taskpanel.env`。
 
-loop 会声明它需要的看板接口：`task-interface v1`、board 版本 >= 1.1.0。loop 自身不带版本号。它的 `taskctl loop compat` 会对着看板自己的 `--version --json` 检查，拿不到结论时退出码为 3。
+loop 会声明它需要的看板接口：`task-interface v1`、board 版本 >= 0.1.0。loop 自身不带版本号。它的 `taskctl loop compat` 会对着看板自己的 `--version --json` 检查，拿不到结论时退出码为 3。
 
 成本模型很简单。ping 是 $0。continue 每个周期一个有界模型回合。回合里的 poll 是确定性的成本闸门：只有认领成功，才会起 worker 或 reviewer 回合。cron 上没有会话池，也就没有 worker 派发。
 
@@ -252,7 +252,7 @@ agent kind 之间的差异，只在**由谁执行这些规则**。
 
 ## Codex
 
-`install.sh --target codex --agent-name <名>` 会部署完整 bundle。它向 `~/.codex/AGENTS.md` 追加 claim-first 片段，写入可调度的认领触发脚本 `~/.codex/meerkat-taskpanel-claim.sh`（`--no-automation` 跳过），并随包提供 `taskctl` 包装脚本。
+`install.sh --target codex --agent-name <名>` 会部署完整 bundle。它向 `~/.codex/AGENTS.md` 追加 claim-first 片段，写入调度单元（`--no-automation` 跳过），并随包提供 `taskctl` 包装脚本。
 
 以同样方式操作看板，并用当前线程作为会话 id —— `--actor-kind codex --session-id "$CODEX_THREAD_ID"` —— 做会话级归属。Codex 本身没有定时器，所以规则 1 由[调度器](#meerkat-loop-调度器)唤醒 `codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
 

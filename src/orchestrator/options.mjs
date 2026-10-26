@@ -140,12 +140,6 @@ flag("--roles-dir", (opts, value) => { opts.rolesDir = resolve(value); });
 flag("--actor-kind", (opts, value) => { opts.actorKind = value; });
 flag("--repo", (opts, value) => { opts.repo = resolve(value); });
 flag("--ping-interval", (opts, value) => { opts.pingInterval = number("--ping-interval", value); });
-// Deprecated alias for the ping clock. The old units pass a bare `--once`, so
-// the alias only has to keep the flag itself working.
-flag("--poll-interval", (opts, value) => {
-  opts.pingInterval = number("--poll-interval", value);
-  opts.legacyPollInterval = true;
-});
 flag("--continue-interval", (opts, value) => { opts.continueInterval = number("--continue-interval", value); });
 flag("--continue", (opts, value) => { opts.continue = value; });
 // 0034 — the origin of this loop, which decides *where* an unanswerable question
@@ -278,7 +272,6 @@ function defaultOptions(env) {
     eventDebounceMaxMs: undefined,
     eventContinue: undefined,
     eventContinueMinMs: undefined,
-    legacyPollInterval: false,
     patrolLlm: false,
     notify: null,
     dryRun: false,
@@ -617,7 +610,7 @@ export function resolveLoopConfig(opts, env = process.env) {
   const claimUnassigned = resolveClaimUnassigned({
     flag: opts.claimUnassigned,
     // legacy-name-compat: accept the pre-rename env var too.
-    env: env.MEERKAT_TASKPANEL_CLAIM_UNASSIGNED ?? env.TASKPANEL_CLAIM_UNASSIGNED,
+    env: env.MEERKAT_TASKPANEL_CLAIM_UNASSIGNED,
     file: configFile,
   });
   const recoverStale = resolveRecoverStale({

@@ -27,7 +27,7 @@
  *
  * RELATION TO THE OTHER VERIFY ASSETS (the card asks for this explicitly)
  *   * scripts/verify/kind-runtime.mjs — OFFLINE mock harness: drives the generated
- *     SessionStart hook and claim trigger against a FAKE taskctl and asserts argv. It never
+ *     SessionStart hook against a FAKE taskctl and asserts argv. It never
  *     touches a real CLI, and it says nothing about resume. This script is the real-CLI
  *     counterpart.
  *   * scripts/verify/kind-cli.mjs — drives the real CLIs too, but only for plugin/marketplace

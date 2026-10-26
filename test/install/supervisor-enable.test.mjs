@@ -392,8 +392,8 @@ describe("install.sh: enable — launchd", () => {
     assert.equal(existsSync(manager.launchdState), false, "the job is gone");
     assert.equal(
       calls(manager).filter((line) => line.startsWith("launchctl bootout")).length,
-      8,
-      "two legacy bootouts during enable, then six during disable (legacy + new)",
+      4,
+      "the four new units are booted out on disable",
     );
 
     const again = runInstall([...base, "--supervisor=disable"], installEnv(home, manager));
@@ -505,7 +505,6 @@ describe("install.sh: enable — systemd", () => {
 
     const sequence = calls(manager).filter((line) => line.startsWith("systemctl"));
     assert.deepEqual(sequence, [
-      "systemctl --user disable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer",
       "systemctl --user daemon-reload",
       "systemctl --user is-enabled meerkat-taskpanel-ping.timer",
       "systemctl --user is-enabled meerkat-taskpanel-continue.timer",
@@ -584,7 +583,7 @@ describe("install.sh: enable — systemd", () => {
     assert.equal(disabled.status, 0, disabled.stderr);
     assert.match(disabled.stdout, /^supervisor: disabled \(kind=claude, scheduler=systemd, units=/m);
     assert.ok(
-      calls(manager).includes("systemctl --user disable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-session.service meerkat-taskpanel-subscribe.service meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer"),
+      calls(manager).includes("systemctl --user disable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-session.service meerkat-taskpanel-subscribe.service"),
     );
 
     const again = runInstall([...base, "--supervisor=disable"], env);

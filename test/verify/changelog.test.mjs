@@ -103,12 +103,21 @@ describe("changelog.mjs — findVersionEntry", () => {
   });
 });
 
-describe("changelog.mjs — checkChangelog against this checkout", () => {
-  it("passes for the version that has a CHANGELOG entry (v1.0.0)", async () => {
-    const result = await checkChangelog({ tag: "v1.0.0" });
+describe("changelog.mjs — checkChangelog against a tree", () => {
+  it("passes for a version that has a CHANGELOG entry", async () => {
+    const dir = await makeTree();
+    await writeFile(join(dir, "CHANGELOG.md"), "# Changelog\n\n## [2.1.0]\n\n- x\n", "utf8");
+    const result = await checkChangelog({ tag: "v2.1.0", base: dir });
     assert.equal(result.ok, true, result.error);
-    assert.equal(result.version, "1.0.0");
+    assert.equal(result.version, "2.1.0");
     assert.equal(typeof result.line, "number");
+  });
+
+  it("has no release section yet: v0.1.0 is still the unreleased baseline", async () => {
+    const result = await checkChangelog({ tag: "v0.1.0" });
+    assert.equal(result.ok, false);
+    assert.equal(result.version, "0.1.0");
+    assert.match(result.error, /CHANGELOG\.md/);
   });
 
   it("fails, naming the tag, when the version is missing from CHANGELOG.md", async () => {
@@ -135,10 +144,12 @@ describe("changelog.mjs — checkChangelog against this checkout", () => {
 });
 
 describe("changelog.mjs — the CLI", () => {
-  it("exits 0 for a tag with a CHANGELOG entry", () => {
-    const result = runCli(["v1.0.0"]);
+  it("exits 0 for a tag with a CHANGELOG entry", async () => {
+    const dir = await makeTree();
+    await writeFile(join(dir, "CHANGELOG.md"), "# Changelog\n\n## [2.1.0]\n\n- x\n", "utf8");
+    const result = runCli(["v2.1.0", "--base", dir]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /1\.0\.0/);
+    assert.match(result.stdout, /2\.1\.0/);
   });
 
   it("exits 1 when the tag has no CHANGELOG entry (the RED case)", () => {

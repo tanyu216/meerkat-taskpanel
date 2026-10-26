@@ -19,7 +19,7 @@ import { join, resolve } from "node:path";
 export const REQUIRED_BOARD_INTERFACE = "task-interface v1";
 
 /** The board release that first shipped that generation — the floor this gate enforces. */
-export const REQUIRED_BOARD_VERSION = "1.1.0";
+export const REQUIRED_BOARD_VERSION = "0.1.0";
 
 /**
  * Parse `x.y.z[-pre][+build]` into numbers. Returns `null` when it is not a version.
@@ -42,8 +42,8 @@ export function parseVersion(value) {
 /**
  * Is `candidate` at least `floor`?
  *
- * Compared on the numeric triple; a prerelease equal to the floor (`1.1.0-rc.1`
- * against `1.1.0`) does not satisfy it.
+ * Compared on the numeric triple; a prerelease equal to the floor (`0.1.0-rc.1`
+ * against `0.1.0`) does not satisfy it.
  *
  * @param {string} candidate
  * @param {string} floor

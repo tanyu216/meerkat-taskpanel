@@ -174,16 +174,6 @@ function validateValue(key, value) {
         throw configError(`${key} must be true or false`, { key });
       }
       return value;
-    case "TASKD_ACCEPTANCE_POLICY":
-      // 0038 — retired. Acceptance is board data now (`projects.acceptance` and
-      // each card's `acceptance_mode`); silently ignoring a configured rule
-      // would upgrade an operator into a different closing rule than they asked
-      // for, so the config file is refused with the migration to run.
-      throw configError(
-        `${key} is retired; set the project default instead ` +
-          "(`taskctl project update <id> --acceptance human|agent|off|auto`)",
-        { key },
-      );
     default: {
       const text = value.trim();
       if (text === "") throw configError(`${key} is empty`, { key });

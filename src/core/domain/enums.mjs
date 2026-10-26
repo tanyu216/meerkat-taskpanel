@@ -9,10 +9,10 @@
  * This module is pure: no `node:` specifiers.
  */
 
-// 0039 folds `tasks.acceptance_mode` into the CREATE TABLE body during the
-// `deploy` rebuild, so the SQL-parity reader sees it and the vocabulary must be
-// declared below. `acceptance-mode.mjs` is pure and imports nothing from here.
-import { CARD_ACCEPTANCE_MODES } from "./acceptance-mode.mjs";
+// The 0.1.0 baseline declares both acceptance CHECKs in its CREATE TABLE bodies,
+// so the SQL-parity reader sees them and the vocabulary must be declared below.
+// `acceptance-mode.mjs` is pure and imports nothing from here.
+import { CARD_ACCEPTANCE_MODES, PROJECT_ACCEPTANCES } from "./acceptance-mode.mjs";
 
 /**
  * Canonical task statuses (F2 — the card's seven stage statuses, plus M1's
@@ -297,25 +297,18 @@ export const HISTORICAL_ACTIVITY_EVENTS = Object.freeze(["progress", "import_com
  * still free to validate a narrower set on its own write paths (`ACTOR_KINDS`
  * below), and being stricter than the schema is safe; what must not linger is a
  * *declaration* here, which the parity test would read as "declared in JS but no
- * CHECK in SQL".
- * `test/core/storage/migrations-0018.test.mjs` closes that gap from the other
- * side: it reads `0018`'s text and asserts both columns really are open.
+ * CHECK in SQL". The baseline declares every CHECK in its `CREATE TABLE` bodies,
+ * so the reader sees them all; `BLOCKED_REASONS` and the acceptance vocabularies
+ * own the literals.
  */
 export const SQL_ENUM_SETS = Object.freeze({
   "tasks.status": STATUSES,
   "tasks.awaiting_reason": AWAITING_REASONS,
   "tasks.priority": PRIORITIES,
   "tasks.kind": TASK_KINDS,
-  // `0019` rebuilds `tasks` and moves `blocked_reason`'s `CHECK` (0016, added by
-  // `ALTER TABLE … ADD COLUMN`, invisible to the SQL-parity reader) into the
-  // `CREATE TABLE` body, where the reader *does* see it. Declaring its literals
-  // here is what keeps the two sides paired — the same `0018` rule that once
-  // covered `task_reports.origin` before 0035 removed it. `BLOCKED_REASONS`
-  // above owns the vocabulary.
   "tasks.blocked_reason": BLOCKED_REASONS,
-  // 0039 — 0038 added `acceptance_mode` by ALTER (invisible to the reader);
-  // the `deploy` rebuild moves it into the CREATE body, so it is declared here.
   "tasks.acceptance_mode": CARD_ACCEPTANCE_MODES,
+  "projects.acceptance": PROJECT_ACCEPTANCES,
   "task_relations.relation_type": RELATION_TYPES,
   "comments.kind": COMMENT_KINDS,
   "attachments.kind": ATTACHMENT_KINDS,

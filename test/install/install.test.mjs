@@ -122,7 +122,7 @@ describe("install.sh: targets", () => {
     assert.equal(run.status, 0, run.stderr);
     const tree = join(home, ".meerkat-taskpanel");
     assert.ok(existsSync(join(tree, "src", "server", "main.mjs")));
-    assert.ok(existsSync(join(tree, "src", "core", "storage", "migrations", "0001_core_tables.sql")));
+    assert.ok(existsSync(join(tree, "src", "core", "storage", "migrations", "0001_init.sql")));
     assert.ok(existsSync(join(tree, "bin", "taskd")));
     assert.ok(existsSync(join(tree, "bin", "taskctl")));
     assert.ok(existsSync(join(tree, ".env")));
