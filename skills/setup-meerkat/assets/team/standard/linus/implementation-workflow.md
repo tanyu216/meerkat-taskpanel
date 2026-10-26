@@ -30,6 +30,30 @@ List the blast radius: callers, contracts, migrations, configuration and data.
 
 ### 2. Design the smallest change
 
+#### Apply the design principles
+
+Apply the six principles as the tie-breakers for this change, before naming files or
+freezing the design. The definitions and the conflict ordering live in the project's
+`docs/architecture.md` (the `/init` product restates them as every agent's baseline).
+Answer each question for this change and name the evidence:
+
+- **Simple** — can a newcomer follow one primary use case end to end without a diagram, and
+  is there one obvious way? Name the single path and the files on it.
+- **Reliable** — what happens when each dependency fails, is slow, or returns garbage? Name
+  the failure paths and the tests that cover them.
+- **Efficient** — where is the cost measured, and what is the bound? Name the existing
+  budget, or state that no optimization is claimed.
+- **Elegant** — do the names, errors and contract tell one story? Name the one place each
+  concern lives.
+- **Not over-engineered** — what happens if this layer, pattern or dependency is deleted?
+  Name its forcing function, or do not add it.
+- **High cohesion, low coupling** — does each module or function have one reason to change,
+  with dependencies pointing one way? Name the boundary and the interface it crosses.
+
+When they conflict: simplicity and reliability first; efficiency needs a measurement;
+elegance constrains how, never adds machinery; a boundary is not traded for speed, and
+crossing one is a recorded decision. A departure is a recorded decision, not a silent drift.
+
 Choose the smallest correct design. Run the decision round (the policy this handoff names)
 on the open design questions — one round, one question string, each with a recommendation;
 check the terms against `GLOSSARY.md` and update it inline as they settle.

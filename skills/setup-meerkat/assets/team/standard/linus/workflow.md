@@ -87,7 +87,8 @@ If the branch is genuinely unclear, write an agent `question` and stop.
 
 - The card's `acceptance` is the contract. Do not widen the scope.
 - Use a decision round before freezing the branch's design; record the answers.
-- Prefer the simplest reliable design; no abstraction before a second caller.
+- Prefer the simplest reliable design; no abstraction before a second caller; keep modules
+  cohesive and dependencies pointing one way.
 - An architecture card records the architecture style and the stack table before
   scaffolding; no implementation starts on an unconfirmed foundation.
 - Test-first for behaviour; a bug is reproduced by a failing test before it is fixed.
