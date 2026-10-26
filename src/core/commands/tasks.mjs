@@ -36,7 +36,7 @@ import {
   checkDeliveryGate,
   WAIVER_MIN_REASON_CHARS,
 } from "../domain/delivery-gate.mjs";
-import { assertTransition, isReopen, isTerminalStatus } from "../domain/status.mjs";
+import { isReopen, isTerminalStatus, transitionPolicyFor } from "../domain/status.mjs";
 import { acceptanceKey, normalizeAcceptanceList } from "../domain/acceptance.mjs";
 import {
   assertCardAcceptance,
@@ -1229,13 +1229,23 @@ export function moveStatus(ctx, input) {
         });
       }
 
-      assertTransition(
-        current.status,
-        input.to,
-        current.kind,
-        current.acceptanceMode,
-        current.reviewOfId !== null && current.reviewOfId !== undefined,
-      );
+      // Reopening is the `done|canceled → todo` edge. It is audited, and it is
+      // closed to review cards: a review is a loop artifact, and reopening the
+      // original is what produces the next round's review. Checked before the
+      // generic transition refusal so the caller gets the review-specific
+      // message (the code is `INVALID_TRANSITION` either way).
+      const reopen = isReopen(current.status, input.to);
+      const reopenReason = reopen ? assertReopenReason(input.reason) : null;
+      const isReviewCard = current.reviewOfId !== null && current.reviewOfId !== undefined;
+      if (reopen && isReviewCard) {
+        throw new DomainError("INVALID_TRANSITION", {
+          message: "a review card cannot be reopened; reopen the original card instead",
+          details: { from: current.status, to: input.to, reviewOf: current.reviewOfId },
+          hint: { fix: "reopen the reviewed card; the loop will issue a review for the new round" },
+        });
+      }
+
+      transitionPolicyFor(current).assert(input.to);
 
       // 0034 — an agent entering `awaiting` must say what it is waiting for.
       // The question is stored as a `question` comment in this same transaction,
@@ -1270,18 +1280,6 @@ export function moveStatus(ctx, input) {
         }
       }
 
-      // Reopening is the `done|canceled → todo` edge. It is audited, and it is
-      // closed to review cards: a review is a loop artifact, and reopening the
-      // original is what produces the next round's review.
-      const reopen = isReopen(current.status, input.to);
-      const reopenReason = reopen ? assertReopenReason(input.reason) : null;
-      if (reopen && current.reviewOfId !== null && current.reviewOfId !== undefined) {
-        throw new DomainError("INVALID_TRANSITION", {
-          message: "a review card cannot be reopened; reopen the original card instead",
-          details: { from: current.status, to: input.to, reviewOf: current.reviewOfId },
-          hint: { fix: "reopen the reviewed card; the loop will issue a review for the new round" },
-        });
-      }
       // `done` is acceptance, not delivery. Who may perform it is the board's
       // policy (`human-only` | `both` | `agent-only`) and the card's scope
       // (child / review card / top-level original) — see
@@ -1864,13 +1862,7 @@ export function canMove(ctx, input) {
   });
   if (!verdict.ok) return verdict;
   try {
-    assertTransition(
-      task.status,
-      input.to,
-      task.kind,
-      task.acceptanceMode,
-      task.reviewOfId !== null && task.reviewOfId !== undefined,
-    );
+    transitionPolicyFor(task).assert(input.to);
     // The structural half of the new gates is actor-independent, so the
     // pre-flight answer can carry it. The acceptance mode's *writer* rule and
     // the review-ready check need the actor, which `canMove` is not given — the

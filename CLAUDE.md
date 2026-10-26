@@ -269,6 +269,12 @@ authoritative home, because the container image drops `design/`.
   one narrow escape hatch (M2, F-B1): `--no-report --reason "<why>"` (reason ≥ 8 characters,
   mutually exclusive with `--report-file`, only on a move to `in_review`, recorded as a
   `report_waived` activity, valid only for the current delivery round).
+- **A review card is flow B, not a kind.** It is an ordinary `kind=task` card carrying the
+  immutable `review_of_id` / `review_round` marker. Every layer reads that identity through
+  `src/foundation/review-identity.mjs` (the columns are authority; `meta.review_of` is a
+  readable/legacy mirror), so the workflow planners, the SLA patrol and the CLI agree. A
+  review card cannot be reopened, cannot be a parent or a child, and cannot itself be
+  reviewed; the command layer refuses first, and the `0041` triggers refuse a raw writer.
 - Invariants are pushed **down into the database** (triggers), not only enforced in the app layer.
 - **Single writer.** One local service owns the SQLite file: `taskd` takes `<dataDir>/writer.lock`
   with `O_EXCL` *before* opening the DB, refuses a second instance with `BOARD_ALREADY_RUNNING`,

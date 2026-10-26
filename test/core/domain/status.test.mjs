@@ -26,6 +26,7 @@ import {
   isKnownStatus,
   isTerminalStatus,
   requiresReport,
+  transitionPolicyFor,
   transitionReasonCode,
 } from "../../../src/core/domain/status.mjs";
 import { DomainError } from "../../../src/foundation/errors.mjs";
@@ -318,5 +319,85 @@ describe("domain/status — the epic overlay (0024)", () => {
   it("does not move the round or the gate with the pair", () => {
     assert.equal(bumpsDeliveryRound(STATUS.TODO, STATUS.IN_REVIEW), false, "todo is not a round-bumping source");
     assert.equal(requiresReport(STATUS.IN_REVIEW), true, "and the gate still asks for a report");
+  });
+});
+
+describe("domain/status — the card-derived policy", () => {
+  const CARD_SHAPES = [];
+  for (const from of STATUSES) {
+    for (const kind of ["task", "epic"]) {
+      for (const mode of ["off", "agent", "human"]) {
+        for (const reviewCard of [false, true]) {
+          CARD_SHAPES.push({
+            status: from,
+            kind,
+            acceptanceMode: mode,
+            reviewOfId: reviewCard ? "orig-1" : null,
+            meta: {},
+          });
+        }
+      }
+    }
+  }
+
+  it("agrees with the primitives on every pair, kind, mode and review shape", () => {
+    for (const card of CARD_SHAPES) {
+      const policy = transitionPolicyFor(card);
+      const reviewCard = card.reviewOfId !== null;
+      const label = `${card.status}/${card.kind}/${card.acceptanceMode}${reviewCard ? "/review" : ""}`;
+      assert.deepEqual(
+        policy.allowed,
+        allowedTargets(card.status, card.kind, card.acceptanceMode, reviewCard),
+        `${label}: allowed`,
+      );
+      for (const to of STATUSES) {
+        assert.equal(
+          policy.can(to),
+          canTransition(card.status, to, card.kind, card.acceptanceMode, reviewCard),
+          `${label}: can(${to})`,
+        );
+        assert.equal(
+          policy.reason(to),
+          transitionReasonCode(card.status, to, card.kind, card.acceptanceMode, reviewCard),
+          `${label}: reason(${to})`,
+        );
+      }
+    }
+  });
+
+  it("reads the wire spelling too", () => {
+    const policy = transitionPolicyFor({
+      status: "in_progress",
+      kind: "task",
+      acceptance_mode: "off",
+      review_of_id: null,
+    });
+    assert.equal(policy.can("done"), true, "an ordinary off card keeps the direct edge");
+  });
+
+  it("withholds the off direct edge from a review card", () => {
+    const policy = transitionPolicyFor({
+      status: "in_progress",
+      kind: "task",
+      acceptanceMode: "off",
+      reviewOfId: "orig-1",
+    });
+    assert.equal(policy.can("done"), false);
+    assert.equal(policy.reason("done"), "INVALID_TRANSITION");
+    assert.deepEqual(policy.allowed, ["in_review", "blocked", "todo", "canceled", "awaiting"]);
+  });
+
+  it("exposes the round bump and the report requirement", () => {
+    const policy = transitionPolicyFor({ status: "in_review", kind: "task", acceptanceMode: "agent", meta: {} });
+    assert.equal(policy.bumpsRound("in_progress"), true);
+    assert.equal(policy.bumpsRound("done"), false);
+    assert.equal(policy.requiresReport("in_review"), true);
+    assert.equal(policy.requiresReport("done"), false);
+  });
+
+  it("assert throws the same code the primitive would", () => {
+    const policy = transitionPolicyFor({ status: "done", kind: "task", acceptanceMode: "off", meta: {} });
+    assert.throws(() => policy.assert("in_progress"), (err) => err instanceof DomainError && err.code === "TERMINAL_STATE");
+    assert.equal(policy.assert("todo"), "todo", "the reopen edge is returned for chaining");
   });
 });

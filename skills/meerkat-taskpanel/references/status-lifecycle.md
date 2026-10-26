@@ -353,15 +353,16 @@ is refused with `INVALID_TRANSITION`.
 
 ## 10. What is enforced, and what is practice
 
-The transition whitelist, the delivery gate, the terminal exits and the child-before-parent
-rule are enforced by the domain **and** the database triggers; acceptance authority and claim
-routing are service rules. Four things are **not** enforced, and an agent must honour them:
+The transition whitelist, the delivery gate, the terminal exits, the child-before-parent
+rule, and the review-card invariants (no reopen, no parent/child, no review of a review —
+0041) are enforced by the domain **and** the database triggers; acceptance authority and
+claim routing are service rules. Three things are **not** enforced, and an agent must honour
+them:
 
 | Rule | Kind |
 |---|---|
 | “One card at a time” | **practice** — not enforced |
 | “Read candidates, then claim” | **practice** — only the claim gate is enforced |
-| `deploy` cards never auto-offered | **read rule** — explicit dispatch may claim one |
 | `depends_on` blocks claiming | **read rule** — candidates filters only |
 
 ## 11. The board's workflow decisions

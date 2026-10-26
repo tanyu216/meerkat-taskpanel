@@ -206,7 +206,9 @@ the next pass.
 A review card can be refused by the same codes as any other card — `REPORT_REQUIRED`,
 `REPORT_ROUND_MISMATCH`, `ACCEPTANCE_FORBIDDEN`, `REVIEW_PENDING`, `REVIEW_REQUIRED`,
 `REVIEW_CARD_MARKER_INVALID`, `VALIDATION_FAILED` — plus `INVALID_TRANSITION` for a reopen or
-a direct `in_review → canceled`. The full table, with when each fires, is in
+a direct `in_review → canceled`. The reopen, parent/child and review-of-review refusals are
+also database triggers (`0041`), so a raw writer cannot bypass the command layer. The full
+table, with when each fires, is in
 [`status-lifecycle.md` §9](status-lifecycle.md#9-refusals).
 
 ## 8. Boundaries

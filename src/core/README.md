@@ -26,6 +26,12 @@ Rules that are enforced, not just documented:
   one;
 * the delivery gate is a database trigger *and* a domain check, and the two are
   tested against each other (`test/contract/`);
+* a **review card** is an ordinary `kind=task` card carrying the immutable
+  `review_of_id` / `review_round` marker. Every layer reads that identity through one
+  reader (`foundation/review-identity.mjs`): the columns are the authority, and
+  `meta.review_of` is a readable/legacy mirror. A review card cannot be reopened, cannot
+  be a parent or a child, and cannot itself be reviewed — the command layer refuses first,
+  and the `0041` triggers refuse a raw writer;
 * the **acceptance baseline** is a column, not writable meta: `tasks.acceptance_json` +
   `acceptance_revision` (0032) are seeded once from `meta.acceptance` / the imported
   checkboxes, can only be appended to (a human may prune an item with an audited reason),

@@ -215,6 +215,7 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
         "tr_rel_block_chain",
         "tr_rel_block_cycle",
         "tr_rel_parent_block_pair",
+        "tr_rel_review_no_parent",
         "tr_reports_not_applicable_note",
         "tr_reports_rollup_valid",
         "tr_rev_actors_del",
@@ -229,6 +230,8 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
         "tr_tasks_epic_rollup_done",
         "tr_tasks_reopen_state",
         "tr_tasks_review_marker_immutable",
+        "tr_tasks_review_no_reopen",
+        "tr_tasks_review_not_review",
       ];
       const LATER_TRIGGERS_REMOVED = [
         "tr_dict_assignees_delete",

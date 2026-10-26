@@ -27,6 +27,7 @@
 
 import { HUMAN_KIND, TASKD_KIND } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
+import { reviewIdentityOf } from "../../foundation/review-identity.mjs";
 
 /** The three values a card stores. `auto` is a project word, not a card word. */
 export const CARD_ACCEPTANCE_MODES = Object.freeze(["off", "agent", "human"]);
@@ -224,6 +225,32 @@ export function acceptanceAllows(actorKind, mode, options = {}) {
     default:
       return false;
   }
+}
+
+/**
+ * The acceptance authority **derived from one card**.
+ *
+ * The card's own mode and its review-card shape are two facts every caller
+ * currently re-supplies (`{ reviewCard: task.reviewOfId !== null }`). One of
+ * them — "is this a review card" — has a single reader now
+ * (`foundation/review-identity.mjs`); this wrapper makes the other (the mode)
+ * come from the same card so a caller cannot pair the wrong two.
+ *
+ * @param {object|null|undefined} task a Task DTO or a wire task
+ * @returns {{
+ *   isReview: boolean,
+ *   mode: "off"|"agent"|"human",
+ *   canAccept: (actorKind: string|null|undefined) => boolean,
+ * }}
+ */
+export function acceptanceAuthorityFor(task) {
+  const isReview = reviewIdentityOf(task).isReview;
+  const mode = cardAcceptanceOf(task?.acceptanceMode ?? task?.acceptance_mode);
+  return {
+    isReview,
+    mode,
+    canAccept: (actorKind) => acceptanceAllows(actorKind, mode, { reviewCard: isReview }),
+  };
 }
 
 /**

@@ -100,7 +100,7 @@ describe("storage/migrations — 0034 questions and awaiting → todo", () => {
         triggers: triggerNames(board.db),
       };
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0034", "0035", "0036", "0037", "0038", "0039", "0040"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041"]);
 
       const kinds = board.db
         .prepare("SELECT id, kind, body FROM comments ORDER BY id")
@@ -126,9 +126,17 @@ describe("storage/migrations — 0034 questions and awaiting → todo", () => {
         "tr_tasks_review_card_not_required",
         "tr_tasks_review_card_not_required_update",
       ];
+      // 0041 adds the review-only backstops; like 0038's triggers, they are a
+      // later migration's own additions, not something 0034's rebuild moved.
+      const LATER_0041_ADDED = [
+        "tr_rel_review_no_parent",
+        "tr_tasks_review_no_reopen",
+        "tr_tasks_review_not_review",
+      ];
+      const LATER_ADDED = [...LATER_0038_ADDED, ...LATER_0041_ADDED];
       const LATER_REMOVED = [...LATER_0038_REMOVED, ...LATER_0040_REMOVED];
       assert.deepEqual(
-        triggerNames(board.db).filter((name) => !LATER_0038_ADDED.includes(name)),
+        triggerNames(board.db).filter((name) => !LATER_ADDED.includes(name)),
         before.triggers.filter((name) => !LATER_REMOVED.includes(name)),
         "the trigger set (incl. the actor guard) is unchanged by 0034",
       );
