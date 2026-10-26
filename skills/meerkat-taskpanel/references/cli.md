@@ -29,7 +29,7 @@ taskctl --actor-kind claude --agent linus issue claim PROJ-7
 taskctl --actor-kind claude --agent turing issue deliver PROJ-7 --report-file -
 ```
 
-The taskctl shim injects both halves for an installed skill, so a session normally does not repeat
+The taskctl shim injects both halves, so a session normally does not repeat
 them. A human writes with `--as-human`.
 
 `--version --json` publishes the contract's `schema_version` — a coarse generation marker for
@@ -38,7 +38,7 @@ detecting drift, readable without a board. Run `taskctl <group> --help` or
 
 ## Configuration (`.env`)
 
-One install-root file, `<program root>/.env`, is read by `taskctl` and `taskd`. The process
+One file, `<program root>/.env`, is read by `taskctl` and `taskd`. The process
 environment wins key by key; CLI flags win over both.
 
 - **Path:** `--env-file <path>` > `$MEERKAT_TASKPANEL_ENV_FILE` > `<program root>/.env`. A

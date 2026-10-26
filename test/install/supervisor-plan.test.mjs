@@ -455,14 +455,17 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.ok(scheduling.includes("loginctl enable-linger"), "the lingering remedy");
   });
 
-  it("the opt-in is documented in the loop skill too, and nothing still calls it unwired", () => {
+  it("the opt-in is documented in the install docs, not in the skill", () => {
     for (const relative of ["docs/install.md", "docs/scheduling.md"]) {
       assert.doesNotMatch(doc(relative), /Not yet wired/, `${relative} still says the flag is not implemented`);
     }
+    const install = doc("docs/install.md");
+    assert.match(install, /--supervisor=enable/, "docs/install.md must name the opt-in");
+    assert.match(install, /disable/, "docs/install.md must name the way back out");
     for (const relative of ["skills/meerkat-loop/SKILL.md", "skills/meerkat-loop/references/operation.md"]) {
       const text = doc(relative);
-      assert.match(text, /--supervisor=enable/, `${relative} must name the opt-in`);
-      assert.match(text, /disable/, `${relative} must name the way back out`);
+      assert.doesNotMatch(text, /install\.sh/, `${relative} must not carry installation instructions`);
+      assert.doesNotMatch(text, /--supervisor=/, `${relative} must not carry supervisor enable/disable/status`);
     }
   });
 
