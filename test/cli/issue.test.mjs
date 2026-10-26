@@ -1044,6 +1044,21 @@ describe("cli/issue — claim and stale recovery", () => {
     });
   });
 
+  it("claims an unassigned card as a name the board has never seen", async () => {
+    // No setup-meerkat, no team: the only thing a fresh agent has is its own
+    // name. An empty assignee is the open pool, so the claim must be accepted
+    // and attributed, without turning the claim into an assignment.
+    await board(async ({ run }) => {
+      const card = createIssue(run);
+      const claimed = dataOf(
+        run(["issue", "claim", card.task.identifier, "--agent", "ghost", "--actor-kind", "claude", "--json"]),
+      );
+      assert.equal(claimed.task.status, "in_progress");
+      assert.equal(claimed.task.claimed_by_actor.display_name, "ghost");
+      assert.equal(claimed.task.assignee, null, "a claim is not an assignment");
+    });
+  });
+
   it("re-claims a stale claim for its holder — the one thing `move` cannot do", async () => {
     await board(async ({ run, dataDir }) => {
       const card = createIssue(run, forLinus);

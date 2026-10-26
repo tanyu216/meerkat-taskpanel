@@ -340,6 +340,47 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.equal(existsSync(join(dirname(record), "state.json")), false, "dry-run writes no registry");
   });
 
+  it("poll with no team list still scans the public pool as the default agent", () => {
+    // setup-meerkat may never have run, so MEERKAT_TASKPANEL_AGENTS is absent.
+    // The fallback identity must still reach the scan, and the public pool must
+    // be requested — otherwise an empty-assignee card is never picked up.
+    const dir = tempDir("tp-entry-poll-unset-");
+    writeLivePool(dir);
+    const home = join(dir, "home");
+    mkdirSync(home, { recursive: true });
+    const { script, record } = sentinelCli(dir);
+    // The child inherits this process's env; empty values stand in for absent
+    // ones, and the parser treats "" exactly like missing.
+    const run = runEntry(
+      "passes.mjs",
+      [
+        "--actor-kind", "claude", "--dry-run",
+        "--home", home,
+        "--cli", script, "--repo", dir,
+        "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      ],
+      {
+        TP_SENTINEL: record,
+        MEERKAT_TASKPANEL_AGENTS: "",
+        TASKCTL_AGENT: "",
+        USER: "pollbot",
+        LOGNAME: "",
+      },
+      "poll",
+    );
+    assert.equal(run.status, 0, run.stderr);
+    const candidateCall = calls(record).find((call) => call.includes("candidates"));
+    assert.ok(candidateCall, "the fallback identity must still scan");
+    assert.deepEqual(candidateCall.slice(candidateCall.indexOf("issue")), [
+      "issue",
+      "candidates",
+      "--assignee",
+      "pollbot",
+      "--include-unassigned",
+      "--stale",
+    ]);
+  });
+
   it("poll claims nothing at all without a resident pool", () => {
     const { run, record, dir } = runWithSentinel("poll");
     assert.equal(run.status, 0, run.stderr);

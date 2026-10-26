@@ -2256,6 +2256,23 @@ describe("parseArgs — the team scan set and roles root", () => {
     assert.deepEqual(opts.agents, ["alice"]);
   });
 
+  it("falls back to one default agent when no team list is configured", () => {
+    // setup-meerkat is optional: without a team env/config the loop still needs
+    // one identity to scan with. The empty config path is the point of the temp
+    // home — a developer's installed agent config must not leak in.
+    const dir = mkdtempSync(join(tmpdir(), "tp-team-unset-"));
+    try {
+      const agentsFor = (env) =>
+        parseArgs(["--actor-kind", "claude", "--home", dir], env).agents;
+      assert.deepEqual(agentsFor({}), ["agent"], "no identity at all");
+      assert.deepEqual(agentsFor({ LOGNAME: "logname" }), ["logname"]);
+      assert.deepEqual(agentsFor({ USER: "user", LOGNAME: "logname" }), ["user"]);
+      assert.deepEqual(agentsFor({ TASKCTL_AGENT: "task", USER: "user" }), ["task"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("resolves --roles-dir and MEERKAT_TASKPANEL_ROLES_DIR", () => {
     const flag = parseArgs(
       ["--actor-kind", "claude", "--home", "/h", "--roles-dir", "/team"],
