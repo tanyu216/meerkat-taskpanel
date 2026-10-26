@@ -107,22 +107,27 @@ the same acceptance rules. Two drivers run it; the turn says which.
    `passes.mjs patrol`, `workflow`, `poll`, by absolute path (below). With the external
    pool live, poll claims and enqueues; the pool's project sessions spawn the
    workers/reviewers.
-4. **Question tick.** `node <body>/scripts/loop/console.mjs --once --json` lists the
-   `awaiting` cards, in_progress agent questions no human has answered, and `in_review`
-   cards pending acceptance. **Both answer channels are the same record** — a human comment
-   in the board UI and an answer typed in this conversation:
+4. **Question tick — one round across all waiting cards.**
+   `node <body>/scripts/loop/console.mjs --once --json` lists the `awaiting` cards,
+   in_progress agent questions no human has answered, and `in_review` cards pending
+   acceptance. **Both answer channels are the same record** — a human comment in the board UI
+   and an answer typed in this conversation:
    - Before asking, re-read the card (`taskctl comment list <ref> --limit 20 --json`). If a
      human comment is newer than the question, the human already answered — in the UI or in
      an earlier turn — so do not ask again and do not write a second comment; run a control
      tick.
-   - Otherwise ask the human **in this conversation**. After they answer, re-read once more:
-     if a human comment (a UI answer posted while you were asking) is already newer than the
-     question, do not duplicate it; otherwise record their answer verbatim with
-     `taskctl comment add <ref> --as-human …`. The board comment is authoritative; the
-     in-session question is only the front-end.
+   - Otherwise ask the whole frontier in **one message**: one numbered block per card, each
+     item Q1..Qn with a recommendation, worded so "yes" accepts it. Facts are yours to look
+     up — never ask the human for a fact the card, code or docs can establish. A question
+     that depends on another open one waits for the next round. One round is one question string
+     per card: never drip one comment per item.
+   - After they answer, re-read once more: if a human comment (a UI answer posted while you
+     were asking) is already newer than the question, do not duplicate it; otherwise record
+     their answer verbatim with `taskctl comment add <ref> --as-human …`. The board comment
+     is authoritative; the in-session question is only the front-end.
    - Apply the move the question ladder prescribes (an awaiting card resumes on the human
      comment; an in_progress agent question → `todo`/reattach) and run a control tick so the
-     resumed card is processed promptly.
+     resumed card is processed promptly. Only a human comment resumes awaiting.
    - If the human answers in the UI while you are waiting, the next question tick sees it;
      do not block indefinitely on a chat reply.
 5. **Bound the loop.** Control ticks follow the continue cadence (default 600 s); question
@@ -257,7 +262,10 @@ E1-E5 to the human with `awaiting`. Any human comment resumes an awaiting card, 
 its kind; the board does not read it, and the resumed worker judges from its content
 whether it is a complete decision (ask again if not). The loop never writes a decision kind
 for its own answer and never uses `--as-human` except to record what the human actually said
-in a human-opened conversation.
+in a human-opened conversation. A question is asked as **one round**: the frontier of
+decisions whose prerequisites are settled, numbered Q1..Qn with a recommendation, worded so
+"yes" accepts it. One round is one question string per card; the full protocol is
+`references/decision-policy.md` §Decision rounds.
 
 ## Required board interface
 

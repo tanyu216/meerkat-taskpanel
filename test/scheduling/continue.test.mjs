@@ -195,8 +195,54 @@ describe("buildContinuePrompt", () => {
     assert.match(withPolicy, /E1-E5/);
   });
 
+  it("carries the decision round: one frontier, one note, one escalation string", () => {
+    // The round is how a question is asked; the ladder still says who decides.
+    // One round is ONE question string per card: `console.mjs` only surfaces the
+    // newest question comment, so a drip would orphan the earlier items.
+    assert.match(prompt, /Decision rounds/);
+    assert.match(prompt, /frontier/);
+    assert.match(prompt, /Q1\.\.Qn/);
+    assert.match(prompt, /ONE note/);
+    assert.match(prompt, /ONE new awaiting question/);
+    assert.match(prompt, /Verified already/);
+    assert.match(prompt, /Facts are the asker's job/i);
+    assert.match(prompt, /incomplete answer is not consent/i);
+    assert.match(prompt, /Only a human comment resumes awaiting/);
+    assert.match(prompt, /frontier item is open/i);
+  });
+
+  it("asks every waiting card in one manual message", () => {
+    const manual = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      nodePath: "/opt/node/bin/node",
+      passesScript,
+      commonArgs: ["--actor-kind", "claude", "--agent", "alice"],
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      mode: "manual",
+    });
+    assert.match(manual, /ask every waiting card in one message/i);
+    assert.match(manual, /one numbered block per card/i);
+    assert.match(manual, /one question string/i);
+  });
+
   it("stays bounded", () => {
     assert.ok(prompt.length < 6000, `prompt is ${prompt.length} chars`);
+  });
+
+  it("stays bounded in the longest manual + policy form", () => {
+    const longest = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      nodePath: "/opt/node/bin/node",
+      passesScript,
+      commonArgs: ["--actor-kind", "claude", "--agent", "alice"],
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      mode: "manual",
+      openedBy: "human",
+      decisionPolicy: { path: "/roles/decision-policy.md", text: "# Policy\n" },
+    });
+    assert.ok(longest.length < 6000, `longest prompt is ${longest.length} chars`);
   });
 
   it("quotes a passes path that contains a space", () => {

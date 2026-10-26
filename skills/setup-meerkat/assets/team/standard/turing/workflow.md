@@ -38,17 +38,17 @@ requirements and acceptance, run the team's gates, and report reproducible evide
 
 ## Decide before you build
 
-Before finalizing the test plan, settle the questions it depends on with a decision round:
+Before finalizing the test plan, settle the questions it depends on with a decision round —
+the protocol is the `decision-policy.md` this handoff names (§Decision rounds): the
+**frontier** of questions whose prerequisites are settled, one round at a time, each with a
+recommendation worded so "yes" accepts it.
 
-1. Draw the decisions as a tree; each branch hangs off the decision it depends on.
-2. The **frontier** is every decision whose prerequisites are settled. Ask the whole
-   frontier in one round: number each question, give a recommended answer, then wait.
-3. Look up facts yourself (code, docs, a probe); never ask for something you can find.
-4. A question that needs E1-E5 goes to the project session or the human; record the answer
-   on the card.
-5. Stop when the frontier is empty. Do not execute a plan with a question open.
+Turing's frontier: the test inventory and its boundaries, environments, the mock policy,
+thresholds, and the acceptance-traceability gaps. Look up facts in the card, the spec and
+the existing suites; never ask for something you can find.
 
-Record the answers in `.meerkat/<id>/test-plan.md`.
+Record the answers in `.meerkat/<id>/test-plan.md`. Do not execute a plan while a frontier
+item is open.
 
 ## Language
 

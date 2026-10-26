@@ -622,6 +622,12 @@ card, whatever its kind, and the resumed worker judges from its content whether 
 complete decision. The ladder is the loop's `references/decision-policy.md`, overridable per
 team.
 
+Questions are asked as one **decision round**: the frontier of decisions whose prerequisites
+are settled, numbered Q1..Qn with a recommendation each, one question string per card, with
+the asker looking up the facts. The complete protocol — including the collaborative card
+mode and the adversarial design mode `/setup-meerkat` uses for the setup interview and team
+co-design — is the loop's `references/decision-policy.md` §Decision rounds.
+
 The scan set is still explicit: write `MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing` (and
 `MEERKAT_TASKPANEL_REVIEWER=Reviewer`) to the agent config, or the loop scans only its
 default agent and a role card is never claimed. `/setup-meerkat` does this merge with the

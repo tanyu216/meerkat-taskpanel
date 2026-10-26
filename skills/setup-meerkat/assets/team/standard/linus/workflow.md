@@ -41,19 +41,18 @@ it test-first, run the repository gates, and keep the system operable.
 ## Decide before you build
 
 Before choosing an architecture option or the smallest implementation, settle the open
-decisions with a decision round:
+decisions with a decision round — the protocol is the `decision-policy.md` this handoff
+names (§Decision rounds): the **frontier** of questions whose prerequisites are settled, one
+round at a time, each with a recommendation worded so "yes" accepts it.
 
-1. Draw the decisions as a tree; each branch hangs off the decision it depends on.
-2. The **frontier** is every decision whose prerequisites are settled. Ask the whole
-   frontier in one round: number each question, give a recommended answer, then wait.
-3. Look up facts yourself (code, docs, a probe); never ask for something you can find.
-4. A question that needs E1-E5 goes to the project session or the human; record the answer
-   on the card.
-5. Stop when the frontier is empty. Do not start building with a decision open.
+Linus' frontier: the architecture option, the stack table (alternatives and pinned
+versions), the file and contract layout, test selection, and migration or rollback risk.
+Look up facts in the card, the code and the gates; never ask for something you can find.
+Record the answers in `plan.md`; a durable decision also gets an ADR. Do not start building
+while a frontier item is open.
 
 An architecture card's tech-stack table is part of the frontier: put the whole table, with
-its alternatives and pinned versions, in one round. Record the answers in `plan.md`; a
-durable decision also gets an ADR.
+its alternatives and pinned versions, in one round.
 
 ## Language
 

@@ -108,6 +108,20 @@ humans make decisions; not every comment is one.
 _中文_: 决策
 _Avoid_: approval, verdict
 
+**Decision round**:
+The way a question is asked: the frontier of decisions whose prerequisites are settled,
+numbered Q1..Qn with a recommendation each, asked in one question string per card and
+recomputed after the answers. It changes *how* a question is asked, never *who* decides.
+_中文_: 决策轮次
+_Avoid_: questionnaire, batch of questions
+
+**Frontier**:
+In a decision round, every decision whose prerequisites are settled — what can be asked now
+without guessing an answer not yet heard. A decision that depends on an open one waits for
+the next round.
+_中文_: 前沿
+_Avoid_: backlog, wish list
+
 ### Claim and execution
 
 **Claim**:

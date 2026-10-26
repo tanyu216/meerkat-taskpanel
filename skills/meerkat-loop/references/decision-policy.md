@@ -68,10 +68,52 @@ review card's acceptance and ends in a `VERDICT: APPROVE` or `VERDICT: REJECT`; 
 evidence is insufficient or the requirements are ambiguous, it REJECTs and writes the
 findings. The main session or the human decides what to do next.
 
-## How to ask
+## Decision rounds
 
-Both the subagent → main-session question and the main-session → human escalation use
-the same shape:
+A decision round settles the choices a piece of work would otherwise assume silently. It
+changes *how* a question is asked, never *who* decides: the ladder above still binds, and
+only a human comment resumes an `awaiting` card.
+
+1. **Draw the tree.** Each decision is a branch; a decision hangs off the answers it
+   depends on.
+2. **Find the frontier.** The frontier is every decision whose prerequisites are settled —
+   what can be asked now without guessing an answer not yet heard. Ask the whole frontier
+   in one round. A decision that depends on another open question belongs to a later round.
+3. **Number and recommend.** Q1, Q2, … each with a recommended answer and the why. Word the
+   question so "yes" accepts the recommendation; list alternatives for a different answer.
+4. **Facts are the asker's job.** Look up the code, docs, board or a probe; when the lookup
+   is itself work, start a fact-gathering task or subagent. Never ask the human for a fact
+   the tools can establish. A running lookup is an unsettled prerequisite: it blocks only
+   the questions downstream of it; ask the rest of the frontier now.
+5. **Reshape and repeat.** Answers settle branches and unblock the next frontier. Recompute
+   it and ask the next round. The round closes only when the frontier is empty.
+6. **Do not act early.** Do not build, freeze a direction, install or write files while a
+   frontier item is open. Record the settled answers in `plan.md`, `spec.md` or
+   `test-plan.md` (and on the card), and confirm the shared understanding with the decider.
+
+**Card mode — collaborative.** For card execution (Jobs/Linus/Turing) lead with the
+recommendation and the evidence, not an interrogation. "yes" accepts the recommended set;
+record the answers and proceed.
+
+**Design mode — adversarial.** For setup and team design, challenge the assumptions: ask
+what would falsify each one and request a concrete counterexample — a real card, flow or
+failure the proposal gets wrong. For a team, require an ownership matrix: every card shape
+has exactly one accountable role, and the reviewer is independent of the producer. An
+unowned card shape is a finding, not a detail for later.
+
+### Asking through the ladder
+
+One round is one question string per card. A subagent records the whole round in one agent
+`question` comment (Q1..Qn, each item in the shape below with its `Verified already`
+evidence), keeps the card `in_progress`, and stops. The project session answers every
+decidable item in one `note` and moves the card once; it escalates only the E1-E5 items in
+one `awaiting` question string that names each E-code, recommendation and evidence. The
+human answers in one comment. Only a human comment resumes an `awaiting` card; the resumed
+worker judges whether the round is complete and, if not, asks the next round as a new
+string. Never spread one round across several question comments, and never open a second
+`awaiting` question for the same round.
+
+A single item (or each Qn inside a round) uses this shape:
 
 ```text
 Decision needed: <one sentence>

@@ -40,11 +40,12 @@ Skill tool.
 > A subagent asks an operational question, an epic-split question, and an E2 acceptance
 > question. Show how the loop handles each.
 
-Assert: the first two become an agent `question` and are answered by the project session
-with a `note` + reattach/requeue (no awaiting; an epic split is the main session's call,
-an E1 scope expansion goes to the human); E2 becomes `awaiting` with options and a
-recommendation; the subagent writes no decision; the loop never uses `--as-human` for its
-own answer.
+Assert: the three items are one round (one question string per card, not one comment per
+item); the operational and epic-split items are answered in a `note` (no decision kind),
+and the card's single move is the E2 escalation to `awaiting` with options and a
+recommendation; an epic split is the main session's call only while the deliverable is
+unchanged, and an E1 scope expansion goes to the human; the subagent writes no decision;
+the loop never uses `--as-human` for its own answer.
 
 ## 6. Identity
 
@@ -54,3 +55,42 @@ own answer.
 Assert: the role names `Jobs`/`Linus`/`Turing` are the agent identities, `--assignee-kind
 agent` / `--reporter-kind agent` are used where applicable, and `--as-human` signs the
 fixed `TASKCTL_HUMAN`, never a role name.
+
+## 7. Setup interview
+
+> Set up Meerkat TaskPanel for Claude on this repo. The board is remote at
+> `http://board.internal:9527`, I want a project-scoped team, and I am not sure the standard
+> team fits. Do not install or write anything — show me the setup interview you would run
+> first.
+
+Assert: detection runs first and its facts are used rather than re-asked; the open decisions
+are one numbered round (Q1..Qn) with a recommendation each, worded so "yes" accepts it; the
+team question is adversarial and asks for a counterexample card; the interview states that
+installation, writes and daemon starts wait until the frontier is empty and the answers are
+confirmed; `--yes` accepts only recommended non-destructive answers.
+
+## 8. Custom-team co-design
+
+> Design a custom team for a product with heavy docs and mobile work. We have
+> Jobs/Linus/Turing today, but docs changes and release notes keep falling through, and
+> nobody is clearly testing the mobile app. Do not install anything; show the team design
+> and the questions you would settle first.
+
+Assert: an ownership matrix gives every card shape exactly one accountable role; the
+docs/release-notes and mobile-testing gaps are named as unowned or double-owned findings; a
+concrete counterexample card is requested; the reviewer stays independent and the ladder is
+unchanged; the questions are one numbered round and installation waits for the frontier to
+close.
+
+## 9. Decision round
+
+> A Jobs card has four open decisions: the design register, the mobile breakpoint, a
+> terminology conflict, and whether to expand scope to cover a second persona. Show the
+> decision round Jobs sends and how the loop handles each answer.
+
+Assert: one agent `question` comment carries the frontier (Q1..Qn) with recommendations; a
+dependent decision is deferred to the next round and a fact-closable item is closed by
+lookup; every authorized item is settled in one `note` (or the lookup) and the card is moved
+at most once; the E3 register and the E1 scope expansion go to the human in one `awaiting`
+string; the subagent writes no decision kind and never enters awaiting; only a human comment
+resumes, and an incomplete answer is not consent.

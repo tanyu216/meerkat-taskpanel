@@ -228,10 +228,29 @@ the extension is installed.
 
 ## Custom teams
 
-Stage a copy of the standard template, edit the manifest and workflows with the user,
-show the preview, then install with `--source <staging>`. `--role <id>` selects a subset;
-`--agent <id>=<name>` renames a board identity; `--reviewer <name>` renames the reviewer.
-The manifest is written last; existing different files are conflicts unless `--force`.
+Co-design the team as a decision round in adversarial mode (the protocol and the ownership
+test are in `SKILL.md` §The setup interview). Stage a copy of the standard template, then
+run the frontier:
+
+1. **Inventory the card shapes.** Ask for the real work the project produces — bug, feature,
+   refactor, test-only, docs and release notes, mobile, ops, design, migration — and a
+   concrete example of each.
+2. **Build an ownership matrix.** Every card shape gets exactly one accountable role. Name
+   the card that would fall between two roles if the split is unclear; a shape with no owner
+   or two owners is a finding, not a detail for later.
+3. **Challenge each role.** Ask what would have to be true for this role not to exist, and
+   for a counterexample card the role would handle badly.
+4. **Keep an independent reviewer.** The reviewer audits, moves nothing and never enters
+   awaiting; a producer never reviews its own card.
+5. **Confirm the frontier is empty**, then show the manifest and each role's summary.
+
+Only then edit the manifest and workflows in the staging directory and install with
+`--source <staging>`. `--role <id>` selects a subset; `--agent <id>=<name>` renames a board
+identity; `--reviewer <name>` renames the reviewer. The manifest is written last; existing
+different files are conflicts unless `--force`.
+
+The ladder **subagent → main session → human** is unchanged: only a human comment resumes an
+`awaiting` card.
 
 ## Decisions
 

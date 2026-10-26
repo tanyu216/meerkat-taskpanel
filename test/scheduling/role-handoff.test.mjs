@@ -123,6 +123,20 @@ describe("worker handoff with a role", () => {
     assert.match(text, /\/roles\/decision-policy\.md/);
   });
 
+  it("asks the whole frontier in one question comment", () => {
+    // A round is one question string: several independent decisions go into ONE
+    // agent question comment, each numbered with a recommendation, so the project
+    // session (and the console) sees the whole frontier at once.
+    assert.match(text, /whole frontier/);
+    assert.match(text, /Q1\.\.Qn/);
+    assert.match(text, /worded so "yes" accepts/);
+    assert.match(text, /Facts are the asker's job/i);
+    assert.match(text, /one round is one question comment/i);
+    assert.match(text, /do not drip one comment per question/i);
+    assert.match(text, /incomplete answer is not consent/i);
+    assert.doesNotMatch(text, /\[truncated — see the role files\]/);
+  });
+
   it("no longer tells the worker to split an epic or enter awaiting on its own", () => {
     assert.doesNotMatch(text, /Promote and split FIRST/);
     assert.doesNotMatch(text, /awaiting --awaiting-reason E2 --question/);

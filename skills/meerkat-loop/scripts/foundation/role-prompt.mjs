@@ -32,6 +32,31 @@ function bullets(title, values) {
 }
 
 /**
+ * The decision-round principles. Both runtime prompts — the worker handoff and
+ * the continue turn — render this same text, so they cannot drift.
+ *
+ * A round changes *how* a question is asked, never *who* decides: the ladder
+ * (subagent → project session → human) still binds, and only a human comment
+ * resumes an `awaiting` card.
+ */
+const DECISION_ROUND_PRINCIPLES = Object.freeze([
+  "A round settles the whole frontier: every decision whose prerequisites are settled. Ask",
+  "them in one round; a decision that depends on another open one waits for the next round.",
+  'Number the items Q1..Qn, each with a recommendation, worded so "yes" accepts it.',
+  "Facts are the asker's job: look them up (code, docs, a probe); never ask for a fact the",
+  "tools can establish. A lookup still running blocks only its downstream questions.",
+  "Answers reshape the tree: recompute and ask the next round; close it only when the",
+  "frontier is empty. Do not build while any frontier item is open.",
+]);
+
+/**
+ * @returns {string[]}
+ */
+export function renderDecisionRoundPrinciples() {
+  return [...DECISION_ROUND_PRINCIPLES];
+}
+
+/**
  * Layer 1 — the loop's routing decision: which role, and what it owns. This is
  * deliberately short; the full workflow is layer 2.
  *
@@ -97,7 +122,12 @@ export function renderRoleDecision(role, policyPath) {
     "can; the human decides E1-E5 (scope, acceptance, design direction, security/data,",
     "architecture). If a choice is not explicitly authorized by the handoff, plan or",
     "acceptance, add an agent question comment on this card, keep the card in_progress,",
-    "and stop. Use this format:",
+    "and stop.",
+    "Settle the whole frontier, not one item at a time:",
+    ...renderDecisionRoundPrinciples(),
+    "One round is ONE question comment: Q1..Qn in one string; do not drip one comment per question.",
+    "An incomplete answer is not consent: ask the next round as one new string.",
+    "Use this format for each item:",
     "  Decision needed: ...",
     "  Options: A) ...; B) ...",
     "  Recommendation: ...",
