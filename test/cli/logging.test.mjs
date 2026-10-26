@@ -35,7 +35,10 @@ describe("cli/logging — diagnostics are opt-in", () => {
     const quiet = await cli(["--version"]);
     const loud = await cli(["--version"], { TASKD_LOG_LEVEL: "debug" });
     assert.equal(loud.stdout, quiet.stdout, "stdout is byte-identical");
-    assert.match(loud.stderr, / DEBUG event=cli_command service=taskctl command=null group=null/);
+    assert.match(
+      loud.stderr,
+      / level=debug event=cli_command service=taskctl command=null group=null/,
+    );
   });
 
   it("never repeats the rendered failure, and still logs the code", async () => {

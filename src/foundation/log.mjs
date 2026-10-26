@@ -22,9 +22,11 @@
  *   2. **Logging never fails the caller.** Every sink call is wrapped; a broken
  *      sink, a full disk or a redaction surprise cannot turn a request into a 500.
  *
- * The line is human-readable text (one line, deterministic field order):
+ * The line is **logfmt** — the conventional `key=value` text format, so a generic
+ * logfmt reader parses it and no bespoke grammar has to be learned:
  *
- *   2026-10-27T12:34:56.789Z INFO  request method=GET path=/api/v1/tasks status=200
+ *   time=2026-10-27T12:34:56.789Z level=info event=request method=GET status=200
+ *   time=2026-10-27T12:34:56.790Z level=info component=supervisor msg="/meerkat-loop Continue"
  *
  * `run_id`/`request_id` correlation comes from {@link withLogContext}
  * (`AsyncLocalStorage`), so a command logged deep inside the server automatically
@@ -171,8 +173,14 @@ export function currentLogContext() {
 // Rendering
 // ---------------------------------------------------------------------------
 
-/** A token that needs no quoting. */
-const BARE = /^[A-Za-z0-9._:/@+-]+$/;
+/**
+ * logfmt: a value needs no quotes when it has no whitespace, `=` or `"`.
+ *
+ * This is the de-facto text convention (Heroku, Go's `slog`, Prometheus
+ * exporters): every token is `key=value`, so a line is parseable by a generic
+ * logfmt reader or a single split — no format-specific grammar to learn.
+ */
+const BARE_VALUE = /^[^\s="]+$/;
 const ELLIPSIS = "…";
 
 function truncate(text, maxChars) {
@@ -180,17 +188,32 @@ function truncate(text, maxChars) {
   return `${text.slice(0, maxChars)}${ELLIPSIS}`;
 }
 
+/** Double-quote with logfmt's escapes (the same ones JSON uses). */
+function quoteValue(text) {
+  return `"${text
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")
+    .replace(/\t/g, "\\t")}"`;
+}
+
 function formatValue(value, maxChars) {
   if (value === null || value === undefined) return "null";
   if (typeof value === "string") {
-    if (value !== "" && BARE.test(value)) return truncate(value, maxChars);
-    return truncate(JSON.stringify(value), maxChars);
+    const text = truncate(value, maxChars);
+    return text !== "" && BARE_VALUE.test(text) ? text : quoteValue(text);
   }
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
     return String(value);
   }
   const json = JSON.stringify(value);
-  return json === undefined ? "null" : truncate(json, maxChars);
+  return json === undefined ? "null" : quoteValue(truncate(json, maxChars));
+}
+
+/** camelCase / kebab-case keys become the snake_case log pipelines expect. */
+function snakeKey(key) {
+  return key.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replace(/-/g, "_").toLowerCase();
 }
 
 /** `{ name, code?, message }`, plus the stack when debug output is on. */
@@ -212,55 +235,50 @@ function timestampOf(explicit, clock) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-const RESERVED = new Set(["ts", "level", "event", "message", "error"]);
+const RESERVED = new Set(["ts", "time", "level", "event", "message", "msg", "error"]);
 
 /**
- * Render one record as a single line.
+ * Render one record as a single logfmt line.
  *
- * Fields keep the spelling of the call site (`labelId`) or, for new events,
- * snake_case (`request_id`); the whole line is redacted last, so a token in a
- * free-form message is caught too.
+ * The prefix is fixed and conventional — `time`, `level`, then the optional
+ * `component` — followed by `event`, the prose in `msg`, and every other field.
+ * `msg` is a field like any other, so a free-form line and an event line are the
+ * same grammar; nothing is positional and no value is ever bare prose.
+ *
+ *   time=2026-10-27T12:34:56.789Z level=info event=request method=GET status=200
+ *   time=2026-10-27T12:34:56.790Z level=info component=supervisor msg="/meerkat-loop Continue"
  *
  * @param {object} record
- * @param {{prefix?: string|null, maxValueChars?: number, includeStack?: boolean, clock?: Function}} [options]
+ * @param {{component?: string|null, maxValueChars?: number, includeStack?: boolean, clock?: Function}} [options]
  */
 export function formatLogRecord(record, options = {}) {
-  const { prefix = null, maxValueChars = 2048, includeStack = false } = options;
+  const { component = null, maxValueChars = 2048, includeStack = false } = options;
   const level = normalizeLevel(record.level);
   const timestamp = timestampOf(record.ts, options.clock);
 
   /** @type {[string, unknown][]} */
-  const entries = [];
+  const entries = [
+    ["time", timestamp],
+    ["level", level],
+  ];
+  if (typeof component === "string" && component !== "") entries.push(["component", component]);
   if (record.event !== undefined) entries.push(["event", record.event]);
-  if (record.message !== undefined) entries.push(["message", record.message]);
+  if (record.message !== undefined) entries.push(["msg", record.message]);
   if (record.error !== undefined) entries.push(["error", errorValue(record.error, includeStack)]);
   for (const [key, value] of Object.entries(record)) {
-    if (!RESERVED.has(key)) entries.push([key, value]);
+    if (!RESERVED.has(key)) entries.push([snakeKey(key), value]);
   }
 
   // One `redactDeep` pass over the ordered record does two jobs: a secret-named
   // key (`token`) is blanked outright, and a token-shaped value is replaced
-  // wherever it sits. Order is preserved, so `event` stays first.
+  // wherever it sits. Order is preserved.
   const safe = redactDeep(Object.fromEntries(entries));
 
-  let body;
-  if (record.event !== undefined) {
-    body = Object.entries(safe)
+  return redactText(
+    Object.entries(safe)
       .map(([key, value]) => `${key}=${formatValue(value, maxValueChars)}`)
-      .join(" ");
-  } else {
-    const parts = [];
-    if (safe.message !== undefined) parts.push(String(safe.message));
-    for (const [key, value] of Object.entries(safe)) {
-      if (key === "message") continue;
-      parts.push(`${key}=${formatValue(value, maxValueChars)}`);
-    }
-    body = parts.join(" ");
-  }
-
-  const head = `${timestamp} ${level.toUpperCase().padEnd(5)} `;
-  const line = prefix === null || prefix === "" ? `${head}${body}` : `${head}${prefix}: ${body}`;
-  return redactText(line).trimEnd();
+      .join(" "),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -374,7 +392,7 @@ function normalizeRecord(input) {
  *
  * @param {{
  *   level?: string,              // debug|info|warn|error|off (default info)
- *   prefix?: string|null,        // "supervisor" renders "supervisor: <body>"
+ *   component?: string|null,     // emitted as `component=<name>` on every line
  *   sinks?: Function|Function[], // (line) => void; a thrown error is swallowed
  *   clock?: () => Date|string,
  *   meta?: object,               // merged into every record (service, pid, …)
@@ -385,7 +403,7 @@ function normalizeRecord(input) {
 export function createLogger(options = {}) {
   const {
     level = "info",
-    prefix = null,
+    component = null,
     sinks = [stderrSink],
     clock = () => new Date(),
     meta = {},
@@ -410,7 +428,7 @@ export function createLogger(options = {}) {
       ...record,
       ts: typeof record.ts === "string" ? record.ts : timestampOf(undefined, clock),
     };
-    const line = formatLogRecord(merged, { prefix, maxValueChars, includeStack });
+    const line = formatLogRecord(merged, { component, maxValueChars, includeStack });
     for (const sink of sinkList) {
       try {
         sink(line);

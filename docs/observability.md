@@ -57,31 +57,37 @@ stdout is the data plane and its stderr is the product's error surface.
 | `request_failed`, `startup_failed`, `shutdown_failed`, `board_open_failed`, `migration_failed`, `sse_stream_failed`, `label_gc_failed`, `container_sweep_failed` | error | an exception boundary |
 | `cli_command`, `cli_failure` | debug | CLI diagnostics (off unless `TASKD_LOG_LEVEL=debug`) |
 
-The loop writes free-form lines rather than event objects (`<ts> INFO  supervisor: …`), and
-marks a failure with the same levels: `session: tick failed`, `continue error`,
-`workflow: … failed`, `subscribe: dispatch failed` are `error`; a recoverable one
-(`notify failed`, a refused question enqueue) is `warn`.
+The loop writes free-form lines rather than event objects (`time=… level=info
+component=supervisor msg="…"`), and marks a failure with the same levels: `session: tick
+failed`, `continue error`, `workflow: … failed`, `subscribe: dispatch failed` are `error`;
+a recoverable one (`notify failed`, a refused question enqueue) is `warn`.
 
 ### The line
 
-Human-readable text, one line per event, deterministic field order:
+One line per event in **logfmt** — the de-facto text convention (Heroku, Go's `slog`,
+Prometheus exporters): every token is `key=value`, so any logfmt reader parses it and
+there is no format-specific grammar to learn.
 
 ```
-2026-10-27T12:34:56.789Z INFO  startup service=taskd version=1.1.0 pid=1234 data_dir=/…/.data url=http://127.0.0.1:9527 message="listening on http://127.0.0.1:9527"
-2026-10-27T12:34:56.790Z INFO  request method=GET path=/api/v1/tasks status=200 duration_ms=3 request_id=9f1c… actor=human:local
-2026-10-27T12:34:56.791Z WARN  command_failed command=moveStatus code=VERSION_CONFLICT http=409 duration_ms=1
-2026-10-27T12:34:56.792Z ERROR request_failed method=POST path=/api/v1/tasks status=500 request_id=9f1c… code=VALIDATION_FAILED
+time=2026-10-27T12:34:56.789Z level=info component=taskd event=startup url=http://127.0.0.1:9527 msg="listening on http://127.0.0.1:9527"
+time=2026-10-27T12:34:56.790Z level=info event=request method=GET path=/api/v1/tasks status=200 duration_ms=3 request_id=9f1c… actor=human:local
+time=2026-10-27T12:34:56.791Z level=warn event=command_failed command=moveStatus code=VERSION_CONFLICT http=409 duration_ms=1
+time=2026-10-27T12:34:56.792Z level=error event=request_failed method=POST path=/api/v1/tasks status=500 request_id=9f1c… code=VALIDATION_FAILED
+time=2026-10-27T12:34:56.793Z level=info component=supervisor msg="/meerkat-loop Continue — timer turn"
 ```
 
-- The timestamp is ISO-8601 with milliseconds; the level is padded to five columns.
-- `event=` comes first, then `message=` when present, then the fields.
-- Bare values (`/api/v1/tasks`, `200`) are unquoted; anything with spaces or punctuation is
-  JSON-quoted. Long values are truncated.
+- The fixed prefix is `time=` (ISO-8601 with milliseconds), then `level=`; an optional
+  `component=` follows.
+- `event=` comes next, then the prose in `msg=`, then every other field. `msg` is an
+  ordinary field, so a free-form line and an event line are the same grammar.
+- Values are unquoted when they contain no whitespace, `=` or `"`; otherwise they are
+  double-quoted with JSON/logfmt escapes. Object values are JSON inside one quoted field
+  (`error="{\"name\":\"DomainError\",\"code\":\"DB_BUSY\",…}"`). Long values are truncated.
+- Keys are snake_case (`label_id`, `request_id`); camelCase and kebab-case are normalised.
 - The whole line is **redacted last**: a `td_…` token in a message or a field becomes
   `td_****`, and a secret-named key (`token`, `secret`, `password`) is blanked outright.
   `token_source` and `token_file` stay readable — they say *where* a token came from.
-- The loop's lines keep their `supervisor: ` prefix (`… INFO  supervisor: …`), which is
-  what its own tests read.
+- The loop's lines carry `component=supervisor` instead of a bare prose prefix.
 
 ### Correlation
 

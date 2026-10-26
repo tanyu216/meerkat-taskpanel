@@ -456,7 +456,7 @@ export function createLogger(opts) {
   const file = opts.dryRun ? null : createFileSink({ path: opts.log });
   const base = createFoundationLogger({
     level,
-    prefix: "supervisor",
+    component: "supervisor",
     ...(file === null ? {} : { sinks: [stderrSink, file] }),
   });
 

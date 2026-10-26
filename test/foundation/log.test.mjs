@@ -27,6 +27,9 @@ import {
 
 const FIXED = new Date("2026-01-02T03:04:05.678Z");
 
+/** The `level=` field, parsed the way a logfmt reader would. */
+const levelOf = (line) => /(?:^| )level=(\w+)/.exec(line)?.[1];
+
 /** A logger whose sink collects lines and whose clock is frozen. */
 function capture(options = {}) {
   const lines = [];
@@ -78,31 +81,34 @@ describe("log — the callable contract", () => {
   it("accepts the legacy event object", () => {
     const { lines, logger } = capture();
     logger({ event: "label_gc", archived: 2 });
-    assert.equal(lines[0], "2026-01-02T03:04:05.678Z INFO  event=label_gc archived=2");
+    assert.equal(
+      lines[0],
+      "time=2026-01-02T03:04:05.678Z level=info event=label_gc archived=2",
+    );
   });
 
   it("accepts a free-form string", () => {
     const { lines, logger } = capture();
     logger("something happened");
-    assert.equal(lines[0], "2026-01-02T03:04:05.678Z INFO  something happened");
+    assert.equal(lines[0], 'time=2026-01-02T03:04:05.678Z level=info msg="something happened"');
   });
 
   it("lets a second-argument level override the default", () => {
     const { lines, logger } = capture();
     logger("careful", { level: "warn" });
-    assert.equal(lines[0], "2026-01-02T03:04:05.678Z WARN  careful");
+    assert.equal(lines[0], "time=2026-01-02T03:04:05.678Z level=warn msg=careful");
   });
 
   it("honours an explicit level on an event object over EVENT_LEVELS", () => {
     const { lines, logger } = capture({ level: "debug" });
     logger({ event: "label_gc_failed", level: "debug", code: "X" });
-    assert.match(lines[0], /^2026-01-02T03:04:05\.678Z DEBUG /);
+    assert.equal(levelOf(lines[0]), "debug");
   });
 
   it("takes the event's level from the catalogue", () => {
     const { lines, logger } = capture();
     logger({ event: "label_gc_failed", code: "DB_BUSY" });
-    assert.match(lines[0], /^2026-01-02T03:04:05\.678Z ERROR /);
+    assert.equal(levelOf(lines[0]), "error");
     assert.equal(EVENT_LEVELS.label_gc_failed, "error");
   });
 
@@ -112,17 +118,16 @@ describe("log — the callable contract", () => {
     logger.info("i");
     logger.warn({ event: "x" });
     logger.error("e");
-    assert.deepEqual(
-      lines.map((line) => line.slice(25, 30).trim()),
-      ["DEBUG", "INFO", "WARN", "ERROR"],
-    );
+    assert.deepEqual(lines.map(levelOf), ["debug", "info", "warn", "error"]);
   });
 
-  it("records an Error as a structured field", () => {
+  it("records an Error as a quoted structured field", () => {
     const { lines, logger } = capture();
     const err = Object.assign(new Error("boom"), { code: "DB_BUSY" });
     logger.error(err);
-    assert.match(lines[0], /ERROR error=\{"name":"Error","code":"DB_BUSY","message":"boom"\}/);
+    assert.match(lines[0], /level=error /);
+    assert.match(lines[0], /error="\{/);
+    assert.match(lines[0], /\\"code\\":\\"DB_BUSY\\"/);
   });
 
   it("adds the stack only when debug output is enabled", () => {
@@ -133,7 +138,7 @@ describe("log — the callable contract", () => {
 
     const atDebug = capture({ level: "debug" });
     atDebug.logger.error(err);
-    assert.match(atDebug.lines[0], /"stack":/);
+    assert.match(atDebug.lines[0], /stack/);
   });
 });
 
@@ -144,7 +149,7 @@ describe("log — filtering", () => {
     logger.info("i");
     logger.warn("w");
     logger.error("e");
-    assert.deepEqual(lines.map((line) => line.slice(25, 30).trim()), ["WARN", "ERROR"]);
+    assert.deepEqual(lines.map(levelOf), ["warn", "error"]);
   });
 
   it("emits nothing at all when level is off", () => {
@@ -164,12 +169,12 @@ describe("log — filtering", () => {
   it("falls back to info for an unknown record level", () => {
     const { lines, logger } = capture();
     logger({ event: "x", level: "chatty" });
-    assert.match(lines[0], / INFO  /);
+    assert.equal(levelOf(lines[0]), "info");
   });
 });
 
 describe("log — text format", () => {
-  it("renders a stable timestamp, padded level, event first and fields in order", () => {
+  it("renders the conventional time/level prefix, then event, msg and fields", () => {
     const line = formatLogRecord(
       {
         ts: "2026-01-02T03:04:05.678Z",
@@ -184,7 +189,7 @@ describe("log — text format", () => {
     );
     assert.equal(
       line,
-      "2026-01-02T03:04:05.678Z INFO  event=request message=done method=GET path=/api/v1/tasks status=200",
+      "time=2026-01-02T03:04:05.678Z level=info event=request msg=done method=GET path=/api/v1/tasks status=200",
     );
   });
 
@@ -193,7 +198,7 @@ describe("log — text format", () => {
       { ts: "t", level: "warn", event: "x", note: "two words", blank: "" },
       {},
     );
-    assert.equal(line, 't WARN  event=x note="two words" blank=""');
+    assert.equal(line, 'time=t level=warn event=x note="two words" blank=""');
   });
 
   it("renders null, booleans, numbers and objects", () => {
@@ -201,7 +206,7 @@ describe("log — text format", () => {
       { ts: "t", level: "info", event: "x", a: null, b: true, c: 3, d: { k: 1 } },
       {},
     );
-    assert.equal(line, 't INFO  event=x a=null b=true c=3 d={"k":1}');
+    assert.equal(line, 'time=t level=info event=x a=null b=true c=3 d="{\\"k\\":1}"');
   });
 
   it("truncates a long value", () => {
@@ -213,11 +218,22 @@ describe("log — text format", () => {
     assert.ok(line.length < 60);
   });
 
-  it("puts a prefix immediately before the body", () => {
+  it("renders the component as a field, not as a custom prefix", () => {
     const line = formatLogRecord({ ts: "t", level: "info", message: "/meerkat-loop Continue" }, {
-      prefix: "supervisor",
+      component: "supervisor",
     });
-    assert.equal(line, "t INFO  supervisor: /meerkat-loop Continue");
+    assert.equal(
+      line,
+      'time=t level=info component=supervisor msg="/meerkat-loop Continue"',
+    );
+  });
+
+  it("normalises camelCase and kebab-case keys to snake_case", () => {
+    const line = formatLogRecord(
+      { ts: "t", level: "info", event: "x", labelId: "l1", useCount: 2, "held-by": "p" },
+      {},
+    );
+    assert.equal(line, "time=t level=info event=x label_id=l1 use_count=2 held_by=p");
   });
 });
 
@@ -233,7 +249,7 @@ describe("log — redaction", () => {
   it("blanks a secret-named key but keeps token_source and token_file readable", () => {
     const { lines, logger } = capture();
     logger({ event: "x", token: "abc", token_source: "env", token_file: "/tmp/t" });
-    assert.match(lines[0], /token="td_\*\*\*\*"/);
+    assert.match(lines[0], /token=td_\*\*\*\*/);
     assert.match(lines[0], /token_source=env/);
     assert.match(lines[0], /token_file=\/tmp\/t/);
   });
@@ -270,13 +286,13 @@ describe("log — sinks", () => {
   it("child() merges extra meta into every line", () => {
     const { lines, logger } = capture();
     logger.child({ request_id: "r1" }).info("hello");
-    assert.equal(lines[0], "2026-01-02T03:04:05.678Z INFO  hello request_id=r1");
+    assert.equal(lines[0], "time=2026-01-02T03:04:05.678Z level=info msg=hello request_id=r1");
   });
 
   it("merges the ambient context into every line", () => {
     const { lines, logger } = capture();
     withLogContext({ request_id: "r2" }, () => logger.info("inside"));
-    assert.equal(lines[0], "2026-01-02T03:04:05.678Z INFO  inside request_id=r2");
+    assert.equal(lines[0], "time=2026-01-02T03:04:05.678Z level=info msg=inside request_id=r2");
     assert.equal(currentLogContext(), null);
   });
 });

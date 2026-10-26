@@ -301,7 +301,7 @@ describe("ping and continue entries", () => {
       "--dry-run",
     ], { TP_FAKE_CLAUDE: record, PATH: `${bin}:${process.env.PATH}` });
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stderr, /supervisor: \/meerkat-loop Continue/);
+    assert.match(run.stderr, /component=supervisor msg="\/meerkat-loop Continue/);
     assert.match(run.stderr, /continue: would run: claude/);
     assert.equal(existsSync(join(dir, "continue.state.json")), false, "dry-run takes no lock");
   });

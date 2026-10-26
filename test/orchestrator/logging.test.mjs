@@ -31,11 +31,14 @@ function captureStderr(fn) {
 }
 
 describe("orchestrator/logging — the loop's line logger", () => {
-  it("keeps `supervisor: ` immediately before the message on stderr", () => {
+  it("names the loop in a `component=` field on stderr", () => {
     const dir = tempDir();
     const log = createLogger({ log: join(dir, "supervisor.log"), logLevel: "info" });
     const text = captureStderr(() => log("/meerkat-loop Continue — timer turn"));
-    assert.match(text, /^\d{4}-\d{2}-\d{2}T\S+ INFO {2}supervisor: \/meerkat-loop Continue/m);
+    assert.match(
+      text,
+      /^time=\d{4}-\d{2}-\d{2}T\S+ level=info component=supervisor msg="\/meerkat-loop Continue/m,
+    );
   });
 
   it("appends a timestamped, levelled line to the loop log", () => {
@@ -46,7 +49,7 @@ describe("orchestrator/logging — the loop's line logger", () => {
     log.close();
     assert.match(
       readFileSync(path, "utf8"),
-      /^\d{4}-\d{2}-\d{2}T\S+ INFO {2}supervisor: continue: would run: claude$/m,
+      /^time=\d{4}-\d{2}-\d{2}T\S+ level=info component=supervisor msg="continue: would run: claude"$/m,
     );
   });
 
@@ -54,7 +57,7 @@ describe("orchestrator/logging — the loop's line logger", () => {
     const dir = tempDir();
     const log = createLogger({ log: join(dir, "supervisor.log"), logLevel: "info" });
     const text = captureStderr(() => log("patrol failed", { level: "warn" }));
-    assert.match(text, / WARN {2}supervisor: patrol failed/);
+    assert.match(text, / level=warn component=supervisor msg="patrol failed"/);
   });
 
   it("writes no file during a dry run", () => {
