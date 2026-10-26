@@ -231,13 +231,13 @@ decisions whose prerequisites are settled, numbered Q1..Qn with a recommendation
 ## Required board interface
 
 ```text
-requires: board task-interface v1   — board release >= 1.1.0
+requires: board task-interface v1   — board release >= 0.1.0
 ```
 
 The loop drives the board only through `taskctl` — the capability subset is the board skill's
 `references/capabilities.md` (including `events follow` for the live stream; the loop never
-calls the HTTP API). `task-interface v1` first shipped in board 1.0.0; the board-side workflow
-plan landed in 1.1.0. Gate check before pointing a loop at a board:
+calls the HTTP API). `task-interface v1` and the board-side workflow plan both ship in the
+0.1.0 baseline. Gate check before pointing a loop at a board:
 
 ```bash
 taskctl loop compat                 # taskctl on PATH

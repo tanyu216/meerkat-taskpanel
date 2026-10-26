@@ -63,7 +63,8 @@ merging `dev`, and only after the user has confirmed.
      uncommitted changes cannot be removed without `--force`, and the container gate at
      `pre-push` bakes the working tree — commit first;
   2. merge into `dev` — `git checkout dev && git merge --no-ff <branch>` — and resolve
-     conflicts against `dev`;
+     conflicts against `dev`; **do not edit `CHANGELOG.md` here** — it is written later, at
+     the `dev` → `main` merge;
   3. remove the worktree, *then* delete the branch — `git worktree remove <path>` followed by
      `git branch -d <branch>` from the primary checkout. The order is load-bearing: git
      refuses to delete a branch that is still checked out in a worktree. Use `-d`, not `-D`
@@ -75,6 +76,30 @@ merging `dev`, and only after the user has confirmed.
 
 The log contains `lane/… → main` merges from before this rule; treat the section above as the
 policy going forward.
+
+### CHANGELOG.md is written only when `dev` merges into `main`
+
+`CHANGELOG.md` is the release line's record, not a work log. Write it **only** in the
+`dev` → `main` integration step, after the user has confirmed the release, and derive the
+entries from what that merge actually contains:
+
+```sh
+git log --no-merges --reverse <last-release-tag>..dev   # first release: main..dev
+git diff --stat <last-release-tag>..dev
+```
+
+- Never add entries on a feature branch, in a worktree, or on `dev` itself. `[Unreleased]`
+  stays empty between releases.
+- A release merge writes (or updates) the `## [X.Y.Z] - YYYY-MM-DD` section from that diff.
+  Group the user-visible outcomes under Keep a Changelog's `Added` / `Changed` / `Removed` /
+  `Fixed`; no commit hashes, no card ids. Internal-only changes may be omitted.
+- Bump the version carriers in the same merge, then tag. The tag gate
+  (`scripts/verify/changelog.mjs`) still requires the matching section before a `vX.Y.Z`
+  tag is cut — the timing rule above is what makes that section exist.
+- Once a version section is on `main`, treat it as frozen (the same spirit as migrations);
+  only typo fixes are allowed.
+- `npm run release:bump <version> --changelog` creates an **empty** scaffold; filling it from
+  the diff is part of that same release merge.
 
 ## Commands
 

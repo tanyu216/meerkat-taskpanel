@@ -80,6 +80,7 @@ These are checked, not merely preferred. Skipping one turns CI red.
 | **Migrations are append-only.** Never edit or delete a committed `src/core/storage/migrations/*.sql`; add a new numbered file. The runner refuses a database whose applied file has changed | `migrations-runner.mjs`, `.githooks/pre-commit` |
 | **The container gate runs before a branch push leaves the machine** (`SKIP_CONTAINER_VERIFY=1` opts out for one push) | `.githooks/pre-push` |
 | **A version tag needs a `## [X.Y.Z]` CHANGELOG section** | `version-gate.yml`, `.githooks/pre-push` |
+| **CHANGELOG entries are written only at the `dev` → `main` merge**, from that merge's git diff; feature branches and `dev` never edit it | review + `CLAUDE.md` (the tag gate only checks that the section exists) |
 | **Every failure is a domain error with a code** — never a bare `Error` | review |
 | **Layering:** `cli\|server -> core -> foundation`. `src/core/domain/` imports no Node builtins | review |
 

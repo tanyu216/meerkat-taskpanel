@@ -136,12 +136,7 @@ export function resolveClaimUnassigned(input = {}) {
   const fromEnv = parseYesNo(input.env);
   if (fromEnv !== null) return fromEnv;
   const file = input.file ?? null;
-  // legacy-name-compat: an agent config written before the rename carries the old key.
-  const fromFile = parseYesNo(
-    file === null
-      ? undefined
-      : (file.MEERKAT_TASKPANEL_CLAIM_UNASSIGNED ?? file.TASKPANEL_CLAIM_UNASSIGNED),
-  );
+  const fromFile = parseYesNo(file === null ? undefined : file.MEERKAT_TASKPANEL_CLAIM_UNASSIGNED);
   if (fromFile !== null) return fromFile;
   return true;
 }

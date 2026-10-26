@@ -824,12 +824,6 @@ claude: claude is not on PATH — the scheduling units will carry node's directo
 claude:   so a woken claude would not resolve. Install it, then re-run this install with --force.
 ```
 
-**One path these units cannot reach**: `templates/codex/trigger.sh`, the legacy Codex
-trigger, runs `node -e …` and is meant to be scheduled from **your own** crontab line (see
-[`install.md §Codex`](install.md#codex)). No unit of ours is in that chain, so nothing here
-sets a `PATH` for it — give that line its own `PATH=` (or an absolute `node`). It is the same
-defect, in the one place a unit's environment does not reach.
-
 ### The taskd guard (keepalive)
 
 `taskd` — the board server, `src/server/main.mjs` — has an **OS-level keepalive**: the
@@ -1128,9 +1122,9 @@ Three **internal** bypasses exist; none is a user option:
 
 - `--no-automation`, or its environment form `MEERKAT_TASKPANEL_NO_AUTOMATION=1` (the
   variable `install.sh` sets for each agent-kind installer) — **skips the guard too**,
-  semantically consistent with its other targets (the Codex claim trigger and the
-  scheduling units). It is one bypass with two spellings, an advanced install bypass
-  rather than a switch for the guard alone.
+  semantically consistent with its other target (the Codex scheduling units). It is one
+  bypass with two spellings, an advanced install bypass rather than a switch for the guard
+  alone.
 - `--dry-run` — writes and loads nothing; the report line becomes
   `taskd guard: skipped (dry-run)`.
 - `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1` — **for tests only**; skips the guard so a
@@ -1814,15 +1808,15 @@ launchd / systemd / cron  ──continue 600s──▶  taskctl loop run --conti
                                                           … reads, works, reports, delivers …
 ```
 
-## Verifying the generated trigger
+## Verifying the generated hook
 
-The installer *generates* the per-agent kind claim entry points — the Claude SessionStart
-hook and the Codex claim trigger. `scripts/verify/profiles.mjs` only proves they *landed*;
-it never runs them. `scripts/verify/kind-runtime.mjs` runs them, offline, in CI:
+The installer *generates* one claim entry point — the Claude SessionStart hook.
+`scripts/verify/profiles.mjs` only proves it *landed*; it never runs it.
+`scripts/verify/kind-runtime.mjs` runs it, offline, in CI:
 
 ```bash
 node scripts/verify/kind-runtime.mjs            # all agent kinds; exit 0 only if every assert passes
-node scripts/verify/kind-runtime.mjs --actor-kind codex
+node scripts/verify/kind-runtime.mjs --actor-kind claude
 ```
 
 The harness installs into a throwaway prefix (never `$HOME`), then swaps in a **canned
@@ -1832,17 +1826,15 @@ invocation, not just the exit code:
 | Path | Asserted |
 |---|---|
 | `session-start.sh` (claude) | calls `issue candidates --assignee <agent>`, prints candidates + the eight rules, and is **non-fatal** — a failing or missing shim still exits 0 with a PATH-independent fallback |
-| `meerkat-taskpanel-claim.sh` (codex) | claims the first candidate (`issue move <ref> in_progress`) when free; **skips** when a held card is mine (identity matched under the board's NFKC/whitespace/case rule); still claims when the held card is someone else's; exits 0 on an empty pool; exits 1 when the shim is missing |
 
 **Coverage boundary (what this does *not* prove).** It pins the generated *shell entry
-points* against a mock board. It does not drive the real agent CLIs (that is the
+point* against a mock board. It does not drive the real agent CLIs (that is the
 supplementary `scripts/verify/kind-cli.mjs`, which SKIPs when a CLI is absent) and it does
 not exercise the real board's claim semantics (`scripts/verify/install-e2e.sh` drives the
 real `taskctl`/`taskd`). Per agent kind, only the forms the bundle actually ships are
-covered: Claude has a hook and no trigger, Codex has a trigger and no hook, and **Pi has
-neither a hook nor a trigger** — its external supervisor is the only automation. (The
-`taskctl` shim is not one of these forms and is not part of this boundary: every agent kind
-gets one — see `docs/install.md`.)
+covered: Claude has a SessionStart hook; Codex and Pi have no hook, and their scheduling
+units are the automation. (The `taskctl` shim is not one of these forms and is not part of
+this boundary: every agent kind gets one — see `docs/install.md`.)
 
 ## See also
 

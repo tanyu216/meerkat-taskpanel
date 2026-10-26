@@ -2,7 +2,7 @@
  * Agent-bundle install contract: `install.sh --target claude` / `--target codex`.
  *
  * The two bundle agent kinds deploy more than a skill — agent config, slash commands
- * (Claude) / a claim trigger (Codex), and a `taskctl` shim that pins the agent
+ * (Claude) / the AGENTS.md snippet and scheduling units (Codex), and a `taskctl` shim that pins the agent
  * identity. These tests pin that contract under an isolated home
  * (`MEERKAT_TASKPANEL_TARGET_HOME`), and in particular the two "never clobber"
  * rules the rest of the installer relies on:
@@ -287,7 +287,7 @@ describe("agent bundle: claude", () => {
 // ---------------------------------------------------------------------------
 
 describe("agent bundle: codex", () => {
-  it("deploys skill + shim + AGENTS.md snippet + trigger", () => {
+  it("deploys skill + shim + AGENTS.md snippet + scheduling units", () => {
     const home = makeTempDir();
 
     const run = runInstall(["--target", "codex", "--agent-name", "alice"], agentEnv(home));
@@ -309,16 +309,12 @@ describe("agent bundle: codex", () => {
     assert.ok(agents.includes(join(home, ".codex", "bin", "taskctl")), "shim path must be rendered into AGENTS.md");
     assert.ok(!agents.includes("{{"), "template tokens must be rendered");
 
-    // 4. claim trigger (executable, rendered, mentions the schedule)
-    const trigger = join(home, ".codex", "meerkat-taskpanel-claim.sh");
-    assert.ok(isExecutable(trigger), "trigger must be executable");
-    const triggerText = readFileSync(trigger, "utf8");
-    assert.match(triggerText, /name="\$\{TASKCTL_AGENT:-alice\}"/);
-    assert.ok(triggerText.includes(join(home, ".codex", "meerkat-taskpanel-claim.sh")), "trigger path must be rendered");
-    assert.ok(!triggerText.includes("{{"), "template tokens must be rendered");
+    // 4. no claim trigger; the scheduling units are the automation
+    assert.equal(existsSync(join(home, ".codex", "meerkat-taskpanel-claim.sh")), false);
+    assert.ok(existsSync(join(home, ".codex", "scheduling")), "scheduling units must land");
   });
 
-  it("--no-automation skips the claim trigger but keeps the rest", () => {
+  it("--no-automation skips the scheduling units but keeps the rest", () => {
     const home = makeTempDir();
     const run = runInstall(
       ["--target", "codex", "--agent-name", "alice", "--no-automation"],
@@ -326,6 +322,7 @@ describe("agent bundle: codex", () => {
     );
     assert.equal(run.status, 0, run.stderr);
 
+    assert.equal(existsSync(join(home, ".codex", "scheduling")), false);
     assert.equal(existsSync(join(home, ".codex", "meerkat-taskpanel-claim.sh")), false);
     assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")));
     assert.ok(existsSync(join(home, ".codex", "AGENTS.md")));

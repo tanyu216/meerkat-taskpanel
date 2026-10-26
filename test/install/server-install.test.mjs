@@ -45,7 +45,7 @@ function sourceRoot({ web = false } = {}) {
   mkdirSync(join(root, "src", "core", "storage", "migrations"), { recursive: true });
   writeFileSync(join(root, "src", "server", "main.mjs"), "// server\n");
   writeFileSync(join(root, "src", "cli", "index.mjs"), "// cli\n");
-  writeFileSync(join(root, "src", "core", "storage", "migrations", "0001_core_tables.sql"), "-- migration\n");
+  writeFileSync(join(root, "src", "core", "storage", "migrations", "0001_init.sql"), "-- migration\n");
   for (const name of ["package.json", "README.md", "README.zh-CN.md", "LICENSE"]) {
     writeFileSync(join(root, name), `${name}\n`);
   }
@@ -103,7 +103,7 @@ describe("server-install — the tree", () => {
     const report = installServer({ root: source, dest, skipWebBuild: true });
     assert.equal(report.ok, true, report.error);
     assert.ok(existsSync(join(dest, "src", "server", "main.mjs")));
-    assert.ok(existsSync(join(dest, "src", "core", "storage", "migrations", "0001_core_tables.sql")));
+    assert.ok(existsSync(join(dest, "src", "core", "storage", "migrations", "0001_init.sql")));
     assert.ok(existsSync(join(dest, "package.json")));
     assert.ok(existsSync(join(dest, "web", "dist", "index.html")));
     assert.equal(statSync(join(dest, ".data")).mode & 0o777, 0o700);

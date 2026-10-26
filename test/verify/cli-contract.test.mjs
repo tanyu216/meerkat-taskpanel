@@ -78,10 +78,11 @@ describe("cli-contract — the committed snapshot describes this tree", () => {
 
   it("freezes keys, never the release number", () => {
     const snapshot = buildSnapshot();
+    const release = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
     assert.deepEqual(snapshot.envelope.version_data, ["schema_version", "version"]);
     assert.deepEqual(snapshot.envelope.status_data, ["runtime", "schema_version", "version"]);
     assert.deepEqual(snapshot.envelope.status_runtime, ["data_dir", "note", "pid", "pointer", "running", "url"]);
-    assert.equal(serializeSnapshot(snapshot).includes('"1.1.0"'), false);
+    assert.equal(serializeSnapshot(snapshot).includes(`"${release}"`), false);
   });
 
   it("freezes the bare commands beside the groups", () => {

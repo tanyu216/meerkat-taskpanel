@@ -36,17 +36,17 @@ describe("board-compat — versions", () => {
   });
 
   it("compares the numeric triple, and a prerelease never satisfies the floor", () => {
-    assert.equal(atLeastVersion("1.1.0", "1.1.0"), true);
-    assert.equal(atLeastVersion("1.1.1", "1.1.0"), true);
-    assert.equal(atLeastVersion("2.0.0", "1.1.0"), true);
-    assert.equal(atLeastVersion("1.0.9", "1.1.0"), false);
-    assert.equal(atLeastVersion("1.1.0-rc.1", "1.1.0"), false);
-    assert.equal(atLeastVersion("nope", "1.1.0"), false);
+    assert.equal(atLeastVersion("0.1.0", "0.1.0"), true);
+    assert.equal(atLeastVersion("0.1.1", "0.1.0"), true);
+    assert.equal(atLeastVersion("2.0.0", "0.1.0"), true);
+    assert.equal(atLeastVersion("0.0.9", "0.1.0"), false);
+    assert.equal(atLeastVersion("0.1.0-rc.1", "0.1.0"), false);
+    assert.equal(atLeastVersion("nope", "0.1.0"), false);
   });
 
   it("names the interface the loop drives, and the first board that shipped it", () => {
     assert.equal(REQUIRED_BOARD_INTERFACE, "task-interface v1");
-    assert.equal(REQUIRED_BOARD_VERSION, "1.1.0");
+    assert.equal(REQUIRED_BOARD_VERSION, "0.1.0");
   });
 });
 
@@ -58,10 +58,10 @@ describe("board-compat — checkBoard", () => {
     const result = checkBoard({
       command,
       args,
-      run: answering({ stdout: JSON.stringify({ ok: true, data: { version: "1.1.0", schema_version: 1 } }) }),
+      run: answering({ stdout: JSON.stringify({ ok: true, data: { version: "0.1.0", schema_version: 1 } }) }),
     });
     assert.equal(result.ok, true);
-    assert.equal(result.version, "1.1.0");
+    assert.equal(result.version, "0.1.0");
     assert.equal(result.schemaVersion, 1);
     assert.equal(result.boardInterface, REQUIRED_BOARD_INTERFACE);
   });
@@ -70,11 +70,11 @@ describe("board-compat — checkBoard", () => {
     const result = checkBoard({
       command,
       args,
-      run: answering({ stdout: JSON.stringify({ ok: true, data: { version: "1.0.9" } }) }),
+      run: answering({ stdout: JSON.stringify({ ok: true, data: { version: "0.0.9" } }) }),
     });
     assert.equal(result.ok, false);
     assert.equal(result.code, "BOARD_TOO_OLD");
-    assert.match(result.message, /1\.1\.0/);
+    assert.match(result.message, /0\.1\.0/);
   });
 
   it("reports an unreachable CLI, not a version verdict", () => {

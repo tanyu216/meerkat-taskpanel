@@ -70,11 +70,6 @@ export async function openBoard(options = {}) {
   const dbPath = resolveDbPath({ dataDir, dbPath: options.dbPath ?? null, env });
   ensureDir(dataDir);
 
-  // 0038 — the board-level acceptance policy is gone (one project default plus a
-  // per-card snapshot replaced it). A configured legacy value would silently not
-  // apply, so the board **fails closed** and names the migration instead.
-  assertNoLegacyAcceptancePolicy(env, envVars);
-
   // `busyTimeoutMs` is an *override* of the pinned 5000ms (§4.3), not a new
   // default: only a caller that says so gets a different lock wait. The tests
   // that exercise lock contention use it to keep a 5s wait out of the suite.
@@ -231,46 +226,6 @@ function staleRepositoriesTrap(schema) {
       },
     },
   );
-}
-
-/** The env key the retired board-level acceptance policy lived under (0038). */
-export const LEGACY_ACCEPTANCE_POLICY_ENV = "TASKD_ACCEPTANCE_POLICY";
-
-/**
- * Refuse to start a board whose `.env` still configures the retired
- * board-level acceptance policy.
- *
- * Silently ignoring `human-only` would upgrade an operator into a different
- * closing rule than the one they asked for, so this is the one place old
- * configuration is an error. The replacement is board data, not configuration:
- * a project's `acceptance` default plus each card's snapshot.
- *
- * @param {NodeJS.ProcessEnv|null|undefined} env the merged environment
- * @param {Map<string,string>|Record<string,string>|null|undefined} envVars the parsed `.env`
- */
-function assertNoLegacyAcceptancePolicy(env, envVars) {
-  /** @param {unknown} value */
-  const set = (value) => value !== undefined && value !== null && String(value).trim() !== "";
-  let value = null;
-  if (env !== undefined && env !== null && set(env[LEGACY_ACCEPTANCE_POLICY_ENV])) {
-    value = String(env[LEGACY_ACCEPTANCE_POLICY_ENV]);
-  } else if (envVars instanceof Map && set(envVars.get(LEGACY_ACCEPTANCE_POLICY_ENV))) {
-    value = String(envVars.get(LEGACY_ACCEPTANCE_POLICY_ENV));
-  } else if (envVars !== null && typeof envVars === "object" && set(envVars[LEGACY_ACCEPTANCE_POLICY_ENV])) {
-    value = String(envVars[LEGACY_ACCEPTANCE_POLICY_ENV]);
-  }
-  if (value === null) return;
-  throw new DomainError("ACCESS_CONFIG_INVALID", {
-    message:
-      `${LEGACY_ACCEPTANCE_POLICY_ENV} is retired; card acceptance is now one project default ` +
-      "plus a per-card acceptance mode (off | agent | human)",
-    details: { key: LEGACY_ACCEPTANCE_POLICY_ENV, value },
-    hint: {
-      fix:
-        `remove ${LEGACY_ACCEPTANCE_POLICY_ENV} from .env, then set the default with ` +
-        "`taskctl project update <id> --acceptance human`",
-    },
-  });
 }
 
 /**

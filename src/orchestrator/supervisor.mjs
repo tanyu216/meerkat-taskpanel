@@ -142,9 +142,6 @@ export async function main(argv, env = process.env, io = {}) {
   }
 
   const log = createLogger(opts);
-  if (opts.legacyPollInterval) {
-    log("warning: --poll-interval is deprecated; use --ping-interval");
-  }
 
   switch (mode) {
     case "ping":

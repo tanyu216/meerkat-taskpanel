@@ -26,7 +26,7 @@ and loop config name it.
 
 `<checkout>` is the detected source tree (or the cloned cache), not the user's project.
 
-`--no-automation` skips the machine-wide taskd guard (and Codex automation). It is the
+`--no-automation` skips the machine-wide taskd guard (and the Codex scheduling units). It is the
 remote-board path: do not load a local keepalive behind a remote URL.
 
 ## The server tree

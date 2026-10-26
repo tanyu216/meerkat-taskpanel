@@ -160,7 +160,7 @@ describe("loadEnvFile — namespaces and values", () => {
     assert.equal(config.env.TASKCTL_HUMAN, "Terry");
   });
 
-  it("validates URL, port, booleans and acceptance policy", () => {
+  it("validates URL, port and booleans", () => {
     const cases = [
       ["TASKD_URL=http://localhost:9527/path\n", /path/],
       ["TASKD_URL=ftp://localhost:9527\n", /http or https/],
@@ -168,8 +168,9 @@ describe("loadEnvFile — namespaces and values", () => {
       ["TASKD_PORT=99999\n", /0–65535/],
       ["TASKD_NO_AUTOSTART=maybe\n", /true or false/],
       ["TASKD_ALLOW_LIST_ENABLED=maybe\n", /true or false/],
-      // 0038 — the key is retired; any value is refused with the migration.
-      ["TASKD_ACCEPTANCE_POLICY=both\n", /retired/],
+      // The retired key is no longer a recognized config key; it falls through
+      // the project-namespace unknown-key rule.
+      ["TASKD_ACCEPTANCE_POLICY=both\n", /unknown configuration key/],
     ];
     for (const [text, pattern] of cases) {
       const root = tempDir();

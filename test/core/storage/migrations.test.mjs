@@ -8,7 +8,7 @@
  */
 
 import assert from "node:assert/strict";
-import { copyFileSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
@@ -27,12 +27,9 @@ import {
 import { DomainError } from "../../../src/foundation/errors.mjs";
 import {
   TS,
-  TS2,
   cleanupTempDirs,
   createTempBoard,
-  insertTask,
   makeTempDir,
-  revision,
 } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
@@ -53,89 +50,8 @@ const TINY = {
 describe("storage/migrations — the shipped set", () => {
   it("reads the shipped migrations in version order with stable checksums", () => {
     const migrations = listMigrations();
-    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042"]);
-    assert.deepEqual(migrations.map((m) => m.name), [
-      "core_tables",
-      "invariants",
-      "reports",
-      "dictionary",
-      "task_meta",
-      "report_waiver",
-      "labels",
-      "report_origin",
-      "task_idem",
-      "parent_epic",
-      "parent_kind_update",
-      "drop_project_workspace",
-      "awaiting_status",
-      "task_source_index",
-      "deploy_kind",
-      "blocked_reason",
-      // T-20261014-212017-4 — a `blocks` edge may not close a loop.
-      "block_cycle",
-      // an actor's `kind` stops being a closed vocabulary (comments, task_reports).
-      "actor_kind_open",
-      // the two dictionary tables become one actor table, deduplicated (0019).
-      "actors",
-      // the three remaining attribution columns become references to it (0020).
-      "attribution_fk",
-      "block_chain",
-      "block_pair_on_parent",
-      // the three reference kinds move off the actor row and onto the record (0023).
-      "actor_kind_on_record",
-      // the epic's one pair: `todo → in_review`, plus the delivery gate that
-      // watches it (0024).
-      "epic_deliver_from_todo",
-      // 0025 — a review card's identity becomes structural (columns + an
-      // immutability trigger): its `meta.review_of` was writable.
-      "review_card_marker",
-      // 0026 — a parent may not be delivered/accepted with a child in flight;
-      // the manual path had no such rule while the rollup always had.
-      "children_terminal_guard",
-      // 0027 — a done/canceled card reopens to todo (the one exit), starting a
-      // new delivery round and releasing the finished row's bookkeeping.
-      "reopen_terminal",
-      // 0028 — an agent session records the one sentence it is for.
-      "session_goal",
-      // 0029 — the session's platform field is `owner_kind`, like every other
-      // actor reference's kind.
-      "session_owner_kind",
-      // 0030 — `comments.kind` gains `confirm_request` (a rebuilt CHECK).
-      "comment_kind_confirm_request",
-      // 0031 — per-project review policy, per-card review decision, project
-      // reviewer override, and the two review gates.
-      "review_policy",
-      // 0032 — the acceptance baseline is frozen in a column; its revision and
-      // the not_applicable-note rule are trigger-enforced.
-      "acceptance_snapshot",
-      // 0033 — an epic's delivery report is marked as its rollup, and `done`
-      // requires a current-round one.
-      "rollup_reports",
-      // 0034 — `comments.kind` gains `question`, and `awaiting → todo` becomes
-      // legal (the answered card returns to the queue).
-      "questions_awaiting",
-      // 0035 — report provenance is gone: the gate counts any current-round
-      // report, and the `origin` column is dropped by a table rebuild.
-      "drop_report_origin",
-      // 0036 — a session carries an opaque host-observation `meta` object.
-      "session_meta",
-      // 0037 — the SSE cursor (`revision`) and the project activity window
-      // (`created_at`) are range reads; give both an index.
-      "activity_indexes",
-      // 0038 — one acceptance vocabulary: project default + card snapshot.
-      "acceptance_mode",
-      // 0039 — `deploy` leaves the card model; the tasks table is rebuilt with
-      // the narrow `kind` CHECK (0015's procedure).
-      "retire_deploy_kind",
-      // 0040 — the one-release compatibility spelling is retired: the legacy
-      // `review_policy` / `review_required` columns are dropped.
-      "retire_review_compat",
-      // 0041 — the review-only invariants become database refusals: no reopen,
-      // no parent/child edge, and no review-of-review.
-      "review_invariants",
-      // 0042 — the audit log is append-only in the schema too.
-      "activity_immutable",
-    ]);
+    assert.deepEqual(migrations.map((m) => m.version), ["0001"]);
+    assert.deepEqual(migrations.map((m) => m.name), ["init"]);
     for (const migration of migrations) {
       assert.match(migration.checksum, /^[0-9a-f]{64}$/);
       assert.equal(migration.checksum, checksumFor(migration.sql));
@@ -148,17 +64,17 @@ describe("storage/migrations — the shipped set", () => {
     const board = await createTempBoard({ migrate: false });
     try {
       const first = applyMigrations(board.db);
-      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042"]);
+      assert.deepEqual(first.applied.map((a) => a.version), ["0001"]);
       assert.deepEqual(first.skipped, []);
       for (const entry of first.applied) assert.equal(typeof entry.ms, "number");
 
       const second = applyMigrations(board.db);
       assert.deepEqual(second.applied, [], "re-apply must be a no-op");
-      assert.deepEqual(second.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042"]);
+      assert.deepEqual(second.skipped, ["0001"]);
 
       const rows = board.db.prepare("SELECT version, checksum FROM schema_migrations ORDER BY version").all();
       assert.equal(rows.length, listMigrations().length, "one bookkeeping row per shipped file");
-      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042"]);
+      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001"]);
     } finally {
       board.close();
     }
@@ -179,8 +95,8 @@ describe("storage/migrations — the shipped set", () => {
           .all(table)
           .map((row) => row.name);
 
-      // Card A6: the report table's column list, literally. `origin` (0008) and
-      // `is_rollup` (0033) are appended by ALTER, so they come last.
+      // Card A6: the report table's column list, literally. `is_rollup` (0033)
+      // is part of the 0.1.0 baseline; `origin` (0008) was retired by 0035.
       assert.deepEqual(columnsOf("task_reports"), [
         "id",
         "task_id",
@@ -201,8 +117,8 @@ describe("storage/migrations — the shipped set", () => {
       for (const column of ["id", "identifier", "version", "report_latest_id", "delivery_round", "idem"]) {
         assert.ok(columnsOf("tasks").includes(column), `tasks.${column}`);
       }
-      // The board owns no directory (0012): the column 0001 created is gone.
-      assert.equal(columnsOf("projects").includes("workspace_path"), false, "projects.workspace_path must be dropped by 0012");
+      // The board owns no directory: `workspace_path` is absent from the baseline.
+      assert.equal(columnsOf("projects").includes("workspace_path"), false, "projects.workspace_path must not exist");
       assert.ok(columnsOf("projects").includes("meta_json"));
 
       const strict = board.db
@@ -307,7 +223,7 @@ describe("storage/migrations — failure modes", () => {
 
   it("ships a default migrations dir that exists", () => {
     assert.match(defaultMigrationsDir(), /src\/core\/storage\/migrations$/);
-    assert.ok(listMigrations().length >= 12, `suspiciously few migrations: ${listMigrations().length}`);
+    assert.ok(listMigrations().length >= 1, `suspiciously few migrations: ${listMigrations().length}`);
   });
 });
 
@@ -373,105 +289,7 @@ describe("storage/migrations — startup check", () => {
   });
 });
 
-describe("storage/migrations — 0012 drops projects.workspace_path (O3)", () => {
-  /** The shipped set **before** 0012 — a board as the previous build left it. */
-  function before0012() {
-    const dir = makeTempDir("meerkat-taskpanel-pre0012-");
-    for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && n.slice(0, 4) < "0012")) {
-      copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
-    }
-    return dir;
-  }
-
-  const columnsOf = (db) =>
-    db.prepare("SELECT name FROM pragma_table_info('projects')").all().map((r) => r.name);
-  const indexNames = (db) =>
-    db.prepare("SELECT name FROM pragma_index_list('projects')").all().map((r) => r.name);
-
-  it("carries an existing board across, keeping every row and its task links", async () => {
-    const board = await createTempBoard({ migrate: false });
-    try {
-      // A board from the previous build: the column is there, with its rows.
-      const old = applyMigrations(board.db, { dir: before0012() });
-      assert.equal(old.applied.at(-1).version, "0011");
-      assert.ok(columnsOf(board.db).includes("workspace_path"), "precondition: the old schema has the column");
-      assert.ok(indexNames(board.db).includes("ux_projects_workspace"), "precondition: the old schema has the index");
-
-      board.db
-        .prepare(
-          `INSERT INTO projects(id, name, workspace_path, next_task_number, labels, meta_json, readme, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("legacy", "Legacy project", "/tmp/demo", 7, '["m1"]', '{"k":"v"}', "# notes", TS, TS);
-      insertTask(board.db, { id: "task-legacy", identifier: "LEGACY-0001", project_id: "legacy" });
-
-      // The upgrade is everything above 0011, on top of what was already there.
-      const up = applyMigrations(board.db);
-      // 0012 and everything after it — this board stopped before 0012, so the
-      // upgrade carries it to the head of the shipped set.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042"]);
-      assert.deepEqual(up.skipped.slice(-2), ["0010", "0011"]);
-
-      // The column and its unique index are gone; the table is otherwise intact.
-      assert.equal(columnsOf(board.db).includes("workspace_path"), false, "projects.workspace_path must be gone");
-      assert.equal(indexNames(board.db).includes("ux_projects_workspace"), false, "the unique index must be gone");
-
-      // Every other value on the row survived (only the directory string is lost
-      // on purpose — it now lives on the skill side).
-      const row = board.db.prepare("SELECT * FROM projects WHERE id = 'legacy'").get();
-      assert.equal(row.name, "Legacy project");
-      assert.equal(Number(row.next_task_number), 7);
-      assert.equal(row.labels, '["m1"]');
-      assert.equal(row.meta_json, '{"k":"v"}');
-      assert.equal(row.readme, "# notes");
-      assert.equal(row.created_at, TS);
-      assert.equal(row.updated_at, TS);
-
-      // The task, and the link to its project, are untouched.
-      const task = board.db.prepare("SELECT project_id, identifier FROM tasks WHERE id = 'task-legacy'").get();
-      assert.equal(task.project_id, "legacy");
-      assert.equal(task.identifier, "LEGACY-0001");
-
-      assert.equal(board.db.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
-      assert.deepEqual(board.db.prepare("PRAGMA foreign_key_check").all(), []);
-    } finally {
-      board.close();
-    }
-  });
-
-  it("re-leaves the projects update trigger naming only live columns", async () => {
-    const board = await createTempBoard(); // fully migrated
-    try {
-      const sql = board.db
-        .prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'tr_rev_projects_upd'")
-        .get().sql;
-      assert.match(sql, /AFTER UPDATE OF/);
-      assert.equal(sql.includes("workspace_path"), false, "the trigger must not name a dropped column");
-
-      // And it still does its job: a project update bumps the revision cursor.
-      board.db.prepare("INSERT INTO projects(id, name, created_at, updated_at) VALUES (?, ?, ?, ?)").run("p", "P", TS, TS);
-      const before = revision(board.db);
-      board.db.prepare("UPDATE projects SET name = ?, updated_at = ? WHERE id = 'p'").run("Q", TS2);
-      assert.equal(revision(board.db), before + 1, "the revision trigger must still fire");
-    } finally {
-      board.close();
-    }
-  });
-
-  it("is a no-op on a board that already dropped the column", async () => {
-    const board = await createTempBoard();
-    try {
-      const again = applyMigrations(board.db);
-      assert.deepEqual(again.applied, []);
-      assert.equal(again.skipped.includes("0012"), true);
-      assert.equal(columnsOf(board.db).includes("workspace_path"), false);
-    } finally {
-      board.close();
-    }
-  });
-});
-
-describe("storage/migrations — the `-- @foreign-keys: off` request (0013's rebuild)", () => {
+describe("storage/migrations — the `-- @foreign-keys: off` request (a table rebuild)", () => {
   /** A parent table with a child that references it — the shape a rebuild disturbs. */
   const REBUILD_FIXTURE = {
     "0001_base.sql":

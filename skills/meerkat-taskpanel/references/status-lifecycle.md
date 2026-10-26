@@ -312,8 +312,6 @@ card is always `off`.
 - Changing the mode is the audited `issue update <ref> --acceptance-mode <value> --reason
   "<why>"`: an agent may only tighten (`off → agent|human`), and leaving `agent` needs no open
   current-round review card.
-- The retired `TASKD_ACCEPTANCE_POLICY` key makes `taskd` **refuse to start** until it is
-  removed; set the project default instead.
 
 ## 8. Creating a card in a status
 

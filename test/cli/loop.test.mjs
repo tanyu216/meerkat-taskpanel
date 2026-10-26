@@ -200,7 +200,7 @@ describe("cli/commands/loop — compat", () => {
     const board = join(dir, "board.js");
     writeFileSync(
       board,
-      "#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({ ok: true, data: { version: \"1.0.0\", schema_version: 1 } }));\n",
+      "#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({ ok: true, data: { version: \"0.0.9\", schema_version: 1 } }));\n",
     );
     chmodSync(board, 0o755);
 

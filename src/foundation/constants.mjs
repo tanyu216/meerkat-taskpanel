@@ -12,7 +12,7 @@
 
 export const CLI_NAME = "taskctl";
 export const SKILL_NAME = "meerkat-taskpanel";
-export const VERSION = "1.1.0";
+export const VERSION = "0.1.0";
 
 /**
  * The board's **contract schema generation** — which generation of the API/wire
@@ -182,7 +182,6 @@ export const CLIENT_CONFIG_KEYS = Object.freeze([
   PORT_ENV,
   "TASKD_ALLOW_CIDRS",
   "TASKD_ALLOW_LIST_ENABLED",
-  "TASKD_ACCEPTANCE_POLICY",
   "TASKD_LABEL_GC",
   "TASKD_LABEL_TTL_DAYS",
   LOG_LEVEL_ENV,

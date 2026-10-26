@@ -155,11 +155,6 @@ describe("supervisor: the scheduler and the identifiers", () => {
       "com.meerkat-taskpanel.alice.claude.continue",
       "com.meerkat-taskpanel.alice.claude.subscribe",
     ]);
-    // The old topology is still addressable, so enable can boot it out.
-    assert.deepEqual(paths.legacyLaunchd.map((unit) => unit.label), [
-      "com.meerkat-taskpanel.alice.claude.poll",
-      "com.meerkat-taskpanel.alice.claude.patrol",
-    ]);
     // systemd reads the *user's* config directory, which `--prefix` never moves.
     assert.equal(paths.systemdUnitDir, "/home/op/.config/systemd/user");
     assert.equal(

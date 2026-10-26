@@ -1876,12 +1876,6 @@ describe("the scheduler's two clocks", () => {
     );
   });
 
-  it("maps the deprecated --poll-interval onto the ping clock", () => {
-    const opts = parseArgs(["--actor-kind", "claude", "--poll-interval", "45"], ENV);
-    assert.equal(opts.pingInterval, 45);
-    assert.equal(opts.legacyPollInterval, true);
-  });
-
   it("places the continue lock beside the state file, never inside it", () => {
     const opts = parseArgs(["--actor-kind", "claude", "--state", "/tmp/state.json"], ENV);
     assert.equal(opts.continueState, "/tmp/continue.state.json");

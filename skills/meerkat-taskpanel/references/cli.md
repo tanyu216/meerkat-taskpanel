@@ -51,8 +51,7 @@ environment wins key by key; CLI flags win over both.
 - **Server keys:** `TASKD_ALLOW_LIST_ENABLED`, `TASKD_ALLOW_CIDRS`,
   `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS`, `TASKD_HOST`, `TASKD_PORT`, `TASKD_DATA_DIR`,
   `TASKD_DB`, `TASKD_RUNTIME_POINTER`, `TASKD_NO_AUTOSTART`. The Access panel writes the
-  allow-list keys. The retired `TASKD_ACCEPTANCE_POLICY` is **not** a server key: `taskd`
-  refuses to start while it is present (0038 — acceptance is board data, not config).
+  allow-list keys. Acceptance is board data, not config.
 - **Identity is not a `.env` key.** `TASKCTL_ACTOR_KIND` / `TASKCTL_SESSION_ID` are refused in
   the file; `TASKCTL_AGENT` / `TASKCTL_HUMAN` may be defaults.
 - **Grammar:** `KEY=VALUE`, `#` comments, matching quotes; no inline comments, interpolation,

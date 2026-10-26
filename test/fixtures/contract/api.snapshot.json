@@ -13,10 +13,6 @@
       "http": 409
     },
     {
-      "code": "ACCEPTANCE_MODE_CONFLICT",
-      "http": 409
-    },
-    {
       "code": "ACCEPTANCE_PRUNE_FORBIDDEN",
       "http": 409
     },

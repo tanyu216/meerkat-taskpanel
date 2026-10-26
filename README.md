@@ -132,7 +132,7 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 `all` is the default: every agent kind below plus the server runtime. `--no-server` leaves the server out, and a comma list (`--target claude,server,pi`) selects exactly those targets.
 
-The dispatcher forwards to `scripts/install/<actor-kind>.sh`. Those installers put the skill into each agent's skill directory. For **Claude Code** and **Codex** they also write the rest of the agent bundle: the agent config (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude) or a claim trigger (Codex), and a `taskctl` shim that pins the agent identity.
+The dispatcher forwards to `scripts/install/<actor-kind>.sh`. Those installers put the skill into each agent's skill directory. For **Claude Code** and **Codex** they also write the rest of the agent bundle: the agent config (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude) or the scheduling units (Codex), and a `taskctl` shim that pins the agent identity.
 
 All bundle writes are merge-style and idempotent. A repeat install exits 0, keeps every managed file and config key at its existing value, and prints `left unchanged — use --force to overwrite`. `--force` is the only way to overwrite.
 
@@ -151,7 +151,7 @@ The `meerkat-loop` scheduler skill is not distributed through the marketplace. `
 
 The third skill, **`setup-meerkat`**, is the `/setup-meerkat` command. It detects what is installed, repairs what is missing, offers the Matt Pocock issue-tracker integration, and installs an optional Jobs/Linus/Turing plus reviewer team (role workflows, native agent definitions, and the plan-file / omission-check conventions). `install.sh --target claude` copies it to `~/.claude/skills/setup-meerkat`. Other agent kinds, including OpenClaw, can read it from the shared bundle; dedicated OpenClaw support is on the [roadmap](#roadmap).
 
-Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the agent's board identity, default `$USER` — must equal its assignee; re-running with a new name needs `--force` to take effect), `--no-automation` (skip the Codex claim trigger), `--link` (symlink instead of copy), `--force` (**the only** way to overwrite existing files and managed keys — without it an existing value is kept and reported as `left unchanged — use --force to overwrite`), `--dry-run` (preview every write and change nothing), `--skip-node-check` (bypass the Node >= 22 check).
+Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the agent's board identity, default `$USER` — must equal its assignee; re-running with a new name needs `--force` to take effect), `--no-automation` (skip the Codex scheduling units and the taskd guard), `--link` (symlink instead of copy), `--force` (**the only** way to overwrite existing files and managed keys — without it an existing value is kept and reported as `left unchanged — use --force to overwrite`), `--dry-run` (preview every write and change nothing), `--skip-node-check` (bypass the Node >= 22 check).
 
 **Configuration is one file.** `taskctl` and `taskd` read `.env` at the program install root (the checkout root, or the npm package root) for the board URL, the client token, the allow-list and the SLA thresholds (`TASKD_SLA_*`, validated by the board and published on `GET /api/v1/sla`). The process environment wins key by key, and a CLI flag wins over both. `--env-file <path>` or `MEERKAT_TASKPANEL_ENV_FILE` selects another file. `install.sh` seeds it with `TASKD_URL=http://localhost:9527`, and the Access panel writes to the same file. Every `taskctl` command also needs an identity: `--actor-kind claude` (or `codex`, `pi`, …; `--as-human` for a person), which the installed shim supplies. **Breaking change:** the old `<dataDir>/taskd.env` is no longer read — move its keys into `.env` by hand. Details: [`docs/install.md`](docs/install.md) and [`docs/development.md`](docs/development.md).
 
@@ -215,7 +215,7 @@ install.sh --supervisor=disable    # unload
 
 `--supervisor-actor-kinds` limits which agent kinds an action applies to. The installer also asks once whether the supervisor may claim unassigned cards (default yes) and remembers the answer in `<agent-dir>/meerkat-taskpanel.env`.
 
-The loop declares the board interface it needs: `task-interface v1`, board release >= 1.1.0. It carries no version of its own. Its `taskctl loop compat` checks the board against its own `--version --json` and exits 3 when it cannot get a verdict.
+The loop declares the board interface it needs: `task-interface v1`, board release >= 0.1.0. It carries no version of its own. Its `taskctl loop compat` checks the board against its own `--version --json` and exits 3 when it cannot get a verdict.
 
 The cost model is simple. Ping is $0. Continue is one bounded LLM turn per cadence. Inside it, poll is the deterministic cost gate: a worker or reviewer turn starts only after a successful claim. On cron there is no pool, so there is no worker dispatch.
 
@@ -252,9 +252,9 @@ Drive the board with `taskctl`, stamping each write with the actor kind and sess
 
 ## Codex
 
-`install.sh --target codex --agent-name <name>` deploys the whole bundle. It appends a claim-first snippet to `~/.codex/AGENTS.md`, writes the schedulable claim trigger `~/.codex/meerkat-taskpanel-claim.sh` (`--no-automation` skips it), and ships the `taskctl` shim.
+`install.sh --target codex --agent-name <name>` deploys the whole bundle. It appends a claim-first snippet to `~/.codex/AGENTS.md`, writes the scheduling units (`--no-automation` skips them), and ships the `taskctl` shim.
 
-Work the board the same way, using the running thread as the session id — `--actor-kind codex --session-id "$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has no timers of its own, so rule 1 is driven by the [scheduler](#the-meerkat-loop-scheduler) waking a `codex exec` turn (or a Codex app automation), with the bundled claim trigger as the minimal fallback.
+Work the board the same way, using the running thread as the session id — `--actor-kind codex --session-id "$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has no timers of its own, so rule 1 is driven by the [scheduler](#the-meerkat-loop-scheduler) waking a `codex exec` turn (or a Codex app automation).
 
 The agent-facing guide — claim-first, the status model, the delivery gate and the board workflow — lives in the skill at [`skills/meerkat-taskpanel/SKILL.md`](skills/meerkat-taskpanel/SKILL.md). Per-agent-kind install and trigger details are in [`docs/install.md`](docs/install.md).
 

@@ -10,6 +10,9 @@ checkers, so the hook and CI run the *same code*:
 | `pre-push` | the API contract matches the committed snapshot (routes + error codes + wire field names **and types**, and each route's declared request schema); every route's declared request schema equals what its handler reads; no tracked file carries a host-absolute path; no tracked file carries a signpost out of the repository; every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` section in `CHANGELOG.md`; `main` is not pushed to directly; **and the container suite passes on a branch push** | `scripts/verify/contract.mjs`, `scripts/verify/route-request.mjs`, `scripts/verify/paths.mjs`, `scripts/verify/signposts.mjs`, `scripts/verify/changelog.mjs`, `npm run verify:docker` |
 | `pre-tag` | the same API + tag rules as `pre-push` (no `main` rule — a tag is not a branch push), run by hand *before* `git tag` | `scripts/verify/contract.mjs`, `scripts/verify/route-request.mjs`, `scripts/verify/changelog.mjs` |
 
+Writing timing is a workflow rule, not a hook: the changelog section is authored at the
+`dev` → `main` release merge (see `CLAUDE.md`); the hook only checks that a tag has one.
+
 The four static gates run on **every** push, not only a tag. The two API gates:
 the API ships in every commit, and a route or error-code change must be
 accompanied by an explicit snapshot update (`node scripts/verify/contract.mjs

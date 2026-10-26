@@ -174,27 +174,6 @@ describe("install.sh: scheduling units", () => {
     assert.match(run.stdout + run.stderr, /launchctl|systemctl|crontab/);
   });
 
-  it("removes an execution body left by an older install", () => {
-    const home = makeTempDir();
-    const bin = makeTempDir();
-    makeFakeCli(bin, "claude");
-    const env = installEnv(home, bin);
-
-    const loopDir = join(home, ".claude", "meerkat-taskpanel");
-    const staleScript = join(loopDir, "scripts", "supervisor.mjs");
-    // Simulate the pre-migration layout: a copied body beside the state files.
-    mkdirSync(dirname(staleScript), { recursive: true });
-    writeFileSync(staleScript, "// old body\n", "utf8");
-    writeFileSync(join(loopDir, "manifest.txt"), "scripts/supervisor.mjs\n", "utf8");
-
-    const run = runInstall(["--target", "claude", "--agent-name", "alice"], env);
-    assert.equal(run.status, 0, run.stderr);
-
-    assert.equal(existsSync(join(loopDir, "scripts")), false, "the copied body must be removed");
-    assert.equal(existsSync(join(loopDir, "manifest.txt")), false, "the manifest must be removed");
-    assert.match(run.stdout, /the loop now ships with taskctl/);
-  });
-
   it("installs codex units", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
@@ -233,25 +212,22 @@ describe("install.sh: scheduling units", () => {
   });
 
   it("the bypass's environment form skips exactly the same artefacts through the dispatcher", () => {
-    // `MEERKAT_TASKPANEL_NO_AUTOMATION=1` is documented as the other spelling of
+    // `MEERKAT_TASKPANEL_NO_AUTOMATION=1` is the environment spelling of
     // `--no-automation` (docs/install.md). It travels through install.sh, so the
     // dispatcher must not overwrite the caller's value with its own empty one —
     // the failure that would make the documented form skip nothing.
-    for (const env of [{ MEERKAT_TASKPANEL_NO_AUTOMATION: "1" }, { TASKPANEL_NO_AUTOMATION: "1" }]) {
-      const home = makeTempDir();
-      const bin = makeTempDir();
-      makeFakeCli(bin, "codex");
-      const run = runInstall(
-        ["--target", "codex", "--agent-name", "alice"],
-        { ...installEnv(home, bin), ...env },
-      );
-      const which = Object.keys(env)[0];
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "codex");
+    const run = runInstall(
+      ["--target", "codex", "--agent-name", "alice"],
+      { ...installEnv(home, bin), MEERKAT_TASKPANEL_NO_AUTOMATION: "1" },
+    );
 
-      assert.equal(run.status, 0, run.stderr);
-      assert.equal(existsSync(join(home, ".codex", "scheduling")), false, `${which}: no scheduling units`);
-      assert.equal(existsSync(join(home, ".codex", "meerkat-taskpanel-claim.sh")), false, `${which}: no claim trigger`);
-      assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")), `${which}: the skill is unaffected`);
-    }
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(existsSync(join(home, ".codex", "scheduling")), false, "no scheduling units");
+    assert.equal(existsSync(join(home, ".codex", "meerkat-taskpanel-claim.sh")), false, "no claim trigger");
+    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")), "the skill is unaffected");
   });
 
   it("is idempotent: a re-run changes no scheduling file", () => {

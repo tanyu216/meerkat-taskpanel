@@ -1,17 +1,16 @@
 /**
  * The `meerkat-loop` skill (T-20261012-163500-loopdecouple-b).
  *
- * The loop used to be an implicit side effect of installing the board skill. It is now a
- * skill of its own, with a **generated** payload: the execution body and the installer
- * templates are produced from this repository's own `scripts/`, `src/foundation/` and
- * `scripts/install/templates/`, and guarded by `node scripts/sync-loop.mjs --check`.
+ * The loop used to be an implicit side effect of installing the board skill. Its
+ * implementation now lives in `src/orchestrator/` (reached through `taskctl loop …`),
+ * and the skill carries decisions only: `SKILL.md` plus its references.
  *
- * These tests hold the three things that make that split real rather than cosmetic:
+ * These tests hold the things that make that split real rather than cosmetic:
  *
- *   1. the payload is in sync with its sources, and the body is **closed** under its own
- *      relative imports — a body missing a member loads in the repo and dies in an agent kind;
- *   2. the skill declares the board interface it needs, and its gate enforces it against
- *      a board's own `--version --json` answer;
+ *   1. the skill carries a charter, not a second implementation — no scripts, templates
+ *      or manifest;
+ *   2. the skill declares the board interface it needs, and `taskctl loop compat`
+ *      enforces it against a board's own `--version --json` answer;
  *   3. the board skill no longer points into the repository root — a distributed skill's
  *      links have to resolve where the skill is installed, not where it was authored.
  *
@@ -140,7 +139,7 @@ describe("loop skill: SKILL.md", () => {
 
   it("declares the board interface it requires", () => {
     assert.match(text, /task-interface v1/, "the required board interface generation must be stated");
-    assert.match(text, /board release >= 1\.1\.0/, "…and the release floor a machine can check");
+    assert.match(text, /board release >= 0\.1\.0/, "…and the release floor a machine can check");
     assert.ok(text.includes("taskctl loop compat"), "the gate must be named at the point of declaration");
   });
 

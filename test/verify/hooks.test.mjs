@@ -209,14 +209,15 @@ describe("pre-push: the container gate runs on a branch push", () => {
 
   it("does not run for a tag-only push", (t) => {
     // The commit behind a release tag was already pushed (and gated); re-running the
-    // suite for the tag alone would only repeat it. v1.1.0 is in CHANGELOG.md.
+    // suite for the tag alone would only repeat it. A non-version tag keeps this
+    // leg independent of whichever CHANGELOG sections happen to exist.
     const npm = fakeNpm(t, "container-gate");
     const { status, stdout } = runHook(
-      [`refs/tags/v1.1.0 ${SHA} refs/tags/v1.1.0 ${ZERO}`],
+      [`refs/tags/scratch ${SHA} refs/tags/scratch ${ZERO}`],
       { PATH: npm.path, SKIP_CONTAINER_VERIFY: "0" },
     );
 
-    assert.equal(status, 0, "a released version has a CHANGELOG section");
+    assert.equal(status, 0, "a tag-only push skips the container gate");
     assert.doesNotMatch(stdout, /container-gate:/);
   });
 });

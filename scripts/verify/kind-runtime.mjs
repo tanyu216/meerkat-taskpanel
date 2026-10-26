@@ -5,8 +5,8 @@
  * `scripts/verify/profiles.mjs` proves the *install* landed (skill paths, frontmatter,
  * wrapper, detector contract). It never runs what the install *generated*. This probe
  * closes that gap: it drives the generated runtime entry points — the Claude SessionStart
- * hook and the Codex claim trigger — against a **fake `taskctl` shim**, so the
- * "trigger → claim" path is executed and asserted without a board or a network.
+ * hook — against a **fake `taskctl` shim**, so the "hook → claim" path is executed and
+ * asserted without a board or a network.
  *
  *   node scripts/verify/kind-runtime.mjs [--home <dir>] [--actor-kind <kind>] [--quiet]
  *
@@ -47,15 +47,15 @@ const AGENT = "alice";
 
 /** Actor kind → {dot-dir, has detection of which generated forms exist}. */
 const KINDS = {
-  claude: { dir: ".claude", hook: ".claude/hooks/meerkat-taskpanel-session-start.sh", trigger: null, shim: ".claude/bin/taskctl" },
-  codex: { dir: ".codex", hook: null, trigger: ".codex/meerkat-taskpanel-claim.sh", shim: ".codex/bin/taskctl" },
-  pi: { dir: ".agents", hook: null, trigger: null, shim: ".agents/bin/taskctl" },
+  claude: { dir: ".claude", hook: ".claude/hooks/meerkat-taskpanel-session-start.sh", shim: ".claude/bin/taskctl" },
+  codex: { dir: ".codex", hook: null, shim: ".codex/bin/taskctl" },
+  pi: { dir: ".agents", hook: null, shim: ".agents/bin/taskctl" },
 };
 
 /**
  * The canned board shim. Replaces `<home>/<agent-dir>/bin/taskctl` after install: it records
  * every argv and answers `issue list` / `issue candidates` from env, so a scenario can
- * put the trigger in front of a held card, a foreign held card, or an empty pool.
+ * put the hook in front of a held card, a foreign held card, or an empty pool.
  */
 const FAKE_SHIM = `#!/usr/bin/env node
 // Canned taskctl shim written by scripts/verify/kind-runtime.mjs — not the real shim.
@@ -231,86 +231,15 @@ function checkSessionStart() {
   }, "names the absolute shim path; exit 0");
 }
 
-/** Codex: the cron claim trigger — one card at a time, own cards only. */
-function checkTrigger() {
-  const section = "trigger (codex)";
-  const triggerPath = join(ctx.home, KINDS.codex.trigger);
-
-  check(section, "trigger installed and executable", () => {
-    if (!existsSync(triggerPath)) return `missing ${triggerPath}`;
-    return null;
-  }, KINDS.codex.trigger);
-
-  const runTrigger = (seed, env) => {
-    const log = freshLog(`trigger-${seed}`);
-    const res = run(["bash", triggerPath], { env: { FAKE_SHIM_LOG: log, ...env } });
-    return { res, calls: readJsonl(log) };
-  };
-
-  check(section, "no held card → claims the first candidate (`issue move T-1 in_progress`)", () => {
-    const { res, calls } = runTrigger("claim", { FAKE_SHIM_CANDIDATES: "T-1,T-2" });
-    if (res.status !== 0) return `exit ${res.status}; stderr=${JSON.stringify(res.stderr)}`;
-    if (!/claiming T-1/.test(res.stdout)) return `did not announce the claim: ${JSON.stringify(res.stdout)}`;
-    const move = calls.find((c) => c.includes("move"));
-    if (!move) return `no move call recorded: ${JSON.stringify(calls)}`;
-    const want = ["issue", "move", "T-1", "in_progress"];
-    if (JSON.stringify(move) !== JSON.stringify(want)) return `move argv ${JSON.stringify(move)} != ${JSON.stringify(want)}`;
-    return null;
-  }, "move T-1 only");
-
-  check(section, "held card that is mine (NFKC/whitespace/case) → skip, exit 0, no move", () => {
-    // "A l i c e" must normalize to the same identity as "alice" — the board's own rule.
-    const { res, calls } = runTrigger("mine", { FAKE_SHIM_HELD: "1", FAKE_SHIM_HELD_NAME: "A l i c e", FAKE_SHIM_CANDIDATES: "T-1" });
-    if (res.status !== 0) return `exit ${res.status}; stderr=${JSON.stringify(res.stderr)}`;
-    if (!/already holding T-HELD/.test(res.stdout)) return `did not report the held card: ${JSON.stringify(res.stdout)}`;
-    if (calls.some((c) => c.includes("move"))) return `claimed while already holding: ${JSON.stringify(calls)}`;
-    return null;
-  }, "skip + exit 0");
-
-  check(section, "held card that is someone else's → claims the first candidate", () => {
-    const { res, calls } = runTrigger("foreign", { FAKE_SHIM_HELD: "1", FAKE_SHIM_HELD_NAME: "Bob", FAKE_SHIM_CANDIDATES: "T-1" });
-    if (res.status !== 0) return `exit ${res.status}; stderr=${JSON.stringify(res.stderr)}`;
-    const move = calls.find((c) => c.includes("move"));
-    if (!move) return "did not claim even though the held card is not mine (identity filter too loose)";
-    if (move[2] !== "T-1") return `claimed ${move[2]} instead of T-1`;
-    return null;
-  }, "identity filter is per-agent");
-
-  check(section, "empty pool → exit 0, nothing claimed", () => {
-    const { res, calls } = runTrigger("empty", { FAKE_SHIM_CANDIDATES: "" });
-    if (res.status !== 0) return `exit ${res.status}; stderr=${JSON.stringify(res.stderr)}`;
-    if (!/no claimable cards/.test(res.stdout)) return `did not report an empty pool: ${JSON.stringify(res.stdout)}`;
-    if (calls.some((c) => c.includes("move"))) return "claimed with an empty pool";
-    return null;
-  }, "exit 0");
-
-  check(section, "shim missing → exit 1 (the trigger's explicit contract)", () => {
-    const shimPath = join(ctx.home, KINDS.codex.shim);
-    const backup = `${shimPath}.bak`;
-    writeFileSync(backup, readFileSync(shimPath));
-    rmSync(shimPath);
-    try {
-      const res = run(["bash", triggerPath]);
-      if (res.status !== 1) return `exit ${res.status} (want 1)`;
-      if (!/taskctl shim not found/.test(res.stderr)) return `stderr did not name the missing shim: ${JSON.stringify(res.stderr)}`;
-      return null;
-    } finally {
-      writeFileSync(shimPath, readFileSync(backup));
-      chmodSync(shimPath, 0o755);
-      rmSync(backup);
-    }
-  }, "exit 1");
-}
-
 /** Actor kinds that ship neither form: assert the *absence* explicitly, with the reason. */
 function checkAbsences() {
   check("coverage map", "claude ships no cron trigger (SessionStart hook instead)", () => {
     return existsSync(join(ctx.home, ".claude/meerkat-taskpanel-claim.sh")) ? "unexpected claude claim trigger" : null;
   }, "N/A — Claude uses the SessionStart hook");
 
-  check("coverage map", "codex ships no SessionStart hook (cron trigger instead)", () => {
+  check("coverage map", "codex ships no SessionStart hook (scheduling units instead)", () => {
     return existsSync(join(ctx.home, ".codex/hooks")) ? "unexpected codex hooks dir" : null;
-  }, "N/A — Codex has no hooks; the trigger is the automation");
+  }, "N/A — Codex has no hooks; the scheduling units are the automation");
 
   // Pi is the agent kind where the **absence family** was conflated: this assertion used to read
   // "no hook, trigger **or shim**", with the shim lumped in beside the two *automation*
@@ -357,7 +286,7 @@ async function main() {
   if (values.help) {
     process.stdout.write(
       "Usage: node scripts/verify/kind-runtime.mjs [--home <dir>] [--actor-kind <kind>] [--quiet]\n\n" +
-        "  Offline mock harness: drives the generated SessionStart hook / claim trigger\n" +
+        "  Offline mock harness: drives the generated SessionStart hook\n" +
         "  against a canned taskctl. Never touches $HOME, never uses the network.\n" +
         `  --actor-kind <kind>  only these agent kinds (${Object.keys(KINDS).join(", ")}); repeatable or comma-separated\n`,
     );
@@ -388,7 +317,6 @@ async function main() {
 
     if (!installError) {
       if (kinds.includes("claude")) checkSessionStart();
-      if (kinds.includes("codex")) checkTrigger();
       checkAbsences();
     }
   } finally {

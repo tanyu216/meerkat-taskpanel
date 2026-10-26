@@ -16,7 +16,7 @@ Tick what applies. Anything left unticked should say why in the notes below.
       carry decisions; the loop runs as `taskctl loop …`, so there is no payload to regenerate)
 - [ ] If a `src/core/storage/migrations/*.sql` file was added: it is a **new** numbered file
       and no committed migration was edited or deleted
-- [ ] If behaviour changed: a `## [Unreleased]` entry was added to `CHANGELOG.md`
+- [ ] No `CHANGELOG.md` edit: entries are written only when `dev` merges into `main`
 
 ## Notes
 

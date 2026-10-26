@@ -109,14 +109,6 @@ export const ERROR_CODES = Object.freeze({
     409,
     "A review card can never be marked as requiring its own review.",
   ),
-  // 0038 — the acceptance-mode / `review_required` mirror invariant. 0040
-  // dropped the mirror, so no live write can raise this any more; the code is
-  // retained because 0038/0039 still raise it and the SQL-parity contract reads
-  // every historical migration.
-  ACCEPTANCE_MODE_CONFLICT: spec(
-    409,
-    "A card's acceptance mode conflicts with its review_required marker.",
-  ),
   // A card may not enter `in_review`/`done` while one of its children is still
   // in flight. Manual and automatic paths apply the same rule.
   CHILDREN_OPEN: spec(409, "This card still has non-terminal child cards."),
@@ -287,9 +279,6 @@ export const DB_RAISE_CODES = Object.freeze([
   // 0031 — the review-required done gate and the review-card marker invariant.
   "REVIEW_REQUIRED",
   "REVIEW_CARD_MARKER_INVALID",
-  // 0038 — the acceptance-mode mirror invariant (historical: 0040 removed it;
-  // the code stays because those migrations still raise it).
-  "ACCEPTANCE_MODE_CONFLICT",
   // 0032 — the frozen acceptance baseline and the not_applicable note.
   "ACCEPTANCE_SNAPSHOT_IMMUTABLE",
   "REPORT_NOT_APPLICABLE_NOTE",
