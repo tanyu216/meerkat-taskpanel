@@ -172,7 +172,7 @@ The standard template is `assets/team/standard/`:
 | Role | Board agent | Native agent | Scope |
 |---|---|---|---|
 | Jobs | `Jobs` | `jobs` | product planning, prototype validation, PRD, product glossary/ADRs, visual/interaction design |
-| Linus | `Linus` | `linus` | architecture and project foundation, implementation, bugs, ops, worktree/init, code glossary/ADRs |
+| Linus | `Linus` | `linus` | system architecture and project foundation (system-init design), implementation, bugs, ops, worktree/init, code glossary/ADRs |
 | Turing | `Turing` | `turing` | test design, post-fix regression (incl. production), optional performance, security, canonical terms |
 | Reviewer | `Reviewer` | `reviewer` | independent fourth role; verdict only |
 
@@ -211,11 +211,20 @@ without copying it. `ui-workflow.md` also runs standalone for a single feature o
 change.
 
 Linus scaffolds the agent instructions with the host's `/init` (writing `CLAUDE.md` or
-`AGENTS.md`) and writes the workspace rule into them. The rule is global rather than
-Linus-only: Jobs, Linus and Turing all work a card in one linked worktree off `dev`, created
-with `git worktree add .worktrees/<card-slug> -b <branch> dev`, with the primary checkout
-left on `dev`. Merge and cleanup happen only after reviewer approval or operator
-confirmation (`merge --no-ff`, then `worktree remove`, then `branch -d`; never `-D`).
+`AGENTS.md`) and writes the workspace rule into them. The `/init` product is the baseline
+every role reads, not an optional step. The rule is global rather than Linus-only: Jobs,
+Linus and Turing all work a card in one linked worktree off `dev`, created with
+`git worktree add .worktrees/<card-slug> -b <branch> dev`, with the primary checkout left on
+`dev`. Merge and cleanup happen only after reviewer approval or operator confirmation
+(`merge --no-ff`, then `worktree remove`, then `branch -d`; never `-D`).
+
+The architecture branch is the project's **system-initialization design flow**, not a
+feature or module design. It decides the architecture style (DDD or a named simpler style),
+the external contract when one exists, the configuration surface and the planned directory
+tree against the design stance — simple, reliable, efficient, elegant and not
+over-engineered — records the evidence in the architecture document and ADRs, and carries
+the top-level tree map and the five design principles into `/init`, where they bind every
+agent. A feature or module inside the recorded architecture is implementation work.
 
 Test execution and the security scan are the **review card's** gate, not a worker test
 card: the project session seeds the gates into the card's acceptance, and the reviewer

@@ -123,6 +123,12 @@ Linus keeps durable architecture at `docs/architecture.md`, the codebase vocabul
 architecture change may live in `.meerkat/<id>/architecture.md`. The architecture document
 carries the canonical `## Tech stack` table (frontend, backend, persistence and
 container/build), and an implementation card inherits that table rather than re-choosing.
+It also carries the design-stance evidence (simple, reliable, efficient, elegant, not
+over-engineered), the architecture-style decision (DDD or a named simpler style), the
+external contract, the configuration surface and the planned directory tree. The contract
+artifact is canonical, `CLAUDE.md`/`AGENTS.md` carry a top-level tree map and a pointer, and
+the `/init` product is the baseline every role reads, carrying the five design principles as
+binding requirements for every agent.
 The root glossary carries a
 `## Product language` section that links `design/glossary.md`; product terms are not copied
 there. Turing keeps each card's `test-plan.md`, `regression.md` and `performance.md`, with

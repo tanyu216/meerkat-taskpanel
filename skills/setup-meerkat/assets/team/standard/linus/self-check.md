@@ -52,8 +52,8 @@ run them.
    frontend, persistence and container rows name the choices the table requires; a choice
    outside the recommended baseline carries the human's E5 approval.
 8. The skeleton builds, the smoke test passes, the documented local run works, and the
-   scaffold instantiates the recorded stack (the Dockerfile builds when the runtime form is
-   a container).
+   scaffold instantiates the recorded stack and the planned directory tree (the Dockerfile
+   builds when the runtime form is a container).
 9. `.githooks/pre-commit`, `pre-push` and `pre-tag` exist, are wired through
    `core.hooksPath`, fire on a scratch commit/push/tag, and are idempotent. No secret, no
    host-absolute path, no generated file committed.
@@ -63,6 +63,24 @@ run them.
 11. The root `GLOSSARY.md` carries the `## Product language` pointer (or says product terms
     are not recorded) and does not copy product terms; ADRs live at
     `docs/adr/NNNN-<slug>.md`.
+12. The design stance is evidenced: the simplest reliable option was chosen, every
+    abstraction and dependency names its forcing function, and no layer exists only for
+    symmetry.
+13. The architecture style is recorded and justified — DDD with its bounded contexts and
+    aggregates, or a named simpler style with DDD's rejection and cost — and the boundaries
+    and tree instantiate it.
+14. When the system exposes an external contract over HTTP, the envelope, error codes,
+    validation and pagination are recorded, one helper implements the envelope, and the
+    canonical contract matches the handlers. Otherwise the `n/a — <reason>` is recorded.
+15. The configuration surface is recorded: `.env.example` names every key the application
+    reads, the loader fails loudly on a missing required key, and the reload policy lists
+    reloadable and restart-required keys. Otherwise the `n/a` is recorded.
+16. The directory tree is planned and scaffolded exactly, and the `/init` product
+    (`CLAUDE.md` or `AGENTS.md`) exists as the baseline every role reads, carrying a
+    top-level map and a pointer to the full tree.
+17. The `/init` product carries the design principles as binding requirements every agent
+    follows — simple, reliable, efficient, elegant, not over-engineered, with the conflict
+    ordering — rather than leaving them in the architecture document only.
 
 ## Implementation branch
 

@@ -45,8 +45,9 @@ decisions with a decision round — the protocol is the `decision-policy.md` thi
 names (§Decision rounds): the **frontier** of questions whose prerequisites are settled, one
 round at a time, each with a recommendation worded so "yes" accepts it.
 
-Linus' frontier: the architecture option, the stack table (alternatives and pinned
-versions), the file and contract layout, test selection, and migration or rollback risk.
+Linus' frontier: the architecture style (DDD or a named simpler style) and why, the stack
+table (alternatives and pinned versions), the external contract, the configuration
+surface, the directory tree, test selection, and migration or rollback risk.
 Look up facts in the card, the code and the gates; never ask for something you can find.
 Record the answers in `plan.md`; a durable decision also gets an ADR. Do not start building
 while a frontier item is open.
@@ -73,20 +74,22 @@ Choose the branch before touching code:
 
 | Card | Branch |
 |---|---|
-| A new project or subsystem, a stack or tooling decision, an architecture change, scaffolding or the git gates | `architecture-workflow.md` |
-| A feature inside the current architecture, a behaviour change, or a bug fix | `implementation-workflow.md` |
+| A new project or subsystem, the architecture style or stack, a system-wide boundary/contract/data-model change, the configuration surface, the directory tree, scaffolding or the git gates | `architecture-workflow.md` |
+| A feature or module inside the recorded architecture, a behaviour change, or a bug fix | `implementation-workflow.md` |
 
-If the card contains both, run architecture first and propose the implementation in the
-`## Handoff`; the project session triages one card vs an epic with children and creates it.
-Do not split the card yourself. If the branch is genuinely unclear, write an agent
-`question` and stop.
+A card belongs to the architecture branch **iff** it creates or changes a recorded
+foundation decision. Everything else is implementation work. If the card contains both, run
+architecture first and propose the implementation in the `## Handoff`; the project session
+triages one card vs an epic with children and creates it. Do not split the card yourself.
+If the branch is genuinely unclear, write an agent `question` and stop.
 
 ## Shared rules
 
 - The card's `acceptance` is the contract. Do not widen the scope.
 - Use a decision round before freezing the branch's design; record the answers.
-- An architecture card records the stack table before scaffolding; no implementation starts
-  on an unconfirmed stack.
+- Prefer the simplest reliable design; no abstraction before a second caller.
+- An architecture card records the architecture style and the stack table before
+  scaffolding; no implementation starts on an unconfirmed foundation.
 - Test-first for behaviour; a bug is reproduced by a failing test before it is fixed.
 - Run the documented gates and record the exact commands and results. A red gate is not a
   delivery.
