@@ -60,8 +60,8 @@ HTTP API directly. Capability detail lives in the board skill's
 
 ```bash
 node --test                          # smoke / contract test suite
-node scripts/sync-skills.mjs         # regenerate the loop payload (manifest + scripts/ + templates/)
-node scripts/sync-skills.mjs --check # verify both are in sync
+node scripts/sync-loop.mjs         # regenerate the loop payload (manifest + scripts/ + templates/)
+node scripts/sync-loop.mjs --check # verify the payload is in sync
 node scripts/verify/manifests.mjs    # validate the agent-kind + loop + marketplace manifests
 node scripts/verify/skill.mjs        # validate every shipped SKILL.md frontmatter
 node scripts/verify/web-dist.mjs     # are the two web/dist-guarded tests legs actually run?
@@ -72,11 +72,11 @@ Or via npm aliases:
 
 ```bash
 npm test          # node --test
-npm run check:skills
+npm run check:loop
 npm run verify
 npm run verify:web-dist  # fail unless both web/dist-guarded legs ran (see below)
 npm run build
-npm run check     # check:skills + verify + test
+npm run check     # check:loop + verify + test
 npm run test:coverage   # node --test + the coverage gate (see below)
 ```
 
@@ -385,8 +385,8 @@ state (§4.3); the row still exists in `task_activities` and under
 
 ## The skills are generated, never hand-edited
 
-There are three skills, and `scripts/sync-skills.mjs` owns the whole generated surface
-around them (it delegates the payload half to `scripts/sync-loop.mjs`):
+There are three skills, and `scripts/sync-loop.mjs` owns the whole generated surface
+around them (it delegates the payload half to `scripts/loop-payload.mjs`):
 
 | Skill | Authored in | Generated into |
 |---|---|---|
@@ -401,7 +401,7 @@ has only its own directory (`test/cli/imports.test.mjs` enforces that).
 There is exactly one `skills` tree in the repository. No harness receives a copy: each reads
 `skills/` in place through a manifest at the repository root, which is the board's plugin
 root. `test/scaffold.test.mjs` asserts that, since with no copy targets left
-`sync-skills.mjs --check` has nothing to compare and could not notice an orphan tree.
+`sync-loop.mjs --check` has nothing to compare and could not notice an orphan tree.
 
 The loop's `manifest.txt` and `scripts/` are generated *from this repository*:
 `manifest.txt` is the transitive import closure of `scripts/supervisor.mjs`,
@@ -409,7 +409,7 @@ The loop's `manifest.txt` and `scripts/` are generated *from this repository*:
 holds those modules and `scripts/foundation/` holds the foundation modules they import.
 `templates/` mirrors the loop-side files under `scripts/install/templates/`.
 `scripts/board-check.mjs` is the one authored file inside a generated root —
-`sync-loop.mjs` never writes, prunes or reports it. That direction matters — the foundation
+`loop-payload.mjs` never writes, prunes or reports it. That direction matters — the foundation
 modules in the repository's `src/foundation/` are **not** moved into the skill; they stay
 where the CLI imports them, and the skill's copy is generated and guarded. The vendored set
 is the loop's foundation closure only: the loop body never contains `src/core`, `src/cli`,
@@ -427,10 +427,10 @@ files, `skills/meerkat-taskpanel/`), `scripts/supervisor.mjs`, `scripts/loop/`,
 `scripts/wake-cwd.mjs`, `src/foundation/`, or `scripts/install/templates/`, run:**
 
 ```bash
-node scripts/sync-skills.mjs
+node scripts/sync-loop.mjs
 ```
 
-CI runs `node scripts/sync-skills.mjs --check` and fails if the generated payload has
+CI runs `node scripts/sync-loop.mjs --check` and fails if the generated payload has
 drifted. The same reasoning applies to `dist/`: build output is never edited by hand and is
 gitignored.
 

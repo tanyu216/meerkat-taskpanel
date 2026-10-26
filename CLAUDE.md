@@ -111,11 +111,11 @@ node --test                                  # full suite (also: npm test)
 node --test test/core/index.test.mjs         # one file
 node --test "test/contract/**/*.test.mjs"    # one directory (a bare dir arg does NOT work here)
 npm run test:coverage                        # tap reporter + 80% line/branch/function floors
-npm run check                                # check:skills + verify + test (fast, host-static)
+npm run check                                # check:loop + verify + test (fast, host-static)
 npm run verify                               # manifests + skill + migrations + paths + signposts checkers
 npm run verify:docker                        # AUTHORITATIVE gate: build image + in-container suite (also run by pre-push)
 npm run verify:docker:container              # run docker/verify-in-container.sh inside the image
-node scripts/sync-skills.mjs                 # regenerate the loop payload + plugin skill copies
+node scripts/sync-loop.mjs                   # regenerate the loop payload (manifest + scripts/ + templates/)
 node scripts/build.mjs                       # produce dist/ (the npm release tree; deletes + recreates)
 node scripts/verify/contract.mjs             # API contract snapshot; --update refreshes it, drift exits 1
 node scripts/verify/cli-contract.mjs         # CLI surface snapshot (commands/flags/envelope); --update
@@ -142,7 +142,7 @@ meerkat-taskpanel/
 │                           #   setup-meerkat (install/repair + team setup; Claude-only copy)
 ├── .claude-plugin/ .pi/    # harness markers; the plugin root IS the repo root
 ├── design/                 # DESIGN / BLOCKS, the interactive prototype/, brand/, assets/, fidelity-rNN.md
-├── scripts/                # build, install/, sync-skills + sync-loop, supervisor, verify/{manifests,skill,
+├── scripts/                # build, install/, sync-loop + loop-payload, supervisor, verify/{manifests,skill,
 │                           #   migrations,paths,contract,cli-contract,route-request,changelog,version,docker,…}
 ├── docker/                 # Dockerfile (webbuild stage + runtime), compose, profiles, verify-in-container.sh
 ├── monitoring/             # OTel / Prometheus exporter
@@ -184,14 +184,14 @@ the release workflow stages the image's build there before `npm pack`.
 - **The skills are generated, never hand-edited.** Author only under `skills/meerkat-taskpanel/`
   and the loop's hand-written surface (`skills/meerkat-loop/`: `SKILL.md`, `references/`,
   `scripts/board-check.mjs`). `skills/setup-meerkat/` is authored whole (it is standalone and
-  generates nothing); `node scripts/sync-skills.mjs --check` does not touch it. The loop's
+  generates nothing); `node scripts/sync-loop.mjs --check` does not touch it. The loop's
   `manifest.txt` + `scripts/` (except the gate) +
   `src/` + `templates/` are generated from `scripts/supervisor.mjs`, `scripts/loop/`,
   `scripts/wake-cwd.mjs`, `src/foundation/` and
   `scripts/install/templates/` (the workflow decisions live in
   `src/core/domain/workflow.mjs` and are not in the body — the loop gets them from
   `issue reconcile --workflow`). After any edit touching those inputs run
-  `node scripts/sync-skills.mjs`; CI runs `--check` and fails on drift. There are **no committed
+  `node scripts/sync-loop.mjs`; CI runs `--check` and fails on drift. There are **no committed
   copies of a skill** anywhere: `skills/` is the only `skills` tree in the repository, and
   `test/scaffold.test.mjs` asserts it.
 - **Migrations are append-only.** Never edit or delete a committed

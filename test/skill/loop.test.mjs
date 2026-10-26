@@ -4,7 +4,7 @@
  * The loop used to be an implicit side effect of installing the board skill. It is now a
  * skill of its own, with a **generated** payload: the execution body and the installer
  * templates are produced from this repository's own `scripts/`, `src/foundation/` and
- * `scripts/install/templates/`, and guarded by `node scripts/sync-skills.mjs --check`.
+ * `scripts/install/templates/`, and guarded by `node scripts/sync-loop.mjs --check`.
  *
  * These tests hold the three things that make that split real rather than cosmetic:
  *
@@ -34,8 +34,8 @@ import {
   relativeImports,
   syncLoop,
   transformBody,
-} from "../../scripts/sync-loop.mjs";
-import { resolveSkillSource } from "../../scripts/sync-skills.mjs";
+} from "../../scripts/loop-payload.mjs";
+import { resolveSkillSource } from "../../scripts/sync-loop.mjs";
 import { readFrontmatterField } from "../../scripts/verify/lib/frontmatter.mjs";
 import { LOOP_SKILL_COMMAND } from "../../src/foundation/scheduling.mjs";
 import { acceptanceAllows } from "../../src/core/domain/acceptance-mode.mjs";

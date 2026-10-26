@@ -18,7 +18,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
 
-import { listFiles, resolveSkillSource } from "../scripts/sync-skills.mjs";
+import { listFiles, resolveSkillSource } from "../scripts/sync-loop.mjs";
 import { MANIFESTS, validateManifests } from "../scripts/verify/manifests.mjs";
 import { validateSkills } from "../scripts/verify/skill.mjs";
 import { VERSION } from "../src/foundation/constants.mjs";
@@ -135,7 +135,7 @@ describe("skill sync", () => {
     // Every harness (claude, codex, pi, openclaw) reads the repository's
     // own `skills/` tree through its own manifest, so there is no generated copy anywhere.
     //
-    // This is now the *only* guard: with no copy targets left, `sync-skills.mjs --check`
+    // This is now the *only* guard: with no copy targets left, `sync-loop.mjs --check`
     // has nothing to compare and cannot notice an orphan `plugins/` tree. A harness that
     // reintroduces one is exactly the regression this catches
     // (design/plugin-distribution-plan.md §3.1 / §5.3, reversed for the floor by
@@ -344,7 +344,7 @@ describe("repository guard files", () => {
      * existence check. Pin the two facts a contributor cannot guess — the container
      * gate and the commit-before-you-run-it ordering — plus the generated-skills rule. */
     const text = await readFile(join(ROOT, "CONTRIBUTING.md"), "utf8");
-    for (const needle of ["npm run verify:docker", "commit", "sync-skills", "contract"]) {
+    for (const needle of ["npm run verify:docker", "commit", "sync-loop", "contract"]) {
       assert.ok(text.includes(needle), `CONTRIBUTING.md must mention ${needle}`);
     }
   });

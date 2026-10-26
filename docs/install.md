@@ -878,8 +878,8 @@ Nothing is written outside those directories, and nothing is sent over the netwo
 - **`skill source not found`** — run `install.sh` from this checkout (it resolves
   `skills/meerkat-taskpanel/` relative to itself); a `dist/` bundle must be unpacked first.
 - **`loop payload out of date`** — `skills/meerkat-loop/manifest.txt`, `scripts/` and
-  `templates/` are generated. Run `node scripts/sync-skills.mjs`; `npm run
-  check:skills` fails CI on drift.
+  `templates/` are generated. Run `node scripts/sync-loop.mjs`; `npm run
+  check:loop` fails CI on drift.
 - **An older install still has `skills/meerkat-loop/body/` or `src/`** — those layouts were
   retired. The leftovers are inert (units and the loop body read
   `<agent-dir>/meerkat-taskpanel/scripts/…`); re-run the install with `--force` to replace the

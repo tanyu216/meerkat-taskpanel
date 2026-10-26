@@ -23,7 +23,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { syncLoop } from "./sync-loop.mjs";
+import { syncLoop } from "./loop-payload.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
@@ -35,7 +35,7 @@ async function main() {
   if (!loop.ok) {
     console.error(
       `build: FAILED — the loop payload in ${loop.skill} is out of date. ` +
-        "Run `node scripts/sync-skills.mjs` and commit the result.",
+        "Run `node scripts/sync-loop.mjs` and commit the result.",
     );
     return 1;
   }

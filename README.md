@@ -421,8 +421,8 @@ runtime.
 
 ```bash
 node --test                          # run the smoke / contract test suite
-node scripts/sync-skills.mjs         # the loop payload (execution body + installer templates)
-node scripts/sync-skills.mjs --check # verify the generated payload and copies are in sync
+node scripts/sync-loop.mjs         # the loop payload (execution body + installer templates)
+node scripts/sync-loop.mjs --check   # verify the generated payload is in sync
 node scripts/verify/manifests.mjs    # validate plugin manifests
 node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
 node scripts/build.mjs               # produce dist/

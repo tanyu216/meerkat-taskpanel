@@ -309,10 +309,10 @@ claude plugin validate <path>       # validates the plugin + marketplace manifes
 ```
 
 Nothing under `skills/` is a generated copy any more, so there is nothing for
-`npm run check:skills` to compare against a plugin bundle. It still guards the loop skill's
+`npm run check:loop` to compare against a plugin bundle. It still guards the loop skill's
 **payload** (`skills/meerkat-loop/{manifest.txt,scripts,templates}`, with foundation inside `scripts/foundation/`), which is generated from
 `scripts/supervisor.mjs`, `scripts/loop/`, `scripts/wake-cwd.mjs`, `src/foundation/` and
-`scripts/install/templates/`; run `node scripts/sync-skills.mjs` after any edit there.
+`scripts/install/templates/`; run `node scripts/sync-loop.mjs` after any edit there.
 
 ## 5. OpenClaw
 
@@ -368,7 +368,7 @@ pi list
 Every manifest points at the repository's one `skills/` tree, so the npm whitelist ships the
 skills directly and no bundle carries a generated copy of its own (see
 [development.md](development.md#the-skill-is-generated-never-hand-edited)). A publish is
-still only correct if `node scripts/sync-skills.mjs --check` is green: the loop skill's
+still only correct if `node scripts/sync-loop.mjs --check` is green: the loop skill's
 generated payload (`manifest.txt` + `scripts/` + `src/` + `templates/`) must match the
 repository modules it is generated from.
 

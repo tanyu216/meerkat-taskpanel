@@ -190,7 +190,7 @@ resolve_agent_cli_dir() {
 # The loop is a skill of its own (skills/meerkat-loop/): its execution body and the units /
 # config templates it is deployed with are *generated* into it from this repository's
 # scripts/, src/foundation/ and scripts/install/templates/, and guarded by
-# `node scripts/sync-skills.mjs --check`. The installer reads them from there rather than
+# `node scripts/sync-loop.mjs --check`. The installer reads them from there rather than
 # from this repository's own scripts/ — so what is deployed is exactly what was distributed
 # and verified, not a second reading of the same inputs.
 loop_src() { printf '%s\n' "$(repo_root)/skills/meerkat-loop"; }
@@ -511,7 +511,7 @@ apply_supervisor() {
 # foundation specifiers rewritten to that shape.
 # The set to copy is **not** restated here — it is read from the loop skill's generated
 # `manifest.txt` at its root, which is the closure itself (computed from the two entry points'
-# imports by `scripts/sync-loop.mjs` and guarded by `--check`). One source, so a new
+# imports by `scripts/loop-payload.mjs` and guarded by `--check`). One source, so a new
 # import in the body cannot leave bash — or the test that proves the copy is closed —
 # silently behind.
 #
@@ -527,7 +527,7 @@ install_loop_body() {
   manifest="$(loop_src)/manifest.txt"
   if [ ! -f "$manifest" ]; then
     echo "$TP_ACTOR_KIND: loop body manifest not found: $manifest" >&2
-    echo "$TP_ACTOR_KIND: run 'node scripts/sync-skills.mjs' in the checkout and retry." >&2
+    echo "$TP_ACTOR_KIND: run 'node scripts/sync-loop.mjs' in the checkout and retry." >&2
     return 1
   fi
 

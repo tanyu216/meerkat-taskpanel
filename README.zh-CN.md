@@ -327,8 +327,8 @@ claim-first 片段、写入可调度的认领触发脚本 `~/.codex/meerkat-task
 
 ```bash
 node --test                          # 运行冒烟 / 契约测试
-node scripts/sync-skills.mjs         # 生成 loop 载荷（执行体 + 安装模板）
-node scripts/sync-skills.mjs --check # 校验生成载荷是否与来源同步
+node scripts/sync-loop.mjs         # 生成 loop 载荷（执行体 + 安装模板）
+node scripts/sync-loop.mjs --check # 校验生成载荷是否与来源同步
 node scripts/verify/manifests.mjs    # 校验插件清单
 node scripts/verify/skill.mjs        # 校验看板 skill 的 SKILL.md frontmatter
 node scripts/build.mjs               # 产出 dist/

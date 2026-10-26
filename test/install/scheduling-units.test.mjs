@@ -69,8 +69,8 @@ function unitPaths(home, agentDir, kind) {
  * The loop execution body `install.sh` copies into the agent directory, as repo-relative paths.
  *
  * Read from the loop skill's **generated** `manifest.txt` rather than restated here:
- * the manifest *is* the closure (computed from the body's imports by `scripts/sync-loop.mjs`
- * and guarded by `sync-skills --check`), so a member the installer copies but this test
+ * the manifest *is* the closure (computed from the body's imports by `scripts/loop-payload.mjs`
+ * and guarded by `sync-loop --check`), so a member the installer copies but this test
  * does not know about — or the reverse — is impossible.
  */
 const LOOP_SKILL = join(ROOT, "skills", "meerkat-loop");

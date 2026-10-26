@@ -231,7 +231,7 @@ describe("every entry point is symlink-safe (the guard cannot silently no-op)", 
 
 describe("no entry point reverts to a symlink-fragile guard", () => {
   // Generated trees are excluded from the scan because scanning them is not what keeps them
-  // honest — `sync-skills --check` is. `plugins/` and `dist/` are excluded by not being scan
+  // honest — `sync-loop --check` is. `plugins/` and `dist/` are excluded by not being scan
   // roots at all, `web/node_modules` by taking only `web/scripts`, and `test/` because tests are
   // not entry points (and because this file, which *defines* the tripwire, lives there).
   const SCAN_ROOTS = [
