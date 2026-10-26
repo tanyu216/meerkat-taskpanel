@@ -367,20 +367,24 @@ The file is the entry map every session and every role reads first, not a manual
 carry:
 
 1. **Purpose and boundary** — what the project is, in one paragraph.
-2. **Commands** — build, test (including a single file), run, lint, typecheck and migrate,
-   exactly as the scaffold defines them.
-3. **Layout** — a top-level map of the planned directory tree, one line of purpose per
-   directory, with a pointer to the full tree in the architecture document. A reader should
-   find any file from this section.
-4. **Conventions** — dependency direction and module boundaries, the error model, the
-   configuration surface, the external contract.
+2. **Commands** — the entry commands exactly as the scaffold defines them: build, test
+   (including a single file), run, lint, typecheck and migrate; add the non-obvious variant
+   a fresh session cannot guess (the container gate, a required env file). Do not transcribe
+   scripts the manifest already lists in full.
+3. **Layout** — the entry points and the top-level directories a newcomer must know first,
+   one line of purpose each, with a pointer to the canonical tree in `docs/architecture.md`.
+   Do not restate the full tree: `ls` and the architecture document already carry it.
+4. **Conventions** — the one-line rule for dependency direction and module boundaries, the
+   error model, the configuration surface and the external contract, each pointing at its
+   canonical artifact (the architecture document, `.env.example`, the contract file) rather
+   than restating it.
 5. **Design principles** — the six principles bind every agent, not only the architect:
    simple, reliable, efficient, elegant, not over-engineered, and high cohesion / low
    coupling, with the conflict ordering including the boundary rule. Name all six in the
    generated file, not "the six principles" as a phrase; a change that violates one is
    recorded as an explicit decision, never a silent drift.
-6. **Gates** — what must pass before delivery, the exact commands, the coverage floor and
-   the security scan.
+6. **Gates** — what must pass before delivery: the one gate command, the coverage floor and
+   the security scan; point at the CI pipeline for the job detail.
 7. **Workspace** — the project uses one worktree per card, based on the integration branch
    (`dev` by default), shared by the card's roles; the primary checkout stays on the
    integration branch and `.meerkat/<id>/` stays in the project working directory. Merge
@@ -389,12 +393,15 @@ carry:
 8. **Pointers** — link `docs/architecture.md`, `GLOSSARY.md`, `docs/adr/`, the contract
    artifact and the configuration surface; do not copy their content.
 
-Leave out architecture prose, design documents, ADR bodies and details that will drift.
-Update the file when a command or the layout changes.
+Leave out architecture prose, design documents, ADR bodies, directory inventories and
+details that will drift. This file is a map, not a mirror: every line is resident in every
+session, so carry only what a fresh session cannot reconstruct with `ls`, the manifest or a
+pointer — the rest goes behind the pointer. Update the file when a command or the layout
+changes.
 
-Output: the `/init` product — `CLAUDE.md` or `AGENTS.md` — reviewed, with the top-level
-tree map, the design principles, the workspace declaration and the pointers, named as the
-entry baseline in the delivery.
+Output: the `/init` product — `CLAUDE.md` or `AGENTS.md` — reviewed, with the entry-point
+map, the design principles, the workspace declaration and the pointers, named as the entry
+baseline in the delivery.
 
 ### 6. Wire the git gates and CI/CD
 
@@ -441,9 +448,9 @@ Run `self-check.md` (Architecture branch). The architecture proof is:
   loudly, and the reload policy lists reloadable and restart-required keys;
 - the directory tree is planned, scaffolded exactly, and carried by the `/init` output as a
   top-level map with a pointer;
-- `CLAUDE.md`/`AGENTS.md` exists as the baseline every role reads, carries the commands, the
-  layout, the gates and the workspace declaration, and links rather than copies the
-  architecture document;
+- `CLAUDE.md`/`AGENTS.md` exists as the baseline every role reads, carries the entry
+  commands, the entry-point map, the gates and the workspace declaration, and links rather
+  than copies the architecture document and the full tree;
 - every ADR has a status, alternatives and consequences;
 - the scaffold checklist in Step 4 is complete, the smoke test passes and the documented
   local run works;

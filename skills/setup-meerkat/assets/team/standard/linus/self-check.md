@@ -76,8 +76,9 @@ run them.
     reads, the loader fails loudly on a missing required key, and the reload policy lists
     reloadable and restart-required keys. Otherwise the `n/a` is recorded.
 16. The directory tree is planned and scaffolded exactly, and the `/init` product
-    (`CLAUDE.md` or `AGENTS.md`) exists as the baseline every role reads, carrying a
-    top-level map and a pointer to the full tree.
+    (`CLAUDE.md` or `AGENTS.md`) exists as the baseline every role reads, carrying the entry
+    points and the non-obvious top-level directories, plus a pointer to the full tree in
+    `docs/architecture.md` — not a copy of it.
 17. The `/init` product carries the design principles as binding requirements every agent
     follows — simple, reliable, efficient, elegant, not over-engineered, high cohesion and
     low coupling, with the conflict ordering — rather than leaving them in the architecture
