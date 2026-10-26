@@ -22,6 +22,7 @@ scripts/loop/kind-session.mjs
 scripts/loop/ledger.mjs
 scripts/loop/options.mjs
 scripts/loop/passes.mjs
+scripts/loop/questions.mjs
 scripts/loop/queue.mjs
 scripts/loop/runners.mjs
 scripts/loop/runtime.mjs

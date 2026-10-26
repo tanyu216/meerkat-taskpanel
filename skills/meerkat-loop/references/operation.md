@@ -96,7 +96,7 @@ Precedence: flag > process env > agent config > default.
 | `--workflow-max-actions <n>` | 20 | writes per workflow pass |
 | `--review-aging-minutes <n>` | 60 | report a review card with no readable verdict this long |
 | `--workflow-ledger <path>` | beside `--state` | workflow alert de-duplication ledger; an unreadable one suppresses nothing |
-| `--session` | — | run the resident session pool (control + one project session per target directory); this is a daemon mode |
+| `--session` | — | run the resident session pool (control + one worker session per target directory + a reviewer session per directory on demand); this is a daemon mode |
 | `--control=internal\|external` | internal | who owns the control turn: the pool (`internal`) or a live session (`external`, which opens no control session and skips `continue.pending`) |
 | `--resident=auto\|no` | auto | use a live pool for continue; `no` never dispatches workers |
 | `--session-state <path>` | beside `--state` | pool state file (`sessions.state.json`) |
@@ -104,10 +104,9 @@ Precedence: flag > process env > agent config > default.
 | `--session-turn-timeout <sec>` | 1800 | one agent turn; must be **1200–7199** (≥ 2× the 10-minute heartbeat window, < the ledger's 2-hour reap) |
 | `--opened-by human\|supervisor` | supervisor | who started this loop: a supervisor escalates questions to the board; a human-opened session may ask its own operator first and records the answer with `--as-human` |
 | `--session-poll-ms <ms>` | 1000 | queue poll interval |
-| `--session-pool-max <n>` | 8 | project sessions held open |
+| `--session-pool-max <n>` | 8 | resident lane sessions held open (worker + reviewer) |
 | `--project-concurrency <n>` | `--max-concurrency` | live subagents per project |
 | `--project-idle-ms <ms>` | 1800000 | close an idle project session (keeps its session id) |
-| `--subagent-background=yes\|no` | no | project sessions spawn background subagents |
 | `--allow-all-tools` | off | full agent tool access; requires `--allow-all-tools-reason "<who authorized it and why>"` |
 | `--subscribe` | off | run the event subscriber (`taskctl events follow`, the local event hub); launchd/systemd only — the installed units pass it |
 | `--event-continue=yes\|no` | yes | let events wake a continue turn |
@@ -260,6 +259,15 @@ A missing plan is not itself a failure: the reviewer falls back to the descripti
 frozen acceptance snapshot. The board holds no directory (O3); this is a loop convention
 under the project's own working directory.
 
+## The working tree
+
+The loop schedules conversations, not sandboxes. Parallel cards in one project share its
+working directory, and `--project-concurrency` above 1 means they run there at the same
+time. If cards can touch the same files, give each its own `git worktree` — a role or
+deployment convention; the loop neither creates nor merges worktrees, and it does not detect
+conflicts. It logs one warning per directory when it first admits parallel work in a git
+checkout.
+
 ## Team roles (optional)
 
 A team is an optional roles root authored by `setup-meerkat`; `install.sh` never ships one.
@@ -286,9 +294,10 @@ re-run `/setup-meerkat` after a forced reinstall.
 
 The ladder is **subagent → main session → human**; the full policy is
 `references/decision-policy.md`. A subagent never decides an unauthorized question: it
-writes an agent `question` comment, keeps the card `in_progress`, and stops. The project
-session answers what it can with a `note` (then reattaches the subagent or moves the card
-to `todo`), or escalates E1-E5 to the human with
+writes an agent `question` comment, keeps the card `in_progress`, and stops. Poll's
+**question lane** then enqueues the unanswered question for the project session (no claim,
+no subagent slot), which answers with a `note` and moves the card to `todo`, or escalates
+E1-E5 to the human with
 `issue move <ref> awaiting --awaiting-reason E1..E5 --question "…"`.
 
 A question is asked as a **round**: the frontier is every open decision whose prerequisites
@@ -344,10 +353,12 @@ What keeps it safe to run unattended:
   dispatched; there is no switch that could leave it for nobody.
 
 Operational alerts: `original_unseen` (`board_truncated` when the read is
-capped), `verdict_unreadable`, `review_aging`, `review_report_not_by_reviewer`,
-`review_stale_round`, `actions_capped` / `dispatch_capped`. An unreadable
-verdict, unseen original, round mismatch or conflicting verdict produces an
-alert and **no write**; the next pass retries.
+capped), `verdict_unreadable`, `review_retries_exhausted`, `review_aging`,
+`review_report_not_by_reviewer`, `review_stale_round`, `actions_capped` /
+`dispatch_capped`. An unreadable or incomplete verdict produces an alert **and**
+a bounded `reopen_review` (two attempts); when the bound is reached the card is
+left for a human. An unseen original, round mismatch or conflicting verdict
+produces an alert and no write.
 
 The verdict contract and the loop's action per verdict are the board skill's
 `references/review-workflow.md` §6; the agent-facing protocol is §3. The reviewer reads the
@@ -365,8 +376,13 @@ Codex approval bypass). Enabling one is a deliberate act that needs written
 authorization and must be documented at the point of use.
 
 The resident pool keeps role allowlists by default (control: read + `taskctl` +
-`node`; reviewer: read/search + `taskctl` + `git`; worker: the same plus
-edit/write). Full tool access is the documented opt-in:
+`node`; reviewer: read/search + `taskctl` + `git`, no write; worker: the same plus
+edit/write). A review card runs in its own `role=reviewer` conversation, so the
+reviewer allowlist reaches the subagent it spawns. The Claude and Pi adapters
+enforce it (Pi's lists include the `pi-subagents` tools `subagent` and
+`subagents_enable`); Codex, OpenCode and Cursor have no per-role tool surface, and
+the pool logs a one-time warning when it opens a reviewer lane there. Full tool access is
+the documented opt-in:
 
 ```bash
 # agent config, not a unit flag:

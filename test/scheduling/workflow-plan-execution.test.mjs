@@ -92,6 +92,7 @@ async function throughBothHalves(input) {
     comment: async (ref, { kind }) => (order.push(`comment:${ref}:${kind}`), { ok: true }),
     setMeta: async (ref, meta) => (order.push(`setMeta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
     notify: () => {},
+    now: () => NOW,
     log: () => {},
   });
   return { plan, wirePlan, order, result };
@@ -208,6 +209,22 @@ const SCENARIOS = [
     expectedAction: "cancel_review",
     expectedOrder: ["comment:PROJ-0002:note", "move:PROJ-0002:in_progress", "move:PROJ-0002:canceled"],
   },
+  {
+    name: "reopen_review (verdict unreadable)",
+    tasks: (() => {
+      const original = card();
+      const review = reviewCard(original);
+      return [original, review];
+    })(),
+    verdicts: {},
+    expectedAction: "reopen_review",
+    expectedOrder: [
+      "comment:PROJ-0002:note",
+      `setMeta:PROJ-0002:{"review_retry":"1","review_reopen_at":"${NOW}"}`,
+      "move:PROJ-0002:in_progress",
+      "move:PROJ-0002:todo",
+    ],
+  },
 ];
 
 describe("workflow plan → execution", () => {
@@ -250,6 +267,7 @@ describe("workflow plan → execution", () => {
         "project_id", "assignee_id", "original_title", "acceptance_mode", "findings", "close_review",
       ],
       reject_task_finish: ["type", "review_status", "review_ref", "original_ref", "round", "close_review"],
+      reopen_review: ["type", "review_status", "review_ref", "original_ref", "round", "retry", "reason"],
       close_review: ["type", "review_status", "review_ref", "original_ref", "round", "reason", "close_review"],
       cancel_review: ["type", "review_status", "review_ref", "original_ref", "reason"],
     };

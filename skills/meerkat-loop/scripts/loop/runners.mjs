@@ -149,6 +149,70 @@ export async function runPollTick(deps) {
 }
 
 /**
+ * Enqueue one question-lane row per unanswered agent question.
+ *
+ * Poll calls this **before** its concurrency budget (a question is not a
+ * subagent) and only when the resident pool advertises `question-lane`. It never
+ * claims a card and never moves one: the project session answers the question
+ * and moves the card. The attempt bound counts dispatches, so a broken turn is
+ * retried twice and then left to the human.
+ *
+ * @param {{
+ *   questions?: object[],
+ *   resolveDir: (project: string) => {ok: boolean, dir?: string, code?: string},
+ *   enqueue: (row: object) => {ok: boolean, coalesced?: boolean, error?: string},
+ *   dispatches?: (questionId: string) => number,
+ *   maxAttempts?: number,
+ *   log?: (line: string) => void,
+ * }} deps
+ */
+export function runQuestionTick(deps) {
+  const {
+    questions = [],
+    resolveDir,
+    enqueue,
+    dispatches = () => 0,
+    maxAttempts = 2,
+    log = () => {},
+  } = deps;
+  let enqueued = 0;
+  let skipped = 0;
+  for (const question of questions) {
+    if (dispatches(question.question_id) >= maxAttempts) {
+      log(`question ${question.ref}: attempt cap reached — left for the human`);
+      skipped += 1;
+      continue;
+    }
+    const resolved = resolveDir(question.project);
+    if (resolved?.ok !== true) {
+      log(`question ${question.ref}: ${resolved?.code ?? "no project directory"}`);
+      skipped += 1;
+      continue;
+    }
+    const queued = enqueue({
+      id: `question:${question.ref}:${question.question_id}`,
+      queue_kind: "question",
+      role: "question",
+      card: question.ref,
+      project: question.project,
+      agent: question.agent,
+      target_dir: resolved.dir,
+      question_id: question.question_id,
+      question: question.body,
+      asked_at: question.asked_at,
+    });
+    if (queued?.ok !== true) {
+      log(`question ${question.ref}: ${queued?.error ?? "enqueue failed"}`);
+      skipped += 1;
+      continue;
+    }
+    if (queued.coalesced === true) skipped += 1;
+    else enqueued += 1;
+  }
+  return { ok: true, enqueued, skipped };
+}
+
+/**
  * One patrol pass. Alerts are logged and notified; the LLM stays off unless
  * `config.patrolLlm` is explicitly on.
  *
@@ -503,6 +567,27 @@ export async function runWorkflowTick(deps) {
           await closeReviewCard(action, `Loop closed this review card after completing the rework move.`);
           break;
 
+        case "reopen_review": {
+          // The marker is written before the two-hop move: a crash between the
+          // hops leaves an `in_progress` review card the next pass finishes.
+          const retry = Math.max(1, Number(action.retry ?? 1));
+          await step(comment, "comment", action.review_ref, {
+            kind: "note",
+            body:
+              `Verdict could not be applied (${action.reason}); ` +
+              `re-dispatching for review attempt ${retry}.`,
+          });
+          await step(setMeta, "setMeta", action.review_ref, {
+            review_retry: String(retry),
+            review_reopen_at: now(),
+          });
+          if ((action.review_status ?? "in_review") === "in_review") {
+            await step(move, "move", action.review_ref, "in_progress");
+          }
+          await step(move, "move", action.review_ref, "todo");
+          break;
+        }
+
         case "close_review":
           await closeReviewCard(action, `Loop closed this review card (${action.reason}).`);
           break;
@@ -588,6 +673,7 @@ const WORKFLOW_NOTIFY_TYPES = new Set([
   "verdict_conflict",
   "review_report_not_by_reviewer",
   "review_aging",
+  "review_retries_exhausted",
   "original_unseen",
   "original_unexpected_status",
   "review_stale_round",
@@ -612,6 +698,8 @@ function describeWorkflowAction(action) {
       return `${action.type} ${action.original_ref} (round ${action.round})`;
     case "reject_task_finish":
       return `finish the rework move for ${action.original_ref}`;
+    case "reopen_review":
+      return `reopen review ${action.review_ref} for attempt ${action.retry} (${action.reason})`;
     case "close_review":
     case "cancel_review":
       return `${action.type} ${action.review_ref} (${action.reason})`;

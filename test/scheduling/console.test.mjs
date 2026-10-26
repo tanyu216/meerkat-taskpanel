@@ -37,6 +37,7 @@ const TASKS = {
   in_progress: [
     { identifier: "T-2", title: "Already answered", status: "in_progress" },
     { identifier: "T-4", title: "Still asking", status: "in_progress" },
+    { identifier: "T-6", title: "Answered by the project session", status: "in_progress" },
   ],
   in_review: [{ identifier: "T-3", title: "Awaiting acceptance", status: "in_review" }],
 };
@@ -55,6 +56,11 @@ const COMMENTS = {
   ],
   "T-4": [
     { kind: "question", author_kind: "claude", body: "Deploy now?", created_at: "2026-01-01T00:00:00Z" },
+  ],
+  // The middle rung's answer is an agent `note`; it settles the question too.
+  "T-6": [
+    { kind: "note", author_kind: "claude", body: "decision: use option B", created_at: "2026-01-01T00:05:00Z" },
+    { kind: "question", author_kind: "claude", body: "Which option?", created_at: "2026-01-01T00:00:00Z" },
   ],
   "T-3": [],
 };
@@ -126,7 +132,7 @@ describe("the live-session console", () => {
     assert.deepEqual(
       result.questions.map((entry) => entry.ref).sort(),
       ["T-1", "T-4"],
-      "T-2 and T-5 have newer human answers (UI included), so they are not asked again",
+      "T-2/T-5 have newer human answers and T-6 has the project session's note, so none is asked again",
     );
     assert.equal(result.questions.find((entry) => entry.ref === "T-1").kind, "awaiting");
     assert.equal(result.questions.find((entry) => entry.ref === "T-4").kind, "agent-question");

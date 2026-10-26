@@ -32,12 +32,18 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 
-import { createProjectAdmission, createQueueDispatch } from "../../scripts/loop/passes.mjs";
-import { readCards } from "../../scripts/loop/queue.mjs";
-import { runContinue, runPollTick } from "../../scripts/loop/runners.mjs";
+import { readOpenQuestions } from "../../scripts/loop/board.mjs";
+import {
+  createProjectAdmission,
+  createQueueDispatch,
+  isGitCheckout,
+} from "../../scripts/loop/passes.mjs";
+import { QUEUE_FILES, readCards } from "../../scripts/loop/queue.mjs";
+import { runContinue, runPollTick, runQuestionTick } from "../../scripts/loop/runners.mjs";
 import {
   acquireContinueLock,
   loadContinueLock,
+  readCardForRedispatch,
   recordContinuePid,
   releaseContinueLock,
   runPingTick,
@@ -344,7 +350,85 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       false,
       "no scan, so no card can be claimed",
     );
-    assert.equal(existsSync(join(dir, "cards.pending.json")), false);
+    assert.equal(existsSync(join(dir, QUEUE_FILES.cards)), false);
+  });
+
+  it("poll enqueues an unanswered question without claiming the card", () => {
+    const dir = tempDir("tp-question-lane-");
+    const app = join(dir, "app");
+    mkdirSync(app, { recursive: true });
+    const projectsJson = join(dir, "projects.json");
+    writeFileSync(projectsJson, JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
+    writeLivePool(dir, { version: 2, capabilities: ["question-lane"] });
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "question-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        "const at = argv.findIndex((a) => a === 'issue' || a === 'comment');",
+        "const args = at === -1 ? [] : argv.slice(at);",
+        "const status = args.includes('--status') ? args[args.indexOf('--status') + 1] : null;",
+        "let data = { candidates: [], tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } };",
+        "if (args[0] === 'issue' && status === 'in_progress') {",
+        "  data = { tasks: [{ identifier: 'T-1', project: 'P', kind: 'task', status: 'in_progress', assignee: { display_name: 'alice' } }] };",
+        "} else if (args[0] === 'comment') {",
+        "  data = { comments: [{ id: 'c-1', kind: 'question', author_kind: 'agent', body: 'Which option?', created_at: '2026-01-01T00:00:00Z' }] };",
+        "}",
+        'process.stdout.write(`${JSON.stringify({ ok: true, data })}\\n`);',
+      ].join("\n"),
+    );
+    const run = runEntry(
+      "passes.mjs",
+      [
+        "--actor-kind", "claude", "--agent", "alice",
+        "--cli", script, "--repo", dir,
+        "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+        "--projects-json", projectsJson,
+      ],
+      { TP_SENTINEL: record },
+      "poll",
+    );
+    assert.equal(run.status, 0, run.stderr);
+
+    const [row] = readCards(dir).value.cards;
+    assert.equal(row.queue_kind, "question");
+    assert.equal("kind" in row, false, "the queue row never carries a board card kind");
+    assert.equal(row.card, "T-1");
+    assert.equal(row.target_dir, app);
+    assert.equal(row.question_id, "c-1");
+    assert.equal(row.question, "Which option?");
+    const argv = calls(record);
+    assert.equal(
+      argv.some((call) => call.includes("claim")),
+      false,
+      "the question lane never claims a card",
+    );
+  });
+
+  it("does not use the question lane when the pool predates the capability", () => {
+    const dir = tempDir("tp-question-lane-old-");
+    writeLivePool(dir); // version 1, no capabilities
+    const { script, record } = sentinelCli(dir);
+    const run = runEntry(
+      "passes.mjs",
+      [
+        "--actor-kind", "claude", "--agent", "alice",
+        "--cli", script, "--repo", dir,
+        "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      ],
+      { TP_SENTINEL: record },
+      "poll",
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(existsSync(join(dir, "cards.queue.json")), false, "no question row for an old pool");
+    assert.equal(
+      calls(record).some((call) => call.includes("--status") && call.includes("in_progress")),
+      false,
+      "the question read is not made at all",
+    );
   });
 
   it("patrol reads the board and the SLA rows, and writes nothing", () => {
@@ -387,6 +471,131 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
 // ---------------------------------------------------------------------------
 // Continue — the spawn path
 // ---------------------------------------------------------------------------
+
+describe("readOpenQuestions", () => {
+  const tasks = [
+    { identifier: "T-1", project: "P", kind: "task", assignee: { display_name: "alice" } },
+    { identifier: "T-2", project: "P", kind: "task", review_of_id: "uuid", assignee: { display_name: "jobs" } },
+    { identifier: "T-3", project: "P", kind: "epic" },
+    { identifier: "T-4", project: "P", kind: "task", assignee: { display_name: "alice" } },
+    { identifier: "T-5", project: "P", kind: "task", assignee: { display_name: "alice" } },
+  ];
+  const comments = {
+    "T-1": [{ id: "q1", kind: "question", body: "Why?", created_at: "2026-01-01T00:00:00Z" }],
+    "T-2": [{ id: "q2", kind: "question", body: "Why?" }],
+    "T-3": [{ id: "q3", kind: "question", body: "Why?" }],
+    // Newer project-session note: settled by the middle rung.
+    "T-4": [
+      { id: "n1", kind: "note", author_kind: "agent", body: "decision: because" },
+      { id: "q4", kind: "question", body: "Why?" },
+    ],
+    // Newer human comment: settled by the person.
+    "T-5": [
+      { id: "n2", kind: "note", author_kind: "human", body: "Because." },
+      { id: "q5", kind: "question", body: "Why?" },
+    ],
+  };
+  const run = (_opts, _agent, args) => {
+    if (args[0] === "issue") return { ok: true, data: { tasks } };
+    return { ok: true, data: { comments: comments[args[2]] ?? [] } };
+  };
+  const opts = { agents: ["alice"], boardLimit: 500 };
+
+  it("returns only an in_progress task card whose newest question is unsettled", () => {
+    const result = readOpenQuestions(opts, () => {}, run);
+    assert.deepEqual(result.rows.map((row) => row.ref), ["T-1"]);
+    assert.equal(result.rows[0].project, "P");
+    assert.equal(result.rows[0].agent, "alice");
+    assert.equal(result.rows[0].question_id, "q1");
+    assert.equal(result.rows[0].body, "Why?");
+  });
+
+  it("reports an unreadable board instead of throwing", () => {
+    const result = readOpenQuestions(opts, () => {}, () => ({ ok: false, error: "down" }));
+    assert.equal(result.ok, false);
+    assert.equal(result.error, "down");
+    assert.deepEqual(result.rows, []);
+  });
+});
+
+describe("runQuestionTick", () => {
+  const question = {
+    ref: "T-1",
+    project: "P",
+    agent: "alice",
+    question_id: "q-1",
+    body: "Which option?",
+    asked_at: null,
+  };
+
+  function deps(overrides = {}) {
+    const rows = [];
+    return {
+      questions: [question],
+      resolveDir: () => ({ ok: true, dir: "/work/app" }),
+      enqueue: (row) => {
+        rows.push(row);
+        return { ok: true, coalesced: false };
+      },
+      dispatches: () => 0,
+      log: () => {},
+      rows,
+      ...overrides,
+    };
+  }
+
+  it("enqueues one question row for the resolved directory", () => {
+    const d = deps();
+    const result = runQuestionTick(d);
+    assert.equal(result.enqueued, 1);
+    assert.equal(d.rows[0].queue_kind, "question");
+    assert.equal(d.rows[0].id, "question:T-1:q-1");
+    assert.equal(d.rows[0].target_dir, "/work/app");
+    assert.equal(d.rows[0].question_id, "q-1");
+  });
+
+  it("stops at the attempt cap", () => {
+    const d = deps({ dispatches: () => 2 });
+    assert.equal(runQuestionTick(d).enqueued, 0);
+    assert.deepEqual(d.rows, []);
+  });
+
+  it("skips an unmapped project", () => {
+    const d = deps({ resolveDir: () => ({ ok: false, code: "PROJECT_DIR_UNMAPPED" }) });
+    const result = runQuestionTick(d);
+    assert.equal(result.skipped, 1);
+    assert.deepEqual(d.rows, []);
+  });
+
+  it("treats a coalesced row as skipped", () => {
+    const d = deps({ enqueue: () => ({ ok: true, coalesced: true }) });
+    assert.equal(runQuestionTick(d).enqueued, 0);
+  });
+});
+
+describe("readCardForRedispatch", () => {
+  const opts = { agents: ["alice"] };
+
+  it("returns the live status a retry must consult", () => {
+    const result = readCardForRedispatch(
+      opts,
+      "T-1",
+      () => {},
+      () => ({ ok: true, data: { task: { status: "in_review" } } }),
+    );
+    assert.deepEqual(result, { ok: true, status: "in_review", error: null });
+  });
+
+  it("returns an unreadable check instead of throwing", () => {
+    const result = readCardForRedispatch(
+      opts,
+      "T-1",
+      () => {},
+      () => ({ ok: false, error: "down" }),
+    );
+    assert.deepEqual(result, { ok: false, status: null, error: "down" });
+  });
+});
 
 // ---------------------------------------------------------------------------
 // The resident poll dispatch — admit, then enqueue
@@ -433,6 +642,43 @@ describe("the resident poll dispatch", () => {
     assert.match(entry.handoff, /^You are a worker subagent of the P project session/);
     assert.match(entry.handoff, /\.meerkat\/T-1\/card\.md/);
     assert.equal(entry.handoff.includes("/meerkat-loop"), false, "a handoff is not a continue turn");
+  });
+
+  it("warns once when parallel workers share a git checkout", () => {
+    const f = fixture();
+    mkdirSync(join(f.app, ".git"), { recursive: true });
+    assert.equal(isGitCheckout(f.app), true);
+
+    const lines = [];
+    const admission = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: 2,
+      exportCard: f.exportCard,
+      log: (line) => lines.push(line),
+    });
+    const admit = (ref) =>
+      admission.admit({ identifier: ref, agent: "alice" }, { identifier: ref, project: "P" });
+    assert.equal(admit("T-1").ok, true);
+    assert.equal(admit("T-2").ok, true);
+    assert.equal(
+      lines.filter((line) => /shared git checkout/.test(line)).length,
+      1,
+      "the warning is per directory, not per card",
+    );
+
+    const singleLines = [];
+    const single = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: 1,
+      exportCard: f.exportCard,
+      log: (line) => singleLines.push(line),
+    });
+    single.admit({ identifier: "T-3", agent: "alice" }, { identifier: "T-3", project: "P" });
+    assert.equal(
+      singleLines.filter((line) => /shared git checkout/.test(line)).length,
+      0,
+      "a single worker per directory needs no warning",
+    );
   });
 
   it("routes a review card to the reviewer handoff and exports both briefs", async () => {

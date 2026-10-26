@@ -150,6 +150,33 @@ export function runCli(opts, agent, args, { input = null, actorKind = null } = {
 }
 
 /**
+ * The live status of one card, for a retry that must not re-dispatch work the
+ * worker already delivered.
+ *
+ * A failed read is returned, never thrown: the caller decides between requeueing
+ * and waiting. This lives beside `runCli` rather than in `board.mjs` so the pool
+ * can read it without importing the board module (which imports the runners,
+ * which import the pool).
+ *
+ * @param {object} opts
+ * @param {string} ref
+ * @param {(message: string) => void} [log]
+ * @param {Function} [run] the `runCli` seam, injectable for tests
+ * @returns {{ok: boolean, status: string|null, error: string|null}}
+ */
+export function readCardForRedispatch(opts, ref, log = () => {}, run = runCli) {
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, status: null, error: "no agent configured" };
+  const read = run(opts, agent, ["issue", "get", String(ref)]);
+  if (!read.ok) {
+    log(`redispatch check for ${ref} failed: ${read.error}`);
+    return { ok: false, status: null, error: read.error };
+  }
+  const status = read.data?.task?.status;
+  return { ok: true, status: typeof status === "string" ? status : null, error: null };
+}
+
+/**
  * Run a streaming `taskctl` command (`events follow`) and consume its NDJSON.
  *
  * The child is a normal `taskctl` process: it resolves the board, the token and

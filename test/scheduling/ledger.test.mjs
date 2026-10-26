@@ -17,8 +17,8 @@ import {
   markSubagent,
   prune,
   readLedger,
+  reap,
   reattachCandidates,
-  reconcile,
   upsertSubagent,
   writeLedger,
 } from "../../scripts/loop/ledger.mjs";
@@ -112,7 +112,7 @@ describe("ledger", () => {
     assert.deepEqual(reattachCandidates(ledger, { sessionKey: "/work/other" }), []);
   });
 
-  it("marks a slot stale only when the board finished and the row is old", () => {
+  it("reaps a live row once it outlives the bound, and leaves a fresh one", () => {
     const ledger = upsertSubagent({ subagents: [] }, {
       sessionKey: "/work/app",
       subagentId: "a-1",
@@ -121,19 +121,35 @@ describe("ledger", () => {
       status: "running",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
     });
-    const fresh = reconcile(ledger, {
-      cardStatus: { "T-1": "done" },
+    const fresh = reap(ledger, {
       now: Date.parse("2026-01-01T00:01:00.000Z"),
       staleAfterMs: 2 * 60 * 60 * 1000,
     });
-    assert.equal(fresh.stale.length, 0, "a fresh row is not stale");
-    const old = reconcile(ledger, {
-      cardStatus: { "T-1": "done" },
+    assert.equal(fresh.reaped.length, 0, "a fresh row is not reaped");
+    assert.equal(fresh.ledger.subagents[0].status, "running");
+    const old = reap(ledger, {
       now: Date.parse("2026-01-02T00:00:00.000Z"),
       staleAfterMs: 2 * 60 * 60 * 1000,
     });
-    assert.deepEqual(old.stale, ["a-1"]);
+    assert.deepEqual(old.reaped, ["a-1"]);
     assert.equal(old.ledger.subagents[0].status, "stale");
+    assert.equal(liveSubagents(old.ledger).length, 0, "the slot is released");
+  });
+
+  it("never reaps a row that is already terminal", () => {
+    const ledger = upsertSubagent({ subagents: [] }, {
+      sessionKey: "/work/app",
+      subagentId: "a-1",
+      card: "T-1",
+      status: "completed",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+    });
+    const result = reap(ledger, {
+      now: Date.parse("2026-01-02T00:00:00.000Z"),
+      staleAfterMs: 2 * 60 * 60 * 1000,
+    });
+    assert.deepEqual(result.reaped, []);
+    assert.equal(result.ledger.subagents[0].status, "completed");
   });
 
   it("prunes finished rows but never a live one", () => {

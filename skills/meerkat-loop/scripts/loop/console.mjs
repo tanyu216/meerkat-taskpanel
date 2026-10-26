@@ -20,6 +20,7 @@
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 import { parseArgs } from "./options.mjs";
+import { answeredByHuman, isQuestionSettled, newestQuestion } from "./questions.mjs";
 import { runCli } from "./runtime.mjs";
 import { probeSupervisor } from "./status.mjs";
 
@@ -28,30 +29,6 @@ const USAGE = `Usage: node scripts/loop/console.mjs [--json] [--agent <name>] [-
 
 One read-only cycle: supervisor status, questions waiting for a human, and
 in_review cards pending acceptance. It never writes to the board.`;
-
-const isHuman = (comment) =>
-  String(comment?.author_kind ?? comment?.author?.kind ?? "").toLowerCase() === "human";
-
-const isQuestion = (comment) => comment?.kind === "question";
-
-/** Newest first (`comment list` is desc): the first question is the live one. */
-function newestQuestion(comments) {
-  for (const comment of comments ?? []) {
-    if (isQuestion(comment)) return comment;
-  }
-  return null;
-}
-
-/**
- * A question is answered when a human comment is newer — i.e. appears before it
- * in the newest-first list.
- */
-function answeredAfter(comments, question) {
-  const list = comments ?? [];
-  const index = list.indexOf(question);
-  if (index <= 0) return false;
-  return list.slice(0, index).some(isHuman);
-}
 
 async function commentsFor(opts, agent, ref) {
   const read = runCli(opts, agent, ["comment", "list", ref, "--limit", "20"]);
@@ -93,7 +70,7 @@ export async function consoleCycle(opts, deps = {}) {
     // A human answer in the **UI** resumes the card on the board. The next
     // `issue list` normally drops it from this set; if the snapshot is older
     // than the comment, do not ask again — the comment is already the answer.
-    if (question !== null && answeredAfter(comments, question)) continue;
+    if (question !== null && answeredByHuman(comments, question)) continue;
     questions.push({
       ref: task.identifier,
       title: task.title ?? null,
@@ -111,7 +88,9 @@ export async function consoleCycle(opts, deps = {}) {
     const { comments, error } = await commentsFor(opts, agent, task.identifier);
     if (error !== null) errors.push(`${task.identifier} comments: ${error}`);
     const question = newestQuestion(comments);
-    if (question === null || answeredAfter(comments, question)) continue;
+    // The project session's answer is an agent `note`; it settles the middle
+    // rung's question just as a human comment does.
+    if (question === null || isQuestionSettled(comments, question)) continue;
     questions.push({
       ref: task.identifier,
       title: task.title ?? null,
