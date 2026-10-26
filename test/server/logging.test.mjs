@@ -15,6 +15,17 @@ import { join } from "node:path";
 import test, { describe, it } from "node:test";
 
 import { createTaskd } from "../../src/server/index.mjs";
+import { handleAttachmentContent } from "../../src/server/routes/attachments.mjs";
+
+/** Poll until `predicate()` holds (the server writes its records asynchronously). */
+async function waitFor(predicate, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return false;
+}
 
 async function start(events, options = {}) {
   const dir = mkdtempSync(join(tmpdir(), "tp-srv-log-"));
@@ -124,6 +135,49 @@ describe("server/logging — the request record", () => {
   });
 });
 
+describe("server/logging — background and stream lifecycles", () => {
+  it("brackets an SSE stream with opened/closed records", async () => {
+    const events = [];
+    const board = await start(events);
+    try {
+      const controller = new AbortController();
+      const response = await fetch(`${board.url}/api/v1/events`, {
+        signal: controller.signal,
+        headers: { accept: "text/event-stream" },
+      });
+      assert.equal(response.status, 200);
+      assert.ok(await waitFor(() => events.some((event) => event.event === "sse_stream_opened")));
+
+      controller.abort();
+      assert.ok(await waitFor(() => events.some((event) => event.event === "sse_stream_closed")));
+
+      const opened = events.find((event) => event.event === "sse_stream_opened");
+      const closed = events.find((event) => event.event === "sse_stream_closed");
+      assert.equal(opened.level, undefined, "severity comes from EVENT_LEVELS");
+      assert.ok(opened.request_id);
+      assert.equal(closed.request_id, opened.request_id, "the pair can be joined");
+      assert.equal(typeof closed.duration_ms, "number");
+    } finally {
+      await board.close();
+    }
+  });
+
+  it("records a token rotation without ever recording the token", async () => {
+    const events = [];
+    const board = await start(events);
+    try {
+      const response = await fetch(`${board.url}/api/v1/token`, { method: "POST" });
+      assert.equal(response.status, 200);
+      const rotated = events.find((event) => event.event === "token_rotated");
+      assert.ok(rotated, "the credential event is recorded");
+      assert.match(rotated.token_file, /token$/);
+      assert.doesNotMatch(JSON.stringify(rotated), /td_[0-9a-f]{64}/);
+    } finally {
+      await board.close();
+    }
+  });
+});
+
 describe("server/logging — failures", () => {
   it("does not raise a 4xx refusal to error", async () => {
     const events = [];
@@ -138,6 +192,78 @@ describe("server/logging — failures", () => {
     } finally {
       await board.close();
     }
+  });
+
+  it("records a 5xx from the attachment bytes handler, which the router never sees", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-srv-log-att-"));
+    const events = [];
+    const board = {
+      dataDir: dir,
+      repos: {
+        attachments: {
+          get() {
+            throw new Error("the bytes row is unreadable");
+          },
+        },
+      },
+      ctx: { logger: (event) => events.push(event) },
+    };
+    const res = {
+      headersSent: false,
+      writableEnded: false,
+      statusCode: 0,
+      writeHead(status) {
+        this.statusCode = status;
+      },
+      end() {
+        this.writableEnded = true;
+      },
+    };
+
+    await handleAttachmentContent(
+      { method: "GET", headers: {} },
+      res,
+      board,
+      "abc",
+      { kind: "human", id: "local" },
+    );
+
+    assert.equal(res.statusCode, 500);
+    const failed = events.find((event) => event.event === "request_failed");
+    assert.ok(failed, "the handler's own 5xx is recorded");
+    assert.equal(failed.level, "error");
+    assert.equal(failed.status, 500);
+    assert.equal(failed.path, "/api/v1/attachments/abc/content");
+  });
+
+  it("does not raise a 404 from the attachment handler to error", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-srv-log-att-"));
+    const events = [];
+    const board = {
+      dataDir: dir,
+      repos: { attachments: { get: () => null } },
+      ctx: { logger: (event) => events.push(event) },
+    };
+    const res = {
+      headersSent: false,
+      writableEnded: false,
+      statusCode: 0,
+      writeHead(status) {
+        this.statusCode = status;
+      },
+      end() {
+        this.writableEnded = true;
+      },
+    };
+    await handleAttachmentContent(
+      { method: "GET", headers: {} },
+      res,
+      board,
+      "abc",
+      { kind: "human", id: "local" },
+    );
+    assert.equal(res.statusCode, 404);
+    assert.equal(events.some((event) => event.event === "request_failed"), false);
   });
 
   it("records an unmapped failure as request_failed at error", async () => {

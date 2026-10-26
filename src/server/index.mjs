@@ -480,15 +480,34 @@ export async function createTaskd(options = {}) {
     // The SSE stream owns its response for as long as the client stays connected;
     // it never returns a value for the envelope to wrap.
     if (pathname === "/api/v1/events" && req.method === "GET") {
+      const after = revisionFromRequest(url, req);
+      const openedAt = Date.now();
+      let closeLogged = false;
       const stream = openEventStream({
         res,
         board,
-        after: revisionFromRequest(url, req),
+        after,
         pollMs: events.pollMs,
         heartbeatMs: events.heartbeatMs,
         // Registered so `close()` can end it deliberately; forgotten by the
         // stream itself, whichever side ends it.
-        onClose: () => streams.delete(stream),
+        onClose: () => {
+          streams.delete(stream);
+          // `close()` may be called more than once (the response's own `close`
+          // re-enters it); the record is emitted once.
+          if (closeLogged) return;
+          closeLogged = true;
+          // The `request` line records the end too, but without the stream's
+          // own lifetime; this pairs with `sse_stream_opened`.
+          if (typeof logger === "function") {
+            logger({
+              event: "sse_stream_closed",
+              request_id: requestId,
+              duration_ms: Date.now() - openedAt,
+              after,
+            });
+          }
+        },
         // A read failure must not become an unhandled exception in the poll
         // timer; the stream closes itself and the client reconnects.
         ...(typeof logger === "function"
@@ -503,6 +522,15 @@ export async function createTaskd(options = {}) {
             }
           : {}),
       });
+      if (typeof logger === "function") {
+        logger({
+          event: "sse_stream_opened",
+          request_id: requestId,
+          after,
+          poll_ms: events.pollMs,
+          heartbeat_ms: events.heartbeatMs,
+        });
+      }
       streams.add(stream);
       // The response may have ended between `openEventStream` and this line (a
       // client that hung up at exactly the wrong moment); `close` is idempotent
@@ -698,6 +726,17 @@ function slaCapability(board) {
   try {
     return slaConfigToWire(board.ctx.slaConfig());
   } catch (err) {
+    // `/meta` still answers, so this is a degraded read, not a failed request:
+    // a warn is the right weight, and without it the degradation is invisible.
+    const logger = board.ctx?.logger;
+    if (typeof logger === "function") {
+      logger({
+        event: "sla_config_invalid",
+        level: "warn",
+        code: err?.code ?? null,
+        message: err?.message ?? String(err),
+      });
+    }
     return {
       version: 1,
       error: err?.code ?? "CONFIG_FILE_INVALID",
@@ -789,6 +828,16 @@ export function startLabelGc(input) {
   const intervalMs = enabled ? labelGcIntervalMs(env, options.gcIntervalMs) : 0;
   const ttlDays = labelGcTtlDays(env, options.gcTtlDays);
   const state = { intervalMs, ttlDays, last: null, timer: null };
+
+  // Whether housekeeping is on, and on what schedule, is a startup fact an
+  // operator should be able to read back without inferring it from silence.
+  if (typeof logger === "function") {
+    logger({
+      event: enabled ? "label_gc_scheduled" : "label_gc_disabled",
+      interval_ms: intervalMs,
+      ttl_days: ttlDays,
+    });
+  }
 
   const run = () => {
     let result;

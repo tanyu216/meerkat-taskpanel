@@ -64,10 +64,12 @@ export function writeReport(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
 
-  return transaction(
+  let identifier = null;
+  const result = transaction(
     ctx.db,
     () => {
       const task = loadTask(ctx, input.taskId);
+      identifier = task.identifier;
       const prepared = normalizeReportCreate(
         { ...input.report, author: resolveAuthor(ctx, input.report?.author ?? actor, now) },
         {
@@ -101,6 +103,17 @@ export function writeReport(ctx, input) {
     },
     { op: "reports.write" },
   );
+
+  if (typeof ctx.logger === "function") {
+    ctx.logger({
+      event: "report_written",
+      identifier,
+      round: result.report.round,
+      report_id: result.report.id,
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return result;
 }
 
 /**
@@ -132,7 +145,10 @@ export function deliver(ctx, input) {
     });
   }
 
-  return transaction(
+  // Logged only after the transaction commits: a rolled-back delivery must not
+  // leave a record that says it happened.
+  let observed = null;
+  const result = transaction(
     ctx.db,
     () => {
       const task = loadTask(ctx, input.taskId);
@@ -205,6 +221,13 @@ export function deliver(ctx, input) {
         // child; both hooks live in commands/rollup.mjs.
         if (hasChildStarted(moved.status)) startContainerForChild(ctx, task.id, now);
         if (moved.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
+        observed = {
+          identifier: task.identifier,
+          from: task.status,
+          to: moved.status,
+          round: waiver.round,
+          reportId: null,
+        };
         return { task: moved, report: null, waived: true };
       }
 
@@ -255,10 +278,31 @@ export function deliver(ctx, input) {
       // container can start), and a delivery straight to `done` can finish one.
       if (hasChildStarted(moved.status)) startContainerForChild(ctx, task.id, now);
       if (moved.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
+      observed = {
+        identifier: task.identifier,
+        from: task.status,
+        to: moved.status,
+        round: report.round,
+        reportId: report.id,
+      };
       return { task: moved, report, waived: false };
     },
     { op: "reports.deliver" },
   );
+
+  if (typeof ctx.logger === "function" && observed !== null) {
+    ctx.logger({
+      event: "task_delivered",
+      identifier: observed.identifier,
+      from: observed.from,
+      to: observed.to,
+      round: observed.round,
+      report_id: observed.reportId,
+      waived: result.waived,
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return result;
 }
 
 /** @param {object} ctx @param {{taskId: string}} input */

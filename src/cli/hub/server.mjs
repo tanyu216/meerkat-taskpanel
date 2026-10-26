@@ -480,6 +480,13 @@ export function createHubServer(input) {
       if (detached) persist();
     }
 
+    // A detached registration outlives the CLI that asked for it, so this line
+    // is the only durable answer to "why is this card file still being written".
+    log(
+      `hub: registration ${reg.id} started (${cards.length} card(s)` +
+        `${detached ? ", detached" : ""}${ttlMs > 0 ? `, ttl ${ttlMs}ms` : ""})`,
+    );
+
     return { registration: reg, cards, firstPass, reused: false };
   }
 

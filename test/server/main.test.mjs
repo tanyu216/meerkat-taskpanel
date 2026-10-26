@@ -212,7 +212,15 @@ describe("server/index — the label GC timer (F1-C)", () => {
       assert.equal(taskd.labelGc.enabled, true);
       assert.equal(taskd.labelGc.intervalMs, 0);
       assert.deepEqual(taskd.labelGc.last, { archived: [], kept: 0, mismatched: [] }, "startup sweep on an empty board");
-      assert.deepEqual(logs.filter((entry) => String(entry.event).startsWith("label_gc")), [], "a sweep that collects nothing is silent");
+      // The schedule is recorded once at startup; a *sweep* that collects
+      // nothing stays silent (that is what the timer relies on).
+      assert.equal(logs.filter((entry) => entry.event === "label_gc_scheduled").length, 1);
+      assert.deepEqual(
+        logs.filter((entry) =>
+          ["label_gc", "label_gc_failed", "label_gc_mismatch"].includes(entry.event)),
+        [],
+        "a sweep that collects nothing is silent",
+      );
 
       const { commands, repos } = taskd.board;
       commands.createProject({ id: "proj", name: "P", actor: AGENT });

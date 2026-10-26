@@ -133,6 +133,9 @@ export function createBoardStream(input) {
         log(`hub: event stream failed: ${err?.message ?? err}`);
       }
       if (stopped) break;
+      // Without this, a failing connection is one line then silence until it
+      // happens to open again.
+      log(`hub: reconnecting in ${backoff}ms`);
       await sleep(backoff);
       backoff = Math.min(retryMaxMs, backoff * 2);
     }

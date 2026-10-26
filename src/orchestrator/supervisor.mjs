@@ -53,7 +53,7 @@ function runPingOnce(opts, log) {
     });
     return 0;
   } catch (err) {
-    log(`ping error: ${err.message}`);
+    log(`ping error: ${err.message}`, { level: "error" });
     return 1;
   }
 }
@@ -77,7 +77,7 @@ async function runDaemon(opts, env, log) {
     try {
       runPingOnce(opts, log);
     } catch (err) {
-      log(`ping error: ${err.message}`);
+      log(`ping error: ${err.message}`, { level: "error" });
     }
   };
   // The liveness clock runs immediately; the judgment clock waits one cadence,
@@ -94,7 +94,7 @@ async function runDaemon(opts, env, log) {
       try {
         await runContinueOnce(opts, env);
       } catch (err) {
-        log(`continue error: ${err.message}`);
+        log(`continue error: ${err.message}`, { level: "error" });
       } finally {
         inFlight = false;
       }
@@ -104,6 +104,7 @@ async function runDaemon(opts, env, log) {
   const shutdown = () => {
     clearInterval(pingTimer);
     if (continueTimer !== null) clearInterval(continueTimer);
+    log("scheduler: stopped");
     process.exit(0);
   };
   process.on("SIGINT", shutdown);

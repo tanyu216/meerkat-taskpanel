@@ -78,13 +78,30 @@ export async function openBoard(options = {}) {
   // `busyTimeoutMs` is an *override* of the pinned 5000ms (§4.3), not a new
   // default: only a caller that says so gets a different lock wait. The tests
   // that exercise lock contention use it to keep a 5s wait out of the suite.
-  const db = await openDatabase({
-    path: dbPath,
-    readonly,
-    ...(Number.isFinite(options.busyTimeoutMs)
-      ? { pragmas: { busy_timeout: Math.max(0, Math.trunc(options.busyTimeoutMs)) } }
-      : {}),
-  });
+  let db;
+  try {
+    db = await openDatabase({
+      path: dbPath,
+      readonly,
+      ...(Number.isFinite(options.busyTimeoutMs)
+        ? { pragmas: { busy_timeout: Math.max(0, Math.trunc(options.busyTimeoutMs)) } }
+        : {}),
+    });
+  } catch (err) {
+    // `node:sqlite` missing, an unopenable file, a pragma refused — the driver
+    // has no logger of its own, so its failure is named here.
+    if (logger !== undefined) {
+      logger({
+        event: "board_open_failed",
+        level: "error",
+        db_path: dbPath,
+        data_dir: dataDir,
+        code: err?.code ?? null,
+        message: err?.message ?? String(err),
+      });
+    }
+    throw err;
+  }
 
   let migration;
   let schema;
@@ -106,11 +123,26 @@ export async function openBoard(options = {}) {
     }
   } catch (err) {
     closeDatabase(db);
-    if (err instanceof DomainError) throw err;
+    // The process edge records that start-up died (`startup_failed`); this
+    // record names the step and the file behind it. A library caller that never
+    // reaches that edge gets the specific failure here.
+    if (logger !== undefined) {
+      logger({
+        event: "board_open_failed",
+        level: "error",
+        db_path: dbPath,
+        data_dir: dataDir,
+        code: err?.code ?? null,
+        message: err?.message ?? String(err),
+      });
+    }
     throw err;
   }
 
   const token = readonly ? null : ensureToken(dataDir);
+  if (token?.created === true && logger !== undefined) {
+    logger({ event: "token_created", token_file: token.file, data_dir: dataDir });
+  }
   const resolvedUrl = url ?? `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}`;
 
   let pointer = null;

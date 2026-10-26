@@ -685,7 +685,15 @@ export function createSessionPool(input = {}) {
    * Route pending card handoffs to their project sessions.
    */
   async function routeCards() {
-    recoverStaleCards(stateDir, { isAlive, now: now(), maxAgeMs: 2 * turnTimeoutMs });
+    const recovered = recoverStaleCards(stateDir, {
+      isAlive,
+      now: now(),
+      maxAgeMs: 2 * turnTimeoutMs,
+    });
+    // A silent requeue hides a dead worker; one line, only when something moved.
+    if (recovered.recovered > 0) {
+      log(`session: recovered ${recovered.recovered} stale claim(s)`, { level: "debug" });
+    }
     // The queue is a work list, not a log: a terminal row is dropped after its
     // retention, and the board's card remains the durable record.
     pruneCards(stateDir, { now: now() });
@@ -1176,9 +1184,10 @@ export async function runSession(opts, deps = {}) {
   });
   const started = await pool.start();
   if (!started.ok) {
-    log(`session: ${started.error}`);
+    log(`session: ${started.error}`, { level: "error" });
     return 1;
   }
+  log("session: pool started");
   let ticking = false;
   const interval = setInterval(() => {
     // A turn can outlive many poll intervals; a second concurrent tick would
@@ -1187,7 +1196,7 @@ export async function runSession(opts, deps = {}) {
     ticking = true;
     pool
       .tick()
-      .catch((err) => log(`session: tick failed: ${err.message}`))
+      .catch((err) => log(`session: tick failed: ${err.message}`, { level: "error" }))
       .finally(() => {
         ticking = false;
       });
@@ -1208,6 +1217,7 @@ export async function runSession(opts, deps = {}) {
     clearInterval(interval);
     clearInterval(heartbeat);
     await pool.stop();
+    log("session: pool stopped");
   };
   const signal = deps.signal;
   if (signal !== undefined) {

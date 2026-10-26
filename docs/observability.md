@@ -36,6 +36,32 @@ A 4xx is the **caller's** error, so it is a `warn` at most; the rendered CLI err
 duplicated into the log. The CLI is `off` unless `TASKD_LOG_LEVEL` is set, because its
 stdout is the data plane and its stderr is the product's error surface.
 
+### Event catalogue
+
+| Event | Level | Emitted when |
+| --- | --- | --- |
+| `startup`, `shutdown_signal`, `shutdown_complete` | info | the daemon's lifecycle |
+| `board_opened` | info | the database is open at the schema this build expects |
+| `token_created`, `token_rotated` | info | first boot / credential rotation — the file is named, the token never is |
+| `migration_applied` | info | one migration ran |
+| `migrations_skipped` | debug | a restart found every migration already applied |
+| `request` | info (debug for `/health` and static) | one HTTP call |
+| `sse_stream_opened`, `sse_stream_closed` | debug | an event stream's lifetime, joinable by `request_id` |
+| `task_created`, `task_claimed`, `task_moved`, `task_archived` | info | the card lifecycle backbone — one line per real transition (a re-claim by the same holder and a reopen's underlying move are not repeated) |
+| `report_written`, `task_delivered`, `task_reopened` | info | a report, a delivery (including a waived one), a terminal card back in work |
+| `label_gc_scheduled`, `label_gc_disabled` | info | the startup housekeeping policy |
+| `label_gc`, `container_sweep` | info | a sweep that changed something (an empty one is silent) |
+| `command` | debug | a command succeeded |
+| `command_failed` | warn (4xx) / error (5xx or unmapped) | a command was refused or failed |
+| `schema_stale`, `writer_lock_stale`, `writer_lock_release_failed`, `label_gc_mismatch`, `allow_list_invalid`, `sla_config_invalid`, `log_level_invalid` | warn | recovered or suspicious, but the process carries on |
+| `request_failed`, `startup_failed`, `shutdown_failed`, `board_open_failed`, `migration_failed`, `sse_stream_failed`, `label_gc_failed`, `container_sweep_failed` | error | an exception boundary |
+| `cli_command`, `cli_failure` | debug | CLI diagnostics (off unless `TASKD_LOG_LEVEL=debug`) |
+
+The loop writes free-form lines rather than event objects (`<ts> INFO  supervisor: …`), and
+marks a failure with the same levels: `session: tick failed`, `continue error`,
+`workflow: … failed`, `subscribe: dispatch failed` are `error`; a recoverable one
+(`notify failed`, a refused question enqueue) is `warn`.
+
 ### The line
 
 Human-readable text, one line per event, deterministic field order:

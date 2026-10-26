@@ -139,7 +139,9 @@ export async function runPollTick(deps) {
     if (!outcome?.ok) {
       // Honest failure: a card we could not dispatch is not "running".
       failed += 1;
-      log(`${verb} failed ${action.identifier}: ${outcome?.error ?? "unknown error"}`);
+      log(`${verb} failed ${action.identifier}: ${outcome?.error ?? "unknown error"}`, {
+        level: "error",
+      });
       continue;
     }
     spawned += 1;
@@ -210,7 +212,7 @@ export function runQuestionTick(deps) {
       asked_at: question.asked_at,
     });
     if (queued?.ok !== true) {
-      log(`question ${question.ref}: ${queued?.error ?? "enqueue failed"}`);
+      log(`question ${question.ref}: ${queued?.error ?? "enqueue failed"}`, { level: "warn" });
       skipped += 1;
       continue;
     }
@@ -623,6 +625,7 @@ export async function runWorkflowTick(deps) {
       log(
         `workflow: ${action.type} failed for ${ref} ` +
           `(${err.message}) — leaving the review card for the next pass`,
+        { level: "error" },
       );
       // A refusal that repeats every pass is a standing alarm, not a one-off:
       // `ACCEPTANCE_FORBIDDEN`/`CHILDREN_OPEN` mean this deployment's copy of
@@ -887,7 +890,7 @@ export function notifyReal(opts, log, { timeoutMs = NOTIFY_TIMEOUT_MS } = {}) {
     if (run.error?.code === "ETIMEDOUT" || (run.signal === "SIGTERM" && run.status === null)) {
       log(`notify timed out after ${timeoutMs}ms`);
     } else if (run.error) {
-      log(`notify failed: ${run.error.message}`);
+      log(`notify failed: ${run.error.message}`, { level: "warn" });
     } else if (run.status !== 0) {
       log(`notify exited ${run.status}`);
     }
@@ -904,7 +907,15 @@ export function notifyReal(opts, log, { timeoutMs = NOTIFY_TIMEOUT_MS } = {}) {
  * @returns {Promise<{ok: boolean, pid?: number, error?: string}>}
  */
 export function spawnContinueTurn(opts, invocation, log) {
-  return spawnDetached(invocation, openAppendFd(opts.log));
+  const stderrFd = openAppendFd(opts.log);
+  // A missing fd would make the agent's stderr vanish without a trace, which is
+  // exactly what this path exists to prevent (see `openAppendFd`'s contract).
+  if (stderrFd === null) {
+    log("continue: could not open the loop log — the agent's stderr will be discarded", {
+      level: "warn",
+    });
+  }
+  return spawnDetached(invocation, stderrFd);
 }
 
 // ---------------------------------------------------------------------------
@@ -956,7 +967,7 @@ export async function runContinue(opts, deps = {}) {
     }
     const queued = enqueueContinue(stateDir, { reason: "timer" });
     if (!queued.ok) {
-      log(`continue: could not enqueue the control turn: ${queued.error}`);
+      log(`continue: could not enqueue the control turn: ${queued.error}`, { level: "warn" });
       return 1;
     }
     log(`continue: enqueued for the resident control session${queued.coalesced ? " (coalesced)" : ""}`);
@@ -1043,7 +1054,7 @@ export async function runContinue(opts, deps = {}) {
     const outcome = await spawnTurn(opts, invocation, log);
     if (!outcome?.ok) {
       releaseContinueLock(opts.continueState);
-      log(`continue: wake failed: ${outcome?.error ?? "unknown error"}`);
+      log(`continue: wake failed: ${outcome?.error ?? "unknown error"}`, { level: "error" });
       return 1;
     }
     if (outcome.pid !== undefined && outcome.pid !== null) {
@@ -1054,14 +1065,16 @@ export async function runContinue(opts, deps = {}) {
           lock.holder?.startedAt ?? new Date(now()).toISOString(),
         );
       } catch (err) {
-        log(`continue: could not record the turn pid (${err.message}) — the lock will expire`);
+        log(`continue: could not record the turn pid (${err.message}) — the lock will expire`, {
+          level: "warn",
+        });
       }
     }
     log(`continue: woke ${opts.actorKind} pid ${outcome.pid ?? "(none)"}`);
     return 0;
   } catch (err) {
     releaseContinueLock(opts.continueState);
-    log(`continue: wake failed: ${err.message}`);
+    log(`continue: wake failed: ${err.message}`, { level: "error" });
     return 1;
   }
 }

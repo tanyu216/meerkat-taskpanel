@@ -228,6 +228,23 @@ export async function handleAttachmentContent(req, res, board, id, actor) {
       return;
     }
     const { status, payload, headers } = errorResponse(err);
+    // This handler is outside the router, so the server's one 5xx owner never
+    // sees its failures — it catches and answers them itself. That makes this
+    // the log call that closes the gap: a 5xx over the bytes endpoint is a fault
+    // and is recorded; a 4xx is the caller's and the `request` line already
+    // carries the status. The ambient context supplies `request_id`.
+    const logger = board.ctx?.logger;
+    if (typeof logger === "function" && status >= 500) {
+      logger({
+        event: "request_failed",
+        level: "error",
+        method: req.method ?? "GET",
+        path: `/api/v1/attachments/${id}/content`,
+        status,
+        code: payload.error?.code ?? null,
+        message: payload.error?.message ?? null,
+      });
+    }
     sendJson(res, status, payload, headers);
   }
 }

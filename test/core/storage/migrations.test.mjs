@@ -250,7 +250,14 @@ describe("storage/migrations — failure modes", () => {
     });
     const board = await createTempBoard({ migrate: false });
     try {
-      assert.throws(() => applyMigrations(board.db, { dir }));
+      const events = [];
+      assert.throws(() => applyMigrations(board.db, { dir, logger: (event) => events.push(event) }));
+      const failed = events.find((event) => event.event === "migration_failed");
+      assert.ok(failed, "a failed migration is recorded");
+      assert.equal(failed.level, "error");
+      assert.equal(failed.version, "0003");
+      assert.match(failed.name, /broken/);
+      assert.ok(failed.code, "the mapped domain code rides along");
       const tables = board.db
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         .all()

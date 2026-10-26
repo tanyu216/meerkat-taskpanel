@@ -247,7 +247,7 @@ export function createDispatchScheduler(input) {
     try {
       await run({ onSkip: () => { skipped = true; } });
     } catch (err) {
-      log(`subscribe: dispatch failed: ${err.message}`);
+      log(`subscribe: dispatch failed: ${err.message}`, { level: "error" });
     } finally {
       running = false;
       if (skipped) {

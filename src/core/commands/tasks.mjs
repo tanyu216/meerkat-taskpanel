@@ -77,7 +77,7 @@ export function createTask(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
 
-  return transaction(
+  const task = transaction(
     ctx.db,
     () => {
       const project = ctx.repos.projects.get(input.projectId);
@@ -261,6 +261,18 @@ export function createTask(ctx, input) {
     },
     { op: "tasks.create" },
   );
+
+  if (typeof ctx.logger === "function") {
+    ctx.logger({
+      event: "task_created",
+      identifier: task.identifier,
+      project_id: task.projectId,
+      kind: task.kind,
+      status: task.status,
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return task;
 }
 
 /**
@@ -1095,7 +1107,7 @@ export function claim(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
 
-  return transaction(
+  const result = transaction(
     ctx.db,
     () => {
       const current = ctx.repos.tasks.get(input.id);
@@ -1114,6 +1126,19 @@ export function claim(ctx, input) {
     },
     { op: "tasks.claim" },
   );
+
+  // A second claim by the same holder is not an event (`performClaim` says so by
+  // returning `reused`); a real claim is.
+  if (typeof ctx.logger === "function" && result.reused !== true) {
+    ctx.logger({
+      event: "task_claimed",
+      identifier: result.task.identifier,
+      status: result.task.status,
+      ...(result.stole === true ? { stole: true } : {}),
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return result;
 }
 
 /**
@@ -1208,7 +1233,8 @@ export function moveStatus(ctx, input) {
   const blockedReason =
     input.to === STATUS.BLOCKED ? normalizeBlockedReason(input.blockedReason) : null;
 
-  return transaction(
+  let observed = null;
+  const movedTask = transaction(
     ctx.db,
     () => {
       const current = ctx.repos.tasks.get(input.id);
@@ -1403,10 +1429,27 @@ export function moveStatus(ctx, input) {
       if (task.status === STATUS.DONE || task.status === STATUS.CANCELED) {
         advanceContainerForChild(ctx, task.id, now);
       }
+      observed = {
+        identifier: task.identifier,
+        from: current.status,
+        to: task.status,
+      };
       return task;
     },
     { op: "tasks.move" },
   );
+
+  // The reopen entry has its own event (`task_reopened`); every other legal
+  // transition is a `task_moved`. Logged after the commit for the same reason as
+  // a delivery: a rolled-back move did not happen.
+  if (observed !== null && input.requireTerminalSource !== true && typeof ctx.logger === "function") {
+    ctx.logger({
+      event: "task_moved",
+      ...observed,
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return movedTask;
 }
 
 /**
@@ -1421,7 +1464,24 @@ export function moveStatus(ctx, input) {
  * @param {{id: string, actor: object, ifVersion?: number, reason: string}} input
  */
 export function reopenStatus(ctx, input) {
-  return moveStatus(ctx, { ...input, to: STATUS.TODO, requireTerminalSource: true });
+  const task = moveStatus(ctx, { ...input, to: STATUS.TODO, requireTerminalSource: true });
+  // A terminal card re-entering work is rare and operationally significant; the
+  // `task_reopened` activity row is the audit, this is the record an operator
+  // watching the log wants.
+  if (typeof ctx.logger === "function") {
+    const actor = input.actor;
+    ctx.logger({
+      event: "task_reopened",
+      identifier: task.identifier,
+      to: task.status,
+      reason: input.reason ?? null,
+      actor:
+        actor !== null && typeof actor === "object"
+          ? `${actor.kind ?? "unknown"}:${actor.id ?? "unknown"}`
+          : null,
+    });
+  }
+  return task;
 }
 
 /**
@@ -1433,7 +1493,7 @@ export function archive(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
 
-  return transaction(
+  const task = transaction(
     ctx.db,
     () => {
       const current = ctx.repos.tasks.get(input.id);
@@ -1482,6 +1542,16 @@ export function archive(ctx, input) {
     },
     { op: "tasks.archive" },
   );
+
+  if (typeof ctx.logger === "function") {
+    ctx.logger({
+      event: "task_archived",
+      identifier: task.identifier,
+      status: task.status,
+      actor: `${actor.kind}:${actor.id}`,
+    });
+  }
+  return task;
 }
 
 /**
