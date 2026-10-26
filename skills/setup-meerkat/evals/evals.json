@@ -62,10 +62,11 @@
       "files": [],
       "assertions": [
         "Each subagent question is recorded as an agent question comment on an in_progress card.",
-        "The operational question is answered with a note and a reattach or move to todo, not a decision kind and not awaiting.",
+        "The operational and epic-split items are answered in a note (never a decision kind or awaiting), and the card's single move is the E2 escalation to awaiting; the note preserves the operational answers for the resumed worker.",
         "The epic split is presented as the project session's decision; only a scope expansion is said to be E1 for the human.",
         "The E2 question becomes issue move ... awaiting --awaiting-reason E2 --question with options and a recommendation.",
-        "No example has the subagent writing decision, confirm or change."
+        "No example has the subagent writing decision, confirm or change.",
+        "The questions are one round: one question string per card (one question comment), not one comment per item."
       ]
     },
     {
@@ -90,7 +91,7 @@
         "The response runs detection (or names the facts it would detect) before asking, and never asks for a fact detection can establish.",
         "The open decisions are one numbered round (Q1..Qn), each with a recommended answer worded so 'yes' accepts it.",
         "The team question is adversarial: it asks for a counterexample card or a card shape that would fall between roles.",
-        "No install, file write or daemon start happens before the frontier is empty and the answers are confirmed.",
+        "The interview states that installation, writes and daemon starts wait until the frontier is empty and the answers are confirmed - the gate is part of the procedure, not just a promise not to execute.",
         "--yes is described as accepting only recommended non-destructive answers."
       ]
     },
@@ -105,7 +106,7 @@
         "At least one shape (docs/release notes or mobile testing) is named as unowned or double-owned, as a finding.",
         "It asks for a concrete counterexample card the proposed split would get wrong.",
         "The reviewer remains independent and the ladder (subagent -> main session -> human) is unchanged.",
-        "The questions are one numbered round with recommendations, and nothing is installed."
+        "The questions are one numbered round with recommendations, and the answer states that installation waits for the frontier to close."
       ]
     },
     {
@@ -115,9 +116,9 @@
       "expected_output": "One question comment carrying Q1..Q4 with recommendations; the operational items answered by the project session in one note with one move; E3 (register) and E1 (scope expansion) escalated in one awaiting string; the subagent writes no decision kind and never enters awaiting; only a human comment resumes.",
       "files": [],
       "assertions": [
-        "The four items are one question comment (Q1..Q4), each with a recommendation, not four separate comments.",
+        "The open frontier is one question comment (Q1..Qn) with a recommendation each; a dependent decision is explicitly deferred to a later round rather than dripped as a second comment, and an item closable by a fact is closed by lookup.",
         "The design register (E3) and the scope expansion (E1) are escalated to the human, not decided by the subagent or the project session.",
-        "The terminology conflict and the breakpoint are answered by the project session in one note, then the card moves once.",
+        "Every item the project session is authorized to answer is settled by the lookup or in one note, and the card is moved at most once for the round.",
         "The subagent keeps the card in_progress, writes no decision/confirm/change, and does not enter awaiting.",
         "Only a human comment resumes awaiting; an incomplete answer is not consent."
       ]
