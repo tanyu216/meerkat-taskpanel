@@ -1,6 +1,6 @@
 ---
 name: meerkat-loop
-description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation plus one project session per target directory. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the project session spawns the worker/reviewer subagent in the project directory. Installs launchd / systemd / cron units and the per-agent-kind wake glue for claude, codex, pi, opencode and cursor; OpenClaw is excluded.
+description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation, one worker session per target directory, and a reviewer session there on demand. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the worker or reviewer session spawns the matching subagent in the project directory. Installs launchd / systemd / cron units and the per-agent-kind wake glue for claude, codex, pi, opencode and cursor; OpenClaw is excluded.
 disable-model-invocation: true
 ---
 
@@ -13,12 +13,13 @@ default resident shape — a long-lived **session pool**:
 |---|---|---|
 | **ping** | 60s | prune registry entries whose pid is gone. No board read, no claim, no LLM |
 | **continue** | 600s | hand the control session a bounded `/meerkat-loop` continue prompt (or run it one-shot when no pool is live); that turn runs the entries below |
-| **session** (`--session`) | long-lived | one control conversation plus one project conversation per target directory; routes each handoff to the project session, which spawns the worker/reviewer subagent in that directory |
+| **session** (`--session`) | long-lived | one control conversation, one project conversation per target directory, and a reviewer conversation per directory on demand; each lane spawns its worker/reviewer subagent in that directory |
 
 A subagent inherits the **launch cwd** of the session that spawns it, so one
 board-wide session cannot serve two project directories. That is why the pool keeps
-one project session per directory. Without a live pool, poll claims nothing and only
-patrol and workflow run — see `references/operation.md` §No resident pool.
+one worker session per directory, and a reviewer session in the same directory when
+a review card is queued. Without a live pool, poll claims nothing and only patrol and
+workflow run — see `references/operation.md` §No resident pool.
 
 The continue turn runs three deterministic passes, in this order:
 
@@ -40,8 +41,10 @@ The continue turn runs three deterministic passes, in this order:
    with no effective reviewer fails the loop at startup: the board would have
    dispatched a review nobody can claim.
 3. **poll** — scan, **export the card brief**, atomically claim, **enqueue the
-   handoff**. It never spawns a worker: the resident project session does, as a
-   subagent that inherits the project directory. Runs last so a review card
+   handoff**. It also runs the **question lane**: an unanswered agent `question`
+   on an `in_progress` card is enqueued for the project session (no claim, no
+   subagent slot). It never spawns a worker: the resident project session does,
+   as a subagent that inherits the project directory. Runs last so a review card
    dispatched in this turn can be claimed immediately. At the concurrency cap,
    with no project directory for the card, or when the brief cannot be written,
    nothing is claimed.
@@ -251,9 +254,10 @@ without that list the loop only scans its default agent.
 
 The ladder is **subagent → main session → human** (details:
 `references/decision-policy.md`). A subagent never decides an unauthorized question: it
-writes an agent `question` comment, keeps the card `in_progress`, and stops. The project
-session answers with a `note` (then reattaches or moves the card to `todo`), or escalates
-E1-E5 to the human with `awaiting`. Any human comment resumes an awaiting card, whatever
+writes an agent `question` comment, keeps the card `in_progress`, and stops. Poll's
+**question lane** wakes the project session with the unanswered question (no claim, no
+subagent slot); it answers with a `note` and moves the card to `todo`, or escalates E1-E5
+to the human with `awaiting`. Any human comment resumes an awaiting card, whatever
 its kind; the board does not read it, and the resumed worker judges from its content
 whether it is a complete decision (ask again if not). The loop never writes a decision kind
 for its own answer and never uses `--as-human` except to record what the human actually said

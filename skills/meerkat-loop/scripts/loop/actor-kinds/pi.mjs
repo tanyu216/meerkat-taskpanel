@@ -69,6 +69,12 @@ export function sessionArgs(input = {}) {
 /**
  * The tool surface a role gets when full access is not enabled.
  *
+ * Pi has no native subagent mechanism; `pi-subagents` registers the `subagent`
+ * tool, and on models that add tools mid-session a fresh parent starts with the
+ * small `subagents_enable` loader instead. Both entries are inert when the
+ * extension is not installed, and a project/reviewer session that omits them
+ * could not spawn the card it was handed.
+ *
  * @param {string} role
  * @returns {string}
  */
@@ -77,10 +83,10 @@ export function allowedToolsFor(role) {
     case "control":
       return "read,bash";
     case "reviewer":
-      return "read,bash";
+      return "read,bash,subagent,subagents_enable";
     case "worker":
     default:
-      return "read,bash,edit,write";
+      return "read,bash,edit,write,subagent,subagents_enable";
   }
 }
 

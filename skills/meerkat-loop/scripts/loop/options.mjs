@@ -37,6 +37,11 @@ import {
   PEER_PERIOD_MIN,
 } from "../foundation/sla-patrol.mjs";
 
+/** The one retirement message, shared by the flag and the env/config path. */
+const BACKGROUND_RETIRED =
+  "background subagents are retired — no adapter reports per-subagent completion; " +
+  "remove --subagent-background / MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND";
+
 /** Actor kind → the agent's config directory under the target home. */
 export const AGENT_DIRS = Object.freeze({
   claude: ".claude",
@@ -166,8 +171,13 @@ flag("--project-concurrency", (opts, value) => { opts.projectConcurrency = numbe
 flag("--project-idle-ms", (opts, value) => { opts.projectIdleMs = number("--project-idle-ms", value); });
 flag("--allow-all-tools", (opts) => { opts.allowAllTools = true; }, "switch");
 flag("--allow-all-tools-reason", (opts, value) => { opts.allowAllToolsReason = value; });
+// Retired: no adapter reports a per-subagent completion, so a background row
+// could never release its slot. `=no` stays accepted for the installed config;
+// anything that asks for the old behavior fails loudly.
 flag("--subagent-background", (opts, value) => {
-  opts.subagentBackground = value === undefined ? true : /^(yes|true|1|y|on)$/i.test(value);
+  const on = value === undefined ? true : /^(yes|true|1|y|on)$/i.test(value);
+  if (on) throw new Error(BACKGROUND_RETIRED);
+  opts.subagentBackground = false;
 }, "toggle");
 flag("--patrol-interval", (opts, value) => {
   opts.patrolInterval = number("--patrol-interval", value);
@@ -275,7 +285,6 @@ function defaultOptions(env) {
     projectIdleMs: undefined,
     allowAllTools: false,
     allowAllToolsReason: null,
-    subagentBackground: false,
     // 0034 — who opened this loop. `supervisor` (systemd/launchd/cron) must
     // escalate questions to the board; a human-opened session may ask in its own
     // conversation first.
@@ -516,12 +525,16 @@ export function parseArgs(argv, env = process.env) {
       );
     }
   }
-  const background =
-    parseYesNo(opts.subagentBackground === true ? "yes" : undefined) ??
-    parseYesNo(env.MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND) ??
-    parseYesNo(opts.configFile.MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND) ??
-    false;
-  opts.subagentBackground = background === true;
+  // The flag is a retirement shim: `=no` is inert, anything else threw above.
+  // Environment/config keep flag > env > config without resurrecting the mode.
+  const flagValue = opts.subagentBackground; // undefined, or false from `=no`
+  const envValue = parseYesNo(env.MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND);
+  const configValue = parseYesNo(opts.configFile.MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND);
+  const background = flagValue === false ? false : envValue ?? configValue ?? false;
+  if (background === true) throw new Error(BACKGROUND_RETIRED);
+  if (flagValue === false || envValue === false || configValue === false) {
+    opts.subagentBackground = false;
+  }
   opts.repo ??= defaultRepo(opts.config);
   opts.cli ??= join(opts.repo, "src", "cli", "index.mjs");
   opts.glue ??= paths.glue;
@@ -802,10 +815,11 @@ Options:
   --continue-interval <sec> Judgment clock (default: ${DEFAULT_CONTINUE_SECONDS} = 10 minutes).
   --continue=yes|no         Enable the continue turn (default: yes).
   --continue-state <path>   Continue lock (default: continue.state.json beside --state).
-  --session                 Run the resident session pool: one control session
-                            plus one project session per target directory. The
-                            project session spawns worker/reviewer subagents.
-                            launchd/systemd only; cannot be combined with --once.
+  --session                 Run the resident session pool: one control session,
+                            one worker session per target directory, and a reviewer
+                            session there when a review card is queued. Each lane
+                            spawns its subagents. launchd/systemd only; cannot be
+                            combined with --once.
   --control=internal|external
                             Who owns the control turn (default: internal). With
                             external, the pool opens no control session and skips
@@ -822,10 +836,9 @@ Options:
                             A supervisor-started loop escalates questions to the
                             board; a human-opened one may ask its own operator.
   --session-poll-ms <ms>    Queue poll interval (default: 1000).
-  --session-pool-max <n>    Max project sessions (default: 8).
+  --session-pool-max <n>    Max resident lane sessions (default: 8).
   --project-concurrency <n> Max live subagents per project (default: --max-concurrency).
   --project-idle-ms <ms>    Close an idle project session after this (default: 1800000).
-  --subagent-background=yes|no  Project sessions spawn background subagents (default: no).
   --allow-all-tools         Enable every agent tool. Requires --allow-all-tools-reason;
                             the session runs with the operator's full OS permissions.
   --allow-all-tools-reason <text>

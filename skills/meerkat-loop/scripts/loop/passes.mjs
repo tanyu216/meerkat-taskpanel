@@ -14,22 +14,30 @@
  * Each `run*Once` is exported for the tests; the process entry is `main`.
  */
 
-import { dirname } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import { resolveWakeDir } from "../wake-cwd.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import { candidateArgs, pruneRegistry } from "../foundation/scheduling.mjs";
 
-import { readBoard, readProjectReviewers, runSlaPass, runWorkflowPass } from "./board.mjs";
+import {
+  readBoard,
+  readOpenQuestions,
+  readProjectReviewers,
+  runSlaPass,
+  runWorkflowPass,
+} from "./board.mjs";
 import { exportCardFile } from "./card-file.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { mergeReviewerSets, parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
-import { enqueueCard, readCards } from "./queue.mjs";
+import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
 import {
   notifyNoResident,
   notifyReal,
   runPatrolTick,
   runPollTick,
+  runQuestionTick,
   wakeHandoff,
 } from "./runners.mjs";
 import {
@@ -103,6 +111,10 @@ async function runEntry(name, argv, env, run, validate = null) {
  *   dirFor: (identifier: string) => string|null,
  * }}
  */
+export function isGitCheckout(dir) {
+  return existsSync(join(String(dir), ".git"));
+}
+
 export function createProjectAdmission(input) {
   const { opts, projectConcurrency } = input;
   const liveByDir = input.liveByDir ?? new Map();
@@ -111,6 +123,7 @@ export function createProjectAdmission(input) {
   const log = input.log ?? (() => {});
   const admittedDirs = new Map();
   const claimedByDir = new Map();
+  const warnedCheckouts = new Set();
 
   return {
     admit(action, card) {
@@ -127,6 +140,20 @@ export function createProjectAdmission(input) {
         (claimedByDir.get(resolved.dir) ?? 0);
       if (used >= projectConcurrency) {
         return { ok: false, why: `project ${project} is at its concurrency cap` };
+      }
+
+      // Parallel cards share one working tree. That is a deployment convention
+      // (one worktree per card), not something the loop creates or enforces.
+      if (
+        projectConcurrency > 1 &&
+        isGitCheckout(resolved.dir) &&
+        !warnedCheckouts.has(resolved.dir)
+      ) {
+        warnedCheckouts.add(resolved.dir);
+        log(
+          `admission: ${resolved.dir} is a shared git checkout; workers run in parallel — ` +
+            "per-card worktrees are a deployment convention, not enforced",
+        );
       }
 
       // The brief is the gate: a card whose working files cannot be written must
@@ -281,17 +308,38 @@ export async function runPollOnce(opts, env = process.env) {
     return 0;
   }
 
+  // The question lane rides poll: a worker's unanswered question is handed to
+  // the project session before the subagent budget is consulted (a question is
+  // not a subagent). The capability guard keeps an older pool from receiving
+  // rows it would treat as handoffs.
+  if (!opts.dryRun && (pool.capabilities ?? []).includes("question-lane")) {
+    const open = readOpenQuestions(opts, log);
+    if (open.ok) {
+      const result = runQuestionTick({
+        questions: open.rows,
+        resolveDir: (project) => resolveWakeDir({ project, projectsJson: opts.projectsJson }),
+        enqueue: (row) => enqueueCard(stateDir, row),
+        dispatches: (questionId) => questionDispatches(stateDir, questionId),
+        log,
+      });
+      if (result.enqueued > 0) {
+        log(`questions: ${result.enqueued} open question(s) enqueued for the project session`);
+      }
+    }
+  }
+
   const registry = opts.dryRun
     ? { version: 1, running: {} }
     : pruneRegistry(loadRegistry(opts.state), isProcessAlive);
 
-  // The claim budget: what the pool can actually run. Live subagents and cards
-  // already queued both occupy a slot, so neither is claimed twice.
+  // The claim budget: what the pool can actually run. A live subagent and a
+  // handoff already queued both occupy a slot, so neither is claimed twice. A
+  // question row is a project-session turn, not a subagent, and is not counted.
   const live = liveSubagents(readLedger(stateDir).value);
-  // `dispatched` is already a live subagent in the ledger; counting it here too
-  // would charge a background subagent twice against the budget.
   const queued = readCards(stateDir).value.cards.filter(
-    (card) => card.status === "pending" || card.status === "processing",
+    (card) =>
+      (card.status === "pending" || card.status === "processing") &&
+      String(card.queue_kind ?? "handoff") === "handoff",
   );
   const maxConcurrency = Number(opts.maxConcurrency ?? 8);
   const projectConcurrency = Number(opts.projectConcurrency ?? maxConcurrency);

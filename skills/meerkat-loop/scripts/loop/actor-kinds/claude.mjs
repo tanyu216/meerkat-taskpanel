@@ -26,14 +26,16 @@ export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
  * @param {string} role
  */
 export function allowedToolsFor(role) {
+  // The Agent tool is the project/reviewer session's subagent mechanism (older
+  // CLIs spell it `Task`; an allowlist entry that never matches is inert).
   switch (role) {
     case "control":
       return "Read,Bash(taskctl *),Bash(node *)";
     case "reviewer":
-      return "Read,Grep,Glob,Bash(taskctl *),Bash(git *)";
+      return "Read,Grep,Glob,Agent,Task,Bash(taskctl *),Bash(git *)";
     case "worker":
     default:
-      return "Read,Edit,Write,Grep,Glob,Bash(taskctl *),Bash(node *),Bash(git *)";
+      return "Read,Edit,Write,Grep,Glob,Agent,Task,Bash(taskctl *),Bash(node *),Bash(git *)";
   }
 }
 

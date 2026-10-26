@@ -218,6 +218,11 @@ function writeCards(stateDir, value) {
 
 /** A card's dedupe key: one handoff per (card, role). */
 export function cardKey(card) {
+  // The question lane is keyed by the question, not by the card: one card may
+  // ask twice, and each question deserves its own answer.
+  if (String(card?.queue_kind ?? "") === "question") {
+    return `q\u0000${String(card.card ?? "")}\u0000${String(card.question_id ?? "")}`;
+  }
   return `${String(card.card ?? card.id ?? "")}\u0000${String(card.role ?? "worker")}`;
 }
 
@@ -238,24 +243,30 @@ export function enqueueCard(stateDir, card) {
     (entry) => cardKey(entry) === key && (entry.status === "pending" || entry.status === "processing"),
   );
   if (existing !== undefined) return { ok: true, coalesced: true, error: null };
+  // A queue row's discriminator is `queue_kind` (`handoff`|`question`). The
+  // card's board `kind` (`task`|`epic`) is never copied onto a row: the two
+  // vocabularies must not be confused, and a caller that passes a candidate
+  // projection would otherwise smuggle one in.
+  const { kind: _boardKind, ...row } = card ?? {};
   value.cards.push({
     version: 1,
-    ...card,
-    id: card.id ?? `${card.card}-${card.role ?? "worker"}`,
-    role: card.role ?? "worker",
+    ...row,
+    id: row.id ?? `${row.card}-${row.role ?? "worker"}`,
+    queue_kind: row.queue_kind ?? "handoff",
+    role: row.role ?? "worker",
     // The board identity selected for this handoff (Jobs/Linus/Turing). It is
     // additive metadata: the dedupe key stays (card, role).
-    agent_role: card.agent_role ?? null,
+    agent_role: row.agent_role ?? null,
     // The subscriber maps an event's UUID back to this row; keep the shape
     // stable even for a legacy caller that knows no UUID.
-    task_id: card.task_id ?? null,
-    review_of: card.review_of ?? null,
-    review_round: card.review_round ?? null,
+    task_id: row.task_id ?? null,
+    review_of: row.review_of ?? null,
+    review_round: row.review_round ?? null,
     status: "pending",
-    enqueuedAt: card.enqueuedAt ?? new Date().toISOString(),
+    enqueuedAt: row.enqueuedAt ?? new Date().toISOString(),
     claimedAt: null,
     claimedBy: null,
-    attempts: Number(card.attempts ?? 0),
+    attempts: Number(row.attempts ?? 0),
     lastError: null,
   });
   const written = writeCards(stateDir, value);
@@ -265,8 +276,13 @@ export function enqueueCard(stateDir, card) {
 /**
  * Claim up to `limit` pending handoffs for one project session.
  *
+ * `ids` scopes the claim to one directory's (or lane's) rows. The pool groups
+ * pending handoffs before claiming, so a first-come-first-served scan would let
+ * one group claim another directory's rows. `queueKind` separates handoffs from
+ * the question lane (`queue_kind` absent means `handoff`).
+ *
  * @param {string} stateDir
- * @param {{claimedBy: string, pid?: number, limit?: number, now?: string}} options
+ * @param {{claimedBy: string, pid?: number, limit?: number, now?: string, ids?: string[], queueKind?: string}} options
  * @returns {{ok: boolean, cards: object[], error: string|null}}
  */
 export function claimCards(stateDir, options = {}) {
@@ -276,10 +292,14 @@ export function claimCards(stateDir, options = {}) {
   const limit = Math.max(0, Number(options.limit ?? 1));
   const claimedBy = String(options.claimedBy ?? "unknown");
   const now = options.now ?? new Date().toISOString();
+  const wanted = Array.isArray(options.ids) ? new Set(options.ids.map(String)) : null;
+  const queueKind = options.queueKind === undefined ? null : String(options.queueKind);
   const claimed = [];
   for (const entry of value.cards) {
     if (claimed.length >= limit) break;
     if (entry.status !== "pending") continue;
+    if (wanted !== null && !wanted.has(String(entry.id))) continue;
+    if (queueKind !== null && String(entry.queue_kind ?? "handoff") !== queueKind) continue;
     entry.status = "processing";
     entry.claimedBy = claimedBy;
     entry.claimedByPid = Number.isInteger(options.pid) ? options.pid : null;
@@ -292,25 +312,51 @@ export function claimCards(stateDir, options = {}) {
 }
 
 /**
- * Mark a successful batch as dispatched. In synchronous-subagent mode the pool
- * manager completes these immediately; in background mode they stay here until
- * the agent reports each subagent stopped.
+ * How many question rows a question id has produced, in any status.
+ *
+ * The retry bound counts dispatches, not open rows: a completed row whose answer
+ * did not settle the question must not be retried forever.
  *
  * @param {string} stateDir
- * @param {string[]} ids
- * @param {{claimedBy?: string|null}} [options]
+ * @param {string} questionId
+ * @returns {number}
  */
-export function markCardsDispatched(stateDir, ids, options = {}) {
-  const wanted = new Set(ids.map(String));
+export function questionDispatches(stateDir, questionId) {
   const read = readCards(stateDir);
-  if (read.error !== null) return { ok: false, error: read.error };
+  if (read.error !== null) return 0;
+  return read.value.cards.filter(
+    (card) =>
+      String(card.queue_kind ?? "") === "question" &&
+      String(card.question_id ?? "") === String(questionId ?? ""),
+  ).length;
+}
+
+/**
+ * Convert rows left in the retired `dispatched` state to `done`.
+ *
+ * Background dispatch promised a per-subagent completion event no adapter
+ * emits; a row left in that state is a finished handoff that would otherwise
+ * sit in the work list forever. The conversion is one-way and idempotent.
+ *
+ * @param {string} stateDir
+ * @returns {{ok: boolean, retired: number, error: string|null}}
+ */
+export function retireLegacyDispatched(stateDir) {
+  const read = readCards(stateDir);
+  if (read.error !== null) return { ok: false, retired: 0, error: read.error };
   const value = read.value;
+  const now = new Date().toISOString();
+  let retired = 0;
   for (const entry of value.cards) {
-    if (!wanted.has(String(entry.id))) continue;
-    entry.status = "dispatched";
-    if (options.claimedBy !== undefined) entry.claimedBy = options.claimedBy;
+    if (entry.status !== "dispatched") continue;
+    entry.status = "done";
+    entry.lastError = "background dispatch retired";
+    entry.completedAt = now;
+    retired += 1;
   }
-  return writeCards(stateDir, value);
+  if (retired === 0) return { ok: true, retired: 0, error: null };
+  const written = writeCards(stateDir, value);
+  return { ok: written.ok, retired: written.ok ? retired : 0, error: written.error };
 }
 
 /**

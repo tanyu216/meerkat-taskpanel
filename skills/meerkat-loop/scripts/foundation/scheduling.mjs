@@ -699,12 +699,12 @@ export function buildHandoff(input) {
     `  Comments: taskctl comment list <card> --limit 200 --json <flags>`,
     "  Too thin to yield checkable items, or blocked on a decision? Do not enter awaiting",
     "  yourself: add an agent question comment on the card, keep it in_progress, and stop.",
-    "  The project session answers, or escalates to the human with E1-E5.",
+    "  The loop hands it to the project session, which answers or escalates E1-E5.",
     `    taskctl comment add <card> --kind question --body "Decision needed: ..." <flags>`,
-    "  Then stop. Do not wait: on re-claim read the human comments after the last",
-    "  question. Any human comment auto-resumes awaiting; approve/reject is its",
-    "  content, not its kind. An incomplete or ambiguous answer is not consent — ask",
-    "  again. A rejection means revise or stop; never re-submit the rejected proposal.",
+    "  Then stop. On re-claim read every comment after your last question — a human",
+    "  comment, or the project session's `decision:` note. Any human comment auto-resumes",
+    "  awaiting; approve/reject is its content, not its kind. An incomplete answer is not",
+    "  consent — ask again. A rejection means revise or stop; never re-submit it.",
     "  Review asks for more: append, never replace. Ask the project session, do not migrate.",
     "",
     `Keep the claim alive (<=10 minutes): taskctl issue heartbeat <card> <flags>`,
@@ -751,7 +751,6 @@ export function buildReviewHandoff(input) {
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
   const flags = attribution.join(" ");
   const brief = cardFileRel(ref);
-  const processDir = cardDirRel(ref);
   const originalRef = typeof card.review_of === "string" && card.review_of.trim() !== ""
     ? card.review_of.trim()
     : null;
@@ -762,8 +761,7 @@ export function buildReviewHandoff(input) {
     `Card under review: ${original} (round ${round})`,
     `Review brief: ${brief} — exported by the loop; read it after the live check, it is authoritative.`,
     ...(originalBrief === null ? [] : [`Original brief: ${originalBrief} (when present; also authoritative).`]),
-    `Never edit a card.md: the loop overwrites it from the board. Put your process files (notes, logs, evidence, report drafts) under ${processDir}/.`,
-    `Download attachments into that card's own directory (this card: ${processDir}/): taskctl attachment list <ref> --json, then taskctl attachment download <attachment-id> --out ${processDir}/<filename>.`,
+    `Never edit a card.md: the loop overwrites it from the board. This lane has no Write: deliver the verdict as the report and keep evidence where the board can read it (a report item or a comment), not in a file.`,
     `Your working directory is this project's directory; never touch another project's paths.`,
     "The loop already claimed this review card for you: do not claim it again.",
     "",
@@ -822,6 +820,59 @@ export function buildReviewHandoff(input) {
       "and acceptance snapshot; absence alone is not a reject.",
     );
     if (input.decisionPolicyPath) lines.push("", `Decision policy: ${input.decisionPolicyPath}`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * The prompt the project session gets for the **question lane**.
+ *
+ * A worker that cannot decide writes an agent `question` comment and stops, and
+ * the loop hands the question here. The project session answers with a `note` and
+ * releases the card to the queue, or escalates E1–E5 to the human. It never
+ * spawns a subagent for this row and never moves a card to `done`.
+ *
+ * `rows` carry the queue row's fields: `card` (the ref), `project`,
+ * `target_dir`, `agent`, `question_id`, `question`, `asked_at`.
+ *
+ * @param {object[]} rows
+ * @param {{actorKind?: string, decisionPolicyPath?: string|null}} [input]
+ * @returns {string}
+ */
+export function buildQuestionPrompt(rows, input = {}) {
+  const actorKind = String(input.actorKind ?? "claude");
+  const first = rows[0] ?? {};
+  const project = String(first.project ?? "the project");
+  const dir = String(first.target_dir ?? "");
+  const lines = [
+    `You are the project session for ${project} at ${dir}.`,
+    "A worker stopped and asked a question. Answer it here — do not spawn a subagent for this row.",
+    "",
+  ];
+  rows.forEach((row, index) => {
+    const flags = `--agent ${row.agent} --actor-kind ${actorKind}`;
+    const asked = row.asked_at ? ` (asked ${row.asked_at})` : "";
+    lines.push(`${index + 1}) ${row.card} — question ${row.question_id}${asked}:`);
+    for (const line of String(row.question ?? "").split("\n")) lines.push(`   ${line}`);
+    lines.push(
+      `   Re-read the card first: taskctl issue get ${row.card} --json ${flags}`,
+      "   If its status is not `in_progress` (delivered, moved, canceled, or already",
+      "   waiting on a human), do nothing — the question is no longer this lane's.",
+      `   Then re-read the trail: taskctl comment list ${row.card} --limit 20 --json ${flags}`,
+      "   If a later comment already answers it, do nothing.",
+      `   Answer you can decide: taskctl comment add ${row.card} --kind note --body "decision: ..." ${flags}`,
+      `   then release the card to the queue: taskctl issue move ${row.card} todo ${flags}`,
+      `   Cannot decide (E1-E5, or a reserved matter): taskctl issue move ${row.card} awaiting --awaiting-reason <E1..E5> --question "..." ${flags}`,
+      "",
+    );
+  });
+  lines.push(
+    "Never write a decision/confirm/change kind and never use --as-human for your own",
+    "decision. Never move a card to done. The worker's question is the record; your note",
+    "is the answer.",
+  );
+  if (typeof input.decisionPolicyPath === "string" && input.decisionPolicyPath !== "") {
+    lines.push("", `Decision policy: ${input.decisionPolicyPath}`);
   }
   return lines.join("\n");
 }
@@ -902,6 +953,8 @@ export function buildContinuePrompt(input = {}) {
       "Poll only claims and enqueues: it never spawns a worker or reviewer. A resident",
       "project session takes the handoff from the queue and spawns the subagent in the",
       "project directory. Do not claim a card outside poll, and do not work one yourself.",
+      "With a resident pool, poll also enqueues each unanswered agent question to the",
+      "project session (the question lane). Do not answer it again in this turn.",
     );
   } else {
     lines.push(
