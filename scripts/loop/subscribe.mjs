@@ -2,10 +2,11 @@
 /**
  * The event subscriber — the loop's ears.
  *
- * Spawns `taskctl events tail` and asks for a `continue` turn when a
- * dispatch-relevant event arrives. The loop never speaks HTTP itself: board
- * discovery, the token and the stream all live behind `taskctl`, and this file
- * only decides when to reconnect and when to wake the agent.
+ * Spawns `taskctl events follow` — the local event hub's client — and asks for
+ * a `continue` turn when a dispatch-relevant event arrives. The hub owns the
+ * host's one board connection; the loop still never speaks HTTP itself, because
+ * board discovery, the token and the stream all live behind `taskctl`, and this
+ * file only decides when to reconnect and when to wake the agent.
  *
  * It never claims, moves or wakes anything: the continue turn rescans, so
  * replay, duplicate frames and bursts are harmless and there is only one
@@ -308,6 +309,27 @@ function sleep(ms, signal) {
 }
 
 /**
+ * The CLI invocation for one follow attempt.
+ *
+ * `events follow` consumes the local event hub, which owns the single board
+ * connection. `events tail` would open a second SSE stream on the board — the
+ * duplication the hub exists to remove.
+ *
+ * @param {{idleMs: number, after?: number|null}} input
+ * @returns {string[]}
+ */
+export function followArgs(input) {
+  const after = input?.after;
+  return [
+    "events",
+    "follow",
+    "--idle",
+    String(input.idleMs),
+    ...(after === null || after === undefined ? [] : ["--after", String(after)]),
+  ];
+}
+
+/**
  * Keep a subscriber alive until the signal aborts.
  *
  * @param {object} opts
@@ -419,24 +441,18 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
     log,
   });
 
-  // One connection attempt = one `taskctl events tail` child. Board discovery,
-  // the token and `.env` all belong to the CLI now; the loop only owns the
-  // reconnect ladder and the dispatch decision.
+  // One connection attempt = one `taskctl events follow` child. It talks to the
+  // local event hub, which owns the single board SSE connection (and its
+  // reconnect ladder) for every consumer on this host. Board discovery, the
+  // token and `.env` still belong to the CLI; the loop keeps only its own
+  // reconnect ladder for the local stream and the dispatch decision.
   const streamEvents =
     deps.streamEvents ??
     ((input) =>
       streamCli(
         opts,
         opts.agents[0],
-        [
-          "events",
-          "tail",
-          "--idle",
-          String(input.idleMs),
-          ...(input.after === null || input.after === undefined
-            ? []
-            : ["--after", String(input.after)]),
-        ],
+        followArgs(input),
         {
           signal: input.signal,
           onOpen: input.onOpen,

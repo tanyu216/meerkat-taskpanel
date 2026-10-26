@@ -145,7 +145,9 @@ async function invokeWatch(args) {
   let stdout = "";
   let stderr = "";
   const exit = await runCliInProcess(
-    ["export", "watch", ...args, "--actor-kind", "claude", "--agent", "tester"],
+    // These legs exercise the direct-SSE implementation; the hub path has its
+    // own suite. `--standalone` is the documented fallback and the oracle.
+    ["export", "watch", "--standalone", ...args, "--actor-kind", "claude", "--agent", "tester"],
     {
       stdout: (text) => {
         stdout += text;

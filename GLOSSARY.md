@@ -365,6 +365,14 @@ cwd rather than being handed one.
 _中文_: 子代理
 _Avoid_: worker process, child session (that is an agent-kind API term), thread
 
+**Event hub**:
+The local process that owns a host's one SSE connection to a board and fans its events out
+to the loop's subscriber and to watch registrations. It is per user and per board, binds
+loopback, and is started on demand by `taskctl events follow` or `export watch --detach`.
+It is a client-side fan-out, not a server-side bus.
+_中文_: 事件中枢
+_Avoid_: event bus, broker, message queue, listener (a registration is the listener; the hub owns the connection)
+
 **Resident**:
 The loop's default shape: a live session pool that can claim and dispatch. Without it —
 cron, a stopped session unit, `--resident=no` — poll claims nothing and only patrol and

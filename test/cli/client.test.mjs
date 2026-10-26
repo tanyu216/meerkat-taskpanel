@@ -157,21 +157,25 @@ describe("shared/transport/http — the event stream", () => {
   });
 
   it("resets the idle timer on every chunk (no overall body deadline)", async () => {
+    // The total stream is longer than the idle window (so an overall deadline
+    // would abort it), while each gap is many times shorter. The old 60ms/20ms
+    // pair flaked on the first scheduling stall under load; these margins keep
+    // the case measuring the reset, not the runner's latency.
     const { server, url } = await serve((req, res) => {
       res.writeHead(200, { "content-type": "text/event-stream" });
       let n = 0;
       const timer = setInterval(() => {
         n += 1;
-        if (n > 6) {
+        if (n > 15) {
           clearInterval(timer);
           res.end();
           return;
         }
         res.write(`data: ${n}\n\n`);
-      }, 20);
+      }, 50);
     });
     try {
-      const stream = await requestStream({ url, path: "/api/v1/events", idleMs: 60 });
+      const stream = await requestStream({ url, path: "/api/v1/events", idleMs: 500 });
       let chunks = 0;
       for await (const _chunk of stream) chunks += 1;
       assert.ok(chunks > 0, "the stream should deliver chunks past the first idle window");
@@ -187,7 +191,6 @@ describe("shared/transport/http — the event stream", () => {
       res.write(": connected\n\n");
     });
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 20);
     try {
       const stream = await requestStream({
         url,
@@ -195,6 +198,11 @@ describe("shared/transport/http — the event stream", () => {
         signal: controller.signal,
         idleMs: 5_000,
       });
+      // Abort only after the stream is open. The header wait has its own bound
+      // and is not what this case measures; under load the old ordering could
+      // abort before `requestStream` returned, so the rejection escaped
+      // `assert.rejects` and the case failed on a correct transport.
+      setTimeout(() => controller.abort(), 20);
       await assert.rejects(
         async () => {
           for await (const _chunk of stream) { /* drain */ }

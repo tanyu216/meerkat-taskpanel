@@ -312,11 +312,12 @@ first model turn starts only after a successful claim, and it starts where the w
 The SLA rows are **notifications to the leader**, never actions on a card; the workflow entry
 executes the board's plan (`--reviewer` enables dispatch; `--workflow=no` turns it off).
 Claude Code and Codex have **no timers of their own**, so the loop sits *outside* them. On
-launchd/systemd the **subscribe daemon** (part of the supervisor set) holds one SSE
-connection and asks for a continue turn when a dispatch-relevant board event arrives, so
-discovery is event-driven; an event wakes a turn only while the resident pool is live, and
-the continue cadence remains the fallback and the only path for time-based work (stale
-claims, review aging, SLA). On cron — which cannot host a long-lived process — there is no pool:
+launchd/systemd the **subscribe daemon** (part of the supervisor set) follows the local
+**event hub** — one SSE connection per board, shared by every local consumer — and asks for
+a continue turn when a dispatch-relevant board event arrives, so discovery is event-driven;
+an event wakes a turn only while the resident pool is live, and the continue cadence remains
+the fallback and the only path for time-based work (stale claims, review aging, SLA). On
+cron — which cannot host a long-lived process — there is no pool:
 patrol and workflow still run, but poll claims nothing and worker dispatch is paused;
 `--continue-interval` is the discovery lever. **To turn it on,** run
 `install.sh --target claude|codex|pi|opencode|cursor`: it installs the `meerkat-loop` skill and

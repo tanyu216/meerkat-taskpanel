@@ -18,8 +18,8 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 - The token rides in `TASKD_TOKEN` in the child environment, never on argv.
 - stdout is `{ok:true,data}` or `{ok:false,error{code,message,http,details,hint}}`;
   exits are 0 ok, 1 runtime, 2 usage, 3 `export md --check` differences.
-- **`events tail` is the one exception**: it writes newline-delimited JSON, not
-  the envelope (see §8).
+- **The event-stream commands are the exception**: `events tail` and
+  `events follow` write newline-delimited JSON, not the envelope (see §8).
 
 ## 1. Interface floor — `--version`
 
@@ -173,13 +173,18 @@ taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filenam
 `data.{attachment_id,out,size,content_type}`. `card.md` in that directory is the loop's export
 and is never edited by the subagent.
 
-## 8. Live stream — `events tail`
+## 8. Live stream — `events follow` (hub) / `events tail` (direct)
 
 | Invocation | Output | Consumer |
 |---|---|---|
-| `events tail [--after <rev>] [--idle <ms>]` | NDJSON lines | `runtime.mjs#streamCli` → `subscribe.mjs` |
+| `events follow [--after <rev>] [--idle <ms>]` | NDJSON lines from the local event hub | `runtime.mjs#streamCli` → `subscribe.mjs` |
+| `events tail [--after <rev>] [--idle <ms>]` | NDJSON lines from a direct board SSE | diagnostics only; not a background consumer |
+| `events hub` | the foreground hub process | started on demand by `follow`/`watch` |
 
-The loop reads `type` on every line and `event.id` as the board revision, passing the maximum
-back as `--after` to resume; `open` means the board answered. The line shapes, the exit
-semantics and the 15 s heartbeat / 45 s idle defaults are in
+The hub is per user and per board, binds loopback, publishes an owner-only pointer, and owns
+the single board connection (and its reconnect ladder). `events follow` reconnects to the hub
+and replays from its bounded ring when the cursor is still retained; an older cursor starts
+live. The loop reads `type` on every line and `event.id` as the board revision, passing the
+maximum back as `--after` to resume; `open` means the stream answered. The line shapes, the
+exit semantics and the 15 s heartbeat / 45 s idle defaults are in
 [`cli.md#events`](cli.md#events).

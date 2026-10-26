@@ -119,14 +119,41 @@ than defaulted. The acceptance/review rows are machine-side bookkeeping.
 The drawer's activity tab shows every event, with a localised sentence for the known
 vocabulary and a generic “recorded an event” fallback for an unknown one.
 
+### The local event hub (`taskctl events hub`)
+
+Every local consumer that needs the board's stream shares **one** connection: the hub. It is
+a per-user, per-board process that binds `127.0.0.1`, publishes a 0600 pointer file
+(`{pid, port, token, log}`) in the per-user runtime directory (`MEERKAT_HUB_DIR`, else
+`$XDG_RUNTIME_DIR/meerkat-taskpanel`), and authenticates local clients with a token from that
+file. It is started on demand by `taskctl events follow` or `taskctl export watch` with a
+detached spawn (a new session), so it outlives the command — and the harness turn — that
+started it. It exits after five idle minutes with no clients and no registrations.
+
+The hub reconnects to the board with the loop's 1 s→30 s ladder, resuming from the last
+revision it saw. A bounded ring of recent events lets a reconnecting follower replay the gap;
+a cursor older than the ring starts live (the loop's rescan is the fallback). A board restart
+is **transparent** to local consumers: the hub does not forward the board's `shutdown` frame;
+it reconnects and keeps the local streams open. It also re-renders every watch registration
+after a reconnect, so a card changed while the board was away is not left stale.
+
+Local protocol: newline-delimited JSON over the loopback socket. `follow` receives the same
+records `events tail` writes (`open`, `event`, `idle`, `shutdown`, `eof`, `error`); `watch`
+registers explicit refs and receives `open`, `refresh`, `done`, `ttl`, `shutdown`, `error`.
+`watch-status` and `watch-stop` are one-answer requests. Detached registrations are persisted
+in the runtime directory and resume when a new hub starts. The hub's key is the **resolved
+board URL** (plus a token fingerprint): if taskd comes back on a different address, the next
+client starts a new hub, and a detached registration for the old address must be created
+again.
+
 ### The loop subscriber (`scripts/loop/subscribe.mjs`)
 
 Included in every launchd/systemd supervisor (cron cannot host a long-lived process). It
-consumes `taskctl events tail` (NDJSON) and turns a **signal** into one continue turn,
-enqueued for the resident control session; it never claims, moves or wakes by itself. That
-keeps replay and duplicate frames harmless — the continue turn rescans board state, the
-claim CAS decides the winner, and the card queue plus the subagent ledger are the dispatch
-authorities.
+consumes `taskctl events follow` (NDJSON from the local event hub) and turns a **signal**
+into one continue turn, enqueued for the resident control session; it never claims, moves or
+wakes by itself. That keeps replay and duplicate frames harmless — the continue turn rescans
+board state, the claim CAS decides the winner, and the card queue plus the subagent ledger
+are the dispatch authorities. The local `streamCli` reconnect ladder remains; it now guards
+the hub connection rather than a board connection.
 
 An event-triggered turn requires a **live resident pool**: with none, poll could not
 dispatch anything, so the event path logs and skips and the continue timer remains the
@@ -165,9 +192,10 @@ per minute; a turn refused by the continue lock is retried after 5 s.
 
 ### The card watcher (`taskctl export watch`)
 
-`export watch` is the CLI-side consumer for one or more **explicitly named** cards. It maps
-each `task_id` (UUID) to the `<dir>/.meerkat/<identifier>/card.md` it exported; an event
-naming a watched task marks that card for a refresh, and an event with no `task_id` (a
+`export watch` is the consumer for one or more **explicitly named** cards. By default it
+registers them with the hub; `--standalone` runs the original direct-SSE watcher. Either way
+it maps each `task_id` (UUID) to the `<dir>/.meerkat/<identifier>/card.md` it exported; an
+event naming a watched task marks that card for a refresh, and an event with no `task_id` (a
 project-level change) refreshes every watched card. An unknown UUID refreshes nothing. The
 refresh is a full re-render through `POST /api/v1/export` (`{ref: task_id}`), written
 atomically — the event is the signal, never the payload.
@@ -175,13 +203,17 @@ atomically — the event is the signal, never the payload.
 It shares the loop's cadence — 300 ms debounce, 2 s maximum wait, `CARD_REFRESH_MIN_MS`
 (5 s) between batches — and refreshes are serial. Per-card failures are reported in the
 NDJSON stream and keep the previous file. `done` is terminal: a card that reaches it is
-written once and dropped from the watch, and when the last one is done the watcher aborts
-its own stream and emits `done`; a card that is already done at startup never causes a
-connection to open. `--ttl <ms>` bounds the watcher's lifetime (120 minutes by default,
-`0` disables it) and emits `ttl` when it expires, so a session that disappears without
-killing the process leaves nothing behind. The command does not reconnect: on
-`idle`/`shutdown`/`eof`/`done`/`ttl` it exits 0, and on a stream error it exits 1; resume
-with the last `refresh.revision` as `--after`.
+written once and dropped; when the last one is done the registration ends and a foreground
+stream writes `done`; a card that is already done at registration never causes a connection
+to open. `--ttl <ms>` bounds a registration (120 minutes by default, `0` disables it) and
+writes `ttl` when it expires.
+
+`--detach` is the worker form: it registers, prints the handle and exits; the hub keeps the
+file fresh, so no client process has to survive the harness. The registration is persisted
+and resumes after a hub restart. A foreground stream via the hub inherits the hub's
+transparent reconnect; the `--standalone` watcher does not reconnect (on
+`idle`/`shutdown`/`eof`/`done`/`ttl` it exits 0, and on a stream error it exits 1, resumable
+with the last `refresh.revision` as `--after`).
 
 ## What is *not* an event
 

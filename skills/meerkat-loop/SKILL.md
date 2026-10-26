@@ -192,13 +192,13 @@ executes the plan.
 ### Event subscriber
 
 On launchd/systemd, `--subscribe` follows the board's event stream through
-`taskctl events tail` and asks for a continue turn when a dispatch-relevant event
-arrives. It ships with the supervisor's enable set — the continue clock remains
-the fallback and the only path for time-based work, and an event wakes a turn only
-while the resident pool is live (without one it logs and skips). The loop carries
-no HTTP code of its own: board discovery, the token and the stream all belong to
-the CLI. Cron cannot host a long-lived process. The daemon publishes
-`subscribe.state.json`, which `install.sh --supervisor=status` reads.
+`taskctl events follow` (the local event hub) and asks for a continue turn when a
+dispatch-relevant event arrives. It ships with the supervisor's enable set — the continue
+clock remains the fallback and the only path for time-based work, and an event wakes a turn
+only while the resident pool is live (without one it logs and skips). The loop carries no
+HTTP code of its own: board discovery, the token and the stream all belong to the CLI. Cron
+cannot host a long-lived process. The daemon publishes `subscribe.state.json`, which
+`install.sh --supervisor=status` reads.
 
 ### Task process directory (`.meerkat/`)
 
@@ -266,7 +266,7 @@ requires: board task-interface v1   — board release >= 1.1.0
 ```
 
 The loop drives the board only through `taskctl` — the capability subset is the
-board skill's `references/capabilities.md` (including `events tail` for the live
+board skill's `references/capabilities.md` (including `events follow` for the live
 stream; the loop never calls the HTTP API). `task-interface v1` first shipped in
 board 1.0.0; the board-side workflow plan landed in 1.1.0.
 

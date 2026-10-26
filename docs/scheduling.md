@@ -48,15 +48,16 @@ independent entries under `scripts/loop/`, and the continue turn invokes them.
 The split is deliberate. A 60-second clock that read the board would be a poll
 again; a 10-minute clock that ran the entries itself would keep the loop's
 responsibilities inside the scheduler. On launchd/systemd the **event subscriber**
-(`--subscribe`) follows the board's event stream through `taskctl events tail`
-and asks for a continue turn when a dispatch-relevant event arrives, so a new
-card or a completed dependency is seen within seconds. It is part of the enabled
-set, not a separate switch, and it is a **latency path only**: the continue clock
-remains the fallback and the only path for time-based work (stale claims, review
-aging, SLA tiers), and an event wakes a turn only while a resident pool is live.
-On cron — which cannot host a long-lived process — discovery stays at most one
-continue cadence. `--continue-interval` is still the lever for that fallback;
-lowering it raises the LLM cost linearly.
+(`--subscribe`) follows the local event hub through `taskctl events follow` and asks for a
+continue turn when a dispatch-relevant event arrives, so a new card or a completed dependency
+is seen within seconds; the hub owns the host's single board connection and its reconnect
+ladder, and the subscriber's `follow` child sees the same records `events tail` would. It is
+part of the enabled set, not a separate switch, and it is a **latency path only**: the
+continue clock remains the fallback and the only path for time-based work (stale claims,
+review aging, SLA tiers), and an event wakes a turn only while a resident pool is live.
+On cron — which cannot host a long-lived process — discovery stays at most one continue
+cadence. `--continue-interval` is still the lever for that fallback; lowering it raises the
+LLM cost linearly.
 
 The deterministic passes are **not scheduled individually**:
 
@@ -648,9 +649,10 @@ attachments — belongs in the same directory. The board still holds no director
 project session's cwd **is** the directory, and `.meerkat/` is the loop's convention under
 it — see [Where a worker runs](#where-a-worker-runs).
 
-With `--subscribe`, a debounced event batch refreshes the brief of every active queued card
-(and a review card's original). The refresh is a file write, not an LLM turn; it runs even
-when `--event-continue=no` and a failure leaves the previous brief in place.
+With `--subscribe`, the events arrive through the local event hub (`events follow`) and a
+debounced batch refreshes the brief of every active queued card (and a review card's
+original). The refresh is a file write, not an LLM turn; it runs even when
+`--event-continue=no` and a failure leaves the previous brief in place.
 
 Continuity across wakes comes from the **board**, not the prompt: the card's
 comments, reports and session record are durable, so a resumed conversation can
@@ -1105,8 +1107,8 @@ one write lock, so they never fight over the slot:
   *`TASKD_URL`* (preferred: a dead **loopback** address falls through, a dead **remote** one is
   an error) → *a healthy run pointer* → *lazy start* (unless `TASKD_NO_AUTOSTART` is set). A
   guarded `taskd` leaves a **healthy pointer**, so a CLI call reuses it and never starts a
-  second server. The subscriber inherits the same order because `taskctl events tail`
-  resolves the board for it.
+  second server. The subscriber inherits the same order because `taskctl events follow`
+  resolves the board to find its hub, and the hub resolved the same board when it started.
 - **One slot.** Both use the same run pointer (the machine-wide default, or the same
   `TASKD_RUNTIME_POINTER`), the same data directory, and the same write lock. `pid`
   reuse through the pointer is tolerated by the transport's wait-for-pointer step.
@@ -1393,13 +1395,13 @@ worker; without it the continue turn still runs patrol and workflow, and poll
 stops at "no resident pool".
 
 The `.subscribe` unit is the **event daemon**. launchd (`KeepAlive`) and systemd
-(`Type=simple`, `Restart=always`) follow the board's event stream through
-`taskctl events tail` and ask for a continue turn when a dispatch-relevant event arrives.
-It ships with every launchd/systemd `--supervisor=enable`; it is a latency path, not a
-closure component: ping/continue remain the fallback, and they are the only path for
-time-based work (stale claims, review aging, SLA tiers). **cron cannot host it** — a
-crontab entry is not a long-lived process — so a cron deployment stays on the continue
-cadence.
+(`Type=simple`, `Restart=always`) follow the local event hub through
+`taskctl events follow` and ask for a continue turn when a dispatch-relevant event arrives.
+The hub — not the subscriber — owns the board connection. It ships with every
+launchd/systemd `--supervisor=enable`; it is a latency path, not a closure component:
+ping/continue remain the fallback, and they are the only path for time-based work (stale
+claims, review aging, SLA tiers). **cron cannot host it** — a crontab entry is not a
+long-lived process — so a cron deployment stays on the continue cadence.
 
 An event-triggered turn requires a **live resident pool**. With no pool it could not
 dispatch anything, so the subscriber logs and skips the turn; the continue timer still runs

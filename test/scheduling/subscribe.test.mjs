@@ -3,7 +3,7 @@
  * reconnects, and that a refused turn is retried rather than dropped.
  *
  * The transport itself is injected: `streamEvents` stands where the spawned
- * `taskctl events tail` would be, so these tests stay deterministic.
+ * `taskctl events follow` would be, so these tests stay deterministic.
  */
 
 import assert from "node:assert/strict";
@@ -16,6 +16,7 @@ import {
   classify,
   classifyRefresh,
   createDispatchScheduler,
+  followArgs,
   nextBackoff,
   runSubscribe,
 } from "../../scripts/loop/subscribe.mjs";
@@ -626,5 +627,24 @@ describe("loop/subscribe — the process loop", () => {
       },
     );
     assert.equal(logs.some((line) => line.includes("disk full")), true);
+  });
+});
+
+describe("the loop consumes the local event hub", () => {
+  it("spawns `events follow`, not another direct board stream", () => {
+    assert.deepEqual(followArgs({ idleMs: 45_000 }), [
+      "events",
+      "follow",
+      "--idle",
+      "45000",
+    ]);
+    assert.deepEqual(followArgs({ idleMs: 45_000, after: 12 }), [
+      "events",
+      "follow",
+      "--idle",
+      "45000",
+      "--after",
+      "12",
+    ]);
   });
 });
