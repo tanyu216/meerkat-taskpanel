@@ -31,6 +31,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { QUEUE_FILES } from "../../loop/queue.mjs";
 import { runStep, systemdUserDir } from "./taskd-guard.mjs";
 import { unitPath } from "./unit-path.mjs";
 
@@ -134,13 +135,20 @@ export function poolReport(stateDir, options = {}) {
   };
   const sessions = readJson("sessions.state.json");
   const ledger = readJson("subagents.state.json");
-  const cards = readJson("cards.pending.json");
+  // The queue's filename comes from the module that writes it, so the status
+  // report cannot drift from the loop again.
+  const cards = readJson(QUEUE_FILES.cards);
   const pendingContinue = readJson("continue.pending.json");
   const liveSubagents = Array.isArray(ledger?.subagents)
     ? ledger.subagents.filter((row) => row?.status === "running" || row?.status === "spawned").length
     : 0;
   const cardsQueued = Array.isArray(cards?.cards)
-    ? cards.cards.filter((row) => row?.status === "pending" || row?.status === "processing").length
+    ? cards.cards.filter(
+        (row) =>
+          (row?.status === "pending" || row?.status === "processing") &&
+          // A question row is a project-session turn, not a queued card.
+          String(row?.queue_kind ?? "handoff") === "handoff",
+      ).length
     : 0;
   const continueQueued = pendingContinue !== null;
   const pid = Number.isInteger(sessions?.poolPid) ? sessions.poolPid : null;
