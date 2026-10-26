@@ -26,6 +26,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { TERMINAL_CARD_STATUSES } from "../../foundation/card-brief.mjs";
 import {
   CLI_EXIT,
   MD_GROWTH_FACTOR,
@@ -177,19 +178,20 @@ async function ensureWatchHub(ctx) {
  * `--watch-status` is read-only: starting a hub just to ask it would make the answer
  * untrue. A missing or dead pointer means no registration is being served.
  */
-async function watchStatus(ctx, refs, dir) {
+async function watchStatus(ctx, refs, target) {
   const board = requireBoard(ctx, "export watch");
+  const where = target.out ?? target.dir;
   const paths = hubPaths(board.url, board.token, ctx.env);
   const pointer = readJsonFile(paths.pointer);
   if (pointer === null || !(await hubHealthy(pointer))) {
     return {
-      data: { running: false, reason: "no-hub", ref: refs[0], dir },
+      data: { running: false, reason: "no-hub", ref: refs[0], dir: target.dir, out: target.out },
       human: `no local event hub is running for ${refs[0]}`,
     };
   }
   const answer = await hubAnswer(
     pointer,
-    { op: "watch-status", ref: refs[0], dir },
+    { op: "watch-status", ref: refs[0], dir: target.dir, out: target.out },
     (record) => record?.op === "watch-status",
   );
   const running = answer.running === true;
@@ -200,20 +202,22 @@ async function watchStatus(ctx, refs, dir) {
       cards: answer.cards ?? [],
       expires_at: answer.expires_at ?? null,
       last_refresh: answer.last_refresh ?? null,
-      dir,
+      dir: target.dir,
+      out: target.out,
     },
     human: running
-      ? `watching ${refs[0]} in ${dir}`
-      : `not watching ${refs[0]} in ${dir} (${answer.reason ?? "not found"})`,
+      ? `watching ${refs[0]} in ${where}`
+      : `not watching ${refs[0]} in ${where} (${answer.reason ?? "not found"})`,
   };
 }
 
 /** `--stop` may start the hub: a persisted registration would otherwise resume. */
-async function watchStop(ctx, refs, dir) {
+async function watchStop(ctx, refs, target) {
+  const where = target.out ?? target.dir;
   const { pointer } = await ensureWatchHub(ctx);
   const answer = await hubAnswer(
     pointer,
-    { op: "watch-stop", ref: refs[0], dir },
+    { op: "watch-stop", ref: refs[0], dir: target.dir, out: target.out },
     (record) => record?.op === "watch-stop",
   );
   const stopped = answer.stopped === true;
@@ -223,20 +227,23 @@ async function watchStop(ctx, refs, dir) {
       registration_id: answer.registration_id ?? null,
       reason: answer.reason ?? null,
       ref: refs[0],
-      dir,
+      dir: target.dir,
+      out: target.out,
     },
-    human: stopped ? `stopped watching ${refs[0]}` : `no registration for ${refs[0]} in ${dir}`,
+    human: stopped ? `stopped watching ${refs[0]}` : `no registration for ${refs[0]} in ${where}`,
   };
 }
 
 /** `--detach`: register, return the handle, leave no client process behind. */
-async function watchDetach(ctx, refs, dir, ttlMs) {
+async function watchDetach(ctx, refs, target, ttlMs) {
   const { pointer } = await ensureWatchHub(ctx);
+  const where = target.out ?? target.dir;
   let answer = null;
   for await (const record of hubRecords(pointer, {
     op: "watch",
     refs,
-    dir,
+    dir: target.dir,
+    out: target.out,
     ttl_ms: ttlMs,
     detach: true,
     owner: watchOwner(ctx),
@@ -263,23 +270,25 @@ async function watchDetach(ctx, refs, dir, ttlMs) {
       reason: answer.reason ?? null,
       cards: answer.cards ?? [],
       expires_at: answer.expires_at ?? null,
-      dir,
+      dir: target.dir,
+      out: target.out,
     },
     human: running
-      ? `watching ${refs.join(", ")} in ${dir} (registration ${answer.registration_id})`
+      ? `watching ${refs.join(", ")} in ${where} (registration ${answer.registration_id})`
       : `wrote the final brief for ${refs.join(", ")} (${answer.reason ?? "done"}); nothing left to watch`,
   };
 }
 
 /** Foreground watcher served by the hub: the same NDJSON lines as before. */
-async function watchViaHub(ctx, refs, dir, ttlMs) {
+async function watchViaHub(ctx, refs, target, ttlMs) {
   const { pointer } = await ensureWatchHub(ctx);
   let opened = false;
   try {
     for await (const record of hubRecords(pointer, {
       op: "watch",
       refs,
-      dir,
+      dir: target.dir,
+      out: target.out,
       ttl_ms: ttlMs,
       detach: false,
       owner: watchOwner(ctx),
@@ -327,13 +336,19 @@ export const COMMANDS = [
   {
     name: "md",
     summary: "Export cards as markdown (all tasks, or one).",
-    usage: "export md [<ref>] [--out <dir|file.md>] [--project <id>] [--check] [--md]",
+    usage: "export md [<ref>] [--out <dir|file.md>] [--project <id>] [--check] [--md] [--watch]",
     positionals: [{ name: "ref", required: false, summary: "Export only this task (id or identifier)." }],
     flags: [
       { flag: "out", key: "out", as: "string", value: "<dir|file.md>", summary: "Directory to write into (default: cwd); with a card ref, a path ending in .md is the file itself." },
       { flag: "project", key: "project", as: "string", value: "<id>", summary: "Limit the export to one project." },
       { flag: "check", key: "check", as: "boolean", summary: "Compare only; exit 3 when a card differs." },
       { flag: "md", key: "md", as: "boolean", summary: "Accepted as a no-op so `export --md` works." },
+      {
+        flag: "watch",
+        key: "watch",
+        as: "boolean",
+        summary: "Register a detached brief watch (single ref + --out <file.md>); the hub keeps it fresh until done/canceled.",
+      },
     ],
     async run(ctx) {
       const ref = ctx.args.ref;
@@ -352,6 +367,31 @@ export const COMMANDS = [
         ctx.flags.out !== undefined &&
         out.toLowerCase().endsWith(".md") &&
         !isDirectory(out);
+
+      // The long-lived spelling: register the same watch `export watch --detach`
+      // registers. The hub writes the first snapshot before it answers, so the
+      // caller still has a brief on return. No TTL: the registration ends when
+      // the card reaches a terminal status.
+      if (ctx.flags.watch === true) {
+        if (ref === undefined) {
+          throw usageError("export md: --watch needs one card ref", {
+            fix: "name the card: `export md <ref> --out <file.md> --watch`",
+          });
+        }
+        if (ctx.flags.check === true) {
+          throw usageError("export md: --watch cannot be combined with --check");
+        }
+        if (ctx.flags.project !== undefined) {
+          throw usageError("export md: --watch cannot be combined with --project");
+        }
+        if (!fileMode) {
+          throw usageError("export md: --watch needs --out <file.md>", {
+            fix: "give the file to keep fresh; the hub creates its parent directory",
+          });
+        }
+        return watchDetach(ctx, [ref], { dir: null, out }, 0);
+      }
+
       if (fileMode) requireParentDirectory(out);
 
       const { cards } = await ctx.client.post(
@@ -403,7 +443,7 @@ export const COMMANDS = [
   {
     name: "watch",
     summary: "Keep .meerkat/<identifier>/card.md fresh from the event stream.",
-    usage: "export watch [<ref>] [--ref <ref>]… [--dir <dir>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once] [--detach] [--watch-status] [--stop] [--standalone]",
+    usage: "export watch [<ref>] [--ref <ref>]… [--dir <dir>|--out <file>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once] [--detach] [--watch-status] [--stop] [--standalone]",
     positionals: [
       {
         name: "ref",
@@ -426,6 +466,14 @@ export const COMMANDS = [
         as: "string",
         value: "<dir>",
         summary: "Project working directory holding .meerkat/ (default: cwd).",
+      },
+      {
+        flag: "out",
+        key: "out",
+        as: "string",
+        value: "<file>",
+        summary:
+          "Write the brief to this exact file (one ref; the hub creates its parent). Mutually exclusive with --dir.",
       },
       {
         flag: "after",
@@ -512,23 +560,44 @@ export const COMMANDS = [
       const idleMs = nonNegativeInteger(ctx.flags, "idle", "idle") ?? SSE_SUBSCRIBE_IDLE_MS;
       const ttlMs = nonNegativeInteger(ctx.flags, "ttl", "ttl") ?? CARD_WATCH_TTL_MS;
 
-      const baseDir = ctx.flags.dir === undefined
-        ? resolve(ctx.cwd)
-        : resolve(ctx.cwd, ctx.flags.dir);
-      const dirStat = statSync(baseDir, { throwIfNoEntry: false });
-      if (dirStat === undefined || !dirStat.isDirectory()) {
-        throw usageError(`export watch: --dir ${baseDir} is not an existing directory`, {
-          fix: "create the project working directory first (the .meerkat/ subtree is created for you)",
+      const out = ctx.flags.out === undefined ? null : resolve(ctx.cwd, ctx.flags.out);
+      const dirFlag = ctx.flags.dir === undefined ? null : resolve(ctx.cwd, ctx.flags.dir);
+      if (out !== null && dirFlag !== null) {
+        throw usageError("export watch: --out and --dir are mutually exclusive", {
+          fix: "name one target: --out <file> for one card, or --dir <dir> for the .meerkat subtree",
         });
       }
+      if (out !== null && uniqueRefs.length !== 1) {
+        throw usageError("export watch: --out takes exactly one card ref", {
+          fix: "pass one ref, or use --dir for several cards",
+        });
+      }
+      if (out !== null) {
+        const targetStat = statSync(out, { throwIfNoEntry: false });
+        if (targetStat !== undefined && targetStat.isDirectory()) {
+          throw usageError(`export watch: --out ${out} is a directory`, {
+            fix: "name the file to keep fresh, or use --dir",
+          });
+        }
+      }
+      const baseDir = out === null ? (dirFlag ?? resolve(ctx.cwd)) : null;
+      if (baseDir !== null) {
+        const dirStat = statSync(baseDir, { throwIfNoEntry: false });
+        if (dirStat === undefined || !dirStat.isDirectory()) {
+          throw usageError(`export watch: --dir ${baseDir} is not an existing directory`, {
+            fix: "create the project working directory first (the .meerkat/ subtree is created for you)",
+          });
+        }
+      }
+      const target = { dir: baseDir, out };
 
       // The hub is the default: one board connection for every local consumer.
       // `--standalone` (and `--once`, which never streams) keep the direct-SSE
       // implementation available for sandboxes and for differential tests.
-      if (statusMode) return watchStatus(ctx, uniqueRefs, baseDir);
-      if (stopMode) return watchStop(ctx, uniqueRefs, baseDir);
-      if (detach) return watchDetach(ctx, uniqueRefs, baseDir, ttlMs);
-      if (!once && !standalone) return watchViaHub(ctx, uniqueRefs, baseDir, ttlMs);
+      if (statusMode) return watchStatus(ctx, uniqueRefs, target);
+      if (stopMode) return watchStop(ctx, uniqueRefs, target);
+      if (detach) return watchDetach(ctx, uniqueRefs, target, ttlMs);
+      if (!once && !standalone) return watchViaHub(ctx, uniqueRefs, target, ttlMs);
 
       // Seed the cursor before the initial export, so a write that lands between
       // the export and the stream opening is replayed rather than lost. `/meta`
@@ -572,14 +641,18 @@ export const COMMANDS = [
 
       // Write the first snapshot before opening the stream. A failure here is
       // still a clean error envelope, because nothing has been emitted yet.
+      const targetPath = (card) => (out !== null ? out : watchPath(baseDir, card.identifier));
       const watched = new Map();
       const firstPass = [];
       for (const card of initial) {
-        // `done` is terminal: write its final brief, but do not keep watching it.
-        if (card.status !== "done") watched.set(card.task_id, card.identifier);
+        const path = targetPath(card);
+        // A terminal card gets its final brief, but is not watched further.
+        if (!TERMINAL_CARD_STATUSES.includes(card.status ?? "")) {
+          watched.set(card.task_id, { identifier: card.identifier, path });
+        }
         firstPass.push({
           card,
-          outcome: writeCardFile(watchPath(baseDir, card.identifier), card.markdown),
+          outcome: writeCardFile(path, card.markdown),
         });
       }
 
@@ -632,8 +705,9 @@ export const COMMANDS = [
       const refresh = async ({ taskIds, all, revision }) => {
         const ids = all ? [...watched.keys()] : taskIds;
         for (const taskId of ids) {
-          const identifier = watched.get(taskId);
-          if (identifier === undefined) continue;
+          const known = watched.get(taskId);
+          if (known === undefined) continue;
+          const { identifier, path } = known;
           try {
             const { cards } = await ctx.client.post("/api/v1/export", { ref: taskId });
             const card = Array.isArray(cards) && cards.length === 1 ? cards[0] : null;
@@ -650,10 +724,10 @@ export const COMMANDS = [
               });
             }
             const status = typeof card.status === "string" ? card.status : null;
-            const outcome = writeCardFile(watchPath(baseDir, card.identifier), card.markdown);
-            // A done card has no further changes to follow; stop tracking it.
-            if (status === "done") watched.delete(taskId);
-            else watched.set(taskId, card.identifier);
+            const outcome = writeCardFile(path, card.markdown);
+            // A terminal card has no further changes to follow.
+            if (status !== null && TERMINAL_CARD_STATUSES.includes(status)) watched.delete(taskId);
+            else watched.set(taskId, { identifier: card.identifier, path });
             ctx.emit({
               type: WATCH_LINE.REFRESH,
               task_id: taskId,
@@ -670,14 +744,14 @@ export const COMMANDS = [
               type: WATCH_LINE.REFRESH,
               task_id: taskId,
               identifier,
-              path: watchPath(baseDir, identifier),
+              path,
               changed: false,
               error: errorPayload(err),
             });
           }
         }
-        // Every card reached `done`: no work remains, so close the stream now
-        // rather than holding a connection forever.
+        // Every card reached a terminal status: no work remains, so close the
+        // stream now rather than holding a connection forever.
         if (!completed && watched.size === 0) {
           completed = true;
           controller.abort();

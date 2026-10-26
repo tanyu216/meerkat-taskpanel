@@ -27,17 +27,15 @@ import { readFileSync } from "node:fs";
 import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, VERSION } from "../foundation/constants.mjs";
 import { loadEnvFile } from "../foundation/env-config.mjs";
 import { DomainError } from "../foundation/errors.mjs";
+import { repoRoot } from "../foundation/runtime-locator.mjs";
 import { isSupportedNode, unsupportedNodeMessage } from "../foundation/node-version.mjs";
 import { redactDeep, redactText } from "../foundation/redact.mjs";
-import { repoRoot } from "../foundation/runtime-locator.mjs";
 import { ACTOR_ENV_KEYS, resolveActor } from "../foundation/transport/actor.mjs";
 import { parseArgv } from "./argv.mjs";
-import { createBoardClient } from "../foundation/transport/client.mjs";
 import { registry } from "./commands/index.mjs";
 import { exitCodeFor } from "../foundation/transport/errors.mjs";
 import { renderFailure, renderResult } from "./output/index.mjs";
-import { ensureBoard, readPointer } from "../foundation/transport/runtime.mjs";
-import { resolveToken } from "../foundation/transport/token.mjs";
+import { connectBoard, createBoardSession } from "../foundation/transport/session.mjs";
 import { commandUsage, groupUsage, topLevelUsage, versionLine } from "./usage.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
@@ -86,8 +84,10 @@ export function createContext(parsed, options) {
     readFile = (file) => readFileSync(file, "utf8"),
     out = () => {},
     board = null,
+    // A caller that already resolved the session passes it; a direct test or
+    // the local path can omit it and get the same actor rule.
+    identity = resolveActor({ flags: parsed.flags, env }),
   } = options;
-  const identity = resolveActor({ flags: parsed.flags, env });
   return {
     client,
     flags: parsed.flags,
@@ -156,13 +156,16 @@ export async function run(argv, io) {
     return CLI_EXIT.OK;
   }
 
-  // A **local** command (`status`) reports the client's own view of the board.
-  // It runs before the identity check and before any board is contacted: there
-  // is no write to attribute and no token to resolve, and a command whose whole
-  // job is "is the board up?" must be able to answer when it is not. It gets a
-  // minimal context — deliberately not `createContext`, which resolves an actor
-  // and would make `status` require `--actor-kind`.
-  if (parsed.command?.local === true) {
+  // A **local** command reports something the client itself knows. `status`
+  // reads the runtime pointer; `project dir --require-dir` reads the local
+  // projects map for a wake and must work with the board down. Both run before
+  // the identity check and before any board is contacted: there is no write to
+  // attribute and no token to resolve. They get a minimal context —
+  // deliberately not `createContext`, which resolves an actor.
+  const localCommand =
+    parsed.command?.local === true ||
+    (typeof parsed.command?.localWhen === "function" && parsed.command.localWhen(parsed) === true);
+  if (localCommand) {
     try {
       const config = loadEnvFile({
         flag: parsed.flags.envFile ?? null,
@@ -172,12 +175,22 @@ export async function run(argv, io) {
       });
       const local = {
         flags: parsed.flags,
+        args: parsed.commandArgs,
+        // The raw tokens let a compatibility entry (`taskctl loop …`) hand the
+        // original flag spellings to the moved loop parser without rebuilding
+        // them from bound flags.
+        argv: argv.slice(),
         env: config.env,
         cwd: io.cwd ?? process.cwd(),
         readFile: io.readFile ?? ((file) => readFileSync(file, "utf8")),
         out,
+        err,
       };
       const result = await parsed.command.run(local);
+      // A streaming/compatibility entry owns stdout for its whole lifetime and
+      // has already written its terminal output; an envelope here would be a
+      // second document.
+      if (result?.streamed === true) return result.exit ?? CLI_EXIT.OK;
       renderResult(result, { json, out, err });
       return result.exit ?? CLI_EXIT.OK;
     } catch (failure) {
@@ -211,54 +224,23 @@ export async function run(argv, io) {
       });
     }
 
-    const config = loadEnvFile({
-      flag: parsed.flags.envFile ?? null,
+    const session = createBoardSession({
+      flags: parsed.flags,
       env,
       cwd: io.cwd ?? process.cwd(),
-      root: repoRoot(),
-    });
-    const effectiveEnv = config.env;
-
-    // Resolve the actor before touching a board: a reserved `human` kind or a
-    // session with no platform is a usage mistake, and it should not depend on
-    // whether a board happens to be running.
-    const identity = resolveActor({ flags: parsed.flags, env: effectiveEnv });
-
-    const pointerOptions = {
-      env: effectiveEnv,
       ...(io.pointerPath === undefined ? {} : { pointerPath: io.pointerPath }),
-    };
-
-    // The token is resolved *first*, from the pointer as it stands. That order
-    // matters for one reason: when finding the board fails, the failure should
-    // still say which of the four sources was in play. It costs nothing —
-    // `--url`/`$TASKD_TOKEN`/the token file do not depend on the board being up,
-    // and a board this process started itself is on loopback, which needs no
-    // token at all. The pointer is read exactly the way `ensureBoard` reads it
-    // (data-directory fallback included, R1), so the token belongs to whichever
-    // board answers.
-    const { token, source } = resolveToken({
-      flag: parsed.flags.token,
-      env: effectiveEnv,
-      tokenFile: config.tokenFile,
-      pointer: readPointer(io.pointerPath === undefined ? { env: effectiveEnv } : { env: effectiveEnv, path: io.pointerPath }),
     });
-    tokenSource = source;
+    tokenSource = session.source;
 
-    const { url } = await ensureBoard({ url: parsed.flags.url ?? null, ...pointerOptions });
-    const client = createBoardClient({
-      url,
-      token,
-      actor: identity.actor,
-      session: parsed.flags.sessionId ?? null,
-    });
+    const { client, board } = await connectBoard(session, { flags: parsed.flags });
 
     const ctx = createContext(parsed, {
       client,
-      env: effectiveEnv,
+      env: session.env,
       cwd: io.cwd ?? process.cwd(),
       out,
-      board: { url, token },
+      board,
+      identity: session.identity,
       ...(io.stdin === undefined ? {} : { stdin: io.stdin }),
       ...(io.readFile === undefined ? {} : { readFile: io.readFile }),
     });
@@ -268,7 +250,7 @@ export async function run(argv, io) {
     // written its terminal line; adding an envelope here would corrupt it.
     if (result?.streamed === true) return result.exit ?? CLI_EXIT.OK;
     renderResult(
-      { ...result, data: { ...(result.data ?? {}), token_source: source } },
+      { ...result, data: { ...(result.data ?? {}), token_source: session.source } },
       { json, out, err },
     );
     return result.exit ?? CLI_EXIT.OK;

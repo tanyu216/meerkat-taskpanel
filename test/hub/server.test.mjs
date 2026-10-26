@@ -182,6 +182,41 @@ describe("hub server (in process)", () => {
     });
   });
 
+  it("watches an explicit --out file and stops it at canceled", async () => {
+    board.add("DEMO-0050", "uuid-50", "# v1\n");
+    const out = join(projectDir, "briefs", "DEMO-0050.md");
+    const detach = await cli(["export", "watch", "DEMO-0050", "--out", out, "--detach", "--json"]);
+    assert.equal(detach.exit, 0, detach.stderr);
+    assert.equal(JSON.parse(detach.stdout).data.running, true);
+    assert.equal(readFileSync(out, "utf8"), "# v1\n");
+
+    board.update("DEMO-0050", { markdown: "# v2\n" });
+    board.emit("uuid-50");
+    await waitFor(() => readFileSync(out, "utf8").includes("v2"));
+
+    const status = await cli(["export", "watch", "DEMO-0050", "--out", out, "--watch-status", "--json"]);
+    assert.equal(JSON.parse(status.stdout).data.running, true);
+
+    board.update("DEMO-0050", { markdown: "# final\n", status: "canceled" });
+    board.emit("uuid-50");
+    await waitFor(() => readFileSync(out, "utf8").includes("final"));
+    await waitFor(async () => {
+      const answer = await cli(["export", "watch", "DEMO-0050", "--out", out, "--watch-status", "--json"]);
+      return JSON.parse(answer.stdout).data.running === false;
+    });
+    assert.equal(readFileSync(out, "utf8"), "# final\n");
+  });
+
+  it("registers the same watch through export md --watch", async () => {
+    board.add("DEMO-0051", "uuid-51", "# md\n");
+    const out = join(projectDir, "briefs", "DEMO-0051.md");
+    const result = await cli(["export", "md", "DEMO-0051", "--out", out, "--watch", "--json"]);
+    assert.equal(result.exit, 0, result.stderr);
+    assert.equal(readFileSync(out, "utf8"), "# md\n");
+    const status = await cli(["export", "watch", "DEMO-0051", "--out", out, "--watch-status", "--json"]);
+    assert.equal(JSON.parse(status.stdout).data.running, true);
+  });
+
   it("resumes a persisted registration in a new server instance", async () => {
     board.add("DEMO-0004", "uuid-4", "# persisted\n");
     await cli(["export", "watch", "DEMO-0004", "--dir", projectDir, "--detach", "--json"]);
@@ -356,11 +391,11 @@ describe("hub server (in process)", () => {
       const rehydrateEnv = { ...env, MEERKAT_HUB_DIR: dir };
       const paths = hubPaths(board.url, token, rehydrateEnv);
       writeJsonFile(paths.state, {
-        version: 1,
+        version: 2,
         registrations: [
-          { id: "invalid", refs: ["DEMO-0001"], dir: projectDir, ttl_ms: "nope", created_at: 0, expires_at: null },
-          { id: "expired", refs: ["DEMO-0002"], dir: projectDir, ttl_ms: 100, created_at: 0, expires_at: 1 },
-          { id: "unresolvable", refs: ["MISSING"], dir: projectDir, ttl_ms: 1_000, created_at: 0, expires_at: null },
+          { id: "invalid", refs: ["DEMO-0001"], dir: projectDir, ttl_ms: "nope", created_at: 0, expires_at: null, cards: [{ ref: "DEMO-0001", path: cardPath("DEMO-0001") }] },
+          { id: "expired", refs: ["DEMO-0002"], dir: projectDir, ttl_ms: 100, created_at: 0, expires_at: 1, cards: [{ ref: "DEMO-0002", path: cardPath("DEMO-0002") }] },
+          { id: "unresolvable", refs: ["MISSING"], dir: projectDir, ttl_ms: 1_000, created_at: 0, expires_at: null, cards: [{ ref: "MISSING", path: cardPath("MISSING") }] },
         ],
       });
       const rehydrated = await runHub(
@@ -390,9 +425,9 @@ describe("hub server (in process)", () => {
     const paths = hubPaths(board.url, token, deferEnv);
     try {
       writeJsonFile(paths.state, {
-        version: 1,
+        version: 2,
         registrations: [
-          { id: "flaky", refs: ["FLAKY"], dir: projectDir, ttl_ms: 0, created_at: 0, expires_at: null },
+          { id: "flaky", refs: ["FLAKY"], dir: projectDir, ttl_ms: 0, created_at: 0, expires_at: null, cards: [{ ref: "FLAKY", path: cardPath("FLAKY") }] },
         ],
       });
       const flakyClient = {

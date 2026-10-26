@@ -518,6 +518,23 @@ describe("cli/export watch — one pass", () => {
     });
   });
 
+  it("writes an explicit --out file, creating its parent", async () => {
+    await boardWithTwo(async ({ run, dataDir }) => {
+      const out = join(makeTempDir(), "nested", "card.md");
+      const oracleDir = join(dataDir, "oracle");
+      run(["export", "md", "DEMO-0001", "--out", oracleDir, "--json"]);
+      const oracle = readFileSync(join(oracleDir, "DEMO-0001.md"), "utf8");
+
+      const first = run(["export", "watch", "DEMO-0001", "--out", out, "--once", "--json"]);
+      assert.equal(first.status, 0, first.stderr);
+      assert.equal(readFileSync(out, "utf8"), oracle);
+
+      const second = run(["export", "watch", "DEMO-0001", "--out", out, "--once", "--json"]);
+      assert.equal(second.status, 0, second.stderr);
+      assert.equal(records(second.stdout).find((line) => line.type === "refresh").changed, false);
+    });
+  });
+
   it("refreshes a brief that would trip the 4x growth guard", async () => {
     await boardWithTwo(async ({ run, dataDir }) => {
       const projectDir = makeTempDir();
@@ -552,6 +569,8 @@ describe("cli/export watch — one pass", () => {
       ["--dir", makeTempDir(), "--url", url],
       ["DEMO-0001", "--idle", "1.5", "--url", url],
       ["DEMO-0001", "--dir", join(makeTempDir(), "missing"), "--url", url],
+      ["DEMO-0001", "--out", join(makeTempDir(), "card.md"), "--dir", makeTempDir(), "--url", url],
+      ["--ref", "DEMO-0001", "--ref", "DEMO-0002", "--out", join(makeTempDir(), "card.md"), "--url", url],
     ];
     for (const args of cases) {
       const result = await invokeWatch([...args, "--json"]);
@@ -651,6 +670,22 @@ describe("cli/export watch — stream", () => {
     assert.equal(failure.error.code, "NOT_FOUND");
     assert.equal(readFileSync(join(projectDir, ".meerkat", "DEMO-0001", "card.md"), "utf8"), "v1");
     assert.deepEqual(lines.at(-1), { type: "eof" });
+  });
+
+  it("ends the standalone watch when the card reaches canceled", async () => {
+    const projectDir = makeTempDir();
+    const { handler } = fakeBoard({
+      initial: "v1",
+      refreshed: "v2",
+      frames: [{ event: "card_moved", task_id: "uuid-1" }],
+      statusFor: ({ phase }) => (phase === "initial" ? "todo" : "canceled"),
+    });
+    const url = await serve(handler);
+
+    const result = await invokeWatch(["DEMO-0001", "--dir", projectDir, "--url", url]);
+    assert.equal(result.exit, 0, result.stderr);
+    assert.equal(readFileSync(join(projectDir, ".meerkat", "DEMO-0001", "card.md"), "utf8"), "v2");
+    assert.deepEqual(records(result.stdout).at(-1), { type: "done" });
   });
 
   it("does not open a stream when the card is already done", async () => {

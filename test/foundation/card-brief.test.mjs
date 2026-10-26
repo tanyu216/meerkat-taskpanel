@@ -12,10 +12,12 @@ import test, { describe, it } from "node:test";
 import {
   CARD_BRIEF_FILE,
   MEERKAT_PROCESS_DIR,
+  TERMINAL_CARD_STATUSES,
   cardDirRel,
   cardFileRel,
   taskDirName,
 } from "../../src/foundation/card-brief.mjs";
+import { TERMINAL_STATUSES } from "../../src/core/domain/status.mjs";
 
 describe("card-brief — the per-task process directory", () => {
   it("names the brief under the project working directory", () => {
@@ -43,5 +45,13 @@ describe("card-brief — the per-task process directory", () => {
 
   it("trims surrounding whitespace before sanitizing", () => {
     assert.equal(taskDirName("  PROJ-1  "), "PROJ-1");
+  });
+
+  it("mirrors the board's terminal status set", () => {
+    // The foundation layer may not import `src/core`, so the set is a mirror.
+    // A card brief watch ends at these statuses; a drift would leave a watch
+    // alive forever or stop one early.
+    assert.deepEqual([...TERMINAL_CARD_STATUSES], [...TERMINAL_STATUSES]);
+    assert.deepEqual([...TERMINAL_CARD_STATUSES], ["done", "canceled"]);
   });
 });

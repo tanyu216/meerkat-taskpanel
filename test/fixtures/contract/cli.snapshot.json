@@ -416,6 +416,14 @@
               "required": false,
               "repeat": false,
               "short": null
+            },
+            {
+              "flag": "watch",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
             }
           ]
         },
@@ -465,6 +473,14 @@
               "flag": "once",
               "as": "boolean",
               "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "out",
+              "as": "string",
+              "value": "<file>",
               "required": false,
               "repeat": false,
               "short": null
@@ -1410,6 +1426,14 @@
               "flag": "projects-json",
               "as": "string",
               "value": "<path>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "require-dir",
+              "as": "boolean",
+              "value": null,
               "required": false,
               "repeat": false,
               "short": null

@@ -42,8 +42,10 @@
  * already uses for the supervisor's decision half.
  */
 
-import { statSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { readFileSync, statSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
+
+import { repoRoot } from "./runtime-locator.mjs";
 
 /**
  * Point an installed shim at the map beside its skill — the shim lives in
@@ -252,4 +254,80 @@ export function resolveProjectDir(input = {}) {
   });
   if (!checked.ok) return checked;
   return { ok: true, dir: checked.dir, project, entry };
+}
+
+/**
+ * The map beside the installed skill, unless a flag or the environment names
+ * another one. An explicit value always wins, so a user with a second board can
+ * point at it.
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string} an absolute path
+ */
+export function defaultProjectsJson(env = process.env) {
+  const fromEnv = env[PROJECTS_JSON_ENV];
+  if (typeof fromEnv === "string" && fromEnv.trim() !== "") return resolve(fromEnv);
+  return resolve(repoRoot(), "skills", "meerkat-taskpanel", "projects.json");
+}
+
+/**
+ * The directory a **woken worker** must run in, or a coded refusal.
+ *
+ * This is the wake shape, not the `project dir` answer: a wake is started
+ * *somewhere*, so the map's `dir: null` ("this project has no local directory")
+ * is refused with `PROJECT_DIR_REQUIRED` rather than passed on. A caller that
+ * only wants to report "no directory" keeps using `resolveProjectDir`.
+ *
+ * The map text is read through an injected `read`, so the rule is testable
+ * without a disk. It never asks a board: the directory is a host-local fact.
+ *
+ * @param {{
+ *   project?: unknown,
+ *   projectsJson?: string,
+ *   env?: NodeJS.ProcessEnv,
+ *   read?: (path: string, encoding: string) => string,
+ *   inspect?: (path: string) => string,
+ * }} [input]
+ * @returns {{ok: true, dir: string} | {ok: false, code: string, message: string, project?: string|null, path?: string|null, file?: string|null}}
+ */
+export function resolveWakeDir(input = {}) {
+  const read = input.read ?? readFileSync;
+  const projectsJson = input.projectsJson ?? defaultProjectsJson(input.env ?? process.env);
+  const where = projectsJson ? ` at ${projectsJson}` : "";
+
+  let text;
+  try {
+    text = read(projectsJson, "utf8");
+  } catch (err) {
+    return failure(
+      PROJECT_DIR_CODES.MAP_UNREADABLE,
+      `cannot read the project map${where} (${err?.code ?? err?.message ?? "unknown error"}). ` +
+        `Create it beside the installed skill — see references/projects-json.md — or point ` +
+        `${PROJECTS_JSON_ENV} / --projects-json at it.`,
+      { file: projectsJson },
+    );
+  }
+
+  const map = parseProjectMap(text, { file: projectsJson });
+  if (!map.ok) return map;
+
+  const resolved = resolveProjectDir({
+    entries: map.entries,
+    project: input.project,
+    file: projectsJson,
+    ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
+  });
+  if (!resolved.ok) return resolved;
+
+  // A worker is started *somewhere*: the map's "no directory" answer is a
+  // complete answer for `project dir`, but not for a wake.
+  if (resolved.dir === null) {
+    return checkTargetDirectory(undefined, {
+      project: typeof input.project === "string" ? input.project : null,
+      file: projectsJson,
+      ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
+    });
+  }
+
+  return { ok: true, dir: resolved.dir };
 }

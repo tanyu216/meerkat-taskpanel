@@ -22,6 +22,7 @@ import { statSync } from "node:fs";
 import { createServer } from "node:net";
 import { isAbsolute } from "node:path";
 
+import { TERMINAL_CARD_STATUSES } from "../../foundation/card-brief.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { errorPayload } from "../../foundation/transport/errors.mjs";
 import {
@@ -245,6 +246,7 @@ export function createHubServer(input) {
         id: reg.id,
         refs: [...reg.refs],
         dir: reg.dir,
+        out: reg.out,
         ttl_ms: reg.ttlMs,
         created_at: reg.createdAt,
         expires_at: reg.expiresAt,
@@ -256,7 +258,7 @@ export function createHubServer(input) {
     }
     try {
       if (entries.length === 0) removeFile(paths.state);
-      else writeJsonFile(paths.state, { version: 1, registrations: entries });
+      else writeJsonFile(paths.state, { version: 2, registrations: entries });
     } catch (err) {
       log(`hub: could not persist registrations: ${err?.message ?? err}`);
     }
@@ -295,14 +297,14 @@ export function createHubServer(input) {
       const known = reg.watched.get(taskId);
       if (known === undefined) continue;
       try {
-        const card = await exportCard(taskId);
-        // A done/TTL/stop may have landed while the export was in flight. The
-        // terminal line must stay terminal, so do not emit after it.
+        const card = await exportCard(known.ref);
+        // A terminal/TTL/stop may have landed while the export was in flight.
+        // The terminal line must stay terminal, so do not emit after it.
         if (reg.finished) return;
-        const outcome = writeCardFile(watchPath(reg.dir, card.identifier), card.markdown);
+        const outcome = writeCardFile(known.path, card.markdown);
         const status = typeof card.status === "string" ? card.status : null;
-        if (status === "done") reg.watched.delete(taskId);
-        else reg.watched.set(taskId, card.identifier);
+        if (status !== null && TERMINAL_CARD_STATUSES.includes(status)) reg.watched.delete(taskId);
+        else known.identifier = card.identifier;
         const stored = [...reg.cards.values()].find((entry) => entry.task_id === taskId);
         if (stored !== undefined) {
           stored.identifier = card.identifier;
@@ -324,15 +326,15 @@ export function createHubServer(input) {
         emit(reg, {
           type: WATCH_LINE.REFRESH,
           task_id: taskId,
-          identifier: known,
-          path: watchPath(reg.dir, known),
+          identifier: known.identifier,
+          path: known.path,
           changed: false,
           error: errorPayload(err),
         });
-        log(`hub: refresh for ${known} failed: ${err?.message ?? err}`);
+        log(`hub: refresh for ${known.identifier} failed: ${err?.message ?? err}`);
       }
     }
-    if (!reg.finished && reg.watched.size === 0) finishRegistration(reg, "done");
+    if (!reg.finished && reg.watched.size === 0) finishRegistration(reg, "terminal");
     else if (reg.detached) persist();
   }
 
@@ -358,7 +360,7 @@ export function createHubServer(input) {
     for (const listener of listeners) {
       listener.registrationId = null;
       listener.viewerOf = null;
-      if (reason === "done") {
+      if (reason === "done" || reason === "terminal") {
         send(listener, { type: WATCH_LINE.DONE });
         listener.socket.end();
       } else if (reason === "ttl") {
@@ -374,33 +376,34 @@ export function createHubServer(input) {
     log(`hub: registration ${reg.id} finished (${reason})`);
   }
 
-  async function startRegistration({ refs, dir, ttlMs, detached, session, owner, id, createdAt }) {
+  async function startRegistration({ refs, dir, out = null, paths = null, ttlMs, detached, session, owner, id, createdAt }) {
     const cards = [];
     const inRequest = new Map();
     for (const ref of refs) {
       const card = await exportCard(ref);
-      const path = watchPath(dir, card.identifier);
+      const path = paths?.get(ref) ?? out ?? watchPath(dir, card.identifier);
       if (inRequest.has(path)) {
         throw new DomainError("CLI_USAGE", {
           message: `export watch: ${ref} and ${inRequest.get(path)} name the same card (${card.identifier})`,
-          details: { ref, identifier: card.identifier, dir },
+          details: { ref, identifier: card.identifier, dir, out },
         });
       }
       inRequest.set(path, ref);
       const previous = cardIndex.get(path);
       if (previous !== undefined) {
         const existing = registrations.get(previous);
+        const sameTarget = out !== null && out !== undefined ? existing?.out === out : existing?.dir === dir;
         if (
           existing !== undefined &&
-          existing.dir === dir &&
+          sameTarget &&
           [...existing.refs].length === refs.length &&
           refs.every((value) => existing.refs.has(value))
         ) {
           return { registration: existing, cards: [...existing.cards.values()], reused: true };
         }
         throw new DomainError("CLI_IO", {
-          message: `export watch: ${card.identifier} is already watched in ${dir}`,
-          details: { identifier: card.identifier, dir, registration_id: previous },
+          message: `export watch: ${card.identifier} is already watched in ${out ?? dir}`,
+          details: { identifier: card.identifier, dir, out, registration_id: previous },
           hint: { fix: "stop the existing watcher first, or watch it from that registration" },
         });
       }
@@ -414,21 +417,27 @@ export function createHubServer(input) {
       outcome: writeCardFile(card.path, card.markdown),
     }));
 
-    // The hub's UUID → identifier view comes from the board export it already
-    // holds, and keeps a card only while it is not `done`. It deliberately does
-    // not follow `review_of` (the export payload does not carry it); the loop
-    // maps the same UUID through `stateDir/cards.queue.json` instead. See
-    // `scripts/loop/card-file.mjs#identifiersForEvent` and `docs/events.md`.
+    // The hub's UUID → target view comes from the board export it already holds,
+    // and keeps a card only while it is not terminal. It deliberately does not
+    // follow `review_of` (the export payload does not carry it); the loop maps
+    // the original through its own queue when it registers both paths.
     const watched = new Map();
     for (const card of cards) {
-      if (card.status !== "done") watched.set(card.task_id, card.identifier);
+      if (!TERMINAL_CARD_STATUSES.includes(card.status ?? "")) {
+        watched.set(card.task_id, {
+          ref: card.ref,
+          path: card.path,
+          identifier: card.identifier,
+        });
+      }
     }
 
     const registrationId = id ?? randomUUID();
     const reg = {
       id: registrationId,
       refs: new Set(refs),
-      dir,
+      dir: dir ?? null,
+      out: out ?? null,
       ttlMs,
       detached,
       owner: owner ?? null,
@@ -488,13 +497,33 @@ export function createHubServer(input) {
       ? [...new Set(record.refs.filter((ref) => isNonEmptyString(ref)).map((ref) => String(ref).trim()))]
       : [];
     if (refs.length === 0) throw new DomainError("CLI_USAGE", { message: "export watch: at least one card ref is required" });
-    if (
-      !isNonEmptyString(record.dir) ||
-      !isAbsolute(record.dir) ||
-      statSync(record.dir, { throwIfNoEntry: false })?.isDirectory() !== true
-    ) {
+    const out = isNonEmptyString(record.out) ? record.out : null;
+    const dir = isNonEmptyString(record.dir) ? record.dir : null;
+    if (out === null && dir === null) {
       throw new DomainError("CLI_USAGE", {
-        message: `export watch: --dir ${record.dir} is not an existing absolute directory`,
+        message: "export watch: --dir or --out is required",
+        hint: { fix: "name a project directory (--dir) or an exact file (--out)" },
+      });
+    }
+    if (out !== null) {
+      if (refs.length !== 1) {
+        throw new DomainError("CLI_USAGE", {
+          message: "export watch: --out takes exactly one card ref",
+          hint: { fix: "pass one ref, or use --dir for several cards" },
+        });
+      }
+      if (!isAbsolute(out)) {
+        throw new DomainError("CLI_USAGE", { message: `export watch: --out ${out} is not an absolute path` });
+      }
+      if (statSync(out, { throwIfNoEntry: false })?.isDirectory() === true) {
+        throw new DomainError("CLI_USAGE", {
+          message: `export watch: --out ${out} is a directory`,
+          hint: { fix: "name the file to keep fresh" },
+        });
+      }
+    } else if (!isAbsolute(dir) || statSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) {
+      throw new DomainError("CLI_USAGE", {
+        message: `export watch: --dir ${dir} is not an existing absolute directory`,
         hint: { fix: "create the project working directory first" },
       });
     }
@@ -503,7 +532,8 @@ export function createHubServer(input) {
 
     const result = await startRegistration({
       refs,
-      dir: record.dir,
+      dir,
+      out,
       ttlMs,
       detached,
       session: detached ? null : session,
@@ -566,7 +596,7 @@ export function createHubServer(input) {
           type: "registered",
           registration_id: null,
           running: false,
-          reason: "done",
+          reason: "terminal",
           cards: registrationCards(reg),
           expires_at: null,
         });
@@ -599,9 +629,16 @@ export function createHubServer(input) {
     }
     const ref = isNonEmptyString(record.ref) ? record.ref : null;
     const dir = isNonEmptyString(record.dir) ? record.dir : null;
-    if (ref === null) return null;
+    const path = isNonEmptyString(record.path)
+      ? record.path
+      : isNonEmptyString(record.out)
+        ? record.out
+        : null;
+    if (ref === null && path === null) return null;
     for (const reg of registrations.values()) {
       if (dir !== null && reg.dir !== dir) continue;
+      if (path !== null && ![...reg.cards.values()].some((card) => card.path === path)) continue;
+      if (ref === null) return reg;
       if (reg.refs.has(ref)) return reg;
       for (const card of reg.cards.values()) {
         if (card.identifier === ref || card.task_id === ref) return reg;
@@ -622,6 +659,7 @@ export function createHubServer(input) {
       running: !reg.finished && reg.watched.size > 0,
       registration_id: reg.id,
       dir: reg.dir,
+      out: reg.out,
       cards: registrationCards(reg),
       expires_at: reg.expiresAt,
       last_refresh: reg.lastRefreshAt,
@@ -723,18 +761,30 @@ export function createHubServer(input) {
     if (paths.state === null) return;
     const state = readJsonFile(paths.state);
     if (state === null || !Array.isArray(state.registrations)) return;
+    if (state.version !== 2) {
+      log("hub: discarding a pre-v2 registration state");
+      return;
+    }
     for (const entry of state.registrations) {
-      if (!Number.isInteger(entry?.ttl_ms) || !isNonEmptyString(entry?.dir)) continue;
+      if (!Number.isInteger(entry?.ttl_ms)) continue;
+      if (!isNonEmptyString(entry?.dir) && !isNonEmptyString(entry?.out)) continue;
       if (Number.isInteger(entry.expires_at) && entry.expires_at <= now()) continue;
       try {
         const refs = Array.isArray(entry.refs) ? entry.refs.filter(isNonEmptyString) : [];
         if (refs.length === 0) continue;
+        const paths = new Map(
+          (Array.isArray(entry.cards) ? entry.cards : [])
+            .filter((card) => isNonEmptyString(card?.ref) && isNonEmptyString(card?.path))
+            .map((card) => [card.ref, card.path]),
+        );
         const ttlMs = entry.expires_at !== null && entry.expires_at !== undefined
           ? Math.max(0, entry.expires_at - now())
           : entry.ttl_ms;
         const result = await serializeRegistration(() => startRegistration({
           refs,
-          dir: entry.dir,
+          dir: isNonEmptyString(entry.dir) ? entry.dir : null,
+          out: isNonEmptyString(entry.out) ? entry.out : null,
+          paths,
           ttlMs,
           detached: true,
           session: null,
@@ -743,7 +793,7 @@ export function createHubServer(input) {
         }));
         deferredRegistrations.delete(result.registration.id);
         if (result.registration.watched.size === 0) {
-          finishRegistration(result.registration, "done");
+          finishRegistration(result.registration, "terminal");
         } else {
           log(`hub: resumed registration ${result.registration.id}`);
         }

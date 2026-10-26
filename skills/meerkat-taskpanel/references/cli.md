@@ -104,7 +104,7 @@ not a failure; `note` says why (no pointer, or a stale pid).
 | `project ensure <id> [--name <n>] [--acceptance auto\|off\|agent\|human] [--reviewer <agent>] [--meta k=v]… [--label <l>]… [--readme <text>]` | Create the project if its id is absent; if it exists, return it **untouched** (`created:false`). `--name` is needed only on creation. This is the idempotent form of `project create`; it never updates an existing row. |
 | `project update <id> [--name] [--acceptance auto\|off\|agent\|human] [--reviewer <agent>] [--meta k=v]… [--label]… [--readme]` | Update it. `--meta` **merges**. An `--acceptance` change affects future cards only; in-flight cards keep their `acceptance_mode` snapshot. |
 | `project list [--include-archived]` | List projects. |
-| `project dir <id> [--projects-json <path>]` | Print the local directory work happens in, resolved from `projects.json` (`$MEERKAT_TASKPANEL_PROJECTS_JSON` picks another map): the entry's `local_path`, else `run_dir`. An entry naming no directory succeeds and says so. Exits non-zero only when no entry is registered, or the path is relative, missing, not a directory, or blank. |
+| `project dir <id> [--projects-json <path>] [--require-dir]` | Print the local directory work happens in, resolved from `projects.json` (`$MEERKAT_TASKPANEL_PROJECTS_JSON` picks another map): the entry's `local_path`, else `run_dir`. An entry naming no directory succeeds and says so. Exits non-zero only when no entry is registered, or the path is relative, missing, not a directory, or blank. `--require-dir` is the wake shape: resolve from the map only (no board check) and exit **3** when the map names no usable directory — a wake has to start somewhere. |
 | `project readme <id>` / `project readme <id> --set <text>` / `--file <path\|->` | Print or set the readme. |
 
 **A project carries no directory.** The map is local, beside the skill — see
@@ -295,8 +295,8 @@ then a placeholder.
 
 | Command | Purpose |
 |---|---|
-| `export md [<ref>] [--out <dir\|file.md>] [--project <id>] [--check] [--md]` | Write markdown cards: every identifier into a directory, or only `<ref>` (id or identifier). With `<ref>`, a `--out` ending in `.md` that is not an existing directory names the file itself; otherwise it is a directory and the card lands at `<dir>/<ID>.md`. `--project` cannot be combined with `<ref>` (usage error, exit 2). |
-| `export watch [<ref>] [--ref <ref>]… [--dir <dir>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once] [--detach] [--watch-status] [--stop] [--standalone]` | Keep `<dir>/.meerkat/<identifier>/card.md` fresh through the local event hub (or directly with `--standalone`). Explicit refs only; there is no `.meerkat/` discovery. |
+| `export md [<ref>] [--out <dir\|file.md>] [--project <id>] [--check] [--md] [--watch]` | Write markdown cards: every identifier into a directory, or only `<ref>` (id or identifier). With `<ref>`, a `--out` ending in `.md` that is not an existing directory names the file itself; otherwise it is a directory and the card lands at `<dir>/<ID>.md`. `--project` cannot be combined with `<ref>` (usage error, exit 2). `--watch` registers the same detached brief watch as `export watch --detach` for one ref + one `.md` file; the hub writes the first snapshot before returning, and it cannot be combined with `--check` or `--project`. |
+| `export watch [<ref>] [--ref <ref>]… [--dir <dir>\|--out <file>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once] [--detach] [--watch-status] [--stop] [--standalone]` | Keep a card brief fresh through the local event hub (or directly with `--standalone`). `--dir` names the `.meerkat/<identifier>/card.md` sugar; `--out` names one exact file for one ref (the path is authoritative and its parent is created). The two are mutually exclusive. Explicit refs only; there is no `.meerkat/` discovery. A registration ends at `done` or `canceled`. |
 
 `--check` writes nothing and exits **3** when a card is missing or differs; with `<ref>` it
 checks only that card. A single-file target must already have a parent directory (exit 2 in
@@ -331,10 +331,14 @@ taskctl export watch <ref> --dir <project> --watch-status  # is it running?
 taskctl export watch <ref> --dir <project> --stop          # unregister
 taskctl export watch <ref> --dir <project> --once          # one export, no watcher
 taskctl export watch <ref> --dir <project> --standalone    # direct SSE (fallback)
+taskctl export watch <ref> --out <file> --detach           # one exact file (the path is authoritative)
+taskctl export md    <ref> --out <file.md> --watch         # the same watch, the export spelling
 ```
 
-The positional ref and each repeatable `--ref` are unioned; at least one is required. The
-target is `<dir>/.meerkat/<identifier>/card.md` (`--dir` defaults to cwd). The first export
+The positional ref and each repeatable `--ref` are unioned; at least one is required.
+With `--dir` (default cwd) the target is `<dir>/.meerkat/<identifier>/card.md`; with
+`--out` it is exactly the file named, one ref only, and the hub creates its parent
+directory. `--out` and `--dir` are mutually exclusive. The first export
 is written before `open`; a bad ref is a normal `{ok:false}` document and creates nothing.
 Writes are atomic (a unique temp file in the same directory plus a rename; a byte-identical
 render is left alone, so mtime does not churn), and the 4× `MD_GROWTH_FACTOR` guard does
@@ -365,17 +369,19 @@ not start a hub just to answer. `--stop` unregisters (starting the hub if needed
 persisted registration cannot resume). Repeating `--detach` for the same card is idempotent
 and returns the existing registration.
 
-**`done` is terminal.** A card that reaches `done` is written once with its final brief and
-dropped; when the last card is done the registration ends and a foreground stream writes
-`{"type":"done"}`. If every named card is already done at registration, the briefs are
-written and the registration immediately reports `running:false, reason:"done"` — no SSE
-connection is opened. A done card that is later reopened (`issue reopen`) is no longer
-watched: run a new `--detach`. `canceled` is not a stop condition.
+**`done` and `canceled` are terminal.** A card that reaches either is written once with its
+final brief and dropped; when the last card is terminal the registration ends and a
+foreground stream writes `{"type":"done"}`. If every named card is already terminal at
+registration, the briefs are written and the registration immediately reports
+`running:false, reason:"terminal"` — no SSE connection is opened. A terminal card that is
+later reopened (`issue reopen`) is no longer watched: run a new `--detach`.
 
-`--ttl <ms>` bounds a registration (default **120 minutes**; `0` disables it). `--once`
-exports once and exits without a watcher. `--after` and `--idle` are accepted for
-compatibility but belong to the direct stream: under the hub the hub owns the cursor and
-liveness; `--standalone` is where those flags take effect.
+`--ttl <ms>` bounds a registration (default **120 minutes**; `0` disables it). A
+registration is also bounded by its card's terminal status, which is the normal ending for
+the loop's `--ttl 0` registrations. `--once` exports once and exits without a watcher.
+`--after` and `--idle` are accepted for compatibility but belong to the direct stream:
+under the hub the hub owns the cursor and liveness; `--standalone` is where those flags take
+effect.
 
 One watcher per card is enough. The loop's `--subscribe` daemon consumes `events follow` and
 refreshes active queued briefs, so a loop-dispatched worker must not start a second watcher.
@@ -448,6 +454,77 @@ back as `--after`. `idle`, `shutdown` and `eof` exit 0; `error` exits 1. A failu
 the stream opens (unreachable board, auth refusal, a bad `--after`, a hub that cannot start)
 is still the normal `{ok:false}` error document with a nonzero exit — no `open` line is
 written.
+
+### `loop`
+
+The external loop: the process that makes the board move on its own. It patrols SLA and
+heartbeats, applies the board's workflow plan, claims ready cards and hands them to agent
+CLIs, and keeps a resident session pool. The implementation lives in the toolkit
+(`src/orchestrator/`), not in the agent skill — the skill carries decisions, `taskctl`
+carries the machinery.
+
+Every verb is **local** (`local: true`): it resolves its own board context from `--url` /
+`--env-file` / the runtime pointer, and its runtime state lives in the loop state directory.
+`--as-human`, `--session-id` and `--if-version` are refused with `CLI_USAGE` (exit 2) — the
+loop is never a human, never inherits a caller's session and never uses the CLI's
+optimistic-concurrency guard. `--actor-kind` is required on every verb that writes to the
+board (`patrol`, `workflow`, `poll`, `tick`, `run`, `subscribe`, `session`); the reads
+(`console`, `status`, `compat`) work without it, and `status` / `compat` need no board at
+all.
+
+| Command | Purpose |
+|---|---|
+| `loop patrol` | One SLA / heartbeat pass. Notify-only unless `--patrol-llm` is set. |
+| `loop workflow` | Apply the board's `issue reconcile --workflow` plan. |
+| `loop poll` | Scan, admit, claim and enqueue ready cards; writes the queue. |
+| `loop tick [--passes <list>]` | Run `patrol,workflow,poll` (or `--passes` order) in one command — the cron/unit entry. |
+| `loop console` | One read-only question / frontier cycle. |
+| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
+| `loop run [--ping-once] [--continue-once]` | The two clocks as a daemon; either `--*-once` runs one pass and exits. |
+| `loop subscribe` | The event subscriber daemon; it dispatches continues. |
+| `loop session` | The resident session pool daemon. |
+| `loop compat [--quiet]` | The board-interface gate: exit 0 compatible, 2 usage (a named `--cli` is missing), 3 no verdict; `--quiet` prints nothing on success. |
+
+`loop tick` stops at the first failing pass and returns its exit code. `loop run` refuses
+`--ping-once` together with `--continue-once`. `loop status` and `loop console` are the two
+verbs a human runs while the daemons are up; `loop compat` is what an installer or a gate
+runs before it relies on `taskctl` at all.
+
+**Paths and state.** `--state-dir <dir>` places the loop's runtime state — `supervisor.state.json`,
+the queue, the ledger, `session.lock`, `continue.state.json`; `--state <file>` is the older
+explicit spelling of the registry file. `--roles-dir <dir>` names the team-roles root;
+`--projects-json <path>` the project → directory map; `--home <dir>` the home the agent
+directories derive from; `--repo <dir>` the board checkout the loop drives; `--cli <path>`
+the `taskctl` entry its child calls use; `--config <file>` the per-agent policy file;
+`--log <file>` the loop log; `--continue-state`, `--session-state`, `--sla-ledger`,
+`--workflow-ledger`, `--sla-last-ok` and `--sla-peer` override the individual state files.
+
+**Cadence and policy.** `--ping-interval <sec>` and `--continue-interval <sec>` set the two
+clocks; `--continue <yes|no>` enables the continue clock. `--opened-by <human|supervisor>`
+records who opened the loop; `--control <internal|external>` and `--resident <auto|no>` say
+who owns the control turn and whether a resident pool is expected. `--session-max-age`,
+`--session-turn-timeout` (1200..7199 s), `--session-poll-ms`, `--session-pool-max`,
+`--project-concurrency` and `--project-idle-ms` bound the pool. `--max-concurrency` caps the
+whole fleet; `--claim-unassigned <yes|no>` (or the shorthand `--assignee-only`) decides the
+claim pool; `--recover-stale <yes|no>` recovers stale in-progress claims. `--workflow
+<yes|no>` applies the board's plan and `--reviewer <agent>` names the independent reviewer;
+`--workflow-max-actions` and `--review-aging-minutes` bound workflow execution and
+silent-review escalation. `--allow-all-tools` gives spawned agents the unrestricted tool set
+and **requires** a non-empty `--allow-all-tools-reason` naming who authorized it.
+
+**SLA, events and notifications.** `--patrol-interval <sec>` sets the SLA measurement
+period; `--patrol-llm` lets the patrol move a card (default: notify only); `--notify <cmd>`
+is the notification command (alert JSON on stdin); `--sla-leader <id>` names the actor the
+SLA leader writes under; `--sla-peer <file>` and `--sla-last-ok <file>` keep the peer
+liveness markers. `--sse-idle-ms`, `--event-debounce-ms`, `--event-debounce-max-ms`,
+`--event-continue <yes|no>` and `--event-continue-min-ms` tune the subscriber.
+`--board-limit` and `--trail-limit` cap the board snapshot and comment-trail reads, and
+`--dry-run` plans every write-only verb without writing anything.
+
+The retired single-purpose flags are gone: `--once` (bare poll), `--poll-interval`,
+`--ping-only`, `--continue-only`, `--patrol-only`, `--subscribe` and `--session` are the
+verbs (`loop poll`, `loop run --ping-once`, `loop subscribe`, `loop session`). `--state` is
+still accepted; `--state-dir` is the documented spelling.
 
 ## Editing a card: status, priority, description, attachments, dependencies
 

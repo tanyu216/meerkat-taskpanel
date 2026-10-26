@@ -10,7 +10,7 @@
  * The card brief is machine-generated: only `taskctl export md` and
  * `taskctl export watch` may write it.
  * This module is the single source of the path text, shared by the handoff
- * builders (foundation) and the loop's exporter (`scripts/loop/card-file.mjs`),
+ * builders (foundation) and the loop's exporter (`src/orchestrator/card-file.mjs`),
  * so the brief a subagent is told to read is the file the loop actually writes.
  *
  * Pure: no Node builtins, no I/O.
@@ -21,6 +21,16 @@ export const MEERKAT_PROCESS_DIR = ".meerkat";
 
 /** The exported card file's name inside a task's directory. */
 export const CARD_BRIEF_FILE = "card.md";
+
+/**
+ * Statuses at which a card brief stops changing.
+ *
+ * A **mirror** of `src/core/domain/status.mjs#TERMINAL_STATUSES`, because
+ * `foundation` may not import `src/core` and the brief watch (CLI + hub) lives
+ * below the core. `test/foundation/card-brief.test.mjs` asserts the two sets
+ * stay equal, so a new terminal status cannot silently leave a watch alive.
+ */
+export const TERMINAL_CARD_STATUSES = Object.freeze(["done", "canceled"]);
 
 /**
  * An identifier as one safe path segment.

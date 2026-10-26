@@ -39,6 +39,7 @@ const PLANNED_TRANSPORT = [
   "runtime.mjs",
   "token.mjs",
   "actor.mjs",
+  "session.mjs",
   "errors.mjs",
   "board-url.mjs",
 ];

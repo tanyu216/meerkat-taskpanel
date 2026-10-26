@@ -21,9 +21,12 @@ import { describe, it } from "node:test";
 
 import {
   PROJECT_DIR_CODES,
+  PROJECTS_JSON_ENV,
   checkTargetDirectory,
+  defaultProjectsJson,
   parseProjectMap,
   resolveProjectDir,
+  resolveWakeDir,
 } from "../../src/foundation/project-dir.mjs";
 
 /** An `inspect` that answers from a fixed table. */
@@ -221,5 +224,66 @@ describe("resolveProjectDir (project identity → local directory)", () => {
       assert.equal(result.code, code, `${run_dir} must be ${code}`);
       assert.match(result.message, /`run_dir`/, "the failure names run_dir, not local_path");
     }
+  });
+});
+
+describe("resolveWakeDir (the worker's cwd, or a coded refusal)", () => {
+  const mapText = JSON.stringify({ projects: [{ project: "demo", local_path: "/code/demo" }] });
+  const readMap = (text) => () => text;
+  const inspect = kinds({ "/code/demo": "directory" });
+
+  it("resolves a registered project without asking a board", () => {
+    const result = resolveWakeDir({
+      project: "demo",
+      projectsJson: FILE,
+      read: readMap(mapText),
+      inspect,
+    });
+    assert.deepEqual(result, { ok: true, dir: "/code/demo" });
+  });
+
+  it("refuses an unmapped project", () => {
+    const result = resolveWakeDir({
+      project: "nope",
+      projectsJson: FILE,
+      read: readMap(mapText),
+      inspect,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, PROJECT_DIR_CODES.UNMAPPED);
+  });
+
+  it("refuses an entry that names no directory — a wake needs one", () => {
+    const result = resolveWakeDir({
+      project: "ops",
+      projectsJson: FILE,
+      read: readMap(JSON.stringify({ projects: [{ project: "ops" }] })),
+      inspect,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, PROJECT_DIR_CODES.REQUIRED);
+  });
+
+  it("reports an unreadable map instead of resolving nothing", () => {
+    const result = resolveWakeDir({
+      project: "demo",
+      projectsJson: FILE,
+      read: () => {
+        throw Object.assign(new Error("no such file"), { code: "ENOENT" });
+      },
+      inspect,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, PROJECT_DIR_CODES.MAP_UNREADABLE);
+  });
+});
+
+describe("defaultProjectsJson", () => {
+  it("honours an explicit path and otherwise falls back beside the skill", () => {
+    assert.equal(defaultProjectsJson({ [PROJECTS_JSON_ENV]: "/tmp/map.json" }), "/tmp/map.json");
+    assert.match(
+      defaultProjectsJson({}),
+      /skills[/\\]meerkat-taskpanel[/\\]projects\.json$/,
+    );
   });
 });

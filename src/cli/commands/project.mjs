@@ -16,8 +16,13 @@
 import { resolve } from "node:path";
 
 import { DomainError } from "../../foundation/errors.mjs";
-import { PROJECTS_JSON_ENV, PROJECT_DIR_CODES, parseProjectMap, resolveProjectDir } from "../../foundation/project-dir.mjs";
-import { repoRoot } from "../../foundation/runtime-locator.mjs";
+import {
+  PROJECT_DIR_CODES,
+  defaultProjectsJson,
+  parseProjectMap,
+  resolveProjectDir,
+  resolveWakeDir,
+} from "../../foundation/project-dir.mjs";
 import { fields, table } from "../output/human.mjs";
 
 /** `--meta k=v` repeated, in order, as a plain object. */
@@ -32,9 +37,7 @@ function metaOf(flags) {
  */
 function projectsJsonPath(env = {}, flag = null) {
   if (typeof flag === "string" && flag.trim() !== "") return resolve(flag);
-  const override = env[PROJECTS_JSON_ENV];
-  if (typeof override === "string" && override.trim() !== "") return resolve(override);
-  return resolve(repoRoot(), "skills", "meerkat-taskpanel", "projects.json");
+  return defaultProjectsJson(env);
 }
 
 /**
@@ -242,8 +245,12 @@ export const COMMANDS = [
   {
     name: "dir",
     summary: "Print the local directory a project's workers run in (from projects.json).",
-    usage: "project dir <id> [--projects-json <path>]",
+    usage: "project dir <id> [--projects-json <path>] [--require-dir]",
     positionals: [{ name: "id", summary: "Project id (or the name registered in projects.json)." }],
+    // `--require-dir` is the wake shape: map-only, no identity, no board. The
+    // dispatcher runs it on the local path so a wake still works with the board
+    // down; without the flag this stays an ordinary board command.
+    localWhen: (parsed) => parsed.flags.requireDir === true,
     flags: [
       {
         flag: "projects-json",
@@ -252,9 +259,33 @@ export const COMMANDS = [
         value: "<path>",
         summary: "Project map to read (default: beside the skill, or $MEERKAT_TASKPANEL_PROJECTS_JSON).",
       },
+      {
+        flag: "require-dir",
+        key: "requireDir",
+        as: "boolean",
+        summary:
+          "Resolve from the project map only (no board check); exit 3 when no directory is registered — the wake shape.",
+      },
     ],
     async run(ctx) {
       const id = ctx.args.id;
+      // The wake shape: a worker is started *somewhere*, so this is map-only and
+      // a `dir: null` / unmapped answer is a no-verdict exit 3, not a success.
+      // It deliberately does not ask the board: a wake must work with the board
+      // down, and the directory is a host-local fact.
+      if (ctx.flags.requireDir === true) {
+        const file = projectsJsonPath(ctx.env ?? {}, ctx.flags?.projectsJson ?? null);
+        const resolved = resolveWakeDir({ project: id, projectsJson: file, read: ctx.readFile });
+        if (!resolved.ok) {
+          return {
+            data: { project: id, dir: null, code: resolved.code, message: resolved.message, file },
+            human: "",
+            warnings: [`${resolved.code}: ${resolved.message}`],
+            exit: 3,
+          };
+        }
+        return { data: { project: id, dir: resolved.dir }, human: resolved.dir };
+      }
       // Ask the board first, so "unknown project" (a typo, a project from another
       // board) and "known project, no directory registered" (a question for the
       // user) stay distinguishable answers. `GET /projects/:id` answers `null`
