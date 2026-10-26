@@ -42,7 +42,11 @@ from `review_round`. The board still mirrors both into `meta.review_of` / `meta.
 for export and readability, but the mirror is **not** a policy input; nor is `meta.flow`.
 The `review` label is a discovery aid; it is **never** the predicate. A card is a review card
 when `issue get <ref> --json` carries `review_of_id` (or, for a legacy row, `meta.review_of`),
-and the envelope also carries the resolved `review_of` identifier for display.
+and the envelope also carries the resolved `review_of` identifier for display. Its derived
+`role` is the readable word — `task`, `epic`, or `review` — while `kind` stays `task`; ask
+`role`, not `kind`, when deciding what a card is for. `issue list --kind review` (and
+`GET /tasks?kind=review`) is a **filter over the marker**, not a third kind: `--kind task`
+still returns review cards, and `issue create --kind review` is refused.
 
 ### Two rounds, deliberately different
 

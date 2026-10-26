@@ -1557,7 +1557,14 @@ function resolveOrder(value, debug) {
  * @returns {{tasks: object[], orderDebug: object[]|null}}
  */
 function readOrdered(ctx, filter) {
-  const { order: requestedOrder, orderDebug: debugFlag, ...scope } = filter;
+  const { order: requestedOrder, orderDebug: debugFlag, ...rest } = filter;
+  // `kind=review` is a filter over the review marker, not a third kind: a
+  // review card is an ordinary `kind=task` card carrying `review_of_id`. The
+  // translation lives here, at the one chokepoint both list use-cases share, so
+  // `kind=task` keeps its meaning (it still returns review cards) and the
+  // marker read is pushed into SQL — it holds under `limit`/`offset` and under
+  // the weight order, which pages in JS after a full read.
+  const scope = rest.kind === "review" ? { ...rest, kind: undefined, hasReviewMarker: true } : rest;
   const order = resolveOrder(requestedOrder, debugFlag === true);
   if (order !== "weight") return { tasks: ctx.repos.tasks.list(scope), orderDebug: null };
 

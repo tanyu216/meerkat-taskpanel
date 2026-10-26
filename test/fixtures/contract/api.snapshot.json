@@ -1823,6 +1823,7 @@
         "review_of": "null",
         "review_of_id": "null",
         "review_round": "null",
+        "role": "string",
         "sort_order": "number",
         "source_path": "string",
         "status": "string",

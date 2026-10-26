@@ -419,6 +419,36 @@ describe("cli/issue — every flag the command declares", () => {
     });
   });
 
+  it("list reads --kind review as the marker filter, and create still refuses it", async () => {
+    await board(async ({ run }) => {
+      const original = createIssue(run, ["--title", "Original"]);
+      deliverIssue(run, original.task.identifier);
+      const review = createIssue(run, [
+        "--title", "Review",
+        "--review-of", original.task.identifier,
+        "--review-round", "1",
+      ]);
+      const plain = createIssue(run, ["--title", "Plain"]);
+
+      const listed = dataOf(run(["issue", "list", "--kind", "review", "--json"]));
+      assert.deepEqual(listed.tasks.map((task) => task.identifier), [review.task.identifier]);
+      assert.equal(listed.tasks[0].role, "review");
+
+      // `kind=task` is unchanged — the review card is an ordinary task.
+      const tasks = dataOf(run(["issue", "list", "--kind", "task", "--json"]));
+      assert.deepEqual(
+        tasks.tasks.map((task) => task.identifier).sort(),
+        [original.task.identifier, review.task.identifier, plain.task.identifier].sort(),
+      );
+      assert.equal(tasks.tasks.find((task) => task.identifier === plain.task.identifier).role, "task");
+
+      // `review` is a read-side alias, not a third kind a card can be created as.
+      const refused = run(["issue", "create", "--project", "demo", "--title", "Nope", "--kind", "review", "--json"]);
+      assert.equal(refused.status, 1);
+      assert.equal(errorOf(refused).code, "VALIDATION_FAILED");
+    });
+  });
+
   it("list filters by the card being reviewed", async () => {
     await board(async ({ run }) => {
       const original = createIssue(run);

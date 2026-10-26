@@ -1578,6 +1578,21 @@ describe("server/routes — the review filter", () => {
     assert.deepEqual(empty.tasks, []);
   });
 
+  it("reads the marker as `kind=review`, without narrowing `kind=task`", async () => {
+    const reviews = dataOf(await call("GET", "/api/v1/tasks?project_id=revfilter&kind=review"));
+    assert.deepEqual(reviews.tasks.map((task) => task.identifier), [review.identifier]);
+
+    // A review card is an ordinary `kind=task` card: the alias is an **added**
+    // filter over the marker, never a replacement for `kind=task`.
+    const tasks = dataOf(await call("GET", "/api/v1/tasks?project_id=revfilter&kind=task"));
+    assert.ok(tasks.tasks.some((task) => task.identifier === review.identifier));
+    assert.ok(tasks.tasks.some((task) => task.identifier === original.identifier));
+
+    // The readable word, derived on the wire from kind + the marker.
+    assert.equal(reviews.tasks[0].role, "review");
+    assert.equal(tasks.tasks.find((task) => task.identifier === original.identifier).role, "task");
+  });
+
   it("reports a missing ref, and refuses an ambiguous identifier", async () => {
     for (const ref of ["NOPE-9999", ""]) {
       const result = await call("GET", `/api/v1/tasks?review_of=${encodeURIComponent(ref)}`);
