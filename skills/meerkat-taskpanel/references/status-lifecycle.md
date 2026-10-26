@@ -353,17 +353,28 @@ is refused with `INVALID_TRANSITION`.
 
 ## 10. What is enforced, and what is practice
 
-The transition whitelist, the delivery gate, the terminal exits, the child-before-parent
-rule, and the review-card invariants (no reopen, no parent/child, no review of a review —
-0041) are enforced by the domain **and** the database triggers; acceptance authority and
-claim routing are service rules. Three things are **not** enforced, and an agent must honour
-them:
+Skill prose is written against this split:
+
+- **Enforced — loud.** The transition whitelist, the delivery gate, the terminal exits, the
+  child-before-parent rule, the review-card invariants (no reopen, no parent/child, no review
+  of a review — 0041), acceptance authority and claim routing are enforced by the domain
+  **and** the database triggers. A refused write returns a named code and usually a fixing
+  hint, so an agent acts on that instead of pre-checking the rule. Skill pages do not restate
+  these.
+- **Enforced — silent.** A write can succeed but do something other than its name suggests —
+  `canceled` has no child guard, the create idempotency key collapses look-alike cards,
+  `--parent` links nothing, and an epic auto-starts and auto-closes only from certain
+  statuses. No refusal will teach these at the moment they matter, so the skill states them.
+- **Not enforced — practice.** Three rules an agent must honour on its own:
 
 | Rule | Kind |
 |---|---|
 | “One card at a time” | **practice** — not enforced |
 | “Read candidates, then claim” | **practice** — only the claim gate is enforced |
 | `depends_on` blocks claiming | **read rule** — candidates filters only |
+
+The working list of silent traps is in [`../SKILL.md`](../SKILL.md); this section is the
+classification they belong to.
 
 ## 11. The board's workflow decisions
 

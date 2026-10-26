@@ -5,94 +5,65 @@ description: Coordinate work across an AI Agent team using a shared local kanban
 
 # Meerkat TaskPanel
 
-A local-first task board for AI Agent teams, driven entirely through the `taskctl` CLI. An
-agent claims a card, heartbeats while it works, comments, and delivers with a report; results
-roll up a parent/child tree. This page is the working manual — what to do, in order. The rules
-behind each step live in the linked references and are not repeated here.
+A local-first task board for AI Agent teams, driven entirely through the `taskctl` CLI: claim
+a card, heartbeat, comment, deliver with a report; results roll up a parent/child tree.
 
-Scheduling is **not** this skill's job: the external supervisor is the `meerkat-loop` skill,
-and the board owns the workflow decisions (`issue reconcile --workflow`); the loop only
-executes them.
+This page is the **decision manual** — what to do, in what order, and which of two similar
+commands to use. The board validates every write itself: a refusal returns a named code and
+usually the command that satisfies it, so read that and act rather than pre-checking rules
+from a document. Enforced rules are not restated here. Scheduling is the `meerkat-loop`
+skill's job; the board owns the workflow decisions and the loop executes them.
 
-> Paths written as `src/…`, `docs/…` or `scripts/loop/…` name the taskpanel **source
-> repository**. This skill ships `SKILL.md`, `references/` and `scripts/`; everything you run
-> is `taskctl`.
+> `src/…`, `docs/…` and `scripts/loop/…` name the taskpanel **source repository**. This skill
+> ships `SKILL.md`, `references/` and `scripts/`; everything you run is `taskctl`.
 
 ## Running the CLI
 
 ```bash
 node scripts/run.mjs --help          # this skill's launcher
-taskctl --help                       # when the install shim is on PATH
+taskctl --help                       # when the shim is on PATH
 ```
 
-`scripts/run.mjs` spawns the board CLI, pipes stdio and propagates the exit code; it resolves
-the CLI from `$MEERKAT_TASKPANEL_ROOT`, then `$MEERKAT_TASKPANEL_REPO` (recorded by
-`install.sh`), then the checkout this skill sits in, then the `taskctl` shim, then `PATH`.
-
-The shim passes `--actor-kind <kind>` and a default `--agent <name>` on every call.
-`--actor-kind` is required on every command except `--help` / `--version` (and the local
-`status` read); a team passes `--agent jobs` / `linus` / `turing` to override the default, and
-a human writes with `--as-human`. Configuration is one install-root `.env`, read by both
-`taskctl` and `taskd` (the process environment wins key by key; `--env-file` /
-`MEERKAT_TASKPANEL_ENV_FILE` selects another). If no board is running, `taskctl` starts one —
-`TASKD_NO_AUTOSTART=1` forbids that. Flags, env keys and exit codes:
+`scripts/run.mjs` locates the CLI (`$MEERKAT_TASKPANEL_ROOT`, `$MEERKAT_TASKPANEL_REPO`, the
+checkout, the shim, `PATH`) and propagates stdio and the exit code. The shim adds
+`--actor-kind <kind>` and a default `--agent <name>`; `--actor-kind` is required except on
+`--help`, `--version` and `status`, and a human writes with `--as-human`. Configuration is one
+`.env` at the program root, read by both `taskctl` and `taskd` (process env wins key by key;
+`--env-file` or `MEERKAT_TASKPANEL_ENV_FILE` selects another). `taskctl` starts a board if none
+is running; `TASKD_NO_AUTOSTART=1` forbids that. All flags and exit codes:
 [`references/cli.md`](references/cli.md).
 
-## The status model
+## Reading a refusal
 
-A card has **eight stored status words**, but only **seven are stages** (the board's columns):
-`backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`. `awaiting` is an
-**attention overlay** — a card parked on a human question, shown under `in_progress`. `done`
-and `canceled` are terminal, with one audited exit: reopen to `todo`
-(`issue reopen <ref> --reason "<why>"`), which starts a new delivery round; a review card
-cannot be reopened — reopen the card it reviews.
+Every call returns `{ok:true, data}` or `{ok:false, error}`. Read a refusal in this order:
+`error.code` (the stable branch point) → `error.hint.command` / `error.hint.fix` /
+`error.hint.alternative` (usually the exact command or input change that satisfies the rule)
+→ `error.details` (the fields the rule examined) → the prose `error.message` only last. Never
+parse the message to decide what to do.
 
-Only these moves exist; every other pair is refused (`INVALID_TRANSITION`, or `TERMINAL_STATE`
-out of a terminal card):
+Retry only `VERSION_CONFLICT` (re-read once, then retry with the fresh `--if-version`) and
+`DB_BUSY` (wait `Retry-After`). Everything else means "change the request", not "try again".
+A rule this page omits is still enforced — an omission is not permission. The classification
+behind that:
+[`references/status-lifecycle.md#10-what-is-enforced-and-what-is-practice`](references/status-lifecycle.md#10-what-is-enforced-and-what-is-practice).
 
-<!-- status-whitelist:begin -->
-```text
-backlog     → todo, canceled
-todo        → backlog, in_progress, blocked, canceled        (an epic also → in_review)
-in_progress → in_review, blocked, todo, canceled, awaiting
-awaiting    → in_progress, todo, canceled
-in_review   → done, in_progress, blocked
-blocked     → todo, in_progress, in_review, canceled
-done        → todo
-canceled    → todo
-```
-<!-- status-whitelist:end -->
+## The card's life
 
-A legal edge can still be refused. What decides it, one line each:
+A card has **seven stages** — `backlog`, `todo`, `in_progress`, `in_review`, `blocked`,
+`done`, `canceled` — plus `awaiting`, an **attention overlay** for a card parked on a human
+question (shown under `in_progress`). `done` and `canceled` are terminal, with one audited
+exit: `issue reopen <ref> --reason "<why>"` returns the card to `todo` and starts a new
+delivery round. A review card cannot be reopened — reopen the card it reviews.
 
-1. **`in_review` needs evidence for the current round** — a `delivery` report for the card's
-   current `delivery_round`, or the audited `--no-report --reason` (≥ 8 characters). Leaving
-   `in_review` for `in_progress` or `blocked` starts a new round and voids the old report; use
-   `issue deliver` to write the report and move in one transaction.
-2. **`done` is acceptance, not a worker's act.** It is reachable only from `in_review`, or
-   directly from `in_progress` on an `off` card. The card's own `acceptance_mode` names who
-   may close it: `off` — the deliverer, the loop (`taskd`) or a human; `agent` — the loop
-   after a current-round `APPROVE`, or a human; `human` — a person only. A review card is
-   closed by the loop or a human, never by its reviewer. A human closing an `agent` card
-   needs the current round's review cards resolved (`REVIEW_PENDING`), and a non-empty
-   acceptance baseline must be covered first (`ACCEPTANCE_INCOMPLETE` /
-   `ACCEPTANCE_UNVERIFIED`).
-3. **`awaiting` is a question; `blocked` is everything else.** `awaiting` has one entrance —
-   `in_progress → awaiting`, naming `E1`–`E5` — and cannot reach `in_review` or `done`.
-   `blocked` takes an optional `--blocked-reason`, cleared on exit; `in_review → blocked` is a
-   rework and starts a new round.
-4. **A container never reaches `done` by itself.** An epic cannot be claimed; the board starts
-   it and closes it to `in_review`. A parent cannot enter `in_review` or `done` while any child
-   is non-terminal (`CHILDREN_OPEN`).
-5. **The claim follows the status.** Held in `in_progress`, `awaiting`, `in_review` and
-   `blocked`; released on `todo`/`backlog`/`done`/`canceled`. `todo → in_progress` is a claim;
-   a rework keeps the executor.
-6. **Reopening needs a reason.** `done`/`canceled → todo` is the only terminal exit, via
-   `issue reopen` with a reason ≥ 8 characters; it starts a new round, clears the archive and
-   releases the idem key. `in_progress` is not a reopen target.
+The legal moves are the board's whitelist; it refuses every other pair and names the allowed
+ones in `details` — attempt the move and read the refusal. The table and the guard on each
+edge live in
+[`references/status-lifecycle.md#2-the-whitelist`](references/status-lifecycle.md#2-the-whitelist).
 
-Every guard in evaluation order, the round table, claim windows, the acceptance matrix
-and the refusal codes: [`references/status-lifecycle.md`](references/status-lifecycle.md).
+**`done` is acceptance; `canceled` is abandonment.** Deliver, then stop at `in_review`; the
+card's `acceptance_mode` names who may close it. Do **not** "close" a card — especially a
+container — by canceling it: canceling is legal from most stages and has no child guard, so
+it succeeds silently and leaves the work orphaned.
 
 ## Claim one card, deliver it, stop
 
@@ -107,15 +78,14 @@ taskctl report template <ref>                  # fill the TODO lines
 taskctl issue deliver <ref> --report-file -    # report + in_review, one transaction
 ```
 
-Then **stop**: acceptance is somebody else's act. Do **not** claim a card that is any of these
-— it is not yours:
+Then **stop**: acceptance is somebody else's act. An `epic` is a container — claim a leaf
+child. A card held by someone else, or still in `backlog`, is not yours; the board refuses.
 
-- **assigned to someone else** — the board refuses; it is never silently reassigned;
-- in **`backlog`** — only the dispatcher or a human releases it to `todo`;
-- an **`epic`** — a container, not a unit of work; claim its leaf children;
-- waiting on a **`depends_on` blocker that is not `done`** (a `canceled` predecessor withholds
-  it too). `issue candidates` withholds the last three; the claim verb does not re-check
-  blockers, so use `taskctl relation list <ref>` when a card you expected is missing.
+**The one silent exclusion is dependencies.** `issue candidates` withholds a card whose
+`depends_on` (reversed `blocks`) predecessor is not `done` — a `canceled` predecessor
+withholds it too. The claim verb does not re-check blockers by default (`--check-blockers`
+does), so a direct claim can take a blocked card. If a card you expected is missing, run
+`taskctl relation list <ref>`.
 
 A heartbeat resets the claim and **nothing else** — not status, not claimer, not the delivery
 round — and only the holder may send it. A claim you stop pulsing reads as abandoned.
@@ -125,15 +95,14 @@ round — and only the holder may send it. A claim you stop pulsing reads as aba
 `issue get <ref> --json` carries `acceptance[]` — the **frozen** snapshot the delivery gate
 reads. `meta.acceptance` is only the seed it was copied from; the gate never reads it.
 
-- **The snapshot is non-empty** — that is the list you work to. It is frozen: **append** with
-  `issue update <ref> --acceptance "…"`; never replace or remove. Removal is a human-only,
-  audited prune (`--drop-acceptance --reason`, ≥ 8 characters). Once the card is `in_review`
-  the baseline is locked; a wrong baseline means rework, which starts a new round.
-- **The snapshot is empty but `meta.acceptance` / `meta.acceptance_legacy` is not** — a
-  grandfathered card whose list renders as a seed. Append it as above; the next round freezes
-  it.
-- **All three are empty** — a mechanical derivation is still an acceptance decision. Derive
-  **1–6 concrete, externally checkable** items (usually 2–6; never pad) only when the project
+- **The snapshot is non-empty** — work to it. It is frozen: **append** with
+  `issue update <ref> --acceptance "…"`; never replace or remove (removal is a human-only,
+  audited prune). A wrong baseline means rework.
+- **Empty, but `meta.acceptance` / `meta.acceptance_legacy` is not** — a grandfathered card;
+  append as above, and the next round freezes it.
+- **All three are empty** — an empty baseline is vacuous and would let the card reach `done`
+  with nothing checked, so this is an acceptance decision, not a formality. Derive **1–6
+  concrete, externally checkable** items (usually 2–6; never pad) only when the project
   session's handoff pre-authorized it for this card, persist them once, and record the act:
 
 ```bash
@@ -142,53 +111,40 @@ taskctl comment add <ref> --kind note \
   --body "acceptance list derived at claim (pre-authorized): 1) … 2) …"
 ```
 
-Without that pre-authorization, write an agent `question` comment describing the proposed items
-and stop; the project session decides, including whether to escalate `E2`. Never derive on an
-**epic** (its acceptance is its children) or on a **review card**. If the card is too thin to
-yield checkable items, say so in the question rather than inventing them, and say in the
-delivery report that the list was derived when it was.
+Without that pre-authorization, write an agent `question` comment describing the proposed
+items and stop — leave the card `in_progress`; the project session answers and re-queues it,
+and decides whether to escalate `E2`. Never derive on an **epic** (its acceptance is its
+children) or on a **review card**. If the card is too thin to yield checkable items, say so in
+the question rather than inventing them, and say in the delivery report that the list was
+derived when it was.
 
 The report must **cover the snapshot**: every item appears by text; `met` or `not_applicable`
 (with a non-empty note) passes, `partial` / `not_met` block. A report item beyond the baseline
-blocks too if it is unfinished — the report itself says the work is. An imported checkbox list
-freezes as plain items: a tick on the card is the author's intent, not this delivery's evidence.
+blocks too if it is unfinished. An imported checkbox list freezes as plain items: a tick on
+the card is the author's intent, not this delivery's evidence.
 
 ### Delivering
 
-`issue deliver` writes the report and moves to `in_review` in one transaction. The board refuses
-`in_review` without a report for the current round (`REPORT_REQUIRED`) and prints the fixing
-command; `--no-report --reason "<why>"` (≥ 8 characters, mutually exclusive with
-`--report-file`) is the audited waiver for one round. Never move a card to `done` unless its
-own `acceptance_mode` lets you: `off` lets the deliverer close it (and `in_progress → done`
-directly), `agent` waits for an independent `APPROVE`, `human` means a person closes it. Who
-may accept what:
+`issue deliver` writes the report and moves to `in_review` in one transaction; use it rather
+than a separate report write and move. A waiver (`--no-report --reason "<why>"`, ≥ 8
+characters) excuses the report for one round, not acceptance.
+
+The mode is resolved once, at creation: `--acceptance-mode off|agent|human` is the card's
+snapshot; omitted, it follows the project's `acceptance` default (`auto` by default), where
+the creator decides or the card falls back to `human` (an epic falls back to `off`). An `off`
+card may go straight from `in_progress` to `done`; an `agent` card waits for the loop's
+current-round `APPROVE`; a `human` card is closed by a person. An agent may only tighten a
+mode (`off → agent|human`). A review card is always `off`. The board's matrix:
 [`references/status-lifecycle.md#7-acceptance-one-mode-per-card`](references/status-lifecycle.md#7-acceptance-one-mode-per-card).
-
-After delivery the board decides. When the card is `agent`, it dispatches an independent
-review card, applies the reviewer's `VERDICT:`, and accepts or returns the original. The
-mode is resolved once, at creation:
-
-- `--acceptance-mode off|agent|human` on `issue create` is the card's snapshot.
-- Omitted, it follows the project's `acceptance` default (`auto` by default). In an `auto`
-  project the creator decides: pass a mode, or the card falls back to `human` (an epic falls
-  back to `off`, because the board closes containers itself).
-- An `off` card is auto-accepted (`loop-auto`) and may be delivered straight to `done`.
-- A `human` card is never auto-accepted; a person closes it.
-- The mode can be changed with `taskctl issue update <ref> --acceptance-mode <value>
-  --reason "<why>"` (audited as `acceptance_override`). An agent may only tighten
-  (`off → agent|human`); leaving `agent` needs no open current-round review.
-- A review card is always `acceptance_mode = off`; it is never reviewed again.
 
 ## Containers: when the card is an epic
 
 A card filed from the web UI is always a `task`; an epic exists only where someone named one.
-Promoting and splitting is a scope decision, so it belongs to the project session (and an
-out-of-scope expansion to the human, `E1`). A worker that finds several independent
-deliverables writes an agent `question` comment describing the pieces, keeps the card
-`in_progress`, and stops.
-
-First decide what the card *is*: if its title and description name the **sum** of the work it
-is the container; if they name **one deliverable** it is a child of that container.
+Splitting is a scope decision: it belongs to the project session (an out-of-scope expansion to
+the human, `E1`), so a worker that finds several deliverables writes an agent `question`
+comment describing the pieces, keeps the card `in_progress`, and stops. Decide what the card
+*is* first: a title and description naming the **sum** of the work is the container; naming
+**one deliverable** makes it a child.
 
 | Card you have | Role | What to do |
 |---|---|---|
@@ -200,13 +156,10 @@ is the container; if they name **one deliverable** it is a child of that contain
 | `in_review`, `done`, `canceled` or archived | — | do **not** promote; create a new container and link the old card as a child (or `related` for history) |
 | a review card | — | do **not** promote; split a separate container |
 
-Promotion is only for a card that has **not delivered its current-round report**. The rollup
-collects the **children's** delivery reports, not the container's own history, so promoting a
-card that already delivered strands every child attached after it. A card that has delivered
-starts a *new* container instead.
-
-The decision-maker makes the container **before** any child work starts, and records the split
-with a `note`:
+**Promote before the card delivers its current-round report.** The rollup collects the
+**children's** delivery reports, not the container's own history, so promoting a card that
+already delivered strands every child attached after it. A card that has delivered starts a
+*new* container instead.
 
 ```bash
 taskctl issue update <ref> --kind epic       # the card keeps its status
@@ -215,33 +168,23 @@ taskctl issue create --project <p> --title "…" --target <t> --acceptance "…"
 taskctl relation add <ref> --type parent --target <child>     # <ref> is the parent
 ```
 
-Facts that decide that order:
+**An epic's acceptance is its children**; its delivery is a rollup of their reports. The board
+starts the container when a child enters work, and closes it to `in_review` (never `done`)
+when the tree is finished — but only from `todo`, `in_progress` or `blocked`: a `backlog` or
+`awaiting` epic does not auto-start, and an `in_review` epic that gains a child is not rolled
+up again (move it back to `in_progress`). An all-canceled tree is not a delivery — cancel the
+container instead. Attempt the close; the refusal names anything still open.
 
-- **An epic can never be claimed** (`not_claimable`), so a card that must end up `in_progress`
-  is claimed **while it is still a `task`**, then promoted. The promoted card keeps its status.
-- **The board starts it:** the first child to enter `in_progress` moves the container
-  `todo → in_progress`. **The board closes it:** when every child is terminal with at least one
-  `done`, it writes the rollup report and moves the epic to `in_review`, never `done`.
-- **An epic's delivery *is* its rollup.** A report on an epic must name every live child by
-  `ref` (`done` → `met`, `canceled` → `not_applicable` + note, at least one `done`); `done`
-  refuses a missing one (`ROLLUP_REQUIRED`) or a stale one (`ROLLUP_STALE`). A waiver cannot
-  deliver a container, and an empty epic has nothing to roll up. A child attached after the
-  rollup makes it stale — rework the epic to start a new round.
+Three rules that fail **silently**, so the board cannot teach them at that moment:
+
 - **Each child needs its own `--target`.** The create guard keys on kind + assignee + source +
   target, so two children for one owner with nothing to tell them apart are the *same card*
   (the second create is read as a retry). Use `--allow-dup` when a target does not apply.
-  **`issue create --parent <epic>` links nothing** — only `relation add --type parent` does.
-- **Nothing delivered stays open.** If every child was canceled or waived, there is no `done`
-  child to roll up — cancel the container instead. A `backlog` or `awaiting` epic does not
-  auto-start or auto-close: move it to `todo` (or `in_progress`) first. An `in_review` epic
-  that gains a child must be moved back to `in_progress`; the board will not roll it up from
-  `in_review`.
+- **`issue create --parent <epic>` links nothing** — only `relation add --type parent` does.
+- **A child attached after the rollup makes it stale**; rework the epic to start a new round.
 
-Before you write, check the shape: all children in the same project; at most **8** direct
-children; at most **8** nodes on a parent chain; an ancestor and a descendant may not `blocks`
-each other; a child has exactly one parent. Claim exactly **one** child and work it as usual —
-the container holds no work of its own. `issue reconcile` is the board's backstop for its own
-start/close rules, not a step you owe. Full rules:
+Claim exactly **one** leaf child and work it as usual — the container holds no work of its
+own. Full rules:
 [`references/status-lifecycle.md#6-containers-epic`](references/status-lifecycle.md#6-containers-epic).
 
 ## Review cards (flow B)
@@ -255,54 +198,50 @@ Claim it like any `todo` card, but the work is a review, not a change to the ori
 original's description, every acceptance item, the current round's report and evidence, the
 comment trail and (for an epic) its children. Then deliver a report **on this card** whose
 first line is exactly `VERDICT: APPROVE` or `VERDICT: REJECT`; put the findings after that
-line and in `leftovers`. Move neither card — the loop applies the verdict and closes the review
-card.
+line and in `leftovers`. Move neither card — the loop applies the verdict and closes the
+review card. A delivery whose first line is not a verdict is still accepted by the board; the
+loop records `verdict_unreadable`, so the review is wasted.
 
-The review card's `review_round` is the **original's** round being audited; the review card's
-own `delivery_round` is a different number (a fresh card starts at 1). A re-delivery after a
-rejection needs a new review card for the new round. Full protocol:
+The review card's `review_round` is the **original's** audited round; its own `delivery_round`
+is a different number. A re-delivery after a rejection needs a new review card. Full protocol:
 [`references/review-workflow.md`](references/review-workflow.md).
 
 ## Waiting: a human question, or blocked
 
 - A question for a person is **`awaiting`**, not `blocked` and not a chat message:
-  `issue move <ref> awaiting --awaiting-reason E3 --question "…"`. The reason must be `E1`–`E5`
-  (scope · acceptance baseline · design direction · security · architecture), and an agent
-  must also ask the question (`--question`, or an earlier unanswered one on the card). **Any
-  human comment** re-queues the card to `todo`; `awaiting → in_progress` resumes the same
-  attempt without a new delivery round.
+  `issue move <ref> awaiting --awaiting-reason E3 --question "…"`. The reason is one of `E1`–
+  `E5` (scope · acceptance baseline · design direction · security · architecture), and an
+  agent must also ask the question. **Any human comment** re-queues the card to `todo`;
+  `awaiting → in_progress` resumes the same attempt without a new delivery round.
 - **`blocked`** is for everything else. `--blocked-reason` is optional; its literals and
   meanings are in
   [`references/card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for`](references/card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for).
 
 ## Coordinating with other agents
 
-- **Never force a conflict.** On `VERSION_CONFLICT`, or a claim that looks stale, re-read the
-  card once and retry from the fresh state with the current `--if-version`. Blind retries are
-  how two agents overwrite each other.
-- **Stamp every write with your identity:** `--actor-kind <kind> --session-id <id>`. The
-  session id turns a card back into "which conversation did this", and lets a resumed session
-  re-attach instead of starting over. `taskctl session id <ref> --seg <seg> --owner <name>`
-  derives it before a session starts; with no board reachable,
-  [`scripts/session-id.mjs`](scripts/session-id.mjs) computes the same value from the resolved
-  task UUID (`--task-id`, from `issue get <ref> --json` → `data.task.id`).
-- **The board runs no timer.** On an agent kind with the loop installed, the `meerkat-loop`
-  skill owns the scheduler — do not add a second poller or schedule its entries yourself. An
-  agent kind or service that owns its own timer drives one tick of
-  `candidates → claim → heartbeat`, and binds scripts to `error.code` and
-  `error.hint.command`, never to prose.
+- **Never force a conflict.** On `VERSION_CONFLICT`, re-read the card once and retry with the
+  fresh `--if-version`; a blind retry is how two agents overwrite each other.
+- **Stamp every write with your identity:** `--actor-kind <kind> --session-id <id>`.
+  `taskctl session id <ref> --seg <seg> --owner <name>` derives it before a session starts;
+  offline, [`scripts/session-id.mjs`](scripts/session-id.mjs) computes the same value from the
+  resolved task UUID (`--task-id` from `issue get <ref> --json` → `data.task.id`).
+- **Metadata has two writers.** `issue meta` is a read-modify-write with `--if-version` that
+  preserves value types; `issue update --meta` merges but stringifies new values and sends no
+  CAS, so a concurrent write can be lost. Use `issue meta` for machine keys. Neither writes
+  `acceptance[]`.
+- **The board runs no timer.** The `meerkat-loop` skill owns the scheduler — add no second
+  poller. A service with its own timer drives one tick of `candidates → claim → heartbeat`,
+  binding to `error.code` and the hint fields, never to prose.
 
 ## Configuring project directories
 
-**The board holds no directories.** The only answer to "which directory does work for this
-project happen in" is `projects.json`, kept **beside this skill** — its schema, resolution
-rules and validation codes are in [`references/projects-json.md`](references/projects-json.md).
+**The board holds no directories.** The only answer is `projects.json` beside this skill —
+schema and validation codes in
+[`references/projects-json.md`](references/projects-json.md).
 
-A project with **no directory** is registered with an entry naming none; `taskctl project dir
-<project>` says so and succeeds. Do not point it at a directory "so the command works".
-
-A project **absent** from the file has no registered directory, and the board cannot supply
-one. Do not guess. When a step needs the directory, stop and ask:
+A project with **no directory** is an entry naming none: `taskctl project dir <project>` says
+so and succeeds. Do not invent one. A project **absent** from the file has no registered
+directory and the board cannot supply one — do not guess. When a step needs it, stop and ask:
 
 ```text
 No local directory is registered for project <project>.
@@ -310,62 +249,26 @@ Which directory does it work in? I will add it to projects.json beside this skil
 (references/projects-json.md) — the board cannot supply one.
 ```
 
-Work that needs no directory (claiming, moving, commenting, delivering) is unaffected.
+Claiming, moving, commenting and delivering need no directory.
 
 ## Keeping the brief fresh
 
-A card exported into a project directory is a **snapshot**. Keep it fresh by registering it
-with the local event hub once; the command returns immediately and the hub — not your shell —
-owns the board connection:
-
-```bash
-taskctl export watch <ref> --dir <project-dir> --detach
-```
-
-This works the same in every harness: the CLI starts the hub detached (a new session), so a
-harness that tears down its command's process group at the end of a turn cannot kill it. Do
-not run the watcher with a plain shell `&`. Check it with:
-
-```bash
-taskctl export watch <ref> --dir <project-dir> --watch-status
-```
-
-and stop it at closeout with:
-
-```bash
-taskctl export watch <ref> --dir <project-dir> --stop
-```
-
-If the hub cannot run in your sandbox, `--watch-status` says so; fall back to the portable
-one-shot at phase boundaries and before a resume:
-
-```bash
-taskctl export watch <ref> --dir <project-dir> --once
-```
-
-A detached registration is persisted and resumes if the hub restarts; `--ttl` (default 2
-hours) and `--stop` bound it. Pass a larger `--ttl` (or `0` to disable it) for a task
-expected to outlive two hours. Either form writes `<project-dir>/.meerkat/<identifier>/card.md`
-and re-renders it whenever the board changes that card (`comment_added`, `task_updated`, a
-move, an attachment, …). It stops refreshing once the card reaches `done` (writing the final
-brief first). A card that stops at `in_review` is not done yet: stop the registration when
-the session ends, and start a new one if a done card is reopened. The watcher is one-way: it
-refreshes the file, it does not wake you, so re-read the brief before a decision or a resume.
-
-**Do not start one when the `meerkat-loop` supervisor dispatched you**: its `--subscribe`
-daemon already follows the same hub and refreshes active queued briefs, and a second watcher
-is duplicated traffic. Either way `card.md` is machine-generated — never hand-edit it. The
-command's output and exact flags are in
+A card exported into a project directory is a **snapshot**. Register it once with the local
+event hub — `export watch <ref> --dir <dir> --detach` — and check it with `--watch-status`.
+The hub, not your shell, owns the board connection, so never use a plain `&`; the portable
+form is `--once`, and `--stop` ends it. It writes `.meerkat/<identifier>/card.md`, stops at
+`done`, and is one-way — re-read the brief before a decision, and never hand-edit it. **A
+loop-dispatched worker starts no watcher**: the loop's `--subscribe` already refreshes active
+briefs. Detail:
 [`references/cli.md#export-watch`](references/cli.md#export-watch).
 
 ## Where to look
 
 | You need… | Read |
 |---|---|
-| a status, transition, guard, delivery round, claim window, refusal code, or the board's workflow plan | [`references/status-lifecycle.md`](references/status-lifecycle.md) |
+| a transition, guard, delivery round, claim window, refusal code, or the board's workflow plan | [`references/status-lifecycle.md`](references/status-lifecycle.md) |
 | a command, its flags, exit codes, the `--json` envelope, or the live-stream contract | [`references/cli.md`](references/cli.md) |
 | what a reviewer reads and writes, and the two-round model | [`references/review-workflow.md`](references/review-workflow.md) |
-| the `taskctl` invocations and JSON keys a supervisor binds to | [`references/capabilities.md`](references/capabilities.md) |
 | the `export md` card format, identifier syntax, or `blocked_reason` meanings | [`references/card-schema.md`](references/card-schema.md) |
-| how to keep `.meerkat/<identifier>/card.md` current while you work | [`references/cli.md#export-watch`](references/cli.md#export-watch) |
+| the `taskctl` invocations and JSON keys a supervisor binds to | [`references/capabilities.md`](references/capabilities.md) |
 | the project ↔ directory map | [`references/projects-json.md`](references/projects-json.md) |

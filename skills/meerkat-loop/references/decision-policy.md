@@ -1,6 +1,6 @@
 # Decision policy — who may decide what
 
-This is the loop's default question policy. A team installed by `setup-meerkat` may
+This is the loop's default question policy. A team authored by `setup-meerkat` may
 ship `decision-policy.md` in its roles root; the project-level copy
 (`.meerkat/roles/decision-policy.md`) wins over the global one, and either wins over
 this file. The policy is prompt guidance, not a board gate: the board still enforces
@@ -89,8 +89,8 @@ only a human comment resumes an `awaiting` card.
    the questions downstream of it; ask the rest of the frontier now.
 5. **Reshape and repeat.** Answers settle branches and unblock the next frontier. Recompute
    it and ask the next round. The round closes only when the frontier is empty.
-6. **Do not act early.** Do not build, freeze a direction, install or write files while a
-   frontier item is open. Record the settled answers in `plan.md`, `spec.md` or
+6. **Do not act early.** Do not build, add dependencies, freeze a direction or write files
+   while a frontier item is open. Record the settled answers in `plan.md`, `spec.md` or
    `test-plan.md` (and on the card), and confirm the shared understanding with the decider.
 
 **Card mode — collaborative.** For card execution (Jobs/Linus/Turing) lead with the
@@ -130,21 +130,17 @@ E-code.
 
 ## Recording
 
-- Subagent question: `taskctl comment add <ref> --kind question --body "..." <flags>`
-  while the card stays `in_progress`. The loop's question lane hands it to the project
-  session on the next poll.
-- Main-session decision: `taskctl comment add <ref> --kind note --body "decision: ..."`,
-  then answer the subagent or `taskctl issue move <ref> todo`.
-- Human escalation:
-  `taskctl issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."`.
+- Subagent question: `taskctl comment add <ref> --kind question --body "..."` while the card
+  stays `in_progress`; poll's question lane hands it to the project session.
+- Main-session decision: `taskctl comment add <ref> --kind note --body "decision: ..."`, then
+  answer the subagent or `taskctl issue move <ref> todo`.
+- Human escalation: `taskctl issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."`.
 - Human answer: `taskctl comment add <ref> --kind <any> --as-human ...`; the board
-  auto-requeues the card. On the board itself the human types in the drawer's comment box
-  and submits — the UI sends `discuss`, and that is an answer too. A `decision` /
-  `confirm` / `change` kind is the explicit record marker a reviewer can query; the
-  resume itself no longer depends on it.
+  auto-requeues the card. On the board the human types in the drawer's comment box (the UI
+  sends `discuss`, which is an answer too). `decision` / `confirm` / `change` is the explicit
+  record marker a reviewer can query; the resume does not depend on it.
 
-`--as-human` signs the fixed local human name (`TASKCTL_HUMAN`). It is the one way to
-record what the human said; it is never the loop's own voice. In a human-opened loop
-(`--opened-by human`), the control session may ask its operator in the conversation and
-then record the answer with `--as-human`; a supervisor-opened loop leaves the card on the
-board for the human's comment.
+`--as-human` signs the fixed local human name (`TASKCTL_HUMAN`). It is the one way to record
+what the human said; it is never the loop's own voice. In a human-opened loop
+(`--opened-by human`), the control session may ask its operator in the conversation and record
+the answer with `--as-human`; a supervisor-opened loop leaves the card on the board.

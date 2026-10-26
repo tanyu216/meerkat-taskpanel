@@ -217,11 +217,11 @@ for (const { kind, dir } of KINDS) {
       const run = runBare(dir, ["--version"], NO_CLI);
 
       assert.match(run.stderr, /cannot find the board CLI/, run.stderr);
-      // The remedy must be executable advice, and cover both ways in: an installed CLI, or
-      // a checkout named explicitly.
+      // The remedy must be executable advice and cover both ways in: a CLI on PATH, or a
+      // checkout named explicitly.
       assert.match(run.stderr, /taskctl/, "the remedy must name the CLI");
       assert.match(run.stderr, /MEERKAT_TASKPANEL_ROOT/, "the remedy must name the root override");
-      assert.match(run.stderr, /install\.sh/, "the remedy must name the installer");
+      assert.match(run.stderr, /put the CLI on your PATH/, "the remedy must name the PATH route");
       // Provenance, not a crash target: the derived path is shown as somewhere it *looked*.
       assert.match(run.stderr, /looked for it at/, run.stderr);
       // The derived path is the bare copy's own (`here/../../..`), not the installed one:

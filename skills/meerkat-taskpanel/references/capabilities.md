@@ -136,11 +136,12 @@ All writes use `--actor-kind taskd` and are idempotent by their key.
 | move | `issue move <ref> <status>` | `ok` only |
 | comment | `comment add <ref> --kind note\|change --body <text>` | `ok` only |
 
-`issue meta` **merges**; `issue update --meta` replaces the whole object and would
-erase `target` and the review keys. Use `issue meta`. The acceptance baseline is a column,
-immune to `--meta`, and a **changed** `meta.acceptance` / `meta.acceptance_legacy` is refused
-(`VALIDATION_FAILED`) — append with `issue update --acceptance`, prune only as a human with
-`--drop-acceptance --reason`.
+Both forms merge into the existing object. `issue meta` is a read-modify-write guarded by
+`--if-version` that preserves the existing value types; `issue update --meta` stringifies new
+values and sends no CAS, so a concurrent write can be lost. Use `issue meta` for machine keys.
+The acceptance baseline is a column, immune to `--meta`, and a **changed** `meta.acceptance` /
+`meta.acceptance_legacy` is refused (`VALIDATION_FAILED`) — append with
+`issue update --acceptance`, prune only as a human with `--drop-acceptance --reason`.
 
 ## Questions — the `awaiting` protocol
 

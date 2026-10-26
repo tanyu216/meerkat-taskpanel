@@ -271,6 +271,13 @@ describe("loop skill: SKILL.md", () => {
     assert.match(section, /bin\/taskctl/);
   });
 
+  it("makes supervisor mode headless: questions only as board comments", () => {
+    assert.match(text, /mode: supervised/);
+    assert.match(text, /headless/i);
+    assert.match(text, /Never ask a question there/);
+    assert.match(text, /board comment/i);
+  });
+
   it("documents the live-session mode in operation.md", () => {
     const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
     assert.match(operation, /## Manual mode/);
@@ -313,13 +320,13 @@ describe("loop skill: SKILL.md", () => {
     assert.ok(text.includes("scripts/board-check.mjs"), "the gate must be named at the point of declaration");
   });
 
-  it("says out loud that OpenClaw never gets the loop", () => {
-    assert.match(text, /OpenClaw is deliberately excluded/);
+  it("keeps installation out of the skill, and ships no committed loop bundle", () => {
+    assert.doesNotMatch(text, /install\.sh/, "the loop skill must not carry installation instructions");
+    assert.doesNotMatch(text, /--supervisor=/, "the loop skill must not carry the supervisor opt-in");
     // No agent kind takes a generated copy of the loop: every harness reads the repository's own
-    // skills/ tree, and OpenClaw is excluded by ruling. `install.sh` is the loop's only
-    // distribution path — there is no loop bundle in the marketplace any more, and no
-    // `plugins/` tree for one to live in (asserted against the checkout in
-    // test/scaffold.test.mjs, which is where the "exactly one skills tree" invariant lives).
+    // skills/ tree. There is no loop bundle in the marketplace any more, and no `plugins/` tree
+    // for one to live in (asserted against the checkout in test/scaffold.test.mjs, which is
+    // where the "exactly one skills tree" invariant lives).
     assert.equal(
       existsSync(join(ROOT, "plugins")),
       false,
@@ -571,7 +578,7 @@ describe("board skill: references resolve where the skill is installed", () => {
 });
 
 describe("board skill: the status whitelist matches the domain", () => {
-  const files = ["SKILL.md", "references/status-lifecycle.md"];
+  const file = "references/status-lifecycle.md";
 
   function block(text, file) {
     const begin = text.indexOf("<!-- status-whitelist:begin -->");
@@ -610,17 +617,17 @@ describe("board skill: the status whitelist matches the domain", () => {
     return { table, epic };
   }
 
-  it("re-encodes ALLOWED_TRANSITIONS and the epic overlay", () => {
-    const blocks = files.map((file) =>
-      block(readFileSync(join(ROOT, "skills/meerkat-taskpanel", file), "utf8"), file),
-    );
+  it("has one home and re-encodes ALLOWED_TRANSITIONS with the epic overlay", () => {
+    const skill = readFileSync(join(ROOT, "skills/meerkat-taskpanel/SKILL.md"), "utf8");
     assert.equal(
-      blocks[0].replace(/\s+/g, " ").trim(),
-      blocks[1].replace(/\s+/g, " ").trim(),
-      "the SKILL.md and reference copies must agree",
+      skill.includes("<!-- status-whitelist:begin -->"),
+      false,
+      "the whitelist has exactly one home (status-lifecycle.md §2)",
     );
+    assert.match(skill, /status-lifecycle\.md#2-the-whitelist/);
 
-    const { table, epic } = parse(blocks[1], files[1]);
+    const raw = block(readFileSync(join(ROOT, "skills/meerkat-taskpanel", file), "utf8"), file);
+    const { table, epic } = parse(raw, file);
     for (const status of STATUSES) {
       assert.deepEqual(
         [...table[status]].sort(),
@@ -636,13 +643,12 @@ describe("board skill: the status whitelist matches the domain", () => {
   });
 });
 
-describe("board and loop skills: the acceptance matrix agrees", () => {
+describe("board skill: the acceptance matrix has one home", () => {
   const BEGIN = "<!-- acceptance-matrix:begin -->";
   const END = "<!-- acceptance-matrix:end -->";
   const copies = [
     ["status-lifecycle.md", join(ROOT, "skills/meerkat-taskpanel/references/status-lifecycle.md")],
     ["review-workflow.md", join(ROOT, "skills/meerkat-taskpanel/references/review-workflow.md")],
-    ["meerkat-loop/SKILL.md", join(LOOP_SKILL, "SKILL.md")],
   ];
 
   /** The raw block between the markers, asserting the markers appear exactly once. */
@@ -658,7 +664,7 @@ describe("board and loop skills: the acceptance matrix agrees", () => {
   const cells = (line) =>
     line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
 
-  it("keeps the three copies byte-identical after whitespace normalisation", () => {
+  it("keeps both copies byte-identical after whitespace normalisation", () => {
     const blocks = copies.map(([, path]) => marked(path));
     for (let i = 1; i < blocks.length; i += 1) {
       assert.equal(
@@ -667,6 +673,12 @@ describe("board and loop skills: the acceptance matrix agrees", () => {
         `${copies[i][0]} and ${copies[0][0]} must agree`,
       );
     }
+  });
+
+  it("leaves the loop skill a charter, not another copy", () => {
+    const loopSkill = readFileSync(join(LOOP_SKILL, "SKILL.md"), "utf8");
+    assert.equal(loopSkill.includes(BEGIN), false, "the loop restates no matrix");
+    assert.match(loopSkill, /acceptance_mode[^\n]*authoritative/i);
   });
 
   it("re-encodes the board's acceptance modes", () => {
@@ -736,8 +748,18 @@ describe("board skill: the container decision", () => {
     assert.match(lifecycle, /delivery report/i);
   });
 
-  it("names the shape limits", () => {
-    assert.match(skill, /\*\*8\*\* direct\s+children/i);
-    assert.match(skill, /\*\*8\*\* nodes on a parent chain/i);
+  it("leaves the board-enforced container codes to the refusal", () => {
+    assert.doesNotMatch(skill, /CHILDREN_OPEN/);
+    assert.doesNotMatch(skill, /ROLLUP_REQUIRED|ROLLUP_STALE/);
+    assert.match(skill, /status-lifecycle\.md#6-containers-epic/);
+  });
+
+  it("names the shape limits where the card schema defines them", () => {
+    const schema = readFileSync(
+      join(ROOT, "skills/meerkat-taskpanel/references/card-schema.md"),
+      "utf8",
+    );
+    assert.match(schema, /\*\*8\*\*\s+children/);
+    assert.match(schema, /\*\*8\*\*\s+deep/);
   });
 });
