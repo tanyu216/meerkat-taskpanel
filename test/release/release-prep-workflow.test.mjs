@@ -81,4 +81,14 @@ describe("release-prep: the PR", () => {
     assert.match(text, /gh pr edit/);
     assert.match(text, /gh pr create/);
   });
+
+  it("dispatches the gate workflows on the release branch", async () => {
+    const text = code(await read());
+    assert.match(text, /^ {2}actions: write\b/m, "dispatching a workflow needs actions: write");
+    for (const workflow of ["check.yml", "security-scan.yml", "web-dom.yml"]) {
+      assert.ok(text.includes(`gh workflow run "$workflow"`), `must dispatch ${workflow}`);
+    }
+    assert.match(text, /gh workflow view/, "an unregistered workflow is skipped, not a failed prep");
+    assert.ok(!text.includes("gh workflow run release.yml"), "publishing is not this step's job");
+  });
 });

@@ -8,12 +8,22 @@ name: security-scan
 #   npm audit    →  npm-audit.json    ├→  CVSS >= 7.0 blocks
 #   syft         →  sbom.spdx.json    ┘   unless an unexpired waiver covers it
 #
+# Triggers:
+#
+#   * `pull_request` — the change is scanned when it is proposed;
+#   * `push` of a `v*` tag — the release artefact gets a bill of materials;
+#   * a weekly full scan and a daily incremental alert;
+#   * `workflow_dispatch`.
+#
+# There is deliberately no branch-push trigger: a lockfile change is scanned on
+# its pull request, and the schedule is the safety net for everything else.
+#
 # Two deliberate boundaries:
 #
 #   1. This workflow produces the SBOM itself, including on a `v*` tag push, rather than
-#      hanging off the release pipeline — the release and check workflows are owned by
-#      other changes and are not edited here. On a tag the SBOM is also attached to the
-#      GitHub Release (which the release pipeline publishes) if one already exists.
+#      hanging off the release pipeline. Pull requests do not regenerate it — the
+#      SBOM describes a release, and the release pipeline is where it matters. On a
+#      tag it is also attached to the GitHub Release if one already exists.
 #   2. A finding never fails the run on its own: the scanner steps are `continue-on-error`
 #      and the gate exits 0 unless `SCAN_STRICT=1` (a repository variable) or a dispatch
 #      sets `strict: true`. Alerting stays useful; only an explicit opt-in turns a known
@@ -21,11 +31,14 @@ name: security-scan
 #
 # What is scanned: this repository ships zero runtime dependencies, so the supply chain is
 # its **build chain** — `web/`'s build-time devDependencies, pinned by the one committed
-# lockfile `web/package-lock.json`. The SBOM is produced regardless.
+# lockfile `web/package-lock.json`.
+#
+# `security-success` aggregates the two jobs for branch protection. Both jobs always
+# report; only the expensive steps are conditional, so a required check can never go
+# missing because a pull request happened not to touch a lockfile.
 
 on:
   push:
-    branches: ["**"]
     tags: ["v*"]
   pull_request:
   schedule:
@@ -95,11 +108,39 @@ jobs:
           elif [ -n "$cron" ]; then
             mode="incremental"
           else
-            # Push, pull request and the default dispatch all scan everything.
+            # Pull requests, tag pushes and the default dispatch all scan everything.
             mode="full"
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
           echo "scan mode: $mode"
+
+      # A pull request that touches no dependency input has nothing to scan. The
+      # scanners are skipped, but the job still reports and the gate still runs
+      # over empty reports — a required check must never go missing.
+      - name: Detect whether a dependency input changed
+        id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          changed="$(git diff --name-only "origin/${BASE_REF}...HEAD" -- \
+            package.json web/package.json web/package-lock.json \
+            scripts/security .github/workflows/security-scan.yml)"
+
+          if [ -n "$changed" ]; then
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+            echo "Dependency inputs changed: ${changed}"
+          else
+            echo "scan=false" >> "$GITHUB_OUTPUT"
+            echo "No dependency input changed — scanners skipped; the gate still reports." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # The incremental run scans the lockfiles that changed in the last 24 hours. When
       # none did, the scan set is genuinely empty: a real, empty report is written (rather
@@ -126,7 +167,7 @@ jobs:
       # `--recursive` finds every lockfile and SBOM in the tree, including the web/ build
       # chain the zero-runtime-dependency rule makes the interesting part of this repo.
       - name: osv-scanner (full)
-        if: steps.mode.outputs.mode == 'full'
+        if: steps.detect.outputs.scan == 'true' && steps.mode.outputs.mode == 'full'
         continue-on-error: true
         uses: google/osv-scanner-action/osv-scanner-action@e69cc6c86b31f1e7e23935bbe7031b50e51082de # v2.0.2
         with:
@@ -137,7 +178,7 @@ jobs:
             ./
 
       - name: osv-scanner (incremental)
-        if: steps.mode.outputs.mode != 'full' && steps.targets.outputs.changed == 'true'
+        if: steps.detect.outputs.scan == 'true' && steps.mode.outputs.mode != 'full' && steps.targets.outputs.changed == 'true'
         continue-on-error: true
         uses: google/osv-scanner-action/osv-scanner-action@e69cc6c86b31f1e7e23935bbe7031b50e51082de # v2.0.2
         with:
@@ -150,11 +191,21 @@ jobs:
       # the repository's no-dependency policy. It exits non-zero on a finding, which is why
       # the step is alert-only; the JSON report is what the gate reads.
       - name: npm audit (web/ build-time devDependencies)
+        if: steps.detect.outputs.scan == 'true'
         continue-on-error: true
         working-directory: web
         run: npm audit --json --audit-level=high > "$GITHUB_WORKSPACE/npm-audit.json"
 
-      # The only step that can fail the run, and only when strict is asked for.
+      # A real, empty report for each scanner: the gate stays readable and reports a
+      # pass over zero findings rather than failing because a file is absent.
+      - name: Write empty reports (no dependency input changed)
+        if: steps.detect.outputs.scan != 'true'
+        run: |
+          printf '{"results":[]}\n' > osv-results.json
+          printf '{"auditReportVersion":2,"vulnerabilities":{},"metadata":{"vulnerabilities":{}}}\n' > npm-audit.json
+
+      # The only step that can fail the run, and only when strict is asked for. It
+      # always runs, so the required check always reports.
       - name: Threshold gate (CVSS >= 7.0 blocks; SCAN_STRICT=1 enforces)
         env:
           SCAN_STRICT: ${{ (github.event.inputs.strict == 'true' || vars.SCAN_STRICT == '1') && '1' || '' }}
@@ -184,9 +235,18 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # syft scans the working tree, not history.
+          fetch-depth: 1
 
-      # Produced here, by this workflow, on every trigger — including a `v*` tag push.
+      # The job stays unconditional so the required check reports on every event; only
+      # the expensive generation is skipped on pull requests.
+      - name: Pull requests do not regenerate the SBOM
+        if: github.event_name == 'pull_request'
+        run: echo "::notice::SBOM generation is skipped on pull requests; tags, schedules and dispatches produce it"
+
       - name: Generate the SBOM (syft, SPDX JSON)
+        if: github.event_name != 'pull_request'
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
@@ -216,3 +276,26 @@ jobs:
             sleep 15
           done
           echo "::notice::no release exists yet for $GITHUB_REF_NAME — the SBOM is available as a workflow artifact"
+
+  security-success:
+    name: security-success
+    if: always()
+    needs: [dependency-scan, sbom]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every security job succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node -e '
+            const needs = JSON.parse(process.env.RESULTS);
+            const failed = Object.entries(needs)
+              .filter(([, job]) => job.result !== "success")
+              .map(([name, job]) => `${name}=${job.result}`);
+            if (failed.length > 0) {
+              console.error(`security jobs did not succeed: ${failed.join(", ")}`);
+              process.exit(1);
+            }
+            console.log("both security jobs succeeded");
+          '

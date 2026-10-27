@@ -1,0 +1,70 @@
+name: web-dom
+
+# The browser layer, on every pull request.
+#
+# `test/web/blocks.dom.test.mjs` is the only suite that launches a browser. It
+# skips in the container (no Chromium) and in the `check` job (no `web/dist`), so
+# before this workflow it ran on a developer host only. This lane builds the
+# frontend, installs a pinned Playwright outside the repository, and runs the
+# three legs for real.
+#
+# It is deliberately a separate workflow: `check.yml` must not contain an install
+# step (the zero-dependency rule for the engine, asserted by test/docker.test.mjs),
+# and the frontend toolchain is the documented build-time exception.
+#
+# Not a required check yet: a new lane earns its place by being stable first.
+# Once it is, it can be folded into `check.yml` and `ci-success`.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-dom-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep in step with the harness on the developer host. Playwright is a
+  # host-only tool, deliberately absent from web/package.json: the engine has no
+  # dependencies, and this install lives outside the repository.
+  PLAYWRIGHT_VERSION: "1.63.0"
+
+jobs:
+  dom:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+
+      # The frontend's build-time devDependencies are the documented exception to
+      # the zero-dependency rule (docs/docker.md); the lockfile pins them.
+      - name: Install the frontend build-time dependencies
+        run: npm ci --prefix web
+
+      - name: Build web/dist
+        run: npm --prefix web run build
+
+      - name: Install Playwright + Chromium outside the repository
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/pw" \
+            --no-save --no-package-lock "playwright@${PLAYWRIGHT_VERSION}"
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+
+      # `--require=all` fails closed: it launches the browser before deciding, so
+      # a missing Chromium is a red here, not a quiet skip.
+      - name: Frontend coverage verdict (both legs required)
+        env:
+          PLAYWRIGHT_ROOT: ${{ runner.temp }}/pw
+        run: node scripts/verify/web-dist.mjs --require=all
+
+      - name: Browser/DOM contract legs
+        env:
+          PLAYWRIGHT_ROOT: ${{ runner.temp }}/pw
+        run: node --test test/web/blocks.dom.test.mjs

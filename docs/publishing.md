@@ -189,9 +189,13 @@ one can stop the next:
    gh workflow run release-prep.yml -f version=0.1.2
    ```
 
-   A PR created with `GITHUB_TOKEN` does **not** trigger `pull_request` workflows. The PR
-   body says so: close and reopen it to start the checks. (A dedicated App/PAT token would
-   close that gap; the pipeline deliberately does not require one.)
+   A PR created with `GITHUB_TOKEN` does **not** trigger `pull_request` workflows, so the
+   workflow dispatches the gates on the release branch itself (`check.yml`,
+   `security-scan.yml`, `web-dom.yml`). A dispatch needs the workflow to be registered on
+   the **default branch** with a `workflow_dispatch` trigger; until this CI layout has
+   shipped to `main`, the dispatch is a notice and the PR body's close-and-reopen fallback
+   still applies. (A dedicated App/PAT token would close that gap entirely; the pipeline
+   deliberately does not require one.)
 
 2. **A human merges the PR — with a merge commit, never a squash.** The release commit
    `chore(release): <version>` must stay in `main`'s history for the tag step to find it.
@@ -283,8 +287,9 @@ Local hooks (`git config core.hooksPath .githooks`, wired by the root `package.j
 CI is the authority: **`.github/workflows/version-gate.yml`** runs on a `v*` tag push and
 runs `tag-version.mjs "$GITHUB_REF_NAME" --on-main`, `version.mjs` and
 `changelog.mjs "$GITHUB_REF_NAME" --strict`. It is a separate workflow on purpose —
-`.github/workflows/check.yml` is owned by a concurrent change and is deliberately not
-touched, so the release/version rule is carried by `version-gate.yml` instead.
+The release/version rule is carried by `version-gate.yml`: it runs only when a tag is
+pushed, which is the moment the rule matters, while `check.yml` carries the per-pull-request
+half.
 
 ### 3.2 The API contract gate
 
@@ -296,9 +301,9 @@ error codes, and wire field names and types — against
 snapshot update is a non-zero exit. Next to it, `scripts/verify/route-request.mjs`
 proves the declaration the snapshot freezes is the one the handler honours: it reads
 each route's handler source and compares the fields it reads against the declared
-`{query, body}`. `version-gate.yml` runs the snapshot check at tag time, and
-`.github/workflows/contract-gate.yml` runs both on every branch push and pull request.
-The full story, and the `--update` workflow, is in [contract.md](contract.md).
+`{query, body}`. `version-gate.yml` runs the snapshot check at tag time, and the
+`contract` job in `.github/workflows/check.yml` runs both on every pull request and every
+push to `dev`. The full story, and the `--update` workflow, is in [contract.md](contract.md).
 
 ### 3.3 Branch protection on `main`, and tags cut only from `main`
 
@@ -313,13 +318,18 @@ does not hand its workflows). They are stated as policy, with the human steps th
    refuses a direct push to `main` locally ([.githooks/README.md](../.githooks/README.md)),
    which is a courtesy — the rule below is the enforcement.
 2. **The required checks are green before the merge.** The checks are this repository's own
-   workflows, so the list is short and closed — from `check.yml` the `check` job (both matrix
-   legs) and the `docker` job, from `contract-gate.yml` the `contract` job, and from
-   `security-scan.yml` the `Dependency scan (osv-scanner + npm audit)` and `SBOM (syft)`
-   jobs. In the GitHub UI they appear under the names the jobs declare: `check (22)`,
-   `check (24)`, `docker`, `contract`. Requiring the scan is safe by design — that job is
-   alert-only (`SCAN_STRICT` off), so a known advisory does not red the build; requiring it
-   makes the scan's *presence* non-optional, not its verdict.
+   workflows, so the list is short and closed — and deliberately aggregated:
+   - `ci-success` (from `check.yml`) covers the `check` job (both matrix legs), `docker`,
+     `contract`, `paths` and `signposts`;
+   - `security-success` (from `security-scan.yml`) covers the `Dependency scan
+     (osv-scanner + npm audit)` and `SBOM (syft)` jobs.
+
+   The underlying jobs still appear in the UI under the names they declare: `check (22)`,
+   `check (24)`, `docker`, `contract`. Requiring the aggregate rather than each job is the
+   point: a renamed, removed or silently skipped job fails the aggregate instead of leaving
+   the protection rule waiting on a check that will never report. Requiring the scan is safe
+   by design — that job is alert-only (`SCAN_STRICT` off), so a known advisory does not red
+   the build; requiring it makes the scan's *presence* non-optional, not its verdict.
 3. **A version tag is cut only from a commit on `main`.** A tag is pushed, not merged, so
    the checks above ran on the pull request that produced its commit; §3.1's CHANGELOG rule
    still guards the version string itself.
@@ -341,9 +351,8 @@ run *because* a tag was pushed, which is exactly why rule 3 matters.
     does not let you approve your own pull request), and pairing it with *Do not allow
     bypassing* below freezes `main` outright; a single-maintainer repository is better served
     by requiring the pull request and keeping the administrative bypass;
-  - **Require status checks to pass before merging** — search for and add `check` (both
-    matrix legs), `docker`, `contract`, `Dependency scan (osv-scanner + npm audit)` and
-    `SBOM (syft)`, then tick *Require branches to be up to date before merging*;
+  - **Require status checks to pass before merging** — search for and add `ci-success` and
+    `security-success`, then tick *Require branches to be up to date before merging*;
   - **Require conversation resolution before merging**;
   - **Do not allow bypassing the above settings**, so administrators are covered too;
   - leave *Allow force pushes* and *Allow deletions* **unchecked**.

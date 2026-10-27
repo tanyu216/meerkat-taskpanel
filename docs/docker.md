@@ -105,8 +105,11 @@ preflight do the one pull).
 `docker/Dockerfile` is multi-stage, because the repository has two build layers (see
 [development.md](development.md#two-build-layers-engine-and-web)):
 
-1. **`webbuild`** — `COPY . .`, then a three-way guard decides how the `web/` frontend is
-   installed, followed by the Vite build, producing `web/dist`:
+1. **`webbuild`** — `COPY web ./web`, then a three-way guard decides how the `web/` frontend
+   is installed, then the Vite build, and only after that `COPY . .` for the rest of the
+   repository. The order is deliberate: the install and build layers are keyed on `web/`,
+   so a commit outside it reuses them (and the CI build feeds the same layers from its
+   Actions cache). The stage produces `web/dist`:
 
    | `web/package.json` | `web/.vendor/npm-cache` | Action |
    |---|---|---|
@@ -414,8 +417,11 @@ host, because they are static or pure and touch nothing:
 - browser-rendered frontend checks — the DOM/selector contract assertions and the
   prototype-vs-implementation screenshots for `web/`. The image has no Chromium (installing
   it needs an apt mirror, i.e. network at build time), so these stay on the host, driving a
-  host-installed Chrome. This is the "browser rendering" exception under §9.1. For the same
-  reason `test/web/i18n.catalogue.test.mjs` reads `design/prototype/index.html`, which
+  host-installed browser. This is the "browser rendering" exception under §9.1. The same
+  checks run in CI's `web-dom.yml` lane, which builds `web/dist` on the runner, installs a
+  pinned Playwright outside the repository, and runs `test/web/blocks.dom.test.mjs` — the
+  lane exists because the container cannot cover it. For the same reason
+  `test/web/i18n.catalogue.test.mjs` reads `design/prototype/index.html`, which
   `.dockerignore` keeps out of the image, so it self-skips inside the container.
 
 Everything that *installs*, *serves*, or *deploys* goes through Docker.
@@ -430,6 +436,10 @@ true of a run that never exercised either. In practice they skip in two places:
 - a **lane worktree**, because `web/dist` is a gitignored build product and there is none;
   and
 - the **container**, for the DOM leg only — the image deliberately carries no Chromium.
+
+The `web-dom.yml` lane is what covers the DOM leg remotely: it builds `web/dist`, installs
+Playwright, and runs the file for real. The bundle leg is covered by the container's
+`--require=bundle` step.
 
 `scripts/verify/web-dist.mjs` reads the build on disk and names each leg:
 
@@ -460,25 +470,33 @@ as a failure by default.
 
 ## CI
 
-`.github/workflows/check.yml` has two jobs:
+`.github/workflows/check.yml` is the pull-request and integration workflow. It runs on
+`pull_request`, on every push to `dev`, and by dispatch; there is no branch-wide push
+trigger, so a pull-request commit is not built twice. Its jobs:
 
 - `check` — the host-side static job, on a **Node 22 and Node 24 matrix**
-  (`fail-fast: false`, both legs run the full step list; **no `npm install`**: it only runs
-  source, scripts and tests, which need no packages). It runs `node --test`, the coverage
-  gate (`npm run test:coverage`) and the `scripts/verify/*` checkers;
-- `docker` — builds `meerkat-taskpanel:verify` exactly like the local command and runs the same
-  in-container script, `docker/verify-in-container.sh`. This is the authoritative job, and
-  the only one that touches the frontend: the `webbuild` stage installs `web/`'s
-  devDependencies **offline** from the committed cache (`npm ci --offline`), so the CI
-  build reaches no registry. There is deliberately no host-side frontend job, which would
-  install packages on the runner and violate the container-first rule.
+  (`fail-fast: false`; **no `npm install`**). The legs are split: Node 22 runs the static
+  checkers (`manifests`, `version`, `skill`, `kind-runtime`, `bash -n`) and Node 24 runs
+  `npm run test:coverage`. The plain `node --test` sweep is the container's job;
+- `docker` — builds `meerkat-taskpanel:verify` (same Dockerfile, context and tag as the
+  local command, plus the Actions build cache) and runs the same in-container script,
+  `docker/verify-in-container.sh`. This is the authoritative job, and the only one that
+  touches the frontend: the `webbuild` stage installs `web/`'s devDependencies
+  **offline** from the committed cache (`npm ci --offline`), so the CI build reaches no
+  registry;
+- `contract`, `paths`, `signposts` — the static gates that used to be separate workflows;
+- `ci-success` — the single required check, aggregating the five jobs above.
 
-Same tag, same command, same script as `npm run verify:docker`'s second phase, and the
-same step list — no check runs in the container here that does not also run locally.
-The one asymmetry left is *additive and local-only*: `npm run verify:docker` also runs a
-third phase, the compose deploy smoke test (`docker compose up -d --build` → poll `/health`
-→ `down -v`, see [One-click verify](#one-click-verify)), which the CI job does not repeat.
-It can only make the local run stricter, never greener.
+The browser/DOM layer runs in its own `web-dom.yml` workflow, not here: it needs the
+frontend toolchain and a browser, which this job must not install. It is not a required
+check yet.
+
+Same image, same script and the same step list as `npm run verify:docker`'s second phase —
+no check runs in the container here that does not also run locally. The one asymmetry left
+is *additive and local-only*: `npm run verify:docker` also runs a third phase, the compose
+deploy smoke test (`docker compose up -d --build` → poll `/health` → `down -v`, see
+[One-click verify](#one-click-verify)), which the CI job does not repeat. It can only make
+the local run stricter, never greener.
 
 The **`check` job**, by contrast, does *not* have a local one-command equivalent, and two
 of its properties are not reproduced by `verify:docker`:

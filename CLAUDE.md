@@ -193,9 +193,9 @@ to get them). Hook and CI run the same checkers:
 | `pre-push` | contract snapshot matches the live surface; declared request schema equals what the handler reads; no tracked file carries a host-absolute path (`verify/paths.mjs`) or a signpost out of the repository (`verify/signposts.mjs`); the four version carriers agree (`verify/version.mjs`); every pushed `refs/tags/vX.Y.Z` names that version, is on `main` (`verify/tag-version.mjs`), and has a **filled** `## [X.Y.Z] - YYYY-MM-DD` section (`verify/changelog.mjs --strict`); `main` is not pushed directly; **then the container gate** (`npm run verify:docker`) on a branch push — skipped for a tag-only push or a branch deletion, and by `SKIP_CONTAINER_VERIFY=1` |
 | `pre-tag` | the same API + tag rules, run by hand before `git tag` (git has no native pre-tag hook) |
 
-Two workflows guard the tree itself. `paths-gate.yml`: a host-absolute `/Users/<someone>/…`
+Two jobs in `check.yml` guard the tree itself. `paths`: a host-absolute `/Users/<someone>/…`
 path fails the build — its allowlist (`test/fixtures/host-paths-allowlist.json`) is checked in
-both directions. `signposts-gate.yml`: a walkable path into an external framework's private
+both directions. `signposts`: a walkable path into an external framework's private
 store, or one of its internal mechanism names, fails the build — its allowlist
 (`test/fixtures/framework-signposts-allowlist.json`) is keyed by `{file, rule}` and checked in
 both directions too. The rule behind the second is `design/contracts/naming-boundary.md`

@@ -98,15 +98,17 @@ node scripts/verify/published-smoke.mjs --package-root <installed dir>  # boot a
 tests a developer runs locally, so a green local run and a green CI run mean the same
 thing.
 
-- The **`check` job** runs on a **Node 22 and Node 24 matrix** (`fail-fast: false`, both
-  legs run the full step list) — the floor the project promises (`engines: node >= 22`)
-  and the current release line. It runs `node --test`, the coverage gate, and the
-  `scripts/verify/*` checkers.
-- The **`docker` job** is the authoritative one: it builds `meerkat-taskpanel:verify` and runs
-  `docker/verify-in-container.sh`, exactly as `npm run verify:docker` does — including the
-  install + first-run end-to-end, which is a step *inside* that script rather than a
-  separate CI-only `docker run`. (`verify:docker` then adds a local-only compose deploy
-  smoke test, which is strictly extra.)
+- The **`check` job** runs on a **Node 22 and Node 24 matrix** (`fail-fast: false`) — the
+  floor the project promises (`engines: node >= 22`) and the current release line. The legs
+  are split rather than duplicated: Node 22 runs the static checkers (`manifests`, `version`,
+  `skill`, `kind-runtime`, `bash -n`), and Node 24 runs `npm run test:coverage`. The plain
+  `node --test` sweep is the container's job, where the image is Node 22.
+- The **`docker` job** is the authoritative one: it builds `meerkat-taskpanel:verify` (with
+  the same Dockerfile, context and tag as `npm run verify:docker`, plus the Actions build
+  cache) and runs `docker/verify-in-container.sh` — including the install + first-run
+  end-to-end, which is a step *inside* that script rather than a separate CI-only
+  `docker run`. (`verify:docker` then adds a local-only compose deploy smoke test, which is
+  strictly extra.)
 - Locally, `.githooks/pre-push` runs that same `npm run verify:docker` on every branch push,
   after the static gates and only when a branch commit is moving. Merging therefore no longer
   ends with a separate container run; the push is the container gate.
@@ -127,16 +129,16 @@ and turns the job red.
 [CONTRIBUTING.md](../CONTRIBUTING.md) is the contributor-facing version of this section.
 The mechanics:
 
-1. Branch off `main`.
+1. Branch off `dev`.
 2. Push the branch and **open a pull request**. The push itself runs the container gate:
    `.githooks/pre-push` builds the image and runs `docker/verify-in-container.sh` after the
    static gates pass, so the merge step needs no separate container run. Commit first — the
    image bakes the working tree. `SKIP_CONTAINER_VERIFY=1 git push …` opts out for one push.
-3. Wait for CI. Three workflows already carry a `pull_request` trigger, so no workflow
-   change is needed for PR gating:
-   - `.github/workflows/check.yml` — the Node 22/24 matrix plus the container job;
-   - `.github/workflows/contract-gate.yml` — the API and CLI contract snapshots and the route-request lint;
-   - `.github/workflows/security-scan.yml`.
+3. Wait for CI. Every pull request runs two workflows:
+   - `.github/workflows/check.yml` — the static gates, the Node 22/24 matrix, the container
+     job, and the two dependency-security jobs;
+   - `.github/workflows/web-dom.yml` — the browser/DOM layer (not required yet).
+   A push to `dev` runs `check.yml` again on the merge result.
 4. Merge once green.
 
 Nothing in the tree can *require* step 2 — that is GitHub's rule to set (below). The
@@ -150,17 +152,17 @@ clone has no hooks at all until `git config core.hooksPath .githooks` — see
 These live in GitHub, not in the repository, so nothing here can assert them. On `main`:
 
 - **Require a pull request before merging.**
-- **Require status checks to pass.** The names, exactly as they appear on a check run —
-  search for them by these strings, not by job id: `check (22)` and `check (24)` and
-  `docker` (from `check.yml`), `contract` (from `contract-gate.yml`), and
-  `Dependency scan (osv-scanner + npm audit)` and `SBOM (syft)` (from `security-scan.yml`,
-  which spell their jobs out with a `name:`). `docker` is the authoritative job — a rule
-  that requires `check` but not `docker` gates the fast half and not the real one.
-  `sbom` also runs on every trigger, but it exists to publish a release artefact rather than
-  to judge a change; requiring it is defensible but slower than the rest, so it is a
-  per-repository call. A check can only be required once it has *reported* — a workflow
-  GitHub rejects never registers one, so an invalid workflow file leaves its two checks
-  absent from the picker with no trace anywhere in the UI.
+- **Require status checks to pass.** Require exactly two checks: `ci-success` (aggregates
+  `check (22)`, `check (24)`, `docker`, `contract`, `paths` and `signposts` from `check.yml`)
+  and `security-success` (aggregates `Dependency scan (osv-scanner + npm audit)` and
+  `SBOM (syft)` from `security-scan.yml`). Aggregation is the point: a job that is renamed,
+  removed or silently skipped fails the aggregate, instead of leaving the rule waiting for a
+  check that will never report. `docker` is still the authoritative job — the aggregate
+  covers it, so a rule that requires the aggregate and not `docker` alone is correct.
+  `web-dom.yml` is deliberately not required yet; it is a new lane and should prove stable
+  first. A check can only be required once it has *reported* — a workflow GitHub rejects
+  never registers one, so an invalid workflow file leaves its checks absent from the picker
+  with no trace anywhere in the UI.
 - **Do not allow bypassing the above settings**, if the intent is that `main` is genuinely
   protected rather than advisory. Check who can approve first: with **no** second
   collaborator, a required approval can never be given (GitHub does not let you approve your

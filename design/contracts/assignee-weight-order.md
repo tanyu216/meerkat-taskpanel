@@ -445,7 +445,7 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 | 纯函数（因子、归一化、合成、tie-break） | `src/shared/task-order.mjs`（新） | 与 `src/shared/project-order.mjs` **同构同位**：纯、无 `node:`、无 I/O、**不读时钟**（`now` 入参） |
 | 权值与封顶常量 | `src/shared/constants.mjs`（`TASK_ORDER_WEIGHTS` 等，与 `PROJECT_ORDER_WEIGHTS` 并列） | 该文件首行自述「`src/core/**` 从这里取可调参数，一处改动移动运行时默认」 |
 | 候选清单接入 | `src/core/commands/tasks.mjs#listCandidates`（桶内） | S3 的桶序不动，只在桶内换比较器 |
-| HTTP 参数 | `src/server/routes/tasks.mjs`（`LIST_QUERY` / `CANDIDATES_QUERY` 加 `order`、`order_debug`） | ⚠ 这**会动契约快照**：`routes[].request` 由 `scripts/verify/contract.mjs` 冻结，且 `scripts/verify/route-request.mjs` 要求**声明式请求面 == 处理器实读面** ⇒ C2 必须同步刷新契约快照，否则 `pre-push` / `contract-gate.yml` 会红 |
+| HTTP 参数 | `src/server/routes/tasks.mjs`（`LIST_QUERY` / `CANDIDATES_QUERY` 加 `order`、`order_debug`） | ⚠ 这**会动契约快照**：`routes[].request` 由 `scripts/verify/contract.mjs` 冻结，且 `scripts/verify/route-request.mjs` 要求**声明式请求面 == 处理器实读面** ⇒ C2 必须同步刷新契约快照，否则 `pre-push` / `check.yml` 的 `contract` job 会红 |
 | 能力位 | `src/server/index.mjs#capabilities` 加 `task_order: "weights-v1"` | 与 `project_order` 并列 |
 | 调试投影 | 同路由，`order_debug=1` | 形状照抄 `src/server/routes/projects.mjs` 的 `orderDebugEntry` |
 

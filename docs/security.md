@@ -110,16 +110,17 @@ re-blocked advisory, the second points at it.
 
 ## The SBOM
 
-`syft` produces `sbom.spdx.json` in the `sbom` job of the security workflow, on **every**
-trigger — push, pull request, the schedule, and a `v*` tag push. It is uploaded as a
-workflow artifact, and on a tag push it is also attached to the release draft, but only if
-that release already exists (the release pipeline creates it; this workflow never blocks on
-it).
+`syft` produces `sbom.spdx.json` in the `sbom` job of the security workflow on a `v*` tag
+push, a scheduled run and a dispatch — not on a pull request, where the artefact would
+describe a tree that is not a release. The `sbom` *job* still runs on every trigger so the
+`security-success` aggregate always reports; only the generation step is skipped. The file
+is uploaded as a workflow artifact, and on a tag push it is also attached to the release
+draft, but only if that release already exists (the release pipeline creates it; this
+workflow never blocks on it).
 
-This is a deliberate departure from "hook the SBOM into the release pipeline": the release
-and check workflows are owned by other changes in flight and are not modified here, so this
-workflow produces its own artefact instead. The SBOM is therefore always available for the
-tree as it was scanned, whether or not a release is being cut.
+The dependency *scan* is the part that runs per pull request, and even there it is skipped
+when no dependency input changed: the only lockfile is `web/package-lock.json`, and the
+target gate still reports over an empty report rather than going missing.
 
 ## What this does not cover
 
