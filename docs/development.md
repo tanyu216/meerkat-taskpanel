@@ -77,6 +77,19 @@ npm run verify:web-dist  # fail unless both web/dist-guarded legs ran (see below
 npm run build
 npm run check     # verify + test
 npm run test:coverage   # node --test + the coverage gate (see below)
+npm run verify:installed # pack the tarball, install it offline, boot it
+```
+
+Release tooling (the pipeline that uses it is in [publishing.md §3](publishing.md)):
+
+```bash
+node scripts/release/bump.mjs 1.2.3 --changelog      # four carriers + a CHANGELOG scaffold
+node scripts/release/prep.mjs --version 1.2.3        # the release branch's whole tree
+node scripts/release/changelog-from-log.mjs 1.2.3 --from v1.2.2   # draft the entries
+node scripts/release/release-notes.mjs v1.2.3        # the GitHub Release body
+node scripts/verify/tag-version.mjs v1.2.3 --on-main # tag ↔ carriers ↔ main
+node scripts/verify/changelog.mjs v1.2.3 --strict    # the section is real, not a scaffold
+node scripts/verify/published-smoke.mjs --package-root <installed dir>  # boot a published copy
 ```
 
 ### Local and CI run the same commands

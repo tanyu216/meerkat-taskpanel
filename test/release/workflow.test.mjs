@@ -180,6 +180,36 @@ describe("release.yml: the smoke", () => {
   });
 });
 
+describe("docs/publishing.md matches the pipeline", () => {
+  const DOC = "docs/publishing.md";
+
+  it("names the three dispatches and the OIDC publish", async () => {
+    const doc = await read(DOC);
+    for (const workflow of ["release-prep.yml", "release-tag.yml", "release.yml"]) {
+      assert.ok(doc.includes(workflow), `the page must name ${workflow}`);
+    }
+    assert.ok(doc.includes("--provenance"), "the provenance command is documented");
+    assert.match(doc, /Trusted Publishing/, "the one npm-side prerequisite is written down");
+    assert.match(doc, /tanyu216/);
+    assert.match(doc, /meerkat-taskpanel/);
+    assert.ok(doc.includes("sbom.spdx.json"), "the closed asset list is stated");
+    assert.match(doc, /### 3\.4 Manual fallback/, "the hand-run path is written down");
+    assert.match(doc, /### 3\.5 Aborting and rolling back/);
+  });
+
+  it("keeps the branch-protection and tag-from-main anchors", async () => {
+    const doc = await read(DOC);
+    assert.match(doc, /^### 3\.3 Branch protection on `main`/m);
+    assert.ok(doc.includes("Require a pull request before merging"));
+    assert.ok(doc.includes("Require status checks to pass before merging"));
+    assert.ok(/tag ruleset|Tag protection/i.test(doc), "the tag ruleset step is documented");
+    assert.ok(doc.includes("git merge-base --is-ancestor"), "the tag-from-main pre-flight command is documented");
+    for (const check of ["check (22)", "check (24)", "docker", "contract"]) {
+      assert.ok(doc.includes(check), `the required checks must name \`${check}\``);
+    }
+  });
+});
+
 describe("release.yml: the GitHub Release", () => {
   it("publishes a public release with a closed asset list", async () => {
     const release = jobBlock(code(await read(WORKFLOW)), "release");

@@ -4,10 +4,13 @@ How a Meerkat TaskPanel version is packaged and published across its distributio
 **npm**, **git + GitHub Release**, and the per-agent-kind bundles — Claude Code's marketplace,
 OpenClaw, Codex and Pi.
 
-> **Scope.** This page documents the steps only. **The actual `push`, tag and release are
-> performed by Elon** — nothing here is run as part of writing this document, and CI does
-> not publish to npm. Treat the workflow files and manifests as the source of truth: this
-> page explains the *shape* of a release, not a copy of their contents.
+> **Scope.** A release is three dispatches and one human merge: `release-prep` proposes the
+> tree and opens a pull request, a human merges it, `release-tag` cuts the annotated tag,
+> and `release.yml` verifies, builds and **publishes to npm automatically** over OIDC
+> trusted publishing, then opens the public GitHub Release. There is no registry token and
+> no manual publish on the happy path. Treat the workflow files and manifests as the source
+> of truth: this page explains the *shape* of a release, not a copy of their contents. The
+> hand-run fallback, for the day Actions cannot publish, is §3.4.
 
 ## 1. Version consistency
 
@@ -65,8 +68,10 @@ already drifted is refused rather than quietly papered over.
   `### Fixed`, one placeholder bullet each) directly below `## [Unreleased]` and above the
   newest release, and keeps the foot-of-file link references in step. It never invents an
   entry — a version that already has a section is a refusal, not a duplicate.
-- `--tag` creates the local `v<x.y.z>` ref once the bump has landed and prints the exact
-  `git push` command. It never pushes (§3); the push stays Elon's.
+- `--tag` creates the local `v<x.y.z>` ref once the bump has landed — after re-running the
+  tag-version and strict-changelog gates, so a scaffold section refuses the tag — and
+  prints the exact `git push` command. It never pushes. In the automated flow the tag is
+  cut by `release-tag` (§3), not by this flag.
 
 **Check it.** `scripts/verify/version.mjs` checks each group against its own canonical entry;
 it is part of `npm run verify` and wired into CI, so a version drifting inside a group fails
@@ -79,8 +84,9 @@ node scripts/verify/version.mjs --group board    # narrow to it explicitly
 node scripts/release/bump.mjs 0.1.1 && node scripts/verify/version.mjs   # bump, then prove it
 ```
 
-Then commit the four carriers (and the scaffold, once filled in) **in one commit**, and let CI
-confirm.
+Then commit the four carriers (and the changelog, once its section is filled) **in one
+commit**, and let CI confirm. The release-prep workflow does exactly this, on a
+`release/vX.Y.Z` branch (§3).
 
 ## 2. npm
 
@@ -116,12 +122,10 @@ tarball carries `web/dist`, that install needs no build step and no network.
 default. A green `npm pack` is *not* evidence of this — `pack` never refuses a private
 package, and it does run the `prepare` lifecycle script.
 
-**Not yet a live surface.** What gates a publish is registry state, not the manifest: the
-package **name** must be one you control and the **version** must not exist yet. The
-unscoped name `meerkat-taskpanel` is this project's (the maintainer confirmed the
-ownership), so a publish needs no name decision; it is still refused until the release
-bump's version is free and the publishing machine is authenticated. `npx
-meerkat-taskpanel` becomes usable only once that publish has happened.
+**What gates a publish is registry state, not the manifest**: the package **name** must be
+one you control and the **version** must not exist yet. The unscoped name
+`meerkat-taskpanel` is this project's; `0.1.0` and `0.1.1` are published. Everything after
+that goes through `release.yml` (§3); a local `npm publish` is the fallback (§3.4).
 
 Self-check — dry-run only; nothing below uploads anything:
 
@@ -130,96 +134,150 @@ npm pack --dry-run      # the exact file list, no tarball written
 npm pack                # write meerkat-taskpanel-<version>.tgz
 node scripts/release/pack-manifest.mjs meerkat-taskpanel-<version>.tgz   # ships the release, nothing else
 npm publish --dry-run   # walks every publish gate, uploads nothing
-npm publish             # the real publish (Elon) — a release, not a check
 ```
 
 `npm pack` needs no `npm install`: the engine is runtime zero-dependency and works offline.
+The tarball is then *installed* and booted by the release pipeline before it is published
+(`node scripts/verify/tarball-install.mjs`, also part of `npm run verify:docker`), because a
+package that packs cleanly can still fail to start.
 
-### 2.1 Provenance — prepared, not yet produced
+### 2.1 Provenance — produced by the release workflow
 
-The publish command is documented with npm's provenance flag already on it, so moving to
-attested releases is a change to *where* a publish runs, not a flag somebody has to discover
-later:
+`release.yml` publishes with npm's provenance flag:
 
 ```bash
-npm publish --provenance
+npm publish <tarball> --provenance --access public
 ```
 
-Read that as a **target**, not a description of today's state, for two reasons:
+The attestation is a property of *where* the publish runs. The `publish` job is the only
+job with `id-token: write`, `actions/setup-node` selects Node 24 (npm ≥ 11.5.1, the floor
+for trusted publishing), and the job **fails if a registry token is present** — a stored
+token would silently change which identity publishes. The tarball is the artifact `build`
+produced, uploaded once, so the attested bytes are the tested bytes.
 
-- npm attaches a provenance statement only when it can obtain an OIDC token from a supported
-  CI/CD provider (GitHub Actions with `id-token: write`, or GitLab CI/CD). Invoked outside
-  one, the flag produces no attestation — provenance is a property of *where* the publish
-  runs, not of the command line.
-- That publish path does not exist yet, by decision (D2=A). `.github/workflows/release.yml`
-  holds no `NPM_TOKEN`, has no `npm publish` step, and never publishes to a registry or a
-  marketplace — it ends at the draft release. A human promotes the draft, and that human's
-  machine is not a supported provenance provider.
+**The one manual prerequisite** is on npm's side, and must exist before the first CI
+publish or the job stops with a 403:
 
-So every release cut under the current pipeline is **unprovenanced**, and this subsection
-exists to say so out loud: the flag is prepared for the day publishing moves behind CI OIDC,
-and it is not evidence about any release published before then.
+1. npmjs.com → the `meerkat-taskpanel` package → **Settings → Trusted Publishing**;
+2. provider **GitHub Actions**, owner `tanyu216`, repository `meerkat-taskpanel`,
+   workflow filename `release.yml`, environment **empty** (the workflow does not declare a
+   GitHub environment; if you add one in npm, add the identical name to the `publish` job);
+3. save. No token is created, and nothing is copied into GitHub secrets.
 
-## 3. Git tag + GitHub Release
+Rotating the old granular token is safe once this is in place: the workflow reads no token.
+A manual publish from a maintainer's machine is unprovenanced by definition (§3.4).
 
-The release pipeline is **tag-driven**: `.github/workflows/release.yml` runs on
-`push` of a tag matching `v*`. It re-runs the checks, builds the release tree
-(`node scripts/build.mjs`), copies the image's built `web/dist` into the packaging tree so the
-tarball carries a runnable frontend, packages and verifies the npm tarball, generates the
-SBOM, and opens a GitHub Release **draft** carrying both artifacts. It does **not** publish anywhere
-automatically — the draft is for a human to review and publish, and the workflow holds no
-credential that could publish.
+## 3. The release pipeline
 
-The workflow file is authoritative for the exact steps and the Node version it pins; read
-it before cutting a release rather than relying on this summary.
+Four steps, three of them explicit dispatches. Each one is separately reviewable, and each
+one can stop the next:
 
-The draft's asset list is **closed and complete**: the npm tarball
+1. **`release-prep`** (`workflow_dispatch`, inputs `version`, `dry_run`) — checks out
+   `dev`, refuses if the tree is dirty, if `origin/main` is not an ancestor, or if
+   `v<version>` already exists; runs `scripts/release/prep.mjs`, which bumps the four
+   carriers and fills the CHANGELOG section from the commits since the previous tag;
+   commits exactly those five paths; pushes `release/vX.Y.Z`; opens (or refreshes) a pull
+   request to `main`.
+
+   ```bash
+   gh workflow run release-prep.yml -f version=0.1.2 -f dry_run=true   # look first
+   gh workflow run release-prep.yml -f version=0.1.2
+   ```
+
+   A PR created with `GITHUB_TOKEN` does **not** trigger `pull_request` workflows. The PR
+   body says so: close and reopen it to start the checks. (A dedicated App/PAT token would
+   close that gap; the pipeline deliberately does not require one.)
+
+2. **A human merges the PR — with a merge commit, never a squash.** The release commit
+   `chore(release): <version>` must stay in `main`'s history for the tag step to find it.
+
+3. **`release-tag`** (`workflow_dispatch`, inputs `version`, `commit`, `dry_run` — default
+   **true**) — resolves the version from `main`, resolves the release commit, checks it out
+   detached, and runs the tag gate (tag-version, version, strict changelog, contract,
+   route-request, paths, signposts). It then creates the annotated tag `v<version>`, pushes
+   it, and dispatches `release.yml`. A tag that already exists is never moved: same commit
+   is a re-dispatch, a different commit is a refusal.
+
+   ```bash
+   gh workflow run release-tag.yml -f dry_run=true     # then, once it looks right:
+   gh workflow run release-tag.yml -f dry_run=false
+   ```
+
+4. **`release.yml`** runs on the tag (and on `workflow_dispatch` for a dry run):
+
+   | Job | What it proves |
+   |---|---|
+   | `verify` | the tag gate **plus the full container suite** (`npm run verify:docker`) |
+   | `build` | the frontend, the release tree, one tarball, its manifest check, an install-and-boot of that tarball, and the SBOM |
+   | `publish` | `npm publish --provenance` over OIDC, then polls until the exact version and its attestation resolve |
+   | `smoke` | installs the **published** version outside the repository and boots it (`scripts/verify/published-smoke.mjs`) |
+   | `release` | a public GitHub Release with the tarball and the SBOM, and asserts `isDraft=false` |
+
+   A red `verify` publishes nothing. A red `smoke` leaves npm published but no GitHub
+   Release — fix forward with a patch; do not reuse the version.
+
+The release's asset list is **closed and complete**: the npm tarball
 (`meerkat-taskpanel-<version>.tgz`) and the SBOM (`sbom.spdx.json`, syft/SPDX JSON). The
-SBOM is generated by the release job itself and is a required step — if it cannot be
-produced, the job fails before the draft is created — so "a draft release with no bill of
-materials" is not a state the pipeline can reach. `security-scan.yml` also attaches an SBOM
-to the draft for the same tag, best-effort and after the fact; both jobs run the same action
-over the same commit, so the two files describe the same tree, and it is `release.yml`'s copy
-whose presence the draft depends on. The scanner, its threshold and the waiver ledger are
+SBOM is a required step — if it cannot be produced, the job fails before anything is
+published — so "a release with no bill of materials" is not a state this pipeline can
+reach. `security-scan.yml` also attaches an SBOM for the same tag, best-effort and after
+the fact; both jobs run the same action over the same commit, and it is `release.yml`'s copy
+whose presence the release depends on. The scanner, its threshold and the waiver ledger are
 documented in [security.md](security.md).
 
 Tags are cut from `main` — §3.3 states that policy and the repository settings that back it.
 
-```bash
-# Run by Elon — not part of the document. Cut from a commit on `main`: see §3.3.
-git tag v<version>          # must match the four version fields above
-git push origin v<version>  # triggers .github/workflows/release.yml
-```
-
 > Commits in this repository use explicit paths (`git commit -- <path>`), never a bare
-> `git commit -a`. Tags and pushes are destructive-ish and are Elon's to make.
+> `git commit -a`. The workflows above use `git commit -- <five paths>` for the same reason.
 
 ### 3.1 The tag ↔ CHANGELOG gate
 
-A version tag is only cut when `CHANGELOG.md` documents it. The section is authored at the
-`dev` → `main` release merge, from `git log --no-merges <last-release-tag>..dev` and
-`git diff --stat <last-release-tag>..dev` (for the first release, `main..dev`); feature
-branches and `dev` itself never edit `CHANGELOG.md`, and `[Unreleased]` stays empty between
-releases. The rule lives in one reusable, offline checker —
-`scripts/verify/changelog.mjs` — and every door calls it:
+A version tag is only cut when `CHANGELOG.md` documents it **and the section is real**. The
+*strict* form of the gate — used at tag time — requires:
+
+- a heading `## [x.y.z] - YYYY-MM-DD` with a real date (not a placeholder);
+- at least one top-level bullet in the section;
+- no `- _Nothing yet._` scaffold bullet anywhere in the section;
+- an `## [Unreleased]` section that carries no un-released entry.
+
+The section is authored on the **release branch** (`release/vX.Y.Z`, the PR `release-prep`
+opens), never on a feature branch and never on `dev`: `dev` stays a development log, and
+`[Unreleased]` stays empty between releases. `release-prep` scaffolds the section and fills
+it from the commit log:
 
 ```bash
-node scripts/verify/changelog.mjs v1.2.3     # exit 0 has an entry · 1 missing · 2 usage
+node scripts/release/prep.mjs --version 1.2.3 --dry-run   # what it would write
+node scripts/release/changelog-from-log.mjs 1.2.3 --from v1.2.2
+```
+
+The generated entries are a **draft**: conventional commits map to `Added` / `Changed` /
+`Fixed` / `Removed`, card ids, PR refs and commit hashes are stripped, and the PR's human
+editor owns the final wording. A range with no releasable commit is an error — the tool
+never writes `_Nothing yet._` and calls it a release.
+
+The rule lives in one reusable, offline checker — `scripts/verify/changelog.mjs`:
+
+```bash
+node scripts/verify/changelog.mjs v1.2.3              # exit 0 has an entry · 1 missing · 2 usage
+node scripts/verify/changelog.mjs v1.2.3 --strict     # the tag-time form above
 ```
 
 Local hooks (`git config core.hooksPath .githooks`, wired by the root `package.json`
 `prepare` script — no `husky` dependency, see [`.githooks/README.md`](../.githooks/README.md)):
 
 - **`.githooks/pre-tag v1.2.3`** — run it yourself *before* `git tag`. Git has no native
-  `pre-tag` hook (a tag is a ref, not a commit), so this is invoked explicitly.
-- **`.githooks/pre-push`** — refuses a `refs/tags/vX.Y.Z` on its way out when the version
-  is missing from the changelog.
+  `pre-tag` hook (a tag is a ref, not a commit), so this is invoked explicitly. It runs the
+  contract, route-request, version, tag-version and strict-changelog gates.
+- **`.githooks/pre-push`** — always runs the static gates including `version.mjs`; a
+  `refs/tags/vX.Y.Z` also runs `tag-version.mjs` and `changelog.mjs --strict`, and a branch
+  push ends with the container gate.
 - **`.githooks/pre-commit`** — the append-only migration check (see
   [migration.md](migration.md#the-append-only-migration-gate)); unrelated to tagging but
   shipped in the same directory.
 
 CI is the authority: **`.github/workflows/version-gate.yml`** runs on a `v*` tag push and
-runs the same checker against `${GITHUB_REF_NAME}`. It is a separate workflow on purpose —
+runs `tag-version.mjs "$GITHUB_REF_NAME" --on-main`, `version.mjs` and
+`changelog.mjs "$GITHUB_REF_NAME" --strict`. It is a separate workflow on purpose —
 `.github/workflows/check.yml` is owned by a concurrent change and is deliberately not
 touched, so the release/version rule is carried by `version-gate.yml` instead.
 
@@ -260,6 +318,10 @@ does not hand its workflows). They are stated as policy, with the human steps th
 3. **A version tag is cut only from a commit on `main`.** A tag is pushed, not merged, so
    the checks above ran on the pull request that produced its commit; §3.1's CHANGELOG rule
    still guards the version string itself.
+4. **A release PR is merged with a merge commit, never a squash.** `release-tag` looks for
+   the `chore(release): <version>` commit on `main`'s history; a squash rewrites the message
+   and the commit, and the tag step then has no release commit to find (it falls back to
+   `main`'s tip only when that tip already carries the version). The PR body repeats this.
 
 `version-gate.yml` and `release.yml` are tag-triggered and never appear as PR checks — they
 run *because* a tag was pushed, which is exactly why rule 3 matters.
@@ -282,7 +344,10 @@ run *because* a tag was pushed, which is exactly why rule 3 matters.
   - leave *Allow force pushes* and *Allow deletions* **unchecked**.
 - **Tags.** Settings → Rules → **New tag ruleset** targeting `v*` (the older *Tag protection
   rules* are the equivalent), restricting **creations, updates and deletions** to the
-  maintainers who cut releases.
+  maintainers who cut releases — **and allowing the GitHub Actions app**, or listing it in
+  the ruleset's bypass list. `release-tag` pushes the tag with `GITHUB_TOKEN`; without that
+  entry the push is refused and the run fails at the "Push the tag" step, with a message
+  naming this ruleset.
 
 That second screen restricts *who* may create a `v*` tag; GitHub has no setting for *which
 commit* a tag points at, so the tag-from-`main` half stays a human check — and it is
@@ -294,6 +359,53 @@ git merge-base --is-ancestor "$(git rev-parse v1.2.3^{commit})" origin/main \
   && echo "v1.2.3 is on main" \
   || echo "REFUSE: v1.2.3 is not on main"
 ```
+
+### 3.4 Manual fallback: publishing without Actions
+
+Use this only when the OIDC path is unavailable (trusted publishing not yet configured, an
+outage, or a release cut from a machine that has no Actions run). It produces an
+**unprovenanced** release: `--provenance` outside a supported CI provider adds no
+attestation, so leaving it off is honest.
+
+1. **Publish from the tagged tree, not a branch.** `git checkout v<version>`, then build the
+   frontend exactly as the pipeline does (`docker build --target webbuild`, extract
+   `web/dist`) and `npm pack --silent --ignore-scripts`. Verify it:
+   `node scripts/release/pack-manifest.mjs <tarball> --expected-version <version>`.
+2. **Authenticate.** `npm login` works interactively, but a **web-login token cannot
+   publish** (`E403`). For a non-interactive machine create a *granular access token* with
+   **Read and write** on this package and **bypass 2FA** enabled; it lives only in
+   `~/.npmrc` (`//registry.npmjs.org/:_authToken=…`). Never echo it, and rotate it when
+   done. `npm token list` shows whether the token in use is the one you think.
+3. **Publish, then wait.** `npm publish <tarball> --access public`. npm's staged publishing
+   may answer with a placeholder (`0.0.0-stage`); the version is not resolvable until
+   replication finishes. Poll `curl -fsS https://registry.npmjs.org/meerkat-taskpanel/<version>`
+   until it returns 200, then compare `dist.integrity` against the tarball.
+4. **Smoke it outside the repository.** `cd /tmp && npx -y meerkat-taskpanel@<version> --version`.
+   Running `npx` inside the checkout resolves the *local* package and proves nothing.
+5. **GitHub Release.** Reuse the pipeline's artifacts:
+   `node scripts/release/release-notes.mjs v<version> > release-notes.md`, then
+   `gh release create v<version> <tarball> sbom.spdx.json --title … --notes-file …`.
+
+If `git push` fails because port 22 is blocked, push over 443 —
+`GIT_SSH_COMMAND='ssh -p 443 -o HostName=ssh.github.com'` — after adding
+`ssh.github.com:443` to `known_hosts` with `ssh-keyscan -p 443 -t ed25519 ssh.github.com`
+and verifying the fingerprint against GitHub's published ED25519 key.
+
+### 3.5 Aborting and rolling back
+
+The pipeline is built so that the expensive, irreversible step is last:
+
+| Where it stopped | What to do |
+|---|---|
+| `release-prep` failed | nothing was pushed; fix the tree and re-dispatch. |
+| The release PR is wrong | close it and delete `release/vX.Y.Z`; re-dispatch `release-prep`. |
+| `release-tag` dry run is wrong | nothing was created. Re-dispatch after fixing `main`. |
+| Tagged, before `publish` | cancel the run, delete the local and remote tag. The version is still free. |
+| Published, `smoke` or `release` failed | **the version is shipped.** Never reuse it. Fix forward: `npm deprecate meerkat-taskpanel@<version> "<why>"` if it is broken, then cut the next patch. Re-running the `release` job can repair the GitHub Release from the build artifacts. |
+
+A published version cannot be unpublished for long (npm allows one unpublish inside 72 hours
+only in narrow cases) and consumers may already hold it; `deprecate` plus a patch is the
+supported answer.
 
 ## 4. Claude Code marketplace
 

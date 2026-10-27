@@ -332,7 +332,12 @@ check belongs. Its steps, in order:
 
 Each step prints an `== ... ==` header and the script aborts on the first failure.
 
-> Steps 7, 8, 9 and 11 install into throwaway homes. Step 8 materializes the server tree at a
+> Steps 7, 8, 9 and 11 install into throwaway homes. Step 9 packs the release tarball, installs
+> it with npm pinned to a dead registry (so a missing file cannot be fetched), and boots the
+> installed board. The *published*-package smoke — `scripts/verify/published-smoke.mjs` — is
+> deliberately not here: it installs from the real registry, which the container does not
+> reach. It runs in the release pipeline's `smoke` job ([publishing.md](publishing.md) §3).
+> Step 8 materializes the server tree at a
 > temporary `--prefix`, drives both entry points (`scripts/install/cli.mjs`, which is what
 > `npx` runs, and `install.sh --target server`), and finally starts the installed
 > `bin/taskd` on an ephemeral port to prove `/health` — so it is container-only, because it
