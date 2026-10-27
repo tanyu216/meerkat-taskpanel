@@ -355,7 +355,7 @@ Skill prose is written against this split:
 
 - **Enforced — loud.** The transition whitelist, the delivery gate, the terminal exits, the
   child-before-parent rule, the review-card invariants (no reopen, no parent/child, no review
-  of a review — 0041), acceptance authority and claim routing are enforced by the domain
+  of a review), acceptance authority and claim routing are enforced by the domain
   **and** the database triggers. A refused write returns a named code and usually a fixing
   hint, so an agent acts on that instead of pre-checking the rule. Skill pages do not restate
   these.
