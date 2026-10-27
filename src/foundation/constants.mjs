@@ -16,7 +16,7 @@
 
 export const CLI_NAME = "taskctl";
 export const SKILL_NAME = "meerkat-taskpanel";
-export const VERSION = "0.1.1";
+export const VERSION = "0.1.2";
 
 /**
  * The board's **contract schema generation** — which generation of the API/wire
