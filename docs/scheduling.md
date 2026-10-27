@@ -635,7 +635,7 @@ A roles root is a directory with `manifest.json`:
 ```text
 <roles-root>/
 ├── manifest.json
-├── decision-policy.md          optional; overrides the loop's default ladder
+├── ownership.md                optional; routes work shapes to one accountable role
 ├── jobs/{workflow.md,ui-workflow.md,self-check.md}
 ├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,self-check.md}
 ├── turing/{workflow.md,test-design-workflow.md,regression-workflow.md,performance-workflow.md,self-check.md}
@@ -662,6 +662,12 @@ role's `workflow.md` (and `self-check.md`) before acting (layer 2). The reviewer
 inlined at the start of the review handoff, bounded at 2,400 characters. Every role is told
 to write and maintain `.meerkat/<identifier>/plan.md`, which the reviewer reads.
 
+**Ownership.** A team may ship `ownership.md`, the work→role routing guide: the project
+session receives it in full (bounded at 2,500 characters) when it spawns a batch, and the
+control/continue turn receives a compact summary and its path. It assigns one accountable
+role per work shape; the card's assignee still selects the executing role, and it never
+changes who decides.
+
 **Decisions.** A subagent does not decide an unauthorized question: it writes an agent
 `question` comment on the `in_progress` card and stops. Poll's **question lane** sees the
 unanswered question and enqueues a question row for the directory, so the project session is
@@ -672,7 +678,8 @@ card, whatever its kind, and the resumed worker judges from its content whether 
 complete decision. A question row is not a card handoff: it is never claimed, never opens a
 reviewer lane, and does not consume a subagent slot. The read is bounded by `--board-limit`
 and costs one `comment list` per `in_progress` card per poll. The ladder is the loop's
-`references/decision-policy.md`, overridable per team.
+`references/decision-policy.md`; it is the single decision-authority source, and a team file
+cannot override it.
 
 Questions are asked as one **decision round**: the frontier of decisions whose prerequisites
 are settled, numbered Q1..Qn with a recommendation each, one question string per card, with

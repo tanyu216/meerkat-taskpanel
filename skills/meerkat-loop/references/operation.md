@@ -154,7 +154,8 @@ boundaries) and a workflow path carried in the handoff. Precedence is whole-mani
 `<agent-dir>/skills/meerkat-loop/roles/`. A malformed manifest warns and degrades to no role;
 it never wedges a tick. `setup-meerkat`
 writes the team's board names to `MEERKAT_TASKPANEL_AGENTS`; without that list the loop scans
-only its default agent, so a role card is never claimed.
+only its default agent, so a role card is never claimed. A team may also ship `ownership.md`,
+the work→role routing guide the project session reads; it does not affect decision authority.
 
 ## Questions and decision rights
 
