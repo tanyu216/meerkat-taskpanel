@@ -320,18 +320,24 @@ check belongs. Its steps, in order:
 | 0 | `node scripts/verify/web-dist.mjs --require=bundle` (frontend coverage verdict) |
 | 1 | `node --test` |
 | 2 | `npm run test:coverage` (the line/branch/function floors) |
-| 3 | `npm run check` (skill sync, manifests, skill definition, tests) |
+| 3 | `npm run verify` (manifests, version carriers, skill, migrations, paths, signposts, built frontend) |
 | 4 | `node scripts/verify/contract.mjs` (API contract snapshot) |
 | 5 | `node scripts/verify/route-request.mjs` (declared request schema vs handler reads) |
 | 6 | `bash install.sh --target all --dry-run` |
 | 7 | `node scripts/verify/profiles.mjs` (every agent kind, throwaway home) |
 | 8 | `node scripts/verify/server-install.mjs` (npm/npx and source server install, launchers, `/health`) |
-| 9 | `node scripts/verify/kind-runtime.mjs` (offline agent-kind runtime harness) |
-| 10 | `bash scripts/verify/install-e2e.sh` (install + first-run end-to-end) |
+| 9 | `node scripts/verify/tarball-install.mjs` (packed release installed offline and booted) |
+| 10 | `node scripts/verify/kind-runtime.mjs` (offline agent-kind runtime harness) |
+| 11 | `bash scripts/verify/install-e2e.sh` (install + first-run end-to-end) |
 
 Each step prints an `== ... ==` header and the script aborts on the first failure.
 
-> Steps 7, 8 and 10 install into throwaway homes. Step 8 materializes the server tree at a
+> Steps 7, 8, 9 and 11 install into throwaway homes. Step 9 packs the release tarball, installs
+> it with npm pinned to a dead registry (so a missing file cannot be fetched), and boots the
+> installed board. The *published*-package smoke — `scripts/verify/published-smoke.mjs` — is
+> deliberately not here: it installs from the real registry, which the container does not
+> reach. It runs in the release pipeline's `smoke` job ([publishing.md](publishing.md) §3).
+> Step 8 materializes the server tree at a
 > temporary `--prefix`, drives both entry points (`scripts/install/cli.mjs`, which is what
 > `npx` runs, and `install.sh --target server`), and finally starts the installed
 > `bin/taskd` on an ephemeral port to prove `/health` — so it is container-only, because it
@@ -340,6 +346,11 @@ Each step prints an `== ... ==` header and the script aborts on the first failur
 > longer disagree: it used to live only in CI, as a separate `docker run` *after* this
 > script, so the two tracks diverged and the local command could be green while CI was red.
 > See [CI](#ci).
+>
+> Step 1 (`node --test`) skips the real-git cases under `test/release/prep.test.mjs`: the
+> image is the *runtime* image and ships no `git`. Those cases run on any machine with git —
+> `npm run check` and CI's `check` job — and the skip is visible in the run's `skipped`
+> count. The same exception applies to the browser legs (no Chromium), below.
 
 ## Profiles
 
@@ -475,13 +486,12 @@ of its properties are not reproduced by `verify:docker`:
 - it runs a **Node 22 and Node 24 matrix**, while the image is Node 22 only
   (`node:22-bookworm-slim`) — a Node-24-only regression would be red in CI and green
   locally;
-- it runs `node scripts/verify/version.mjs` and `bash -n` on the shell scripts directly on
-  the host. (Their behaviour is still covered in the container — `version.test.mjs` runs
-  under `node --test`, and `test/docker.test.mjs` runs `bash -n` on both container
-  scripts — but the standalone checkers are not.)
+- it runs `bash -n` on the shell scripts directly on the host. (Its behaviour is still
+  covered in the container — `test/docker.test.mjs` runs `bash -n` on both container
+  scripts — but the standalone check is not.)
 
 "Locally green means CI green" therefore holds for the `docker` job exactly, and for the
-`check` job only up to the Node version and those two standalone checkers. See
+`check` job only up to the Node version and that standalone checker. See
 [development.md](development.md#local-and-ci-run-the-same-commands) for the local
 equivalent of each job.
 

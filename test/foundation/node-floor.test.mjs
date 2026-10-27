@@ -22,6 +22,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
 
+import { baseEnv } from "../helpers/base-env.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const NODE = process.execPath;
 const CLI_ENTRY = join(ROOT, "src/cli/index.mjs");
@@ -56,7 +58,7 @@ function runLowNode(entry, args = []) {
     cwd: ROOT,
     encoding: "utf8",
     input: "",
-    env: { ...process.env, ...boardlessEnv() },
+    env: baseEnv(boardlessEnv()),
   });
 }
 
@@ -72,11 +74,33 @@ describe("CLI entry — the runtime floor", () => {
     const run = spawnSync(NODE, [CLI_ENTRY, "--version"], {
       cwd: ROOT,
       encoding: "utf8",
-      env: { ...process.env, ...boardlessEnv() },
+      env: baseEnv(boardlessEnv()),
     });
     assert.equal(run.status, 0, run.stderr);
     const { version } = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
     assert.equal(run.stdout, `${version}\n`);
+  });
+
+  it("ignores board configuration planted in the parent environment", () => {
+    // The host used to red this suite when TASKCTL_* was exported: a child that
+    // inherited it talked to the caller's board. `baseEnv` is the fix, and this
+    // pins that this entry point goes through it.
+    const had = Object.hasOwn(process.env, "TASKCTL_HUMAN");
+    const previous = process.env.TASKCTL_HUMAN;
+    process.env.TASKCTL_HUMAN = "Parent Leak";
+    let run;
+    try {
+      run = spawnSync(NODE, [CLI_ENTRY, "--version"], {
+        cwd: ROOT,
+        encoding: "utf8",
+        env: baseEnv(boardlessEnv()),
+      });
+    } finally {
+      if (had) process.env.TASKCTL_HUMAN = previous;
+      else delete process.env.TASKCTL_HUMAN;
+    }
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.stderr, "", "no diagnostic mentions the planted identity");
   });
 });
 

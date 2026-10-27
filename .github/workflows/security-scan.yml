@@ -13,7 +13,7 @@ name: security-scan
 #   1. This workflow produces the SBOM itself, including on a `v*` tag push, rather than
 #      hanging off the release pipeline — the release and check workflows are owned by
 #      other changes and are not edited here. On a tag the SBOM is also attached to the
-#      release draft (which the release pipeline opens) if that release already exists.
+#      GitHub Release (which the release pipeline publishes) if one already exists.
 #   2. A finding never fails the run on its own: the scanner steps are `continue-on-error`
 #      and the gate exits 0 unless `SCAN_STRICT=1` (a repository variable) or a dispatch
 #      sets `strict: true`. Alerting stays useful; only an explicit opt-in turns a known
@@ -51,9 +51,15 @@ on:
         default: false
 
 # Nothing here writes to the repository except the SBOM job, which needs `contents: write`
-# to attach an asset to an existing release draft.
+# to attach an asset to an existing GitHub Release.
 permissions:
   contents: read
+
+concurrency:
+  # A new push supersedes an older scan of the same ref, but a scheduled scan is
+  # never cancelled by one: the weekly run is the only full sweep.
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 env:
   NODE_VERSION: "22"
@@ -67,12 +73,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # The incremental scan diffs the last 24 hours of history.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -122,7 +128,7 @@ jobs:
       - name: osv-scanner (full)
         if: steps.mode.outputs.mode == 'full'
         continue-on-error: true
-        uses: google/osv-scanner-action/osv-scanner-action@v2.0.2
+        uses: google/osv-scanner-action/osv-scanner-action@e69cc6c86b31f1e7e23935bbe7031b50e51082de # v2.0.2
         with:
           scan-args: |-
             --recursive
@@ -133,7 +139,7 @@ jobs:
       - name: osv-scanner (incremental)
         if: steps.mode.outputs.mode != 'full' && steps.targets.outputs.changed == 'true'
         continue-on-error: true
-        uses: google/osv-scanner-action/osv-scanner-action@v2.0.2
+        uses: google/osv-scanner-action/osv-scanner-action@e69cc6c86b31f1e7e23935bbe7031b50e51082de # v2.0.2
         with:
           scan-args: |-
             --format=json
@@ -161,7 +167,7 @@ jobs:
 
       - name: Upload the reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dependency-scan-reports
           path: |
@@ -177,11 +183,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # Produced here, by this workflow, on every trigger — including a `v*` tag push.
       - name: Generate the SBOM (syft, SPDX JSON)
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
           format: spdx-json
@@ -190,11 +196,11 @@ jobs:
           upload-artifact: true
           upload-release-assets: false
 
-      # The release pipeline opens the draft release for the tag; it may well not have run
-      # yet when this job finishes, so this waits a little and then gives up quietly — the
-      # SBOM is published as a workflow artifact either way, and this job must never be the
-      # reason a release looks broken.
-      - name: Attach the SBOM to the release draft (tag pushes)
+      # The release pipeline publishes the GitHub Release for the tag; it may well not have
+      # run yet when this job finishes, so this waits a little and then gives up quietly —
+      # the SBOM is published as a workflow artifact either way, and this job must never be
+      # the reason a release looks broken.
+      - name: Attach the SBOM to the release (tag pushes)
         if: startsWith(github.ref, 'refs/tags/v')
         continue-on-error: true
         env:
@@ -204,7 +210,7 @@ jobs:
           for attempt in 1 2 3 4 5 6; do
             if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
               gh release upload "$GITHUB_REF_NAME" sbom.spdx.json --clobber
-              echo "attached sbom.spdx.json to the release draft for $GITHUB_REF_NAME"
+              echo "attached sbom.spdx.json to the release for $GITHUB_REF_NAME"
               exit 0
             fi
             sleep 15

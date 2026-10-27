@@ -18,6 +18,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { baseEnv } from "../../helpers/base-env.mjs";
+
 /** The repository root — `test/install/helpers/` is three levels down. */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -55,7 +57,7 @@ export function createInstallHarness({
     spawnSync("bash", [INSTALL, ...args], {
       cwd: ROOT,
       encoding: "utf8",
-      env: { ...process.env, ...defaults, ...env },
+      env: baseEnv({ ...defaults, ...env }),
     });
 
   /**

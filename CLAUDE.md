@@ -77,11 +77,12 @@ merging `dev`, and only after the user has confirmed.
 The log contains `lane/… → main` merges from before this rule; treat the section above as the
 policy going forward.
 
-### CHANGELOG.md is written only when `dev` merges into `main`
+### CHANGELOG.md is written only on the release branch
 
-`CHANGELOG.md` is the release line's record, not a work log. Write it **only** in the
-`dev` → `main` integration step, after the user has confirmed the release, and derive the
-entries from what that merge actually contains:
+`CHANGELOG.md` is the release line's record, not a work log. Write it **only** on the
+release branch (`release/vX.Y.Z`, the PR `workflow_dispatch release-prep` opens to `main`)
+after the user has confirmed the release — that branch *is* the `dev` → `main` integration —
+and derive the entries from what that merge actually contains:
 
 ```sh
 git log --no-merges --reverse <last-release-tag>..dev   # first release: main..dev
@@ -189,7 +190,7 @@ to get them). Hook and CI run the same checkers:
 | Hook | Enforces |
 |---|---|
 | `pre-commit` | migrations append-only, contiguous from `0001`, none edited or deleted (`verify/migrations.mjs`) |
-| `pre-push` | contract snapshot matches the live surface; declared request schema equals what the handler reads; no tracked file carries a host-absolute path (`verify/paths.mjs`) or a signpost out of the repository (`verify/signposts.mjs`); every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` CHANGELOG section; `main` is not pushed directly; **then the container gate** (`npm run verify:docker`) on a branch push — skipped for a tag-only push or a branch deletion, and by `SKIP_CONTAINER_VERIFY=1` |
+| `pre-push` | contract snapshot matches the live surface; declared request schema equals what the handler reads; no tracked file carries a host-absolute path (`verify/paths.mjs`) or a signpost out of the repository (`verify/signposts.mjs`); the four version carriers agree (`verify/version.mjs`); every pushed `refs/tags/vX.Y.Z` names that version, is on `main` (`verify/tag-version.mjs`), and has a **filled** `## [X.Y.Z] - YYYY-MM-DD` section (`verify/changelog.mjs --strict`); `main` is not pushed directly; **then the container gate** (`npm run verify:docker`) on a branch push — skipped for a tag-only push or a branch deletion, and by `SKIP_CONTAINER_VERIFY=1` |
 | `pre-tag` | the same API + tag rules, run by hand before `git tag` (git has no native pre-tag hook) |
 
 Two workflows guard the tree itself. `paths-gate.yml`: a host-absolute `/Users/<someone>/…`

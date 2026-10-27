@@ -146,6 +146,18 @@ describe("pack-manifest — checkManifest", () => {
     assert.deepEqual(result.leaked, []);
   });
 
+  it("accepts a matching expected version and rejects a mismatch", () => {
+    const entries = parseTar(maybeGunzip(goodTarball()));
+
+    const ok = checkManifest(entries, PACKAGE_JSON, { expectedVersion: "1.0.0" });
+    assert.equal(ok.ok, true, JSON.stringify(ok));
+    assert.equal(ok.versionMismatch, null);
+
+    const bad = checkManifest(entries, PACKAGE_JSON, { expectedVersion: "2.0.0" });
+    assert.equal(bad.ok, false);
+    assert.match(bad.versionMismatch, /expected 2\.0\.0, found 1\.0\.0/);
+  });
+
   it("reports a missing required file", () => {
     const entries = parseTar(maybeGunzip(buildTarball([{ path: "package/package.json", body: JSON.stringify(PACKAGE_JSON) }])));
     const result = checkManifest(entries, PACKAGE_JSON);
@@ -180,6 +192,19 @@ describe("pack-manifest — the CLI", () => {
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /pack-manifest: OK/);
     assert.match(result.stdout, /1\.0\.0/);
+  });
+
+  it("exits 0 on a matching --expected-version and 1 on a mismatch", async () => {
+    const file = await writeTarball(goodTarball());
+
+    const pass = runCli([file, "--expected-version", "1.0.0"]);
+    assert.equal(pass.status, 0, pass.stderr);
+
+    const fail = runCli([file, "--expected-version", "2.0.0"]);
+    assert.equal(fail.status, 1);
+    assert.match(fail.stderr, /tarball version mismatch/);
+    assert.match(fail.stderr, /2\.0\.0/);
+    assert.match(fail.stderr, /1\.0\.0/);
   });
 
   it("exits 1 and names the leak", async () => {

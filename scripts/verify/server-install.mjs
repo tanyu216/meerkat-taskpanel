@@ -25,10 +25,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
+import { scrubEnv } from "./lib/scrub-env.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const BASE_ENV = {
-  ...process.env,
+  ...scrubEnv(),
   MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
   MEERKAT_TASKPANEL_SKIP_WEB_BUILD: "1",
   MEERKAT_TASKPANEL_SKIP_NODE_CHECK: "1",

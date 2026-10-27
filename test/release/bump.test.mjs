@@ -1,8 +1,8 @@
 /**
- * Tests for `scripts/release/bump.mjs` — the one-shot, three-manifest version bump.
+ * Tests for `scripts/release/bump.mjs` — the one-shot, four-carrier version bump.
  *
  * Every case builds a real tree on disk (a temp dir) with the *hand-written
- * bytes* of the three manifests, then calls the real planning/apply functions; the
+ * bytes* of the four carriers, then calls the real planning/apply functions; the
  * CLI cases spawn the real script. Nothing is mocked, because the property under
  * test is precisely "what bytes land on disk": a stub would prove nothing.
  *
@@ -49,10 +49,11 @@ async function makeTree() {
 }
 
 /**
- * The three manifests as literal text, in the *mixed* formatting the real files
+ * The four carriers as literal text, in the *mixed* formatting the real files
  * use: 2-space indent, inline objects (`{ "name": "tanyu216" }`), and arrays on
  * one line. That formatting is the thing a JSON round trip destroys, so it is
- * spelled out byte for byte rather than produced by `stringify`.
+ * spelled out byte for byte rather than produced by `stringify`. The module
+ * carrier is last, matching its position in `VERSION_SOURCES`.
  *
  * @param {string} version
  * @returns {Record<string, string>}
@@ -83,6 +84,13 @@ function manifests(version) {
   "plugins": [{ "name": "meerkat-taskpanel", "source": "./" }]
 }
 `,
+    "src/foundation/constants.mjs": `/**
+ * Shared constants.
+ */
+
+export const CLI_NAME = "taskctl";
+export const VERSION = "${version}";
+`,
   };
 }
 
@@ -92,13 +100,18 @@ const PATHS = Object.keys(manifests("0.0.0"));
 /**
  * A tree carrying every version carrier, which is what `node scripts/verify/version.mjs`
  * requires to go green: the group is checked against its canonical entry, so a tree
- * missing one of its manifests is a broken tree (exit 2), not a passing one.
+ * missing one of its carriers is a broken tree (exit 2), not a passing one.
  *
  * @param {string} version the board version
  * @returns {Record<string, string>}
  */
 function fullTree(version) {
   return manifests(version);
+}
+
+/** A changelog with a real, filled section for `version` — the `--tag` gate requires it. */
+function documentedChangelog(version = "1.1.0", date = "2026-10-10") {
+  return `# Changelog\n\n## [Unreleased]\n\n## [${version}] - ${date}\n\n### Fixed\n\n- A real change.\n`;
 }
 
 /** Write a `path → bytes` map into `dir`. */
@@ -140,16 +153,22 @@ function run(script, args) {
 // ---------------------------------------------------------------------------
 
 describe("bump.mjs — declarations", () => {
-  it("carries the same three manifests as version.mjs, package.json canonical", () => {
-    assert.equal(SOURCES.length, 3);
+  it("carries the same four carriers as version.mjs, package.json canonical", () => {
+    assert.equal(SOURCES.length, 4);
     assert.equal(SOURCES[0].path, "package.json");
     assert.equal(SOURCES[0].canonical, true);
     assert.equal(SOURCES.filter((source) => source.canonical).length, 1);
     assert.deepEqual(
       SOURCES.map((source) => source.path),
       PATHS,
-      "the declared paths are the three files the fixture writes",
+      "the declared paths are the four files the fixture writes",
     );
+  });
+
+  it("carries the module carrier without a JSON key path", () => {
+    const constants = SOURCES.find((source) => source.path === "src/foundation/constants.mjs");
+    assert.equal(constants.kind, "module");
+    assert.deepEqual([...constants.keys], []);
   });
 
   it("names the JSON path for the nested marketplace version", () => {
@@ -164,8 +183,15 @@ describe("bump.mjs — declarations", () => {
     // were removed, and `--group loop` is now an unknown group rather than a silent no-op.
     assert.deepEqual(Object.keys(BUMP_GROUPS), ["board"]);
     assert.equal(BUMP_GROUPS.board.sources, SOURCES);
-    assert.equal(BUMP_GROUPS.board.checkers.length, 3);
-    assert.ok(BUMP_GROUPS.board.checkers.every((source) => typeof source.pick === "function"));
+    assert.equal(BUMP_GROUPS.board.checkers.length, 4);
+    assert.ok(
+      BUMP_GROUPS.board.checkers
+        .filter((source) => source.kind === "json")
+        .every((source) => typeof source.pick === "function"),
+      "every JSON carrier has a picker",
+    );
+    const constants = BUMP_GROUPS.board.checkers.find((source) => source.kind === "module");
+    assert.equal(constants.pick, undefined, "the module carrier is located, not picked");
   });
 });
 
@@ -290,17 +316,19 @@ describe("red→green — the naive round trip reformats, the splice does not", 
         `${entry.path}: every other byte is unchanged`,
       );
       assert.equal(entry.after.includes('"1.0.0"'), false, `${entry.path}: no stale version survives`);
-      assert.deepEqual(
-        Object.keys(JSON.parse(entry.after)),
-        Object.keys(JSON.parse(entry.before)),
-        `${entry.path}: key order is preserved`,
-      );
+      if (entry.path.endsWith(".json")) {
+        assert.deepEqual(
+          Object.keys(JSON.parse(entry.after)),
+          Object.keys(JSON.parse(entry.before)),
+          `${entry.path}: key order is preserved`,
+        );
+      }
     }
   });
 });
 
 describe("bump.mjs — planBump", () => {
-  it("plans all three edits against a consistent tree", async () => {
+  it("plans all four edits against a consistent tree", async () => {
     const dir = await makeTree();
     await writeTree(dir, manifests("1.0.0"));
 
@@ -308,7 +336,7 @@ describe("bump.mjs — planBump", () => {
     assert.equal(planned.ok, true, planned.error);
     assert.equal(planned.previous, "1.0.0");
     assert.equal(planned.version, "1.1.0");
-    assert.equal(planned.entries.length, 3);
+    assert.equal(planned.entries.length, 4);
   });
 
   it("refuses a non-semver target", async () => {
@@ -370,6 +398,43 @@ describe("bump.mjs — planBump", () => {
     const planned = await planBump({ version: "2.0.0", base: dir });
     assert.equal(planned.ok, false, "a missing field must not be 'fixed' silently");
     assert.equal(planned.code, "unreadable-tree");
+  });
+
+  it("refuses to bump a tree whose module carrier has drifted", async () => {
+    const dir = await makeTree();
+    const files = manifests("1.0.0");
+    files["src/foundation/constants.mjs"] = files["src/foundation/constants.mjs"].replace('"1.0.0"', '"0.9.9"');
+    await writeTree(dir, files);
+
+    const planned = await planBump({ version: "2.0.0", base: dir });
+    assert.equal(planned.ok, false);
+    assert.equal(planned.code, "drift");
+    assert.match(planned.error, /src\/foundation\/constants\.mjs/);
+  });
+
+  it("refuses a module carrier with no declaration, or more than one", async () => {
+    for (const body of ['export const VERSION = 1;\n', 'export const VERSION = "1.0.0";\nexport const VERSION = "1.0.0";\n']) {
+      const dir = await makeTree();
+      const files = manifests("1.0.0");
+      files["src/foundation/constants.mjs"] = body;
+      await writeTree(dir, files);
+
+      const planned = await planBump({ version: "2.0.0", base: dir });
+      assert.equal(planned.ok, false);
+      assert.equal(planned.code, "unreadable-tree");
+      assert.match(planned.error, /src\/foundation\/constants\.mjs/);
+    }
+  });
+
+  it("splices only the module's version literal", async () => {
+    const dir = await makeTree();
+    await writeTree(dir, manifests("1.0.0"));
+
+    const planned = await planBump({ version: "2.0.0", base: dir });
+    const constants = planned.entries.find((entry) => entry.path === "src/foundation/constants.mjs");
+    assert.equal(constants.after, constants.before.replace('"1.0.0"', '"2.0.0"'));
+    assert.ok(constants.after.includes('export const VERSION = "2.0.0";'));
+    assert.ok(constants.after.includes("export const CLI_NAME = \"taskctl\";"), "the rest of the module survives");
   });
 });
 
@@ -476,13 +541,13 @@ describe("bump.mjs — atomicity", () => {
     const planned = await planBump({ version: "2.0.0", base: dir });
     assert.equal(planned.ok, true, planned.error);
 
-    // Fail the third stage. The first two temp files were already created, so a
-    // leak or a partial write would show up below.
+    // Fail the last (fourth) stage. The first three temp files were already created,
+    // so a leak or a partial write would show up below.
     let calls = 0;
     const io = {
       writeFile: async (...args) => {
         calls += 1;
-        if (calls === 3) throw new Error("injected staging failure");
+        if (calls === 4) throw new Error("injected staging failure");
         return writeFile(...args);
       },
       rename,
@@ -509,7 +574,7 @@ describe("bump.mjs — atomicity", () => {
       writeFile,
       rename: async (...args) => {
         renames += 1;
-        if (renames === 2) throw new Error("injected rename failure");
+        if (renames === 3) throw new Error("injected rename failure");
         return rename(...args);
       },
       rm,
@@ -536,7 +601,7 @@ describe("bump.mjs — atomicity", () => {
 });
 
 describe("bump.mjs — runBump", () => {
-  it("bumps the three manifests and satisfies version.mjs afterwards", async () => {
+  it("bumps the four carriers and satisfies version.mjs afterwards", async () => {
     const dir = await makeTree();
     await writeTree(dir, fullTree("1.0.0"));
 
@@ -544,13 +609,13 @@ describe("bump.mjs — runBump", () => {
     assert.equal(result.ok, true, result.error);
     assert.equal(result.previous, "1.0.0");
     assert.equal(result.version, "1.1.0");
-    assert.equal(result.entries.length, 3);
+    assert.equal(result.entries.length, 4);
 
     // "串联绿": the checker the repo trusts now passes on the bumped tree — the group at
     // the new version, internally consistent.
     const checked = run(VERSION_CHECK, ["--base", dir]);
     assert.equal(checked.status, 0, checked.stderr);
-    assert.match(checked.stdout, /all 3 board manifests agree on 1\.1\.0/);
+    assert.match(checked.stdout, /all 4 board version carriers agree on 1\.1\.0/);
   });
 
   it("bumps this repository's own manifests, byte for byte", async () => {
@@ -579,7 +644,7 @@ describe("bump.mjs — runBump", () => {
 
     const checked = run(VERSION_CHECK, ["--base", dir]);
     assert.equal(checked.status, 0, checked.stderr);
-    assert.match(checked.stdout, new RegExp(`all 3 board manifests agree on ${target.replace(/\./g, "\\.")}`));
+    assert.match(checked.stdout, new RegExp(`all 4 board version carriers agree on ${target.replace(/\./g, "\\.")}`));
     assert.equal(run(CHANGELOG_CHECK, [`v${target}`, "--base", dir]).status, 0);
   });
 
@@ -600,7 +665,7 @@ describe("bump.mjs — runBump", () => {
 
     const result = await runBump({ version: "1.1.0", base: dir, changelog: true, date: "2026-10-10" });
     assert.equal(result.ok, true, result.error);
-    assert.equal(result.entries.length, 4, "three manifests + the changelog");
+    assert.equal(result.entries.length, 5, "four carriers + the changelog");
     assert.equal(result.changelog.path, CHANGELOG_FILE);
 
     const body = await readFile(join(dir, CHANGELOG_FILE), "utf8");
@@ -622,9 +687,10 @@ describe("bump.mjs — runBump", () => {
     assert.equal(await readFile(join(dir, CHANGELOG_FILE), "utf8"), changelog);
   });
 
-  it("tags v<x.y.z> after a successful bump, and never pushes", async () => {
+  it("tags an annotated v<x.y.z> after a successful bump, and never pushes", async () => {
     const dir = await makeTree();
     await writeTree(dir, manifests("1.0.0"));
+    await writeFile(join(dir, CHANGELOG_FILE), documentedChangelog(), "utf8");
 
     const calls = [];
     const run = (command, args, options) => {
@@ -635,7 +701,11 @@ describe("bump.mjs — runBump", () => {
     const result = await runBump({ version: "1.1.0", base: dir, tag: true, run });
     assert.equal(result.ok, true, result.error);
     assert.equal(result.tagged, "v1.1.0");
-    assert.deepEqual(calls, [{ command: "git", args: ["tag", "v1.1.0"], cwd: dir }], "exactly one git call: tag");
+    assert.deepEqual(
+      calls,
+      [{ command: "git", args: ["tag", "-a", "v1.1.0", "-m", "Meerkat TaskPanel v1.1.0"], cwd: dir }],
+      "exactly one git call: an annotated tag",
+    );
     assert.equal(
       calls.some((call) => call.args.includes("push")),
       false,
@@ -646,6 +716,7 @@ describe("bump.mjs — runBump", () => {
   it("reports a failed tag without pretending the bump did not happen", async () => {
     const dir = await makeTree();
     await writeTree(dir, manifests("1.0.0"));
+    await writeFile(join(dir, CHANGELOG_FILE), documentedChangelog(), "utf8");
 
     const result = await runBump({
       version: "1.1.0",
@@ -658,6 +729,46 @@ describe("bump.mjs — runBump", () => {
     assert.match(result.error, /tag already exists/);
     assert.match(result.error, /the files were written/);
     assert.equal((await readFile(join(dir, "package.json"), "utf8")).includes('"1.1.0"'), true, "the bump stands");
+  });
+
+  it("refuses to tag a scaffold changelog, and does not call git", async () => {
+    const dir = await makeTree();
+    await writeTree(dir, manifests("1.0.0"));
+    await writeFile(
+      join(dir, CHANGELOG_FILE),
+      "# Changelog\n\n## [1.1.0] - 2026-10-10\n\n### Added\n\n- _Nothing yet._\n",
+      "utf8",
+    );
+
+    let called = false;
+    const result = await runBump({
+      version: "1.1.0",
+      base: dir,
+      tag: true,
+      run: () => {
+        called = true;
+        return { status: 0 };
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "gate-failed");
+    assert.equal(called, false, "the changelog gate runs before git");
+    assert.match(result.error, /the files were written/);
+    assert.equal((await readFile(join(dir, "package.json"), "utf8")).includes('"1.1.0"'), true);
+  });
+
+  it("refuses to tag without a changelog section", async () => {
+    const dir = await makeTree();
+    await writeTree(dir, manifests("1.0.0"));
+
+    const result = await runBump({
+      version: "1.1.0",
+      base: dir,
+      tag: true,
+      run: () => ({ status: 0 }),
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "gate-failed");
   });
 
   it("does not call git at all without --tag", async () => {
@@ -684,7 +795,7 @@ describe("bump.mjs — the CLI", () => {
     const result = run(BUMP, ["1.1.0", "--base", dir]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /bump: 1\.0\.0 → 1\.1\.0 \(board\)/);
-    assert.match(result.stdout, /3 board manifests now at 1\.1\.0/);
+    assert.match(result.stdout, /4 board carriers now at 1\.1\.0/);
     assert.equal(run(VERSION_CHECK, ["--base", dir]).status, 0);
   });
 
@@ -713,6 +824,7 @@ describe("bump.mjs — the CLI", () => {
   it("exits 3 when the tag fails, after the bump has landed", async () => {
     const dir = await makeTree();
     await writeTree(dir, fullTree("1.0.0"));
+    await writeFile(join(dir, CHANGELOG_FILE), documentedChangelog(), "utf8");
 
     // The temp tree is not a git repository (and the verify image has no git), so
     // the tag step cannot succeed — the point is the exit code and that the files

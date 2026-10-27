@@ -21,6 +21,7 @@ import {
   ROOT,
   checkChangelog,
   findVersionEntry,
+  parseVersionSection,
   parseVersionTag,
 } from "../../scripts/verify/changelog.mjs";
 
@@ -113,11 +114,11 @@ describe("changelog.mjs — checkChangelog against a tree", () => {
     assert.equal(typeof result.line, "number");
   });
 
-  it("has no release section yet: v0.1.0 is still the unreleased baseline", async () => {
+  it("documents the released 0.1.0 baseline", async () => {
     const result = await checkChangelog({ tag: "v0.1.0" });
-    assert.equal(result.ok, false);
+    assert.equal(result.ok, true, result.error);
     assert.equal(result.version, "0.1.0");
-    assert.match(result.error, /CHANGELOG\.md/);
+    assert.equal(typeof result.line, "number");
   });
 
   it("fails, naming the tag, when the version is missing from CHANGELOG.md", async () => {
@@ -132,6 +133,15 @@ describe("changelog.mjs — checkChangelog against a tree", () => {
     const result = await checkChangelog({ tag: "docs/experiment" });
     assert.equal(result.ok, true);
     assert.equal(result.skipped, true);
+  });
+
+  it("fails a v-prefixed name that is not semver instead of skipping it", async () => {
+    for (const tag of ["v1.2", "v1.2.3.4", "vnext"]) {
+      const result = await checkChangelog({ tag });
+      assert.equal(result.ok, false, `${tag} must not pass as a scratch tag`);
+      assert.equal(result.code, "malformed", tag);
+      assert.match(result.error, /vMAJOR\.MINOR\.PATCH/);
+    }
   });
 
   it("reports a missing CHANGELOG.md as an unreadable file, not a missing entry", async () => {
@@ -163,6 +173,13 @@ describe("changelog.mjs — the CLI", () => {
     assert.equal(result.status, 0, result.stderr);
   });
 
+  it("exits 1 for a malformed v* tag", () => {
+    const result = runCli(["v1.2"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /release tag/i);
+    assert.doesNotMatch(result.stderr, /undefined/, "no section hint for a tag that is the problem");
+  });
+
   it("exits 2 on usage error (no tag given)", () => {
     const result = runCli([]);
     assert.equal(result.status, 2);
@@ -177,5 +194,77 @@ describe("changelog.mjs — the CLI", () => {
     const fail = runCli(["v2.2.0", "--base", dir]);
     assert.equal(fail.status, 1);
     assert.match(fail.stderr, /2\.2\.0/);
+  });
+});
+
+describe("changelog.mjs — strict", () => {
+  const GOOD = "# Changelog\n\n## [Unreleased]\n\n## [2.1.0] - 2026-10-10\n\n### Fixed\n\n- A real fix.\n";
+
+  async function strictTree(body) {
+    const dir = await makeTree();
+    await writeFile(join(dir, "CHANGELOG.md"), body, "utf8");
+    return dir;
+  }
+
+  it("passes a real dated section with entries and an empty Unreleased", async () => {
+    const dir = await strictTree(GOOD);
+    const result = await checkChangelog({ tag: "v2.1.0", base: dir, strict: true });
+    assert.equal(result.ok, true, result.error);
+  });
+
+  it("rejects a missing or impossible date", async () => {
+    for (const heading of ["## [2.1.0]", "## [2.1.0] - 2026-02-30"]) {
+      const dir = await strictTree(`# Changelog\n\n${heading}\n\n- A real fix.\n`);
+      const result = await checkChangelog({ tag: "v2.1.0", base: dir, strict: true });
+      assert.equal(result.ok, false);
+      assert.equal(result.code, "strict-date", heading);
+    }
+  });
+
+  it("rejects the scaffold placeholder and an empty section", async () => {
+    const placeholder = await strictTree(
+      "# Changelog\n\n## [2.1.0] - 2026-10-10\n\n### Added\n\n- _Nothing yet._\n",
+    );
+    const p = await checkChangelog({ tag: "v2.1.0", base: placeholder, strict: true });
+    assert.equal(p.ok, false);
+    assert.equal(p.code, "strict-placeholder");
+
+    const empty = await strictTree("# Changelog\n\n## [2.1.0] - 2026-10-10\n\n### Added\n");
+    const e = await checkChangelog({ tag: "v2.1.0", base: empty, strict: true });
+    assert.equal(e.ok, false);
+    assert.equal(e.code, "strict-empty");
+  });
+
+  it("rejects a non-empty [Unreleased]", async () => {
+    const dir = await strictTree(
+      "# Changelog\n\n## [Unreleased]\n\n- Still unreleased.\n\n## [2.1.0] - 2026-10-10\n\n- A real fix.\n",
+    );
+    const result = await checkChangelog({ tag: "v2.1.0", base: dir, strict: true });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "unreleased-dirty");
+  });
+
+  it("keeps the non-strict gate permissive for the scaffold", async () => {
+    const dir = await strictTree("# Changelog\n\n## [2.1.0]\n\n- _Nothing yet._\n");
+    const result = await checkChangelog({ tag: "v2.1.0", base: dir });
+    assert.equal(result.ok, true, result.error);
+  });
+
+  it("parses the section's date and top-level bullets", async () => {
+    const section = parseVersionSection(GOOD, "2.1.0");
+    assert.equal(section.date, "2026-10-10");
+    assert.deepEqual(section.bullets, ["- A real fix."]);
+    assert.equal(parseVersionSection(GOOD, "9.9.9"), null);
+  });
+
+  it("CLI --strict exits 1 on a placeholder and 0 on a real section", async () => {
+    const bad = await strictTree("# Changelog\n\n## [2.1.0] - 2026-10-10\n\n- _Nothing yet._\n");
+    const fail = runCli(["v2.1.0", "--base", bad, "--strict"]);
+    assert.equal(fail.status, 1);
+    assert.match(fail.stderr, /scaffold|placeholder/i);
+
+    const good = await strictTree(GOOD);
+    const pass = runCli(["v2.1.0", "--base", good, "--strict"]);
+    assert.equal(pass.status, 0, pass.stderr);
   });
 });

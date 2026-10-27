@@ -52,6 +52,21 @@ export function parseVersionTag(tag) {
 }
 
 /**
+ * Is this ref in the reserved release namespace (`v…`)?
+ *
+ * `v` is not a free prefix: the release rulesets target it and `release.yml` runs on
+ * it, so a `v`-prefixed ref that is not `vMAJOR.MINOR.PATCH` is a mistake, not a
+ * scratch tag. Callers skip a non-version tag (a `docs/experiment` ref is none of
+ * this gate's business) but **fail** a reserved-but-malformed one.
+ *
+ * @param {string} tag
+ * @returns {boolean}
+ */
+export function isReleaseTag(tag) {
+  return typeof tag === "string" && /^v/i.test(tag.trim());
+}
+
+/**
  * Find the `## [version]` heading in a changelog body.
  *
  * Matches a Keep-a-Changelog heading (`## [1.2.3] - 2026-10-10`) by comparing the
@@ -74,6 +89,72 @@ export function findVersionEntry(changelog, version) {
   return null;
 }
 
+/** A section heading: `## [x]` with an optional ` - YYYY-MM-DD` suffix. */
+const SECTION_HEADING = /^##\s+\[([^\]]+)\](.*)$/;
+/** A link-reference line (`[1.2.3]: https://…`) — a section body stops above it. */
+const LINK_REFERENCE = /^\[[^\]]+\]:\s/;
+/** A top-level bullet in a section. */
+const SECTION_BULLET = /^-\s+/;
+/** The scaffold's placeholder; a strict gate must never accept it. */
+export const PLACEHOLDER_BULLET = "_Nothing yet._";
+
+/**
+ * Is `value` a real calendar date in `YYYY-MM-DD` form?
+ *
+ * The regex alone accepts `2026-02-30`; `Date` normalizes it to March 2, so the
+ * round-trip is what rejects an impossible day.
+ *
+ * @param {string} value
+ * @returns {boolean}
+ */
+export function isRealDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+/**
+ * Parse one full changelog section: its heading, date, body and top-level bullets.
+ *
+ * A section runs from its `## [version]` heading to the next `## [...]` heading or
+ * the foot-of-file link-reference block. Sub-headings (`### Added`, …) stay inside
+ * the body, which is why the caller can look for a placeholder anywhere in it.
+ *
+ * @param {string} changelog
+ * @param {string} version
+ * @returns {{heading: string, line: number, endLine: number, date: string|null, body: string, bullets: string[]}|null}
+ */
+export function parseVersionSection(changelog, version) {
+  const lines = String(changelog).split("\n");
+  const start = lines.findIndex((line) => {
+    const match = SECTION_HEADING.exec(line);
+    return match !== null && match[1].trim() === version;
+  });
+  if (start === -1) return null;
+
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (SECTION_HEADING.test(lines[index]) || LINK_REFERENCE.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+
+  const heading = lines[start];
+  const suffix = SECTION_HEADING.exec(heading)?.[2]?.trim() ?? "";
+  const dateMatch = /^-\s*(\d{4}-\d{2}-\d{2})\s*$/.exec(suffix);
+  const bodyLines = lines.slice(start + 1, end);
+
+  return {
+    heading,
+    line: start + 1,
+    endLine: end,
+    date: dateMatch === null ? null : dateMatch[1],
+    body: bodyLines.join("\n"),
+    bullets: bodyLines.filter((line) => SECTION_BULLET.test(line)),
+  };
+}
+
 /**
  * Check that a tag has a changelog entry. Never throws for a bad tree: a missing
  * file and a missing entry come back as `{ok: false, …}` so the callers can pick
@@ -83,10 +164,20 @@ export function findVersionEntry(changelog, version) {
  * @returns {Promise<{ok: boolean, skipped?: boolean, unreadable?: boolean, tag?: string, version?: string, line?: number, error?: string}>}
  */
 export async function checkChangelog(options) {
-  const { tag, base = ROOT, file = CHANGELOG_FILE } = options;
+  const { tag, base = ROOT, file = CHANGELOG_FILE, strict = false } = options;
 
   const version = parseVersionTag(tag);
-  if (version === null) return { ok: true, skipped: true, tag };
+  if (version === null) {
+    if (isReleaseTag(tag)) {
+      return {
+        ok: false,
+        tag,
+        code: "malformed",
+        error: `'${tag}' is a release tag, but its name must be vMAJOR.MINOR.PATCH (e.g. v1.2.3)`,
+      };
+    }
+    return { ok: true, skipped: true, tag };
+  }
 
   const path = join(base, file);
   let raw;
@@ -107,6 +198,55 @@ export async function checkChangelog(options) {
     };
   }
 
+  if (strict) {
+    const section = parseVersionSection(raw, version);
+    if (section === null) {
+      return { ok: false, tag, version, error: `tag ${tag} has no '## [${version}]' section in ${file}` };
+    }
+    if (section.date === null || !isRealDate(section.date)) {
+      return {
+        ok: false,
+        tag,
+        version,
+        code: "strict-date",
+        error: `tag ${tag}: '## [${version}]' needs a real ' - YYYY-MM-DD' date`,
+      };
+    }
+    if (section.body.includes(PLACEHOLDER_BULLET)) {
+      return {
+        ok: false,
+        tag,
+        version,
+        code: "strict-placeholder",
+        error: `tag ${tag}: '## [${version}]' still contains the '${PLACEHOLDER_BULLET}' scaffold`,
+      };
+    }
+    const entries = section.bullets.filter((bullet) => bullet.replace(SECTION_BULLET, "").trim() !== "");
+    if (entries.length === 0) {
+      return {
+        ok: false,
+        tag,
+        version,
+        code: "strict-empty",
+        error: `tag ${tag}: '## [${version}]' has no entries`,
+      };
+    }
+
+    const unreleased = parseVersionSection(raw, "Unreleased");
+    if (unreleased !== null) {
+      const dirty = unreleased.bullets.filter((bullet) => !bullet.includes(PLACEHOLDER_BULLET));
+      if (dirty.length > 0) {
+        return {
+          ok: false,
+          tag,
+          version,
+          code: "unreleased-dirty",
+          error: `'## [Unreleased]' still has ${dirty.length} entr${dirty.length === 1 ? "y" : "ies"} — move them into the release section`,
+        };
+      }
+    }
+  }
+
   return { ok: true, tag, version, line: found.line };
 }
 
@@ -116,6 +256,7 @@ async function main(argv) {
     options: {
       base: { type: "string" },
       file: { type: "string" },
+      strict: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
     allowPositionals: true,
@@ -123,11 +264,12 @@ async function main(argv) {
 
   if (values.help) {
     process.stdout.write(
-      "Usage: node scripts/verify/changelog.mjs <vX.Y.Z> [--base <dir>] [--file <name>]\n\n" +
+      "Usage: node scripts/verify/changelog.mjs <vX.Y.Z> [--base <dir>] [--file <name>] [--strict]\n\n" +
         "  <vX.Y.Z>       the tag to check against the changelog\n" +
         "  --base <dir>   the tree to read from (default: this checkout)\n" +
-        "  --file <name>  the changelog file (default: CHANGELOG.md)\n\n" +
-        "Exit: 0 has an entry / not a version tag · 1 missing entry · 2 usage or unreadable file\n",
+        "  --file <name>  the changelog file (default: CHANGELOG.md)\n" +
+        "  --strict       require a real date, real entries, and an empty [Unreleased]\n\n" +
+        "Exit: 0 has an entry / not a version tag · 1 missing, insufficient or malformed · 2 usage or unreadable file\n",
     );
     return 0;
   }
@@ -141,6 +283,7 @@ async function main(argv) {
   const options = { tag };
   if (values.base !== undefined) options.base = resolve(values.base);
   if (values.file !== undefined) options.file = values.file;
+  if (values.strict) options.strict = true;
 
   const result = await checkChangelog(options);
 
@@ -154,9 +297,19 @@ async function main(argv) {
   }
   if (!result.ok) {
     process.stderr.write(`changelog: FAILED — ${result.error}\n`);
-    process.stderr.write(
-      "changelog: add a '## [" + result.version + "]' section to CHANGELOG.md before tagging.\n",
-    );
+    if (result.code === "malformed") {
+      // No section hint: the tag itself is the problem, not the changelog.
+      return 1;
+    }
+    if (values.strict) {
+      process.stderr.write(
+        "changelog: fill the release section before tagging — no placeholders, a real date, and an empty [Unreleased].\n",
+      );
+    } else {
+      process.stderr.write(
+        "changelog: add a '## [" + result.version + "]' section to CHANGELOG.md before tagging.\n",
+      );
+    }
     return 1;
   }
 

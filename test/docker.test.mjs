@@ -895,10 +895,17 @@ describe("static: verify-in-container.sh", () => {
     const text = await read("docker/verify-in-container.sh");
     assert.match(text, /set -euo pipefail/);
     assert.match(text, /node --test/);
-    assert.match(text, /npm run check/);
+    // The suite runs twice (`node --test`, then under coverage); `npm run check`
+    // would run it a third time. The static half comes from `npm run verify`.
+    assert.match(text, /^npm run verify$/m);
+    assert.doesNotMatch(text, /^npm run check$/m, "the third full test run is redundant");
     assert.match(text, /install\.sh --target all --dry-run/);
     assert.match(text, /scripts\/verify\/profiles\.mjs/);
     assert.match(text, /^node scripts\/verify\/server-install\.mjs$/m);
+    // The tarball e2e belongs here for the same reason the install e2e does: a
+    // release artefact that only CI boots is one `npm run verify:docker` cannot
+    // vouch for.
+    assert.match(text, /^node scripts\/verify\/tarball-install\.mjs$/m);
   });
 
   it("runs the install + first-run end-to-end, so local and CI cover the same ground", async () => {
