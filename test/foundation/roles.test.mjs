@@ -7,10 +7,14 @@
  * than wedge a poll or a wake.
  *
  * Precedence is whole-manifest: explicit `--roles-dir` > project
- * `.meerkat/roles` > the loop skill's `roles/` > the deployed body's `roles/`.
+ * `.meerkat/roles` > the loop skill's `roles/`.
  * Project roles win as a set; they are not merged role-by-role with the global
  * set. Workflow paths are resolved inside the chosen root and may not escape it,
  * including through a symlink.
+ *
+ * The loop's own state directory is deliberately **not** a candidate: the
+ * "deployed body" it once served no longer exists, and a role root there would be
+ * silently shadowed by the skill's.
  */
 
 import assert from "node:assert/strict";
@@ -116,24 +120,21 @@ function writeRoleFiles(f, dir, prefix = "") {
 }
 
 describe("resolveRolesRoot — whole-manifest precedence", () => {
-  it("prefers an explicit directory, then project, then the loop skill, then the state dir", () => {
+  it("prefers an explicit directory, then project, then the loop skill", () => {
     const f = fixture();
     try {
       writeRoleFiles(f, f.explicitDir);
       writeRoleFiles(f, f.projectRoles);
       writeRoleFiles(f, f.loopRoles);
-      writeRoleFiles(f, f.stateRoles);
       f.write(f.explicitDir, "manifest.json", manifest());
       f.write(f.projectRoles, "manifest.json", manifest({ team: "project" }));
       f.write(f.loopRoles, "manifest.json", manifest({ team: "global" }));
-      f.write(f.stateRoles, "manifest.json", manifest({ team: "state" }));
 
       assert.equal(
         resolveRolesRoot({
           explicitDir: f.explicitDir,
           projectDir: f.projectDir,
           loopSkillDir: f.loopSkillDir,
-          stateDir: f.stateDir,
         }).source,
         "explicit",
       );
@@ -141,15 +142,30 @@ describe("resolveRolesRoot — whole-manifest precedence", () => {
         resolveRolesRoot({
           projectDir: f.projectDir,
           loopSkillDir: f.loopSkillDir,
-          stateDir: f.stateDir,
         }).source,
         "project",
       );
+      assert.equal(resolveRolesRoot({ loopSkillDir: f.loopSkillDir }).source, "loop-skill");
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("ignores a manifest in the loop state directory", () => {
+    const f = fixture();
+    try {
+      writeRoleFiles(f, f.stateRoles);
+      f.write(f.stateRoles, "manifest.json", manifest({ team: "state" }));
+
       assert.equal(
-        resolveRolesRoot({ loopSkillDir: f.loopSkillDir, stateDir: f.stateDir }).source,
-        "loop-skill",
+        resolveRolesRoot({ stateDir: f.stateDir }),
+        null,
+        "the state directory is runtime state, not a roles root",
       );
-      assert.equal(resolveRolesRoot({ stateDir: f.stateDir }).source, "state");
+      const result = loadRoles({ stateDir: f.stateDir });
+      assert.equal(result.ok, true);
+      assert.equal(result.source, null);
+      assert.deepEqual(result.roles, []);
     } finally {
       f.cleanup();
     }

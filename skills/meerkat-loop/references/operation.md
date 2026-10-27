@@ -151,8 +151,8 @@ A team is an optional roles root authored by `setup-meerkat`. The loop reads `ma
 there and adds routing (the role named by the card's assignee supplies responsibilities and
 boundaries) and a workflow path carried in the handoff. Precedence is whole-manifest:
 `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, then `<project>/.meerkat/roles/`, then
-`<agent-dir>/skills/meerkat-loop/roles/`, then `<agent-dir>/meerkat-taskpanel/roles/`. A
-malformed manifest warns and degrades to no role; it never wedges a tick. `setup-meerkat`
+`<agent-dir>/skills/meerkat-loop/roles/`. A malformed manifest warns and degrades to no role;
+it never wedges a tick. `setup-meerkat`
 writes the team's board names to `MEERKAT_TASKPANEL_AGENTS`; without that list the loop scans
 only its default agent, so a role card is never claimed.
 

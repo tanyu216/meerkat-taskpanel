@@ -2286,9 +2286,8 @@ describe("parseArgs — the team scan set and roles root", () => {
     assert.equal(env.rolesDir, "/env-team");
   });
 
-  it("exposes the loop-skill and body roles paths for every actor kind", () => {
+  it("exposes the loop-skill roles path for every actor kind", () => {
     const paths = agentPaths("/home/alice", "pi");
     assert.equal(paths.loopRoles, "/home/alice/.agents/skills/meerkat-loop/roles");
-    assert.equal(paths.stateRoles, "/home/alice/.agents/meerkat-taskpanel/roles");
   });
 });

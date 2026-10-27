@@ -192,9 +192,8 @@ on a producer card, then `issue deliver` at `in_review`.
 ## Precedence and the two layers
 
 Whole-manifest precedence: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, then
-`<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`, then
-`<agent-dir>/meerkat-taskpanel/roles/`. The project set replaces the global set; it is
-not merged role-by-role.
+`<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`. The project set
+replaces the global set; it is not merged role-by-role.
 
 1. **Routing** — the loop reads the responsibilities and selects the role named by the
    card's assignee.

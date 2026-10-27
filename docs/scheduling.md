@@ -648,7 +648,6 @@ first root that has one:
 1. `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`
 2. `<project>/.meerkat/roles/`
 3. `<agent-dir>/skills/meerkat-loop/roles/` (the global install)
-4. `<agent-dir>/meerkat-taskpanel/roles/` (legacy state-dir location)
 
 A project set replaces the global set; the roles are not merged one by one. Every path must
 stay inside the root, including through symlinks — an escaping or malformed entry warns and

@@ -81,7 +81,7 @@ export const POOL_STALE_MS = 4 * POOL_HEARTBEAT_MS;
  * @returns {{
  *   log: string, state: string, config: string, projectsJson: string,
  *   loopSkill: string, boardSkill: string, stateDir: string,
- *   loopRoles: string, stateRoles: string,
+ *   loopRoles: string,
  * }}
  */
 export function agentPaths(home, actorKind) {
@@ -98,11 +98,10 @@ export function agentPaths(home, actorKind) {
     // skill. Checked at `--session` start, never assumed.
     loopSkill,
     boardSkill: join(dir, "skills", "meerkat-taskpanel"),
-    // The loop's state directory. A roles root may travel with either the
-    // skill (the setup skill's default) or the state directory.
+    // The loop's state directory. Runtime state only — a roles root travels
+    // with the skill, never here.
     stateDir,
     loopRoles: join(loopSkill, "roles"),
-    stateRoles: join(stateDir, "roles"),
   };
 }
 

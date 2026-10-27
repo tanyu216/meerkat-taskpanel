@@ -796,7 +796,6 @@ export function wakeHandoff(opts, config, action, card, context = {}) {
     explicitDir: opts.rolesDir ?? null,
     projectDir: context.projectDir ?? null,
     loopSkillDir: paths?.loopSkill ?? null,
-    stateDir: paths?.stateDir ?? null,
   });
   const role = isReview
     ? selectReviewerRole(roleSet, action.agent)
@@ -1003,7 +1002,6 @@ export async function runContinue(opts, deps = {}) {
   const roleSet = opts.roles ?? loadRoles({
     explicitDir: opts.rolesDir ?? null,
     loopSkillDir: agentFiles.loopSkill,
-    stateDir: agentFiles.stateDir,
   });
   const agent = opts.agents[0];
   const prompt = buildContinuePrompt({

@@ -575,7 +575,6 @@ export function createSessionPool(input = {}) {
     const roleSet = opts.roles ?? loadRoles({
       explicitDir: opts.rolesDir ?? null,
       loopSkillDir: agentFiles.loopSkill,
-      stateDir: agentFiles.stateDir,
     });
     const controlAgent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : "agent";
     const prompt = buildContinuePrompt({
@@ -649,7 +648,6 @@ export function createSessionPool(input = {}) {
         explicitDir: opts.rolesDir ?? null,
         projectDir: dir,
         loopSkillDir: paths.loopSkill,
-        stateDir: paths.stateDir,
       });
       entry.busy = true;
       let outcome;
@@ -843,7 +841,6 @@ export function createSessionPool(input = {}) {
         explicitDir: opts.rolesDir ?? null,
         projectDir: dir,
         loopSkillDir: paths.loopSkill,
-        stateDir: paths.stateDir,
       });
       for (const warning of roleSet.warnings) {
         if (loggedRoleWarnings.has(warning)) continue;
