@@ -178,6 +178,10 @@ copies `setup-meerkat` to `~/.claude/skills/setup-meerkat`, and no other target 
 The repository bundle and marketplace still expose it, so another agent kind can read it in
 place; the bash installer just does not put a second copy on disk for them.
 
+Roles are installed and upgraded **only** by `/setup-meerkat`. `install.sh` ships no roles
+root and never creates, writes or deletes one; a forced reinstall carries an existing
+`roles/` across untouched. To upgrade a team, re-run the skill.
+
 The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists a single
 plugin, `./` (the board); Codex reads the same marketplace manifest, which is why it has no
 bundle of its own.

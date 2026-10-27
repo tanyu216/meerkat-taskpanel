@@ -203,6 +203,16 @@ replaces the global set; it is not merged role-by-role.
 The reviewer's prompt is inlined at the start of the reviewer handoff, bounded at 2,400
 characters; the worker workflow stays a path.
 
+## Installing and upgrading
+
+`/setup-meerkat` is the only path that installs or upgrades a team: `install-roles.mjs`
+writes the role files with the manifest last, and a second identical run reports every action
+as unchanged. Re-run the skill to upgrade; a file that differs from the template is a
+conflict and needs `--force` after the user confirms, and no file is ever deleted — removing
+a role is an explicit operator action. `install.sh` ships no roles root and never creates,
+writes or deletes one; a forced skill reinstall carries the installed `roles/` across
+untouched.
+
 ## Board names and the scan set
 
 After the roles are installed, `configure-env.mjs` merges the team's board names into the

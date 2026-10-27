@@ -154,6 +154,8 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 第三个 skill **`setup-meerkat`** 就是 `/setup-meerkat` 命令。它会探测已安装的部分、补齐缺失、提供 Matt Pocock issue-tracker 集成，并按需安装 Jobs/Linus/Turing 加独立 reviewer 的团队（角色 workflow、原生 agent 定义、计划文件与遗漏检查的约定）。`install.sh --target claude` 会把它复制到 `~/.claude/skills/setup-meerkat`。其他 agent kind（包括 OpenClaw）可以从共享 bundle 就地读到；为 OpenClaw 提供专门支持列在[路线图](#路线图)里。
 
+团队的 roles root 归这个 skill 所有：`install.sh` 不附带、也不会创建、写入或删除任何 roles root，因此 `/setup-meerkat` 是安装或升级团队的唯一途径。
+
 常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，默认 `Worker`，须与其 assignee 一致；对既有安装改名需配 `--force` 才生效）、`--no-automation`（跳过 Codex 调度单元与 taskd guard）、`--link`（软链而非拷贝）、`--force`（**唯一**的覆盖手段 —— 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`（预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
 **看板配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的 `.env`，取看板 URL、客户端 token、allow-list 与 SLA 阈值（`TASKD_SLA_*`，由看板校验并通过 `GET /api/v1/sla` 发布）。进程环境逐键优先，CLI 参数再优先于两者。`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每个 actor kind 还有一份**按 kind 的配置** —— `<program root>/.env.<actor-kind>`（例如 `.env.claude`）—— `taskctl` 会把它作为 per-agent 默认层读取（身份、项目图、引擎位置），`taskctl loop …` 则从同一份文件读 loop 策略。它不是看板配置，loader 也拒绝把 loop 策略键写进 `.env`。每条 `taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其中的键搬进 `.env`。详见 [`docs/install.md`](docs/install.md) 与 [`docs/development.md`](docs/development.md)。

@@ -205,6 +205,10 @@ with the Claude bundle only:
   other      — not copied by this installer; the repository bundle and marketplace
               still carry it for the other agent kinds.
 
+Roles are installed and upgraded only by `/setup-meerkat`: this installer never
+creates, writes or deletes a roles root, and a forced reinstall carries an existing one
+across untouched.
+
 The loop and setup skills are always **copied**, never symlinked: --link names the board
 skill only, or a symlinked loop would put the checkout back into the load path the split
 removes.
