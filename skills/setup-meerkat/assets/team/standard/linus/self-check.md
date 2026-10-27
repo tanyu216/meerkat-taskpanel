@@ -48,8 +48,8 @@ run them.
    frontend, persistence and container rows name the choices the table requires; a choice
    outside the recommended baseline carries the human's E5 approval.
 8. The skeleton builds, the smoke test passes, the documented local run works, and the
-   scaffold instantiates the recorded stack and the planned directory tree (the Dockerfile
-   builds when the runtime form is a container).
+   scaffold instantiates the recorded stack and the planned directory tree (the container
+   build file builds when the runtime form is a container).
 9. The project's gate path exists and fires on a scratch change, and it is idempotent. No
    secret, no host-absolute path, no generated file is committed.
 10. The E5 architecture decision is recorded before implementation starts, and the

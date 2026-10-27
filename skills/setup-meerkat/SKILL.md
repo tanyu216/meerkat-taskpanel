@@ -177,7 +177,7 @@ The standard template is `assets/team/standard/`:
 | Role | Board agent | Native agent | Scope |
 |---|---|---|---|
 | Jobs | `Jobs` | `jobs` | product planning, prototype validation, PRD, product glossary/ADRs, visual/interaction design |
-| Linus | `Linus` | `linus` | system architecture and project foundation (system-init design), implementation, bugs, ops, worktree/init, code glossary/ADRs |
+| Linus | `Linus` | `linus` | system architecture and project foundation (system-init design), implementation, bugs, ops, agent-instruction baseline, code glossary/ADRs |
 | Turing | `Turing` | `turing` | test design, post-fix regression (incl. production), optional performance, security, canonical terms |
 | Reviewer | `Reviewer` | `reviewer` | independent fourth role; verdict only |
 
@@ -216,13 +216,11 @@ the codebase `GLOSSARY.md` and `docs/adr/`, and the root glossary links the prod
 without copying it. `ui-workflow.md` also runs standalone for a single feature or prototype
 change.
 
-Linus scaffolds the agent instructions with the host's `/init` (writing `CLAUDE.md` or
-`AGENTS.md`) and writes the workspace rule into them. The `/init` product is the baseline
-every role reads, not an optional step. The rule is global rather than Linus-only: Jobs,
-Linus and Turing all work a card in one linked worktree off `dev`, created with
-`git worktree add .worktrees/<card-slug> -b <branch> dev`, with the primary checkout left on
-`dev`. Merge and cleanup happen only after reviewer approval or operator confirmation
-(`merge --no-ff`, then `worktree remove`, then `branch -d`; never `-D`).
+Linus establishes the project's agent-instruction baseline (the host's `CLAUDE.md` or
+`AGENTS.md`) as a foundation outcome. It is the file every role reads, not an optional step,
+and it carries the entry commands, layout pointers, conventions, gates and the six principles.
+The project owns its own working-tree, branch and integration contract; the team's role
+workflows do not restate it.
 
 The architecture branch is the project's **system-initialization design flow**, not a
 feature or module design. It decides the architecture style (DDD or a named simpler style),
@@ -230,7 +228,8 @@ the external contract when one exists, the configuration surface, the logging co
 the planned directory tree against the design stance — simple, reliable, efficient, elegant,
 not over-engineered, and high cohesion / low coupling — records the evidence in the
 architecture document and ADRs, and carries the top-level tree map and the six design
-principles into `/init`, where they bind every agent. A feature or module inside the recorded architecture is
+principles into the agent-instruction baseline, where they bind every agent. A feature or
+module inside the recorded architecture is
 implementation work. The same six principles are applied as questions in
 `implementation-workflow.md` Step 2 and audited by the implementation branch of
 `self-check.md`.

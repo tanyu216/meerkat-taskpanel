@@ -127,21 +127,19 @@ It also carries the design-stance evidence (simple, reliable, efficient, elegant
 over-engineered, high cohesion and low coupling), the architecture-style decision (DDD or a
 named simpler style), the external contract, the configuration surface, the logging
 contract and the planned directory tree. The contract artifact is canonical, `CLAUDE.md`/`AGENTS.md` carry a top-level
-tree map and a pointer, and the `/init` product is the baseline every role reads, carrying
-the six design principles as binding requirements for every agent. A feature or module change
-applies the same six in `implementation-workflow.md` Step 2.
+tree map and a pointer, and the agent-instruction baseline is the file every role reads,
+carrying the six design principles as binding requirements for every agent. A feature or
+module change applies the same six in `implementation-workflow.md` Step 2.
 The root glossary carries a
 `## Product language` section that links `design/glossary.md`; product terms are not copied
 there. Turing keeps each card's `test-plan.md`, `regression.md` and `performance.md`, with
 their evidence, in `.meerkat/<id>/`.
 
-Linus scaffolds the agent instructions with the host's `/init` (writing `CLAUDE.md` or
-`AGENTS.md`) and writes the workspace rule into them. The rule is **global**: every role —
-Jobs, Linus and Turing — works a card in one linked worktree off the integration branch
-(`dev` by default): `git worktree add .worktrees/<card-slug> -b <branch> dev`. The primary
-checkout stays on `dev`, and the card's roles share the worktree. Merge and cleanup run only
-after reviewer approval or operator confirmation: `git merge --no-ff` into `dev`, then
-`git worktree remove`, then `git branch -d` — never `-D`.
+Linus establishes the project's agent-instruction baseline (the host's `CLAUDE.md` or
+`AGENTS.md`) as a foundation outcome. It is the file every role reads. The project's own
+working-tree, branch and integration contract belongs in that baseline; the team's role
+workflows deliberately do not restate it, and integration and cleanup stay with the project
+session after reviewer approval or operator confirmation.
 
 ## Review ownership
 
