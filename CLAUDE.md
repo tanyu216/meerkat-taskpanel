@@ -149,7 +149,7 @@ the release workflow stages the image's build there before `npm pack`.
   `webbuild` stage run `npm ci --offline`, so the image builds with no network. The cache is a
   **generated artefact** (linux/arm64) — after a dependency bump, re-vendor per `docs/docker.md`
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
-- **The skills are authored source, never generated.** `skills/meerkat-taskpanel/`,
+- **The skills are authored source, never generated.** `skills/meerkat/`,
   `skills/meerkat-loop/` (docs + decisions only) and `skills/setup-meerkat/` (standalone)
   are edited in place; there is no payload generator and no `manifest.txt`. The loop itself
   is `src/orchestrator/` (the workflow decisions live in
@@ -165,7 +165,7 @@ the release workflow stages the image's build there before `npm pack`.
   never let it drift. Adding a new `DomainError` code touches `ERROR_CODES`, its bucket and that
   snapshot. A command, positional or flag change must update
   `test/fixtures/contract/cli.snapshot.json` via `node scripts/verify/cli-contract.mjs
-  --update`, and `skills/meerkat-taskpanel/references/cli.md` must name every frozen command
+  --update`, and `skills/meerkat/references/cli.md` must name every frozen command
   and flag — the loop and user scripts bind to that surface.
 - **Commit with explicit paths:** `git commit -- <path>` (never a bare `git commit -a`).
 - **Code style / layering:** `src/core/domain/` imports **no Node builtins**; dependency
@@ -230,7 +230,7 @@ authoritative home, because the container image drops `design/`.
 - **The loop speaks only `taskctl`.** `src/orchestrator/**` never calls the board's HTTP API
   directly — the live event stream is `taskctl events follow` (the local event hub), not
   `fetch`, and the loop carries no board discovery or token code. Board capability detail (invocations,
-  JSON keys) lives in `skills/meerkat-taskpanel/references/capabilities.md`; the loop skill
+  JSON keys) lives in `skills/meerkat/references/capabilities.md`; the loop skill
   records decisions only.
 - **One local event hub per user and board.** `taskctl events hub` owns the host's single
   SSE connection to a board and fans it out to local consumers (`events follow` and watch
@@ -262,7 +262,7 @@ authoritative home, because the container image drops `design/`.
   `context` command (`src/core/commands/context.mjs` is actor/execution context, unrelated) and no
   registry `root` anchor; a card's `target` is an opaque per-card value, never derived from a
   project. The directory↔project map lives in a `projects.json` beside the installed skill
-  (`skills/meerkat-taskpanel/references/projects-json.md`); whether a project's source data is
+  (`skills/meerkat/references/projects-json.md`); whether a project's source data is
   managed with `meta` is the agent's own decision and taskpanel neither prescribes nor advises it.
   An entry names its directory as `local_path`, else as the `run_dir` launch pad, or names **none** —
   a project with no local directory is a complete answer (`dir: null`, exit 0), distinct from the

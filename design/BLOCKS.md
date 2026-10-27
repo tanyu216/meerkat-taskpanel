@@ -692,7 +692,7 @@ where the stamp is `[data-activity-at]` — 实测全文档 `[data-activity-row]
 > the dialog files plain `task` cards, and the missing `kind` is a decision rather than a
 > missing control. `deploy` is not a card kind at all (0039), and an `epic` made here would be
 > born `todo` — the one state an epic provably cannot leave (T-20261017-063808). An `epic` comes from an agent promoting a card in place, which is what
-> `skills/meerkat-taskpanel/SKILL.md` §"When the card is a container" already assumes. The
+> `skills/meerkat/SKILL.md` §"When the card is a container" already assumes. The
 > machine face is `test/web/create-dialog-kind.test.mjs` (K1–K3) — adding the field is a design
 > round, not a ninth `<select>`.
 

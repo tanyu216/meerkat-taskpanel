@@ -183,7 +183,7 @@ describe("loop skill: SKILL.md", () => {
 
   it("names the attachment download command in the board skill's CLI reference", () => {
     const cli = readFileSync(
-      join(ROOT, "skills", "meerkat-taskpanel", "references", "cli.md"),
+      join(ROOT, "skills", "meerkat", "references", "cli.md"),
       "utf8",
     );
     assert.match(cli, /attachment download <attachment-id> --out <file>/);
@@ -192,7 +192,7 @@ describe("loop skill: SKILL.md", () => {
 });
 
 describe("board skill: references resolve where the skill is installed", () => {
-  const skillDir = join(ROOT, "skills/meerkat-taskpanel");
+  const skillDir = join(ROOT, "skills/meerkat");
   const references = readdirSync(join(skillDir, "references"))
     .filter((name) => name.endsWith(".md"))
     .map((name) => `references/${name}`);
@@ -341,7 +341,7 @@ describe("board skill: the status whitelist matches the domain", () => {
   }
 
   it("has one home and re-encodes ALLOWED_TRANSITIONS with the epic overlay", () => {
-    const skill = readFileSync(join(ROOT, "skills/meerkat-taskpanel/SKILL.md"), "utf8");
+    const skill = readFileSync(join(ROOT, "skills/meerkat/SKILL.md"), "utf8");
     assert.equal(
       skill.includes("<!-- status-whitelist:begin -->"),
       false,
@@ -349,7 +349,7 @@ describe("board skill: the status whitelist matches the domain", () => {
     );
     assert.match(skill, /status-lifecycle\.md#2-the-whitelist/);
 
-    const raw = block(readFileSync(join(ROOT, "skills/meerkat-taskpanel", file), "utf8"), file);
+    const raw = block(readFileSync(join(ROOT, "skills/meerkat", file), "utf8"), file);
     const { table, epic } = parse(raw, file);
     for (const status of STATUSES) {
       assert.deepEqual(
@@ -370,8 +370,8 @@ describe("board skill: the acceptance matrix has one home", () => {
   const BEGIN = "<!-- acceptance-matrix:begin -->";
   const END = "<!-- acceptance-matrix:end -->";
   const copies = [
-    ["status-lifecycle.md", join(ROOT, "skills/meerkat-taskpanel/references/status-lifecycle.md")],
-    ["review-workflow.md", join(ROOT, "skills/meerkat-taskpanel/references/review-workflow.md")],
+    ["status-lifecycle.md", join(ROOT, "skills/meerkat/references/status-lifecycle.md")],
+    ["review-workflow.md", join(ROOT, "skills/meerkat/references/review-workflow.md")],
   ];
 
   /** The raw block between the markers, asserting the markers appear exactly once. */
@@ -437,7 +437,7 @@ describe("board skill: the acceptance matrix has one home", () => {
 });
 
 describe("board skill: the acceptance list rule", () => {
-  const text = readFileSync(join(ROOT, "skills/meerkat-taskpanel/SKILL.md"), "utf8");
+  const text = readFileSync(join(ROOT, "skills/meerkat/SKILL.md"), "utf8");
 
   it("reads the card as JSON and derives only when the list is empty", () => {
     assert.match(text, /issue get <ref> --json/);
@@ -454,9 +454,9 @@ describe("board skill: the acceptance list rule", () => {
 });
 
 describe("board skill: the container decision", () => {
-  const skill = readFileSync(join(ROOT, "skills/meerkat-taskpanel/SKILL.md"), "utf8");
+  const skill = readFileSync(join(ROOT, "skills/meerkat/SKILL.md"), "utf8");
   const lifecycle = readFileSync(
-    join(ROOT, "skills/meerkat-taskpanel/references/status-lifecycle.md"),
+    join(ROOT, "skills/meerkat/references/status-lifecycle.md"),
     "utf8",
   );
 
@@ -479,7 +479,7 @@ describe("board skill: the container decision", () => {
 
   it("names the shape limits where the card schema defines them", () => {
     const schema = readFileSync(
-      join(ROOT, "skills/meerkat-taskpanel/references/card-schema.md"),
+      join(ROOT, "skills/meerkat/references/card-schema.md"),
       "utf8",
     );
     assert.match(schema, /\*\*8\*\*\s+children/);

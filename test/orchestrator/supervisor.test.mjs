@@ -1427,7 +1427,7 @@ describe("parseArgs — the project map", () => {
 
   it("defaults the map under the agent's dot-directory, and accepts an explicit one", () => {
     const opts = parseArgs(["--actor-kind", "codex", "--once"], ENV);
-    assert.equal(opts.projectsJson, "/home/alice/.codex/skills/meerkat-taskpanel/projects.json");
+    assert.equal(opts.projectsJson, "/home/alice/.codex/skills/meerkat/projects.json");
     const custom = parseArgs(["--actor-kind", "pi", "--projects-json=/tmp/map.json"], ENV);
     assert.equal(custom.projectsJson, "/tmp/map.json");
   });

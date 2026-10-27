@@ -6,7 +6,7 @@
  * T-20261017-063826 asked for a decision on "the board UI cannot create an epic and cannot set
  * `kind`", and the ruling is **(C) — do not add it**: the create dialog keeps no `kind` field,
  * and `epic` is produced agent-side by promoting a card in place
- * (`skills/meerkat-taskpanel/SKILL.md` §"When the card is a container"). The two other
+ * (`skills/meerkat/SKILL.md` §"When the card is a container"). The two other
  * candidates were considered and refused on evidence:
  *
  *   * **(A) a full `kind` select** would put `deploy` in a form. `deploy` is a card that no

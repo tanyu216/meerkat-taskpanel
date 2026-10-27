@@ -2,7 +2,7 @@
 actor_kind: pi
 label: Pi
 installer: scripts/install/pi.sh
-target_dir: .agents/skills/meerkat-taskpanel
+target_dir: .agents/skills/meerkat
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
 # Pi consumes the repository's own package.json — its `pi` field declares the skills

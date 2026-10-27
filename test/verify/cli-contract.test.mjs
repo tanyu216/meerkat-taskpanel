@@ -36,7 +36,7 @@ import {
 
 const SCRIPT = join(ROOT, "scripts", "verify", "cli-contract.mjs");
 const COMMITTED = join(ROOT, SNAPSHOT_FILE);
-const CLI_DOC = join(ROOT, "skills/meerkat-taskpanel/references/cli.md");
+const CLI_DOC = join(ROOT, "skills/meerkat/references/cli.md");
 const tempDirs = [];
 
 after(async () => {

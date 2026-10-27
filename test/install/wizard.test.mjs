@@ -351,7 +351,7 @@ describe("install.sh --interactive end to end", () => {
     );
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stderr, /interactive setup/);
-    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-taskpanel", "SKILL.md")));
+    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat", "SKILL.md")));
     for (const absent of [".codex", ".agents", ".openclaw", ".meerkat-taskpanel"]) {
       assert.equal(existsSync(join(home, absent)), false, `${absent} must not be installed`);
     }
@@ -398,7 +398,7 @@ describe("install.sh --interactive end to end", () => {
     );
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stderr, /Unknown choice/);
-    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-taskpanel", "SKILL.md")));
+    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat", "SKILL.md")));
   });
 
   it("--interactive under --dry-run never prompts", () => {
@@ -443,7 +443,7 @@ describe("install.sh --interactive end to end", () => {
     assert.match(run.stderr, /--no-server/);
     assert.doesNotMatch(run.stderr, /Install mode/);
     assert.equal(existsSync(join(home, ".meerkat-taskpanel")), false);
-    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-taskpanel", "SKILL.md")));
+    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat", "SKILL.md")));
   });
 
   it("a server-only selection installs no agent skills but records the human name", () => {
@@ -468,7 +468,7 @@ describe("install.sh --interactive end to end", () => {
       answers("", "1", "", "", "", "", "", "", "", "", ""),
     );
     assert.equal(run.status, 0, run.stderr);
-    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-taskpanel", "SKILL.md")));
+    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat", "SKILL.md")));
     assert.ok(existsSync(join(home, ".meerkat-taskpanel", "bin", "taskctl")));
   });
 

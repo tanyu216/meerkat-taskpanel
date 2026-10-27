@@ -24,7 +24,7 @@
 | `src/orchestrator/` | The external loop (`taskctl loop …`): passes, daemons, session pool, actor kinds |
 | `src/foundation/` | Foundation DTOs, constants, small pure helpers |
 | `web/` | Vue 3 + Vite board frontend → `web/dist` (the hosted frontend root) |
-| `skills/meerkat-taskpanel/` | The skill — **single source of truth** |
+| `skills/meerkat/` | The skill — **single source of truth** |
 | `.claude-plugin/` | The board plugin manifest and the marketplace; the plugin root is the repository root, which is how every harness shares the one `skills/` tree |
 | `.pi/` | The Pi extension, declared by the root `package.json`'s `pi` field (which also names the skills directory) |
 | `scripts/` | Build, install and verify scripts |
@@ -417,7 +417,7 @@ There are three skills, and each is plain source — there is no generated paylo
 
 | Skill | Lives in | Notes |
 |---|---|---|
-| `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | `SKILL.md`, `references/`, its two helper scripts. Every harness reads `skills/` in place |
+| `meerkat` (the board) | `skills/meerkat/` | `SKILL.md`, `references/`, its two helper scripts. Every harness reads `skills/` in place |
 | `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` | `SKILL.md` + `references/` only. The loop itself is `src/orchestrator/`, reached through `taskctl loop …` |
 | `setup-meerkat` (install/repair + team setup) | `skills/setup-meerkat/` | Everything, including `scripts/` and `assets/`; standalone (Node builtins only), copied as-is with the Claude bundle |
 

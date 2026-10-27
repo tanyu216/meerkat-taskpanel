@@ -135,12 +135,12 @@ export function agentPaths(home, actorKind) {
     log: join(dir, "meerkat-taskpanel", STATE_FILES.log),
     state: join(dir, "meerkat-taskpanel", STATE_FILES.supervisor),
     agentDir: AGENT_DIRS[actorKind],
-    projectsJson: join(dir, "skills", "meerkat-taskpanel", "projects.json"),
+    projectsJson: join(dir, "skills", "meerkat", "projects.json"),
     // The two skills the resident sessions need: the loop expands
     // `/meerkat-loop` in the control session; project subagents use the board
     // skill. Checked at `--session` start, never assumed.
     loopSkill,
-    boardSkill: join(dir, "skills", "meerkat-taskpanel"),
+    boardSkill: join(dir, "skills", "meerkat"),
     // The loop's state directory. Runtime state only — a roles root travels
     // with the skill, never here.
     stateDir,

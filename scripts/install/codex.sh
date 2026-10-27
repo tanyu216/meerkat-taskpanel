@@ -2,7 +2,7 @@
 # Install the Meerkat TaskPanel bundle for Codex.
 #
 # Deploys the complete Codex bundle, not just the board skill:
-#   1. board skill        → ~/.codex/skills/meerkat-taskpanel
+#   1. board skill        → ~/.codex/skills/meerkat
 #   2. loop skill         → ~/.codex/skills/meerkat-loop (always a copy; --link is board-only)
 #   3. claim-first snippet → merged into ~/.codex/AGENTS.md (identity + rules)
 #   4. scheduling         → ~/.codex/scheduling/{launchd,systemd,cron}, the loop state

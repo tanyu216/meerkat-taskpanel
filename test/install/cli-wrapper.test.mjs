@@ -242,7 +242,7 @@ describe("cli-wrapper — wizard translation", () => {
     );
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stderr, /interactive setup/);
-    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-taskpanel", "SKILL.md")));
+    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat", "SKILL.md")));
     assert.equal(existsSync(join(home, ".meerkat-taskpanel")), false);
     const config = readFileSync(join(home, "kind-config", ".env.claude"), "utf8");
     assert.match(config, /^MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no$/m);

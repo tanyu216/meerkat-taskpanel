@@ -418,7 +418,7 @@ human. The **board** now owns those decisions; the loop's **workflow pass**
 continue turn after patrol.
 
 The board computes one plan through `issue reconcile --workflow` (see
-[`status-lifecycle.md`](../skills/meerkat-taskpanel/references/status-lifecycle.md#11-the-boards-workflow-decisions) —
+[`status-lifecycle.md`](../skills/meerkat/references/status-lifecycle.md#11-the-boards-workflow-decisions) —
 provenance: `src/core/domain/workflow.mjs`). The loop never re-derives a decision. The
 plan has four parts, in this order:
 
@@ -1757,7 +1757,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--config <path>` | `<program root>/.env.<actor-kind>` (or `MEERKAT_TASKPANEL_CONFIG_DIR`) | per-kind config: the loop's claim default and concurrency cap, `MEERKAT_TASKPANEL_REPO`, and — on the board path — the per-agent identity and project-map defaults |
 | `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber's `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
 | `--home <path>` | `$HOME` | base for those defaults |
-| `--projects-json <path>` | `<home>/<agent-dir>/skills/meerkat-taskpanel/projects.json` | the agent-local map the poll pass resolves a card's directory from ([Where a worker runs](#where-a-worker-runs)) |
+| `--projects-json <path>` | `<home>/<agent-dir>/skills/meerkat/projects.json` | the agent-local map the poll pass resolves a card's directory from ([Where a worker runs](#where-a-worker-runs)) |
 
 **Fixed paths.** Logs and state always land at the paths in the table — a user
 who wants to know why a card did not start reads
@@ -1867,8 +1867,8 @@ this boundary: every agent kind gets one — see `docs/install.md`.)
   skill it is distributed as, and the board interface generation it requires;
   [`references/operation.md`](../skills/meerkat-loop/references/operation.md) is the
   operator's view.
-- [`../skills/meerkat-taskpanel/SKILL.md`](../skills/meerkat-taskpanel/SKILL.md) —
+- [`../skills/meerkat/SKILL.md`](../skills/meerkat/SKILL.md) —
   the agent-facing view: §Owning the clock.
-- [`../skills/meerkat-taskpanel/references/cli.md`](../skills/meerkat-taskpanel/references/cli.md) —
+- [`../skills/meerkat/references/cli.md`](../skills/meerkat/references/cli.md) —
   `issue candidates --include-unassigned`.
 - [openclaw-team](https://github.com/tanyu216/openclaw-team) — the OpenClaw supervisor.

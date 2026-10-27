@@ -43,7 +43,7 @@ const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpan
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const NODE = process.execPath;
 /** The skill under test, and the wrapper inside it. */
-const SKILL = "meerkat-taskpanel";
+const SKILL = "meerkat";
 const WRAPPER = join("scripts", "run.mjs");
 
 /**

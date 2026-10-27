@@ -141,7 +141,7 @@ describe("skill definitions", () => {
     assert.equal(ok, true, results.filter((result) => !result.ok).map((result) => result.error).join("\n"));
     assert.deepEqual(
       results.map((result) => result.name).sort(),
-      ["meerkat-loop", "meerkat-taskpanel", "setup-meerkat"],
+      ["meerkat", "meerkat-loop", "setup-meerkat"],
     );
     for (const result of results) {
       assert.ok(
@@ -230,7 +230,7 @@ describe("install.sh", () => {
     assert.equal(run.status, 0, run.stderr);
     for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
       assert.ok(
-        run.stdout.includes(join(fakeHome, agentDir, "skills", "meerkat-taskpanel")),
+        run.stdout.includes(join(fakeHome, agentDir, "skills", "meerkat")),
         `dry run must print the ${agentDir} destination path`,
       );
     }
@@ -262,7 +262,7 @@ describe("install.sh", () => {
 
   it("installs into a temp home and re-installs idempotently", async () => {
     const fakeHome = await makeTempDir();
-    const dest = join(fakeHome, ".claude", "skills", "meerkat-taskpanel");
+    const dest = join(fakeHome, ".claude", "skills", "meerkat");
     const env = {
       ...process.env,
       MEERKAT_TASKPANEL_TARGET_HOME: fakeHome,
@@ -396,7 +396,7 @@ describe("taskctl CLI", () => {
   it("the skill wrapper forwards to the same CLI", () => {
     const run = spawnSync(
       process.execPath,
-      [join(ROOT, "skills", "meerkat-taskpanel", "scripts", "run.mjs"), "--version"],
+      [join(ROOT, "skills", "meerkat", "scripts", "run.mjs"), "--version"],
       { encoding: "utf8", cwd: tmpdir() },
     );
     assert.equal(run.status, 0, run.stderr);

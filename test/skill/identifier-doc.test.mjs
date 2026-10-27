@@ -33,7 +33,7 @@ import { identifierFor, isValidIdentifier as domainValid } from "../../src/core/
 import { CARD_KEY_ORDER } from "../../src/core/storage/md/export.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
-const DOC_PATH = join(ROOT, "skills/meerkat-taskpanel/references/card-schema.md");
+const DOC_PATH = join(ROOT, "skills/meerkat/references/card-schema.md");
 const DOC = readFileSync(DOC_PATH, "utf8");
 
 /** The lines between `<!-- identifier-<name>:begin -->` and its `:end` marker. */

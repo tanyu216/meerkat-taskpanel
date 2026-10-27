@@ -273,10 +273,10 @@ wizard_targets() {
 
   printf '\nAgent kinds — each gets the board skill; claude/codex/pi also get the loop\n' >&2
   agents="$(wizard_multi "$default_agents" \
-    "claude=claude     ${prefix}/.claude/skills/meerkat-taskpanel (board + loop + setup)" \
-    "openclaw=openclaw   ${prefix}/.openclaw/skills/meerkat-taskpanel (board only; no loop or supervisor)" \
-    "codex=codex      ${prefix}/.codex/skills/meerkat-taskpanel (board + loop, claim trigger)" \
-    "pi=pi         ${prefix}/.agents/skills/meerkat-taskpanel (board + loop)")" || return 2
+    "claude=claude     ${prefix}/.claude/skills/meerkat (board + loop + setup)" \
+    "openclaw=openclaw   ${prefix}/.openclaw/skills/meerkat (board only; no loop or supervisor)" \
+    "codex=codex      ${prefix}/.codex/skills/meerkat (board + loop, claim trigger)" \
+    "pi=pi         ${prefix}/.agents/skills/meerkat (board + loop)")" || return 2
 
   if [ "$mode" = "full" ]; then
     printf 'server,%s\n' "$agents"

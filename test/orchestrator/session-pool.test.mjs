@@ -698,13 +698,13 @@ describe("session pool", () => {
     );
     assert.equal(code, 2);
     assert.match(lines.join("\n"), /missing skill/);
-    assert.match(lines.join("\n"), /meerkat-taskpanel/);
+    assert.match(lines.join("\n"), /meerkat/);
   });
 
   it("starts and stops cleanly once both skills are present", async (t) => {
     const f = fixture(t);
     const home = join(f.dir, "home");
-    for (const name of ["meerkat-loop", "meerkat-taskpanel"]) {
+    for (const name of ["meerkat", "meerkat-loop"]) {
       const dir = join(home, ".claude", "skills", name);
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`);
@@ -725,7 +725,7 @@ describe("session pool", () => {
     // the process exits the moment it starts and `--take-over` never sees it.
     const f = fixture(t);
     const home = join(f.dir, "home");
-    for (const name of ["meerkat-loop", "meerkat-taskpanel"]) {
+    for (const name of ["meerkat", "meerkat-loop"]) {
       const dir = join(home, ".claude", "skills", name);
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`);

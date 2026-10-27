@@ -50,7 +50,7 @@
 #
 # Three skills are distributed, and they do not go to the same agent kinds:
 #
-#   meerkat-taskpanel  the board                    → all four agent kinds
+#   meerkat            the board                    → all four agent kinds
 #   meerkat-loop       the external supervisor  → claude, codex, pi
 #                                                     (never openclaw)
 #   setup-meerkat      install/repair + team setup  → the Claude bundle only
@@ -182,10 +182,10 @@ The check runs before anything is installed; a missing or older `node` is an
 error. Pass --skip-node-check to bypass it.
 
 Destinations:
-  claude     <home>/.claude/skills/meerkat-taskpanel
-  openclaw   <home>/.openclaw/skills/meerkat-taskpanel
-  codex      <home>/.codex/skills/meerkat-taskpanel
-  pi         <home>/.agents/skills/meerkat-taskpanel
+  claude     <home>/.claude/skills/meerkat
+  openclaw   <home>/.openclaw/skills/meerkat
+  codex      <home>/.codex/skills/meerkat
+  pi         <home>/.agents/skills/meerkat
 
 The **board** and **loop** skills share two distribution surfaces. The board skill goes
 to all four agent kinds; the loop skill (the external supervisor) goes to the three

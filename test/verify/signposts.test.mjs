@@ -104,9 +104,9 @@ describe("verify/signposts — the store-root rule", () => {
   it("leaves the vendor's own skills root alone — that is an install target", () => {
     // `~/.openclaw/skills/…` is where the board gets installed *into* the vendor's agent,
     // which is a product capability, not the framework's private store.
-    assert.deepEqual(signpostsIn(`cp -r skills/meerkat-taskpanel ~/${VENDOR_DIR}/skills/`), []);
-    assert.deepEqual(signpostsIn("~/.claude/skills/meerkat-taskpanel"), []);
-    assert.deepEqual(signpostsIn("~/.codex/skills/meerkat-taskpanel"), []);
+    assert.deepEqual(signpostsIn(`cp -r skills/meerkat ~/${VENDOR_DIR}/skills/`), []);
+    assert.deepEqual(signpostsIn("~/.claude/skills/meerkat"), []);
+    assert.deepEqual(signpostsIn("~/.codex/skills/meerkat"), []);
   });
 
   it("leaves code that assembles the same directory from parts alone", () => {

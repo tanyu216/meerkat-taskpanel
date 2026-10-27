@@ -11,7 +11,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
@@ -121,8 +121,8 @@ describe("bundle: detectBundle", () => {
 describe("bundle: skill resolution", () => {
   it("adds declared roots to the format defaults, keeping only existing directories", async () => {
     const dir = await makeTempDir();
-    await put(dir, "skills/meerkat-taskpanel/SKILL.md", skillMd());
-    await put(dir, "extra/meerkat-taskpanel/SKILL.md", skillMd());
+    await put(dir, "skills/meerkat/SKILL.md", skillMd());
+    await put(dir, "extra/meerkat/SKILL.md", skillMd());
 
     assert.deepEqual(resolveSkillRoots(dir, "claude", {}), ["skills"]);
     assert.deepEqual(resolveSkillRoots(dir, "claude", { skills: ["./skills", "extra"] }), ["skills", "extra"]);
@@ -148,7 +148,7 @@ describe("bundle: skill resolution", () => {
     assert.deepEqual(findSkills(children, "nope"), []);
   });
 
-  it("resolves the shipped bundles to a loadable meerkat-taskpanel skill", () => {
+  it("resolves the shipped bundles to a loadable meerkat skill", () => {
     for (const [kind, meta] of Object.entries(KIND_BUNDLES)) {
       const info = inspectBundle(join(ROOT, meta.dir));
       const skill = info.skills.find((s) => s.name === SKILL_NAME);
@@ -176,7 +176,7 @@ describe("bundle: parseMarketplace", () => {
     }
   });
 
-  it("lists the board, sourced at the repository root, and nothing else", () => {
+  it("lists the board, sourced at the repository root, and nothing else", async () => {
     // The marketplace used to list two plugins — the board and the loop, the latter sourced
     // at a `plugins/loop` bundle that carried the loop skill and nothing else, so that
     // installing `meerkat-loop` alone could not quietly bring the board with it. The loop's
@@ -188,7 +188,12 @@ describe("bundle: parseMarketplace", () => {
     // `source: "./"` — the board's plugin root IS the repository root, which is what lets
     // claude / codex / pi / openclaw share the one `skills/` tree. It is the
     // shared tree, so it exposes all three skills; that is not a second marketplace plugin.
-    assert.deepEqual(market.entries.map((entry) => entry.name), [SKILL_NAME]);
+    //
+    // The entry is the plugin's name, not a skill's: the board skill has been renamed
+    // (`meerkat-taskpanel` → `meerkat`) while the published plugin keeps its identity, so
+    // the two must not be tied together.
+    const plugin = JSON.parse(await readFile(join(ROOT, CLAUDE_MANIFEST), "utf8"));
+    assert.deepEqual(market.entries.map((entry) => entry.name), [plugin.name]);
     assert.equal(market.entries[0].dir, "", "the board's source directory");
 
     const names = inspectBundle(ROOT).skills.map((skill) => skill.name);

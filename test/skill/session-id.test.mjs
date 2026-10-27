@@ -29,10 +29,10 @@ import {
   SESSION_ID_NAMESPACE as scriptNamespace,
   sessionId as scriptSessionId,
   uuidv5 as scriptUuidv5,
-} from "../../skills/meerkat-taskpanel/scripts/session-id.mjs";
+} from "../../skills/meerkat/scripts/session-id.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
-const SCRIPT = join(ROOT, "skills/meerkat-taskpanel/scripts/session-id.mjs");
+const SCRIPT = join(ROOT, "skills/meerkat/scripts/session-id.mjs");
 /** The RFC 4122 DNS namespace, used by the published test vector. */
 const DNS_NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 
@@ -40,7 +40,7 @@ function runScript(args) {
   return spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
 }
 
-describe("skills/meerkat-taskpanel/scripts/session-id.mjs", () => {
+describe("skills/meerkat/scripts/session-id.mjs", () => {
   it("derives byte for byte the way the board does", () => {
     const vectors = [
       ["", "", ""],

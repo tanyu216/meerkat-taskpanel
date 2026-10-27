@@ -2,7 +2,7 @@
 actor_kind: claude
 label: Claude Code
 installer: scripts/install/claude.sh
-target_dir: .claude/skills/meerkat-taskpanel
+target_dir: .claude/skills/meerkat
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
 # Distribution bundle this agent kind installs from, and what its detector must report.

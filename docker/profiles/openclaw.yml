@@ -2,7 +2,7 @@
 actor_kind: openclaw
 label: OpenClaw
 installer: scripts/install/openclaw.sh
-target_dir: .openclaw/skills/meerkat-taskpanel
+target_dir: .openclaw/skills/meerkat
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
 # OpenClaw installs the repository-root bundle — the same `./` bundle Claude Code and Codex

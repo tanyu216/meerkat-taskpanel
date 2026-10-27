@@ -209,7 +209,7 @@ describe("install.sh: scheduling units", () => {
     assert.equal(existsSync(join(home, ".codex", "scheduling")), false);
     assert.equal(existsSync(join(home, ".codex", "meerkat-taskpanel-claim.sh")), false);
     // The skill, AGENTS.md and shim are unaffected.
-    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")));
+    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat", "SKILL.md")));
     assert.ok(existsSync(join(home, ".codex", "AGENTS.md")));
   });
 
@@ -229,7 +229,7 @@ describe("install.sh: scheduling units", () => {
     assert.equal(run.status, 0, run.stderr);
     assert.equal(existsSync(join(home, ".codex", "scheduling")), false, "no scheduling units");
     assert.equal(existsSync(join(home, ".codex", "meerkat-taskpanel-claim.sh")), false, "no claim trigger");
-    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")), "the skill is unaffected");
+    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat", "SKILL.md")), "the skill is unaffected");
   });
 
   it("is idempotent: a re-run changes no scheduling file", () => {
@@ -320,7 +320,7 @@ describe("install.sh: the loop skill's distribution", () => {
 
     // The board skill does land — this is an exclusion of the *loop*, not of OpenClaw.
     assert.ok(
-      existsSync(join(home, ".openclaw", "skills", "meerkat-taskpanel", "SKILL.md")),
+      existsSync(join(home, ".openclaw", "skills", "meerkat", "SKILL.md")),
       "openclaw must still get the board skill",
     );
     assert.equal(
@@ -344,7 +344,7 @@ describe("install.sh: the loop skill's distribution", () => {
     const run = runInstall(["--target", "claude", "--link"], installEnv(home, bin));
     assert.equal(run.status, 0, run.stderr);
 
-    const board = join(home, ".claude", "skills", "meerkat-taskpanel");
+    const board = join(home, ".claude", "skills", "meerkat");
     const loop = join(home, ".claude", "skills", "meerkat-loop");
 
     // The board skill is the one --link names: a symlink, because the docs recommend it
