@@ -3533,10 +3533,15 @@ export async function run() {
     // (1 of 13 — the 40-character row needs 248px of a 238px box, so 10px of
     // overflow, measured on the widened track). The assertion below is the design
     // criterion — "a title that does not fit is ellipsised, not wrapped and not
-    // lost" — so its breakpoint follows the reading down one rung rather than the
-    // assertion being dropped: **980 → 900**.
-    // (T-20261015-233122 A6 #5 anticipated exactly this flip and forbade deleting
-    // the assertion; the numbers above are the re-derivation it asked for.)
+    // lost" — so the viewport below stays at 900 for the dialog's layout.
+    //
+    // The clipping assertion itself is a probe, not a count of fixture rows that
+    // happen to clip. The 10px margin above is a font-metrics fact: it holds on
+    // the design face and disappears under a runner's fallback face, where the
+    // same row fits and "some row is clipped" failed for a reason that was not
+    // the rule. The probe injects an unmistakably over-long title, so it
+    // overflows in any face. (T-20261015-233122 A6 #5 forbids deleting the
+    // assertion; this is the same criterion, measured without the font.)
     await page.setViewportSize({ width: 900, height: 900 });
     await page.click("[data-new-task]");
     await page.waitForTimeout(300);
@@ -3585,10 +3590,30 @@ export async function run() {
       r8cCheck(row.overflow === "hidden", `a row's title overflow is ${row.overflow}, expected hidden`);
       r8cCheck(row.textOverflow === "ellipsis", `a row's title text-overflow is ${row.textOverflow}, expected ellipsis`);
     }
-    r8cCheck(
-      optionRows.some((row) => row.clipped === true),
-      "no option row is actually clipped at 900px — the ellipsis has nothing to fire on",
-    );
+    // Prove the ellipsis actually fires, independently of the runner's font.
+    // The title is restored in the same evaluate, so the chip assertions below
+    // still read the fixture's own text.
+    const clippingProbe = await page.evaluate(() => {
+      const title = document.querySelector("[data-parent-option] .td-combo-title");
+      if (!title) return { found: false };
+      const original = title.textContent;
+      title.textContent = "W".repeat(200);
+      const cs = getComputedStyle(title);
+      const result = {
+        found: true,
+        clipped: title.scrollWidth > title.clientWidth,
+        whiteSpace: cs.whiteSpace,
+        overflow: cs.overflow,
+        textOverflow: cs.textOverflow,
+      };
+      title.textContent = original;
+      return result;
+    });
+    r8cCheck(clippingProbe.found, "no parent option title to probe");
+    r8cCheck(clippingProbe.clipped === true, "an over-long option title does not overflow its row");
+    r8cCheck(clippingProbe.whiteSpace === "nowrap", `the probe title is ${clippingProbe.whiteSpace}, expected nowrap`);
+    r8cCheck(clippingProbe.overflow === "hidden", `the probe title overflow is ${clippingProbe.overflow}, expected hidden`);
+    r8cCheck(clippingProbe.textOverflow === "ellipsis", `the probe title text-overflow is ${clippingProbe.textOverflow}, expected ellipsis`);
 
     // ② — accepting a row puts the task in the field as a chip: identifier (same
     // cap) then title, with a way out of it, and the box hands the display over.
