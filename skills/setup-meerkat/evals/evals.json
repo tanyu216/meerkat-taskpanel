@@ -99,11 +99,12 @@
       "id": 8,
       "name": "custom-team-co-design",
       "prompt": "Design a custom team for a product with heavy docs and mobile work. We have Jobs/Linus/Turing today, but docs changes and release notes keep falling through, and nobody is clearly testing the mobile app. Do not install anything; show the team design and the questions you would settle first.",
-      "expected_output": "A card-shape ownership matrix with exactly one accountable role per shape; at least one unowned or double-owned shape named as a finding; a counterexample card; an independent reviewer; one numbered round; no install before the frontier closes.",
+      "expected_output": "A card-shape ownership matrix with exactly one accountable role per shape — a defined role or an explicit outside-the-roles worker; work outside the roles not force-fit into one; at least one double-owned shape named as a finding; a counterexample card; an independent reviewer; one numbered round; no install before the frontier closes.",
       "files": [],
       "assertions": [
-        "The design lists card shapes and gives each exactly one accountable role.",
-        "At least one shape (docs/release notes or mobile testing) is named as unowned or double-owned, as a finding.",
+        "The design lists card shapes and gives each exactly one accountable role, or an explicit outside-the-roles worker.",
+        "A shape outside the roles is assigned to a worker outside them rather than force-fit into a role.",
+        "At least one shape (docs/release notes or mobile testing) is named as double-owned, or as outside the roles with a worker of its own.",
         "It asks for a concrete counterexample card the proposed split would get wrong.",
         "The reviewer remains independent and the ladder (subagent -> main session -> human) is unchanged.",
         "The questions are one numbered round with recommendations, and the answer states that installation waits for the frontier to close."

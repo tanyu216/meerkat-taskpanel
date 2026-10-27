@@ -1,8 +1,8 @@
 # Linus — self-check before delivery
 
 Run this after the branch work and before delivery. First re-export the brief so the check
-runs against the current card, then use the section for the branch you ran; the shared
-checks apply to both.
+runs against the current card, then run the section for the branch you took; the Shared
+checks and the Mandatory gates apply to every branch.
 
 Never hand-edit `card.md`; re-export it. This is the role's pre-delivery audit. It is not
 the `## Handoff` block: that block is a producer card's cross-card transfer (Jobs design,
@@ -14,14 +14,25 @@ Linus architecture only).
    `.meerkat/<id>/plan.md`.
 2. Build a requirement/acceptance → code/test/evidence table in `plan.md` for every
    description requirement, comment decision, acceptance item and touched error/boundary/
-   regression scenario. Evidence is a command with its exit code, a path, a commit or a
-   coverage number.
-3. Any row with no proof is an **omission**: add the code/test, ask with an agent
-   `question`, or record a deliberate leftover.
-4. Re-run the gates you claim; a red gate is a blocker, not a leftover. The decision round
-   is closed: every item answered or explicitly deferred, no frontier open (answers in
-   `plan.md` or an ADR).
-5. If the card has a `## Handoff` block or `meta.design_stage`, every named path exists and
+   regression scenario.
+3. Every row ends in one disposition, and the report's acceptance status carries it:
+   - **met** — the proof is falsifiable. For code, a `command exit 0` whose command fails
+     when the item is broken; for an artifact, a `path` plus the check that resolves it. A
+     `path`, a `commit` or a `coverage` number on its own is corroboration, not proof.
+   - **not_applicable** — only with the reason that makes it inapplicable (`n/a — <reason>`).
+     A bare `n/a` is an omission.
+   - **partial** / **not_met** — a blocker: close it and re-run, or ask with an agent
+     `question` and keep the card `in_progress`. The delivery gate refuses either status on
+     a baseline item, so neither is a way to deliver.
+4. A **leftover** is work the card surfaced but does not own: it lies outside the frozen
+   acceptance and names the item, its owner and the follow-up card (or why none is needed).
+   Never a leftover: a red gate, a security finding, a missing acceptance item, a missing or
+   invalid handoff path, or a published contract, schema or migration change. Do not soften
+   a missing acceptance item into a leftover.
+5. Re-run the gates you claim; a red gate is a blocker, not a leftover. The decision round
+   is closed: every item answered or explicitly deferred with what unblocks it, no frontier
+   open (answers in `plan.md` or an ADR).
+6. If the card has a `## Handoff` block or `meta.design_stage`, every named path exists and
    was used, and the handoff's acceptance source is in the frozen acceptance. A missing or
    invalid handoff is a `question`, not a silent fallback.
 
@@ -99,7 +110,18 @@ run them.
     dependencies point one way, and every new abstraction or dependency names its forcing
     function. A departure is a recorded decision.
 
+## Refactor branch
+
+6. The behaviour-pinning tests fail when the behaviour changes and are green before and after.
+7. The observable behaviour, the published contract, the schema and the migrations are
+   unchanged.
+8. Each step was green on its own; no feature or bug fix rode along.
+9. The candidate list, the rejected candidates and their reasons are in the plan; the chosen
+   interface names what sits behind its seam and what it makes testable.
+
 ## Delivery
 
-Confirm the report names the workflow run, the evidence, the acceptance mapping and the
-leftovers. Only then deliver at `in_review`. Do not accept your own work.
+Confirm the report gives every baseline item its status and falsifiable evidence, and gives
+each leftover its owner and follow-up. A card with an open omission, a red gate or an
+unanswered question is not delivered: close it and re-run, or ask and keep the card
+`in_progress`. Only then deliver at `in_review`. Do not accept your own work.

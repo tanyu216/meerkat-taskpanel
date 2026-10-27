@@ -199,6 +199,8 @@ export function renderOwnershipGuide(ownership) {
     ...(text ? [clamp(text.trim(), ROLE_PROMPT_LIMITS.ownership)] : []),
     path ? `Full guide: ${path}` : "",
     "Assign one accountable role per work shape; the card's assignee still selects the role.",
+    "A shape the guide does not cover is not forced into a role: it goes to a worker outside",
+    "the roles, which carries its own flow.",
   ].filter((line) => line !== "");
   return [lines.join("\n")];
 }
@@ -216,9 +218,10 @@ export function renderOwnershipSummary(ownership) {
   const lines = [
     "## Work routing",
     "Route by the team ownership guide: one accountable role per work shape, the reviewer",
-    "independent of the producer. An unowned or ambiguous shape goes to the project",
-    "session; split multi-shape work into one card per shape. The card's assignee still",
-    "selects the executing role; the guide changes nothing about who decides.",
+    "independent of the producer. A shape outside the roles goes to a worker outside them,",
+    "not force-fit into a row. An unowned or ambiguous shape goes to the project session;",
+    "split multi-shape work into one card per shape. The card's assignee still selects the",
+    "executing role; the guide changes nothing about who decides.",
     `Full guide: ${path}`,
   ];
   return [clamp(lines.join("\n"), ROLE_PROMPT_LIMITS.ownershipSummary)];

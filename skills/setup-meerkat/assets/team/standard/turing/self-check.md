@@ -14,13 +14,24 @@ Linus architecture only).
    `.meerkat/<id>/plan.md`.
 2. Build an acceptance → test/evidence table in `plan.md` for every acceptance item,
    description requirement and boundary/failure path. Each row names the test, command,
-   exit code and coverage. A row with no proof is an **omission**: add the test, ask with an
-   agent `question`, or record a deliberate leftover.
-3. A failure is a failure, not a leftover. Do not issue a verdict; the reviewer is
-   independent.
-4. The decision round is closed: every item answered or explicitly deferred, no frontier
-   open (answers in the plan or `test-plan.md`); test names and fixtures use the canonical
-   terms, and no glossary or ADR was edited.
+   exit code and coverage, and ends in one disposition carried by the report's acceptance
+   status:
+   - **met** — the proof is falsifiable: a `command exit 0` that fails when the test stops
+     covering the item. A `path`, a `commit` or a `coverage` number on its own is
+     corroboration, not proof.
+   - **not_applicable** — only with the reason that makes it inapplicable (`n/a — <reason>`).
+     A bare `n/a` is an omission.
+   - **partial** / **not_met** — a blocker: close it and re-run, or ask with an agent
+     `question` and keep the card `in_progress`. The delivery gate refuses either status on
+     a baseline item.
+3. A **leftover** is work the card surfaced but does not own: it lies outside the frozen
+   acceptance and names the item, its owner and the follow-up card (or why none is needed).
+   Never a leftover: a red gate, a security finding, a missing acceptance item, a missing or
+   invalid handoff path, or a published contract, schema or migration change. A failure is a
+   failure, not a leftover. Do not issue a verdict; the reviewer is independent.
+4. The decision round is closed: every item answered or explicitly deferred with what
+   unblocks it, no frontier open (answers in the plan or `test-plan.md`); test names and
+   fixtures use the canonical terms, and no glossary or ADR was edited.
 5. If the card has a `## Handoff` block or `meta.design_stage`, every named path/report
    exists and was used; the acceptance matrix cites the handoff's acceptance source. A
    regression card uses no design artifacts.
@@ -65,5 +76,7 @@ The reviewer re-runs them independently; a red gate is not a delivery.
 
 ## Delivery
 
-Confirm the report names the branch, commands and results, coverage, evidence anchors and
-leftovers. Deliver at `in_review`. Do not issue a verdict.
+Confirm the report names the branch, every baseline item's status and falsifiable evidence,
+the coverage, and each leftover's owner and follow-up. A card with an open omission, a red
+gate or an unanswered question is not delivered: close it and re-run, or ask and keep the
+card `in_progress`. Deliver at `in_review`. Do not issue a verdict.

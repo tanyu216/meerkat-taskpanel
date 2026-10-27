@@ -76,11 +76,12 @@ confirmed; `--yes` accepts only recommended non-destructive answers.
 > nobody is clearly testing the mobile app. Do not install anything; show the team design
 > and the questions you would settle first.
 
-Assert: an ownership matrix gives every card shape exactly one accountable role; the
-docs/release-notes and mobile-testing gaps are named as unowned or double-owned findings; a
-concrete counterexample card is requested; the reviewer stays independent and the ladder is
-unchanged; the questions are one numbered round and installation waits for the frontier to
-close.
+Assert: an ownership matrix gives every card shape exactly one accountable role — a defined
+role or an explicit outside-the-roles worker — and work outside the roles is not force-fit
+into one; a double-owned shape is named as a finding; a concrete counterexample card is
+requested; the reviewer stays independent and the
+ladder is unchanged; the questions are one numbered round and installation waits for the
+frontier to close.
 
 ## 9. Decision round
 

@@ -11,7 +11,7 @@ exactly as it did before the feature.
 ├── manifest.json
 ├── ownership.md                optional; routes work shapes to one accountable role
 ├── jobs/{workflow.md,ui-workflow.md,self-check.md}
-├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,self-check.md}
+├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,refactor-workflow.md,self-check.md}
 ├── turing/{workflow.md,test-design-workflow.md,regression-workflow.md,performance-workflow.md,self-check.md}
 └── reviewer/{workflow.md,reviewer-prompt.md}
 ```
@@ -149,7 +149,10 @@ audits the delivered artifacts at `in_review` and never re-decides the direction
 reviewer also checks that acceptance items and test names use the canonical terms.
 
 The **self-check** is the role's own pre-delivery audit: the card's requirements and
-acceptance mapped to evidence, with the gates re-run. It is **not** the `## Handoff` block;
+acceptance mapped to evidence, with the gates re-run. Every row ends in a disposition the
+report's acceptance status carries — `met` needs falsifiable evidence, `not_applicable` its
+reason, and `partial`/`not_met` block delivery; a leftover lies outside the frozen
+acceptance and names its owner. It is **not** the `## Handoff` block;
 that block is a producer card's cross-card transfer (Jobs design, Linus architecture only).
 The last stage of every workflow is **Deliver** — run the self-check, add the handoff block
 on a producer card, then `issue deliver` at `in_review`.
@@ -206,9 +209,13 @@ characters; the worker workflow stays a path.
 `ownership.md` (optional, convention-named) is the work→role routing guide: a table of work
 shapes — product planning, prototype/UI/UX/aesthetic direction, architecture, implementation,
 test design, regression, performance, independent review — with one accountable role and
-workflow each. The project session receives it in full when it spawns a batch; the
-control/continue turn receives a compact summary and the path. It is prompt guidance, not a
-gate: the card's assignee still selects the executing role, and it never changes who decides.
+workflow each. A shape the table does not describe is not force-fit into a role: it goes to a
+worker whose board name is not in the manifest, which runs without a role workflow,
+responsibilities or boundaries — so that name must also be in the loop's scan set
+(`MEERKAT_TASKPANEL_AGENTS`) or its cards are never claimed. The project session receives the
+guide in full when it spawns a batch; the control/continue turn receives a compact summary
+and the path. It is prompt guidance, not a gate: the card's assignee still selects the
+executing role, and it never changes who decides.
 A legacy `decision-policy.md` in the root is ignored; `--validate` reports it.
 
 ## Installing and upgrading
@@ -258,9 +265,10 @@ run the frontier:
 1. **Inventory the card shapes.** Ask for the real work the project produces — bug, feature,
    refactor, test-only, docs and release notes, mobile, ops, design, migration — and a
    concrete example of each.
-2. **Build an ownership matrix.** Every card shape gets exactly one accountable role. Name
-   the card that would fall between two roles if the split is unclear; a shape with no owner
-   or two owners is a finding, not a detail for later.
+2. **Build an ownership matrix.** Every card shape gets exactly one accountable role — a
+   defined role, or an explicit "outside the roles" assignment to a worker of its own. Name
+   the card that would fall between two roles if the split is unclear; a shape with two
+   owners, or owned by a role that nobody is assigned to, is a finding.
 3. **Challenge each role.** Ask what would have to be true for this role not to exist, and
    for a counterexample card the role would handle badly.
 4. **Keep an independent reviewer.** The reviewer audits, moves nothing and never enters

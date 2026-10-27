@@ -100,8 +100,10 @@ record the answers and proceed.
 **Design mode — adversarial.** For setup and team design, challenge the assumptions: ask
 what would falsify each one and request a concrete counterexample — a real card, flow or
 failure the proposal gets wrong. For a team, require an ownership matrix: every card shape
-has exactly one accountable role, and the reviewer is independent of the producer. An
-unowned card shape is a finding, not a detail for later.
+has exactly one accountable role — a defined role, or an explicit assignment to a worker
+outside the roles — and the reviewer is independent of the producer. Work that belongs
+outside the roles goes to a worker outside them rather than being force-fit into a role; an
+unowned card shape is a finding only when a defined role owns that shape.
 
 ### Asking through the ladder
 
