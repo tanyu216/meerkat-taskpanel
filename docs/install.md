@@ -383,6 +383,15 @@ and names the log to read:
 taskd guard: loaded (com.meerkat-taskpanel.taskd, pid …); /health did not answer within 10000ms — read <dataDir>/logs/taskd.log
 ```
 
+A board that is **already serving** — the runtime pointer's address answers `/health`
+before the guard is loaded — is left alone. Loading a second `taskd` on that port is not a
+keepalive; it is an `EADDRINUSE` restart loop. The units are still written, nothing is
+loaded, and the install says:
+
+```text
+taskd guard: not loaded — a board is already serving http://127.0.0.1:9527 (pid …); stop it and re-run to install the guard
+```
+
 Neither line fails the install. The unit names the **absolute** node that ran the install,
 so a node that lives only under nvm or Homebrew still starts the server — see
 [`scheduling.md § The taskd guard (keepalive)`](scheduling.md#the-taskd-guard-keepalive).

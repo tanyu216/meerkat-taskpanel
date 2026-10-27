@@ -970,7 +970,10 @@ describe("taskd guard: the readiness gate", () => {
       pidWaitMs: 20,
       healthWaitMs,
       healthPollMs: 5,
-      readPointerFn: () => ({ url: "http://127.0.0.1:9527", pid: FAKE_PID, dataDir }),
+      // The pointer appears only once the supervisor has loaded the job — the same
+      // order a real start follows. A pointer that exists *before* the load is the
+      // "a board is already running" case the guard must not load over.
+      readPointerFn: () => (runner.state.loaded ? { url: "http://127.0.0.1:9527", pid: FAKE_PID, dataDir } : null),
       healthProbe: async () => ready,
     });
     return { report, lines, runner, prefix, dataDir };
@@ -984,6 +987,36 @@ describe("taskd guard: the readiness gate", () => {
     assert.equal(report.pid, FAKE_PID);
     assert.equal(runner.state.loads, 1);
     assert.ok(lines.some((line) => line === `taskd guard: enabled (${TASKD_LABEL}, pid ${FAKE_PID})`), lines.join("\n"));
+  });
+
+  it("does not start a second board when one is already serving /health", async () => {
+    const prefix = makeTempDir();
+    const dataDir = makeTempDir();
+    const lines = [];
+    const runner = fakeRunner();
+    const report = await installGuard({
+      prefix,
+      platform: "darwin",
+      uid: 501,
+      home: prefix,
+      env: { ...process.env, TASKD_DATA_DIR: dataDir },
+      runner: runner.run,
+      log: (line) => lines.push(line),
+      pidWaitMs: 20,
+      healthWaitMs: 20,
+      healthPollMs: 5,
+      readPointerFn: () => ({ url: "http://127.0.0.1:9527", pid: 777, dataDir: makeTempDir() }),
+      healthProbe: async () => true,
+    });
+
+    assert.equal(report.state, "running");
+    assert.equal(report.url, "http://127.0.0.1:9527");
+    assert.equal(report.pid, null, "no guard pid was claimed");
+    assert.equal(runner.state.loads, 0, "the loaded board is left alone — nothing new was started");
+    assert.ok(
+      lines.some((line) => /already serving .*9527/.test(line) && /stop it and re-run/.test(line)),
+      lines.join("\n"),
+    );
   });
 
   it("reports loaded, unready, when the supervisor answers but /health does not", async () => {
@@ -1011,6 +1044,7 @@ describe("taskd guard: the readiness gate", () => {
       pidWaitMs: 20,
       healthWaitMs: 20,
       healthPollMs: 5,
+      readPointerFn: () => null,
     });
     assert.equal(report.state, "manual");
     assert.equal(report.ready, false);
@@ -1060,9 +1094,16 @@ async function readyInstall(extra = {}) {
   const dataDir = makeTempDir();
   const bin = fakeManagerBin();
   const server = await startHealthServer();
-  writeFileSync(join(dataDir, "runtime.json"), `${JSON.stringify({ url: server.url, pid: FAKE_PID, dataDir })}\n`, "utf8");
 
-  const env = guardEnv(prefix, dataDir, bin, extra);
+  // The pointer is written by the *loaded board*, not before it: a pointer that exists
+  // before the load means a board is already running, and the guard must not start a
+  // second one over it. The fake manager writes it on load, which is the real order.
+  const env = guardEnv(prefix, dataDir, bin, {
+    FAKE_POINTER: join(dataDir, "runtime.json"),
+    FAKE_POINTER_URL: server.url,
+    FAKE_DATA_DIR: dataDir,
+    ...extra,
+  });
   return { prefix, dataDir, bin, server, env, run: (argv = []) => runGuardInstall(prefix, env, argv) };
 }
 
@@ -1115,7 +1156,7 @@ function fakeManagerBin() {
     'if [ "${FAKE_FAIL:-}" = "1" ]; then echo "fake launchctl: refusing" >&2; exit 1; fi',
     'case "$1" in',
     '  print) if [ -f "$FAKE_STATE" ]; then printf "\\tpid = 4242\\n"; exit 0; fi; exit 1 ;;',
-    '  bootstrap|load) : > "$FAKE_STATE"; exit 0 ;;',
+    '  bootstrap|load) : > "$FAKE_STATE"; if [ -n "${FAKE_POINTER:-}" ]; then printf \'{"url":"%s","pid":4242,"dataDir":"%s"}\\n\' "$FAKE_POINTER_URL" "$FAKE_DATA_DIR" > "$FAKE_POINTER"; fi; exit 0 ;;',
     '  bootout) rm -f "$FAKE_STATE"; exit 0 ;;',
     "esac",
     "exit 0",
@@ -1128,7 +1169,7 @@ function fakeManagerBin() {
     'if [ "${FAKE_FAIL:-}" = "1" ]; then echo "fake systemctl: refusing" >&2; exit 1; fi',
     'case "$*" in',
     '  *is-active*) if [ -f "$FAKE_STATE" ]; then echo active; exit 0; fi; exit 3 ;;',
-    "  *\"enable --now\"*) : > \"$FAKE_STATE\"; exit 0 ;;",
+    "  *\"enable --now\"*) : > \"$FAKE_STATE\"; if [ -n \"${FAKE_POINTER:-}\" ]; then printf '{\"url\":\"%s\",\"pid\":4242,\"dataDir\":\"%s\"}\\n' \"$FAKE_POINTER_URL\" \"$FAKE_DATA_DIR\" > \"$FAKE_POINTER\"; fi; exit 0 ;;",
     '  *" show "*) if [ -f "$FAKE_STATE" ]; then echo 4242; else echo 0; fi; exit 0 ;;',
     '  *disable*) rm -f "$FAKE_STATE"; exit 0 ;;',
     "esac",

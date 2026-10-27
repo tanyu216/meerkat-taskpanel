@@ -50,6 +50,12 @@
  * exactly the readiness test the CLI applies. A unit that is loaded but not
  * serving reports `loaded … /health did not answer` instead, with the log to read.
  *
+ * **A board that is already running is not loaded over.** Before loading, the address the
+ * runtime pointer names is knocked once. A `/health` answer means a second `taskd` would
+ * only collide on that port (`EADDRINUSE`, a keepalive restart loop), so the units are
+ * written and the load is skipped, with the running board named. The same rule applies to
+ * the guard's own board lazily started by a CLI call: stop it and re-run to hand it over.
+ *
  * **The guard is one per machine, so a second install may have to refuse**
  * (`docs/scheduling.md § One guard per machine`). Because the label and the unit name
  * carry no board segment, the machine has exactly one guard job, and on Linux the file
@@ -530,6 +536,26 @@ export async function installGuard(options = {}) {
   // (T-20261014-063205 §2.2). Hence the order: probe, identify the board, then write.
   const already = runStep(plan.loadedProbe, run);
   if (already.ok) report.pid = waitForPid(plan, run, pidWaitMs);
+
+  // A board that is **already answering** owns the address this unit would bind. Loading
+  // the guard then does not create a keepalive — it starts a second server on an occupied
+  // port, which is an EADDRINUSE restart loop, not a board. The runtime pointer is the
+  // running board's own statement of its address, and `/health` is the same readiness test
+  // the CLI trusts, so one knock settles it. The unit files stay written (the operator can
+  // load them after stopping the board); nothing is loaded and nothing is claimed.
+  if (!already.ok) {
+    const running = (options.readPointerFn ?? readPointer)({ path: paths.pointerFile });
+    const runningUrl = running !== null && typeof running.url === "string" ? running.url : null;
+    if (runningUrl !== null && (await (options.healthProbe ?? probeHealth)(runningUrl))) {
+      report.state = "running";
+      report.url = runningUrl;
+      report.reason = `a board is already serving ${runningUrl}`;
+      log(
+        `taskd guard: not loaded — a board is already serving ${runningUrl}${running.pid ? ` (pid ${running.pid})` : ""}; stop it and re-run to install the guard`,
+      );
+      return report;
+    }
+  }
 
   // The board this run would install, read back from the file that would be copied —
   // what actually lands, not a re-derivation of it.

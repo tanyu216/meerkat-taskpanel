@@ -1078,6 +1078,15 @@ taskd guard: loaded (com.meerkat-taskpanel.taskd, pid 17388); /health did not an
 Neither line fails the install (the agent-kind skills are installed either way), but only the
 first one claims the guard works.
 
+A board that is **already answering** at the runtime pointer's address is a third case, and
+it is not loaded over: a second `taskd` on the same port is an `EADDRINUSE` restart loop, not
+a keepalive. The units are written, the load is skipped, and the report names the running
+board:
+
+```text
+taskd guard: not loaded — a board is already serving http://127.0.0.1:9527 (pid …); stop it and re-run to install the guard
+```
+
 A **second board** is where the install has to be careful, because the guard is one per
 machine ([One guard per machine](#one-guard-per-machine)): on Linux the file systemd reads
 `~/.config/systemd/user/meerkat-taskpanel-taskd.service`, and that file *is* the machine's
