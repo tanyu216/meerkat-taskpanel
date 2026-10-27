@@ -74,14 +74,14 @@ describe("scrub-env — the base environment", () => {
   it("drops every board prefix and keeps the rest", () => {
     const env = {
       PATH: "/usr/bin",
-      HOME: "/home/user",
+      HOME: "/home/tester",
       TASKCTL_HUMAN: "alice",
       TASKD_DATA_DIR: "/data",
       TASKD_URL: "http://127.0.0.1:9527",
       MEERKAT_TASKPANEL_ENV_FILE: "/tmp/x.env",
     };
     const clean = scrubEnv(env);
-    assert.deepEqual(clean, { PATH: "/usr/bin", HOME: "/home/user" });
+    assert.deepEqual(clean, { PATH: "/usr/bin", HOME: "/home/tester" });
     for (const prefix of SCRUB_PREFIXES) {
       assert.ok(Object.keys(clean).every((key) => !key.startsWith(prefix)));
     }

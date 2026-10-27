@@ -27,13 +27,19 @@ const TOKEN = "td_hubserver";
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-async function waitFor(fn, timeoutMs = 5_000) {
+/**
+ * 15s, not 5s: the container gate runs this file beside the whole suite (twice,
+ * once under coverage), and under that load the hub's first event has been seen
+ * to take longer than 5s. The wait is still bounded — a real hang fails, just
+ * later.
+ */
+async function waitFor(fn, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const value = await fn();
     if (value) return value;
     if (Date.now() > deadline) throw new Error("timed out");
-    await sleep(30);
+    await sleep(50);
   }
 }
 

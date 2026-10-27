@@ -320,18 +320,19 @@ check belongs. Its steps, in order:
 | 0 | `node scripts/verify/web-dist.mjs --require=bundle` (frontend coverage verdict) |
 | 1 | `node --test` |
 | 2 | `npm run test:coverage` (the line/branch/function floors) |
-| 3 | `npm run check` (skill sync, manifests, skill definition, tests) |
+| 3 | `npm run verify` (manifests, version carriers, skill, migrations, paths, signposts, built frontend) |
 | 4 | `node scripts/verify/contract.mjs` (API contract snapshot) |
 | 5 | `node scripts/verify/route-request.mjs` (declared request schema vs handler reads) |
 | 6 | `bash install.sh --target all --dry-run` |
 | 7 | `node scripts/verify/profiles.mjs` (every agent kind, throwaway home) |
 | 8 | `node scripts/verify/server-install.mjs` (npm/npx and source server install, launchers, `/health`) |
-| 9 | `node scripts/verify/kind-runtime.mjs` (offline agent-kind runtime harness) |
-| 10 | `bash scripts/verify/install-e2e.sh` (install + first-run end-to-end) |
+| 9 | `node scripts/verify/tarball-install.mjs` (packed release installed offline and booted) |
+| 10 | `node scripts/verify/kind-runtime.mjs` (offline agent-kind runtime harness) |
+| 11 | `bash scripts/verify/install-e2e.sh` (install + first-run end-to-end) |
 
 Each step prints an `== ... ==` header and the script aborts on the first failure.
 
-> Steps 7, 8 and 10 install into throwaway homes. Step 8 materializes the server tree at a
+> Steps 7, 8, 9 and 11 install into throwaway homes. Step 8 materializes the server tree at a
 > temporary `--prefix`, drives both entry points (`scripts/install/cli.mjs`, which is what
 > `npx` runs, and `install.sh --target server`), and finally starts the installed
 > `bin/taskd` on an ephemeral port to prove `/health` — so it is container-only, because it

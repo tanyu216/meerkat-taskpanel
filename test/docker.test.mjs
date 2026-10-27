@@ -895,7 +895,10 @@ describe("static: verify-in-container.sh", () => {
     const text = await read("docker/verify-in-container.sh");
     assert.match(text, /set -euo pipefail/);
     assert.match(text, /node --test/);
-    assert.match(text, /npm run check/);
+    // The suite runs twice (`node --test`, then under coverage); `npm run check`
+    // would run it a third time. The static half comes from `npm run verify`.
+    assert.match(text, /^npm run verify$/m);
+    assert.doesNotMatch(text, /^npm run check$/m, "the third full test run is redundant");
     assert.match(text, /install\.sh --target all --dry-run/);
     assert.match(text, /scripts\/verify\/profiles\.mjs/);
     assert.match(text, /^node scripts\/verify\/server-install\.mjs$/m);
