@@ -650,6 +650,29 @@ ensure_agent_config_keys() {
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE" "$TP_CONTINUE"
 }
 
+# keep_unlisted_env_keys <saved> <target> — re-append KEY=VALUE lines from <saved>
+#   whose key is absent from <target>. This installer owns the keys its template
+#   carries; every other key in the file belongs to the operator, or to the tool that
+#   wrote it — `setup-meerkat` records the team list here. A forced rewrite must not
+#   delete those. Requires TP_ACTOR_KIND for the report line.
+keep_unlisted_env_keys() {
+  saved="$1"
+  target="$2"
+  [ -f "$saved" ] || return 0
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      [A-Z_]*=*) key="${line%%=*}" ;;
+      *) continue ;;
+    esac
+    if grep -q "^${key}=" "$target" 2>/dev/null; then
+      continue
+    fi
+    printf '%s\n' "$line" >> "$target"
+    echo "${TP_ACTOR_KIND:-agent}: kept $key in $target"
+  done < "$saved"
+}
+
 # migrate_legacy_agent_config — copy an install that predates the program-root
 # location into `<program root>/.env.<kind>`, once. The legacy file is kept and is
 # no longer read. A new file always wins (no merge). `--force` re-renders the
@@ -684,7 +707,32 @@ migrate_legacy_agent_config() {
 # predates them learns them on the next run without any existing value being touched.
 write_agent_config() {
   migrate_legacy_agent_config
+  # A forced reinstall re-renders this file from the installer's template, so every
+  # key the template does not carry — the team list `setup-meerkat` writes, an
+  # operator's own setting — would be deleted with it. Carry those across. A forced
+  # run skips the migration above, so the legacy file is the only copy when the
+  # program-root one does not exist yet.
+  kept_env=""
+  if [ -z "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    source_env=""
+    if [ -f "$TP_ENV" ]; then
+      source_env="$TP_ENV"
+    elif [ -f "$TP_LEGACY_ENV" ]; then
+      source_env="$TP_LEGACY_ENV"
+    fi
+    if [ -n "$source_env" ]; then
+      # Beside the file, not in TMPDIR: that directory is already writable here, and a
+      # same-directory rename does not depend on a second filesystem or on TMPDIR at all.
+      mkdir -p "$(dirname "$TP_ENV")" 2>/dev/null || true
+      kept_env="$(mktemp "${TP_ENV}.XXXXXX")"
+      cp "$source_env" "$kept_env"
+    fi
+  fi
   emit_file "agent/meerkat-taskpanel.env" "$TP_ENV"
+  if [ -n "$kept_env" ]; then
+    keep_unlisted_env_keys "$kept_env" "$TP_ENV"
+    rm -f "$kept_env"
+  fi
   ensure_agent_config_keys
 }
 
@@ -772,6 +820,7 @@ install_skill() {
     return 0
   fi
 
+  kept_user_data=""
   if [ -e "$dest" ] || [ -L "$dest" ]; then
     if [ -z "${MEERKAT_TASKPANEL_FORCE:-}" ]; then
       # Idempotent: an existing skill is the desired end state, not an error. The
@@ -779,6 +828,17 @@ install_skill() {
       echo "$label: already installed: $dest (unchanged; re-run with --force to overwrite)"
       migrate_legacy_skill "$agent_dir" "$label" "$skill" "$dest" "$link"
       return 0
+    fi
+    # Two things in a skill directory are authored by the operator, never shipped by
+    # this installer: the roles root (`setup-meerkat` writes it) and `projects.json`
+    # (the project → directory map). A forced reinstall replaces the skill, not them.
+    # (A linked skill is skipped: moving through it would move the source's files.)
+    if [ -d "$dest" ] && [ ! -L "$dest" ]; then
+      for entry in roles projects.json; do
+        [ -e "$dest/$entry" ] || continue
+        [ -n "$kept_user_data" ] || kept_user_data="$(mktemp -d "$(dirname "$dest")/.tp-keep.XXXXXX")"
+        mv "$dest/$entry" "$kept_user_data/$entry"
+      done
     fi
     rm -rf "$dest"
   fi
@@ -793,6 +853,17 @@ install_skill() {
     echo "$label: copied  $dest"
   fi
 
+  if [ -n "$kept_user_data" ]; then
+    for entry in roles projects.json; do
+      [ -e "$kept_user_data/$entry" ] || continue
+      mv "$kept_user_data/$entry" "$dest/$entry"
+      echo "$label: kept    $dest/$entry"
+    done
+    rmdir "$kept_user_data" 2>/dev/null || true
+  fi
+
+  # Last, and only for what the new directory still lacks: a legacy board-skill
+  # directory is migrated after this install's own operator data was put back.
   migrate_legacy_skill "$agent_dir" "$label" "$skill" "$dest" "$link"
 }
 

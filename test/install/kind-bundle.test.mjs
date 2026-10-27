@@ -27,7 +27,7 @@ import { createInstallHarness } from "./helpers/install-harness.mjs";
 import { mergeSettings } from "../../scripts/install/lib/apply.mjs";
 import { VERSION } from "../../src/foundation/constants.mjs";
 
-const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-kindbundle-" });
+const { makeTempDir, kindConfigDirFor, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-kindbundle-" });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -472,5 +472,87 @@ describe("agent bundle: legacy board-skill directory", () => {
     assert.match(result.stdout, /would migrate legacy skill/);
     assert.ok(existsSync(join(legacy, "projects.json")));
     assert.equal(existsSync(join(home, ".claude", "skills", "meerkat")), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --force replaces the installer's files, never the operator's data
+// ---------------------------------------------------------------------------
+
+describe("agent bundle: --force preserves operator data", () => {
+  it("keeps a roles root across a forced loop-skill reinstall", () => {
+    const home = makeTempDir();
+    const env = agentEnv(home);
+    const first = runInstall(["--target", "claude"], env);
+    assert.equal(first.status, 0, first.stderr);
+
+    // `roles/` is authored by `/setup-meerkat`; `install.sh` never ships one.
+    const roles = join(home, ".claude", "skills", "meerkat-loop", "roles");
+    mkdirSync(join(roles, "jobs"), { recursive: true });
+    writeFileSync(join(roles, "manifest.json"), '{"version":1,"roles":[]}\n', "utf8");
+    writeFileSync(join(roles, "jobs", "workflow.md"), "# Jobs\n", "utf8");
+
+    const forced = runInstall(["--target", "claude", "--force"], env);
+    assert.equal(forced.status, 0, forced.stderr);
+
+    assert.ok(existsSync(join(roles, "manifest.json")), "--force must not delete the team manifest");
+    assert.equal(readFileSync(join(roles, "jobs", "workflow.md"), "utf8"), "# Jobs\n");
+  });
+
+  it("keeps config keys the template does not carry across a forced rewrite", () => {
+    const home = makeTempDir();
+    const env = agentEnv(home);
+    const first = runInstall(["--target", "claude"], env);
+    assert.equal(first.status, 0, first.stderr);
+
+    const config = join(kindConfigDirFor(home), ".env.claude");
+    const before = readFileSync(config, "utf8");
+    assert.match(before, /^MEERKAT_TASKPANEL_REVIEWER=/m);
+    // Written by `/setup-meerkat`; without it the loop never claims a role card.
+    writeFileSync(config, `${before}MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing\n`, "utf8");
+
+    const forced = runInstall(["--target", "claude", "--force"], env);
+    assert.equal(forced.status, 0, forced.stderr);
+
+    assert.match(
+      readFileSync(config, "utf8"),
+      /^MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing$/m,
+      "--force must not drop keys the installer's template does not carry",
+    );
+  });
+
+  it("carries keys from a legacy per-agent config on a forced upgrade", () => {
+    const home = makeTempDir();
+    const env = agentEnv(home);
+    // An install that predates the program-root location keeps its config in the
+    // legacy file, and a forced run skips the migration.
+    const legacy = join(home, ".claude", "meerkat-taskpanel.env");
+    mkdirSync(join(home, ".claude"), { recursive: true });
+    writeFileSync(legacy, "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing\n", "utf8");
+
+    const forced = runInstall(["--target", "claude", "--force"], env);
+    assert.equal(forced.status, 0, forced.stderr);
+
+    assert.match(
+      readFileSync(join(kindConfigDirFor(home), ".env.claude"), "utf8"),
+      /^MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing$/m,
+      "a forced upgrade must not lose the team list held in the legacy file",
+    );
+  });
+
+  it("keeps a projects.json beside the board skill across a forced reinstall", () => {
+    const home = makeTempDir();
+    const env = agentEnv(home);
+    const first = runInstall(["--target", "claude"], env);
+    assert.equal(first.status, 0, first.stderr);
+
+    // The directory ↔ project map: `install.sh` ships none and never writes one.
+    const map = join(home, ".claude", "skills", "meerkat", "projects.json");
+    writeFileSync(map, '{"projects":[{"project":"Mine","local_path":"/tmp/mine"}]}\n', "utf8");
+
+    const forced = runInstall(["--target", "claude", "--force"], env);
+    assert.equal(forced.status, 0, forced.stderr);
+
+    assert.match(readFileSync(map, "utf8"), /"Mine"/, "--force must not delete projects.json");
   });
 });

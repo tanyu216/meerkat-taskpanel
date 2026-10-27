@@ -67,8 +67,8 @@ gate on its own.
 
 - Show `--dry-run` output before writing.
 - Ask before loading/enabling the supervisor (`--supervisor=enable`).
-- Ask before `--force`; forcing the loop skill replaces its `roles/` directory, so re-run
-  `/setup-meerkat` afterwards.
+- Ask before `--force`; it replaces the skill's own files, but an installed `roles/`
+  directory and `projects.json` are kept.
 - A remote URL that the user did not name is never assumed.
 
 ## Human name

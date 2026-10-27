@@ -232,9 +232,9 @@ whatever else the agent should know about the project. `install.sh` ships **no**
 **It is never overwritten.** A plain re-run leaves the whole existing skill directory
 untouched (an existing install is the desired end state), so a `projects.json` beside
 the skill survives every non-forced re-install — the same "merge, never clobber"
-rule as the rest of the install. The one exception is `--force`, which deletes and
-re-copies the skill directory: **back the file up before a forced re-install** (or
-re-create it afterwards). With `--link` the skill directory is a symlink into a
+rule as the rest of the install. `--force` replaces the skill's own files but keeps
+this one too: the installer ships no `projects.json` (or `roles/` root), so neither is
+its to delete. With `--link` the skill directory is a symlink into a
 checkout, so the file lands in `skills/meerkat/` there — keep it out of
 version control.
 
@@ -633,7 +633,7 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per agent kind — see [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in). |
 | `MEERKAT_TASKPANEL_SUPERVISOR=enable\|disable\|status` | The non-interactive form of `--supervisor` (an explicit flag wins) — the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`. |
 | `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied (it is standalone docs + decisions). For `--target server` it only warns: the runtime tree is always copied, because it must survive the checkout and the npx cache. |
-| `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags. |
+| `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags — but operator data is kept: an installed `roles/` directory, a `projects.json`, config keys the template does not carry, and the server `.env` / `.data`. |
 | `--dry-run` | Print every path that would be written/changed and change nothing. It never prompts, even with `--interactive`. |
 | `--skip-node-check` | Skip the Node version check (see below). |
 | `-i, --interactive` | Ask every option in the [wizard](#interactive-wizard). Also works when stdin is a pipe, which is how it is tested; EOF cancels. |

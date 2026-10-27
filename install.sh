@@ -161,7 +161,8 @@ Options:
                     macOS, systemd --user on Linux, cron elsewhere). Only one
                     mechanism may be loaded per machine.
   --link            Symlink the skill instead of copying it (board skill only)
-  --force           Overwrite an existing installation (never .env or .data)
+  --force           Overwrite an existing installation (never .env, .data, roles/ or
+                    projects.json — this installer ships none of those)
   --dry-run         Print the destination paths and change nothing
   --skip-web-build  Never try to build web/dist; a server install is API-only if absent
   --skip-node-check Do not require Node (bypass the >= 22 runtime check)
