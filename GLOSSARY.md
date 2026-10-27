@@ -234,6 +234,16 @@ one, otherwise the deployment reviewer (`--reviewer` / `MEERKAT_TASKPANEL_REVIEW
 config). The loop merges every project reviewer into its scan/wake set.
 _中文_: 实际审核人
 
+**Must-fix item**:
+One numbered finding in a `VERDICT: REJECT` report. The loop appends each item to the
+original's frozen acceptance baseline, so it is not advice: the next round's report must
+answer it (`met` with an anchor, or a recorded deferral) and the next review card's baseline
+carries it. A rejection with no numbered list still appends one pointer item — no rejection
+is silent.
+_中文_: 必改项
+_Avoid_: finding (as a noun for an item the next round does not owe), leftover (that is work
+outside the frozen acceptance)
+
 **Auto-accept**:
 The loop's `auto_accept` action for a delivered card whose `acceptance_mode` is `off`: it
 writes `meta.accepted_by=loop-auto` and moves the card `in_review → done`. A `human` card is

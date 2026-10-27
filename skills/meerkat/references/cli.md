@@ -633,6 +633,15 @@ report `deliver` accepts without editing. The second line is the **audited waive
 rule and the round table:
 [`status-lifecycle.md` §4](status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round).
 
+On an **`agent`** card each `met` item's `note` must cite an anchor from the report's own
+`evidence[]`, written `evidence[n]` (1-based). The template seeds the note with
+`evidence[1]`, so filling it in is "say what you saw". A `met` with no reference
+(`no_anchor`) or one past the end of the list (`dangling_anchor`) is
+`ACCEPTANCE_INCOMPLETE` with `details.unsupported`; an empty evidence list makes every
+reference dangle. An `off` or `human` card is not held to this rule. An APPROVE on a review
+card additionally needs a `{kind: "command", cmd, exit_code}` anchor — the reviewer runs the
+gate it records.
+
 ## The `awaiting` state — asking a human a question
 
 A card that needs an answer from a person is **`awaiting`**, not `blocked` and not a chat

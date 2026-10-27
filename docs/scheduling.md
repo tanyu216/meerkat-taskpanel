@@ -473,8 +473,13 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
   is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
 - the loop applies the verdict as `--actor-kind taskd`. An `APPROVE` writes
   `meta.accepted_by=loop-review` and moves the original `in_review → done`; a `REJECT`
-  comments the findings, writes `meta.rework_round`, and moves it back to rework. Only
-  after that does it close the review card.
+  comments the findings, writes `meta.rework_round`, moves it back to rework, and appends
+  the reviewer's numbered must-fix items to the original's frozen acceptance (the move to
+  `in_progress` is what unlocks the baseline). Each item is then an ordinary acceptance
+  criterion: the next round's report template lists it and the next review card's baseline
+  carries it, so a dropped finding fails the coverage gate. A `REJECT` with no numbered list
+  appends one pointer item rather than nothing. Only after that does it close the review
+  card.
 - The loop always closes the review card it dispatched — there is no switch that could leave
   it for nobody. On a `human` card it records the evidence and stops; the person closes.
 - An `agent` card with no effective reviewer is refused at startup: the loop reads
