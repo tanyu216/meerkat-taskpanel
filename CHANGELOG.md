@@ -7,6 +7,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-27
+
+### Fixed
+
+- The `taskd` keepalive guard now writes its launchd/systemd units under the install root
+  (`<home>/.meerkat-taskpanel/scheduling/`) instead of a stray `<home>/taskpanel`
+  directory beside it.
+- The guard is no longer loaded when a board is already answering `/health` at the runtime
+  pointer's address. A second `taskd` on that port only restarted into `EADDRINUSE`; the
+  install now leaves the running board alone and reports what it found.
+
 ## [0.1.0] - 2026-10-27
 
 First public release.
@@ -117,5 +128,6 @@ First public release.
 - `issue get` shows the card title.
 - The subscriber unit points at the event hub instead of a direct stream.
 
-[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v0.1.0...HEAD
+[0.1.1]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.1
+[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v0.1.1...HEAD
 [0.1.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.0
