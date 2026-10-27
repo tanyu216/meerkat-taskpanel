@@ -223,7 +223,10 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          tarball="$(ls pkg/*.tgz)"
+          # npm reads a slash-containing relative spec that is not `./`-prefixed as
+          # a hosted repo (`pkg/x.tgz` → `user/repo`) and runs `git ls-remote` on
+          # it. An absolute path is unambiguously the tarball file.
+          tarball="$(ls "$PWD"/pkg/*.tgz)"
           version="$VERSION"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "release: publishing ${tarball} as ${version}${DRY_RUN:+ (dry run)}"

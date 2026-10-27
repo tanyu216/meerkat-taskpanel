@@ -157,9 +157,22 @@ describe("release.yml: the publish", () => {
   it("publishes the built tarball, not a second pack", async () => {
     const publish = jobBlock(code(await read(WORKFLOW)), "publish");
     assert.match(publish, /actions\/download-artifact/);
-    assert.match(publish, /tarball="\$\(ls pkg\/\*\.tgz\)"/);
+    assert.match(publish, /tarball="\$\(ls "\$PWD"\/pkg\/\*\.tgz\)"/);
     assert.match(publish, /npm publish "\$tarball" --provenance --access public/);
     assert.doesNotMatch(publish, /npm pack/, "packing happens once, in build");
+  });
+
+  it("hands npm an absolute tarball path, never a GitHub shorthand", async () => {
+    const publish = jobBlock(code(await read(WORKFLOW)), "publish");
+    // npm's argument parser reads a slash-containing relative spec that is not
+    // `./`-prefixed as a hosted repo (`pkg/x.tgz` → `user/repo`) and runs
+    // `git ls-remote` against it. An absolute path is unambiguously a file.
+    assert.doesNotMatch(
+      publish,
+      /tarball="\$\(ls pkg\/\*\.tgz\)"/,
+      "a bare `pkg/*.tgz` glob makes `npm publish` resolve a git remote",
+    );
+    assert.match(publish, /tarball="\$\(ls "\$PWD"\/pkg\/\*\.tgz\)"/);
   });
 
   it("waits for the exact version and its provenance before smoke", async () => {
