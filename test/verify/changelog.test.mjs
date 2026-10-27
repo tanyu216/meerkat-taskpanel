@@ -113,11 +113,11 @@ describe("changelog.mjs — checkChangelog against a tree", () => {
     assert.equal(typeof result.line, "number");
   });
 
-  it("has no release section yet: v0.1.0 is still the unreleased baseline", async () => {
+  it("documents the released 0.1.0 baseline", async () => {
     const result = await checkChangelog({ tag: "v0.1.0" });
-    assert.equal(result.ok, false);
+    assert.equal(result.ok, true, result.error);
     assert.equal(result.version, "0.1.0");
-    assert.match(result.error, /CHANGELOG\.md/);
+    assert.equal(typeof result.line, "number");
   });
 
   it("fails, naming the tag, when the version is missing from CHANGELOG.md", async () => {
