@@ -80,6 +80,10 @@ run them.
 18. The logging contract holds: one logger module, key flows emit an `info` line, every
     caught exception emits one `error` line with its code and correlation id, and no secret
     or personal data is logged. Otherwise the recorded `n/a` is present.
+19. The release and deploy paths are recorded separately, each with its `n/a` when absent:
+    the release publishes the artifact CI passed and treats a published version as
+    immutable (fix forward), and every deploy has a healthcheck, a post-deploy check and a
+    recorded rollback, with the data-recovery step when the release changes stored data.
 
 ## Implementation branch
 

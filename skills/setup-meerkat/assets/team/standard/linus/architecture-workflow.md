@@ -437,7 +437,7 @@ Output: the agent-instruction baseline — `CLAUDE.md` or `AGENTS.md` — review
 entry-point map, the design principles and the pointers, named as the entry baseline in the
 delivery.
 
-### 6. Record the gate and delivery path
+### 6. Record the gates, the release and the delivery path
 
 The local gate path runs the same checks as CI, so a host-only bypass cannot ship. It stays
 offline and fast, prints what it runs, and is idempotent.
@@ -454,13 +454,31 @@ configuration-key check (every key the application reads is named in `.env.examp
 build the artifact → security scan (dependency audit, secret scan, SAST) with no
 unaddressed high or critical finding.
 
-CD promotes **the same artifact** that passed CI; it never rebuilds per environment. It
-deploys only from a release tag or the mainline, keeps secrets in the deploy
-environment rather than the repository, and gives every deploy a healthcheck and a recorded
-rollback. A library or a local-only tool records `n/a` for CD.
+#### Release and delivery
 
-Output: the local gate path wired, the CI pipeline file, and the deploy path with its
-rollback.
+**Release** publishes a version; **deploy** runs it somewhere. They are separate paths and
+each records its own `n/a — <reason>`: a library, a CLI or a local-first tool publishes and
+never deploys, so recording `n/a` for both would erase the release that does happen.
+
+- **Release** builds the artifact once and publishes exactly the bytes that passed CI; it
+  never rebuilds per environment. A published version is immutable: it is never reused or
+  overwritten, and a defect is fixed forward under a new version with the bad one deprecated
+  rather than silently replaced. A tag is cut only from the mainline, only when the version,
+  the release notes and the built artifact agree, and the last proof is installing and
+  starting the published artifact outside the source tree.
+- **Deploy** promotes that same artifact to a runtime target, only from a release tag or the
+  mainline. Secrets live in the deploy environment, never in the repository; every deploy
+  has a healthcheck, a recorded rollback, and a post-deploy check that the running system —
+  not the pipeline — serves the new version.
+- **Rollback** names its trigger, who decides, and the exact previous artifact. A rollback
+  of the artifact is not a rollback of the data: a release that changes stored data records
+  its own recovery step, and a published version is not rolled back at all.
+
+Record each path's invariant and its done-when, never the tool that implements it: the
+project names its pipeline file, registry and environment settings in its own baseline.
+
+Output: the local gate path wired, the CI pipeline file, and the release and deploy paths
+— each with its `n/a` when absent — with the rollback each one relies on.
 
 ### 7. Self-check
 
@@ -490,6 +508,10 @@ Run `self-check.md` (Architecture branch). The architecture proof is:
 - the scaffold checklist in Step 4 is complete, the smoke test passes and the documented
   local run works;
 - the local gate path exists at pre-commit, pre-push and pre-tag, and is idempotent;
+- the release and deploy paths are recorded separately, each with its `n/a` when absent: a
+  release publishes the artifact CI passed and keeps a published version immutable, and a
+  deploy carries a healthcheck, a post-deploy verification and a recorded rollback with its
+  data plan when stored data changes;
 - no secret, no host-absolute path, no second source of truth;
 - the root `GLOSSARY.md` carries the `## Product language` pointer (or says product terms
   are not recorded) and does not copy `design/glossary.md`.
@@ -500,10 +522,10 @@ Output: the requirement → artifact table in `plan.md`.
 
 Present the **architecture package** — the design-stance evidence, the options, the style
 ADR, the stack table with pinned versions and rejected alternatives, the boundaries, the
-external contract, the configuration surface, the directory tree and the agent-instruction
-baseline — to the project session. E5 belongs to the human; a public API contract is E5, and a
-configuration key that touches a secret is E4. Record the decision on the card. Do not start
-implementation before the review is recorded.
+external contract, the configuration surface, the directory tree, the gate path, the release
+and deploy paths and the agent-instruction baseline — to the project session. E5 belongs to
+the human; a public API contract is E5, and a configuration key that touches a secret is E4.
+Record the decision on the card. Do not start implementation before the review is recorded.
 
 Output: the recorded E5 decision on the card.
 
@@ -513,9 +535,9 @@ Re-export the brief, mark the handoff required, and write the architecture varia
 `## Handoff` block into the delivery report's `conclusion`: one architecture-package sentence
 naming the architecture document, `.meerkat/<id>/architecture.md` (when the change is
 card-local), the style and other ADR paths, the contract artifact, the configuration
-surface, the directory tree, the agent-instruction baseline (`CLAUDE.md` or `AGENTS.md`),
-the acceptance source, the
-`Delivery shape` (one task, or an epic with children) and the proposed implementation
+surface, the directory tree, the gate path, the release and deploy paths (or their recorded
+`n/a`), the agent-instruction baseline (`CLAUDE.md` or `AGENTS.md`), the acceptance source,
+the `Delivery shape` (one task, or an epic with children) and the proposed implementation
 card(s). Deliver at `in_review` with the evidence. Do not create the implementation card;
 the project session triages it, seeds its acceptance and links it with
 `relation add <this-card> --type blocks --target <impl>` (or `parent` for an epic).
