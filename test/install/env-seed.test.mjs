@@ -9,6 +9,7 @@
  */
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +39,54 @@ function install(home, dataDir, envFile, extra = []) {
     MEERKAT_TASKPANEL_ENV_FILE: envFile,
   });
 }
+
+/** Run one line of shell that sources `_common.sh` (the claim-unassigned idiom). */
+function runCommon(snippet, { args = [], env = {} } = {}) {
+  return spawnSync(
+    "bash",
+    ["-c", `. "$1/scripts/install/_common.sh"\n${snippet}`, "_", ROOT, ...args],
+    { encoding: "utf8", env: { ...process.env, ...env } },
+  );
+}
+
+describe("_common.sh: ensure_file_key keeps an existing .env intact", () => {
+  it("appends a missing key", () => {
+    const file = join(makeTempDir(), ".env");
+    writeFileSync(file, "TASKD_URL=http://localhost:9527\n", "utf8");
+    const run = runCommon('ensure_file_key "$2" TASKCTL_HUMAN alice', { args: [file] });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(readFileSync(file, "utf8"), /^TASKCTL_HUMAN=alice$/m);
+  });
+
+  it("keeps an existing key, even an empty one", () => {
+    const file = join(makeTempDir(), ".env");
+    writeFileSync(file, "TASKCTL_HUMAN=\nTASKD_URL=http://localhost:9527\n", "utf8");
+    const run = runCommon('ensure_file_key "$2" TASKCTL_HUMAN alice', { args: [file] });
+    assert.equal(run.status, 0, run.stderr);
+    const text = readFileSync(file, "utf8");
+    assert.equal(text.match(/^TASKCTL_HUMAN=/gm).length, 1);
+    assert.doesNotMatch(text, /TASKCTL_HUMAN=alice/);
+  });
+
+  it("never creates a missing file", () => {
+    const file = join(makeTempDir(), ".env");
+    const run = runCommon('ensure_file_key "$2" TASKCTL_HUMAN alice', { args: [file] });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(existsSync(file), false);
+  });
+
+  it("reports the write and changes nothing under --dry-run", () => {
+    const file = join(makeTempDir(), ".env");
+    writeFileSync(file, "TASKD_URL=http://localhost:9527\n", "utf8");
+    const run = runCommon('ensure_file_key "$2" TASKCTL_HUMAN alice', {
+      args: [file],
+      env: { DRY_RUN: "1" },
+    });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /would ensure TASKCTL_HUMAN/);
+    assert.doesNotMatch(readFileSync(file, "utf8"), /TASKCTL_HUMAN/);
+  });
+});
 
 describe("install.sh: the install-root .env", () => {
   it("creates it 0600 with the default board URL", () => {

@@ -25,7 +25,7 @@ const INSTALL = join(ROOT, "install.sh");
 
 /**
  * @param {{prefix?: string, installDefaults?: Record<string, string>}} [options]
- * @returns {{makeTempDir: (prefix?: string) => string, runInstall: (args: string[], env?: Record<string, string>) => import('node:child_process').SpawnSyncReturns<string>, cleanup: () => void}}
+ * @returns {{makeTempDir: (prefix?: string) => string, runInstall: (args: string[], env?: Record<string, string>) => import('node:child_process').SpawnSyncReturns<string>, runInstallWithInput: (args: string[], input: string, env?: Record<string, string>) => import('node:child_process').SpawnSyncReturns<string>, cleanup: () => void}}
  */
 export function createInstallHarness({
   prefix = "meerkat-taskpanel-",
@@ -58,9 +58,22 @@ export function createInstallHarness({
       env: { ...process.env, ...defaults, ...env },
     });
 
+  /**
+   * Like `runInstall`, but feeds stdin. `install.sh --interactive` reads its
+   * answers from stdin even when it is a pipe, which is how the wizard is
+   * tested without a pty. EOF cancels, so a truncated input cannot hang.
+   */
+  const runInstallWithInput = (args, input, env = {}) =>
+    spawnSync("bash", [INSTALL, ...args], {
+      cwd: ROOT,
+      encoding: "utf8",
+      input,
+      env: { ...process.env, ...defaults, ...env },
+    });
+
   const cleanup = () => {
     for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
   };
 
-  return { makeTempDir, runInstall, cleanup };
+  return { makeTempDir, runInstall, runInstallWithInput, cleanup };
 }

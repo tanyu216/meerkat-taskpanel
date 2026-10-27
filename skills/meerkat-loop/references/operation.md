@@ -44,7 +44,7 @@ Precedence: flag > process env > agent config > default. The complete surface is
 | `--workflow=yes\|no` / `--workflow-max-actions <n>` | the write channel and its per-pass cap |
 | `--workflow-ledger <path>` | alert de-duplication ledger; an unreadable one suppresses nothing |
 | `--max-concurrency <n>` / `--project-concurrency <n>` | workers and reviewers share the budget |
-| `--recover-stale=yes\|no` | also claim stale `in_progress` |
+| `--recover-stale=yes\|no` | include stale `in_progress` cards in the candidate read; the claim itself is `issue claim` |
 | `--allow-all-tools` | full tool access; requires `--allow-all-tools-reason "<who and why>"` |
 | `--dry-run` | print intended actions; write nothing |
 | `--ping-once` / `--continue-once` | one clock and exit (on `loop run`) |

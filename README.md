@@ -113,11 +113,14 @@ npx meerkat-taskpanel install --no-server                # agent-kind skills onl
 
 The installer materializes the runtime at `~/.meerkat-taskpanel/` — `src/`, the built `web/dist`, `bin/taskd`, `bin/taskctl`, one `.env` and `.data`. Add `~/.meerkat-taskpanel/bin` to `PATH`, or use the global npm install. `npx` needs the package to be published. `--prefix <home>` relocates the tree, and `--force` / `--dry-run` behave as in the source installer.
 
+Run it in a terminal with **no options** and an interactive wizard asks every setting — install root, install mode (full / skills only / server only), agent kinds, your board name, link-or-copy, the claim/workflow policies and the optional supervisor. `-i` / `--interactive` forces the wizard; `--yes` / `--non-interactive` accepts every default without prompting, which is the form for CI or a pipe. Neither piped input nor `--dry-run` ever prompts.
+
 ### From a source checkout
 
 The same installer runs from the repository, without npm:
 
 ```bash
+bash install.sh                           # interactive wizard on a terminal
 bash install.sh --target all              # server + the skill for every agent kind
 bash install.sh --target claude,server,pi # server + those two agent kinds
 bash install.sh --target all --no-server  # agent-kind skills only
@@ -151,7 +154,7 @@ The `meerkat-loop` scheduler skill is not distributed through the marketplace. `
 
 The third skill, **`setup-meerkat`**, is the `/setup-meerkat` command. It detects what is installed, repairs what is missing, offers the Matt Pocock issue-tracker integration, and installs an optional Jobs/Linus/Turing plus reviewer team (role workflows, native agent definitions, and the plan-file / omission-check conventions). `install.sh --target claude` copies it to `~/.claude/skills/setup-meerkat`. Other agent kinds, including OpenClaw, can read it from the shared bundle; dedicated OpenClaw support is on the [roadmap](#roadmap).
 
-Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the agent's board identity, default `$USER` — must equal its assignee; re-running with a new name needs `--force` to take effect), `--no-automation` (skip the Codex scheduling units and the taskd guard), `--link` (symlink instead of copy), `--force` (**the only** way to overwrite existing files and managed keys — without it an existing value is kept and reported as `left unchanged — use --force to overwrite`), `--dry-run` (preview every write and change nothing), `--skip-node-check` (bypass the Node >= 22 check).
+Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the agent's board identity, default `Worker` — must equal its assignee; re-running with a new name needs `--force` to take effect), `--no-automation` (skip the Codex scheduling units and the taskd guard), `--link` (symlink instead of copy), `--force` (**the only** way to overwrite existing files and managed keys — without it an existing value is kept and reported as `left unchanged — use --force to overwrite`), `--dry-run` (preview every write and change nothing), `--skip-node-check` (bypass the Node >= 22 check).
 
 **Configuration is one file.** `taskctl` and `taskd` read `.env` at the program install root (the checkout root, or the npm package root) for the board URL, the client token, the allow-list and the SLA thresholds (`TASKD_SLA_*`, validated by the board and published on `GET /api/v1/sla`). The process environment wins key by key, and a CLI flag wins over both. `--env-file <path>` or `MEERKAT_TASKPANEL_ENV_FILE` selects another file. `install.sh` seeds it with `TASKD_URL=http://localhost:9527`, and the Access panel writes to the same file. Every `taskctl` command also needs an identity: `--actor-kind claude` (or `codex`, `pi`, …; `--as-human` for a person), which the installed shim supplies. **Breaking change:** the old `<dataDir>/taskd.env` is no longer read — move its keys into `.env` by hand. Details: [`docs/install.md`](docs/install.md) and [`docs/development.md`](docs/development.md).
 

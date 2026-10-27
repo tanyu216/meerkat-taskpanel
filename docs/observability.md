@@ -76,6 +76,8 @@ time=2026-10-27T12:34:56.792Z level=error event=request_failed method=POST path=
 time=2026-10-27T12:34:56.793Z level=info component=supervisor msg="/meerkat-loop Continue — timer turn"
 ```
 
+- A header-less request carries `actor=human:local` unless `TASKCTL_HUMAN` names the
+  configured human (the install-root `.env`), in which case that name is used.
 - The fixed prefix is `time=` (ISO-8601 with milliseconds), then `level=`; an optional
   `component=` follows.
 - `event=` comes next, then the prose in `msg=`, then every other field. `msg` is an

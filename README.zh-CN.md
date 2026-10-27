@@ -113,11 +113,14 @@ npx meerkat-taskpanel install --no-server                # 只装 agent kind 的
 
 安装器会把运行时放到 `~/.meerkat-taskpanel/`：`src/`、构建好的 `web/dist`、`bin/taskd`、`bin/taskctl`、一份 `.env` 与 `.data`。把 `~/.meerkat-taskpanel/bin` 加入 `PATH`，或使用全局 npm 安装。`npx` 需要包已发布。`--prefix <home>` 可改安装根，`--force` / `--dry-run` 与源码安装一致。
 
+在终端里**不带任何参数**运行，会进入交互向导，逐项询问安装根、安装模式（完整 / 仅 skills / 仅 server）、agent 种类、你在看板上的名字、链接还是复制、认领/工作流策略以及可选的 supervisor。`-i` / `--interactive` 强制进入向导；`--yes` / `--non-interactive` 全部接受默认值、完全不提问，适合 CI 或管道。管道输入与 `--dry-run` 也从不提问。
+
 ### 从源码 checkout 安装
 
 同一个安装器也可以直接从仓库运行，不依赖 npm：
 
 ```bash
+bash install.sh                           # 终端里进入交互向导
 bash install.sh --target all              # server + 每个 agent kind 的 skill
 bash install.sh --target claude,server,pi # server + 这两个 agent kind
 bash install.sh --target all --no-server  # 只装 agent kind 的 skills
@@ -151,7 +154,7 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 第三个 skill **`setup-meerkat`** 就是 `/setup-meerkat` 命令。它会探测已安装的部分、补齐缺失、提供 Matt Pocock issue-tracker 集成，并按需安装 Jobs/Linus/Turing 加独立 reviewer 的团队（角色 workflow、原生 agent 定义、计划文件与遗漏检查的约定）。`install.sh --target claude` 会把它复制到 `~/.claude/skills/setup-meerkat`。其他 agent kind（包括 OpenClaw）可以从共享 bundle 就地读到；为 OpenClaw 提供专门支持列在[路线图](#路线图)里。
 
-常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，默认 `$USER`，须与其 assignee 一致；对既有安装改名需配 `--force` 才生效）、`--no-automation`（跳过 Codex 调度单元与 taskd guard）、`--link`（软链而非拷贝）、`--force`（**唯一**的覆盖手段 —— 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`（预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
+常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，默认 `Worker`，须与其 assignee 一致；对既有安装改名需配 `--force` 才生效）、`--no-automation`（跳过 Codex 调度单元与 taskd guard）、`--link`（软链而非拷贝）、`--force`（**唯一**的覆盖手段 —— 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`（预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
 **配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的 `.env`，取看板 URL、客户端 token、allow-list 与 SLA 阈值（`TASKD_SLA_*`，由看板校验并通过 `GET /api/v1/sla` 发布）。进程环境逐键优先，CLI 参数再优先于两者。`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每条 `taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其中的键搬进 `.env`。详见 [`docs/install.md`](docs/install.md) 与 [`docs/development.md`](docs/development.md)。
 

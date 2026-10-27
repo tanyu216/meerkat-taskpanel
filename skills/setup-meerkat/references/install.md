@@ -11,6 +11,14 @@
 The npm package is not live yet (the unscoped registry name currently returns 404).
 `npx` is the future path, not the default today; a clone is the non-checkout fallback.
 
+## Always install non-interactively
+
+An agent must pass explicit flags (as below) or `--non-interactive`. Never use
+`--interactive`/`-i`, and never invoke `install.sh` with no arguments from a terminal: with
+no options on a TTY it opens a wizard and blocks waiting for a human. Piped input,
+`--dry-run` and `--non-interactive` never prompt, so the non-interactive form is the
+agent's default everywhere.
+
 ## `--target`
 
 `all` means **six actor kinds + the server**; an explicit comma list is literal;

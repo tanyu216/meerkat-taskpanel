@@ -210,6 +210,9 @@ describe("install.sh", () => {
     assert.match(script, /--prefix/, "install.sh must accept --prefix");
     assert.match(script, /--link/, "install.sh must accept --link");
     assert.match(script, /--force/, "install.sh must accept --force");
+    assert.match(script, /--interactive/, "install.sh must offer the wizard");
+    assert.match(script, /--yes/, "install.sh must let CI skip the wizard");
+    assert.match(script, /_wizard\.sh/, "install.sh must source the wizard helpers");
 
     // It is a dispatcher: it must delegate to the per-agent-kind installers.
     assert.match(script, /scripts\/install\/\$target\.sh/);

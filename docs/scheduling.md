@@ -252,12 +252,22 @@ it did not win, and never claims success on a failed spawn.
 `issue claim` is also the **stale-recovery** path. A claim is not always a
 transition: re-taking an `in_progress` card does not change its status, so the
 move route (whose table has no `in_progress → in_progress`) cannot express it.
-The claim verb decides between *reuse* (the same holder, fresh heartbeat),
-*re-claim* (the same holder past the 30-minute window) and *takeover* (anyone
-past the six-hour bound), and it audits a takeover with a `change` comment. The
-supervisor runs with `--recover-stale=yes` by default, adds `--stale` to the
+The thresholds are layered:
+
+- the same holder may re-claim after **10 minutes** (refreshing ownership/heartbeat);
+- only after **30 minutes** does the card enter the `issue candidates --stale`
+  recovery pool;
+- any agent may take over after **6 hours**, and a takeover writes a `change` comment.
+
+The supervisor runs with `--recover-stale=yes` by default, adds `--stale` to the
 candidate read, and claims every candidate through `issue claim` — one path for
-ready and recovered work.
+ready and recovered work. Discovery and ownership are separate: the candidate read
+only *finds* stale cards; `issue claim` (backed by the board's CAS) is what
+transfers ownership.
+
+SLA patrol measures and alerts; by default it moves nothing. `--patrol-llm` is its
+only authorized move path — and that path is `move`, not `claim`: ownership changes
+always go through `issue claim` and the board's CAS.
 
 This is also why worker dispatch needs no lock file: the service model is
 single-writer and the CAS already serialises dispatch. Two entries racing each
@@ -586,7 +596,7 @@ the container; with it, the container stays `in_progress` and names the child bl
 | Setting | Flag | Env / agent config | Default |
 |---|---|---|---|
 | workflow channel | `--workflow=yes\|no` | `MEERKAT_TASKPANEL_WORKFLOW` | `yes` |
-| reviewer (deployment default) | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | unset |
+| reviewer (deployment default) | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | `Reviewer` (empty disables dispatch) |
 | project reviewer override | `project create/update --reviewer <agent>` | — | `null` (use the deployment reviewer) |
 | writes per pass | `--workflow-max-actions <n>` | `MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS` | `20` |
 | silent-review threshold | `--review-aging-minutes <n>` | `MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES` | `60` |
@@ -1486,7 +1496,8 @@ the manual commands in the section above are still the whole story.
 That is the single exception to the rule, stated once and pointed at rather than repeated:
 **an installer never loads a unit or runs `crontab` for you — unless you ask.** Asking is
 always explicit (the flag, `MEERKAT_TASKPANEL_SUPERVISOR=enable`, or answering **yes** to
-the one-time TTY question, whose default is **N**): enabling is never a silent default, and
+the one-time TTY question — also asked by the no-options wizard, default **none** — whose
+default is **N**): enabling is never a silent default, and
 a plain `install.sh` still only prints the load command. The flag surface, the TTY question
 and the env var are documented once in
 [`install.md §Enabling the supervisor (opt-in)`](install.md#enabling-the-supervisor-opt-in);
@@ -1500,7 +1511,7 @@ in `--target`) and `--scheduler auto|launchd|systemd|cron` (which mechanism; def
 
 Per-OS commands below are written for the Claude install (`~/.claude`); for Codex and Pi
 substitute `~/.codex` / `~/.agents` for the agent kind directory and `codex` / `pi` for
-`--actor-kind`. `<agent>` is the `--agent-name` from the install (default `$USER`), and
+`--actor-kind`. `<agent>` is the `--agent-name` from the install (default `Worker`), and
 `<uid>` is `id -u`.
 
 ### macOS — launchd
@@ -1645,7 +1656,7 @@ still needs the written authorization, documented at the point of use, that sect
 describes.
 
 - **Identity and parameters.** The units start the scheduler with `--agent <agent>`
-  (`--agent-name`, default `$USER`), `--actor-kind <h>`, and one pass
+  (`--agent-name`, default `Worker`), `--actor-kind <h>`, and one pass
   (`taskctl loop run --ping-once` / `--continue-once`). The continue turn starts the
   agent kind's headless entry point directly with the bounded `Continue` prompt — no
   project directory. Poll claims a card and enqueues it; a resident project session
@@ -1721,9 +1732,9 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--max-concurrency <n>` | `8` | cap on simultaneously running subagents; workers and reviewers share it and the split follows demand (no per-role reservation) |
 | `--claim-unassigned=yes\|no` | from agent config → `yes` | also claim unassigned cards (the public pool) |
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |
-| `--recover-stale=yes\|no` | from agent config → `yes` | also claim stale `in_progress` cards: the same holder after 30 min, any agent after 6 h |
+| `--recover-stale=yes\|no` | from agent config → `yes` | add stale `in_progress` cards to the candidate read (`--stale`); the claim itself is `issue claim` (holder after 10 min, anyone after 6 h) |
 | `--workflow=yes\|no` | from agent config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch) |
-| `--reviewer <agent>` | from `$MEERKAT_TASKPANEL_REVIEWER`, else unset | the independent reviewer; unset disables dispatch only |
+| `--reviewer <agent>` | from `$MEERKAT_TASKPANEL_REVIEWER` / the agent config, else `null` | the independent reviewer; the installer writes `Reviewer`, and an empty value disables dispatch only |
 | `--workflow-max-actions <n>` | `20` | max workflow writes (and bounded reads) per pass |
 | `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
 | `--continue=yes\|no` | from agent config → `yes` | enable the continue turn |
@@ -1757,7 +1768,8 @@ The supervisor's one policy knob is whether it may take **unassigned** cards —
 the public pool — or only cards routed to the agent. The board exposes both
 through one read: `issue candidates --assignee <name> [--include-unassigned]`.
 
-`install.sh` asks once (when stdin is a TTY and no flag was given):
+`install.sh` asks once (when stdin is a TTY and no flag was given; the no-options wizard
+asks it as part of its one flow and then skips this prompt):
 
 ```
 Allow claiming unassigned tasks? [Y/n]
@@ -1788,13 +1800,14 @@ it:
 
 ```ini
 MEERKAT_TASKPANEL_WORKFLOW=yes
-MEERKAT_TASKPANEL_REVIEWER=
+MEERKAT_TASKPANEL_REVIEWER=Reviewer
 ```
 
 An empty `MEERKAT_TASKPANEL_REVIEWER` is a complete answer — "no independent reviewer" —
 not a missing one: the board still gets the container rules and the verdicts already in
-flight, and a delivery waits for a human to accept it. Re-running the installer adds keys
-an older config lacks and never overwrites one it already has.
+flight, and a delivery waits for a human to accept it. It is the manual opt-out: the
+installer's default is `Reviewer`, and the wizard does not ask. Re-running the installer
+adds keys an older config lacks and never overwrites one it already has.
 
 ## The end-to-end path
 
