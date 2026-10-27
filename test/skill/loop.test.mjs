@@ -137,6 +137,17 @@ describe("loop skill: SKILL.md", () => {
     assert.match(policy, /one question string/i);
   });
 
+  it("prefers the team's decision policy over the loop's default", () => {
+    const begin = text.indexOf("### Team roles (optional)");
+    assert.notEqual(begin, -1, "the team section must exist");
+    const next = text.indexOf("\n### ", begin + 1);
+    const section = text.slice(begin, next === -1 ? text.length : next);
+
+    assert.match(section, /decision-policy\.md/, "the team's policy file must be named");
+    assert.match(section, /replaces|wins over|before/i, "the precedence must be stated");
+    assert.match(section, /default/i, "the fallback must be stated");
+  });
+
   it("declares the board interface it requires", () => {
     assert.match(text, /task-interface v1/, "the required board interface generation must be stated");
     assert.match(text, /board release >= 0\.1\.0/, "…and the release floor a machine can check");

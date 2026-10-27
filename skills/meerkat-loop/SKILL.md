@@ -208,7 +208,9 @@ A team is an optional roles root, authored by `setup-meerkat`. It adds routing (
 by the card's assignee supplies responsibilities and boundaries) and a workflow path carried in
 the handoff. Precedence is whole-manifest: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, then
 `<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`. With no roles root
-the loop behaves exactly as before.
+the loop behaves exactly as before. The team's `decision-policy.md` in that roles root
+replaces the loop's own `references/decision-policy.md`; when the team ships none, the
+default worker/reviewer policy applies.
 `setup-meerkat` writes the team's board names to `MEERKAT_TASKPANEL_AGENTS`; without that list
 the loop only scans its default agent.
 
