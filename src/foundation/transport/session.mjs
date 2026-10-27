@@ -15,8 +15,9 @@
  */
 
 import { loadEnvFile } from "../env-config.mjs";
+import { resolveKindConfigPath } from "../loop-paths.mjs";
 import { repoRoot } from "../runtime-locator.mjs";
-import { resolveActor } from "./actor.mjs";
+import { ACTOR_ENV_KEYS, resolveActor } from "./actor.mjs";
 import { createBoardClient } from "./client.mjs";
 import { ensureBoard, readPointer } from "./runtime.mjs";
 import { resolveToken } from "./token.mjs";
@@ -52,6 +53,15 @@ export function createBoardSession({
     env,
     cwd,
     root,
+    // The per-kind file is a per-agent default layer. It is selected by the
+    // declared kind; `--as-human` alongside a kind still reads it for
+    // `TASKCTL_HUMAN`, while a bare `--as-human` has no file to read.
+    kindFile: resolveKindConfigPath({
+      actorKind: flags.actorKind ?? env[ACTOR_ENV_KEYS.kind] ?? null,
+      root,
+      env,
+      cwd,
+    }),
   });
   const effectiveEnv = config.env;
 

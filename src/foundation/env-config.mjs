@@ -1,10 +1,14 @@
 /**
- * The one client/server config file: `<program root>/.env`.
+ * The configuration layers: the shared board file `<program root>/.env`, and
+ * the per-actor-kind file `<program root>/.env.<kind>`.
  *
- * Both `taskd` and `taskctl` read it, and the process environment wins key by
- * key. The loader is the *only* place that decides precedence; every existing
- * resolver keeps its own internal order (`--url` > `TASKD_URL` > pointer,
- * `--token` > `TASKD_TOKEN` > token file, …).
+ * Both `taskd` and `taskctl` read the shared file, and the process environment
+ * wins key by key. `taskctl` additionally reads the per-kind file as a
+ * lower-precedence per-agent default layer. The loader is the *only* place that
+ * decides precedence; every existing resolver keeps its own internal order
+ * (`--url` > `TASKD_URL` > pointer, `--token` > `TASKD_TOKEN` > token file, …).
+ *
+ * Effective order: flag > process env > per-kind file > shared `.env` > default.
  *
  * Two rules keep a root `.env` safe to share with other tools:
  *
@@ -13,6 +17,10 @@
  *   - a key in one of *our* namespaces that we do not know is an error (a typo
  *     such as `TASKD_URLL` must not silently do nothing), while an external key
  *     is ignored.
+ *
+ * The per-kind file shares the grammar but not the key set: it also carries loop
+ * policy, so the board loader takes only {@link PER_KIND_CONFIG_KEYS} from it and
+ * ignores the rest rather than rejecting a file the loop owns.
  *
  * The parser is deliberately the simple `KEY=VALUE` subset of
  * `src/foundation/env-file.mjs`: no inline comments, interpolation, escapes or
@@ -34,6 +42,7 @@ import {
   LOG_LEVEL_ENV,
   LOG_MAX_BYTES_ENV,
   NO_AUTOSTART_ENV,
+  PER_KIND_CONFIG_KEYS,
   PORT_ENV,
   TOKEN_ENV,
   TOKEN_FILE_ENV,
@@ -48,6 +57,7 @@ import { normalizeBoardUrl } from "./transport/board-url.mjs";
 import { isTokenShape } from "./transport/token.mjs";
 
 const ALLOWED = new Set(CLIENT_CONFIG_KEYS);
+const PER_KIND_ALLOWED = new Set(PER_KIND_CONFIG_KEYS);
 
 /** @param {string} message @param {object} [details] */
 function configError(message, details = {}) {
@@ -68,7 +78,7 @@ function unknownKeyMessage(key) {
     return `${ENV_FILE_ENV} selects this file and cannot be set inside it`;
   }
   if (key.startsWith("MEERKAT_TASKPANEL_")) {
-    return `${key} is loop policy and belongs in <agent-dir>/meerkat-taskpanel.env, not the shared .env`;
+    return `${key} is per-kind policy and belongs in <program root>/.env.<actor-kind>, not the shared .env`;
   }
   return `unknown configuration key "${key}"`;
 }
@@ -292,14 +302,51 @@ function mergeEnv(vars, env) {
 }
 
 /**
- * Load the config file and return the effective environment.
+ * Read the board-relevant keys out of a per-kind config.
+ *
+ * The file also carries loop policy, which this loader deliberately ignores:
+ * the two readers share a grammar but not a key set. A missing file is no
+ * overlay; an unreadable one is a real failure, like an unreadable `.env`.
+ *
+ * @param {{file?: string|null, readFile?: (file: string) => string}} [options]
+ * @returns {Map<string, string>}
+ */
+export function readKindConfigFile(options = {}) {
+  const file = options.file;
+  if (typeof file !== "string" || file.trim() === "") return new Map();
+
+  const readFile = options.readFile ?? ((path) => readFileSync(path, "utf8"));
+  let text;
+  try {
+    text = readFile(file);
+  } catch (err) {
+    if (err?.code === "ENOENT") return new Map();
+    throw configError(
+      `cannot read the per-kind configuration file ${file}: ${err?.code ?? err?.message ?? String(err)}`,
+      { file },
+    );
+  }
+
+  const vars = new Map();
+  for (const [key, value] of parseEnvText(text)) {
+    if (PER_KIND_ALLOWED.has(key)) vars.set(key, value);
+  }
+  return vars;
+}
+
+/**
+ * Load the config layers and return the effective environment.
  *
  * @param {{
  *   flag?: string|null, root?: string, env?: NodeJS.ProcessEnv, cwd?: string,
  *   readFile?: (file: string) => string, statFile?: (file: string) => {mode: number},
- *   platform?: string,
+ *   platform?: string, kindFile?: string|null,
  * }} [options]
- * @returns {{file: string, vars: Map<string, string>, env: NodeJS.ProcessEnv, source: "flag"|"env"|"default"|"none", present: boolean, tokenFile: string|null}}
+ * @returns {{
+ *   file: string, vars: Map<string, string>, kindFile: string|null,
+ *   kindVars: Map<string, string>, env: NodeJS.ProcessEnv,
+ *   source: "flag"|"env"|"default"|"none", present: boolean, tokenFile: string|null,
+ * }}
  */
 export function loadEnvFile(options = {}) {
   const {
@@ -310,6 +357,7 @@ export function loadEnvFile(options = {}) {
     readFile = (file) => readFileSync(file, "utf8"),
     statFile = (file) => statSync(file),
     platform = process.platform,
+    kindFile = null,
   } = options;
 
   const namedByFlag = typeof flag === "string" && flag.trim() !== "";
@@ -328,9 +376,20 @@ export function loadEnvFile(options = {}) {
     // environment variable is a *location* a deployment names up front (a
     // container's data volume before the first save), so absence there is the
     // same "no configuration" as a missing default: the Access panel creates the
-    // file when it first writes.
+    // file when it first writes. The per-kind layer is independent of this file
+    // and still applies when it is absent.
     if (err?.code === "ENOENT" && !namedByFlag) {
-      return { file, vars: new Map(), env: { ...env }, source: "none", present: false, tokenFile: null };
+      const kindVars = readKindConfigFile({ file: kindFile, readFile });
+      return {
+        file,
+        vars: new Map(),
+        kindFile,
+        kindVars,
+        env: mergeEnv(kindVars, env),
+        source: "none",
+        present: false,
+        tokenFile: null,
+      };
     }
     throw configError(`cannot read the configuration file ${file}: ${err?.code ?? err?.message ?? String(err)}`, {
       file,
@@ -341,9 +400,11 @@ export function loadEnvFile(options = {}) {
   const vars = validateVars(parseEnvConfig(text));
   if (vars.has(TOKEN_ENV)) assertInlineTokenMode(file, statFile, platform);
 
+  const kindVars = readKindConfigFile({ file: kindFile, readFile });
   const tokenFile = resolveTokenFile(vars, env, file, cwd);
-  const effectiveEnv = mergeEnv(vars, env);
+  // Per-kind wins over the shared file; the process environment wins over both.
+  const effectiveEnv = mergeEnv(new Map([...vars, ...kindVars]), env);
   if (tokenFile !== null) effectiveEnv[TOKEN_FILE_ENV] = tokenFile;
 
-  return { file, vars, env: effectiveEnv, source, present: true, tokenFile };
+  return { file, vars, kindFile, kindVars, env: effectiveEnv, source, present: true, tokenFile };
 }

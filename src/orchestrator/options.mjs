@@ -45,7 +45,12 @@ const BACKGROUND_RETIRED =
 // The agent-directory and path vocabulary is shared with the orchestrator and
 // the installer now; re-exported because this module was its first home.
 export { AGENT_DIRS, agentPaths } from "../foundation/loop-paths.mjs";
-import { AGENT_DIRS, agentPaths, statePathsForDir } from "../foundation/loop-paths.mjs";
+import {
+  AGENT_DIRS,
+  agentPaths,
+  resolveKindConfigPath,
+  statePathsForDir,
+} from "../foundation/loop-paths.mjs";
 
 /** Parse a `KEY=value` env file, or `{}` when it is absent/unreadable. */
 export function readConfigFile(path) {
@@ -64,17 +69,17 @@ export function readConfigFile(path) {
  *   * **from the checkout** (`taskctl loop …`, the documented dev run
  *     and every test) — the board sits beside the executor, so the relative answer is
  *     the right one and nothing else is consulted. This branch is why a dev run never
- *     depends on the machine's agent config.
+ *     depends on the machine's per-kind config.
  *   * **from the agent** — `install.sh` records the runtime tree under
  *     `<agent-dir>/meerkat-taskpanel/` so a loaded scheduling unit survives the
  *     checkout moving. That copy has no board of its own, so it falls back to the
- *     location the installer recorded in the agent config (`MEERKAT_TASKPANEL_REPO`).
+ *     location the installer recorded in the per-kind config (`MEERKAT_TASKPANEL_REPO`).
  *
  * An unreadable or key-less config falls back to the executor's own location, which
  * is what a copy written by an older installer has — the tick still runs, and
  * re-running `install.sh` records the path.
  *
- * @param {string | null} configPath the agent config file to consult
+ * @param {string | null} configPath the per-kind config file to consult
  * @param {string} [beside] the executor's own directory — injectable so the
  *   agent-installed branch is testable without a second checkout on disk
  * @returns {string} an absolute directory
@@ -230,8 +235,8 @@ function defaultOptions(env) {
     agents: [],
     actorKind: "claude",
     repo: null,   // resolved below: --repo, else defaultRepo()
-    pingInterval: undefined,     // resolved below: flag > env > agent config > 60
-    continueInterval: undefined, // resolved below: flag > env > agent config > 600
+    pingInterval: undefined,     // resolved below: flag > env > per-kind config > 60
+    continueInterval: undefined, // resolved below: flag > env > per-kind config > 600
     continue: undefined,
     continueState: null,
     session: false,
@@ -252,7 +257,7 @@ function defaultOptions(env) {
     openedBy: "supervisor",
     patrolInterval: DEFAULT_PATROL_SECONDS, // the SLA measurement period, not a schedule
     patrolIntervalExplicit: false, // true only when `--patrol-interval` was given
-    maxConcurrency: undefined, // resolved below: flag > env > agent config > 8
+    maxConcurrency: undefined, // resolved below: flag > env > per-kind config > 8
     claimUnassigned: undefined,
     recoverStale: undefined,
     workflow: undefined,
@@ -341,7 +346,11 @@ export function parseArgs(argv, env = process.env) {
   opts.slaLastOk ??= beside.slaLastOk;
   opts.slaLeader ??= env.MEERKAT_TASKPANEL_SLA_LEADER ?? null;
   opts.slaPeer ??= env.MEERKAT_TASKPANEL_SLA_PEER ?? null;
-  opts.config ??= paths.config;
+  // The per-kind config lives at the program root, not under `--home`; `--home`
+  // still selects the state, log, projects map and roles. `--config` is the
+  // explicit override and fills the value first.
+  opts.kindConfigDefault = resolveKindConfigPath({ actorKind: opts.actorKind, env });
+  opts.config ??= opts.kindConfigDefault;
   opts.configFile = readConfigFile(opts.config);
   // A team is a list of board identities, not a second config surface. The
   // explicit `--agent` flags win; otherwise the env/config list is the scan set.
@@ -369,7 +378,7 @@ export function parseArgs(argv, env = process.env) {
     DEFAULT_MAX_CONCURRENCY,
   );
   // Cadences follow the same precedence as every other policy: flag > env >
-  // the agent config the installer wrote > default. Invalid values are ignored,
+  // the per-kind config the installer wrote > default. Invalid values are ignored,
   // never allowed to wedge a clock.
   opts.pingInterval = resolveIntervalSeconds({
     flag: opts.pingInterval,
@@ -661,7 +670,7 @@ export function resolveLoopConfig(opts, env = process.env) {
 /**
  * The argv a child entry must share with the scheduler that woke it. Only
  * consistency-critical values are emitted; policies the child can re-read from
- * the agent config are passed only when they were stated explicitly.
+ * the per-kind config are passed only when they were stated explicitly.
  *
  * @param {object} opts
  * @returns {string[]}
@@ -680,7 +689,7 @@ export function loopCommandArgs(opts) {
   const paths = agentPaths(opts.home, opts.actorKind);
   const beside = statePaths(opts.state);
   const defaults = {
-    config: paths.config,
+    config: opts.kindConfigDefault ?? resolveKindConfigPath({ actorKind: opts.actorKind }),
     repo: defaultRepo(opts.config),
     cli: join(opts.repo, "src", "cli", "index.mjs"),
     projectsJson: paths.projectsJson,
@@ -723,7 +732,7 @@ export function loopCommandArgs(opts) {
   if (opts.boardLimit !== DEFAULT_BOARD_LIMIT) add("--board-limit", opts.boardLimit);
   if (opts.trailLimit !== DEFAULT_TRAIL_LIMIT) add("--trail-limit", opts.trailLimit);
   // Always carry the resolved value: the child poll must not re-resolve the cap
-  // from an env or agent config that differs from the one this process used.
+  // from an env or per-kind config that differs from the one this process used.
   add("--max-concurrency", opts.maxConcurrency);
   if (opts.patrolLlm) args.push("--patrol-llm");
   // The resident settings the child `passes.mjs` re-reads: it must ask
@@ -842,7 +851,8 @@ Options:
   --board-limit <n>         Max cards per read (default: ${DEFAULT_BOARD_LIMIT}); passed to sla list.
   --trail-limit <n>         Max comment trails per SLA read (default: ${DEFAULT_TRAIL_LIMIT}); passed
                             to sla list.
-  --config <path>           Loop config (default: <home>/<agent-dir>/meerkat-taskpanel.env).
+  --config <path>           Per-kind config (default: <program root>/.env.<actor-kind>;
+                            env: MEERKAT_TASKPANEL_CONFIG_DIR).
   --home <path>             Home the defaults are resolved against (default: $HOME).
   --cli <path>              taskctl entry (default: <repo>/src/cli/index.mjs).
   --projects-json <path>    Agent-local project map used to resolve a card's directory.

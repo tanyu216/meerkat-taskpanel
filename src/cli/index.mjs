@@ -27,6 +27,7 @@ import { readFileSync } from "node:fs";
 import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, LOG_LEVEL_ENV, VERSION } from "../foundation/constants.mjs";
 import { loadEnvFile } from "../foundation/env-config.mjs";
 import { DomainError } from "../foundation/errors.mjs";
+import { resolveKindConfigPath } from "../foundation/loop-paths.mjs";
 import { createLogger, parseLogLevel } from "../foundation/log.mjs";
 import { repoRoot } from "../foundation/runtime-locator.mjs";
 import { isSupportedNode, unsupportedNodeMessage } from "../foundation/node-version.mjs";
@@ -200,11 +201,19 @@ export async function run(argv, io) {
     (typeof parsed.command?.localWhen === "function" && parsed.command.localWhen(parsed) === true);
   if (localCommand) {
     try {
+      const cwd = io.cwd ?? process.cwd();
+      const root = repoRoot();
       const config = loadEnvFile({
         flag: parsed.flags.envFile ?? null,
         env,
-        cwd: io.cwd ?? process.cwd(),
-        root: repoRoot(),
+        cwd,
+        root,
+        kindFile: resolveKindConfigPath({
+          actorKind: parsed.flags.actorKind ?? env[ACTOR_ENV_KEYS.kind] ?? null,
+          root,
+          env,
+          cwd,
+        }),
       });
       const local = {
         flags: parsed.flags,

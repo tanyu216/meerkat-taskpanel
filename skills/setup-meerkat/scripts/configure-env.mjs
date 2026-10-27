@@ -2,7 +2,7 @@
 /**
  * Merge one key into a `KEY=VALUE` file without rewriting the operator's file.
  *
- * `--file` is the target (the install-root `.env` or an agent config). A different
+ * `--file` is the target (the install-root `.env` or a per-kind config). A different
  * existing value is a conflict unless `--force`; the value is never echoed. Use
  * `--value-file` for a token so it does not appear in the process list.
  */

@@ -8,7 +8,7 @@
  */
 
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe, it } from "node:test";
@@ -323,5 +323,96 @@ describe("the TASKD_SLA_* keys", () => {
     writeEnv(root, "TASKD_URL=http://localhost:9527\n");
     const config = loadEnvFile({ root, env: { TASKD_SLA_PERIOD_SECONDS: "abc" } });
     assert.equal(config.env.TASKD_SLA_PERIOD_SECONDS, "abc");
+  });
+});
+
+describe("loadEnvFile — the per-kind overlay", () => {
+  it("applies .env.<kind> above the shared .env and below the process environment", () => {
+    const root = tempDir();
+    writeEnv(root, "TASKCTL_AGENT=shared-agent\nTASKCTL_HUMAN=shared-human\n");
+    const kindFile = join(root, ".env.claude");
+    writeFileSync(kindFile, "TASKCTL_AGENT=alice\nMEERKAT_TASKPANEL_PROJECTS_JSON=/maps/one.json\n");
+
+    const config = loadEnvFile({ root, env: {}, kindFile });
+    assert.equal(config.env.TASKCTL_AGENT, "alice", "the per-kind file wins over .env");
+    assert.equal(config.env.TASKCTL_HUMAN, "shared-human", "absent keys fall through to .env");
+    assert.equal(config.env.MEERKAT_TASKPANEL_PROJECTS_JSON, "/maps/one.json");
+    assert.equal(config.kindFile, kindFile);
+    assert.deepEqual([...config.kindVars.keys()].sort(), [
+      "MEERKAT_TASKPANEL_PROJECTS_JSON",
+      "TASKCTL_AGENT",
+    ]);
+
+    const overridden = loadEnvFile({ root, env: { TASKCTL_AGENT: "from-env" }, kindFile });
+    assert.equal(overridden.env.TASKCTL_AGENT, "from-env", "the process environment still wins");
+  });
+
+  it("takes only the per-kind keys and ignores loop policy without error", () => {
+    const root = tempDir();
+    writeEnv(root, "TASKD_URL=http://localhost:9527\n");
+    const kindFile = join(root, ".env.codex");
+    writeFileSync(
+      kindFile,
+      "MEERKAT_TASKPANEL_REPO=/tree\nMEERKAT_TASKPANEL_REVIEWER=Reviewer\nMEERKAT_TASKPANEL_MAX_CONCURRENCY=4\n",
+    );
+
+    const config = loadEnvFile({ root, env: {}, kindFile });
+    assert.equal(config.env.MEERKAT_TASKPANEL_REPO, "/tree", "REPO is a per-kind deployment fact");
+    assert.equal(config.env.MEERKAT_TASKPANEL_REVIEWER, undefined, "loop policy is not a board key");
+    assert.equal(config.env.MEERKAT_TASKPANEL_MAX_CONCURRENCY, undefined);
+  });
+
+  it("still reads the per-kind file when the shared .env is absent", () => {
+    const root = tempDir();
+    const kindFile = join(root, ".env.pi");
+    writeFileSync(kindFile, "TASKCTL_AGENT=pioneer\n");
+
+    const config = loadEnvFile({ root, env: {}, kindFile });
+    assert.equal(config.present, false);
+    assert.equal(config.env.TASKCTL_AGENT, "pioneer");
+  });
+
+  it("treats a missing per-kind file as no overlay", () => {
+    const root = tempDir();
+    writeEnv(root, "TASKCTL_AGENT=shared\n");
+    const config = loadEnvFile({ root, env: {}, kindFile: join(root, "nope", ".env.claude") });
+    assert.equal(config.env.TASKCTL_AGENT, "shared");
+    assert.equal(config.kindVars.size, 0);
+  });
+
+  it("does not let a per-kind file smuggle an unknown shared key past the allowlist", () => {
+    const root = tempDir();
+    writeEnv(root, "TASKD_URL=http://localhost:9527\n");
+    const kindFile = join(root, ".env.claude");
+    writeFileSync(kindFile, "TASKD_URLL=typo\nTASKCTL_AGENT=alice\n");
+
+    const config = loadEnvFile({ root, env: {}, kindFile });
+    assert.equal(config.env.TASKD_URLL, undefined);
+    assert.equal(config.env.TASKCTL_AGENT, "alice");
+  });
+});
+
+describe("loadEnvFile — a per-kind file that cannot be read", () => {
+  it("reports it as a configuration failure, not as an absent overlay", () => {
+    const root = tempDir();
+    writeEnv(root, "TASKD_URL=http://localhost:9527\n");
+    const kindFile = join(root, ".env.claude");
+    assert.throws(
+      () =>
+        loadEnvFile({
+          root,
+          env: {},
+          kindFile,
+          readFile: (file) => {
+            if (file === kindFile) {
+              const err = new Error("permission denied");
+              err.code = "EACCES";
+              throw err;
+            }
+            return readFileSync(file, "utf8");
+          },
+        }),
+      (err) => err.code === "CONFIG_FILE_INVALID" && err.details.file === kindFile,
+    );
   });
 });

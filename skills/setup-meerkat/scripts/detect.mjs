@@ -20,8 +20,8 @@ import { parseEnvText } from "./lib/env-merge.mjs";
 import {
   AGENT_KINDS,
   agentBase,
-  configFile,
   isAgentKind,
+  kindConfigFile,
   loopStateDir,
   loopSkillDir,
   serverRoot,
@@ -148,6 +148,49 @@ function pointerPath(home, env) {
     ? join(env.XDG_STATE_HOME, "MeerkatTaskPanel", "runtime.json")
     : join(home, ".local", "state", "MeerkatTaskPanel", "runtime.json");
   return state;
+}
+
+/**
+ * The directory that owns `<program root>/.env.<kind>`.
+ *
+ * The per-kind config follows the running program, not the agent home, so the
+ * detector walks the same rungs: an explicit override, the installed tree, a
+ * named checkout, the shim's rendered CLI path, then cwd when it is a checkout.
+ * A legacy `<agent-dir>/meerkat-taskpanel.env` is deliberately not a rung.
+ */
+function resolveKindConfigDir(opts, home, kind, env) {
+  const override = env.MEERKAT_TASKPANEL_CONFIG_DIR;
+  if (typeof override === "string" && override.trim() !== "") {
+    return { dir: resolve(override), source: "env-config-dir" };
+  }
+
+  const installed = serverRoot(home);
+  if (existsSync(join(installed, "src", "cli", "index.mjs"))) {
+    return { dir: installed, source: "installed-tree" };
+  }
+
+  const named = [
+    ["flag", opts.checkout],
+    ["env-root", env.MEERKAT_TASKPANEL_ROOT],
+    ["env-repo", env.MEERKAT_TASKPANEL_REPO],
+  ];
+  for (const [source, dir] of named) {
+    if (typeof dir === "string" && looksLikeCheckout(dir)) {
+      return { dir: resolve(dir), source };
+    }
+  }
+
+  // The installed shim renders `exec node "<root>/src/cli/index.mjs"`.
+  const shim = readText(shimFile(home, kind));
+  const rendered = shim?.match(/exec node "([^"]+)\/src\/cli\/index\.mjs"/);
+  if (rendered && existsSync(join(rendered[1], "src", "cli", "index.mjs"))) {
+    return { dir: resolve(rendered[1]), source: "shim" };
+  }
+
+  if (looksLikeCheckout(process.cwd())) {
+    return { dir: resolve(process.cwd()), source: "cwd" };
+  }
+  return { dir: null, source: null };
 }
 
 function resolveCheckout(opts, config) {
@@ -321,12 +364,11 @@ function rolesAt(dir) {
   };
 }
 
-function detectHuman(opts, home, kind, env, envFile) {
+function detectHuman(opts, home, kind, env, envFile, config) {
   const candidates = [];
   if (env.TASKCTL_HUMAN) candidates.push(["env", env.TASKCTL_HUMAN]);
   const settings = readJson(join(home, ".claude", "settings.json"));
   if (settings?.env?.TASKCTL_HUMAN) candidates.push(["settings", settings.env.TASKCTL_HUMAN]);
-  const config = parseEnvText(readText(configFile(home, kind)) ?? "");
   if (config.get("TASKCTL_HUMAN")) candidates.push(["config", config.get("TASKCTL_HUMAN")]);
   if (config.get("MEERKAT_TASKPANEL_HUMAN_NAME")) candidates.push(["installer-config", config.get("MEERKAT_TASKPANEL_HUMAN_NAME")]);
   const shim = readText(shimFile(home, kind));
@@ -398,6 +440,9 @@ function humanReport(report) {
   const lines = [];
   lines.push(`detect: ${report.actorKind} on ${report.home}`);
   lines.push(`  checkout:  ${report.checkout.found ? report.checkout.path : "not found"} (${report.checkout.source ?? "-"})`);
+  lines.push(
+    `  config:    ${report.kindConfig.path ?? "not found"}${report.kindConfig.present ? "" : " (absent)"}`,
+  );
   lines.push(`  taskctl:   ${report.taskctl.found ? `${report.taskctl.path} ${report.taskctl.version ?? ""}` : "not found"}`);
   lines.push(`  server:    ${report.server.url} (${report.server.urlSource}); ${report.server.class}; ${report.server.probed ? (report.server.reachable ? "reachable" : "unreachable") : "not probed"}`);
   lines.push(`  skills:    board=${report.skills.board.installed} loop=${report.skills.loop.installed} setup=${report.skills.setup.installed}`);
@@ -437,7 +482,9 @@ async function main(argv) {
   }
 
   const env = process.env;
-  const config = parseEnvText(readText(configFile(opts.home, kind)) ?? "");
+  const programRoot = resolveKindConfigDir(opts, opts.home, kind, env);
+  const configPath = programRoot.dir === null ? null : kindConfigFile(programRoot.dir, kind);
+  const config = parseEnvText(readText(configPath) ?? "");
   const checkout = resolveCheckout(opts, config);
   const envFile = resolveEnvFile(opts, checkout, opts.home, kind, env);
   const resolved = resolveUrl(opts, env, envFile, opts.home);
@@ -481,7 +528,7 @@ async function main(argv) {
             ? { source: "state", ...roles.state }
             : null;
   roles.effective = effectiveRoles;
-  const human = detectHuman(opts, opts.home, kind, env, envFile);
+  const human = detectHuman(opts, opts.home, kind, env, envFile, config);
   const mattPocock = detectMatt(opts.project, opts.home);
   const piSubagents = detectPiSubagents(opts.home);
 
@@ -534,6 +581,12 @@ async function main(argv) {
     home: opts.home,
     actorKind: opts.actorKind,
     projectDir: opts.project,
+    kindConfig: {
+      path: configPath,
+      present: configPath !== null && existsSync(configPath),
+      programRoot: programRoot.dir,
+      source: programRoot.source,
+    },
     checkout: {
       ...checkout,
       version: checkout.found ? readJson(join(checkout.path, "package.json"))?.version ?? null : null,

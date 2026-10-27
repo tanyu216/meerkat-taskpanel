@@ -29,7 +29,9 @@ checkout, the shim, `PATH`) and propagates stdio and the exit code. The shim add
 `--actor-kind <kind>` and a default `--agent <name>`; `--actor-kind` is required except on
 `--help`, `--version` and `status`, and a human writes with `--as-human`. Configuration is one
 `.env` at the program root, read by both `taskctl` and `taskd` (process env wins key by key;
-`--env-file` or `MEERKAT_TASKPANEL_ENV_FILE` selects another). `taskctl` starts a board if none
+`--env-file` or `MEERKAT_TASKPANEL_ENV_FILE` selects another). Each actor kind also has a
+per-kind config beside it, `<program root>/.env.<actor-kind>`, read by `taskctl` as a
+per-agent default layer. `taskctl` starts a board if none
 is running; `TASKD_NO_AUTOSTART=1` forbids that. All flags and exit codes:
 [`references/cli.md`](references/cli.md).
 

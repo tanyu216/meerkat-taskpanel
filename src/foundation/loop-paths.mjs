@@ -1,10 +1,12 @@
 /**
- * The loop's host-side path and state-file vocabulary.
+ * The loop's host-side path and state-file vocabulary, plus the per-kind
+ * config's location.
  *
  * One source for names the orchestrator, the installer and the `loop status`
  * probe all read: a rename here changes every reader at once. Pure path
- * arithmetic — `agentPaths` takes the home directory as an argument, so this
- * module needs no `os.homedir()` and stays deterministic in tests.
+ * arithmetic — `agentPaths` takes the home directory as an argument, and
+ * `resolveKindConfigPath` takes the program root, so this module needs no
+ * `os.homedir()` and stays deterministic in tests.
  *
  * The roles lookup uses `--roles-dir`, the loop skill's `roles/`, or the state
  * directory; there is no copied execution body for one to travel with.
@@ -12,7 +14,9 @@
  * Node builtins only; no I/O.
  */
 
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+
+import { repoRoot } from "./runtime-locator.mjs";
 
 /** Actor kind -> the agent's config directory under the target home. */
 export const AGENT_DIRS = Object.freeze({
@@ -20,6 +24,45 @@ export const AGENT_DIRS = Object.freeze({
   codex: ".codex",
   pi: ".agents",
 });
+
+/** The directory holding the per-kind configs; overrides the program root. */
+export const KIND_CONFIG_DIR_ENV = "MEERKAT_TASKPANEL_CONFIG_DIR";
+
+/** Per-kind config files are `<program root>/.env.<actor-kind>`. */
+export const KIND_CONFIG_FILE_PREFIX = ".env.";
+
+/** A kind that can safely be spliced into a file name. */
+const KIND_TOKEN = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * `<program root>/.env.<kind>`, or `<override dir>/.env.<kind>`.
+ *
+ * The kind is a file-name segment, never a path: a token that is not one plain
+ * segment is refused rather than silently normalized. `human` has no per-kind
+ * file (a human is not an installed agent kind), and an absent kind returns
+ * `null` so callers can decide whether to look.
+ *
+ * @param {{
+ *   actorKind?: string, root?: string, env?: NodeJS.ProcessEnv, cwd?: string,
+ * }} [options]
+ * @returns {string|null} absolute file path, or null for no kind / the human
+ */
+export function resolveKindConfigPath(options = {}) {
+  const kind = typeof options.actorKind === "string" ? options.actorKind.trim() : "";
+  if (kind === "" || kind === "human") return null;
+  if (!KIND_TOKEN.test(kind)) {
+    throw new Error(`invalid actor kind '${kind}' for a per-kind config path`);
+  }
+
+  const env = options.env ?? process.env;
+  const cwd = options.cwd ?? process.cwd();
+  const override = env[KIND_CONFIG_DIR_ENV];
+  const dir =
+    typeof override === "string" && override.trim() !== ""
+      ? resolve(cwd, override.trim())
+      : resolve(options.root ?? repoRoot());
+  return join(dir, `${KIND_CONFIG_FILE_PREFIX}${kind}`);
+}
 
 /** State-file names beside the loop's state directory. */
 export const QUEUE_FILES = Object.freeze({
@@ -79,7 +122,7 @@ export const POOL_STALE_MS = 4 * POOL_HEARTBEAT_MS;
  * @param {string} home
  * @param {string} actorKind
  * @returns {{
- *   log: string, state: string, config: string, projectsJson: string,
+ *   log: string, state: string, agentDir: string, projectsJson: string,
  *   loopSkill: string, boardSkill: string, stateDir: string,
  *   loopRoles: string, stateRoles: string,
  * }}
@@ -91,7 +134,7 @@ export function agentPaths(home, actorKind) {
   return {
     log: join(dir, "meerkat-taskpanel", STATE_FILES.log),
     state: join(dir, "meerkat-taskpanel", STATE_FILES.supervisor),
-    config: join(dir, "meerkat-taskpanel.env"),
+    agentDir: AGENT_DIRS[actorKind],
     projectsJson: join(dir, "skills", "meerkat-taskpanel", "projects.json"),
     // The two skills the resident sessions need: the loop expands
     // `/meerkat-loop` in the control session; project subagents use the board

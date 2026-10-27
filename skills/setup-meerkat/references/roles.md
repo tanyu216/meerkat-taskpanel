@@ -206,7 +206,8 @@ characters; the worker workflow stays a path.
 
 ## Board names and the scan set
 
-`install-roles.mjs` writes the team's board names to the loop config:
+After the roles are installed, `configure-env.mjs` merges the team's board names into the
+per-kind config (`<program root>/.env.<actor-kind>`, with the user's consent):
 
 ```text
 MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing

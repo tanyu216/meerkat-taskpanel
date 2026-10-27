@@ -122,7 +122,7 @@ export function parseEnvFile(text) {
 /**
  * The effective `claim_unassigned` policy.
  *
- * Precedence is **flag > environment > installer's agent config file > default
+ * Precedence is **flag > environment > installer's per-kind config file > default
  * on** — the operator's most explicit statement wins, and the installer's saved
  * choice is only a default. An unrecognised value is ignored (never an error):
  * a stray `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=maybe` must not wedge the poll.
@@ -150,7 +150,7 @@ export function resolveClaimUnassigned(input = {}) {
  * that should never take over somebody else's card runs with `no`.
  *
  * Precedence is the same as `resolveClaimUnassigned`: **flag > environment >
- * installer's agent config > default on**.
+ * installer's per-kind config > default on**.
  *
  * @param {{flag?: unknown, env?: unknown, file?: Record<string, string>|null}} [input]
  * @returns {boolean}
@@ -170,7 +170,7 @@ export function resolveRecoverStale(input = {}) {
  * Whether the scheduler wakes the agent's periodic judgment turn.
  *
  * Precedence is the same as `resolveClaimUnassigned`: **flag > environment >
- * installer's agent config > default on**. Turning it off leaves the ping clock
+ * installer's per-kind config > default on**. Turning it off leaves the ping clock
  * running (worker liveness) but discovers no new work until a human runs the
  * poll entry.
  *
@@ -189,7 +189,7 @@ export function resolveContinueEnabled(input = {}) {
 }
 
 /**
- * A positive cadence in seconds. `file` is the *value* read from the agent config
+ * A positive cadence in seconds. `file` is the *value* read from the per-kind config
  * config (not the whole map); invalid values are ignored rather than allowed
  * to wedge a clock.
  *
@@ -218,7 +218,7 @@ export const DEFAULT_REVIEW_AGING_MINUTES = DEFAULT_REVIEW_AGING_MS / 60_000;
 /**
  * The workflow sub-pass's configuration.
  *
- * Same precedence as `resolveClaimUnassigned` — **flag > environment > agent config
+ * Same precedence as `resolveClaimUnassigned` — **flag > environment > per-kind config
  * config file > default** — and the same tolerance: an unrecognised yes/no word
  * is ignored rather than treated as `false`, so a stray value cannot silently
  * disable the channel. `workflow` is the whole channel: off means the loop

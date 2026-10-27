@@ -24,12 +24,12 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
-import { agentPaths, parseArgs } from "./options.mjs";
+import { AGENT_DIRS, parseArgs } from "./options.mjs";
 import { readContinue } from "./queue.mjs";
 import {
   isProcessAlive,
@@ -93,8 +93,8 @@ export function probeUnits(opts, deps = {}) {
   const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : "agent";
   const kind = opts.actorKind ?? "claude";
   const uid = process.getuid?.() ?? 0;
-  const stateDirName = basename(dirname(agentPaths(opts.home, kind).config));
-  const marker = `# >>> meerkat-taskpanel (~/${stateDirName}) >>>`;
+  const agentDirName = AGENT_DIRS[kind] ?? AGENT_DIRS.claude;
+  const marker = `# >>> meerkat-taskpanel (~/${agentDirName}) >>>`;
 
   const label = (unit) => `com.meerkat-taskpanel.${agent}.${kind}.${unit}`;
   const launchdUnits = {};

@@ -571,6 +571,12 @@ _Avoid_: notification, event, message
 Terms about *this repository's* way of working. They are not board concepts, but they are
 load-bearing in the same conversations and are easy to mistake for board vocabulary.
 
+**Per-kind config**:
+`<program root>/.env.<actor-kind>` (for example `.env.claude`) — the file `taskctl` reads as
+a per-agent default layer and `taskctl loop …` reads for loop policy. It lives beside the
+board `.env`, not under the agent directory, and is selected by `--actor-kind`.
+_Avoid_: loop config, agent config
+
 **Container gate**:
 The authoritative verification run — the whole test suite executed inside a built image. It
 runs from `.githooks/pre-push` on a branch push (and in CI), and bakes the tree it finds when

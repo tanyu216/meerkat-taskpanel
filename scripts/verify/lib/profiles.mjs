@@ -162,6 +162,8 @@ export function buildChecks(profile, opts = {}) {
     // covers what a user actually gets.
     MEERKAT_TASKPANEL_LINK: "1",
     MEERKAT_TASKPANEL_FORCE: "1",
+    // Agent-only installs keep the per-kind config out of the checkout.
+    MEERKAT_TASKPANEL_CONFIG_DIR: join(home, "kind-config"),
   };
 
   const assertions = [

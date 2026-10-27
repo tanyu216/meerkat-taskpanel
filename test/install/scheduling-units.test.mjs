@@ -21,7 +21,9 @@ import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-sched-" });
+const { makeTempDir, kindConfigDirFor, runInstall, cleanup } = createInstallHarness({
+  prefix: "meerkat-taskpanel-sched-",
+});
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -192,7 +194,7 @@ describe("install.sh: scheduling units", () => {
 
     const paths = scheduledPaths(home, ".agents", "pi");
     assert.ok(existsSync(paths.pingPlist), "pi scheduling units missing");
-    assert.ok(existsSync(join(home, ".agents", "meerkat-taskpanel.env")), "pi config missing");
+    assert.ok(existsSync(join(kindConfigDirFor(home), ".env.pi")), "pi config missing");
   });
 
   it("--no-automation skips every codex automation artefact", () => {

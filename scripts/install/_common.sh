@@ -190,7 +190,7 @@ setup_skill_name() { printf '%s\n' "setup-meerkat"; }
 # agent_name — the identity written into the agent bundle.
 #
 # `--agent-name` (MEERKAT_TASKPANEL_AGENT_NAME) wins; the default is the fixed name
-# "Worker" (edit the agent config / pass the flag to change it). The name is the board
+# "Worker" (edit the per-kind config / pass the flag to change it). The name is the board
 # assignee: claiming a card checks `assignee == actor`, so this is the name the agent
 # must be assigned cards as.
 agent_name() {
@@ -246,7 +246,16 @@ export_tp_env() {
   TP_STATE_DIR="$TP_LOOP"
   TP_CLI="$TP_REPO/src/cli/index.mjs"
   TP_LOG="$TP_LOOP/supervisor.log"
-  TP_ENV="$(target_home)/$agent_dir/meerkat-taskpanel.env"
+  # The per-kind config lives beside the board `.env` at the program root, one
+  # file per actor kind (`<program root>/.env.<kind>`), not under the agent home.
+  # `MEERKAT_TASKPANEL_CONFIG_DIR` is the tests/containers/read-only-root escape.
+  TP_CONFIG_DIR="${MEERKAT_TASKPANEL_CONFIG_DIR:-$TP_REPO}"
+  case "$TP_CONFIG_DIR" in
+    /*) ;;
+    *) TP_CONFIG_DIR="$(pwd)/$TP_CONFIG_DIR" ;;
+  esac
+  TP_ENV="$TP_CONFIG_DIR/.env.$label"
+  TP_LEGACY_ENV="$TP_AGENT_BASE/meerkat-taskpanel.env"
   TP_SCHED="$(target_home)/$agent_dir/scheduling"
   TP_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-yes}"
   TP_RECOVER_STALE="${MEERKAT_TASKPANEL_RECOVER_STALE:-yes}"
@@ -339,6 +348,7 @@ export_tp_env() {
 
   export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK
   export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_STATE_DIR TP_CLI TP_LOG TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED
+  export TP_CONFIG_DIR TP_LEGACY_ENV
   export TP_RECOVER_STALE TP_WORKFLOW TP_REVIEWER
   export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
   export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON TP_CLI_ON_PATH
@@ -460,11 +470,16 @@ apply_supervisor() {
   dry=""
   [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ] && dry="--dry-run"
 
+  # The status action reads the per-kind config; an install that skipped
+  # `write_agent_config` (codex --no-automation) must still see a migrated file.
+  migrate_legacy_agent_config
+
   status=0
   node "$(script_dir)/lib/supervisor.mjs" "$action" \
     --actor-kind "$TP_ACTOR_KIND" \
     --agent "$TP_AGENT" \
     --agent-base "$TP_AGENT_BASE" \
+    --config "$TP_ENV" \
     --scheduler "$scheduler" $dry || status=$?
 
   if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
@@ -521,7 +536,7 @@ install_scheduling() {
   echo "  cron:     crontab $TP_SCHED/cron/meerkat-taskpanel.cron   # no event daemon: cron cannot host one"
 }
 
-# ensure_env_key <key> <value> — add a KEY=value line to the agent config when the key
+# ensure_env_key <key> <value> — add a KEY=value line to the per-kind config when the key
 # is missing, and never touch one that is already there. That is the same
 # merge-not-clobber contract `merge_settings` follows for `env.TASKCTL_AGENT`: adding
 # a key the file lacks is not a clobber. Requires TP_ENV, TP_ACTOR_KIND.
@@ -569,9 +584,10 @@ ensure_file_key() {
 
 # seed_env_file — create the install-root `.env` on a fresh install.
 #
-# One file, read by taskd and taskctl (and the loop's SSE subscriber). It is a
-# *machine/install* config, not a per-agent-kind one: `--target all` must not write four
-# copies, so install.sh calls this once, outside the agent-kind loop.
+# The board-facing file, read by taskd and taskctl (and the loop's SSE subscriber). It is
+# a *machine/install* config, not a per-agent-kind one: `--target all` must not write four
+# copies, so install.sh calls this once, outside the agent-kind loop. The per-kind config
+# (`<program root>/.env.<kind>`) is written separately, once per kind.
 #
 # Never overwrites: the file may hold a token or deliberate edits, so even
 # `--force` leaves an existing one alone. `--dry-run` prints and writes nothing.
@@ -614,16 +630,9 @@ seed_env_file() {
   return 0
 }
 
-# write_agent_config — persist the claim policy the supervisor reads by default, the
-# location of the board engine an agent-installed executor drives, and the workflow
-# channel's answers. Requires export_tp_env first (TP_ENV, TP_CLAIM_UNASSIGNED,
-# TP_REPO, TP_WORKFLOW, TP_REVIEWER). The template belongs to the loop skill: the
-# supervisor is what reads it.
-#
-# The workflow keys are added with `ensure_env_key` as well, so an install that
-# predates them learns them on the next run without any existing value being touched.
-write_agent_config() {
-  emit_file "agent/meerkat-taskpanel.env" "$TP_ENV"
+# ensure_agent_config_keys — add the installer-owned keys when missing, never overwrite.
+# Requires export_tp_env first.
+ensure_agent_config_keys() {
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
   ensure_env_key "MEERKAT_TASKPANEL_RECOVER_STALE" "$TP_RECOVER_STALE"
   ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"
@@ -631,6 +640,44 @@ write_agent_config() {
   ensure_env_key "MEERKAT_TASKPANEL_PING_INTERVAL" "$TP_PING_INTERVAL"
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE_INTERVAL" "$TP_CONTINUE_INTERVAL"
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE" "$TP_CONTINUE"
+}
+
+# migrate_legacy_agent_config — copy an install that predates the program-root
+# location into `<program root>/.env.<kind>`, once. The legacy file is kept and is
+# no longer read. A new file always wins (no merge). `--force` re-renders the
+# template, so migrating first would only be overwritten. Requires export_tp_env.
+migrate_legacy_agent_config() {
+  [ -f "$TP_LEGACY_ENV" ] || return 0
+  [ ! -e "$TP_ENV" ] || return 0
+  [ -z "${MEERKAT_TASKPANEL_FORCE:-}" ] || return 0
+
+  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    echo "$TP_ACTOR_KIND: would migrate the per-kind config $TP_LEGACY_ENV -> $TP_ENV (legacy left in place)"
+    return 0
+  fi
+
+  if ! mkdir -p "$(dirname "$TP_ENV")"; then
+    echo "$TP_ACTOR_KIND: cannot create $(dirname "$TP_ENV"); set MEERKAT_TASKPANEL_CONFIG_DIR to a writable directory" >&2
+    return 0
+  fi
+  if ! cp "$TP_LEGACY_ENV" "$TP_ENV"; then
+    echo "$TP_ACTOR_KIND: cannot migrate $TP_LEGACY_ENV -> $TP_ENV; set MEERKAT_TASKPANEL_CONFIG_DIR to a writable directory" >&2
+    return 0
+  fi
+  echo "$TP_ACTOR_KIND: migrated the per-kind config $TP_LEGACY_ENV -> $TP_ENV"
+  echo "$TP_ACTOR_KIND:   the legacy file is left untouched and is no longer read"
+}
+
+# write_agent_config — persist the per-kind config the loop and the board path
+# read. Requires export_tp_env first. The template belongs to the loop skill: the
+# loop is its primary reader.
+#
+# The workflow keys are added with `ensure_env_key` as well, so an install that
+# predates them learns them on the next run without any existing value being touched.
+write_agent_config() {
+  migrate_legacy_agent_config
+  emit_file "agent/meerkat-taskpanel.env" "$TP_ENV"
+  ensure_agent_config_keys
 }
 
 # ---------------------------------------------------------------------------
@@ -740,7 +787,7 @@ emit_from() {
 #   Render this installer's own template (scripts/install/templates/<rel>) into <dest>.
 #   These are every template the installer writes: the agent's session-start hook and
 #   slash commands, the Codex trigger and AGENTS.md snippet, the taskctl shims, the
-#   scheduling units and the agent config.
+#   scheduling units and the per-kind config.
 emit_file() { emit_from "$(script_dir)/templates" "$@"; }
 
 # merge_settings <settings_file>

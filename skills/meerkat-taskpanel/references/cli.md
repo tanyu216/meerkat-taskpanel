@@ -54,6 +54,12 @@ environment wins key by key; CLI flags win over both.
   allow-list keys. Acceptance is board data, not config.
 - **Identity is not a `.env` key.** `TASKCTL_ACTOR_KIND` / `TASKCTL_SESSION_ID` are refused in
   the file; `TASKCTL_AGENT` / `TASKCTL_HUMAN` may be defaults.
+- **Per-kind layer.** Each actor kind also has `<program root>/.env.<actor-kind>` (for
+  example `.env.claude`), read by `taskctl` as a per-agent default for `TASKCTL_AGENT`,
+  `TASKCTL_HUMAN`, `MEERKAT_TASKPANEL_PROJECTS_JSON` and `MEERKAT_TASKPANEL_REPO`. It sits
+  between the process environment and `.env` (flag > env > per-kind > `.env` > default), and
+  `MEERKAT_TASKPANEL_CONFIG_DIR` relocates the directory. The same file is the loop's policy
+  file; the board path ignores the loop keys in it.
 - **Grammar:** `KEY=VALUE`, `#` comments, matching quotes; no inline comments, interpolation,
   escapes or multiline values; absolute paths. An unknown key inside `TASKD_*` / `TASKCTL_*` /
   `MEERKAT_TASKPANEL_*` is an error; other keys are ignored and never merged into the child
@@ -495,7 +501,7 @@ the queue, the ledger, `session.lock`, `continue.state.json`; `--state <file>` i
 explicit spelling of the registry file. `--roles-dir <dir>` names the team-roles root;
 `--projects-json <path>` the project → directory map; `--home <dir>` the home the agent
 directories derive from; `--repo <dir>` the board checkout the loop drives; `--cli <path>`
-the `taskctl` entry its child calls use; `--config <file>` the per-agent policy file;
+the `taskctl` entry its child calls use; `--config <file>` the per-kind config (`<program root>/.env.<actor-kind>`);
 `--log <file>` the loop log; `--continue-state`, `--session-state`, `--sla-ledger`,
 `--workflow-ledger`, `--sla-last-ok` and `--sla-peer` override the individual state files.
 

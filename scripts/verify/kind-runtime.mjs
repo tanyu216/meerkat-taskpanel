@@ -157,6 +157,8 @@ function installKind(kind) {
         // offline and must not. The bypass is the contract's own (`docs/scheduling.md`),
         // and the guard's install behaviour is verified in `test/install/taskd-guard.test.mjs`.
         MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+        // Agent-only installs keep the per-kind config out of the checkout.
+        MEERKAT_TASKPANEL_CONFIG_DIR: join(ctx.home, "kind-config"),
       },
     },
   );

@@ -2,8 +2,8 @@
 # Install Meerkat TaskPanel for Pi / Agent Skills: ~/.agents/skills/{meerkat-taskpanel,meerkat-loop}
 #
 # Pi has no timer, so it also gets the external supervisor's scheduling
-# units (~/.agents/scheduling) and the agent config
-# (~/.agents/meerkat-taskpanel.env). Nothing is loaded automatically; the
+# units (~/.agents/scheduling) and the per-kind config
+# (<program root>/.env.pi). Nothing is loaded automatically; the
 # exact load command is printed. See docs/scheduling.md.
 set -eu
 . "$(cd "$(dirname "$0")" && pwd)/_common.sh"

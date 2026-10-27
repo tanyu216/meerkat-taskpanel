@@ -23,7 +23,7 @@ agent's default everywhere.
 
 `all` means **six actor kinds + the server**; an explicit comma list is literal;
 `--no-server` removes the server. The server is dispatched first because the agent shims
-and loop config name it.
+and per-kind config name it.
 
 | Intent | Invocation |
 |---|---|
@@ -40,7 +40,7 @@ remote-board path: do not load a local keepalive behind a remote URL.
 ## The server tree
 
 `<home>/.meerkat-taskpanel/` holds `bin/taskctl`, `bin/taskd`, `.env`, `.data` and
-`web/dist`. The agent shims and the loop config point at it. `install.sh` seeds the env
+`web/dist`. The agent shims and the per-kind config point at it. `install.sh` seeds the env
 file with `TASKD_URL=http://localhost:9527` once and never overwrites it.
 
 An **agent-only** install (`--target claude`, no server) has no such tree: its install-root

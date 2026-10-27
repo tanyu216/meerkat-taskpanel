@@ -27,7 +27,7 @@ const INSTALL = join(ROOT, "install.sh");
 
 /**
  * @param {{prefix?: string, installDefaults?: Record<string, string>}} [options]
- * @returns {{makeTempDir: (prefix?: string) => string, runInstall: (args: string[], env?: Record<string, string>) => import('node:child_process').SpawnSyncReturns<string>, runInstallWithInput: (args: string[], input: string, env?: Record<string, string>) => import('node:child_process').SpawnSyncReturns<string>, cleanup: () => void}}
+ * @returns {{makeTempDir: (prefix?: string) => string, kindConfigDirFor: (home: string) => string, runInstall: (args: string[], env?: Record<string, string>) => import('node:child_process').SpawnSyncReturns<string>, runInstallWithInput: (args: string[], input: string, env?: Record<string, string>) => import('node:child_process').SpawnSyncReturns<string>, cleanup: () => void}}
  */
 export function createInstallHarness({
   prefix = "meerkat-taskpanel-",
@@ -37,14 +37,49 @@ export function createInstallHarness({
 } = {}) {
   const dirs = [];
 
-  // The installer seeds `<repo>/.env` by default. Every test gets its own temp
-  // path instead, so a run never writes the checkout (or reads a developer's
-  // real config). A suite can still override it through `env`.
+  // The installer seeds `<repo>/.env` by default, and writes one per-kind config
+  // beside the program root. Every test gets its own temp paths instead, so a
+  // run never writes the checkout (or reads a developer's real config). A suite
+  // can still override either through `env`.
   const envDir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-env-"));
   dirs.push(envDir);
   const defaults = {
     ...installDefaults,
     MEERKAT_TASKPANEL_ENV_FILE: join(envDir, ".env"),
+  };
+
+  // One config dir per target home, created on demand. Agent-only installs would
+  // otherwise write into the checkout (their program root); keying by home keeps
+  // two installs in one test apart and keeps the home itself clean.
+  const kindDirs = new Map();
+  const kindConfigDirFor = (home) => {
+    const key = resolve(home);
+    let dir = kindDirs.get(key);
+    if (dir === undefined) {
+      dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-kind-config-"));
+      dirs.push(dir);
+      kindDirs.set(key, dir);
+    }
+    return dir;
+  };
+
+  /** The home an install targets: `--prefix` first, then the env spelling. */
+  const targetHomeOf = (args, env) => {
+    const index = args.indexOf("--prefix");
+    if (index !== -1 && typeof args[index + 1] === "string" && args[index + 1] !== "") {
+      return resolve(args[index + 1]);
+    }
+    const fromEnv = env.MEERKAT_TASKPANEL_TARGET_HOME;
+    return typeof fromEnv === "string" && fromEnv !== "" ? resolve(fromEnv) : null;
+  };
+
+  /** Point the installer at a temp per-kind dir unless the caller named one. */
+  const withKindConfig = (args, env) => {
+    const merged = { ...defaults, ...env };
+    if (Object.hasOwn(merged, "MEERKAT_TASKPANEL_CONFIG_DIR")) return merged;
+    const home = targetHomeOf(args, merged);
+    if (home !== null) merged.MEERKAT_TASKPANEL_CONFIG_DIR = kindConfigDirFor(home);
+    return merged;
   };
 
   const makeTempDir = (override = prefix) => {
@@ -57,7 +92,7 @@ export function createInstallHarness({
     spawnSync("bash", [INSTALL, ...args], {
       cwd: ROOT,
       encoding: "utf8",
-      env: baseEnv({ ...defaults, ...env }),
+      env: baseEnv(withKindConfig(args, env)),
     });
 
   /**
@@ -70,12 +105,12 @@ export function createInstallHarness({
       cwd: ROOT,
       encoding: "utf8",
       input,
-      env: baseEnv({ ...defaults, ...env }),
+      env: baseEnv(withKindConfig(args, env)),
     });
 
   const cleanup = () => {
     for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
   };
 
-  return { makeTempDir, runInstall, runInstallWithInput, cleanup };
+  return { makeTempDir, kindConfigDirFor, runInstall, runInstallWithInput, cleanup };
 }

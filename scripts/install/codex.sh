@@ -6,8 +6,8 @@
 #   2. loop skill         → ~/.codex/skills/meerkat-loop (always a copy; --link is board-only)
 #   3. claim-first snippet → merged into ~/.codex/AGENTS.md (identity + rules)
 #   4. scheduling         → ~/.codex/scheduling/{launchd,systemd,cron}, the loop state
-#                           directory (~/.codex/meerkat-taskpanel/) and the agent config
-#                           (~/.codex/meerkat-taskpanel.env)
+#                           directory (~/.codex/meerkat-taskpanel/) and the per-kind config
+#                           (<program root>/.env.codex)
 # plus the taskctl shim that injects --agent <name>. `--no-automation` skips the
 # scheduling wiring (and, in install.sh, the taskd keepalive guard) — Codex has no
 # hooks, so the scheduling units are the automation. The loop *skill* is not
