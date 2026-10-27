@@ -683,8 +683,10 @@ co-design — is the loop's `references/decision-policy.md` §Decision rounds.
 The scan set is still explicit: write `MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing` (and
 `MEERKAT_TASKPANEL_REVIEWER=Reviewer`) to the per-kind config, or the loop scans only its
 default agent and a role card is never claimed. `/setup-meerkat` does this merge with the
-user's consent. A forced loop reinstall replaces the **skill**, not the team: its `roles/`
-directory is kept, as is any config key the installer's template does not carry.
+user's consent. Roles are installed and upgraded **only** by that skill: `install.sh` never
+creates, writes or deletes a roles root, and a forced loop reinstall replaces the **skill**,
+not the team — its `roles/` directory is kept, as is any config key the installer's template
+does not carry.
 
 ## Continuity: a fresh handoff, not a resumed pile
 

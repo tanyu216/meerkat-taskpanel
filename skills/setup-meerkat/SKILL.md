@@ -263,7 +263,9 @@ node <skill-dir>/scripts/install-roles.mjs --scope global|project --project <dir
 ```
 
 Files are written atomically, the manifest last; an existing different file is a
-**conflict** and needs `--force` (ask first). No file is deleted.
+**conflict** and needs `--force` (ask first). No file is deleted. This skill is the **only**
+path that installs or upgrades a team: `install.sh` ships no roles root and never creates,
+writes or deletes one. Re-running the skill is the upgrade.
 
 After installation, offer to merge (with consent) into the per-kind config that
 `detect.mjs` reports as `kindConfig.path` (`<program root>/.env.<actor-kind>`):

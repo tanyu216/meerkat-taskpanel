@@ -492,11 +492,16 @@ describe("agent bundle: --force preserves operator data", () => {
     writeFileSync(join(roles, "manifest.json"), '{"version":1,"roles":[]}\n', "utf8");
     writeFileSync(join(roles, "jobs", "workflow.md"), "# Jobs\n", "utf8");
 
+    const before = snapshotTree(roles);
     const forced = runInstall(["--target", "claude", "--force"], env);
     assert.equal(forced.status, 0, forced.stderr);
 
     assert.ok(existsSync(join(roles, "manifest.json")), "--force must not delete the team manifest");
-    assert.equal(readFileSync(join(roles, "jobs", "workflow.md"), "utf8"), "# Jobs\n");
+    assert.deepEqual(
+      snapshotTree(roles),
+      before,
+      "--force must carry the whole roles root across byte-identically",
+    );
   });
 
   it("keeps config keys the template does not carry across a forced rewrite", () => {
