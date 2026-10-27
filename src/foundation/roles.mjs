@@ -135,7 +135,7 @@ function sourceLabel(source) {
 /**
  * Find the roles root to load. Returns `{ dir, source }` or `null`.
  *
- * @param {{explicitDir?: string|null, projectDir?: string|null, loopSkillDir?: string|null, stateDir?: string|null}} input
+ * @param {{explicitDir?: string|null, projectDir?: string|null, loopSkillDir?: string|null}} input
  */
 export function resolveRolesRoot(input = {}) {
   const candidates = [
@@ -225,7 +225,7 @@ function normalizeRole(raw, root, warnings) {
 /**
  * Load the effective team.
  *
- * @param {{explicitDir?: string|null, projectDir?: string|null, loopSkillDir?: string|null, stateDir?: string|null}} input
+ * @param {{explicitDir?: string|null, projectDir?: string|null, loopSkillDir?: string|null}} input
  * @returns {{
  *   ok: boolean,
  *   source: string|null,
