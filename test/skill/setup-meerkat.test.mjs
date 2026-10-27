@@ -509,9 +509,11 @@ describe("skill frontmatter and assets", () => {
       assert.match(check, /never a leftover/i, `${role} lists what may not be a leftover`);
     }
 
-    const linusCheck = readFileSync(join(team, "linus", "self-check.md"), "utf8");
-    assert.match(linusCheck, /every branch/i, "the shared checks cover every branch");
-    assert.doesNotMatch(linusCheck, /apply to both/i, "there are three branches, not two");
+    for (const role of ["linus", "turing"]) {
+      const check = readFileSync(join(team, role, "self-check.md"), "utf8");
+      assert.match(check, /every branch/i, `${role} covers every branch`);
+      assert.doesNotMatch(check, /apply to both/i, `${role}: three branches, not two`);
+    }
 
     const reviewer = readFileSync(join(team, "reviewer", "workflow.md"), "utf8");
     assert.match(

@@ -266,7 +266,9 @@ _Avoid_: checklist, TODO list, meta.acceptance
 
 **Evidence**:
 A concrete pointer supporting a report — a commit, a path, a command or a coverage figure.
-Evidence is what makes a report checkable rather than merely asserted.
+Evidence is what makes a report checkable rather than merely asserted. A `met` acceptance
+item needs a command that fails when the item is broken; a path, a commit or a coverage
+figure corroborates it.
 _Avoid_: proof, artifact, link
 
 **Waiver**:
@@ -531,9 +533,11 @@ _Avoid_: job queue, work queue
 
 **Self-check**:
 A worker role's pre-delivery audit: re-read the card and frozen acceptance, map every
-requirement and acceptance item to evidence, record omissions, re-run the claimed gates,
-and confirm the report is complete. It is internal to the delivering card; it is not the
-**Handoff block**, which is the cross-card transfer.
+requirement and acceptance item to evidence, settle each row's disposition — met needs
+falsifiable evidence, not_applicable its reason, and partial or not_met is a blocker —
+re-run the claimed gates, and confirm the report is complete. Work outside the frozen
+acceptance is recorded as a leftover naming its owner. It is internal to the delivering
+card; it is not the **Handoff block**, which is the cross-card transfer.
 _中文_: 交付前自检
 _Avoid_: handoff check, review (the reviewer owns the independent verdict)
 
