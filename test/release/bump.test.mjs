@@ -109,6 +109,11 @@ function fullTree(version) {
   return manifests(version);
 }
 
+/** A changelog with a real, filled section for `version` — the `--tag` gate requires it. */
+function documentedChangelog(version = "1.1.0", date = "2026-10-10") {
+  return `# Changelog\n\n## [Unreleased]\n\n## [${version}] - ${date}\n\n### Fixed\n\n- A real change.\n`;
+}
+
 /** Write a `path → bytes` map into `dir`. */
 async function writeTree(dir, files) {
   for (const [rel, body] of Object.entries(files)) {
@@ -682,9 +687,10 @@ describe("bump.mjs — runBump", () => {
     assert.equal(await readFile(join(dir, CHANGELOG_FILE), "utf8"), changelog);
   });
 
-  it("tags v<x.y.z> after a successful bump, and never pushes", async () => {
+  it("tags an annotated v<x.y.z> after a successful bump, and never pushes", async () => {
     const dir = await makeTree();
     await writeTree(dir, manifests("1.0.0"));
+    await writeFile(join(dir, CHANGELOG_FILE), documentedChangelog(), "utf8");
 
     const calls = [];
     const run = (command, args, options) => {
@@ -695,7 +701,11 @@ describe("bump.mjs — runBump", () => {
     const result = await runBump({ version: "1.1.0", base: dir, tag: true, run });
     assert.equal(result.ok, true, result.error);
     assert.equal(result.tagged, "v1.1.0");
-    assert.deepEqual(calls, [{ command: "git", args: ["tag", "v1.1.0"], cwd: dir }], "exactly one git call: tag");
+    assert.deepEqual(
+      calls,
+      [{ command: "git", args: ["tag", "-a", "v1.1.0", "-m", "Meerkat TaskPanel v1.1.0"], cwd: dir }],
+      "exactly one git call: an annotated tag",
+    );
     assert.equal(
       calls.some((call) => call.args.includes("push")),
       false,
@@ -706,6 +716,7 @@ describe("bump.mjs — runBump", () => {
   it("reports a failed tag without pretending the bump did not happen", async () => {
     const dir = await makeTree();
     await writeTree(dir, manifests("1.0.0"));
+    await writeFile(join(dir, CHANGELOG_FILE), documentedChangelog(), "utf8");
 
     const result = await runBump({
       version: "1.1.0",
@@ -718,6 +729,46 @@ describe("bump.mjs — runBump", () => {
     assert.match(result.error, /tag already exists/);
     assert.match(result.error, /the files were written/);
     assert.equal((await readFile(join(dir, "package.json"), "utf8")).includes('"1.1.0"'), true, "the bump stands");
+  });
+
+  it("refuses to tag a scaffold changelog, and does not call git", async () => {
+    const dir = await makeTree();
+    await writeTree(dir, manifests("1.0.0"));
+    await writeFile(
+      join(dir, CHANGELOG_FILE),
+      "# Changelog\n\n## [1.1.0] - 2026-10-10\n\n### Added\n\n- _Nothing yet._\n",
+      "utf8",
+    );
+
+    let called = false;
+    const result = await runBump({
+      version: "1.1.0",
+      base: dir,
+      tag: true,
+      run: () => {
+        called = true;
+        return { status: 0 };
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "gate-failed");
+    assert.equal(called, false, "the changelog gate runs before git");
+    assert.match(result.error, /the files were written/);
+    assert.equal((await readFile(join(dir, "package.json"), "utf8")).includes('"1.1.0"'), true);
+  });
+
+  it("refuses to tag without a changelog section", async () => {
+    const dir = await makeTree();
+    await writeTree(dir, manifests("1.0.0"));
+
+    const result = await runBump({
+      version: "1.1.0",
+      base: dir,
+      tag: true,
+      run: () => ({ status: 0 }),
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "gate-failed");
   });
 
   it("does not call git at all without --tag", async () => {
@@ -773,6 +824,7 @@ describe("bump.mjs — the CLI", () => {
   it("exits 3 when the tag fails, after the bump has landed", async () => {
     const dir = await makeTree();
     await writeTree(dir, fullTree("1.0.0"));
+    await writeFile(join(dir, CHANGELOG_FILE), documentedChangelog(), "utf8");
 
     // The temp tree is not a git repository (and the verify image has no git), so
     // the tag step cannot succeed — the point is the exit code and that the files

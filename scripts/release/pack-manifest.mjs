@@ -163,9 +163,10 @@ export function allowedTopLevel(pkg) {
  *
  * @param {{path: string, size: number}[]} entries
  * @param {{files?: string[], version?: string}} pkg
- * @returns {{ok: boolean, missing: string[], leaked: string[], count: number}}
+ * @param {{expectedVersion?: string}} [options]
+ * @returns {{ok: boolean, missing: string[], leaked: string[], count: number, versionMismatch: string|null}}
  */
-export function checkManifest(entries, pkg) {
+export function checkManifest(entries, pkg, { expectedVersion } = {}) {
   const present = new Set(entries.map((entry) => relativePath(entry.path)));
   const missing = REQUIRED.filter((path) => !present.has(path));
 
@@ -174,7 +175,20 @@ export function checkManifest(entries, pkg) {
     .filter((path) => path !== "" && !allowed.has(path.split("/")[0]))
     .sort();
 
-  return { ok: missing.length === 0 && leaked.length === 0, missing, leaked, count: present.size };
+  const wanted = typeof expectedVersion === "string" ? expectedVersion.trim() : "";
+  const found = typeof pkg.version === "string" ? pkg.version : "";
+  const versionMismatch =
+    wanted !== "" && found !== wanted
+      ? `expected ${wanted}, found ${found === "" ? "(no version)" : found}`
+      : null;
+
+  return {
+    ok: missing.length === 0 && leaked.length === 0 && versionMismatch === null,
+    missing,
+    leaked,
+    count: present.size,
+    versionMismatch,
+  };
 }
 
 /** Gunzip when the buffer is gzip-framed; pass a plain tar through untouched. */
@@ -185,12 +199,18 @@ export function maybeGunzip(buffer) {
 async function main(argv) {
   const { values, positionals } = parseArgs({
     args: argv,
-    options: { help: { type: "boolean", short: "h", default: false } },
+    options: {
+      "expected-version": { type: "string" },
+      help: { type: "boolean", short: "h", default: false },
+    },
     allowPositionals: true,
   });
 
   if (values.help || positionals.length === 0) {
-    process.stdout.write("Usage: node scripts/release/pack-manifest.mjs <tarball.tgz>\n");
+    process.stdout.write(
+      "Usage: node scripts/release/pack-manifest.mjs <tarball.tgz> [--expected-version <x.y.z>]\n\n" +
+        "  --expected-version  fail when the tarball's package.json version differs\n",
+    );
     return positionals.length === 0 && !values.help ? 2 : 0;
   }
 
@@ -208,7 +228,7 @@ async function main(argv) {
     return 2;
   }
 
-  const result = checkManifest(entries, pkg);
+  const result = checkManifest(entries, pkg, { expectedVersion: values["expected-version"] });
   const version = typeof pkg.version === "string" ? pkg.version : "(no version)";
 
   if (!result.ok) {
@@ -220,6 +240,9 @@ async function main(argv) {
     if (result.leaked.length > 0) {
       process.stderr.write("  files outside the `files` whitelist:\n");
       for (const path of result.leaked) process.stderr.write(`    - ${path}\n`);
+    }
+    if (result.versionMismatch !== null) {
+      process.stderr.write(`  tarball version mismatch: ${result.versionMismatch}\n`);
     }
     return 1;
   }

@@ -49,7 +49,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { findVersionEntry } from "../verify/changelog.mjs";
+import { checkChangelog, findVersionEntry } from "../verify/changelog.mjs";
+import { checkTagVersion } from "../verify/tag-version.mjs";
 import { VERSION_SOURCES, findModuleVersionSpan, validateVersions } from "../verify/version.mjs";
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
@@ -599,7 +600,7 @@ export async function applyWrites(entries, { io } = {}) {
 }
 
 /** Codes whose failure means the tree may need a manual look, not just a re-run. */
-const WRITE_CODES = new Set(["stage-failed", "commit-failed", "tag-failed"]);
+const WRITE_CODES = new Set(["stage-failed", "commit-failed", "tag-failed", "gate-failed"]);
 
 /**
  * Bump one version group's manifests — and optionally the changelog and a git tag — in one
@@ -656,7 +657,33 @@ export async function runBump(options = {}) {
   let tagged = null;
   if (tag) {
     const name = `v${planned.version}`;
-    const result = run("git", ["tag", name], { cwd: resolve(base), encoding: "utf8" });
+
+    // A tag is a claim the tree and the changelog must be able to back. The bump
+    // has already written the carriers; a tag that names a version they do not
+    // declare, or a changelog still holding the scaffold, is worse than no tag.
+    const matches = await checkTagVersion({ tag: name, base });
+    if (!matches.ok) {
+      return {
+        ok: false,
+        code: "gate-failed",
+        entries,
+        error: `${matches.error} — the files were written; fix the tree before tagging`,
+      };
+    }
+    const documented = await checkChangelog({ tag: name, base, strict: true });
+    if (!documented.ok) {
+      return {
+        ok: false,
+        code: "gate-failed",
+        entries,
+        error: `${documented.error} — the files were written; fill CHANGELOG.md before tagging`,
+      };
+    }
+
+    const result = run("git", ["tag", "-a", name, "-m", `Meerkat TaskPanel ${name}`], {
+      cwd: resolve(base),
+      encoding: "utf8",
+    });
     if (result.error !== undefined && result.error !== null) {
       return { ok: false, code: "tag-failed", entries, error: `git tag ${name} failed: ${result.error.message} — the files were written` };
     }
@@ -688,7 +715,8 @@ const USAGE = `Usage: node scripts/release/bump.mjs <x.y.z> [options]
   <x.y.z>        the new version (strict semver; must be greater than the current one)
   --group <name> which component to bump: ${Object.keys(BUMP_GROUPS).join(" | ")} (default: board)
   --changelog    also insert an empty Keep-a-Changelog scaffold section (board only)
-  --tag          also create the git tag v<x.y.z> after the bump (never pushed; board only)
+  --tag          also create the annotated tag v<x.y.z> after the version/changelog gates
+                 (never pushed; board only)
   --base <dir>   bump a tree rooted at <dir> (default: this checkout)
 
 A bump moves one group at a time; there is one group today (the board). --changelog and
