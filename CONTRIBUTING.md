@@ -31,8 +31,9 @@ npm run check                  # verify + test  (host-static, fast)
 ```
 
 The authoritative gate is `npm run verify:docker`, and you do not have to run it by hand:
-`.githooks/pre-push` runs it on every branch push (and CI runs it again).
-`SKIP_CONTAINER_VERIFY=1 git push …` opts out for one push.
+`.githooks/pre-push` runs it on every branch push, and CI runs the same container suite on
+every pull request and every push to `dev`. `SKIP_CONTAINER_VERIFY=1 git push …` opts out
+for one push.
 
 The container gate bakes the **working tree** it finds at build time, so **commit your work
 before pushing** — uncommitted tracked changes would be verified instead of the commit CI
@@ -46,16 +47,19 @@ branches come off it. The flow is:
 1. Branch off `dev` (a parallel task gets a worktree: `git worktree add .worktrees/<slug>
    -b <branch> dev`).
 2. Push the branch and **open a pull request into `dev`**.
-3. Wait for CI. `pull_request` runs `check.yml`, `contract-gate.yml`, `paths-gate.yml`,
-   `signposts-gate.yml` and `security-scan.yml`. Green CI is the entry bar.
+3. Wait for CI. `pull_request` runs `check.yml` (the static gates, the Node 22/24 matrix,
+   the container job and the two security jobs) plus the separate `web-dom.yml` browser
+   lane. Green CI is the entry bar.
 4. Merge. `main` advances only when `dev` is merged into it as a release (below).
 
 > **Repository settings this depends on** (GitHub-side; the tree cannot switch them on):
-> on `main`, enable *Require a pull request before merging* and require the `check`,
-> `docker`, `contract` and `security` status checks. The rule is the actual enforcement; the
-> `pre-push` hook refuses a direct push to `main` and runs the container gate as the local
-> half, but it is still a courtesy — `git push --no-verify` bypasses it, and a fresh clone has
-> no hooks at all until you install them (below).
+> on `main`, enable *Require a pull request before merging* and require exactly two status
+> checks: `ci-success` (which aggregates the `check`, `docker`, `contract`, `paths` and
+> `signposts` jobs) and `security-success` (which aggregates `Dependency scan (osv-scanner +
+> npm audit)` and `SBOM (syft)`). The same rule is worth setting on `dev`, which is where
+> work is merged. The `pre-push` hook refuses a direct push to `main` and runs the container
+> gate as the local half, but it is still a courtesy — `git push --no-verify` bypasses it,
+> and a fresh clone has no hooks at all until you install them (below).
 
 ### Install the local hooks
 
@@ -76,7 +80,7 @@ These are checked, not merely preferred. Skipping one turns CI red.
 | Convention | Enforced by |
 |---|---|
 | **Commit with explicit paths** (`git commit -- <path>`), never a blanket `git commit -a` | review |
-| **The API contract snapshot is explicit.** A route, error code or wire-field change must update `test/fixtures/contract/api.snapshot.json` via `node scripts/verify/contract.mjs --update` — never let it drift silently | `contract-gate.yml`, `.githooks/pre-push` |
+| **The API contract snapshot is explicit.** A route, error code or wire-field change must update `test/fixtures/contract/api.snapshot.json` via `node scripts/verify/contract.mjs --update` — never let it drift silently | the `contract` job in `check.yml`, `.githooks/pre-push` |
 | **A route's *declared* request shape must equal what its handler reads** | `scripts/verify/route-request.mjs` |
 | **The skills are source.** Author them in `skills/`; nothing is generated, and no skill is distributed as a committed copy — `skills/` is the only `skills` tree in the repository. The loop runs as `taskctl loop …` (`src/orchestrator/`) | `test/scaffold.test.mjs`, `test/skill/loop.test.mjs` |
 | **Migrations are append-only.** Never edit or delete a committed `src/core/storage/migrations/*.sql`; add a new numbered file. The runner refuses a database whose applied file has changed | `migrations-runner.mjs`, `.githooks/pre-commit` |

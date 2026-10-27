@@ -25,8 +25,8 @@ host-absolute path is a statement about one machine, and a walkable reference
 into an external framework's private store is an instruction to leave this
 repository, which a session reading the tree will follow (see
 [`../design/contracts/naming-boundary.md`](../design/contracts/naming-boundary.md)
-and the header of each checker). Both are also enforced in CI — by
-`paths-gate.yml` and `signposts-gate.yml`.
+and the header of each checker). Both are also enforced in CI — by the `paths`
+and `signposts` jobs in `check.yml`.
 
 ## The container gate runs at `pre-push`
 

@@ -227,13 +227,12 @@ be regenerated with `--update`. (That is why the check is stronger than a
 |---|---|
 | `.githooks/pre-push` | the contract check and the route-request lint on **every** push (the API ships in every commit, not only a tag), then the tag↔CHANGELOG rule |
 | `.githooks/pre-tag` | the same three rules, by hand, *before* `git tag` |
-| `.github/workflows/contract-gate.yml` | both API checks on every branch push and pull request |
+| the `contract` job in `.github/workflows/check.yml` | both API checks on every pull request and every push to `dev` |
 | `.github/workflows/version-gate.yml` | the contract check at tag time, next to the changelog gate |
 | `docker/verify-in-container.sh` | both API checks inside the full container suite (`npm run verify:docker`) |
 
-`check.yml` is owned by a concurrent change and is deliberately not touched, the
-same reason the changelog rule lives in `version-gate.yml`; `contract-gate.yml`
-is the pull-request-time authority. See
+The `contract` job is the pull-request-time authority; `version-gate.yml` carries the same
+check at tag time. See
 [`.githooks/README.md`](../.githooks/README.md) for the hook table.
 
 ## Changing the API
