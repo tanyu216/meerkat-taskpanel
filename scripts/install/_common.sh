@@ -614,6 +614,29 @@ seed_env_file() {
   return 0
 }
 
+# keep_unlisted_env_keys <saved> <target> — re-append KEY=VALUE lines from <saved>
+#   whose key is absent from <target>. This installer owns the keys its template
+#   carries; every other key in the file belongs to the operator, or to the tool that
+#   wrote it — `setup-meerkat` records the team list here. A forced rewrite must not
+#   delete those. Requires TP_ACTOR_KIND for the report line.
+keep_unlisted_env_keys() {
+  saved="$1"
+  target="$2"
+  [ -f "$saved" ] || return 0
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      [A-Z_]*=*) key="${line%%=*}" ;;
+      *) continue ;;
+    esac
+    if grep -q "^${key}=" "$target" 2>/dev/null; then
+      continue
+    fi
+    printf '%s\n' "$line" >> "$target"
+    echo "${TP_ACTOR_KIND:-agent}: kept $key in $target"
+  done < "$saved"
+}
+
 # write_agent_config — persist the claim policy the supervisor reads by default, the
 # location of the board engine an agent-installed executor drives, and the workflow
 # channel's answers. Requires export_tp_env first (TP_ENV, TP_CLAIM_UNASSIGNED,
@@ -623,7 +646,21 @@ seed_env_file() {
 # The workflow keys are added with `ensure_env_key` as well, so an install that
 # predates them learns them on the next run without any existing value being touched.
 write_agent_config() {
+  # A forced reinstall rewrites this file from the installer's template. Keys the
+  # template does not carry — the team list `setup-meerkat` writes, an operator's own
+  # setting — are not this installer's to delete, so carry them across the rewrite.
+  kept_env=""
+  if [ -f "$TP_ENV" ] && [ -z "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    # Beside the file, not in TMPDIR: that directory is already writable here, and a
+    # same-directory rename does not depend on a second filesystem or on TMPDIR at all.
+    kept_env="$(mktemp "${TP_ENV}.XXXXXX")"
+    cp "$TP_ENV" "$kept_env"
+  fi
   emit_file "agent/meerkat-taskpanel.env" "$TP_ENV"
+  if [ -n "$kept_env" ]; then
+    keep_unlisted_env_keys "$kept_env" "$TP_ENV"
+    rm -f "$kept_env"
+  fi
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
   ensure_env_key "MEERKAT_TASKPANEL_RECOVER_STALE" "$TP_RECOVER_STALE"
   ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"
@@ -675,12 +712,24 @@ install_skill() {
     return 0
   fi
 
+  kept_user_data=""
   if [ -e "$dest" ] || [ -L "$dest" ]; then
     if [ -z "${MEERKAT_TASKPANEL_FORCE:-}" ]; then
       # Idempotent: an existing skill is the desired end state, not an error. The
       # local edits are preserved (merge, never clobber); --force is the escape hatch.
       echo "$label: already installed: $dest (unchanged; re-run with --force to overwrite)"
       return 0
+    fi
+    # Two things in a skill directory are authored by the operator, never shipped by
+    # this installer: the roles root (`setup-meerkat` writes it) and `projects.json`
+    # (the project → directory map). A forced reinstall replaces the skill, not them.
+    # (A linked skill is skipped: moving through it would move the source's files.)
+    if [ -d "$dest" ] && [ ! -L "$dest" ]; then
+      for entry in roles projects.json; do
+        [ -e "$dest/$entry" ] || continue
+        [ -n "$kept_user_data" ] || kept_user_data="$(mktemp -d "$(dirname "$dest")/.tp-keep.XXXXXX")"
+        mv "$dest/$entry" "$kept_user_data/$entry"
+      done
     fi
     rm -rf "$dest"
   fi
@@ -693,6 +742,15 @@ install_skill() {
   else
     cp -R "$src" "$dest"
     echo "$label: copied  $dest"
+  fi
+
+  if [ -n "$kept_user_data" ]; then
+    for entry in roles projects.json; do
+      [ -e "$kept_user_data/$entry" ] || continue
+      mv "$kept_user_data/$entry" "$dest/$entry"
+      echo "$label: kept    $dest/$entry"
+    done
+    rmdir "$kept_user_data" 2>/dev/null || true
   fi
 }
 
