@@ -346,6 +346,11 @@ Each step prints an `== ... ==` header and the script aborts on the first failur
 > longer disagree: it used to live only in CI, as a separate `docker run` *after* this
 > script, so the two tracks diverged and the local command could be green while CI was red.
 > See [CI](#ci).
+>
+> Step 1 (`node --test`) skips the real-git cases under `test/release/prep.test.mjs`: the
+> image is the *runtime* image and ships no `git`. Those cases run on any machine with git —
+> `npm run check` and CI's `check` job — and the skip is visible in the run's `skipped`
+> count. The same exception applies to the browser legs (no Chromium), below.
 
 ## Profiles
 

@@ -18,6 +18,17 @@ import { ROOT, prepareRelease } from "../../scripts/release/prep.mjs";
 const SCRIPT = join(ROOT, "scripts", "release", "prep.mjs");
 const tempDirs = [];
 
+/**
+ * The verification image is the *runtime* image and ships no git, so a real-
+ * repository case cannot run there. These cases run in `npm run check` and in
+ * CI's `check` job (both on a machine with git) and skip inside
+ * `npm run verify:docker` — the same documented exception as the browser legs,
+ * which the image cannot run either. `prep.mjs` is still imported by the suite
+ * that runs everywhere; only the git-backed assertions are gated.
+ */
+const hasGit = spawnSync("git", ["--version"], { encoding: "utf8" }).status === 0;
+const gitDescribe = hasGit ? describe : describe.skip;
+
 after(async () => {
   await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
 });
@@ -63,7 +74,7 @@ async function commit(dir, subject, file = "notes.txt", body = "x") {
   git(dir, ["commit", "-q", "-m", subject]);
 }
 
-describe("prep — the happy path", () => {
+gitDescribe("prep — the happy path", () => {
   it("bumps the carriers and fills the scaffold from the log", async () => {
     const dir = await makeRepo();
     await commit(dir, "feat(install): ship the board");
@@ -101,7 +112,7 @@ describe("prep — the happy path", () => {
   });
 });
 
-describe("prep — refusals", () => {
+gitDescribe("prep — refusals", () => {
   it("refuses a dirty tree", async () => {
     const dir = await makeRepo();
     await writeFile(join(dir, "stray.txt"), "x", "utf8");
@@ -146,7 +157,7 @@ describe("prep — refusals", () => {
   });
 });
 
-describe("prep — a re-run", () => {
+gitDescribe("prep — a re-run", () => {
   it("resumes at the target version and preserves a human-edited section", async () => {
     const dir = await makeRepo();
     await commit(dir, "feat: a change");
@@ -170,7 +181,7 @@ describe("prep — a re-run", () => {
   });
 });
 
-describe("prep — the CLI", () => {
+gitDescribe("prep — the CLI", () => {
   it("prints JSON metadata with --json", async () => {
     const dir = await makeRepo();
     await commit(dir, "feat: a change");
