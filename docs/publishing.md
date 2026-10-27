@@ -162,9 +162,14 @@ publish or the job stops with a 403:
 2. provider **GitHub Actions**, owner `tanyu216`, repository `meerkat-taskpanel`,
    workflow filename `release.yml`, environment **empty** (the workflow does not declare a
    GitHub environment; if you add one in npm, add the identical name to the `publish` job);
-3. save. No token is created, and nothing is copied into GitHub secrets.
+3. tick **Allow npm publish** (npm adds **npm stage publish** automatically); leave *Allow
+   npm dist-tag* off;
+4. save. No token is created, and nothing is copied into GitHub secrets.
 
-Rotating the old granular token is safe once this is in place: the workflow reads no token.
+A new connection starts as **Pending validation**, with a deadline npm shows on the page
+(roughly two days): it becomes valid when that workflow publishes once. Cut the next release
+inside that window, or recreate the connection. Rotating the old granular token is safe once
+this is in place: the workflow reads no token.
 A manual publish from a maintainer's machine is unprovenanced by definition (§3.4).
 
 ## 3. The release pipeline
