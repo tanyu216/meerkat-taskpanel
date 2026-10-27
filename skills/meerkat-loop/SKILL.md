@@ -33,7 +33,7 @@ The continue turn runs three deterministic commands, in this order:
    last. An `off` card is not dispatched: the plan emits `auto_accept` and the loop closes the
    original directly (`loop-auto`). A `human` card is left for a person. On by default;
    `--workflow=no` disables it. The reviewer is `project.reviewer ??` the deployment reviewer
-   (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / loop config). An `agent` card with no
+   (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / per-kind config). An `agent` card with no
    effective reviewer fails the loop at startup: the board would have dispatched a review
    nobody can claim.
 3. **poll** — scan, **register the card brief watch**, atomically claim, **enqueue the handoff**. It

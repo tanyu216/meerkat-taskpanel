@@ -1,6 +1,6 @@
 /**
- * `KEY=VALUE` configuration files — the install-root `.env` and the per-agent-kind
- * loop config — as pure text operations.
+ * `KEY=VALUE` configuration files — the board `.env` and the per-kind config —
+ * as pure text operations.
  *
  * Two writers share the install-root file (the Access panel's allow-list and
  * the installer's env seeds), and the client reads the same keys, so a

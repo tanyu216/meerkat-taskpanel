@@ -306,7 +306,7 @@ _wizard_supervisor_default() {
 # cannot be resurrected from the environment). 0 = answered; 2 = cancelled.
 #
 # Agent name, reviewer and the two intervals are deliberately NOT asked: they
-# are config-file edits (`<agent-dir>/meerkat-taskpanel.env`, or `TASKCTL_AGENT`
+# are config-file edits (`<program root>/.env.<actor-kind>`, or `TASKCTL_AGENT`
 # in the agent settings).
 run_wizard() {
   local prefix targets answer target raw entry saved_ifs

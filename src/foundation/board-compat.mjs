@@ -140,7 +140,7 @@ export function checkBoard({ command, args, run }) {
  * Work out the command that asks a board what it is.
  *
  * Precedence: `--cli` (verbatim) → `--repo` → `$MEERKAT_TASKPANEL_REPO` (the key
- * the installer records in the agent config) → `taskctl` on `PATH`.
+ * the installer records in the per-kind config) → `taskctl` on `PATH`.
  *
  * @param {{
  *   cli?: string|null,

@@ -9,8 +9,8 @@
 #                         every other key and hook
 #   5. slash commands   → ~/.claude/commands/{board,claim,deliver}.md
 #   6. scheduling       → ~/.claude/scheduling/{launchd,systemd,cron}, the loop state
-#                         directory (~/.claude/meerkat-taskpanel/) and the agent config
-#                         (~/.claude/meerkat-taskpanel.env)
+#                         directory (~/.claude/meerkat-taskpanel/) and the per-kind config
+#                         (<program root>/.env.claude)
 # plus the reproducible hook script and the taskctl shim that injects --agent <name>.
 set -eu
 . "$(cd "$(dirname "$0")" && pwd)/_common.sh"

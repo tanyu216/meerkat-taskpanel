@@ -9,7 +9,9 @@
  *
  * `MEERKAT_TASKPANEL_ENV_FILE` points at a shared *empty* file: naming a missing
  * path is an error by design, naming an empty one is the supported spelling of
- * "no configuration".
+ * "no configuration". `MEERKAT_TASKPANEL_CONFIG_DIR` points at an empty
+ * directory for the same reason: it keeps a spawned CLI from reading the
+ * checkout's `.env.<kind>` (a developer's per-kind config).
  *
  * Not a test file itself (`node --test` only runs `*.test.mjs`).
  */
@@ -24,6 +26,8 @@ const EMPTY_ENV_DIR = mkdtempSync(join(tmpdir(), `meerkat-taskpanel-base-env-${p
 mkdirSync(EMPTY_ENV_DIR, { recursive: true });
 export const EMPTY_ENV_FILE = join(EMPTY_ENV_DIR, ".env");
 writeFileSync(EMPTY_ENV_FILE, "");
+export const EMPTY_KIND_CONFIG_DIR = join(EMPTY_ENV_DIR, "kind");
+mkdirSync(EMPTY_KIND_CONFIG_DIR, { recursive: true });
 
 /**
  * `process.env` without board configuration, pointed at an empty config file.
@@ -35,6 +39,7 @@ export function baseEnv(overrides = {}) {
   return {
     ...scrubEnv(process.env),
     MEERKAT_TASKPANEL_ENV_FILE: EMPTY_ENV_FILE,
+    MEERKAT_TASKPANEL_CONFIG_DIR: EMPTY_KIND_CONFIG_DIR,
     ...overrides,
   };
 }

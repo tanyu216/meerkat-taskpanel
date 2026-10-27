@@ -32,7 +32,7 @@ records its pid, and `--stop` stops only that process.
 
 ### Main flags
 
-Precedence: flag > process env > loop config > default. The complete surface is
+Precedence: flag > process env > per-kind config > default. The complete surface is
 `taskctl loop <verb> --help`; the flags a human actually sets:
 
 | Flag | Meaning |
@@ -229,7 +229,7 @@ read/search + `taskctl` + `git`, no write; worker: the same plus edit/write). A 
 runs in its own `role=reviewer` conversation, so the allowlist reaches the subagent it spawns.
 Claude and Pi enforce it; Codex has no per-role tool surface, and the pool logs a one-time
 warning when it opens a reviewer lane there. Full tool access is the documented opt-in, in the
-loop config rather than a unit flag:
+per-kind config (`<program root>/.env.<actor-kind>`) rather than a unit flag:
 
 ```bash
 MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes
@@ -251,7 +251,7 @@ to the `task-interface` surface means a new generation on both sides.
 
 The loop **is** part of the toolkit now (`taskctl loop …`), so it needs no separate body and no
 checkout of its own: the installed tree (or the checkout, for a development run) is enough, and
-`MEERKAT_TASKPANEL_REPO` in the loop config names it. A combined install (`--target all`,
+`MEERKAT_TASKPANEL_REPO` in the per-kind config names it. A combined install (`--target all`,
 npm/npx) records `~/.meerkat-taskpanel`; an agent-only install records the checkout. Moving the
 tree is a re-install — the units need no reload because they name the CLI entry through that
 key.

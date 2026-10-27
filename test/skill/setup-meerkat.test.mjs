@@ -14,6 +14,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -680,6 +681,87 @@ describe("detect.mjs — read-only discovery", () => {
     assert.equal(result.body.human.configured, false);
     assert.notEqual(result.body.human.source, "env");
     assert.notEqual(result.body.human.name, "Parent Leak");
+  });
+
+  it("reads the human from <program root>/.env.<kind>", (t) => {
+    const home = temp(t);
+    const project = temp(t);
+    // A program root the detector accepts as a checkout.
+    mkdirSync(join(project, "src", "cli"), { recursive: true });
+    writeFileSync(join(project, "src", "cli", "index.mjs"), "");
+    mkdirSync(join(project, "skills"), { recursive: true });
+    writeFileSync(join(project, ".env.claude"), "TASKCTL_HUMAN=Sam\n");
+
+    const result = runJson(
+      t,
+      DETECT,
+      ["--home", home, "--project", project, "--actor-kind", "claude", "--no-network"],
+      { cwd: project, env: { HOME: home, PATH: temp(t), MEERKAT_TASKPANEL_CONFIG_DIR: "" } },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    // The child's cwd is the physical path (`/private/var/...` on macOS).
+    assert.equal(result.body.kindConfig.path, realpathSync(join(project, ".env.claude")));
+    assert.equal(result.body.kindConfig.present, true);
+    assert.equal(result.body.human.name, "Sam");
+    assert.equal(result.body.human.source, "config");
+  });
+
+  it("honours MEERKAT_TASKPANEL_CONFIG_DIR", (t) => {
+    const home = temp(t);
+    const project = temp(t);
+    const configDir = temp(t);
+    writeFileSync(join(configDir, ".env.codex"), "TASKCTL_HUMAN=Codexer\n");
+
+    const result = runJson(
+      t,
+      DETECT,
+      ["--home", home, "--project", project, "--actor-kind", "codex", "--no-network"],
+      {
+        cwd: project,
+        env: { HOME: home, PATH: temp(t), MEERKAT_TASKPANEL_CONFIG_DIR: configDir },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.body.kindConfig.path, join(configDir, ".env.codex"));
+    assert.equal(result.body.human.name, "Codexer");
+    assert.equal(result.body.human.source, "config");
+  });
+
+  it("finds the per-kind config in the installed tree", (t) => {
+    const home = temp(t);
+    const project = temp(t);
+    const tree = join(home, ".meerkat-taskpanel");
+    mkdirSync(join(tree, "src", "cli"), { recursive: true });
+    writeFileSync(join(tree, "src", "cli", "index.mjs"), "");
+    writeFileSync(join(tree, ".env.claude"), "TASKCTL_HUMAN=Tree\n");
+
+    const result = runJson(
+      t,
+      DETECT,
+      ["--home", home, "--project", project, "--actor-kind", "claude", "--no-network"],
+      { cwd: project, env: { HOME: home, PATH: temp(t), MEERKAT_TASKPANEL_CONFIG_DIR: "" } },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.body.kindConfig.source, "installed-tree");
+    assert.equal(result.body.kindConfig.path, join(tree, ".env.claude"));
+    assert.equal(result.body.human.name, "Tree");
+  });
+
+  it("ignores a legacy <agent-dir>/meerkat-taskpanel.env", (t) => {
+    const home = temp(t);
+    const project = temp(t);
+    mkdirSync(join(home, ".claude"), { recursive: true });
+    writeFileSync(join(home, ".claude", "meerkat-taskpanel.env"), "TASKCTL_HUMAN=Legacy\n");
+
+    const result = runJson(
+      t,
+      DETECT,
+      ["--home", home, "--project", project, "--actor-kind", "claude", "--no-network"],
+      { cwd: project, env: { HOME: home, PATH: temp(t), MEERKAT_TASKPANEL_CONFIG_DIR: "" } },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.body.kindConfig.path, null);
+    assert.equal(result.body.human.configured, false);
   });
 
   it("warns about an unspecified board address", (t) => {

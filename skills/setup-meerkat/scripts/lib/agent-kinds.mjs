@@ -69,9 +69,9 @@ export function loopStateDir(home, kind) {
   return join(agentBase(home, kind), "meerkat-taskpanel");
 }
 
-/** @param {string} home @param {string} kind */
-export function configFile(home, kind) {
-  return join(agentBase(home, kind), "meerkat-taskpanel.env");
+/** The per-kind config at the program root, one file per actor kind. */
+export function kindConfigFile(programRoot, kind) {
+  return join(programRoot, `.env.${kind}`);
 }
 
 /** @param {string} home @param {string} kind */

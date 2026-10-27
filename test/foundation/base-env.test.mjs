@@ -8,11 +8,11 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import { SCRUB_PREFIXES, scrubEnv } from "../../scripts/verify/lib/scrub-env.mjs";
-import { EMPTY_ENV_FILE, baseEnv } from "../helpers/base-env.mjs";
+import { EMPTY_ENV_FILE, EMPTY_KIND_CONFIG_DIR, baseEnv } from "../helpers/base-env.mjs";
 
 /** Run `body` with `key=value` planted in `process.env`, then restore it. */
 function withEnv(key, value, body) {
@@ -48,6 +48,12 @@ describe("scrub-env — a shell's board configuration does not leak", () => {
     const env = baseEnv();
     assert.equal(env.MEERKAT_TASKPANEL_ENV_FILE, EMPTY_ENV_FILE);
     assert.equal(readFileSync(EMPTY_ENV_FILE, "utf8"), "", "the shared file must stay empty");
+  });
+
+  it("points MEERKAT_TASKPANEL_CONFIG_DIR at an empty directory", () => {
+    const env = baseEnv();
+    assert.equal(env.MEERKAT_TASKPANEL_CONFIG_DIR, EMPTY_KIND_CONFIG_DIR);
+    assert.deepEqual(readdirSync(EMPTY_KIND_CONFIG_DIR), [], "no per-kind config may leak in");
   });
 
   it("covers every prefix the scrubber declares", () => {

@@ -35,7 +35,14 @@ function tempDir() {
   return dir;
 }
 
+/** Keep an agent-only install's per-kind config out of the checkout. */
+function kindConfigDirOf(argv) {
+  const index = argv.indexOf("--prefix");
+  return index !== -1 && typeof argv[index + 1] === "string" ? join(argv[index + 1], "kind-config") : null;
+}
+
 function run(argv, env = {}) {
+  const kindDir = kindConfigDirOf(argv);
   return spawnSync(process.execPath, [CLI, ...argv], {
     cwd: ROOT,
     encoding: "utf8",
@@ -44,6 +51,7 @@ function run(argv, env = {}) {
       MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
       MEERKAT_TASKPANEL_SKIP_NODE_CHECK: "1",
       MEERKAT_TASKPANEL_SKIP_WEB_BUILD: "1",
+      ...(kindDir === null ? {} : { MEERKAT_TASKPANEL_CONFIG_DIR: kindDir }),
       ...env,
     },
   });
@@ -51,6 +59,7 @@ function run(argv, env = {}) {
 
 /** Like `run`, with the wizard's answers on stdin (`--interactive` reads a pipe). */
 function runWithInput(argv, input, env = {}) {
+  const kindDir = kindConfigDirOf(argv);
   return spawnSync(process.execPath, [CLI, ...argv], {
     cwd: ROOT,
     encoding: "utf8",
@@ -60,6 +69,7 @@ function runWithInput(argv, input, env = {}) {
       MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
       MEERKAT_TASKPANEL_SKIP_NODE_CHECK: "1",
       MEERKAT_TASKPANEL_SKIP_WEB_BUILD: "1",
+      ...(kindDir === null ? {} : { MEERKAT_TASKPANEL_CONFIG_DIR: kindDir }),
       ...env,
     },
   });
@@ -234,7 +244,7 @@ describe("cli-wrapper — wizard translation", () => {
     assert.match(result.stderr, /interactive setup/);
     assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-taskpanel", "SKILL.md")));
     assert.equal(existsSync(join(home, ".meerkat-taskpanel")), false);
-    const config = readFileSync(join(home, ".claude", "meerkat-taskpanel.env"), "utf8");
+    const config = readFileSync(join(home, "kind-config", ".env.claude"), "utf8");
     assert.match(config, /^MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no$/m);
     assert.match(config, /^MEERKAT_TASKPANEL_REVIEWER=Reviewer$/m);
   });

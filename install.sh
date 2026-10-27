@@ -27,7 +27,7 @@
 #
 # When no flag supplied them, it also asks (on a TTY) whether the supervisor
 # may claim **unassigned** cards, and persists the answer as
-# `<agent-dir>/meerkat-taskpanel.env` for the bundle agent kinds. Non-interactive runs
+# `<program root>/.env.<actor-kind>` for the bundle agent kinds. Non-interactive runs
 # default to yes; `--claim-unassigned=no` / `--assignee-only` opt out.
 #
 # The supervisor itself is **opt-in** and never a silent default: `--supervisor=enable`
@@ -116,19 +116,19 @@ Options:
   --no-automation   Skip the Codex claim trigger and scheduling units
   --claim-unassigned=yes|no
                     May the supervisor claim unassigned cards? Persisted to the
-                    loop config; also asked interactively on a TTY (default yes).
+                    per-kind config; also asked interactively on a TTY (default yes).
   --assignee-only   Alias for --claim-unassigned=no (claim only my own cards)
   --recover-stale=yes|no
                     Recover stale in_progress claims (same holder after 30 min,
-                    any agent after 6 hours). Persisted to the loop config;
+                    any agent after 6 hours). Persisted to the per-kind config;
                     default yes.
   --workflow=yes|no Run the supervisor's workflow sub-pass (reconcile, review
-                    dispatch, applying verdicts). Persisted to the loop config;
+                    dispatch, applying verdicts). Persisted to the per-kind config;
                     default yes.
   --reviewer <agent>
                     The independent reviewer that audits delivered cards
                     (default: Reviewer). Set MEERKAT_TASKPANEL_REVIEWER empty in
-                    the loop config to leave deliveries for a human to accept.
+                    the per-kind config to leave deliveries for a human to accept.
   --ping-interval <sec>
                     The liveness clock (default 60). It only prunes dead worker
                     pids from the registry: no board read, no LLM.
@@ -139,7 +139,7 @@ Options:
                     runs the poll, patrol and workflow entries.
   --continue=yes|no
                     Enable the continue turn (default yes). Persisted to the
-                    loop config; `no` keeps the ping clock but discovers no work
+                    per-kind config; `no` keeps the ping clock but discovers no work
                     until a human runs the poll entry.
   --supervisor=enable|disable|status
                     Opt in to the supervisor daemon: load / unload / report the
@@ -175,7 +175,7 @@ server only), agent kinds, your board name, link-or-copy, whether to build
 web/dist, claim/recover/workflow/continue, and the opt-in supervisor action
 (+ scheduler). Every question shows a default; Enter accepts it and `q`
 cancels before anything is written. Agent name, reviewer and the two
-intervals are not asked — edit them in the loop config.
+intervals are not asked — edit them in the per-kind config.
 
 Requires Node >= 22 (the engine uses the built-in node:sqlite module).
 The check runs before anything is installed; a missing or older `node` is an
@@ -208,9 +208,10 @@ The loop and setup skills are always **copied**, never symlinked: --link names t
 skill only, or a symlinked loop would put the checkout back into the load path the split
 removes.
 
-The claim policy is written to <home>/<agent-dir>/meerkat-taskpanel.env for the agent kinds that
+The claim policy is written to <program root>/.env.<actor-kind> for the agent kinds that
 build a supervisor (claude, codex, pi); OpenClaw installs
-openclaw-team instead.
+openclaw-team instead. An install that predates this location is migrated once from
+<home>/<agent-dir>/meerkat-taskpanel.env, which is then left in place and no longer read.
 
 The supervisor stays opt-in (--supervisor, above): without it, and without the
 MEERKAT_TASKPANEL_SUPERVISOR below, a plain install only prints the load command.
@@ -582,7 +583,7 @@ for target in $TARGETS; do
 done
 
 if [ "$SERVER_SELECTED" = "1" ]; then
-  # server first: the agent shims and loop config name the tree, so it must exist
+  # server first: the agent shims and per-kind config name the tree, so it must exist
   # before any agent installer writes them.
   OLD_TARGETS="$TARGETS"
   TARGETS=" server "
@@ -694,10 +695,10 @@ if [ -n "$DRY_RUN" ]; then
   echo "install.sh: dry run — no files will be changed"
 fi
 
-# One config file for the agent kinds. Called once, not per agent kind; never overwrites an
-# existing file (it may hold a token). A server-only install lets server.sh seed
-# the tree's own `.env`; a full install seeds that same path via the exported
-# MEERKAT_TASKPANEL_ENV_FILE above.
+# The board-facing `.env`, seeded once, not per agent kind; never overwrites an existing
+# file (it may hold a token). A server-only install lets server.sh seed the tree's own
+# `.env`; a full install seeds that same path via the exported MEERKAT_TASKPANEL_ENV_FILE
+# above. The per-kind configs are a separate file per kind, written by each installer.
 if [ "$HAS_KIND_TARGET" = "1" ]; then
   seed_env_file
 fi

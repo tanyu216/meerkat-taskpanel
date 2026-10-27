@@ -593,7 +593,7 @@ the container; with it, the container stays `in_progress` and names the child bl
 
 ### Configuration
 
-| Setting | Flag | Env / loop config | Default |
+| Setting | Flag | Env / per-kind config | Default |
 |---|---|---|---|
 | workflow channel | `--workflow=yes\|no` | `MEERKAT_TASKPANEL_WORKFLOW` | `yes` |
 | reviewer (deployment default) | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | `Reviewer` (empty disables dispatch) |
@@ -602,7 +602,9 @@ the container; with it, the container stays `in_progress` and names the child bl
 | silent-review threshold | `--review-aging-minutes <n>` | `MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES` | `60` |
 | workflow alert ledger | `--workflow-ledger <path>` | — | `workflow-ledger.json` beside `--state` |
 
-Precedence is flag → environment → loop config → default, the same as the claim policy.
+Precedence is flag → environment → per-kind config → default, the same as the claim policy.
+For the board path, `taskctl` reads the same file as a layer between the process environment
+and the shared `.env` (so `.env.<kind>` supplies per-agent identity and project-map defaults).
 `workflow` gates the whole channel; the reviewer gates only **dispatch** — outcomes still run
 without one, so reviews already in flight can finish after a deployment removes its reviewer.
 
@@ -679,7 +681,7 @@ mode and the adversarial design mode `/setup-meerkat` uses for the setup intervi
 co-design — is the loop's `references/decision-policy.md` §Decision rounds.
 
 The scan set is still explicit: write `MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing` (and
-`MEERKAT_TASKPANEL_REVIEWER=Reviewer`) to the loop config, or the loop scans only its
+`MEERKAT_TASKPANEL_REVIEWER=Reviewer`) to the per-kind config, or the loop scans only its
 default agent and a role card is never claimed. `/setup-meerkat` does this merge with the
 user's consent. `--force` on a loop reinstall replaces its `roles/` directory, so re-run
 `/setup-meerkat` afterwards.
@@ -1279,7 +1281,7 @@ program: <absolute node> <runtime>/src/cli/index.mjs loop run --ping-once
 ```
 
 `<runtime>` is `MEERKAT_TASKPANEL_REPO`: `~/.meerkat-taskpanel` for a combined install
-(`--target all`, npm/npx), or the checkout for an agent-only install. The loop config records
+(`--target all`, npm/npx), or the checkout for an agent-only install. The per-kind config records
 it, so moving the tree is a re-install — no `launchctl` / `systemctl` / `crontab` reload,
 because the unit never hard-codes a versioned body path.
 
@@ -1340,7 +1342,7 @@ equivalent option.
 
 An operator who needs unattended runs that edit and execute without prompts can
 opt into **full tool access** — `--allow-all-tools`, or, for the installed
-service, the loop config:
+service, the per-kind config:
 
 ```bash
 MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes
@@ -1471,7 +1473,7 @@ so an idle tick costs nothing) for the scan and a `task-patrol` for the stale pa
 Neither framework cadence is repeated here; the framework's `AUTOMATIONS.md` is the
 single source of truth for it.
 `install.sh --target openclaw` therefore installs the **board skill only**: no
-`meerkat-loop` skill, no scheduler, no loop config — permanently, by
+`meerkat-loop` skill, no scheduler, no per-kind config — permanently, by
 ruling, not as a gap to be filled later. Two supervisors on one board would only race
 each other for the same cards, and the board's claim is atomic, so the race is bounded
 but the second supervisor is pure waste. Point OpenClaw at the framework instead:
@@ -1719,24 +1721,24 @@ taskctl loop run --actor-kind claude --agent alice --continue-once  # one contin
 ```
 
 The flags are the same either way; a loaded unit names the runtime tree's CLI entry and
-`MEERKAT_TASKPANEL_REPO` in the loop config is what tells it where that tree is.
+`MEERKAT_TASKPANEL_REPO` in the per-kind config is what tells it where that tree is.
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `--agent <name>` | `$TASKCTL_AGENT` → `$USER` | agent(s) to work for; repeatable / comma-separated |
 | `--actor-kind claude\|codex\|pi` | `claude` | which worker to wake |
-| `--repo <path>` | this checkout — or, for a agent-installed copy, the `MEERKAT_TASKPANEL_REPO` in the loop config | repository root: what `--cli` is resolved from, and the fallback working directory |
+| `--repo <path>` | this checkout — or, for a agent-installed copy, the `MEERKAT_TASKPANEL_REPO` in the per-kind config | repository root: what `--cli` is resolved from, and the fallback working directory |
 | `--ping-interval <sec>` | `60` | liveness clock: prune dead worker pids; no board read |
 | `--continue-interval <sec>` | `600` | judgment clock: wake the agent kind for one `Continue` turn |
 | `--max-concurrency <n>` | `8` | cap on simultaneously running subagents; workers and reviewers share it and the split follows demand (no per-role reservation) |
-| `--claim-unassigned=yes\|no` | from loop config → `yes` | also claim unassigned cards (the public pool) |
+| `--claim-unassigned=yes\|no` | from per-kind config → `yes` | also claim unassigned cards (the public pool) |
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |
-| `--recover-stale=yes\|no` | from loop config → `yes` | add stale `in_progress` cards to the candidate read (`--stale`); the claim itself is `issue claim` (holder after 10 min, anyone after 6 h) |
-| `--workflow=yes\|no` | from loop config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch) |
-| `--reviewer <agent>` | from `$MEERKAT_TASKPANEL_REVIEWER` / the loop config, else `null` | the independent reviewer; the installer writes `Reviewer`, and an empty value disables dispatch only |
+| `--recover-stale=yes\|no` | from per-kind config → `yes` | add stale `in_progress` cards to the candidate read (`--stale`); the claim itself is `issue claim` (holder after 10 min, anyone after 6 h) |
+| `--workflow=yes\|no` | from per-kind config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch) |
+| `--reviewer <agent>` | from `$MEERKAT_TASKPANEL_REVIEWER` / the per-kind config, else `null` | the independent reviewer; the installer writes `Reviewer`, and an empty value disables dispatch only |
 | `--workflow-max-actions <n>` | `20` | max workflow writes (and bounded reads) per pass |
 | `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
-| `--continue=yes\|no` | from loop config → `yes` | enable the continue turn |
+| `--continue=yes\|no` | from per-kind config → `yes` | enable the continue turn |
 | `--continue-state <path>` | `continue.state.json` beside `--state` | the single-flight lock for the continue turn |
 | `--ping-once` / `--continue-once` | off | on `loop run`: run only that clock's pass, then exit |
 | `--patrol-interval <sec>` | `300` | the SLA **measurement** period (it no longer schedules anything) |
@@ -1752,7 +1754,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--sla-peer <path>` | from `$MEERKAT_TASKPANEL_SLA_PEER`, else unset | the peer inspector's last-ok marker; a marker older than `3 × P_peer` raises `inspector_liveness`, where `P_peer` is the cadence the marker declares (fallback 15min). Unset ⇒ the peer's half is a registered dependency and nothing alarms |
 | `--board-limit <n>` | `500` | max cards read in one patrol pass |
 | `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
-| `--config <path>` | `<home>/<agent-dir>/meerkat-taskpanel.env` | loop config: the claim default, the concurrency cap (`MEERKAT_TASKPANEL_MAX_CONCURRENCY`), and (for an agent kind copy) `MEERKAT_TASKPANEL_REPO` |
+| `--config <path>` | `<program root>/.env.<actor-kind>` (or `MEERKAT_TASKPANEL_CONFIG_DIR`) | per-kind config: the loop's claim default and concurrency cap, `MEERKAT_TASKPANEL_REPO`, and — on the board path — the per-agent identity and project-map defaults |
 | `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber's `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
 | `--home <path>` | `$HOME` | base for those defaults |
 | `--projects-json <path>` | `<home>/<agent-dir>/skills/meerkat-taskpanel/projects.json` | the agent-local map the poll pass resolves a card's directory from ([Where a worker runs](#where-a-worker-runs)) |
@@ -1774,10 +1776,10 @@ asks it as part of its one flow and then skips this prompt):
 Allow claiming unassigned tasks? [Y/n]
 ```
 
-and remembers the answer in the loop config file:
+and remembers the answer in the per-kind config file:
 
 ```ini
-# <home>/<agent-dir>/meerkat-taskpanel.env
+# <program root>/.env.<actor-kind>
 MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes
 MEERKAT_TASKPANEL_RECOVER_STALE=yes
 ```

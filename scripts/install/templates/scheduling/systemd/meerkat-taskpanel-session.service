@@ -15,7 +15,7 @@
 # session is re-opened (and resumed) on demand; the ledger records unfinished
 # subagents so they can be reattached.
 #
-# Full tool access is opt-in through the agent config — never a flag here:
+# Full tool access is opt-in through the per-kind config — never a flag here:
 #   MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes
 #   MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON="<who authorized it and why>"
 # With it, every session runs with the installing user's full OS permissions;

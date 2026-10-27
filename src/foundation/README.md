@@ -13,7 +13,7 @@ dependency direction is `core/cli/server → foundation`, never the reverse.
 | module | what it owns |
 |---|---|
 | `env-file.mjs` | `parseEnvText` — the `KEY=VALUE` text format, no I/O |
-| `env-config.mjs` | `loadEnvFile` — locate the install-root `.env`, parse and validate the allowed keys, and merge file values under the process environment; `readConfigFileVars` re-reads the file for a per-request resolver |
+| `env-config.mjs` | `loadEnvFile` — locate the board `.env` and the per-kind `.env.<kind>`, validate the shared file's allowed keys, take the per-kind file's per-agent keys, and merge both under the process environment (flag > env > per-kind > `.env`); `readConfigFileVars` re-reads the board file for a per-request resolver |
 | `sla-config.mjs` | the `TASKD_SLA_*` vocabulary: `DEFAULT_SLA_ROWS`, `readSlaConfig` (process env > `.env` > default), validation, and the `/api/v1/sla` wire shape |
 | `runtime-locator.mjs` | `resolveEnvFilePath`, `repoRoot` — the install root and the env-file path |
 

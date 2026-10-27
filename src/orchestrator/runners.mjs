@@ -1078,7 +1078,7 @@ export async function runContinue(opts, deps = {}) {
 }
 
 /**
- * One continue pass with the real agent config and logger.
+ * One continue pass with the real per-kind config and logger.
  *
  * @param {object} opts
  * @param {NodeJS.ProcessEnv} [env]

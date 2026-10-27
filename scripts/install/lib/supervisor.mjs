@@ -31,7 +31,11 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { LIVE_STATUSES, QUEUE_FILES } from "../../../src/foundation/loop-paths.mjs";
+import {
+  LIVE_STATUSES,
+  QUEUE_FILES,
+  resolveKindConfigPath,
+} from "../../../src/foundation/loop-paths.mjs";
 
 import { runStep, systemdUserDir } from "./taskd-guard.mjs";
 import { unitPath } from "./unit-path.mjs";
@@ -83,7 +87,7 @@ function pidAlive(pid) {
   }
 }
 
-/** One `KEY=value` from the agent config, or `null`. */
+/** One `KEY=value` from the per-kind config, or `null`. */
 function agentConfigValue(path, key) {
   try {
     const lines = readFileSync(path, "utf8").split("\n");
@@ -303,7 +307,7 @@ export function resolveScheduler(requested, platform) {
  * e.g. `~/.claude`). Pure arithmetic — nothing is created here.
  *
  * @param {{agentBase: string, agent: string, actorKind: string, env?: NodeJS.ProcessEnv,
- *          home?: string}} options
+ *          home?: string, config?: string|null}} options
  */
 export function supervisorPaths(options) {
   const agentBase = resolve(options.agentBase);
@@ -325,7 +329,10 @@ export function supervisorPaths(options) {
     cliNeedsNode: typeof env.TP_CLI === "string" && env.TP_CLI !== "",
     stateDir: join(agentBase, "meerkat-taskpanel"),
     log: join(agentBase, "meerkat-taskpanel", "supervisor.log"),
-    config: join(agentBase, "meerkat-taskpanel.env"),
+    config: options.config
+      ? resolve(options.config)
+      : resolveKindConfigPath({ actorKind: options.actorKind, env }),
+    legacyConfig: join(agentBase, "meerkat-taskpanel.env"),
     launchd: KINDS.map((kind) => ({
       kind,
       label: supervisorLabel(options.agent, options.actorKind, kind),
@@ -857,7 +864,8 @@ export function runSupervisorAction(options) {
 // ---------------------------------------------------------------------------
 
 const USAGE = `Usage: node scripts/install/lib/supervisor.mjs <enable|disable|status> --actor-kind <kind> \\
-         --agent <name> --agent-base <dir> [--scheduler auto|launchd|systemd|cron] [--dry-run]
+         --agent <name> --agent-base <dir> [--config <file>] \\
+         [--scheduler auto|launchd|systemd|cron] [--dry-run]
 
 Loads, unloads or reports one loop agent kind's supervisor units — the opt-in path
 docs/scheduling.md defines. Called by scripts/install/_common.sh; not meant to be
@@ -883,6 +891,7 @@ function main(argv) {
     else if (arg === "--actor-kind") opts.actorKind = value();
     else if (arg === "--agent") opts.agent = value();
     else if (arg === "--agent-base") opts.agentBase = value();
+    else if (arg === "--config") opts.config = value();
     else if (arg === "--scheduler") opts.scheduler = value();
     else {
       process.stderr.write(`supervisor: unknown option: ${arg}\n`);
@@ -905,7 +914,13 @@ function main(argv) {
   return runSupervisorAction({
     action,
     scheduler: opts.scheduler,
-    paths: supervisorPaths({ agentBase: opts.agentBase, agent: opts.agent, actorKind: opts.actorKind, env }),
+    paths: supervisorPaths({
+      agentBase: opts.agentBase,
+      agent: opts.agent,
+      actorKind: opts.actorKind,
+      config: opts.config,
+      env,
+    }),
     user: env.USER ?? env.LOGNAME ?? "",
     dryRun: opts.dryRun,
   });

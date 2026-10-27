@@ -25,7 +25,9 @@ import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-install-" });
+const { makeTempDir, kindConfigDirFor, runInstall, cleanup } = createInstallHarness({
+  prefix: "meerkat-taskpanel-install-",
+});
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const NODE = process.execPath;
@@ -149,8 +151,13 @@ describe("install.sh: targets", () => {
 
     const shim = readFileSync(join(home, ".claude", "bin", "taskctl"), "utf8");
     assert.ok(shim.includes(join(tree, "src", "cli", "index.mjs")), "the shim drives the installed tree");
-    const config = readFileSync(join(home, ".claude", "meerkat-taskpanel.env"), "utf8");
+    const config = readFileSync(join(kindConfigDirFor(home), ".env.claude"), "utf8");
     assert.match(config, new RegExp(`MEERKAT_TASKPANEL_REPO=${tree.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.equal(
+      existsSync(join(home, ".claude", "meerkat-taskpanel.env")),
+      false,
+      "the legacy per-agent path must not be written",
+    );
   });
 
   it("--target all installs every agent and the server tree", () => {

@@ -10,6 +10,7 @@ import test, { describe, it } from "node:test";
 
 import {
   AGENT_DIRS,
+  KIND_CONFIG_DIR_ENV,
   LIVE_STATUSES,
   POOL_HEARTBEAT_MS,
   POOL_STALE_MS,
@@ -18,6 +19,7 @@ import {
   SESSION_LOCK_FILE,
   STATE_FILES,
   agentPaths,
+  resolveKindConfigPath,
   statePathsForDir,
 } from "../../src/foundation/loop-paths.mjs";
 
@@ -32,7 +34,7 @@ describe("loop-paths — the loop's host-side vocabulary", () => {
 
   it("derives one agent's paths from its home", () => {
     const paths = agentPaths("/home/op", "claude");
-    assert.equal(paths.config, join("/home/op", ".claude", "meerkat-taskpanel.env"));
+    assert.equal(paths.agentDir, ".claude");
     assert.equal(
       paths.state,
       join("/home/op", ".claude", "meerkat-taskpanel", "supervisor.state.json"),
@@ -81,5 +83,65 @@ describe("loop-paths — the loop's host-side vocabulary", () => {
       turnTimeoutMs: 30 * 60 * 1000,
       pollMs: 1000,
     });
+  });
+});
+
+describe("resolveKindConfigPath — one config per actor kind at the program root", () => {
+  it("names .env.<kind> under an injected program root", () => {
+    for (const kind of ["claude", "codex", "pi"]) {
+      assert.equal(
+        resolveKindConfigPath({ actorKind: kind, root: "/opt/tree", env: {} }),
+        join("/opt/tree", `.env.${kind}`),
+      );
+    }
+  });
+
+  it("lets MEERKAT_TASKPANEL_CONFIG_DIR replace the program root", () => {
+    assert.equal(
+      resolveKindConfigPath({
+        actorKind: "codex",
+        root: "/opt/tree",
+        env: { [KIND_CONFIG_DIR_ENV]: "/srv/tp-config" },
+      }),
+      join("/srv/tp-config", ".env.codex"),
+    );
+  });
+
+  it("resolves a relative override against cwd", () => {
+    assert.equal(
+      resolveKindConfigPath({
+        actorKind: "pi",
+        root: "/opt/tree",
+        env: { [KIND_CONFIG_DIR_ENV]: "config" },
+        cwd: "/work",
+      }),
+      join("/work", "config", ".env.pi"),
+    );
+  });
+
+  it("accepts any safe kind token, not just the installed three", () => {
+    assert.equal(
+      resolveKindConfigPath({ actorKind: "system", root: "/opt/tree", env: {} }),
+      join("/opt/tree", ".env.system"),
+    );
+    assert.equal(
+      resolveKindConfigPath({ actorKind: "openclaw", root: "/opt/tree", env: {} }),
+      join("/opt/tree", ".env.openclaw"),
+    );
+  });
+
+  it("has no file for the human or an absent kind", () => {
+    assert.equal(resolveKindConfigPath({ actorKind: "human", env: {} }), null);
+    assert.equal(resolveKindConfigPath({ actorKind: "", env: {} }), null);
+    assert.equal(resolveKindConfigPath({ env: {} }), null);
+  });
+
+  it("refuses a token that is not a plain file-name segment", () => {
+    for (const kind of ["../escape", "a/b", "two words", "."]) {
+      assert.throws(
+        () => resolveKindConfigPath({ actorKind: kind, root: "/opt/tree", env: {} }),
+        /invalid actor kind/,
+      );
+    }
   });
 });

@@ -254,24 +254,32 @@ grammar is the simple `KEY=VALUE` subset
 known keys are merged: unknown keys outside the project's namespaces are
 ignored, while a typo inside them is an error.
 
-That file is board-facing only. The loop's own policy — claim scope, reviewer, clocks,
-concurrency, pool limits — lives in a second, **per-actor-kind** file:
-`<agent-dir>/meerkat-taskpanel.env`, the **loop config**, read by `taskctl loop …` directly.
+That file is board-facing only. Each actor kind also has a **per-kind config**,
+`<program root>/.env.<actor-kind>` (for example `~/.meerkat-taskpanel/.env.claude` on a
+combined install, or `<checkout>/.env.claude` for an agent-only install). It is read in two
+layers: `taskctl` takes the per-agent defaults (`TASKCTL_AGENT`, `TASKCTL_HUMAN`,
+`MEERKAT_TASKPANEL_PROJECTS_JSON`, `MEERKAT_TASKPANEL_REPO`) from it, and `taskctl loop …`
+reads the loop policy (claim scope, reviewer, clocks, concurrency, pool limits) from the
+same file. Effective order is flag > process environment > per-kind file > `.env` > default.
 Loop-policy keys in `.env` are refused rather than ignored, so the split is enforced.
+`--config` overrides the file for a loop run; `MEERKAT_TASKPANEL_CONFIG_DIR` relocates the
+directory (tests, containers, read-only roots). An install that predates the location is
+migrated once from `<agent-dir>/meerkat-taskpanel.env`; the legacy file is kept and no
+longer read.
 
 `.env` is not tracked (`git` and `docker` both ignore it); the Access panel
 writes it 0600. An inline `TASKD_TOKEN` requires that mode. The old
 `<dataDir>/taskd.env` is **no longer read** — this is a hard switch; move its
 keys into `.env`.
 
-**Which program root?** `.env` and `.data` resolve from the program that is running, so there
-are three roots in play and they are not interchangeable:
+**Which program root?** `.env`, `.env.<actor-kind>` and `.data` resolve from the program
+that is running, so there are three roots in play and they are not interchangeable:
 
-| Root | Produced by | `.env` / `.data` |
+| Root | Produced by | `.env` / `.env.<kind>` / `.data` |
 |---|---|---|
-| the checkout | `git clone` | `<checkout>/.env`, `<checkout>/.data` |
-| the container | `docker build` (program at `/app`) | `/app/.env`, `/app/.data` (the compose volume) |
-| the installed tree | `npx meerkat-taskpanel` or `install.sh --target server` | `~/.meerkat-taskpanel/.env`, `~/.meerkat-taskpanel/.data` |
+| the checkout | `git clone` | `<checkout>/.env`, `<checkout>/.env.claude`, `<checkout>/.data` |
+| the container | `docker build` (program at `/app`) | `/app/.env`, `/app/.data` (the compose volume); the loop does not run in the image |
+| the installed tree | `npx meerkat-taskpanel` or `install.sh --target server` | `~/.meerkat-taskpanel/.env`, `~/.meerkat-taskpanel/.env.claude`, `~/.meerkat-taskpanel/.data` |
 
 The installed tree is a copy of `src/**` plus the built `web/dist`, materialized by
 `scripts/install/lib/server-install.mjs`; `scripts/install/server.sh` is the shell entry, and
@@ -293,7 +301,8 @@ Security-relevant environment variables:
 | `TASKD_DATA_DIR` / `TASKD_DB` | data directory / database file |
 | `TASKD_TOKEN` | token a client presents (`--token` outranks it) |
 | `TASKD_TOKEN_FILE` | a token file the client reads (`TASKD_TOKEN` outranks it) |
-| `MEERKAT_TASKPANEL_ENV_FILE` | selects the config file; not a secret |
+| `MEERKAT_TASKPANEL_ENV_FILE` | selects the board config file; not a secret |
+| `MEERKAT_TASKPANEL_CONFIG_DIR` | relocates the per-kind config directory (tests, containers, read-only roots); each kind is `<dir>/.env.<actor-kind>` |
 | `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS` | label housekeeping (§4.4) |
 | `TASKD_LOG_LEVEL` | `debug`/`info`/`warn`/`error`/`off` (default `info`); `taskd` and the loop, and `taskctl` only when explicitly set |
 | `TASKD_LOG_MAX_BYTES` / `TASKD_LOG_KEEP` | size rotation of `<dataDir>/logs/taskd.log` (defaults 10 MiB, 5 files) |

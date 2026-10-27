@@ -233,3 +233,40 @@ describe("cli/project dir", () => {
     });
   });
 });
+
+describe("cli/project dir — per-kind config defaults", () => {
+  it("reads MEERKAT_TASKPANEL_PROJECTS_JSON from .env.<kind> on the local path", async () => {
+    await withCli(async ({ run }) => {
+      const target = makeTarget();
+      const { map } = writeMap([{ project: "demo", local_path: target }]);
+      const configDir = makeTempDir("meerkat-taskpanel-kind-");
+      writeFileSync(join(configDir, ".env.claude"), `MEERKAT_TASKPANEL_PROJECTS_JSON=${map}\n`);
+
+      const result = run(["project", "dir", "demo", "--require-dir", "--actor-kind", "claude", "--json"], {
+        env: {
+          MEERKAT_TASKPANEL_CONFIG_DIR: configDir,
+          MEERKAT_TASKPANEL_PROJECTS_JSON: "",
+        },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(dataOf(result).dir, target);
+    });
+  });
+
+  it("does not read a per-kind file for another kind", async () => {
+    await withCli(async ({ run }) => {
+      const target = makeTarget();
+      const { map } = writeMap([{ project: "demo", local_path: target }]);
+      const configDir = makeTempDir("meerkat-taskpanel-kind-");
+      writeFileSync(join(configDir, ".env.claude"), `MEERKAT_TASKPANEL_PROJECTS_JSON=${map}\n`);
+
+      const result = run(["project", "dir", "demo", "--require-dir", "--actor-kind", "codex", "--json"], {
+        env: {
+          MEERKAT_TASKPANEL_CONFIG_DIR: configDir,
+          MEERKAT_TASKPANEL_PROJECTS_JSON: "",
+        },
+      });
+      assert.notEqual(result.status, 0, "the claude file must not answer for codex");
+    });
+  });
+});

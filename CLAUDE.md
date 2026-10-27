@@ -207,15 +207,19 @@ authoritative home, because the container image drops `design/`.
 - **One config file at the install root.** `.env` (gitignored and dockerignored) is read by
   both `taskd` and `taskctl`; the process environment wins key by key and CLI flags win above
   both. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects another path. This file is
-  board-facing only: the loop's policy is a second, **per-actor-kind** file,
-  `<agent-dir>/meerkat-taskpanel.env` (the **loop config**), read only by `taskctl loop …`;
-  the loader refuses loop-policy keys here, so the two never merge. The old
+  board-facing only: each actor kind also has a **per-kind config**,
+  `<program root>/.env.<actor-kind>` (for example `.env.claude`), read by `taskctl` as a
+  per-agent default layer (identity, the project map, the engine location) and by
+  `taskctl loop …` for the loop policy; the loader refuses loop-policy keys here, so the
+  two never merge. `--config` overrides it for a loop run, and
+  `MEERKAT_TASKPANEL_CONFIG_DIR` relocates the directory (tests, containers, read-only
+  roots). The old
   `<dataDir>/taskd.env` is no longer read (hard switch). Identity (`--actor-kind`) is required
   on every command that talks to the board, except `--help` / `--version` and the local read
   `taskctl status` (it reads the runtime pointer, never the board); `--agent` names the role
   and is not a shared-file key. The install root is the **running program's** root: the checkout, `/app`
   in the image, or `~/.meerkat-taskpanel` for an installed tree. On a combined install
-  (`--target all`, which includes the server, or npm/npx) the agent shims and loop config
+  (`--target all`, which includes the server, or npm/npx) the agent shims and per-kind config
   name the installed tree (`MEERKAT_TASKPANEL_REPO`, `MEERKAT_TASKPANEL_ENV_FILE`) — never
   the checkout and never the npx cache; `--no-server` installs keep pointing at the checkout.
 - **The `taskd` guard follows the same root.** Selecting the server target writes

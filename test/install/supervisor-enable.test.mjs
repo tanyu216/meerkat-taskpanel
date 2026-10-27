@@ -26,7 +26,10 @@ import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-supervisor-", installDefaults: {} });
+const { makeTempDir, kindConfigDirFor, runInstall, cleanup } = createInstallHarness({
+  prefix: "meerkat-taskpanel-supervisor-",
+  installDefaults: {},
+});
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const UID = process.getuid?.() ?? 0;
@@ -420,7 +423,7 @@ describe("install.sh: enable — launchd", () => {
 
     // The full-access opt-in is an authorization; status states it and who
     // recorded it, so a bypass is never invisible.
-    const config = join(home, ".claude", "meerkat-taskpanel.env");
+    const config = join(kindConfigDirFor(home), ".env.claude");
     writeFileSync(
       config,
       `${readFileSync(config, "utf8")}MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes\n` +

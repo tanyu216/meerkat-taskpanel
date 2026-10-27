@@ -29,6 +29,8 @@ web/dist
 # otherwise bake it into the image. Compose points MEERKAT_TASKPANEL_ENV_FILE at
 # the writable data volume instead.
 .env
+# per-kind configs — machine-local, never image input
+.env.*
 
 # parallel-task worktrees (CLAUDE.md keeps them inside the checkout) — another branch's
 # whole tree must never enter this build context

@@ -55,10 +55,19 @@ For an `--actor-kind pi` run, a missing extension is added to `missing`, an
 `install-pi-subagents` action is emitted, and a warning names the install command. Other
 actor kinds report the field but are not blocked by it.
 
+## The per-kind config
+
+`<program root>/.env.<actor-kind>`, reported as `kindConfig.path`. The program root is
+resolved in order: `MEERKAT_TASKPANEL_CONFIG_DIR`, the installed tree
+(`<home>/.meerkat-taskpanel`), a named checkout (`--checkout` / `MEERKAT_TASKPANEL_ROOT` /
+`MEERKAT_TASKPANEL_REPO`), the shim's rendered `exec node "<root>/src/cli/index.mjs"`, then
+cwd when it is a checkout. A legacy `<agent-dir>/meerkat-taskpanel.env` is **not** read;
+re-run `install.sh` to migrate it.
+
 ## Fixed human name
 
 Resolution: process `TASKCTL_HUMAN`, Claude `~/.claude/settings.json` `env.TASKCTL_HUMAN`,
-the actor-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the rendered shim's
+the per-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the rendered shim's
 `human="…"` line, the env file, then `USER`/`LOGNAME`. A fallback is reported as
 `configured: false`; ask the user and set the explicit name.
 
@@ -70,6 +79,7 @@ the actor-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the rend
   "home": "…",
   "actorKind": "claude",
   "projectDir": "…",
+  "kindConfig": {"path": "…", "present": true, "programRoot": "…", "source": "env-config-dir|installed-tree|flag|env-root|env-repo|shim|cwd"},
   "checkout": {"found": true, "path": "…", "source": "flag|env-root|env-repo|cwd|config"},
   "taskctl": {"found": true, "path": "…", "source": "path|server|shim|checkout", "version": "…"},
   "server": {"url": "…", "urlSource": "flag|env|env-file|pointer|default", "loopback": true,

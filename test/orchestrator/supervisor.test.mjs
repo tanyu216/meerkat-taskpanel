@@ -2095,12 +2095,14 @@ describe("the concurrency cap", () => {
 
     const dir = mkdtempSync(join(tmpdir(), "tp-concurrency-"));
     try {
-      mkdirSync(join(dir, ".claude"), { recursive: true });
-      writeFileSync(join(dir, ".claude", "meerkat-taskpanel.env"), "MEERKAT_TASKPANEL_MAX_CONCURRENCY=4\n");
-      const fromFile = parseArgs(["--actor-kind", "claude", "--home", dir], {});
+      writeFileSync(join(dir, ".env.claude"), "MEERKAT_TASKPANEL_MAX_CONCURRENCY=4\n");
+      const fromFile = parseArgs(["--actor-kind", "claude", "--home", dir], {
+        MEERKAT_TASKPANEL_CONFIG_DIR: dir,
+      });
       assert.equal(fromFile.maxConcurrency, 4);
 
       const envWins = parseArgs(["--actor-kind", "claude", "--home", dir], {
+        MEERKAT_TASKPANEL_CONFIG_DIR: dir,
         MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5",
       });
       assert.equal(envWins.maxConcurrency, 5);
@@ -2113,6 +2115,62 @@ describe("the concurrency cap", () => {
       MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5",
     });
     assert.equal(flagged.maxConcurrency, 2);
+  });
+
+  it("reads the per-kind config from the program root, selected by kind", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-kind-config-"));
+    try {
+      writeFileSync(join(dir, ".env.claude"), "MEERKAT_TASKPANEL_MAX_CONCURRENCY=3\n");
+      writeFileSync(join(dir, ".env.codex"), "MEERKAT_TASKPANEL_MAX_CONCURRENCY=4\n");
+      const env = { MEERKAT_TASKPANEL_CONFIG_DIR: dir };
+
+      const claude = parseArgs(["--actor-kind", "claude"], env);
+      const codex = parseArgs(["--actor-kind", "codex"], env);
+      assert.equal(claude.config, join(dir, ".env.claude"));
+      assert.equal(claude.maxConcurrency, 3);
+      assert.equal(codex.config, join(dir, ".env.codex"));
+      assert.equal(codex.maxConcurrency, 4);
+
+      // `--home` no longer chooses the config file.
+      const moved = parseArgs(["--actor-kind", "claude", "--home", "/tmp/elsewhere"], env);
+      assert.equal(moved.config, join(dir, ".env.claude"));
+
+      // `--config` is an explicit override and still wins.
+      writeFileSync(join(dir, "explicit.env"), "MEERKAT_TASKPANEL_MAX_CONCURRENCY=9\n");
+      const explicit = parseArgs(["--actor-kind", "claude", "--config", join(dir, "explicit.env")], env);
+      assert.equal(explicit.maxConcurrency, 9);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores a legacy <agent-dir>/meerkat-taskpanel.env", () => {
+    const home = mkdtempSync(join(tmpdir(), "tp-legacy-config-"));
+    try {
+      mkdirSync(join(home, ".claude"), { recursive: true });
+      writeFileSync(join(home, ".claude", "meerkat-taskpanel.env"), "MEERKAT_TASKPANEL_MAX_CONCURRENCY=4\n");
+      const opts = parseArgs(["--actor-kind", "claude", "--home", home], {
+        MEERKAT_TASKPANEL_CONFIG_DIR: join(home, "no-kind-config"),
+      });
+      assert.equal(opts.maxConcurrency, DEFAULT_MAX_CONCURRENCY);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("forwards --config only when it differs from the per-kind default", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-kind-forward-"));
+    try {
+      const env = { MEERKAT_TASKPANEL_CONFIG_DIR: dir };
+      const byDefault = loopCommandArgs(parseArgs(["--actor-kind", "claude"], env));
+      assert.equal(byDefault.includes("--config"), false);
+      const explicit = loopCommandArgs(
+        parseArgs(["--actor-kind", "claude", "--config", join(dir, "explicit.env")], env),
+      );
+      assert.equal(explicit.includes("--config"), true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("keeps zero as 'claim nothing'", () => {

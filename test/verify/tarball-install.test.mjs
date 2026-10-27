@@ -79,6 +79,7 @@ describe("scrub-env — the base environment", () => {
       TASKD_DATA_DIR: "/data",
       TASKD_URL: "http://127.0.0.1:9527",
       MEERKAT_TASKPANEL_ENV_FILE: "/tmp/x.env",
+      MEERKAT_TASKPANEL_CONFIG_DIR: "/tmp/kind",
     };
     const clean = scrubEnv(env);
     assert.deepEqual(clean, { PATH: "/usr/bin", HOME: "/home/tester" });

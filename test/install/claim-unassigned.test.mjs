@@ -4,23 +4,26 @@
  *
  * `install.sh` asks the question when stdin is a TTY and no flag was given,
  * defaults to **yes** everywhere else, and persists the answer as
- * `<target_home>/<agent-dir>/meerkat-taskpanel.env` (`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=…`) —
+ * `<program root>/.env.<actor-kind>` (`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=…`) —
  * the file `taskctl loop …` reads as its default. OpenClaw is the one
  * agent kind that gets no such file, because it does not build its own supervisor
  * (it installs openclaw-team, whose poll/patrol already implement the design).
+ * The legacy `<agent-dir>/meerkat-taskpanel.env` is migrated once by the installer.
  *
  * Run with: node --test
  */
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-claim-" });
+const { makeTempDir, kindConfigDirFor, runInstall, cleanup } = createInstallHarness({
+  prefix: "meerkat-taskpanel-claim-",
+});
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -46,8 +49,17 @@ function installEnv(home, bin) {
   };
 }
 
+const KIND_BY_DIR = { ".claude": "claude", ".codex": "codex", ".agents": "pi", ".openclaw": "openclaw" };
+
+/** The per-kind config path, addressed by the agent dir the assertions name. */
+function configPathOf(home, agentDir) {
+  const kind = KIND_BY_DIR[agentDir] ?? agentDir;
+  return join(kindConfigDirFor(home), `.env.${kind}`);
+}
+
+/** Its text, or null when the install wrote none. */
 function configOf(home, agentDir) {
-  const path = join(home, agentDir, "meerkat-taskpanel.env");
+  const path = configPathOf(home, agentDir);
   return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
@@ -233,21 +245,23 @@ describe("install.sh: the workflow config", () => {
     const env = installEnv(home, bin);
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice", "--claim-unassigned=no"], env).status, 0);
 
-    // Rewrite the file as a pre-workflow install: the two keys it always had, and a
-    // deliberate reviewer choice the upgrade must not touch.
-    const path = join(home, ".claude", "meerkat-taskpanel.env");
+    // Replace the new file with a pre-workflow install at the legacy path: the two
+    // keys it always had, and a deliberate reviewer choice the migration must not touch.
+    const legacy = join(home, ".claude", "meerkat-taskpanel.env");
     writeFileSync(
-      path,
+      legacy,
       "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no\nMEERKAT_TASKPANEL_REPO=/old/checkout\nMEERKAT_TASKPANEL_REVIEWER=old-reviewer\n",
       "utf8",
     );
+    rmSync(configPathOf(home, ".claude"));
 
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice", "--reviewer", "jobs"], env).status, 0);
-    const text = readFileSync(path, "utf8");
+    const text = configOf(home, ".claude");
     assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=old-reviewer$/m, "the existing choice is kept");
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m, "the missing key is added");
     assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=yes$/m);
     assert.equal(text.match(/^MEERKAT_TASKPANEL_REVIEWER=/gm).length, 1, "never duplicated");
+    assert.ok(existsSync(legacy), "migration leaves the legacy file in place");
   });
 });
 
@@ -320,11 +334,12 @@ describe("install.sh: the scheduler's two clocks", () => {
     const env = installEnv(home, bin);
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], env).status, 0);
 
-    const path = join(home, ".claude", "meerkat-taskpanel.env");
-    writeFileSync(path, "MEERKAT_TASKPANEL_CONTINUE=no\n", "utf8");
+    const legacy = join(home, ".claude", "meerkat-taskpanel.env");
+    writeFileSync(legacy, "MEERKAT_TASKPANEL_CONTINUE=no\n", "utf8");
+    rmSync(configPathOf(home, ".claude"));
     const again = runInstall(["--target", "claude", "--agent-name", "alice", "--continue-interval", "900"], env);
     assert.equal(again.status, 0, again.stderr);
-    const text = readFileSync(path, "utf8");
+    const text = configOf(home, ".claude");
     assert.match(text, /^MEERKAT_TASKPANEL_CONTINUE=no$/m, "the existing choice is kept");
     assert.match(text, /^MEERKAT_TASKPANEL_PING_INTERVAL=60$/m, "the missing key is added");
     assert.equal(text.match(/^MEERKAT_TASKPANEL_CONTINUE_INTERVAL=/gm).length, 1, "never duplicated");

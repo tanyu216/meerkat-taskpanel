@@ -42,8 +42,11 @@ function call(snippet, input = "", env = {}) {
   return { ...run, out: match[1], code: Number(match[2]) };
 }
 
+const KIND_BY_DIR = { ".claude": "claude", ".codex": "codex", ".agents": "pi" };
+
 function configOf(home, agentDir) {
-  const path = join(home, agentDir, "meerkat-taskpanel.env");
+  const kind = KIND_BY_DIR[agentDir] ?? agentDir;
+  const path = join(harness.kindConfigDirFor(home), `.env.${kind}`);
   return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 

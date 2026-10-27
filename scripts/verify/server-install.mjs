@@ -170,10 +170,12 @@ async function main() {
   const shim = readFileSync(join(fullHome, ".claude", "bin", "taskctl"), "utf8");
   check(shim.includes(join(fullTree, "src", "cli", "index.mjs")), "the agent shim drives the installed tree");
   check(
-    readFileSync(join(fullHome, ".claude", "meerkat-taskpanel.env"), "utf8").includes(
-      `MEERKAT_TASKPANEL_REPO=${fullTree}`,
-    ),
-    "the agent config names the installed tree",
+    readFileSync(join(fullTree, ".env.claude"), "utf8").includes(`MEERKAT_TASKPANEL_REPO=${fullTree}`),
+    "the per-kind config names the installed tree",
+  );
+  check(
+    !existsSync(join(fullHome, ".claude", "meerkat-taskpanel.env")),
+    "the legacy per-agent config is not written",
   );
 
   // 7. The installed launchers run.

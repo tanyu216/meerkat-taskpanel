@@ -13,6 +13,8 @@ dist/
 
 # the install-root config file — it may hold TASKD_TOKEN, so it is never tracked
 .env
+# per-kind configs — one per actor kind, written beside the program root
+.env.*
 
 # parallel-task worktrees — the convention in CLAUDE.md keeps them inside the checkout,
 # so they must never appear as untracked files in the primary one

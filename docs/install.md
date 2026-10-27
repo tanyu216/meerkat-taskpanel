@@ -32,7 +32,9 @@ There are three layers, and it is worth keeping them straight:
 2. **The agent bundle** (Claude Code and Codex) — `install.sh --target claude|codex`
    deploys the rest of that agent's setup too, not just the skill: the agent's own settings
    (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
-   or the scheduling units (Codex), and a `taskctl` shim that pins the agent identity. Writes
+   or the scheduling units (Codex), a `taskctl` shim that pins the agent identity, and the
+   per-kind config at the **program root** (`<program root>/.env.<actor-kind>` — not under the
+   agent directory). Writes
    are **merge-style and idempotent**: a repeat install **exits 0**, leaves every managed
    file and config key at its existing value, and prints a
    `left unchanged — use --force to overwrite` notice; `--force` is the *only* way to
@@ -101,15 +103,16 @@ The server target materializes a self-contained runtime at `<home>/.meerkat-task
 ├── bin/taskd             # 0755 launcher: exec node <tree>/src/server/main.mjs
 ├── bin/taskctl           # 0755 launcher: exec node <tree>/src/cli/index.mjs
 ├── .env                  # 0600, seeded from the template; never overwritten
+├── .env.<actor-kind>     # umask default; one per installed kind, policy not secrets
 └── .data/                # 0700, the SQLite board; never deleted
 ```
 
-The tree is self-locating: `src/` resolves `.env`, `.data` and `web/dist` from its own
+The tree is self-locating: `src/` resolves `.env`, `.env.<actor-kind>`, `.data` and `web/dist` from its own
 position, so `bin/taskd` and `bin/taskctl` work from any directory and with no environment
 variables. Add `~/.meerkat-taskpanel/bin` to `PATH`, or use `npm install -g`.
 
 When the server is installed alongside agent-kind skills (the default, and every npm/npx
-install), the agent shim and loop config (`MEERKAT_TASKPANEL_REPO`,
+install), the agent shim and per-kind config (`MEERKAT_TASKPANEL_REPO`,
 `MEERKAT_TASKPANEL_ENV_FILE`) point at this tree, never at the npx cache or the checkout,
 and the `taskd` guard's unit runs the tree's `src/server/main.mjs` with
 `TASKD_DATA_DIR=<tree>/.data`. An agent-only install (`--no-server`) is unchanged: it keeps
@@ -124,6 +127,23 @@ under `src/` (it still never touches `.env` or `.data`); `--dry-run` writes noth
 Upgrade by running the installer again (`--force` to refresh managed files). To remove,
 delete the agent-kind skill directories listed below and the tree itself; **keep `.data/` if you
 want the board**: `rm -rf ~/.meerkat-taskpanel` deletes the database with it.
+
+**Where the per-kind config lives.** `<program root>/.env.<actor-kind>` (for example
+`.env.claude`), beside the board `.env`, not under the agent directory. A combined install
+(`--target all`, or npm/npx) keeps it in the tree — `~/.meerkat-taskpanel/.env.claude` — and
+removing the tree removes it. An agent-only install keeps it at the checkout/package root —
+`<checkout>/.env.claude` — so remove that file by hand when uninstalling. The same rule
+applies to the installer's config: `MEERKAT_TASKPANEL_CONFIG_DIR` relocates the directory
+(tests, containers, a read-only package root). An **agent-only npm/npx install** keeps the
+file inside the package tree, which an upgrade replaces; prefer a combined install when the
+per-kind policy must survive upgrades.
+
+**Migrating from `<agent-dir>/meerkat-taskpanel.env`.** The next `install.sh` copies the
+legacy file once to the new location, appends any installer-owned keys it lacks, and leaves
+the legacy file untouched — it is no longer read. An existing new file always wins (no merge);
+`--force` resets the new file to the template instead of migrating. Switching install shape
+(for example agent-only, then `--target all`) does not migrate the old program root's file;
+copy `<old root>/.env.<kind>` to the new tree by hand.
 
 ## Quick start (agent-kind skills)
 
@@ -227,7 +247,7 @@ directory, so `/usr/bin/env node` is exit 127 — and the resident session's `ex
 and the worker's own tool tree, resolve on that same set. If the agent CLI is not on `PATH` at
 install time, the installer says so and renders node's directory alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
-| loop config | `<agent-dir>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW` and `MEERKAT_TASKPANEL_REVIEWER`, the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE`, the concurrency cap's `MEERKAT_TASKPANEL_MAX_CONCURRENCY`, and the pool's `MEERKAT_TASKPANEL_RESIDENT`, `..._SESSION_MAX_AGE`, `..._SESSION_TURN_TIMEOUT`, `..._SESSION_POLL_MS`, `..._SESSION_POOL_MAX`, `..._PROJECT_CONCURRENCY` and `..._PROJECT_IDLE_MS`. Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
+| per-kind config | `<program root>/.env.<actor-kind>` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW` and `MEERKAT_TASKPANEL_REVIEWER`, the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE`, the concurrency cap's `MEERKAT_TASKPANEL_MAX_CONCURRENCY`, and the pool's `MEERKAT_TASKPANEL_RESIDENT`, `..._SESSION_MAX_AGE`, `..._SESSION_TURN_TIMEOUT`, `..._SESSION_POLL_MS`, `..._SESSION_POOL_MAX`, `..._PROJECT_CONCURRENCY` and `..._PROJECT_IDLE_MS`. Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
 | log (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
@@ -465,7 +485,7 @@ When stdin is a TTY and no flag was given, `install.sh` asks once:
 Allow claiming unassigned tasks? [Y/n]
 ```
 
-The answer is persisted to `<agent-dir>/meerkat-taskpanel.env` as
+The answer is persisted to `<program root>/.env.<actor-kind>` as
 `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes|no`; the supervisor reads it as its default (an
 explicit `--claim-unassigned` flag or `$MEERKAT_TASKPANEL_CLAIM_UNASSIGNED` overrides it).
 The [interactive wizard](#interactive-wizard) asks this question inside its one flow;
@@ -503,15 +523,17 @@ MEERKAT_TASKPANEL_REVIEWER=Reviewer
 
 An **empty** `MEERKAT_TASKPANEL_REVIEWER` is the manual opt-out: the supervisor
 then dispatches no review card and a delivery waits for a human to accept it
-(edit the loop config; the wizard does not ask).
+(edit the per-kind config; the wizard does not ask).
 
 Acceptance is **not** install configuration any more: each project stores a default
 (`auto | off | agent | human`) and each card a snapshot, both set through
 `taskctl project update <id> --acceptance …` / `issue create --acceptance-mode …`.
 The file is merged, never rewritten.
 
-`MEERKAT_TASKPANEL_ENV_FILE` points the installer and both binaries at a different file (a
-read-only package root, a container, or the test suite).
+`MEERKAT_TASKPANEL_ENV_FILE` points the installer and both binaries at a different board
+file (a read-only package root, a container, or the test suite).
+`MEERKAT_TASKPANEL_CONFIG_DIR` does the same for the per-kind directory: each kind is
+`<dir>/.env.<actor-kind>`.
 
 The SLA thresholds are seeded as a **commented** block in the same `.env` (every
 `TASKD_SLA_*` key with its default). Uncomment a line to override it: `taskd` validates the
@@ -555,7 +577,7 @@ with the key unset they stay `human:local`.
 
 **Agent name, reviewer, and the ping/continue intervals are not asked.** Their
 defaults are fixed (`Worker` / `Reviewer` / `60` / `600`); edit
-`<agent-dir>/meerkat-taskpanel.env` (or `TASKCTL_AGENT` in the agent settings) to
+`<program root>/.env.<actor-kind>` (or `TASKCTL_AGENT` in the agent settings) to
 change them.
 
 Answers feed the same resolution path as the flags, so everything below still
@@ -590,14 +612,14 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `Worker`). Must equal the board assignee for the agent to claim cards. |
 | `--no-automation` | Skip the Codex scheduling units **and** the `taskd` keepalive guard; the Claude/OpenClaw/Pi skill bundles are otherwise unaffected. |
 | `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each agent-kind installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
-| `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<agent-dir>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
+| `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<program root>/.env.<actor-kind>`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
-| `--recover-stale=yes\|no` | Add stale `in_progress` cards to the poll's candidate read (`issue candidates --stale`). The takeover itself is still `issue claim`, decided by the board (holder after 10 minutes, anyone after 6 hours). Persisted to the loop config; default `yes`. |
-| `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — ask the board for the workflow plan (`issue reconcile --workflow`) and apply its review actions. Persisted to the loop config; default `yes`. `no` means the loop writes no card at all. |
-| `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the loop config; default `Reviewer`. Set the key **empty** in the loop config to disable **dispatch** — a delivery then waits for a human to accept it. |
+| `--recover-stale=yes\|no` | Add stale `in_progress` cards to the poll's candidate read (`issue candidates --stale`). The takeover itself is still `issue claim`, decided by the board (holder after 10 minutes, anyone after 6 hours). Persisted to the per-kind config; default `yes`. |
+| `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — ask the board for the workflow plan (`issue reconcile --workflow`) and apply its review actions. Persisted to the per-kind config; default `yes`. `no` means the loop writes no card at all. |
+| `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the per-kind config; default `Reviewer`. Set the key **empty** in the per-kind config to disable **dispatch** — a delivery then waits for a human to accept it. |
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |
 | `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the agent kind with a bounded `Continue` prompt; that turn runs poll, patrol and workflow. |
-| `--continue=yes\|no` | Enable the continue turn. Persisted to the loop config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
+| `--continue=yes\|no` | Enable the continue turn. Persisted to the per-kind config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
 | `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints the per-agent-kind load state and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
 | `--supervisor-actor-kinds <list>` | Which loop agent kinds the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}` (default: the loop actor kinds present in `--target`). Not `--actor-kind`: that is the loop's per-command identity flag, and this flag selects a set. `openclaw` is **rejected** (reason on stderr, exit 2). |
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per agent kind — see [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in). |
@@ -683,8 +705,9 @@ claude plugin validate "$PWD"       # validates the plugin + marketplace manifes
 Step 1 writes, merge-style and idempotently: the skill, `~/.claude/settings.json`
 (`env.TASKCTL_AGENT=alice` + a `SessionStart` hook that starts the board and lists
 claimable cards), `~/.claude/commands/{board,claim,deliver}.md`, the `taskctl` shim at
-`~/.claude/bin/taskctl`, and the scheduling set (`~/.claude/scheduling/*` and
-`~/.claude/meerkat-taskpanel.env`). Re-running is safe: existing
+`~/.claude/bin/taskctl`, and the scheduling set (`~/.claude/scheduling/*`). The per-kind
+config is separate: `<program root>/.env.claude` (see
+[Where the per-kind config lives](#upgrading-and-removing)). Re-running is safe: existing
 `settings.json` keys and hooks are preserved, and `--force` is the only way to overwrite.
 
 Uninstall:
@@ -697,7 +720,7 @@ rm -rf ~/.claude/skills/meerkat-taskpanel ~/.claude/skills/meerkat-loop \
        ~/.claude/skills/setup-meerkat \
        ~/.claude/commands/{board,claim,deliver}.md \
        ~/.claude/hooks/meerkat-taskpanel-session-start.sh ~/.claude/bin/taskctl \
-       ~/.claude/scheduling ~/.claude/meerkat-taskpanel.env ~/.claude/meerkat-taskpanel
+       ~/.claude/scheduling ~/.claude/meerkat-taskpanel
 ```
 
 ### OpenClaw
@@ -720,6 +743,10 @@ Format: bundle
 Bundle format: claude
 Bundle capabilities: skills
 ```
+
+OpenClaw gets **no per-kind config** from the installer (it runs openclaw-team's own
+supervisor). A hand-created `<program root>/.env.openclaw` is still read by `taskctl` as a
+per-agent default layer, and the file name follows the same pattern.
 
 **Why `claude`?** The repository root carries `.claude-plugin/`, and OpenClaw's detection
 precedence is **codex → cursor → claude**; with no Codex or Cursor marker present, the root
@@ -765,8 +792,8 @@ codex plugin list
 
 Step 1 writes, merge-style and idempotently: the skill, a claim-first snippet appended to
 `~/.codex/AGENTS.md` (existing content is preserved), the `taskctl` shim at
-`~/.codex/bin/taskctl`, and the scheduling set (`~/.codex/scheduling/*` and
-`~/.codex/meerkat-taskpanel.env`). Codex has no hooks, so scheduling is the auto-claim
+`~/.codex/bin/taskctl`, and the scheduling set (`~/.codex/scheduling/*`). The per-kind
+config is separate: `<program root>/.env.codex`. Codex has no hooks, so scheduling is the auto-claim
 mechanism — load one of the units (see
 [Scheduling units](#scheduling-units-claude-codex-pi)). `--no-automation` (or its environment
 form `MEERKAT_TASKPANEL_NO_AUTOMATION=1`) skips the scheduling set.
@@ -778,13 +805,13 @@ codex plugin remove meerkat-taskpanel
 codex plugin marketplace remove meerkat-taskpanel-marketplace
 rm -rf ~/.codex/skills/meerkat-taskpanel ~/.codex/skills/meerkat-loop \
        ~/.codex/bin/taskctl \
-       ~/.codex/scheduling ~/.codex/meerkat-taskpanel.env ~/.codex/meerkat-taskpanel
+       ~/.codex/scheduling ~/.codex/meerkat-taskpanel
 ```
 
 ### Pi / Agent Skills
 
 ```bash
-# 1. skill + scheduling set (units, ~/.agents/meerkat-taskpanel.env)
+# 1. skill + scheduling set (units; per-kind config at <program root>/.env.pi)
 bash install.sh --target pi --link --force
 
 # 2. package — the repository's own package.json declares the pi manifest
@@ -825,7 +852,7 @@ Uninstall:
 ```bash
 pi remove "$PWD"
 rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/skills/meerkat-loop \
-       ~/.agents/scheduling ~/.agents/meerkat-taskpanel.env
+       ~/.agents/scheduling
 ```
 
 ## Agent integration: skill only
@@ -840,7 +867,7 @@ The installed skill is self-contained but carries **no engine**: `install.sh` co
 `SKILL.md`, `references/` and `scripts/` into the agent directory, never `src/`. So the wrapper
 `scripts/run.mjs` resolves the CLI on a ladder — a checkout named by
 `MEERKAT_TASKPANEL_ROOT` (or by `MEERKAT_TASKPANEL_REPO`, the key the installer records in
-the loop config), then a checkout around the skill itself, then **the agent kind's own `taskctl`
+the per-kind config), then a checkout around the skill itself, then **the agent kind's own `taskctl`
 shim** beside the skill, then `taskctl` on `PATH` — and when none of those holds a CLI it
 stops with the ways to fix it, instead of the module-not-found stack an earlier version died
 with (T-20261014-214002). In the normal case it is the shim that answers: `install.sh` writes

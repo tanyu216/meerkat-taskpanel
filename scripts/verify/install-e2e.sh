@@ -79,6 +79,18 @@ for agent_dir in .claude .openclaw .codex .agents; do
   echo "  OK  $agent_dir/skills/meerkat-taskpanel/SKILL.md"
 done
 
+CONFIG_ROOT="$THROWAWAY_HOME/.meerkat-taskpanel"
+for kind in claude codex pi; do
+  target="$CONFIG_ROOT/.env.$kind"
+  if [ ! -f "$target" ]; then
+    echo "FAIL: install did not write $target" >&2
+    exit 1
+  fi
+  echo "  OK  .meerkat-taskpanel/.env.$kind"
+done
+# Everything below runs as TASKCTL_ACTOR_KIND=system, which has no installed
+# config: the board path must treat a missing .env.system as "no overlay".
+
 step "taskctl project create"
 node "$CLI" project create --id demo --name "E2E Demo"
 

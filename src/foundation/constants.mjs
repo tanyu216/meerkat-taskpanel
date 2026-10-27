@@ -201,6 +201,21 @@ export const CLIENT_CONFIG_KEYS = Object.freeze([
 export const CONFIG_NAMESPACES = Object.freeze(["TASKD_", "TASKCTL_", "MEERKAT_TASKPANEL_"]);
 
 /**
+ * Keys the per-kind config (`<program root>/.env.<actor-kind>`) contributes to
+ * the board path.
+ *
+ * That file also carries loop policy, which the board loader deliberately
+ * ignores: the two readers share a grammar but not a key set. `REPO` is a
+ * per-kind deployment fact even though no non-loop command consumes it today.
+ */
+export const PER_KIND_CONFIG_KEYS = Object.freeze([
+  "TASKCTL_AGENT",
+  "TASKCTL_HUMAN",
+  "MEERKAT_TASKPANEL_PROJECTS_JSON",
+  "MEERKAT_TASKPANEL_REPO",
+]);
+
+/**
  * Client-only keys stripped from a spawned `taskd`'s environment.
  *
  * `MEERKAT_TASKPANEL_ENV_FILE` is deliberately *not* here: the child must read
