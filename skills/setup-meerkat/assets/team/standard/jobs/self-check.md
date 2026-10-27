@@ -59,9 +59,18 @@ never delivered.
 ## Handoff block and delivery check (stage 6)
 
 1. `plan.md` carries a requirement → artifact table for every description requirement,
-   comment decision, acceptance item and user-visible state. A row with no artifact is an
-   omission: finish it, ask with an agent `question`, or record a deliberate leftover. No
-   silent scope expansion.
+   comment decision, acceptance item and user-visible state. Every row ends in one
+   disposition, and the report's acceptance status carries it:
+   - **met** — the proof is falsifiable: the artifact `path` plus the check that resolves,
+     renders or reads it, so a missing or broken artifact fails it.
+   - **not_applicable** — only with the reason that makes it inapplicable (`n/a — <reason>`).
+     A bare `n/a` is an omission.
+   - **partial** / **not_met** — a blocker: finish it or ask with an agent `question` and
+     keep the card `in_progress`. The delivery gate refuses either status on a baseline item.
+   - **leftover** — work the card surfaced but does not own: it lies outside the frozen
+     acceptance and names the item, its owner and the follow-up (or why none is needed).
+     Never a leftover: a red gate, a security finding, a missing acceptance item, a missing
+     handoff path, or a published contract or migration change. No silent scope expansion.
 2. The report's `conclusion` begins with a one-line `Outcome:` and contains the
    `## Handoff` block; `meta.stage_handoff=required` is set.
 3. The block names every field: Design card, Spec, Prototype, PRD, Glossary, Product ADRs,
@@ -74,8 +83,10 @@ never delivered.
    it. The reviewer can read the spec, PRD, prototype evidence, handoff block and frozen
    acceptance.
 6. The artifacts live in the project's `design/` tree with relative paths only; `plan.md`
-   links them, but the cross-card input is the handoff, not the plan. Deliver at
-   `in_review` with the coverage table and the leftovers.
+   links them, but the cross-card input is the handoff, not the plan. A card with an open
+   omission, a red gate or an unanswered question is not delivered: finish it or ask and
+   keep the card `in_progress`. Deliver at `in_review` with the coverage table and the
+   leftovers, each with its owner and follow-up.
 
 ## Archive check
 

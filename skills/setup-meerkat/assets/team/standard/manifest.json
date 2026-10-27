@@ -40,7 +40,7 @@
       "native_agent": "linus",
       "lanes": ["worker"],
       "title": "Engineering",
-      "summary": "Owns system architecture and project initialization, implementation, bug fixes, operations, code review and dead-code cleanup.",
+      "summary": "Owns system architecture and project initialization, implementation, refactoring, bug fixes, code review and dead-code cleanup.",
       "responsibilities": [
         "Plan the system initialization and project foundation, and split the work into verifiable steps.",
         "Decide the architecture style (DDD or a named simpler style) and record the frontend, backend, persistence and container/build stack before scaffolding, with the human's E5 confirmation.",
@@ -64,7 +64,8 @@
         "Do not split a card yourself; the project session decides.",
         "Do not read another card's plan as this card's plan.",
         "Do not split a card into an epic or children yourself.",
-        "Do not integrate or clean up a card yourself; the project session does it after approval."
+        "Do not integrate or clean up a card yourself; the project session does it after approval.",
+        "Do not take work that is not architecture, implementation, refactoring or a bug fix; operations on a running system goes outside the roles."
       ],
       "workflow": "linus/workflow.md",
       "self_check": "linus/self-check.md"

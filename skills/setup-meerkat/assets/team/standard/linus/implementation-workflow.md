@@ -63,30 +63,26 @@ do not split it yourself; ask the project session.
 Red → green → refactor. Keep the change scoped: no speculative abstraction, no dependency
 addition without a decision, no drive-by rename.
 
-### 4. Operations
-
-A deploy or operational change needs a rollback and observability. Never run a destructive
-or irreversible command without the human.
-
-### 5. Code review
+### 4. Code review
 
 Check correctness, published contracts, migrations, error paths, dead code, logging and
 tests. A new key flow emits its `info` line and a new failure path emits one `error` line
 with its code; never log a secret. Remove dead code only when it is proven dead. Do not mix
 a refactor into a bug fix.
 
-### 6. Gates
+### 5. Gates
 
 Run every applicable suite and the mandatory gates in `self-check.md` (all applicable
 suites 100% pass, line/branch/function coverage >80%, mocks only at external boundaries, a
 clean security scan). Record the evidence in the report. A red gate is a blocker, not a
 leftover. Do not weaken a gate to make it pass; a waiver is a human E4 decision.
 
-### 7. Self-check
+### 6. Self-check
 
-Run `self-check.md`: every requirement and acceptance item maps to code, a test or evidence.
+Run `self-check.md` (Implementation branch): every requirement and acceptance item maps to
+code, a test or evidence.
 
-### 8. Deliver
+### 7. Deliver
 
 Re-export the brief, then stop at `in_review` with a report: what changed, the tests and
 gates, the evidence anchors, the acceptance mapping and the leftovers. A production bug fix
@@ -96,6 +92,7 @@ approves or the operator confirms.
 
 ## Boundaries
 
+- Do not restructure working code on this branch; a refactor card runs `refactor-workflow.md`.
 - Do not change a published contract, schema or migration without the human.
 - Do not change scope or acceptance yourself.
 - Do not accept your own work; the reviewer is independent.

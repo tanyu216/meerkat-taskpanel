@@ -624,7 +624,7 @@ it never closes the card.
 ## Team roles (optional)
 
 A deployment may give its agents named roles — the standard team is **Jobs** (product
-design), **Linus** (architecture and implementation), **Turing** (acceptance) and a
+design), **Linus** (architecture, implementation and refactoring), **Turing** (acceptance) and a
 separate **Reviewer**. The board never sees a "role": Jobs/Linus/Turing are ordinary board
 **agent names**, so the creator, the assignee and the report author are recorded as those
 names. Roles are installed by `/setup-meerkat`, never by `install.sh`; with no roles root
@@ -637,7 +637,7 @@ A roles root is a directory with `manifest.json`:
 ├── manifest.json
 ├── ownership.md                optional; routes work shapes to one accountable role
 ├── jobs/{workflow.md,ui-workflow.md,self-check.md}
-├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,self-check.md}
+├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,refactor-workflow.md,self-check.md}
 ├── turing/{workflow.md,test-design-workflow.md,regression-workflow.md,performance-workflow.md,self-check.md}
 └── reviewer/{workflow.md,reviewer-prompt.md}
 ```
@@ -666,7 +666,9 @@ to write and maintain `.meerkat/<identifier>/plan.md`, which the reviewer reads.
 project session receives it in full (bounded at 2,500 characters) when it spawns a batch, and
 the control/continue turn receives a compact summary and its path. It assigns one accountable
 role per work shape; the card's assignee still selects the executing role, and it never
-changes who decides.
+changes who decides. A shape the guide does not describe is not force-fit into a role — it
+goes to a worker outside the roles, whose board name must be in `MEERKAT_TASKPANEL_AGENTS`
+because the manifest does not name it.
 
 **Decisions.** A subagent does not decide an unauthorized question: it writes an agent
 `question` comment on the `in_progress` card and stops. Poll's **question lane** sees the

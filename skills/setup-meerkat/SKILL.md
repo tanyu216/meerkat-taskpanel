@@ -80,8 +80,10 @@ The team choice is adversarial. Ask what the standard team would get wrong here,
 concrete counterexample card — a real card that would fall between two roles or belong to
 none — and list the card shapes the project actually has. Require an ownership matrix: every
 card shape has exactly one accountable role, and the reviewer is independent of the
-producer. An unowned card shape is a finding, not a detail for later. The matrix is persisted
-as `ownership.md` in the roles root; the loop routes work by it.
+producer. Work that belongs outside the roles is not force-fit into one: it goes to a worker
+outside them, and that is an answer, not a gap. An unowned card shape is a finding only when
+a defined role owns that shape. The matrix is persisted as `ownership.md` in the roles root;
+the loop routes work by it.
 
 The round closes only when the frontier is empty. Do not install, write a file or start a
 daemon before that, and never treat an incomplete answer as consent. `--yes` never authorizes
@@ -177,7 +179,7 @@ The standard template is `assets/team/standard/`:
 | Role | Board agent | Native agent | Scope |
 |---|---|---|---|
 | Jobs | `Jobs` | `jobs` | product planning, prototype validation, PRD, product glossary/ADRs, visual/interaction design |
-| Linus | `Linus` | `linus` | system architecture and project foundation (system-init design), implementation, bugs, ops, agent-instruction baseline, code glossary/ADRs |
+| Linus | `Linus` | `linus` | system architecture and project foundation (system-init design), implementation, refactoring, bugs, agent-instruction baseline, code glossary/ADRs |
 | Turing | `Turing` | `turing` | test design, post-fix regression (incl. production), optional performance, security, canonical terms |
 | Reviewer | `Reviewer` | `reviewer` | independent fourth role; verdict only |
 

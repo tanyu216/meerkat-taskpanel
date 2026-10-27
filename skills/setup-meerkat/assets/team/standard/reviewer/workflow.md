@@ -110,8 +110,10 @@ Deliver the report on the review card. The report's **first line** is exactly
 `VERDICT: APPROVE` or `VERDICT: REJECT`. Put the
 findings after it and in `leftovers`:
 
-- APPROVE: every acceptance item is met with evidence, the requirements are covered, and
-  the plan is followed or deviations are justified.
+- APPROVE: every acceptance item is met with falsifiable evidence, the requirements are
+  covered, and the plan is followed or deviations are justified. A leftover is acceptable
+  only when it lies outside the frozen acceptance and names its owner and follow-up; a
+  missing acceptance item is never a leftover.
 - REJECT: name exactly what must change, with file/line, reproduction, expected vs actual,
   and the missing scenario. Do not soften a missing requirement into a note.
 

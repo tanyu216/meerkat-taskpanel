@@ -102,6 +102,7 @@ describe("skill frontmatter and assets", () => {
       "linus/workflow.md",
       "linus/architecture-workflow.md",
       "linus/implementation-workflow.md",
+      "linus/refactor-workflow.md",
       "linus/self-check.md",
       "turing/workflow.md",
       "turing/test-design-workflow.md",
@@ -339,7 +340,15 @@ describe("skill frontmatter and assets", () => {
     assert.match(arch, /CLAUDE\.md/);
     assert.match(arch, /agent-instruction baseline/i);
     assert.match(arch, /project session/i, "integration stays with the project session");
-    for (const [name, text] of [["Jobs", jobs], ["Linus", linus], ["Turing", turing], ["architecture", arch], ["implementation", impl]]) {
+    const refactor = readFileSync(join(team, "linus", "refactor-workflow.md"), "utf8");
+    for (const [name, text] of [
+      ["Jobs", jobs],
+      ["Linus", linus],
+      ["Turing", turing],
+      ["architecture", arch],
+      ["implementation", impl],
+      ["refactor", refactor],
+    ]) {
       assert.doesNotMatch(text, /worktree|integration branch/i, `${name} leaves project mechanics to the project`);
     }
 
@@ -390,6 +399,7 @@ describe("skill frontmatter and assets", () => {
       "linus/workflow.md",
       "linus/architecture-workflow.md",
       "linus/implementation-workflow.md",
+      "linus/refactor-workflow.md",
       "linus/self-check.md",
       "turing/workflow.md",
       "turing/test-design-workflow.md",
@@ -440,6 +450,83 @@ describe("skill frontmatter and assets", () => {
     assert.match(guide, /assignee still selects/i);
     assert.doesNotMatch(guide, /## Decision rounds|\bE1\b|\bE5\b|awaiting|frontier/i);
     assert.equal(existsSync(join(team, "decision-policy.md")), false, "the team ships no policy copy");
+  });
+
+  it("keeps operations out of Linus and routes work the roles do not own", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const guide = readFileSync(join(team, "ownership.md"), "utf8");
+    const workflow = readFileSync(join(team, "linus", "workflow.md"), "utf8");
+    const implementation = readFileSync(join(team, "linus", "implementation-workflow.md"), "utf8");
+    const selfCheck = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    const manifest = JSON.parse(readFileSync(join(team, "manifest.json"), "utf8"));
+    const linus = manifest.roles.find((role) => role.id === "linus");
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    const policy = readFileSync(
+      join(ROOT, "skills", "meerkat-loop", "references", "decision-policy.md"),
+      "utf8",
+    );
+
+    assert.doesNotMatch(
+      workflow.split("\n")[0],
+      /\boperations\b/i,
+      "the role title does not claim operations",
+    );
+    assert.doesNotMatch(linus.summary, /\boperations\b/i, "the agent description drops operations");
+    assert.doesNotMatch(implementation, /^### \d+\. Operations/m, "no operations step");
+    assert.match(
+      workflow,
+      /not architecture, implementation, refactoring or a bug fix/i,
+      "the boundary is stated",
+    );
+    assert.match(
+      workflow,
+      /operations on a running system goes outside the roles/i,
+      "operations is routed out of the role",
+    );
+
+    assert.match(workflow, /refactor-workflow\.md/, "the role routes the refactor branch");
+    assert.match(guide, /refactor-workflow\.md/, "the routing guide names the refactor branch");
+    assert.match(selfCheck, /## Refactor branch/, "the self-check covers refactoring");
+
+    assert.match(guide, /outside\s+the\s+roles/i, "a shape outside the rows is not force-fit");
+    const implementationRow = guide
+      .split("\n")
+      .find((line) => line.includes("implementation-workflow.md"));
+    assert.ok(implementationRow, "the implementation row exists");
+    assert.doesNotMatch(implementationRow, /\boperations\b/i, "operations is not routed to Linus");
+    assert.ok(guide.trim().length <= 2500, "the guide fits the project-session prompt budget");
+    assert.match(skill, /outside\s+the\s+roles/i, "the setup interview allows an outside worker");
+    assert.match(policy, /outside\s+the\s+roles/i, "the decision policy allows an outside worker");
+  });
+
+  it("makes every self-check say what counts as proof and what may not be a leftover", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    for (const role of ["jobs", "linus", "turing"]) {
+      const check = readFileSync(join(team, role, "self-check.md"), "utf8");
+      assert.match(check, /falsifiable/i, `${role} requires falsifiable evidence`);
+      assert.match(check, /not_applicable/, `${role} names the not_applicable disposition`);
+      assert.match(check, /\bowner\b/i, `${role} makes a leftover name its owner`);
+      assert.match(check, /never a leftover/i, `${role} lists what may not be a leftover`);
+    }
+
+    const linusCheck = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    assert.match(linusCheck, /every branch/i, "the shared checks cover every branch");
+    assert.doesNotMatch(linusCheck, /apply to both/i, "there are three branches, not two");
+
+    const reviewer = readFileSync(join(team, "reviewer", "workflow.md"), "utf8");
+    assert.match(
+      reviewer,
+      /outside the frozen acceptance/i,
+      "the reviewer accepts a leftover only outside the acceptance",
+    );
+    assert.match(reviewer, /never a leftover|not a leftover/i, "a missing item is not a leftover");
+
+    const impl = readFileSync(join(team, "linus", "implementation-workflow.md"), "utf8");
+    assert.match(
+      impl,
+      /\(Implementation branch\)/,
+      "the implementation workflow names its self-check section",
+    );
   });
 
   it("reads the design artifacts on a feature path, not on a bug path", () => {
@@ -588,7 +675,8 @@ describe("skill frontmatter and assets", () => {
 
     for (const [file, heading] of [
       ["linus/architecture-workflow.md", "### 9. Deliver"],
-      ["linus/implementation-workflow.md", "### 8. Deliver"],
+      ["linus/implementation-workflow.md", "### 7. Deliver"],
+      ["linus/refactor-workflow.md", "### 7. Deliver"],
       ["turing/test-design-workflow.md", "### 9. Deliver"],
       ["turing/regression-workflow.md", "### 7. Deliver"],
       ["turing/performance-workflow.md", "### 7. Deliver"],
