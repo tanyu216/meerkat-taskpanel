@@ -344,6 +344,42 @@ describe("commands/workflowTick — 0031", () => {
         dispatch.acceptance.includes("add the e2e case for a canceled child"),
         "the next review card owes an answer to the last round's finding",
       );
+
+      // And an APPROVE that ignores it is refused at acceptance, not merely
+      // noted: the carried item is an ordinary criterion of both baselines.
+      const finding = "add the e2e case for a canceled child";
+      const review2 = commands.createTask({
+        projectId: "proj",
+        title: "Review round 2",
+        assignee: "jobs",
+        reviewOf: original.identifier,
+        reviewRound: 2,
+        meta: { flow: "B", acceptance: dispatch.acceptance },
+        actor: HUMAN,
+      });
+      commands.moveStatus({ id: review2.id, to: "in_progress", actor: REVIEWER });
+      commands.deliver({
+        taskId: review2.id,
+        report: {
+          conclusion: "VERDICT: APPROVE\n\nEverything else checks out.",
+          acceptance: dispatch.acceptance
+            .filter((text) => text !== finding)
+            .map((text) => ({ text, status: "met", note: "evidence[2] — the run" })),
+          evidence: [
+            { kind: "commit", sha: "abc1234" },
+            { kind: "command", cmd: "node --test test/thing.test.mjs", exit_code: 0 },
+          ],
+          author: REVIEWER,
+        },
+        actor: REVIEWER,
+      });
+      assert.throws(
+        () => commands.moveStatus({ id: original.id, to: "done", actor: { kind: "taskd", id: "loop" } }),
+        (err) =>
+          err.code === "ACCEPTANCE_INCOMPLETE" &&
+          err.details.missing.some((item) => item.text === finding),
+        "an APPROVE that drops the last round's finding does not accept the card",
+      );
     });
   });
 

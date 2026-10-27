@@ -40,7 +40,8 @@ Linus architecture only).
 
 ## Mandatory gates
 
-The reviewer re-runs them independently; a red gate is not a delivery.
+The reviewer runs the project's declared gate on the delivered commit; a red gate is not a
+delivery.
 
 | Gate | Threshold |
 |---|---|

@@ -41,7 +41,8 @@ Linus architecture only).
 
 ## Mandatory gates (a card that changes code)
 
-Run these before delivery; the reviewer re-runs them independently.
+Run these before delivery. They are the worker's own bars; the reviewer runs the project's
+declared gate (or the same bars when none is declared) on the delivered commit.
 
 | Gate | Threshold |
 |---|---|

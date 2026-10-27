@@ -427,7 +427,13 @@ The fail-safe rules are part of the decision:
   is accepted after `APPROVE`; an `off`/`human` original gets the verdict recorded and its
   review card closed.
 
-`approve` actions carry `acceptedBy: loop-review`.
+`approve` actions carry `acceptedBy: loop-review`. A `reject_task` / `reject_epic` action
+carries `mustFix[]` — the reviewer's numbered findings, or one pointer item when the findings
+are prose — and the loop appends each item to the original's frozen acceptance after the move
+to `in_progress` (the round bump is what unlocks the baseline). An `APPROVE` whose report
+fails the board's own checks — a `met` with no resolvable `evidence[n]`, or no `command`
+anchor at all — is not planned: the loop raises `verdict_unsupported` and reopens the review
+card under the same bound as an incomplete verdict.
 
 A `cancel_review` on a review card that is still `in_review` is a two-hop move
 (`in_review → in_progress → canceled`): the whitelist has no direct

@@ -469,8 +469,11 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
   description and the list), its acceptance list, the current round's report, the
   comment trail and (for an epic) the rollup and children. If the original carries
   `meta.acceptance_derived=yes`, it checks the list covers the description and comments — a
-  list that narrows the card is grounds for `REJECT`. It delivers a report whose first line
-  is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
+  list that narrows the card is grounds for `REJECT`. It ledgers the requirements, verifies
+  at the report's `commit` anchor rather than the live tree, and answers every baseline item
+  with a status, how it checked and an `evidence[n]` anchor; a `met` the board cannot trace,
+  or an `APPROVE` with no command anchor, is refused rather than applied. It delivers a
+  report whose first line is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
 - the loop applies the verdict as `--actor-kind taskd`. An `APPROVE` writes
   `meta.accepted_by=loop-review` and moves the original `in_review → done`; a `REJECT`
   comments the findings, writes `meta.rework_round`, moves it back to rework, and appends
@@ -646,7 +649,7 @@ A roles root is a directory with `manifest.json`:
 ├── jobs/{workflow.md,ui-workflow.md,self-check.md}
 ├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,refactor-workflow.md,self-check.md}
 ├── turing/{workflow.md,test-design-workflow.md,regression-workflow.md,performance-workflow.md,self-check.md}
-└── reviewer/{workflow.md,reviewer-prompt.md}
+└── reviewer/{workflow.md,self-check.md,reviewer-prompt.md}
 ```
 
 Each role carries its board `agent` name, an optional `native_agent` (the Claude/Codex

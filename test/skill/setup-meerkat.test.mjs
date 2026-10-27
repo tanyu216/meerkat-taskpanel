@@ -1162,6 +1162,10 @@ describe("install-roles.mjs — project scope", () => {
     assert.ok(existsSync(join(roles, "ownership.md")));
     assert.equal(existsSync(join(roles, "decision-policy.md")), false);
     assert.ok(existsSync(join(roles, "reviewer", "reviewer-prompt.md")));
+    assert.ok(
+      existsSync(join(roles, "reviewer", "self-check.md")),
+      "the reviewer's pre-verdict audit is installed with the role",
+    );
     assert.ok(existsSync(join(home, ".claude", "agents", "jobs.md")));
     assert.ok(existsSync(join(home, ".codex", "agents", "jobs.toml")));
     assert.ok(existsSync(join(home, ".pi", "agent", "agents", "jobs.md")));
