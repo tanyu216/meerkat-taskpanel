@@ -148,15 +148,10 @@ It logs one warning per directory when it first admits parallel work in a git ch
 
 ## Team roles (optional)
 
-A team is an optional roles root authored by `setup-meerkat`. The loop reads `manifest.json`
-there and adds routing (the role named by the card's assignee supplies responsibilities and
-boundaries) and a workflow path carried in the handoff. Precedence is whole-manifest:
-`--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, then `<project>/.meerkat/roles/`, then
-`<agent-dir>/skills/meerkat-loop/roles/`. A malformed manifest warns and degrades to no role;
-it never wedges a tick. `setup-meerkat`
-writes the team's board names to `MEERKAT_TASKPANEL_AGENTS`; without that list the loop scans
-only its default agent, so a role card is never claimed. A team may also ship `ownership.md`,
-the work→role routing guide the project session reads; it does not affect decision authority.
+A team is an optional roles root; what it adds, its precedence, the `ownership.md` rule and
+`MEERKAT_TASKPANEL_AGENTS` are in `SKILL.md` §Team roles. Operationally the loop reads
+`manifest.json` in that root, and a malformed manifest warns and degrades to no role — it never
+wedges a tick. Roles are optional: with none, the loop behaves as it did before.
 
 ## Questions and decision rights
 
@@ -167,14 +162,10 @@ then enqueues the unanswered question for the project session (no claim, no suba
 which answers with a `note` and moves the card to `todo`, or escalates E1-E5 to the human with
 `issue move <ref> awaiting --awaiting-reason E1..E5 --question "…"`.
 
-A question is asked as a **round**: the frontier is every open decision whose prerequisites are
-settled, numbered Q1..Qn with a recommendation, worded so "yes" accepts it. One round is one
-question string per card — the subagent puts the whole frontier in one `question` comment, the
-project session answers the decidable items in one `note`, and an escalation names the E1-E5
-items in one `awaiting` string. Facts are the asker's job; never ask the human for a fact the
-card, code or docs can establish. In manual mode the console lists every waiting card, so ask
-them in one message with one numbered block per card, then recompute and ask only the newly
-unblocked round. The full protocol is `references/decision-policy.md` §Decision rounds.
+In manual mode the console lists every waiting card: ask the whole **frontier** in one message,
+**one numbered block per card**, then recompute the newly unblocked round — protocol in
+`references/decision-policy.md` §Decision rounds. Facts are the asker's job; never ask the
+human for a fact the card, code or docs can establish.
 
 Any human comment auto-resumes an awaiting card — the kind does not matter and the board does
 not read it. Approve, reject and direction are judged from the content by the resumed worker;
@@ -253,7 +244,5 @@ to the `task-interface` surface means a new generation on both sides.
 
 The loop **is** part of the toolkit now (`taskctl loop …`), so it needs no separate body and no
 checkout of its own: the installed tree (or the checkout, for a development run) is enough, and
-`MEERKAT_TASKPANEL_REPO` in the per-kind config names it. A combined install (`--target all`,
-npm/npx) records `~/.meerkat-taskpanel`; an agent-only install records the checkout. Moving the
-tree is a re-install — the units need no reload because they name the CLI entry through that
-key.
+`MEERKAT_TASKPANEL_REPO` in the per-kind config names it. Moving the tree is a re-install —
+the units need no reload because they name the CLI entry through that key.

@@ -1,10 +1,9 @@
 # Board capabilities a supervisor binds to
 
 [`cli.md`](cli.md) is the complete `taskctl` reference. This page is the **subset a
-supervisor uses**, with the exact invocation and the JSON keys it reads. It is the contract
-behind `board.mjs` and `passes.mjs` in the `meerkat-loop` skill: the loop decides *when*;
-these are the *how*. The loop never calls the board's HTTP API directly — every operation
-below, including the live event stream, is a `taskctl` command.
+supervisor uses**, with the exact invocation and the JSON keys it reads. The loop decides
+*when*; these are the *how*. The loop never calls the board's HTTP API directly — every
+operation below, including the live event stream, is a `taskctl` command.
 
 ## The invocation rule
 
@@ -31,7 +30,7 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `taskctl --json … project list` | `data.projects[].id`, `.name`, `.reviewer`, `.acceptance` | `board.mjs#readProjectReviewers` → poll's reviewer merge and the workflow pass's reviewer check |
+| `taskctl --json … project list` | `data.projects[].id`, `.name`, `.reviewer`, `.acceptance` | poll's reviewer merge and the workflow pass's reviewer check |
 
 `reviewer` is the project's override; `acceptance` (`auto` / `off` / `agent` /
 `human`) is the default a new card inherits. The board resolves the effective
@@ -97,7 +96,7 @@ cannot see the other agent kind's file.
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `issue reconcile --workflow [--dry-run] [--reviewer <a>] [--review-aging-ms <n>] [--max-actions <n>] --board-limit <n>` | `data.scanned`; `data.workflow.actions[]`, `.alerts[]`, `.changes[]`, `.summary` | `board.mjs#runWorkflowPass` → `runners.mjs#runWorkflowTick` |
+| `issue reconcile --workflow [--dry-run] [--reviewer <a>] [--review-aging-ms <n>] [--max-actions <n>] --board-limit <n>` | `data.scanned`; `data.workflow.actions[]`, `.alerts[]`, `.changes[]`, `.summary` | the workflow pass |
 
 The plan is snake_case (`workflowToWire`). Action `type`s the loop executes:
 
@@ -178,7 +177,7 @@ and is never edited by the subagent.
 
 | Invocation | Output | Consumer |
 |---|---|---|
-| `events follow [--after <rev>] [--idle <ms>]` | NDJSON lines from the local event hub | `runtime.mjs#streamCli` → `subscribe.mjs` |
+| `events follow [--after <rev>] [--idle <ms>]` | NDJSON lines from the local event hub | the event subscriber |
 | `events tail [--after <rev>] [--idle <ms>]` | NDJSON lines from a direct board SSE | diagnostics only; not a background consumer |
 | `events hub` | the foreground hub process | started on demand by `follow`/`watch` |
 

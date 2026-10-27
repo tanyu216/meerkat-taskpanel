@@ -662,9 +662,9 @@ role's `workflow.md` (and `self-check.md`) before acting (layer 2). The reviewer
 inlined at the start of the review handoff, bounded at 2,400 characters. Every role is told
 to write and maintain `.meerkat/<identifier>/plan.md`, which the reviewer reads.
 
-**Ownership.** A team may ship `ownership.md`, the work→role routing guide: the project
-session receives it in full (bounded at 2,500 characters) when it spawns a batch, and the
-control/continue turn receives a compact summary and its path. It assigns one accountable
+**Ownership.** If a team ships an `ownership.md`, it is the work→role routing guide: the
+project session receives it in full (bounded at 2,500 characters) when it spawns a batch, and
+the control/continue turn receives a compact summary and its path. It assigns one accountable
 role per work shape; the card's assignee still selects the executing role, and it never
 changes who decides.
 
