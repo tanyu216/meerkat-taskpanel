@@ -3,8 +3,8 @@
  * The `taskd` OS-level keepalive unit — "the guard" (`docs/scheduling.md`).
  *
  * `install.sh` calls this once per install, because the guard is **one per
- * machine**, not one per agent kind: it writes both unit templates into a neutral
- * `<prefix>/taskpanel/scheduling/` directory (deliberately *not* the loop units'
+ * machine**, not one per agent kind: it writes both unit templates under the install root
+ * `<prefix>/.meerkat-taskpanel/scheduling/` (deliberately *not* the loop units'
  * `<agent-dir>/scheduling/`, so re-installing an agent kind never touches it) and then
  * loads the one for this platform. It is the single **explicit exception** to
  * the installer's rule that it writes a unit and prints the load command but
@@ -49,6 +49,12 @@
  * so the guard reports `enabled` only after the board itself answers `/health`,
  * exactly the readiness test the CLI applies. A unit that is loaded but not
  * serving reports `loaded … /health did not answer` instead, with the log to read.
+ *
+ * **A board that is already running is not loaded over.** Before loading, the address the
+ * runtime pointer names is knocked once. A `/health` answer means a second `taskd` would
+ * only collide on that port (`EADDRINUSE`, a keepalive restart loop), so the units are
+ * written and the load is skipped, with the running board named. The same rule applies to
+ * the guard's own board lazily started by a CLI call: stop it and re-run to hand it over.
  *
  * **The guard is one per machine, so a second install may have to refuse**
  * (`docs/scheduling.md § One guard per machine`). Because the label and the unit name
@@ -175,8 +181,8 @@ export function guardPaths(options = {}) {
     nodeDir: dirname(node),
     serverEntry: join(root, "src", "server", "main.mjs"),
     logFile: join(dataDir, LOGS_DIRNAME, LOG_FILENAME),
-    launchdUnit: join(prefix, "taskpanel", "scheduling", "launchd", `${TASKD_LABEL}.plist`),
-    systemdUnit: join(prefix, "taskpanel", "scheduling", "systemd", TASKD_UNIT),
+    launchdUnit: join(prefix, ".meerkat-taskpanel", "scheduling", "launchd", `${TASKD_LABEL}.plist`),
+    systemdUnit: join(prefix, ".meerkat-taskpanel", "scheduling", "systemd", TASKD_UNIT),
     pointerFile: resolveRuntimePointerPath({ env }),
   };
 }
@@ -531,6 +537,26 @@ export async function installGuard(options = {}) {
   const already = runStep(plan.loadedProbe, run);
   if (already.ok) report.pid = waitForPid(plan, run, pidWaitMs);
 
+  // A board that is **already answering** owns the address this unit would bind. Loading
+  // the guard then does not create a keepalive — it starts a second server on an occupied
+  // port, which is an EADDRINUSE restart loop, not a board. The runtime pointer is the
+  // running board's own statement of its address, and `/health` is the same readiness test
+  // the CLI trusts, so one knock settles it. The unit files stay written (the operator can
+  // load them after stopping the board); nothing is loaded and nothing is claimed.
+  if (!already.ok) {
+    const running = (options.readPointerFn ?? readPointer)({ path: paths.pointerFile });
+    const runningUrl = running !== null && typeof running.url === "string" ? running.url : null;
+    if (runningUrl !== null && (await (options.healthProbe ?? probeHealth)(runningUrl))) {
+      report.state = "running";
+      report.url = runningUrl;
+      report.reason = `a board is already serving ${runningUrl}`;
+      log(
+        `taskd guard: not loaded — a board is already serving ${runningUrl}${running.pid ? ` (pid ${running.pid})` : ""}; stop it and re-run to install the guard`,
+      );
+      return report;
+    }
+  }
+
   // The board this run would install, read back from the file that would be copied —
   // what actually lands, not a re-derivation of it.
   const mine = unitBoard(readFileSync(kind === "launchd" ? paths.launchdUnit : paths.systemdUnit, "utf8"));
@@ -805,7 +831,7 @@ function waitForPid(plan, run, budgetMs) {
 const USAGE = `Usage: node scripts/install/lib/taskd-guard.mjs install --prefix <dir> [--root <tree>] [--data-dir <dir>] [--force]
 
 Writes the taskd keepalive unit (launchd + systemd) under
-<dir>/taskpanel/scheduling/, then loads this platform's one, waits for its
+<dir>/.meerkat-taskpanel/scheduling/, then loads this platform's one, waits for its
 board to answer /health, and reports what happened.
 --root names the program tree the unit runs (default: this checkout);
 --data-dir pins TASKD_DATA_DIR in the unit (used by --target server).

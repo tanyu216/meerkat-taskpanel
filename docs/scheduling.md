@@ -844,12 +844,12 @@ write lock (R1: one `taskd` per data directory).
 #### Where the unit lands (ownership separation)
 
 ```text
-<prefix>/taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
-<prefix>/taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service
+<prefix>/.meerkat-taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
+<prefix>/.meerkat-taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service
 ```
 
-A **neutral** directory (`<prefix>` is `install.sh --prefix`, default `$HOME`),
-deliberately **not** `<agent-dir>/scheduling/` where the loop's `ping`/`continue` units
+The install root (`<prefix>/.meerkat-taskpanel/`; `<prefix>` is `install.sh --prefix`,
+default `$HOME`), deliberately **not** `<agent-dir>/scheduling/` where the loop's `ping`/`continue` units
 live ([Scheduling units](install.md#scheduling-units-claude-codex-pi)). Re-installing a
 agent kind's loop units never touches this directory, and the two are never confused for one
 another.
@@ -980,7 +980,7 @@ nothing.
 # ~/.config/systemd/user/ and enables it immediately.
 #
 #   mkdir -p ~/.config/systemd/user
-#   cp <prefix>/taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service ~/.config/systemd/user/
+#   cp <prefix>/.meerkat-taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service ~/.config/systemd/user/
 #   systemctl --user enable --now meerkat-taskpanel-taskd.service
 #
 # ExecStart names the ABSOLUTE node that rendered this unit — never
@@ -1039,11 +1039,11 @@ user switch**. `install.sh` writes the unit and then loads/enables it:
 
 ```bash
 # macOS
-launchctl bootstrap gui/$UID <prefix>/taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
+launchctl bootstrap gui/$UID <prefix>/.meerkat-taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
 #   (older systems: launchctl load -w <plist>)
 # Linux (user unit)
 mkdir -p ~/.config/systemd/user
-cp <prefix>/taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service ~/.config/systemd/user/
+cp <prefix>/.meerkat-taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service ~/.config/systemd/user/
 systemctl --user enable --now meerkat-taskpanel-taskd.service
 ```
 
@@ -1077,6 +1077,15 @@ taskd guard: loaded (com.meerkat-taskpanel.taskd, pid 17388); /health did not an
 
 Neither line fails the install (the agent-kind skills are installed either way), but only the
 first one claims the guard works.
+
+A board that is **already answering** at the runtime pointer's address is a third case, and
+it is not loaded over: a second `taskd` on the same port is an `EADDRINUSE` restart loop, not
+a keepalive. The units are written, the load is skipped, and the report names the running
+board:
+
+```text
+taskd guard: not loaded — a board is already serving http://127.0.0.1:9527 (pid …); stop it and re-run to install the guard
+```
 
 A **second board** is where the install has to be careful, because the guard is one per
 machine ([One guard per machine](#one-guard-per-machine)): on Linux the file systemd reads
@@ -1112,7 +1121,7 @@ To stop and remove the guard:
 ```bash
 # macOS
 launchctl bootout gui/$UID/com.meerkat-taskpanel.taskd
-rm <prefix>/taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
+rm <prefix>/.meerkat-taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
 # Linux
 systemctl --user disable --now meerkat-taskpanel-taskd.service
 rm ~/.config/systemd/user/meerkat-taskpanel-taskd.service
