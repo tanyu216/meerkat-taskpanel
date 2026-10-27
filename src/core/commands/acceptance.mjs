@@ -23,7 +23,8 @@ import { DomainError } from "../../foundation/errors.mjs";
 import { isTerminalStatus } from "../domain/status.mjs";
 import { acceptanceAuthorityFor, assertAcceptanceAuthority, cardAcceptanceOf } from "../domain/acceptance-mode.mjs";
 import { parseReviewVerdict } from "../domain/workflow.mjs";
-import { coverageOf } from "../domain/acceptance.mjs";
+import { coverageOf, unsupportedClaimsOf } from "../domain/acceptance.mjs";
+import { evidenceFromJson, evidenceHasCommand } from "../domain/report.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { assertEpicRollupReady, assertRollupCoverage } from "./rollup.mjs";
 
@@ -108,6 +109,10 @@ export function assertAcceptanceCoverage(ctx, task, options = {}) {
     baseline: task.acceptance,
     reportItems: report.acceptance,
     source: "delivery",
+    evidence: evidenceFromJson(report.evidence).items,
+    // An `agent` card is the one whose report is checked by a second pair of
+    // eyes; `off`/`human` cards keep their lighter contract.
+    requireEvidence: cardAcceptanceOf(task.acceptanceMode) === "agent",
   });
   return true;
 }
@@ -118,14 +123,28 @@ function deliveryReportFor(ctx, task) {
 }
 
 /** The coverage arithmetic + the refusal. Shared by the delivery and review gates. */
-function assertCoverageOrThrow({ task, baseline, reportItems, source, review = null }) {
+function assertCoverageOrThrow({
+  task,
+  baseline,
+  reportItems,
+  source,
+  review = null,
+  evidence = [],
+  requireEvidence = false,
+}) {
   const coverage = coverageOf({ baseline, reportItems, includeExtras: true });
-  if (coverage.ok) return;
+  // A `met` that names no anchor is a recollection, not evidence. Structural:
+  // it forces the pointer, not the truth of the pointer.
+  const unsupported = requireEvidence
+    ? unsupportedClaimsOf({ reportItems, evidence })
+    : [];
+  if (coverage.ok && unsupported.length === 0) return;
   const reviewRef =
     review === null ? null : { identifier: review.identifier, status: review.status };
   const parts = [];
   if (coverage.missing.length > 0) parts.push(`${coverage.missing.length} missing`);
   if (coverage.blocking.length > 0) parts.push(`${coverage.blocking.length} blocking`);
+  if (unsupported.length > 0) parts.push(`${unsupported.length} without evidence`);
   throw new DomainError("ACCEPTANCE_INCOMPLETE", {
     message:
       `${task.identifier}: ${parts.join(", ")} acceptance item(s) for delivery round ` +
@@ -138,13 +157,14 @@ function assertCoverageOrThrow({ task, baseline, reportItems, source, review = n
       ...(reviewRef === null ? {} : { review: reviewRef }),
       missing: coverage.missing,
       blocking: coverage.blocking,
+      unsupported,
       extra: coverage.extra,
     },
     hint: {
       fix:
         source === "review"
-          ? "the review report must answer every baseline criterion; REJECT instead of approving an incomplete report"
-          : "answer every baseline criterion with met/not_applicable (not_applicable needs a note)",
+          ? "the review report must answer every baseline criterion and point each met item at its evidence; REJECT instead of approving an incomplete report"
+          : "answer every baseline criterion with met/not_applicable (not_applicable needs a note); a met item needs a note naming its anchor, e.g. evidence[1]",
     },
   });
 }
@@ -188,12 +208,15 @@ export function assertReviewEvidence(ctx, task) {
     // of the original (and of the review card's own copied baseline). A reviewer
     // that writes `VERDICT: APPROVE` over a report that never mentions half the
     // baseline has not accepted the work.
+    const verdictEvidence = evidenceFromJson(approvedVerdict.report?.evidence).items;
     assertCoverageOrThrow({
       task,
       baseline: task.acceptance,
       reportItems: approvedVerdict.report?.acceptance,
       source: "review",
       review: approvedReview,
+      evidence: verdictEvidence,
+      requireEvidence: true,
     });
     if (approvedReview !== null) {
       assertCoverageOrThrow({
@@ -202,6 +225,32 @@ export function assertReviewEvidence(ctx, task) {
         reportItems: approvedVerdict.report?.acceptance,
         source: "review",
         review: approvedReview,
+        evidence: verdictEvidence,
+        requireEvidence: true,
+      });
+    }
+    // The reviewer's own run: an APPROVE with no command anchor is a reading of
+    // the delivery report, not an independent verification of it.
+    if (!evidenceHasCommand(verdictEvidence)) {
+      throw new DomainError("ACCEPTANCE_INCOMPLETE", {
+        message:
+          `${task.identifier}: the APPROVE on ${approvedReview?.identifier ?? "the review card"} ` +
+          "carries no command evidence for the reviewer's own run",
+        details: {
+          taskId: task.id,
+          identifier: task.identifier,
+          source: "review",
+          round: task.deliveryRound,
+          ...(approvedReview === null
+            ? {}
+            : { review: { identifier: approvedReview.identifier, status: approvedReview.status } }),
+          reason: "no_command_evidence",
+        },
+        hint: {
+          fix:
+            "run the project's gate (or any command) and record it as a {kind:\"command\", cmd, exit_code} anchor; " +
+            "REJECT instead if it cannot be run",
+        },
       });
     }
     return true;

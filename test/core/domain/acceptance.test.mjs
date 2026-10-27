@@ -14,6 +14,7 @@ import {
   normalizeAcceptanceList,
   normalizeAcceptanceText,
   rollupGapOf,
+  unsupportedClaimsOf,
 } from "../../../src/core/domain/acceptance.mjs";
 
 describe("domain/acceptance — normalisation", () => {
@@ -249,5 +250,58 @@ describe("domain/acceptance — the rollup gap (0033)", () => {
     });
     assert.deepEqual(gap.missingChildren, ["P-1"]);
     assert.equal(gap.ok, false);
+  });
+});
+
+describe("domain/acceptance — falsifiable claims", () => {
+  const anchors = [
+    { kind: "commit", sha: "abc1234" },
+    { kind: "command", cmd: "node --test test/x.test.mjs", exit_code: 0 },
+  ];
+
+  it("flags a met item whose note names no anchor", () => {
+    const unsupported = unsupportedClaimsOf({
+      reportItems: [
+        { text: "works", status: "met" },
+        { text: "looks right", status: "met", note: "I checked it" },
+      ],
+      evidence: anchors,
+    });
+    assert.deepEqual(unsupported.map((item) => [item.text, item.reason]), [
+      ["works", "no_anchor"],
+      ["looks right", "no_anchor"],
+    ]);
+  });
+
+  it("flags a reference that points outside the report's evidence", () => {
+    const unsupported = unsupportedClaimsOf({
+      reportItems: [{ text: "works", status: "met", note: "evidence[3] — the run" }],
+      evidence: anchors,
+    });
+    assert.deepEqual(unsupported.map((item) => item.reason), ["dangling_anchor"]);
+  });
+
+  it("accepts one resolvable reference among several, and ignores non-met statuses", () => {
+    assert.deepEqual(
+      unsupportedClaimsOf({
+        reportItems: [
+          { text: "works", status: "met", note: "evidence[9] and evidence[2]" },
+          { text: "not applicable", status: "not_applicable", note: "no browser here" },
+          { text: "unfinished", status: "partial", note: "no anchor" },
+        ],
+        evidence: anchors,
+      }),
+      [],
+    );
+  });
+
+  it("treats an empty evidence list as one where nothing resolves", () => {
+    assert.equal(
+      unsupportedClaimsOf({
+        reportItems: [{ text: "works", status: "met", note: "evidence[1]" }],
+        evidence: [],
+      }).length,
+      1,
+    );
   });
 });

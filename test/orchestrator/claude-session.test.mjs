@@ -97,6 +97,15 @@ describe("claude session args", () => {
     assert.match(allowedToolsFor("worker"), /Edit/);
   });
 
+  it("lets the reviewer run the gate it is told to re-run", () => {
+    // The reviewer role requires re-running the project's gate. A lane without
+    // `npm`/`node` makes that rule unexecutable, which is how gate-checking
+    // silently decayed into reading the delivery report.
+    assert.match(allowedToolsFor("reviewer"), /Bash\(npm run \*\)/);
+    assert.match(allowedToolsFor("reviewer"), /Bash\(node \*\)/);
+    assert.match(allowedToolsFor("reviewer"), /Bash\(git \*\)/);
+  });
+
   it("lets each lane spawn its subagent", () => {
     // A project/reviewer session that cannot spawn has no way to dispatch the
     // card it was handed. `Agent` is the current CLI's tool; `Task` is the alias

@@ -19,6 +19,7 @@ import {
   acceptanceFromJson,
   boundEvidence,
   evidenceFromJson,
+  evidenceHasCommand,
   normalizeImportedReport,
   normalizeReportCreate,
   reportFromRow,
@@ -385,5 +386,26 @@ describe("domain/report — decoding", () => {
     assert.deepEqual(report.acceptance, [{ text: "x", status: "met" }]);
     assert.deepEqual(report.evidence.items, [{ kind: "commit", sha: "abc1234" }]);
     assert.equal(reportFromRow(null), null);
+  });
+});
+
+describe("domain/report — reproducible evidence", () => {
+  it("counts only a command anchor with an exit code as a run", () => {
+    assert.equal(evidenceHasCommand([{ kind: "commit", sha: "abc1234" }]), false);
+    assert.equal(evidenceHasCommand([{ kind: "path", path: "src/x.mjs" }]), false);
+    assert.equal(evidenceHasCommand([]), false);
+    assert.equal(evidenceHasCommand(null), false);
+    assert.equal(
+      evidenceHasCommand([
+        { kind: "path", path: "src/x.mjs" },
+        { kind: "command", cmd: "node --test test/x.test.mjs", exit_code: 0 },
+      ]),
+      true,
+    );
+    assert.equal(
+      evidenceHasCommand([{ kind: "command", cmd: "node --test test/x.test.mjs", exit_code: "0" }]),
+      false,
+      "an exit code that is not a number is not a run",
+    );
   });
 });

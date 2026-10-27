@@ -264,6 +264,26 @@ function validateAnchor(anchor, at) {
  * @param {{maxBytes?: number}} [options]
  * @returns {{acceptance: unknown[], evidence: unknown[], truncated: boolean, fits: boolean}}
  */
+/**
+ * Did the author run anything? A `command` anchor with an integer exit code is
+ * the one evidence kind that says "this was executed"; a path, a commit or a
+ * coverage number is corroboration, not a run.
+ *
+ * @param {unknown} evidence
+ * @returns {boolean}
+ */
+export function evidenceHasCommand(evidence) {
+  return evidenceFromJson(evidence).items.some(
+    (anchor) =>
+      anchor !== null &&
+      typeof anchor === "object" &&
+      anchor.kind === "command" &&
+      typeof anchor.cmd === "string" &&
+      anchor.cmd.trim() !== "" &&
+      Number.isInteger(anchor.exit_code),
+  );
+}
+
 export function boundEvidence(acceptance, evidence, options = {}) {
   const { maxBytes = REPORT_MAX_BYTES } = options;
   const shrink = (value) => {

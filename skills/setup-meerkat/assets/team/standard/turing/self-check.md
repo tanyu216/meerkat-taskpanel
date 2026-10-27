@@ -2,7 +2,8 @@
 
 Run this after the branch work and before delivery. First re-export the brief so the check
 runs against the current card, then use the section for the branch you ran; the shared
-checks apply to all.
+checks apply to all. The evidence table lives in `plan.md` and grows while you work — this
+check audits it, it does not write it from memory.
 
 Never hand-edit `card.md`; re-export it. This is the role's pre-delivery audit. It is not
 the `## Handoff` block: that block is a producer card's cross-card transfer (Jobs design,
@@ -12,10 +13,11 @@ Linus architecture only).
 
 1. Re-read `.meerkat/<id>/card.md`, the live card, the frozen `acceptance` and this card's
    `.meerkat/<id>/plan.md`.
-2. Build an acceptance → test/evidence table in `plan.md` for every acceptance item,
-   description requirement and boundary/failure path. Each row names the test, command,
-   exit code and coverage, and ends in one disposition carried by the report's acceptance
-   status:
+2. Confirm `plan.md`'s acceptance → test/evidence table covers every acceptance item,
+   description requirement and boundary/failure path, and that each row was written when
+   you observed it — a row added at delivery is a recollection, not evidence. Each row names
+   the test, command, exit code and coverage, and ends in one disposition carried by the
+   report's acceptance status:
    - **met** — the proof is falsifiable: a `command exit 0` that fails when the test stops
      covering the item. A `path`, a `commit` or a `coverage` number on its own is
      corroboration, not proof.
@@ -77,6 +79,7 @@ The reviewer re-runs them independently; a red gate is not a delivery.
 ## Delivery
 
 Confirm the report names the branch, every baseline item's status and falsifiable evidence,
-the coverage, and each leftover's owner and follow-up. A card with an open omission, a red
-gate or an unanswered question is not delivered: close it and re-run, or ask and keep the
-card `in_progress`. Deliver at `in_review`. Do not issue a verdict.
+the coverage, and each leftover's owner and follow-up. The report is `plan.md`'s table
+projected onto the card's acceptance — not a narrative rewritten at delivery. A card with an
+open omission, a red gate or an unanswered question is not delivered: close it and re-run, or
+ask and keep the card `in_progress`. Deliver at `in_review`. Do not issue a verdict.

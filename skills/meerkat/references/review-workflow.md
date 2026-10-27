@@ -120,6 +120,33 @@ requirement is grounds for `VERDICT: REJECT`. If `plan.md` does not exist, say s
 to the description and acceptance snapshot; absence alone is not a reject. For an epic, check
 that the children cover the epic's description and that no child is omitted from the rollup.
 
+### What an APPROVE must contain
+
+The board checks an APPROVE against the original's snapshot and the review card's own
+baseline. It also refuses one it cannot check:
+
+- **the ledger** — every requirement in the description, comments, `plan.md` and the handoff
+  mapped to an acceptance item *and* an implementation (`path:line`, a test, a visible
+  behaviour); an uncovered row is a `VERDICT: REJECT`, not a note;
+- **the delivered sha** — the report names the `commit` it verified, and every `path` anchor
+  exists at that sha (`git show <sha>:<path>`); a claim visible only in the live working tree
+  is unverified (another lane may be writing there), and a `path` anchor absent at the sha is
+  a fabricated anchor;
+- **an anchor per claim** — each `met` cites `evidence[n]` from the review report's own
+  `evidence[]`. A `met` with no reference (`no_anchor`) or one that points past the list
+  (`dangling_anchor`) is `ACCEPTANCE_INCOMPLETE`. The report must also carry at least one
+  `command` anchor, because the reviewer runs the declared gate itself
+  (`details.reason = "no_command_evidence"`);
+- **the earlier findings** — every item the baseline carries from an earlier round is
+  resolved with its evidence or explicitly deferred; a silent drop is a `REJECT`;
+- **the gate** — the project's `meta.review_gate` command, its exit code and the coverage it
+  reports, or `n/a — none declared` with the targeted checks named.
+
+A `met` that cannot be reproduced is `not_met`; `partial` never softens a requirement that
+was not implemented. These are the same rules the role assets state
+(`skills/setup-meerkat/assets/team/standard/reviewer/`), and the loop mirrors them before it
+plans an `approve` (`verdict_unsupported`, then the bounded `reopen_review`).
+
 ### Deliver
 
 Write the verdict **on the review card**, not on the original:
@@ -199,9 +226,12 @@ When the card's `acceptance_mode` is `off`, steps 2–5 do not run. The board's 
 
 - **APPROVE** — on an `agent` card the loop writes `meta.accepted_by=loop-review` and moves
   the original `in_review → done`, then closes the review card.
-- **REJECT on a work card** — the loop comments the findings, writes `meta.rework_round` and
-  moves the original `in_review → in_progress → todo`. It is re-claimed and re-delivered on
-  the new round.
+- **REJECT on a work card** — the loop comments the findings, writes `meta.rework_round`,
+  moves the original `in_review → in_progress`, appends the reviewer's numbered must-fix
+  items to the original's frozen acceptance, and moves it to `todo`. It is re-claimed and
+  re-delivered on the new round; the next round's report template and the next review card
+  both carry those items, so a finding cannot be dropped silently. A REJECT with no numbered
+  list still appends one pointer item, so the next round owes an answer either way.
 - **REJECT on an epic** — the loop creates and links a **fix child** first, then reopens the
   container to `in_progress`; the open child stops `reconcile` from re-closing the container.
 

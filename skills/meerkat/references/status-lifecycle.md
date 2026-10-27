@@ -197,8 +197,18 @@ into the snapshot; the gates never read meta.
   **beyond** the baseline also blocks if it is `partial` / `not_met` — the report itself says
   work is unfinished. Empty baseline → vacuous, allowed: the rule is "once non-empty, it
   cannot be shortened", not "every card must have criteria".
+- **A `met` must point at its evidence.** On an `agent` card the gate also reads the report's
+  `evidence[]`: each `met` item's note must cite at least one `evidence[n]` that resolves
+  within that list, or the item is `unsupported` (`no_anchor` / `dangling_anchor`) and the gate
+  refuses with `ACCEPTANCE_INCOMPLETE` (`details.unsupported`). This is structural — it forces
+  the pointer, not the truth of the pointer. The judgement behind it is the reviewer's: a
+  claim that cannot be reproduced is `not_met`, never `met`, and `partial` does not soften a
+  requirement that was not implemented. An `off` or `human` card keeps the lighter contract
+  (matching items, statuses and notes).
 - **Reviews.** An `APPROVE` on a review card is checked against the original's snapshot (and
-  the review card's own) before it can close anything; see
+  the review card's own) before it can close anything, and the review report must carry at
+  least one `command` anchor — the reviewer runs the gate itself, so an APPROVE that ran
+  nothing is refused (`ACCEPTANCE_INCOMPLETE`, `details.reason = "no_command_evidence"`); see
   [`review-workflow.md`](review-workflow.md).
 - **Epics.** A container's own snapshot is informational; its acceptance fact is the current
   round's rollup over its children (§6).

@@ -610,6 +610,8 @@ export function buildHandoff(input) {
       "",
       "## Plan file",
       `Write and maintain ${processDir}/plan.md before you start; update it as you learn.`,
+      "Append an evidence row the moment you observe it — item → command+exit / path+check —",
+      "then project the table into the delivery report; a row written at delivery is memory.",
       "The reviewer reads it. Do not edit card.md.",
     );
     if (input.roleWorkflowPath) lines.push("", ...renderRoleWorkflow(input.role, input.roleWorkflowPath));
@@ -674,6 +676,10 @@ export function buildReviewHandoff(input) {
     "worker at claim: check it covers every requirement in the description and comments — a list",
     "that narrows the card is grounds for `VERDICT: REJECT`. For an epic, check the children cover",
     "the epic's description.",
+    "Verify what was delivered, not the live tree: take this round's report `commit` anchor and",
+    "read it with `git -C <project dir> show <sha>:<path>` / `git diff <sha> -- <path>`. A claim",
+    "visible only in the working tree is unverified; if the tree has moved, say so in the report.",
+    "The original's baseline already carries every earlier round's findings — answer each one.",
     "",
     "Deliver:",
     `  taskctl report template ${ref}   # fill it in, then:`,

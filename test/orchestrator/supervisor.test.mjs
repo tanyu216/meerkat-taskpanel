@@ -2226,8 +2226,11 @@ describe("the workflow plan survives the wire and executes", () => {
   };
   const VERDICT = {
     conclusion: "VERDICT: APPROVE",
-    acceptance: [{ text: "the evidence matches", status: "met" }],
-    evidence: [{ kind: "path", path: "src/thing.mjs" }],
+    acceptance: [{ text: "the evidence matches", status: "met", note: "evidence[2] — the run" }],
+    evidence: [
+      { kind: "path", path: "src/thing.mjs" },
+      { kind: "command", cmd: "node --test test/thing.test.mjs", exit_code: 0 },
+    ],
   };
 
   it("carries a board plan through the wire and executes the approve", async () => {

@@ -38,7 +38,8 @@ import {
 } from "../../foundation/constants.mjs";
 import { reviewIdentityIndex, reviewIdentityOf } from "../../foundation/review-identity.mjs";
 import { normalizeCardAcceptance } from "./acceptance-mode.mjs";
-import { coverageOf, rollupGapOf } from "./acceptance.mjs";
+import { acceptanceKey, coverageOf, rollupGapOf, unsupportedClaimsOf } from "./acceptance.mjs";
+import { evidenceFromJson, evidenceHasCommand } from "./report.mjs";
 
 // The two workflow defaults are shared with the loop's config resolver, so they
 // live in `foundation/constants.mjs` — one number, both sides. Re-exported here
@@ -309,6 +310,74 @@ function boundedFindings(text) {
   return `${trimmed.slice(0, FINDINGS_MAX_CHARS - 1)}…`;
 }
 
+/** The most must-fix items one rejection may carry into the baseline. */
+export const MUST_FIX_MAX_ITEMS = 10;
+
+/** The most characters one must-fix item may carry. */
+export const MUST_FIX_MAX_CHARS = 400;
+
+const MUST_FIX_CHECKBOX = /^\s*[-*+]\s*\[[ xX]\]\s+(\S.*)$/;
+const MUST_FIX_NUMBERED = /^\s*\d+[.)]\s+(\S.*)$/;
+
+/**
+ * The must-fix list a REJECT's findings carry.
+ *
+ * The review contract asks for a numbered list (`1. …`) or a checkbox list
+ * (`- [ ] …`); plain bullets and prose stay context, because a reviewer's
+ * explanation is not an instruction. Bounded: a verdict must never be able to
+ * flood the original's 64-item acceptance baseline.
+ *
+ * @param {unknown} findings
+ * @returns {string[]}
+ */
+export function mustFixItems(findings) {
+  const items = [];
+  for (const line of String(findings ?? "").split("\n")) {
+    const match = MUST_FIX_CHECKBOX.exec(line) ?? MUST_FIX_NUMBERED.exec(line);
+    if (match === null) continue;
+    const text = match[1].trim();
+    if (text === "") continue;
+    items.push(
+      text.length <= MUST_FIX_MAX_CHARS ? text : `${text.slice(0, MUST_FIX_MAX_CHARS - 1)}…`,
+    );
+    if (items.length >= MUST_FIX_MAX_ITEMS) break;
+  }
+  return items;
+}
+
+/**
+ * What a rejection appends to the original's baseline: the parsed list, or one
+ * pointer item when the reviewer wrote prose. Silence is the one outcome a
+ * rejection may not have — the next round must still owe an answer.
+ *
+ * @param {unknown} findings
+ * @param {string} reviewRef the review card's identifier
+ * @param {number} round the audited round (the original's, not the review's)
+ * @returns {string[]}
+ */
+export function mustFixPlan(findings, reviewRef, round) {
+  const items = mustFixItems(findings);
+  if (items.length > 0) return items;
+  return [
+    `Every finding in the ${reviewRef} review of round ${round} is resolved or explicitly deferred`,
+  ];
+}
+
+/**
+ * Drop items the original's frozen baseline already carries, so a retried pass
+ * appends nothing twice. The board dedupes too, but the plan should not ask.
+ *
+ * @param {object} task the original card
+ * @param {string[]} items
+ * @returns {string[]}
+ */
+function pendingMustFix(task, items) {
+  const baseline = Array.isArray(task?.acceptance) ? task.acceptance : [];
+  if (baseline.length === 0) return items;
+  const existing = new Set(baseline.map(acceptanceKey));
+  return items.filter((item) => !existing.has(acceptanceKey(item)));
+}
+
 /**
  * A stable de-duplication key for a workflow alert: the state that produced it,
  * never the clock. The loop's ledger suppresses a repeated key, so changing the
@@ -555,7 +624,7 @@ export function planReviewDispatch(input = {}) {
 
   const actions = [];
   for (const { task, ref, round, reviewer } of candidates.slice(0, maxActions)) {
-    actions.push(reviewAction(task, ref, round, reviewer));
+    actions.push(reviewAction(task, ref, round, reviewer, declaredGateFor(task, config)));
   }
   if (candidates.length > actions.length) {
     alerts.push({ type: "dispatch_capped", remaining: candidates.length - actions.length, cap: maxActions });
@@ -563,8 +632,21 @@ export function planReviewDispatch(input = {}) {
   return { alerts, actions };
 }
 
+/**
+ * The project's declared verification gate (`project.meta.review_gate`), or
+ * `null`. One command per project: the reviewer runs that, not a bespoke set.
+ *
+ * @param {object} task
+ * @param {object} config
+ * @returns {string|null}
+ */
+function declaredGateFor(task, config) {
+  const gate = config?.projectGates?.[task?.project_id];
+  return typeof gate === "string" && gate.trim() !== "" ? gate.trim() : null;
+}
+
 /** The `issue create` plan for one review card. */
-function reviewAction(task, ref, round, reviewer) {
+function reviewAction(task, ref, round, reviewer, gate = null) {
   const title = String(task.title ?? "").slice(0, 120);
   return {
     type: "create_review",
@@ -596,6 +678,13 @@ function reviewAction(task, ref, round, reviewer) {
       "from plan.md, or a missing requirement is grounds for VERDICT: REJECT.",
       "If plan.md does not exist, say so and fall back to the description and",
       "acceptance snapshot; absence alone is not a reject.",
+      "",
+      gate === null
+        ? "No gate is declared for this project: record `n/a — none declared` and do the"
+        : `Declared gate: ${gate}`,
+      gate === null
+        ? "targeted checks (injection, authorization, path traversal, secrets)."
+        : "Run it yourself and record the command and its exit code in the report.",
       "",
       "Then deliver a report on THIS review card whose FIRST LINE is exactly:",
       "  VERDICT: APPROVE",
@@ -786,6 +875,11 @@ export function planReviewOutcomes(input = {}) {
             reviewRef,
             originalRef,
             round: originalRound,
+            // The loop died after the round bump and before (or after) the
+            // baseline append. Re-reading the verdict here would apply findings
+            // that have not been author-checked, so only the pointer item is
+            // re-proposed; the board's dedupe makes a completed append a no-op.
+            mustFix: pendingMustFix(original, mustFixPlan("", reviewRef, round)),
             closeReview: true,
           });
         } else {
@@ -955,6 +1049,34 @@ export function planReviewOutcomes(input = {}) {
             continue;
           }
         }
+        // The same two claims the board refuses at `done`: a `met` that names no
+        // anchor, and an APPROVE whose reviewer ran nothing. Mirroring them here
+        // keeps the loop from planning a write the gate would refuse on every
+        // tick (a livelock, not a retry).
+        const verdictEvidence = evidenceFromJson(verdict.report?.evidence).items;
+        const unsupported = unsupportedClaimsOf({
+          reportItems: verdict.report?.acceptance ?? [],
+          evidence: verdictEvidence,
+        });
+        const commandless = !evidenceHasCommand(verdictEvidence);
+        if (unsupported.length > 0 || commandless) {
+          const reason = commandless ? "no_command_evidence" : "evidence_missing";
+          alerts.push({
+            type: "verdict_unsupported",
+            review: reviewRef,
+            original: originalRef,
+            reason,
+            unsupported: unsupported.map((item) => item.text),
+            dedupKey: alertKey(
+              "verdict_unsupported",
+              reviewRef,
+              reason,
+              unsupported.map((item) => item.key).sort().join("|"),
+            ),
+          });
+          reopenOrExhausted({ review, reviewRef, originalRef, round, reason });
+          continue;
+        }
         // 0038 — only an `agent` original is moved by an APPROVE. An `off` or
         // `human` card may carry an ad-hoc review card; its verdict is recorded
         // on that card, and the review card is closed, but the original's own
@@ -993,6 +1115,12 @@ export function planReviewOutcomes(input = {}) {
       // that **new** round, so crash recovery compares it against the card's
       // current `delivery_round` rather than the round the review audited.
       const reworkRound = originalRound + 1;
+      // The findings must survive the round: they are appended to the
+      // original's frozen baseline by the executor, so the next round's report
+      // template and the next review card's baseline both carry them. A reject
+      // with no numbered list still leaves a pointer item — silence is the one
+      // outcome a rejection may not have.
+      const mustFix = pendingMustFix(original, mustFixPlan(findings, reviewRef, originalRound));
       if (original.kind === "epic") {
         actions.push({
           type: "reject_epic",
@@ -1008,6 +1136,7 @@ export function planReviewOutcomes(input = {}) {
           // repairs the container, never held for review or a human.
           acceptanceMode: "off",
           findings,
+          mustFix,
           closeReview,
         });
       } else {
@@ -1019,6 +1148,7 @@ export function planReviewOutcomes(input = {}) {
           round: originalRound,
           reworkRound,
           findings,
+          mustFix,
           closeReview,
         });
       }

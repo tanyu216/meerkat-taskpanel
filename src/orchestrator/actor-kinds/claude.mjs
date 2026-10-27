@@ -32,7 +32,10 @@ export function allowedToolsFor(role) {
     case "control":
       return "Read,Bash(taskctl *),Bash(node *)";
     case "reviewer":
-      return "Read,Grep,Glob,Agent,Task,Bash(taskctl *),Bash(git *)";
+      // `npm run` / `node` / `bash` are here because the reviewer's contract is
+      // to re-run the project's gate itself; a lane that cannot run a command
+      // turns "reproducible evidence" into "read the report and trust it".
+      return "Read,Grep,Glob,Agent,Task,Bash(taskctl *),Bash(git *),Bash(npm run *),Bash(node *),Bash(bash *)";
     case "worker":
     default:
       return "Read,Edit,Write,Grep,Glob,Agent,Task,Bash(taskctl *),Bash(node *),Bash(git *)";

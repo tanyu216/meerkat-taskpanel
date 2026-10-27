@@ -59,7 +59,7 @@ const activitiesFor = (db, taskId) =>
 
 const report = (overrides = {}) => ({
   conclusion: "M1 core is done.",
-  acceptance: [{ text: "domain has no Node I/O", status: "met" }],
+  acceptance: [{ text: "domain has no Node I/O", status: "met", note: "evidence[1] — the purity test" }],
   evidence: [{ kind: "commit", sha: "dcd7d15" }],
   author: AGENT,
   ...overrides,
@@ -2821,7 +2821,13 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       commands.claim({ id: review.id, actor: AGENT });
       commands.deliver({
         taskId: review.id,
-        report: report({ conclusion: "VERDICT: APPROVE\nlooks good" }),
+        report: report({
+          conclusion: "VERDICT: APPROVE\nlooks good",
+          evidence: [
+            { kind: "commit", sha: "dcd7d15" },
+            { kind: "command", cmd: "node --test test/io.test.mjs", exit_code: 0 },
+          ],
+        }),
         actor: AGENT,
       });
       // The human protocol is review-first: close the review card, then accept.
@@ -3456,7 +3462,13 @@ describe("commands/tasks — review decision (0031)", () => {
       commands.claim({ id: review.id, actor: AGENT });
       commands.deliver({
         taskId: review.id,
-        report: report({ conclusion: "VERDICT: APPROVE\nlooks good" }),
+        report: report({
+          conclusion: "VERDICT: APPROVE\nlooks good",
+          evidence: [
+            { kind: "commit", sha: "dcd7d15" },
+            { kind: "command", cmd: "node --test test/io.test.mjs", exit_code: 0 },
+          ],
+        }),
         actor: AGENT,
       });
 
@@ -3827,8 +3839,8 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
         taskId: original.id,
         report: report({
           acceptance: [
-            { text: "a", status: "met" },
-            { text: "b", status: "met" },
+            { text: "a", status: "met", note: "evidence[1]" },
+            { text: "b", status: "met", note: "evidence[1]" },
           ],
         }),
         actor: AGENT,
@@ -3847,7 +3859,11 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
         taskId: review.id,
         report: report({
           conclusion: "VERDICT: APPROVE\n\nEverything checked; b has no evidence.",
-          acceptance: [{ text: "a", status: "met" }],
+          acceptance: [{ text: "a", status: "met", note: "evidence[1]" }],
+          evidence: [
+            { kind: "commit", sha: "dcd7d15" },
+            { kind: "command", cmd: "node --test test/io.test.mjs", exit_code: 0 },
+          ],
         }),
         actor: AGENT,
       });
@@ -3856,6 +3872,115 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
       assert.throws(
         () => commands.moveStatus({ id: original.id, to: "done", actor: HUMAN }),
         (err) => err.code === "ACCEPTANCE_INCOMPLETE" && err.details.source === "review",
+      );
+    });
+  });
+});
+
+describe("commands/tasks — a claim must point at its evidence", () => {
+  const TASKD = { kind: "taskd", id: "taskd" };
+  const AGENT_ACTOR = { kind: "agent", id: "linus" };
+  const REVIEWER = { kind: "agent", id: "jobs" };
+
+  /** A report whose one criterion is `met` with the given note. */
+  const claimReport = (note) => ({
+    conclusion: "Done.",
+    acceptance: [{ text: "domain has no Node I/O", status: "met", note }],
+    evidence: [{ kind: "commit", sha: "dcd7d15" }],
+    author: AGENT_ACTOR,
+  });
+
+  it("refuses an agent card's anchorless met, and lets an off card keep its lighter contract", async () => {
+    for (const [mode, expected] of [
+      ["agent", "ACCEPTANCE_INCOMPLETE"],
+      ["off", null],
+    ]) {
+      await board(async ({ commands }) => {
+        const task = commands.createTask({
+          projectId: "proj",
+          title: "Ship it",
+          acceptanceMode: mode,
+          meta: { acceptance: ["domain has no Node I/O"] },
+          actor: AGENT_ACTOR,
+        });
+        commands.claim({ id: task.id, actor: AGENT_ACTOR });
+        commands.deliver({ taskId: task.id, report: claimReport("looks right"), actor: AGENT_ACTOR });
+        let code = null;
+        try {
+          commands.moveStatus({ id: task.id, to: "done", actor: TASKD });
+        } catch (err) {
+          code = err.code;
+        }
+        assert.equal(code, expected);
+      });
+    }
+  });
+
+  it("names the unsupported item and how to fix it", async () => {
+    await board(async ({ commands }) => {
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "Ship it",
+        acceptanceMode: "agent",
+        meta: { acceptance: ["domain has no Node I/O"] },
+        actor: AGENT_ACTOR,
+      });
+      commands.claim({ id: task.id, actor: AGENT_ACTOR });
+      commands.deliver({ taskId: task.id, report: claimReport("I ran it, trust me"), actor: AGENT_ACTOR });
+      assert.throws(
+        () => commands.moveStatus({ id: task.id, to: "done", actor: TASKD }),
+        (err) =>
+          err.code === "ACCEPTANCE_INCOMPLETE" &&
+          err.details.unsupported[0].reason === "no_anchor" &&
+          /evidence\[1\]/.test(err.hint.fix),
+      );
+    });
+  });
+
+  it("refuses an APPROVE whose reviewer ran no command", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Original",
+        acceptanceMode: "agent",
+        meta: { acceptance: ["domain has no Node I/O"] },
+        actor: AGENT_ACTOR,
+      });
+      commands.claim({ id: original.id, actor: AGENT_ACTOR });
+      commands.deliver({
+        taskId: original.id,
+        report: {
+          conclusion: "Done.",
+          acceptance: [{ text: "domain has no Node I/O", status: "met", note: "evidence[1] — the test" }],
+          evidence: [{ kind: "command", cmd: "node --test test/io.test.mjs", exit_code: 0 }],
+          author: AGENT_ACTOR,
+        },
+        actor: AGENT_ACTOR,
+      });
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        actor: REVIEWER,
+      });
+      commands.claim({ id: review.id, actor: REVIEWER });
+      commands.deliver({
+        taskId: review.id,
+        report: {
+          conclusion: "VERDICT: APPROVE\n\nLooked at the diff.",
+          acceptance: [{ text: "domain has no Node I/O", status: "met", note: "evidence[1]" }],
+          evidence: [{ kind: "commit", sha: "dcd7d15" }],
+          author: REVIEWER,
+        },
+        actor: REVIEWER,
+      });
+      commands.moveStatus({ id: review.id, to: "done", actor: HUMAN });
+
+      assert.throws(
+        () => commands.moveStatus({ id: original.id, to: "done", actor: TASKD }),
+        (err) => err.code === "ACCEPTANCE_INCOMPLETE" && err.details.reason === "no_command_evidence",
       );
     });
   });

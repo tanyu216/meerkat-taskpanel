@@ -559,7 +559,9 @@ the container; with it, the container stays `in_progress` and names the child bl
 - **A silent reviewer is not silent forever.** An **open** review card suppresses the
   original's `acceptance_card_creation` row, so a reviewer that is never woken would
   otherwise have no watcher at all. A review card in `in_review` whose report has no readable
-  verdict raises `verdict_unreadable` and is re-dispatched (`reopen_review`, bounded by
+  verdict raises `verdict_unsupported` — a `met` with no resolvable anchor, or an APPROVE
+  whose report carries no `command` anchor — and is re-dispatched the same bounded way. A
+  verdict that cannot be read raises `verdict_unreadable` and is re-dispatched (`reopen_review`, bounded by
   `meta.review_retry`, at most two reopens; the exhaustion alert is
   `review_retries_exhausted`). A review card that is not `in_review`
   (todo / in_progress / blocked / awaiting) older than `--review-aging-minutes` (default 60)
@@ -1341,15 +1343,19 @@ allowlist:
 | Role | Tools (Claude adapter, default) |
 |---|---|
 | control | `Read`, `Bash(taskctl *)`, `Bash(node *)` |
-| reviewer | `Read`, `Grep`, `Glob`, `Agent`, `Bash(taskctl *)`, `Bash(git *)` |
+| reviewer | `Read`, `Grep`, `Glob`, `Agent`, `Bash(taskctl *)`, `Bash(git *)`, `Bash(npm run *)`, `Bash(node *)`, `Bash(bash *)` |
 | worker | `Read`, `Edit`, `Write`, `Grep`, `Glob`, `Agent`, `Bash(taskctl *)`, `Bash(node *)`, `Bash(git *)` |
 
 `Agent` is the subagent-spawning tool (older CLIs spell it `Task`; both are listed
-so one adapter serves either). The Pi adapter carries the same split through
-`--tools`, and its lists also include `subagent` / `subagents_enable` — the
-`pi-subagents` extension's tools (inert when the extension is not installed, but
-a lane without them could not spawn). Codex, OpenCode and Cursor have no
-equivalent option.
+so one adapter serves either). The reviewer's `npm run` / `node` / `bash` entries
+exist because its contract is to re-run the project's declared gate
+(`project.meta.review_gate`) itself; a read-only lane with only `taskctl` and
+`git` cannot reproduce anything and turns "reproducible evidence" into "read the
+report and trust it". It still has no `Edit`/`Write`. The Pi adapter carries the
+same split through `--tools`, and its lists also include `subagent` /
+`subagents_enable` — the `pi-subagents` extension's tools (inert when the
+extension is not installed, but a lane without them could not spawn). Codex,
+OpenCode and Cursor have no equivalent option.
 
 An operator who needs unattended runs that edit and execute without prompts can
 opt into **full tool access** — `--allow-all-tools`, or, for the installed

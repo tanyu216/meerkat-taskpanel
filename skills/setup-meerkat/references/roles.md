@@ -13,7 +13,7 @@ exactly as it did before the feature.
 ├── jobs/{workflow.md,ui-workflow.md,self-check.md}
 ├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,refactor-workflow.md,self-check.md}
 ├── turing/{workflow.md,test-design-workflow.md,regression-workflow.md,performance-workflow.md,self-check.md}
-└── reviewer/{workflow.md,reviewer-prompt.md}
+└── reviewer/{workflow.md,self-check.md,reviewer-prompt.md}
 ```
 
 ## Card and plan lifecycle
@@ -36,9 +36,9 @@ matching product archive exists:
 - The project session creates the next card in `backlog` with `--meta design_stage=<ref>`,
   copies the block into the description, seeds `--acceptance` from the acceptance source,
   links `relation add <producer> --type blocks --target <next>`, then moves it to `todo`.
-  When the card changes code, the acceptance seed also carries the mandatory gates (100%
-  pass, >80% coverage, mock boundary, security scan), so the review card's baseline has
-  them.
+  When the card changes code, the acceptance seed also names the project's declared gate
+  (`meta.review_gate`, one authoritative command) — or the four default gates when the
+  project declares none — so the review card's baseline carries what must be re-run.
 - An epic is `kind=epic` and is not claimable; children are `kind=task` linked with
   `relation add <epic> --type parent --target <child>`. The epic's only delivery report is
   the rollup.
@@ -55,15 +55,19 @@ that depends on the development card runs only after that card is `done` — `bl
 block review dispatch — so it cannot gate the verdict. It is post-delivery verification; a
 finding creates a fix/rework card.
 
-The reviewer re-runs the mandatory gates and records the commands and results in the
-verdict report:
+The reviewer re-runs the gate the project declares (`project.meta.review_gate`) and records
+the command, its exit code and the coverage it reports in the verdict report. The gate is
+the project's own — one command that is known to be the authoritative check — not a set the
+role invents. When a project declares none, the reviewer records `n/a — none declared` and
+does the targeted checks instead; a rule the lane cannot execute is a rule it learns to
+skip.
 
-| Gate | Threshold |
+| What the reviewer still owns | Rule |
 |---|---|
-| Test suites | unit, integration, API and browser-based (where applicable): 100% pass |
-| Coverage | line, branch and function >80% (or the project's stricter floor) |
+| The declared gate | run it itself, at the delivered commit; a red gate is a REJECT |
 | Mocks | only at http/websocket/db/redis and comparable external boundaries; never an internal module or function |
-| Security scan | the project's documented scan; no unaddressed high/critical |
+| Security | audit the changed surface against CWE Top 25 / OWASP Top 10 / OWASP ASVS, or record why it does not change |
+| Evidence | every `met` is falsifiable and cites an anchor; a claim that cannot be reproduced is `not_met` |
 
 A separate Turing card is for test design and authoring (unit, integration, API and
 browser-based suites), performance/load testing, and a security assessment/pen test. It has

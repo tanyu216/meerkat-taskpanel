@@ -30,11 +30,13 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `taskctl --json … project list` | `data.projects[].id`, `.name`, `.reviewer`, `.acceptance` | poll's reviewer merge and the workflow pass's reviewer check |
+| `taskctl --json … project list` | `data.projects[].id`, `.name`, `.reviewer`, `.acceptance`, `.meta.review_gate` | poll's reviewer merge and the workflow pass's reviewer check |
 
 `reviewer` is the project's override; `acceptance` (`auto` / `off` / `agent` /
 `human`) is the default a new card inherits. The board resolves the effective
-reviewer per card (`project.reviewer ?? deployment reviewer`).
+reviewer per card (`project.reviewer ?? deployment reviewer`). `meta.review_gate`
+names the one command the reviewer re-runs; it is copied into the review card's
+description (or `n/a — none declared`), never validated or executed by the board.
 
 ## 3. Candidate scan and atomic claim
 
@@ -102,15 +104,17 @@ The plan is snake_case (`workflowToWire`). Action `type`s the loop executes:
 
 | `type` | Meaning |
 |---|---|
-| `create_review` | create the review card (`original_ref`, `project_id`, `reviewer`, `round`, `idem`, `target`, `title`, `description`, `acceptance[]`). `acceptance[]` is the original's frozen baseline followed by the generic review items (2 for a card, 3 for an epic), and becomes the review card's own frozen baseline |
+| `create_review` | create the review card (`original_ref`, `project_id`, `reviewer`, `round`, `idem`, `target`, `title`, `description`, `acceptance[]`). `acceptance[]` is the original's frozen baseline followed by the generic review items (4 for a card, 6 for an epic), and becomes the review card's own frozen baseline |
 | `auto_accept` | close a no-review original (`original_ref`, `accepted_by`, `round`) |
 | `approve` | apply an APPROVE verdict to an `agent` original and close its review card (`close_review` follows last) |
-| `reject_task` / `reject_epic` / `reject_task_finish` | apply a REJECT verdict; the epic form also creates a fix child |
+| `reject_task` / `reject_epic` / `reject_task_finish` | apply a REJECT verdict; the epic form also creates a fix child. `must_fix[]` is the reviewer's numbered list (or one pointer item when the findings are prose); the loop appends each item to the original's frozen baseline after the rework move, so the next round's report template and the next review card both carry it |
 | `close_review` / `cancel_review` | close the review card last |
 
 Alert `type`s include `original_unseen`, `verdict_unreadable`, `verdict_incomplete`,
-`acceptance_incomplete`, `acceptance_unverified`, `review_aging`, `actions_capped`,
-`dispatch_capped`, `self_review_not_independent`. Each carries a `dedup_key`. The acceptance/verdict alerts are log-only: the planner
+`verdict_unsupported` (a `met` with no resolvable anchor, or an APPROVE with no `command`
+anchor — reason `evidence_missing` / `no_command_evidence`), `acceptance_incomplete`,
+`acceptance_unverified`, `review_aging`, `actions_capped`, `dispatch_capped`,
+`self_review_not_independent`. Each carries a `dedup_key`. The acceptance/verdict alerts are log-only: the planner
 declines to plan an action the write gate would refuse, rather than producing one failure per
 tick. An epic's skip reasons are `rollup_unverified` (no current-round rollup) and
 `rollup_stale` (the rollup no longer matches the children); both appear on

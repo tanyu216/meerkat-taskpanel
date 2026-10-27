@@ -1948,6 +1948,7 @@
         "assignee_id": "string",
         "close_review": "boolean",
         "findings": "string",
+        "must_fix": "array",
         "original_ref": "string",
         "original_title": "string",
         "project_id": "string",

@@ -58,7 +58,7 @@ export function acceptanceFrom(task) {
   const snapshot = Array.isArray(task.acceptance) ? task.acceptance : null;
   if (snapshot !== null && snapshot.length > 0) {
     return {
-      items: snapshot.map((text) => ({ text: String(text), status: "not_met", note: "TODO: met / partial / not_met" })),
+      items: snapshot.map((text) => ({ text: String(text), status: "not_met", note: "TODO: status + evidence[1] — what you saw" })),
       source: "acceptance_json",
       // The marker is a flag, not a verdict: it says the worker derived the list
       // at claim, so the reviewer may want to re-check its coverage.
@@ -72,7 +72,7 @@ export function acceptanceFrom(task) {
   const modern = Array.isArray(meta.acceptance) ? meta.acceptance : null;
   if (modern !== null && modern.length > 0) {
     return {
-      items: modern.map((text) => ({ text: String(text), status: "not_met", note: "TODO: met / partial / not_met" })),
+      items: modern.map((text) => ({ text: String(text), status: "not_met", note: "TODO: status + evidence[1] — what you saw" })),
       source: "meta.acceptance (no frozen baseline)",
       warning:
         "this card has no frozen acceptance baseline; meta.acceptance is a seed and the card is treated as vacuously covered until it is reworked",
@@ -87,7 +87,7 @@ export function acceptanceFrom(task) {
       items: legacy.map((entry) => ({
         text: String(entry?.text ?? entry),
         status: "not_met",
-        note: "TODO: met / partial / not_met",
+        note: "TODO: status + evidence[1] — what you saw",
       })),
       source: "meta.acceptance_legacy",
       warning: "acceptance came from the imported card's checkboxes; `checked` is not evidence, so every item starts not_met",
@@ -189,7 +189,7 @@ export function buildTemplate(task, options = {}, context = {}) {
     acceptance:
       acceptance.items.length > 0
         ? acceptance.items
-        : [{ text: task.title, status: "not_met", note: "TODO: met / partial / not_met" }],
+        : [{ text: task.title, status: "not_met", note: "TODO: status + evidence[1] — what you saw" }],
     evidence: evidence.anchors,
     leftovers: TODO_PLACEHOLDER,
   };
