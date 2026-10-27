@@ -229,8 +229,11 @@ describe("install.sh", () => {
 
     assert.equal(run.status, 0, run.stderr);
     for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
+      // Match the whole destination line, not a substring: `skills/meerkat` is a prefix
+      // of `skills/meerkat-loop`, so a bare `includes` would pass on the loop alone.
+      const dest = join(fakeHome, agentDir, "skills", "meerkat");
       assert.ok(
-        run.stdout.includes(join(fakeHome, agentDir, "skills", "meerkat")),
+        run.stdout.split("\n").some((line) => line.endsWith(dest)),
         `dry run must print the ${agentDir} destination path`,
       );
     }

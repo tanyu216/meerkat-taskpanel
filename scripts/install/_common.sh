@@ -712,7 +712,9 @@ migrate_legacy_skill() {
   legacy="$target_home/$agent_dir/skills/$legacy_name"
   [ -e "$legacy" ] || [ -L "$legacy" ] || return 0
 
-  if [ -n "$link" ] || [ -L "$dest" ]; then
+  # A link on either side is left alone: moving through one would write into the tree it
+  # points at — the checkout — which is exactly what the `--force` path refuses to do.
+  if [ -n "$link" ] || [ -L "$dest" ] || [ -L "$legacy" ]; then
     echo "$label: legacy skill dir kept: $legacy (linked install; move roles/ and projects.json into $dest by hand, then remove it)"
     return 0
   fi
