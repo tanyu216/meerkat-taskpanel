@@ -25,7 +25,7 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
-import { parseVersionTag } from "./changelog.mjs";
+import { isReleaseTag, parseVersionTag } from "./changelog.mjs";
 import { ROOT, currentVersion, validateVersions } from "./version.mjs";
 
 /**
@@ -37,11 +37,24 @@ import { ROOT, currentVersion, validateVersions } from "./version.mjs";
  *
  * @param {{tag: string, base?: string, onMain?: boolean}} options
  * @returns {Promise<{ok: boolean, skipped?: boolean, tag: string, version?: string,
- *   expected?: string, code?: "mismatch"|"unreadable"|"not-on-main", error?: string}>}
+ *   expected?: string, code?: "mismatch"|"unreadable"|"not-on-main"|"malformed", error?: string}>}
  */
 export async function checkTagVersion({ tag, base = ROOT, onMain = false } = {}) {
   const version = parseVersionTag(tag);
-  if (version === null) return { ok: true, skipped: true, tag };
+  if (version === null) {
+    // `v…` is the release namespace (the ruleset targets it, `release.yml` runs on
+    // it). A ref that lives there but is not `vMAJOR.MINOR.PATCH` is a typo, not a
+    // scratch tag, and must not slip through as "not a version tag".
+    if (isReleaseTag(tag)) {
+      return {
+        ok: false,
+        tag,
+        code: "malformed",
+        error: `'${tag}' is a release tag, but its name must be vMAJOR.MINOR.PATCH (e.g. v1.2.3)`,
+      };
+    }
+    return { ok: true, skipped: true, tag };
+  }
 
   const checked = await validateVersions(base);
   if (!checked.ok) {
@@ -127,7 +140,7 @@ async function main(argv) {
         "  <vX.Y.Z>      the tag to check against the tree's version carriers\n" +
         "  --base <dir>  the tree to read (default: this checkout)\n" +
         "  --on-main     also require HEAD to be an ancestor of origin/main\n\n" +
-        "Exit: 0 matches/skip · 1 mismatch · 2 unreadable, not-on-main, or usage\n",
+        "Exit: 0 matches/skip · 1 mismatch or a malformed v* name · 2 unreadable, not-on-main, or usage\n",
     );
     return 0;
   }
@@ -153,7 +166,7 @@ async function main(argv) {
     );
     return 0;
   }
-  if (result.code === "mismatch") {
+  if (result.code === "mismatch" || result.code === "malformed") {
     process.stderr.write(`tag-version: FAILED — ${result.error}\n`);
     return 1;
   }

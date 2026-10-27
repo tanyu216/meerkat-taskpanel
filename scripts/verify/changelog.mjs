@@ -52,6 +52,21 @@ export function parseVersionTag(tag) {
 }
 
 /**
+ * Is this ref in the reserved release namespace (`v…`)?
+ *
+ * `v` is not a free prefix: the release rulesets target it and `release.yml` runs on
+ * it, so a `v`-prefixed ref that is not `vMAJOR.MINOR.PATCH` is a mistake, not a
+ * scratch tag. Callers skip a non-version tag (a `docs/experiment` ref is none of
+ * this gate's business) but **fail** a reserved-but-malformed one.
+ *
+ * @param {string} tag
+ * @returns {boolean}
+ */
+export function isReleaseTag(tag) {
+  return typeof tag === "string" && /^v/i.test(tag.trim());
+}
+
+/**
  * Find the `## [version]` heading in a changelog body.
  *
  * Matches a Keep-a-Changelog heading (`## [1.2.3] - 2026-10-10`) by comparing the
@@ -152,7 +167,17 @@ export async function checkChangelog(options) {
   const { tag, base = ROOT, file = CHANGELOG_FILE, strict = false } = options;
 
   const version = parseVersionTag(tag);
-  if (version === null) return { ok: true, skipped: true, tag };
+  if (version === null) {
+    if (isReleaseTag(tag)) {
+      return {
+        ok: false,
+        tag,
+        code: "malformed",
+        error: `'${tag}' is a release tag, but its name must be vMAJOR.MINOR.PATCH (e.g. v1.2.3)`,
+      };
+    }
+    return { ok: true, skipped: true, tag };
+  }
 
   const path = join(base, file);
   let raw;
@@ -244,7 +269,7 @@ async function main(argv) {
         "  --base <dir>   the tree to read from (default: this checkout)\n" +
         "  --file <name>  the changelog file (default: CHANGELOG.md)\n" +
         "  --strict       require a real date, real entries, and an empty [Unreleased]\n\n" +
-        "Exit: 0 has an entry / not a version tag · 1 missing or insufficient entry · 2 usage or unreadable file\n",
+        "Exit: 0 has an entry / not a version tag · 1 missing, insufficient or malformed · 2 usage or unreadable file\n",
     );
     return 0;
   }
@@ -272,6 +297,10 @@ async function main(argv) {
   }
   if (!result.ok) {
     process.stderr.write(`changelog: FAILED — ${result.error}\n`);
+    if (result.code === "malformed") {
+      // No section hint: the tag itself is the problem, not the changelog.
+      return 1;
+    }
     if (values.strict) {
       process.stderr.write(
         "changelog: fill the release section before tagging — no placeholders, a real date, and an empty [Unreleased].\n",

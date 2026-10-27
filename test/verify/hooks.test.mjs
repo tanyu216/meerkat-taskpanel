@@ -124,6 +124,14 @@ describe("pre-push: main advances only through a pull request", () => {
     assert.match(stderr, /ALLOW_PUSH_MAIN/, "the override must announce itself");
   });
 
+  it("refuses a v* tag that is not vX.Y.Z", () => {
+    // `v` is the release namespace, so a malformed name is a typo, not a scratch tag.
+    const { status, stderr } = runHook([`refs/tags/v1.2 ${SHA} refs/tags/v1.2 ${ZERO}`]);
+    assert.notEqual(status, 0);
+    assert.match(stderr, /release tag/i);
+    assert.match(stderr, /vMAJOR\.MINOR\.PATCH/);
+  });
+
   it("leaves tag pushes alone", () => {
     const { status, stderr } = runHook([`refs/tags/v9.9.9 ${SHA} refs/tags/v9.9.9 ${ZERO}`]);
 

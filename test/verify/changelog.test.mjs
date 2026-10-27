@@ -135,6 +135,15 @@ describe("changelog.mjs — checkChangelog against a tree", () => {
     assert.equal(result.skipped, true);
   });
 
+  it("fails a v-prefixed name that is not semver instead of skipping it", async () => {
+    for (const tag of ["v1.2", "v1.2.3.4", "vnext"]) {
+      const result = await checkChangelog({ tag });
+      assert.equal(result.ok, false, `${tag} must not pass as a scratch tag`);
+      assert.equal(result.code, "malformed", tag);
+      assert.match(result.error, /vMAJOR\.MINOR\.PATCH/);
+    }
+  });
+
   it("reports a missing CHANGELOG.md as an unreadable file, not a missing entry", async () => {
     const dir = await makeTree();
     const result = await checkChangelog({ tag: "v1.0.0", base: dir });
@@ -162,6 +171,13 @@ describe("changelog.mjs — the CLI", () => {
   it("exits 0 (skip) for a non-version tag", () => {
     const result = runCli(["not-a-version"]);
     assert.equal(result.status, 0, result.stderr);
+  });
+
+  it("exits 1 for a malformed v* tag", () => {
+    const result = runCli(["v1.2"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /release tag/i);
+    assert.doesNotMatch(result.stderr, /undefined/, "no section hint for a tag that is the problem");
   });
 
   it("exits 2 on usage error (no tag given)", () => {

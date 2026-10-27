@@ -74,6 +74,18 @@ describe("tag-version.mjs — checkTagVersion", () => {
     assert.equal(result.skipped, true);
   });
 
+  it("rejects a v-prefixed name that is not semver instead of skipping it", async () => {
+    const dir = await makeTree();
+    await writeTree(dir, manifests("1.2.3"));
+
+    for (const tag of ["v1.2", "v1.2.3.4", "vnext", "v1.2.3-", "V1.2.3"]) {
+      const result = await checkTagVersion({ tag, base: dir });
+      assert.equal(result.ok, false, `${tag} must not pass as a scratch tag`);
+      assert.equal(result.code, "malformed", tag);
+      assert.match(result.error, /vMAJOR\.MINOR\.PATCH/);
+    }
+  });
+
   it("rejects a tag that disagrees with the canonical version", async () => {
     const dir = await makeTree();
     await writeTree(dir, manifests("1.2.3"));
@@ -121,6 +133,14 @@ describe("tag-version.mjs — the CLI", () => {
     const run = runCli(["release-candidate", "--base", dir]);
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /SKIP/);
+  });
+
+  it("exits 1 on a malformed v* tag", async () => {
+    const dir = await makeTree();
+    await writeTree(dir, manifests("1.2.3"));
+    const run = runCli(["v1.2", "--base", dir]);
+    assert.equal(run.status, 1, run.stdout);
+    assert.match(run.stderr, /release tag/i);
   });
 
   it("exits 1 on a mismatch and 2 on an unreadable tree", async () => {

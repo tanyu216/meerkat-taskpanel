@@ -347,13 +347,21 @@ run *because* a tag was pushed, which is exactly why rule 3 matters.
   - **Require conversation resolution before merging**;
   - **Do not allow bypassing the above settings**, so administrators are covered too;
   - leave *Allow force pushes* and *Allow deletions* **unchecked**.
-- **Tags.** Settings → Rules → a **tag ruleset** named `release-tags` targeting `v*`, with
+- **Tags.** Settings → Rules → a **tag ruleset** named `release-tags` targeting
+  `v[0-9]*.[0-9]*.[0-9]*` (the closest a ruleset pattern gets to `vMAJOR.MINOR.PATCH`:
+  patterns have `*`, `?` and character classes but no repetition quantifiers), with
   **Restrict deletions** and **Block force pushes** on and **creations left open**. That
-  combination is deliberate: a published tag can never be moved or deleted, while
+  combination is deliberate: every semver-shaped release tag is immutable, while
   `release-tag` can still create one with `GITHUB_TOKEN` — the bypass picker does not offer
   the built-in GitHub Actions app, and restricting creations would refuse the workflow's
   own push. (The older *Tag protection rules* restrict creations to admins and would block
   it, which is why the ruleset is used.)
+
+  A ruleset *matches* refs; it does not validate their names, so "a `v*` tag must be
+  `vX.Y.Z`" cannot be a GitHub rule. That half is the tag gate: `scripts/verify/changelog.mjs`
+  and `scripts/verify/tag-version.mjs` now **refuse** (not skip) a `v`-prefixed tag that is
+  not `vMAJOR.MINOR.PATCH` — `v1.2`, `v1.2.3.4`, `vnext` — and every door calls them:
+  `pre-push`, `pre-tag`, `version-gate.yml`, `release-tag.yml` and `release.yml`.
 
 That second screen restricts *who* may create a `v*` tag; GitHub has no setting for *which
 commit* a tag points at, so the tag-from-`main` half stays a human check — and it is
