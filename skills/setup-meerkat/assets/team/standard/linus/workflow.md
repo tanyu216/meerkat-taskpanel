@@ -6,9 +6,8 @@ it test-first, run the repository gates, and keep the system operable.
 ## Identity and authority
 
 - Every agent write carries `--agent Linus --actor-kind <kind>` (the handoff supplies the
-  flags). On `taskctl issue create`, pass `--reporter Linus --reporter-kind agent` and
-  `--assignee <role> --assignee-kind agent`; `issue assign` resolves a role name to kind
-  `agent` by default.
+  flags). On create, record the creator as the reporting agent and assign the owner as kind
+  `agent`; an assignment resolves a role name to that kind by default.
 - A human decision or constraint is recorded only with `--as-human` (the fixed
   `TASKCTL_HUMAN`). Never use it for your own view.
 - You do **not** decide an unauthorized question. Write an agent `question` comment, keep
@@ -33,10 +32,8 @@ it test-first, run the repository gates, and keep the system operable.
    plan; another card's plan is never this card's plan. The reviewer reads it.
 4. If this card is an epic child, the plan covers only this card's scope; the epic's
    rollup is not this card's report. Do not split the card yourself.
-5. Follow the workspace rule in `CLAUDE.md`/`AGENTS.md`: one worktree per card, shared by
-   the card's roles, off the integration branch (`dev` by default). Create it if it does
-   not exist; the primary checkout stays on `dev`, never edited in place. `.meerkat/<id>/`
-   stays in the project working directory, not inside the worktree.
+
+`.meerkat/<id>/` stays in the project working directory as the card's task trail.
 
 ## Decide before you build
 
@@ -68,13 +65,13 @@ without context and the result of a real trade-off. Use 1-3 sentences of context
 and why; add `Status`, `Considered Options` and `Consequences` when they help. Do not write
 `design/glossary.md` or `design/adr/` — Jobs owns those.
 
-## Branch selection
+## Workflow selection
 
-Choose the branch before touching code:
+Choose the workflow before touching code:
 
-| Card | Branch |
+| Card | Workflow |
 |---|---|
-| A new project or subsystem, the architecture style or stack, a system-wide boundary/contract/data-model change, the configuration surface, the directory tree, scaffolding or the git gates | `architecture-workflow.md` |
+| A new project or subsystem, the architecture style or stack, a system-wide boundary/contract/data-model change, the configuration surface, the directory tree, scaffolding or the project's gates | `architecture-workflow.md` |
 | A feature or module inside the recorded architecture, a behaviour change, or a bug fix | `implementation-workflow.md` |
 
 A card belongs to the architecture branch **iff** it creates or changes a recorded
@@ -92,23 +89,15 @@ If the branch is genuinely unclear, write an agent `question` and stop.
 - An architecture card records the architecture style and the stack table before
   scaffolding; no implementation starts on an unconfirmed foundation.
 - Test-first for behaviour; a bug is reproduced by a failing test before it is fixed.
-- Run the documented gates and record the exact commands and results. A red gate is not a
-  delivery.
+- Run the documented gates and record the evidence. A red gate is not a delivery.
 - Run `self-check.md` before delivery.
 - Stop at `in_review`; the reviewer is independent. Never move the card to `done`.
 
 ## Integration and cleanup
 
 Delivery is not integration. The card stops at `in_review` until the reviewer approves or
-the operator confirms. With no project rule, the default is:
-
-1. in the primary checkout: `git checkout dev && git merge --no-ff <branch>`; resolve
-   conflicts against `dev`;
-2. `git worktree remove .worktrees/<card-slug>`, then `git branch -d <branch>` — this
-   order, because git refuses to delete a branch that is still checked out in a worktree;
-3. re-run the gates on the integration result.
-
-`git branch -d` refusing means the merge did not land; never use `-D` to force it.
+the operator confirms; integration and cleanup belong to the project session, not to this
+card.
 
 ## Boundaries
 

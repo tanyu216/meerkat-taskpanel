@@ -1,12 +1,8 @@
 # Linus — self-check before delivery
 
-Run this after the branch work and before `issue deliver`. First re-export the brief so the
-check runs against the current card, then use the section for the branch you ran; the
-shared checks apply to both.
-
-```bash
-taskctl export md <id> --out .meerkat/<id>/card.md
-```
+Run this after the branch work and before delivery. First re-export the brief so the check
+runs against the current card, then use the section for the branch you ran; the shared
+checks apply to both.
 
 Never hand-edit `card.md`; re-export it. This is the role's pre-delivery audit. It is not
 the `## Handoff` block: that block is a producer card's cross-card transfer (Jobs design,
@@ -54,12 +50,10 @@ run them.
 8. The skeleton builds, the smoke test passes, the documented local run works, and the
    scaffold instantiates the recorded stack and the planned directory tree (the Dockerfile
    builds when the runtime form is a container).
-9. `.githooks/pre-commit`, `pre-push` and `pre-tag` exist, are wired through
-   `core.hooksPath`, fire on a scratch commit/push/tag, and are idempotent. No secret, no
-   host-absolute path, no generated file committed.
-10. The E5 architecture decision is recorded before implementation starts. The agent
-    instructions name the build/test/run commands and the worktree rule; `.worktrees/` is
-    gitignored and the integration branch is recorded.
+9. The project's gate path exists and fires on a scratch change, and it is idempotent. No
+   secret, no host-absolute path, no generated file is committed.
+10. The E5 architecture decision is recorded before implementation starts, and the
+    agent-instruction baseline names the build/test/run commands and the design principles.
 11. The root `GLOSSARY.md` carries the `## Product language` pointer (or says product terms
     are not recorded) and does not copy product terms; ADRs live at
     `docs/adr/NNNN-<slug>.md`.
@@ -75,14 +69,14 @@ run them.
 15. The configuration surface is recorded: `.env.example` names every key the application
     reads, the loader fails loudly on a missing required key, and the reload policy lists
     reloadable and restart-required keys. Otherwise the `n/a` is recorded.
-16. The directory tree is planned and scaffolded exactly, and the `/init` product
-    (`CLAUDE.md` or `AGENTS.md`) exists as the baseline every role reads, carrying the entry
+16. The directory tree is planned and scaffolded exactly, and the agent-instruction baseline
+    (`CLAUDE.md` or `AGENTS.md`) exists as the file every role reads, carrying the entry
     points and the non-obvious top-level directories, plus a pointer to the full tree in
     `docs/architecture.md` — not a copy of it.
-17. The `/init` product carries the design principles as binding requirements every agent
-    follows — simple, reliable, efficient, elegant, not over-engineered, high cohesion and
-    low coupling, with the conflict ordering — rather than leaving them in the architecture
-    document only.
+17. The agent-instruction baseline carries the design principles as binding requirements
+    every agent follows — simple, reliable, efficient, elegant, not over-engineered, high
+    cohesion and low coupling, with the conflict ordering — rather than leaving them in the
+    architecture document only.
 18. The logging contract holds: one logger module, key flows emit an `info` line, every
     caught exception emits one `error` line with its code and correlation id, and no secret
     or personal data is logged. Otherwise the recorded `n/a` is present.
@@ -93,10 +87,8 @@ run them.
 7. No published contract, schema or migration changed without the human's decision; no
    destructive operation was run; the change is scoped.
 8. A production bug fix carries a regression test and Turing's required regression evidence.
-9. Work happened in a linked worktree with the primary checkout on `dev`; merge and cleanup
-   ran only after reviewer approval or operator confirmation, `worktree remove` before
-   `branch -d`, and never `-D`.
-10. The gates were re-run on the integration result; the change uses the recorded stack (a
+9. Delivery stopped at `in_review`; integration and cleanup stayed with the project session.
+10. The gates were re-run against the delivered tree; the change uses the recorded stack (a
     new dependency or engine is a recorded decision).
 11. The change applies the six design principles from Step 2 of the branch workflow: it is
     the smallest correct change, each module or function has one reason to change,
@@ -105,6 +97,5 @@ run them.
 
 ## Delivery
 
-Confirm the report names the branch, the commands and results, the evidence anchors, the
-acceptance mapping and the leftovers. Only then deliver at `in_review`. Do not accept your
-own work.
+Confirm the report names the workflow run, the evidence, the acceptance mapping and the
+leftovers. Only then deliver at `in_review`. Do not accept your own work.

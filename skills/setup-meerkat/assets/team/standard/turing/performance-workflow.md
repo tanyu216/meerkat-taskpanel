@@ -38,7 +38,7 @@ Record the evidence and the environment.
 
 ### 7. Deliver
 
-Re-export the brief (`taskctl export md <id> --out .meerkat/<id>/card.md`), then deliver at
+Re-export the brief, then deliver at
 `in_review` with the reproducible command and configuration, the raw results, the variance,
 the conclusion and the leftovers. Do not issue a verdict.
 

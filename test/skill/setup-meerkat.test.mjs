@@ -165,10 +165,10 @@ describe("skill frontmatter and assets", () => {
 
     assert.match(linus, /architecture-workflow\.md/, "Linus routes to the architecture branch");
     assert.match(linus, /implementation-workflow\.md/, "Linus routes to the implementation branch");
-    assert.match(arch, /\.githooks\/pre-commit/, "the architecture branch wires pre-commit");
-    assert.match(arch, /pre-push/, "the architecture branch wires pre-push");
-    assert.match(arch, /pre-tag/, "the architecture branch wires pre-tag");
-    assert.match(arch, /core\.hooksPath/, "the architecture branch sets core.hooksPath");
+    assert.match(arch, /pre-commit/i, "the architecture branch records the local gate path");
+    assert.match(arch, /pre-push/i, "the architecture branch records pre-push");
+    assert.match(arch, /pre-tag/i, "the architecture branch records pre-tag");
+    assert.doesNotMatch(arch, /core\.hooksPath|\.githooks\//, "gate mechanics belong to the project");
     assert.match(impl, /failing test|reproduce/i, "implementation starts from a reproduction");
     assert.match(impl, /gates/i, "implementation records the gates");
 
@@ -209,7 +209,7 @@ describe("skill frontmatter and assets", () => {
     assert.match(
       arch,
       /Design principles[\s\S]{0,400}every agent/i,
-      "the /init product carries the principles as a baseline",
+      "the agent-instruction baseline carries the principles",
     );
 
     assert.match(arch, /domain-driven design|DDD/i, "the style decision names DDD");
@@ -223,7 +223,7 @@ describe("skill frontmatter and assets", () => {
     assert.match(arch, /pagination/i, "collections define pagination");
     assert.match(arch, /hot.?reload/i, "the configuration surface defines reload");
     assert.match(arch, /directory tree|directory structure/i, "the tree is planned");
-    assert.match(arch, /baseline requirement for every agent/i, "/init is the agent baseline");
+    assert.match(arch, /requirement for every agent/i, "the agent-instruction baseline is required");
     assert.match(arch, /one logging module/i, "logging is one module, not console calls");
     assert.match(
       arch,
@@ -238,7 +238,7 @@ describe("skill frontmatter and assets", () => {
     const scaffold = arch.slice(arch.indexOf("### 4."), arch.indexOf("### 5."));
     assert.match(scaffold, /^\| Logging \|/m, "the scaffold checklist carries a logging row");
     const init = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
-    assert.match(init, /logging contract/i, "/init carries the logging contract as a convention");
+    assert.match(init, /logging contract/i, "the agent-instruction baseline carries the logging contract");
 
     assert.match(linus, /foundation decision/i, "the routing table is foundation-level");
     assert.match(linus, /feature or module/i, "the routing table names the implementation side");
@@ -254,11 +254,11 @@ describe("skill frontmatter and assets", () => {
       "the self-check audits the mandatory info logs",
     );
     assert.match(check, /directory tree/i, "the self-check audits the tree");
-    assert.match(check, /\/init/, "the self-check audits the agent baseline");
+    assert.match(check, /agent-instruction baseline/i, "the self-check audits the agent baseline");
     assert.match(
       check,
       /design principles[\s\S]{0,300}every agent/i,
-      "the self-check audits the /init principles",
+      "the self-check audits the baseline principles",
     );
   });
 
@@ -303,7 +303,7 @@ describe("skill frontmatter and assets", () => {
     }
   });
 
-  it("carries the decision method, split glossaries and the worktree declaration", () => {
+  it("carries the decision method, split glossaries and the agent baseline", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const jobs = readFileSync(join(team, "jobs", "workflow.md"), "utf8");
     const ui = readFileSync(join(team, "jobs", "ui-workflow.md"), "utf8");
@@ -335,17 +335,13 @@ describe("skill frontmatter and assets", () => {
 
     assert.match(linus, /## Product language/);
     assert.match(linus, /design\/glossary\.md/);
-    assert.match(linus, /worktree/i, "Linus follows the shared workspace rule");
-    assert.match(arch, /\/init/);
     assert.match(arch, /AGENTS\.md/);
     assert.match(arch, /CLAUDE\.md/);
-    assert.match(arch, /worktree/i, "the architecture branch declares the card worktree");
-    assert.match(arch, /integration branch/i, "the declaration names the integration branch");
-    assert.match(arch, /workflow\.md/, "the command lifecycle stays in the role workflow");
-    assert.match(arch, /reviewer approves|operator confirms/i);
-    assert.match(impl, /worktree/i);
-    assert.match(jobs, /worktree/i, "Jobs shares the card worktree");
-    assert.match(turing, /worktree/i, "Turing shares the card worktree");
+    assert.match(arch, /agent-instruction baseline/i);
+    assert.match(arch, /project session/i, "integration stays with the project session");
+    for (const [name, text] of [["Jobs", jobs], ["Linus", linus], ["Turing", turing], ["architecture", arch], ["implementation", impl]]) {
+      assert.doesNotMatch(text, /worktree|integration branch/i, `${name} leaves project mechanics to the project`);
+    }
 
     assert.match(turing, /GLOSSARY\.md|canonical term/);
     assert.match(testPlan, /decision round|frontier/i);
@@ -380,6 +376,33 @@ describe("skill frontmatter and assets", () => {
       assert.match(workflow, /Decide before you build/);
       assert.match(workflow, /frontier/i);
       assert.match(workflow, /decision-policy\.md/);
+    }
+  });
+
+  it("keeps project mechanics out of the role files", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const files = [
+      "ownership.md",
+      "manifest.json",
+      "jobs/workflow.md",
+      "jobs/ui-workflow.md",
+      "jobs/self-check.md",
+      "linus/workflow.md",
+      "linus/architecture-workflow.md",
+      "linus/implementation-workflow.md",
+      "linus/self-check.md",
+      "turing/workflow.md",
+      "turing/test-design-workflow.md",
+      "turing/regression-workflow.md",
+      "turing/performance-workflow.md",
+      "turing/self-check.md",
+      "reviewer/workflow.md",
+      "reviewer/reviewer-prompt.md",
+    ];
+    const banned = /\bgit (?:worktree|merge|branch|checkout)\b|--no-ff|branch -d|\btaskctl\b|`\/init`|\bnpm run\b|\bdocker\b|\bpodman\b|\bsystemctl\b|\blaunchctl\b|\bcore\.hooksPath\b/;
+    for (const rel of files) {
+      const text = readFileSync(join(team, rel), "utf8");
+      assert.doesNotMatch(text, banned, `${rel} must describe the task process, not project mechanics`);
     }
   });
 
@@ -480,7 +503,7 @@ describe("skill frontmatter and assets", () => {
     assert.match(impl, /## Handoff/);
     assert.match(impl, /does not\s+need the design artifacts/i);
     assert.match(testDesign, /## Handoff/);
-    assert.match(testDesign, /report list/);
+    assert.match(testDesign, /named report/i);
     assert.match(regression, /not inputs here/);
     assert.match(turing, /test-plan\.md/);
     assert.match(turing, /API/i);
@@ -559,7 +582,7 @@ describe("skill frontmatter and assets", () => {
       const check = readFileSync(join(team, role, "self-check.md"), "utf8");
       assert.match(check, /pre-delivery audit/, `${role} self-check names the audit`);
       assert.match(check, /not\s+the `## Handoff` block/, `${role} self-check is not the handoff`);
-      assert.match(check, /export md/, `${role} self-check re-exports the brief`);
+      assert.match(check, /re-export/i, `${role} self-check re-exports the brief`);
       assert.match(check, /card\.md/, `${role} self-check names the brief`);
     }
 
@@ -1052,8 +1075,8 @@ describe("install-roles.mjs — project scope", () => {
       join(project, ".meerkat", "roles", "reviewer", "reviewer-prompt.md"),
       "utf8",
     );
-    assert.match(reviewerPrompt, /--agent Grace/);
-    assert.doesNotMatch(reviewerPrompt, /--agent Reviewer/);
+    assert.match(reviewerPrompt, /You are Grace/);
+    assert.doesNotMatch(reviewerPrompt, /You are Reviewer/);
   });
 
   it("rewrites cross-references in the manifest when another role is renamed", (t) => {

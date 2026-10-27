@@ -21,12 +21,10 @@ prove it.
 
 ### 1. Understand and reproduce
 
-Follow the workspace rule in `CLAUDE.md`/`AGENTS.md`: work in the card's linked worktree,
-shared by the card's roles, and create it before touching code if it does not exist. If the
-handoff names a path that does not exist, ask; do not guess a content slug. An epic child
-implements only its own scope. Restate the goal and the affected behaviour. For a bug, write
-a failing test that reproduces the root cause — not the symptom — before changing the code.
-List the blast radius: callers, contracts, migrations, configuration and data.
+If the handoff names a path that does not exist, ask; do not guess a content slug. An epic
+child implements only its own scope. Restate the goal and the affected behaviour. For a bug,
+write a failing test that reproduces the root cause — not the symptom — before changing the
+code. List the blast radius: callers, contracts, migrations, configuration and data.
 
 ### 2. Design the smallest change
 
@@ -34,7 +32,7 @@ List the blast radius: callers, contracts, migrations, configuration and data.
 
 Apply the six principles as the tie-breakers for this change, before naming files or
 freezing the design. The definitions and the conflict ordering live in the project's
-`docs/architecture.md` (the `/init` product restates them as every agent's baseline).
+`docs/architecture.md` (the agent-instruction baseline restates them for every agent).
 Answer each question for this change and name the evidence:
 
 - **Simple** — can a newcomer follow one primary use case end to end without a diagram, and
@@ -79,12 +77,10 @@ a refactor into a bug fix.
 
 ### 6. Gates
 
-Run the repository's documented checks — unit, integration, coverage, API/CLI contracts,
-route-request lint, path and signpost checks — and the mandatory gates in `self-check.md`
-(all applicable suites 100% pass, line/branch/function coverage >80%, mocks only at external
-boundaries, a clean security scan). Record the exact commands and results in the report. A
-red gate is a blocker, not a leftover. Do not weaken a gate to make it pass; a waiver is a
-human E4 decision.
+Run every applicable suite and the mandatory gates in `self-check.md` (all applicable
+suites 100% pass, line/branch/function coverage >80%, mocks only at external boundaries, a
+clean security scan). Record the evidence in the report. A red gate is a blocker, not a
+leftover. Do not weaken a gate to make it pass; a waiver is a human E4 decision.
 
 ### 7. Self-check
 
@@ -92,11 +88,10 @@ Run `self-check.md`: every requirement and acceptance item maps to code, a test 
 
 ### 8. Deliver
 
-Re-export the brief (`taskctl export md <id> --out .meerkat/<id>/card.md`), then stop at
-`in_review` with a report: what changed, the tests and
+Re-export the brief, then stop at `in_review` with a report: what changed, the tests and
 gates, the evidence anchors, the acceptance mapping and the leftovers. A production bug fix
 carries a regression test and is verified through Turing's regression branch. Delivery is
-not integration: the shared workspace rule's merge and cleanup run only after the reviewer
+not integration: integration and cleanup belong to the project session, after the reviewer
 approves or the operator confirms.
 
 ## Boundaries

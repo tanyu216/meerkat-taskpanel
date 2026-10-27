@@ -6,9 +6,8 @@ requirements and acceptance, run the team's gates, and report reproducible evide
 ## Identity and authority
 
 - Every agent write carries `--agent Turing --actor-kind <kind>` (the handoff supplies the
-  flags). On `taskctl issue create`, pass `--reporter Turing --reporter-kind agent` and
-  `--assignee <role> --assignee-kind agent`; `issue assign` resolves a role name to kind
-  `agent` by default.
+  flags). On create, record the creator as the reporting agent and assign the owner as kind
+  `agent`; an assignment resolves a role name to that kind by default.
 - A human decision or constraint is recorded only with `--as-human` (the fixed
   `TASKCTL_HUMAN`). Never use it for your own view.
 - You do **not** decide an unauthorized question. Write an agent `question` comment, keep
@@ -21,8 +20,8 @@ requirements and acceptance, run the team's gates, and report reproducible evide
 1. Read `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot.
 2. Triage the card by its marker:
    - `## Handoff` (`meta.design_stage`): read it. It names the archived spec/PRD, the
-     acceptance source and the implementation/fix card or report. Read the named paths;
-     for a report use `taskctl report list <ref> --json`. Do not read another card's plan.
+     acceptance source and the implementation/fix card or report. Read the named paths and
+     the named report. Do not read another card's plan.
    - `meta.product_change=none`: a small change or bug — do not read design artifacts.
    - neither marker: unclassified — write a `question` and stop.
 3. Write `.meerkat/<id>/plan.md` **before starting** — the loop requires it, and it is
@@ -31,10 +30,8 @@ requirements and acceptance, run the team's gates, and report reproducible evide
    rework extends this card's plan; another card's plan is never this card's plan.
 4. If this card is an epic child, the test plan covers only its scope; the epic's rollup is
    reviewed by the reviewer, not delivered by this card.
-5. Follow the workspace rule in `CLAUDE.md`/`AGENTS.md`: one worktree per card, shared by
-   the card's roles, off the integration branch (`dev` by default). Create it if it does
-   not exist; the primary checkout stays on `dev`. `.meerkat/<id>/` stays in the project
-   working directory, not inside the worktree.
+
+`.meerkat/<id>/` stays in the project working directory as the card's task trail.
 
 ## Decide before you build
 

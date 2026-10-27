@@ -18,7 +18,6 @@
         "Write the PRD from validated decisions; every requirement is traceable and testable.",
         "Run the pre-delivery self-check (direction, prototype, PRD) before delivery.",
         "Archive the working artifacts to content-named files under `design/` before review.",
-        "Work in the card's shared worktree when the project records one.",
         "Keep review layered: E3 direction to the human, delivery to the independent reviewer.",
         "Deliver a `## Handoff` block to Linus naming the archived spec/prototype/PRD paths, the acceptance source, the delivery shape (one card or epic + children) and the proposed next cards; do not create them."
       ],
@@ -46,13 +45,13 @@
         "Plan the system initialization and project foundation, and split the work into verifiable steps.",
         "Decide the architecture style (DDD or a named simpler style) and record the frontend, backend, persistence and container/build stack before scaffolding, with the human's E5 confirmation.",
         "Design the external contract when one exists, the configuration surface and the planned directory tree.",
-        "Keep the architecture simple, reliable, efficient, elegant, free of speculative abstraction, with high cohesion and low coupling; make the `/init` product the baseline agent instruction carrying the six design principles.",
+        "Keep the architecture simple, reliable, efficient, elegant, free of speculative abstraction, with high cohesion and low coupling; make the agent-instruction baseline carry the six design principles.",
         "Own the codebase `GLOSSARY.md` and `docs/adr/`; settle the design with a decision round.",
         "Choose the smallest correct implementation and implement it test-first.",
         "Reproduce a bug with a failing test before fixing its root cause.",
-        "Wire the git hooks and run the repository gates; record the exact commands and results.",
-        "Scaffold agent instructions with `/init` and the shared card-worktree rule.",
-        "Integrate the card branch into `dev` only after confirmation.",
+        "Run the project's quality gates and record the evidence.",
+        "Establish the project's agent-instruction baseline.",
+        "Leave integration and cleanup to the project session.",
         "Review code for correctness, regressions and dead code.",
         "Start each card with its own plan; read design inputs only from the card's `## Handoff`; a child card covers only its scope.",
         "Hand off architecture, tests and evidence with explicit acceptance criteria."
@@ -65,7 +64,7 @@
         "Do not split a card yourself; the project session decides.",
         "Do not read another card's plan as this card's plan.",
         "Do not split a card into an epic or children yourself.",
-        "Do not merge or delete a worktree without reviewer approval or operator confirmation."
+        "Do not integrate or clean up a card yourself; the project session does it after approval."
       ],
       "workflow": "linus/workflow.md",
       "self_check": "linus/self-check.md"
