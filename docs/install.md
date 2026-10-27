@@ -30,7 +30,7 @@ There are three layers, and it is worth keeping them straight:
    agent able to drive `taskctl`; the loop skill carries the decisions the loop applies,
    and the loop itself runs as `taskctl loop …`.
 2. **The agent bundle** (Claude Code and Codex) — `install.sh --target claude|codex`
-   deploys the rest of that agent's setup too, not just the skill: the agent config
+   deploys the rest of that agent's setup too, not just the skill: the agent's own settings
    (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
    or the scheduling units (Codex), and a `taskctl` shim that pins the agent identity. Writes
    are **merge-style and idempotent**: a repeat install **exits 0**, leaves every managed
@@ -227,7 +227,7 @@ directory, so `/usr/bin/env node` is exit 127 — and the resident session's `ex
 and the worker's own tool tree, resolve on that same set. If the agent CLI is not on `PATH` at
 install time, the installer says so and renders node's directory alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
-| agent config | `<agent-dir>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW` and `MEERKAT_TASKPANEL_REVIEWER`, the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE`, the concurrency cap's `MEERKAT_TASKPANEL_MAX_CONCURRENCY`, and the pool's `MEERKAT_TASKPANEL_RESIDENT`, `..._SESSION_MAX_AGE`, `..._SESSION_TURN_TIMEOUT`, `..._SESSION_POLL_MS`, `..._SESSION_POOL_MAX`, `..._PROJECT_CONCURRENCY` and `..._PROJECT_IDLE_MS`. Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
+| loop config | `<agent-dir>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW` and `MEERKAT_TASKPANEL_REVIEWER`, the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE`, the concurrency cap's `MEERKAT_TASKPANEL_MAX_CONCURRENCY`, and the pool's `MEERKAT_TASKPANEL_RESIDENT`, `..._SESSION_MAX_AGE`, `..._SESSION_TURN_TIMEOUT`, `..._SESSION_POLL_MS`, `..._SESSION_POOL_MAX`, `..._PROJECT_CONCURRENCY` and `..._PROJECT_IDLE_MS`. Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
 | log (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
@@ -503,7 +503,7 @@ MEERKAT_TASKPANEL_REVIEWER=Reviewer
 
 An **empty** `MEERKAT_TASKPANEL_REVIEWER` is the manual opt-out: the supervisor
 then dispatches no review card and a delivery waits for a human to accept it
-(edit the agent config; the wizard does not ask).
+(edit the loop config; the wizard does not ask).
 
 Acceptance is **not** install configuration any more: each project stores a default
 (`auto | off | agent | human`) and each card a snapshot, both set through
@@ -592,12 +592,12 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each agent-kind installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<agent-dir>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
-| `--recover-stale=yes\|no` | Add stale `in_progress` cards to the poll's candidate read (`issue candidates --stale`). The takeover itself is still `issue claim`, decided by the board (holder after 10 minutes, anyone after 6 hours). Persisted to the agent config; default `yes`. |
-| `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — ask the board for the workflow plan (`issue reconcile --workflow`) and apply its review actions. Persisted to the agent config; default `yes`. `no` means the loop writes no card at all. |
-| `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the agent config; default `Reviewer`. Set the key **empty** in the agent config to disable **dispatch** — a delivery then waits for a human to accept it. |
+| `--recover-stale=yes\|no` | Add stale `in_progress` cards to the poll's candidate read (`issue candidates --stale`). The takeover itself is still `issue claim`, decided by the board (holder after 10 minutes, anyone after 6 hours). Persisted to the loop config; default `yes`. |
+| `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — ask the board for the workflow plan (`issue reconcile --workflow`) and apply its review actions. Persisted to the loop config; default `yes`. `no` means the loop writes no card at all. |
+| `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the loop config; default `Reviewer`. Set the key **empty** in the loop config to disable **dispatch** — a delivery then waits for a human to accept it. |
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |
 | `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the agent kind with a bounded `Continue` prompt; that turn runs poll, patrol and workflow. |
-| `--continue=yes\|no` | Enable the continue turn. Persisted to the agent config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
+| `--continue=yes\|no` | Enable the continue turn. Persisted to the loop config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
 | `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints the per-agent-kind load state and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
 | `--supervisor-actor-kinds <list>` | Which loop agent kinds the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}` (default: the loop actor kinds present in `--target`). Not `--actor-kind`: that is the loop's per-command identity flag, and this flag selects a set. `openclaw` is **rejected** (reason on stderr, exit 2). |
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per agent kind — see [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in). |
@@ -840,7 +840,7 @@ The installed skill is self-contained but carries **no engine**: `install.sh` co
 `SKILL.md`, `references/` and `scripts/` into the agent directory, never `src/`. So the wrapper
 `scripts/run.mjs` resolves the CLI on a ladder — a checkout named by
 `MEERKAT_TASKPANEL_ROOT` (or by `MEERKAT_TASKPANEL_REPO`, the key the installer records in
-the agent config), then a checkout around the skill itself, then **the agent kind's own `taskctl`
+the loop config), then a checkout around the skill itself, then **the agent kind's own `taskctl`
 shim** beside the skill, then `taskctl` on `PATH` — and when none of those holds a CLI it
 stops with the ways to fix it, instead of the module-not-found stack an earlier version died
 with (T-20261014-214002). In the normal case it is the shim that answers: `install.sh` writes

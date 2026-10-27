@@ -135,7 +135,7 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 `all` 是默认值：下面每个 agent kind 加上 server 运行时。`--no-server` 去掉 server；逗号列表（`--target claude,server,pi`）只装列出的目标。
 
-分发器转发到 `scripts/install/<actor-kind>.sh`。这些脚本把 skill 装进各 agent 的 skill 目录。对 **Claude Code** 与 **Codex**，它们还会写 bundle 的其余部分：agent 配置（`~/.claude/settings.json` / `~/.codex/AGENTS.md`）、slash 命令（Claude）或认领触发脚本（Codex），以及一个固定身份的 `taskctl` 包装脚本。
+分发器转发到 `scripts/install/<actor-kind>.sh`。这些脚本把 skill 装进各 agent 的 skill 目录。对 **Claude Code** 与 **Codex**，它们还会写 bundle 的其余部分：agent 自身的设置（`~/.claude/settings.json` / `~/.codex/AGENTS.md`）、slash 命令（Claude）或认领触发脚本（Codex），以及一个固定身份的 `taskctl` 包装脚本。
 
 所有 bundle 写入都是合并式且幂等的。重复安装退出码为 0，受管文件与配置键一律保留旧值，并打印 `left unchanged — use --force to overwrite`。只有 `--force` 会覆盖。
 
@@ -156,7 +156,7 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，默认 `Worker`，须与其 assignee 一致；对既有安装改名需配 `--force` 才生效）、`--no-automation`（跳过 Codex 调度单元与 taskd guard）、`--link`（软链而非拷贝）、`--force`（**唯一**的覆盖手段 —— 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`（预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
-**配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的 `.env`，取看板 URL、客户端 token、allow-list 与 SLA 阈值（`TASKD_SLA_*`，由看板校验并通过 `GET /api/v1/sla` 发布）。进程环境逐键优先，CLI 参数再优先于两者。`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每条 `taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其中的键搬进 `.env`。详见 [`docs/install.md`](docs/install.md) 与 [`docs/development.md`](docs/development.md)。
+**看板配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的 `.env`，取看板 URL、客户端 token、allow-list 与 SLA 阈值（`TASKD_SLA_*`，由看板校验并通过 `GET /api/v1/sla` 发布）。进程环境逐键优先，CLI 参数再优先于两者。`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。loop 的策略在**第二份、按 actor kind 分目录**的文件里 —— `<agent-dir>/meerkat-taskpanel.env`（**loop config**）—— 只由 `taskctl loop …` 读取；它不是机器级配置，loader 也拒绝把 loop 策略键写进 `.env`。每条 `taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其中的键搬进 `.env`。详见 [`docs/install.md`](docs/install.md) 与 [`docs/development.md`](docs/development.md)。
 
 ## meerkat-loop 调度器
 

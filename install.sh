@@ -44,7 +44,7 @@
 #
 # The installer is deterministic and offline: it writes the skill into each agent's
 # skill directory. For the two bundle agent kinds (claude, codex) it also deploys the rest of
-# the bundle — agent configuration, slash commands (Claude) and the claim trigger
+# the bundle — the agent's own settings, slash commands (Claude) and the claim trigger
 # (Codex) — merge-style and idempotently. It needs no agent CLI to do so, so it behaves
 # the same on a bare machine and inside the verification container.
 #
@@ -116,19 +116,19 @@ Options:
   --no-automation   Skip the Codex claim trigger and scheduling units
   --claim-unassigned=yes|no
                     May the supervisor claim unassigned cards? Persisted to the
-                    agent config; also asked interactively on a TTY (default yes).
+                    loop config; also asked interactively on a TTY (default yes).
   --assignee-only   Alias for --claim-unassigned=no (claim only my own cards)
   --recover-stale=yes|no
                     Recover stale in_progress claims (same holder after 30 min,
-                    any agent after 6 hours). Persisted to the agent config;
+                    any agent after 6 hours). Persisted to the loop config;
                     default yes.
   --workflow=yes|no Run the supervisor's workflow sub-pass (reconcile, review
-                    dispatch, applying verdicts). Persisted to the agent config;
+                    dispatch, applying verdicts). Persisted to the loop config;
                     default yes.
   --reviewer <agent>
                     The independent reviewer that audits delivered cards
                     (default: Reviewer). Set MEERKAT_TASKPANEL_REVIEWER empty in
-                    the agent config to leave deliveries for a human to accept.
+                    the loop config to leave deliveries for a human to accept.
   --ping-interval <sec>
                     The liveness clock (default 60). It only prunes dead worker
                     pids from the registry: no board read, no LLM.
@@ -139,7 +139,7 @@ Options:
                     runs the poll, patrol and workflow entries.
   --continue=yes|no
                     Enable the continue turn (default yes). Persisted to the
-                    agent config; `no` keeps the ping clock but discovers no work
+                    loop config; `no` keeps the ping clock but discovers no work
                     until a human runs the poll entry.
   --supervisor=enable|disable|status
                     Opt in to the supervisor daemon: load / unload / report the
@@ -175,7 +175,7 @@ server only), agent kinds, your board name, link-or-copy, whether to build
 web/dist, claim/recover/workflow/continue, and the opt-in supervisor action
 (+ scheduler). Every question shows a default; Enter accepts it and `q`
 cancels before anything is written. Agent name, reviewer and the two
-intervals are not asked — edit them in the agent config.
+intervals are not asked — edit them in the loop config.
 
 Requires Node >= 22 (the engine uses the built-in node:sqlite module).
 The check runs before anything is installed; a missing or older `node` is an

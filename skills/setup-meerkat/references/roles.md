@@ -206,7 +206,7 @@ characters; the worker workflow stays a path.
 
 ## Board names and the scan set
 
-`install-roles.mjs` writes the team's board names to the agent config:
+`install-roles.mjs` writes the team's board names to the loop config:
 
 ```text
 MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing

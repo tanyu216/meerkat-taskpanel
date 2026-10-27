@@ -254,6 +254,11 @@ grammar is the simple `KEY=VALUE` subset
 known keys are merged: unknown keys outside the project's namespaces are
 ignored, while a typo inside them is an error.
 
+That file is board-facing only. The loop's own policy — claim scope, reviewer, clocks,
+concurrency, pool limits — lives in a second, **per-actor-kind** file:
+`<agent-dir>/meerkat-taskpanel.env`, the **loop config**, read by `taskctl loop …` directly.
+Loop-policy keys in `.env` are refused rather than ignored, so the split is enforced.
+
 `.env` is not tracked (`git` and `docker` both ignore it); the Access panel
 writes it 0600. An inline `TASKD_TOKEN` requires that mode. The old
 `<dataDir>/taskd.env` is **no longer read** — this is a hard switch; move its

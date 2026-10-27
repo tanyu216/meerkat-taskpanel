@@ -842,7 +842,7 @@ Options:
   --board-limit <n>         Max cards per read (default: ${DEFAULT_BOARD_LIMIT}); passed to sla list.
   --trail-limit <n>         Max comment trails per SLA read (default: ${DEFAULT_TRAIL_LIMIT}); passed
                             to sla list.
-  --config <path>           Agent config (default: <home>/<agent-dir>/meerkat-taskpanel.env).
+  --config <path>           Loop config (default: <home>/<agent-dir>/meerkat-taskpanel.env).
   --home <path>             Home the defaults are resolved against (default: $HOME).
   --cli <path>              taskctl entry (default: <repo>/src/cli/index.mjs).
   --projects-json <path>    Agent-local project map used to resolve a card's directory.

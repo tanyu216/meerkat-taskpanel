@@ -148,7 +148,7 @@ is racing the acceptor.
 The card's own `acceptance_mode` is the whole rule; there is no policy and no scope. `agent`
 is the mode that produces a review card. The reviewer for a dispatched card is
 `project.reviewer ?? the deployment reviewer` (the loop's `--reviewer` /
-`MEERKAT_TASKPANEL_REVIEWER` / agent config), and the review card's assignee records the one
+`MEERKAT_TASKPANEL_REVIEWER` / loop config), and the review card's assignee records the one
 actually used.
 
 `done` is the board's acceptance act, and the mode decides who may perform it:

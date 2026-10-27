@@ -206,7 +206,10 @@ authoritative home, because the container image drops `design/`.
 
 - **One config file at the install root.** `.env` (gitignored and dockerignored) is read by
   both `taskd` and `taskctl`; the process environment wins key by key and CLI flags win above
-  both. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects another path. The old
+  both. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects another path. This file is
+  board-facing only: the loop's policy is a second, **per-actor-kind** file,
+  `<agent-dir>/meerkat-taskpanel.env` (the **loop config**), read only by `taskctl loop …`;
+  the loader refuses loop-policy keys here, so the two never merge. The old
   `<dataDir>/taskd.env` is no longer read (hard switch). Identity (`--actor-kind`) is required
   on every command that talks to the board, except `--help` / `--version` and the local read
   `taskctl status` (it reads the runtime pointer, never the board); `--agent` names the role
