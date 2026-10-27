@@ -223,12 +223,12 @@ describe("static: .github/workflows/release.yml", () => {
     assert.doesNotMatch(body, /^\s*continue-on-error:/m, "no step in this workflow may be best-effort");
   });
 
-  it("checks the six-version manifests before packing the tarball", async () => {
+  it("checks the version manifests before packing the tarball", async () => {
     const body = code(await read(WORKFLOW));
     const version = body.indexOf("node scripts/verify/version.mjs");
     const pack = body.indexOf("npm pack");
 
-    assert.notEqual(version, -1, "the six-version check must be present");
+    assert.notEqual(version, -1, "the version check must be present");
     assert.notEqual(pack, -1, "`npm pack` must be present");
     assert.ok(version < pack, "version.mjs must run before npm pack");
   });
