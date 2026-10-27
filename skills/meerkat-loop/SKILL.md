@@ -45,7 +45,7 @@ The continue turn runs three deterministic commands, in this order:
    claimed.
 
 The exact `taskctl` invocations and the JSON keys each pass reads are the board skill's
-capability contract: `meerkat-taskpanel`, `references/capabilities.md`. This skill records only
+capability contract: `meerkat`, `references/capabilities.md`. This skill records only
 the decisions — when to patrol, dispatch, claim, wake or notify. **The board's plan is the
 authority on actions**; a refused call carries a named code and hint, and the loop acts on that
 rather than pre-checking board rules here.
@@ -190,9 +190,10 @@ which is also the subagent's cwd:
   card is `done` or `canceled`. A failed registration — or a card that is already terminal —
   **defers the card unclaimed**; a refused claim unregisters it again. A claim with no brief
   has nowhere to run.
-- `card.md` is the **authoritative brief** handed to the subagent and re-read on resume. It is
-  machine-generated: **never edit it**. The hub overwrites it from the board. It is a snapshot; `taskctl issue get <ref> --json` remains the live state
-  and the source of the `version` a write needs.
+- `card.md` is the **authoritative brief** handed to the subagent and re-read on resume. The
+  hub rewrites it from the board: **never edit it**. It is a snapshot;
+  `taskctl issue get <ref> --json` remains the live state and the source of the `version` a
+  write needs.
 - Other process files — including **downloaded attachments** — go in the same directory:
   `taskctl attachment list <ref> --json`, then
   `taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>`.
@@ -205,31 +206,29 @@ which is also the subagent's cwd:
 
 ### Team roles (optional)
 
-A team is an optional roles root, authored by `setup-meerkat`. It adds routing (the role named
-by the card's assignee supplies responsibilities and boundaries) and a workflow path carried in
-the handoff. Precedence is whole-manifest: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, then
+A team is an optional roles root. It adds routing (the role named by the card's assignee
+supplies responsibilities and boundaries) and a workflow path carried in the handoff.
+Precedence is whole-manifest: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, then
 `<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`. With no roles root
 the loop behaves exactly as before. The loop's own `references/decision-policy.md` is the
-single decision-authority source; a team's `decision-policy.md` is ignored. A team may ship
-`ownership.md`, a short routing guide the project session reads to assign one accountable
-role per work shape; the card's assignee still selects the executing role.
-`setup-meerkat` writes the team's board names to `MEERKAT_TASKPANEL_AGENTS`; without that list
-the loop only scans its default agent.
+single decision-authority source; a team's `decision-policy.md` is ignored. An `ownership.md`,
+if the team has one, is a short routing guide the project session reads to assign one
+accountable role per work shape; the card's assignee still selects the executing role.
+`MEERKAT_TASKPANEL_AGENTS` lists the team's board names; without it the loop only scans its
+default agent.
 
 ### Questions and decision rights
 
-The ladder is **subagent → main session → human** (details:
-`references/decision-policy.md`). A subagent never decides an unauthorized question: it writes
+The ladder is **subagent → main session → human**, and the full protocol is
+`references/decision-policy.md`. A subagent never decides an unauthorized question: it writes
 an agent `question` comment, keeps the card `in_progress`, and stops. Poll's **question lane**
 wakes the project session with the unanswered question (no claim, no subagent slot); it answers
-with a `note` and moves the card to `todo`, or escalates E1-E5 to the human with `awaiting`. Any
-human comment resumes an awaiting card, whatever its kind; the board does not read it, and the
-resumed worker judges from its content whether it is a complete decision (ask again if not).
-The loop never writes a decision kind for its own answer and never uses `--as-human` except to
-record what the human actually said. A question is asked as **one round**: the frontier of
-decisions whose prerequisites are settled, numbered Q1..Qn with a recommendation, worded so
-"yes" accepts it. One round is one question string per card; the full protocol is
-`references/decision-policy.md` §Decision rounds.
+with a `note` and moves the card to `todo`, or escalates E1-E5 to the human with `awaiting`.
+Only a human comment resumes an awaiting card, whatever its kind; the board does not read it,
+and the resumed worker judges from its content whether the decision is complete. The loop
+never writes a decision kind for its own answer and never signs `--as-human` for itself. A
+round asks the whole frontier at once — one question string per card — so the next pass asks
+only what the answers unblocked.
 
 ## Required board interface
 

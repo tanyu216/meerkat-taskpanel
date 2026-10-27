@@ -238,7 +238,7 @@ read through `taskctl project dir <id>`. The reference,
 [`projects-json.md`](../skills/meerkat/references/projects-json.md), documents the schema
 and the validation codes: an entry names the board `project`, may name a directory
 (`local_path`, or the `run_dir` launch directory for a project that has none of its own),
-and may carry whatever else the agent should know about the project. Those commands are
+and may carry other keys the CLI copies through unchanged. Those commands are
 local: they send nothing to the board.
 
 `install.sh` ships **no** `projects.json` and only ever writes one by migrating an older

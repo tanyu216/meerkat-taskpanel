@@ -50,8 +50,8 @@ environment wins key by key; CLI flags win over both.
   token keys set in `.env` is an error; an inline `TASKD_TOKEN` requires the file to be `0600`.
 - **Server keys:** `TASKD_ALLOW_LIST_ENABLED`, `TASKD_ALLOW_CIDRS`,
   `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS`, `TASKD_HOST`, `TASKD_PORT`, `TASKD_DATA_DIR`,
-  `TASKD_DB`, `TASKD_RUNTIME_POINTER`, `TASKD_NO_AUTOSTART`. The Access panel writes the
-  allow-list keys. Acceptance is board data, not config.
+  `TASKD_DB`, `TASKD_RUNTIME_POINTER`, `TASKD_NO_AUTOSTART`. Acceptance is board data, not
+  config.
 - **Identity is not a `.env` key.** `TASKCTL_ACTOR_KIND` / `TASKCTL_SESSION_ID` are refused in
   the file; `TASKCTL_AGENT` / `TASKCTL_HUMAN` may be defaults.
 - **Per-kind layer.** Each actor kind also has `<program root>/.env.<actor-kind>` (for
@@ -149,7 +149,7 @@ taskctl issue create --project <id> --title <t> [flags]
 |---|---|
 | `--project <id>` | **Required.** The project; its id is the identifier prefix. |
 | `--title <t>` | **Required.** The one-line summary. |
-| `--acceptance-mode off\|agent\|human` | 0038 — the card's acceptance decision. `off`: no review; the deliverer may close it directly (`in_progress → done`). `agent`: an independent review card must APPROVE before the loop closes it. `human`: only a human closes it. An explicit value wins over the project default; an unresolved card under a project `auto` falls back to `human` (`off` for an epic, which the board closes itself). A review card is always `off`. |
+| `--acceptance-mode off\|agent\|human` | The card's acceptance decision. `off`: no review; the deliverer may close it directly (`in_progress → done`). `agent`: an independent review card must APPROVE before the loop closes it. `human`: only a human closes it. An explicit value wins over the project default; an unresolved card under a project `auto` falls back to `human` (`off` for an epic, which the board closes itself). A review card is always `off`. |
 | `--acceptance <text>` | One acceptance item; repeat for each. |
 | `--assignee <text>` / `--assignee-id <id>` / `--assignee-kind <agent\|human>` | Route the card. `--assignee-id` bypasses the dictionary. |
 | `--reporter <text>` / `--reporter-id <id>` / `--reporter-kind <agent\|human>` | Set the reporter. |
@@ -494,8 +494,8 @@ all.
 
 `loop tick` stops at the first failing pass and returns its exit code. `loop run` refuses
 `--ping-once` together with `--continue-once`. `loop status` and `loop console` are the two
-verbs a human runs while the daemons are up; `loop compat` is what an installer or a gate
-runs before it relies on `taskctl` at all.
+verbs a human runs while the daemons are up; `loop compat` is the gate to run before relying
+on a board's `taskctl`.
 
 **Paths and state.** `--state-dir <dir>` places the loop's runtime state — `supervisor.state.json`,
 the queue, the ledger, `session.lock`, `continue.state.json`; `--state <file>` is the older

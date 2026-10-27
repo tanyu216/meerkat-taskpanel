@@ -1,10 +1,10 @@
 # Decision policy — who may decide what
 
 This is the loop's decision policy and the **single decision-authority source** for
-every deployment. A team authored by `setup-meerkat` may ship `ownership.md` in its
-roles root, but that file routes work; it cannot override this policy. The policy is
-prompt guidance, not a board gate: the board still enforces the one invariant that
-matters — **only a human comment resumes an `awaiting` card**.
+every deployment. A team's `ownership.md`, when it has one, routes work; it cannot
+override this policy. The policy is prompt guidance, not a board gate: the board
+still enforces the one invariant that matters — **only a human comment resumes an
+`awaiting` card**.
 The kind does not matter (a note, a discuss, a question are all answers); the board
 does not read the text. Whether the answer is a complete decision — approve, reject, or
 still incomplete — is judged from its content by the resumed worker, not by the board.

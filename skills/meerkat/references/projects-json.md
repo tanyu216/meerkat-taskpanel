@@ -49,7 +49,7 @@ A single JSON object with a `projects` array:
 | `project` | string | **Required.** The board project identity — its **id** (preferred) or its name. |
 | `local_path` | string | **Optional.** The project's own directory: absolute, existing, a directory. |
 | `run_dir` | string | **Optional.** The launch directory a worker starts in. Checked the same way; consulted only when `local_path` is not given. |
-| *anything else* | *any* | **Yours.** The skill reads the three keys above and ignores the rest. |
+| *anything else* | *any* | Copied through unchanged and never interpreted; read it with `project map show`. |
 
 ```text
 dir = local_path ?? run_dir
@@ -117,23 +117,19 @@ There is deliberately **no reverse lookup**: a directory does not resolve to a p
 `run_dir` can be a generic place (an inbox, `$HOME`), so claiming every directory under it
 would be wrong; when you need to know which project a directory belongs to, ask.
 
-## Metadata: the rest of the entry
+## Extra keys are pass-through, not a second store
 
-An entry may carry whatever else the agent should know about the project — a branch, a
-verification command, a domain. taskpanel neither validates nor interprets those keys, and
-`taskctl project map set` copies them through unchanged.
+This map answers one question: which directory does work for this project happen in. The
+project's own metadata lives on its board row — `name`, `labels`, `readme`, `reviewer`,
+`acceptance` and free-form `meta` (`taskctl project update <id> --meta k=v`).
 
-## Upgrading from the skill-beside copy
+An entry may still carry other keys: `project map set` copies them through unchanged, and
+`project map show` / `project map list` return them. taskpanel never validates or interprets
+them. Read them through the CLI; never parse the file.
 
-The map used to live beside the installed board skill, and `MEERKAT_TASKPANEL_PROJECTS_JSON`
-/ `--projects-json` could point at another file. Both are retired:
+## A retired override is refused
 
-- `install.sh` migrates every `<agent-dir>/skills/meerkat/projects.json` (and the older
-  `skills/meerkat-taskpanel/projects.json`) into the config-root map — the config-root entry
-  wins on the same project, source-only entries are added — then removes the old file. A
-  file it cannot interpret is left in place with a warning. The one exception is a
-  `--link`ed skill whose link points into a *different* checkout: that tree is never
-  edited, so its map stays and the installer prints the command to register it by hand.
-- A leftover `MEERKAT_TASKPANEL_PROJECTS_JSON` in the shared `.env` is removed by the same
-  install. Until then the loader refuses it (`CONFIG_FILE_INVALID`), which is deliberate:
-  a silently ignored override would be worse.
+`MEERKAT_TASKPANEL_PROJECTS_JSON` / `--projects-json` are retired. A leftover key makes the
+loader refuse the file (`CONFIG_FILE_INVALID`) rather than ignore it — a silently ignored
+override would be worse. `install.sh` migrates an old skill-beside map into the config-root
+map and removes it; a map it cannot interpret is left in place with a warning.

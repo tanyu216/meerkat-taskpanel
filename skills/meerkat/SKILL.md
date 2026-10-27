@@ -14,8 +14,8 @@ usually the command that satisfies it, so read that and act rather than pre-chec
 from a document. Enforced rules are not restated here. Scheduling is the `meerkat-loop`
 skill's job; the board owns the workflow decisions and the loop executes them.
 
-> `src/…`, `docs/…` and `scripts/…` name the taskpanel **source repository**. This skill
-> ships `SKILL.md`, `references/` and `scripts/`; everything you run is `taskctl`.
+> `src/…` and `docs/…` name the taskpanel **source repository**, not this skill. Everything
+> you run is `taskctl`.
 
 ## Running the CLI
 

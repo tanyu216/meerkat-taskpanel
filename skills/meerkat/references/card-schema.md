@@ -3,10 +3,6 @@
 The markdown card `taskctl export md` writes. This is the *file* format; `cli.md` is the
 command surface and `status-lifecycle.md` is the state model.
 
-> Paths written as `src/…` or `docs/…` name the taskpanel **source repository**. This skill
-> ships only `SKILL.md`, `references/` and `scripts/`; the conformance command below needs a
-> checkout.
-
 A card begins with `---` … `---` frontmatter. The exporter emits only this subset — **no
 type guessing**:
 
