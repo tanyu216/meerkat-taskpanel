@@ -260,12 +260,14 @@ That file is board-facing only. Each actor kind also has a **per-kind config**,
 `<program root>/.env.<actor-kind>` (for example `~/.meerkat-taskpanel/.env.claude` on a
 combined install, or `<checkout>/.env.claude` for an agent-only install). It is read in two
 layers: `taskctl` takes the per-agent defaults (`TASKCTL_AGENT`, `TASKCTL_HUMAN`,
-`MEERKAT_TASKPANEL_PROJECTS_JSON`, `MEERKAT_TASKPANEL_REPO`) from it, and `taskctl loop …`
+`MEERKAT_TASKPANEL_REPO`) from it, and `taskctl loop …`
 reads the loop policy (claim scope, reviewer, clocks, concurrency, pool limits) from the
 same file. Effective order is flag > process environment > per-kind file > `.env` > default.
 Loop-policy keys in `.env` are refused rather than ignored, so the split is enforced.
 `--config` overrides the file for a loop run; `MEERKAT_TASKPANEL_CONFIG_DIR` relocates the
-directory (tests, containers, read-only roots). An install that predates the location is
+directory (tests, containers, read-only roots) and with it the project map
+(`<dir>/projects.json`), which the CLI and the loop read alike. An install that predates the
+location is
 migrated once from `<agent-dir>/meerkat-taskpanel.env`; the legacy file is kept and no
 longer read.
 
@@ -304,7 +306,7 @@ Security-relevant environment variables:
 | `TASKD_TOKEN` | token a client presents (`--token` outranks it) |
 | `TASKD_TOKEN_FILE` | a token file the client reads (`TASKD_TOKEN` outranks it) |
 | `MEERKAT_TASKPANEL_ENV_FILE` | selects the board config file; not a secret |
-| `MEERKAT_TASKPANEL_CONFIG_DIR` | relocates the per-kind config directory (tests, containers, read-only roots); each kind is `<dir>/.env.<actor-kind>` |
+| `MEERKAT_TASKPANEL_CONFIG_DIR` | relocates the machine-local config directory (tests, containers, read-only roots): each kind is `<dir>/.env.<actor-kind>`, and the project map is `<dir>/projects.json` |
 | `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS` | label housekeeping (§4.4) |
 | `TASKD_LOG_LEVEL` | `debug`/`info`/`warn`/`error`/`off` (default `info`); `taskd` and the loop, and `taskctl` only when explicitly set |
 | `TASKD_LOG_MAX_BYTES` / `TASKD_LOG_KEEP` | size rotation of `<dataDir>/logs/taskd.log` (defaults 10 MiB, 5 files) |

@@ -156,7 +156,26 @@ require_node() {
 # ---------------------------------------------------------------------------
 
 script_dir() { cd "$(dirname "$0")" && pwd; }
+# The directory *this file* lives in. `script_dir` follows `$0` — the top-level
+# script — so a helper called from `install.sh` (which sources this file) must not
+# build a path from it: `$0` there is the repository root.
+common_dir() { cd "$(dirname "${BASH_SOURCE[0]}")" && pwd; }
 repo_root() { cd "$(script_dir)/../.." && pwd; }
+
+# config_root — the one directory holding machine-local config: the program root
+# (`MEERKAT_TASKPANEL_REPO` for a combined install), unless
+# `MEERKAT_TASKPANEL_CONFIG_DIR` names another. A relative value resolves against
+# the caller's cwd, exactly as the CLI resolves it. Both the per-kind configs and
+# `projects.json` live here, so the two can never drift apart.
+config_root() {
+  root="${MEERKAT_TASKPANEL_CONFIG_DIR:-${MEERKAT_TASKPANEL_REPO:-$(repo_root)}}"
+  case "$root" in
+    /*) ;;
+    *) root="$(pwd)/$root" ;;
+  esac
+  printf '%s\n' "$root"
+}
+
 target_home() { printf '%s\n' "${MEERKAT_TASKPANEL_TARGET_HOME:-$HOME}"; }
 apply_helper() { printf '%s\n' "$(script_dir)/lib/apply.mjs"; }
 
@@ -254,14 +273,11 @@ export_tp_env() {
   TP_STATE_DIR="$TP_LOOP"
   TP_CLI="$TP_REPO/src/cli/index.mjs"
   TP_LOG="$TP_LOOP/supervisor.log"
-  # The per-kind config lives beside the board `.env` at the program root, one
-  # file per actor kind (`<program root>/.env.<kind>`), not under the agent home.
+  # The machine-local config lives beside the board `.env` at the program root,
+  # one per-kind file (`<program root>/.env.<kind>`) plus the project map
+  # (`<program root>/projects.json`), not under the agent home.
   # `MEERKAT_TASKPANEL_CONFIG_DIR` is the tests/containers/read-only-root escape.
-  TP_CONFIG_DIR="${MEERKAT_TASKPANEL_CONFIG_DIR:-$TP_REPO}"
-  case "$TP_CONFIG_DIR" in
-    /*) ;;
-    *) TP_CONFIG_DIR="$(pwd)/$TP_CONFIG_DIR" ;;
-  esac
+  TP_CONFIG_DIR="$(config_root)"
   TP_ENV="$TP_CONFIG_DIR/.env.$label"
   TP_LEGACY_ENV="$TP_AGENT_BASE/meerkat-taskpanel.env"
   TP_SCHED="$(target_home)/$agent_dir/scheduling"
@@ -590,6 +606,38 @@ ensure_file_key() {
   echo "install.sh: recorded $key in $file"
 }
 
+# strip_env_key <file> <key> — remove a retired `KEY=value` line from a config file.
+#
+# A retired key left in the shared `.env` is not inert: the loader refuses an
+# unknown key in its own namespace, so every command would fail. This runs after
+# the per-kind writers (which re-append unknown keys) so nothing resurrects the
+# line. Idempotent, dry-run aware, and never fatal: a file it cannot rewrite is a
+# warning, not a failed install.
+strip_env_key() {
+  file="$1"
+  key="$2"
+  [ -f "$file" ] || return 0
+  grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=" "$file" || return 0
+
+  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ] || [ -n "${DRY_RUN:-}" ]; then
+    echo "would remove the retired $key from $file"
+    return 0
+  fi
+
+  tmp="$file.strip.$$"
+  if ! sed -E "/^[[:space:]]*(export[[:space:]]+)?${key}=/d" "$file" > "$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    echo "install.sh: warning: cannot rewrite $file to remove the retired $key" >&2
+    return 0
+  fi
+  if ! mv "$tmp" "$file" 2>/dev/null; then
+    rm -f "$tmp"
+    echo "install.sh: warning: cannot replace $file to remove the retired $key" >&2
+    return 0
+  fi
+  echo "install.sh: removed the retired $key from $file"
+}
+
 # seed_env_file — create the install-root `.env` on a fresh install.
 #
 # The board-facing file, read by taskd and taskctl (and the loop's SSE subscriber). It is
@@ -743,10 +791,12 @@ write_agent_config() {
 # migrate_legacy_skill <agent_dir> <label> <skill> <dest> <link>
 #   The board skill used to install as `skills/meerkat-taskpanel/`; it installs as
 #   `skills/meerkat/` now. An upgrade must not leave the old directory behind to shadow
-#   the new one, but the two entries this installer never ships — the operator's `roles/`
-#   and `projects.json` — must survive. They move in, and only where the new directory
-#   does not already hold them (the newer copy wins); then the old directory goes. A
-#   linked install is left alone: moving through the symlink would write into the
+#   the new one, but the operator's `roles/` must survive: it moves in, and only where
+#   the new directory does not already hold it (the newer copy wins). A
+#   `projects.json` there is machine-local and belongs at the config root now, so it
+#   is *merged* into that root (target wins, unknown keys kept) and then removed —
+#   never moved into the skill, where the next `rm -rf` would delete it.
+#   A linked install is left alone: moving through the symlink would write into the
 #   checkout the link points at.
 migrate_legacy_skill() {
   agent_dir="$1"
@@ -762,23 +812,48 @@ migrate_legacy_skill() {
 
   # A link on either side is left alone: moving through one would write into the tree it
   # points at — the checkout — which is exactly what the `--force` path refuses to do.
+  # (`install.sh`'s post-install sweep still migrates a legacy *directory's* map; it is
+  # operator data in the agent home, not in the checkout.)
   if [ -n "$link" ] || [ -L "$dest" ] || [ -L "$legacy" ]; then
-    echo "$label: legacy skill dir kept: $legacy (linked install; move roles/ and projects.json into $dest by hand, then remove it)"
+    echo "$label: legacy skill dir kept: $legacy (linked install; move roles/ into $dest by hand, then remove it)"
     return 0
   fi
 
   if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
     echo "$label: would migrate legacy skill $legacy -> $dest"
+    migrate_project_map "$label" "$legacy/projects.json" || true
     return 0
   fi
 
-  for entry in roles projects.json; do
-    [ -e "$legacy/$entry" ] || continue
-    [ -e "$dest/$entry" ] && continue
-    mv "$legacy/$entry" "$dest/$entry"
-  done
+  # The map goes first: if it cannot be migrated, the directory (and the file in
+  # it) must survive. `rm -rf` after a failed merge is exactly the data loss the
+  # merge exists to prevent.
+  if ! migrate_project_map "$label" "$legacy/projects.json"; then
+    echo "$label: legacy skill dir kept: $legacy (its projects.json could not be migrated)"
+    return 0
+  fi
+
+  if [ -e "$legacy/roles" ] && [ ! -e "$dest/roles" ]; then
+    mv "$legacy/roles" "$dest/roles"
+  fi
   rm -rf "$legacy"
   echo "$label: migrated legacy skill $legacy -> $dest"
+}
+
+# migrate_project_map <label> <source> — merge a skill-beside map into the config
+# root and remove the source. Returns non-zero when the map could not be migrated;
+# the caller decides whether that is fatal (it never is for the install itself).
+migrate_project_map() {
+  label="$1"
+  source="$2"
+  [ -e "$source" ] || return 0
+  dry=""
+  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ] || [ -n "${DRY_RUN:-}" ]; then
+    dry="--dry-run"
+  fi
+  node "$(common_dir)/lib/project-map.mjs" merge \
+    --into "$(config_root)" --from "$source" --label "$label" $dry || return 1
+  return 0
 }
 
 # install_skill <agent_dir> <label> [skill] [copy-only]

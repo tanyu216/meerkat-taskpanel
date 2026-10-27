@@ -318,6 +318,17 @@ describe("the TASKD_SLA_* keys", () => {
     assert.throws(() => loadEnvFile({ root, env: {} }), /unknown configuration key/);
   });
 
+  it("refuses the retired MEERKAT_TASKPANEL_PROJECTS_JSON key in the shared file", () => {
+    // The map has one location now; a leftover override is a configuration
+    // error, not a silently ignored line. `install.sh` strips it on upgrade.
+    const root = tempDir();
+    writeEnv(root, "MEERKAT_TASKPANEL_PROJECTS_JSON=/maps/one.json\n");
+    assert.throws(
+      () => loadEnvFile({ root, env: {} }),
+      (err) => err.code === "CONFIG_FILE_INVALID" && /MEERKAT_TASKPANEL_PROJECTS_JSON/.test(err.message),
+    );
+  });
+
   it("does not validate a process-environment value at load time (the board read does)", () => {
     const root = tempDir();
     writeEnv(root, "TASKD_URL=http://localhost:9527\n");
@@ -331,15 +342,15 @@ describe("loadEnvFile — the per-kind overlay", () => {
     const root = tempDir();
     writeEnv(root, "TASKCTL_AGENT=shared-agent\nTASKCTL_HUMAN=shared-human\n");
     const kindFile = join(root, ".env.claude");
-    writeFileSync(kindFile, "TASKCTL_AGENT=alice\nMEERKAT_TASKPANEL_PROJECTS_JSON=/maps/one.json\n");
+    writeFileSync(kindFile, "TASKCTL_AGENT=alice\nMEERKAT_TASKPANEL_REPO=/opt/tree\n");
 
     const config = loadEnvFile({ root, env: {}, kindFile });
     assert.equal(config.env.TASKCTL_AGENT, "alice", "the per-kind file wins over .env");
     assert.equal(config.env.TASKCTL_HUMAN, "shared-human", "absent keys fall through to .env");
-    assert.equal(config.env.MEERKAT_TASKPANEL_PROJECTS_JSON, "/maps/one.json");
+    assert.equal(config.env.MEERKAT_TASKPANEL_REPO, "/opt/tree");
     assert.equal(config.kindFile, kindFile);
     assert.deepEqual([...config.kindVars.keys()].sort(), [
-      "MEERKAT_TASKPANEL_PROJECTS_JSON",
+      "MEERKAT_TASKPANEL_REPO",
       "TASKCTL_AGENT",
     ]);
 
@@ -360,6 +371,17 @@ describe("loadEnvFile — the per-kind overlay", () => {
     assert.equal(config.env.MEERKAT_TASKPANEL_REPO, "/tree", "REPO is a per-kind deployment fact");
     assert.equal(config.env.MEERKAT_TASKPANEL_REVIEWER, undefined, "loop policy is not a board key");
     assert.equal(config.env.MEERKAT_TASKPANEL_MAX_CONCURRENCY, undefined);
+  });
+
+  it("ignores the retired project-map key in a per-kind file", () => {
+    const root = tempDir();
+    writeEnv(root, "TASKD_URL=http://localhost:9527\n");
+    const kindFile = join(root, ".env.pi");
+    writeFileSync(kindFile, "TASKCTL_AGENT=pioneer\nMEERKAT_TASKPANEL_PROJECTS_JSON=/maps/old.json\n");
+
+    const config = loadEnvFile({ root, env: {}, kindFile });
+    assert.equal(config.env.MEERKAT_TASKPANEL_PROJECTS_JSON, undefined);
+    assert.deepEqual([...config.kindVars.keys()], ["TASKCTL_AGENT"]);
   });
 
   it("still reads the per-kind file when the shared .env is absent", () => {

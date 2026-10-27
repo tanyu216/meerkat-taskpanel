@@ -427,9 +427,8 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
         "--actor-kind", "claude", "--agent", "alice",
         "--cli", script, "--repo", dir,
         "--state", join(dir, "state.json"), "--log", join(dir, "log"),
-        "--projects-json", projectsJson,
       ],
-      { TP_SENTINEL: record },
+      { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir },
       "poll",
     );
     assert.equal(run.status, 0, run.stderr);

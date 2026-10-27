@@ -1,15 +1,42 @@
 # `projects.json` — the local project map
 
-`projects.json`, kept **beside this skill** (next to `SKILL.md`), is the **only** place that
-answers "which directory does work for this project happen in". It is local and agent-side:
-never written into the board, never sent to `taskd`. Losing it loses only the map — board
-tasks, comments and reports are untouched.
+`projects.json` is the **only** place that answers "which directory does work for this
+project happen in". There is **one file per installation**, at the machine-local config
+root: `<config root>/projects.json`, where the config root is
+`MEERKAT_TASKPANEL_CONFIG_DIR` (resolved against the current directory) or else the
+program root — the checkout, `/app` in the image, or `~/.meerkat-taskpanel` for an
+installed tree. It sits beside the per-kind configs (`.env.<kind>`) and, like them, is
+never sent to the board.
+
+It is **maintained only through `taskctl project map`**. Read it through
+`taskctl project dir` / `project map`; never parse or hand-edit the file — the CLI is what
+validates a directory and what keeps the file's shape stable. The schema below is for
+operators reading or repairing a map, not for an agent to implement.
 
 The directory is a **worker's** start directory, not a data location. Where a project keeps
 its results is the project's own business. The exception is the loop's own process data: the
 supervisor exports each dispatched card to `.meerkat/<identifier>/` under this directory
 (and the subagent keeps its notes, evidence and downloaded attachments there). That is loop
 state, not a project-results store; a project should ignore `.meerkat/` in version control.
+
+## Managed by `taskctl`
+
+| Command | What it does |
+|---|---|
+| `project map list` | Print the map (the file path, whether it exists, and its entries). A missing file is an empty map, exit 0. |
+| `project map show <id>` | Print one entry and the directory it resolves to. A project with **no entry** is `PROJECT_DIR_UNMAPPED`. |
+| `project map set <id> --local-path <dir>` | Register the project's own directory. The path must be absolute, exist and be a directory. |
+| `project map set <id> --run-dir <dir>` | Register a launch directory for a project with no checkout of its own. |
+| `project map set <id> --no-dir` | Register that the project has **no** local directory (clears both keys). |
+| `project map remove <id>` | Remove every entry for the project. |
+
+`set` takes exactly one of the three modes. `--local-path` and `--run-dir` are mutually
+exclusive by construction (`dir = local_path ?? run_dir`), so setting one removes the other;
+`--no-dir` removes both. Everything else on an entry — including keys taskpanel does not
+interpret — survives a write.
+
+These commands are **local**: no identity, no token, no board session. They never send a
+path anywhere.
 
 ## Schema
 
@@ -40,27 +67,19 @@ empty, blank or not a string is a **failure**, not a reason to fall through.
 }
 ```
 
-## Directory → project
-
-Take the directory (absolute); find the entry whose `local_path` is that directory **or an
-ancestor of it**; the **longest** match wins; no match means the directory is unregistered.
-
-`run_dir` deliberately takes no part in this direction: an inbox, a home directory or a shared
-workspace says nothing about which project you work for. Project identity in such a session
-comes from the session itself (the card, the agent).
-
 ## Project → directory: what is checked
 
-| Check | Fails when | Code |
-|---|---|---|
-| usable | the key is given but empty, blank or not a string | `PROJECT_DIR_REQUIRED` |
-| absolute | the path is relative | `PROJECT_DIR_NOT_ABSOLUTE` |
-| exists | nothing is at that path | `PROJECT_DIR_MISSING` |
-| is a directory | something is there, but it is a file | `PROJECT_DIR_NOT_A_DIRECTORY` |
+| Failure | Meaning |
+|---|---|
+| `PROJECT_MAP_UNREADABLE` | The file exists but is not `{ "projects": [...] }`, or cannot be read. It is never overwritten from an empty start. |
+| `PROJECT_MAP_UNWRITABLE` | `project map set` / `remove` could not write the file (a read-only config root, permissions). Point `MEERKAT_TASKPANEL_CONFIG_DIR` at a writable directory. |
+| `PROJECT_DIR_UNMAPPED` | No entry is registered for the project — stop and ask the user. |
+| `PROJECT_DIR_REQUIRED` | The key is present but blank / not a string. |
+| `PROJECT_DIR_NOT_ABSOLUTE` | A relative path. |
+| `PROJECT_DIR_MISSING` | The path does not exist. |
+| `PROJECT_DIR_NOT_A_DIRECTORY` | The path is a file or something else. |
 
-All four are failures, not warnings: a worker is never started in an unvalidated directory.
-
-A lookup ends in one of three answers:
+Three answers come out of a lookup, and they stay distinguishable:
 
 | Answer | When | Meaning |
 |---|---|---|
@@ -68,24 +87,22 @@ A lookup ends in one of three answers:
 | `dir: null` | the entry exists and names **no** directory | a complete answer |
 | `PROJECT_DIR_UNMAPPED` | there is no entry for the project | stop and ask |
 
-Two surfaces apply the same file: `taskctl project dir <project>` (the map path is
-`$MEERKAT_TASKPANEL_PROJECTS_JSON` — which may also be set in the program-root `.env`, the
-process environment winning — else the copy beside the skill), and the wake glue, which
-`cd`s into the directory before starting an agent. A worker needs a directory, so a wake refuses
-both `dir: null` and an unmapped project.
+The same resolution applies to `taskctl project dir <project>` and to the wake glue, which
+`cd`s into the directory before starting an agent. A worker needs a directory, so a wake
+refuses both `dir: null` and an unmapped project.
 
 ## No directory is an answer
 
 A project whose work needs no checkout — operations, coordination, research — is registered
-with an entry naming **no** directory:
+with `--no-dir` (an entry naming no directory):
 
-```json
-{ "project": "Community" }
+```text
+taskctl project map set Community --no-dir
 ```
 
 `taskctl project dir Community` succeeds and says so. Do not point such a project at a
 directory "so the command works". If a worker must start somewhere, give the entry a
-`run_dir`; without one, a wake for that project is refused.
+`--run-dir`; without one, a wake for that project is refused.
 
 ## Unregistered: no fallback — ask
 
@@ -94,9 +111,25 @@ board cannot supply one — no `workspace_path`, no `context` command, no regist
 not invent, guess or derive one: stop and ask. `SKILL.md` carries the prompt to use; the same
 applies to a registered-but-unusable path, naming what is wrong.
 
+There is deliberately **no reverse lookup**: a directory does not resolve to a project.
+`run_dir` can be a generic place (an inbox, `$HOME`), so claiming every directory under it
+would be wrong; when you need to know which project a directory belongs to, ask.
+
 ## Metadata: the rest of the entry
 
-Anything beyond `project`, `local_path` and `run_dir` is **yours**; the skill reads the three
-and ignores the rest, so use it for what an agent should know about the project
-(`"kind": "code"`, a `notes` line, …). The key set is not defined here and will not be:
-taskpanel neither prescribes nor interprets it.
+An entry may carry whatever else the agent should know about the project — a branch, a
+verification command, a domain. taskpanel neither validates nor interprets those keys, and
+`taskctl project map set` copies them through unchanged.
+
+## Upgrading from the skill-beside copy
+
+The map used to live beside the installed board skill, and `MEERKAT_TASKPANEL_PROJECTS_JSON`
+/ `--projects-json` could point at another file. Both are retired:
+
+- `install.sh` migrates every `<agent-dir>/skills/meerkat/projects.json` (and the older
+  `skills/meerkat-taskpanel/projects.json`) into the config-root map — the config-root entry
+  wins on the same project, source-only entries are added — then removes the old file. A
+  file it cannot interpret is left in place with a warning.
+- A leftover `MEERKAT_TASKPANEL_PROJECTS_JSON` in the shared `.env` is removed by the same
+  install. Until then the loader refuses it (`CONFIG_FILE_INVALID`), which is deliberate:
+  a silently ignored override would be worse.

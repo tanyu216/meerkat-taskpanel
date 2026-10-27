@@ -140,9 +140,9 @@ session service (`taskctl loop session`)
 
 - **Control session** — runs the judgment turn; it never spawns a worker and never
   works a card itself. Poll only claims and enqueues.
-- **Project sessions** — created on demand from the agent-local
-  `projects.json` (`local_path ?? run_dir`, through the same `resolveWakeDir` the
-  glue uses). A card whose project is unmapped or names no directory is **deferred
+- **Project sessions** — created on demand from the machine-local
+  `projects.json` at the config root (`local_path ?? run_dir`, through the same
+  `resolveWakeDir` the glue uses). A card whose project is unmapped or names no directory is **deferred
   before the claim**, so the board never shows a claim that has nowhere to run.
   The batch prompt tells the session to spawn one subagent per card, **in the
   listed order** (the loop pairs agent ids with cards by position), and return
@@ -732,9 +732,9 @@ checkout supplies. The board cannot say which directory that is (it holds no
 directories, O3), and neither can the supervisor: it knows a project **identity** and
 nothing else.
 
-So the directory is resolved **locally by the poll pass**, against `projects.json`
-beside the skill (`references/projects-json.md`) as `local_path ?? run_dir`,
-**validated** (absolute, exists, is a directory).
+So the directory is resolved **locally by the poll pass**, against the one
+`<config root>/projects.json` (`references/projects-json.md`) as
+`local_path ?? run_dir`, **validated** (absolute, exists, is a directory).
 
 The directory is a **worker's** start directory. The loop writes its own per-task process
 data beneath it (`.meerkat/<identifier>/`: `card.md` plus the subagent's files). That is
@@ -1673,7 +1673,7 @@ describes.
 - **State.** `<agent-dir>/meerkat-taskpanel/supervisor.state.json` — the running registry.
 - **Working directory.** A woken worker still `cd`s to the directory the map names for
   the card's project (`local_path ?? run_dir`), resolved by the poll pass from the
-  agent-local `projects.json`; enabling changes nothing here (see
+  config-root `projects.json`; enabling changes nothing here (see
   [Where a worker runs](#where-a-worker-runs)).
 - **Task process data.** A dispatched card's brief (`card.md`) and the subagent's files —
   including downloaded attachments — live under `.meerkat/<identifier>/` in that working
@@ -1756,10 +1756,12 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--sla-peer <path>` | from `$MEERKAT_TASKPANEL_SLA_PEER`, else unset | the peer inspector's last-ok marker; a marker older than `3 × P_peer` raises `inspector_liveness`, where `P_peer` is the cadence the marker declares (fallback 15min). Unset ⇒ the peer's half is a registered dependency and nothing alarms |
 | `--board-limit <n>` | `500` | max cards read in one patrol pass |
 | `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
-| `--config <path>` | `<program root>/.env.<actor-kind>` (or `MEERKAT_TASKPANEL_CONFIG_DIR`) | per-kind config: the loop's claim default and concurrency cap, `MEERKAT_TASKPANEL_REPO`, and — on the board path — the per-agent identity and project-map defaults |
+| `--config <path>` | `<program root>/.env.<actor-kind>` (or `MEERKAT_TASKPANEL_CONFIG_DIR`) | per-kind config: the loop's claim default and concurrency cap, `MEERKAT_TASKPANEL_REPO`, and — on the board path — the per-agent identity |
 | `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber's `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
-| `--home <path>` | `$HOME` | base for those defaults |
-| `--projects-json <path>` | `<home>/<agent-dir>/skills/meerkat/projects.json` | the agent-local map the poll pass resolves a card's directory from ([Where a worker runs](#where-a-worker-runs)) |
+| `--home <path>` | `$HOME` | base for the agent directories (state, log, skills) |
+
+The project map is not a flag: the poll pass and `taskctl project dir` read the same
+`<config root>/projects.json` ([Where a worker runs](#where-a-worker-runs)).
 
 **Fixed paths.** Logs and state always land at the paths in the table — a user
 who wants to know why a card did not start reads

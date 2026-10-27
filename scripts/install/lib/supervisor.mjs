@@ -31,11 +31,11 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveKindConfigPath } from "../../../src/foundation/agent-paths.mjs";
 import {
   LIVE_STATUSES,
   QUEUE_FILES,
-  resolveKindConfigPath,
-} from "../../../src/foundation/loop-paths.mjs";
+} from "../../../src/foundation/loop-state.mjs";
 
 import { runStep, systemdUserDir } from "./taskd-guard.mjs";
 import { unitPath } from "./unit-path.mjs";

@@ -161,8 +161,9 @@ Options:
                     macOS, systemd --user on Linux, cron elsewhere). Only one
                     mechanism may be loaded per machine.
   --link            Symlink the skill instead of copying it (board skill only)
-  --force           Overwrite an existing installation (never .env, .data, roles/ or
-                    projects.json — this installer ships none of those)
+  --force           Overwrite an existing installation (never .env, .data, roles/, or an
+                    existing config-root projects.json — this installer ships none of
+                    those; an old skill-beside map is migrated into the config root)
   --dry-run         Print the destination paths and change nothing
   --skip-web-build  Never try to build web/dist; a server install is API-only if absent
   --skip-node-check Do not require Node (bypass the >= 22 runtime check)
@@ -771,6 +772,50 @@ done
 if [ -n "$SERVER_INSTALLED" ] && [ -n "${MEERKAT_TASKPANEL_HUMAN_NAME:-}" ]; then
   ensure_file_key "$SERVER_ROOT/.env" "TASKCTL_HUMAN" "$MEERKAT_TASKPANEL_HUMAN_NAME"
 fi
+
+# The project map moved from beside each installed board skill to one file at the
+# config root. Sweep every agent home — not only this run's targets — because a map
+# is operator data and a kind installed earlier must still be found. A linked skill
+# is followed only when the link points inside the config root; a link into another
+# checkout is left alone (this installer never edits another tree), with a hint.
+map_root="$(config_root)"
+# Only when agent kinds are part of this install: a server-only run has no business
+# moving an agent home's map into the server tree (whose config root is different).
+if [ "$HAS_KIND_TARGET" = "1" ]; then
+  for kind_dir in .claude .openclaw .codex .agents; do
+    kind="${kind_dir#.}"
+    [ "$kind" = "agents" ] && kind="pi"
+    skill="$TARGET_HOME/$kind_dir/skills/meerkat"
+    legacy="$TARGET_HOME/$kind_dir/skills/meerkat-taskpanel"
+
+    if [ -L "$skill" ]; then
+      link_target="$(cd "$skill" 2>/dev/null && pwd -P || true)"
+      case "$link_target" in
+        "$map_root"/*) migrate_project_map "$kind" "$skill/projects.json" || true ;;
+        *)
+          [ -e "$skill/projects.json" ] && \
+            echo "$kind: linked skill outside the config root — left $skill/projects.json alone;" \
+                 "register it with taskctl project map set and remove the old file"
+          ;;
+      esac
+    else
+      migrate_project_map "$kind" "$skill/projects.json" || true
+    fi
+
+    # A legacy directory that is itself a link is left alone; a real one is operator
+    # data in the agent home and its map is migrated even for a linked board skill.
+    [ -L "$legacy" ] || migrate_project_map "$kind" "$legacy/projects.json" || true
+  done
+fi
+
+# Retired keys: the shared board `.env` and every per-kind config. This runs after
+# the per-kind writers (which re-append unknown keys) so nothing resurrects the line;
+# the loader refuses it in the shared file, so leaving it would break every command.
+shared_env="${MEERKAT_TASKPANEL_ENV_FILE:-$ROOT/.env}"
+strip_env_key "$shared_env" MEERKAT_TASKPANEL_PROJECTS_JSON
+for kind in claude openclaw codex pi; do
+  strip_env_key "$map_root/.env.$kind" MEERKAT_TASKPANEL_PROJECTS_JSON
+done
 
 # The taskd keepalive guard, once for the machine rather than once per agent kind, and
 # after the agent kinds so its report closes the install's own work (see the function

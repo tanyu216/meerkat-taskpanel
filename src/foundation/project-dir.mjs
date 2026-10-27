@@ -1,14 +1,15 @@
 /**
- * The agent-local project → directory map — the *rule* behind `projects.json`
- * (the file that lives beside the installed skill).
+ * The machine-local project → directory map — the *rule* behind `projects.json`
+ * (one file per install, at the config root beside `.env.<kind>`).
  *
  * The board holds no directory (O3): a board project is an id, a name and an
  * identifier prefix, and nothing else. "Which directory does work for this
- * project happen in?" is decided **locally, per agent kind**, by `projects.json`, and
- * `skills/meerkat/references/projects-json.md` documents it. This
- * module is that document in code, so the `taskctl` shim, the poll pass and the
- * tests all read one map the same way — and a project with no mapped directory
- * is a loud, coded answer instead of a silent guess.
+ * project happen in?" is decided **locally, per install**, by `projects.json`,
+ * and `skills/meerkat/references/projects-json.md` documents it. This module is
+ * that document in code — the read rules, and the write rules `taskctl project
+ * map` uses — so the CLI, the poll pass and the tests all read one map the same
+ * way, and a project with no mapped directory is a loud, coded answer instead of
+ * a silent guess.
  *
  * The directory is a **worker's** directory, not a data location: taskpanel
  * neither stores nor cares where a project keeps its results. Two keys may name
@@ -32,28 +33,30 @@
  * not `||`), because running a worker in the wrong directory is exactly the bug
  * this exists to prevent. So is an unusable `run_dir`.
  *
- * `run_dir` is **never** used in the other direction: the directory → project
- * lookup (`references/projects-json.md` §How a directory resolves to a project)
- * reads `local_path` only. A launch pad can be a generic place — an inbox,
- * `$HOME` — and must not claim every directory under it.
+ * There is no reverse lookup: `run_dir` is a launch pad (an inbox, `$HOME`) and
+ * must not claim every directory under it, so "which project is this directory?"
+ * is a question for the user, not a command.
  *
- * The rules are pure and the filesystem is injected (`inspect`), so every branch
- * is exercised without touching a disk — the split `src/foundation/scheduling.mjs`
- * already uses for the supervisor's decision half.
+ * The read and edit rules are pure and the filesystem is injected (`inspect`,
+ * `read`, and the writer's `deps`), so every branch is exercised without touching
+ * a disk — the split `src/foundation/scheduling.mjs` already uses for the
+ * supervisor's decision half.
  */
 
-import { readFileSync, statSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, isAbsolute, join } from "node:path";
 
-import { repoRoot } from "./runtime-locator.mjs";
+import { resolveConfigDir } from "./agent-paths.mjs";
 
-/**
- * Point an installed shim at the map beside its skill — the shim lives in
- * `<agent-dir>/bin/`, one level under the skill directory, and the poll pass is
- * handed the same path. An explicit value always wins, so a user with a second
- * board can point at it.
- */
-export const PROJECTS_JSON_ENV = "MEERKAT_TASKPANEL_PROJECTS_JSON";
+/** The map's file name under the config root. */
+export const PROJECT_MAP_FILENAME = "projects.json";
 
 /** Every way a directory can fail to be usable, as a stable code. */
 export const PROJECT_DIR_CODES = Object.freeze({
@@ -74,6 +77,8 @@ export const PROJECT_DIR_CODES = Object.freeze({
   UNMAPPED: "PROJECT_DIR_UNMAPPED",
   /** The map itself is absent or is not the documented shape. */
   MAP_UNREADABLE: "PROJECT_MAP_UNREADABLE",
+  /** The map exists (or could) but this process cannot write it. */
+  MAP_UNWRITABLE: "PROJECT_MAP_UNWRITABLE",
 });
 
 /**
@@ -166,14 +171,17 @@ export function checkTargetDirectory(value, options = {}) {
 }
 
 /**
- * Parse the map. A malformed file is a failure with a code — never an empty map
- * that would quietly read as "no project is registered".
+ * Parse the map, keeping the document raw enough to write back.
+ *
+ * A malformed file is a failure with a code — never an empty map that would
+ * quietly read as "no project is registered" (and never a file a writer may
+ * overwrite from that empty start).
  *
  * @param {unknown} text
  * @param {{file?: string|null}} [options]
- * @returns {{ok: true, entries: object[], file: string|null} | {ok: false, code: string, message: string, file?: string|null}}
+ * @returns {{ok: true, root: object, projects: unknown[], file: string|null} | {ok: false, code: string, message: string, file?: string|null}}
  */
-export function parseProjectMap(text, options = {}) {
+export function parseProjectMapDocument(text, options = {}) {
   const file = options.file ?? null;
   const where = file ? ` (${file})` : "";
 
@@ -183,14 +191,149 @@ export function parseProjectMap(text, options = {}) {
   } catch (err) {
     return failure(PROJECT_DIR_CODES.MAP_UNREADABLE, `the project map${where} is not valid JSON: ${err?.message ?? err}`, { file });
   }
-  if (parsed === null || typeof parsed !== "object" || !Array.isArray(parsed.projects)) {
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed) || !Array.isArray(parsed.projects)) {
     return failure(PROJECT_DIR_CODES.MAP_UNREADABLE, `the project map${where} needs a \`projects\` array.`, { file });
   }
 
-  // Entries that are not objects are dropped rather than raising: the file is
-  // hand-written, and one stray string must not take the whole map down.
-  const entries = parsed.projects.filter((entry) => entry !== null && typeof entry === "object" && !Array.isArray(entry));
-  return { ok: true, entries, file };
+  return { ok: true, root: parsed, projects: parsed.projects, file };
+}
+
+/**
+ * Parse the map for *reading*. Entries that are not objects are dropped rather
+ * than raising: the file is hand-written, and one stray string must not take the
+ * whole map down.
+ *
+ * @param {unknown} text
+ * @param {{file?: string|null}} [options]
+ * @returns {{ok: true, entries: object[], file: string|null} | {ok: false, code: string, message: string, file?: string|null}}
+ */
+export function parseProjectMap(text, options = {}) {
+  const document = parseProjectMapDocument(text, options);
+  if (!document.ok) return document;
+  const entries = document.projects.filter(
+    (entry) => entry !== null && typeof entry === "object" && !Array.isArray(entry),
+  );
+  return { ok: true, entries, file: document.file };
+}
+
+/**
+ * Read the map for an edit. A missing file is the empty map a first write
+ * starts from; an unreadable or malformed file is a refusal, so a writer never
+ * replaces a file it did not understand.
+ *
+ * @param {string} file
+ * @param {{read?: (path: string, encoding: string) => string}} [options]
+ * @returns {{ok: true, present: boolean, root: object, projects: unknown[], file: string} | {ok: false, code: string, message: string, file: string}}
+ */
+export function readProjectMapForEdit(file, options = {}) {
+  const read = options.read ?? readFileSync;
+  let text;
+  try {
+    text = read(file, "utf8");
+  } catch (err) {
+    if (err?.code === "ENOENT") {
+      return { ok: true, present: false, root: {}, projects: [], file };
+    }
+    return failure(
+      PROJECT_DIR_CODES.MAP_UNREADABLE,
+      `cannot read the project map at ${file} (${err?.code ?? err?.message ?? "unknown error"}).`,
+      { file },
+    );
+  }
+  const document = parseProjectMapDocument(text, { file });
+  if (!document.ok) return document;
+  return { ok: true, present: true, root: document.root, projects: document.projects, file };
+}
+
+/** @param {unknown} entry */
+function isEntryObject(entry) {
+  return entry !== null && typeof entry === "object" && !Array.isArray(entry);
+}
+
+/**
+ * Set one project's directory: update the first matching entry in place, or
+ * append a new one. Pure — the input array and its entries are never mutated.
+ *
+ * Exactly one mode is applied. `local_path` and `run_dir` are mutually
+ * exclusive by construction (`dir = local_path ?? run_dir`), so setting one
+ * removes the other; `noDir` removes both and leaves the documented "this
+ * project has no local directory" answer. Everything else on the entry —
+ * including keys this module does not interpret — survives a write.
+ *
+ * @param {unknown[]} projects
+ * @param {{project: string, localPath?: string, runDir?: string, noDir?: boolean}} input
+ * @returns {{entries: unknown[], entry: object, created: boolean}}
+ */
+export function upsertProjectEntry(projects, input) {
+  const list = Array.isArray(projects) ? projects : [];
+  const index = list.findIndex((entry) => isEntryObject(entry) && entry.project === input.project);
+  const current = index === -1 ? { project: input.project } : { ...list[index] };
+
+  if (input.noDir === true) {
+    delete current.local_path;
+    delete current.run_dir;
+  } else if (typeof input.localPath === "string") {
+    current.local_path = input.localPath;
+    delete current.run_dir;
+  } else if (typeof input.runDir === "string") {
+    current.run_dir = input.runDir;
+    delete current.local_path;
+  }
+
+  if (index === -1) return { entries: [...list, current], entry: current, created: true };
+  const entries = list.slice();
+  entries[index] = current;
+  return { entries, entry: current, created: false };
+}
+
+/**
+ * Remove every entry registered for `project` (duplicates included — a map may
+ * carry them, and leaving one behind would make `remove` look broken).
+ *
+ * @param {unknown[]} projects
+ * @param {string} project
+ * @returns {{entries: unknown[], removed: number}}
+ */
+export function removeProjectEntry(projects, project) {
+  const list = Array.isArray(projects) ? projects : [];
+  const entries = list.filter((entry) => !(isEntryObject(entry) && entry.project === project));
+  return { entries, removed: list.length - entries.length };
+}
+
+/**
+ * Merge a source map into a target map: the target wins on the same `project`,
+ * source-only entries are appended in source order, and each entry is copied
+ * whole so its unknown keys survive. Malformed and duplicate source entries are
+ * skipped and counted.
+ *
+ * @param {unknown[]} target
+ * @param {unknown[]} incoming
+ * @returns {{entries: unknown[], added: number, kept: number, skipped: number}}
+ */
+export function mergeProjectEntries(target, incoming) {
+  const entries = Array.isArray(target) ? target.slice() : [];
+  const known = new Set(
+    entries.filter(isEntryObject).map((entry) => entry.project).filter((id) => typeof id === "string"),
+  );
+  let added = 0;
+  let kept = 0;
+  let skipped = 0;
+
+  for (const entry of Array.isArray(incoming) ? incoming : []) {
+    if (!isEntryObject(entry) || typeof entry.project !== "string" || entry.project.trim() === "") {
+      skipped += 1;
+      continue;
+    }
+    if (known.has(entry.project)) {
+      kept += 1;
+      continue;
+    }
+    known.add(entry.project);
+    entries.push({ ...entry });
+    added += 1;
+  }
+
+  return { entries, added, kept, skipped };
 }
 
 /**
@@ -225,7 +368,9 @@ export function resolveProjectDir(input = {}) {
     );
   }
 
-  const entry = entries.find((candidate) => candidate.project === project);
+  const entry = entries.find(
+    (candidate) => candidate !== null && typeof candidate === "object" && candidate.project === project,
+  );
   if (entry === undefined) {
     return failure(
       PROJECT_DIR_CODES.UNMAPPED,
@@ -257,17 +402,79 @@ export function resolveProjectDir(input = {}) {
 }
 
 /**
- * The map beside the installed skill, unless a flag or the environment names
- * another one. An explicit value always wins, so a user with a second board can
- * point at it.
+ * The one machine-local map: `projects.json` under the config root (the
+ * program root, or `MEERKAT_TASKPANEL_CONFIG_DIR`). There is no broader
+ * override — a second board is a second install.
  *
  * @param {NodeJS.ProcessEnv} [env]
+ * @param {{cwd?: string, root?: string}} [options]
  * @returns {string} an absolute path
  */
-export function defaultProjectsJson(env = process.env) {
-  const fromEnv = env[PROJECTS_JSON_ENV];
-  if (typeof fromEnv === "string" && fromEnv.trim() !== "") return resolve(fromEnv);
-  return resolve(repoRoot(), "skills", "meerkat", "projects.json");
+export function defaultProjectsJson(env = process.env, options = {}) {
+  return join(resolveConfigDir({ env, cwd: options.cwd, root: options.root }), PROJECT_MAP_FILENAME);
+}
+
+/** Distinguishes concurrent temp files in one process. */
+let writeCounter = 0;
+
+/**
+ * Write the map atomically: a same-directory temp file, then a rename over the
+ * target. A reader never sees a half-written map, and a failed write leaves the
+ * previous file untouched.
+ *
+ * `root` is the parsed document's top-level object, so keys this module does not
+ * interpret survive a rewrite. An existing file's mode is preserved (a
+ * hand-created map may be `0600`).
+ *
+ * @param {string} file
+ * @param {unknown[]} projects
+ * @param {{
+ *   root?: object,
+ *   deps?: {
+ *     mkdirSync?: Function, writeFileSync?: Function, renameSync?: Function,
+ *     unlinkSync?: Function, statSync?: Function,
+ *   },
+ * }} [options]
+ * @returns {{ok: true, file: string} | {ok: false, code: string, message: string, file: string}}
+ */
+export function writeProjectMap(file, projects, options = {}) {
+  const deps = {
+    mkdirSync,
+    writeFileSync,
+    renameSync,
+    unlinkSync,
+    statSync,
+    ...(options.deps ?? {}),
+  };
+  const text = `${JSON.stringify({ ...(options.root ?? {}), projects }, null, 2)}\n`;
+  const temp = `${file}.tmp-${process.pid}-${writeCounter}`;
+  writeCounter += 1;
+
+  let mode;
+  try {
+    mode = deps.statSync(file).mode & 0o777;
+  } catch {
+    mode = null;
+  }
+
+  try {
+    deps.mkdirSync(dirname(file), { recursive: true });
+    deps.writeFileSync(temp, text, mode === null ? "utf8" : { encoding: "utf8", mode });
+    deps.renameSync(temp, file);
+    return { ok: true, file };
+  } catch (err) {
+    try {
+      deps.unlinkSync(temp);
+    } catch {
+      // The temp file was never created (or is already gone): nothing to clean.
+    }
+    return failure(
+      PROJECT_DIR_CODES.MAP_UNWRITABLE,
+      `cannot write the project map at ${file} (${err?.code ?? err?.message ?? "unknown error"}). ` +
+        "Point MEERKAT_TASKPANEL_CONFIG_DIR at a writable directory, or fix the file's permissions.",
+      { file },
+    );
+  }
 }
 
 /**
@@ -302,8 +509,8 @@ export function resolveWakeDir(input = {}) {
     return failure(
       PROJECT_DIR_CODES.MAP_UNREADABLE,
       `cannot read the project map${where} (${err?.code ?? err?.message ?? "unknown error"}). ` +
-        `Create it beside the installed skill — see references/projects-json.md — or point ` +
-        `${PROJECTS_JSON_ENV} / --projects-json at it.`,
+        "Register the project with `taskctl project map set <id> --local-path <dir>` — " +
+        "see references/projects-json.md.",
       { file: projectsJson },
     );
   }

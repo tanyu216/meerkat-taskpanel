@@ -175,7 +175,7 @@ export const ERROR_CODES = Object.freeze({
   // is the registry's own `UNIQUE(project_id, norm)`.
   LABEL_CONFLICT: spec(409, "Label already exists in this project."),
 
-  // ---- Project directories (agent-local map) ---------------------------------
+  // ---- Project directories (machine-local map) -------------------------------
   // The board holds no directory (O3), so "which directory does work for this
   // project happen in?" is answered locally, by `projects.json`, and
   // *checked* before it is used. These codes say why a directory could not be
@@ -184,6 +184,7 @@ export const ERROR_CODES = Object.freeze({
   // entry that names no directory at all is not one of these: that is the
   // complete answer "this project has no local directory".)
   PROJECT_MAP_UNREADABLE: spec(422, "The local project map (projects.json) is missing or malformed."),
+  PROJECT_MAP_UNWRITABLE: spec(500, "The local project map could not be written."),
   PROJECT_DIR_UNMAPPED: spec(422, "No local directory is registered for this project."),
   PROJECT_DIR_REQUIRED: spec(422, "The project map entry carries no usable directory."),
   PROJECT_DIR_NOT_ABSOLUTE: spec(422, "The project directory is not an absolute path."),
@@ -361,6 +362,7 @@ export const JS_ONLY_CODES = Object.freeze([
   // Project directories: read from a local JSON file, never from a table,
   // a trigger or a SQLite constraint.
   "PROJECT_MAP_UNREADABLE",
+  "PROJECT_MAP_UNWRITABLE",
   "PROJECT_DIR_UNMAPPED",
   "PROJECT_DIR_REQUIRED",
   "PROJECT_DIR_NOT_ABSOLUTE",

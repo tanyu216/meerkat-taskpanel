@@ -22,8 +22,8 @@ import { join } from "node:path";
 
 // The live set is shared with the installer's status probe; re-exported because
 // this module was its first home and the loop tests import it from here.
-export { LIVE_STATUSES } from "../foundation/loop-paths.mjs";
-import { LIVE_STATUSES } from "../foundation/loop-paths.mjs";
+export { LIVE_STATUSES } from "../foundation/loop-state.mjs";
+import { LIVE_STATUSES } from "../foundation/loop-state.mjs";
 
 /** A completed ledger row is kept this long for audit/reconcile. */
 export const DEFAULT_COMPLETED_TTL_MS = 7 * 24 * 60 * 60 * 1000;

@@ -267,7 +267,8 @@ the same semantic actions; the host does not depend on the rendering.
 
 The session is **board-wide / cross-project**. It uses a neutral working directory
 (`<state-dir>/channel/workspace`), never a project directory. It answers from `taskctl`; if
-it needs project files it may read the `projects.json` mapping, but it never edits.
+it needs a project's directory it asks `taskctl project dir` (or `project map show`). It
+never reads, writes or edits `projects.json` itself.
 Per-project sessions and `/project` switching are out of scope.
 
 ## 9. Platform strategy

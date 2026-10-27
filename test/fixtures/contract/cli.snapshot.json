@@ -1564,14 +1564,6 @@
               "short": null
             },
             {
-              "flag": "projects-json",
-              "as": "string",
-              "value": "<path>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "quiet",
               "as": "boolean",
               "value": null,
@@ -1970,14 +1962,6 @@
               "short": null
             },
             {
-              "flag": "projects-json",
-              "as": "string",
-              "value": "<path>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "recover-stale",
               "as": "string",
               "value": "<yes|no>",
@@ -2368,14 +2352,6 @@
               "short": null
             },
             {
-              "flag": "projects-json",
-              "as": "string",
-              "value": "<path>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "recover-stale",
               "as": "string",
               "value": "<yes|no>",
@@ -2761,14 +2737,6 @@
               "flag": "project-idle-ms",
               "as": "number",
               "value": "<ms>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "projects-json",
-              "as": "string",
-              "value": "<path>",
               "required": false,
               "repeat": false,
               "short": null
@@ -3180,14 +3148,6 @@
               "short": null
             },
             {
-              "flag": "projects-json",
-              "as": "string",
-              "value": "<path>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "recover-stale",
               "as": "string",
               "value": "<yes|no>",
@@ -3578,14 +3538,6 @@
               "short": null
             },
             {
-              "flag": "projects-json",
-              "as": "string",
-              "value": "<path>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "recover-stale",
               "as": "string",
               "value": "<yes|no>",
@@ -3971,14 +3923,6 @@
               "flag": "project-idle-ms",
               "as": "number",
               "value": "<ms>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "projects-json",
-              "as": "string",
-              "value": "<path>",
               "required": false,
               "repeat": false,
               "short": null
@@ -4390,14 +4334,6 @@
               "short": null
             },
             {
-              "flag": "projects-json",
-              "as": "string",
-              "value": "<path>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "recover-stale",
               "as": "string",
               "value": "<yes|no>",
@@ -4796,14 +4732,6 @@
               "short": null
             },
             {
-              "flag": "projects-json",
-              "as": "string",
-              "value": "<path>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "recover-stale",
               "as": "string",
               "value": "<yes|no>",
@@ -5194,14 +5122,6 @@
               "short": null
             },
             {
-              "flag": "projects-json",
-              "as": "string",
-              "value": "<path>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "recover-stale",
               "as": "string",
               "value": "<yes|no>",
@@ -5457,14 +5377,6 @@
           ],
           "flags": [
             {
-              "flag": "projects-json",
-              "as": "string",
-              "value": "<path>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "require-dir",
               "as": "boolean",
               "value": null,
@@ -5541,6 +5453,46 @@
               "flag": "include-archived",
               "as": "boolean",
               "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "map",
+          "positionals": [
+            {
+              "name": "action",
+              "summary": "list | show | set | remove."
+            },
+            {
+              "name": "id",
+              "required": false,
+              "summary": "Project id; required for show, set and remove."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "local-path",
+              "as": "string",
+              "value": "<dir>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "no-dir",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "run-dir",
+              "as": "string",
+              "value": "<dir>",
               "required": false,
               "repeat": false,
               "short": null

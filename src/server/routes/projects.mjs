@@ -3,7 +3,8 @@
  *
  * A project carries no working-directory information (O3): the board stores no
  * path for it, and there is no "which directory is this?" endpoint. The mapping
- * from a local directory to a project lives on the agent side.
+ * from a project to a worker directory lives on the client side, in the local
+ * `projects.json` that `taskctl project map` maintains.
  *
  * `GET /api/v1/projects` is where DESIGN.md §20 lives: the list is returned **already
  * ordered** by the weight algorithm (activity over 7/30 days + creation age),

@@ -33,7 +33,6 @@ const PATHS = [
   str("config", "config", "<file>", "Agent policy file (`MEERKAT_TASKPANEL_*`)."),
   str("home", "home", "<dir>", "Home directory the agent paths derive from."),
   str("cli", "cli", "<path>", "The taskctl entry the loop's child calls use."),
-  str("projects-json", "projectsJson", "<path>", "Project → directory map."),
 ];
 
 /** Policy and cadence. */

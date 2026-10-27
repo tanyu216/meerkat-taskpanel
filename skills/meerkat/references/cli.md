@@ -56,10 +56,10 @@ environment wins key by key; CLI flags win over both.
   the file; `TASKCTL_AGENT` / `TASKCTL_HUMAN` may be defaults.
 - **Per-kind layer.** Each actor kind also has `<program root>/.env.<actor-kind>` (for
   example `.env.claude`), read by `taskctl` as a per-agent default for `TASKCTL_AGENT`,
-  `TASKCTL_HUMAN`, `MEERKAT_TASKPANEL_PROJECTS_JSON` and `MEERKAT_TASKPANEL_REPO`. It sits
-  between the process environment and `.env` (flag > env > per-kind > `.env` > default), and
-  `MEERKAT_TASKPANEL_CONFIG_DIR` relocates the directory. The same file is the loop's policy
-  file; the board path ignores the loop keys in it.
+  `TASKCTL_HUMAN` and `MEERKAT_TASKPANEL_REPO`. It sits between the process environment and
+  `.env` (flag > env > per-kind > `.env` > default), and `MEERKAT_TASKPANEL_CONFIG_DIR`
+  relocates the directory — the same one that holds `projects.json`. The same file is the
+  loop's policy file; the board path ignores the loop keys in it.
 - **Grammar:** `KEY=VALUE`, `#` comments, matching quotes; no inline comments, interpolation,
   escapes or multiline values; absolute paths. An unknown key inside `TASKD_*` / `TASKCTL_*` /
   `MEERKAT_TASKPANEL_*` is an error; other keys are ignored and never merged into the child
@@ -80,7 +80,7 @@ running, `taskctl` starts one (detached, logging to `<dataDir>/logs/taskd.log`) 
 | `--url <url>` | The board to talk to, as a **pin**: never probed, never autostarted. |
 | `--token <token>` | Access token. Priority: `--token` > `$TASKD_TOKEN` > `$TASKD_TOKEN_FILE` > the pointer's token file > none (loopback needs no token). Never echoed. |
 | `--if-version <n>` | Optimistic concurrency: refuse the write with `VERSION_CONFLICT` if the task moved on. |
-| `--actor-kind <name>` | The platform (`claude`, `codex`, `openclaw`, `pi`; automation uses `system`). **Required on every command that talks to the board** — `--help`, `--version` and the local read `status` need none. `human` is reserved and refused; use `--as-human`. |
+| `--actor-kind <name>` | The platform (`claude`, `codex`, `openclaw`, `pi`; automation uses `system`). **Required on every command that talks to the board** — `--help`, `--version`, the local read `status`, and every `project map` action need none. `human` is reserved and refused; use `--as-human`. |
 | `--as-human` | Write as the configured human (`$TASKCTL_HUMAN`). Also satisfies the identity requirement. |
 | `--session-id <id>` | Agent session identifier. Requires `--actor-kind`. |
 | `--agent <name>` | The role/person recorded on writes (`jobs`, `linus`, `turing`, …). Defaults to `$TASKCTL_AGENT` / `$USER`; a team passes it per call. |
@@ -109,12 +109,13 @@ not a failure; `note` says why (no pointer, or a stale pid).
 | `project ensure <id> [--name <n>] [--acceptance auto\|off\|agent\|human] [--reviewer <agent>] [--meta k=v]… [--label <l>]… [--readme <text>]` | Create the project if its id is absent; if it exists, return it **untouched** (`created:false`). `--name` is needed only on creation. This is the idempotent form of `project create`; it never updates an existing row. |
 | `project update <id> [--name] [--acceptance auto\|off\|agent\|human] [--reviewer <agent>] [--meta k=v]… [--label]… [--readme]` | Update it. `--meta` **merges**. An `--acceptance` change affects future cards only; in-flight cards keep their `acceptance_mode` snapshot. |
 | `project list [--include-archived]` | List projects. |
-| `project dir <id> [--projects-json <path>] [--require-dir]` | Print the local directory work happens in, resolved from `projects.json` (`$MEERKAT_TASKPANEL_PROJECTS_JSON` picks another map): the entry's `local_path`, else `run_dir`. An entry naming no directory succeeds and says so. Exits non-zero only when no entry is registered, or the path is relative, missing, not a directory, or blank. `--require-dir` is the wake shape: resolve from the map only (no board check) and exit **3** when the map names no usable directory — a wake has to start somewhere. |
+| `project dir <id> [--require-dir]` | Print the local directory work happens in, resolved from the config-root `projects.json`: the entry's `local_path`, else `run_dir`. An entry naming no directory succeeds and says so. Exits non-zero only when no entry is registered, or the path is relative, missing, not a directory, or blank. `--require-dir` is the wake shape: resolve from the map only (no board check) and exit **3** when the map names no usable directory — a wake has to start somewhere. |
+| `project map list` / `show <id>` / `set <id> --local-path <dir>` / `set <id> --run-dir <dir>` / `set <id> --no-dir` / `remove <id>` | Read and edit the machine-local map at the config root. `set` takes exactly one of `--local-path` (`<dir>`), `--run-dir` (`<dir>`) and `--no-dir`; the directory must be absolute, existing and a directory. Local only: no identity, no token, no board. A missing map is an empty map for `list`; `show`/`remove` on an absent entry are `PROJECT_DIR_UNMAPPED`. |
 | `project readme <id>` / `project readme <id> --set <text>` / `--file <path\|->` | Print or set the readme. |
 
-**A project carries no directory.** The map is local, beside the skill — see
-[`projects-json.md`](projects-json.md). `project dir` resolves and validates it, and stops to
-ask rather than guessing.
+**A project carries no directory.** The map is machine-local, at the config root (beside
+`.env.<kind>`) — see [`projects-json.md`](projects-json.md). `project dir` resolves and
+validates it and stops to ask rather than guessing; `project map` is the only writer.
 
 ### `issue`
 
@@ -499,8 +500,7 @@ runs before it relies on `taskctl` at all.
 **Paths and state.** `--state-dir <dir>` places the loop's runtime state — `supervisor.state.json`,
 the queue, the ledger, `session.lock`, `continue.state.json`; `--state <file>` is the older
 explicit spelling of the registry file. `--roles-dir <dir>` names the team-roles root;
-`--projects-json <path>` the project → directory map; `--home <dir>` the home the agent
-directories derive from; `--repo <dir>` the board checkout the loop drives; `--cli <path>`
+`--home <dir>` the home the agent directories derive from; `--repo <dir>` the board checkout the loop drives; `--cli <path>`
 the `taskctl` entry its child calls use; `--config <file>` the per-kind config (`<program root>/.env.<actor-kind>`);
 `--log <file>` the loop log; `--continue-state`, `--session-state`, `--sla-ledger`,
 `--workflow-ledger`, `--sla-last-ok` and `--sla-peer` override the individual state files.

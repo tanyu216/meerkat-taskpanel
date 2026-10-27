@@ -17,9 +17,8 @@
 # — pass `--as-human`. That takes the name from `TASKCTL_HUMAN`, and it is the one
 # write an agent makes on somebody else's behalf.
 #
-# It also points `taskctl project dir` at the map beside this agent's installed
-# skill, so the command resolves the same projects.json the poll pass uses —
-# `MEERKAT_TASKPANEL_PROJECTS_JSON` wins if a session sets it.
+# It does not point at the project map: `projects.json` lives at the config root,
+# which the CLI resolves itself (the same one the poll pass reads).
 set -u
 
 agent="${TASKCTL_AGENT:-{{AGENT}}}"
@@ -28,5 +27,4 @@ human="${TASKCTL_HUMAN:-{{HUMAN}}}"
 export TASKCTL_AGENT="$agent"
 export TASKCTL_ACTOR_KIND="$kind"
 export TASKCTL_HUMAN="$human"
-export MEERKAT_TASKPANEL_PROJECTS_JSON="${MEERKAT_TASKPANEL_PROJECTS_JSON:-$(dirname "$0")/../skills/meerkat/projects.json}"
 exec node "{{REPO}}/src/cli/index.mjs" --agent "$agent" --actor-kind "$kind" "$@"

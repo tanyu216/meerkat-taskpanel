@@ -193,6 +193,10 @@
       "http": 422
     },
     {
+      "code": "PROJECT_MAP_UNWRITABLE",
+      "http": 500
+    },
+    {
       "code": "QUESTION_REQUIRED",
       "http": 422
     },

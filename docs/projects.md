@@ -2,7 +2,8 @@
 
 A project is the board's grouping of tasks (a name, a label set, free-form meta and the
 identifier counter). It carries **no working directory** — the local directory a project's
-*workers* run in is decided on the agent side, in `projects.json`, never on the board; a
+*workers* run in lives in one machine-local `projects.json` at the config root, maintained
+with `taskctl project map`, never on the board; a
 project need not have one at all (operations work, for instance), and where a project
 keeps whatever its tasks produce is its own business. The loop does write its own process
 data under that directory (`.meerkat/<identifier>/`: the exported `card.md` plus a

@@ -134,9 +134,10 @@ want the board**: `rm -rf ~/.meerkat-taskpanel` deletes the database with it.
 removing the tree removes it. An agent-only install keeps it at the checkout/package root —
 `<checkout>/.env.claude` — so remove that file by hand when uninstalling. The same rule
 applies to the installer's config: `MEERKAT_TASKPANEL_CONFIG_DIR` relocates the directory
-(tests, containers, a read-only package root). An **agent-only npm/npx install** keeps the
-file inside the package tree, which an upgrade replaces; prefer a combined install when the
-per-kind policy must survive upgrades.
+(tests, containers, a read-only package root) **and the project map beside it**
+(`<config root>/projects.json`). An **agent-only npm/npx install** keeps both inside the
+package tree, which an upgrade replaces; prefer a combined install when the per-kind policy
+or the map must survive upgrades.
 
 **Migrating from `<agent-dir>/meerkat-taskpanel.env`.** The next `install.sh` copies the
 legacy file once to the new location, appends any installer-owned keys it lacks, and leaves
@@ -147,11 +148,13 @@ copy `<old root>/.env.<kind>` to the new tree by hand.
 
 **Migrating from `<agent-dir>/skills/meerkat-taskpanel/`.** The board skill installed under
 that directory before it was renamed `meerkat`. The next `install.sh` writes the new
-directory, moves the two files it never ships — the operator's `roles/` and `projects.json` —
-into it where the new directory does not already hold them (the newer copy wins), and removes
-the old directory. A `--link` install is left alone with a line naming the manual move:
-writing through the symlink would land in the checkout it points at. `--dry-run` only reports
-the migration.
+directory, moves the operator's `roles/` into it where the new directory does not already
+hold it (the newer copy wins), and removes the old directory. A `projects.json` there is
+machine-local and moves to the config root instead — merged into an existing map (the
+config-root entry wins, source-only entries are added) and then removed; a file that is not
+the documented shape is left in place with a warning. A `--link` install is left alone with a
+line naming the manual move: writing through the symlink would land in the checkout it points
+at. `--dry-run` only reports the migration.
 
 ## Quick start (agent-kind skills)
 
@@ -220,27 +223,36 @@ A shim that set only the name recorded every agent write as a human's.
 signing with `TASKCTL_HUMAN` instead of itself. `--actor-kind human` is refused: it is the
 value every one of those decisions turns on, so a caller may not declare it.
 
-### The local `projects.json` (beside the skill)
+### The local `projects.json` (one per install, at the config root)
 
-The board holds no project directories, so the local map from a **directory** to a
-**board project** — and from a project to the directory its **workers** run in — is a
-`projects.json` created **inside the installed skill directory**, next to `SKILL.md` —
-`~/.claude/skills/meerkat/projects.json` for Claude Code, and the matching
-skill directory for each other agent kind. The skill's own reference,
-[`projects-json.md`](../skills/meerkat/references/projects-json.md), documents
-the schema: an entry names the board `project`, may name a directory (`local_path`, or
-the `run_dir` launch directory for a project that has none of its own), and may carry
-whatever else the agent should know about the project. `install.sh` ships **no**
-`projects.json` and never writes one: the file is yours to create and edit.
+The board holds no project directories, so the map from a **board project** to the
+directory its **workers** run in is `<config root>/projects.json` — the program root
+(the checkout, `/app`, or `~/.meerkat-taskpanel`), or `MEERKAT_TASKPANEL_CONFIG_DIR`
+when set. It sits beside the per-kind configs (`.env.<kind>`) and is **one file for every
+agent kind**: two agents on one installation share it.
 
-**It is never overwritten.** A plain re-run leaves the whole existing skill directory
-untouched (an existing install is the desired end state), so a `projects.json` beside
-the skill survives every non-forced re-install — the same "merge, never clobber"
-rule as the rest of the install. `--force` replaces the skill's own files but keeps
-this one too: the installer ships no `projects.json` (or `roles/` root), so neither is
-its to delete. With `--link` the skill directory is a symlink into a
-checkout, so the file lands in `skills/meerkat/` there — keep it out of
-version control.
+It is maintained **only through `taskctl project map`** — `list`, `show <id>`,
+`set <id> --local-path <dir>` / `--run-dir <dir>` / `--no-dir`, and `remove <id>` — and
+read through `taskctl project dir <id>`. The reference,
+[`projects-json.md`](../skills/meerkat/references/projects-json.md), documents the schema
+and the validation codes: an entry names the board `project`, may name a directory
+(`local_path`, or the `run_dir` launch directory for a project that has none of its own),
+and may carry whatever else the agent should know about the project. Those commands are
+local: they send nothing to the board.
+
+`install.sh` ships **no** `projects.json` and only ever writes one by migrating an older
+copy (see below). It is never overwritten by a re-install — the same "merge, never
+clobber" rule as the rest of the install — and it is git- and docker-ignored at the root
+because it holds host paths.
+
+**Upgrading from the skill-beside copy.** An older install kept the map inside each
+installed board skill (`<agent-dir>/skills/meerkat/projects.json`) and could point at
+another file with `MEERKAT_TASKPANEL_PROJECTS_JSON` / `--projects-json`. Both are retired.
+The next `install.sh` merges every such file into the config root (the config-root entry
+wins on the same project, source-only entries are added), removes the old file, and strips
+a leftover `MEERKAT_TASKPANEL_PROJECTS_JSON` line from `.env` / `.env.<kind>` — the loader
+would otherwise refuse the unknown key. A file that is not the documented shape is left in
+place with a warning; repair it with `taskctl project map set`.
 
 ### Scheduling units (claude, codex, pi)
 
@@ -544,8 +556,8 @@ The file is merged, never rewritten.
 
 `MEERKAT_TASKPANEL_ENV_FILE` points the installer and both binaries at a different board
 file (a read-only package root, a container, or the test suite).
-`MEERKAT_TASKPANEL_CONFIG_DIR` does the same for the per-kind directory: each kind is
-`<dir>/.env.<actor-kind>`.
+`MEERKAT_TASKPANEL_CONFIG_DIR` does the same for the machine-local config directory: each
+kind is `<dir>/.env.<actor-kind>`, and the project map is `<dir>/projects.json`.
 
 The SLA thresholds are seeded as a **commented** block in the same `.env` (every
 `TASKD_SLA_*` key with its default). Uncomment a line to override it: `taskd` validates the
@@ -637,7 +649,7 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per agent kind — see [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in). |
 | `MEERKAT_TASKPANEL_SUPERVISOR=enable\|disable\|status` | The non-interactive form of `--supervisor` (an explicit flag wins) — the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`. |
 | `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied (it is standalone docs + decisions). For `--target server` it only warns: the runtime tree is always copied, because it must survive the checkout and the npx cache. |
-| `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags — but operator data is kept: an installed `roles/` directory, a `projects.json`, config keys the template does not carry, and the server `.env` / `.data`. |
+| `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags — but operator data is kept: an installed `roles/` directory, an existing config-root `projects.json`, config keys the template does not carry, and the server `.env` / `.data`. An old skill-beside map is migrated into the config root rather than kept beside the skill. |
 | `--dry-run` | Print every path that would be written/changed and change nothing. It never prompts, even with `--interactive`. |
 | `--skip-node-check` | Skip the Node version check (see below). |
 | `-i, --interactive` | Ask every option in the [wizard](#interactive-wizard). Also works when stdin is a pipe, which is how it is tested; EOF cancels. |
