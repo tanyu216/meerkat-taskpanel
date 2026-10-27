@@ -70,7 +70,7 @@ export function createInstallHarness({
       cwd: ROOT,
       encoding: "utf8",
       input,
-      env: { ...process.env, ...defaults, ...env },
+      env: baseEnv({ ...defaults, ...env }),
     });
 
   const cleanup = () => {
