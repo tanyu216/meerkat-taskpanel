@@ -18,7 +18,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
@@ -499,6 +499,30 @@ describe("agent bundle: legacy board-skill directory", () => {
     assert.match(result.stdout + result.stderr, /legacy skill dir kept/);
   });
 
+  it("leaves a linked skill's map alone when the link points outside the config root", () => {
+    // `--link` into another checkout: its `projects.json` is a file in that tree, and
+    // this installer never edits another tree. It prints the hint instead.
+    const home = makeTempDir();
+    const checkout = join(makeTempDir(), "other-checkout");
+    mkdirSync(join(checkout, "skills", "meerkat"), { recursive: true });
+    writeFileSync(
+      join(checkout, "skills", "meerkat", "projects.json"),
+      JSON.stringify({ projects: [{ project: "Elsewhere", local_path: "/tmp/elsewhere" }] }),
+    );
+    mkdirSync(join(home, ".claude", "skills"), { recursive: true });
+    symlinkSync(join(checkout, "skills", "meerkat"), join(home, ".claude", "skills", "meerkat"));
+
+    const result = runInstall(["--target", "claude"], agentEnv(home));
+    assert.equal(result.status, 0, result.stderr);
+
+    assert.ok(
+      existsSync(join(checkout, "skills", "meerkat", "projects.json")),
+      "another checkout's map must be untouched",
+    );
+    assert.equal(existsSync(join(kindConfigDirFor(home), "projects.json")), false);
+    assert.match(result.stdout, /linked skill outside the config root/);
+  });
+
   it("leaves a legacy directory that is itself a symlink alone", () => {
     // A pre-rename `--link` install: `skills/meerkat-taskpanel` pointed into a checkout.
     // Moving its files would mutate that checkout, so it is kept, not migrated.
@@ -568,6 +592,25 @@ describe("agent bundle: retired project-map key", () => {
 
     assert.doesNotMatch(readFileSync(shared, "utf8"), /PROJECTS_JSON/);
     assert.match(readFileSync(shared, "utf8"), /TASKD_URL=http:\/\/localhost:9527/, "other keys survive");
+  });
+
+  it("keeps the file's mode when it rewrites the shared .env", () => {
+    // A token-bearing `.env` is 0600, and the loader refuses one that is
+    // group/world-readable (`CONFIG_FILE_INSECURE`). A rewrite through a temp file
+    // must not silently widen it.
+    const home = makeTempDir();
+    const envDir = makeTempDir();
+    const shared = join(envDir, ".env");
+    writeFileSync(
+      shared,
+      "TASKD_TOKEN=td_abcdefghijklmnopqrstuvwxyz\nMEERKAT_TASKPANEL_PROJECTS_JSON=/tmp/old.json\n",
+    );
+    chmodSync(shared, 0o600);
+
+    const result = runInstall(["--target", "claude"], agentEnv(home, { MEERKAT_TASKPANEL_ENV_FILE: shared }));
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(readFileSync(shared, "utf8"), /PROJECTS_JSON/);
+    assert.equal(statSync(shared).mode & 0o777, 0o600, "the token file must stay owner-only");
   });
 
   it("does not resurrect the key from a per-kind file on a forced rewrite", () => {

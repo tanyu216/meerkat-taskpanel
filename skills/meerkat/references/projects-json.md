@@ -33,7 +33,9 @@ state, not a project-results store; a project should ignore `.meerkat/` in versi
 `set` takes exactly one of the three modes. `--local-path` and `--run-dir` are mutually
 exclusive by construction (`dir = local_path ?? run_dir`), so setting one removes the other;
 `--no-dir` removes both. Everything else on an entry — including keys taskpanel does not
-interpret — survives a write.
+interpret — survives a write. A hand-written map may carry the same `project` twice: `set`
+updates the first entry, `remove` removes every one of them (the CLI never silently rewrites
+an entry it was not asked about).
 
 These commands are **local**: no identity, no token, no board session. They never send a
 path anywhere.
@@ -129,7 +131,9 @@ The map used to live beside the installed board skill, and `MEERKAT_TASKPANEL_PR
 - `install.sh` migrates every `<agent-dir>/skills/meerkat/projects.json` (and the older
   `skills/meerkat-taskpanel/projects.json`) into the config-root map — the config-root entry
   wins on the same project, source-only entries are added — then removes the old file. A
-  file it cannot interpret is left in place with a warning.
+  file it cannot interpret is left in place with a warning. The one exception is a
+  `--link`ed skill whose link points into a *different* checkout: that tree is never
+  edited, so its map stays and the installer prints the command to register it by hand.
 - A leftover `MEERKAT_TASKPANEL_PROJECTS_JSON` in the shared `.env` is removed by the same
   install. Until then the loader refuses it (`CONFIG_FILE_INVALID`), which is deliberate:
   a silently ignored override would be worse.
