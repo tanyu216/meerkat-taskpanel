@@ -198,6 +198,7 @@ describe("wakeHandoff selects the card's role", () => {
     ]),
     defaultReviewer: REVIEWER,
     decisionPolicy: { path: "/roles/decision-policy.md" },
+    ownership: { path: "/roles/ownership.md", text: "# Ownership\n" },
     warnings: ["a role warning"],
   };
   const opts = { home: "/tmp", actorKind: "claude", roles: roleSet };
@@ -214,6 +215,7 @@ describe("wakeHandoff selects the card's role", () => {
     assert.equal(result.agentRole, "Jobs");
     assert.match(result.handoff, /## Team role/);
     assert.match(result.handoff, /Role: Jobs/);
+    assert.doesNotMatch(result.handoff, /Work routing/, "routing belongs to the project session");
     assert.deepEqual(result.roleWarnings, ["a role warning"]);
   });
 
@@ -235,6 +237,7 @@ describe("wakeHandoff selects the card's role", () => {
       assert.match(result.handoff, /## Reviewer protocol/);
       assert.match(result.handoff, /VERDICT first/);
       assert.match(result.handoff, /## Role workflow/);
+      assert.doesNotMatch(result.handoff, /Work routing/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -370,7 +370,7 @@ describe("selectRole / selectReviewerRole", () => {
 });
 
 describe("decision policy", () => {
-  it("prefers a team policy in the roles root over the loop default", () => {
+  it("ignores a team decision-policy.md — the loop policy is authoritative", () => {
     const f = fixture();
     try {
       writeRoleFiles(f, f.projectRoles);
@@ -378,9 +378,10 @@ describe("decision policy", () => {
       f.write(f.projectRoles, "decision-policy.md", "# Team policy\n");
       f.write(f.loopSkillDir, "references/decision-policy.md", "# Default policy\n");
       const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.decisionPolicy.isDefault, false);
-      assert.match(result.decisionPolicy.path, /\.meerkat\/roles\/decision-policy\.md$/);
-      assert.match(result.decisionPolicy.text, /Team policy/);
+      assert.equal(result.decisionPolicy.isDefault, true);
+      assert.match(result.decisionPolicy.path, /loop-skill\/references\/decision-policy\.md$/);
+      assert.match(result.decisionPolicy.text, /Default policy/);
+      assert.doesNotMatch(result.decisionPolicy.text, /Team policy/);
     } finally {
       f.cleanup();
     }
@@ -410,6 +411,63 @@ describe("decision policy", () => {
       assert.equal(result.decisionPolicy.isDefault, true);
       assert.equal(result.decisionPolicy.path, null);
       assert.equal(result.decisionPolicy.text, null);
+    } finally {
+      f.cleanup();
+    }
+  });
+});
+
+describe("ownership guide", () => {
+  it("loads ownership.md from the roles root", () => {
+    const f = fixture();
+    try {
+      writeRoleFiles(f, f.projectRoles);
+      f.write(f.projectRoles, "manifest.json", manifest());
+      f.write(f.projectRoles, "ownership.md", "# Ownership\n| Work shape | Role |\n");
+      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
+      assert.equal(result.ownership.source, "team");
+      assert.match(result.ownership.path, /\.meerkat\/roles\/ownership\.md$/);
+      assert.match(result.ownership.text, /Work shape/);
+      assert.equal(result.ownership.truncated, false);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("reports no guide when the file is absent", () => {
+    const f = fixture();
+    try {
+      writeRoleFiles(f, f.projectRoles);
+      f.write(f.projectRoles, "manifest.json", manifest());
+      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
+      assert.equal(result.ownership.source, null);
+      assert.equal(result.ownership.path, null);
+      assert.equal(result.ownership.text, null);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("reports no guide when no roles root resolves", () => {
+    const f = fixture();
+    try {
+      const result = loadRoles({ loopSkillDir: f.loopSkillDir });
+      assert.equal(result.ownership.path, null);
+      assert.equal(result.ownership.text, null);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("truncates an oversized guide instead of failing", () => {
+    const f = fixture();
+    try {
+      writeRoleFiles(f, f.projectRoles);
+      f.write(f.projectRoles, "manifest.json", manifest());
+      f.write(f.projectRoles, "ownership.md", "x".repeat(9 * 1024));
+      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
+      assert.equal(result.ownership.truncated, true);
+      assert.equal(result.ownership.text.length, 8 * 1024);
     } finally {
       f.cleanup();
     }

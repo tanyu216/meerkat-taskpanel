@@ -32,6 +32,7 @@ import { DomainError } from "./errors.mjs";
 import {
   renderDecisionPolicySummary,
   renderDecisionRoundPrinciples,
+  renderOwnershipSummary,
   renderReviewerProtocol,
   renderRoleDecision,
   renderRoleLayerOne,
@@ -804,6 +805,7 @@ export function buildQuestionPrompt(rows, input = {}) {
  *   includePoll?: boolean,
  *   openedBy?: "human"|"supervisor",
  *   decisionPolicy?: {path?: string|null, text?: string|null}|null,
+ *   ownership?: {path?: string|null, text?: string|null}|null,
  * }} [input]
  * @returns {string}
  */
@@ -914,6 +916,7 @@ export function buildContinuePrompt(input = {}) {
     "  act on it and move the card to todo (or reattach a live worker).",
     "  Do not answer a question a later human comment already answered.",
     ...(input.decisionPolicy ? ["", ...renderDecisionPolicySummary(input.decisionPolicy)] : []),
+    ...(input.ownership ? ["", ...renderOwnershipSummary(input.ownership)] : []),
     "",
     "Rules:",
     "- Never move a card to done. in_review → done is the board's acceptance, applied by the loop as taskd.",

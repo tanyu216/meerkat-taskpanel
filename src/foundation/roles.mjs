@@ -2,9 +2,13 @@
  * The optional team-role layer.
  *
  * A roles root is a directory containing `manifest.json`, the role workflows it
- * names, and an optional `decision-policy.md`. It is authored by
- * `setup-meerkat`; `install.sh` never ships one, so a deployment with no roles
- * root behaves exactly as it did before this module existed.
+ * names, and an optional `ownership.md` (the work→role routing guide). It is
+ * authored by `setup-meerkat`; `install.sh` never ships one, so a deployment with
+ * no roles root behaves exactly as it did before this module existed.
+ *
+ * Decision authority is **not** part of the team layer. The loop skill's own
+ * `references/decision-policy.md` is the single source; a roles root can route
+ * work but cannot override who decides.
  *
  * Precedence is **whole-manifest**, not per-role merge:
  *
@@ -44,6 +48,7 @@ export const ROLES_SOURCES = Object.freeze(["explicit", "project", "loop-skill"]
 export const ROLES_LIMITS = Object.freeze({
   manifestBytes: 256 * 1024,
   workflowBytes: 64 * 1024,
+  ownershipBytes: 8 * 1024,
   roles: 32,
   responsibilities: 12,
   boundaries: 12,
@@ -152,27 +157,43 @@ export function resolveRolesRoot(input = {}) {
   return null;
 }
 
-/** @param {string|null|undefined} loopSkillDir */
-function loadDecisionPolicy(rolesRoot, loopSkillDir) {
-  const team = rolesRoot ? join(rolesRoot, "decision-policy.md") : null;
-  if (team && existsSync(team)) {
+/**
+ * The loop skill's decision policy. A roles root can never override it.
+ *
+ * @param {string|null|undefined} loopSkillDir
+ * @returns {{source: "default"|null, path: string|null, text: string|null, isDefault: true, truncated: boolean}}
+ */
+function loadDecisionPolicy(loopSkillDir) {
+  const path = loopSkillDir ? join(loopSkillDir, "references", "decision-policy.md") : null;
+  if (path && existsSync(path)) {
     try {
-      const { text, truncated } = readBounded(team, ROLES_LIMITS.workflowBytes);
-      return { source: "team", path: team, text, isDefault: false, truncated };
-    } catch {
-      // fall through to the default
-    }
-  }
-  const fallback = loopSkillDir ? join(loopSkillDir, "references", "decision-policy.md") : null;
-  if (fallback && existsSync(fallback)) {
-    try {
-      const { text, truncated } = readBounded(fallback, ROLES_LIMITS.workflowBytes);
-      return { source: "default", path: fallback, text, isDefault: true, truncated };
+      const { text, truncated } = readBounded(path, ROLES_LIMITS.workflowBytes);
+      return { source: "default", path, text, isDefault: true, truncated };
     } catch {
       // fall through to "none"
     }
   }
   return { source: null, path: null, text: null, isDefault: true, truncated: false };
+}
+
+/**
+ * The team's work→role routing guide. Convention-only filename; a team that
+ * names it differently simply gets no guide (fail-soft).
+ *
+ * @param {string|null|undefined} rolesRoot
+ * @returns {{source: "team"|null, path: string|null, text: string|null, truncated: boolean}}
+ */
+function loadOwnership(rolesRoot) {
+  const path = rolesRoot ? join(rolesRoot, "ownership.md") : null;
+  if (path && existsSync(path)) {
+    try {
+      const { text, truncated } = readBounded(path, ROLES_LIMITS.ownershipBytes);
+      return { source: "team", path, text, truncated };
+    } catch {
+      // fall through to "none"
+    }
+  }
+  return { source: null, path: null, text: null, truncated: false };
 }
 
 /** @param {object} raw @param {string} root @param {string[]} warnings */
@@ -235,6 +256,7 @@ function normalizeRole(raw, root, warnings) {
  *   roles: object[],
  *   byAgent: Map<string, object>,
  *   decisionPolicy: {source: string|null, path: string|null, text: string|null, isDefault: boolean, truncated: boolean},
+ *   ownership: {source: string|null, path: string|null, text: string|null, truncated: boolean},
  *   warnings: string[],
  *   error?: string,
  * }}
@@ -249,7 +271,8 @@ export function loadRoles(input = {}) {
     defaultReviewer: null,
     roles: [],
     byAgent: new Map(),
-    decisionPolicy: loadDecisionPolicy(null, input.loopSkillDir ?? null),
+    decisionPolicy: loadDecisionPolicy(input.loopSkillDir ?? null),
+    ownership: loadOwnership(null),
     warnings,
   };
 
@@ -324,7 +347,8 @@ export function loadRoles(input = {}) {
     defaultReviewer,
     roles,
     byAgent,
-    decisionPolicy: loadDecisionPolicy(resolved.dir, input.loopSkillDir ?? null),
+    decisionPolicy: loadDecisionPolicy(input.loopSkillDir ?? null),
+    ownership: loadOwnership(resolved.dir),
     warnings,
   };
 }

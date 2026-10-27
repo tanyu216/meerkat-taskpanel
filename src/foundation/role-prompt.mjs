@@ -15,6 +15,8 @@ export const ROLE_PROMPT_LIMITS = Object.freeze({
   decision: 1600,
   reviewer: 2400,
   policySummary: 700,
+  ownership: 2500,
+  ownershipSummary: 700,
 });
 
 /** @param {string} text @param {number} max */
@@ -176,7 +178,48 @@ export function renderDecisionPolicySummary(policy) {
     "decision kind) and an explicit move, or leaves an E1-E5 card awaiting for the human.",
     "Any human comment resumes an awaiting card; the resumed worker judges its content",
     path ? `Full policy: ${path}` : "Full policy: the installed loop skill's references/decision-policy.md",
-    "A card in a project whose .meerkat/roles/decision-policy.md exists uses that file instead.",
   ];
   return [clamp(lines.join("\n"), ROLE_PROMPT_LIMITS.policySummary)];
+}
+
+/**
+ * The team's routing guide, in full, for the project session's spawn turn.
+ * Routing belongs to that session — it triages and assigns — not to the
+ * control turn (which has no project directory) or to a subagent's handoff.
+ *
+ * @param {{path?: string|null, text?: string|null}|null} ownership
+ * @returns {string[]}
+ */
+export function renderOwnershipGuide(ownership) {
+  const path = ownership?.path ?? null;
+  const text = ownership?.text ?? null;
+  if (!path && !text) return [];
+  const lines = [
+    "## Work routing (ownership guide)",
+    ...(text ? [clamp(text.trim(), ROLE_PROMPT_LIMITS.ownership)] : []),
+    path ? `Full guide: ${path}` : "",
+    "Assign one accountable role per work shape; the card's assignee still selects the role.",
+  ].filter((line) => line !== "");
+  return [lines.join("\n")];
+}
+
+/**
+ * A compact routing summary for the control/continue turn. The control turn has
+ * no project directory and a bounded prompt, so it gets the rules and the path.
+ *
+ * @param {{path?: string|null}|null} ownership
+ * @returns {string[]}
+ */
+export function renderOwnershipSummary(ownership) {
+  const path = ownership?.path ?? null;
+  if (!path) return [];
+  const lines = [
+    "## Work routing",
+    "Route by the team ownership guide: one accountable role per work shape, the reviewer",
+    "independent of the producer. An unowned or ambiguous shape goes to the project",
+    "session; split multi-shape work into one card per shape. The card's assignee still",
+    "selects the executing role; the guide changes nothing about who decides.",
+    `Full guide: ${path}`,
+  ];
+  return [clamp(lines.join("\n"), ROLE_PROMPT_LIMITS.ownershipSummary)];
 }

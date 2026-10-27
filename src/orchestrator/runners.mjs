@@ -1011,6 +1011,7 @@ export async function runContinue(opts, deps = {}) {
     continueIntervalSeconds: opts.continueInterval,
     openedBy: opts.openedBy,
     decisionPolicy: roleSet.decisionPolicy,
+    ownership: roleSet.ownership,
     includePoll: false,
   });
   const invocation = planContinueInvocation({

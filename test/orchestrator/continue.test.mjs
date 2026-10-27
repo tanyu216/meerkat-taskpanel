@@ -197,6 +197,34 @@ describe("buildContinuePrompt", () => {
     assert.match(withPolicy, /Subagents do not decide/);
     assert.match(withPolicy, /\/roles\/decision-policy\.md/);
     assert.match(withPolicy, /E1-E5/);
+    assert.doesNotMatch(withPolicy, /\.meerkat\/roles\/decision-policy\.md/);
+  });
+
+  it("carries a compact ownership summary, never the whole table", () => {
+    const withOwnership = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      ownership: {
+        path: "/roles/ownership.md",
+        text: "# Ownership\n\n| Work shape | Role |\n|---|---|\n| Product planning | Jobs |\n",
+      },
+    });
+    assert.match(withOwnership, /## Work routing/);
+    assert.match(withOwnership, /one accountable role per work shape/i);
+    assert.match(withOwnership, /reviewer/);
+    assert.match(withOwnership, /card's assignee still\s+selects/i);
+    assert.match(withOwnership, /\/roles\/ownership\.md/);
+    assert.doesNotMatch(withOwnership, /\| Work shape \|/, "the table belongs to the project session");
+  });
+
+  it("omits the ownership block when the team ships no guide", () => {
+    const plain = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+    });
+    assert.doesNotMatch(plain, /## Work routing/);
   });
 
   it("carries the decision round: one frontier, one note, one escalation string", () => {
@@ -239,6 +267,7 @@ describe("buildContinuePrompt", () => {
       mode: "manual",
       openedBy: "human",
       decisionPolicy: { path: "/roles/decision-policy.md", text: "# Policy\n" },
+      ownership: { path: "/roles/ownership.md", text: "# Ownership\n" },
     });
     assert.ok(longest.length < 6000, `longest prompt is ${longest.length} chars`);
   });
