@@ -22,8 +22,8 @@ import { dirname, join } from "node:path";
 
 // The names live in the shared foundation module now; re-exported because this
 // module was their first home and the loop tests import them from here.
-export { QUEUE_FILES } from "../foundation/loop-paths.mjs";
-import { QUEUE_FILES } from "../foundation/loop-paths.mjs";
+export { QUEUE_FILES } from "../foundation/loop-state.mjs";
+import { QUEUE_FILES } from "../foundation/loop-state.mjs";
 
 /** A card handoff's terminal failure threshold. */
 export const DEFAULT_CARD_MAX_ATTEMPTS = 3;

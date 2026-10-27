@@ -25,6 +25,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 
+import { repoRoot } from "../../src/foundation/runtime-locator.mjs";
+
 import {
   DEFAULT_MAX_CONCURRENCY,
   buildHandoff,
@@ -1425,11 +1427,22 @@ describe("pruneRegistry (pure)", () => {
 describe("parseArgs — the project map", () => {
   const ENV = { HOME: "/home/alice" };
 
-  it("defaults the map under the agent's dot-directory, and accepts an explicit one", () => {
-    const opts = parseArgs(["--actor-kind", "codex", "--once"], ENV);
-    assert.equal(opts.projectsJson, "/home/alice/.codex/skills/meerkat/projects.json");
-    const custom = parseArgs(["--actor-kind", "pi", "--projects-json=/tmp/map.json"], ENV);
-    assert.equal(custom.projectsJson, "/tmp/map.json");
+  it("defaults the map to the config root, and follows MEERKAT_TASKPANEL_CONFIG_DIR", () => {
+    const opts = parseArgs(["--actor-kind", "codex", "--once"], {
+      ...ENV,
+      MEERKAT_TASKPANEL_CONFIG_DIR: "/maps",
+    });
+    assert.equal(opts.projectsJson, join("/maps", "projects.json"));
+
+    const plain = parseArgs(["--actor-kind", "pi", "--once"], ENV);
+    assert.equal(plain.projectsJson, join(repoRoot(), "projects.json"));
+  });
+
+  it("no longer accepts --projects-json: the map has one location", () => {
+    assert.throws(
+      () => parseArgs(["--actor-kind", "pi", "--projects-json=/tmp/map.json"], ENV),
+      /unknown option/,
+    );
   });
 
   it("defaults the SLA ledger beside the state file, and follows a custom one", () => {

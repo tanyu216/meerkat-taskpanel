@@ -68,6 +68,11 @@ no `design/`, no `node_modules`). The image:
   volume and survives a container recreate; the scaffold (`docker/serve-skeleton.mjs`) uses
   the same loader. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` is the escape hatch for a
   read-only install root.
+- has no host project map. `projects.json` is in `.dockerignore` (it holds host paths) and
+  `/app` is not the compose volume, so a map written inside the container is lost on
+  recreate. An install that uses the map in a container should set
+  `MEERKAT_TASKPANEL_CONFIG_DIR=/app/.data` (the same directory the `.env` comes from), so
+  `<config root>/projects.json` lands on the volume.
 
 ## Base image cache
 

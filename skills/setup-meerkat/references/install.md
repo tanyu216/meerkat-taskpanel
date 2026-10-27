@@ -68,7 +68,8 @@ gate on its own.
 - Show `--dry-run` output before writing.
 - Ask before loading/enabling the supervisor (`--supervisor=enable`).
 - Ask before `--force`; it replaces the skill's own files, but an installed `roles/`
-  directory and `projects.json` are kept.
+  directory is kept. The project map is not in the skill directory any more: an old
+  skill-beside `projects.json` is migrated to the config root, never replaced.
 - A remote URL that the user did not name is never assumed.
 
 ## Human name

@@ -94,7 +94,7 @@ async function runEntry(name, argv, env, run, validate = null) {
 /**
  * Project admission for a poll claim.
  *
- * Resolves the candidate's `project` to a directory through the agent-local map
+ * Resolves the candidate's `project` to a directory through the machine-local map
  * **before** the board is claimed, and enforces the per-project cap. A card whose
  * project is unmapped, names no directory, or has no free project slot is
  * deferred — it stays `todo`, where the next turn can offer it again.

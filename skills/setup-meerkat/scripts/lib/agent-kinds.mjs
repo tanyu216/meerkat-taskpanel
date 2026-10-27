@@ -1,5 +1,5 @@
 /**
- * The actor-kind directory map, mirrored from `src/foundation/loop-paths.mjs`.
+ * The actor-kind directory map, mirrored from `src/foundation/agent-paths.mjs`.
  *
  * The setup skill runs from the installed skill directory, where the toolkit's `src/`
  * tree is not a sibling, so it cannot import the shared table. The map is therefore

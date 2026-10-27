@@ -174,7 +174,8 @@ logs and skips). Cron cannot host a long-lived process. The daemon publishes
 ### Task process directory (`.meerkat/`)
 
 Every task the loop dispatches gets one directory under the project's working directory — the
-resolved `target_dir` (`local_path ?? run_dir`), which is also the subagent's cwd:
+resolved `target_dir` (from the machine-local map at the config root: `local_path ?? run_dir`),
+which is also the subagent's cwd:
 
 ```text
 .meerkat/<identifier>/

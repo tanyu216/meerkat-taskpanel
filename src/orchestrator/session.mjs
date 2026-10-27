@@ -60,13 +60,13 @@ export {
   POOL_STALE_MS,
   SESSION_DEFAULTS,
   SESSION_LOCK_FILE,
-} from "../foundation/loop-paths.mjs";
+} from "../foundation/loop-state.mjs";
 import {
   POOL_HEARTBEAT_MS,
   POOL_STALE_MS,
   SESSION_DEFAULTS,
   SESSION_LOCK_FILE,
-} from "../foundation/loop-paths.mjs";
+} from "../foundation/loop-state.mjs";
 
 /**
  * A review card is dispatched from its own resident conversation.

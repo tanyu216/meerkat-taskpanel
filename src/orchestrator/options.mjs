@@ -36,6 +36,7 @@ import {
   PEER_MECHANISM,
   PEER_PERIOD_MIN,
 } from "../foundation/sla-patrol.mjs";
+import { defaultProjectsJson } from "../foundation/project-dir.mjs";
 
 /** The one retirement message, shared by the flag and the env/config path. */
 const BACKGROUND_RETIRED =
@@ -44,13 +45,13 @@ const BACKGROUND_RETIRED =
 
 // The agent-directory and path vocabulary is shared with the orchestrator and
 // the installer now; re-exported because this module was its first home.
-export { AGENT_DIRS, agentPaths } from "../foundation/loop-paths.mjs";
+export { AGENT_DIRS, agentPaths } from "../foundation/agent-paths.mjs";
 import {
   AGENT_DIRS,
   agentPaths,
   resolveKindConfigPath,
-  statePathsForDir,
-} from "../foundation/loop-paths.mjs";
+} from "../foundation/agent-paths.mjs";
+import { statePathsForDir } from "../foundation/loop-state.mjs";
 
 /** Parse a `KEY=value` env file, or `{}` when it is absent/unreadable. */
 export function readConfigFile(path) {
@@ -222,7 +223,6 @@ flag("--trail-limit", (opts, value) => { opts.trailLimit = number("--trail-limit
 flag("--config", (opts, value) => { opts.config = value; });
 flag("--home", (opts, value) => { opts.home = resolve(value); });
 flag("--cli", (opts, value) => { opts.cli = value; });
-flag("--projects-json", (opts, value) => { opts.projectsJson = value; });
 
 /** The files that live beside the worker registry. */
 function statePaths(state) {
@@ -346,8 +346,8 @@ export function parseArgs(argv, env = process.env) {
   opts.slaLastOk ??= beside.slaLastOk;
   opts.slaLeader ??= env.MEERKAT_TASKPANEL_SLA_LEADER ?? null;
   opts.slaPeer ??= env.MEERKAT_TASKPANEL_SLA_PEER ?? null;
-  // The per-kind config lives at the program root, not under `--home`; `--home`
-  // still selects the state, log, projects map and roles. `--config` is the
+  // The per-kind config and the project map live at the program root, not under
+  // `--home`; `--home` still selects the state, log and roles. `--config` is the
   // explicit override and fills the value first.
   opts.kindConfigDefault = resolveKindConfigPath({ actorKind: opts.actorKind, env });
   opts.config ??= opts.kindConfigDefault;
@@ -504,7 +504,7 @@ export function parseArgs(argv, env = process.env) {
   }
   opts.repo ??= defaultRepo(opts.config);
   opts.cli ??= join(opts.repo, "src", "cli", "index.mjs");
-  opts.projectsJson ??= paths.projectsJson;
+  opts.projectsJson ??= defaultProjectsJson(env);
   opts.sseIdleMs ??= SSE_SUBSCRIBE_IDLE_MS;
   opts.eventDebounceMs ??= EVENT_DEBOUNCE_MS;
   opts.eventDebounceMaxMs ??= EVENT_DEBOUNCE_MAX_MS;
@@ -686,13 +686,11 @@ export function loopCommandArgs(opts) {
   };
   // Only state values that differ from what the child would derive anyway,
   // or every line of the prompt carries a dozen redundant absolute paths.
-  const paths = agentPaths(opts.home, opts.actorKind);
   const beside = statePaths(opts.state);
   const defaults = {
     config: opts.kindConfigDefault ?? resolveKindConfigPath({ actorKind: opts.actorKind }),
     repo: defaultRepo(opts.config),
     cli: join(opts.repo, "src", "cli", "index.mjs"),
-    projectsJson: paths.projectsJson,
     slaLedger: beside.slaLedger,
     workflowLedger: beside.workflowLedger,
     slaLastOk: beside.slaLastOk,
@@ -701,7 +699,6 @@ export function loopCommandArgs(opts) {
     ["--config", "config"],
     ["--repo", "repo"],
     ["--cli", "cli"],
-    ["--projects-json", "projectsJson"],
     ["--sla-ledger", "slaLedger"],
     ["--workflow-ledger", "workflowLedger"],
     ["--sla-last-ok", "slaLastOk"],
@@ -855,7 +852,6 @@ Options:
                             env: MEERKAT_TASKPANEL_CONFIG_DIR).
   --home <path>             Home the defaults are resolved against (default: $HOME).
   --cli <path>              taskctl entry (default: <repo>/src/cli/index.mjs).
-  --projects-json <path>    Agent-local project map used to resolve a card's directory.
   -h, --help                Show this help
 
 The deterministic passes are also runnable on their own:

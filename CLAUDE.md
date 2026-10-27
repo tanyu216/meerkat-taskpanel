@@ -209,14 +209,17 @@ authoritative home, because the container image drops `design/`.
   both. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects another path. This file is
   board-facing only: each actor kind also has a **per-kind config**,
   `<program root>/.env.<actor-kind>` (for example `.env.claude`), read by `taskctl` as a
-  per-agent default layer (identity, the project map, the engine location) and by
+  per-agent default layer (identity, the engine location) and by
   `taskctl loop …` for the loop policy; the loader refuses loop-policy keys here, so the
-  two never merge. `--config` overrides it for a loop run, and
+  two never merge. The one machine-local project map, `projects.json`, sits beside those
+  files at the same config root. `--config` overrides it for a loop run, and
   `MEERKAT_TASKPANEL_CONFIG_DIR` relocates the directory (tests, containers, read-only
   roots). The old
   `<dataDir>/taskd.env` is no longer read (hard switch). Identity (`--actor-kind`) is required
-  on every command that talks to the board, except `--help` / `--version` and the local read
-  `taskctl status` (it reads the runtime pointer, never the board); `--agent` names the role
+  on every command that talks to the board, except `--help` / `--version`, the local read
+  `taskctl status` (it reads the runtime pointer, never the board) and the local
+  `taskctl project map` actions (they read and write the config-root map, never the board);
+  `--agent` names the role
   and is not a shared-file key. The install root is the **running program's** root: the checkout, `/app`
   in the image, or `~/.meerkat-taskpanel` for an installed tree. On a combined install
   (`--target all`, which includes the server, or npm/npx) the agent shims and per-kind config
@@ -261,8 +264,10 @@ authoritative home, because the container image drops `design/`.
 - **The board holds no project directory.** A project carries no `workspace_path`, the CLI has no
   `context` command (`src/core/commands/context.mjs` is actor/execution context, unrelated) and no
   registry `root` anchor; a card's `target` is an opaque per-card value, never derived from a
-  project. The directory↔project map lives in a `projects.json` beside the installed skill
-  (`skills/meerkat/references/projects-json.md`); whether a project's source data is
+  project. The project→directory map is **one** machine-local `projects.json` at the config
+  root (the program root, or `MEERKAT_TASKPANEL_CONFIG_DIR`), maintained only through
+  `taskctl project map` and read through `taskctl project dir`; agents never parse or edit it
+  (`skills/meerkat/references/projects-json.md`). Whether a project's source data is
   managed with `meta` is the agent's own decision and taskpanel neither prescribes nor advises it.
   An entry names its directory as `local_path`, else as the `run_dir` launch pad, or names **none** —
   a project with no local directory is a complete answer (`dir: null`, exit 0), distinct from the

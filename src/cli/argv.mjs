@@ -38,6 +38,7 @@ export const BOOLEAN_FLAGS = Object.freeze(
     "stop",
     "standalone",
     "require-dir",
+    "no-dir",
     "watch",
     "dry-run",
     "take-over",

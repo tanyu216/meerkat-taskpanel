@@ -32,6 +32,9 @@ web/dist
 # per-kind configs — machine-local, never image input
 .env.*
 
+# the machine-local project map — host paths must never be baked into the image
+/projects.json
+
 # parallel-task worktrees (CLAUDE.md keeps them inside the checkout) — another branch's
 # whole tree must never enter this build context
 .worktrees

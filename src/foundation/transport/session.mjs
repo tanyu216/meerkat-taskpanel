@@ -15,7 +15,7 @@
  */
 
 import { loadEnvFile } from "../env-config.mjs";
-import { resolveKindConfigPath } from "../loop-paths.mjs";
+import { resolveKindConfigPath } from "../agent-paths.mjs";
 import { repoRoot } from "../runtime-locator.mjs";
 import { ACTOR_ENV_KEYS, resolveActor } from "./actor.mjs";
 import { createBoardClient } from "./client.mjs";

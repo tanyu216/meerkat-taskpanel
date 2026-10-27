@@ -27,7 +27,7 @@ import { readFileSync } from "node:fs";
 import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, LOG_LEVEL_ENV, VERSION } from "../foundation/constants.mjs";
 import { loadEnvFile } from "../foundation/env-config.mjs";
 import { DomainError } from "../foundation/errors.mjs";
-import { resolveKindConfigPath } from "../foundation/loop-paths.mjs";
+import { resolveKindConfigPath } from "../foundation/agent-paths.mjs";
 import { createLogger, parseLogLevel } from "../foundation/log.mjs";
 import { repoRoot } from "../foundation/runtime-locator.mjs";
 import { isSupportedNode, unsupportedNodeMessage } from "../foundation/node-version.mjs";

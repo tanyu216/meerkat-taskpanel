@@ -49,8 +49,9 @@ Precedence: flag > process env > per-kind config > default. The complete surface
 | `--dry-run` | print intended actions; write nothing |
 | `--ping-once` / `--continue-once` | one clock and exit (on `loop run`) |
 
-Transport (`--url`, `--env-file`, `--token`, `--config`, `--projects-json`, `--home`, `--cli`)
-and the state/log paths are in `--help`. `--state-dir <dir>` derives the loop's state files;
+Transport (`--url`, `--env-file`, `--token`, `--config`, `--home`, `--cli`) and the
+state/log paths are in `--help`. The project map is not a flag: it is the one
+`<config root>/projects.json` the CLI and the loop both read. `--state-dir <dir>` derives the loop's state files;
 `--assignee-only` is `--claim-unassigned=no`. There is no `--acceptance-policy` flag: the
 card's own `acceptance_mode` is authoritative.
 

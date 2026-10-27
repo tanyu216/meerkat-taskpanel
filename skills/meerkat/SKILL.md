@@ -237,18 +237,21 @@ is a different number. A re-delivery after a rejection needs a new review card. 
 
 ## Configuring project directories
 
-**The board holds no directories.** The only answer is `projects.json` beside this skill —
-schema and validation codes in
-[`references/projects-json.md`](references/projects-json.md).
+**The board holds no directories.** The only answer is the machine-local map at the
+program's config root (`<config root>/projects.json`), read with `taskctl project dir`
+and changed only with `taskctl project map`. Schema, validation codes and the maintenance
+commands are in [`references/projects-json.md`](references/projects-json.md). **Never read
+or edit `projects.json` by hand** — the CLI is what validates the directory and keeps the
+file's shape stable.
 
 A project with **no directory** is an entry naming none: `taskctl project dir <project>` says
-so and succeeds. Do not invent one. A project **absent** from the file has no registered
+so and succeeds. Do not invent one. A project **absent** from the map has no registered
 directory and the board cannot supply one — do not guess. When a step needs it, stop and ask:
 
 ```text
 No local directory is registered for project <project>.
-Which directory does it work in? I will add it to projects.json beside this skill
-(references/projects-json.md) — the board cannot supply one.
+Which directory does it work in? I will register it with
+`taskctl project map set <project> --local-path <dir>` — the board cannot supply one.
 ```
 
 Claiming, moving, commenting and delivering need no directory.
@@ -273,4 +276,4 @@ its brief. Detail:
 | what a reviewer reads and writes, and the two-round model | [`references/review-workflow.md`](references/review-workflow.md) |
 | the `export md` card format, identifier syntax, or `blocked_reason` meanings | [`references/card-schema.md`](references/card-schema.md) |
 | the `taskctl` invocations and JSON keys a supervisor binds to | [`references/capabilities.md`](references/capabilities.md) |
-| the project ↔ directory map | [`references/projects-json.md`](references/projects-json.md) |
+| the project ↔ directory map (`taskctl project dir`, `project map`) | [`references/projects-json.md`](references/projects-json.md) |

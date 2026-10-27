@@ -1,27 +1,30 @@
 /**
- * `project create|update|list|dir|readme` (A1/A6).
+ * `project create|update|list|dir|map|readme` (A1/A6).
  *
  * A project is the identifier scope: its id becomes the identifier prefix
  * (`demo` → `DEMO-0001`). `--meta k=v` is repeatable and merges.
  *
  * A project owns **no** working directory — the board holds no path for it.
- * Which local directory maps to which project is decided on the agent side (the
- * skill's local `projects.json`), never here. `project dir` is that lookup, and
- * it is a *local read*: a project with no registered directory is a coded
+ * Which local directory maps to which project lives in one machine-local
+ * `projects.json` at the config root, and `project map` is its only writer.
+ * `project dir` is the read: a project with no registered directory is a coded
  * failure that asks the user which directory it should be, never a guess. The
  * whole point is that a caller which needs a directory stops instead of
  * continuing somewhere unintended.
  */
 
-import { resolve } from "node:path";
-
 import { DomainError } from "../../foundation/errors.mjs";
 import {
   PROJECT_DIR_CODES,
+  checkTargetDirectory,
   defaultProjectsJson,
   parseProjectMap,
+  readProjectMapForEdit,
+  removeProjectEntry,
   resolveProjectDir,
   resolveWakeDir,
+  upsertProjectEntry,
+  writeProjectMap,
 } from "../../foundation/project-dir.mjs";
 import { fields, table } from "../output/human.mjs";
 
@@ -30,14 +33,51 @@ function metaOf(flags) {
   return flags.meta === undefined ? undefined : flags.meta;
 }
 
+/** The one map every local read and write uses. */
+function mapFile(ctx) {
+  return defaultProjectsJson(ctx.env ?? {}, { cwd: ctx.cwd });
+}
+
 /**
- * Where this machine's map is, in the order a user expects: an explicit flag,
- * then `$MEERKAT_TASKPANEL_PROJECTS_JSON` (what an installed shim points beside
- * its own skill), else the one beside the skill in this checkout.
+ * Why a local command fails: the same shape `resolveWakeDir` reports, raised as
+ * a domain error so the envelope's `hint.fix` names the next command.
  */
-function projectsJsonPath(env = {}, flag = null) {
-  if (typeof flag === "string" && flag.trim() !== "") return resolve(flag);
-  return defaultProjectsJson(env);
+function mapFailure(result, file) {
+  return new DomainError(result.code, {
+    message: result.message,
+    details: { ...(result.project ? { project: result.project } : {}), file },
+    hint: { fix: `run \`taskctl project map set <id> --local-path <dir>\` (or \`--run-dir\`), then retry` },
+  });
+}
+
+/** Read the map for an edit. A missing file is the empty map a first write starts from. */
+function readForEdit(ctx, file) {
+  const result = readProjectMapForEdit(file, { read: ctx.readFile });
+  if (!result.ok) {
+    throw new DomainError(result.code, {
+      message: result.message,
+      details: { file },
+      hint: { fix: `fix the JSON at ${file} (or move it aside and register the projects again with taskctl project map set)` },
+    });
+  }
+  return result;
+}
+
+/** Write the map, or fail with the documented write code. */
+function writeMap(file, projects, root) {
+  const result = writeProjectMap(file, projects, { root });
+  if (!result.ok) {
+    throw new DomainError("PROJECT_MAP_UNWRITABLE", {
+      message: result.message,
+      details: { file },
+      hint: { fix: `set MEERKAT_TASKPANEL_CONFIG_DIR to a writable directory, or fix the permissions of ${file}` },
+    });
+  }
+}
+
+/** @param {string} message */
+function usageError(message) {
+  return new DomainError("CLI_USAGE", { message, hint: { fix: "run `taskctl project map --help`" } });
 }
 
 /**
@@ -49,7 +89,7 @@ function projectsJsonPath(env = {}, flag = null) {
  * answers, and only the second one is a question for the user.
  */
 function resolveDirFor(ctx, id) {
-  const file = projectsJsonPath(ctx.env ?? {}, ctx.flags?.projectsJson ?? null);
+  const file = mapFile(ctx);
   let text;
   try {
     text = ctx.readFile(file);
@@ -57,7 +97,7 @@ function resolveDirFor(ctx, id) {
     throw new DomainError("PROJECT_MAP_UNREADABLE", {
       message: `cannot read the local project map at ${file} (${err?.code ?? "unreadable"}).`,
       details: { file },
-      hint: { fix: `create ${file} beside the skill with an entry for ${id} — see references/projects-json.md` },
+      hint: { fix: `register project ${id} with \`taskctl project map set ${id} --local-path <dir>\` — see references/projects-json.md` },
     });
   }
 
@@ -70,11 +110,11 @@ function resolveDirFor(ctx, id) {
     // *absent* from the map is a question for the user (the step stops and asks,
     // references/projects-json.md §Unregistered); an entry that is there but
     // unusable is a registration to fix — or to reduce to "no local directory"
-    // by dropping the key, which is a legitimate answer now.
+    // with `project map set --no-dir`, which is a legitimate answer now.
     const fix =
       resolved.code === PROJECT_DIR_CODES.UNMAPPED
-        ? `ask which local directory project ${id} works in, then add it to ${file} (references/projects-json.md)`
-        : `fix the entry for project ${id} in ${file} — or drop \`local_path\`/\`run_dir\` if this project has no local directory (references/projects-json.md)`;
+        ? `ask which local directory project ${id} works in, then register it with \`taskctl project map set ${id} --local-path <dir>\``
+        : `fix the entry for project ${id} with \`taskctl project map set ${id} --local-path <dir>\` — or use --no-dir if this project has no local directory (references/projects-json.md)`;
     throw new DomainError(resolved.code, {
       message: resolved.message,
       details: { project: id, file, ...(resolved.path ? { path: resolved.path } : {}) },
@@ -82,6 +122,108 @@ function resolveDirFor(ctx, id) {
     });
   }
   return { dir: resolved.dir, file };
+}
+
+/**
+ * `project map <action> [id] [--local-path|--run-dir|--no-dir]` — the local
+ * map, read and written without a board, a token or an identity.
+ *
+ * All four actions are local by construction (`local: true`); nothing here can
+ * send a directory to `taskd`. `set` validates the directory first and never
+ * overwrites a file it could not parse; `remove` and `show` on an absent entry
+ * are the documented `PROJECT_DIR_UNMAPPED` refusal.
+ */
+function runProjectMap(ctx) {
+  const action = ctx.args.action ?? "";
+  const id = typeof ctx.args.id === "string" ? ctx.args.id.trim() : "";
+  const hasLocalPath = ctx.flags.localPath !== undefined;
+  const hasRunDir = ctx.flags.runDir !== undefined;
+  const noDir = ctx.flags.noDir === true;
+  const modes = [hasLocalPath, hasRunDir, noDir].filter(Boolean).length;
+  const file = mapFile(ctx);
+
+  if (!["list", "show", "set", "remove"].includes(action)) {
+    throw usageError(`unknown action '${action}' — expected list, show, set or remove`);
+  }
+
+  if (action === "list") {
+    if (id !== "" || modes > 0) throw usageError("`project map list` takes no project id and no directory flag");
+    const map = readForEdit(ctx, file);
+    const entries = map.projects.filter(
+      (entry) => entry !== null && typeof entry === "object" && !Array.isArray(entry),
+    );
+    const human = entries.length === 0
+      ? `no project is registered in ${file}`
+      : table(
+          ["project", "local_path", "run_dir"],
+          entries.map((entry) => [
+            entry.project ?? "-",
+            entry.local_path ?? "-",
+            entry.run_dir ?? "-",
+          ]),
+        );
+    return { data: { file, present: map.present, projects: map.projects }, human };
+  }
+
+  if (id === "") throw usageError(`\`project map ${action}\` needs a project id`);
+  if (action !== "set" && modes > 0) {
+    throw usageError(`\`project map ${action}\` takes no directory flag`);
+  }
+
+  if (action === "show") {
+    const map = readForEdit(ctx, file);
+    const resolved = resolveProjectDir({ entries: map.projects, project: id, file });
+    if (!resolved.ok) throw mapFailure(resolved, file);
+    const entry = resolved.entry;
+    const human = resolved.dir === null
+      ? `project ${id} is registered in ${file} with no local directory`
+      : fields([
+          ["project", id],
+          ["local_path", entry.local_path ?? "-"],
+          ["run_dir", entry.run_dir ?? "-"],
+          ["dir", resolved.dir],
+        ]);
+    return { data: { file, project: id, entry, dir: resolved.dir }, human };
+  }
+
+  if (action === "set") {
+    if (modes !== 1) {
+      throw usageError("`project map set` needs exactly one of --local-path <dir>, --run-dir <dir> or --no-dir");
+    }
+    const mode = hasLocalPath ? { key: "local_path", value: ctx.flags.localPath } : hasRunDir ? { key: "run_dir", value: ctx.flags.runDir } : null;
+    let dir = null;
+    if (mode !== null) {
+      const checked = checkTargetDirectory(mode.value, { key: mode.key, project: id, file });
+      if (!checked.ok) throw mapFailure(checked, file);
+      dir = checked.dir;
+    }
+    const map = readForEdit(ctx, file);
+    const updated = upsertProjectEntry(map.projects, {
+      project: id,
+      // Store the validated (trimmed) path, not the raw token.
+      ...(hasLocalPath ? { localPath: dir } : {}),
+      ...(hasRunDir ? { runDir: dir } : {}),
+      ...(noDir ? { noDir: true } : {}),
+    });
+    writeMap(file, updated.entries, map.root);
+    const human = noDir
+      ? `project ${id}: registered with no local directory in ${file}`
+      : `project ${id}: ${mode.key}=${dir} in ${file}`;
+    return {
+      data: { file, project: id, entry: updated.entry, dir, created: updated.created },
+      human,
+    };
+  }
+
+  // remove
+  const map = readForEdit(ctx, file);
+  const removed = removeProjectEntry(map.projects, id);
+  if (removed.removed === 0) throw mapFailure({ code: PROJECT_DIR_CODES.UNMAPPED, message: `no local directory is registered for project ${id} (${file}).`, project: id }, file);
+  writeMap(file, removed.entries, map.root);
+  const human = removed.removed === 1
+    ? `project ${id}: removed from ${file}`
+    : `project ${id}: removed ${removed.removed} entries from ${file}`;
+  return { data: { file, project: id, removed: removed.removed }, human };
 }
 
 export const COMMANDS = [
@@ -243,22 +385,52 @@ export const COMMANDS = [
   },
 
   {
+    name: "map",
+    summary: "Read or edit the machine-local project → directory map (never the board).",
+    usage:
+      "project map list | show <id> | set <id> --local-path <dir> | --run-dir <dir> | --no-dir | remove <id>",
+    positionals: [
+      { name: "action", summary: "list | show | set | remove." },
+      { name: "id", required: false, summary: "Project id; required for show, set and remove." },
+    ],
+    // Local by construction: no identity, no token, no board session. Nothing a
+    // directory does here can reach `taskd`.
+    local: true,
+    flags: [
+      {
+        flag: "local-path",
+        key: "localPath",
+        as: "string",
+        value: "<dir>",
+        summary: "Register the project's own directory (absolute, existing, a directory).",
+      },
+      {
+        flag: "run-dir",
+        key: "runDir",
+        as: "string",
+        value: "<dir>",
+        summary: "Register the launch directory for a project with no checkout of its own.",
+      },
+      {
+        flag: "no-dir",
+        key: "noDir",
+        as: "boolean",
+        summary: "Register the project with no local directory (clears local_path and run_dir).",
+      },
+    ],
+    run: runProjectMap,
+  },
+
+  {
     name: "dir",
     summary: "Print the local directory a project's workers run in (from projects.json).",
-    usage: "project dir <id> [--projects-json <path>] [--require-dir]",
+    usage: "project dir <id> [--require-dir]",
     positionals: [{ name: "id", summary: "Project id (or the name registered in projects.json)." }],
     // `--require-dir` is the wake shape: map-only, no identity, no board. The
     // dispatcher runs it on the local path so a wake still works with the board
     // down; without the flag this stays an ordinary board command.
     localWhen: (parsed) => parsed.flags.requireDir === true,
     flags: [
-      {
-        flag: "projects-json",
-        key: "projectsJson",
-        as: "string",
-        value: "<path>",
-        summary: "Project map to read (default: beside the skill, or $MEERKAT_TASKPANEL_PROJECTS_JSON).",
-      },
       {
         flag: "require-dir",
         key: "requireDir",
@@ -274,7 +446,7 @@ export const COMMANDS = [
       // It deliberately does not ask the board: a wake must work with the board
       // down, and the directory is a host-local fact.
       if (ctx.flags.requireDir === true) {
-        const file = projectsJsonPath(ctx.env ?? {}, ctx.flags?.projectsJson ?? null);
+        const file = mapFile(ctx);
         const resolved = resolveWakeDir({ project: id, projectsJson: file, read: ctx.readFile });
         if (!resolved.ok) {
           return {

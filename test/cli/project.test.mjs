@@ -5,7 +5,7 @@
  * readme round-tripped. Since O3 the board holds **no directory** for a project:
  * `--workspace-path` is gone, and there is no `context current` to resolve a
  * working directory. Which local directory maps to which project is decided on
- * the agent side (the skill's local `projects.json`).
+ * the machine side (the config-root `projects.json`, via `taskctl project map`).
  */
 
 import assert from "node:assert/strict";

@@ -29,6 +29,13 @@ local, per-machine decision, not a property of the project.
 _中文_: 项目
 _Avoid_: repo, workspace, directory, repository
 
+**Project map**:
+The one machine-local `projects.json` at the config root, mapping a project to the
+directory its workers run in. It is never board data: `taskctl project map` is its only
+writer, `taskctl project dir` its reader.
+_中文_: 项目映射
+_Avoid_: workspace registry, project directory setting
+
 **Card**:
 The atomic unit of work — one thing a team can claim, work and deliver. It is the product
 word for what the code calls a task.
