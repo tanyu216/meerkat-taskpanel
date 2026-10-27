@@ -76,7 +76,7 @@ meerkat-taskpanel/
 │   ├── server/                   #   本地 HTTP API + SSE
 │   └── foundation/               #   DTO / 常量 / 纯函数
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
-├── skills/                       # 三个 skill：meerkat-taskpanel（看板）、meerkat-loop（调度器）、
+├── skills/                       # 三个 skill：meerkat（看板）、meerkat-loop（调度器）、
 │                                 #   setup-meerkat（安装/修复 + 团队配置；仅复制给 Claude）
 ├── .claude-plugin/               # marketplace + board 插件清单（插件根 = 仓根）
 ├── .pi/                          # Pi 扩展（由 package.json 的 `pi` 字段声明）
@@ -143,10 +143,10 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 | Agent | `--target` | Skill 落点 | Bundle |
 |---|---|---|---|
-| Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `.claude-plugin/plugin.json`（插件根 = 仓根） |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | 同一个仓根 bundle |
-| Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | 同一个仓根 bundle，经 marketplace 解析 |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | 仓根 `package.json` 的 `pi` 字段 |
+| Claude Code | `claude` | `~/.claude/skills/meerkat` | `.claude-plugin/plugin.json`（插件根 = 仓根） |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat` | 同一个仓根 bundle |
+| Codex | `codex` | `~/.codex/skills/meerkat` | 同一个仓根 bundle，经 marketplace 解析 |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat` | 仓根 `package.json` 的 `pi` 字段 |
 
 仓根就是 board 的插件根，每个 harness 都就地读那一份 `skills/`，不再各拿一份副本。OpenClaw 同样消费这个 Claude 格式的 bundle —— 见 [`docs/install.md`](docs/install.md#openclaw)。
 
@@ -259,7 +259,7 @@ agent kind 之间的差异，只在**由谁执行这些规则**。
 
 以同样方式操作看板，并用当前线程作为会话 id —— `--actor-kind codex --session-id "$CODEX_THREAD_ID"` —— 做会话级归属。Codex 本身没有定时器，所以规则 1 由[调度器](#meerkat-loop-调度器)唤醒 `codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
 
-面向 agent 的指南 —— claim-first、状态模型、交付门与看板 workflow —— 在 skill 内：[`skills/meerkat-taskpanel/SKILL.md`](skills/meerkat-taskpanel/SKILL.md)。各 agent kind 的安装与触发细节见 [`docs/install.md`](docs/install.md)。
+面向 agent 的指南 —— claim-first、状态模型、交付门与看板 workflow —— 在 skill 内：[`skills/meerkat/SKILL.md`](skills/meerkat/SKILL.md)。各 agent kind 的安装与触发细节见 [`docs/install.md`](docs/install.md)。
 
 ## 开发
 

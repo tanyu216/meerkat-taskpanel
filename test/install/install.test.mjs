@@ -46,7 +46,7 @@ describe("install.sh: targets", () => {
 
     assert.equal(run.status, 0, run.stderr);
     for (const agentDir of [".claude", ".codex"]) {
-      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-taskpanel", "SKILL.md")), `${agentDir} install missing`);
+      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat", "SKILL.md")), `${agentDir} install missing`);
     }
     for (const agentDir of [".openclaw", ".agents"]) {
       assert.equal(existsSync(join(home, agentDir)), false, `${agentDir} must not be installed`);
@@ -61,7 +61,7 @@ describe("install.sh: targets", () => {
 
     assert.equal(run.status, 0, run.stderr);
     for (const agentDir of [".agents", ".openclaw"]) {
-      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-taskpanel", "SKILL.md")), `${agentDir} install missing`);
+      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat", "SKILL.md")), `${agentDir} install missing`);
     }
     for (const agentDir of [".claude", ".codex"]) {
       assert.equal(existsSync(join(home, agentDir)), false, `${agentDir} must not be installed`);
@@ -171,7 +171,7 @@ describe("install.sh: targets", () => {
     assert.ok(existsSync(join(tree, "src", "server", "main.mjs")), "all includes the server");
     for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
       assert.ok(
-        existsSync(join(home, agentDir, "skills", "meerkat-taskpanel", "SKILL.md")),
+        existsSync(join(home, agentDir, "skills", "meerkat", "SKILL.md")),
         `${agentDir} must be installed`,
       );
     }
@@ -182,7 +182,7 @@ describe("install.sh: targets", () => {
     const run = runInstall(["--target", "all", "--no-server", "--prefix", home]);
     assert.equal(run.status, 0, run.stderr);
     assert.equal(existsSync(join(home, ".meerkat-taskpanel")), false);
-    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-taskpanel", "SKILL.md")));
+    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat", "SKILL.md")));
   });
 
   it("--target claude,server,pi selects exactly those three", () => {

@@ -494,14 +494,14 @@ async function main(argv) {
     : { reachable: false, health: null, error: "network probe disabled" };
   const taskctl = detectTaskctl(opts, checkout, opts.home, kind, env);
   const skills = {
-    board: detectSkill(opts.home, kind, "meerkat-taskpanel"),
+    board: detectSkill(opts.home, kind, "meerkat"),
     loop: detectSkill(opts.home, kind, "meerkat-loop"),
     setup: detectSkill(opts.home, kind, "setup-meerkat"),
   };
   const skillsByKind = {};
   for (const candidate of Object.keys(AGENT_KINDS)) {
     skillsByKind[candidate] = {
-      board: detectSkill(opts.home, candidate, "meerkat-taskpanel").installed,
+      board: detectSkill(opts.home, candidate, "meerkat").installed,
       loop: detectSkill(opts.home, candidate, "meerkat-loop").installed,
       setup: detectSkill(opts.home, candidate, "setup-meerkat").installed,
     };

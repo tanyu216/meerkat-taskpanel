@@ -2,7 +2,7 @@
 # Install the Meerkat TaskPanel bundle for Claude Code.
 #
 # Deploys the complete Claude bundle, not just the board skill:
-#   1. board skill      → ~/.claude/skills/meerkat-taskpanel
+#   1. board skill      → ~/.claude/skills/meerkat
 #   2. loop skill       → ~/.claude/skills/meerkat-loop (always a copy; --link is board-only)
 #   3. setup skill      → ~/.claude/skills/setup-meerkat (Claude-only; /setup-meerkat)
 #   4. settings.json    → merged: env.TASKCTL_AGENT + a SessionStart hook, preserving

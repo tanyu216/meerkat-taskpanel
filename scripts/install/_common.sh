@@ -5,7 +5,8 @@
 #
 # Three skills are distributed, and each agent kind takes the ones that fit it:
 #
-#   * `meerkat-taskpanel` — the board. Every agent kind installs it (`install_skill`).
+#   * `meerkat` — the board. Every agent kind installs it (`install_skill`). It was
+#     `meerkat-taskpanel` before the rename; `install_skill` migrates a legacy directory.
 #   * `meerkat-loop` — the external supervisor. The three non-OpenClaw agent kinds install
 #     it (`install_loop_skill` + `install_scheduling`); **OpenClaw does not**, because the
 #     openclaw-team framework already ships a per-agent poll and a `task-patrol`, which
@@ -183,9 +184,16 @@ resolve_agent_cli_dir() {
 
 # board_skill_name / loop_skill_name / setup_skill_name — the skills this installer
 # distributes. The setup skill is copied only for the Claude bundle (see claude.sh).
-board_skill_name() { printf '%s\n' "meerkat-taskpanel"; }
+board_skill_name() { printf '%s\n' "meerkat"; }
 loop_skill_name() { printf '%s\n' "meerkat-loop"; }
 setup_skill_name() { printf '%s\n' "setup-meerkat"; }
+
+# legacy_board_skill_name <skill> — the directory the board skill had before it was
+# renamed to `meerkat`. Empty for the other two skills, which were never renamed.
+legacy_board_skill_name() {
+  [ "$1" = "$(board_skill_name)" ] || return 0
+  printf '%s\n' "meerkat-taskpanel"
+}
 
 # agent_name — the identity written into the agent bundle.
 #
@@ -732,6 +740,47 @@ write_agent_config() {
 # Skill copy
 # ---------------------------------------------------------------------------
 
+# migrate_legacy_skill <agent_dir> <label> <skill> <dest> <link>
+#   The board skill used to install as `skills/meerkat-taskpanel/`; it installs as
+#   `skills/meerkat/` now. An upgrade must not leave the old directory behind to shadow
+#   the new one, but the two entries this installer never ships — the operator's `roles/`
+#   and `projects.json` — must survive. They move in, and only where the new directory
+#   does not already hold them (the newer copy wins); then the old directory goes. A
+#   linked install is left alone: moving through the symlink would write into the
+#   checkout the link points at.
+migrate_legacy_skill() {
+  agent_dir="$1"
+  label="$2"
+  skill="$3"
+  dest="$4"
+  link="${5:-}"
+
+  legacy_name="$(legacy_board_skill_name "$skill")"
+  [ -n "$legacy_name" ] || return 0
+  legacy="$target_home/$agent_dir/skills/$legacy_name"
+  [ -e "$legacy" ] || [ -L "$legacy" ] || return 0
+
+  # A link on either side is left alone: moving through one would write into the tree it
+  # points at — the checkout — which is exactly what the `--force` path refuses to do.
+  if [ -n "$link" ] || [ -L "$dest" ] || [ -L "$legacy" ]; then
+    echo "$label: legacy skill dir kept: $legacy (linked install; move roles/ and projects.json into $dest by hand, then remove it)"
+    return 0
+  fi
+
+  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    echo "$label: would migrate legacy skill $legacy -> $dest"
+    return 0
+  fi
+
+  for entry in roles projects.json; do
+    [ -e "$legacy/$entry" ] || continue
+    [ -e "$dest/$entry" ] && continue
+    mv "$legacy/$entry" "$dest/$entry"
+  done
+  rm -rf "$legacy"
+  echo "$label: migrated legacy skill $legacy -> $dest"
+}
+
 # install_skill <agent_dir> <label> [skill] [copy-only]
 #   <agent_dir>  the agent's config directory under the target home, e.g. ".claude"
 #   <label>      human-readable actor kind, e.g. "claude"
@@ -767,6 +816,7 @@ install_skill() {
     else
       echo "would copy  $src -> $dest"
     fi
+    migrate_legacy_skill "$agent_dir" "$label" "$skill" "$dest" "$link"
     return 0
   fi
 
@@ -776,6 +826,7 @@ install_skill() {
       # Idempotent: an existing skill is the desired end state, not an error. The
       # local edits are preserved (merge, never clobber); --force is the escape hatch.
       echo "$label: already installed: $dest (unchanged; re-run with --force to overwrite)"
+      migrate_legacy_skill "$agent_dir" "$label" "$skill" "$dest" "$link"
       return 0
     fi
     # Two things in a skill directory are authored by the operator, never shipped by
@@ -810,6 +861,10 @@ install_skill() {
     done
     rmdir "$kept_user_data" 2>/dev/null || true
   fi
+
+  # Last, and only for what the new directory still lacks: a legacy board-skill
+  # directory is migrated after this install's own operator data was put back.
+  migrate_legacy_skill "$agent_dir" "$label" "$skill" "$dest" "$link"
 }
 
 # install_loop_skill <agent_dir> <label>

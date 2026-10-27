@@ -3,7 +3,7 @@
  *
  * These are the single source of truth for names used across the CLI, the skill,
  * the plugin manifests and the HTTP surface. `SKILL_NAME` is kept in sync with
- * `skills/meerkat-taskpanel/SKILL.md` by hand. `VERSION` is a **checked carrier**,
+ * `skills/meerkat/SKILL.md` by hand. `VERSION` is a **checked carrier**,
  * not an independent number: `scripts/verify/version.mjs` and `npm run release:bump`
  * read it as the fourth member of the board's version group, so write it on one line,
  * double-quoted, at column 0 — `export const VERSION = "x.y.z";` — the form both tools
@@ -15,7 +15,7 @@
  */
 
 export const CLI_NAME = "taskctl";
-export const SKILL_NAME = "meerkat-taskpanel";
+export const SKILL_NAME = "meerkat";
 export const VERSION = "0.1.2";
 
 /**

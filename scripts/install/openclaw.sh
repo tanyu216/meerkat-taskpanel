@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the Meerkat TaskPanel skill for OpenClaw: ~/.openclaw/skills/meerkat-taskpanel
+# Install the Meerkat TaskPanel skill for OpenClaw: ~/.openclaw/skills/meerkat
 #
 # OpenClaw deliberately gets **no** supervisor and **no** scheduling unit: the
 # openclaw-team framework already ships a per-agent poll and a `task-patrol`, which

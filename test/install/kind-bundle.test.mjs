@@ -18,7 +18,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
@@ -172,7 +172,7 @@ describe("agent bundle: claude", () => {
     assert.equal(run.status, 0, run.stderr);
 
     // 1. skill
-    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-taskpanel", "SKILL.md")), "skill missing");
+    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat", "SKILL.md")), "skill missing");
 
     // 2. settings.json — merged identity + SessionStart
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
@@ -294,7 +294,7 @@ describe("agent bundle: codex", () => {
     assert.equal(run.status, 0, run.stderr);
 
     // 1. skill
-    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")), "skill missing");
+    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat", "SKILL.md")), "skill missing");
 
     // 2. shim
     const shim = join(home, ".codex", "bin", "taskctl");
@@ -324,7 +324,7 @@ describe("agent bundle: codex", () => {
 
     assert.equal(existsSync(join(home, ".codex", "scheduling")), false);
     assert.equal(existsSync(join(home, ".codex", "meerkat-taskpanel-claim.sh")), false);
-    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")));
+    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat", "SKILL.md")));
     assert.ok(existsSync(join(home, ".codex", "AGENTS.md")));
     assert.ok(existsSync(join(home, ".codex", "bin", "taskctl")));
   });
@@ -363,6 +363,115 @@ describe("agent bundle: idempotency", () => {
     assert.match(again.stdout, /unchanged/);
 
     assert.deepEqual(snapshotTree(home), before, "a second install must change nothing");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The board skill's rename: `meerkat-taskpanel/` -> `meerkat/`
+// ---------------------------------------------------------------------------
+
+describe("agent bundle: legacy board-skill directory", () => {
+  /** A pre-rename install: `skills/meerkat-taskpanel/` carrying operator data. */
+  function seedLegacySkill(home) {
+    const legacy = join(home, ".claude", "skills", "meerkat-taskpanel");
+    mkdirSync(join(legacy, "roles"), { recursive: true });
+    writeFileSync(join(legacy, "SKILL.md"), "---\nname: meerkat-taskpanel\n---\n");
+    writeFileSync(join(legacy, "roles", "manifest.json"), '{"roles":[]}');
+    writeFileSync(join(legacy, "projects.json"), '{"demo":{"local_path":"/tmp/demo"}}');
+    return legacy;
+  }
+
+  it("carries operator data into the new skill, then removes the legacy directory", () => {
+    const home = makeTempDir();
+    const legacy = seedLegacySkill(home);
+
+    const result = runInstall(["--target", "claude"], agentEnv(home));
+    assert.equal(result.status, 0, result.stderr);
+
+    const dest = join(home, ".claude", "skills", "meerkat");
+    assert.ok(existsSync(join(dest, "SKILL.md")), "board skill missing at its new name");
+    assert.equal(readFileSync(join(dest, "roles", "manifest.json"), "utf8"), '{"roles":[]}');
+    assert.equal(
+      readFileSync(join(dest, "projects.json"), "utf8"),
+      '{"demo":{"local_path":"/tmp/demo"}}',
+    );
+    assert.equal(existsSync(legacy), false, "the pre-rename directory must not survive");
+    assert.match(result.stdout, /migrated legacy skill/);
+  });
+
+  it("never clobbers operator data the new skill already holds", () => {
+    const home = makeTempDir();
+    const legacy = seedLegacySkill(home);
+    const dest = join(home, ".claude", "skills", "meerkat");
+    mkdirSync(dest, { recursive: true });
+    writeFileSync(join(dest, "SKILL.md"), "---\nname: meerkat\n---\n");
+    writeFileSync(join(dest, "projects.json"), '{"kept":{}}');
+
+    const result = runInstall(["--target", "claude"], agentEnv(home));
+    assert.equal(result.status, 0, result.stderr);
+
+    assert.equal(readFileSync(join(dest, "projects.json"), "utf8"), '{"kept":{}}');
+    assert.ok(existsSync(join(dest, "roles", "manifest.json")), "missing data must still move");
+    assert.equal(existsSync(legacy), false);
+  });
+
+  it("--link keeps the legacy directory rather than writing through the symlink", () => {
+    const home = makeTempDir();
+    const legacy = seedLegacySkill(home);
+
+    const result = runInstall(["--target", "claude", "--link"], agentEnv(home));
+    assert.equal(result.status, 0, result.stderr);
+
+    const dest = join(home, ".claude", "skills", "meerkat");
+    assert.ok(lstatSync(dest).isSymbolicLink(), "board skill should be a link");
+    assert.ok(existsSync(join(legacy, "projects.json")), "operator data must stay where it is");
+    assert.match(result.stdout + result.stderr, /legacy skill dir kept/);
+  });
+
+  it("leaves a legacy directory that is itself a symlink alone", () => {
+    // A pre-rename `--link` install: `skills/meerkat-taskpanel` pointed into a checkout.
+    // Moving its files would mutate that checkout, so it is kept, not migrated.
+    const home = makeTempDir();
+    const checkout = join(makeTempDir(), "old-checkout");
+    const legacy = join(home, ".claude", "skills", "meerkat-taskpanel");
+    mkdirSync(join(checkout, "roles"), { recursive: true });
+    writeFileSync(join(checkout, "projects.json"), '{"old":{}}');
+    mkdirSync(dirname(legacy), { recursive: true });
+    symlinkSync(checkout, legacy);
+
+    const result = runInstall(["--target", "claude"], agentEnv(home));
+    assert.equal(result.status, 0, result.stderr);
+
+    assert.ok(lstatSync(legacy).isSymbolicLink(), "the legacy link must survive");
+    assert.ok(existsSync(join(checkout, "projects.json")), "the checkout must be untouched");
+    assert.match(result.stdout, /legacy skill dir kept/);
+  });
+
+  it("migrates every agent kind, not just the Claude bundle", () => {
+    const home = makeTempDir();
+    const legacy = join(home, ".codex", "skills", "meerkat-taskpanel");
+    mkdirSync(join(legacy, "roles"), { recursive: true });
+    writeFileSync(join(legacy, "projects.json"), '{"codex":{}}');
+
+    const result = runInstall(["--target", "codex"], agentEnv(home));
+    assert.equal(result.status, 0, result.stderr);
+
+    const dest = join(home, ".codex", "skills", "meerkat");
+    assert.ok(existsSync(join(dest, "SKILL.md")), "codex board skill missing at its new name");
+    assert.equal(readFileSync(join(dest, "projects.json"), "utf8"), '{"codex":{}}');
+    assert.equal(existsSync(legacy), false);
+  });
+
+  it("--dry-run reports the migration and changes nothing", () => {
+    const home = makeTempDir();
+    const legacy = seedLegacySkill(home);
+
+    const result = runInstall(["--target", "claude", "--dry-run"], agentEnv(home));
+    assert.equal(result.status, 0, result.stderr);
+
+    assert.match(result.stdout, /would migrate legacy skill/);
+    assert.ok(existsSync(join(legacy, "projects.json")));
+    assert.equal(existsSync(join(home, ".claude", "skills", "meerkat")), false);
   });
 });
 
@@ -438,7 +547,7 @@ describe("agent bundle: --force preserves operator data", () => {
     assert.equal(first.status, 0, first.stderr);
 
     // The directory ↔ project map: `install.sh` ships none and never writes one.
-    const map = join(home, ".claude", "skills", "meerkat-taskpanel", "projects.json");
+    const map = join(home, ".claude", "skills", "meerkat", "projects.json");
     writeFileSync(map, '{"projects":[{"project":"Mine","local_path":"/tmp/mine"}]}\n', "utf8");
 
     const forced = runInstall(["--target", "claude", "--force"], env);

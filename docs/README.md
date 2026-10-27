@@ -17,8 +17,8 @@ Documentation for Meerkat TaskPanel.
 | [events.md](events.md) | The live stream's event catalogue: every activity, its writer and payload, which surface consumes it, the feed's admission policy, the loop's dispatch whitelist, and the actor-kind rule. |
 | [web-local-first.md](web-local-first.md) | The board frontend is loopback-only: why a remote browser gets 401 (no token injection) and what implementing it would take. |
 | [im-integration.md](im-integration.md) | The planned IM integration: the plugin host + `channel-kit` contract, how “needs a human” is pushed, how replies are anchored and written as human comments, the resident IM session, and the per-platform adapter strategy (third-party SDKs, independent packages). |
-| [`../skills/meerkat-taskpanel/SKILL.md`](../skills/meerkat-taskpanel/SKILL.md) | The agent-facing skill definition. |
-| [`../skills/meerkat-taskpanel/references/cli.md`](../skills/meerkat-taskpanel/references/cli.md) | The `taskctl` command surface (implemented). |
+| [`../skills/meerkat/SKILL.md`](../skills/meerkat/SKILL.md) | The agent-facing skill definition. |
+| [`../skills/meerkat/references/cli.md`](../skills/meerkat/references/cli.md) | The `taskctl` command surface (implemented). |
 
 Start with the [README](../README.md) for what the project is and its current status.
 

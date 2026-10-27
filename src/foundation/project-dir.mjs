@@ -5,7 +5,7 @@
  * The board holds no directory (O3): a board project is an id, a name and an
  * identifier prefix, and nothing else. "Which directory does work for this
  * project happen in?" is decided **locally, per agent kind**, by `projects.json`, and
- * `skills/meerkat-taskpanel/references/projects-json.md` documents it. This
+ * `skills/meerkat/references/projects-json.md` documents it. This
  * module is that document in code, so the `taskctl` shim, the poll pass and the
  * tests all read one map the same way — and a project with no mapped directory
  * is a loud, coded answer instead of a silent guess.
@@ -267,7 +267,7 @@ export function resolveProjectDir(input = {}) {
 export function defaultProjectsJson(env = process.env) {
   const fromEnv = env[PROJECTS_JSON_ENV];
   if (typeof fromEnv === "string" && fromEnv.trim() !== "") return resolve(fromEnv);
-  return resolve(repoRoot(), "skills", "meerkat-taskpanel", "projects.json");
+  return resolve(repoRoot(), "skills", "meerkat", "projects.json");
 }
 
 /**

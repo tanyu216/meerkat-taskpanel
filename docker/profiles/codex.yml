@@ -2,7 +2,7 @@
 actor_kind: codex
 label: Codex
 installer: scripts/install/codex.sh
-target_dir: .codex/skills/meerkat-taskpanel
+target_dir: .codex/skills/meerkat
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
 # Codex has no marker of its own: `codex plugin marketplace add` reads the same

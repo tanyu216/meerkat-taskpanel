@@ -71,12 +71,12 @@ step "install.sh --target all --prefix <throwaway home>"
 MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1 bash install.sh --target all --prefix "$THROWAWAY_HOME"
 
 for agent_dir in .claude .openclaw .codex .agents; do
-  target="$THROWAWAY_HOME/$agent_dir/skills/meerkat-taskpanel/SKILL.md"
+  target="$THROWAWAY_HOME/$agent_dir/skills/meerkat/SKILL.md"
   if [ ! -f "$target" ]; then
     echo "FAIL: install did not write $target" >&2
     exit 1
   fi
-  echo "  OK  $agent_dir/skills/meerkat-taskpanel/SKILL.md"
+  echo "  OK  $agent_dir/skills/meerkat/SKILL.md"
 done
 
 CONFIG_ROOT="$THROWAWAY_HOME/.meerkat-taskpanel"

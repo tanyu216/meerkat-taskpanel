@@ -358,10 +358,10 @@ Each step prints an `== ... ==` header and the script aborts on the first failur
 
 | Agent kind | `target_dir` | `installer` |
 |---|---|---|
-| `claude` | `.claude/skills/meerkat-taskpanel` | `scripts/install/claude.sh` |
-| `openclaw` | `.openclaw/skills/meerkat-taskpanel` | `scripts/install/openclaw.sh` |
-| `codex` | `.codex/skills/meerkat-taskpanel` | `scripts/install/codex.sh` |
-| `pi` | `.agents/skills/meerkat-taskpanel` | `scripts/install/pi.sh` |
+| `claude` | `.claude/skills/meerkat` | `scripts/install/claude.sh` |
+| `openclaw` | `.openclaw/skills/meerkat` | `scripts/install/openclaw.sh` |
+| `codex` | `.codex/skills/meerkat` | `scripts/install/codex.sh` |
+| `pi` | `.agents/skills/meerkat` | `scripts/install/pi.sh` |
 
 Each file has the same six keys: `actor_kind`, `label`, `installer`, `target_dir`,
 `skill_entry`, `wrapper`. They are read by a tiny flat-map parser
@@ -372,7 +372,7 @@ line number.
 `node scripts/verify/profiles.mjs` installs every profiled agent kind and asserts, per agent kind:
 
 - the skill directory exists at `<home>/<target_dir>`;
-- `SKILL.md` still carries `name: meerkat-taskpanel` in its frontmatter;
+- `SKILL.md` still carries `name: meerkat` in its frontmatter;
 - `node <dest>/scripts/run.mjs --version` prints the version from
   `src/foundation/constants.mjs`.
 
@@ -560,7 +560,7 @@ The wrapper found no CLI on any rung: no checkout named by `MEERKAT_TASKPANEL_RO
 `src/`), and no `taskctl` on `PATH`. The message prints what it looked for and the three
 ways in; pick one — install the CLI and put it on `PATH` (`install.sh --target <agent-kind>`),
 name a checkout in `MEERKAT_TASKPANEL_ROOT`, or run that checkout's own
-`skills/meerkat-taskpanel/scripts/run.mjs`. A *copied* skill is not a failure by itself:
+`skills/meerkat/scripts/run.mjs`. A *copied* skill is not a failure by itself:
 before T-20261014-214002 this case died with `Cannot find module .../src/cli/index.mjs`,
 and reinstalling with `--link` was the only way out.
 

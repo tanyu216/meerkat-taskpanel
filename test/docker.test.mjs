@@ -136,10 +136,10 @@ describe("profiles: loadProfiles", () => {
     assert.deepEqual(kinds.slice().sort(), [...PROFILE_KINDS].sort());
 
     const expected = {
-      claude: { dir: ".claude/skills/meerkat-taskpanel", installer: "scripts/install/claude.sh" },
-      openclaw: { dir: ".openclaw/skills/meerkat-taskpanel", installer: "scripts/install/openclaw.sh" },
-      codex: { dir: ".codex/skills/meerkat-taskpanel", installer: "scripts/install/codex.sh" },
-      pi: { dir: ".agents/skills/meerkat-taskpanel", installer: "scripts/install/pi.sh" },
+      claude: { dir: ".claude/skills/meerkat", installer: "scripts/install/claude.sh" },
+      openclaw: { dir: ".openclaw/skills/meerkat", installer: "scripts/install/openclaw.sh" },
+      codex: { dir: ".codex/skills/meerkat", installer: "scripts/install/codex.sh" },
+      pi: { dir: ".agents/skills/meerkat", installer: "scripts/install/pi.sh" },
     };
 
     for (const kind of PROFILE_KINDS) {
@@ -158,7 +158,7 @@ describe("profiles: loadProfiles", () => {
     const dir = await makeTempDir();
     await writeFile(
       join(dir, "claude.yml"),
-      "actor_kind: claude\nlabel: Claude Code\ninstaller: scripts/install/claude.sh\ntarget_dir: .claude/skills/meerkat-taskpanel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n",
+      "actor_kind: claude\nlabel: Claude Code\ninstaller: scripts/install/claude.sh\ntarget_dir: .claude/skills/meerkat\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n",
     );
 
     const { errors } = await loadProfiles(dir);
@@ -171,7 +171,7 @@ describe("profiles: loadProfiles", () => {
 
   it("reports an actor-kind/file name mismatch and missing fields", async () => {
     const dir = await makeTempDir();
-    const base = "label: X\ninstaller: scripts/install/claude.sh\ntarget_dir: .claude/skills/meerkat-taskpanel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n";
+    const base = "label: X\ninstaller: scripts/install/claude.sh\ntarget_dir: .claude/skills/meerkat\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n";
     await writeFile(join(dir, "claude.yml"), `actor_kind: openclaw\n${base}`);
     await writeFile(join(dir, "openclaw.yml"), "actor_kind: openclaw\nlabel: OpenClaw\n");
     await writeFile(join(dir, "codex.yml"), `actor_kind: codex\n${base}`);
@@ -223,7 +223,7 @@ describe("profiles: buildChecks", () => {
     const { profiles } = await loadProfiles(join(ROOT, "docker", "profiles"));
     const checks = buildChecks(profiles.claude, { home: "/tmp/meerkat-taskpanel-home", root: "/repo" });
 
-    assert.equal(checks.dest, join("/tmp/meerkat-taskpanel-home", ".claude/skills/meerkat-taskpanel"));
+    assert.equal(checks.dest, join("/tmp/meerkat-taskpanel-home", ".claude/skills/meerkat"));
     assert.equal(checks.entryPath, join(checks.dest, "SKILL.md"));
     assert.equal(checks.skillMdPath, join(checks.dest, "SKILL.md"));
     assert.equal(checks.wrapperPath, join(checks.dest, "scripts/run.mjs"));
@@ -295,7 +295,7 @@ describe("profiles: runProfiles", () => {
   it("reports failure when a profile points at a missing installer", async () => {
     const home = await makeTempDir("meerkat-taskpanel-home-");
     const dir = await makeTempDir();
-    const base = "target_dir: .claude/skills/meerkat-taskpanel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n";
+    const base = "target_dir: .claude/skills/meerkat\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n";
     await writeFile(join(dir, "claude.yml"), `actor_kind: claude\nlabel: Claude Code\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
     await writeFile(join(dir, "openclaw.yml"), `actor_kind: openclaw\nlabel: OpenClaw\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
     await writeFile(join(dir, "codex.yml"), `actor_kind: codex\nlabel: Codex\ninstaller: scripts/install/does-not-exist.sh\n${base}`);

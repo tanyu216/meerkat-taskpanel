@@ -283,7 +283,7 @@ describe("defaultProjectsJson", () => {
     assert.equal(defaultProjectsJson({ [PROJECTS_JSON_ENV]: "/tmp/map.json" }), "/tmp/map.json");
     assert.match(
       defaultProjectsJson({}),
-      /skills[/\\]meerkat-taskpanel[/\\]projects\.json$/,
+      /skills[/\\]meerkat[/\\]projects\.json$/,
     );
   });
 });

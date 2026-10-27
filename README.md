@@ -76,7 +76,7 @@ meerkat-taskpanel/
 │   ├── server/                   #   local HTTP API + SSE
 │   └── foundation/               #   DTOs / constants / pure helpers
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
-├── skills/                       # the three skills: meerkat-taskpanel (board), meerkat-loop (scheduler),
+├── skills/                       # the three skills: meerkat (board), meerkat-loop (scheduler),
 │                                 #   setup-meerkat (install/repair + team setup; Claude-only copy)
 ├── .claude-plugin/               # marketplace + the board plugin manifest (plugin root = the repo root)
 ├── .pi/                          # the Pi extension (declared by package.json's `pi` field)
@@ -143,10 +143,10 @@ The `Bundle` column is the per-agent manifest that the agent's own plugin system
 
 | Agent | `--target` | Skill directory | Bundle |
 |---|---|---|---|
-| Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `.claude-plugin/plugin.json` (plugin root = the repository root) |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | the same root bundle |
-| Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | the same root bundle, through the marketplace |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | the root `package.json`'s `pi` field |
+| Claude Code | `claude` | `~/.claude/skills/meerkat` | `.claude-plugin/plugin.json` (plugin root = the repository root) |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat` | the same root bundle |
+| Codex | `codex` | `~/.codex/skills/meerkat` | the same root bundle, through the marketplace |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat` | the root `package.json`'s `pi` field |
 
 The repository root is the board's plugin root, so every harness reads the one `skills/` tree instead of receiving a copy. OpenClaw consumes that Claude-format bundle too — see [`docs/install.md`](docs/install.md#openclaw).
 
@@ -259,7 +259,7 @@ Drive the board with `taskctl`, stamping each write with the actor kind and sess
 
 Work the board the same way, using the running thread as the session id — `--actor-kind codex --session-id "$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has no timers of its own, so rule 1 is driven by the [scheduler](#the-meerkat-loop-scheduler) waking a `codex exec` turn (or a Codex app automation).
 
-The agent-facing guide — claim-first, the status model, the delivery gate and the board workflow — lives in the skill at [`skills/meerkat-taskpanel/SKILL.md`](skills/meerkat-taskpanel/SKILL.md). Per-agent-kind install and trigger details are in [`docs/install.md`](docs/install.md).
+The agent-facing guide — claim-first, the status model, the delivery gate and the board workflow — lives in the skill at [`skills/meerkat/SKILL.md`](skills/meerkat/SKILL.md). Per-agent-kind install and trigger details are in [`docs/install.md`](docs/install.md).
 
 ## Development
 

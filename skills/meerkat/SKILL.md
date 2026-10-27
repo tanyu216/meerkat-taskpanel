@@ -1,5 +1,5 @@
 ---
-name: meerkat-taskpanel
+name: meerkat
 description: Coordinate work across an AI Agent team using a shared local kanban task board (Meerkat TaskPanel). Use when an agent or a human needs to claim a card, find what to work on next, groom the backlog, create and track cards, move work through a status workflow, assign owners, comment on a decision, edit a card's description or priority, link parent/child (epic) and blocking relations, record which agent session is working on what, deliver a card with a report, run or respond to an independent review, ask a human a question (awaiting), or export the board as markdown. Runs the local `taskctl` CLI; no external services required.
 ---
 

@@ -7,7 +7,7 @@
  * taskpanel checkout they were authored in. So the CLI this file
  * drives cannot be assumed to sit three levels up, and a wrapper that only knew how to
  * look there failed *outside* the checkout: from
- * `<home>/.claude/skills/meerkat-taskpanel/scripts/` the walk up lands on
+ * `<home>/.claude/skills/meerkat/scripts/` the walk up lands on
  * `<home>/.claude`, and the spawn died with a module-not-found stack naming a path the
  * user never had (T-20261014-214002). The documented entry point in `SKILL.md` was
  * therefore broken in exactly the deployment the skill is built for.
@@ -50,7 +50,7 @@ const CLI_REL = join("src", "cli", "index.mjs");
 /** The installed CLI's command name, for the `PATH` rung and the refusal. */
 const CLI_NAME = "taskctl";
 /** How the wrapper names itself in a message it originates (the repo's script convention). */
-const SELF = "meerkat-taskpanel";
+const SELF = "meerkat";
 
 /** True when `path` is an existing regular file. Any error (ENOENT, EACCES, ENOTDIR) is "no". */
 function isFile(path) {
@@ -119,7 +119,7 @@ function findOnPath(env, name) {
 /**
  * The `taskctl` shim **beside this skill**, or `null`.
  *
- * The skill lives at `<agent-dir>/skills/meerkat-taskpanel/`, and the shim at
+ * The skill lives at `<agent-dir>/skills/meerkat/`, and the shim at
  * `<agent-dir>/bin/taskctl` — the same `here/../../..` walk that lands on the agent directory.
  * It is the one `taskctl` that carries the caller's identity, so the ladder prefers it
  * over a bare `PATH` CLI.
@@ -179,7 +179,7 @@ function refusal(roots) {
     `  - this agent's shim: ${join(resolve(here, "..", "..", ".."), "bin", CLI_NAME)}`,
     `  - PATH: no executable \`${CLI_NAME}\` on it`,
     `try: put the CLI on your PATH, or name the checkout here — MEERKAT_TASKPANEL_ROOT=<taskpanel-checkout> node ${join("scripts", "run.mjs")} …`,
-    `  or: run the checkout's own copy — node <taskpanel-checkout>/${join("skills", "meerkat-taskpanel", "scripts", "run.mjs")} …`,
+    `  or: run the checkout's own copy — node <taskpanel-checkout>/${join("skills", "meerkat", "scripts", "run.mjs")} …`,
     "note: nothing else changes — whichever you pick makes this wrapper work as documented.",
   ].join("\n");
 }

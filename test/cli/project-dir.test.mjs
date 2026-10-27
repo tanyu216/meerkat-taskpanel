@@ -180,7 +180,7 @@ describe("cli/project dir", () => {
       assert.equal(result.status, 1);
       const error = errorOf(result);
       assert.equal(error.code, "PROJECT_MAP_UNREADABLE");
-      assert.match(error.message, /skills[/\\]meerkat-taskpanel[/\\]projects\.json/);
+      assert.match(error.message, /skills[/\\]meerkat[/\\]projects\.json/);
     });
   });
 

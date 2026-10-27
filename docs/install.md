@@ -3,7 +3,7 @@
 Meerkat TaskPanel ships as **a local server**, **three Agent Skills** and **one plugin root**
 — the repository itself, which every harness reads in place:
 
-- **`meerkat-taskpanel`** (`skills/meerkat-taskpanel/`) — the board. Installed for all four
+- **`meerkat`** (`skills/meerkat/`) — the board. Installed for all four
   agents.
 - **`meerkat-loop`** (`skills/meerkat-loop/`) — the external supervisor that keeps a
   board moving when no agent is looking. Installed for **every agent except OpenClaw**
@@ -145,6 +145,14 @@ the legacy file untouched — it is no longer read. An existing new file always 
 (for example agent-only, then `--target all`) does not migrate the old program root's file;
 copy `<old root>/.env.<kind>` to the new tree by hand.
 
+**Migrating from `<agent-dir>/skills/meerkat-taskpanel/`.** The board skill installed under
+that directory before it was renamed `meerkat`. The next `install.sh` writes the new
+directory, moves the two files it never ships — the operator's `roles/` and `projects.json` —
+into it where the new directory does not already hold them (the newer copy wins), and removes
+the old directory. A `--link` install is left alone with a line naming the manual move:
+writing through the symlink would land in the checkout it points at. `--dry-run` only reports
+the migration.
+
 ## Quick start (agent-kind skills)
 
 ```bash
@@ -160,10 +168,10 @@ match the assignee the board uses for it; it defaults to `Worker`.
 
 | Agent | `--target` | Board skill | Loop skill | Bundle |
 |---|---|---|---|---|
-| Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `~/.claude/skills/meerkat-loop` | `.` — the repository root (`.claude-plugin/plugin.json`) |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `.` — the same root bundle |
-| Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `~/.codex/skills/meerkat-loop` | `.` — the same root bundle, through the marketplace |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `~/.agents/skills/meerkat-loop` | `.` — the root `package.json`'s `pi` field |
+| Claude Code | `claude` | `~/.claude/skills/meerkat` | `~/.claude/skills/meerkat-loop` | `.` — the repository root (`.claude-plugin/plugin.json`) |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `.` — the same root bundle |
+| Codex | `codex` | `~/.codex/skills/meerkat` | `~/.codex/skills/meerkat-loop` | `.` — the same root bundle, through the marketplace |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat` | `~/.agents/skills/meerkat-loop` | `.` — the root `package.json`'s `pi` field |
 
 The **setup skill** is an extra row with no column of its own: `install.sh --target claude`
 copies `setup-meerkat` to `~/.claude/skills/setup-meerkat`, and no other target copies it.
@@ -213,9 +221,9 @@ value every one of those decisions turns on, so a caller may not declare it.
 The board holds no project directories, so the local map from a **directory** to a
 **board project** — and from a project to the directory its **workers** run in — is a
 `projects.json` created **inside the installed skill directory**, next to `SKILL.md` —
-`~/.claude/skills/meerkat-taskpanel/projects.json` for Claude Code, and the matching
+`~/.claude/skills/meerkat/projects.json` for Claude Code, and the matching
 skill directory for each other agent kind. The skill's own reference,
-[`projects-json.md`](../skills/meerkat-taskpanel/references/projects-json.md), documents
+[`projects-json.md`](../skills/meerkat/references/projects-json.md), documents
 the schema: an entry names the board `project`, may name a directory (`local_path`, or
 the `run_dir` launch directory for a project that has none of its own), and may carry
 whatever else the agent should know about the project. `install.sh` ships **no**
@@ -227,7 +235,7 @@ the skill survives every non-forced re-install — the same "merge, never clobbe
 rule as the rest of the install. `--force` replaces the skill's own files but keeps
 this one too: the installer ships no `projects.json` (or `roles/` root), so neither is
 its to delete. With `--link` the skill directory is a symlink into a
-checkout, so the file lands in `skills/meerkat-taskpanel/` there — keep it out of
+checkout, so the file lands in `skills/meerkat/` there — keep it out of
 version control.
 
 ### Scheduling units (claude, codex, pi)
@@ -716,7 +724,7 @@ Uninstall:
 claude plugin uninstall meerkat-loop@meerkat-taskpanel-marketplace   # if you installed it
 claude plugin uninstall meerkat-taskpanel@meerkat-taskpanel-marketplace
 claude plugin marketplace remove meerkat-taskpanel-marketplace
-rm -rf ~/.claude/skills/meerkat-taskpanel ~/.claude/skills/meerkat-loop \
+rm -rf ~/.claude/skills/meerkat ~/.claude/skills/meerkat-loop \
        ~/.claude/skills/setup-meerkat \
        ~/.claude/commands/{board,claim,deliver}.md \
        ~/.claude/hooks/meerkat-taskpanel-session-start.sh ~/.claude/bin/taskctl \
@@ -773,7 +781,7 @@ Uninstall:
 
 ```bash
 openclaw plugins uninstall meerkat-taskpanel
-rm -rf ~/.openclaw/skills/meerkat-taskpanel
+rm -rf ~/.openclaw/skills/meerkat
 ```
 
 ### Codex
@@ -803,7 +811,7 @@ Uninstall:
 ```bash
 codex plugin remove meerkat-taskpanel
 codex plugin marketplace remove meerkat-taskpanel-marketplace
-rm -rf ~/.codex/skills/meerkat-taskpanel ~/.codex/skills/meerkat-loop \
+rm -rf ~/.codex/skills/meerkat ~/.codex/skills/meerkat-loop \
        ~/.codex/bin/taskctl \
        ~/.codex/scheduling ~/.codex/meerkat-taskpanel
 ```
@@ -851,7 +859,7 @@ Uninstall:
 
 ```bash
 pi remove "$PWD"
-rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/skills/meerkat-loop \
+rm -rf ~/.agents/skills/meerkat ~/.agents/skills/meerkat-loop \
        ~/.agents/scheduling
 ```
 
@@ -889,7 +897,7 @@ npm run verify:docker                     # the full container suite, all four a
 
 That run includes `scripts/verify/profiles.mjs`, which for each agent kind installs into a
 throwaway home and asserts: the skill lands at the agent kind's destination, `SKILL.md`
-frontmatter still names `meerkat-taskpanel`, the wrapper resolves back to this checkout, the
+frontmatter still names `meerkat`, the wrapper resolves back to this checkout, the
 manifest parses, and the bundle is recognized with a loadable skill. Run one agent kind
 on its own with:
 
@@ -953,10 +961,10 @@ Each agent kind's section above lists the plugin/bundle removal command. The ski
 are removed by deleting their destinations:
 
 ```bash
-rm -rf ~/.claude/skills/meerkat-taskpanel ~/.claude/skills/meerkat-loop      # claude
-rm -rf ~/.openclaw/skills/meerkat-taskpanel                                  # openclaw (no loop)
-rm -rf ~/.codex/skills/meerkat-taskpanel ~/.codex/skills/meerkat-loop        # codex
-rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/skills/meerkat-loop      # pi
+rm -rf ~/.claude/skills/meerkat ~/.claude/skills/meerkat-loop      # claude
+rm -rf ~/.openclaw/skills/meerkat                                  # openclaw (no loop)
+rm -rf ~/.codex/skills/meerkat ~/.codex/skills/meerkat-loop        # codex
+rm -rf ~/.agents/skills/meerkat ~/.agents/skills/meerkat-loop      # pi
 ```
 
 Nothing is written outside those directories, and nothing is sent over the network — see
@@ -974,7 +982,7 @@ Nothing is written outside those directories, and nothing is sent over the netwo
   or delete the destination first for a clean slate. See
   [Idempotence](#idempotence-re-running-and-force).
 - **`skill source not found`** — run `install.sh` from this checkout (it resolves
-  `skills/meerkat-taskpanel/` relative to itself); a `dist/` bundle must be unpacked first.
+  `skills/meerkat/` relative to itself); a `dist/` bundle must be unpacked first.
 - **An older install still has `skills/meerkat-loop/scripts/`, `templates/` or
   `manifest.txt`** — those were the generated payload, retired when the loop moved into
   `taskctl`. Re-run the install with `--force` to replace the skill directory; a re-run also

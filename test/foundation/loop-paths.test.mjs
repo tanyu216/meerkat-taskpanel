@@ -45,10 +45,10 @@ describe("loop-paths — the loop's host-side vocabulary", () => {
     );
     assert.equal(
       paths.projectsJson,
-      join("/home/op", ".claude", "skills", "meerkat-taskpanel", "projects.json"),
+      join("/home/op", ".claude", "skills", "meerkat", "projects.json"),
     );
     assert.equal(paths.loopSkill, join("/home/op", ".claude", "skills", "meerkat-loop"));
-    assert.equal(paths.boardSkill, join("/home/op", ".claude", "skills", "meerkat-taskpanel"));
+    assert.equal(paths.boardSkill, join("/home/op", ".claude", "skills", "meerkat"));
     assert.equal(paths.stateDir, join("/home/op", ".claude", "meerkat-taskpanel"));
   });
 
