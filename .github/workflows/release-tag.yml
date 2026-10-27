@@ -1,0 +1,188 @@
+name: release-tag
+
+# Cuts the annotated `vX.Y.Z` tag on the release commit and starts the publish.
+#
+# Three dispatches, one decision each: `release-prep` proposes the tree, the human
+# merges the PR, this workflow tags the merge, and `release.yml` verifies, builds
+# and publishes from that tag. A tag is the last point with no consequence — after
+# `release.yml` publishes, the version is shipped.
+#
+# A tag pushed with `GITHUB_TOKEN` does **not** trigger `push: tags` workflows, so
+# the last step dispatches `release.yml` explicitly. That is also the recovery
+# path: re-running this workflow after a failed publish finds the tag where it
+# belongs and dispatches again without moving it.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Expected version (optional; must equal main's carriers)"
+        required: false
+        type: string
+      commit:
+        description: "Commit to tag (optional; default: the chore(release) commit)"
+        required: false
+        type: string
+      dry_run:
+        description: "Run every check and print the plan; create nothing"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # create and push the tag
+  actions: write # dispatch release.yml
+
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Fetch main and the tags
+        run: git fetch origin main --tags
+
+      - name: Resolve the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="$(node scripts/verify/version.mjs --print)"
+          if [ -n "$INPUT_VERSION" ] && [ "$INPUT_VERSION" != "$version" ]; then
+            echo "release-tag: '${INPUT_VERSION}' was requested but main carries '${version}'" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "release-tag: main carries ${version}"
+
+      - name: Resolve the release commit
+        id: commit
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          INPUT_COMMIT: ${{ inputs.commit }}
+        run: |
+          if [ -n "$INPUT_COMMIT" ]; then
+            commit="$(git rev-parse "${INPUT_COMMIT}^{commit}")"
+          else
+            commit="$(git rev-list -n1 --grep="^chore(release): v\?${VERSION}\$" origin/main)"
+          fi
+
+          if [ -z "$commit" ]; then
+            # A hand-made release (no `chore(release)` commit) is still taggable:
+            # main itself is the release, as long as it carries the version.
+            main_version="$(git show origin/main:package.json | node -e 'let raw="";process.stdin.on("data",(d)=>raw+=d).on("end",()=>process.stdout.write(JSON.parse(raw).version))')"
+            if [ "$main_version" != "$VERSION" ]; then
+              echo "release-tag: no 'chore(release): ${VERSION}' commit and main carries '${main_version}'" >&2
+              exit 1
+            fi
+            commit="$(git rev-parse origin/main)"
+            echo "release-tag: no release commit; using main's tip"
+          fi
+
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "release-tag: ${commit} is not on main — a release tag must be cut from main" >&2
+            exit 1
+          fi
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
+          echo "release-tag: release commit ${commit}"
+
+      # The gates run against the commit being tagged, not against main's tip: a
+      # backfill must describe the tree it actually names.
+      - name: Check out the release commit
+        env:
+          COMMIT: ${{ steps.commit.outputs.commit }}
+        run: git checkout --detach "$COMMIT"
+
+      - name: The tagged tree carries the expected version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          actual="$(node scripts/verify/version.mjs --print)"
+          if [ "$actual" != "$VERSION" ]; then
+            echo "release-tag: the release commit carries '${actual}', expected '${VERSION}'" >&2
+            exit 1
+          fi
+
+      - name: Tag gate
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node scripts/verify/tag-version.mjs "v${VERSION}" --on-main
+          node scripts/verify/version.mjs
+          node scripts/verify/changelog.mjs "v${VERSION}" --strict
+          node scripts/verify/contract.mjs
+          node scripts/verify/route-request.mjs
+          node scripts/verify/paths.mjs
+          node scripts/verify/signposts.mjs
+
+      - name: Check whether the tag already exists
+        id: existing
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.commit.outputs.commit }}
+        run: |
+          tag="v${VERSION}"
+          if existing="$(git rev-parse --verify --quiet "refs/tags/${tag}^{commit}")"; then
+            if [ "$existing" != "$COMMIT" ]; then
+              echo "release-tag: ${tag} already points at ${existing}, not ${COMMIT} — refusing to move a release tag" >&2
+              exit 1
+            fi
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "release-tag: ${tag} already points at ${COMMIT}"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create the annotated tag
+        if: ${{ !inputs.dry_run && steps.existing.outputs.exists == 'false' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.commit.outputs.commit }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${VERSION}" "$COMMIT" -m "Meerkat TaskPanel v${VERSION}"
+
+      - name: Push the tag
+        if: ${{ !inputs.dry_run && steps.existing.outputs.exists == 'false' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if ! git push origin "refs/tags/v${VERSION}"; then
+            echo "release-tag: the tag push was refused — check that the tag ruleset allows the GitHub Actions app (or this user) to create v* tags" >&2
+            exit 1
+          fi
+
+      - name: Dry run summary
+        if: inputs.dry_run
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.commit.outputs.commit }}
+          EXISTS: ${{ steps.existing.outputs.exists }}
+        run: |
+          echo "release-tag: dry run — would tag ${COMMIT} as v${VERSION} and dispatch release.yml"
+          if [ "$EXISTS" = "true" ]; then
+            echo "release-tag: the tag already exists at that commit (nothing to create; a real run would re-dispatch release.yml)"
+          fi
+
+      # The tag push alone does not start `release.yml` (a GITHUB_TOKEN push is
+      # exempt from triggering workflows); this dispatch is the trigger, and the
+      # recovery path for a publish that failed after the tag was cut.
+      - name: Start the release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: gh workflow run release.yml --ref main -f "tag=v${VERSION}"
