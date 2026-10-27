@@ -299,7 +299,7 @@ function main(argv) {
       return copy;
     });
 
-  const referenced = new Set(["manifest.json", "decision-policy.md"]);
+  const referenced = new Set(["manifest.json", "ownership.md"]);
   for (const role of selected) {
     for (const path of [role.workflows.worker, role.workflows.reviewer, role.selfCheck, role.reviewerPrompt]) {
       const rel = relativeTo(source, path);
@@ -328,6 +328,15 @@ function main(argv) {
     warnings: [...team.warnings],
     errors: [],
   };
+
+  // The loop policy is authoritative; a leftover team copy is dead data. Never
+  // delete it (operator data), but say so where an installer or reviewer looks.
+  if (existsSync(join(source, "decision-policy.md"))) {
+    report.warnings.push("the source still has decision-policy.md; the loop's policy is authoritative — remove it");
+  }
+  if (existsSync(join(targetRoot, "decision-policy.md"))) {
+    report.warnings.push(`the target roles root still has decision-policy.md (ignored); remove ${join(targetRoot, "decision-policy.md")} by hand`);
+  }
 
   let conflict = false;
   for (const rel of files) {

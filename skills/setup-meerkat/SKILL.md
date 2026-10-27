@@ -80,7 +80,8 @@ The team choice is adversarial. Ask what the standard team would get wrong here,
 concrete counterexample card — a real card that would fall between two roles or belong to
 none — and list the card shapes the project actually has. Require an ownership matrix: every
 card shape has exactly one accountable role, and the reviewer is independent of the
-producer. An unowned card shape is a finding, not a detail for later.
+producer. An unowned card shape is a finding, not a detail for later. The matrix is persisted
+as `ownership.md` in the roles root; the loop routes work by it.
 
 The round closes only when the frontier is empty. Do not install, write a file or start a
 daemon before that, and never treat an incomplete answer as consent. `--yes` never authorizes
@@ -180,7 +181,8 @@ The standard template is `assets/team/standard/`:
 | Turing | `Turing` | `turing` | test design, post-fix regression (incl. production), optional performance, security, canonical terms |
 | Reviewer | `Reviewer` | `reviewer` | independent fourth role; verdict only |
 
-The template also ships `decision-policy.md` and the native agent templates.
+The template also ships `ownership.md` (the work→role routing guide) and the native agent
+templates.
 
 Each worker role's `self-check.md` is its **pre-delivery audit** — it maps the card's
 requirements and acceptance to evidence and re-runs the gates. It is not the `## Handoff`
@@ -327,7 +329,7 @@ skills/setup-meerkat/
 ├── evals/evals.json
 ├── scripts/{detect,install-roles,configure-env}.mjs
 ├── scripts/lib/{agent-kinds,atomic,env-merge,validate,entry-guard}.mjs
-└── assets/team/standard/{manifest.json,decision-policy.md,jobs/,linus/,turing/,reviewer/,agents/}
+└── assets/team/standard/{manifest.json,ownership.md,jobs/,linus/,turing/,reviewer/,agents/}
 ```
 
 The scripts are standalone: Node builtins and their own `lib/` only. They must never

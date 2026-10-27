@@ -91,11 +91,11 @@ describe("skill frontmatter and assets", () => {
     assert.ok(description.length >= 20);
   });
 
-  it("ships the standard team, a decision policy, and native templates", () => {
+  it("ships the standard team, an ownership guide, and native templates", () => {
     const team = join(SKILL, "assets", "team", "standard");
     for (const rel of [
       "manifest.json",
-      "decision-policy.md",
+      "ownership.md",
       "jobs/workflow.md",
       "jobs/ui-workflow.md",
       "jobs/self-check.md",
@@ -352,17 +352,20 @@ describe("skill frontmatter and assets", () => {
     assert.match(jobsCheck, /Standalone mode/);
   });
 
-  it("makes the team decision policy the single home of the round protocol", () => {
-    const team = join(SKILL, "assets", "team", "standard");
-    const policy = readFileSync(join(team, "decision-policy.md"), "utf8");
-    assert.match(policy, /## Decision rounds/);
-    assert.match(policy, /frontier/);
-    assert.match(policy, /worded so "yes" accepts/);
-    assert.match(policy, /Facts are the asker's job/i);
+  it("makes the loop policy the single home of the round protocol", () => {
+    const loopPolicy = readFileSync(
+      join(ROOT, "skills", "meerkat-loop", "references", "decision-policy.md"),
+      "utf8",
+    );
+    assert.match(loopPolicy, /## Decision rounds/);
+    assert.match(loopPolicy, /frontier/);
+    assert.match(loopPolicy, /so "yes" accepts/i);
+    assert.match(loopPolicy, /Facts are the asker's job/i);
 
+    const team = join(SKILL, "assets", "team", "standard");
     let protocolCopies = 0;
     for (const rel of [
-      "decision-policy.md",
+      "ownership.md",
       "jobs/workflow.md",
       "linus/workflow.md",
       "turing/workflow.md",
@@ -370,7 +373,7 @@ describe("skill frontmatter and assets", () => {
       protocolCopies += (readFileSync(join(team, rel), "utf8").match(/Draw the decision tree/g) ?? [])
         .length;
     }
-    assert.equal(protocolCopies, 1, "the six-step protocol lives only in decision-policy.md");
+    assert.equal(protocolCopies, 0, "the six-step protocol lives only in the loop policy");
 
     for (const rel of ["jobs/workflow.md", "linus/workflow.md", "turing/workflow.md"]) {
       const workflow = readFileSync(join(team, rel), "utf8");
@@ -378,6 +381,42 @@ describe("skill frontmatter and assets", () => {
       assert.match(workflow, /frontier/i);
       assert.match(workflow, /decision-policy\.md/);
     }
+  });
+
+  it("ships an ownership routing guide, not a duplicated policy", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const guide = readFileSync(join(team, "ownership.md"), "utf8");
+
+    for (const shape of [
+      /product planning/i,
+      /prototype/i,
+      /system architecture/i,
+      /implementation/i,
+      /test design/i,
+      /regression/i,
+      /performance/i,
+      /independent review/i,
+    ]) {
+      assert.match(guide, shape, "every work shape must be routed");
+    }
+    for (const workflow of [
+      "jobs/workflow.md",
+      "jobs/ui-workflow.md",
+      "linus/architecture-workflow.md",
+      "linus/implementation-workflow.md",
+      "turing/test-design-workflow.md",
+      "turing/regression-workflow.md",
+      "turing/performance-workflow.md",
+      "reviewer/workflow.md",
+    ]) {
+      assert.ok(guide.includes(workflow), `${workflow} must be routed`);
+    }
+
+    assert.match(guide, /one accountable role/i);
+    assert.match(guide, /reviewer is independent/i);
+    assert.match(guide, /assignee still selects/i);
+    assert.doesNotMatch(guide, /## Decision rounds|\bE1\b|\bE5\b|awaiting|frontier/i);
+    assert.equal(existsSync(join(team, "decision-policy.md")), false, "the team ships no policy copy");
   });
 
   it("reads the design artifacts on a feature path, not on a bug path", () => {
@@ -407,7 +446,7 @@ describe("skill frontmatter and assets", () => {
     const prompt = readFileSync(join(team, "reviewer", "reviewer-prompt.md"), "utf8");
     const roles = readFileSync(join(SKILL, "references", "roles.md"), "utf8");
     const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
-    const policy = readFileSync(join(team, "decision-policy.md"), "utf8");
+    const ownership = readFileSync(join(team, "ownership.md"), "utf8");
 
     assert.match(jobs, /## Handoff/);
     assert.match(jobs, /design\/specs\/<content-slug>\.md/);
@@ -510,8 +549,8 @@ describe("skill frontmatter and assets", () => {
     assert.match(skill, /triage/i);
     assert.match(skill, /epic/i);
     assert.match(skill, /100%/);
-    assert.match(policy, /card-shape triage|triage/i);
-    assert.match(policy, /epic/i);
+    assert.match(ownership, /split/i);
+    assert.match(ownership, /project session/i);
   });
 
   it("names the pre-delivery audit and ends every worker flow in Deliver", () => {
@@ -842,6 +881,11 @@ describe("install-roles.mjs — project scope", () => {
     assert.equal(first.status, 0, first.stderr);
     assert.equal(first.body.ok, true);
     assert.ok(existsSync(join(project, ".meerkat", "roles", "manifest.json")));
+    assert.ok(
+      existsSync(join(project, ".meerkat", "roles", "ownership.md")),
+      "the routing guide ships with the team",
+    );
+    assert.equal(existsSync(join(project, ".meerkat", "roles", "decision-policy.md")), false);
     assert.ok(existsSync(join(project, ".claude", "agents", "jobs.md")));
     assert.ok(existsSync(join(project, ".codex", "agents", "reviewer.toml")));
     assert.ok(
@@ -959,12 +1003,27 @@ describe("install-roles.mjs — project scope", () => {
     assert.equal(result.status, 0, result.stderr);
     const roles = join(loopSkill, "roles");
     assert.ok(existsSync(join(roles, "manifest.json")));
-    assert.ok(existsSync(join(roles, "decision-policy.md")));
+    assert.ok(existsSync(join(roles, "ownership.md")));
+    assert.equal(existsSync(join(roles, "decision-policy.md")), false);
     assert.ok(existsSync(join(roles, "reviewer", "reviewer-prompt.md")));
     assert.ok(existsSync(join(home, ".claude", "agents", "jobs.md")));
     assert.ok(existsSync(join(home, ".codex", "agents", "jobs.toml")));
     assert.ok(existsSync(join(home, ".pi", "agent", "agents", "jobs.md")));
     assert.equal(existsSync(join(project, ".meerkat", "roles")), false, "global must not write into the project");
+  });
+
+  it("warns when ownership.md is absent and when a legacy policy remains", (t) => {
+    const root = temp(t);
+    writeFileSync(join(root, "manifest.json"), JSON.stringify({ version: 1, roles: [] }));
+    writeFileSync(join(root, "decision-policy.md"), "# old team policy\n");
+
+    const result = runJson(t, INSTALL, ["--validate", root], { cwd: root });
+    assert.equal(result.status, 0, result.stderr);
+    const warnings = result.body.warnings.join("\n");
+    assert.match(warnings, /ownership\.md is absent/, "a missing guide must be reported");
+    assert.match(warnings, /decision-policy\.md is ignored/, "a legacy policy must be reported");
+    assert.equal(result.body.ownership, null);
+    assert.ok(existsSync(join(root, "decision-policy.md")), "validation never deletes a file");
   });
 
   it("honours role, agent and reviewer renames", (t) => {

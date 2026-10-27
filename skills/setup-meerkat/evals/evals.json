@@ -23,7 +23,7 @@
       "assertions": [
         "The install uses --target claude and includes the server (or explains why it skipped it).",
         "<home>/.claude/skills/setup-meerkat/SKILL.md exists after installation.",
-        "The roles root is <home>/.claude/skills/meerkat-loop/roles with manifest.json, a decision policy, and four roles.",
+        "The roles root is <home>/.claude/skills/meerkat-loop/roles with manifest.json, an ownership routing guide, and four roles.",
         ".claude/agents/jobs.md and .codex/agents/reviewer.toml exist.",
         "A second identical run leaves the role files and native agent definitions unchanged (content-hash identical), and the role installer reports every action as unchanged."
       ]

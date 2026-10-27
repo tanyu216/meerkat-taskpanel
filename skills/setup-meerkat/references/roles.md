@@ -9,7 +9,7 @@ exactly as it did before the feature.
 ```text
 <roles-root>/
 ├── manifest.json
-├── decision-policy.md          optional; overrides the loop's default policy
+├── ownership.md                optional; routes work shapes to one accountable role
 ├── jobs/{workflow.md,ui-workflow.md,self-check.md}
 ├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,self-check.md}
 ├── turing/{workflow.md,test-design-workflow.md,regression-workflow.md,performance-workflow.md,self-check.md}
@@ -203,6 +203,16 @@ replaces the global set; it is not merged role-by-role.
 The reviewer's prompt is inlined at the start of the reviewer handoff, bounded at 2,400
 characters; the worker workflow stays a path.
 
+## Ownership guide
+
+`ownership.md` (optional, convention-named) is the work→role routing guide: a table of work
+shapes — product planning, prototype/UI/UX/aesthetic direction, architecture, implementation,
+test design, regression, performance, independent review — with one accountable role and
+workflow each. The project session receives it in full when it spawns a batch; the
+control/continue turn receives a compact summary and the path. It is prompt guidance, not a
+gate: the card's assignee still selects the executing role, and it never changes who decides.
+A legacy `decision-policy.md` in the root is ignored; `--validate` reports it.
+
 ## Installing and upgrading
 
 `/setup-meerkat` is the only path that installs or upgrades a team: `install-roles.mjs`
@@ -269,9 +279,10 @@ The ladder **subagent → main session → human** is unchanged: only a human co
 
 ## Decisions
 
-The team's `decision-policy.md` (or the loop default) defines the ladder
-**subagent → main session → human**. A subagent never decides an unauthorized question;
-it writes an agent `question` comment and stops. The project session answers with a
-`note` and reattaches/requeues, or escalates E1-E5 to the human. Any human comment resumes
-an awaiting card, whatever its kind (the resumed worker judges its content); the loop never
+The loop's `references/decision-policy.md` is the single decision-authority source; a team
+cannot override it. The ladder is **subagent → main session → human**. A subagent never
+decides an unauthorized question; it writes an agent `question` comment and stops. The
+project session answers with a `note` and reattaches/requeues, or escalates E1-E5 to the
+human. Any human comment resumes an awaiting card, whatever its kind (the resumed worker
+judges its content); the loop never
 writes a decision kind and never uses `--as-human` for its own answer.
