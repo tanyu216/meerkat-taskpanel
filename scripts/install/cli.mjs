@@ -27,18 +27,24 @@ const USAGE = `Usage: meerkat-taskpanel [install] [options]
 Installs the board server at <home>/.meerkat-taskpanel, the taskctl/taskd
 launchers, and the agent-kind skills. Run through npx or a global npm install.
 
+With no options on a terminal, an interactive wizard asks every setting.
+Piped input, --dry-run and --yes never prompt and keep the defaults below.
+
 Options:
   --target <list>     agent kinds to install (claude,openclaw,codex,pi),
                       "server", or "all" (default: every agent + the server)
   --no-server         install only the agent-kind skills
   --prefix <home>     install under <home> instead of $HOME
+  -i, --interactive   ask every option in a wizard (works with piped answers)
+  --yes, --non-interactive
+                      accept every default; never prompt (the CI form)
   --force             refresh drifted managed files (never .env or .data)
-  --dry-run           print every path; write nothing
+  --dry-run           print every path; write nothing (never prompts)
   --skip-web-build    never try to build web/dist (API-only if absent)
   -h, --help          this page
 `;
 
-function parse(argv) {
+export function parse(argv) {
   const out = {
     command: null,
     targets: null,
@@ -47,20 +53,45 @@ function parse(argv) {
     force: false,
     dryRun: false,
     skipWebBuild: false,
+    interactive: false,
+    yes: false,
+    options: 0,
     help: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") out.help = true;
-    else if (arg === "--target") out.targets = argv[++i] ?? null;
-    else if (arg.startsWith("--target=")) out.targets = arg.slice(9);
-    else if (arg === "--no-server") out.noServer = true;
-    else if (arg === "--prefix") out.prefix = argv[++i] ?? null;
-    else if (arg.startsWith("--prefix=")) out.prefix = arg.slice(9);
-    else if (arg === "--force") out.force = true;
-    else if (arg === "--dry-run") out.dryRun = true;
-    else if (arg === "--skip-web-build") out.skipWebBuild = true;
-    else if (out.command === null) out.command = arg;
+    else if (arg === "--target") {
+      out.targets = argv[++i] ?? null;
+      out.options += 1;
+    } else if (arg.startsWith("--target=")) {
+      out.targets = arg.slice(9);
+      out.options += 1;
+    } else if (arg === "--no-server") {
+      out.noServer = true;
+      out.options += 1;
+    } else if (arg === "--prefix") {
+      out.prefix = argv[++i] ?? null;
+      out.options += 1;
+    } else if (arg.startsWith("--prefix=")) {
+      out.prefix = arg.slice(9);
+      out.options += 1;
+    } else if (arg === "-i" || arg === "--interactive") {
+      out.interactive = true;
+      out.options += 1;
+    } else if (arg === "--yes" || arg === "--non-interactive") {
+      out.yes = true;
+      out.options += 1;
+    } else if (arg === "--force") {
+      out.force = true;
+      out.options += 1;
+    } else if (arg === "--dry-run") {
+      out.dryRun = true;
+      out.options += 1;
+    } else if (arg === "--skip-web-build") {
+      out.skipWebBuild = true;
+      out.options += 1;
+    } else if (out.command === null) out.command = arg;
     else throw new Error(`unknown option: ${arg}`);
   }
   return out;
@@ -102,6 +133,56 @@ export function planTargets(options) {
   return { targets: list.join(","), server };
 }
 
+/**
+ * The argv and environment to hand `install.sh`.
+ *
+ * When the wizard may run, the wrapper must **not** inject `--target` or
+ * `--prefix`: `install.sh` decides "no arguments on a TTY" from `$#`, and it
+ * needs to see only what the user actually typed. The resolved home still
+ * travels in the environment so a relative override is normalised as before.
+ * The server root is left to install.sh, which sets `MEERKAT_TASKPANEL_REPO` /
+ * `ENV_FILE` once the wizard has picked the targets.
+ *
+ * @param {ReturnType<typeof parse>} args
+ * @param {{targets: string, server: boolean}} plan
+ * @param {string} home
+ * @returns {{argv: string[], env: Record<string, string>, wizardMayRun: boolean}}
+ */
+export function buildInstallArgs(args, plan, home) {
+  const env = { ...process.env };
+  const wizardMayRun = !args.yes && !args.dryRun && (args.interactive || args.options === 0);
+
+  if (wizardMayRun) {
+    const argv = [join(ROOT, "install.sh")];
+    if (args.interactive) argv.push("--interactive");
+    if (args.targets !== null) argv.push("--target", args.targets);
+    // Pass the resolved home, not the raw flag: a relative --prefix used to be
+    // absolutized by the wrapper and must stay that way.
+    if (args.prefix !== null) argv.push("--prefix", home);
+    if (args.noServer) argv.push("--no-server");
+    if (args.force) argv.push("--force");
+    if (args.skipWebBuild) argv.push("--skip-web-build");
+    env.MEERKAT_TASKPANEL_TARGET_HOME = home;
+    return { argv, env, wizardMayRun };
+  }
+
+  const argv = [join(ROOT, "install.sh"), "--target", plan.targets, "--prefix", home];
+  if (args.noServer) argv.push("--no-server");
+  if (args.force) argv.push("--force");
+  if (args.dryRun) argv.push("--dry-run");
+  if (args.skipWebBuild) argv.push("--skip-web-build");
+  if (args.yes) argv.push("--yes");
+  if (args.interactive) argv.push("--interactive");
+
+  if (plan.server) {
+    // The program the agent-kind skills drive is the installed tree, not the npx
+    // cache. One `.env` for the whole install; the tree owns `.data`.
+    env.MEERKAT_TASKPANEL_REPO = join(home, ".meerkat-taskpanel");
+    env.MEERKAT_TASKPANEL_ENV_FILE = join(home, ".meerkat-taskpanel", ".env");
+  }
+  return { argv, env, wizardMayRun };
+}
+
 async function main(argv) {
   const args = parse(argv);
   if (args.help) {
@@ -122,21 +203,7 @@ async function main(argv) {
   }
 
   const home = resolve(args.prefix ?? process.env.MEERKAT_TASKPANEL_TARGET_HOME ?? homedir());
-  const serverRoot = join(home, ".meerkat-taskpanel");
-
-  const env = { ...process.env };
-  if (plan.server) {
-    // The program the agent-kind skills drive is the installed tree, not the npx
-    // cache. One `.env` for the whole install; the tree owns `.data`.
-    env.MEERKAT_TASKPANEL_REPO = serverRoot;
-    env.MEERKAT_TASKPANEL_ENV_FILE = join(serverRoot, ".env");
-  }
-
-  const installArgs = [join(ROOT, "install.sh"), "--target", plan.targets, "--prefix", home];
-  if (args.noServer) installArgs.push("--no-server");
-  if (args.force) installArgs.push("--force");
-  if (args.dryRun) installArgs.push("--dry-run");
-  if (args.skipWebBuild) installArgs.push("--skip-web-build");
+  const { argv: installArgs, env } = buildInstallArgs(args, plan, home);
 
   const run = spawnSync("bash", installArgs, { stdio: "inherit", env });
   if (run.error) {
@@ -144,15 +211,6 @@ async function main(argv) {
     return 1;
   }
   if (run.status !== 0) return run.status ?? 1;
-
-  if (plan.server && !args.dryRun) {
-    process.stdout.write(
-      `\nInstalled under ${serverRoot}\n` +
-        `  taskd:   ${join(serverRoot, "bin", "taskd")}\n` +
-        `  taskctl: ${join(serverRoot, "bin", "taskctl")}\n` +
-        `Add ${join(serverRoot, "bin")} to PATH, or use \`npm install -g meerkat-taskpanel\`.\n`,
-    );
-  }
   return 0;
 }
 

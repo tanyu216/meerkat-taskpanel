@@ -166,7 +166,7 @@ describe("install.sh: claim-unassigned flags and persisted config", () => {
 });
 
 describe("install.sh: the workflow config", () => {
-  it("persists the defaults: workflow on, auto-accept on, no reviewer", () => {
+  it("persists the defaults: workflow on, recover on, reviewer Reviewer", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
@@ -174,7 +174,7 @@ describe("install.sh: the workflow config", () => {
     assert.equal(run.status, 0, run.stderr);
     const text = configOf(home, ".claude");
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m);
-    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=$/m, "empty is 'not configured', deliberately");
+    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=Reviewer$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=yes$/m);
   });
 

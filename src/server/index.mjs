@@ -163,7 +163,8 @@ export function registerApiRoutes(router, surface) {
 
 /**
  * Who is calling. The CLI sends `X-Taskctl-Actor: {"kind":"claude","id":"linus"}`;
- * anything else is an anonymous local human, which is what `curl` is.
+ * a header-less request (the browser UI, `curl`) is the configured human named by
+ * `TASKCTL_HUMAN`, or `human:local` when that key is unset.
  *
  * **The kind is passed through.** It used to be narrowed to
  * `agent|human|system`, with anything else rewritten to `human` — which, now
@@ -176,9 +177,15 @@ export function registerApiRoutes(router, surface) {
  * What is refused is a *blank* kind, and the id being anything but a string —
  * those are malformed, not merely unfamiliar.
  *
+ * A header-less request is the configured human: `TASKCTL_HUMAN` from the
+ * install-root `.env` names the person at this keyboard, so the browser UI and
+ * `curl` are recorded under that name. With no configured name it stays the
+ * anonymous `human:local` it has always been. An explicit header always wins.
+ *
  * @param {import('node:http').IncomingMessage} req
+ * @param {NodeJS.ProcessEnv} [env] the effective environment (file under process)
  */
-export function actorFromRequest(req) {
+export function actorFromRequest(req, env = {}) {
   const raw = req.headers["x-taskctl-actor"];
   if (typeof raw === "string" && raw.trim() !== "") {
     try {
@@ -193,7 +200,8 @@ export function actorFromRequest(req) {
       /* A malformed header is not worth failing a request over; fall through. */
     }
   }
-  return { kind: HUMAN_KIND, id: "local" };
+  const configured = typeof env.TASKCTL_HUMAN === "string" ? env.TASKCTL_HUMAN.trim() : "";
+  return { kind: HUMAN_KIND, id: configured !== "" ? configured : "local" };
 }
 
 /** @param {import('node:http').IncomingMessage} req @param {string} name */
@@ -416,7 +424,7 @@ export async function createTaskd(options = {}) {
     // record through `withLogContext`. An inbound id is believed only when it is
     // a bounded, separator-free token, so a client cannot smuggle a log line.
     const requestId = requestIdOf(req);
-    const actor = actorFromRequest(req);
+    const actor = actorFromRequest(req, env);
     if (typeof logger === "function") {
       const started = Date.now();
       res[REQUEST_ID] = { id: requestId, path: pathname };

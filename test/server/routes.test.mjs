@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, before, describe, it } from "node:test";
 
-import { createTaskd } from "../../src/server/index.mjs";
+import { actorFromRequest, createTaskd } from "../../src/server/index.mjs";
 import { intOrUndefined, truthy } from "../../src/server/requests.mjs";
 import { SSE_NOISE_EVENTS } from "../../src/foundation/constants.mjs";
 
@@ -1834,5 +1834,60 @@ describe("server/routes — the board read's filters (GET /api/v1/tasks)", () =>
     const filtered = dataOf(await call("GET", "/api/v1/tasks?project_id=flt&target=lib&limit=1"));
     assert.equal(filtered.tasks.length, 1);
     assert.equal(filtered.tasks[0].meta.target, "lib");
+  });
+});
+
+describe("actorFromRequest — the configured human default", () => {
+  it("uses TASKCTL_HUMAN when the request carries no actor header", () => {
+    assert.deepEqual(
+      actorFromRequest({ headers: {} }, { TASKCTL_HUMAN: "Alice" }),
+      { kind: "human", id: "Alice" },
+    );
+  });
+
+  it("falls back to local when the key is absent or blank", () => {
+    assert.deepEqual(actorFromRequest({ headers: {} }, {}), { kind: "human", id: "local" });
+    assert.deepEqual(actorFromRequest({ headers: {} }, { TASKCTL_HUMAN: "  " }), {
+      kind: "human",
+      id: "local",
+    });
+  });
+
+  it("keeps an explicit header authoritative", () => {
+    const req = { headers: { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "linus" }) } };
+    assert.deepEqual(actorFromRequest(req, { TASKCTL_HUMAN: "Alice" }), {
+      kind: "agent",
+      id: "linus",
+    });
+  });
+});
+
+describe("server — the configured human name reaches header-less writes", () => {
+  it("attributes a comment to TASKCTL_HUMAN when no X-Taskctl-Actor is sent", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-human-"));
+    tempDirs.push(dir);
+    const board = await createTaskd({
+      dataDir: dir,
+      host: "127.0.0.1",
+      port: 0,
+      env: { TASKCTL_HUMAN: "Alice" },
+    });
+    const callAt = async (method, path, body, headers = {}) => {
+      const response = await fetch(`${board.url}${path}`, {
+        method,
+        headers: { "content-type": "application/json", ...headers },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      return { status: response.status, body: await response.json() };
+    };
+    try {
+      await callAt("POST", "/api/v1/projects", { id: "demo", name: "Demo" });
+      const task = dataOf(await callAt("POST", "/api/v1/tasks", { project_id: "demo", title: "Human card" })).task;
+      const added = dataOf(await callAt("POST", `/api/v1/tasks/${task.identifier}/comments`, { body: "hi" }));
+      assert.equal(added.comment.author_kind, "human");
+      assert.equal(added.comment.author.display_name, "Alice");
+    } finally {
+      await board.close();
+    }
   });
 });
