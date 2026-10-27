@@ -25,6 +25,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write # `gh label create` for the release label
+  actions: write # dispatch the gate workflows on the release branch
 
 concurrency:
   group: release-prep
@@ -152,8 +153,9 @@ jobs:
 
           - [ ] The CHANGELOG section reads as release notes (the draft is generated
                 from the commit log; edit \`CHANGELOG.md\` on this branch if needed).
-          - [ ] Every check is green. A PR created by \`GITHUB_TOKEN\` does **not**
-                trigger \`pull_request\` workflows — close and reopen it to start them.
+          - [ ] Every check is green. The gate workflows were dispatched on this
+                branch; a PR created by \`GITHUB_TOKEN\` does **not** trigger
+                \`pull_request\` workflows, so close and reopen it if a check is missing.
           - [ ] Merge with a **merge commit**. Do not squash: the tag workflow looks
                 for \`chore(release): ${VERSION}\` on \`main\`'s history.
           - [ ] After the merge, run the \`release-tag\` workflow (dry run first).
@@ -174,3 +176,32 @@ jobs:
               --body-file pr-body.md \
               --label release
           fi
+
+      # A `GITHUB_TOKEN`-authored branch does not trigger `pull_request`
+      # workflows, so the checks would otherwise wait for a human to close and
+      # reopen the PR. Dispatch them explicitly.
+      #
+      # Two limits are handled rather than assumed away: `workflow_dispatch`
+      # only sees files registered on the DEFAULT branch (`main`), and that copy
+      # must itself carry the trigger. A workflow that is not registered yet, or
+      # whose `main` copy predates this trigger, is a notice — never a failed
+      # prep. The PR body keeps the close/reopen fallback for that case.
+      - name: Start the gate workflows on the release branch
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          branch="release/v${VERSION}"
+          for workflow in check.yml security-scan.yml web-dom.yml; do
+            if ! gh workflow view "$workflow" >/dev/null 2>&1; then
+              echo "::notice::${workflow} is not registered on the default branch yet — skipped"
+              continue
+            fi
+            if gh workflow run "$workflow" --ref "$branch"; then
+              echo "release-prep: dispatched ${workflow} on ${branch}"
+            else
+              echo "::warning::could not dispatch ${workflow} — close/reopen the PR to start its checks"
+            fi
+          done
