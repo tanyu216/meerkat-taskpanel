@@ -1,0 +1,176 @@
+name: release-prep
+
+# Opens the release pull request. A human merges it; a separate `release-tag`
+# dispatch tags the merge commit, and `release.yml` publishes from that tag.
+# Splitting the three keeps every step reviewable: this workflow only writes a
+# branch and a PR, it never tags or publishes.
+#
+# The branch is cut from `dev`, which must already contain `origin/main` — the
+# prep script refuses otherwise, because a release PR missing the previous
+# release would silently revert it.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The release version, without the leading v (e.g. 0.1.2)"
+        required: true
+        type: string
+      dry_run:
+        description: "Only prepare and print the diff; no commit, push or PR"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write # `gh label create` for the release label
+
+concurrency:
+  group: release-prep
+  cancel-in-progress: false
+
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The prep script compares against `origin/main`; a shallow clone or a stale
+      # remote-tracking ref would make that comparison lie.
+      - name: Fetch main and the tags
+        run: git fetch origin main --tags
+
+      # Written outside the checkout: an untracked file inside it would make the
+      # "is there anything to commit" test below answer yes on every run.
+      - name: Prepare the release tree
+        id: prep
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node scripts/release/prep.mjs --version "$VERSION" --json > "$RUNNER_TEMP/prep.json"
+          cat "$RUNNER_TEMP/prep.json"
+          {
+            echo 'metadata<<PREP_EOF'
+            cat "$RUNNER_TEMP/prep.json"
+            echo 'PREP_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Show the diff (dry run)
+        if: inputs.dry_run
+        run: |
+          git --no-pager diff --stat
+          git --no-pager diff
+          echo "release-prep: dry run — nothing was committed, pushed or opened"
+
+      # The commit carries exactly the release's files, never `-A`: a workflow that
+      # sweeps the tree would commit anything a previous step happened to leave.
+      - name: Commit the release
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain -- package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json src/foundation/constants.mjs CHANGELOG.md)" ]; then
+            git commit -m "chore(release): ${VERSION}" -- \
+              package.json \
+              .claude-plugin/plugin.json \
+              .claude-plugin/marketplace.json \
+              src/foundation/constants.mjs \
+              CHANGELOG.md
+          else
+            echo "release-prep: the tree already carries ${VERSION}; nothing to commit"
+          fi
+
+      - name: Push the release branch
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          branch="release/v${VERSION}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            # A re-run refreshes the same branch. Refresh the lease baseline first,
+            # then refuse to overwrite anything pushed after this checkout.
+            git fetch origin "+refs/heads/${branch}:refs/remotes/origin/${branch}"
+            git push --force-with-lease="refs/heads/${branch}:$(git rev-parse "refs/remotes/origin/${branch}")" \
+              origin "HEAD:refs/heads/${branch}"
+          else
+            if [ -z "$(git log --oneline origin/main..HEAD --grep="^chore(release): v\?${VERSION}$")" ]; then
+              echo "release-prep: no release commit to push — refusing to create ${branch} from an unprepared tree" >&2
+              exit 1
+            fi
+            git push origin "HEAD:refs/heads/${branch}"
+          fi
+
+      # `GITHUB_TOKEN`-authored PRs do not trigger `pull_request` workflows. The PR
+      # body carries the close/reopen instruction; a permanent fix is a separate
+      # App/PAT token, which this workflow deliberately does not require.
+      - name: Open or refresh the pull request
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          REPOSITORY: ${{ github.repository }}
+          METADATA: ${{ steps.prep.outputs.metadata }}
+        run: |
+          branch="release/v${VERSION}"
+          gh label create release --force --color 1D76DB --description "Release pull request" >/dev/null
+
+          previous="$(node -e 'process.stdout.write(JSON.parse(process.env.METADATA).previous)')"
+          from="$(node -e 'process.stdout.write(JSON.parse(process.env.METADATA).from ?? "(first release)")')"
+          entries="$(node -e 'process.stdout.write(String(JSON.parse(process.env.METADATA).entryCount))')"
+
+          cat > pr-body.md <<EOF
+          Release **v${VERSION}** (\`dev\` → \`main\`).
+
+          | | |
+          |---|---|
+          | Previous | \`${previous}\` |
+          | Range | \`${from}..HEAD\` |
+          | Changelog entries | ${entries} |
+          | Compare | https://github.com/${REPOSITORY}/compare/main...${branch} |
+
+          <details><summary>Changed files</summary>
+
+          \`\`\`
+          $(git --no-pager diff --stat origin/main...HEAD)
+          \`\`\`
+
+          </details>
+
+          ### Checklist
+
+          - [ ] The CHANGELOG section reads as release notes (the draft is generated
+                from the commit log; edit \`CHANGELOG.md\` on this branch if needed).
+          - [ ] Every check is green. A PR created by \`GITHUB_TOKEN\` does **not**
+                trigger \`pull_request\` workflows — close and reopen it to start them.
+          - [ ] Merge with a **merge commit**. Do not squash: the tag workflow looks
+                for \`chore(release): ${VERSION}\` on \`main\`'s history.
+          - [ ] After the merge, run the \`release-tag\` workflow (dry run first).
+
+          > Tagging and publishing are separate dispatches; merging this PR ships
+          > nothing by itself.
+          EOF
+
+          if gh pr list --head "$branch" --state open --json number --jq '.[0].number' | grep -q .; then
+            number="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number')"
+            gh pr edit "$number" --title "release: v${VERSION}" --body-file pr-body.md
+            echo "release-prep: refreshed PR #${number}"
+          else
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "release: v${VERSION}" \
+              --body-file pr-body.md \
+              --label release
+          fi
