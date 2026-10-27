@@ -69,21 +69,35 @@ FROM node:22-bookworm-slim AS webbuild
 
 WORKDIR /app
 
-# Same trimmed context as the runtime stage (repository-root .dockerignore).
-COPY . .
+# Only the frontend tree first, so the install and build layers below are keyed on
+# `web/` — a commit outside it reuses them. A directory COPY (rather than listing
+# web/package.json and the cache separately) keeps all three guard branches
+# evaluable: an absent file is seen by the RUN below, not by a COPY that hard-fails.
+COPY web ./web
 
 RUN if [ -f web/package.json ] && [ -d web/.vendor/npm-cache ]; then \
-      echo "webbuild: building web/ offline from the committed npm cache (no network)"; \
-      npm ci --offline --cache /app/web/.vendor/npm-cache --prefix /app/web \
-      && npm --prefix /app/web run build; \
+      echo "webbuild: installing web/ offline from the committed npm cache (no network)"; \
+      npm ci --offline --cache /app/web/.vendor/npm-cache --prefix /app/web; \
     elif [ -f web/package.json ]; then \
       echo "webbuild: no committed cache found — falling back to a networked npm ci (pinned by web/package-lock.json)"; \
-      npm ci --prefix /app/web \
-      && npm --prefix /app/web run build; \
+      npm ci --prefix /app/web; \
+    else \
+      echo "webbuild: web/package.json absent — skipping the frontend install (web/dist stays empty)"; \
+    fi
+
+# The build only needs `web/`, which is already here, so it runs *before* the
+# repository-wide copy below. A change outside `web/` therefore still reuses this
+# layer.
+RUN if [ -f web/package.json ]; then \
+      npm --prefix /app/web run build; \
     else \
       echo "webbuild: web/package.json absent — skipping the frontend build (web/dist stays empty)"; \
     fi \
  && mkdir -p /app/web/dist
+
+# The rest of the repository. The runtime stage copies it again for its own image;
+# here it is what lets `FROM webbuild AS dev` inherit the sources it serves.
+COPY . .
 
 # ── Stage 1b: dev (manual preview; NOT the default target) ───────────────────────────
 #

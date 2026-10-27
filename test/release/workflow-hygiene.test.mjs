@@ -1,14 +1,19 @@
 /**
- * Static assertions shared by every workflow except `check.yml`.
+ * Static assertions shared by every workflow, `check.yml` included.
  *
- * `check.yml` is owned by a concurrent change and is deliberately out of scope
- * here (a workflow that guards it would red on somebody else's edit). For the
- * rest, three properties are cheap to lose and expensive to notice:
+ * `check.yml` used to be excluded because it was owned by a concurrent change.
+ * That is no longer true: it is now the single pull-request / integration
+ * workflow, so it is policed like the rest. Three properties are cheap to lose
+ * and expensive to notice:
  *
  *   - a `concurrency` group, so two runs of the same gate do not race;
  *   - a `timeout-minutes` on every job, so a hung step cannot hold a runner;
  *   - every `uses:` pinned to a commit SHA, so a compromised tag cannot change
  *     what CI runs. Dependabot (`.github/dependabot.yml`) keeps the pins fresh.
+ *
+ * Two policy rules are pinned here as well: no workflow runs on every branch
+ * push (a pull request already covers the commit, and a `dev` push covers the
+ * merge), and `check.yml` aggregates its jobs behind one required check.
  */
 
 import assert from "node:assert/strict";
@@ -22,7 +27,7 @@ const WORKFLOW_DIR = join(ROOT, ".github", "workflows");
 
 async function workflowNames() {
   const names = await readdir(WORKFLOW_DIR);
-  return names.filter((name) => name.endsWith(".yml") && name !== "check.yml").sort();
+  return names.filter((name) => name.endsWith(".yml")).sort();
 }
 
 /** One `{name, body}` per job under the top-level `jobs:` key. */
@@ -79,11 +84,38 @@ describe("workflow hygiene", () => {
     }
   });
 
-  it("leaves check.yml alone, on purpose", async () => {
-    const names = await workflowNames();
-    assert.ok(!names.includes("check.yml"));
+  it("aggregates check.yml behind one required status check", async () => {
     const check = await readFile(join(WORKFLOW_DIR, "check.yml"), "utf8");
-    assert.match(check, /^name: check$/m, "check.yml still exists; this suite just does not police it");
+    assert.match(check, /^name: check$/m, "check.yml is the pull-request workflow");
+    assert.match(check, /^ {2}ci-success:$/m, "expected the ci-success aggregator job");
+
+    const aggregate = jobBlocks(check).find((job) => job.name === "ci-success");
+    assert.ok(aggregate, "ci-success must be a job");
+    assert.match(
+      aggregate.body,
+      /^ {4}if: always\(\)$/m,
+      "the aggregator must run even when a dependency fails",
+    );
+    for (const dependency of ["check", "docker", "contract", "paths", "signposts"]) {
+      assert.match(
+        aggregate.body,
+        new RegExp(`^ {4}needs: \\[[^\\]]*\\b${dependency}\\b[^\\]]*\\]$`, "m"),
+        `ci-success must depend on ${dependency}`,
+      );
+    }
+  });
+
+  it("runs on pull requests and dev only — never on every branch push", async () => {
+    for (const name of await workflowNames()) {
+      const text = await readFile(join(WORKFLOW_DIR, name), "utf8");
+      assert.doesNotMatch(
+        text,
+        /branches: \["\*\*"\]/,
+        `${name} must not trigger on every branch push`,
+      );
+    }
+    const check = await readFile(join(WORKFLOW_DIR, "check.yml"), "utf8");
+    assert.match(check, /^ {2}push:\n {4}branches: \[dev\]$/m, "check.yml runs on dev, not on every branch");
   });
 });
 

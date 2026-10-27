@@ -683,6 +683,27 @@ describe("static: Dockerfile", () => {
     assert.match(text, /CMD \["node","src\/cli\/index\.mjs","--help"\]/);
   });
 
+  it("keys the frontend install and build on web/, before the repository copy", async () => {
+    const text = await read("docker/Dockerfile");
+    const runtimeStart = text.indexOf("# ── Stage 2: runtime");
+    const stageStart = text.indexOf("FROM node:22-bookworm-slim AS webbuild");
+    assert.notEqual(runtimeStart, -1);
+    assert.notEqual(stageStart, -1, "expected the webbuild stage");
+    // Start at the stage, not at the file: the header comment describes `npm ci`
+    // too, and would otherwise satisfy the ordering assertions by accident.
+    const webbuildStage = text.slice(stageStart, runtimeStart);
+
+    const webCopy = webbuildStage.indexOf("COPY web ./web");
+    const install = webbuildStage.indexOf("npm ci");
+    const build = webbuildStage.indexOf("npm --prefix /app/web run build");
+    const fullCopy = webbuildStage.indexOf("COPY . .");
+
+    assert.ok(webCopy !== -1, "the webbuild stage must copy web/ first");
+    assert.ok(webCopy < install, "the dependency install must follow the web/ copy");
+    assert.ok(install < build, "the build must follow the install");
+    assert.ok(build < fullCopy, "the repository copy must come last so a non-web change reuses the build");
+  });
+
   it("keeps the runtime stage install-free and the committed cache path offline", async () => {
     const text = await read("docker/Dockerfile");
 
@@ -794,7 +815,7 @@ describe("static: Dockerfile", () => {
 describe("static: .dockerignore", () => {
   it("exists and trims the build context", async () => {
     const text = await read(".dockerignore");
-    for (const entry of [".git", "node_modules", "dist", "web/dist", ".data", "coverage", "*.tgz", "design", ".worktrees", ".DS_Store", ".env"]) {
+    for (const entry of [".git", "node_modules", "web/node_modules", "dist", "web/dist", ".data", "coverage", "*.tgz", "design", ".worktrees", ".DS_Store", ".env"]) {
       assert.ok(
         text.split("\n").map((l) => l.trim()).includes(entry),
         `.dockerignore should contain ${entry}`,
@@ -1049,10 +1070,21 @@ describe("static: profiles and docs", () => {
 });
 
 describe("static: CI workflow", () => {
-  it("adds a docker job that mirrors the local build + in-container run", async () => {
+  it("adds a docker job that mirrors the local build inputs + in-container run", async () => {
     const text = await read(".github/workflows/check.yml");
     assert.match(text, /^  docker:/m, "expected a docker job");
-    assert.match(text, /docker build -f docker\/Dockerfile -t meerkat-taskpanel:verify \./);
+
+    // CI builds with buildx so the Actions cache backend can be used. The invariant
+    // is the same Dockerfile, context and tag the local `verify:docker` uses — not
+    // the literal command string.
+    assert.match(text, /uses: docker\/build-push-action@[0-9a-f]{40}/);
+    assert.match(text, /file: docker\/Dockerfile/);
+    assert.match(text, /context: \./);
+    assert.match(text, /tags: meerkat-taskpanel:verify/);
+    assert.match(text, /load: true/);
+    assert.match(text, /cache-from: type=gha/);
+    assert.match(text, /cache-to: type=gha,mode=max/);
+
     assert.match(text, /docker run --rm meerkat-taskpanel:verify bash docker\/verify-in-container\.sh/);
     // No shell step may install dependencies (comments may still mention the rule).
     assert.doesNotMatch(text, /^\s*(-\s*)?run:.*npm (install|ci)/m, "CI must not install dependencies");

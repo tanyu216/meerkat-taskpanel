@@ -4,8 +4,11 @@
 # VCS
 .git
 
-# dependencies (the project has none, but never ship a stray tree)
+# dependencies (the project has none, but never ship a stray tree). The bare name
+# matches the context root; the frontend's tree is named explicitly for the same
+# reason `web/dist` is — otherwise a host install would land in the image.
 node_modules
+web/node_modules
 
 # build output
 dist

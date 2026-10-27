@@ -1,84 +1,211 @@
 name: check
 
+# The one pull-request / integration workflow.
+#
+# Triggers:
+#   * `pull_request` — every proposed change, and the only per-commit remote run;
+#   * `push` to `dev` — the integration result, which is a new tree a pull-request
+#     run never saw;
+#   * `workflow_dispatch` — `release-prep` starts this on a release branch, and it
+#     is the manual recovery path.
+#
+# Tag pushes are deliberately absent: `release.yml` already runs the tag gate and
+# the full container suite on the tag.
+#
+# `ci-success` is the only check branch protection needs. It aggregates every job
+# below, so a job that is renamed, removed or silently skipped fails the gate
+# instead of leaving the rule waiting on a check that will never report.
 on:
-  push:
-    branches: ["**"]
   pull_request:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  # A new pull-request commit supersedes the previous run. A push to `dev` is the
+  # merge result: let that one finish even if another commit lands behind it.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
+    name: check (${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       # Report every matrix entry: a red Node 24 leg must not cancel the Node 22 one
       # (or vice versa) — the whole point of the matrix is to see both results.
       fail-fast: false
       matrix:
         # The floor the project promises (`engines: node >= 22`) and the current
-        # release line. Both run the full step list below.
+        # release line. The legs are split: the container already runs the whole
+        # suite on Node 22, so this workflow spends its Node 22 leg on the static
+        # surface and its Node 24 leg on the suite plus the coverage floor.
         node-version: [22, 24]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node-version }}
 
-      # Before the suite: two of its legs (`web/blocks.bundle`, `web/blocks.dom`) sit behind
-      # a `web/dist` guard, so a `fail 0` here says nothing about either. This runner builds
-      # no frontend (that happens in the `docker` job below), so the verdict is *reported* —
-      # the enforcing copy of it lives in `docker/verify-in-container.sh`, where the image's
-      # `webbuild` stage has actually produced `web/dist`.
+      # Before anything else: two of the suite's legs (`web/blocks.bundle`,
+      # `web/blocks.dom`) sit behind a `web/dist` guard, so a `fail 0` elsewhere
+      # says nothing about either. This runner builds no frontend (the `docker`
+      # job does), so the verdict is *reported* — the enforcing copy lives in
+      # `docker/verify-in-container.sh`, where the image has produced `web/dist`.
       - name: Frontend coverage verdict (web/dist)
         run: node scripts/verify/web-dist.mjs
 
-      # No `npm install`: the engine, scripts and tests use Node builtins only and run
-      # offline. The `web/` frontend's build-time devDependencies are assembled offline
-      # inside the `docker` job (image `webbuild` stage) — never installed on this runner.
-      - name: Tests
-        run: node --test
-
-      - name: Coverage gate
-        # The line/branch/function floors are *not* restated here: they live once, in the
-        # `test:coverage` script in package.json, and this step only invokes it — the same
-        # script the container's verify-in-container.sh runs. A miss exits non-zero, so the
-        # job goes red.
+      # One suite sweep. `node --test` and `npm run test:coverage` discover the
+      # same 239 files; running both was two identical sweeps. The plain run is
+      # the container's job (its image is Node 22), so the newer runtime carries
+      # the coverage floor here.
+      - name: Coverage gate (Node 24; runs the whole suite)
+        if: matrix.node-version == 24
+        # The floors are *not* restated here: they live once, in the
+        # `test:coverage` script in package.json, and this step only invokes it —
+        # the same script the container's verify-in-container.sh runs.
         run: npm run test:coverage
 
+      # The static surface runs once, on the floor version. Every check here is
+      # Node builtins only and needs no install.
       - name: Manifests
+        if: matrix.node-version == 22
         run: node scripts/verify/manifests.mjs
 
       - name: Version manifests agree
+        if: matrix.node-version == 22
         run: node scripts/verify/version.mjs
 
       - name: Skill definition
+        if: matrix.node-version == 22
         run: node scripts/verify/skill.mjs
 
       - name: Agent-kind runtime claim path (offline mock harness)
-        # Drives the generated SessionStart hook / Codex claim trigger / wake scripts
-        # against fake agent CLIs and a canned shim, in a throwaway home. Runs with no
-        # `claude`/`codex`/`pi` and no network — the runtime claim path is covered here
-        # even though the real CLIs are absent (see scripts/verify/kind-runtime.mjs).
+        if: matrix.node-version == 22
+        # Drives the generated SessionStart hook / Codex claim trigger / wake
+        # scripts against fake agent CLIs and a canned shim, in a throwaway home.
         run: node scripts/verify/kind-runtime.mjs
 
       - name: Shell script syntax
+        if: matrix.node-version == 22
         run: bash -n install.sh scripts/install/*.sh scripts/verify/install-e2e.sh
 
-  # Same image tag and same in-container command as `npm run verify:docker`, so a green
-  # local run and a green CI run mean the same thing. This is the authoritative job: it is
-  # the only place the frontend gets built — the `webbuild` stage resolves `web/`'s
-  # build-time devDependencies from the committed offline cache (`npm ci --offline`), not
-  # from the network.
+  # The contract gates: the API snapshot, the CLI surface, and the pairing half
+  # that proves each route's declared request schema is the one its handler reads.
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      # Offline: the checkers import the surface modules directly and are Node
+      # builtins only — no `npm install`. This checks both that the snapshot
+      # still describes the live API and that it is in the canonical form
+      # `--update` writes.
+      - name: API contract matches the snapshot
+        run: node scripts/verify/contract.mjs
+
+      # The CLI surface the orchestrator (and user scripts) bind to.
+      - name: CLI contract matches the snapshot
+        run: node scripts/verify/cli-contract.mjs
+
+      # The declaration the snapshot freezes must be the one the handler honours.
+      - name: Route request schema matches what the handler reads
+        run: node scripts/verify/route-request.mjs
+
+  # A host-absolute path is a statement about one machine. The allowlist of
+  # verification records is checked in both directions, so it can only shrink
+  # without a deliberate edit.
+  paths:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # No `setup-node`: the checker is Node builtins only and offline, and the
+      # runner's Node is well past the `engines` floor. It reads the tree via
+      # `git ls-files` here, and by walking the image, which carries no `.git`.
+      - name: No tracked file carries a host-absolute path
+        run: node scripts/verify/paths.mjs
+
+  # A walkable reference into an external framework's private store is an
+  # instruction to leave this repository, which a session reading the tree will
+  # follow. CI is the authoritative place for this one: the image drops `design/`
+  # (see `.dockerignore`), so inside the container the gate sees a partial tree
+  # and the documents it exists to police are absent.
+  signposts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: No tracked file carries a signpost out of the repository
+        run: node scripts/verify/signposts.mjs
+
+  # Same image tag and same in-container command as `npm run verify:docker`, so a
+  # green local run and a green CI run mean the same thing. This is the
+  # authoritative job: it is the only place the frontend gets built — the
+  # `webbuild` stage resolves `web/`'s build-time devDependencies from the
+  # committed offline cache (`npm ci --offline`), not from the network.
   #
-  # The install + first-run end-to-end is a step *inside* `docker/verify-in-container.sh`,
-  # not a separate command here: when it lived only in this job, `npm run verify:docker`
-  # could be green while this job was red.
+  # The install + first-run end-to-end is a step *inside*
+  # `docker/verify-in-container.sh`, not a separate command here.
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Build verification image
-        run: docker build -f docker/Dockerfile -t meerkat-taskpanel:verify .
+      # The same Dockerfile, context and tag as `npm run verify:docker`, with the
+      # Actions cache backend so the base layers and the frontend install/build
+      # are reused across runs. `load: true` puts the image in the local daemon
+      # for the run step below.
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          tags: meerkat-taskpanel:verify
+          push: false
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Run verification inside the container
         run: docker run --rm meerkat-taskpanel:verify bash docker/verify-in-container.sh
+
+  # The single required status check. `if: always()` is load-bearing: without it a
+  # failed dependency would skip this job, and a skipped required check is exactly
+  # the silent-green case the aggregation exists to prevent.
+  ci-success:
+    name: ci-success
+    if: always()
+    needs: [check, docker, contract, paths, signposts]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every required job succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node -e '
+            const needs = JSON.parse(process.env.RESULTS);
+            const failed = Object.entries(needs)
+              .filter(([, job]) => job.result !== "success")
+              .map(([name, job]) => `${name}=${job.result}`);
+            if (failed.length > 0) {
+              console.error(`required jobs did not succeed: ${failed.join(", ")}`);
+              process.exit(1);
+            }
+            console.log("all required jobs succeeded");
+          '
