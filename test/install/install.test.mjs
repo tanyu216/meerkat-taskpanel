@@ -135,6 +135,27 @@ describe("install.sh: targets", () => {
     }
   });
 
+  it("a server-only run does not sweep an agent home's project map", () => {
+    // The agent home's config root and the server tree are different installs; moving
+    // one into the other would hide the map from the agent-only CLI that used it.
+    const home = makeTempDir();
+    const agentMap = join(home, ".claude", "skills", "meerkat", "projects.json");
+    mkdirSync(dirname(agentMap), { recursive: true });
+    writeFileSync(agentMap, '{"projects":[{"project":"Agent","local_path":"/tmp/agent"}]}');
+
+    const run = runInstall(
+      ["--target", "server", "--prefix", home],
+      { MEERKAT_TASKPANEL_SKIP_WEB_BUILD: "1" },
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(existsSync(agentMap), "a server-only install leaves agent homes alone");
+    assert.equal(
+      existsSync(join(kindConfigDirFor(home), "projects.json")),
+      false,
+      "no map may be written into the server's config root",
+    );
+  });
+
   it("--target server,claude is server-first and points the agent shim at the tree", () => {
     const home = makeTempDir();
     const run = runInstall(

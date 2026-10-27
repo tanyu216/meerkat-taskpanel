@@ -132,7 +132,8 @@ want the board**: `rm -rf ~/.meerkat-taskpanel` deletes the database with it.
 `.env.claude`), beside the board `.env`, not under the agent directory. A combined install
 (`--target all`, or npm/npx) keeps it in the tree — `~/.meerkat-taskpanel/.env.claude` — and
 removing the tree removes it. An agent-only install keeps it at the checkout/package root —
-`<checkout>/.env.claude` — so remove that file by hand when uninstalling. The same rule
+`<checkout>/.env.claude` — so remove that file by hand when uninstalling; a map you created
+there (`<checkout>/projects.json`) goes with it. The same rule
 applies to the installer's config: `MEERKAT_TASKPANEL_CONFIG_DIR` relocates the directory
 (tests, containers, a read-only package root) **and the project map beside it**
 (`<config root>/projects.json`). An **agent-only npm/npx install** keeps both inside the

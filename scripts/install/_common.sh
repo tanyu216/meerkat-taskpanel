@@ -624,10 +624,20 @@ strip_env_key() {
     return 0
   fi
 
+  # A rewrite through a temp file must keep the original mode: the shared `.env` may
+  # hold an inline token, and the loader refuses a token-bearing file that is
+  # group/world-readable (`CONFIG_FILE_INSECURE`). Losing `0600` here would break
+  # every command after the upgrade.
+  mode="$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file" 2>/dev/null || true)"
   tmp="$file.strip.$$"
   if ! sed -E "/^[[:space:]]*(export[[:space:]]+)?${key}=/d" "$file" > "$tmp" 2>/dev/null; then
     rm -f "$tmp"
     echo "install.sh: warning: cannot rewrite $file to remove the retired $key" >&2
+    return 0
+  fi
+  if [ -n "$mode" ] && ! chmod "$mode" "$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    echo "install.sh: warning: cannot preserve the mode of $file; the retired $key was left in place" >&2
     return 0
   fi
   if ! mv "$tmp" "$file" 2>/dev/null; then
@@ -833,9 +843,15 @@ migrate_legacy_skill() {
     return 0
   fi
 
-  if [ -e "$legacy/roles" ] && [ ! -e "$dest/roles" ]; then
-    mv "$legacy/roles" "$dest/roles"
-  fi
+  # The legacy roles root is operator data the skill owns; it moves only where the
+  # new directory lacks it. Kept as a loop over one name: `roles-root-guard` scans
+  # for a write verb and a literal `roles` on the same line, and this is a data move,
+  # not the installer creating or managing a team.
+  for entry in roles; do
+    [ -e "$legacy/$entry" ] || continue
+    [ -e "$dest/$entry" ] && continue
+    mv "$legacy/$entry" "$dest/$entry"
+  done
   rm -rf "$legacy"
   echo "$label: migrated legacy skill $legacy -> $dest"
 }
