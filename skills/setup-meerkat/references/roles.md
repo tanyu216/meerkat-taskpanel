@@ -9,7 +9,7 @@ exactly as it did before the feature.
 ```text
 <roles-root>/
 ├── manifest.json
-├── decision-policy.md          optional; overrides the loop's default policy
+├── ownership.md                optional; routes work shapes to one accountable role
 ├── jobs/{workflow.md,ui-workflow.md,self-check.md}
 ├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,self-check.md}
 ├── turing/{workflow.md,test-design-workflow.md,regression-workflow.md,performance-workflow.md,self-check.md}
@@ -127,21 +127,19 @@ It also carries the design-stance evidence (simple, reliable, efficient, elegant
 over-engineered, high cohesion and low coupling), the architecture-style decision (DDD or a
 named simpler style), the external contract, the configuration surface, the logging
 contract and the planned directory tree. The contract artifact is canonical, `CLAUDE.md`/`AGENTS.md` carry a top-level
-tree map and a pointer, and the `/init` product is the baseline every role reads, carrying
-the six design principles as binding requirements for every agent. A feature or module change
-applies the same six in `implementation-workflow.md` Step 2.
+tree map and a pointer, and the agent-instruction baseline is the file every role reads,
+carrying the six design principles as binding requirements for every agent. A feature or
+module change applies the same six in `implementation-workflow.md` Step 2.
 The root glossary carries a
 `## Product language` section that links `design/glossary.md`; product terms are not copied
 there. Turing keeps each card's `test-plan.md`, `regression.md` and `performance.md`, with
 their evidence, in `.meerkat/<id>/`.
 
-Linus scaffolds the agent instructions with the host's `/init` (writing `CLAUDE.md` or
-`AGENTS.md`) and writes the workspace rule into them. The rule is **global**: every role —
-Jobs, Linus and Turing — works a card in one linked worktree off the integration branch
-(`dev` by default): `git worktree add .worktrees/<card-slug> -b <branch> dev`. The primary
-checkout stays on `dev`, and the card's roles share the worktree. Merge and cleanup run only
-after reviewer approval or operator confirmation: `git merge --no-ff` into `dev`, then
-`git worktree remove`, then `git branch -d` — never `-D`.
+Linus establishes the project's agent-instruction baseline (the host's `CLAUDE.md` or
+`AGENTS.md`) as a foundation outcome. It is the file every role reads. The project's own
+working-tree, branch and integration contract belongs in that baseline; the team's role
+workflows deliberately do not restate it, and integration and cleanup stay with the project
+session after reviewer approval or operator confirmation.
 
 ## Review ownership
 
@@ -202,6 +200,16 @@ replaces the global set; it is not merged role-by-role.
 
 The reviewer's prompt is inlined at the start of the reviewer handoff, bounded at 2,400
 characters; the worker workflow stays a path.
+
+## Ownership guide
+
+`ownership.md` (optional, convention-named) is the work→role routing guide: a table of work
+shapes — product planning, prototype/UI/UX/aesthetic direction, architecture, implementation,
+test design, regression, performance, independent review — with one accountable role and
+workflow each. The project session receives it in full when it spawns a batch; the
+control/continue turn receives a compact summary and the path. It is prompt guidance, not a
+gate: the card's assignee still selects the executing role, and it never changes who decides.
+A legacy `decision-policy.md` in the root is ignored; `--validate` reports it.
 
 ## Installing and upgrading
 
@@ -269,9 +277,10 @@ The ladder **subagent → main session → human** is unchanged: only a human co
 
 ## Decisions
 
-The team's `decision-policy.md` (or the loop default) defines the ladder
-**subagent → main session → human**. A subagent never decides an unauthorized question;
-it writes an agent `question` comment and stops. The project session answers with a
-`note` and reattaches/requeues, or escalates E1-E5 to the human. Any human comment resumes
-an awaiting card, whatever its kind (the resumed worker judges its content); the loop never
+The loop's `references/decision-policy.md` is the single decision-authority source; a team
+cannot override it. The ladder is **subagent → main session → human**. A subagent never
+decides an unauthorized question; it writes an agent `question` comment and stops. The
+project session answers with a `note` and reattaches/requeues, or escalates E1-E5 to the
+human. Any human comment resumes an awaiting card, whatever its kind (the resumed worker
+judges its content); the loop never
 writes a decision kind and never uses `--as-human` for its own answer.

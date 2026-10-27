@@ -19,6 +19,7 @@ import { extname, isAbsolute, join, relative, sep } from "node:path";
 export const TEAM_LIMITS = Object.freeze({
   manifestBytes: 256 * 1024,
   workflowBytes: 64 * 1024,
+  ownershipBytes: 8 * 1024,
   roles: 32,
 });
 
@@ -139,7 +140,7 @@ function normalizeRole(raw, root, warnings) {
  *   team: string|null,
  *   roles: object[],
  *   defaultReviewer: object|null,
- *   decisionPolicy: string|null,
+ *   ownership: string|null,
  *   warnings: string[],
  *   errors: string[],
  *   files: string[],
@@ -155,7 +156,7 @@ export function readTeam(root) {
     team: null,
     roles: [],
     defaultReviewer: null,
-    decisionPolicy: null,
+    ownership: null,
     warnings,
     errors,
     files: [],
@@ -211,9 +212,22 @@ export function readTeam(root) {
   }
   defaultReviewer ??= roles.find((role) => role.lanes.includes("reviewer")) ?? null;
 
-  const decisionPolicy = existsSync(join(root, "decision-policy.md"))
-    ? join(root, "decision-policy.md")
-    : null;
+  const ownershipPath = join(root, "ownership.md");
+  const ownership = existsSync(ownershipPath) ? ownershipPath : null;
+  if (ownership === null) {
+    warnings.push("ownership.md is absent; the project session routes work without a guide");
+  } else {
+    try {
+      if (statSync(ownership).size > TEAM_LIMITS.ownershipBytes) {
+        warnings.push(`ownership.md is larger than ${TEAM_LIMITS.ownershipBytes} bytes; the loop truncates it`);
+      }
+    } catch {
+      // an unreadable file fails at install, not at validation
+    }
+  }
+  if (existsSync(join(root, "decision-policy.md"))) {
+    warnings.push("decision-policy.md is ignored; the loop's references/decision-policy.md is authoritative");
+  }
 
   return {
     ok: errors.length === 0,
@@ -222,7 +236,7 @@ export function readTeam(root) {
     team: nonEmpty(raw.team) ? raw.team.trim() : null,
     roles,
     defaultReviewer,
-    decisionPolicy,
+    ownership,
     warnings,
     errors,
     files: teamFiles(root),
@@ -279,7 +293,7 @@ export function validateRolesRoot(root) {
       reviewerPrompt: role.reviewerPrompt,
     })),
     defaultReviewer: team.defaultReviewer?.id ?? null,
-    decisionPolicy: team.decisionPolicy,
+    ownership: team.ownership,
     warnings: team.warnings,
     errors: team.errors,
   };

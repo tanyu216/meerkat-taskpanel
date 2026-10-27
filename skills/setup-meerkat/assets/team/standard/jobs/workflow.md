@@ -6,9 +6,8 @@ the interaction and visual direction, and a prototype where the change is user-v
 ## Identity and authority
 
 - Every agent write carries `--agent Jobs --actor-kind <kind>` (the handoff supplies the
-  flags). On `taskctl issue create`, pass `--reporter Jobs --reporter-kind agent` and
-  `--assignee <role> --assignee-kind agent`; `issue assign` resolves a role name to kind
-  `agent` by default.
+  flags). On create, record the creator as the reporting agent and assign the owner as kind
+  `agent`; an assignment resolves a role name to that kind by default.
 - A human decision or constraint is recorded only with `--as-human` (the fixed
   `TASKCTL_HUMAN`). Never use it for your own view.
 - You do **not** decide an unauthorized question. Write an agent `question` comment, keep
@@ -16,9 +15,8 @@ the interaction and visual direction, and a prototype where the change is user-v
 
 ## Before work — the plan
 
-1. Read `.meerkat/<id>/card.md` (the authoritative brief), the live card
-   (`taskctl issue get <id> --json <flags>`) and the frozen `acceptance`; the snapshot is
-   the baseline.
+1. Read `.meerkat/<id>/card.md` (the authoritative brief), the live card and the frozen
+   `acceptance`; the snapshot is the baseline.
 2. Write `.meerkat/<id>/plan.md` as the **card index**: the acceptance mapping, risks,
    open questions and links to the product artifacts. The working copies live in the card
    directory; stage 4 promotes them to content-named files under `design/`:
@@ -31,10 +29,6 @@ the interaction and visual direction, and a prototype where the change is user-v
    A design filename never carries the task id; it uses a content slug chosen at archive
    time. This is **this card's** plan: another card's plan is never this card's plan. The
    cross-card channel is the `## Handoff` block in stage 6.
-3. Follow the workspace rule in `CLAUDE.md`/`AGENTS.md`: one worktree per card, shared by
-   the card's roles, off the integration branch (`dev` by default). Create it if it does
-   not exist; the primary checkout stays on `dev`. `.meerkat/<id>/` stays in the project
-   working directory, not inside the worktree.
 
 ## Decide before you build
 
@@ -141,15 +135,9 @@ testability, consistency, boundaries, feasibility and scope. Record the findings
 
 ### 6. Deliver
 
-Re-export the brief first, then start the report from the template:
-
-```bash
-taskctl export md <id> --out .meerkat/<id>/card.md
-taskctl issue meta <id> --meta stage_handoff=required <flags>
-taskctl report template <id>
-```
-
-Keep a one-line `Outcome:` first in `conclusion`, then the `## Handoff` block below it.
+Re-export the brief first, mark the handoff required (`meta.stage_handoff=required`), then
+start the report from the template. Keep a one-line `Outcome:` first in `conclusion`, then
+the `## Handoff` block below it.
 Deliver at `in_review` with the archived spec, PRD, prototype evidence, the acceptance
 mapping in `plan.md` and the handoff block. The reviewer is independent and audits the PRD
 and the handoff against the frozen acceptance; do not accept your own work and do not move
@@ -166,8 +154,7 @@ is the cross-card transfer. A producer card has both.
 #### The Handoff block
 
 The report is JSON; its `conclusion` is the free-text section (at most 16,384 characters).
-Put this block there; `taskctl report list <id> --json` and the exported `card.md` both
-expose it.
+Put this block there; the report list and the exported `card.md` both expose it.
 
 ```markdown
 Outcome: <one-line result>
@@ -196,8 +183,8 @@ Rules:
 - a small change or bug uses `meta.product_change=none`, the card, acceptance and (for a
   bug) the reproduction — not the design chain;
 - an epic is `kind=epic` and not claimable; children are `kind=task`, linked with `parent`.
-  `blocks` gates on `done`, not merely delivery. A verification card also points at
-  `taskctl report list <id> --json`;
+  `blocks` gates on `done`, not merely delivery. A verification card also points at the
+  report list;
 - the project session takes the handoff from the current round's latest report; an earlier
   round is history.
 

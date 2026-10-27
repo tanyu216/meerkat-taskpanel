@@ -91,11 +91,11 @@ describe("skill frontmatter and assets", () => {
     assert.ok(description.length >= 20);
   });
 
-  it("ships the standard team, a decision policy, and native templates", () => {
+  it("ships the standard team, an ownership guide, and native templates", () => {
     const team = join(SKILL, "assets", "team", "standard");
     for (const rel of [
       "manifest.json",
-      "decision-policy.md",
+      "ownership.md",
       "jobs/workflow.md",
       "jobs/ui-workflow.md",
       "jobs/self-check.md",
@@ -165,10 +165,10 @@ describe("skill frontmatter and assets", () => {
 
     assert.match(linus, /architecture-workflow\.md/, "Linus routes to the architecture branch");
     assert.match(linus, /implementation-workflow\.md/, "Linus routes to the implementation branch");
-    assert.match(arch, /\.githooks\/pre-commit/, "the architecture branch wires pre-commit");
-    assert.match(arch, /pre-push/, "the architecture branch wires pre-push");
-    assert.match(arch, /pre-tag/, "the architecture branch wires pre-tag");
-    assert.match(arch, /core\.hooksPath/, "the architecture branch sets core.hooksPath");
+    assert.match(arch, /pre-commit/i, "the architecture branch records the local gate path");
+    assert.match(arch, /pre-push/i, "the architecture branch records pre-push");
+    assert.match(arch, /pre-tag/i, "the architecture branch records pre-tag");
+    assert.doesNotMatch(arch, /core\.hooksPath|\.githooks\//, "gate mechanics belong to the project");
     assert.match(impl, /failing test|reproduce/i, "implementation starts from a reproduction");
     assert.match(impl, /gates/i, "implementation records the gates");
 
@@ -209,7 +209,7 @@ describe("skill frontmatter and assets", () => {
     assert.match(
       arch,
       /Design principles[\s\S]{0,400}every agent/i,
-      "the /init product carries the principles as a baseline",
+      "the agent-instruction baseline carries the principles",
     );
 
     assert.match(arch, /domain-driven design|DDD/i, "the style decision names DDD");
@@ -223,7 +223,7 @@ describe("skill frontmatter and assets", () => {
     assert.match(arch, /pagination/i, "collections define pagination");
     assert.match(arch, /hot.?reload/i, "the configuration surface defines reload");
     assert.match(arch, /directory tree|directory structure/i, "the tree is planned");
-    assert.match(arch, /baseline requirement for every agent/i, "/init is the agent baseline");
+    assert.match(arch, /requirement for every agent/i, "the agent-instruction baseline is required");
     assert.match(arch, /one logging module/i, "logging is one module, not console calls");
     assert.match(
       arch,
@@ -238,7 +238,7 @@ describe("skill frontmatter and assets", () => {
     const scaffold = arch.slice(arch.indexOf("### 4."), arch.indexOf("### 5."));
     assert.match(scaffold, /^\| Logging \|/m, "the scaffold checklist carries a logging row");
     const init = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
-    assert.match(init, /logging contract/i, "/init carries the logging contract as a convention");
+    assert.match(init, /logging contract/i, "the agent-instruction baseline carries the logging contract");
 
     assert.match(linus, /foundation decision/i, "the routing table is foundation-level");
     assert.match(linus, /feature or module/i, "the routing table names the implementation side");
@@ -254,11 +254,11 @@ describe("skill frontmatter and assets", () => {
       "the self-check audits the mandatory info logs",
     );
     assert.match(check, /directory tree/i, "the self-check audits the tree");
-    assert.match(check, /\/init/, "the self-check audits the agent baseline");
+    assert.match(check, /agent-instruction baseline/i, "the self-check audits the agent baseline");
     assert.match(
       check,
       /design principles[\s\S]{0,300}every agent/i,
-      "the self-check audits the /init principles",
+      "the self-check audits the baseline principles",
     );
   });
 
@@ -303,7 +303,7 @@ describe("skill frontmatter and assets", () => {
     }
   });
 
-  it("carries the decision method, split glossaries and the worktree declaration", () => {
+  it("carries the decision method, split glossaries and the agent baseline", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const jobs = readFileSync(join(team, "jobs", "workflow.md"), "utf8");
     const ui = readFileSync(join(team, "jobs", "ui-workflow.md"), "utf8");
@@ -335,34 +335,33 @@ describe("skill frontmatter and assets", () => {
 
     assert.match(linus, /## Product language/);
     assert.match(linus, /design\/glossary\.md/);
-    assert.match(linus, /worktree/i, "Linus follows the shared workspace rule");
-    assert.match(arch, /\/init/);
     assert.match(arch, /AGENTS\.md/);
     assert.match(arch, /CLAUDE\.md/);
-    assert.match(arch, /worktree/i, "the architecture branch declares the card worktree");
-    assert.match(arch, /integration branch/i, "the declaration names the integration branch");
-    assert.match(arch, /workflow\.md/, "the command lifecycle stays in the role workflow");
-    assert.match(arch, /reviewer approves|operator confirms/i);
-    assert.match(impl, /worktree/i);
-    assert.match(jobs, /worktree/i, "Jobs shares the card worktree");
-    assert.match(turing, /worktree/i, "Turing shares the card worktree");
+    assert.match(arch, /agent-instruction baseline/i);
+    assert.match(arch, /project session/i, "integration stays with the project session");
+    for (const [name, text] of [["Jobs", jobs], ["Linus", linus], ["Turing", turing], ["architecture", arch], ["implementation", impl]]) {
+      assert.doesNotMatch(text, /worktree|integration branch/i, `${name} leaves project mechanics to the project`);
+    }
 
     assert.match(turing, /GLOSSARY\.md|canonical term/);
     assert.match(testPlan, /decision round|frontier/i);
     assert.match(jobsCheck, /Standalone mode/);
   });
 
-  it("makes the team decision policy the single home of the round protocol", () => {
-    const team = join(SKILL, "assets", "team", "standard");
-    const policy = readFileSync(join(team, "decision-policy.md"), "utf8");
-    assert.match(policy, /## Decision rounds/);
-    assert.match(policy, /frontier/);
-    assert.match(policy, /worded so "yes" accepts/);
-    assert.match(policy, /Facts are the asker's job/i);
+  it("makes the loop policy the single home of the round protocol", () => {
+    const loopPolicy = readFileSync(
+      join(ROOT, "skills", "meerkat-loop", "references", "decision-policy.md"),
+      "utf8",
+    );
+    assert.match(loopPolicy, /## Decision rounds/);
+    assert.match(loopPolicy, /frontier/);
+    assert.match(loopPolicy, /so "yes" accepts/i);
+    assert.match(loopPolicy, /Facts are the asker's job/i);
 
+    const team = join(SKILL, "assets", "team", "standard");
     let protocolCopies = 0;
     for (const rel of [
-      "decision-policy.md",
+      "ownership.md",
       "jobs/workflow.md",
       "linus/workflow.md",
       "turing/workflow.md",
@@ -370,7 +369,7 @@ describe("skill frontmatter and assets", () => {
       protocolCopies += (readFileSync(join(team, rel), "utf8").match(/Draw the decision tree/g) ?? [])
         .length;
     }
-    assert.equal(protocolCopies, 1, "the six-step protocol lives only in decision-policy.md");
+    assert.equal(protocolCopies, 0, "the six-step protocol lives only in the loop policy");
 
     for (const rel of ["jobs/workflow.md", "linus/workflow.md", "turing/workflow.md"]) {
       const workflow = readFileSync(join(team, rel), "utf8");
@@ -378,6 +377,69 @@ describe("skill frontmatter and assets", () => {
       assert.match(workflow, /frontier/i);
       assert.match(workflow, /decision-policy\.md/);
     }
+  });
+
+  it("keeps project mechanics out of the role files", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const files = [
+      "ownership.md",
+      "manifest.json",
+      "jobs/workflow.md",
+      "jobs/ui-workflow.md",
+      "jobs/self-check.md",
+      "linus/workflow.md",
+      "linus/architecture-workflow.md",
+      "linus/implementation-workflow.md",
+      "linus/self-check.md",
+      "turing/workflow.md",
+      "turing/test-design-workflow.md",
+      "turing/regression-workflow.md",
+      "turing/performance-workflow.md",
+      "turing/self-check.md",
+      "reviewer/workflow.md",
+      "reviewer/reviewer-prompt.md",
+    ];
+    const banned = /\bgit (?:worktree|merge|branch|checkout)\b|--no-ff|branch -d|\btaskctl\b|`\/init`|\bnpm run\b|\bdocker\b|\bpodman\b|\bsystemctl\b|\blaunchctl\b|\bcore\.hooksPath\b/;
+    for (const rel of files) {
+      const text = readFileSync(join(team, rel), "utf8");
+      assert.doesNotMatch(text, banned, `${rel} must describe the task process, not project mechanics`);
+    }
+  });
+
+  it("ships an ownership routing guide, not a duplicated policy", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const guide = readFileSync(join(team, "ownership.md"), "utf8");
+
+    for (const shape of [
+      /product planning/i,
+      /prototype/i,
+      /system architecture/i,
+      /implementation/i,
+      /test design/i,
+      /regression/i,
+      /performance/i,
+      /independent review/i,
+    ]) {
+      assert.match(guide, shape, "every work shape must be routed");
+    }
+    for (const workflow of [
+      "jobs/workflow.md",
+      "jobs/ui-workflow.md",
+      "linus/architecture-workflow.md",
+      "linus/implementation-workflow.md",
+      "turing/test-design-workflow.md",
+      "turing/regression-workflow.md",
+      "turing/performance-workflow.md",
+      "reviewer/workflow.md",
+    ]) {
+      assert.ok(guide.includes(workflow), `${workflow} must be routed`);
+    }
+
+    assert.match(guide, /one accountable role/i);
+    assert.match(guide, /reviewer is independent/i);
+    assert.match(guide, /assignee still selects/i);
+    assert.doesNotMatch(guide, /## Decision rounds|\bE1\b|\bE5\b|awaiting|frontier/i);
+    assert.equal(existsSync(join(team, "decision-policy.md")), false, "the team ships no policy copy");
   });
 
   it("reads the design artifacts on a feature path, not on a bug path", () => {
@@ -407,7 +469,7 @@ describe("skill frontmatter and assets", () => {
     const prompt = readFileSync(join(team, "reviewer", "reviewer-prompt.md"), "utf8");
     const roles = readFileSync(join(SKILL, "references", "roles.md"), "utf8");
     const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
-    const policy = readFileSync(join(team, "decision-policy.md"), "utf8");
+    const ownership = readFileSync(join(team, "ownership.md"), "utf8");
 
     assert.match(jobs, /## Handoff/);
     assert.match(jobs, /design\/specs\/<content-slug>\.md/);
@@ -441,7 +503,7 @@ describe("skill frontmatter and assets", () => {
     assert.match(impl, /## Handoff/);
     assert.match(impl, /does not\s+need the design artifacts/i);
     assert.match(testDesign, /## Handoff/);
-    assert.match(testDesign, /report list/);
+    assert.match(testDesign, /named report/i);
     assert.match(regression, /not inputs here/);
     assert.match(turing, /test-plan\.md/);
     assert.match(turing, /API/i);
@@ -510,8 +572,8 @@ describe("skill frontmatter and assets", () => {
     assert.match(skill, /triage/i);
     assert.match(skill, /epic/i);
     assert.match(skill, /100%/);
-    assert.match(policy, /card-shape triage|triage/i);
-    assert.match(policy, /epic/i);
+    assert.match(ownership, /split/i);
+    assert.match(ownership, /project session/i);
   });
 
   it("names the pre-delivery audit and ends every worker flow in Deliver", () => {
@@ -520,7 +582,7 @@ describe("skill frontmatter and assets", () => {
       const check = readFileSync(join(team, role, "self-check.md"), "utf8");
       assert.match(check, /pre-delivery audit/, `${role} self-check names the audit`);
       assert.match(check, /not\s+the `## Handoff` block/, `${role} self-check is not the handoff`);
-      assert.match(check, /export md/, `${role} self-check re-exports the brief`);
+      assert.match(check, /re-export/i, `${role} self-check re-exports the brief`);
       assert.match(check, /card\.md/, `${role} self-check names the brief`);
     }
 
@@ -842,6 +904,11 @@ describe("install-roles.mjs — project scope", () => {
     assert.equal(first.status, 0, first.stderr);
     assert.equal(first.body.ok, true);
     assert.ok(existsSync(join(project, ".meerkat", "roles", "manifest.json")));
+    assert.ok(
+      existsSync(join(project, ".meerkat", "roles", "ownership.md")),
+      "the routing guide ships with the team",
+    );
+    assert.equal(existsSync(join(project, ".meerkat", "roles", "decision-policy.md")), false);
     assert.ok(existsSync(join(project, ".claude", "agents", "jobs.md")));
     assert.ok(existsSync(join(project, ".codex", "agents", "reviewer.toml")));
     assert.ok(
@@ -959,12 +1026,27 @@ describe("install-roles.mjs — project scope", () => {
     assert.equal(result.status, 0, result.stderr);
     const roles = join(loopSkill, "roles");
     assert.ok(existsSync(join(roles, "manifest.json")));
-    assert.ok(existsSync(join(roles, "decision-policy.md")));
+    assert.ok(existsSync(join(roles, "ownership.md")));
+    assert.equal(existsSync(join(roles, "decision-policy.md")), false);
     assert.ok(existsSync(join(roles, "reviewer", "reviewer-prompt.md")));
     assert.ok(existsSync(join(home, ".claude", "agents", "jobs.md")));
     assert.ok(existsSync(join(home, ".codex", "agents", "jobs.toml")));
     assert.ok(existsSync(join(home, ".pi", "agent", "agents", "jobs.md")));
     assert.equal(existsSync(join(project, ".meerkat", "roles")), false, "global must not write into the project");
+  });
+
+  it("warns when ownership.md is absent and when a legacy policy remains", (t) => {
+    const root = temp(t);
+    writeFileSync(join(root, "manifest.json"), JSON.stringify({ version: 1, roles: [] }));
+    writeFileSync(join(root, "decision-policy.md"), "# old team policy\n");
+
+    const result = runJson(t, INSTALL, ["--validate", root], { cwd: root });
+    assert.equal(result.status, 0, result.stderr);
+    const warnings = result.body.warnings.join("\n");
+    assert.match(warnings, /ownership\.md is absent/, "a missing guide must be reported");
+    assert.match(warnings, /decision-policy\.md is ignored/, "a legacy policy must be reported");
+    assert.equal(result.body.ownership, null);
+    assert.ok(existsSync(join(root, "decision-policy.md")), "validation never deletes a file");
   });
 
   it("honours role, agent and reviewer renames", (t) => {
@@ -993,8 +1075,8 @@ describe("install-roles.mjs — project scope", () => {
       join(project, ".meerkat", "roles", "reviewer", "reviewer-prompt.md"),
       "utf8",
     );
-    assert.match(reviewerPrompt, /--agent Grace/);
-    assert.doesNotMatch(reviewerPrompt, /--agent Reviewer/);
+    assert.match(reviewerPrompt, /You are Grace/);
+    assert.doesNotMatch(reviewerPrompt, /You are Reviewer/);
   });
 
   it("rewrites cross-references in the manifest when another role is renamed", (t) => {

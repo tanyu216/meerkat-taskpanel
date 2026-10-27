@@ -18,6 +18,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { cardFileRel } from "../foundation/card-brief.mjs";
+import { renderOwnershipGuide } from "../foundation/role-prompt.mjs";
 import { loadRoles } from "../foundation/roles.mjs";
 import { buildContinuePrompt, buildQuestionPrompt, quoteArg } from "../foundation/scheduling.mjs";
 import { createKindPool } from "./kind-session.mjs";
@@ -293,6 +294,9 @@ export function buildProjectBatchPrompt(cards, roleSet = null, options = {}) {
       "If a named agent is unavailable, spawn the default subagent; the handoff carries the",
       "role workflow it must read.",
     );
+  }
+  if (lane === "worker" && roleSet?.ownership?.path) {
+    lines.push("", ...renderOwnershipGuide(roleSet.ownership));
   }
   cards.forEach((card, index) => {
     const roleSuffix = card.agent_role ? ` role ${card.agent_role}` : "";
@@ -584,6 +588,7 @@ export function createSessionPool(input = {}) {
             continueIntervalSeconds: opts.continueInterval,
       openedBy: opts.openedBy,
       decisionPolicy: roleSet.decisionPolicy,
+      ownership: roleSet.ownership,
     });
     let outcome;
     try {

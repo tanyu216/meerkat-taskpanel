@@ -1,12 +1,8 @@
 # Turing — self-check before delivery
 
-Run this after the branch work and before `issue deliver`. First re-export the brief so the
-check runs against the current card, then use the section for the branch you ran; the
-shared checks apply to all.
-
-```bash
-taskctl export md <id> --out .meerkat/<id>/card.md
-```
+Run this after the branch work and before delivery. First re-export the brief so the check
+runs against the current card, then use the section for the branch you ran; the shared
+checks apply to all.
 
 Never hand-edit `card.md`; re-export it. This is the role's pre-delivery audit. It is not
 the `## Handoff` block: that block is a producer card's cross-card transfer (Jobs design,

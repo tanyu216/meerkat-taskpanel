@@ -877,4 +877,25 @@ describe("session pool", () => {
     assert.match(prompt, /escalate E1-E5/);
     assert.match(prompt, /never use --as-human/);
   });
+
+  it("gives the project session the full ownership guide", () => {
+    const guide = "# Ownership\n\n| Work shape | Accountable role | Workflow |\n|---|---|---|\n| Product planning | Jobs | jobs/workflow.md |\n";
+    const prompt = buildProjectBatchPrompt(
+      [{ card: "T-1", role: "worker", project: "P", target_dir: "/work/app", handoff: "do one" }],
+      { roles: [], ownership: { path: "/roles/ownership.md", text: guide } },
+    );
+    assert.match(prompt, /## Work routing \(ownership guide\)/);
+    assert.match(prompt, /\| Product planning \| Jobs \|/);
+    assert.match(prompt, /Full guide: \/roles\/ownership\.md/);
+    assert.match(prompt, /card's assignee still selects the role/);
+  });
+
+  it("does not route the reviewer lane by the ownership guide", () => {
+    const prompt = buildProjectBatchPrompt(
+      [{ card: "R-1", role: "reviewer", project: "P", target_dir: "/work/app", handoff: "review it" }],
+      { roles: [], ownership: { path: "/roles/ownership.md", text: "# Ownership\n" } },
+      { lane: "reviewer" },
+    );
+    assert.doesNotMatch(prompt, /## Work routing/);
+  });
 });

@@ -104,8 +104,6 @@ open question, not a decision: never store evidence in a scratch directory.
 - Keep every artifact inside the project: relative `design/...` paths only, never an
   absolute path or another project's tree.
 - A prototype is not a delivery and never production code.
-- The prototype stack is closed: Tailwind CSS + daisyUI + jQuery. three.js needs a written
-  rationale and human approval.
 - Do not change the card's scope or acceptance. A design question that changes either is a
   `question` to the project session.
 - Do not fork the project's design system; extend the one that exists.

@@ -296,7 +296,7 @@ loader path and the reloadable-key list.
 #### Logging
 
 Logging is a contract with the operator, like configuration: designed once here, scaffolded
-in Step 4, and binding on every role through `/init`.
+in Step 4, and binding on every role through the agent-instruction baseline.
 
 - **One logging module.** Application code gets a logger from one factory and never writes
   to `console` directly; the factory is configured once at startup from the configuration
@@ -379,7 +379,7 @@ written `n/a — <reason>`, never a missing file.
 | Local run | one documented command plus ports and configuration | from zero to reachable |
 | Container / build path | only when the runtime form is a container: build file, non-root user, healthcheck, local multi-service definition; otherwise the recorded `n/a` | the build file builds and the healthcheck passes |
 | CI skeleton | a pipeline running the Step 6 checks | it runs on a pull request |
-| VCS | `.gitignore` for build output, data directories, `.worktrees/` and env files; the integration branch; a gitignored `.worktrees/` | no generated file is committed |
+| VCS | ignore rules for build output, data directories and environment files | no generated file is committed |
 | Docs | README with purpose, run, test and a link to the architecture document | every link resolves |
 
 Never commit a secret, add a dependency or licence without a decision, or create a second
@@ -390,14 +390,14 @@ README.
 
 ### 5. Initialize the agent instructions
 
-`/init` is the **baseline requirement for every agent** on this project, not an optional
-nicety. Run the host's built-in init command after the scaffold so it observes the real
-tree: `/init` in Claude Code and Codex writes `CLAUDE.md` or `AGENTS.md` per the host's
-read order. Without an init command, produce the same content directly and say so. A
-project without this file is not an architecture delivery.
+The agent-instruction baseline is a **requirement for every agent** on this project, not an
+optional nicety. Produce it after the scaffold so it observes the real tree: the host's init
+step writes `CLAUDE.md` or `AGENTS.md` per the host's read order. Without an init step,
+produce the same content directly and say so. A project without this file is not an
+architecture delivery.
 
-Review the generated file — `/init` guesses commands and layout — and correct both against
-the planned tree and the recorded stack. Keep one source of truth: if the host reads
+Review the generated file — an init step guesses commands and layout — and correct both
+against the planned tree and the recorded stack. Keep one source of truth: if the host reads
 `CLAUDE.md`, write it; if it reads `AGENTS.md`, generate it; make the other a pointer. Do
 not maintain `CLAUDE.md` and `AGENTS.md` as competing copies.
 
@@ -422,14 +422,9 @@ carry:
    coupling, with the conflict ordering including the boundary rule. Name all six in the
    generated file, not "the six principles" as a phrase; a change that violates one is
    recorded as an explicit decision, never a silent drift.
-6. **Gates** — what must pass before delivery: the one gate command, the coverage floor and
-   the security scan; point at the CI pipeline for the job detail.
-7. **Workspace** — the project uses one worktree per card, based on the integration branch
-   (`dev` by default), shared by the card's roles; the primary checkout stays on the
-   integration branch and `.meerkat/<id>/` stays in the project working directory. Merge
-   and cleanup run only after the reviewer approves or the operator confirms; the command
-   lifecycle lives in `workflow.md` and is not restated here.
-8. **Pointers** — link `docs/architecture.md`, `GLOSSARY.md`, `docs/adr/`, the contract
+6. **Gates** — what must pass before delivery: the gate path, the coverage floor and the
+   security scan; point at the CI pipeline for the job detail.
+7. **Pointers** — link `docs/architecture.md`, `GLOSSARY.md`, `docs/adr/`, the contract
    artifact and the configuration surface; do not copy their content.
 
 Leave out architecture prose, design documents, ADR bodies, directory inventories and
@@ -438,22 +433,20 @@ session, so carry only what a fresh session cannot reconstruct with `ls`, the ma
 pointer — the rest goes behind the pointer. Update the file when a command or the layout
 changes.
 
-Output: the `/init` product — `CLAUDE.md` or `AGENTS.md` — reviewed, with the entry-point
-map, the design principles, the workspace declaration and the pointers, named as the entry
-baseline in the delivery.
+Output: the agent-instruction baseline — `CLAUDE.md` or `AGENTS.md` — reviewed, with the
+entry-point map, the design principles and the pointers, named as the entry baseline in the
+delivery.
 
-### 6. Wire the git gates and CI/CD
+### 6. Record the gate and delivery path
 
-Install `.githooks/pre-commit`, `.githooks/pre-push` and `.githooks/pre-tag`, set
-`core.hooksPath`, and run the same checks in CI so a host-only bypass cannot ship. Hooks
-stay offline and fast, print the command they run, and are idempotent; check shell hooks
-with `bash -n`.
+The local gate path runs the same checks as CI, so a host-only bypass cannot ship. It stays
+offline and fast, prints what it runs, and is idempotent.
 
-| Hook | Must stop | Done when |
+| Stage | Must stop | Done when |
 |---|---|---|
-| `.githooks/pre-commit` | formatting, lint or typecheck failures on staged files; an edited or non-contiguous migration; a secret, a host-absolute path or a generated file | it returns in seconds; a fixable finding is fixed and re-staged |
-| `.githooks/pre-push` | a failing test suite (the affected set, plus the full suite before a merge); a stale contract or interface snapshot; a declared request schema that differs from the handler; a canonical contract document that no longer matches the handlers; a lockfile that does not match its manifest | it runs the same checks as the CI test job |
-| `.githooks/pre-tag` | a version that disagrees with the manifest; a tag without its CHANGELOG section; a release build that fails | it passes before the tag is created |
+| Local pre-commit | formatting, lint or typecheck failures on staged files; an edited or non-contiguous migration; a secret, a host-absolute path or a generated file | it returns in seconds; a fixable finding is fixed and re-staged |
+| Local pre-push | a failing test suite (the affected set, plus the full suite before a merge); a stale contract or interface snapshot; a declared request schema that differs from the handler; a canonical contract document that no longer matches the handlers; a lockfile that does not match its manifest | it runs the same checks as the CI test job |
+| Local pre-tag | a version that disagrees with the manifest; a tag without its CHANGELOG section; a release build that fails | it passes before the tag is created |
 
 CI runs on every push and pull request: install from the lockfile → lint, format check and
 typecheck → tests with the coverage floor → contract and canonical-contract checks → a
@@ -462,12 +455,12 @@ build the artifact → security scan (dependency audit, secret scan, SAST) with 
 unaddressed high or critical finding.
 
 CD promotes **the same artifact** that passed CI; it never rebuilds per environment. It
-deploys only from a release tag or the integration branch, keeps secrets in the deploy
+deploys only from a release tag or the mainline, keeps secrets in the deploy
 environment rather than the repository, and gives every deploy a healthcheck and a recorded
 rollback. A library or a local-only tool records `n/a` for CD.
 
-Output: the three hooks wired through `core.hooksPath`, the CI pipeline file, and the deploy
-path with its rollback.
+Output: the local gate path wired, the CI pipeline file, and the deploy path with its
+rollback.
 
 ### 7. Self-check
 
@@ -488,16 +481,15 @@ Run `self-check.md` (Architecture branch). The architecture proof is:
 - the logging contract is recorded and scaffolded: one logger module, key flows emit
   `info`, caught exceptions emit one `error` with their code and correlation id, and no
   secret is logged;
-- the directory tree is planned, scaffolded exactly, and carried by the `/init` output as a
-  top-level map with a pointer;
+- the directory tree is planned, scaffolded exactly, and carried by the agent-instruction
+  baseline as a top-level map with a pointer;
 - `CLAUDE.md`/`AGENTS.md` exists as the baseline every role reads, carries the entry
-  commands, the entry-point map, the gates and the workspace declaration, and links rather
-  than copies the architecture document and the full tree;
+  commands, the entry-point map and the gates, and links rather than copies the architecture
+  document and the full tree;
 - every ADR has a status, alternatives and consequences;
 - the scaffold checklist in Step 4 is complete, the smoke test passes and the documented
   local run works;
-- `.githooks/pre-commit`, `pre-push` and `pre-tag` exist, fire through `core.hooksPath` and
-  are idempotent;
+- the local gate path exists at pre-commit, pre-push and pre-tag, and is idempotent;
 - no secret, no host-absolute path, no second source of truth;
 - the root `GLOSSARY.md` carries the `## Product language` pointer (or says product terms
   are not recorded) and does not copy `design/glossary.md`.
@@ -508,8 +500,8 @@ Output: the requirement → artifact table in `plan.md`.
 
 Present the **architecture package** — the design-stance evidence, the options, the style
 ADR, the stack table with pinned versions and rejected alternatives, the boundaries, the
-external contract, the configuration surface, the directory tree and the `/init` product —
-to the project session. E5 belongs to the human; a public API contract is E5, and a
+external contract, the configuration surface, the directory tree and the agent-instruction
+baseline — to the project session. E5 belongs to the human; a public API contract is E5, and a
 configuration key that touches a secret is E4. Record the decision on the card. Do not start
 implementation before the review is recorded.
 
@@ -517,12 +509,12 @@ Output: the recorded E5 decision on the card.
 
 ### 9. Deliver
 
-Re-export the brief (`taskctl export md <id> --out .meerkat/<id>/card.md`), set
-`meta.stage_handoff=required`, and write the architecture variant of the `## Handoff` block
-into the delivery report's `conclusion`: one architecture-package sentence naming the
-architecture document, `.meerkat/<id>/architecture.md` (when the change is card-local), the
-style and other ADR paths, the contract artifact, the configuration surface, the directory
-tree, the `/init` product (`CLAUDE.md` or `AGENTS.md`), the acceptance source, the
+Re-export the brief, mark the handoff required, and write the architecture variant of the
+`## Handoff` block into the delivery report's `conclusion`: one architecture-package sentence
+naming the architecture document, `.meerkat/<id>/architecture.md` (when the change is
+card-local), the style and other ADR paths, the contract artifact, the configuration
+surface, the directory tree, the agent-instruction baseline (`CLAUDE.md` or `AGENTS.md`),
+the acceptance source, the
 `Delivery shape` (one task, or an epic with children) and the proposed implementation
 card(s). Deliver at `in_review` with the evidence. Do not create the implementation card;
 the project session triages it, seeds its acceptance and links it with

@@ -9,8 +9,8 @@ feature or change. It covers planning, writing, review, execution, security and 
 - this card's `.meerkat/<id>/plan.md` and `.meerkat/<id>/test-plan.md`;
 - for a feature or behaviour change, the card's `## Handoff` block (`meta.design_stage`)
   when it had a design stage: it names the archived spec/PRD, the acceptance source and the
-  implementation/fix card or report. Read `taskctl report list <ref> --json` for a named
-  report; do not assume it lives under this card's id;
+  implementation/fix card or report. Read the named report; do not assume it lives under
+  this card's id;
 - the architecture document and ADRs, when the repository has them.
 
 A card with `meta.product_change=none` is a small change or bug: build the inventory from
@@ -76,7 +76,7 @@ contract or schema broke.
 
 ### 9. Deliver
 
-Re-export the brief (`taskctl export md <id> --out .meerkat/<id>/card.md`), then deliver at
+Re-export the brief, then deliver at
 `in_review` with the traceability matrix, the commands and results, the coverage, the
 security findings and the leftovers. Do not issue a verdict; the reviewer executes the
 mandatory gates.

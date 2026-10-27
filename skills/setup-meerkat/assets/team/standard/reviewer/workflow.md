@@ -15,12 +15,9 @@ on the review card. You move nothing.
 
 ## Step 0 — the review is still valid
 
-```bash
-taskctl issue get <original> --json --actor-kind <kind> --agent Reviewer
-```
-
-If the original is not `in_review`, or its `delivery_round` is not the round recorded on
-the review card, leave a `note` on the review card and stop. Do not deliver a verdict.
+Read the original card. If it is not `in_review`, or its `delivery_round` is not the round
+recorded on the review card, leave a `note` on the review card and stop. Do not deliver a
+verdict.
 
 ## Read
 
@@ -31,8 +28,8 @@ the review card, leave a `note` on the review card and stop. Do not deliver a ve
   report drafts and attachments in that directory;
 - the original's `## Handoff` block: in its description when the original's
   `meta.design_stage` is set; in the current round's delivery report `conclusion` when its
-  `meta.stage_handoff=required` is set. Read `taskctl report list <ref> --json` for a named
-  report. Take the `design/specs|prds|prototype/<content-slug>` paths from the block, never
+  `meta.stage_handoff=required` is set. Read the named report. Take the
+  `design/specs|prds|prototype/<content-slug>` paths from the block, never
   from the task id or another card's plan;
 - the language artifacts when present: root `GLOSSARY.md`, `design/glossary.md`,
   `docs/adr/NNNN-*.md` and `design/adr/NNNN-*.md`;
@@ -44,7 +41,7 @@ the review card, leave a `note` on the review card and stop. Do not deliver a ve
 
 1. **Coverage.** Every original acceptance item is addressed with evidence; every
    requirement in the description and comments maps to an acceptance item or an explicit
-   deferral. Start from `taskctl report template <review-ref>` and also answer every item
+   deferral. Start from the report template and also answer every item
    of the **review card's snapshot** — the original's list plus the generic review items
    (requirement, plan file, omission). An APPROVE that misses one is refused by the board
    with `ACCEPTANCE_INCOMPLETE`.
@@ -109,14 +106,8 @@ E4.
 
 ## Verdict
 
-Deliver on the review card:
-
-```bash
-taskctl report template <review-ref>
-taskctl issue deliver <review-ref> --report-file - --agent Reviewer --actor-kind <kind>
-```
-
-The report's **first line** is exactly `VERDICT: APPROVE` or `VERDICT: REJECT`. Put the
+Deliver the report on the review card. The report's **first line** is exactly
+`VERDICT: APPROVE` or `VERDICT: REJECT`. Put the
 findings after it and in `leftovers`:
 
 - APPROVE: every acceptance item is met with evidence, the requirements are covered, and

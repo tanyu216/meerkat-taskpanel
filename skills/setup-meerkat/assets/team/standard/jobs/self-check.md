@@ -1,12 +1,8 @@
 # Jobs — self-check before delivery
 
-Run this after the design work and before `issue deliver`. First re-export the brief so the
-check runs against the current card, then work through every stage you ran; the skip rules
-at the end decide which stages apply.
-
-```bash
-taskctl export md <id> --out .meerkat/<id>/card.md
-```
+Run this after the design work and before delivery. First re-export the brief so the check
+runs against the current card, then work through every stage you ran; the skip rules at the
+end decide which stages apply.
 
 Never hand-edit `card.md`; re-export it. This is the role's pre-delivery audit. It is not
 the `## Handoff` block: that block is a producer card's cross-card transfer (Jobs design,

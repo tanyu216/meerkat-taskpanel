@@ -135,17 +135,20 @@ describe("loop skill: SKILL.md", () => {
     assert.match(policy, /counterexample/i);
     assert.match(policy, /Only a human comment resumes/);
     assert.match(policy, /one question string/i);
+    assert.doesNotMatch(policy, /wins over|takes precedence|replaces the loop/i);
   });
 
-  it("prefers the team's decision policy over the loop's default", () => {
+  it("makes the loop policy the single authority and names the ownership guide", () => {
     const begin = text.indexOf("### Team roles (optional)");
     assert.notEqual(begin, -1, "the team section must exist");
     const next = text.indexOf("\n### ", begin + 1);
     const section = text.slice(begin, next === -1 ? text.length : next);
 
-    assert.match(section, /decision-policy\.md/, "the team's policy file must be named");
-    assert.match(section, /replaces|wins over|before/i, "the precedence must be stated");
-    assert.match(section, /default/i, "the fallback must be stated");
+    assert.match(section, /decision-policy\.md/, "the loop policy must be named");
+    assert.match(section, /single|only|authoritative|cannot override|ignored/i, "its authority must be stated");
+    assert.doesNotMatch(section, /replaces|wins over/i, "a team must not be said to override it");
+    assert.match(section, /ownership\.md/, "the team's routing guide must be named");
+    assert.match(section, /routing|assignee still selects/i, "the guide routes; the assignee executes");
   });
 
   it("declares the board interface it requires", () => {
