@@ -62,6 +62,7 @@ HTTP API directly. Capability detail lives in the board skill's
 ```bash
 node --test                          # smoke / contract test suite
 node scripts/verify/manifests.mjs    # validate the agent-kind + loop + marketplace manifests
+node scripts/verify/version.mjs      # do the board's four version carriers agree?
 node scripts/verify/skill.mjs        # validate every shipped SKILL.md frontmatter
 node scripts/verify/web-dist.mjs     # are the two web/dist-guarded tests legs actually run?
 node scripts/build.mjs               # produce dist/ — the npm release tree (not web/dist)
@@ -99,8 +100,8 @@ thing.
 
 `verify:docker` is not a substitute for the **`check` job**, and does not reproduce two of
 its properties: the Node **22/24 matrix** (the image is Node 22 only, so a Node-24-only
-regression is invisible locally) and the standalone `scripts/verify/version.mjs` /
-`bash -n` host checkers. See [docker.md](docker.md#ci).
+regression is invisible locally) and `bash -n` on the shell scripts. (`version.mjs` is part
+of `npm run verify`, so the container does run it.) See [docker.md](docker.md#ci).
 
 The **coverage gate** is `npm run test:coverage`, the same script
 `docker/verify-in-container.sh` runs. The line/branch/function floors live **once**, in

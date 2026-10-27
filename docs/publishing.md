@@ -11,13 +11,18 @@ OpenClaw, Codex and Pi.
 
 ## 1. Version consistency
 
-**Board** — three files, root `package.json` canonical:
+**Board** — four carriers, root `package.json` canonical:
 
 | # | File | Field |
 |---|---|---|
 | 1 | `package.json` | `version` |
 | 2 | `.claude-plugin/plugin.json` | `version` |
 | 3 | `.claude-plugin/marketplace.json` | `metadata.version` |
+| 4 | `src/foundation/constants.mjs` | `export const VERSION` |
+
+The fourth is not a manifest but it is the release the **running program** reports
+(`taskctl --version`, `/health`, `/meta`, the daemon log and the writer-lock record). The
+tools locate it as a single line, `export const VERSION = "x.y.z";`.
 
 Three agent kinds are not carriers. Codex and OpenClaw install the same
 `.claude-plugin/plugin.json` bundle through the repository-root marketplace, and Pi declares
@@ -44,16 +49,17 @@ node scripts/release/bump.mjs 0.1.1 --changelog --tag
 silent no-op — so a second independently-versioned component could be added back without
 re-deriving the bump or the check.
 
-It edits each manifest **in place**: the one version string token is spliced, so key order,
-indentation, inline objects and single-line arrays survive exactly as authored — no
-`JSON.parse`/`stringify` round trip, which would reformat the whole file. The target must be
-strict semver and strictly greater than the version the group's canonical manifest currently
-declares, and the group's files are written **atomically**: every new body is staged to a temp
-file beside its target and only all-successful staging is renamed into place, so a failure
-leaves the tree byte-identical (nothing written, or everything already renamed restored).
-The groups, the files and the JSON path to each version are imported from `version.mjs` — the
-bumper and the checker cannot disagree about where a version lives. Bumping a group whose own
-files have already drifted is refused rather than quietly papered over.
+It edits each carrier **in place**: the one version literal is spliced — a JSON string token,
+or the module's `export const VERSION = "x.y.z";` declaration — so key order, indentation,
+inline objects and single-line arrays survive exactly as authored; no `JSON.parse`/`stringify`
+round trip, which would reformat the whole file. The target must be strict semver and strictly
+greater than the version the group's canonical manifest currently declares, and the group's
+files are written **atomically**: every new body is staged to a temp file beside its target
+and only all-successful staging is renamed into place, so a failure leaves the tree
+byte-identical (nothing written, or everything already renamed restored). The groups, the
+files and the access path to each version are imported from `version.mjs` — the bumper and the
+checker cannot disagree about where a version lives. Bumping a group whose own files have
+already drifted is refused rather than quietly papered over.
 
 - `--changelog` inserts an **empty** Keep-a-Changelog scaffold (`### Added` / `### Changed` /
   `### Fixed`, one placeholder bullet each) directly below `## [Unreleased]` and above the
@@ -63,16 +69,17 @@ files have already drifted is refused rather than quietly papered over.
   `git push` command. It never pushes (§3); the push stays Elon's.
 
 **Check it.** `scripts/verify/version.mjs` checks each group against its own canonical entry;
-it is wired into CI, so a version drifting inside a group fails the build rather than
-shipping. Run it before tagging — and after the bump, as the proof the bump was complete:
+it is part of `npm run verify` and wired into CI, so a version drifting inside a group fails
+the static gate rather than shipping. Run it before tagging — and after the bump, as the proof
+the bump was complete:
 
 ```bash
-node scripts/verify/version.mjs                  # both groups
-node scripts/verify/version.mjs --group loop     # narrow to one
+node scripts/verify/version.mjs                  # the board group
+node scripts/verify/version.mjs --group board    # narrow to it explicitly
 node scripts/release/bump.mjs 0.1.1 && node scripts/verify/version.mjs   # bump, then prove it
 ```
 
-Then commit the three files (and the scaffold, once filled in) **in one commit**, and let CI
+Then commit the four carriers (and the scaffold, once filled in) **in one commit**, and let CI
 confirm.
 
 ## 2. npm
@@ -180,7 +187,7 @@ Tags are cut from `main` — §3.3 states that policy and the repository setting
 
 ```bash
 # Run by Elon — not part of the document. Cut from a commit on `main`: see §3.3.
-git tag v<version>          # must match the three version fields above
+git tag v<version>          # must match the four version fields above
 git push origin v<version>  # triggers .github/workflows/release.yml
 ```
 

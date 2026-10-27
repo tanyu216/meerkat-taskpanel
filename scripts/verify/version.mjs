@@ -10,12 +10,18 @@
  *   2. .claude-plugin/plugin.json                      (the board plugin — claude,
  *                                                       and codex via the marketplace)
  *   3. .claude-plugin/marketplace.json  → metadata.version
+ *   4. src/foundation/constants.mjs     → export const VERSION
+ *
+ * The fourth is not a manifest but it is a carrier all the same: it is the release the
+ * running program reports (`taskctl --version`, `/health`, `/meta`, the daemon log and the
+ * writer-lock record), so a bump that leaves it behind ships a board that calls itself the
+ * old version.
  *
  * Every agent kind reads its own manifest to decide what version it installed, so a drift
  * within the group ships a release that calls itself two different things. This script
  * reads every carrier, checks the group against its canonical entry, prints any offending
- * file and exits non-zero on drift — wired into CI so the mistake is caught at
- * pull-request time rather than at tag time.
+ * file and exits non-zero on drift — part of `npm run verify` and wired into CI, so the
+ * mistake is caught at pull-request time rather than at tag time.
  *
  * The loop is **not** a version carrier: it is distributed by `install.sh` from
  * `skills/meerkat-loop/`, declares the *board* interface it requires rather than a
@@ -40,23 +46,57 @@ import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /**
- * The board's three manifests, in reporting order. The first entry is the canonical
- * one: every other entry in the group must equal it.
+ * The one shape the module carrier may take. Deliberately narrow: a checker and a bumper
+ * that both need a byte span should agree on exactly one line, not on a JavaScript parser.
+ * A trailing `// comment` is tolerated; anything else (indentation, single quotes, a
+ * multi-line literal) is "no declaration" rather than a guess.
+ */
+const MODULE_VERSION_SOURCE =
+  String.raw`^export const VERSION[ \t]*=[ \t]*(?<literal>"[^"\r\n]+")[ \t]*;[ \t]*(?:\/\/[^\r\n]*)?[ \t\r]*$`;
+
+/**
+ * Locate the `export const VERSION = "x.y.z";` literal in a module carrier.
  *
- * `field` names the property that carries the version (so the diagnostic for the
- * marketplace, whose version hides under `metadata`, says so).
+ * Returns the `[start, end)` span of the quoted literal (quotes included), matching
+ * `findValueSpan`'s shape so the bumper can splice either kind with one code path. A fresh
+ * RegExp per call keeps the function stateless — a shared `/g` pattern carries `lastIndex`
+ * between callers, which would silently skip a later file's first match.
+ *
+ * @param {string} raw
+ * @returns {{start: number, end: number, value: string}|null} the literal span, or `null` when there is no declaration
+ * @throws {SyntaxError} when more than one declaration makes the target ambiguous
+ */
+export function findModuleVersionSpan(raw) {
+  const matches = [...raw.matchAll(new RegExp(MODULE_VERSION_SOURCE, "gmd"))];
+  if (matches.length === 0) return null;
+  if (matches.length > 1) {
+    throw new SyntaxError(`more than one \`export const VERSION\` declaration (${matches.length})`);
+  }
+  const [start, end] = matches[0].indices.groups.literal;
+  return { start, end, value: raw.slice(start + 1, end - 1).trim() };
+}
+
+/**
+ * The board's four carriers, in reporting order. The first entry is the canonical one:
+ * every other entry in the group must equal it.
+ *
+ * `kind` selects how the value is read: `"json"` parses the file and applies `field` as a
+ * dotted path with `pick`; `"module"` locates the single `export const VERSION = "x.y.z";`
+ * declaration. `field` names what carries the version either way, so a diagnostic can say
+ * where to look (the marketplace hides its version under `metadata`).
  *
  * Three agent kinds are not carriers: Codex and OpenClaw install the same
  * `.claude-plugin/plugin.json` bundle through the repository marketplace, and Pi declares
  * itself in the canonical `package.json` itself. A row for any would only restate one
  * already above.
  *
- * @type {ReadonlyArray<{label: string, path: string, field: string, canonical?: boolean, pick: (doc: object) => unknown}>}
+ * @type {ReadonlyArray<{label: string, path: string, field: string, kind: "json"|"module", canonical?: boolean, pick?: (doc: object) => unknown}>}
  */
 export const VERSION_SOURCES = Object.freeze([
-  { label: "package.json", path: "package.json", field: "version", canonical: true, pick: (doc) => doc.version },
-  { label: "claude", path: ".claude-plugin/plugin.json", field: "version", pick: (doc) => doc.version },
-  { label: "marketplace", path: ".claude-plugin/marketplace.json", field: "metadata.version", pick: (doc) => doc.metadata?.version },
+  { label: "package.json", path: "package.json", field: "version", kind: "json", canonical: true, pick: (doc) => doc.version },
+  { label: "claude", path: ".claude-plugin/plugin.json", field: "version", kind: "json", pick: (doc) => doc.version },
+  { label: "marketplace", path: ".claude-plugin/marketplace.json", field: "metadata.version", kind: "json", pick: (doc) => doc.metadata?.version },
+  { label: "constants", path: "src/foundation/constants.mjs", field: "VERSION", kind: "module" },
 ]);
 
 /**
@@ -83,9 +123,9 @@ export function versionGroup(name = DEFAULT_GROUP) {
 }
 
 /**
- * Read one manifest and pull its version out.
+ * Read one carrier and pull its version out.
  *
- * @param {{path: string, field: string, pick: (doc: object) => unknown}} source
+ * @param {{path: string, field: string, kind: "json"|"module", pick?: (doc: object) => unknown}} source
  * @param {string} base repository root
  * @returns {Promise<{ok: true, version: string} | {ok: false, error: string}>}
  */
@@ -97,6 +137,22 @@ async function readSource(source, base) {
   } catch (err) {
     const why = err !== null && err.code === "ENOENT" ? "file not found" : err.message;
     return { ok: false, error: `${source.path}: ${why}` };
+  }
+
+  if (source.kind === "module") {
+    let span;
+    try {
+      span = findModuleVersionSpan(raw);
+    } catch (err) {
+      return { ok: false, error: `${source.path}: ${err.message}` };
+    }
+    if (span === null || span.value === "") {
+      return {
+        ok: false,
+        error: `${source.path}: no \`export const ${source.field} = "x.y.z";\` declaration`,
+      };
+    }
+    return { ok: true, version: span.value };
   }
 
   let doc;
@@ -117,10 +173,10 @@ async function readSource(source, base) {
 }
 
 /**
- * Validate that every manifest of one version group carries the same version as that
+ * Validate that every carrier of one version group carries the same version as that
  * group's canonical entry.
  *
- * Never throws for a bad tree: a missing file, malformed JSON or a missing field
+ * Never throws for a bad tree: a missing file, a malformed carrier or a missing field
  * all come back as `{ok: false, error}` so the test suite can construct broken
  * trees and assert on them.
  *
@@ -237,7 +293,7 @@ async function main(argv) {
   for (const { name, result } of (await validateVersionGroups(base, groups)).results) {
     if (!result.ok) {
       process.stderr.write(`version: FAILED (${name}) — ${result.error}\n`);
-      // A missing/malformed manifest (2) reads differently from drift (1): the
+      // A missing/malformed carrier (2) reads differently from drift (1): the
       // first is a broken tree, the second a version that was not kept in sync.
       if (result.kind === "read") status = 2;
       else if (status === 0) status = 1;
@@ -247,7 +303,7 @@ async function main(argv) {
       process.stdout.write(`  ${entry.version}  ${entry.path}  (${entry.label})\n`);
     }
     process.stdout.write(
-      `version: OK — all ${result.sources.length} ${name} manifests agree on ${result.version}\n`,
+      `version: OK — all ${result.sources.length} ${name} version carriers agree on ${result.version}\n`,
     );
   }
 

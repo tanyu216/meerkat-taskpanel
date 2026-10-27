@@ -45,7 +45,7 @@
     "build:web": "npm -w web run build",
     "dev:web": "npm -w web run dev",
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
-"verify": "node scripts/verify/manifests.mjs && node scripts/verify/skill.mjs && node scripts/verify/migrations.mjs && node scripts/verify/paths.mjs && node scripts/verify/signposts.mjs && node scripts/verify/web-dist.mjs --build",
+"verify": "node scripts/verify/manifests.mjs && node scripts/verify/version.mjs && node scripts/verify/skill.mjs && node scripts/verify/migrations.mjs && node scripts/verify/paths.mjs && node scripts/verify/signposts.mjs && node scripts/verify/web-dist.mjs --build",
     "verify:web-dist": "node scripts/verify/web-dist.mjs --build --require=all",
     "verify:migrations": "node scripts/verify/migrations.mjs",
     "verify:changelog": "node scripts/verify/changelog.mjs",

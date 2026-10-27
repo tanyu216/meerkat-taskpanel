@@ -475,13 +475,12 @@ of its properties are not reproduced by `verify:docker`:
 - it runs a **Node 22 and Node 24 matrix**, while the image is Node 22 only
   (`node:22-bookworm-slim`) — a Node-24-only regression would be red in CI and green
   locally;
-- it runs `node scripts/verify/version.mjs` and `bash -n` on the shell scripts directly on
-  the host. (Their behaviour is still covered in the container — `version.test.mjs` runs
-  under `node --test`, and `test/docker.test.mjs` runs `bash -n` on both container
-  scripts — but the standalone checkers are not.)
+- it runs `bash -n` on the shell scripts directly on the host. (Its behaviour is still
+  covered in the container — `test/docker.test.mjs` runs `bash -n` on both container
+  scripts — but the standalone check is not.)
 
 "Locally green means CI green" therefore holds for the `docker` job exactly, and for the
-`check` job only up to the Node version and those two standalone checkers. See
+`check` job only up to the Node version and that standalone checker. See
 [development.md](development.md#local-and-ci-run-the-same-commands) for the local
 equivalent of each job.
 
