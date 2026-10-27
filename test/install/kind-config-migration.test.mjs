@@ -184,7 +184,7 @@ describe("per-kind config — migration", () => {
     assert.equal(existsSync(join(programRoot, ".env.claude")), false);
   });
 
-  it("--force re-renders the template instead of migrating", () => {
+  it("--force re-renders the template and keeps the keys it does not carry", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     const programRoot = makeTempDir();
@@ -197,7 +197,9 @@ describe("per-kind config — migration", () => {
     );
     assert.equal(run.status, 0, run.stderr);
     const text = readFileSync(join(programRoot, ".env.claude"), "utf8");
-    assert.doesNotMatch(text, /CUSTOM=kept/, "force resets to the template");
+    // The template is re-rendered, but a key it does not carry belongs to the operator
+    // (or to `setup-meerkat`), so --force re-appends it rather than dropping it.
+    assert.match(text, /^MEERKAT_TASKPANEL_CUSTOM=kept$/m, "force keeps keys the template does not carry");
     assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=Reviewer$/m);
     assert.ok(existsSync(legacy), "the legacy file is still untouched");
   });
