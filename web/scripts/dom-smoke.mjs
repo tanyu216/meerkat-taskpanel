@@ -1807,7 +1807,28 @@ export async function run() {
     // comment box are. The composer sits above the newest-first list, and the
     // hint states what submitting does on this card.
     await page.click('[data-card][data-identifier="TD-13"] [data-card-title]');
-    await page.waitForTimeout(200);
+    // The drawer renders asynchronously, and a shared runner does not guarantee
+    // the 200ms a developer's machine does: wait for the exact state the three
+    // assertions below read, then read it. A genuine regression still fails them
+    // — the wait times out and the assertion reports the state it found.
+    await page
+      .waitForFunction(
+        () => {
+          const selected = [...document.querySelectorAll("[data-detail-tab]")].find(
+            (tab) => tab.getAttribute("aria-selected") === "true",
+          );
+          const comments = document.querySelector("[data-detail-comments]");
+          const hint = comments?.querySelector("[data-i18n='drawer.commentHintAwaiting']");
+          return (
+            selected?.getAttribute("data-detail-tab") === "activity" &&
+            comments?.firstElementChild?.matches("[data-comment-form]") &&
+            /Submitting answers/.test(hint?.textContent ?? "")
+          );
+        },
+        null,
+        { timeout: 5000 },
+      )
+      .catch(() => {});
     const awaitingDrawer = await page.evaluate(() => ({
       selected: [...document.querySelectorAll("[data-detail-tab]")]
         .filter((tab) => tab.getAttribute("aria-selected") === "true")
