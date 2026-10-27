@@ -3,10 +3,11 @@
  *
  * These read the shipped files as text — the same style as `test/docker.test.mjs` does for
  * the container artifacts — because a YAML workflow cannot be *run* offline. What they pin
- * is the contract the card asks for: the triggers (push/PR + weekly full + daily
- * incremental + tag), the two scanners, a syft SBOM produced by this workflow itself,
- * alert-only by default with `SCAN_STRICT=1` to enforce, and the promise that the two
- * workflows it must not touch stay out of it.
+ * is the contract the card asks for: the triggers (PR + weekly full + daily
+ * incremental + tag; no branch pushes), the two scanners, a syft SBOM produced by
+ * this workflow itself, alert-only by default with `SCAN_STRICT=1` to enforce, a
+ * required check that always reports, and the promise that the two workflows it
+ * must not touch stay out of it.
  *
  * Run with: node --test
  */
@@ -78,10 +79,11 @@ describe("static: security-scan.yml", () => {
     assert.match(text, /^ {2}workflow_dispatch:$/m);
   });
 
-  it("scans pushed branches AND version tags", async () => {
+  it("scans version tags, not branch pushes", async () => {
     const text = await read(WORKFLOW);
     assert.match(text, /tags: \["v\*"\]/, "a v* tag push must trigger the workflow");
-    assert.match(text, /branches: \["\*\*"\]/);
+    assert.doesNotMatch(text, /branches: \["\*\*"\]/, "a branch push is covered by its pull request");
+    assert.doesNotMatch(text, /^ {2}paths:$/m, "a path filter would let a required check go missing");
   });
 
   it("schedules a weekly full scan and a daily incremental alert", async () => {
@@ -117,6 +119,18 @@ describe("static: security-scan.yml", () => {
     assert.ok(count >= 2, `both scanner steps must be alert-only, found ${count}`);
   });
 
+  it("always reports, and skips only the expensive work", async () => {
+    const text = await read(WORKFLOW);
+
+    assert.match(text, /^\s+id: detect$/m, "a dependency-input detector");
+    assert.match(text, /steps\.detect\.outputs\.scan == 'true'/, "the scanners key off the detector");
+    assert.match(text, /Write empty reports \(no dependency input changed\)/);
+    assert.match(text, /\{"results":\[\]\}/, "an osv-shaped empty report");
+    assert.match(text, /"auditReportVersion":2/, "an npm-shaped empty report");
+    assert.match(text, /^ {2}security-success:$/m, "one aggregated required check");
+    assert.match(text, /^ {4}if: always\(\)$/m, "the aggregator runs even when a dependency fails");
+  });
+
   it("produces the SBOM itself with syft, including on a tag push", async () => {
     const text = await read(WORKFLOW);
 
@@ -125,6 +139,11 @@ describe("static: security-scan.yml", () => {
     assert.match(text, /output-file: sbom\.spdx\.json/);
     assert.match(text, /^\s*sbom:$/m, "a dedicated SBOM job");
     assert.match(text, /startsWith\(github\.ref, 'refs\/tags\/v'\)/, "the tag path attaches the SBOM");
+    assert.match(
+      text,
+      /^\s+if: github\.event_name != 'pull_request'$/m,
+      "a pull request does not regenerate the SBOM",
+    );
   });
 
   it("leaves release.yml and check.yml alone", async () => {
