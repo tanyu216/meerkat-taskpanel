@@ -153,6 +153,14 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
         run: node scripts/release/pack-manifest.mjs "$TARBALL" --expected-version "$VERSION"
 
+      # The artefact is installed and booted *before* it is uploaded, so a package
+      # that packs cleanly but cannot start never reaches the registry.
+      - name: Install the tarball and boot the board
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: node scripts/verify/tarball-install.mjs --tarball "$TARBALL" --expected-version "$VERSION"
+
       # The SBOM is required: if syft cannot run, the job fails and nothing is
       # published. It describes the tree the tarball was packed from.
       - name: Generate the SBOM (syft, SPDX JSON)

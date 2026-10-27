@@ -899,6 +899,10 @@ describe("static: verify-in-container.sh", () => {
     assert.match(text, /install\.sh --target all --dry-run/);
     assert.match(text, /scripts\/verify\/profiles\.mjs/);
     assert.match(text, /^node scripts\/verify\/server-install\.mjs$/m);
+    // The tarball e2e belongs here for the same reason the install e2e does: a
+    // release artefact that only CI boots is one `npm run verify:docker` cannot
+    // vouch for.
+    assert.match(text, /^node scripts\/verify\/tarball-install\.mjs$/m);
   });
 
   it("runs the install + first-run end-to-end, so local and CI cover the same ground", async () => {

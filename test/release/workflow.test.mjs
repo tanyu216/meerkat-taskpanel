@@ -117,6 +117,11 @@ describe("release.yml: the gates", () => {
     const build = jobBlock(code(await read(WORKFLOW)), "build");
     assert.match(build, /web-dist\.mjs --require=bundle/);
     assert.match(build, /pack-manifest\.mjs "\$TARBALL" --expected-version "\$VERSION"/);
+    assert.match(
+      build,
+      /tarball-install\.mjs --tarball "\$TARBALL" --expected-version "\$VERSION"/,
+      "the exact tarball is installed and booted before it is uploaded",
+    );
     assert.ok(build.indexOf("pack-manifest.mjs") < build.indexOf("anchore/sbom-action"));
   });
 

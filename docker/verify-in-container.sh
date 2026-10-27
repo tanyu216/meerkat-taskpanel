@@ -58,6 +58,12 @@ node scripts/verify/profiles.mjs
 step "server install (npm/npx + source, throwaway home; tree + launchers + /health)"
 node scripts/verify/server-install.mjs
 
+# The release artefact itself: pack, install the tarball offline into a throwaway
+# prefix, then boot the installed board. `server-install` proves the *tree*
+# installs; this proves the *tarball* does — the thing npm users actually get.
+step "tarball install (packed release, offline install, boot /health)"
+node scripts/verify/tarball-install.mjs
+
 step "agent-kind runtime claim path (offline mock harness: hook)"
 node scripts/verify/kind-runtime.mjs
 
