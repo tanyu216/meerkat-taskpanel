@@ -394,7 +394,9 @@ attestation, so leaving it off is honest.
    may answer with a placeholder (`0.0.0-stage`); the version is not resolvable until
    replication finishes. Poll `curl -fsS https://registry.npmjs.org/meerkat-taskpanel/<version>`
    until it returns 200, then compare `dist.integrity` against the tarball.
-4. **Smoke it outside the repository.** `cd /tmp && npx -y meerkat-taskpanel@<version> --version`.
+4. **Smoke it outside the repository.** `cd /tmp && npx -y -p meerkat-taskpanel@<version> taskctl
+   --version` prints the version the *published* bytes carry. (The installer itself has no
+   `--version` flag; `npx -y meerkat-taskpanel@<version> --help` only proves the wrapper runs.)
    Running `npx` inside the checkout resolves the *local* package and proves nothing.
 5. **GitHub Release.** Reuse the pipeline's artifacts:
    `node scripts/release/release-notes.mjs v<version> > release-notes.md`, then
