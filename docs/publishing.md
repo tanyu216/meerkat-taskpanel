@@ -342,12 +342,13 @@ run *because* a tag was pushed, which is exactly why rule 3 matters.
   - **Require conversation resolution before merging**;
   - **Do not allow bypassing the above settings**, so administrators are covered too;
   - leave *Allow force pushes* and *Allow deletions* **unchecked**.
-- **Tags.** Settings → Rules → **New tag ruleset** targeting `v*` (the older *Tag protection
-  rules* are the equivalent), restricting **creations, updates and deletions** to the
-  maintainers who cut releases — **and allowing the GitHub Actions app**, or listing it in
-  the ruleset's bypass list. `release-tag` pushes the tag with `GITHUB_TOKEN`; without that
-  entry the push is refused and the run fails at the "Push the tag" step, with a message
-  naming this ruleset.
+- **Tags.** Settings → Rules → a **tag ruleset** named `release-tags` targeting `v*`, with
+  **Restrict deletions** and **Block force pushes** on and **creations left open**. That
+  combination is deliberate: a published tag can never be moved or deleted, while
+  `release-tag` can still create one with `GITHUB_TOKEN` — the bypass picker does not offer
+  the built-in GitHub Actions app, and restricting creations would refuse the workflow's
+  own push. (The older *Tag protection rules* restrict creations to admins and would block
+  it, which is why the ruleset is used.)
 
 That second screen restricts *who* may create a `v*` tag; GitHub has no setting for *which
 commit* a tag points at, so the tag-from-`main` half stays a human check — and it is
@@ -400,7 +401,7 @@ The pipeline is built so that the expensive, irreversible step is last:
 | `release-prep` failed | nothing was pushed; fix the tree and re-dispatch. |
 | The release PR is wrong | close it and delete `release/vX.Y.Z`; re-dispatch `release-prep`. |
 | `release-tag` dry run is wrong | nothing was created. Re-dispatch after fixing `main`. |
-| Tagged, before `publish` | cancel the run, delete the local and remote tag. The version is still free. |
+| Tagged, before `publish` | cancel the run; delete the local tag and the remote tag (turn off the `release-tags` ruleset's deletion protection for that one delete, then turn it back on). The version is still free. |
 | Published, `smoke` or `release` failed | **the version is shipped.** Never reuse it. Fix forward: `npm deprecate meerkat-taskpanel@<version> "<why>"` if it is broken, then cut the next patch. Re-running the `release` job can repair the GitHub Release from the build artifacts. |
 
 A published version cannot be unpublished for long (npm allows one unpublish inside 72 hours
