@@ -10,12 +10,16 @@
  *
  *   1. an explicit `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`;
  *   2. `<project>/.meerkat/roles/`;
- *   3. `<agent-dir>/skills/meerkat-loop/roles/`;
- *   4. `<agent-dir>/meerkat-taskpanel/roles/` (the deployed body).
+ *   3. `<agent-dir>/skills/meerkat-loop/roles/`.
  *
  * Project roles therefore replace the global team as a set. That is easier to
  * reason about than a merge, and it keeps a project from accidentally inheriting
  * half of a workflow.
+ *
+ * The loop's state directory is deliberately **not** a candidate. It once was,
+ * for a "deployed body" install shape that no longer exists; what remained was a
+ * root that was silently shadowed whenever the skill carried a manifest, so a
+ * team written there could never load.
  *
  * Failure is deliberately soft. A missing manifest means "no role layer"; a
  * malformed manifest is reported and produces no roles, never an exception that
@@ -35,7 +39,7 @@ import { extname, isAbsolute, join, sep } from "node:path";
 export const ROLES_MANIFEST_VERSION = 1;
 
 /** Candidate source labels, in precedence order. */
-export const ROLES_SOURCES = Object.freeze(["explicit", "project", "loop-skill", "state"]);
+export const ROLES_SOURCES = Object.freeze(["explicit", "project", "loop-skill"]);
 
 export const ROLES_LIMITS = Object.freeze({
   manifestBytes: 256 * 1024,
@@ -138,7 +142,6 @@ export function resolveRolesRoot(input = {}) {
     ["explicit", input.explicitDir],
     ["project", input.projectDir ? join(input.projectDir, ".meerkat", "roles") : null],
     ["loop-skill", input.loopSkillDir ? join(input.loopSkillDir, "roles") : null],
-    ["state", input.stateDir ? join(input.stateDir, "roles") : null],
   ];
   for (const [source, dir] of candidates) {
     if (typeof dir !== "string" || dir === "") continue;

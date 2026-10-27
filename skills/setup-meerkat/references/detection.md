@@ -79,7 +79,7 @@ the actor-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the rend
   "skillsByKind": {"claude": {"board": true, "loop": true, "setup": true}},
   "loopState": {"installed": true, "path": "…"},
   "supervisor": {"installed": true, "body": "…", "units": [], "running": false, "poolPid": null, "reason": "…"},
-  "roles": {"global": {}, "project": {}, "state": {}, "explicit": {}, "effective": {}},
+  "roles": {"global": {}, "project": {}, "explicit": {}, "effective": {}},
   "mattPocock": {"skill": {}, "tracker": {"path": null, "exists": false, "mentionsTaskpanel": false, "unrelated": false}},
   "piSubagents": {"installed": false, "extensionDir": "…/.pi/agent/extensions/subagent", "recommended": "pi install npm:pi-subagents"},
   "missing": [],
@@ -89,6 +89,6 @@ the actor-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the rend
 ```
 
 `roles.effective` is the root the loop will actually load (`source` =
-`explicit|project|loop-skill|state`, plus the manifest and role count), or `null` when
+`explicit|project|loop-skill`, plus the manifest and role count), or `null` when
 there is none. `--no-network` leaves `server.probed` false and does not mark the server
 missing. `--fail-on-missing` exits 1 when `missing` is non-empty.

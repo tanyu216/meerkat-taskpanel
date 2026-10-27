@@ -207,9 +207,8 @@ resolved `target_dir` (`local_path ?? run_dir`), which is also the subagent's cw
 A team is an optional roles root, authored by `setup-meerkat`. It adds routing (the role named
 by the card's assignee supplies responsibilities and boundaries) and a workflow path carried in
 the handoff. Precedence is whole-manifest: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, then
-`<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`, then the loop's
-state directory (`<agent-dir>/meerkat-taskpanel/roles/`). With no roles root the loop behaves
-exactly as before.
+`<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`. With no roles root
+the loop behaves exactly as before.
 `setup-meerkat` writes the team's board names to `MEERKAT_TASKPANEL_AGENTS`; without that list
 the loop only scans its default agent.
 

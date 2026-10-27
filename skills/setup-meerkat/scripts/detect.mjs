@@ -466,7 +466,6 @@ async function main(argv) {
   const roles = {
     global: rolesAt(join(loopSkillDir(opts.home, kind), "roles")),
     project: rolesAt(join(opts.project, ".meerkat", "roles")),
-    state: rolesAt(join(loopStateDir(opts.home, kind), "roles")),
     explicit: rolesAt(explicitRoles),
   };
   // The loader's precedence, resolved once so a caller need not re-derive it.
@@ -477,9 +476,7 @@ async function main(argv) {
         ? { source: "project", ...roles.project }
         : roles.global.present
           ? { source: "loop-skill", ...roles.global }
-          : roles.state.present
-            ? { source: "state", ...roles.state }
-            : null;
+          : null;
   roles.effective = effectiveRoles;
   const human = detectHuman(opts, opts.home, kind, env, envFile);
   const mattPocock = detectMatt(opts.project, opts.home);
@@ -496,7 +493,6 @@ async function main(argv) {
   if (
     !roles.global.present &&
     !roles.project.present &&
-    !roles.state.present &&
     !roles.explicit.present
   ) {
     missing.push("roles");
