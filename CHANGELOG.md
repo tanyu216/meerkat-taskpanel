@@ -7,6 +7,31 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-27
+
+### Added
+
+- **An interactive install wizard.** `install.sh`, `npx meerkat-taskpanel` and the global
+  npm install now share one wizard. Run it on a terminal with no options (or pass `-i`)
+  and it asks for the install root, the install mode (full / skills only / server only),
+  the agent kinds, your board name, link-or-copy, and the claim, workflow and optional
+  supervisor policies. `--yes`, piped input and `--dry-run` never prompt.
+- **A human name for the board.** The wizard records it as `TASKCTL_HUMAN` in the server
+  tree's `.env`, and `taskd` uses it as the default actor for requests that carry no
+  `X-Taskctl-Actor` header — the browser UI and `curl`.
+
+### Changed
+
+- Fresh installs default the agent name to `Worker` and the reviewer lane to `Reviewer`.
+- Published packages now carry an npm provenance attestation: the release pipeline runs
+  the full container suite on the tagged tree, builds and installs the tarball, then
+  publishes over OIDC trusted publishing.
+
+### Fixed
+
+- `src/foundation/constants.mjs` is bumped with the other manifests, so `taskctl --version`,
+  `/health` and `/meta` cannot report a stale version after a release.
+
 ## [0.1.1] - 2026-10-27
 
 ### Fixed
@@ -129,5 +154,6 @@ First public release.
 - The subscriber unit points at the event hub instead of a direct stream.
 
 [0.1.1]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.1
-[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v0.1.1...HEAD
+[0.1.2]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.2
+[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v0.1.2...HEAD
 [0.1.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.0

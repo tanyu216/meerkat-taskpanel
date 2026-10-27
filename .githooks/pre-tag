@@ -3,7 +3,7 @@
 #
 #   sh .githooks/pre-tag v1.2.3
 #
-# Three refusals, in order:
+# Five refusals, in order:
 #
 #   1. the API contract snapshot must match the live surface
 #      (`scripts/verify/contract.mjs`) — a tag must not freeze an API contract
@@ -11,8 +11,11 @@
 #   2. every route's declared request schema must equal what its handler reads
 #      (`scripts/verify/route-request.mjs`) — the snapshot freezes the
 #      declaration, so the declaration has to be true;
-#   3. the tag's `## [X.Y.Z]` section must be in CHANGELOG.md
-#      (`scripts/verify/changelog.mjs`), so the release draft ships documented.
+#   3. the four version carriers must agree (`scripts/verify/version.mjs`);
+#   4. the tag must name that version and be on `main`
+#      (`scripts/verify/tag-version.mjs`);
+#   5. the tag's `## [X.Y.Z] - YYYY-MM-DD` section must be filled in CHANGELOG.md
+#      (`scripts/verify/changelog.mjs --strict`), so the release ships documented.
 #
 # So the tag is never created in the first place. Git has no native `pre-tag`
 # hook, so this one is invoked explicitly by the release process; the same rules
@@ -27,4 +30,6 @@ if [ "$#" -lt 1 ]; then
 fi
 node scripts/verify/contract.mjs || exit 1
 node scripts/verify/route-request.mjs || exit 1
-exec node scripts/verify/changelog.mjs "$1"
+node scripts/verify/version.mjs || exit 1
+node scripts/verify/tag-version.mjs "$1" || exit 1
+exec node scripts/verify/changelog.mjs "$1" --strict

@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
 import { AGENT_DIRS } from "../../src/orchestrator/options.mjs";
+import { baseEnv } from "../helpers/base-env.mjs";
 import { LOOP_KINDS } from "../../skills/setup-meerkat/scripts/lib/agent-kinds.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -43,7 +44,7 @@ function run(t, script, args, { cwd, env = {} } = {}) {
   const result = spawnSync(process.execPath, [script, ...args], {
     cwd: cwd ?? ROOT,
     encoding: "utf8",
-    env: { ...process.env, ...env },
+    env: baseEnv(env),
   });
   return result;
 }
@@ -653,6 +654,32 @@ describe("detect.mjs — read-only discovery", () => {
     assert.equal(result.body.human.source, "settings");
     assert.equal(result.body.mattPocock.tracker.exists, true);
     assert.equal(result.body.mattPocock.tracker.unrelated, true);
+  });
+
+  it("does not inherit the caller's TASKCTL_HUMAN", (t) => {
+    // A developer's shell exports TASKCTL_HUMAN; detection must report the
+    // *configured* human (none here), not whoever ran the suite.
+    const home = temp(t);
+    const project = temp(t);
+    const had = Object.hasOwn(process.env, "TASKCTL_HUMAN");
+    const previous = process.env.TASKCTL_HUMAN;
+    process.env.TASKCTL_HUMAN = "Parent Leak";
+    let result;
+    try {
+      result = runJson(
+        t,
+        DETECT,
+        ["--home", home, "--project", project, "--actor-kind", "claude", "--no-network"],
+        { cwd: project, env: { HOME: home, PATH: temp(t) } },
+      );
+    } finally {
+      if (had) process.env.TASKCTL_HUMAN = previous;
+      else delete process.env.TASKCTL_HUMAN;
+    }
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.body.human.configured, false);
+    assert.notEqual(result.body.human.source, "env");
+    assert.notEqual(result.body.human.name, "Parent Leak");
   });
 
   it("warns about an unspecified board address", (t) => {

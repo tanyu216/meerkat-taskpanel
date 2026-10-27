@@ -2,8 +2,12 @@
  * Shared constants for Meerkat TaskPanel.
  *
  * These are the single source of truth for names used across the CLI, the skill,
- * the plugin manifests and the HTTP surface. Keep them in sync with
- * `package.json` (name/version) and `skills/meerkat-taskpanel/SKILL.md` (skill name).
+ * the plugin manifests and the HTTP surface. `SKILL_NAME` is kept in sync with
+ * `skills/meerkat-taskpanel/SKILL.md` by hand. `VERSION` is a **checked carrier**,
+ * not an independent number: `scripts/verify/version.mjs` and `npm run release:bump`
+ * read it as the fourth member of the board's version group, so write it on one line,
+ * double-quoted, at column 0 — `export const VERSION = "x.y.z";` — the form both tools
+ * locate.
  *
  * `src/core/**` imports its tunables from here (never from `process.env` in
  * `domain/`, which must stay free of Node I/O) so a single edit moves the
@@ -12,7 +16,7 @@
 
 export const CLI_NAME = "taskctl";
 export const SKILL_NAME = "meerkat-taskpanel";
-export const VERSION = "0.1.1";
+export const VERSION = "0.1.2";
 
 /**
  * The board's **contract schema generation** — which generation of the API/wire

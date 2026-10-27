@@ -40,8 +40,13 @@ node --test
 step "npm run test:coverage (src/core + src/foundation >= 80% line/branch/function)"
 npm run test:coverage
 
-step "npm run check"
-npm run check
+# `npm run verify`, not `npm run check`: the full test suite already ran twice above
+# (`node --test`, then under coverage). `check` = `verify` + `npm test`, so using it
+# here would run every test a third time for no new verdict. `verify` keeps the
+# static half: manifests, version carriers, skill, migrations, paths, signposts and
+# the built frontend.
+step "npm run verify (static: manifests, versions, skill, migrations, paths, signposts, web-dist)"
+npm run verify
 
 step "API contract snapshot (routes + route request shapes + error codes + wire fields)"
 node scripts/verify/contract.mjs
@@ -57,6 +62,12 @@ node scripts/verify/profiles.mjs
 
 step "server install (npm/npx + source, throwaway home; tree + launchers + /health)"
 node scripts/verify/server-install.mjs
+
+# The release artefact itself: pack, install the tarball offline into a throwaway
+# prefix, then boot the installed board. `server-install` proves the *tree*
+# installs; this proves the *tarball* does — the thing npm users actually get.
+step "tarball install (packed release, offline install, boot /health)"
+node scripts/verify/tarball-install.mjs
 
 step "agent-kind runtime claim path (offline mock harness: hook)"
 node scripts/verify/kind-runtime.mjs

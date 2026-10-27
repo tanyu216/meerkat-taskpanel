@@ -62,6 +62,7 @@ HTTP API directly. Capability detail lives in the board skill's
 ```bash
 node --test                          # smoke / contract test suite
 node scripts/verify/manifests.mjs    # validate the agent-kind + loop + marketplace manifests
+node scripts/verify/version.mjs      # do the board's four version carriers agree?
 node scripts/verify/skill.mjs        # validate every shipped SKILL.md frontmatter
 node scripts/verify/web-dist.mjs     # are the two web/dist-guarded tests legs actually run?
 node scripts/build.mjs               # produce dist/ — the npm release tree (not web/dist)
@@ -76,6 +77,19 @@ npm run verify:web-dist  # fail unless both web/dist-guarded legs ran (see below
 npm run build
 npm run check     # verify + test
 npm run test:coverage   # node --test + the coverage gate (see below)
+npm run verify:installed # pack the tarball, install it offline, boot it
+```
+
+Release tooling (the pipeline that uses it is in [publishing.md §3](publishing.md)):
+
+```bash
+node scripts/release/bump.mjs 1.2.3 --changelog      # four carriers + a CHANGELOG scaffold
+node scripts/release/prep.mjs --version 1.2.3        # the release branch's whole tree
+node scripts/release/changelog-from-log.mjs 1.2.3 --from v1.2.2   # draft the entries
+node scripts/release/release-notes.mjs v1.2.3        # the GitHub Release body
+node scripts/verify/tag-version.mjs v1.2.3 --on-main # tag ↔ carriers ↔ main
+node scripts/verify/changelog.mjs v1.2.3 --strict    # the section is real, not a scaffold
+node scripts/verify/published-smoke.mjs --package-root <installed dir>  # boot a published copy
 ```
 
 ### Local and CI run the same commands
@@ -99,8 +113,8 @@ thing.
 
 `verify:docker` is not a substitute for the **`check` job**, and does not reproduce two of
 its properties: the Node **22/24 matrix** (the image is Node 22 only, so a Node-24-only
-regression is invisible locally) and the standalone `scripts/verify/version.mjs` /
-`bash -n` host checkers. See [docker.md](docker.md#ci).
+regression is invisible locally) and `bash -n` on the shell scripts. (`version.mjs` is part
+of `npm run verify`, so the container does run it.) See [docker.md](docker.md#ci).
 
 The **coverage gate** is `npm run test:coverage`, the same script
 `docker/verify-in-container.sh` runs. The line/branch/function floors live **once**, in

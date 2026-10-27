@@ -128,13 +128,13 @@ want the board**: `rm -rf ~/.meerkat-taskpanel` deletes the database with it.
 ## Quick start (agent-kind skills)
 
 ```bash
-bash install.sh --target all --agent-name "$USER"   # everything; full bundle for claude+codex
+bash install.sh --target all --agent-name Worker    # everything; full bundle for claude+codex
 bash install.sh --target claude --link --agent-name alice  # or one agent, symlinked, named alice
 ```
 
 Then register the plugin/bundle for the agents you use (one command each — see
 [Per-agent-kind steps](#per-agent-kind-steps)). `--agent-name` names the agent on the board and must
-match the assignee the board uses for it; it defaults to `$USER`.
+match the assignee the board uses for it; it defaults to `Worker`.
 
 ## Where things land
 
@@ -293,7 +293,9 @@ Enable the supervisor now? It runs headless in the background (ping 60s / contin
 The default is **N** — deliberately the opposite of the `--claim-unassigned` question
 below, which asks the same way but defaults **Y**. The supervisor is a **daemon** that runs
 unattended, so silence must mean *no*: it is opt-in, never silent residency, and a plain
-`install.sh` never enables it.
+`install.sh` never enables it. The [interactive wizard](#interactive-wizard) asks the same
+question (default `none`) as part of its one flow; when it has run, this standalone prompt
+is skipped.
 
 **Idempotence and safety.** A repeat enable never double-loads — an already-loaded unit is
 reported as `already enabled` and exits 0 — and enabling a second mechanism for the same
@@ -466,11 +468,26 @@ Allow claiming unassigned tasks? [Y/n]
 The answer is persisted to `<agent-dir>/meerkat-taskpanel.env` as
 `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes|no`; the supervisor reads it as its default (an
 explicit `--claim-unassigned` flag or `$MEERKAT_TASKPANEL_CLAIM_UNASSIGNED` overrides it).
+The [interactive wizard](#interactive-wizard) asks this question inside its one flow;
+when it has run, this standalone prompt is skipped.
 Non-interactive installs default to **yes**; `--claim-unassigned=no` /
-`--assignee-only` persist `no`. **Stale recovery is a separate opt-out**:
+`--assignee-only` persist `no`. **Stale recovery is a separate opt-out**, resolved the same way:
 `--recover-stale=no` (or `$MEERKAT_TASKPANEL_RECOVER_STALE=no`) persists
-`MEERKAT_TASKPANEL_RECOVER_STALE=no`, and the supervisor then never takes over an
-`in_progress` card — the same holder's 30-minute re-claim included. The file is merge-style: a re-run without
+`MEERKAT_TASKPANEL_RECOVER_STALE=no`. The switch only controls whether the poll's
+candidate read includes the stale-recovery pool (`issue candidates --stale`); the takeover
+decision remains the board's, through `issue claim`:
+
+| Threshold | Meaning | Enforced by |
+|---|---|---|
+| 10 minutes | The same holder may re-claim (refresh ownership/heartbeat). | `issue claim` |
+| 30 minutes | The card enters the `issue candidates --stale` recovery pool. | candidate read |
+| 6 hours | Any agent may take over, and the takeover writes a `change` comment. | `issue claim` |
+
+With `--recover-stale=no` the supervisor never adds `--stale`, so it never claims an
+`in_progress` card. The SLA patrol and its alerts still run — an alert is the only signal
+for a stranded card. This switch does **not** affect the local handoff queue's
+dead-process/timeout recovery (`recoverStaleCards` in `src/orchestrator/session.mjs`),
+which runs regardless. The file is merge-style: a re-run without
 `--force` keeps the existing value, and it also records where the board engine
 lives (`MEERKAT_TASKPANEL_REPO=<runtime tree>`) — a key the installer adds when it is
 missing, so an install made before that key existed still learns it (see
@@ -481,8 +498,12 @@ the file is created and added only when missing on an upgrade:
 
 ```ini
 MEERKAT_TASKPANEL_WORKFLOW=yes
-MEERKAT_TASKPANEL_REVIEWER=
+MEERKAT_TASKPANEL_REVIEWER=Reviewer
 ```
+
+An **empty** `MEERKAT_TASKPANEL_REVIEWER` is the manual opt-out: the supervisor
+then dispatches no review card and a delivery waits for a human to accept it
+(edit the agent config; the wizard does not ask).
 
 Acceptance is **not** install configuration any more: each project stores a default
 (`auto | off | agent | human`) and each card a snapshot, both set through
@@ -503,6 +524,49 @@ it simply creates no new review cards, and deliveries wait for a human.
 [`scheduling.md §The workflow channel`](scheduling.md#the-workflow-channel-review-acceptance-and-containers)
 is the full contract.
 
+### Interactive wizard
+
+`npx meerkat-taskpanel`, the globally installed `meerkat-taskpanel`, and
+`bash install.sh` all run the same installer, so they all offer the same wizard.
+With **no options** on a terminal it starts automatically; `-i` / `--interactive`
+forces it (including with piped answers), and `--yes` / `--non-interactive` skips
+it. Piped input, `--dry-run` and `--yes` never prompt, so CI keeps the defaults.
+
+The wizard asks, in order — every question shows a default and Enter accepts it:
+
+1. install root (the server tree and agent skills live under it)
+2. install mode — full (server + agent skills), skills only, or server only
+3. agent kinds (only for full / skills only): claude / codex / pi / openclaw
+4. your name on the board (default: the OS user)
+5. link or copy the board skill (only when an agent is selected)
+6. build `web/dist` if missing (only when the server is selected)
+7. claim unassigned / recover stale / workflow / continue switch
+8. supervisor action (default `none`) and, if one is chosen, the scheduler
+
+With `--no-server`, the mode question is skipped: it is skills-only by
+definition, and the agent-kind question follows.
+
+The board-name answer is exported as `MEERKAT_TASKPANEL_HUMAN_NAME` — the name
+`--as-human` signs with. It is asked on every run: agent installs render it into
+the shim/settings, and a server install records it as `TASKCTL_HUMAN` in the
+tree's `.env`. `taskctl` reads that key, and `taskd` uses it as the default actor
+for a request that carries no `X-Taskctl-Actor` header (the browser UI, `curl`);
+with the key unset they stay `human:local`.
+
+**Agent name, reviewer, and the ping/continue intervals are not asked.** Their
+defaults are fixed (`Worker` / `Reviewer` / `60` / `600`); edit
+`<agent-dir>/meerkat-taskpanel.env` (or `TASKCTL_AGENT` in the agent settings) to
+change them.
+
+Answers feed the same resolution path as the flags, so everything below still
+applies. `q`, `quit`, `cancel` or EOF aborts with exit 2 **before** anything is
+written; Ctrl-C is the shell's 130. In `--interactive` mode a supplied flag is
+shown as the default and typing a different answer overrides it.
+
+The wizard covers the installation shape and loop policy only. SLA/patrol settings
+(patrol cadence, `--patrol-llm`, notification commands) are not asked; they remain
+managed by the loop's own configuration and CLI.
+
 ## install.sh reference
 
 ```text
@@ -513,7 +577,8 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
            [--ping-interval <sec>] [--continue-interval <sec>] [--continue=yes|no]
            [--supervisor=enable|disable|status] [--supervisor-actor-kinds <list>]
            [--scheduler auto|launchd|systemd|cron]
-           [--link] [--force] [--dry-run] [--skip-node-check] [--skip-web-build] [-h|--help]
+           [--link] [--force] [--dry-run] [--skip-node-check] [--skip-web-build]
+           [-i|--interactive] [--yes|--non-interactive] [-h|--help]
 ```
 
 | Flag | Effect |
@@ -522,14 +587,14 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--no-server` | Install the agent-kind skills only, leaving the runtime tree out (`--target all --no-server` is the old `all`). |
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`; the server tree lands at `<home>/.meerkat-taskpanel`. |
 | `--skip-web-build` | Never try to build `web/dist`. A server install without a prebuilt `web/dist` is then API-only (with a warning) instead of building it. |
-| `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `$USER`). Must equal the board assignee for the agent to claim cards. |
+| `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `Worker`). Must equal the board assignee for the agent to claim cards. |
 | `--no-automation` | Skip the Codex scheduling units **and** the `taskd` keepalive guard; the Claude/OpenClaw/Pi skill bundles are otherwise unaffected. |
 | `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each agent-kind installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<agent-dir>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
-| `--recover-stale=yes\|no` | May the supervisor recover stale `in_progress` claims — the same holder after 30 minutes, any agent after 6 hours? Persisted to the agent config; default `yes`. |
+| `--recover-stale=yes\|no` | Add stale `in_progress` cards to the poll's candidate read (`issue candidates --stale`). The takeover itself is still `issue claim`, decided by the board (holder after 10 minutes, anyone after 6 hours). Persisted to the agent config; default `yes`. |
 | `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — ask the board for the workflow plan (`issue reconcile --workflow`) and apply its review actions. Persisted to the agent config; default `yes`. `no` means the loop writes no card at all. |
-| `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the agent config. Unset (the default) disables **dispatch** only; a delivery then waits for a human to accept it. |
+| `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the agent config; default `Reviewer`. Set the key **empty** in the agent config to disable **dispatch** — a delivery then waits for a human to accept it. |
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |
 | `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the agent kind with a bounded `Continue` prompt; that turn runs poll, patrol and workflow. |
 | `--continue=yes\|no` | Enable the continue turn. Persisted to the agent config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
@@ -539,8 +604,10 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `MEERKAT_TASKPANEL_SUPERVISOR=enable\|disable\|status` | The non-interactive form of `--supervisor` (an explicit flag wins) — the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`. |
 | `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied (it is standalone docs + decisions). For `--target server` it only warns: the runtime tree is always copied, because it must survive the checkout and the npx cache. |
 | `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags. |
-| `--dry-run` | Print every path that would be written/changed and change nothing. |
+| `--dry-run` | Print every path that would be written/changed and change nothing. It never prompts, even with `--interactive`. |
 | `--skip-node-check` | Skip the Node version check (see below). |
+| `-i, --interactive` | Ask every option in the [wizard](#interactive-wizard). Also works when stdin is a pipe, which is how it is tested; EOF cancels. |
+| `--yes, --non-interactive` | Accept every default and never prompt — the CI form. Wins over `--interactive`; it never enables the supervisor by itself. |
 
 **The `taskd` guard is always enabled and has no user flag.** Every install writes
 the `taskd` keepalive unit and loads it — there is no switch to turn it on and no prompt

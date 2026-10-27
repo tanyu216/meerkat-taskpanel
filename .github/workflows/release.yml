@@ -1,70 +1,139 @@
 name: release
 
-# A tag push (`v0.1.0`) is the release trigger. The job re-runs the same checks
-# as `check.yml`, then builds the frontend and the release tree, packages the
-# npm tarball, verifies the tarball's contents, generates the SBOM, and opens a
-# **draft** GitHub Release carrying both artifacts.
+# Tag-triggered publish. `release-tag` cuts the annotated tag (and dispatches this
+# workflow explicitly, because a `GITHUB_TOKEN` tag push does not trigger
+# `push: tags`); a manual dispatch is the dry-run and the recovery path.
 #
-# **Publishing is a human action, and this file has no path to it.** There is no
-# `npm publish`, no marketplace upload and no registry token here (decision D2=A):
-# the job stops at `gh release create --draft`, a human reviews the draft and
-# promotes it, and nothing in this workflow can publish — or be made to publish —
-# without an explicit edit a human has to make. The draft's asset list is closed
-# on purpose: the npm tarball plus `sbom.spdx.json`. SBOM generation is a required
-# step, not best-effort, so "a release draft with no SBOM" is not a state this
-# pipeline can reach (see `docs/publishing.md` §2.1 and §3).
+# Five stages, each able to stop the ones after it:
+#
+#   verify   the tag gate plus the full container suite (`npm run verify:docker`)
+#   build    the frontend and the release tree, then ONE tarball, its manifest
+#            check and the SBOM — the exact bytes publish consumes
+#   publish  `npm publish --provenance` over OIDC trusted publishing
+#   smoke    install the published version outside the repository and run it
+#   release  a public GitHub Release (no draft) with the tarball and the SBOM
+#
+# **There is no registry token.** Publishing authenticates with `id-token: write`
+# and npm trusted publishing; the only secret-bearing path is GitHub's own OIDC
+# exchange, which is why `publish` alone carries that permission. The tarball
+# published is the one `build` produced, not a second `npm pack`.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The tag to release (default: the checked-out tree's version)"
+        required: false
+        type: string
+      dry_run:
+        description: "Verify and build, run npm publish --dry-run, publish nothing"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  release:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
+          fetch-tags: true
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
 
-      # Same gate as `check.yml`: the release must not ship a tree that would fail
-      # the pull-request checks.
-      - name: Tests
-        run: node --test
+      - name: Fetch main for the tag-from-main check
+        run: git fetch origin main --tags
 
-      - name: Manifests
-        run: node scripts/verify/manifests.mjs
+      - name: Resolve the release tag
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          version="$(node scripts/verify/version.mjs --print)"
+          tag="v${version}"
+          if [ -n "$INPUT_TAG" ] && [ "$INPUT_TAG" != "$tag" ]; then
+            echo "release: '${INPUT_TAG}' was requested but the tree carries '${tag}'" >&2
+            exit 1
+          fi
+          if [ "$EVENT" = "push" ] && [ "$REF_NAME" != "$tag" ]; then
+            echo "release: ${REF_NAME} does not name the tree's version (${tag})" >&2
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "release: ${tag}"
 
-      - name: Version manifests agree
-        run: node scripts/verify/version.mjs
+      - name: Tag gate
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          node scripts/verify/tag-version.mjs "$TAG" --on-main
+          node scripts/verify/version.mjs
+          node scripts/verify/changelog.mjs "$TAG" --strict
+          node scripts/verify/contract.mjs
+          node scripts/verify/route-request.mjs
+          node scripts/verify/paths.mjs
+          node scripts/verify/signposts.mjs
 
-      - name: Skill definition
-        run: node scripts/verify/skill.mjs
+      # The authoritative gate: the same script `pre-push` runs locally, so a green
+      # tag means what a green branch push means — the whole suite in the image,
+      # not the subset a release used to re-run.
+      - name: Full container suite
+        run: npm run verify:docker
 
-      # The frontend is built exactly the way `check.yml` builds it — same
-      # Dockerfile, same offline `webbuild` stage. `--target webbuild` builds the
-      # stage alone so its `web/dist` can be pulled out; the full image below then
-      # reuses those cached layers, so the frontend is compiled once.
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Resolve the release tag
+        id: release
+        run: |
+          version="$(node scripts/verify/version.mjs --print)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "release: v${version}"
+
       - name: Build the board frontend (webbuild stage)
         run: docker build -f docker/Dockerfile --target webbuild -t meerkat-taskpanel:webbuild .
 
       - name: Extract web/dist from the webbuild stage
         run: |
           cid="$(docker create meerkat-taskpanel:webbuild)"
-          # Put the build where the `files` whitelist expects it: the npm
-          # tarball is the installable server, so it must carry the frontend.
           docker cp "$cid:/app/web/dist" ./web/dist
           docker rm "$cid"
           test -f ./web/dist/index.html
           echo "web/dist: $(find ./web/dist -type f | wc -l) files"
 
-      - name: Build the verification image (same tag as check.yml)
-        run: docker build -f docker/Dockerfile -t meerkat-taskpanel:verify .
+      - name: The bundle is the frontend build, not an empty directory
+        run: node scripts/verify/web-dist.mjs --require=bundle
 
       - name: Build the release tree (dist/)
         run: |
@@ -74,61 +143,212 @@ jobs:
       - name: Package the npm tarball
         id: pack
         run: |
-          tarball="$(npm pack --silent)"
+          tarball="$(npm pack --silent --ignore-scripts)"
           echo "tarball=${tarball}" >> "$GITHUB_OUTPUT"
           echo "packed ${tarball}"
 
-      - name: Verify the tarball's contents
-        run: node scripts/release/pack-manifest.mjs "${{ steps.pack.outputs.tarball }}"
+      - name: The tarball carries the release and nothing else
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: node scripts/release/pack-manifest.mjs "$TARBALL" --expected-version "$VERSION"
 
-      # The SBOM is a release artifact, not a side effect: it is produced here, by
-      # the release pipeline, so the bill of materials describes exactly the tagged
-      # tree the tarball was packed from. Same tool and format as `security-scan.yml`
-      # (syft, SPDX JSON); that workflow also attaches an SBOM to the draft,
-      # best-effort, as a second pair of eyes. This step is the authoritative one and
-      # is deliberately **required**, not `continue-on-error`: if syft cannot run, the
-      # job fails and no draft is opened, which is what closes the "release published
-      # without an SBOM" gap (T-20261010-042400-depsec conformance note).
+      # The artefact is installed and booted *before* it is uploaded, so a package
+      # that packs cleanly but cannot start never reaches the registry.
+      - name: Install the tarball and boot the board
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: node scripts/verify/tarball-install.mjs --tarball "$TARBALL" --expected-version "$VERSION"
+
+      # The SBOM is required: if syft cannot run, the job fails and nothing is
+      # published. It describes the tree the tarball was packed from.
       - name: Generate the SBOM (syft, SPDX JSON)
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
           format: spdx-json
           output-file: sbom.spdx.json
           artifact-name: meerkat-taskpanel-sbom.spdx.json
-          upload-artifact: true
+          upload-artifact: false
           upload-release-assets: false
 
-      # Named, so a red run says which artifact is missing instead of leaving it to
-      # the release step's own `test -s` two steps later.
       - name: The SBOM exists and is non-empty
         run: test -s sbom.spdx.json
 
-      # A DRAFT only, and the last step: the workflow stops here. Promotion is a
-      # human decision — there is no publish path in this file, and no token that
-      # would let one run.
-      - name: Open the GitHub Release draft (tarball + SBOM)
+      # One artifact pair, consumed by `publish` and `release`: the tarball is
+      # published as-is, never re-packed.
+      - name: Upload the release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-artifacts
+          path: |
+            ${{ steps.pack.outputs.tarball }}
+            sbom.spdx.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-artifacts
+          path: pkg
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24" # npm >= 11.5.1: the floor for trusted publishing
+          package-manager-cache: false
+
+      # Trusted publishing authenticates with the OIDC token, never a stored
+      # secret. A `NODE_AUTH_TOKEN` here would silently change which identity
+      # publishes, so its presence is a failure, not an override.
+      - name: There is no registry token
+        run: |
+          if [ -n "${NODE_AUTH_TOKEN:-}" ] || [ -n "${NPM_TOKEN:-}" ]; then
+            echo "release: a registry token is set — trusted publishing must run without one" >&2
+            exit 1
+          fi
+          echo "release: no registry token; npm $(npm --version)"
+
+      - name: Publish
+        id: publish
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          tarball="$(ls pkg/*.tgz)"
+          version="$VERSION"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "release: publishing ${tarball} as ${version}${DRY_RUN:+ (dry run)}"
+
+          if [ "${DRY_RUN}" = "true" ]; then
+            npm publish "$tarball" --dry-run --access public
+            echo "release: dry run — nothing was uploaded"
+            exit 0
+          fi
+
+          if npm view "meerkat-taskpanel@${version}" version >/dev/null 2>&1; then
+            echo "release: meerkat-taskpanel@${version} is already on the registry; skipping the upload"
+          else
+            npm publish "$tarball" --provenance --access public
+          fi
+
+      # The upload is asynchronous: `npm publish` returning does not mean the
+      # version resolves. Poll the exact version (and its attestation) before the
+      # smoke install, so a propagation delay is a wait, not a false red.
+      - name: Wait for the registry
+        if: ${{ inputs.dry_run != true }}
+        env:
+          VERSION: ${{ steps.publish.outputs.version }}
+        run: |
+          for attempt in $(seq 1 30); do
+            published="$(npm view "meerkat-taskpanel@${VERSION}" version 2>/dev/null || true)"
+            if [ "$published" = "$VERSION" ]; then break; fi
+            sleep 10
+          done
+          published="$(npm view "meerkat-taskpanel@${VERSION}" version 2>/dev/null || true)"
+          if [ "$published" != "$VERSION" ]; then
+            echo "release: meerkat-taskpanel@${VERSION} never appeared on the registry" >&2
+            exit 1
+          fi
+          attestations="$(npm view "meerkat-taskpanel@${VERSION}" dist.attestations --json 2>/dev/null || true)"
+          if [ -z "$attestations" ] || [ "$attestations" = "undefined" ]; then
+            echo "release: meerkat-taskpanel@${VERSION} carries no provenance attestation" >&2
+            exit 1
+          fi
+          echo "release: meerkat-taskpanel@${VERSION} is live with provenance"
+
+  smoke:
+    needs: [build, publish]
+    if: ${{ inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Outside the repository and outside its node_modules: the only copy of the
+      # package is the published one. The container is throwaway.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          sparse-checkout: scripts/verify
+          sparse-checkout-cone-mode: true
+
+      - name: Install the published version and boot it
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          docker run --rm \
+            -e VERSION="$VERSION" \
+            -v "$PWD/scripts/verify:/verify:ro" \
+            node:24-bookworm-slim bash -lc '
+              set -euo pipefail
+              mkdir -p /work && cd /work
+              npm init -y >/dev/null
+              npm install --no-audit --no-fund "meerkat-taskpanel@${VERSION}"
+              node /verify/published-smoke.mjs \
+                --package-root "/work/node_modules/meerkat-taskpanel" \
+                --expected-version "$VERSION"
+            '
+
+  release:
+    needs: [build, smoke]
+    if: ${{ inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-artifacts
+          path: artifacts
+
+      - name: Build the release notes
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          node scripts/release/release-notes.mjs "v${VERSION}" > release-notes.md
+          test -s release-notes.md
+
+      # Public, not a draft: npm is already published and smoke-tested by the time
+      # this runs, so a draft would only add a manual step between the registry and
+      # the announcement. Re-running repairs the release rather than failing on it.
+      - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          # The section for this version: from its `## [x.y.z]` heading up to the
-          # next heading or the trailing link-reference block.
-          awk -v v="$version" '
-            index($0, "## [" v "]") == 1 { inside = 1; next }
-            inside && index($0, "## [") == 1 { exit }
-            inside && index($0, "[") == 1 { exit }
-            inside { print }
-          ' CHANGELOG.md > release-notes.md
-          if [ ! -s release-notes.md ]; then
-            echo "Meerkat TaskPanel ${GITHUB_REF_NAME}" > release-notes.md
+          tag="v${VERSION}"
+          tarball="$(ls artifacts/*.tgz)"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" \
+              --title "Meerkat TaskPanel ${tag}" \
+              --notes-file release-notes.md \
+              --draft=false
+            gh release upload "$tag" "$tarball" artifacts/sbom.spdx.json --clobber
+          else
+            gh release create "$tag" \
+              "$tarball" \
+              artifacts/sbom.spdx.json \
+              --title "Meerkat TaskPanel ${tag}" \
+              --notes-file release-notes.md
           fi
-          # Both release artifacts, always: the npm tarball and the SBOM. The list is
-          # closed — no wildcard, nothing else in the workspace is uploaded.
-          test -s sbom.spdx.json
-          gh release create "$GITHUB_REF_NAME" \
-            "${{ steps.pack.outputs.tarball }}" \
-            sbom.spdx.json \
-            --draft \
-            --title "Meerkat TaskPanel ${GITHUB_REF_NAME}" \
-            --notes-file release-notes.md
+          draft="$(gh release view "$tag" --json isDraft --jq '.isDraft')"
+          if [ "$draft" != "false" ]; then
+            echo "release: ${tag} is still a draft" >&2
+            exit 1
+          fi

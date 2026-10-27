@@ -22,7 +22,7 @@
 # Honours:
 #
 #   MEERKAT_TASKPANEL_TARGET_HOME  base home directory (default: $HOME)
-#   MEERKAT_TASKPANEL_AGENT_NAME   agent identity for the bundle (default: $USER)
+#   MEERKAT_TASKPANEL_AGENT_NAME   agent identity for the bundle (default: Worker)
 #   MEERKAT_TASKPANEL_LINK         "1" to symlink instead of copy
 #   MEERKAT_TASKPANEL_FORCE        "1" to overwrite an existing destination / managed key
 #   MEERKAT_TASKPANEL_DRY_RUN      "1" to print what would happen and change nothing
@@ -189,14 +189,13 @@ setup_skill_name() { printf '%s\n' "setup-meerkat"; }
 
 # agent_name — the identity written into the agent bundle.
 #
-# `--agent-name` (MEERKAT_TASKPANEL_AGENT_NAME) wins; the default is $USER, then $LOGNAME,
-# then a stable "agent" placeholder. The name is the board assignee: claiming a card
-# checks `assignee == actor`, so this is the name the agent must be assigned cards as.
+# `--agent-name` (MEERKAT_TASKPANEL_AGENT_NAME) wins; the default is the fixed name
+# "Worker" (edit the agent config / pass the flag to change it). The name is the board
+# assignee: claiming a card checks `assignee == actor`, so this is the name the agent
+# must be assigned cards as.
 agent_name() {
   local name="${MEERKAT_TASKPANEL_AGENT_NAME:-}"
-  [ -n "$name" ] || name="${USER:-}"
-  [ -n "$name" ] || name="${LOGNAME:-}"
-  [ -n "$name" ] || name="agent"
+  [ -n "$name" ] || name="Worker"
   printf '%s\n' "$name"
 }
 
@@ -254,7 +253,7 @@ export_tp_env() {
   # The workflow channel's remembered answers. An empty reviewer is deliberate and
   # renders as `KEY=`, which the supervisor reads as "not configured".
   TP_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-yes}"
-  TP_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
+  TP_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-Reviewer}"
   # The scheduler's two clocks. Ping only prunes dead worker pids; continue is
   # the bounded `Continue` judgment turn that runs poll/patrol/workflow.
   TP_PING_INTERVAL="${MEERKAT_TASKPANEL_PING_INTERVAL:-60}"
@@ -546,6 +545,26 @@ ensure_env_key() {
 
   printf '%s=%s\n' "$key" "$value" >> "$TP_ENV"
   echo "$TP_ACTOR_KIND: recorded $key in $TP_ENV"
+}
+
+# ensure_file_key <file> <key> <value> — append KEY=VALUE when the file exists and
+# the key is absent. Honours the dry run. An existing key (even an empty one) is
+# kept: the server `.env` may hold deliberate edits or a token.
+ensure_file_key() {
+  file="$1"
+  key="$2"
+  value="$3"
+
+  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ] || [ -n "${DRY_RUN:-}" ]; then
+    echo "would ensure $key in $file"
+    return 0
+  fi
+  [ -f "$file" ] || return 0
+  if grep -q "^${key}=" "$file"; then
+    return 0
+  fi
+  printf '%s=%s\n' "$key" "$value" >> "$file"
+  echo "install.sh: recorded $key in $file"
 }
 
 # seed_env_file — create the install-root `.env` on a fresh install.

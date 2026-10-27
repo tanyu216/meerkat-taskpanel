@@ -17,56 +17,17 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { baseEnv as cleanBaseEnv } from "../../helpers/base-env.mjs";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 export const CLI = join(ROOT, "src", "cli", "index.mjs");
 /** The daemon *program* (what autostart spawns); `index.mjs` is the library. */
 export const SERVER = join(ROOT, "src", "server", "main.mjs");
-
-/**
- * Environment keys a child must never inherit from the developer's shell.
- *
- * `USER`/`LOGNAME` are in the list for a different reason than the `TASKD_*`
- * ones: the CLI derives an unnamed actor from them, so leaving them in would
- * make `author_id` depend on who ran the suite. Tests must not be
- * machine-specific.
- */
-const TASKD_VARS = [
-  "TASKD_DATA_DIR",
-  "TASKD_DB",
-  "TASKD_PORT",
-  "TASKD_HOST",
-  "TASKD_URL",
-  "TASKD_TOKEN",
-  "TASKD_TOKEN_FILE",
-  "TASKD_RUNTIME_POINTER",
-  "TASKD_NO_AUTOSTART",
-  "TASKD_LOG_LEVEL",
-  "TASKD_LOG_MAX_BYTES",
-  "TASKD_LOG_KEEP",
-  "MEERKAT_TASKPANEL_ENV_FILE",
-  "TASKCTL_AGENT",
-  "TASKCTL_AGENT_PLATFORM",
-  "TASKCTL_ACTOR_KIND",
-  "TASKCTL_HUMAN",
-  "TASKCTL_SESSION_ID",
-  "USER",
-  "LOGNAME",
-];
-
-/**
- * An *empty* config file, so a child reads "no configuration" rather than a
- * developer's install-root `.env`. Naming a missing file would be an error by
- * design; naming an empty one is the supported "no config" spelling.
- */
-const EMPTY_ENV_DIR = mkdtempSync(join(tmpdir(), `meerkat-taskpanel-test-env-${process.pid}-`));
-const EMPTY_ENV_FILE = join(EMPTY_ENV_DIR, ".env");
-mkdirSync(EMPTY_ENV_DIR, { recursive: true });
-writeFileSync(EMPTY_ENV_FILE, "");
 
 const tempDirs = [];
 
@@ -89,13 +50,18 @@ export function cleanupTempDirs() {
   }
 }
 
-/** `process.env` with every meerkat-taskpanel variable stripped. */
+/**
+ * `process.env` with every meerkat-taskpanel variable stripped, pointed at an
+ * empty config file.
+ *
+ * `USER`/`LOGNAME` go too, for a different reason than the `TASKD_*` keys: the
+ * CLI derives an unnamed actor from them, so leaving them in would make
+ * `author_id` depend on who ran the suite.
+ */
 export function baseEnv() {
-  const env = { ...process.env };
-  for (const key of TASKD_VARS) delete env[key];
-  // The CLI/server now read `<install root>/.env` by default. Point every child
-  // at an empty file, so a developer's real file cannot leak in.
-  env.MEERKAT_TASKPANEL_ENV_FILE = EMPTY_ENV_FILE;
+  const env = cleanBaseEnv();
+  delete env.USER;
+  delete env.LOGNAME;
   return env;
 }
 

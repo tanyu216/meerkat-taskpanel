@@ -12,13 +12,20 @@
 #              [--claim-unassigned=yes|no] [--assignee-only]
 #              [--supervisor=enable|disable|status] [--supervisor-actor-kinds <list>]
 #              [--scheduler auto|launchd|systemd|cron]
-#              [--link] [--force] [--dry-run] [--skip-node-check] [--skip-web-build] [-h|--help]
+#              [--link] [--force] [--dry-run] [--skip-node-check] [--skip-web-build]
+#              [-i|--interactive] [--yes|--non-interactive] [-h|--help]
 #
 # `--target` also accepts a comma-separated list (e.g. `--target claude,codex`).
 # Default target is "all": the four agents plus the server runtime tree at
 # <home>/.meerkat-taskpanel. `--no-server` leaves the server out.
 #
-# It also asks (when stdin is a TTY and no flag was given) whether the supervisor
+# With no arguments on a terminal it opens an interactive wizard that asks every
+# option (targets, prefix, policies, supervisor and scheduler); `-i` forces the
+# wizard and `--yes` skips it. Piped input, `--dry-run` and `--yes` never prompt:
+# they keep the defaults, so CI is unaffected. Any flag without `-i` keeps the
+# legacy path below.
+#
+# When no flag supplied them, it also asks (on a TTY) whether the supervisor
 # may claim **unassigned** cards, and persists the answer as
 # `<agent-dir>/meerkat-taskpanel.env` for the bundle agent kinds. Non-interactive runs
 # default to yes; `--claim-unassigned=no` / `--assignee-only` opt out.
@@ -60,6 +67,9 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 TARGET=""
 PREFIX_HOME=""
+NO_ARGS=0
+INTERACTIVE_FLAG=""
+YES_FLAG=""
 AGENT_NAME=""
 NO_AUTOMATION=""
 CLAIM_UNASSIGNED_FLAG=""
@@ -79,12 +89,20 @@ SKIP_NODE_CHECK=""
 SKIP_WEB_BUILD=""
 NO_SERVER=""
 
+# "No arguments" is what the auto-wizard keys on; record it before parsing.
+if [ "$#" -eq 0 ]; then
+  NO_ARGS=1
+fi
+
 usage() {
   cat <<'EOF'
 Usage: install.sh [options]
 
 Install the Meerkat TaskPanel skills into one or more agent kinds, and
 the server runtime tree.
+
+With no options on a terminal, an interactive wizard asks every setting.
+Piped input, --dry-run and --yes never prompt and keep the defaults.
 
 Options:
   --target <agent-kind>  claude | openclaw | codex | pi | server | all
@@ -94,7 +112,7 @@ Options:
                     and provides bin/taskd + bin/taskctl.
   --no-server       Install the agent-kind skills only, leaving the server out
   --prefix <home>   Install relative to <home> instead of $HOME
-  --agent-name <n>  Agent identity written into the agent bundle (default: $USER)
+  --agent-name <n>  Agent identity written into the agent bundle (default: Worker)
   --no-automation   Skip the Codex claim trigger and scheduling units
   --claim-unassigned=yes|no
                     May the supervisor claim unassigned cards? Persisted to the
@@ -108,8 +126,9 @@ Options:
                     dispatch, applying verdicts). Persisted to the agent config;
                     default yes.
   --reviewer <agent>
-                    The independent reviewer that audits delivered cards. Unset
-                    (the default) leaves deliveries for a human to accept.
+                    The independent reviewer that audits delivered cards
+                    (default: Reviewer). Set MEERKAT_TASKPANEL_REVIEWER empty in
+                    the agent config to leave deliveries for a human to accept.
   --ping-interval <sec>
                     The liveness clock (default 60). It only prunes dead worker
                     pids from the registry: no board read, no LLM.
@@ -146,7 +165,17 @@ Options:
   --dry-run         Print the destination paths and change nothing
   --skip-web-build  Never try to build web/dist; a server install is API-only if absent
   --skip-node-check Do not require Node (bypass the >= 22 runtime check)
+  -i, --interactive  Ask every option in a wizard (works with piped answers too)
+  --yes, --non-interactive
+                    Accept every default; never prompt (the CI form)
   -h, --help        Show this help
+
+The wizard asks, in order: install root, install mode (full / skills only /
+server only), agent kinds, your board name, link-or-copy, whether to build
+web/dist, claim/recover/workflow/continue, and the opt-in supervisor action
+(+ scheduler). Every question shows a default; Enter accepts it and `q`
+cancels before anything is written. Agent name, reviewer and the two
+intervals are not asked — edit them in the agent config.
 
 Requires Node >= 22 (the engine uses the built-in node:sqlite module).
 The check runs before anything is installed; a missing or older `node` is an
@@ -188,9 +217,13 @@ MEERKAT_TASKPANEL_SUPERVISOR below, a plain install only prints the load command
 
 Environment (set for each agent-kind installer):
   MEERKAT_TASKPANEL_TARGET_HOME  overrides $HOME
-  MEERKAT_TASKPANEL_AGENT_NAME   agent identity (default: $USER)
+  MEERKAT_TASKPANEL_AGENT_NAME   agent identity (default: Worker)
+  MEERKAT_TASKPANEL_HUMAN_NAME   the human name --as-human signs with (default: $USER)
   MEERKAT_TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger + scheduling
   MEERKAT_TASKPANEL_CLAIM_UNASSIGNED  "yes"/"no" default for the claim policy
+  MEERKAT_TASKPANEL_RECOVER_STALE     "yes"/"no" (default yes)
+  MEERKAT_TASKPANEL_WORKFLOW          "yes"/"no" (default yes)
+  MEERKAT_TASKPANEL_REVIEWER          reviewer agent (default Reviewer; empty = no dispatch)
   MEERKAT_TASKPANEL_PING_INTERVAL      liveness clock, seconds (default 60)
   MEERKAT_TASKPANEL_CONTINUE_INTERVAL  judgment clock, seconds (default 600)
   MEERKAT_TASKPANEL_CONTINUE           "yes"/"no" (default yes)
@@ -199,6 +232,7 @@ Environment (set for each agent-kind installer):
   MEERKAT_TASKPANEL_SCHEDULER    "auto"/"launchd"/"systemd"/"cron" (default auto)
   MEERKAT_TASKPANEL_LINK         symlink instead of copy
   MEERKAT_TASKPANEL_FORCE        overwrite an existing destination
+  MEERKAT_TASKPANEL_SKIP_WEB_BUILD "1" to never build web/dist
   MEERKAT_TASKPANEL_DRY_RUN      print only, change nothing
   MEERKAT_TASKPANEL_MIN_NODE     required Node major (default 22)
   MEERKAT_TASKPANEL_SKIP_NODE_CHECK  "1" to skip the Node version check
@@ -423,6 +457,14 @@ while [ "$#" -gt 0 ]; do
       NO_SERVER="1"
       shift
       ;;
+    -i | --interactive)
+      INTERACTIVE_FLAG="1"
+      shift
+      ;;
+    --yes | --non-interactive)
+      YES_FLAG="1"
+      shift
+      ;;
     -h | --help)
       usage
       exit 0
@@ -447,6 +489,33 @@ if [ "$SKIP_NODE_CHECK" = "1" ]; then
 elif ! require_node; then
   echo "install.sh: aborting (re-run with --skip-node-check to bypass this check)." >&2
   exit 2
+fi
+
+[ -f "$ROOT/scripts/install/_wizard.sh" ] || die "missing installer helper: $ROOT/scripts/install/_wizard.sh"
+. "$ROOT/scripts/install/_wizard.sh"
+
+# The effective bypass values must be known before the trigger decision, and are
+# still the env fallback the resolution blocks below use. `--no-automation` needs
+# this too: the forwarding would otherwise hand each installer an empty value and
+# silently overwrite the documented environment form.
+DRY_RUN="${DRY_RUN:-${MEERKAT_TASKPANEL_DRY_RUN:-}}"
+NO_AUTOMATION="${NO_AUTOMATION:-${MEERKAT_TASKPANEL_NO_AUTOMATION:-}}"
+SKIP_WEB_BUILD="${SKIP_WEB_BUILD:-${MEERKAT_TASKPANEL_SKIP_WEB_BUILD:-}}"
+
+# The wizard runs after the Node check (fail fast) and before target
+# normalization / env seeding / dispatch (cancel writes nothing). It answers the
+# claim and supervisor policy too, so setting TTY="" below stops those helpers
+# asking a second time.
+STDIN_TTY=""
+if [ -t 0 ]; then STDIN_TTY="1"; fi
+TTY=""
+if wizard_should_run "$INTERACTIVE_FLAG" "$YES_FLAG" "$DRY_RUN" "$NO_ARGS" "$STDIN_TTY"; then
+  if ! run_wizard; then
+    echo "install.sh: cancelled — nothing was installed." >&2
+    exit 2
+  fi
+elif [ -n "$STDIN_TTY" ] && [ -z "$DRY_RUN" ] && [ -z "$YES_FLAG" ]; then
+  TTY="1"
 fi
 
 # Normalize: split the target list on commas, drop blanks, keep first occurrences.
@@ -496,13 +565,6 @@ fi
 
 # --prefix wins; otherwise honour an inherited MEERKAT_TASKPANEL_TARGET_HOME; else $HOME.
 TARGET_HOME="${PREFIX_HOME:-${MEERKAT_TASKPANEL_TARGET_HOME:-$HOME}}"
-DRY_RUN="${DRY_RUN:-${MEERKAT_TASKPANEL_DRY_RUN:-}}"
-# Same for --no-automation: the flag, else the inherited environment. Without this the
-# forwarding below would hand each agent-kind installer an *empty* MEERKAT_TASKPANEL_NO_AUTOMATION
-# and silently overwrite the one the caller set, so the documented environment form of the
-# bypass would skip nothing.
-NO_AUTOMATION="${NO_AUTOMATION:-${MEERKAT_TASKPANEL_NO_AUTOMATION:-}}"
-SKIP_WEB_BUILD="${SKIP_WEB_BUILD:-${MEERKAT_TASKPANEL_SKIP_WEB_BUILD:-}}"
 
 # The server target is the runtime tree at <home>/.meerkat-taskpanel. When it is
 # selected, the agent-kind skills must drive *that* tree, not the checkout/package they
@@ -536,10 +598,6 @@ fi
 # and a dry run never blocks on a prompt. A bad value is a hard error, before any
 # agent kind is dispatched, so a misspelt policy installs nothing.
 CLAIM_FLAG="${CLAIM_UNASSIGNED_FLAG:-${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-}}"
-TTY=""
-if [ -z "$DRY_RUN" ] && [ -t 0 ]; then
-  TTY="1"
-fi
 if ! CLAIM_UNASSIGNED="$(claim_unassigned_value "$CLAIM_FLAG" "$TTY")"; then
   exit 2
 fi
@@ -550,7 +608,7 @@ echo "install.sh: claim unassigned tasks: $CLAIM_UNASSIGNED"
 # any agent kind is dispatched — a misspelt policy must install nothing.
 RECOVER_STALE="${RECOVER_STALE_FLAG:-${MEERKAT_TASKPANEL_RECOVER_STALE:-yes}}"
 WORKFLOW="${WORKFLOW_FLAG:-${MEERKAT_TASKPANEL_WORKFLOW:-yes}}"
-REVIEWER="${REVIEWER_FLAG:-${MEERKAT_TASKPANEL_REVIEWER:-}}"
+REVIEWER="${REVIEWER_FLAG:-${MEERKAT_TASKPANEL_REVIEWER:-Reviewer}}"
 case "$RECOVER_STALE" in
   yes | no) ;;
   *) die "--recover-stale must be yes or no (got '$RECOVER_STALE')" ;;
@@ -700,6 +758,14 @@ FAIL $target — see the message above (re-run with --force to overwrite an exis
   fi
 done
 
+# The wizard's human name is a server/UI value too, not just an agent-bundle one:
+# record it as TASKCTL_HUMAN in the tree's single `.env`. Agent installs already
+# carry it in their settings/shim; this covers server-only (and keeps one source
+# of truth on a combined install).
+if [ -n "$SERVER_INSTALLED" ] && [ -n "${MEERKAT_TASKPANEL_HUMAN_NAME:-}" ]; then
+  ensure_file_key "$SERVER_ROOT/.env" "TASKCTL_HUMAN" "$MEERKAT_TASKPANEL_HUMAN_NAME"
+fi
+
 # The taskd keepalive guard, once for the machine rather than once per agent kind, and
 # after the agent kinds so its report closes the install's own work (see the function
 # above). Non-fatal by design: a failed agent kind is already reported, and letting the
@@ -724,6 +790,16 @@ else
     echo "install.sh: done. Next step: register the agent's plugin/bundle (see docs/install.md),"
     echo "             or point the agent at the installed skill directory."
   fi
+fi
+
+# The wrapper cannot print this itself: a wizard-chosen target/prefix is unknown
+# until this script has run. Source installs get the same advice.
+if [ -n "$SERVER_INSTALLED" ] && [ -z "$DRY_RUN" ]; then
+  echo
+  echo "Installed under $SERVER_ROOT"
+  echo "  taskd:   $SERVER_ROOT/bin/taskd"
+  echo "  taskctl: $SERVER_ROOT/bin/taskctl"
+  echo "Add $SERVER_ROOT/bin to PATH, or use \`npm install -g meerkat-taskpanel\`."
 fi
 
 exit "$status"

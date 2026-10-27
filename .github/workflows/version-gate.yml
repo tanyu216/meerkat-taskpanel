@@ -1,8 +1,9 @@
 name: version-gate
 
-# Tag-time release gate: a version tag must be documented — every `vX.Y.Z` push
-# must have a `## [X.Y.Z]` section in CHANGELOG.md, or the release draft ships
-# undocumented.
+# Tag-time release gate: a version tag must name the tree it points at and be
+# documented. The tag must equal the four version carriers, the tag commit must be
+# on `main`, and `CHANGELOG.md` must carry a *filled* `## [X.Y.Z] - YYYY-MM-DD`
+# section (not the bump scaffold).
 #
 # This lives in its own workflow on purpose: `.github/workflows/check.yml` is
 # owned by a concurrent change and must not be modified, so the release/version
@@ -16,20 +17,36 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: version-gate-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   changelog:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
 
-      # Offline: the checker is Node builtins only — no `npm install`. The tag is
+      # Offline: the checkers are Node builtins only — no `npm install`. The tag is
       # never published, so the job only needs `contents: read`.
-      - name: Tag has a CHANGELOG entry
-        run: node scripts/verify/changelog.mjs "${GITHUB_REF_NAME}"
+      - name: Fetch main for the tag-from-main check
+        run: git fetch origin main
+
+      - name: Tag names the tree's version and is on main
+        run: node scripts/verify/tag-version.mjs "${GITHUB_REF_NAME}" --on-main
+
+      - name: All four version carriers agree
+        run: node scripts/verify/version.mjs
+
+      - name: Tag has a filled CHANGELOG section
+        run: node scripts/verify/changelog.mjs "${GITHUB_REF_NAME}" --strict
 
   # The tag-time contract gate: a tag must not freeze an API contract the
   # snapshot does not describe. `contract-gate.yml` runs the same checker on every
@@ -37,10 +54,11 @@ jobs:
   # next to the changelog rule the tag is cut under.
   contract:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
 

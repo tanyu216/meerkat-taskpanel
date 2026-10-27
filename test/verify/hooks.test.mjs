@@ -83,6 +83,7 @@ describe("pre-push: the two API gates always run", () => {
     assert.equal(status, 0, "a feature-branch push must pass");
     assert.match(stdout, /^contract: OK/m);
     assert.match(stdout, /^route-request: OK/m);
+    assert.match(stdout, /^version: OK/m, "the four version carriers are checked too");
   });
 
   it("still runs them when the push is refused", () => {
@@ -123,10 +124,20 @@ describe("pre-push: main advances only through a pull request", () => {
     assert.match(stderr, /ALLOW_PUSH_MAIN/, "the override must announce itself");
   });
 
+  it("refuses a v* tag that is not vX.Y.Z", () => {
+    // `v` is the release namespace, so a malformed name is a typo, not a scratch tag.
+    const { status, stderr } = runHook([`refs/tags/v1.2 ${SHA} refs/tags/v1.2 ${ZERO}`]);
+    assert.notEqual(status, 0);
+    assert.match(stderr, /release tag/i);
+    assert.match(stderr, /vMAJOR\.MINOR\.PATCH/);
+  });
+
   it("leaves tag pushes alone", () => {
     const { status, stderr } = runHook([`refs/tags/v9.9.9 ${SHA} refs/tags/v9.9.9 ${ZERO}`]);
 
     assert.notEqual(status, 0, "v9.9.9 has no CHANGELOG section, so the tag gate must still fire");
+    assert.match(stderr, /tag-version: FAILED/, "the tag must also name the tree's version");
+    assert.match(stderr, /changelog: FAILED/, "and carry a filled section");
     assert.doesNotMatch(stderr, /pull request/i, "a tag is not a push to main");
   });
 });

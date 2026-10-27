@@ -7,11 +7,13 @@ checkers, so the hook and CI run the *same code*:
 | Hook | Enforces | Checker |
 |---|---|---|
 | `pre-commit` | SQL migrations are append-only: contiguous from `0001`, unique, an already-committed file neither edited nor deleted | `scripts/verify/migrations.mjs` |
-| `pre-push` | the API contract matches the committed snapshot (routes + error codes + wire field names **and types**, and each route's declared request schema); every route's declared request schema equals what its handler reads; no tracked file carries a host-absolute path; no tracked file carries a signpost out of the repository; every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` section in `CHANGELOG.md`; `main` is not pushed to directly; **and the container suite passes on a branch push** | `scripts/verify/contract.mjs`, `scripts/verify/route-request.mjs`, `scripts/verify/paths.mjs`, `scripts/verify/signposts.mjs`, `scripts/verify/changelog.mjs`, `npm run verify:docker` |
-| `pre-tag` | the same API + tag rules as `pre-push` (no `main` rule — a tag is not a branch push), run by hand *before* `git tag` | `scripts/verify/contract.mjs`, `scripts/verify/route-request.mjs`, `scripts/verify/changelog.mjs` |
+| `pre-push` | the API contract matches the committed snapshot (routes + error codes + wire field names **and types**, and each route's declared request schema); every route's declared request schema equals what its handler reads; no tracked file carries a host-absolute path; no tracked file carries a signpost out of the repository; the four version carriers agree; every pushed `refs/tags/vX.Y.Z` names that version, is on `main`, and has a **filled** `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`; `main` is not pushed to directly; **and the container suite passes on a branch push** | `scripts/verify/contract.mjs`, `scripts/verify/route-request.mjs`, `scripts/verify/paths.mjs`, `scripts/verify/signposts.mjs`, `scripts/verify/version.mjs`, `scripts/verify/tag-version.mjs`, `scripts/verify/changelog.mjs --strict`, `npm run verify:docker` |
+| `pre-tag` | the same API + tag rules as `pre-push` (no `main` rule — a tag is not a branch push), run by hand *before* `git tag`: contract, route-request, version carriers, tag ↔ version, and the strict changelog section | `scripts/verify/contract.mjs`, `scripts/verify/route-request.mjs`, `scripts/verify/version.mjs`, `scripts/verify/tag-version.mjs`, `scripts/verify/changelog.mjs --strict` |
 
-Writing timing is a workflow rule, not a hook: the changelog section is authored at the
-`dev` → `main` release merge (see `CLAUDE.md`); the hook only checks that a tag has one.
+Writing timing is a workflow rule, not a hook: the changelog section is authored on the
+release branch (`release/vX.Y.Z`, the PR `release-prep` opens), never on `dev`; the hook
+checks that a tag's section is **filled** — a real date, at least one entry, no
+`_Nothing yet._` scaffold — not merely present.
 
 The four static gates run on **every** push, not only a tag. The two API gates:
 the API ships in every commit, and a route or error-code change must be
@@ -94,7 +96,9 @@ earliest points git *does* offer:
 1. `.githooks/pre-tag vX.Y.Z` — run it yourself before tagging (documented in
    [`../docs/publishing.md`](../docs/publishing.md));
 2. `.githooks/pre-push` — refuses a version tag on its way out;
-3. `.github/workflows/version-gate.yml` — the authoritative check on tag push.
+3. `.github/workflows/version-gate.yml` — the authoritative check on tag push;
+4. `.github/workflows/release-tag.yml` — runs the same gate on the exact commit it is
+   about to tag, and `.github/workflows/release.yml` re-runs it before building.
 
 `.github/workflows/check.yml` is deliberately left untouched; the migration check
 and the changelog gate live in `scripts/verify/` and run here and in

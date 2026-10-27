@@ -2,22 +2,24 @@
 /**
  * One-shot release version bump.
  *
- * A release version lives in three manifests at once. The list is *not* redeclared
+ * A release version lives in four carriers at once. The list is *not* redeclared
  * here: it is imported from `scripts/verify/version.mjs`, so the checker and the
  * bumper can never disagree about which files carry the version or where.
- * Bumping those three by hand is the long-term source of exactly the drift that
+ * Bumping those four by hand is the long-term source of exactly the drift that
  * `version.mjs` exists to catch; this script makes the bump one command.
  *
- *   node scripts/release/bump.mjs 1.1.0                    # three manifests
+ *   node scripts/release/bump.mjs 1.1.0                    # four carriers
  *   node scripts/release/bump.mjs 1.1.0 --changelog        # + a scaffold section
  *   node scripts/release/bump.mjs 1.1.0 --changelog --tag  # + an annotated ref
  *
  * What it guarantees:
  *
- *   * **Format preserved.** Each file is edited *in place*, by splicing the one
- *     version string token's byte span. Never a `JSON.parse` / `stringify` round
- *     trip, which would reorder keys and re-indent the whole document: key order,
- *     indentation, single-line arrays and the trailing newline all survive.
+ *   * **Format preserved.** Each carrier is edited *in place*, by splicing the one
+ *     version literal's byte span — the JSON string token, or the module's
+ *     `export const VERSION = "x.y.z";` declaration. Never a `JSON.parse` /
+ *     `stringify` round trip, which would reorder keys and re-indent the whole
+ *     document: key order, indentation, single-line arrays and the trailing newline
+ *     all survive.
  *   * **Strict input.** The target must be valid semver and strictly greater than
  *     the version the root `package.json` currently declares; anything else is
  *     refused before a byte is written.
@@ -47,8 +49,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { findVersionEntry } from "../verify/changelog.mjs";
-import { VERSION_SOURCES, validateVersions } from "../verify/version.mjs";
+import { checkChangelog, findVersionEntry } from "../verify/changelog.mjs";
+import { checkTagVersion } from "../verify/tag-version.mjs";
+import { VERSION_SOURCES, findModuleVersionSpan, validateVersions } from "../verify/version.mjs";
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 /** Repository root, resolved from this file (`scripts/release/`). */
@@ -58,12 +61,13 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const CHANGELOG_FILE = "CHANGELOG.md";
 
 /**
- * Collapse a checker source list into a bumper source list: `keys` is the JSON path to
- * the version value, which is how the in-place splice finds the one token to replace (the
- * marketplace hides its version under `metadata`).
+ * Collapse a checker source list into a bumper source list. `kind` decides how the one
+ * version token is found: `keys` is the JSON path for a `"json"` carrier (the marketplace
+ * hides its version under `metadata`); a `"module"` carrier has no key path and is located
+ * by its declaration instead.
  *
  * @param {typeof VERSION_SOURCES} sources
- * @returns {ReadonlyArray<{label: string, path: string, keys: string[], canonical: boolean}>}
+ * @returns {ReadonlyArray<{label: string, path: string, field: string, kind: "json"|"module", keys: string[], canonical: boolean}>}
  */
 const toBumpSources = (sources) =>
   Object.freeze(
@@ -71,13 +75,15 @@ const toBumpSources = (sources) =>
       Object.freeze({
         label: source.label,
         path: source.path,
-        keys: Object.freeze(source.field.split(".")),
+        field: source.field,
+        kind: source.kind,
+        keys: Object.freeze(source.kind === "module" ? [] : source.field.split(".")),
         canonical: source.canonical === true,
       }),
     ),
   );
 
-/** The board's three carriers, derived from the checker's declaration so the two agree by
+/** The board's four carriers, derived from the checker's declaration so the two agree by
  * construction. */
 export const SOURCES = toBumpSources(VERSION_SOURCES);
 
@@ -85,9 +91,10 @@ export const SOURCES = toBumpSources(VERSION_SOURCES);
  * The version groups this bumper can move, keyed by the `--group` value.
  *
  * Each group carries both halves of the same declaration: `sources` (the splice targets,
- * with the JSON key path) and `checkers` (the same files as the *checker* sees them, with
- * the `pick` that reads the version out). Deriving both from the checker's export means a
- * group can never be bumped against a different set of files than it is validated against.
+ * with the JSON key path or module declaration) and `checkers` (the same files as the
+ * *checker* sees them, with the `pick`/locator that reads the version out). Deriving both
+ * from the checker's export means a group can never be bumped against a different set of
+ * files than it is validated against.
  *
  * There is one group. The loop used to be a second one, but its only carriers were the
  * `plugins/loop` manifests this repository no longer ships, and nothing consumes a loop
@@ -280,6 +287,26 @@ export function findValueSpan(raw, keys) {
   return found;
 }
 
+/**
+ * Find a carrier's version token: the JSON path for a manifest, the declaration for a
+ * module. Both locators return `{start, end, value}` with the quotes included, so the
+ * splice below has one shape to handle.
+ *
+ * @param {{kind: "json"|"module", keys: string[]}} source
+ * @param {string} raw
+ * @returns {{start: number, end: number, value: string}|null}
+ */
+function locateVersion(source, raw) {
+  return source.kind === "module" ? findModuleVersionSpan(raw) : findValueSpan(raw, source.keys);
+}
+
+/** How a diagnostic names the one token a carrier holds. */
+function describeTarget(source) {
+  return source.kind === "module"
+    ? `\`export const ${source.field} = "x.y.z";\``
+    : `\`${source.keys.join(".")}\``;
+}
+
 // ---------------------------------------------------------------------------
 // Planning — everything is decided in memory before a byte is written
 // ---------------------------------------------------------------------------
@@ -355,18 +382,18 @@ export async function planBump({ version, base = ROOT, group = "board" }) {
 
     let span;
     try {
-      span = findValueSpan(before, source.keys);
+      span = locateVersion(source, before);
     } catch (error) {
       return { ok: false, code: "unreadable-tree", error: `${source.path}: ${error.message}` };
     }
     if (span === null) {
-      return { ok: false, code: "missing-field", error: `${source.path}: no \`${source.keys.join(".")}\` string to replace` };
+      return { ok: false, code: "missing-field", error: `${source.path}: no ${describeTarget(source)} to replace` };
     }
     if (span.value !== checked.version) {
       return {
         ok: false,
         code: "unexpected-value",
-        error: `${source.path}: \`${source.keys.join(".")}\` is '${span.value}', expected '${checked.version}'`,
+        error: `${source.path}: ${describeTarget(source)} is '${span.value}', expected '${checked.version}'`,
       };
     }
 
@@ -376,16 +403,17 @@ export async function planBump({ version, base = ROOT, group = "board" }) {
     entries.push({ path: source.path, label: source.label, absolute, before, after });
   }
 
-  // Prove the result before it is ever written: it must still parse, and the
+  // Prove the result before it is ever written: it must still be readable, and the
   // token must now read back as the target.
   for (const entry of entries) {
     try {
-      const reparsed = findValueSpan(entry.after, sources.find((source) => source.path === entry.path).keys);
+      const source = sources.find((item) => item.path === entry.path);
+      const reparsed = locateVersion(source, entry.after);
       if (reparsed === null || reparsed.value !== target.raw) {
         return { ok: false, code: "internal", error: `${entry.path}: the rewrite did not land (this is a bug in bump.mjs)` };
       }
     } catch (error) {
-      return { ok: false, code: "internal", error: `${entry.path}: the rewrite produced invalid JSON — ${error.message}` };
+      return { ok: false, code: "internal", error: `${entry.path}: the rewrite produced an unreadable carrier — ${error.message}` };
     }
   }
 
@@ -572,7 +600,7 @@ export async function applyWrites(entries, { io } = {}) {
 }
 
 /** Codes whose failure means the tree may need a manual look, not just a re-run. */
-const WRITE_CODES = new Set(["stage-failed", "commit-failed", "tag-failed"]);
+const WRITE_CODES = new Set(["stage-failed", "commit-failed", "tag-failed", "gate-failed"]);
 
 /**
  * Bump one version group's manifests — and optionally the changelog and a git tag — in one
@@ -629,7 +657,33 @@ export async function runBump(options = {}) {
   let tagged = null;
   if (tag) {
     const name = `v${planned.version}`;
-    const result = run("git", ["tag", name], { cwd: resolve(base), encoding: "utf8" });
+
+    // A tag is a claim the tree and the changelog must be able to back. The bump
+    // has already written the carriers; a tag that names a version they do not
+    // declare, or a changelog still holding the scaffold, is worse than no tag.
+    const matches = await checkTagVersion({ tag: name, base });
+    if (!matches.ok) {
+      return {
+        ok: false,
+        code: "gate-failed",
+        entries,
+        error: `${matches.error} — the files were written; fix the tree before tagging`,
+      };
+    }
+    const documented = await checkChangelog({ tag: name, base, strict: true });
+    if (!documented.ok) {
+      return {
+        ok: false,
+        code: "gate-failed",
+        entries,
+        error: `${documented.error} — the files were written; fill CHANGELOG.md before tagging`,
+      };
+    }
+
+    const result = run("git", ["tag", "-a", name, "-m", `Meerkat TaskPanel ${name}`], {
+      cwd: resolve(base),
+      encoding: "utf8",
+    });
     if (result.error !== undefined && result.error !== null) {
       return { ok: false, code: "tag-failed", entries, error: `git tag ${name} failed: ${result.error.message} — the files were written` };
     }
@@ -661,7 +715,8 @@ const USAGE = `Usage: node scripts/release/bump.mjs <x.y.z> [options]
   <x.y.z>        the new version (strict semver; must be greater than the current one)
   --group <name> which component to bump: ${Object.keys(BUMP_GROUPS).join(" | ")} (default: board)
   --changelog    also insert an empty Keep-a-Changelog scaffold section (board only)
-  --tag          also create the git tag v<x.y.z> after the bump (never pushed; board only)
+  --tag          also create the annotated tag v<x.y.z> after the version/changelog gates
+                 (never pushed; board only)
   --base <dir>   bump a tree rooted at <dir> (default: this checkout)
 
 A bump moves one group at a time; there is one group today (the board). --changelog and
@@ -728,7 +783,7 @@ async function main(argv) {
     process.stdout.write(`tag: created ${result.tagged} (not pushed)\n`);
     process.stdout.write(`push: git push origin ${result.tagged}\n`);
   }
-  process.stdout.write(`bump: OK — ${result.entries.length - (result.changelog === null ? 0 : 1)} ${result.group} manifests now at ${result.version}\n`);
+  process.stdout.write(`bump: OK — ${result.entries.length - (result.changelog === null ? 0 : 1)} ${result.group} carriers now at ${result.version}\n`);
   return 0;
 }
 

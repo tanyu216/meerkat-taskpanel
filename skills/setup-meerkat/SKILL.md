@@ -117,6 +117,10 @@ bash <checkout>/install.sh --target claude,server --agent-name <name> --dry-run
 # remote board: bash <checkout>/install.sh --target claude --no-automation
 ```
 
+Always drive the installer with explicit flags (or `--non-interactive`); never `-i`, and
+never a bare `install.sh` from a terminal — with no options on a TTY it opens a wizard and
+waits for a human.
+
 - **Local + reachable**: skip the server install; do not restart what is healthy.
 - **Local + unreachable**: propose `--target claude,server`; the taskd guard loads a
   keepalive, so ask separately before enabling it.

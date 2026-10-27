@@ -259,13 +259,13 @@ describe("agent bundle: claude", () => {
     assert.ok(readFileSync(join(home, ".claude", "bin", "taskctl"), "utf8").includes("TASKCTL_AGENT:-bob"));
   });
 
-  it("defaults the agent name to $USER when --agent-name is omitted", () => {
+  it("defaults the agent name to Worker when --agent-name is omitted", () => {
     const home = makeTempDir();
     const run = runInstall(["--target", "claude"], agentEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
-    assert.equal(settings.env.TASKCTL_AGENT, process.env.USER || process.env.LOGNAME || "agent");
+    assert.equal(settings.env.TASKCTL_AGENT, "Worker");
   });
 
   it("the installed shim runs the real CLI and forwards --version", () => {
