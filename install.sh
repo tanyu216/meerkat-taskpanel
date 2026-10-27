@@ -206,7 +206,7 @@ Environment (set for each agent-kind installer):
                                  (internal — for tests, not a user option)
 
 The taskd keepalive guard is written and loaded on every install (one unit per
-machine, at <prefix>/taskpanel/scheduling/) — see docs/scheduling.md. It has no
+machine, at <prefix>/.meerkat-taskpanel/scheduling/) — see docs/scheduling.md. It has no
 user flag and no prompt; the bypasses are --no-automation, --dry-run, and the
 test-only MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE above.
 EOF
@@ -219,8 +219,8 @@ die() {
 
 # install_taskd_guard — write the `taskd` keepalive unit and load it (docs/scheduling.md).
 #
-# One unit per **machine**, not per agent kind: it is written once here, to the neutral
-# `<prefix>/taskpanel/scheduling/` directory, and never touched by an agent kind's own
+# One unit per **machine**, not per agent kind: it is written once here, under the install
+# root `<prefix>/.meerkat-taskpanel/scheduling/`, and never touched by an agent kind's own
 # scheduling install. It is also the one unit this installer *loads* rather than
 # only printing a command for — a deliberate, narrow exception to "write the unit,
 # never start a daemon for you". The loop supervisor's units keep that rule.

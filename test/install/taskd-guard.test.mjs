@@ -3,8 +3,8 @@
  *
  * `taskctl` lazy-starts `taskd` only when a CLI call needs it, so a board whose server
  * dies while nobody is calling it stays down until the next call. The guard closes that
- * gap with the OS's own supervisor: one launchd plist / systemd user unit, written to a
- * neutral `<prefix>/taskpanel/scheduling/` directory and **loaded at install time** —
+ * gap with the OS's own supervisor: one launchd plist / systemd user unit, written under
+ * the install root `<prefix>/.meerkat-taskpanel/scheduling/` and **loaded at install time** —
  * the one explicit exception to this installer's "write the unit, never start a daemon"
  * rule (the contract is `docs/scheduling.md`, and it is the single source of truth for
  * the unit text below).
@@ -275,13 +275,14 @@ function assertWellFormedPlist(xml) {
 // ---------------------------------------------------------------------------
 
 describe("taskd guard: rendering", () => {
-  it("lands in the neutral directory, never under an agent kind's own scheduling tree", () => {
+  it("lands under the install root, never in a stray <prefix>/taskpanel or an agent kind's tree", () => {
     const prefix = makeTempDir();
     const dataDir = makeTempDir();
     const paths = guardPaths({ prefix, env: { TASKD_DATA_DIR: dataDir } });
 
-    assert.equal(paths.launchdUnit, join(prefix, "taskpanel", "scheduling", "launchd", `${TASKD_LABEL}.plist`));
-    assert.equal(paths.systemdUnit, join(prefix, "taskpanel", "scheduling", "systemd", TASKD_UNIT));
+    assert.equal(paths.launchdUnit, join(prefix, ".meerkat-taskpanel", "scheduling", "launchd", `${TASKD_LABEL}.plist`));
+    assert.equal(paths.systemdUnit, join(prefix, ".meerkat-taskpanel", "scheduling", "systemd", TASKD_UNIT));
+    assert.ok(!paths.launchdUnit.includes(join(prefix, "taskpanel")), "no stray <prefix>/taskpanel directory");
     assert.equal(paths.serverEntry, join(ROOT, "src", "server", "main.mjs"));
     assert.equal(paths.logFile, join(dataDir, "logs", "taskd.log"));
     for (const agentDir of [".claude", ".codex", ".openclaw", ".agents"]) {
@@ -660,7 +661,7 @@ describe("install.sh: the taskd guard", () => {
     const run = runInstall(["--target", "claude", "--prefix", prefix, "--dry-run"], env);
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /taskd guard: skipped \(dry-run\)/);
-    assert.equal(existsSync(join(prefix, "taskpanel")), false, "dry run writes no unit");
+    assert.equal(existsSync(join(prefix, ".meerkat-taskpanel")), false, "dry run writes no unit");
     assert.equal(readFileSync(bin.log, "utf8"), "", "dry run loads nothing");
   });
 
@@ -678,7 +679,7 @@ describe("install.sh: the taskd guard", () => {
       const run = runInstall(args, guardEnv(prefix, dataDir, bin, extra));
       assert.equal(run.status, 0, run.stderr);
       assert.match(run.stdout, /taskd guard: skipped \(--no-automation\)/, `${label} form`);
-      assert.equal(existsSync(join(prefix, "taskpanel")), false, `${label} form writes no unit`);
+      assert.equal(existsSync(join(prefix, ".meerkat-taskpanel")), false, `${label} form writes no unit`);
       assert.equal(readFileSync(bin.log, "utf8"), "", `${label} form loads nothing`);
     }
   });
@@ -691,7 +692,7 @@ describe("install.sh: the taskd guard", () => {
     const run = runInstall(["--target", "claude", "--prefix", prefix], guardEnv(prefix, dataDir, bin, { MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1" }));
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /taskd guard: skipped \(MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1 — tests only\)/);
-    assert.equal(existsSync(join(prefix, "taskpanel")), false);
+    assert.equal(existsSync(join(prefix, ".meerkat-taskpanel")), false);
     assert.equal(readFileSync(bin.log, "utf8"), "", "nothing was loaded");
   });
 

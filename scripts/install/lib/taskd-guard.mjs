@@ -3,8 +3,8 @@
  * The `taskd` OS-level keepalive unit — "the guard" (`docs/scheduling.md`).
  *
  * `install.sh` calls this once per install, because the guard is **one per
- * machine**, not one per agent kind: it writes both unit templates into a neutral
- * `<prefix>/taskpanel/scheduling/` directory (deliberately *not* the loop units'
+ * machine**, not one per agent kind: it writes both unit templates under the install root
+ * `<prefix>/.meerkat-taskpanel/scheduling/` (deliberately *not* the loop units'
  * `<agent-dir>/scheduling/`, so re-installing an agent kind never touches it) and then
  * loads the one for this platform. It is the single **explicit exception** to
  * the installer's rule that it writes a unit and prints the load command but
@@ -175,8 +175,8 @@ export function guardPaths(options = {}) {
     nodeDir: dirname(node),
     serverEntry: join(root, "src", "server", "main.mjs"),
     logFile: join(dataDir, LOGS_DIRNAME, LOG_FILENAME),
-    launchdUnit: join(prefix, "taskpanel", "scheduling", "launchd", `${TASKD_LABEL}.plist`),
-    systemdUnit: join(prefix, "taskpanel", "scheduling", "systemd", TASKD_UNIT),
+    launchdUnit: join(prefix, ".meerkat-taskpanel", "scheduling", "launchd", `${TASKD_LABEL}.plist`),
+    systemdUnit: join(prefix, ".meerkat-taskpanel", "scheduling", "systemd", TASKD_UNIT),
     pointerFile: resolveRuntimePointerPath({ env }),
   };
 }
@@ -805,7 +805,7 @@ function waitForPid(plan, run, budgetMs) {
 const USAGE = `Usage: node scripts/install/lib/taskd-guard.mjs install --prefix <dir> [--root <tree>] [--data-dir <dir>] [--force]
 
 Writes the taskd keepalive unit (launchd + systemd) under
-<dir>/taskpanel/scheduling/, then loads this platform's one, waits for its
+<dir>/.meerkat-taskpanel/scheduling/, then loads this platform's one, waits for its
 board to answer /health, and reports what happened.
 --root names the program tree the unit runs (default: this checkout);
 --data-dir pins TASKD_DATA_DIR in the unit (used by --target server).

@@ -344,12 +344,12 @@ a daemon for you (the [Scheduling units](#scheduling-units-claude-codex-pi) abov
 applies **only to the `taskd` service guard**: the `meerkat-loop` supervisor's units are
 still written and left for you to load, and OpenClaw still gets none.
 
-**Where it lands** — a neutral directory, deliberately *not* the loop units'
+**Where it lands** — under the install root, deliberately *not* the loop units'
 `<agent-dir>/scheduling/`, so re-installing an agent kind's loop units never touches it:
 
 ```text
-<prefix>/taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
-<prefix>/taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service
+<prefix>/.meerkat-taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
+<prefix>/.meerkat-taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service
 ```
 
 `<prefix>` is `--prefix` (default `$HOME`). There is **one guard per machine** — and
@@ -362,10 +362,10 @@ separate flag:
 
 ```bash
 # macOS
-launchctl bootstrap gui/$UID <prefix>/taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
+launchctl bootstrap gui/$UID <prefix>/.meerkat-taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
 # Linux (user unit)
 mkdir -p ~/.config/systemd/user
-cp <prefix>/taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service ~/.config/systemd/user/
+cp <prefix>/.meerkat-taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service ~/.config/systemd/user/
 systemctl --user enable --now meerkat-taskpanel-taskd.service
 ```
 
@@ -428,7 +428,7 @@ plain `kill` is not enough — use the supervisor's own stop:
 ```bash
 # macOS
 launchctl bootout gui/$UID/com.meerkat-taskpanel.taskd
-rm <prefix>/taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
+rm <prefix>/.meerkat-taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
 # Linux
 systemctl --user disable --now meerkat-taskpanel-taskd.service
 rm ~/.config/systemd/user/meerkat-taskpanel-taskd.service

@@ -10,7 +10,7 @@
 # ~/.config/systemd/user/ and enables it immediately.
 #
 #   mkdir -p ~/.config/systemd/user
-#   cp <prefix>/taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service ~/.config/systemd/user/
+#   cp <prefix>/.meerkat-taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service ~/.config/systemd/user/
 #   systemctl --user enable --now meerkat-taskpanel-taskd.service
 #
 # ExecStart names the ABSOLUTE node that rendered this unit — never
