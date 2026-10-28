@@ -435,12 +435,16 @@ plan has four parts, in this order:
 3. **auto-accept.** For every flow-A card in `in_review` whose `acceptance_mode` is `off`,
    and with no current-round review card (a canceled one does not block), the plan emits
    `auto_accept`. The loop writes `meta.accepted_by=loop-auto` and moves the card
-   `in_review → done`. A `human` card is left for the person (`auto_accept_skipped`, reason
-   `human_mode`).
-4. **dispatch.** For every flow-A card in `in_review` whose `acceptance_mode` is `agent`,
-   create a review card for the effective reviewer — one per `(original, delivery round)`,
-   with the deterministic idempotency key `loop-review|<ref>|r<round>`. The effective reviewer
-   is `project.reviewer ??` the deployment reviewer (the reconcile request's `--reviewer`).
+   `in_review → done`. A `human` card never reaches this part — its mode is not `off`, so it
+   is reviewed instead, and only the close waits for the person. Nothing is alerted for this
+   state: silence is the implemented behaviour.
+4. **dispatch.** For every flow-A card in `in_review` whose `acceptance_mode` is `agent` or
+   `human` — review is mode-independent; only `off` is skipped — create a review card for the
+   effective reviewer, one per `(original, delivery round)`, with the deterministic
+   idempotency key `loop-review|<ref>|r<round>`. The effective reviewer is
+   `project.reviewer ??` the deployment reviewer (the reconcile request's `--reviewer`).
+   There is no kind filter: a finished epic is dispatched in the same pass that rolls it up,
+   and its reviewer reads the child cards and the rollup report.
 
 ### The review card, and who closes it
 
@@ -476,17 +480,19 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
   with a status, how it checked and an `evidence[n]` anchor; a `met` the board cannot trace,
   or an `APPROVE` with no command anchor, is refused rather than applied. It delivers a
   report whose first line is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
-- the loop applies the verdict as `--actor-kind taskd`. An `APPROVE` writes
-  `meta.accepted_by=loop-review` and moves the original `in_review → done`; a `REJECT`
-  comments the findings, writes `meta.rework_round`, moves it back to rework, and appends
-  the reviewer's numbered must-fix items to the original's frozen acceptance (the move to
-  `in_progress` is what unlocks the baseline). Each item is then an ordinary acceptance
-  criterion: the next round's report template lists it and the next review card's baseline
-  carries it, so a dropped finding fails the coverage gate. A `REJECT` with no numbered list
-  appends one pointer item rather than nothing. Only after that does it close the review
-  card.
+- the loop applies the verdict as `--actor-kind taskd`. An `APPROVE` on an `agent` original
+  writes `meta.accepted_by=loop-review` and moves it `in_review → done`; on a `human`
+  original it writes `meta.review_verdict=approve` / `meta.review_verdict_round` and leaves
+  the card `in_review` for the person. A `REJECT` — in either mode — comments the findings,
+  writes `meta.rework_round`, moves the card back to rework, and appends the reviewer's
+  numbered must-fix items to the original's frozen acceptance (the move to `in_progress` is
+  what unlocks the baseline). Each item is then an ordinary acceptance criterion: the next
+  round's report template lists it and the next review card's baseline carries it, so a
+  dropped finding fails the coverage gate. A `REJECT` with no numbered list appends one
+  pointer item rather than nothing. Only after that does it close the review card.
 - The loop always closes the review card it dispatched — there is no switch that could leave
-  it for nobody. On a `human` card it records the evidence and stops; the person closes.
+  it for nobody. On a `human` card it records the round-scoped verdict and stops; the person
+  closes the original through the ordinary acceptance gate.
 - An `agent` card with no effective reviewer is refused at startup: the loop reads
   `project list` and computes `project.reviewer ?? the deployment reviewer`. The board still
   reports `reviewer_not_configured` per project at runtime.
@@ -626,12 +632,15 @@ refuses to start when an `agent` card would be dispatachable with no effective r
 
 **Who closes a card is the card's own `acceptance_mode`** — `off` (the deliverer may close it,
 and `in_progress → done` is allowed), `agent` (a current-round `APPROVE`, applied by the loop)
-or `human` (a person only). The project's `acceptance` (`auto | off | agent | human`) is the
-default a new card inherits; an unresolved card falls back to `human`, except an epic, which
-falls back to `off` (the board closes containers itself). The loop's creator path passes
-`--acceptance-mode` explicitly when the project says `auto`. There is no board-level policy
-and no local copy to keep in step. On a `human` card the loop records its findings and stops;
-it never closes the card.
+or `human` (a person only, after the verdict is recorded). The project's `acceptance`
+(`auto | off | agent | human`) is the default a new card inherits; an unresolved card — task
+or epic — falls back to `agent`. `human` is opt-in and **top-level only**: a project-level
+`human` gives a child that names no mode `agent`, and no parent edge may attach to a `human`
+card. The loop's creator path passes `--acceptance-mode` explicitly when the project says
+`auto`. There is no board-level policy and no local copy to keep in step. A `human` card is
+reviewed like an `agent` one; the loop records the verdict and stops, and it never closes the
+card itself. A container is a card too: an epic is dispatched a review card like any other
+(its review reads the rollup and the child cards) and is closed only after an `APPROVE`.
 
 ## Team roles (optional)
 
@@ -762,7 +771,13 @@ data beneath it (`.meerkat/<identifier>/`: `card.md` plus the subagent's files).
 loop state, not project data — where a project keeps its results is still its own business
 — and a project should ignore `.meerkat/` in version control. A target directory where the
 hub cannot write the brief blocks dispatch: a failed registration (or a card already
-terminal) defers the card unclaimed, and a refused claim unregisters it again.
+terminal) defers the card unclaimed, and a refused claim unregisters it again — but only a
+registration this pass created. A review admission registers the review card together with
+its original; when the original's brief is already kept fresh by a live detached
+registration (made when it was dispatched, and still live because `in_review` is not
+terminal), that card is **covered**: the hub drops it from the new registration and admits
+the review card. The covered card belongs to the other registration and is never stopped
+on a refused claim.
 
 Poll resolves the candidate's project before claiming it and writes the result into
 the queue entry as `target_dir`; the pool launches the project session in that
@@ -1707,7 +1722,10 @@ describes.
 - **Task process data.** A dispatched card's brief (`card.md`) and the subagent's files —
   including downloaded attachments — live under `.meerkat/<identifier>/` in that working
   directory. Poll registers the brief watch before the claim; a failed registration (or an
-  already-terminal card) defers the card unclaimed.
+  already-terminal card) defers the card unclaimed. A review card whose original is already
+  covered by a live detached registration is still admitted (the covered card stays with
+  that registration), and only a registration this pass created is unregistered again when
+  the claim is refused.
 
 ### One mechanism per agent kind, and the cost gate
 

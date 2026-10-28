@@ -918,6 +918,109 @@ describe("the resident poll dispatch", () => {
     );
   });
 
+  it("records only an owned registration for release, addressed by a registered card", async () => {
+    const f = fixture();
+    const stopped = [];
+    const reviewPath = join(f.app, ".meerkat", "T-2", "card.md");
+    const watchCards = () => ({
+      ok: true,
+      owned: true,
+      running: true,
+      registrationId: "reg-review",
+      // The hub registered only the review card: the original was covered by a
+      // live detached registration made when it was dispatched.
+      cards: [{ ref: "T-2", identifier: "T-2", task_id: "uuid-2", status: "todo", path: reviewPath }],
+    });
+    const admission = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: f.concurrency,
+      watchCards,
+      stopWatch: async (target) => {
+        stopped.push(target);
+        return { ok: true, stopped: true };
+      },
+    });
+    const card = { id: "uuid-2", identifier: "T-2", project: "P", review_of: "T-1", review_round: 1 };
+    assert.equal((await admission.admit({ identifier: "T-2", agent: "jobs" }, card)).ok, true);
+    await admission.release("T-2");
+    assert.deepEqual(
+      stopped,
+      [{ ref: "T-2", out: reviewPath }],
+      "release addresses the card the hub registered, not the covered original",
+    );
+  });
+
+  it("does not release a registration this pass did not create", async () => {
+    const f = fixture(1);
+    const stopped = [];
+    const admission = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: 1,
+      watchCards: () => ({
+        ok: true,
+        owned: false,
+        reused: true,
+        running: true,
+        reason: "covered",
+        registrationId: null,
+        cards: [],
+      }),
+      stopWatch: async (target) => {
+        stopped.push(target);
+        return { ok: true, stopped: true };
+      },
+    });
+    const card = { identifier: "T-3", project: "P", review_of: "T-1" };
+    assert.equal((await admission.admit({ identifier: "T-3", agent: "jobs" }, card)).ok, true);
+    await admission.release("T-3");
+    assert.deepEqual(stopped, [], "a covered registration belongs to another owner");
+    assert.equal(
+      (await admission.admit({ identifier: "T-4", agent: "alice" }, { identifier: "T-4", project: "P" })).ok,
+      true,
+      "release still gives the project slot back",
+    );
+  });
+
+  it("admits and enqueues a review card whose original is already watched", async () => {
+    const f = fixture();
+    const reviewPath = join(f.app, ".meerkat", "T-5", "card.md");
+    const admission = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: f.concurrency,
+      watchCards: () => ({
+        ok: true,
+        owned: true,
+        running: true,
+        registrationId: "reg-review",
+        cards: [{ ref: "T-5", identifier: "T-5", task_id: "uuid-5", status: "todo", path: reviewPath }],
+      }),
+    });
+    const card = { id: "uuid-5", identifier: "T-5", project: "P", review_of: "T-1", review_round: 1 };
+    const dispatch = createQueueDispatch({
+      opts: f.opts,
+      config: { reviewers: ["jobs"], reviewerWorkers: [] },
+      stateDir: f.dir,
+      admission,
+    });
+    const result = await runPollTick({
+      agents: ["jobs"],
+      registry: { running: {} },
+      config: {},
+      readCandidates: () => [{ ...card, agent: "jobs", reason: "ready" }],
+      claim: async () => ({ ok: true }),
+      dispatch,
+      admit: admission.admit,
+      now: () => "2026-10-22T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.equal(result.claimed, 1);
+    assert.equal(result.deferred, 0, "a covered original does not defer the review");
+    assert.equal(result.spawned, 1);
+    const [entry] = readCards(f.dir).value.cards;
+    assert.equal(entry.card, "T-5");
+    assert.equal(entry.role, "reviewer");
+  });
+
   it("releases the registration when the claim is refused", async () => {
     const released = [];
     const result = await runPollTick({
