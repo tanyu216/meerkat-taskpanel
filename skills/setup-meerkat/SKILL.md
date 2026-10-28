@@ -14,8 +14,9 @@ One idempotent pass over the things a working Meerkat TaskPanel deployment needs
    choice before anything starts.
 3. **Offer the Matt Pocock integration** (`/setup-matt-pocock-skills`) when that skill is
    present, without overwriting an unrelated tracker.
-4. **Leave the task entry** — run the host's init step (`/init`), then write the `/meerkat`
-   keywords into `CLAUDE.md`/`AGENTS.md` so every later session starts from the board.
+4. **Leave the task entry** — run the host's init step (`/init`), then give it the required
+   content (the `/meerkat` keywords and the card scope) so every later session starts from
+   the board. The host owns where it lands.
 5. **Install a team** — the standard Jobs/Linus/Turing + reviewer roles, or a custom team —
    into the loop, globally or per project.
 6. **Write the fixed human name** so `--as-human` signs the person, never a role.
@@ -73,8 +74,8 @@ If the JSON is malformed, stop and report; never guess a path.
 Run the setup as one decision round. Detection is the fact-gatherer: never ask the user for
 a board URL, role root, actor kind or human name that `detect.mjs` can establish. The
 **frontier** is every setup *decision* detection leaves open — the board target, the install
-set, the team shape, the role set, the install scope, the identity, the tracker integration,
-the task-entry target file and the card scope.
+set, the team shape, the role set, the install scope, the identity, the tracker integration
+and the card scope.
 
 Ask the whole frontier in **one numbered round**, each question carrying a recommended
 answer and worded so "yes" accepts it; `--yes` is the same shorthand for the recommended
@@ -183,51 +184,45 @@ the Skill tool. Say which route was taken; never claim a skill ran when it did n
 Write only the per-repository outputs (`docs/agents/issue-tracker.md`,
 `docs/agents/domain.md`, optionally `docs/agents/triage-labels.md`, and the
 `## Agent skills` block in the existing `CLAUDE.md`/`AGENTS.md`). The `## Agent skills` block
-is the tracker's; the task entry in §4 is a separate block, written after it. Never create
-board labels: the registry is read-only and grows when a card names a label.
+is the tracker's; the task entry §4 requires goes in the same instruction file, in that
+file's own shape. Never create board labels: the registry is read-only and grows when a card
+names a label.
 
 ## 4. The project's task entry
 
 The board is the entry only when the project's own instruction file says so. Run the host's
 init step over `--project` first — `/init` where the host has one (Claude Code and Codex do) —
-so the file describes the real tree. That step reads the code, not the board, and never writes
-the task entry: add the block below yourself. Without an init step, skip it and write the
-block directly.
+so the file describes the real tree. That step reads the code, not the board, and does not
+carry the task entry: give it the requirements below in the same turn. Without an init step,
+write the requirements yourself.
 
-Target the file the host reads — `CLAUDE.md`, or `AGENTS.md` where that is the read order —
-and make the other a pointer. Ask before the first write to an existing file, and leave
-everything outside the markers alone.
+**What the file must say** — requirements, not a template:
 
-```markdown
-<!-- meerkat:task-entry -->
-## Task management
+- `/meerkat` is the entry for every card on the local Meerkat TaskPanel board: a card is
+  created, claimed, kept alive with a heartbeat and delivered through that skill, never
+  through a side-channel queue (a TODO file, a chat list, a private plan).
+- A card stops at `in_review`; a human accepts it to `done`.
+- The card scope: what work becomes a card here, and what stays out — a question, a lookup or
+  a one-off command has no owner, so it is not a card; the recommended default is the work a
+  role owns (the setup interview's answer).
+- Point at `docs/agents/issue-tracker.md` when §3 wrote one; otherwise these requirements are
+  the whole statement.
 
-`/meerkat` is the entry for every card on the local Meerkat TaskPanel board: a card is
-created, claimed, kept alive with a heartbeat and delivered through that skill, never through
-a side-channel queue (a TODO file, a chat list, a private plan). A card stops at `in_review`;
-a human accepts it to `done`.
+Keep the keywords — `/meerkat`, `card`, `claim`, `heartbeat`, `deliver`, `in_review` and
+`done` — because a later session greps for them, and they are what sends it to the board
+skill instead of an invented queue.
 
-## Task scope
+**Where and how it lands is the host's call.** Write it in the file the host reads —
+`CLAUDE.md`, or `AGENTS.md` where that is the read order — in that file's own idiom, and
+merge it into an existing task or tracker section when one is there: one statement of the
+board, never a second section. Ship no marker, managed block or fixed heading; the init step
+owns placement, this skill owns the requirements. Ask before the first write to an existing
+file, and leave everything the requirements do not name alone.
 
-Cards are for work a role owns — product design, development and architecture, bug fixes,
-refactors, test design and independent review. A question, a lookup, a one-off command, a
-scratch experiment or a change being made in this conversation has no owner, so it is not a
-card; the board is not a log of the session.
-<!-- /meerkat:task-entry -->
-```
-
-- Keep the keywords, drop the prose: `/meerkat`, `card`, `claim`, `heartbeat`, `deliver`,
-  `in_review` and `done` are what a later session greps for, and what sends it to the board
-  skill instead of an invented queue.
-- The markers make the block one managed unit: on a re-run replace what sits between them and
-  report identical bytes as `unchanged` — never a second copy. A project with its own task
-  section that predates the markers is a conflict: ask, then wrap or replace it.
-- Point at `docs/agents/issue-tracker.md` when §3 wrote one; otherwise this block is the
-  whole statement.
-- **The scope paragraph is the interview's answer.** The block ships the recommended default
-  (the work a role owns). When the user narrowed or widened it in the setup round, rewrite
-  that scope paragraph before writing the block, and say so in the summary — a scope that
-  lives only in the conversation is lost on the next session.
+A second run reports the entry `unchanged` when the file already states it — never restate or
+duplicate it. **The scope is the interview's answer.** When the user narrowed or widened it in
+the setup round, rewrite the scope requirement before the write and say so in the summary — a
+scope that lives only in the conversation is lost on the next session.
 
 ## 5. Team
 
@@ -370,13 +365,13 @@ prints the install command. `--native-agent-defs none` writes none of them.
 3. Print the next command to load/restart the supervisor
    (`install.sh --supervisor=enable` for the actor kind), and note that a running pool
    picks up role edits on its next dispatch.
-4. Re-read the host's instruction file: the task entry block (`<!-- meerkat:task-entry -->`)
-   is present exactly once and names `/meerkat`.
-5. Summarize: what was installed, where, the effective roles root, the human name, the task
-   entry's target file, and what was skipped and why.
+4. Re-read the host's instruction file: the task entry is stated once, names `/meerkat`, and
+   carries the card scope.
+5. Summarize: what was installed, where, the effective roles root, the human name, the
+   instruction file that received the task entry, and what was skipped and why.
 6. A second run must change **no managed content**: role files, native definitions and
-   env keys report `unchanged`, and the task-entry block reports `unchanged` rather than
-   being appended twice; `install.sh` may re-copy identical runtime bytes, which
+   env keys report `unchanged`, and the task entry reports `unchanged` rather than being
+   restated or duplicated; `install.sh` may re-copy identical runtime bytes, which
    is still idempotent. Report every action as `written` / `unchanged` / `skip` /
    `conflict`.
 

@@ -18,9 +18,9 @@ Assert: `--dry-run` prints the install and role plans and writes nothing; the re
 installs board/loop/setup skills, roles at `<home>/.claude/skills/meerkat-loop/roles/`,
 and Claude/Codex agent definitions; the second run changes no managed content (role
 files and agent definitions are `unchanged`; the installer may re-copy identical
-runtime bytes); the project's `CLAUDE.md`/`AGENTS.md` carries the
-`<!-- meerkat:task-entry -->` block exactly once, naming `/meerkat`, and a re-run leaves
-those bytes unchanged.
+runtime bytes); the project's `CLAUDE.md`/`AGENTS.md` states the task entry once, naming
+`/meerkat` and carrying the card scope, with no marker block, and a re-run leaves it
+unchanged.
 
 ## 3. Project-scoped custom reviewer
 
@@ -125,5 +125,5 @@ Assert: the card scope is one frontier question with a recommended default — t
 owns, read from the ownership matrix the team question settled (product design, development,
 bug fixes, refactors, tests and review) — and work with no owner (questions, lookups, one-off
 commands) is named as not becoming a card; the user's narrower answer replaces the default
-`Task scope` paragraph inside the marked block in `CLAUDE.md`/`AGENTS.md`, so it is persisted
-for later sessions; a second run reports the block unchanged instead of appending.
+scope statement in the instruction file the init step updated, so it is persisted for later
+sessions; a second run reports the entry unchanged instead of restating it.

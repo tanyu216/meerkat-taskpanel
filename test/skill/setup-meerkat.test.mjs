@@ -103,23 +103,28 @@ describe("skill frontmatter and assets", () => {
       /init step[\s\S]{0,300}(never|does not)[\s\S]{0,120}task entry/i,
       "the stage says an init draft does not carry the entry",
     );
-    assert.match(skill, /CLAUDE\.md[\s\S]{0,200}AGENTS\.md/, "the block lands in the host's file");
+    assert.match(skill, /CLAUDE\.md[\s\S]{0,200}AGENTS\.md/, "the entry lands in the host's file");
+    assert.doesNotMatch(
+      skill,
+      /<!--\s*\/?meerkat:task-entry\s*-->/,
+      "the skill ships requirements, not a managed block",
+    );
 
-    const open = skill.indexOf("<!-- meerkat:task-entry -->");
-    const close = skill.indexOf("<!-- /meerkat:task-entry -->");
-    assert.ok(open > 0 && close > open, "the skill carries the block, fenced by markers");
-    const block = skill.slice(open, close);
+    const stage4 = skill.slice(skill.indexOf("## 4."), skill.indexOf("## 5."));
     for (const keyword of ["/meerkat", "card", "claim", "heartbeat", "deliver", "in_review", "done"]) {
-      assert.ok(block.includes(keyword), `the block keeps the keyword ${keyword}`);
+      assert.ok(stage4.includes(keyword), `the stage keeps the keyword ${keyword}`);
     }
+    assert.match(stage4, /card scope/i, "the stage requires the card scope");
+    assert.match(stage4, /a role owns|role owns/i, "its default is the roles' remit");
+    assert.match(stage4, /question|lookup|one-off/i, "it names what stays out");
 
     assert.match(
       skill,
       /second run|re-run|idempoten/i,
-      "the block is one managed unit, not an append on every run",
+      "the entry is stated once, not appended on every run",
     );
     const verify = skill.slice(skill.indexOf("## 6. Verify"));
-    assert.match(verify, /task entry/i, "the verify stage checks the block is present once");
+    assert.match(verify, /task entry/i, "the verify stage checks the entry is stated once");
 
     const team = evals.evals.find((entry) => entry.name === "standard-team");
     assert.ok(
@@ -544,11 +549,6 @@ describe("skill frontmatter and assets", () => {
     const step5 = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
     const step7 = arch.slice(arch.indexOf("### 7."), arch.indexOf("### 8."));
 
-    assert.doesNotMatch(
-      step5,
-      /<!--\s*\/?meerkat:task-entry\s*-->/,
-      "the architecture flow does not write the install's block",
-    );
     assert.match(step5, /install\s+skill/i, "it says whose job the task entry is");
     assert.doesNotMatch(step5, /\*\*Task entry\*\*/, "the entry is not a baseline item here");
 
@@ -556,13 +556,10 @@ describe("skill frontmatter and assets", () => {
     assert.doesNotMatch(check, /`\/meerkat`/, "Linus's self-check does not audit the entry");
     assert.doesNotMatch(check, /task\s+entry/i, "Linus's self-check leaves the entry to the install");
 
-    const markers = ["<!-- meerkat:task-entry -->", "<!-- /meerkat:task-entry -->"];
-    const open = skill.indexOf(markers[0]);
-    const close = skill.indexOf(markers[1]);
-    assert.ok(open > 0 && close > open, "the install still writes the block");
-    const block = skill.slice(open, close);
+    const stage4 = skill.slice(skill.indexOf("## 4."), skill.indexOf("## 5."));
+    assert.doesNotMatch(skill, /<!--\s*\/?meerkat:task-entry\s*-->/, "the install ships no block");
     for (const keyword of ["/meerkat", "card", "claim", "heartbeat", "deliver", "in_review", "done"]) {
-      assert.ok(block.includes(keyword), `the block keeps the keyword ${keyword}`);
+      assert.ok(stage4.includes(keyword), `the install keeps the keyword ${keyword}`);
     }
   });
 
@@ -921,21 +918,19 @@ describe("skill frontmatter and assets", () => {
     assert.match(interview, /bug fix/i, "the default names bug fixes");
     assert.match(interview, /not every|not everything|does not become|is not a card/i, "routine work stays out");
 
-    const markers = ["<!-- meerkat:task-entry -->", "<!-- /meerkat:task-entry -->"];
-    const blockOf = (text) => {
-      const open = text.indexOf(markers[0]);
-      const close = text.indexOf(markers[1]);
-      return open >= 0 && close > open ? text.slice(open, close + markers[1].length) : null;
-    };
-    const block = blockOf(skill);
-    assert.ok(block, "the install carries the task-entry block");
-    assert.match(block, /Task scope/, "the block says what becomes a card");
-    assert.match(block, /a role owns|role owns/i, "the block scopes cards to what a role owns");
-    assert.match(block, /question|lookup|one-off/i, "the block names what stays out");
+    const stage4 = skill.slice(skill.indexOf("## 4."), skill.indexOf("## 5."));
+    assert.match(stage4, /card scope/i, "the stage requires the scope");
+    assert.match(stage4, /a role owns|role owns/i, "the default scopes cards to what a role owns");
+    assert.match(stage4, /question|lookup|one-off/i, "the stage names what stays out");
     assert.match(
       skill,
       /rewrite[^\n]*scope|scope[^\n]*rewrite|answer[^\n]*block/i,
       "a non-default answer rewrites the scope, it is not ignored",
+    );
+    assert.doesNotMatch(
+      skill,
+      /<!--\s*\/?meerkat:task-entry\s*-->/,
+      "no managed block backs the scope",
     );
   });
 
