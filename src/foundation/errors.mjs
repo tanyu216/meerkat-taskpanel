@@ -40,6 +40,12 @@ export const ERROR_CODES = Object.freeze({
     },
   ),
   REPORT_INVALID: spec(422, "Report content is invalid."),
+  // A path anchor is a claim about the working tree; the commit anchor is what
+  // makes it durable. Shape-only here — git is not reachable from core.
+  DELIVERY_NEEDS_COMMIT: spec(
+    422,
+    "A delivery report that cites a path must also cite the commit it was made in.",
+  ),
   REPORT_TOO_LARGE: spec(413, "Report is too large after bounding."),
   REPORT_ROUND_MISMATCH: spec(409, "Report round does not match the task's current delivery round."),
   REPORT_APPEND_ONLY: spec(409, "Reports are append-only; write a new round instead of editing history."),
@@ -311,6 +317,9 @@ export const SQL_CONSTRAINT_CODES = Object.freeze([
 /** Codes raised purely by domain/command logic. */
 export const JS_ONLY_CODES = Object.freeze([
   "REPORT_INVALID",
+  // The report's evidence is a domain fact, but the gate that pairs a path
+  // anchor with a commit anchor lives in the command layer.
+  "DELIVERY_NEEDS_COMMIT",
   "REPORT_TOO_LARGE",
   // Acceptance authority reads the *actor*, which is not a row fact a trigger
   // can see — so this one is enforced only by the service layer.

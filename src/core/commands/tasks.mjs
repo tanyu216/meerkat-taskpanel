@@ -59,6 +59,7 @@ import {
   assertAcceptance,
   assertAcceptanceCoverage,
   assertChildrenTerminal,
+  assertDeliveryCommitAnchor,
   assertReviewReady,
   currentRoundReviews,
 } from "./acceptance.mjs";
@@ -1391,6 +1392,14 @@ export function moveStatus(ctx, input) {
             reports: ctx.repos.reports.listGateReports(current.id),
             to: input.to,
           });
+          // The artifact contract on the move path: `writeReport` may have put
+          // a path-only report on the card, and `in_review` is where a reviewer
+          // starts trusting it. The gate projection above carries no evidence,
+          // so read the row. A waiver has no report and is deliberately exempt.
+          const currentReport = ctx.repos.reports.latestForRound(current.id, current.deliveryRound);
+          if (currentReport !== null && currentReport !== undefined) {
+            assertDeliveryCommitAnchor(current, currentReport);
+          }
         }
       } else if (input.to === "in_review") {
         // The same decision, made once, so the service and the trigger cannot
@@ -1969,6 +1978,10 @@ export function canMove(ctx, input) {
     // write itself still refuses those.
     assertChildrenTerminal(ctx, task, input.to);
     if (input.to === STATUS.DONE) assertAcceptanceCoverage(ctx, task);
+    if (input.to === "in_review") {
+      const report = ctx.repos.reports.latestForRound(task.id, task.deliveryRound);
+      if (report !== null && report !== undefined) assertDeliveryCommitAnchor(task, report);
+    }
   } catch (err) {
     return { ok: false, reason: err.code, details: err.details };
   }

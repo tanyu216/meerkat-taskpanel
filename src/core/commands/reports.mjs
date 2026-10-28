@@ -19,6 +19,7 @@ import {
   assertAcceptance,
   assertAcceptanceCoverage,
   assertChildrenTerminal,
+  assertDeliveryCommitAnchor,
   assertReviewReady,
 } from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
@@ -242,6 +243,10 @@ export function deliver(ctx, input) {
       // directly; if it fails, the transaction rolls back and no report is left
       // behind.
       if (to === STATUS.DONE) assertAcceptanceCoverage(ctx, task, { report: prepared });
+      // The artifact contract: a report that cites a path must name the commit
+      // it was made in. Runs on the *prepared* row (after bounding), so a
+      // truncated-away commit anchor is a refusal, not a silent pass.
+      assertDeliveryCommitAnchor(task, prepared);
       const isRollup = task.kind === TASK_KIND.EPIC;
       if (isRollup) assertRollupCoverage(ctx, task, prepared.acceptance);
       const report = insertDeliveryReport(ctx, {

@@ -296,8 +296,11 @@ empty — `meta.acceptance`, then an imported card's `meta.acceptance_legacy`, t
 list with a warning. Every item starts **`not_met`** — a ticked box on an imported card is
 the author's intent, not this delivery's evidence. A derived list
 (`meta.acceptance_derived=yes`) carries a warning on stderr. Evidence anchors are the
-explicit flags first, then a read-only `git rev-parse HEAD`, then the task's `source_path`,
-then a placeholder.
+explicit flags first, then a read-only `git rev-parse HEAD` **on a clean tree** (an empty
+`git status --porcelain`), then the task's `source_path`, then a placeholder. A dirty tree
+never stamps HEAD — the previous commit does not contain the work — so the template warns and
+leaves a path anchor that the delivery gate refuses (`DELIVERY_NEEDS_COMMIT`) until the work
+is committed and `--commit <sha>` is passed.
 
 ### `export`
 
