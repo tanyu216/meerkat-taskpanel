@@ -201,13 +201,15 @@ export function createHubServer(input) {
 
   /* ------------------------------------------------------------- registrations */
 
-  const registrationCards = (reg) => [...reg.cards.values()].map((card) => ({
+  const cardSummary = (card) => ({
     ref: card.ref,
     identifier: card.identifier,
     task_id: card.task_id,
     status: card.status,
     path: card.path,
-  }));
+  });
+
+  const registrationCards = (reg) => [...reg.cards.values()].map(cardSummary);
 
   /**
    * The owner is the foreground session that created the registration; viewers
@@ -378,6 +380,14 @@ export function createHubServer(input) {
 
   async function startRegistration({ refs, dir, out = null, paths = null, ttlMs, detached, session, owner, id, createdAt }) {
     const cards = [];
+    /**
+     * Cards already kept fresh by a live **detached** registration. The loop
+     * registers a review card together with its original; the original's brief
+     * is usually owned by the registration made when it was dispatched, and
+     * `in_review` is not terminal. Refusing the whole set would mean the review
+     * card is never claimed, so a covered card is left to its owner.
+     */
+    const covered = [];
     const inRequest = new Map();
     for (const ref of refs) {
       const card = await exportCard(ref);
@@ -406,6 +416,22 @@ export function createHubServer(input) {
         ) {
           return { registration: existing, cards: [...existing.cards.values()], reused: true };
         }
+        const existingCard =
+          existing === undefined ? undefined : [...existing.cards.values()].find((entry) => entry.path === path);
+        // Only a detached owner promises a fresh brief until the card is
+        // terminal; a foreground watcher ends when its client disconnects and
+        // stays a refusal.
+        if (
+          existing !== undefined &&
+          existingCard !== undefined &&
+          existing.detached &&
+          !existing.finished &&
+          paths !== null &&
+          detached === true
+        ) {
+          covered.push(cardSummary(existingCard));
+          continue;
+        }
         throw new DomainError("CLI_IO", {
           message: `export watch: ${card.identifier} is already watched in ${out ?? dir}`,
           details: { identifier: card.identifier, dir, out, registration_id: previous },
@@ -413,6 +439,12 @@ export function createHubServer(input) {
         });
       }
       cards.push({ ref, ...card, path });
+    }
+
+    if (cards.length === 0) {
+      // Every requested card is already covered: create nothing, write nothing,
+      // and answer as a successful (reused) registration.
+      return { registration: null, cards: covered, firstPass: [], reused: true, covered, fullyCovered: true };
     }
 
     // Write the first snapshot before `open`; a write failure must be a clean
@@ -440,7 +472,9 @@ export function createHubServer(input) {
     const registrationId = id ?? randomUUID();
     const reg = {
       id: registrationId,
-      refs: new Set(refs),
+      // Only the cards this registration actually holds: a covered card stays
+      // addressable through the registration that owns it.
+      refs: new Set(cards.map((card) => card.ref)),
       dir: dir ?? null,
       out: out ?? null,
       ttlMs,
@@ -487,7 +521,7 @@ export function createHubServer(input) {
         `${detached ? ", detached" : ""}${ttlMs > 0 ? `, ttl ${ttlMs}ms` : ""})`,
     );
 
-    return { registration: reg, cards, firstPass, reused: false };
+    return { registration: reg, cards, firstPass, reused: false, covered };
   }
 
   function emitFirstPass(reg, firstPass) {
@@ -589,6 +623,23 @@ export function createHubServer(input) {
       session: detached ? null : session,
       owner: record.owner ?? null,
     });
+
+    if (result.fullyCovered === true) {
+      // Nothing to register: every requested card is already kept fresh by a
+      // live detached registration. Answer the same handle shape a create would,
+      // but with no registration id and `reused` set, so the caller knows the
+      // watch belongs to another owner.
+      send(session, {
+        type: "registered",
+        registration_id: null,
+        reused: true,
+        running: true,
+        reason: "covered",
+        cards: result.cards,
+        expires_at: null,
+      });
+      return;
+    }
 
     if (result.reused) {
       const existing = result.registration;

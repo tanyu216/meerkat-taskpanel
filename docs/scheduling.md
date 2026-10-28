@@ -760,7 +760,13 @@ data beneath it (`.meerkat/<identifier>/`: `card.md` plus the subagent's files).
 loop state, not project data — where a project keeps its results is still its own business
 — and a project should ignore `.meerkat/` in version control. A target directory where the
 hub cannot write the brief blocks dispatch: a failed registration (or a card already
-terminal) defers the card unclaimed, and a refused claim unregisters it again.
+terminal) defers the card unclaimed, and a refused claim unregisters it again — but only a
+registration this pass created. A review admission registers the review card together with
+its original; when the original's brief is already kept fresh by a live detached
+registration (made when it was dispatched, and still live because `in_review` is not
+terminal), that card is **covered**: the hub drops it from the new registration and admits
+the review card. The covered card belongs to the other registration and is never stopped
+on a refused claim.
 
 Poll resolves the candidate's project before claiming it and writes the result into
 the queue entry as `target_dir`; the pool launches the project session in that
@@ -1705,7 +1711,10 @@ describes.
 - **Task process data.** A dispatched card's brief (`card.md`) and the subagent's files —
   including downloaded attachments — live under `.meerkat/<identifier>/` in that working
   directory. Poll registers the brief watch before the claim; a failed registration (or an
-  already-terminal card) defers the card unclaimed.
+  already-terminal card) defers the card unclaimed. A review card whose original is already
+  covered by a live detached registration is still admitted (the covered card stays with
+  that registration), and only a registration this pass created is unregistered again when
+  the claim is refused.
 
 ### One mechanism per agent kind, and the cost gate
 

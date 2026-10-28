@@ -82,6 +82,7 @@ describe("orchestrator/card-watch — the request", () => {
     assert.equal(typeof calls[0].options.match, "function");
     assert.deepEqual(answer, {
       ok: true,
+      owned: true,
       running: true,
       reason: null,
       registrationId: "reg-1",
@@ -104,6 +105,7 @@ describe("orchestrator/card-watch — the request", () => {
       }),
     });
     assert.equal(answer.ok, true);
+    assert.equal(answer.owned, false, "a terminal answer created no registration");
     assert.equal(answer.running, false);
     assert.equal(answer.reason, "terminal");
   });
@@ -127,6 +129,83 @@ describe("orchestrator/card-watch — the request", () => {
       ok: false,
       error: "a watch needs at least one card",
     });
+  });
+
+  it("surfaces the hub's real {type:error} refusal, never a timeout", async () => {
+    // The hub refuses a watch with {type:"error", data:{code,message,details}}.
+    // The matcher must accept it, or the client waits out its 1s timeout and
+    // reports "the local hub did not answer in time".
+    const details = { identifier: "PROJ-0005", dir: null, out: null, registration_id: "reg-9" };
+    const refused = await registerCardWatch(OPTS, [{ ref: "PROJ-0005", out: "/work/x.md" }], {
+      hub: HUB,
+      hubCall: async (pointer, token, payload, options) => {
+        assert.equal(options.match({ type: "error", data: { code: "CLI_IO", message: "x" } }), true);
+        return {
+          type: "error",
+          data: {
+            code: "CLI_IO",
+            message: "export watch: PROJ-0005 is already watched in null",
+            details,
+          },
+        };
+      },
+    });
+    assert.deepEqual(refused, {
+      ok: false,
+      error: "export watch: PROJ-0005 is already watched in null",
+      code: "CLI_IO",
+      details,
+    });
+
+    const stopped = await stopCardWatch(OPTS, { ref: "PROJ-0005", out: "/work/x.md" }, {
+      hub: HUB,
+      hubCall: async (pointer, token, payload, options) => {
+        assert.equal(options.match({ type: "error", data: { code: "CLI_IO", message: "x" } }), true);
+        return { type: "error", data: { code: "CLI_IO", message: "hub went away", details: { port: 1 } } };
+      },
+    });
+    assert.deepEqual(stopped, { ok: false, error: "hub went away", code: "CLI_IO", details: { port: 1 } });
+  });
+
+  it("claims ownership only for a registration the hub created", async () => {
+    const created = await registerCardWatch(OPTS, [{ ref: "PROJ-0006", out: "/work/r.md" }], {
+      hub: HUB,
+      hubCall: async () => ({
+        type: "registered",
+        registration_id: "reg-new",
+        running: true,
+        cards: [{ ref: "PROJ-0006", path: "/work/r.md" }],
+      }),
+    });
+    assert.equal(created.owned, true);
+    assert.deepEqual(created.cards, [{ ref: "PROJ-0006", path: "/work/r.md" }], "the hub's cards, not the request");
+
+    const reused = await registerCardWatch(OPTS, [{ ref: "PROJ-0006", out: "/work/r.md" }], {
+      hub: HUB,
+      hubCall: async () => ({
+        type: "registered",
+        registration_id: "reg-old",
+        reused: true,
+        running: true,
+        cards: [{ ref: "PROJ-0006", path: "/work/r.md" }],
+      }),
+    });
+    assert.equal(reused.owned, false, "a reused registration belongs to another owner");
+
+    const covered = await registerCardWatch(OPTS, [{ ref: "PROJ-0006", out: "/work/r.md" }], {
+      hub: HUB,
+      hubCall: async () => ({
+        type: "registered",
+        registration_id: null,
+        reused: true,
+        running: true,
+        reason: "covered",
+        cards: [{ ref: "PROJ-0006", path: "/work/r.md" }],
+      }),
+    });
+    assert.equal(covered.owned, false, "a covered registration belongs to another owner");
+    assert.equal(covered.reason, "covered");
+    assert.equal(covered.running, true);
   });
 
   it("stops by one path and reports whether the registration was found", async () => {
