@@ -325,14 +325,14 @@ describe("shared/transport/http — over a real board", () => {
       url,
       method: "POST",
       path: "/api/v1/projects",
-      body: { id: "bytes", name: "Bytes" },
+      body: { id: "byt", name: "Bytes" },
     });
-    assert.equal(project.project.id, "bytes");
+    assert.equal(project.project.id, "byt");
     const task = await requestJson({
       url,
       method: "POST",
       path: "/api/v1/tasks",
-      body: { project_id: "bytes", title: "Bytes", acceptance_mode: "off" },
+      body: { project_id: "byt", title: "Bytes", acceptance_mode: "off" },
     });
     const bytes = new TextEncoder().encode("hello\n");
     const created = await requestJson({

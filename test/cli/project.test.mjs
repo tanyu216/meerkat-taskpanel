@@ -177,27 +177,29 @@ describe("cli/project — the remaining flags", () => {
 describe("cli/project — the identifier prefix (C-PREFIX-1)", () => {
   it("numbers off --id, and off --meta prefix=… when one is declared", async () => {
     await withCli(async ({ run }) => {
-      // No prefix declared: the id is the prefix source, exactly as it was
-      // before the slot existed (the contract's C3/C8 legs).
-      run(["project", "create", "--id", "demo_x", "--name", "Demo X", "--json"]);
-      const fallback = dataOf(run(["issue", "create", "--project", "demo_x", "--title", "one", "--json"]));
-      assert.equal(fallback.task.identifier, "DEMO-X-0001");
+      // No prefix declared: the id is the prefix source (C3). M8 requires that
+      // id to normalize to 1-4 [A-Z0-9], so the fixture uses `demo`, not the
+      // pre-M8 `demo_x` fold example.
+      run(["project", "create", "--id", "demo", "--name", "Demo X", "--json"]);
+      const fallback = dataOf(run(["issue", "create", "--project", "demo", "--title", "one", "--json"]));
+      assert.equal(fallback.task.identifier, "DEMO-0001");
 
       // A declared prefix wins over the id, and the server normalizes it. The
       // CLI says nothing about prefixes; `--meta prefix=…` is the same field the
       // UI posts, through the same `identifierPrefix`, so there is no second
       // rule to keep in step — the §8 E7 asymmetry stays one-sided in the docs
-      // only.
-      run(["project", "create", "--id", "other", "--name", "Other", "--meta", "prefix=Orch Team", "--json"]);
-      const declared = dataOf(run(["issue", "create", "--project", "other", "--title", "one", "--json"]));
-      assert.equal(declared.task.identifier, "ORCH-TEAM-0001");
+      // only. M8 holds the declared token to 1-4 [A-Z0-9], so `orch` — not the
+      // pre-M8 `Orch Team` fold example.
+      run(["project", "create", "--id", "oth", "--name", "Other", "--meta", "prefix=orch", "--json"]);
+      const declared = dataOf(run(["issue", "create", "--project", "oth", "--title", "one", "--json"]));
+      assert.equal(declared.task.identifier, "ORCH-0001");
     });
   });
 
   it("refuses a declared prefix another project already owns", async () => {
     await withCli(async ({ run }) => {
       run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
-      const clash = run(["project", "create", "--id", "other", "--name", "Other", "--meta", "prefix=demo", "--json"]);
+      const clash = run(["project", "create", "--id", "oth", "--name", "Other", "--meta", "prefix=demo", "--json"]);
       assert.equal(clash.status, 1);
       const error = JSON.parse(clash.stdout).error;
       assert.equal(error.code, "VALIDATION_FAILED");

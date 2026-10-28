@@ -194,7 +194,7 @@ describe("cli/pointer-fallback — a real board pushed off the slot", () => {
       // Create a project through the board's own address, so the listing below
       // has something only *this* board can answer with.
       const created = runCli(
-        ["project", "create", "--id", "displaced", "--name", "DISPLACED-BOARD", "--json"],
+        ["project", "create", "--id", "dis", "--name", "DISPLACED-BOARD", "--json"],
         { url: board.url, dataDir },
       );
       assert.equal(created.status, 0, created.stderr);
@@ -204,7 +204,7 @@ describe("cli/pointer-fallback — a real board pushed off the slot", () => {
       assert.equal(listed.status, 0, `the running board must be reachable\n${listed.stdout}${listed.stderr}`);
       assert.deepEqual(
         JSON.parse(listed.stdout).data.projects.map((p) => p.id),
-        ["displaced"],
+        ["dis"],
         "the answer came from the board that is up, not from the slot's other address",
       );
     } finally {
@@ -233,7 +233,7 @@ describe("cli/pointer-fallback — a real board pushed off the slot", () => {
       const slotBefore = readFileSync(slot, "utf8");
 
       const created = runCli(
-        ["project", "create", "--id", "slot-board", "--name", "SLOT-BOARD", "--json"],
+        ["project", "create", "--id", "slb", "--name", "SLOT-BOARD", "--json"],
         { url: live.url, dataDir: live.dataDir },
       );
       assert.equal(created.status, 0, created.stderr);
@@ -245,7 +245,7 @@ describe("cli/pointer-fallback — a real board pushed off the slot", () => {
       // displace a live board" rule does not reach a daemon this process starts).
       const listed = runCli(["project", "list", "--json"], { dataDir, noUrl: true, env: slotChildEnv(home) });
       assert.equal(listed.status, 0, `a reachable board must be believed\n${listed.stdout}${listed.stderr}`);
-      assert.deepEqual(JSON.parse(listed.stdout).data.projects.map((p) => p.id), ["slot-board"]);
+      assert.deepEqual(JSON.parse(listed.stdout).data.projects.map((p) => p.id), ["slb"]);
       assert.equal(readFileSync(slot, "utf8"), slotBefore, "the live board keeps its address, byte for byte");
     } finally {
       await live.close();
