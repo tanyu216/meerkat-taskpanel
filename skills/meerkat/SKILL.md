@@ -1,6 +1,6 @@
 ---
 name: meerkat
-description: Coordinate work across an AI Agent team using a shared local kanban task board (Meerkat TaskPanel). Use when an agent or a human needs to claim a card, find what to work on next, groom the backlog, create and track cards, move work through a status workflow, assign owners, comment on a decision, edit a card's description or priority, link parent/child (epic) and blocking relations, record which agent session is working on what, deliver a card with a report, run or respond to an independent review, ask a human a question (awaiting), or export the board as markdown. Runs the local `taskctl` CLI; no external services required.
+description: The Meerkat TaskPanel board skill — every task-card operation on the local `taskctl` kanban — claim a candidate card, read the brief (`card.md`, the live card and the frozen acceptance snapshot), re-export the brief, heartbeat, comment, ask or answer an on-card question, create or split cards and epics, link parent and blocking relations, move work through the status workflow, download attachments, deliver with a report, run or answer an independent review (`VERDICT`), accept or reopen, export the board as markdown or import a card, and resolve the project-to-directory map. Use this skill whenever a prompt mentions Meerkat, taskpanel, taskctl, the board, a task card, claiming, a heartbeat, a delivery report, an acceptance snapshot, a review card, an awaiting question, an epic rollup, `card.md` or a task brief — including when the request arrives from the `meerkat-loop` scheduler, a handoff, or a team role workflow that only says "read the brief", "re-export card.md" or "deliver the card", and even if the prompt never names Meerkat. This skill is the authority for card operations; the loop and team skills defer to it.
 ---
 
 # Meerkat TaskPanel
@@ -13,6 +13,9 @@ commands to use. The board validates every write itself: a refusal returns a nam
 usually the command that satisfies it, so read that and act rather than pre-checking rules
 from a document. Enforced rules are not restated here. Scheduling is the `meerkat-loop`
 skill's job; the board owns the workflow decisions and the loop executes them.
+
+Every card operation is defined here. The `meerkat-loop` scheduler, `setup-meerkat` and the
+team role workflows point at this skill for card writes; they record only their own decisions.
 
 > `src/…` and `docs/…` name the taskpanel **source repository**, not this skill. Everything
 > you run is `taskctl`.

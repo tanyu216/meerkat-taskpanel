@@ -4,6 +4,9 @@ Read this from the role workflow for a feature inside the current architecture, 
 change, or a bug fix. The design is already decided; make the smallest correct change and
 prove it.
 
+Board operations (claim, heartbeat, comment, report, deliver, move, brief refresh) are the
+`meerkat` board skill's contract; load it before the first write.
+
 ## Inputs
 
 - `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot;

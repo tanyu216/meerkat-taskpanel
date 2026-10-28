@@ -88,8 +88,9 @@ question ladder, the same acceptance rules.
    comment and the in-session answer are the **same record**: re-read the card before asking
    and again before recording; if a human comment is already newer than the question, do not
    ask or duplicate it — use that comment and run a control tick. Otherwise ask, then record
-   with `taskctl comment add <ref> --as-human …`. The board comment is authoritative, the
-   in-session question is the front-end. Then apply the ladder's move and run a control tick.
+   their answer as a human comment (`--as-human`, per the `meerkat` board skill). The board
+   comment is authoritative, the in-session question is the front-end. Then apply the ladder's
+   move and run a control tick.
 4. Bound the loop (control cadence 600 s, question tick 30 s, TTL 30 min). Never decide E1–E5
    yourself, never claim/move a work card, never start a second pool, and run at most one
    console per agent directory (`session.lock` guards the pool; two consoles would race the
@@ -120,12 +121,12 @@ Patrol's `--patrol-llm=yes` lane registers the same way.
 
 **The brief is authoritative for dispatch and resume.** The handoff names the relative path
 (its cwd is the project directory), says to read it first, and says never to edit it: only
-the hub watch overwrites it (a manual `taskctl export md` produces the same file, but the loop never needs one). `taskctl issue get <ref> --json` stays in the handoff for
-live status and the `version` a write needs. A resumed session re-reads the brief before
-continuing.
+the hub watch overwrites it (the `meerkat` board skill can produce the same file manually,
+but the loop never needs one). The live card stays in the handoff for status and the
+`version` a write needs. A resumed session re-reads the brief before continuing.
 
-**Attachments go in the same directory:** `taskctl attachment list <ref> --json`, then
-`taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>`.
+**Attachments go in the same directory**; the `meerkat` board skill owns the attachment list
+and download commands.
 
 **Refresh on events.** The hub refreshes every registered file on the board's events, with a
 debounced batch (300 ms, 2 s maximum wait) and a 5 s floor between batches; a failed refresh
@@ -159,8 +160,9 @@ The ladder is **subagent → main session → human**; the full policy is
 `references/decision-policy.md`. A subagent never decides an unauthorized question: it writes
 an agent `question` comment, keeps the card `in_progress`, and stops. Poll's **question lane**
 then enqueues the unanswered question for the project session (no claim, no subagent slot),
-which answers with a `note` and moves the card to `todo`, or escalates E1-E5 to the human with
-`issue move <ref> awaiting --awaiting-reason E1..E5 --question "…"`.
+which answers with a `note` and moves the card to `todo`, or escalates E1-E5 to the human by
+moving the card to `awaiting` with the reason and the question (the `meerkat` board skill owns
+the move).
 
 In manual mode the console lists every waiting card: ask the whole **frontier** in one message,
 **one numbered block per card**, then recompute the newly unblocked round — protocol in
@@ -180,8 +182,9 @@ human.
 The SLA rows are notify-only. The workflow pass is the only path that writes a card, and the
 board decides what it writes: one plan (container reconcile, review outcomes, auto-accept,
 dispatch), which the loop then executes. The exact invocation and every action field are the
-board skill's capability contract (`references/capabilities.md` §6–7); the review-card shape
-and its structural identity are `references/review-workflow.md` in the same skill.
+`meerkat` board skill's capability contract (`references/capabilities.md` §6–7); the review-card
+shape and its structural identity are `references/review-workflow.md` in the same skill,
+which also owns every card write this section names.
 
 A flow-A delivery that lands in `in_review` **on a card whose `acceptance_mode` is `agent`** is
 dispatched to the configured reviewer as a **review card**. The reviewer is

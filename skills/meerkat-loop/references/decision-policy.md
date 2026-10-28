@@ -132,15 +132,17 @@ E-code.
 
 ## Recording
 
-- Subagent question: `taskctl comment add <ref> --kind question --body "..."` while the card
-  stays `in_progress`; poll's question lane hands it to the project session.
-- Main-session decision: `taskctl comment add <ref> --kind note --body "decision: ..."`, then
-  answer the subagent or `taskctl issue move <ref> todo`.
-- Human escalation: `taskctl issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."`.
-- Human answer: `taskctl comment add <ref> --kind <any> --as-human ...`; the board
-  auto-requeues the card. On the board the human types in the drawer's comment box (the UI
-  sends `discuss`, which is an answer too). `decision` / `confirm` / `change` is the explicit
-  record marker a reviewer can query; the resume does not depend on it.
+- Subagent question: an agent `question` comment while the card stays `in_progress`; poll's
+  question lane hands it to the project session.
+- Main-session decision: a `note` comment recording the decision, then answer the subagent or
+  move the card back to `todo`.
+- Human escalation: move the card to `awaiting` with the E1–E5 reason and the question.
+- Human answer: a human comment (`--as-human`) of any kind; the board auto-requeues the card.
+  On the board the human types in the drawer's comment box (the UI sends `discuss`, which is an
+  answer too). `decision` / `confirm` / `change` is the explicit record marker a reviewer can
+  query; the resume does not depend on it.
+
+The comment and move commands themselves are the `meerkat` board skill's contract.
 
 `--as-human` signs the fixed local human name (`TASKCTL_HUMAN`). It is the one way to record
 what the human said; it is never the loop's own voice. In a human-opened loop
