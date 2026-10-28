@@ -2040,6 +2040,15 @@ The ruling that keeps them apart is Elon's (card comment, 2026-10-12 19:04: *two
 entries, not merged*), and Terry's own request implies it — both names are named, and both are
 to be fixed. Two roots, two questions: a merge would answer neither well.
 
+One consequence belongs to the same ruling: **the board's filters do not narrow the queue.** A
+waiting item is owed by the reader whatever board view happens to be up, and the view hides the
+filter bar, so a status / priority / label / search filter narrowing the queue would hide the
+overdue item invisibly — the failure §30.6's rejected "give `waiting` its own filter bar"
+alternative names. The queue therefore derives from the whole board reading and applies one
+narrowing only: the sidebar's assignee (whose queue is being read). Both halves — awaiting
+questions and waiting acceptances — use that same condition, and the header tally reads the same
+derivations as the rows, so the number cannot disagree with what is listed (TP-0021).
+
 ### 30.2 The rows, and why the wait is the sort key
 
 A waiting row is B26's row by *measurement*, not by class: the same 30px line, the same 12px

@@ -306,24 +306,33 @@ function matchesSearch(task, needle) {
   return hay.includes(needle);
 }
 
+/**
+ * The assignee narrowing, as **one** predicate: does this card pass the
+ * sidebar's current name condition?
+ *
+ * The board view and both halves of the waiting queue read this one function, so
+ * a roster press cannot mean three things (`lib/assignee-filter.js`): before R13
+ * the third arm did not exist, and a name matched nothing and let every row
+ * through (`design/fidelity-r13.md` §2.6). It is also the **only** filter the
+ * queue applies (TP-0021) — a board-view filter never reaches it.
+ *
+ * @param {{assignee?: {display_name?: string, kind?: string}|null}} task
+ */
+function passesAssignee(task) {
+  return actorMatches(assigneeFilterValue(), task?.assignee?.display_name ?? "", task?.assignee?.kind, ME);
+}
+
 export const visibleTasks = computed(() => {
-  const { search, assignee, priority, label } = board.filters;
+  const { search, priority, label } = board.filters;
   const needle = search.trim().toLowerCase();
   const byStatus = statusFilterValues();
   return board.tasks.filter((task) => {
     if (!matchesSearch(task, needle)) return false;
-    /* R13 — `me` is the local human, the two *kinds* compare the assignee's kind,
-     * and everything else the control holds is a given name compared against the
-     * card's own assignee. Before R13 the third arm did not exist: a name matched
-     * nothing and every row came through, which is the defect Terry reported
-     * (`design/fidelity-r13.md` §2.6). */
-    if (assignee !== "all") {
-      // One predicate for the board, the activity feed and the waiting queue
-      // (`lib/assignee-filter.js`): an **unassigned** card is in neither the
-      // human row nor the agent row, and since 0023 a kind is a platform — so
-      // `agent` means "not the human", never "the literal string `agent`".
-      if (!actorMatches(assignee, task.assignee?.display_name ?? "", task.assignee?.kind, ME)) return false;
-    }
+    // One predicate for the board, the activity feed and the waiting queue
+    // (`lib/assignee-filter.js`): an **unassigned** card is in neither the human
+    // row nor the agent row, and since 0023 a kind is a platform — so `agent`
+    // means "not the human", never "the literal string `agent`".
+    if (!passesAssignee(task)) return false;
     if (priority !== "all" && priorityOf(task) !== priority) return false;
     /* R11 ① — multiple choice is **OR** (a card passes when it is in *any* chosen
      * status), and it is ANDed with the clauses above. The comparison is against
@@ -384,10 +393,18 @@ export const projectLoading = computed(() => board.loading && !board.loaded);
  * The cards the 「等你回复」view shows, and the number its nav pill prints.
  *
  * One predicate for both (design §8-05): the view and the count read the same
- * derivation, so they cannot disagree — and both are built on `visibleTasks`, so
- * a card hidden by an active filter is in neither.
+ * derivation, so they cannot disagree.
+ *
+ * Derived from `board.tasks` — the whole reading, unfiltered — rather than from
+ * `visibleTasks`, and narrowed by the **assignee condition alone** (TP-0021).
+ * The waiting view hides the filter bar, so a status / priority / label / search
+ * filter narrowing this queue would be invisible to the reader, and it would
+ * contradict the reason the view has no filter of its own: a queue of what is
+ * owed must not let a reader hide the overdue item (`design/DESIGN.md` §30.6).
+ * The assignee narrowing stays because it is the sidebar's name narrowing —
+ * *whose* queue is being read — not a board-view filter.
  */
-export const waitingTasks = computed(() => visibleTasks.value.filter(isAwaiting));
+export const waitingTasks = computed(() => board.tasks.filter((task) => isAwaiting(task) && passesAssignee(task)));
 
 /**
  * The cards whose **delivery** waits on this human: an `in_review` card whose
@@ -411,14 +428,12 @@ export const acceptanceTasks = computed(() => acceptanceWaitingTasks(board.tasks
  * result, never to its input — filtering the input would let a child assigned to
  * someone else count as resolved (`lib/waiting-queue.js#acceptanceRowsFrom`).
  *
- * Only the assignee condition applies: an acceptance is not a board column, so
- * a status/priority/label filter must not make it disappear.
+ * Only the assignee condition applies — the same `passesAssignee` predicate the
+ * question half uses (TP-0021): an acceptance is not a board column, so a
+ * status/priority/label filter must not make it disappear, and the two halves of
+ * one queue must not apply different rules.
  */
-export const visibleAcceptanceTasks = computed(() =>
-  acceptanceTasks.value.filter((task) =>
-    actorMatches(assigneeFilterValue(), task.assignee?.display_name ?? "", task.assignee?.kind, ME),
-  ),
-);
+export const visibleAcceptanceTasks = computed(() => acceptanceTasks.value.filter((task) => passesAssignee(task)));
 
 /** The nav pill: the awaiting rows plus the acceptance rows the narrowing leaves. */
 export const waitingCount = computed(() => waitingTasks.value.length + visibleAcceptanceTasks.value.length);
