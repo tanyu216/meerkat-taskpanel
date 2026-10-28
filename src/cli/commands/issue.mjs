@@ -25,6 +25,25 @@ import { projectBody, projectFlags } from "./task-input.mjs";
 /** `--meta k=v` repeated → object. */
 const metaOf = (flags) => flags.meta;
 
+/**
+ * The sections `issue get --include` can add to the payload.
+ *
+ * Exported because the documentation gate checks the same list: one constant, so
+ * a new section cannot exist in the CLI and be missing from the skill page (or
+ * the reverse). Each name is also the payload key it produces.
+ */
+export const GET_INCLUDE_SECTIONS = Object.freeze(["comments", "reports", "relations", "sessions"]);
+
+/**
+ * The default cap for the included comment trail.
+ *
+ * `comment list` is unbounded, which is right for a read whose whole purpose is
+ * the trail. A one-shot progress answer is different: it should not grow with a
+ * card's history unless the caller asks, so the default is bounded and `0`
+ * restores the unbounded read.
+ */
+const DEFAULT_INCLUDED_COMMENT_LIMIT = 50;
+
 /** The task payload the service returns is `{task, report_waivers}`. */
 function taskHuman(task, extra) {
   const acceptance = Array.isArray(task.acceptance) ? task.acceptance : [];
@@ -204,12 +223,46 @@ export const COMMANDS = [
 
   {
     name: "get",
-    summary: "Show one task (by id or identifier).",
-    usage: "issue get <id|identifier>",
+    summary: "Show one task (by id or identifier), optionally with its trail and edges.",
+    usage:
+      "issue get <id|identifier> [--include comments|reports|relations|sessions]… [--limit <n>]",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
-    flags: [],
+    flags: [
+      {
+        flag: "include",
+        key: "include",
+        as: "string",
+        value: "<section>",
+        repeat: true,
+        summary: `${GET_INCLUDE_SECTIONS.join("|")} (repeatable); each adds its own payload key`,
+      },
+      {
+        flag: "limit",
+        key: "limit",
+        as: "number",
+        value: "<n>",
+        summary: `Cap for --include comments (default ${DEFAULT_INCLUDED_COMMENT_LIMIT}; 0 = no cap)`,
+      },
+    ],
     async run(ctx) {
-      const payload = await ctx.client.get(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`);
+      const requested = ctx.flags.include ?? [];
+      const unknown = requested.filter((section) => !GET_INCLUDE_SECTIONS.includes(section));
+      if (unknown.length > 0) {
+        throw usageError(`unknown --include section ${unknown[0]}`, {
+          hint: { fix: `use --include ${GET_INCLUDE_SECTIONS.join("|")}` },
+        });
+      }
+      const wanted = new Set(requested);
+      // `--limit` has exactly one meaning here. Silently ignoring it would make a
+      // caller believe a trail was capped when it was not.
+      if (ctx.flags.limit !== undefined && !wanted.has("comments")) {
+        throw usageError("--limit applies to --include comments", {
+          hint: { fix: "add --include comments, or drop --limit" },
+        });
+      }
+
+      const ref = encodeURIComponent(ctx.args.ref);
+      const payload = await ctx.client.get(`/api/v1/tasks/${ref}`);
       const task = payload.task;
       const extra = [];
       if (task.report_waiver !== null) {
@@ -218,16 +271,56 @@ export const COMMANDS = [
       if (payload.report_waivers.length > 0) {
         extra.push(["waivers", `${payload.report_waivers.length} on record`]);
       }
+
+      // The sections are composed from the same routes the standalone reads use,
+      // so there is no second projection to keep in step; the payload key is the
+      // section name, and a section the caller did not ask for is not fetched.
+      const included = { ...payload };
+      const summary = [];
+      if (wanted.has("comments")) {
+        const limit = ctx.flags.limit === undefined
+          ? DEFAULT_INCLUDED_COMMENT_LIMIT
+          : ctx.flags.limit;
+        const { comments } = await ctx.client.get(`/api/v1/tasks/${ref}/comments`, {
+          query: { limit: limit === 0 ? undefined : limit, order: "desc" },
+        });
+        included.comments = comments;
+        summary.push(`${comments.length} comment${comments.length === 1 ? "" : "s"}`);
+      }
+      if (wanted.has("reports")) {
+        const { reports } = await ctx.client.get(`/api/v1/tasks/${ref}/reports`);
+        included.reports = reports;
+        summary.push(`${reports.length} report${reports.length === 1 ? "" : "s"}`);
+      }
+      if (wanted.has("relations")) {
+        // `relation list` answers the same object; `task_id` is dropped because
+        // the card read already carries it, and the CLI's own `token_source` is
+        // added by the dispatcher, not by the card read.
+        const { task_id: _taskId, ...relations } = await ctx.client.get(
+          `/api/v1/tasks/${ref}/relations`,
+        );
+        included.relations = relations;
+        summary.push(
+          `${relations.blocked_by.length} blockers, ${relations.children.length} children`,
+        );
+      }
+      if (wanted.has("sessions")) {
+        const { sessions } = await ctx.client.get(`/api/v1/tasks/${ref}/sessions`);
+        included.sessions = sessions;
+        summary.push(`${sessions.length} session${sessions.length === 1 ? "" : "s"}`);
+      }
+
       const human = taskHuman(task, extra);
       const attachments = payload.attachments ?? [];
+      const body = attachments.length === 0
+        ? human
+        : `${human}\n\n${table(
+            ["id", "filename", "size", "type"],
+            attachments.map((row) => [row.id, row.filename, sizeLabel(row.size), row.content_type ?? "-"]),
+          )}`;
       return {
-        data: payload,
-        human: attachments.length === 0
-          ? human
-          : `${human}\n\n${table(
-              ["id", "filename", "size", "type"],
-              attachments.map((row) => [row.id, row.filename, sizeLabel(row.size), row.content_type ?? "-"]),
-            )}`,
+        data: included,
+        human: summary.length === 0 ? body : `${body}\n\nincluded: ${summary.join(" · ")}`,
       };
     },
   },
