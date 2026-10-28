@@ -5,6 +5,10 @@ node_modules/
 dist/
 *.tgz
 
+# GitNexus index — generated per checkout by `gitnexus analyze --index-only`,
+# deliberately kept out of the image's build context too (.dockerignore)
+.gitnexus/
+
 # runtime data (local SQLite board database, etc.)
 .data/
 

@@ -14,6 +14,9 @@ web/node_modules
 dist
 *.tgz
 
+# the GitNexus index — host-side only, and large enough to bloat the build context
+.gitnexus
+
 # the frontend's build product — `dist` above does NOT cover it (a bare name matches at the
 # context root, not at `web/dist`). Kept out of the image so the `webbuild` stage's own
 # `vite build` is the *only* thing that writes `/app/web/dist`: a directory COPY merges, so
