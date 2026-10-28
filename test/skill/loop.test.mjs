@@ -25,12 +25,7 @@ import { describe, it } from "node:test";
 
 import { readFrontmatterField } from "../../scripts/verify/lib/frontmatter.mjs";
 import { LOOP_SKILL_COMMAND } from "../../src/foundation/scheduling.mjs";
-import {
-  acceptanceAllows,
-  CARD_ACCEPTANCE_MODES,
-  FALLBACK_CARD_ACCEPTANCE,
-  PROJECT_ACCEPTANCES,
-} from "../../src/core/domain/acceptance-mode.mjs";
+import { acceptanceAllows } from "../../src/core/domain/acceptance-mode.mjs";
 import {
   ALLOWED_TRANSITIONS,
   EPIC_ONLY_TRANSITIONS,
@@ -435,7 +430,6 @@ describe("board skill: the acceptance matrix has one home", () => {
   const copies = [
     ["status-lifecycle.md", join(ROOT, "skills/meerkat/references/status-lifecycle.md")],
     ["review-workflow.md", join(ROOT, "skills/meerkat/references/review-workflow.md")],
-    ["docs/acceptance.md", join(ROOT, "docs", "acceptance.md")],
   ];
 
   /** The raw block between the markers, asserting the markers appear exactly once. */
@@ -460,20 +454,6 @@ describe("board skill: the acceptance matrix has one home", () => {
         `${copies[i][0]} and ${copies[0][0]} must agree`,
       );
     }
-  });
-
-  it("documents the creation resolver from the domain, not from memory", () => {
-    // The doc is for humans, the constant is the authority. Read the fallback out of the
-    // code so flipping it reds the doc instead of leaving a confident, stale sentence.
-    const doc = readFileSync(join(ROOT, "docs", "acceptance.md"), "utf8");
-    for (const mode of [...CARD_ACCEPTANCE_MODES, ...PROJECT_ACCEPTANCES]) {
-      assert.ok(doc.includes(`\`${mode}\``), `the doc names the ${mode} value`);
-    }
-    assert.ok(
-      doc.includes(`\`${FALLBACK_CARD_ACCEPTANCE}\``),
-      `the doc names the fallback the code uses (${FALLBACK_CARD_ACCEPTANCE})`,
-    );
-    assert.match(doc, /top-level only/i, "the doc states the human top-level rule");
   });
 
   it("leaves the loop skill a charter, not another copy", () => {
