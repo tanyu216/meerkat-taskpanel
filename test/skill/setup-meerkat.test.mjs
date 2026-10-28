@@ -117,6 +117,11 @@ describe("skill frontmatter and assets", () => {
     assert.match(stage4, /card scope/i, "the stage requires the card scope");
     assert.match(stage4, /a role owns|role owns/i, "its default is the roles' remit");
     assert.match(stage4, /question|lookup|one-off/i, "it names what stays out");
+    assert.doesNotMatch(
+      stage4,
+      /docs\/agents\//,
+      "the stage stands alone — no tracker-integration artifact is required",
+    );
 
     assert.match(
       skill,

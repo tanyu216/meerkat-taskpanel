@@ -205,8 +205,6 @@ write the requirements yourself.
 - The card scope: what work becomes a card here, and what stays out — a question, a lookup or
   a one-off command has no owner, so it is not a card; the recommended default is the work a
   role owns (the setup interview's answer).
-- Point at `docs/agents/issue-tracker.md` when §3 wrote one; otherwise these requirements are
-  the whole statement.
 
 Keep the keywords — `/meerkat`, `card`, `claim`, `heartbeat`, `deliver`, `in_review` and
 `done` — because a later session greps for them, and they are what sends it to the board
