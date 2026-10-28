@@ -777,6 +777,7 @@ one acceptance vocabulary) ·
 > 是**该项目卡号前缀**的 oracle——原型把它 `required` + `maxlength="4"`，提交时存入
 > `PROJECT_PREFIX[name]`，`nextIdentifier()` 据此编号。服务端侧的唯一口径（`meta.prefix` 规范化后
 > 存为项目前缀、铸号读它、缺省回退 `identifierPrefix(id)`）与机检断言清单见该契约。
+> **M8（2026-10-28）**：创建面追加 1–4 `[A-Z0-9]` 的形状门（`PROJECT_PREFIX_MAX` / `isValidProjectPrefix`），M3/M4 收窄为读面口径；见契约 `Amendment 2026-10-28（M8）`。
 
 ## B12 · Empty states
 

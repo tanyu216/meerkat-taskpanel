@@ -147,7 +147,7 @@ taskctl issue create --project <id> --title <t> [flags]
 
 | Flag | Meaning |
 |---|---|
-| `--project <id>` | **Required.** The project; its id is the identifier prefix. |
+| `--project <id>` | **Required.** The project that issues the card; the card is numbered with that project's identifier prefix (declared or id-derived). |
 | `--title <t>` | **Required.** The one-line summary. |
 | `--acceptance-mode off\|agent\|human` | The card's acceptance decision. `off`: no review; the deliverer may close it directly (`in_progress → done`). `agent`: an independent review card must APPROVE before the loop closes it. `human`: a human closes it after the review's verdict is recorded — **top-level only**: a card created with `--parent`, or one that already has a parent, refuses it. An explicit value wins over the project default; an unresolved card — task or epic — falls back to `agent` (a project-level `human` is a top-level default; a child naming no mode under it gets `agent`). A review card is always `off`. |
 | `--acceptance <text>` | One acceptance item; repeat for each. |
