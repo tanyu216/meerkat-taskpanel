@@ -590,3 +590,17 @@ and reinstalling with `--link` was the only way out.
 **Port 9527 is already in use on the host.**
 `docker compose up` fails to bind. Stop the other listener, or edit the published port in
 `docker/docker-compose.yml` (the container-internal port stays 9527).
+
+**The suite reports `# fail 0` but `verify:docker` reds at the coverage leg.**
+Look just above the summary for
+`# Warning: Could not report code coverage. SyntaxError: Unterminated string in JSON at
+position …`. A coverage run exits non-zero when it cannot print its table, and Node's
+aggregator aborts the whole summary on one truncated `coverage-*.json` in its temp
+directory — a directory every process in the run's tree writes, including the real `taskd`s
+and racers the concurrency suites spawn. So the suite's own per-directory coverage subtests
+can all be green while the run still reds, and a second container suite (another worktree's
+gate) or a busy host is enough to lose a flush. Re-run the gate **alone**; there is nothing
+in the tree to find. A run that actually misses a floor prints the table and an
+`ERROR: Coverage … does not meet` line — that is the real red. The per-directory gate
+(`test/core/coverage-gate.test.mjs`) already re-measures once when a run prints no table; this
+note is about the outer `npm run test:coverage` run, which nothing can re-measure from inside.
