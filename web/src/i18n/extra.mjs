@@ -152,6 +152,16 @@ export const EXTRA = {
     // The UI-only face of a criterion no report has answered yet: the card has
     // criteria, the verdict list does not. Not a wire status.
     "drawer.acceptance.pending": "Pending",
+    // The tab's delivery summary and its two actions. The prototype's panel is
+    // read-only (it has no board), so this whole vocabulary is
+    // implementation-only, like Reopen's: the card's own `acceptance_mode`
+    // assigns the act to the human, and these are the words for it.
+    "drawer.acceptance.summary": "Delivery",
+    "drawer.acceptance.author": "Reported by %s",
+    "drawer.accept": "Accept and close",
+    "drawer.sendBack": "Send back for rework",
+    "drawer.sendBackReason": "What should the worker fix before resubmitting?",
+    "drawer.sendBackConfirm": "Send back",
     "drawer.session.status.running": "Running",
     "drawer.session.status.closed": "Closed",
     "drawer.session.status.failed": "Failed",
@@ -283,6 +293,13 @@ export const EXTRA = {
     "drawer.acceptance.not_applicable": "不适用",
     // 仅供界面：卡片有验收项、报告尚未给出结论。
     "drawer.acceptance.pending": "待判定",
+    // 同上：原型里的验收面板只读（原型没有看板），这组词只属于实现。
+    "drawer.acceptance.summary": "本次交付",
+    "drawer.acceptance.author": "提交人：%s",
+    "drawer.accept": "验收并关闭",
+    "drawer.sendBack": "退回重做",
+    "drawer.sendBackReason": "说明需要返工的地方，让执行者知道改什么。",
+    "drawer.sendBackConfirm": "退回",
     "drawer.session.status.running": "运行中",
     "drawer.session.status.closed": "已关闭",
     "drawer.session.status.failed": "失败",

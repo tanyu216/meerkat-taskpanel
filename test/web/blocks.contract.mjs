@@ -1583,6 +1583,25 @@ const BLOCKS = [
       "[data-activity-row]",
       "[data-activity-actor]",
       "[data-activity-ts]",
+      // M6 — the Acceptance tab's delivery summary and its two acts. They exist
+      // only on a card that still owes a human the decision (a `human` card in
+      // `in_review`, no open child, no current-round review — the client twin
+      // `isAcceptanceWaiting`), so they are `states`, not `required`: the
+      // resting document has no card open and no card waiting. The driven
+      // presence/absence pairs are measured in `web/scripts/dom-smoke.mjs`;
+      // their copy is the implementation-only `drawer.accept*` / `drawer.sendBack*`
+      // family in `web/src/i18n/extra.mjs`, like Reopen's.
+      "[data-detail-acceptance-summary]",
+      "[data-detail-acceptance-round]",
+      "[data-detail-acceptance-author]",
+      "[data-detail-acceptance-conclusion]",
+      "[data-detail-acceptance-actions]",
+      "[data-detail-accept]",
+      "[data-detail-send-back]",
+      "[data-detail-send-back-panel]",
+      "[data-detail-send-back-note]",
+      "[data-detail-send-back-confirm]",
+      "[data-detail-send-back-cancel]",
     ],
     rules: [
       { kind: "count", selector: "[data-detail-drawer]", equals: 1 },

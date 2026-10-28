@@ -24,7 +24,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { acceptanceKey, acceptanceRowsFor, PENDING_STATUS } from "../../web/src/lib/acceptance.js";
+import {
+  acceptanceKey,
+  acceptanceRowsFor,
+  deliverySummaryOf,
+  PENDING_STATUS,
+} from "../../web/src/lib/acceptance.js";
 import { EXTRA } from "../../web/src/i18n/extra.mjs";
 
 const report = (text, status, note = "") => ({ text, status, note });
@@ -108,5 +113,48 @@ describe("web/acceptance — the tab's copy says what is missing", () => {
   it("names the pending face of a criterion in both languages", () => {
     assert.ok(EXTRA.en["drawer.acceptance.pending"]);
     assert.ok(EXTRA.zh["drawer.acceptance.pending"]);
+  });
+});
+
+describe("web/acceptance — the delivery summary above the criteria", () => {
+  it("projects the round, the report author and the conclusion", () => {
+    const summary = deliverySummaryOf({
+      round: 2,
+      conclusion: "Second round closed the gap.",
+      author_kind: "agent",
+      author: { id: "a1", display_name: "linus", kind: "agent" },
+      author_id: "a1",
+    });
+    assert.deepEqual(summary, {
+      round: 2,
+      author: "linus",
+      conclusion: "Second round closed the gap.",
+    });
+  });
+
+  it("falls back to the author id, and tolerates a missing field", () => {
+    assert.equal(deliverySummaryOf({ round: 1, author_id: "a3" }).author, "a3");
+    assert.equal(deliverySummaryOf({ round: 1 }).conclusion, "");
+    assert.equal(deliverySummaryOf({ author: { display_name: "jobs" } }).round, null);
+  });
+
+  it("is null when there is no report to summarise", () => {
+    assert.equal(deliverySummaryOf(null), null);
+    assert.equal(deliverySummaryOf(undefined), null);
+    assert.equal(deliverySummaryOf("a string is not a report"), null);
+  });
+
+  it("carries both actions and the send-back prompt's copy in both languages", () => {
+    for (const key of [
+      "drawer.accept",
+      "drawer.sendBack",
+      "drawer.sendBackReason",
+      "drawer.sendBackConfirm",
+      "drawer.acceptance.summary",
+      "drawer.acceptance.author",
+    ]) {
+      assert.ok(EXTRA.en[key], `en is missing ${key}`);
+      assert.ok(EXTRA.zh[key], `zh is missing ${key}`);
+    }
   });
 });

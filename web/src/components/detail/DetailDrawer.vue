@@ -40,7 +40,8 @@ import {
   saveDetailField,
   uploadAttachment,
 } from "../../stores/board.js";
-import { acceptanceRowsFor } from "../../lib/acceptance.js";
+import { acceptanceRowsFor, deliverySummaryOf } from "../../lib/acceptance.js";
+import { isAcceptanceWaiting } from "../../lib/waiting-queue.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { activityLine, relativeTime } from "../../lib/activity.js";
 import { newestFirst } from "../../lib/time.js";
@@ -72,6 +73,17 @@ const reopenOpen = ref(false);
 const reopenReason = ref("");
 const reopenBusy = ref(false);
 const reopenInput = ref(null);
+/**
+ * The Acceptance tab's two acts. `sendBackOpen` is the prompt for the note the
+ * worker needs; `sendBackCommentSent` remembers that the note already landed if
+ * the move that follows is refused — a retry must not post it twice. (The write
+ * order is comment first, move second: see `confirmSendBack`.)
+ */
+const sendBackOpen = ref(false);
+const sendBackReason = ref("");
+const sendBackBusy = ref(false);
+const sendBackCommentSent = ref(false);
+const sendBackInput = ref(null);
 const fileInput = ref(null);
 /** The id of the attachment whose download is in flight (the row's busy beat). */
 const busyAttachment = ref("");
@@ -265,6 +277,9 @@ watch(() => task.value?.id, () => {
   // box are; every other card keeps the design's Details default.
   activeTab.value = task.value?.status === "awaiting" ? "activity" : "details";
   cancelReopen();
+  // The Acceptance tab's prompt belongs to one card: a draft about another
+  // card's delivery must never be one click from being sent back.
+  cancelSendBack();
 });
 watch(hasSessions, (present) => {
   if (!present && activeTab.value === "sessions") activeTab.value = "details";
@@ -329,6 +344,27 @@ const latestReport = computed(() => {
 const acceptanceRows = computed(() =>
   acceptanceRowsFor(task.value?.acceptance ?? [], latestReport.value?.acceptance ?? []),
 );
+/**
+ * The delivery the tab leads with — the latest round's report, as round +
+ * author + conclusion. `null` for a card that has not been delivered, so the
+ * panel does not invent a round for bare criteria.
+ */
+const deliverySummary = computed(() => deliverySummaryOf(latestReport.value));
+/**
+ * Does this card still owe a human the acceptance act?
+ *
+ * The client-side twin of the board's gate (`lib/waiting-queue.js`, the same
+ * predicate the Waiting queue lists by): only a `human` card in `in_review`
+ * with no open child and no current-round review owes one. The server stays the
+ * authority — a refusal renders through the standard error path — but offering
+ * an act the board will certainly refuse would be a lie, so the control is
+ * gated here too. Derived from the **whole** board reading, not the open card
+ * alone, because a child or review landing on another card is what changes the
+ * answer.
+ */
+const acceptanceWaiting = computed(() => (task.value ? isAcceptanceWaiting(task.value, board.tasks) : false));
+/** The send-back note is required: the worker has to know what to fix. */
+const sendBackReady = computed(() => sendBackReason.value.trim().length > 0);
 const leftoverRows = computed(() =>
   reports.value.map((report) => ({
     id: report.id,
@@ -537,6 +573,8 @@ async function save(field, value) {
  * own prose.
  *
  * @param {() => Promise<unknown>} commit
+ * @returns {Promise<boolean>} whether the commit landed (the Acceptance tab's
+ *   send-back keeps its prompt open on a refusal, so it needs the verdict)
  */
 async function runCommit(commit) {
   const token = (saveToken += 1);
@@ -544,15 +582,17 @@ async function runCommit(commit) {
   saveState.value = "saving";
   try {
     await commit();
-    if (token !== saveToken) return;
+    if (token !== saveToken) return true;
     saveState.value = "saved";
     savedTimer = setTimeout(() => {
       if (token === saveToken) saveState.value = "idle";
     }, SAVE_BEAT_MS);
+    return true;
   } catch (err) {
-    if (token !== saveToken) return;
+    if (token !== saveToken) return false;
     saveState.value = "error";
     pushToast(t(errorTextKey(err), identifier.value), "danger");
+    return false;
   }
 }
 
@@ -590,6 +630,69 @@ async function choosePriority(to) {
   closePropMenus();
   if (to === priority.value) return;
   await runCommit(() => saveDetailField("priority", to));
+}
+
+/* ------------------------------------- the Acceptance tab's two acts (M6) */
+
+/**
+ * Accept and close. It is the same write the generic status menu's
+ * `in_review → done` is (`saveDetailField("status", …)` → a server move), only
+ * promoted to where the person who owes the decision is looking. The board's
+ * gate stays the authority: a refusal lands on `[data-detail-save-error]` and
+ * the standard toast sentence, exactly as any other refused move.
+ */
+async function acceptCard() {
+  if (!acceptanceWaiting.value) return;
+  await runCommit(() => saveDetailField("status", "done"));
+}
+
+function openSendBack() {
+  if (!acceptanceWaiting.value) return;
+  closePropMenus();
+  sendBackReason.value = "";
+  sendBackCommentSent.value = false;
+  sendBackOpen.value = true;
+  nextTick(() => sendBackInput.value?.focus());
+}
+
+function cancelSendBack() {
+  sendBackOpen.value = false;
+  sendBackReason.value = "";
+  sendBackCommentSent.value = false;
+}
+
+/**
+ * Send the card back for rework: `in_review → in_progress`, which the state
+ * machine records as the start of a new delivery round.
+ *
+ * **The write order is the comment first, the move second.** A note that
+ * explains the rework is the whole point of the act, so it is written while
+ * the card is still `in_review` (the round it refers to) and only then does the
+ * move open the next one. If the note fails, nothing moves and the draft stays
+ * in the prompt; if the note lands and the move is refused, the note is still
+ * the card's history and `sendBackCommentSent` stops a retry from duplicating
+ * it.
+ */
+async function confirmSendBack() {
+  const body = sendBackReason.value.trim();
+  if (!body || !sendBackReady.value || sendBackBusy.value || !task.value) return;
+  sendBackBusy.value = true;
+  try {
+    if (!sendBackCommentSent.value) {
+      try {
+        // `addComment` reports its own refusal (one voice), so this branch does
+        // not go through `runCommit`.
+        await addComment(task.value.identifier, body);
+        sendBackCommentSent.value = true;
+      } catch {
+        return;
+      }
+    }
+    const landed = await runCommit(() => saveDetailField("status", "in_progress"));
+    if (landed) cancelSendBack();
+  } finally {
+    sendBackBusy.value = false;
+  }
 }
 
 /* ------------------------------------------------------------- reopen (I3) */
@@ -947,6 +1050,9 @@ watch(
 // commit, and the blur half is the control's own `blur` event. Typing into a
 // field moves neither, so typing alone commits nothing (contract C-14).
 watch(assigneeDraft, () => commitField("assignee", assigneeDraft.value));
+// If the note landed but the move was refused, a retry after an edit must post
+// the edited note — only an *unchanged* draft is skipped as already written.
+watch(sendBackReason, () => { sendBackCommentSent.value = false; });
 watch(reporterDraft, () => commitField("reporter", reporterDraft.value));
 watch(labelDraft, () => commitLabels(), { deep: true });
 watch(dependsDraft, () => commitDepends(dependsDraft.value), { deep: true });
@@ -1719,6 +1825,44 @@ function copyId() {
       <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-acceptance" data-detail-panel="acceptance" aria-labelledby="td-dv-tab-acceptance" tabindex="0" :hidden="activeTab !== 'acceptance'">
         <section class="td-section" data-dv-tab-block="acceptance">
           <h3 class="td-section-title" data-i18n="drawer.tab.acceptance">{{ $t("drawer.tab.acceptance") }}</h3>
+          <!-- M6 — the delivery the reader is judging, **above** its criteria:
+               the round, who reported it and what it concluded. It is the
+               latest report's own header, so a person arriving to accept does
+               not have to leave the tab to find out what they are accepting.
+               A card with no report has no delivery and renders nothing. -->
+          <div v-if="deliverySummary" class="td-dv-report mb-3" data-detail-acceptance-summary>
+            <div class="td-dv-report-head">
+              <span class="td-dv-kind" data-i18n="drawer.acceptance.summary">{{ $t("drawer.acceptance.summary") }}</span>
+              <span v-if="deliverySummary.round !== null" class="badge badge-sm td-chip td-dv-round" data-detail-acceptance-round>{{ $t("drawer.report.round", deliverySummary.round) }}</span>
+              <span class="td-dv-author td-mono" data-detail-acceptance-author>{{ $t("drawer.acceptance.author", deliverySummary.author) }}</span>
+            </div>
+            <p v-if="deliverySummary.conclusion" class="td-dv-conclusion" data-detail-acceptance-conclusion>{{ deliverySummary.conclusion }}</p>
+          </div>
+          <!-- The act the card's own `acceptance_mode` assigns to the human,
+               promoted to where the criteria are. The generic status menu in
+               Details stays; this is the same write, made visible. Gated on the
+               client twin of the board's gate, so no card is offered an act the
+               server would refuse. -->
+          <div v-if="acceptanceWaiting" class="flex gap-2 mb-3" data-detail-acceptance-actions>
+            <button type="button" class="btn btn-primary btn-sm" data-detail-accept @click="acceptCard">{{ $t("drawer.accept") }}</button>
+            <button type="button" class="btn btn-sm" data-detail-send-back @click="openSendBack">{{ $t("drawer.sendBack") }}</button>
+          </div>
+          <!-- Send back needs a note: the next worker has to know what to fix.
+               The note is written before the move — see `confirmSendBack`. -->
+          <div v-if="sendBackOpen && acceptanceWaiting" class="flex flex-col gap-2 mb-3" data-detail-send-back-panel>
+            <label class="td-prop-label" for="td-dv-send-back-note">{{ $t("drawer.sendBackReason") }}</label>
+            <textarea
+              id="td-dv-send-back-note"
+              ref="sendBackInput"
+              v-model="sendBackReason"
+              class="textarea textarea-sm w-full"
+              data-detail-send-back-note
+            ></textarea>
+            <div class="flex gap-2">
+              <button type="button" class="btn btn-sm" data-detail-send-back-confirm :disabled="!sendBackReady || sendBackBusy" @click="confirmSendBack">{{ $t("drawer.sendBackConfirm") }}</button>
+              <button type="button" class="btn btn-sm btn-ghost" data-detail-send-back-cancel @click="cancelSendBack">{{ $t("modal.cancel") }}</button>
+            </div>
+          </div>
           <ul class="td-dv-list">
             <li
               v-for="row in acceptanceRows"

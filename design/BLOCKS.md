@@ -578,6 +578,27 @@ product override of the prototype's 520px `--shell-drawer`. The `100vw` ceiling
 keeps a narrow viewport full-width exactly as before; every other box in this
 block follows the prototype.
 
+**Implementation supplement — the Acceptance tab can act (M6).** 〔原型只读；这是
+记录在案的扩展，不是原型被回改〕 The prototype's Acceptance panel is a read-only
+list of verdicts; in the shipped board the card's own `acceptance_mode` is what
+assigns the closing act to a person, so the tab is where that act belongs. A card
+whose `acceptance_mode` is `human` and whose client twin of the board's gate
+(`isAcceptanceWaiting(task, tasks)`, `web/src/lib/waiting-queue.js`) says the
+decision is still owed leads with the **latest delivery's summary** —
+`[data-detail-acceptance-summary]` → `[data-detail-acceptance-round]` ·
+`[data-detail-acceptance-author]` · `[data-detail-acceptance-conclusion]` — above
+the criteria list, then offers `[data-detail-acceptance-actions]` →
+`[data-detail-accept]` (`in_review → done`) and `[data-detail-send-back]`. Send
+back opens `[data-detail-send-back-panel]` → `[data-detail-send-back-note]`,
+`[data-detail-send-back-confirm]`, `[data-detail-send-back-cancel]`; the note is
+required and is written **before** the `in_review → in_progress` move, which
+starts a new delivery round. The generic status menu is unchanged and remains the
+other way to make both moves; the server gate stays the authority, and its
+refusal renders through the ordinary `[data-detail-save-error]` + toast path.
+Every hook here is pinned by `test/web/blocks.contract.mjs` §B09 in `states`
+(they exist only on a waiting card), and both legs — accept and send back — are
+driven in `web/scripts/dom-smoke.mjs` (run by `test/web/blocks.dom.test.mjs`).
+
 **Implementation supplement — the panel opens before its card is read.** Opening a card
 clears the detail and flips the drawer to `open` in one act, so the panel now slides in at
 once with a skeleton head and body (`[data-detail-skeleton]`, daisyUI `skeleton` bars in
