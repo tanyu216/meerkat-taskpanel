@@ -48,7 +48,8 @@ agent `question` and stop — do not route another role's work.
 An existing project inherits its recorded foundation. Read its standard, architecture
 document, ADRs, contract, `.env.example` and tree, and record `inherited — <path>`. A
 foundation change is a delta; re-scaffolding or re-choosing a recorded decision is a
-decision the card must ask for, not a side effect of running this flow.
+decision the card must ask for, not a side effect of running this flow. Extend the recorded
+foundation; never fork a second one.
 
 ## Inputs
 
@@ -58,7 +59,7 @@ decision the card must ask for, not a side effect of running this flow.
   card;
 - the existing repository, if any: its manifests, its standard (`docs/tech-spec.md`), its
   architecture document, ADRs, API contract, `.env.example`, directory tree and
-  `GLOSSARY.md`. Extend it; never fork a second foundation.
+  `GLOSSARY.md`.
 
 ## Steps
 
@@ -176,20 +177,32 @@ One artifact is canonical per design area; every other location points to it.
 |---|---|
 | Boundaries and data model | `docs/architecture.md` |
 | Architecture style | `docs/adr/NNNN-<slug>.md`, summarised in the architecture document |
-| Standard and conventions (stack, naming, layering, errors, configuration, logging, tests, gates) | `docs/tech-spec.md`; the architecture document, the baseline and the README point at it, and it points at the detailed artifacts |
+| Standard and conventions (stack, naming, layering, errors, configuration, constants, enumerations, logging, tests, gates) | `docs/tech-spec.md`; the architecture document, the baseline and the README point at it, and it points at the detailed artifacts |
 | External contract | The OpenAPI document (or the stack's schema language); the architecture document only points at it |
 | Configuration | `.env.example` plus the typed schema; other documents point at them |
+| Constants and enumerations | The definition module in the source tree; the standard records the rule, and the contract and the UI label map point at it |
 | Directory tree | `docs/architecture.md`; `CLAUDE.md`/`AGENTS.md` carry a top-level map and a pointer |
 
 #### Module boundaries and data model
 
 Name each module, what it owns and what it may import; the dependency direction is one
 way. Define the public interfaces and the error model (one error taxonomy, mapped to the
-contract at the boundary), the data model and its migrations, and the security boundaries.
-Choose the smallest vertical slice that proves the skeleton and name it.
+contract at the boundary), and the data model and its migrations; the security boundaries
+get their own section below. Choose the smallest vertical slice that proves the skeleton and
+name it.
 
-Output: the boundaries, data model, error model and vertical slice in the architecture
-document.
+**Constants and enumerations.** A literal a second module would need is a named constant in
+one home — the module that owns the concept — not a copy. A value that differs per
+deployment is configuration (the surface below); a value an operator changes at runtime is
+data. An enumeration has one definition: the canonical set, its wire form and its
+unknown-value policy live in one place, and every consumer imports it. It is a closed set —
+adding a member is additive within the API version, removing or renaming one is breaking,
+and a value arriving from outside is rejected or mapped to a documented fallback, never
+accepted silently. The database constraint, the contract's enum and the UI's label map are
+checked against that one definition.
+
+Output: the boundaries, data model, error model, constants and enumeration homes and the
+vertical slice in the architecture document.
 
 #### External contracts
 
@@ -264,6 +277,13 @@ the canonical contract path.
 
 Configuration is a contract with the operator, not a bag of environment reads.
 
+- **Configuration or constant.** A value that differs per deployment, per environment or per
+  operator is configuration and belongs in the inventory below; a value that is part of the
+  program's meaning and identical everywhere — a protocol constant, a key name, a retry
+  count the contract fixes — is a named constant in one home, never an environment read; a
+  value an operator changes while the system runs is data, not configuration. Promoting a
+  constant to a key and freezing a deployment-dependent value in code are each a recorded
+  decision, never a convenience.
 - **One inventory.** `.env.example` names every key the application reads, one per line,
   with a safe placeholder and a comment giving its purpose, allowed values and default. A
   real secret never appears; a key the application reads but the file omits is a defect, and
@@ -334,6 +354,25 @@ logging, and a library still logs its caught exceptions through the caller's log
 Output: the logging section of the architecture document, the logger path, the level and
 format keys, the mandatory `info` and `error` call sites, and the correlation id.
 
+#### Observability
+
+Name what is measured, the threshold that matters and who acts on it — latency, error rate,
+saturation, queue depth or the domain's own counters — before naming a platform. Instrument
+the vertical slice; a dashboard or alert with no consumer is not added. Logging, designed
+above, is one signal, not the observability plan.
+
+Output: the observability section of the architecture document — the signals, their
+thresholds and their consumers.
+
+#### Security boundaries
+
+Name what is trusted and what is validated at each edge: loopback versus remote, anonymous
+versus authenticated, the validation performed at every boundary crossing, where secrets
+live and how they are rotated, and the one place each authorization decision is made. A
+boundary that trusts by convenience is a recorded decision.
+
+Output: the security boundaries in the architecture document.
+
 #### Directory structure
 
 Plan the tree before creating it. The tree makes the architecture visible: a reader should
@@ -356,19 +395,17 @@ never invent it silently.
 
 Output: the directory tree in the architecture document, each directory with its purpose.
 
-The observability plan names what is measured and alerted, without inventing a platform
-before a consumer needs it; logging is designed above. The security boundaries name what is
-trusted and what is validated at each edge. The vertical slice is the smallest end-to-end
-path that proves the skeleton — not a product feature.
-
-Output: the skeleton design in the architecture document — boundaries and data model, the
-external contract, the configuration surface and the directory tree — with the vertical
-slice named, and the standard in `docs/tech-spec.md`.
+Step output: the skeleton design in the architecture document — boundaries and data model,
+the external contract, the configuration surface, the constants and enumeration homes, the
+observability plan, the security boundaries and the directory tree — with the vertical
+slice named, and the standard in `docs/tech-spec.md` complete.
 
 #### The technical specification
 
 The project has one standard: `docs/tech-spec.md` — a card-local foundation delta is
-`.meerkat/<id>/tech-spec.md`. It is normative, not a design narrative: what a code change
+`.meerkat/<id>/tech-spec.md`. It is written across the flow: Step 2 seeds its `## Tech stack`
+table, this step fixes its sections and rules, and Step 4 fills them against the scaffold.
+It is normative, not a design narrative: what a code change
 must comply with, in the fewest lines that can be checked. The architecture document keeps
 the design — positioning, style, boundaries, data model and tree — and points here; this
 document points at the canonical artifact for each detail and never restates it.
@@ -377,10 +414,10 @@ document points at the canonical artifact for each detail and never restates it.
 |---|---|---|
 | Authority and change | what it binds, who may change it (a card, an ADR, the human's E5), the review gate, what it deliberately does not govern | a reader knows how to change a rule and where the decision is recorded |
 | Tech stack | the `## Tech stack` table: frontend, backend, persistence, container/build and contracts, versions pinned, `n/a — <reason>` per absent layer | every row is a concrete choice; no `TBD` |
-| Structure and dependencies | the one-way dependency direction, module ownership and the tree rule; pointer to the tree in the architecture document | a new file has exactly one legal home |
-| Naming | files, modules, types, routes, database objects, environment keys and test files | a reviewer can reject a name by citing one line |
-| Errors and contract | one error taxonomy, the envelope, validation, pagination and versioning; pointer to the contract artifact | a failure has one code and one shape |
-| Configuration | one inventory, one loader, the load order, fail-fast and the reload policy; pointer to `.env.example` | an unlisted key is a defect |
+| Structure and dependencies | the one-way dependency direction, module ownership, the constants home, the enumeration definition module and the tree rule; pointer to the tree in the architecture document | a new file, literal or enum member has exactly one legal home |
+| Naming | files, modules, types, routes, database objects, environment keys, constant and enum names, and test files | a reviewer can reject a name by citing one line |
+| Errors and contract | one error taxonomy, the envelope, validation, pagination, versioning, the wire enumerations and their unknown-value policy; pointer to the contract artifact | a failure has one code and one shape, and an unknown enum value has one documented fate |
+| Configuration | one inventory, one loader, the load order, fail-fast, the configuration-versus-constant boundary and the reload policy; pointer to `.env.example` | an unlisted key is a defect, and a deployment-dependent literal in code is not a key |
 | Logging | one logger, the level meanings, the mandatory `info` and `error` sites, the correlation id and redaction | a key flow has its line; no secret is logged |
 | Tests and gates | test layout and naming, the coverage floor, the local gates and the CI checks | a change knows what must pass before delivery |
 | Release and delivery | release and deploy invariants, artifact immutability, rollback and its data plan | each path records its invariant or its `n/a` |
@@ -410,6 +447,7 @@ written `n/a — <reason>`, never a missing file.
 | Standard | every section of `docs/tech-spec.md` filled from the recorded decisions, each rule naming its enforcement | the stack table matches the manifests, no section says `TBD`, and a rule the scaffold cannot meet is a recorded decision, not a silent drift |
 | Contracts | when the system exposes an HTTP API: the envelope and error helper, the boundary validator, the pagination helper, the canonical contract document and one smoke request; otherwise the recorded `n/a` | a request round-trips through the envelope and a validation failure returns the documented error shape |
 | Configuration surface | `.env.example` naming every key the app reads, the typed loader and schema, the load order, the reload policy, no secret | a missing required key fails loudly, never a silent default |
+| Constants and enumerations | one constants home and one definition per enum carrying its wire form, unknown-value policy and label map; the lint rule or test that fails on a duplicated literal or a second copy of a set | a duplicated value or a divergent copy fails the gate |
 | Logging | the logger module and factory, the startup level and format keys, the correlation-id helper, and the mandatory `info`/`error` call sites wired into the vertical slice | a key flow emits its `info` line, a thrown exception emits one `error` line with its code, and no application module calls `console` directly |
 | Build and manifests | package/build manifest, lockfile, scripts for install / build / run / test / lint / typecheck / migrate | a clean environment builds with one command |
 | Quality tooling | formatter, linter and type checker configuration | all three run locally and fail non-zero |
@@ -510,7 +548,7 @@ entry-point map, the design principles, the working agreement, the change and in
 policy, the operational invariants and the pointer to the standard, named as the entry
 baseline in the delivery.
 
-### 6. Record the gates, the release and the delivery path
+### 6. Record the gates, the release and the deploy path
 
 The local gate path runs the same checks as CI, so a host-only bypass cannot ship. It stays
 offline and fast, prints what it runs, and is idempotent.
@@ -522,12 +560,13 @@ offline and fast, prints what it runs, and is idempotent.
 | Local pre-tag | a version that disagrees with the manifest; a tag without its CHANGELOG section; a release build that fails | it passes before the tag is created |
 
 CI runs on every push and pull request: install from the lockfile → lint, format check and
-typecheck → tests with the coverage floor → contract and canonical-contract checks → a
-configuration-key check (every key the application reads is named in `.env.example`) →
-build the artifact → security scan (dependency audit, secret scan, SAST) with no
-unaddressed high or critical finding.
+typecheck (including the duplicated-literal rule) → tests with the coverage floor → contract
+and canonical-contract checks → a configuration-key check (every key the application reads
+is named in `.env.example`) → an enumeration drift check (each documented wire enum matches
+the values its handler accepts) → build the artifact → security scan (dependency audit,
+secret scan, SAST) with no unaddressed high or critical finding.
 
-#### Release and delivery
+#### Release and deploy
 
 **Release** publishes a version; **deploy** runs it somewhere. They are separate paths and
 each records its own `n/a — <reason>`: a library, a CLI or a local-first tool publishes and
@@ -555,48 +594,19 @@ Output: the local gate path wired, the CI pipeline file, and the release and dep
 
 ### 7. Self-check
 
-Run `self-check.md` (Architecture branch). The architecture proof is:
+Run `self-check.md` (Architecture branch). It is the authoritative checklist and this flow
+does not restate it; this step names only the proof the architecture package must carry:
 
 - every requirement and quality attribute maps to the architecture document or an ADR;
 - the design stance is evidenced: the simplest reliable option was chosen, every abstraction
   and dependency names its forcing function, no layer exists only for symmetry, and modules
   have one reason to change with dependencies pointing one way;
-- the architecture style is recorded and justified (DDD with its contexts and aggregates,
-  or a named simpler style with DDD's rejection), and the boundaries and tree instantiate
-  it;
-- the `## Tech stack` table is in `docs/tech-spec.md`, complete, versions pinned and Step 4
-  instantiates it;
-- when the system exposes an HTTP API, the envelope, error codes, validation and pagination
-  are recorded, one helper implements the envelope, and the canonical contract matches;
-- the configuration surface is recorded: `.env.example` names every key, the loader fails
-  loudly, and the reload policy lists reloadable and restart-required keys;
-- the logging contract is recorded and scaffolded: one logger module, key flows emit
-  `info`, caught exceptions emit one `error` with their code and correlation id, and no
-  secret is logged;
-- the directory tree is planned, scaffolded exactly, and carried by the agent-instruction
-  baseline as a top-level map with a pointer;
-- the recorded standard is complete (`docs/tech-spec.md` for a project this flow created, the
-  inherited binding otherwise): every section is filled, the stack table lives there and
-  nowhere else, every rule names its enforcement point (a test, a lint rule, a gate or
-  `review`), and no rule restates a canonical artifact;
-- `CLAUDE.md`/`AGENTS.md` exists as the baseline every role reads, carries the entry
-  commands, the entry-point map, the gates, the working agreement, the change and integration
-  policy and the operational invariants, and points at the standard, the architecture
-  document and the full tree rather than copying them;
-- every path and command the baseline names resolves against the tree and the manifest — no
-  fabricated path or undefined command survives review; an existing baseline was improved in
-  place, not regenerated;
-- every ADR has a status, alternatives and consequences;
-- the scaffold checklist in Step 4 is complete, the smoke test passes and the documented
-  local run works;
-- the local gate path exists at pre-commit, pre-push and pre-tag, and is idempotent;
-- the release and deploy paths are recorded separately, each with its `n/a` when absent: a
-  release publishes the artifact CI passed and keeps a published version immutable, and a
-  deploy carries a healthcheck, a post-deploy verification and a recorded rollback with its
-  data plan when stored data changes;
-- no secret, no host-absolute path, no second source of truth;
-- the root `GLOSSARY.md` carries the `## Product language` pointer (or says product terms
-  are not recorded) and does not copy `design/glossary.md`.
+- the recorded standard is complete: every section is filled, the stack table lives there
+  and nowhere else, and every rule names its enforcement point;
+- the architecture package in Step 8 is complete; the agent-instruction baseline carries
+  the working agreement, the change and integration policy and the operational invariants,
+  and every path and command it names resolves against the tree and the manifest;
+- no secret, no host-absolute path, no second source of truth.
 
 Output: the requirement → artifact table in `plan.md`.
 

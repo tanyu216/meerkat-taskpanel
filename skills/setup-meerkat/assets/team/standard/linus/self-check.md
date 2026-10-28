@@ -115,6 +115,11 @@ run them.
     artifacts that are never hand-edited.
 22. Every path and command the baseline names resolves against the tree and the manifest; on
     an existing project the file was improved in place, not regenerated.
+23. Constants and enumerations have one home each: a deployment-dependent value is a
+    configuration key, never a literal; a literal a second module needs is a named constant;
+    each enum is one definition with a recorded wire form and unknown-value policy, and the
+    database constraint, the contract and the UI label map agree. Otherwise the recorded
+    `n/a` is present.
 
 ## Implementation branch
 

@@ -280,8 +280,9 @@ Linus establishes the project's agent-instruction baseline (the host's `CLAUDE.m
 and it carries the entry commands, layout pointers, gates, the six principles, the working
 agreement, the change and integration policy and the operational invariants. The
 architecture flow records the project's standard technical specification at
-`docs/tech-spec.md` — the stack, naming, layering, errors, configuration, logging, tests and
-gates, each rule with its enforcement point — and the baseline points at it for the
+`docs/tech-spec.md` — the stack, naming, layering, errors, configuration, constants and
+enumerations, logging, tests and gates, each rule with its enforcement point — and the
+baseline points at it for the
 conventions rather than restating them.
 The `/meerkat` task entry and its scope are the project-init stage's job (§4), not the
 architecture flow's.

@@ -127,7 +127,8 @@ Linus keeps the project's standard at `docs/tech-spec.md`, durable architecture 
 decisions at `docs/adr/NNNN-<slug>.md`; a card-local foundation change may live in
 `.meerkat/<id>/tech-spec.md` or `.meerkat/<id>/architecture.md`. The standard carries the
 canonical `## Tech stack` table (frontend, backend, persistence and container/build) and the
-normative rules — naming, layering, errors, configuration, logging, tests and gates — each
+normative rules — naming, layering, errors, configuration, constants and enumerations,
+logging, tests and gates — each
 with its enforcement point, and an implementation card inherits it rather than re-choosing.
 The architecture document carries the design narrative: the design-stance evidence (simple,
 reliable, efficient, elegant, not over-engineered, high cohesion and low coupling), the

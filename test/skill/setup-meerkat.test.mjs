@@ -271,6 +271,18 @@ describe("skill frontmatter and assets", () => {
     }
     assert.match(arch, /pagination/i, "collections define pagination");
     assert.match(arch, /hot.?reload/i, "the configuration surface defines reload");
+    assert.match(
+      arch,
+      /configuration (or|versus|vs\.?) constant/i,
+      "the configuration surface separates deployment configuration from code constants",
+    );
+    assert.match(arch, /closed set/i, "an enumeration is a closed set");
+    assert.match(arch, /unknown[- ]value/i, "an enumeration records its unknown-value policy");
+    assert.match(
+      arch,
+      /constants? and enumerations?/i,
+      "the standard and scaffold carry constants and enumerations",
+    );
     assert.match(arch, /directory tree|directory structure/i, "the tree is planned");
     assert.match(arch, /requirement for every agent/i, "the agent-instruction baseline is required");
     assert.match(arch, /one logging module/i, "logging is one module, not console calls");
@@ -286,6 +298,25 @@ describe("skill frontmatter and assets", () => {
     );
     const scaffold = arch.slice(arch.indexOf("### 4."), arch.indexOf("### 5."));
     assert.match(scaffold, /^\| Logging \|/m, "the scaffold checklist carries a logging row");
+    assert.match(
+      scaffold,
+      /^\| Constants and enumerations \|/m,
+      "the scaffold checklist carries a constants and enumerations row",
+    );
+
+    const design = arch.slice(arch.indexOf("### 3."), arch.indexOf("### 4."));
+    assert.match(design, /^#### Observability$/m, "observability has its own design section");
+    assert.match(
+      design,
+      /^#### Security boundaries$/m,
+      "security boundaries have their own design section",
+    );
+    const selfCheckStep = arch.slice(arch.indexOf("### 7."), arch.indexOf("### 8."));
+    assert.match(
+      selfCheckStep,
+      /authoritative checklist/i,
+      "Step 7 defers to self-check.md instead of keeping a second list",
+    );
     const init = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
     assert.match(init, /logging contract/i, "the agent-instruction baseline carries the logging contract");
 
@@ -296,6 +327,11 @@ describe("skill frontmatter and assets", () => {
     assert.match(check, /architecture style|domain-driven/i, "the self-check audits the style");
     assert.match(check, /external contract/i, "the self-check audits the contract");
     assert.match(check, /configuration surface/i, "the self-check audits configuration");
+    assert.match(
+      check,
+      /constants? and enumerations?/i,
+      "the self-check audits constants and enumerations",
+    );
     assert.match(check, /logging/i, "the self-check audits the logging contract");
     assert.match(
       check,
