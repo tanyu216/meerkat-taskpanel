@@ -130,6 +130,12 @@ public pool. Only `--status backlog` keeps it out of a queue. Describe the card 
 the create returned: a repeated create answers with the existing one. The INSERT gate:
 [`references/status-lifecycle.md#8-creating-a-card-in-a-status`](references/status-lifecycle.md#8-creating-a-card-in-a-status).
 
+**A card the human asked for is theirs.** File it with `--as-human`: the board records that
+human as both the writer and the reporter, because the creator is the reporter. A card you
+decide to file yourself names nobody. `--as-human` is for the human's cards and the human's
+words only — never for your own claim, heartbeat, delivery or review. When it cannot be used,
+pass `--reporter <name>` explicitly.
+
 **A document the work must follow is attached, not retyped.** When the human points at a file —
 a plan you wrote, a third-party spec, a vendor's PDF to read closely — that pointing *is* the
 instruction; nobody says "upload it". Attach it straight after the create, and when the file is
@@ -137,7 +143,7 @@ the plan itself, store it as `plan.md` whatever it is called on disk — an expo
 `draft-7f3a.md` is not a name anyone will look for:
 
 ```bash
-taskctl issue create --project <p> --title "…" --acceptance "…"
+taskctl --as-human issue create --project <p> --title "…" --acceptance "…"
 taskctl attachment add <ref> --file <path> --name plan.md   # the plan's one name; create has no --file
 ```
 

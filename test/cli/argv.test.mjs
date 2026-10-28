@@ -88,6 +88,16 @@ describe("cli/argv — tokenize", () => {
     assert.deepEqual(flags.get("no-report"), [true]);
   });
 
+  it("knows --as-human takes no value, even before the command", () => {
+    // The shim injects the actor flags before the command; a human write may do
+    // the same. Without this entry the command word would become the flag's
+    // value and the whole line would parse one token short.
+    const { positionals, flags } = tokenize(["--as-human", "issue", "create", "--title", "T"]);
+    assert.deepEqual(positionals, ["issue", "create"]);
+    assert.deepEqual(flags.get("as-human"), [true]);
+    assert.deepEqual(flags.get("title"), ["T"]);
+  });
+
   it("accepts - as a value (stdin) and -- to end the flags", () => {
     assert.deepEqual(tokenize(["--report-file", "-"]).flags.get("report-file"), ["-"]);
     const { positionals, flags } = tokenize(["--", "--not-a-flag", "x"]);

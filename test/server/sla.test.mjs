@@ -61,10 +61,13 @@ after(async () => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 });
 
-async function call(taskd, method, path, body) {
+async function call(taskd, method, path, body, extraHeaders = {}) {
   const response = await fetch(`${taskd.url}${path}`, {
     method,
-    headers: body === undefined ? {} : { "content-type": "application/json" },
+    headers: {
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...extraHeaders,
+    },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const text = await response.text();
@@ -80,13 +83,22 @@ const dataOf = (result) => {
 async function blockedCard(taskd, title = "Awaiting a decision") {
   // A second call in the same board is a conflict, not a failure.
   await call(taskd, "POST", "/api/v1/projects", { id: "sla", name: "SLA" });
+  // A worker files the card: a human write now records the writer as reporter,
+  // and that creation would be the board's newest leader event — putting the
+  // stall inside its lead. `leader_stalled` needs a board with no leader act.
   const created = dataOf(
-    await call(taskd, "POST", "/api/v1/tasks", {
-      project_id: "sla",
-      title,
-      status: "blocked",
-      blocked_reason: "clarify",
-    }),
+    await call(
+      taskd,
+      "POST",
+      "/api/v1/tasks",
+      {
+        project_id: "sla",
+        title,
+        status: "blocked",
+        blocked_reason: "clarify",
+      },
+      { "x-taskctl-actor": JSON.stringify({ kind: "claude", id: "tester" }) },
+    ),
   );
   return created.task.identifier;
 }

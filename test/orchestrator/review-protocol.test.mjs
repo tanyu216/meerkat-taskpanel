@@ -50,6 +50,22 @@ describe("the review-card protocol", () => {
     );
     // The one meta key that is genuinely the loop's own marker stays.
     assert.equal(flagValue(args, "--meta"), "flow=B");
+    // The loop files in its own voice, never the human's: no reporter flag and
+    // no --as-human, or an automated card would count as a leader event.
+    assert.equal(
+      args.some((arg) => arg === "--as-human" || arg.startsWith("--reporter")),
+      false,
+      `the loop must not file as the human: ${JSON.stringify(args)}`,
+    );
+  });
+
+  it("carries no human voice anywhere in board.mjs's create argvs", () => {
+    const source = readFileSync(join(ROOT, "src/orchestrator/board.mjs"), "utf8");
+    assert.equal(
+      /--as-human|--reporter/.test(source),
+      false,
+      "the workflow pass files review cards and fix children as the system, never the human",
+    );
   });
 
   it("the argv the loop builds is accepted by the CLI and stamps both markers", async () => {
@@ -76,8 +92,13 @@ describe("the review-card protocol", () => {
         idem: `loop-review|${original.task.identifier}|r1`,
       };
 
-      const created = dataOf(ctx.run([...reviewCreateArgs(action), "--json"]));
+      // Run as the loop does. The CLI harness otherwise injects `--as-human`,
+      // which would give this card a human reporter and hide a regression.
+      const created = dataOf(
+        ctx.run([...reviewCreateArgs(action), "--json"], { actorKind: "taskd" }),
+      );
 
+      assert.equal(created.task.reporter, null, "an automated review card names no human");
       assert.equal(created.task.review_of_id, original.task.id);
       assert.equal(created.task.review_round, 1);
       assert.equal(created.task.meta.review_of, original.task.identifier);

@@ -23,6 +23,7 @@ export const BOOLEAN_FLAGS = Object.freeze(
     "json",
     "help",
     "version",
+    "as-human",
     "no-report",
     "force-create",
     "force",

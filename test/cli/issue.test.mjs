@@ -61,6 +61,33 @@ describe("cli/issue — create, list, get", () => {
     });
   });
 
+  it("signs a human-filed card with the configured human (the --as-human convention)", async () => {
+    await board(async ({ run, dataDir }) => {
+      // The harness injects the explicit human spelling; the name comes from
+      // the config layer, exactly as the installed shim supplies it.
+      const created = dataOf(
+        run(["issue", "create", "--project", "demo", "--title", "Filed by the human", "--json"], {
+          env: { TASKCTL_HUMAN: "Terry" },
+        }),
+      );
+      assert.equal(created.task.reporter.display_name, "Terry");
+      assert.equal(created.task.reporter.kind, "human");
+
+      // The accepted cost of this convention: the write itself is the human's,
+      // so the activity no longer names the agent that typed it.
+      const db = new DatabaseSync(join(dataDir, "board.sqlite"), { readOnly: true });
+      try {
+        const row = db
+          .prepare("SELECT actor_kind, actor_id FROM task_activities WHERE event = 'task_created'")
+          .get();
+        assert.equal(row.actor_kind, "human");
+        assert.equal(row.actor_id, "Terry");
+      } finally {
+        db.close();
+      }
+    });
+  });
+
   it("create accepts --review-of and --review-round end to end", async () => {
     await board(async ({ run }) => {
       const original = createIssue(run, ["--title", "Original"]);
@@ -387,8 +414,10 @@ describe("cli/issue — update, move, assign, archive", () => {
       assert.equal(assigned.task.assignee.display_name, "Linus");
 
       const entries = dataOf(run(["actors", "list", "--json"]));
-      assert.equal(entries.entries.length, 1);
-      const id = entries.entries[0].id;
+      // Two rows: the human writer, recorded as the reporter by the create
+      // default, and the assignee this command just resolved.
+      assert.equal(entries.entries.length, 2);
+      const id = entries.entries.find((entry) => entry.display_name === "Linus").id;
 
       const byId = dataOf(run(["issue", "assign", "DEMO-0001", "--assignee-id", id, "--json"]));
       assert.equal(byId.task.assignee.id, id, "an exact id round-trips");
