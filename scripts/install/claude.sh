@@ -27,6 +27,7 @@ merge_settings "$(target_home)/.claude/settings.json"
 
 # The shim — every CLI call from a hook/command is attributed to this agent.
 emit_file "taskctl-shim.sh" "$TP_SHIM" --exec
+reconcile_taskctl_on_path
 
 # Slash commands.
 emit_file "claude/commands/board.md"   "$(target_home)/.claude/commands/board.md"

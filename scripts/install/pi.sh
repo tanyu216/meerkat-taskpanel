@@ -23,6 +23,7 @@ export_tp_env ".agents" "pi"
 # though the rulings above keep the loop out: those are about an unattended daemon,
 # and this is one wrapper around a command the agent already runs itself.
 emit_file "taskctl-shim.sh" "$TP_SHIM" --exec
+reconcile_taskctl_on_path
 
 install_scheduling
 write_agent_config

@@ -207,6 +207,16 @@ which is why every agent kind — including OpenClaw, which has no loop — gets
 Without it a write from that agent kind carries a name and no kind, and the board reads a write
 with no kind as a **person's** — which is what would put it on the record as a decision.
 
+**A `taskctl` already on `PATH` is adopted, with a backup.** The shell's `PATH` is not the
+units' `PATH`: a `taskctl` left there by an earlier tool answers every bare call first and
+writes that tool's identity. So an install resolves `command -v taskctl` and, when it names
+a foreign shell script **inside the target home**, copies it to `<path>.bak-<timestamp>` and
+writes this install's shim in its place. It leaves alone a symlink, a non-script, a file
+outside the target home (a `--prefix` install must not touch the operator's real home), and
+a shim already written by a meerkat install — the first agent kind in a run wins, so
+`--target all` does not end with whichever kind installed last. `--dry-run` reports the
+adoption and writes nothing.
+
 The two bundle agent kinds write more than the skill. **Claude** additionally writes
 `~/.claude/settings.json` (merged `env.TASKCTL_AGENT`, `env.TASKCTL_ACTOR_KIND`,
 `env.TASKCTL_HUMAN` + a `SessionStart` hook),
@@ -266,11 +276,13 @@ place with a warning; repair it with `taskctl project map set`.
 | cron | `<agent-dir>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue — **no pool**: no worker dispatch |
 
 Each unit names the **absolute `node`** that rendered it and carries a **`PATH`** holding
-the agent CLI's directory and node's ahead of the scheduler's own default. Neither is
-optional: a scheduler starts a unit with a minimal `PATH` that holds no nvm and no Homebrew
-directory, so `/usr/bin/env node` is exit 127 — and the resident session's `exec claude`,
-and the worker's own tool tree, resolve on that same set. If the agent CLI is not on `PATH` at
-install time, the installer says so and renders node's directory alone rather than guessing.
+the agent **shim's** directory, the agent CLI's, and node's ahead of the scheduler's own
+default. Neither is optional: a scheduler starts a unit with a minimal `PATH` that holds no
+nvm and no Homebrew directory, so `/usr/bin/env node` is exit 127 — and the resident
+session's `exec claude`, and the worker's own tool tree (including `taskctl`), resolve on
+that same set. The shim heads the list so a globally installed `taskctl` cannot shadow it
+and write the wrong actor identity. If the agent CLI is not on `PATH` at install time, the
+installer says so and renders the shim directory and node's alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
 | per-kind config | `<program root>/.env.<actor-kind>` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW` and `MEERKAT_TASKPANEL_REVIEWER`, the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE`, the concurrency cap's `MEERKAT_TASKPANEL_MAX_CONCURRENCY`, and the pool's `MEERKAT_TASKPANEL_RESIDENT`, `..._SESSION_MAX_AGE`, `..._SESSION_TURN_TIMEOUT`, `..._SESSION_POLL_MS`, `..._SESSION_POOL_MAX`, `..._PROJECT_CONCURRENCY` and `..._PROJECT_IDLE_MS`. Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
 | log (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |

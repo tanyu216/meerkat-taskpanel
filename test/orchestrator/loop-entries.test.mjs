@@ -1005,6 +1005,12 @@ describe("continue spawn", () => {
     // No pool: the turn runs patrol + workflow only, and says why.
     assert.doesNotMatch(text, /passes\.mjs poll/);
     assert.match(text, /No resident session pool is running/);
+    // The one-shot turn runs the same prompt: its pass names the bare
+    // interpreter, which is what the control lane's allowlist permits.
+    const patrolLine = text.split("\n").find((line) => line.includes("loop patrol"));
+    assert.match(patrolLine, /^\s+1\) node \S*\.mjs .*loop patrol\b/);
+    const boardLine = text.split("\n").find((line) => line.includes("issue list --status in_progress"));
+    assert.match(boardLine, /^\s+node \S*\.mjs --actor-kind claude --agent alice issue list --status in_progress --json$/);
     const held = loadContinueLock(lock);
     assert.ok(Number.isInteger(held.pid) && held.pid > 0, "the lock holds the child pid");
   });

@@ -20,9 +20,9 @@ import { dirname, join } from "node:path";
 import { cardFileRel } from "../foundation/card-brief.mjs";
 import { renderOwnershipGuide } from "../foundation/role-prompt.mjs";
 import { loadRoles } from "../foundation/roles.mjs";
-import { buildContinuePrompt, buildQuestionPrompt, quoteArg } from "../foundation/scheduling.mjs";
+import { buildContinuePrompt, buildQuestionPrompt } from "../foundation/scheduling.mjs";
 import { createKindPool } from "./kind-session.mjs";
-import { agentPaths, loopCommandArgs } from "./options.mjs";
+import { agentPaths, loopBoardCommand, loopCliCommand } from "./options.mjs";
 import { readCardForRedispatch } from "./runtime.mjs";
 
 /** Role warnings are configuration noise; say each one once per process. */
@@ -584,8 +584,9 @@ export function createSessionPool(input = {}) {
     const prompt = buildContinuePrompt({
       actorKind: opts.actorKind,
       agent: controlAgent,
-      cliCommand: `${quoteArg(process.execPath)} ${quoteArg(opts.cli)} ${loopCommandArgs(opts).map(quoteArg).join(" ")}`,
-            continueIntervalSeconds: opts.continueInterval,
+      cliCommand: loopCliCommand(opts),
+      boardCommand: loopBoardCommand(opts),
+      continueIntervalSeconds: opts.continueInterval,
       openedBy: opts.openedBy,
       decisionPolicy: roleSet.decisionPolicy,
       ownership: roleSet.ownership,

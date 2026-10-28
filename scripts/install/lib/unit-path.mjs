@@ -16,9 +16,15 @@
  *      directories.
  *
  * So both layers get the same one fix: name the interpreter outright **and** hand the
- * unit a `PATH` whose head is the agent CLI's directory and node's, followed by the
- * scheduler's documented default. Prepending, never narrowing, is the contract the
- * taskd guard already follows — a child that asks for `sh` or `git` still finds them.
+ * unit a `PATH` whose head is the agent shim's directory, the agent CLI's, and node's,
+ * followed by the scheduler's documented default. Prepending, never narrowing, is the
+ * contract the taskd guard already follows — a child that asks for `sh` or `git` still
+ * finds them.
+ *
+ * The shim directory is the head because every layer below the tick runs `taskctl`: the
+ * control turn's board reads, the worker's card operations, the reviewer's evidence. A
+ * `taskctl` installed globally (nvm's global bin sits in node's directory) would shadow
+ * the per-agent shim and write the wrong actor identity, so the shim wins over it.
  *
  * This module is the **single definition** of that recipe. The installer's bash side
  * (`scripts/install/_common.sh`) and its JS side (`taskd-guard.mjs`, and the dry-run
@@ -30,7 +36,7 @@
  *
  * Run with:
  *   node scripts/install/lib/unit-path.mjs node
- *   node scripts/install/lib/unit-path.mjs path --scheduler launchd [--cli-dir <dir>]
+ *   node scripts/install/lib/unit-path.mjs path --scheduler launchd [--cli-dir <dir>] [--shim-dir <dir>]
  */
 
 import { dirname, resolve } from "node:path";
@@ -53,21 +59,22 @@ export const SCHEDULER_DEFAULT_PATH = Object.freeze({
 });
 
 /**
- * The `PATH` a unit runs with: `[dir(agent CLI), dir(node)]` — deduplicated, in that order
- * — followed by the scheduler's documented default.
+ * The `PATH` a unit runs with: `[dir(agent shim), dir(agent CLI), dir(node)]` —
+ * deduplicated, in that order — followed by the scheduler's documented default.
  *
- * `cliDir` is optional: an install whose agent CLI is not on `PATH` still gets a usable
- * `PATH` for the interpreter, and says so out loud rather than pretending (see
- * `_common.sh::export_tp_env`). `nodeDir` is the only required input, which is why the
- * taskd guard — a service that never derives another executable — can call this with one
- * argument and keep its rendered bytes exactly as they were.
+ * `shimDir` and `cliDir` are optional: an install whose agent CLI is not on `PATH`
+ * still gets a usable `PATH` for the interpreter and the shim, and says so out loud
+ * rather than pretending (see `_common.sh::export_tp_env`). `nodeDir` is the only
+ * required input, which is why the taskd guard — a service that never derives another
+ * executable — can call this with one argument and keep its rendered bytes exactly as
+ * they were.
  *
  * @param {string} nodeDir directory holding `node` (absolute)
- * @param {{cliDir?: string, scheduler?: keyof typeof SCHEDULER_DEFAULT_PATH}} [options]
+ * @param {{cliDir?: string, shimDir?: string, scheduler?: keyof typeof SCHEDULER_DEFAULT_PATH}} [options]
  * @returns {string}
  */
 export function unitPath(nodeDir, options = {}) {
-  const { cliDir, scheduler = "launchd" } = options;
+  const { cliDir, shimDir, scheduler = "launchd" } = options;
   // `Object.hasOwn`, not a truthiness/undefined test: a bare lookup answers for the
   // prototype chain too, so `--scheduler constructor` would otherwise render
   // `function Object() { … }` as a "default" instead of being refused.
@@ -77,7 +84,7 @@ export function unitPath(nodeDir, options = {}) {
   const defaults = SCHEDULER_DEFAULT_PATH[scheduler];
   // A `Set` deduplicates and keeps insertion order, so a machine where the agent CLI and
   // node share a directory (nvm puts its global bin there) gets one entry, not two.
-  const dirs = [...new Set([cliDir, nodeDir].filter((dir) => typeof dir === "string" && dir !== ""))];
+  const dirs = [...new Set([shimDir, cliDir, nodeDir].filter((dir) => typeof dir === "string" && dir !== ""))];
   return [...dirs, defaults].join(":");
 }
 
@@ -85,7 +92,8 @@ const USAGE = `Usage: node scripts/install/lib/unit-path.mjs <what> [options]
 
   node                      print the absolute interpreter that rendered this file
   path --scheduler <name>   print the unit PATH for that scheduler
-       [--cli-dir <dir>]    the agent CLI's directory (head of the PATH)
+       [--shim-dir <dir>]   the agent shim's directory (head of the PATH)
+       [--cli-dir <dir>]    the agent CLI's directory
        [--node-dir <dir>]   node's directory (defaults to this interpreter's)
 
 <name> is one of ${Object.keys(SCHEDULER_DEFAULT_PATH).join(", ")}.
@@ -116,6 +124,7 @@ function main(argv) {
     const arg = rest[i];
     const value = () => rest[++i];
     if (arg === "--scheduler") opts.scheduler = value();
+    else if (arg === "--shim-dir") opts.shimDir = value();
     else if (arg === "--cli-dir") opts.cliDir = value();
     else if (arg === "--node-dir") opts.nodeDir = value();
     else {
@@ -135,7 +144,7 @@ function main(argv) {
       return 2;
     }
     try {
-      process.stdout.write(`${unitPath(nodeDir, { cliDir: opts.cliDir, scheduler: opts.scheduler })}\n`);
+      process.stdout.write(`${unitPath(nodeDir, { cliDir: opts.cliDir, shimDir: opts.shimDir, scheduler: opts.scheduler })}\n`);
     } catch (error) {
       process.stderr.write(`unit-path: ${error.message}\n`);
       return 2;

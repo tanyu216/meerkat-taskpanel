@@ -158,6 +158,14 @@ describe("session pool", () => {
     enqueueContinue(join(f.dir), { reason: "timer" });
     await pool.tick();
     assert.match(events, /^\/meerkat-loop Continue/);
+    // The control lane may only run commands its allowlist matches: the pass
+    // line must start with the bare interpreter, never an absolute node path.
+    const patrolLine = events.split("\n").find((line) => line.includes("loop patrol"));
+    assert.match(patrolLine, /^\s+1\) node \S*\.mjs .*loop patrol\b/);
+    // …and the board reads use the identity-only prefix: loop flags would be
+    // rejected by `issue list`, so a pass prefix here would fail on first use.
+    const boardLine = events.split("\n").find((line) => line.includes("issue list --status in_progress"));
+    assert.match(boardLine, /^\s+node \S*\.mjs --actor-kind claude --agent alice issue list --status in_progress --json$/);
     assert.equal(readContinue(f.dir).processing, null, "the control turn completed");
 
     enqueueCard(join(f.dir), card(f, "T-1", f.app));

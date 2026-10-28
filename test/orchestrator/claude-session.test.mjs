@@ -97,6 +97,14 @@ describe("claude session args", () => {
     assert.match(allowedToolsFor("worker"), /Edit/);
   });
 
+  it("permits the control lane the command its prompt actually names", () => {
+    // The continue prompt names `node <cli> loop <pass>` and the same command
+    // for its board reads. An allowlist entry that matches neither form leaves
+    // the control turn unable to run a single pass (the 127/denied loop).
+    assert.match(allowedToolsFor("control"), /Bash\(node \*\)/);
+    assert.match(allowedToolsFor("control"), /Bash\(taskctl \*\)/);
+  });
+
   it("lets the reviewer run the gate it is told to re-run", () => {
     // The reviewer role requires re-running the project's gate. A lane without
     // `npm`/`node` makes that rule unexecutable, which is how gate-checking

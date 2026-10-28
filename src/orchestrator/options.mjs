@@ -24,6 +24,7 @@ import {
   DEFAULT_PING_SECONDS,
   parseEnvFile,
   parseYesNo,
+  quoteArg,
   resolveClaimUnassigned,
   resolveContinueEnabled,
   resolveRecoverStale,
@@ -742,6 +743,39 @@ export function loopCommandArgs(opts) {
     add("--project-concurrency", opts.projectConcurrency);
   }
   return args;
+}
+
+/**
+ * The command a headless turn runs for the loop's passes *and* its board reads.
+ *
+ * The interpreter is the bare name `node`, never `process.execPath`: the control
+ * session's tool allowlist is `Bash(node *)`, which matches a command whose first
+ * token is literally `node`. An absolute interpreter path matches no allowlist
+ * entry, so `--permission-mode dontAsk` refuses every pass — the loop then runs
+ * its clocks but can never touch the board. The scheduling unit's PATH always
+ * carries node's own directory (`scripts/install/lib/unit-path.mjs`), so the bare
+ * name resolves where the turn runs.
+ *
+ * @param {object} opts
+ * @returns {string}
+ */
+export function loopCliCommand(opts) {
+  return ["node", quoteArg(opts.cli), ...loopCommandArgs(opts).map(quoteArg)].join(" ");
+}
+
+/**
+ * The command a headless turn runs for its *board* reads and writes.
+ *
+ * Not `loopCliCommand`: that one carries the loop's own flags (`--log`, `--state`,
+ * `--max-concurrency`, …), which the board subcommands do not accept. A
+ * `taskctl issue list` needs only the identity, so the prefix stops there. Same
+ * bare interpreter, same allowlist entry.
+ *
+ * @param {object} opts
+ * @returns {string}
+ */
+export function loopBoardCommand(opts) {
+  return ["node", quoteArg(opts.cli), "--actor-kind", opts.actorKind, "--agent", opts.agents[0] ?? "agent"].join(" ");
 }
 
 export const USAGE = `Usage: taskctl loop <patrol|workflow|poll|tick|console|status|run|subscribe|session|compat> [options]

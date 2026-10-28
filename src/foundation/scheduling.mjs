@@ -829,11 +829,20 @@ export function buildContinuePrompt(input = {}) {
     Math.round((input.continueIntervalSeconds ?? DEFAULT_CONTINUE_SECONDS) / 60),
   );
   // The loop ships with the toolkit now; the turn names the command, not a script
-  // path inside a copied body. A caller that knows the runtime tree passes an
-  // absolute `cliCommand` (interpreter + CLI entry + the loop's state flags), so a
-  // headless turn does not depend on `taskctl` happening to be on the unit's PATH.
+  // path inside a copied body. A caller that knows the runtime tree passes a
+  // `cliCommand` (interpreter + CLI entry + the loop's state flags), so a headless
+  // turn does not depend on `taskctl` happening to be on the unit's PATH. The
+  // interpreter must be the bare name `node`: the control lane's allowlist
+  // (`Bash(node *)`, `Bash(taskctl *)`) matches the first token, so an absolute
+  // interpreter path would be refused and every pass would fail unrun.
   const command = typeof input.cliCommand === "string" && input.cliCommand.trim() !== ""
     ? input.cliCommand.trim()
+    : "taskctl";
+  // Board reads and writes need a *different* prefix: the pass command carries the
+  // loop's own flags (`--log`, `--state`, …), which `issue`/`comment`/`relation` do
+  // not accept. A caller that knows the runtime tree says what that prefix is.
+  const board = typeof input.boardCommand === "string" && input.boardCommand.trim() !== ""
+    ? input.boardCommand.trim()
     : "taskctl";
   const run = (pass) => `${command} loop ${pass}`;
 
@@ -880,20 +889,20 @@ export function buildContinuePrompt(input = {}) {
     "Questions and decision rights (before poll):",
     "  Subagents never decide an unauthorized question: they write an agent `question`",
     "  comment on an in_progress card and stop. Read those first:",
-    "    taskctl issue list --status in_progress --json",
-    "    taskctl comment list <ref> --kind question --json",
-    "    taskctl comment list <ref> --limit 20 --json   # a later human comment is the answer",
+    `    ${board} issue list --status in_progress --json`,
+    `    ${board} comment list <ref> --kind question --json`,
+    `    ${board} comment list <ref> --limit 20 --json   # a later human comment is the answer`,
     "  Then read human questions:",
-    "    taskctl issue list --status awaiting --json",
-    "    taskctl comment list <ref> --kind question --json",
+    `    ${board} issue list --status awaiting --json`,
+    `    ${board} comment list <ref> --kind question --json`,
     "  For an agent question you can decide (operational or within the plan/acceptance):",
-    '    taskctl comment add <ref> --kind note --body "decision: ... (why)"',
-    "    taskctl issue move <ref> todo        # re-claim with the answer in the trail",
+    `    ${board} comment add <ref> --kind note --body "decision: ... (why)"`,
+    `    ${board} issue move <ref> todo        # re-claim with the answer in the trail`,
     "  Your own note does NOT resume an awaiting card; the move does.",
     "  A HUMAN comment of any kind resumes it automatically — the board does not read it.",
     "  For E1-E5 (scope, acceptance, design/aesthetic, security/data, architecture) or",
     "  anything you cannot decide, do not answer: escalate with the question format:",
-    '    taskctl issue move <ref> awaiting --awaiting-reason E1..E5 --question "Decision needed: ...; Options: ...; Recommendation: ...; Why the main session cannot decide: ..."',
+    `    ${board} issue move <ref> awaiting --awaiting-reason E1..E5 --question "Decision needed: ...; Options: ...; Recommendation: ...; Why the main session cannot decide: ..."`,
     "  Decision rounds — one round per card:",
     ...renderDecisionRoundPrinciples().map((line) => `  ${line}`),
     '  Answer every authorized item in ONE note ("decision: Q1 ...; Q2 ..."), then move the',
@@ -912,7 +921,7 @@ export function buildContinuePrompt(input = {}) {
     ...(mode === "manual"
       ? [
           "  You are the live control session. Ask the human here when a question needs a",
-          "  decision, then record their answer with `taskctl comment add <ref> --as-human`.",
+          `  decision, then record their answer with \`${board} comment add <ref> --as-human\`.`,
           "  The board comment is authoritative; the in-session question is only the front-end.",
           "  Ask every waiting card in one message — one numbered block per card; each block is one question string.",
           "  Recompute after the answers and ask only the newly unblocked round.",

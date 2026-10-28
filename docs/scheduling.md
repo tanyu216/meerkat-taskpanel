@@ -806,9 +806,13 @@ So each loop unit names **both** things outright:
 
 - the **absolute `node`** that rendered it (launchd `ProgramArguments[0]`, the command on
   each cron line) — the interpreter never goes through `env` at all;
-- a **`PATH`** whose head is the agent CLI's directory and node's, followed by that
-  scheduler's own documented default — so the names the tick *derives* still resolve, and
-  the suffix keeps `sh`, `git` and the rest exactly where the scheduler would have put them.
+- a **`PATH`** whose head is the agent **shim's** directory, the agent CLI's, and node's,
+  followed by that scheduler's own documented default — so the names the tick *derives*
+  still resolve, and the suffix keeps `sh`, `git` and the rest exactly where the scheduler
+  would have put them. The shim heads the list because every layer below the tick runs
+  `taskctl` (the control turn's board reads, a worker's card operations, a reviewer's
+  evidence), and a globally installed `taskctl` — nvm's global bin is node's directory —
+  would otherwise answer first and write the wrong actor identity.
 
 Neither is optional. An absolute interpreter with a bare `exec claude` underneath is the
 half-fix above; a `PATH` alone leaves the interpreter looking at a set it was never in.
@@ -825,13 +829,13 @@ never by drift.
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/home/you/.claude/bin:/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 ```
 
 ```cron
 # cron: ~/.claude/scheduling/cron/meerkat-taskpanel.cron
-PATH=/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
+PATH=/home/you/.claude/bin:/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
 
 * * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
 ```
@@ -848,11 +852,11 @@ is an open ruling. Until it lands, that service keeps its current form; shipping
 absolute interpreter alone would be exactly the half-fix described above.
 
 When the agent CLI is **not** on the installing machine's `PATH` — you installed for an application
-that is not there yet — the installer says so and renders node's directory alone. It does
-not invent a directory, and it does not fail silently:
+that is not there yet — the installer says so and renders the shim directory and node's
+alone. It does not invent a directory, and it does not fail silently:
 
 ```text
-claude: claude is not on PATH — the scheduling units will carry node's directory only,
+claude: claude is not on PATH — the scheduling units will carry the shim directory and node's,
 claude:   so a woken claude would not resolve. Install it, then re-run this install with --force.
 ```
 
@@ -1632,7 +1636,7 @@ it is idempotent and cleanly removable:
 
 ```cron
 # >>> meerkat-taskpanel (~/.claude) >>>
-PATH=/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
+PATH=/home/you/.claude/bin:/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
 * * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
 */10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --continue-once --actor-kind claude --agent alice --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
 # <<< meerkat-taskpanel (~/.claude) <<<
