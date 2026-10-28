@@ -11,7 +11,7 @@ copy of the rules: a refusal is the service's, with the same code, details and r
 [`blocked`](#the-blocked-state--what-the-card-is-waiting-for) ·
 [Review cards](#review-cards--the-declared-fields) ·
 [`reconcile --workflow`](#reconcile---workflow--the-boards-workflow-plan) ·
-[`--json`](#--json)
+[`--json`](#--json) · [What each command returns](#what-each-command-returns)
 
 ```bash
 taskctl <group> <command> [options]
@@ -125,9 +125,9 @@ validates it and stops to ask rather than guessing; `project map` is the only wr
 | Command | Purpose |
 |---|---|
 | `issue create` | Create a card. Synopsis and flag semantics: [below](#issue-create). |
-| `issue list [--project] [--status <s>]… [--assignee <name>\|--assignee-id <id>] [--parent <ref>] [--kind <kind>] [--label <label>]… [--target <value>] [--meta <key>=<value>]… [--review-of <ref>] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List cards. `--order weight` is the assignee weight order (below); the default is board order. `--review-of <ref>` returns the **review cards of** that card — not the card itself — across every round (`review_round` is on each returned card, so a caller selecting the current round filters on it). It combines with the other filters and is read-only. An unknown ref is `NOT_FOUND`; an identifier that exists in two projects is `VALIDATION_FAILED`. **The further filters are all pushed into SQL** (they hold under `--limit`): `--parent` = that card's children; `--kind` = `task\|epic`, or `review` for the cards that carry the review marker (`review_of_id`) — a review card is still an ordinary task, so `--kind task` keeps returning it and `review` only narrows further (an unknown kind is `VALIDATION_FAILED`); `--label` repeats and every label must be present, matched against the card's **exact display name** (no normalisation, no `labels` registry); `--target` compares `meta.target` as text; `--meta k=v` repeats, every pair must hold, and the key must match `[A-Za-z0-9_.-]+`; `--assignee` resolves a free-text name through the dictionary (an unknown name matches **nothing**, not everything) and is refused together with `--assignee-id`. |
+| `issue list [--project] [--status <s>]… [--assignee <name>\|--assignee-id <id>] [--parent <ref>] [--kind <kind>] [--label <label>]… [--target <value>] [--meta <key>=<value>]… [--review-of <ref>] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List cards. Archived cards are hidden unless `--include-archived` is set. `--order weight` is the assignee weight order (below); the default is board order. `--review-of <ref>` returns the **review cards of** that card — not the card itself — across every round (`review_round` is on each returned card, so a caller selecting the current round filters on it). It combines with the other filters and is read-only. An unknown ref is `NOT_FOUND`; an identifier that exists in two projects is `VALIDATION_FAILED`. **The further filters are all pushed into SQL** (they hold under `--limit`): `--parent` = that card's children; `--kind` = `task\|epic`, or `review` for the cards that carry the review marker (`review_of_id`) — a review card is still an ordinary task, so `--kind task` keeps returning it and `review` only narrows further (an unknown kind is `VALIDATION_FAILED`); `--label` repeats and every label must be present, matched against the card's **exact display name** (no normalisation, no `labels` registry); `--target` compares `meta.target` as text; `--meta k=v` repeats, every pair must hold, and the key must match `[A-Za-z0-9_.-]+`; `--assignee` resolves a free-text name through the dictionary (an unknown name matches **nothing**, not everything) and is refused together with `--assignee-id`. |
 | `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The claim read: `todo` cards that are auto-claimable (not an `epic`), every `depends_on` predecessor `done` (a `canceled` one also withholds). `--stale` adds the recovery pool (holder after 30 min, anyone after 6 h); `--include-unassigned` adds the public pool. Read-only; no `--limit`. |
-| `issue get <id\|identifier>` | One card, plus `report_waivers[]` and `attachments[]` (`id`, `filename`, `content_type`, `size`, `kind`, `created_at`, `comment_id`). The human view prints identifier, title, status, priority, kind, labels, assignee, reporter, claimed_by, heartbeat_at, delivery_round, acceptance_mode, review_of (the reviewed card's identifier), review_round, parent, awaiting_reason, acceptance_revision, the numbered acceptance snapshot (`none (vacuous)` when empty), meta as JSON, the description and version, then a waiver row and an attachment table when present. `--json` carries the same fields: `acceptance[]` is the **frozen baseline**; `meta.acceptance` is only its seed; `role` is the derived word (`task\|epic\|review`) — `kind` stays `task` on a review card, so read `role`, not `kind`, to ask what the card is for. |
+| `issue get <id\|identifier> [--include comments\|reports\|relations\|sessions]… [--limit <n>]` | One card, plus `report_waivers[]` and `attachments[]` (`id`, `filename`, `content_type`, `size`, `kind`, `created_at`, `comment_id`). The human view prints identifier, title, status, priority, kind, labels, assignee, reporter, claimed_by, heartbeat_at, delivery_round, acceptance_mode, review_of (the reviewed card's identifier), review_round, parent, awaiting_reason, acceptance_revision, the numbered acceptance snapshot (`none (vacuous)` when empty), meta as JSON, the description and version, then a waiver row and an attachment table when present. `--json` carries the same fields: `acceptance[]` is the **frozen baseline**; `meta.acceptance` is only its seed; `role` is the derived word (`task\|epic\|review`) — `kind` stays `task` on a review card, so read `role`, not `kind`, to ask what the card is for. `--include <section>` (repeatable) adds, under the section's own name in `data`, exactly what that command returns: `comments` → `data.comments[]` (newest first; `--limit <n>` caps it, default **50**, `0` = no cap), `reports` → `data.reports[]` (every round), `relations` → `data.relations` (`relation list`'s payload minus `task_id`), `sessions` → `data.sessions[]`. Without `--include` the payload is unchanged. An unknown section, or `--limit` without the `comments` section, is a usage error (exit 2) — never a silent no-op. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]… [--drop-acceptance <text>]… [--acceptance-revision <n>] [--acceptance-mode off\|agent\|human [--reason "<why>"]]` | Patch. `--status` is refused here on purpose. `--acceptance` **appends** to the frozen baseline (`tasks.acceptance_json`) and is idempotent by criterion text; it cannot remove it. `--drop-acceptance` is **human-only**, needs `--reason` (≥ 8 characters) and the current `--acceptance-revision`; both are audited. `--acceptance-mode` is the single acceptance decision (`off` = no review/direct done, `agent` = independent review, `human` = human-only close); an agent may only tighten `off → agent|human`, and leaving `agent` needs `--reason` and no open current-round review card. |
 | `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--question "<text>"] [--blocked-reason <word>]` | Move, subject to the delivery gate. `todo → in_progress` is a **claim**; a move to `done` is an **acceptance** and requires a current-round report that covers every frozen acceptance criterion — for an **epic**, a current-round rollup (`ROLLUP_REQUIRED` / `ROLLUP_STALE`). `done`/`canceled → todo` is the audited **reopen** and needs `--reason` (prefer `issue reopen`). `--awaiting-reason` is required for `awaiting`; an agent entering `awaiting` must also supply `--question` (or already have an unanswered `question` comment). `--blocked-reason` is optional. |
 | `issue reopen <ref> --reason "<why>"` | **Reopen a `done`/`canceled` card to `todo`.** Audited: the reason is required (≥ 8 characters) and recorded as `task_reopened`. Starts a new delivery round, clears the archive and releases the idem key. A review card is refused — reopen the original; the loop issues the next round's review. |
@@ -216,7 +216,7 @@ cannot be downgraded to `task`. The board starts and closes the container; see
 | Command | Purpose |
 |---|---|
 | `comment list <ref> [--kind <kind>] [--limit <n>]` | Newest first (the CLI asks for `order=desc`, so `--limit` takes the newest N). |
-| `comment add <ref> --body <text> [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect\|question] [--file <path\|->] [--ref <kind:id>]…` | Append. `--ref` is repeatable and stored as the comment's wire `refs` (plain strings; `kind:id` is the convention). A `question` + `awaiting` E2 is how an agent asks a human; **any human comment** on an `awaiting` card moves it back to `todo` in the same transaction, whatever its kind. |
+| `comment add <ref> (--body <text> \| --file <path\|->) [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect\|question] [--ref <kind:id>]…` | Append. The body comes from `--body`, or from `--file` (`-` reads stdin); `--file` wins when both are given, and **neither is a usage error** (exit 2). `--kind` defaults to `note`. `--ref` is repeatable and stored as the comment's wire `refs` (plain strings; `kind:id` is the convention). A `question` + `awaiting` E2 is how an agent asks a human; **any human comment** on an `awaiting` card moves it back to `todo` in the same transaction, whatever its kind. |
 
 Append-only: there is no edit and no delete, by design. A `decision` / `change` comment is what
 a reviewer reads later as the explicit record; the resume itself is decided by the comment's
@@ -301,7 +301,7 @@ then a placeholder.
 
 | Command | Purpose |
 |---|---|
-| `export md [<ref>] [--out <dir\|file.md>] [--project <id>] [--check] [--md] [--watch]` | Write markdown cards: every identifier into a directory, or only `<ref>` (id or identifier). With `<ref>`, a `--out` ending in `.md` that is not an existing directory names the file itself; otherwise it is a directory and the card lands at `<dir>/<ID>.md`. `--project` cannot be combined with `<ref>` (usage error, exit 2). `--watch` registers the same detached brief watch as `export watch --detach` for one ref + one `.md` file; the hub writes the first snapshot before returning, and it cannot be combined with `--check` or `--project`. |
+| `export md [<ref>] [--out <dir\|file.md>] [--project <id>] [--check] [--md] [--watch]` | Write markdown cards: every identifier into a directory, or only `<ref>` (id or identifier). `--out` defaults to the current directory. With `<ref>`, a `--out` ending in `.md` that is not an existing directory names the file itself; otherwise it is a directory and the card lands at `<dir>/<ID>.md`. `--project` cannot be combined with `<ref>` (usage error, exit 2). `--watch` registers the same detached brief watch as `export watch --detach` for one ref + one `.md` file; the hub writes the first snapshot before returning, and it cannot be combined with `--check` or `--project`. |
 | `export watch [<ref>] [--ref <ref>]… [--dir <dir>\|--out <file>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once] [--detach] [--watch-status] [--stop] [--standalone]` | Keep a card brief fresh through the local event hub (or directly with `--standalone`). `--dir` names the `.meerkat/<identifier>/card.md` sugar; `--out` names one exact file for one ref (the path is authoritative and its parent is created). The two are mutually exclusive. Explicit refs only; there is no `.meerkat/` discovery. A registration ends at `done` or `canceled`. |
 
 `--check` writes nothing and exits **3** when a card is missing or differs; with `<ref>` it
@@ -439,7 +439,8 @@ own board stream.
 `events follow` is the consumer the loop uses. `--after` replays from the hub's ring when it
 still retains the cursor (otherwise it starts live; the next board rescan is the fallback),
 and `--idle` ends the local stream after that many milliseconds with no records (heartbeats
-count, exactly like the direct stream). Output is the same NDJSON as `events tail`.
+count, exactly like the direct stream); the default is **45 000 ms**. Output is the same NDJSON
+as `events tail`.
 
 `events tail` remains the direct implementation: no hub, one SSE connection, the same output.
 Use it to diagnose the board stream itself; do not run it as a background consumer.
@@ -495,8 +496,10 @@ all.
 `loop tick` stops at the first failing pass and returns its exit code. `loop run` refuses
 `--ping-once` together with `--continue-once`. `loop status` and `loop console` are the two
 verbs a human runs while the daemons are up; `loop compat` is the gate to run before relying
-on a board's `taskctl`.
+on a board's `taskctl`. Every verb writes its **own** output: `loop status --json` is the
+loop's JSON, not the `{ok:true,data}` envelope, and none of them adds `token_source`.
 
+<!-- shared-flags:loop:begin -->
 **Paths and state.** `--state-dir <dir>` places the loop's runtime state — `supervisor.state.json`,
 the queue, the ledger, `session.lock`, `continue.state.json`; `--state <file>` is the older
 explicit spelling of the registry file. `--roles-dir <dir>` names the team-roles root;
@@ -526,6 +529,7 @@ liveness markers. `--sse-idle-ms`, `--event-debounce-ms`, `--event-debounce-max-
 `--event-continue <yes|no>` and `--event-continue-min-ms` tune the subscriber.
 `--board-limit` and `--trail-limit` cap the board snapshot and comment-trail reads, and
 `--dry-run` plans every write-only verb without writing anything.
+<!-- shared-flags:loop:end -->
 
 The retired single-purpose flags are gone: `--once` (bare poll), `--poll-interval`,
 `--ping-only`, `--continue-only`, `--patrol-only`, `--subscribe` and `--session` are the
@@ -764,3 +768,57 @@ command, including `sla list`, answers one document.
 
 Everything is local (loopback only); data lives in `<dataDir>/board.sqlite` (default
 `<repo>/.data`), overridable with `TASKD_DATA_DIR` / `TASKD_DB`.
+
+## What each command returns
+
+`data` is one object; these are its keys. **Every board-backed command also carries
+`token_source`** (`flag` · `env` · `file` · `none`, never the value). The local commands —
+`status`, `project map …`, and `project dir --require-dir` — do not, and the streamed ones
+(`events …`, a foreground `export watch`, every `loop` verb) write their own output rather than
+this envelope.
+
+| Command | `data` keys |
+|---|---|
+| `status` | `runtime{pointer,data_dir,pid,url,running,note}`, `version`, `schema_version` |
+| `project create` / `project update` | `project` |
+| `project ensure` | `project`, `created` |
+| `project list` | `projects[]` |
+| `project dir` | `project`, `dir` (a `--require-dir` miss exits 3 and adds `code`, `message`, `file`) |
+| `project map list` | `file`, `present`, `projects` |
+| `project map show` / `set` | `file`, `project`, `entry`, `dir` (`set` also `created`) |
+| `project map remove` | `file`, `project`, `removed` |
+| `project readme` | `readme` |
+| `issue create` / `update` / `meta` / `heartbeat` / `assign` / `archive` | `task`, `report_waivers[]` |
+| `issue get` | `task`, `report_waivers[]`, `attachments[]`; `--include` adds `comments[]`, `reports[]`, `relations{…}`, `sessions[]` |
+| `issue list` | `tasks[]`; `--order-debug` adds `order_debug[]` |
+| `issue candidates` | `candidates[]`; `--order-debug` adds `order_debug[]` |
+| `issue move` / `reopen` | `task`, `report_waivers[]`, `status` |
+| `issue claim` | `task`, `report_waivers[]`, `status`, `reused`, `stole` |
+| `issue deliver` | `task`, `report_waivers[]`, `report`, `report_id`, `round`, `status`, `waived` |
+| `issue reconcile` | `dry_run`, `scanned`, `actions[]`; `--workflow` adds `workflow{alerts,actions,changes,summary}` |
+| `comment list` | `comments[]` |
+| `comment add` | `comment` |
+| `relation add` | `relation` |
+| `relation list` | `task_id`, `relations[]`, `children[]`, `ancestors[]`, `blocked_by[]`, `blocks[]`, `parent_chain[]` |
+| `relation remove` | `removed`, `relation` |
+| `attachment add` | `attachment` |
+| `attachment list` | `task_id`, `attachments[]` |
+| `attachment download` | `attachment_id`, `out`, `size`, `content_type` |
+| `attachment remove` | `removed`, `attachment` |
+| `session set` / `session close` | `session` |
+| `session id` | `session_id`, `task_id`, `task_identifier`, `derived_from`, `owner`, `seg` |
+| `session list` | `sessions[]` |
+| `actors list` | `actors[]`, `entries[]` (the same list under both names) |
+| `labels list` | `labels[]` |
+| `report list` | `ref`, `reports[]` |
+| `report template` | `report`, `acceptance_source`, `evidence_source`, `ref` |
+| `export md` | `cards`, `out`, `identifiers[]`; `--check` adds `missing[]`, `differing[]`, `up_to_date` |
+| `export watch --detach` | `running`, `registration_id`, `reused`, `reason`, `cards`, `expires_at`, `dir`, `out` |
+| `export watch --watch-status` | `running`, `registration_id`, `cards`, `expires_at`, `last_refresh`, `dir`, `out` (or `running:false`, `reason:"no-hub"`, `ref`, `dir`, `out`) |
+| `token rotate` | `token_file`, `rotated`, `token` (`null` without `--show`) |
+| `sla list` / `sla get` | `generated_at`, `board_truncated`, `trails_truncated`, `config`, `alerts[]`, `warnings[]` |
+| `events tail` / `events follow` / `export watch` (foreground) | NDJSON lines, not this envelope |
+| every `loop` verb | its own streamed output, not this envelope |
+
+The card object itself — every key of `data.task`, its nested actor refs and the relation
+between the wire and the markdown card — is [`card-schema.md`](card-schema.md#reading-a-card-as-json).

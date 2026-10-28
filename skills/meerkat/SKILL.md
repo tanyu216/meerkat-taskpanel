@@ -1,6 +1,6 @@
 ---
 name: meerkat
-description: Coordinate work across an AI Agent team using a shared local kanban task board (Meerkat TaskPanel). Use when an agent or a human needs to claim a card, find what to work on next, groom the backlog, create and track cards, move work through a status workflow, assign owners, comment on a decision, edit a card's description or priority, link parent/child (epic) and blocking relations, record which agent session is working on what, deliver a card with a report, run or respond to an independent review, ask a human a question (awaiting), or export the board as markdown. Runs the local `taskctl` CLI; no external services required.
+description: Coordinate work across an AI Agent team using a shared local kanban task board (Meerkat TaskPanel). Use when an agent or a human needs to claim a card, find what to work on next, groom the backlog, create and track cards, move work through a status workflow, assign owners, comment on a decision, edit a card's description or priority, link parent/child (epic) and blocking relations, record which agent session is working on what, deliver a card with a report, run or respond to an independent review, ask a human a question (awaiting), or export the board as markdown. Use this whenever someone asks about work on the card board — what the progress or status of a task is, what is still open or unfinished, how many tasks were completed, to look up a card by its id or title, to push a card forward, cancel it, or put it back in the backlog, or to list the todo list. Also use it to read or interpret an exported card file (the `export md` markdown — its frontmatter keys and sections, wherever it was written). Runs the local `taskctl` CLI; no external services required.
 ---
 
 # Meerkat TaskPanel
@@ -48,6 +48,57 @@ Retry only `VERSION_CONFLICT` (re-read once, then retry with the fresh `--if-ver
 A rule this page omits is still enforced — an omission is not permission. The classification
 behind that:
 [`references/status-lifecycle.md#10-what-is-enforced-and-what-is-practice`](references/status-lifecycle.md#10-what-is-enforced-and-what-is-practice).
+
+## Finding the data you need
+
+The card's data is read through `taskctl`, and one read often answers several questions at
+once. This table is the map; the full field list, and what each field means, is
+[`references/card-schema.md#reading-a-card-as-json`](references/card-schema.md#reading-a-card-as-json).
+
+| I need… | Run | Read |
+|---|---|---|
+| what a key or section means in an exported card (any `export md` output; the loop's brief is usually `.meerkat/<id>/card.md`) | — read the page | [`references/card-schema.md#field-reference`](references/card-schema.md#field-reference) |
+| the whole picture for a progress answer, in one read | `issue get <ref> --json --include comments --include reports --include relations --include sessions` | `data.{task,comments,reports,relations,sessions}` |
+| the card: title, description, status, priority, kind, role | `issue get <ref> --json` | `data.task.{title,description,status,priority,kind,role}` |
+| the acceptance contract (frozen) | `issue get <ref> --json` | `data.task.acceptance[]` — never `meta.acceptance` |
+| who is on it, the claim and its heartbeat | `issue get <ref> --json` | `data.task.{assignee,reporter,claimed_by_actor,claimed_at,heartbeat_at}` |
+| the parent, children, ancestors, blockers | `relation list <ref> --json`, or `issue get <ref> --include relations` | `data.{parent_chain,children,ancestors,blocked_by,blocks}` — under `data.relations` when it came from `issue get` |
+| the comment / decision trail | `comment list <ref> --json`, or `issue get <ref> --include comments` | `data.comments[]` |
+| the delivery reports and their evidence | `report list <ref> --json`, or `issue get <ref> --include reports` | `data.reports[]` (`issue get` alone has only `report_waivers[]`) |
+| the waivers and attachments | `issue get <ref> --json` | `data.report_waivers[]`, `data.attachments[]` |
+| the sessions that worked a card | `session list <ref> --json`, or `issue get <ref> --include sessions` | `data.sessions[]` |
+| what may I claim | `issue candidates --assignee <me> --json` | `data.candidates[]` |
+| cards in a slice (project / status / parent / label / meta / target) | `issue list … --json` | `data.tasks[]` |
+| the project ↔ directory map | `project dir <p> --json` | `data.dir` |
+| the `--if-version` value for a write | `issue get <ref> --json` | `data.task.version` |
+
+`--include` adds exactly what the standalone read returns; an unknown section is a usage error.
+The **activity** trail is the one board read with no CLI verb: it is
+`GET /api/v1/tasks/:ref/activities`.
+
+### When a human asks
+
+These are the questions a person actually asks. Answer them with the reads below, not by
+piecing a card together from source.
+
+- **"What is the progress of X?"** → one read:
+  `issue get <ref> --json --include comments --include reports` (`data.task` for
+  status/priority/delivery_round/acceptance_mode, `data.comments[]` for the trail,
+  `data.reports[]` for the deliveries). Add `--include relations --include sessions` when the
+  answer must cover blockers or who worked it. `--limit <n>` caps the comment trail (default
+  50, newest first); `0` = all.
+- **"What is still open?"** → `issue list --status todo --status in_progress --status awaiting
+  --status blocked --status in_review --json`. `backlog` is not started yet — list it
+  separately if the ask means "everything not done".
+- **"How many were completed?"** → `issue list --status done --json`, and `--status canceled`
+  separately. There is **no count or stats command**; count `data.tasks[]` locally, and say so
+  if `--limit` truncated it.
+- **"Look up card X"** → an identifier or UUID is `issue get <ref> --json`; a title or keyword
+  has **no server-side search** — read `issue list --json` and filter `identifier` / `title`
+  yourself.
+- **"Push / cancel / put back in the backlog"** → `issue move <ref> <status>`; the whitelist
+  decides what is legal and a refusal names the allowed targets. `canceled` is abandonment, not
+  completion — say which one the ask meant.
 
 ## The card's life
 
@@ -280,6 +331,6 @@ its brief. Detail:
 | a transition, guard, delivery round, claim window, refusal code, or the board's workflow plan | [`references/status-lifecycle.md`](references/status-lifecycle.md) |
 | a command, its flags, exit codes, the `--json` envelope, or the live-stream contract | [`references/cli.md`](references/cli.md) |
 | what a reviewer reads and writes, and the two-round model | [`references/review-workflow.md`](references/review-workflow.md) |
-| the `export md` card format, identifier syntax, or `blocked_reason` meanings | [`references/card-schema.md`](references/card-schema.md) |
+| the card's wire object (`issue get --json`), the exported-card file format (what `export md` writes, including a loop brief), identifier syntax, or `blocked_reason` meanings | [`references/card-schema.md`](references/card-schema.md) |
 | the `taskctl` invocations and JSON keys a supervisor binds to | [`references/capabilities.md`](references/capabilities.md) |
 | the project ↔ directory map (`taskctl project dir`, `project map`) | [`references/projects-json.md`](references/projects-json.md) |
