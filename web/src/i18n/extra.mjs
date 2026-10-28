@@ -139,7 +139,10 @@ export const EXTRA = {
     "drawer.report.round": "round %s",
     "drawer.reports.empty": "No reports yet.",
     "drawer.commentHintAwaiting": "Submitting answers the question — the card is re-queued for the agent.",
-    "drawer.acceptance.empty": "No acceptance criteria or verdicts yet.",
+    // The tab shows the card's criteria unconditionally; only the *verdicts*
+    // are absent before a delivery, so this copy must never claim the card has
+    // no criteria (that was the defect). It speaks about verdicts alone.
+    "drawer.acceptance.empty": "No acceptance verdicts yet.",
     "drawer.leftovers.empty": "No leftovers — this round closed with nothing outstanding.",
     "drawer.leftovers.round": "round %s",
     "drawer.acceptance.met": "Met",
@@ -270,7 +273,8 @@ export const EXTRA = {
     "drawer.report.round": "第 %s 轮",
     "drawer.reports.empty": "暂无报告。",
     "drawer.commentHintAwaiting": "提交即作为答复 —— 卡片会重新排队交给 Agent。",
-    "drawer.acceptance.empty": "暂无验收项或验收结论。",
+    // 同上：只说没有验收结论，不说卡片没有验收项。
+    "drawer.acceptance.empty": "暂无验收结论。",
     "drawer.leftovers.empty": "本轮无遗留。",
     "drawer.leftovers.round": "第 %s 轮",
     "drawer.acceptance.met": "已满足",

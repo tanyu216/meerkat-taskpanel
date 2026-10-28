@@ -94,8 +94,15 @@ describe("web/acceptance — the card's criteria and the report's verdicts", () 
 
 describe("web/acceptance — the tab's copy says what is missing", () => {
   it("no longer claims the card has no acceptance criteria, in either language", () => {
-    assert.match(EXTRA.en["drawer.acceptance.empty"], /verdict/i);
-    assert.match(EXTRA.zh["drawer.acceptance.empty"], /验收结论/);
+    const en = EXTRA.en["drawer.acceptance.empty"];
+    const zh = EXTRA.zh["drawer.acceptance.empty"];
+    assert.match(en, /verdict/i, "the English copy names the missing thing: the verdict");
+    assert.match(zh, /验收结论/, "the Chinese copy names the missing thing: the verdict");
+    // The defect's own clause, asserted directly: before a delivery the card
+    // still *has* criteria, so the copy must not say otherwise. Only the
+    // verdict is missing, and only the verdict may be reported missing.
+    assert.doesNotMatch(en, /criteria/i, "the copy claims the card has no acceptance criteria");
+    assert.doesNotMatch(zh, /验收项/, "the copy claims the card has no acceptance items");
   });
 
   it("names the pending face of a criterion in both languages", () => {
