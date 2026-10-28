@@ -29,6 +29,7 @@ import {
   flowOf,
   isReviewCard,
   isSelfReview,
+  mustFixItems,
   parseReviewVerdict,
   planAutoAccept,
   planReviewDispatch,
@@ -105,6 +106,7 @@ function columnOnlyReview(fields = {}) {
 
 /** The author a verdict report must carry to be the configured reviewer's. */
 const REVIEWER_REPORT = {
+  evidence: [{ kind: "command", cmd: "node --test test/thing.test.mjs", exit_code: 0 }],
   author: { id: "agent-jobs", display_name: "jobs", kind: "agent" },
   author_id: "agent-jobs",
 };
@@ -338,6 +340,18 @@ describe("planReviewDispatch", () => {
     assert.equal(action.acceptance.length, 4, "the generic review checklist now includes coverage");
   });
 
+  it("names the project's declared gate, and says so when there is none", () => {
+    const declared = planReviewDispatch({
+      tasks: [card()],
+      config: { ...CONFIG, projectGates: { proj: "npm run verify:docker" } },
+    }).actions[0];
+    assert.match(declared.description, /Declared gate: npm run verify:docker/);
+
+    const none = planReviewDispatch({ tasks: [card()], config: CONFIG }).actions[0];
+    assert.match(none.description, /No gate is declared/i);
+    assert.match(none.description, /n\/a — none declared/);
+  });
+
   it("never reviews a review card or a card not in review", () => {
     const result = planReviewDispatch({
       tasks: [
@@ -507,6 +521,41 @@ describe("planReviewOutcomes", () => {
     assert.deepEqual(result.alerts[0].missing, ["b"]);
   });
 
+  it("does not approve a met criterion that names no anchor", () => {
+    const original = card({ acceptance: ["a"] });
+    const verdict = {
+      ...approve,
+      report: {
+        ...REVIEWER_REPORT,
+        acceptance: [{ text: "a", status: "met", note: "looks right" }],
+      },
+    };
+    const result = planReviewOutcomes({
+      tasks: [original, reviewCard()],
+      verdicts: { "T-2": verdict },
+      config: CONFIG,
+    });
+    assert.deepEqual(result.actions.map((action) => action.type), ["reopen_review"]);
+    assert.equal(result.actions[0].reason, "evidence_missing");
+    assert.equal(result.alerts[0].type, "verdict_unsupported");
+    assert.deepEqual(result.alerts[0].unsupported, ["a"]);
+  });
+
+  it("does not approve when the reviewer ran nothing", () => {
+    const verdict = {
+      ...approve,
+      report: { ...REVIEWER_REPORT, evidence: [{ kind: "path", path: "src/thing.mjs" }] },
+    };
+    const result = planReviewOutcomes({
+      tasks: [card(), reviewCard()],
+      verdicts: { "T-2": verdict },
+      config: CONFIG,
+    });
+    assert.deepEqual(result.actions.map((action) => action.type), ["reopen_review"]);
+    assert.equal(result.actions[0].reason, "no_command_evidence");
+    assert.equal(result.alerts[0].type, "verdict_unsupported");
+  });
+
   it("does not approve an epic whose rollup is missing or stale", () => {
     const epic = card({ kind: "epic", identifier: "E-1" });
     const child = card({ identifier: "T-9", status: "done", parent_id: "id-E-1" });
@@ -551,6 +600,43 @@ describe("planReviewOutcomes", () => {
     assert.equal(result.actions[0].findings, "- the gate is untested");
     assert.equal(result.actions[0].closeReview, true);
     assert.equal(result.actions[0].reworkRound, 2, "the round the card is on after leaving in_review");
+  });
+
+  it("carries the reviewer's numbered must-fix list into the reject action", () => {
+    const findings = [
+      "VERDICT: REJECT",
+      "",
+      "1. `src/a.mjs:10` — the guard reads the old round",
+      "- [ ] the e2e case for a canceled child is missing",
+      "",
+      "Prose that is not a list stays out.",
+      "- a plain bullet is context, not a must-fix",
+    ].join("\n");
+    assert.deepEqual(mustFixItems(findings), [
+      "`src/a.mjs:10` — the guard reads the old round",
+      "the e2e case for a canceled child is missing",
+    ]);
+    const result = outcomes({
+      tasks: [card(), reviewCard()],
+      verdicts: { "T-2": { ok: true, verdict: "REJECT", findings, report: REVIEWER_REPORT } },
+      config: CONFIG,
+    });
+    assert.deepEqual(result.actions[0].mustFix, mustFixItems(findings));
+  });
+
+  it("bounds the must-fix list and falls back to a pointer when there is none", () => {
+    const many = Array.from({ length: 13 }, (_, index) => `${index + 1}. fix ${index + 1}`).join("\n");
+    assert.equal(mustFixItems(many).length, 10, "at most ten items cross into the baseline");
+    assert.ok(mustFixItems(`1. ${"x".repeat(500)}`)[0].length <= 400, "one item is bounded");
+
+    const prose = outcomes({
+      tasks: [card(), reviewCard()],
+      verdicts: { "T-2": { ok: true, verdict: "REJECT", findings: "The gate needs work", report: REVIEWER_REPORT } },
+      config: CONFIG,
+    });
+    assert.equal(prose.actions[0].mustFix.length, 1);
+    assert.match(prose.actions[0].mustFix[0], /round 1/);
+    assert.match(prose.actions[0].mustFix[0], /T-2/);
   });
 
   it("rejects an epic by first creating a fix child, so reconcile cannot re-close it", () => {

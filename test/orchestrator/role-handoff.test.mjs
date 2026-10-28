@@ -88,9 +88,11 @@ describe("handoffs without a role stay byte-identical", () => {
     // Re-pinned when the reviewer lane became a real tool boundary: a reviewer
     // subagent inherits a session with no Write, so the handoff no longer
     // promises a process directory or asks it to download attachments.
+    // Re-pinned again for the delivered-commit check and the carried findings:
+    // a reviewer that judges the live tree can pass code nobody delivered.
     assert.equal(
       hash(buildReviewHandoff(REVIEW_INPUT)),
-      "c6556352586a80407e5a553eab4c3e6ecaa280b64c9fdbc7bab6ef14082f9e2e",
+      "b1068f256a3c23a46a1b4ebde5e7639fb0f3a1eaedcbe34bf4261fbe45624d9d",
     );
   });
 });
@@ -118,6 +120,12 @@ describe("worker handoff with a role", () => {
     assert.match(text, /\/roles\/jobs\/workflow\.md/);
     assert.match(text, /## Role self-check/);
     assert.match(text, /\/roles\/jobs\/self-check\.md/);
+  });
+
+  it("asks for the evidence row at the moment of observation", () => {
+    assert.match(text, /Append an evidence row the moment you observe it/);
+    assert.match(text, /project the table into the delivery report/);
+    assert.match(text, /a row written at delivery is memory/);
   });
 
   it("adds the plan-file convention and the question-first rule", () => {
@@ -175,6 +183,13 @@ describe("reviewer handoff with a role", () => {
     assert.match(text, /Omission check/);
     assert.match(text, /narrowed acceptance list/i);
     assert.match(text, /VERDICT: REJECT/);
+  });
+
+  it("pins the review to the delivered commit, not the live tree", () => {
+    assert.match(text, /Verify what was delivered, not the live tree/);
+    assert.match(text, /`commit` anchor/);
+    assert.match(text, /git -C <project dir> show <sha>:<path>/);
+    assert.match(text, /The original's baseline already carries every earlier round's findings/);
   });
 
   it("keeps the reviewer out of awaiting", () => {

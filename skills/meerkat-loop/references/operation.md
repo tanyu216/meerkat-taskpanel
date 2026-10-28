@@ -218,7 +218,8 @@ report, the comment trail and (for an epic) its children, and writes `VERDICT: A
 A dispatched worker is non-interactive, so it must run under a pre-declared boundary — a tool
 allowlist, a permission mode, a sandbox. The resident adapters ship **no** permission bypass.
 The pool keeps role allowlists by default (control: read + `taskctl` + `node`; reviewer:
-read/search + `taskctl` + `git`, no write; worker: the same plus edit/write). A review card
+read/search + `taskctl` + `git` + `npm run` + `node` + `bash`, no write — it runs the
+project's declared gate itself; worker: the same plus edit/write). A review card
 runs in its own `role=reviewer` conversation, so the allowlist reaches the subagent it spawns.
 Claude and Pi enforce it; Codex has no per-role tool surface, and the pool logs a one-time
 warning when it opens a reviewer lane there. Full tool access is the documented opt-in, in the

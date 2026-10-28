@@ -85,14 +85,14 @@
         "Verify a fix before and after, including production bugs, and guard the blast radius.",
         "Run performance tests only when a card, acceptance or the project session asks.",
         "Start each card with its own plan; read design inputs only from the card's `## Handoff`; a child card covers only its scope.",
-        "Own test design and test authoring; the reviewer executes the mandatory gates and issues the verdict."
+        "Own test design and test authoring; the reviewer runs the declared gate and issues the verdict."
       ],
       "boundaries": [
         "Do not change acceptance or scope; ask the project session.",
         "Do not accept fake tests, coverage padding or mock-only integration tests.",
         "Do not run the performance branch without a request and a threshold.",
         "Do not edit a glossary or an ADR; a term conflict is a question.",
-        "Does not replace the review gate; the reviewer executes the mandatory gates."
+        "Does not replace the review gate; the reviewer runs the declared gate."
       ],
       "workflow": "turing/workflow.md",
       "self_check": "turing/self-check.md"
@@ -106,20 +106,22 @@
       "summary": "Independently verifies every delivered card against its requirements, acceptance and plan.",
       "responsibilities": [
         "Check the review target is still valid at the recorded round.",
-        "Audit the requirements, frozen acceptance, plan, PRD, evidence and comment trail.",
-        "Audit the PRD for traceability and testability when one exists.",
-        "Audit canonical-term consistency and the recorded term conflicts.",
-        "Audit the `## Handoff` block and the triage marker; missing or invalid is a REJECT.",
-        "Re-run the mandatory gates (100% pass, >80% coverage, mock boundaries, security scan) and sample the evidence.",
-        "Audit code security against CWE Top 25, OWASP Top 10 and OWASP ASVS.",
+        "Build the requirement ledger: every requirement maps to an acceptance item and an implementation, or the verdict is REJECT.",
+        "Verify at the delivered commit; a claim visible only in the working tree is unverified.",
+        "Answer every baseline item with a status, how it was checked, and a falsifiable anchor; unverifiable is not met.",
+        "Re-check every finding the baseline carries from an earlier round; a silent drop is a REJECT.",
+        "Run the project's declared gate (or record n/a — none declared) and the security audit against CWE Top 25, OWASP Top 10 and OWASP ASVS.",
+        "Audit the requirements, plan, PRD, handoff and comment trail at the depth the card warrants.",
         "Deliver a VERDICT report on the review card."
       ],
       "boundaries": [
         "Move nothing: the loop applies the verdict.",
         "Never enter awaiting; insufficient evidence is a REJECT.",
-        "A declared design stage without a valid handoff is a REJECT, not a silent fallback."
+        "A declared design stage without a valid handoff is a REJECT, not a silent fallback.",
+        "A missing acceptance item is never a leftover."
       ],
       "workflow": "reviewer/workflow.md",
+      "self_check": "reviewer/self-check.md",
       "reviewer_prompt": "reviewer/reviewer-prompt.md"
     }
   ]

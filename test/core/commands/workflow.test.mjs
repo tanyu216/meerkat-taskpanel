@@ -28,8 +28,11 @@ const DELIVERY = {
 
 const VERDICT = {
   conclusion: "VERDICT: APPROVE",
-  acceptance: [{ text: "the evidence matches", status: "met" }],
-  evidence: [{ kind: "path", path: "src/thing.mjs" }],
+  acceptance: [{ text: "the evidence matches", status: "met", note: "evidence[2] — the run" }],
+  evidence: [
+    { kind: "path", path: "src/thing.mjs" },
+    { kind: "command", cmd: "node --test test/thing.test.mjs", exit_code: 0 },
+  ],
   author: REVIEWER,
 };
 
@@ -252,6 +255,131 @@ describe("commands/workflowTick — 0031", () => {
         dispatch.acceptance.some((text) => /Every requirement in the original description/.test(text)),
       );
       assert.ok(dispatch.acceptance.some((text) => /plan\.md/.test(text)));
+    });
+  });
+
+  it("carries a rejection's must-fix items into the next round's baseline and review card", async () => {
+    await board(({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "Do the thing",
+        assignee: "linus",
+        acceptanceMode: "agent",
+        meta: { acceptance: ["the thing works"] },
+        actor: HUMAN,
+      });
+      commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });
+      commands.deliver({
+        taskId: original.id,
+        report: {
+          ...DELIVERY,
+          acceptance: [{ text: "the thing works", status: "met", note: "evidence[1] — ran it" }],
+        },
+        actor: WORKER,
+      });
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review Do the thing",
+        assignee: "jobs",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        meta: { flow: "B" },
+        actor: HUMAN,
+      });
+      commands.moveStatus({ id: review.id, to: "in_progress", actor: REVIEWER });
+      commands.deliver({
+        taskId: review.id,
+        report: {
+          conclusion: "VERDICT: REJECT\n\n1. add the e2e case for a canceled child",
+          acceptance: [{ text: "the evidence matches", status: "not_met" }],
+          evidence: [{ kind: "path", path: "src/thing.mjs" }],
+          leftovers: "the e2e case for a canceled child is missing",
+          author: REVIEWER,
+        },
+        actor: REVIEWER,
+      });
+
+      const rejected = commands
+        .workflowTick({ reviewer: "jobs" })
+        .workflow.actions.find((action) => action.type === "reject_task");
+      assert.ok(rejected, "the delivery is rejected");
+      assert.deepEqual(rejected.mustFix, ["add the e2e case for a canceled child"]);
+
+      // The executor's writes: the round bump unlocks the baseline, then the
+      // must-fix items land, then the card is released to the pool.
+      commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });
+      commands.updateTask({ id: original.id, acceptance: rejected.mustFix, actor: { kind: "taskd", id: "loop" } });
+      commands.moveStatus({ id: original.id, to: "todo", actor: WORKER });
+      // The executor closes the review card last; without it the next tick
+      // would still treat this original as handled by the outcome.
+      commands.moveStatus({ id: review.id, to: "done", actor: { kind: "taskd", id: "loop" } });
+      assert.deepEqual(commands.getTask({ id: original.id }).acceptance, [
+        "the thing works",
+        "add the e2e case for a canceled child",
+      ]);
+
+      commands.claim({ id: original.id, actor: WORKER });
+      commands.deliver({
+        taskId: original.id,
+        report: {
+          ...DELIVERY,
+          acceptance: [
+            { text: "the thing works", status: "met", note: "evidence[1] — ran it" },
+            { text: "add the e2e case for a canceled child", status: "met", note: "evidence[2] — the new test" },
+          ],
+          evidence: [
+            { kind: "commit", sha: "abc1234" },
+            { kind: "command", cmd: "node --test test/thing.test.mjs", exit_code: 0 },
+          ],
+        },
+        actor: WORKER,
+      });
+
+      const dispatch = commands
+        .workflowTick({ reviewer: "jobs" })
+        .workflow.actions.find((action) => action.type === "create_review");
+      assert.ok(dispatch, "round 2 is dispatched for review");
+      assert.ok(
+        dispatch.acceptance.includes("add the e2e case for a canceled child"),
+        "the next review card owes an answer to the last round's finding",
+      );
+
+      // And an APPROVE that ignores it is refused at acceptance, not merely
+      // noted: the carried item is an ordinary criterion of both baselines.
+      const finding = "add the e2e case for a canceled child";
+      const review2 = commands.createTask({
+        projectId: "proj",
+        title: "Review round 2",
+        assignee: "jobs",
+        reviewOf: original.identifier,
+        reviewRound: 2,
+        meta: { flow: "B", acceptance: dispatch.acceptance },
+        actor: HUMAN,
+      });
+      commands.moveStatus({ id: review2.id, to: "in_progress", actor: REVIEWER });
+      commands.deliver({
+        taskId: review2.id,
+        report: {
+          conclusion: "VERDICT: APPROVE\n\nEverything else checks out.",
+          acceptance: dispatch.acceptance
+            .filter((text) => text !== finding)
+            .map((text) => ({ text, status: "met", note: "evidence[2] — the run" })),
+          evidence: [
+            { kind: "commit", sha: "abc1234" },
+            { kind: "command", cmd: "node --test test/thing.test.mjs", exit_code: 0 },
+          ],
+          author: REVIEWER,
+        },
+        actor: REVIEWER,
+      });
+      assert.throws(
+        () => commands.moveStatus({ id: original.id, to: "done", actor: { kind: "taskd", id: "loop" } }),
+        (err) =>
+          err.code === "ACCEPTANCE_INCOMPLETE" &&
+          err.details.missing.some((item) => item.text === finding),
+        "an APPROVE that drops the last round's finding does not accept the card",
+      );
     });
   });
 

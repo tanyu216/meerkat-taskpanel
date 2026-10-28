@@ -381,6 +381,7 @@ export async function notifySlaAlerts(deps) {
  *   move?: (ref: string, to: string) => Promise<{ok: boolean, error?: string}>,
  *   comment?: (ref: string, input: {kind: string, body: string}) => Promise<{ok: boolean, error?: string}>,
  *   setMeta?: (ref: string, meta: Record<string, string>) => Promise<{ok: boolean, error?: string}>,
+ *   appendAcceptance?: (ref: string, items: string[]) => Promise<{ok: boolean, error?: string}>,
  *   notify?: (alert: object) => void,
  *   log: (line: string) => void,
  * }} deps
@@ -398,6 +399,7 @@ export async function runWorkflowTick(deps) {
     move = null,
     comment = null,
     setMeta = null,
+    appendAcceptance = null,
     notify = () => {},
     log,
   } = deps;
@@ -461,6 +463,15 @@ export async function runWorkflowTick(deps) {
     const result = await fn(...args);
     if (result?.ok === false) throw new Error(result.error ?? `${name} failed`);
     return result;
+  };
+
+  // A rejection's must-fix items become acceptance criteria, so the next
+  // round's report template and the next review card both owe an answer. The
+  // append is skipped when the plan already found every item in the baseline.
+  const appendMustFix = async (action) => {
+    const items = Array.isArray(action.must_fix) ? action.must_fix : [];
+    if (items.length === 0) return;
+    await step(appendAcceptance, "appendAcceptance", action.original_ref, items);
   };
 
   // Closing the review card is the last write of every outcome. A cancel is a
@@ -546,6 +557,10 @@ export async function runWorkflowTick(deps) {
           await step(comment, "comment", action.original_ref, { kind: "change", body });
           await step(setMeta, "setMeta", action.original_ref, { rework_round: String(action.rework_round) });
           await step(move, "move", action.original_ref, "in_progress");
+          // The round bump on the move above is what unlocks the baseline; the
+          // items land before the card is released to `todo`, so the next
+          // round's report template and the next review card both carry them.
+          await appendMustFix(action);
           await step(move, "move", action.original_ref, "todo");
           await closeReviewCard(
             action,
@@ -565,6 +580,9 @@ export async function runWorkflowTick(deps) {
           await step(comment, "comment", action.original_ref, { kind: "change", body });
           await step(setMeta, "setMeta", action.original_ref, { rework_round: String(action.rework_round) });
           await step(move, "move", action.original_ref, "in_progress");
+          // The fix child is `acceptance_mode=off` and is never reviewed, so the
+          // epic's own baseline is what the next review card copies.
+          await appendMustFix(action);
           await closeReviewCard(
             action,
             `Loop closed this review card after reopening ${action.original_ref} with fix child ${childRef}.`,
@@ -573,6 +591,7 @@ export async function runWorkflowTick(deps) {
         }
 
         case "reject_task_finish":
+          await appendMustFix(action);
           await step(move, "move", action.original_ref, "todo");
           await closeReviewCard(action, `Loop closed this review card after completing the rework move.`);
           break;

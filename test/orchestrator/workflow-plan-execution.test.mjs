@@ -70,7 +70,9 @@ function verdict(word, findings = "") {
     report: {
       conclusion: `VERDICT: ${word}\n${findings}`,
       acceptance: [],
-      evidence: [],
+      // The reviewer ran something: an APPROVE with no command anchor is
+      // refused as `verdict_unsupported`.
+      evidence: [{ kind: "command", cmd: "node --test test/thing.test.mjs", exit_code: 0 }],
       author: { id: "jobs", display_name: "jobs", kind: "agent" },
     },
   };
@@ -81,6 +83,7 @@ async function throughBothHalves(input) {
   const plan = planWorkflowTick({ ...input, config: CONFIG, now: NOW });
   const wirePlan = workflowToWire(plan);
   const order = [];
+  const appends = [];
   const result = await runWorkflowTick({
     plan: wirePlan,
     config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
@@ -91,11 +94,16 @@ async function throughBothHalves(input) {
     move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
     comment: async (ref, { kind }) => (order.push(`comment:${ref}:${kind}`), { ok: true }),
     setMeta: async (ref, meta) => (order.push(`setMeta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+    appendAcceptance: async (ref, items) => {
+      appends.push({ ref, items });
+      order.push(`appendAcceptance:${ref}:${items.length}`);
+      return { ok: true };
+    },
     notify: () => {},
     now: () => NOW,
     log: () => {},
   });
-  return { plan, wirePlan, order, result };
+  return { plan, wirePlan, order, result, appends };
 }
 
 const APPROVE_ORDER = [
@@ -106,10 +114,13 @@ const APPROVE_ORDER = [
   "move:PROJ-0002:done",
 ];
 
+// The must-fix append sits **after** the move to `in_progress` (the round bump
+// is what unlocks the baseline) and **before** the card leaves for `todo`.
 const REJECT_TASK_ORDER = [
   "comment:PROJ-0001:change",
   'setMeta:PROJ-0001:{"rework_round":"2"}',
   "move:PROJ-0001:in_progress",
+  "appendAcceptance:PROJ-0001:1",
   "move:PROJ-0001:todo",
   "comment:PROJ-0002:note",
   "move:PROJ-0002:done",
@@ -121,6 +132,7 @@ const REJECT_EPIC_ORDER = [
   "comment:PROJ-0001:change",
   'setMeta:PROJ-0001:{"rework_round":"2"}',
   "move:PROJ-0001:in_progress",
+  "appendAcceptance:PROJ-0001:1",
   "comment:PROJ-0002:note",
   "move:PROJ-0002:done",
 ];
@@ -187,7 +199,12 @@ const SCENARIOS = [
       return [original, review];
     })(),
     expectedAction: "reject_task_finish",
-    expectedOrder: ["move:PROJ-0001:todo", "comment:PROJ-0002:note", "move:PROJ-0002:done"],
+    expectedOrder: [
+      "appendAcceptance:PROJ-0001:1",
+      "move:PROJ-0001:todo",
+      "comment:PROJ-0002:note",
+      "move:PROJ-0002:done",
+    ],
   },
   {
     name: "close_review (round mismatch)",
@@ -253,6 +270,26 @@ describe("workflow plan → execution", () => {
     });
   }
 
+  it("sends the reviewer's numbered items, and nothing when the baseline already carries them", async () => {
+    const original = card();
+    const listed = await throughBothHalves({
+      tasks: [original, reviewCard(original)],
+      verdicts: { "PROJ-0002": verdict("REJECT", "1. add the e2e case\n2. fix the round guard") },
+    });
+    assert.deepEqual(listed.appends, [
+      { ref: "PROJ-0001", items: ["add the e2e case", "fix the round guard"] },
+    ]);
+
+    const pointer =
+      "Every finding in the PROJ-0002 review of round 1 is resolved or explicitly deferred";
+    const retried = card({ acceptance: [pointer] });
+    const already = await throughBothHalves({
+      tasks: [retried, reviewCard(retried)],
+      verdicts: { "PROJ-0002": verdict("REJECT", "the prose has no list") },
+    });
+    assert.deepEqual(already.appends, [], "a retried pass appends nothing twice");
+  });
+
   it("keeps every planner action's fields inside the frozen plan shape", () => {
     // The contract snapshot freezes these field sets. A live planner action that
     // grows a field the snapshot does not know is exactly the drift the
@@ -261,12 +298,12 @@ describe("workflow plan → execution", () => {
       create_review: ["type", "original_ref", "project_id", "reviewer", "round", "idem", "target", "title", "description", "acceptance"],
       auto_accept: ["type", "original_ref", "round", "accepted_by", "held"],
       approve: ["type", "review_status", "review_ref", "original_ref", "round", "close_review", "accepted_by", "held"],
-      reject_task: ["type", "review_status", "review_ref", "original_ref", "round", "rework_round", "findings", "close_review"],
+      reject_task: ["type", "review_status", "review_ref", "original_ref", "round", "rework_round", "findings", "must_fix", "close_review"],
       reject_epic: [
         "type", "review_status", "review_ref", "original_ref", "round", "rework_round",
-        "project_id", "assignee_id", "original_title", "acceptance_mode", "findings", "close_review",
+        "project_id", "assignee_id", "original_title", "acceptance_mode", "findings", "must_fix", "close_review",
       ],
-      reject_task_finish: ["type", "review_status", "review_ref", "original_ref", "round", "close_review"],
+      reject_task_finish: ["type", "review_status", "review_ref", "original_ref", "round", "must_fix", "close_review"],
       reopen_review: ["type", "review_status", "review_ref", "original_ref", "round", "retry", "reason"],
       close_review: ["type", "review_status", "review_ref", "original_ref", "round", "reason", "close_review"],
       cancel_review: ["type", "review_status", "review_ref", "original_ref", "reason"],

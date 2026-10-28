@@ -79,9 +79,10 @@ branch never starts by default; it needs an explicit request and a threshold.
 ## Test execution vs review gate
 
 You **author** tests and test design; the **review card** is the execution gate. The
-reviewer re-runs the suite, coverage, mock-boundary check and security scan and issues the
-verdict. A dependent test-execution card is post-delivery verification: it does not replace
-the review gate, and its findings create a fix/rework card.
+reviewer runs the project's declared gate (`project.meta.review_gate`) on the delivered
+commit and issues the verdict; the suite and coverage bars below are what that gate is
+expected to cover. A dependent test-execution card is post-delivery verification: it does
+not replace the review gate, and its findings create a fix/rework card.
 
 ## Shared rules and boundaries
 

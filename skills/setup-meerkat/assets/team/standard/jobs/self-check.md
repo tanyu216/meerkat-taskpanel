@@ -2,7 +2,8 @@
 
 Run this after the design work and before delivery. First re-export the brief so the check
 runs against the current card, then work through every stage you ran; the skip rules at the
-end decide which stages apply.
+end decide which stages apply. The requirement → evidence table lives in `plan.md` and grows
+while you work — this check audits it, it does not write it from memory.
 
 Never hand-edit `card.md`; re-export it. This is the role's pre-delivery audit. It is not
 the `## Handoff` block: that block is a producer card's cross-card transfer (Jobs design,

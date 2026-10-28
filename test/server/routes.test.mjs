@@ -363,8 +363,11 @@ describe("server/routes — the workflow plan on reconcile", () => {
       await call("POST", `/api/v1/tasks/${reviewRef}/deliver`, {
         report: {
           conclusion: "VERDICT: APPROVE\n\nLooks right.",
-          acceptance: [{ text: "reviewed", status: "met" }],
-          evidence: [{ kind: "path", path: "src/core/domain/workflow.mjs" }],
+          acceptance: [{ text: "reviewed", status: "met", note: "evidence[2] — the run" }],
+          evidence: [
+            { kind: "path", path: "src/core/domain/workflow.mjs" },
+            { kind: "command", cmd: "node --test test/core/domain/workflow.test.mjs", exit_code: 0 },
+          ],
         },
       }, asReviewer),
     );

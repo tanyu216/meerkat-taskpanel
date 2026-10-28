@@ -384,6 +384,15 @@ export async function runWorkflowPass(opts, config, log) {
       ]);
       return read.ok ? { ok: true } : { ok: false, error: read.error };
     },
+    appendAcceptance: (ref, items) => {
+      // Append-only and idempotent at the board: a normalised duplicate is
+      // ignored, and the baseline is unlocked once the rework move has landed.
+      const read = invoke([
+        "issue", "update", ref,
+        ...items.flatMap((item) => ["--acceptance", String(item)]),
+      ]);
+      return read.ok ? { ok: true } : { ok: false, error: read.error };
+    },
     notify: opts.dryRun ? () => {} : notifyReal(opts, log),
     log,
   });

@@ -497,6 +497,8 @@ export function collectWire() {
             assigneeId: "agent-1",
             originalTitle: "Epic",
             findings: "…",
+            // The real planner turns the findings into baseline items.
+            mustFix: ["fix the round guard"],
             // The real planner stamps the fix child's acceptance mode.
             acceptanceMode: "off",
             closeReview: true,

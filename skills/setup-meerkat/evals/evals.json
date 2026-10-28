@@ -123,6 +123,22 @@
         "The subagent keeps the card in_progress, writes no decision/confirm/change, and does not enter awaiting.",
         "Only a human comment resumes awaiting; an incomplete answer is not consent."
       ]
+    },
+    {
+      "id": 10,
+      "name": "reviewer-catches-omission",
+      "prompt": "Review card T-2 (round 1) audits delivered card T-1, acceptance_mode agent, project gate `npm run verify:docker`. T-1's description asks for five things: a retry with backoff, a timeout, a metric, a CLI flag and a regression test. Its delivery report lists four acceptance items and marks them met; the fifth (the CLI flag) appears in no acceptance item, and one `met` note says only \"implemented\". Show the verdict the reviewer delivers and the report it writes.",
+      "expected_output": "VERDICT: REJECT on the review card; the ledger names the CLI-flag requirement as uncovered and reports the anchorless `met` as not verifiable; the report verifies at the delivered commit, records the gate command and exit code, and numbers each must-fix item with file/line, reproduction, expected versus actual and the missing case so the loop appends them to T-1's acceptance.",
+      "files": [],
+      "assertions": [
+        "The verdict's first line is exactly `VERDICT: REJECT`.",
+        "A requirement ledger names the uncovered CLI-flag requirement explicitly, rather than only a generic \"requirements covered\" line.",
+        "The anchorless `met` is refused as unverifiable / `not_met`, not accepted on the strength of its note.",
+        "The audit reads the delivered `commit` (git show/diff at that sha), not only the live working tree.",
+        "The report records the declared gate (`npm run verify:docker`) with its command and exit code, run by the reviewer.",
+        "Every must-fix item is numbered and carries file/line, reproduction, expected versus actual and the missing case.",
+        "The reviewer moves neither card and does not enter awaiting."
+      ]
     }
   ]
 }

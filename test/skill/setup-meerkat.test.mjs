@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
 import { AGENT_DIRS } from "../../src/orchestrator/options.mjs";
+import { allowedToolsFor } from "../../src/orchestrator/actor-kinds/claude.mjs";
 import { baseEnv } from "../helpers/base-env.mjs";
 import { LOOP_KINDS } from "../../skills/setup-meerkat/scripts/lib/agent-kinds.mjs";
 
@@ -110,6 +111,7 @@ describe("skill frontmatter and assets", () => {
       "turing/performance-workflow.md",
       "turing/self-check.md",
       "reviewer/workflow.md",
+      "reviewer/self-check.md",
       "reviewer/reviewer-prompt.md",
       "agents/claude/role.md.tmpl",
       "agents/codex/role.toml.tmpl",
@@ -407,6 +409,7 @@ describe("skill frontmatter and assets", () => {
       "turing/performance-workflow.md",
       "turing/self-check.md",
       "reviewer/workflow.md",
+      "reviewer/self-check.md",
       "reviewer/reviewer-prompt.md",
     ];
     const banned = /\bgit (?:worktree|merge|branch|checkout)\b|--no-ff|branch -d|\btaskctl\b|`\/init`|\bnpm run\b|\bdocker\b|\bpodman\b|\bsystemctl\b|\blaunchctl\b|\bcore\.hooksPath\b/;
@@ -499,6 +502,28 @@ describe("skill frontmatter and assets", () => {
     assert.match(policy, /outside\s+the\s+roles/i, "the decision policy allows an outside worker");
   });
 
+  it("keeps every command the reviewer is told to run inside its lane allowlist", () => {
+    // A rule the lane cannot execute is a rule the reviewer learns to skip. If
+    // the assets tell the reviewer to run a kind of command, the lane must
+    // permit that kind.
+    const team = join(SKILL, "assets", "team", "standard");
+    const allow = allowedToolsFor("reviewer");
+    for (const file of ["reviewer/workflow.md", "reviewer/reviewer-prompt.md"]) {
+      const text = readFileSync(join(team, file), "utf8");
+      for (const [kind, pattern] of [
+        ["Bash(npm run *)", /\bnpm run\b/],
+        ["Bash(node *)", /\bnode --?test\b|\bnode [\w./-]+\.mjs\b/],
+        ["Bash(git *)", /\bgit (?:show|diff|status|log)\b/],
+      ]) {
+        if (!pattern.test(text)) continue;
+        assert.ok(
+          allow.includes(kind),
+          `${file} tells the reviewer to run a ${kind} command, but the reviewer lane lacks it`,
+        );
+      }
+    }
+  });
+
   it("makes every self-check say what counts as proof and what may not be a leftover", () => {
     const team = join(SKILL, "assets", "team", "standard");
     for (const role of ["jobs", "linus", "turing"]) {
@@ -522,6 +547,13 @@ describe("skill frontmatter and assets", () => {
       "the reviewer accepts a leftover only outside the acceptance",
     );
     assert.match(reviewer, /never a leftover|not a leftover/i, "a missing item is not a leftover");
+    // The prompt is the copy that is inlined into the reviewer's first context;
+    // a doctrine that lives only in the workflow path is a doctrine the reviewer
+    // may never read.
+    assert.match(reviewer, /falsifiable/i, "the reviewer workflow says what counts as proof");
+    const prompt = readFileSync(join(team, "reviewer", "reviewer-prompt.md"), "utf8");
+    assert.match(prompt, /falsifiable/i, "the inlined reviewer prompt says what counts as proof");
+    assert.match(prompt, /evidence\[n\]/, "the inlined prompt names the anchor reference");
 
     const impl = readFileSync(join(team, "linus", "implementation-workflow.md"), "utf8");
     assert.match(
@@ -601,33 +633,31 @@ describe("skill frontmatter and assets", () => {
     assert.match(testDesign, /browser/i);
     assert.match(regression, /API|browser/i);
 
-    for (const text of [reviewer, prompt]) {
-      assert.match(text, /## Handoff/);
-      assert.match(text, /design_stage|stage_handoff/);
-      assert.match(text, /product_change/);
-      assert.match(text, /100%/);
-      assert.match(text, />80%|80%/);
-      assert.match(text, /http/i);
-      assert.match(text, /websocket/i);
-      assert.match(text, /db/i);
-      assert.match(text, /redis/i);
-      assert.match(text, /internal/i);
-      assert.match(text, /security scan/i);
-      assert.match(text, /API|browser/i);
+    // The reviewer's contract is a procedure, not a gate list: the gate is the
+    // project's (`review_gate`), and what the role owns is the ledger, the
+    // delivered sha, the anchor behind each claim and the earlier findings.
+    for (const [name, text] of [["workflow", reviewer], ["prompt", prompt]]) {
+      assert.match(text, /## Handoff/, `${name} reads the handoff`);
+      assert.match(text, /design_stage|stage_handoff/, `${name} triages the stage`);
+      assert.match(text, /product_change/, `${name} reads the triage marker`);
+      assert.match(text, /ledger/i, `${name} builds the requirement ledger`);
+      assert.match(text, /commit|sha/i, `${name} verifies the delivered commit`);
+      assert.match(text, /earlier round|prior finding|earlier finding/i, `${name} re-checks earlier findings`);
+      assert.match(text, /declared gate|none declared/i, `${name} runs the project's gate`);
+      assert.match(text, /falsifiable/i, `${name} says what counts as proof`);
+      assert.match(text, /evidence\[n\]/, `${name} requires an anchor reference`);
       assert.match(text, /REJECT/);
+      assert.match(text, /not_met/, `${name} refuses to call the unverifiable a pass`);
     }
     assert.match(reviewer, /rollup/i);
     assert.match(reviewer, /epic/i);
-    assert.match(reviewer, /review card's snapshot/i);
-    assert.match(reviewer, /generic review items/i);
-    assert.match(prompt, /review card's snapshot/i);
-    assert.match(prompt, /generic review items/i);
+    assert.match(reviewer, /snapshot/i);
+    assert.match(reviewer, /generic items/i);
+    assert.match(prompt, /snapshot/i);
+    assert.match(prompt, /generic items/i);
     assert.match(reviewer, /CWE Top 25/i);
     assert.match(reviewer, /OWASP Top 10/i);
     assert.match(reviewer, /OWASP ASVS/i);
-    assert.match(prompt, /CWE Top 25/i);
-    assert.match(prompt, /OWASP Top 10/i);
-    assert.match(prompt, /OWASP ASVS/i);
     assert.doesNotMatch(reviewer, /archived product artifacts named in .*plan\.md/i);
     for (const text of [linusCheck, turingCheck]) {
       assert.match(text, /100%/);
@@ -656,6 +686,16 @@ describe("skill frontmatter and assets", () => {
       manifest.roles.find((role) => role.id === "reviewer")
         .responsibilities.some((line) => /CWE Top 25|OWASP/i.test(line)),
       "the reviewer audits the security standards",
+    );
+    const reviewerRole = manifest.roles.find((role) => role.id === "reviewer");
+    assert.equal(reviewerRole.self_check, "reviewer/self-check.md", "the reviewer has a pre-verdict audit");
+    assert.ok(
+      existsSync(join(team, "reviewer", "self-check.md")),
+      "the reviewer self-check file exists",
+    );
+    assert.ok(
+      reviewerRole.responsibilities.some((line) => /ledger/i.test(line)),
+      "the reviewer builds the requirement ledger",
     );
     assert.match(skill, /## Handoff/);
     assert.match(skill, /triage/i);
@@ -722,14 +762,19 @@ describe("skill frontmatter and assets", () => {
   it("keeps the skill-creator eval prompts parseable", () => {
     const evals = JSON.parse(readFileSync(join(SKILL, "evals", "evals.json"), "utf8"));
     assert.equal(evals.skill_name, "setup-meerkat");
-    assert.equal(evals.evals.length, 9);
+    assert.equal(evals.evals.length, 10);
     for (const entry of evals.evals) {
       assert.equal(typeof entry.prompt, "string");
       assert.ok(entry.prompt.length > 20, `eval ${entry.id}: prompt`);
       assert.ok(Array.isArray(entry.assertions) && entry.assertions.length > 0, `eval ${entry.id}: assertions`);
     }
     const names = new Set(evals.evals.map((entry) => entry.name));
-    for (const name of ["setup-interview", "custom-team-co-design", "decision-round"]) {
+    for (const name of [
+      "setup-interview",
+      "custom-team-co-design",
+      "decision-round",
+      "reviewer-catches-omission",
+    ]) {
       assert.ok(names.has(name), `eval ${name} must exist`);
     }
   });
@@ -1119,6 +1164,10 @@ describe("install-roles.mjs — project scope", () => {
     assert.ok(existsSync(join(roles, "ownership.md")));
     assert.equal(existsSync(join(roles, "decision-policy.md")), false);
     assert.ok(existsSync(join(roles, "reviewer", "reviewer-prompt.md")));
+    assert.ok(
+      existsSync(join(roles, "reviewer", "self-check.md")),
+      "the reviewer's pre-verdict audit is installed with the role",
+    );
     assert.ok(existsSync(join(home, ".claude", "agents", "jobs.md")));
     assert.ok(existsSync(join(home, ".codex", "agents", "jobs.toml")));
     assert.ok(existsSync(join(home, ".pi", "agent", "agents", "jobs.md")));

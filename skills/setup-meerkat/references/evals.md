@@ -95,3 +95,21 @@ lookup; every authorized item is settled in one `note` (or the lookup) and the c
 at most once; the E3 register and the E1 scope expansion go to the human in one `awaiting`
 string; the subagent writes no decision kind and never enters awaiting; only a human comment
 resumes, and an incomplete answer is not consent.
+
+## 10. Reviewer catches an omission
+
+> Review card T-2 (round 1) audits delivered card T-1, acceptance_mode agent, project gate
+> `npm run verify:docker`. T-1's description asks for five things: a retry with backoff, a
+> timeout, a metric, a CLI flag and a regression test. Its delivery report lists four
+> acceptance items and marks them met; the fifth (the CLI flag) appears in no acceptance
+> item, and one `met` note says only "implemented". Show the verdict the reviewer delivers
+> and the report it writes.
+
+Assert: the verdict's first line is exactly `VERDICT: REJECT`; the requirement ledger names
+the uncovered CLI-flag requirement rather than answering one generic "requirements covered"
+line; the anchorless `met` is refused as unverifiable (`not_met`), not accepted on the
+strength of its note; the audit reads the delivered `commit` (`git show` / `git diff` at that
+sha) rather than only the live working tree; the report records the declared gate with its
+command and exit code, run by the reviewer; every must-fix item is numbered and carries
+file/line, reproduction, expected versus actual and the missing case (the loop appends them
+to T-1's acceptance); the reviewer moves neither card and never enters awaiting.

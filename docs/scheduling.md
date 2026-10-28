@@ -469,12 +469,20 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
   description and the list), its acceptance list, the current round's report, the
   comment trail and (for an epic) the rollup and children. If the original carries
   `meta.acceptance_derived=yes`, it checks the list covers the description and comments — a
-  list that narrows the card is grounds for `REJECT`. It delivers a report whose first line
-  is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
+  list that narrows the card is grounds for `REJECT`. It ledgers the requirements, verifies
+  at the report's `commit` anchor rather than the live tree, and answers every baseline item
+  with a status, how it checked and an `evidence[n]` anchor; a `met` the board cannot trace,
+  or an `APPROVE` with no command anchor, is refused rather than applied. It delivers a
+  report whose first line is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
 - the loop applies the verdict as `--actor-kind taskd`. An `APPROVE` writes
   `meta.accepted_by=loop-review` and moves the original `in_review → done`; a `REJECT`
-  comments the findings, writes `meta.rework_round`, and moves it back to rework. Only
-  after that does it close the review card.
+  comments the findings, writes `meta.rework_round`, moves it back to rework, and appends
+  the reviewer's numbered must-fix items to the original's frozen acceptance (the move to
+  `in_progress` is what unlocks the baseline). Each item is then an ordinary acceptance
+  criterion: the next round's report template lists it and the next review card's baseline
+  carries it, so a dropped finding fails the coverage gate. A `REJECT` with no numbered list
+  appends one pointer item rather than nothing. Only after that does it close the review
+  card.
 - The loop always closes the review card it dispatched — there is no switch that could leave
   it for nobody. On a `human` card it records the evidence and stops; the person closes.
 - An `agent` card with no effective reviewer is refused at startup: the loop reads
@@ -559,7 +567,9 @@ the container; with it, the container stays `in_progress` and names the child bl
 - **A silent reviewer is not silent forever.** An **open** review card suppresses the
   original's `acceptance_card_creation` row, so a reviewer that is never woken would
   otherwise have no watcher at all. A review card in `in_review` whose report has no readable
-  verdict raises `verdict_unreadable` and is re-dispatched (`reopen_review`, bounded by
+  verdict raises `verdict_unsupported` — a `met` with no resolvable anchor, or an APPROVE
+  whose report carries no `command` anchor — and is re-dispatched the same bounded way. A
+  verdict that cannot be read raises `verdict_unreadable` and is re-dispatched (`reopen_review`, bounded by
   `meta.review_retry`, at most two reopens; the exhaustion alert is
   `review_retries_exhausted`). A review card that is not `in_review`
   (todo / in_progress / blocked / awaiting) older than `--review-aging-minutes` (default 60)
@@ -639,7 +649,7 @@ A roles root is a directory with `manifest.json`:
 ├── jobs/{workflow.md,ui-workflow.md,self-check.md}
 ├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,refactor-workflow.md,self-check.md}
 ├── turing/{workflow.md,test-design-workflow.md,regression-workflow.md,performance-workflow.md,self-check.md}
-└── reviewer/{workflow.md,reviewer-prompt.md}
+└── reviewer/{workflow.md,self-check.md,reviewer-prompt.md}
 ```
 
 Each role carries its board `agent` name, an optional `native_agent` (the Claude/Codex
@@ -1341,15 +1351,19 @@ allowlist:
 | Role | Tools (Claude adapter, default) |
 |---|---|
 | control | `Read`, `Bash(taskctl *)`, `Bash(node *)` |
-| reviewer | `Read`, `Grep`, `Glob`, `Agent`, `Bash(taskctl *)`, `Bash(git *)` |
+| reviewer | `Read`, `Grep`, `Glob`, `Agent`, `Bash(taskctl *)`, `Bash(git *)`, `Bash(npm run *)`, `Bash(node *)`, `Bash(bash *)` |
 | worker | `Read`, `Edit`, `Write`, `Grep`, `Glob`, `Agent`, `Bash(taskctl *)`, `Bash(node *)`, `Bash(git *)` |
 
 `Agent` is the subagent-spawning tool (older CLIs spell it `Task`; both are listed
-so one adapter serves either). The Pi adapter carries the same split through
-`--tools`, and its lists also include `subagent` / `subagents_enable` — the
-`pi-subagents` extension's tools (inert when the extension is not installed, but
-a lane without them could not spawn). Codex, OpenCode and Cursor have no
-equivalent option.
+so one adapter serves either). The reviewer's `npm run` / `node` / `bash` entries
+exist because its contract is to re-run the project's declared gate
+(`project.meta.review_gate`) itself; a read-only lane with only `taskctl` and
+`git` cannot reproduce anything and turns "reproducible evidence" into "read the
+report and trust it". It still has no `Edit`/`Write`. The Pi adapter carries the
+same split through `--tools`, and its lists also include `subagent` /
+`subagents_enable` — the `pi-subagents` extension's tools (inert when the
+extension is not installed, but a lane without them could not spawn). Codex,
+OpenCode and Cursor have no equivalent option.
 
 An operator who needs unattended runs that edit and execute without prompts can
 opt into **full tool access** — `--allow-all-tools`, or, for the installed

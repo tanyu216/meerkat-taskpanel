@@ -142,6 +142,36 @@ function mergeReportItems(reportItems) {
   return byKey;
 }
 
+/** `evidence[3]` in an acceptance note — the index into the report's own anchors. */
+const EVIDENCE_REF = /evidence\[(\d+)\]/gi;
+
+/**
+ * The `met` claims a report cannot point at.
+ *
+ * A `met` is a claim, and a claim with no anchor is a recollection. The note
+ * must name at least one `evidence[n]` that resolves inside the report's own
+ * `evidence[]`; the check is structural, so it forces the pointer, not the
+ * truth of the pointer (the reviewer's independent run is what tests that).
+ *
+ * @param {{reportItems?: unknown[], evidence?: unknown[]}} input
+ * @returns {{key: string, text: string, reason: "no_anchor"|"dangling_anchor"}[]}
+ */
+export function unsupportedClaimsOf(input = {}) {
+  const anchors = Array.isArray(input.evidence) ? input.evidence : [];
+  const out = [];
+  for (const item of mergeReportItems(input.reportItems ?? []).values()) {
+    if (item.status !== "met") continue;
+    const refs = [...String(item.note ?? "").matchAll(EVIDENCE_REF)].map((match) => Number(match[1]));
+    if (refs.length === 0) {
+      out.push({ key: item.key, text: item.text, reason: "no_anchor" });
+      continue;
+    }
+    const resolves = refs.some((index) => index >= 1 && index <= anchors.length);
+    if (!resolves) out.push({ key: item.key, text: item.text, reason: "dangling_anchor" });
+  }
+  return out;
+}
+
 /**
  * Does `reportItems` cover `baseline`?
  *

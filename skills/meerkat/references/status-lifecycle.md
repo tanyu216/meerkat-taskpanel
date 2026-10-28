@@ -197,8 +197,18 @@ into the snapshot; the gates never read meta.
   **beyond** the baseline also blocks if it is `partial` / `not_met` — the report itself says
   work is unfinished. Empty baseline → vacuous, allowed: the rule is "once non-empty, it
   cannot be shortened", not "every card must have criteria".
+- **A `met` must point at its evidence.** On an `agent` card the gate also reads the report's
+  `evidence[]`: each `met` item's note must cite at least one `evidence[n]` that resolves
+  within that list, or the item is `unsupported` (`no_anchor` / `dangling_anchor`) and the gate
+  refuses with `ACCEPTANCE_INCOMPLETE` (`details.unsupported`). This is structural — it forces
+  the pointer, not the truth of the pointer. The judgement behind it is the reviewer's: a
+  claim that cannot be reproduced is `not_met`, never `met`, and `partial` does not soften a
+  requirement that was not implemented. An `off` or `human` card keeps the lighter contract
+  (matching items, statuses and notes).
 - **Reviews.** An `APPROVE` on a review card is checked against the original's snapshot (and
-  the review card's own) before it can close anything; see
+  the review card's own) before it can close anything, and the review report must carry at
+  least one `command` anchor — the reviewer runs the gate itself, so an APPROVE that ran
+  nothing is refused (`ACCEPTANCE_INCOMPLETE`, `details.reason = "no_command_evidence"`); see
   [`review-workflow.md`](review-workflow.md).
 - **Epics.** A container's own snapshot is informational; its acceptance fact is the current
   round's rollup over its children (§6).
@@ -417,7 +427,13 @@ The fail-safe rules are part of the decision:
   is accepted after `APPROVE`; an `off`/`human` original gets the verdict recorded and its
   review card closed.
 
-`approve` actions carry `acceptedBy: loop-review`.
+`approve` actions carry `acceptedBy: loop-review`. A `reject_task` / `reject_epic` action
+carries `mustFix[]` — the reviewer's numbered findings, or one pointer item when the findings
+are prose — and the loop appends each item to the original's frozen acceptance after the move
+to `in_progress` (the round bump is what unlocks the baseline). An `APPROVE` whose report
+fails the board's own checks — a `met` with no resolvable `evidence[n]`, or no `command`
+anchor at all — is not planned: the loop raises `verdict_unsupported` and reopens the review
+card under the same bound as an incomplete verdict.
 
 A `cancel_review` on a review card that is still `in_review` is a two-hop move
 (`in_review → in_progress → canceled`): the whitelist has no direct

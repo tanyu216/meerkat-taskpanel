@@ -2,7 +2,8 @@
 
 Run this after the branch work and before delivery. First re-export the brief so the check
 runs against the current card, then run the section for the branch you took; the Shared
-checks and the Mandatory gates apply to every branch.
+checks and the Mandatory gates apply to every branch. The evidence table lives in `plan.md`
+and grows while you work — this check audits it, it does not write it from memory.
 
 Never hand-edit `card.md`; re-export it. This is the role's pre-delivery audit. It is not
 the `## Handoff` block: that block is a producer card's cross-card transfer (Jobs design,
@@ -12,9 +13,11 @@ Linus architecture only).
 
 1. Re-read `.meerkat/<id>/card.md`, the live card, the frozen `acceptance` and this card's
    `.meerkat/<id>/plan.md`.
-2. Build a requirement/acceptance → code/test/evidence table in `plan.md` for every
+2. Confirm `plan.md`'s requirement/acceptance → code/test/evidence table covers every
    description requirement, comment decision, acceptance item and touched error/boundary/
-   regression scenario.
+   regression scenario, and that each row was written when you observed it — a row added at
+   delivery is a recollection, not evidence. A missing row is an omission: do the work, then
+   add the row.
 3. Every row ends in one disposition, and the report's acceptance status carries it:
    - **met** — the proof is falsifiable. For code, a `command exit 0` whose command fails
      when the item is broken; for an artifact, a `path` plus the check that resolves it. A
@@ -38,7 +41,8 @@ Linus architecture only).
 
 ## Mandatory gates (a card that changes code)
 
-Run these before delivery; the reviewer re-runs them independently.
+Run these before delivery. They are the worker's own bars; the reviewer runs the project's
+declared gate (or the same bars when none is declared) on the delivered commit.
 
 | Gate | Threshold |
 |---|---|
@@ -122,6 +126,7 @@ run them.
 ## Delivery
 
 Confirm the report gives every baseline item its status and falsifiable evidence, and gives
-each leftover its owner and follow-up. A card with an open omission, a red gate or an
-unanswered question is not delivered: close it and re-run, or ask and keep the card
-`in_progress`. Only then deliver at `in_review`. Do not accept your own work.
+each leftover its owner and follow-up. The report is `plan.md`'s table projected onto the
+card's acceptance — not a narrative rewritten at delivery. A card with an open omission, a
+red gate or an unanswered question is not delivered: close it and re-run, or ask and keep
+the card `in_progress`. Only then deliver at `in_review`. Do not accept your own work.

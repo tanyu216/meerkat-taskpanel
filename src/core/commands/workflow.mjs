@@ -101,10 +101,17 @@ export function workflowTick(ctx, input = {}) {
   // 0031 — a project may override the deployment-level reviewer. Read every
   // project (archived included: it can still own in-flight cards) so dispatch
   // can resolve `project.reviewer ?? global` from the snapshot alone.
+  const projects = ctx.repos.projects.list({ includeArchived: true });
   const projectReviewers = Object.fromEntries(
-    ctx.repos.projects
-      .list({ includeArchived: true })
-      .map((project) => [project.id, project.reviewer ?? null]),
+    projects.map((project) => [project.id, project.reviewer ?? null]),
+  );
+  // `project.meta.review_gate` — the one command the reviewer re-runs. The
+  // board does not validate it; the reviewer's lane allowlist is what can run it.
+  const projectGates = Object.fromEntries(
+    projects.map((project) => {
+      const gate = project.meta?.review_gate;
+      return [project.id, typeof gate === "string" && gate.trim() !== "" ? gate.trim() : null];
+    }),
   );
 
   const workflow = planWorkflowTick({
@@ -115,6 +122,7 @@ export function workflowTick(ctx, input = {}) {
     config: {
       reviewer,
       projectReviewers,
+      projectGates,
       reviewAgingMs: input.reviewAgingMs,
       maxActions: input.maxActions,
       // 0038 — the card's own `acceptance_mode` is the whole decision; there is

@@ -198,11 +198,17 @@ discovery aid, never the predicate. `meta.flow` absent means flow A; the loop wr
 
 Claim it like any `todo` card, but the work is a review, not a change to the original: read the
 original's description, every acceptance item, the current round's report and evidence, the
-comment trail and (for an epic) its children. Then deliver a report **on this card** whose
-first line is exactly `VERDICT: APPROVE` or `VERDICT: REJECT`; put the findings after that
-line and in `leftovers`. Move neither card — the loop applies the verdict and closes the
-review card. A delivery whose first line is not a verdict is still accepted by the board; the
-loop records `verdict_unreadable`, so the review is wasted.
+comment trail and (for an epic) its children. Ledger the requirements first — every
+requirement in the description, comments and plan needs an acceptance item *and* an
+implementation, or the verdict is `REJECT` — then verify at the report's `commit` anchor
+rather than the live tree, and answer every baseline item with a status, how you checked it,
+and an `evidence[n]` anchor. A `met` the board cannot trace is refused, and so is an
+`APPROVE` whose report records no command the reviewer ran. Then deliver a report **on this
+card** whose first line is exactly `VERDICT: APPROVE` or `VERDICT: REJECT`; put the findings
+after that line and in `leftovers`, as a numbered must-fix list on a `REJECT` — the loop
+appends those items to the original's acceptance. Move neither card — the loop applies the
+verdict and closes the review card. A delivery whose first line is not a verdict is still
+accepted by the board; the loop records `verdict_unreadable`, so the review is wasted.
 
 The review card's `review_round` is the **original's** audited round; its own `delivery_round`
 is a different number. A re-delivery after a rejection needs a new review card. Full protocol:

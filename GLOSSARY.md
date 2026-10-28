@@ -234,6 +234,16 @@ one, otherwise the deployment reviewer (`--reviewer` / `MEERKAT_TASKPANEL_REVIEW
 config). The loop merges every project reviewer into its scan/wake set.
 _中文_: 实际审核人
 
+**Must-fix item**:
+One numbered finding in a `VERDICT: REJECT` report. The loop appends each item to the
+original's frozen acceptance baseline, so it is not advice: the next round's report must
+answer it (`met` with an anchor, or a recorded deferral) and the next review card's baseline
+carries it. A rejection with no numbered list still appends one pointer item — no rejection
+is silent.
+_中文_: 必改项
+_Avoid_: finding (as a noun for an item the next round does not owe), leftover (that is work
+outside the frozen acceptance)
+
 **Auto-accept**:
 The loop's `auto_accept` action for a delivered card whose `acceptance_mode` is `off`: it
 writes `meta.accepted_by=loop-auto` and moves the card `in_review → done`. A `human` card is
@@ -532,12 +542,15 @@ _中文_: 交接队列
 _Avoid_: job queue, work queue
 
 **Self-check**:
-A worker role's pre-delivery audit: re-read the card and frozen acceptance, map every
+A role's pre-delivery audit. For a worker: re-read the card and frozen acceptance, map every
 requirement and acceptance item to evidence, settle each row's disposition — met needs
 falsifiable evidence, not_applicable its reason, and partial or not_met is a blocker —
 re-run the claimed gates, and confirm the report is complete. Work outside the frozen
-acceptance is recorded as a leftover naming its owner. It is internal to the delivering
-card; it is not the **Handoff block**, which is the cross-card transfer.
+acceptance is recorded as a leftover naming its owner. For the reviewer: confirm the verdict
+rests on observations — the requirement ledger is complete, every `met` cites an anchor, the
+delivered sha is recorded, and the earlier findings are answered. It is internal to the
+delivering card (or the review card); it is not the **Handoff block**, which is the
+cross-card transfer.
 _中文_: 交付前自检
 _Avoid_: handoff check, review (the reviewer owns the independent verdict)
 

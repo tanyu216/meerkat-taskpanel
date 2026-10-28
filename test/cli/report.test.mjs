@@ -222,6 +222,11 @@ describe("cli/report template", () => {
         const human = run(["report", "template", "DEMO-0001", "--commit", "dcd7d15"]);
         assert.equal(human.status, 0);
         assert.match(human.stdout, /"status": "not_met"/);
+        assert.match(
+          human.stdout,
+          /evidence\[1\]/,
+          "the note seed asks for the anchor the claim rests on",
+        );
         assert.match(human.stderr, /replace every TODO line before delivering \(DEMO-0001\)/);
         // Redirecting stdout gives a file `deliver` accepts, with no editing of
         // the command line — the guidance went to stderr for exactly this.
