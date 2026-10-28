@@ -23,7 +23,7 @@
 - **① 因子清单 = 3 个「硬分层」+ 5 个「软权重」（+1 个可选）**，逐项定义/取值字段/单调方向/适用条件见 **§4**。硬分层是**语义约束**（「这张卡现在能不能动」），软权重是**压力**（「该先动哪张」）——两者不可混为一谈，这是本设计的核心判断。
 - **② 推荐权值向量 = `P .30 / 停留 .25 / SLA .20 / 建龄 .10 / 下游解锁 .10 / 严重度 .05`**（Σ = 1.00），每项带**合理区间**与量级依据；量级依据的根 = **归一化到概率单纯形（Σ=1）⇒ 一项权值直接读作「占排序决策的百分比」**，见 **§5**。
 - **③ 合成公式 = 线性加权，配「比值封顶」归一化**（非 §20 的秩归一化，理由见 §6.2，与分页/稳定性直接相关）；**tie-break = 7 级确定性链**，末级落到卡号（唯一）⇒ 排序是**全序**、与 `Array#sort` 是否稳定无关，见 **§6.3**。卡面建议的 `priority → created_at` 先后是链上的第 3、5 级。
-- **④ 交互**：**不设为默认排序**（默认仍是 `sort_order, created_at, …` 的既有确定性序，而 `sort_order` 恒为 0 ⇒ 实际等于创建顺序）；**可选可切换**（`?order=weight` + `?order_debug=1`；**`order_debug` 顺带选中 weight 序且优先于 `order=`**，见 §13.1；能力位 `task_order: "weights-v1"`）；**影响 board（列内）/ list / candidates 候选清单**，**明确不影响 activity（B26 时间线）与 waiting（B27 最久优先）**；筛选不变、分组不变（权重只在组内定序，**永不跨列搬卡**），分页**可下推到 SQL**，见 **§7**。**最重的一条交互**：候选清单的顺序 = supervisor 的**派发优先级**（`src/shared/scheduling.mjs#planTick` 按给定顺序唤醒到并发上限）⇒ 权重向量能改变团队行为，故必须 opt-in + 可回溯（§7.4）。**等待 Terry 拍板的一项**：tier 的先后（§7.1 T0/T1/T2）。
+- **④ 交互**：**v1.4 起权重序是唯一的列表序**（Terry 2026-10-29 决定）：`/tasks`、`/tasks/candidates` 与 `taskctl issue list` / `issue candidates` 没有 `order` 参数，任何调用都走权重序。`?order_debug=1` 仍只按需返回逐卡投影（**投影是 opt-in，序不是**；能力位 `task_order: "weights-v1"`）；**影响 board（列内）/ list / candidates 候选清单**，**明确不影响 activity（B26 时间线）、waiting（B27 最久优先）与 md 导出**（导出直读仓库层序）；筛选不变、分组不变（权重只在组内定序，**永不跨列搬卡**），分页**可下推到 SQL**，见 **§7**。**最重的一条交互**：候选清单的顺序 = supervisor 的**派发优先级**（`src/foundation/scheduling.mjs#planTick` 按给定顺序唤醒到并发上限）⇒ 权重向量能改变团队行为，故可回溯性（§7.4）比 v1.3 时更重要。**等待 Terry 拍板的一项**：tier 的先后（§7.1 T0/T1/T2）。
 - **⑤ 边界与风险**共 16 条（§8 R1–R16），含 **4 条**本轮核出的**真陷阱**（v1.2 订正：原列 5 条，`blocked_reason` 一项已不再成立）；**`blocked_reason` 已存在**（迁移 `0016`，commit `f0c95a3`；已进 wire/导出）——v1.0 的否定断言属**基线漂移**（契约基线 `2c85440` 早于该迁移，见 §8 R1 / §14）；前端优先级域是 **5 值含 `none`**、core 是 4 值，而 `priorityRank` 对未知值的兜底是 `medium`（会把 `none` 排到 `low` **之上**）；`depends_on` 在本实现里**不是列**而是 relation 图；SLA 阈值**已内化为产品自有契约**（`docs/sla.md` §2；`TASK_ORDER_SLA_HOURS` 取墙钟口径；v1.3 订正：v1.0 时「产品侧未定义」为真，外部阈值已由内化取代）；`blocked_at` **离开 blocked 后不清空** ⇒ S 必须被 `status == "blocked"` 门住（`moveCas` 只在进入时写、从不清除）。另把「超期」「`blocked` 的两义」「依赖不在 wire 上 + 截断先于过滤」单列（R13/R14/R16）。见 **§8**。
 - **⑥ 交付**：本文件（`design/contracts/assignee-weight-order.md`）+ `design/README.md` 一行登记。**未 push**（本 lane 只提交到 `lane/T-20261014-033502-seg1`），见 Report。
 
@@ -49,10 +49,10 @@
 
 | # | 序 | 口径（实读） | 默认？ | 本契约的态度 |
 |---|---|---|---|---|
-| S1 | 板内卡片序 | `src/core/storage/repositories/tasks.mjs#list` 的 `ORDER BY sort_order ASC, created_at ASC, project_id ASC, identifier ASC`（注释明写：确定性、导出依赖它） | **是**（board/list 的默认） | **保持为默认**，本契约不动它；它同时是本契约 tie-break 的**末级**（§6.3） |
-| S1a | ↑ 的一个事实 | `sort_order` **全仓没有生产写入方**（唯一赋值是 `src/core/storage/md/import.mjs` 落 `0`）⇒ 今天的板内实际默认序**等于创建顺序** | — | 加强「别改默认」：改默认等于把「创建顺序」换成「权重序」，是**可见的行为变更**，不是无害的开关 |
+| S1 | 板内卡片序 | `src/core/storage/repositories/tasks.mjs#list` 的 `ORDER BY sort_order ASC, created_at ASC, project_id ASC, identifier ASC`（注释明写：确定性、导出依赖它） | 否（v1.4 起列表读不再暴露它） | **保留为仓库层序**，本契约不动它；它同时是本契约 tie-break 的**末级**（§6.3） |
+| S1a | ↑ 的一个事实 | `sort_order` **全仓没有生产写入方**（唯一赋值是 `src/core/storage/md/import.mjs` 落 `0`）⇒ 这条序的实际值**等于创建顺序** | — | v1.4 起它只出现在 md 导出与 tie-break 里，不再是列表读的序 |
 | S2 | 项目列表序 | `DESIGN.md` §20 = `src/shared/project-order.mjs#rankProjects`：三因子（A7 .50 / A30 .30 / C .20）、**秩归一化**、`order_debug` 投影、archived 固定沉底 | 是（`/projects` 只有这一种序） | **机制上照抄、归一化上刻意分道**（§6.2 给理由） |
-| S3 | 候选清单序 | `src/core/commands/tasks.mjs#listCandidates`：先按 `reason` 分桶 `rank = {ready:0, unassigned:1, stale_same:2, stale_any:2}`，再 `sort_order → created_at → project_id → identifier` | 是（`/tasks/candidates`） | **分桶保留不动**，权重只在**桶内**细化（§7.2）——分桶编码的是「能不能领」，是法律不是偏好 |
+| S3 | 候选清单序 | `src/core/commands/tasks.mjs#listCandidates`：先按 `reason` 分桶 `rank = {ready:0, unassigned:1, stale_same:2, stale_any:2}`，桶内自 v1.4 起固定用权重序 | 是（`/tasks/candidates`，桶内权重，唯一序） | **分桶保留不动**，权重只在**桶内**细化（§7.2）——分桶编码的是「能不能领」，是法律不是偏好 |
 | S4 | 活动流序 | `web/src/lib/activity-feed.js`：倒序时间线（B26） | 是 | **明确不受本契约影响**（§7.1） |
 | S5 | 等待队列序 | `web/src/lib/waiting-queue.js#waitingRows`：`since` 升序 = **最久优先**（B27） | 是 | **明确不受本契约影响**；并点名它与因子 W 是**两只不同的钟**（§8 R7） |
 
@@ -250,21 +250,24 @@ order  = sort by ( tier ↑, round3(score) ↓, <tie-break 链 §6.3> )
 
 ## 7. 与既有排序 / 筛选 / 分组的交互（Acceptance ④）
 
-### 7.1 是不是默认排序？——**不是**。可 toggle，走参数
+### 7.1 是不是默认排序？——**是，而且没有别的序**（v1.4，operator decision）
 
-**决定：默认不变。** `?order=` 缺省 = 既有确定性序（S1），权重序为**显式 opt-in**：
+**决定：权重序是唯一的序。** 任务列表读没有 `order` 参数；缺省、显式、任何调用方，拿到的都是权重序：
 
 | 参数 | 值 | 语义 |
 |---|---|---|
-| `order` | `board`（默认）\| `weight` | `board` = S1 的 `sort_order, created_at, project_id, identifier`；`weight` = 本契约 |
-| `order_debug` | `1` | 逐卡投影：原始值、归一化值、加权贡献、tier、rank（**照抄** `/projects?order_debug=1` 的形状）。**并由此选中 weight 序**：`order_debug` 为真（`1\|true\|yes\|on`）⇒ 该读**就是** `order=weight`，且**debug 优先于 `order=`**（显式口径见 §13.1） |
+| `order_debug` | `1` | 逐卡投影：原始值、归一化值、加权贡献、tier、rank（**照抄** `/projects?order_debug=1` 的形状）。**投影是 opt-in，序不是**：不传就不返回 `order_debug`（§13.1） |
 | 能力位 | `task_order: "weights-v1"` | 加进 `src/server/index.mjs` 的 `capabilities`（与既有 `project_order: "weights-v1"` 并列），供客户端**特性探测而非试探** |
 
-**为什么不设为默认**（三条，都可证）：
+**为什么改默认**（Terry 2026-10-29）：任务列表的用途是回答「这个 assignee 下一张该看/该动的是哪张」；而 `sort_order` 全仓没有写入方，板内默认序实际就是**创建顺序**——把最旧的卡排在最前，恰好与「先做该做的」相反。
 
-1. **默认序是既有契约**：`tasks.mjs#list` 的注释明写「Deterministic: … exports depend on it」，且有测试与 `md` 导出依赖它。改默认 = 改一条已有承诺，越出本卡授权。
-2. **权重序是时间相关的**（§8 R5）：同一块板，两分钟后同一个请求可能返回不同顺序。默认序必须是**与时钟无关**的。
-3. **UI 面在原型上是空地**（§2 末段）：默认改变会在**测不到**的地方改变行为——最坏的一种改动。
+**为什么连逃生口也删掉**（同一决定）：逃生口能给的只有「与时钟无关的确定性序」，而它没有实际调用方；客户端要这个序，可以从 wire 上已有的 `sort` / `created_at` / `project` / `identifier` 自己重建。留一个无人使用的排序参数，只会让「任务列表按什么排」有两个答案。
+
+**v1.3 时「不设为默认」的三条理由，逐条处置**：
+
+1. **默认序是既有契约**（导出依赖它）→ 导出直读仓库层 `tasks.list`，不经过列表读，字节不变（§10.2 断言 8 仍守着）；仓库层的 `sort_order, created_at, …` 序仍是本契约 tie-break 的末级，只是不再作为列表参数暴露。
+2. **权重序是时间相关的**（§8 R5）→ 接受：同一输入、同一 `now` 仍是全序；跨时刻的差异正是「压力随时间变化」要表达的东西。
+3. **UI 面在原型上是空地**（§2 末段）→ UI 消费服务端返回序，**不改原型即可获得权重序**；原型上的**排序说明**仍是另一个设计轮次，不在本契约内。
 
 **tier 的先后（唯一待拍板项，给三个备选）**：
 
@@ -278,12 +281,12 @@ order  = sort by ( tier ↑, round3(score) ↓, <tie-break 链 §6.3> )
 
 | 视图 / 入口 | 数据来源（实读） | 是否受本契约影响 | 怎么影响 |
 |---|---|---|---|
-| **Board（看板）** | `web/src/stores/board.js#columns`（按 `stageOf` 分 7 列）+ `visibleTasks` | **是** | **只在列内定序**。列集、列序、卡的归属**一律不变**（`visibleTasks` 只过滤，从不重排；序来自服务端） |
-| **List（列表）** | 同上 | **是** | 行序 = 权重序；表头列序、六列内容不变 |
-| **Candidates（`/tasks/candidates`）** | `src/core/commands/tasks.mjs#listCandidates` | **是，但受限** | 权重只在 **`reason` 桶内**细化；桶序（`ready 0 → unassigned 1 → stale 2`）**保持为第一键**——它编码「能不能领」，是裁定不是偏好（S3） |
+| **Board（看板）** | `web/src/stores/board.js#columns`（按 `stageOf` 分 7 列）+ `visibleTasks` | **是（唯一序）** | **只在列内定序**。列集、列序、卡的归属**一律不变**（`visibleTasks` 只过滤，从不重排；序来自服务端） |
+| **List（列表）** | 同上 | **是（唯一序）** | 行序 = 权重序；表头列序、六列内容不变 |
+| **Candidates（`/tasks/candidates`）** | `src/core/commands/tasks.mjs#listCandidates` | **是（唯一序），但受限** | 权重只在 **`reason` 桶内**细化；桶序（`ready 0 → unassigned 1 → stale 2`）**保持为第一键**——它编码「能不能领」，是裁定不是偏好（S3） |
 | **Activity（B26）** | `web/src/lib/activity-feed.js` | **否** | 它的契约是**倒序时间线**（`docs`/B26 明写）；换成权重序会破坏「一条时间词汇表」。**明确排除** |
 | **Waiting（B27）** | `web/src/lib/waiting-queue.js#waitingRows` | **否** | 它的契约是 **`since` 升序 = 最久优先**；那是**催办**语义，已由 S5 覆盖。**明确排除** |
-| **导出（`taskctl export` / md）** | S1 | **否** | 导出走默认序；权重序**不得**改变导出字节（否则等于改了一条已冻结的承诺） |
+| **导出（`taskctl export` / md）** | S1 | **否** | 导出直读仓库层序（S1）；权重序**不得**改变导出字节（否则等于改了一条已冻结的承诺） |
 
 ### 7.3 与筛选、分组、分页
 
@@ -302,7 +305,7 @@ order  = sort by ( tier ↑, round3(score) ↓, <tie-break 链 §6.3> )
 **这条把「权重排序」从一件 UI 小事变成一件能改变团队行为的事**：
 
 - **正面**：这是权重排序真正值钱的地方——「哪张先被唤醒」今天就等于「板子的默认序」，而那只是**创建顺序**（§2 S1a）。权重序让「先做该做的」在**派发层**生效。
-- **风险（必须上报）**：一个错的权值向量会**静默改变团队派发**，而且不会报错、不会红测试——只会表现为「最近总在做某些卡」。⇒ 三条护栏：①**默认不改**（§7.1），派发侧要显式选择 `order=weight`；②**先小样本校准**（§5.3）；③**能力位** `task_order` + `order_debug` 让「为什么是这张被唤醒」可回溯。
+- **风险（必须上报）**：一个错的权值向量会**静默改变团队派发**，而且不会报错、不会红测试——只会表现为「最近总在做某些卡」。v1.4 起权重序是**唯一的**列表序，这条风险因此**扩大**（每一轮 tick 都按权重派发，没有运行时开关可退回）。⇒ 护栏：①**权值可回溯**——能力位 `task_order` + `order_debug=1` 让「为什么是这张被唤醒」逐卡核对；②**先小样本校准**（§5.3）；③权值向量集中在 `src/foundation/constants.mjs`，怀疑派发异常时回退 = 改权值并发布，而不是翻一个运行期开关。
 - **边界**：本契约**不**改 `planTick` 本身，也不改 supervisor；它只决定喂给它的**候选数组的顺序**。
 
 ### 7.5 与既有 `DESIGN.md` §20 的关系（一句话）
@@ -462,7 +465,7 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 4. **缺失字段不产 `NaN`**：`status_changed_at=""`、`blocked_at=null`、`labels=[]`、`priority="none"` 四种输入下，`score` 是有限数且序可复现（§8 R4/R2）。
 5. **单调性**：固定卡，把 `now` 往后推任意大，断言 `score` **不下降**（§8 R6）。
 6. **末级全序**：构造两张 3 位分相同的卡，断言序由 `priority → W → created_at → status → project_id → identifier` 决定（§6.3）。
-7. **既有序未被改动**：`order` 缺省时，`/tasks` 的响应序与改动前**逐项相同**（§7.1 的「默认不变」）。
+7. **列表读就是权重序**：`/tasks` 与 `/tasks/candidates` 的响应序就是权重序，且与 `repos.tasks.list` 的仓库层序**不同**（证明权重逻辑真的生效）；请求里带 `order=` 会被忽略（该参数不存在，§7.1，v1.4 起）。
 8. **导出不受影响**：`md` 导出字节不变（§2 S1 的承诺）。
 9. **`blocked_at` 的门**（§8 R15）：一张 `status != "blocked"` 但带**很久以前** `blocked_at` 的卡，`S` **不得**由 `blocked_at` 得出（否则它会凭一个陈旧时间戳插到最前）。
 10. **作用域先于排序**（§8 R16）：断言「某 assignee 在 `limit=N` 下的返回」与该 assignee **全集**的前 N 名一致——即证明读没有被截断在排序之前。
@@ -517,30 +520,27 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 
 > **为什么要有这一节**：这三条在 v1.0 契约里**没有被显式定义**。实现卡（`T-20261014-043124`）必须自己拿主意 —— 而**拿主意的结果必须是可查的口径**，不能是「代码里就是这么写的」。故在此**逐条登记**：每条给出**实读锚点**，a1/a2/a3 另附本 lane 的一次**实跑探针**（`workspace/T-20261014-063700/a-probe.mjs`，输出 `a-probe.log`；`node` 属 `docs/docker.md` §Host-allowed checks 的宿主允许项）。**本节不回改 v1.0 的任何结论**。
 
-### 13.1 a1 —— `order_debug` **顺带选中** weight 序，且**优先于** `order=`
+### 13.1 a1 —— `order_debug` 只决定**是否返回投影**，不改变序（v1.4 重写）
 
-**口径（三条缺一不可）**：
+**口径（两条）**：
 
-1. `order_debug` 为**真**（`1` / `true` / `yes` / `on`，与 `include_archived` / `stale` 等既有开关同一判定）⇒ 该读**就是** `order=weight`。
-2. 两个参数**同时出现**时 **`order_debug` 胜出**：`?order=board&order_debug=1` 返回**权重序**。理由：投影是**权重序专属**的形状（因子分解 / tier / rank），序与投影**必须同源**，否则「为什么这张排第一」答不出来。
-3. **推论（最容易漏的一条）**：`?order=<非法值>&order_debug=1` **不报错** —— 判据短路在 `order` 的词表校验**之前**，请求照常返回权重序（HTTP `200`，见下方探针的推论说明）。本条登记为**有意**：诊断开关的第一职责是把「这一读的排序过程」摊开，若调用方连投影都没拿到，先报一个词表错误反而掩盖了真正想问的事。
+1. `order_debug` 为**真**（`1` / `true` / `yes` / `on`，与 `include_archived` / `stale` 等既有开关同一判定）⇒ 响应带 `order_debug` 数组；为假或缺省 ⇒ 不带该 key。**序不受影响**——列表读永远是权重序。
+2. **`order` 参数不存在**（v1.4 起）。带上它会被当作未知查询参数忽略：不报错、不换序。
 
-**为什么必须显式（而不是留给实现静默）**：v1.0 的 §7.1 参数表把 `order_debug` 写成「逐卡投影」。于是 `?order=board&order_debug=1` 在 v1.0 下**没有定义**——两种读法都说得通（①投影按 board 序，但无物可投；②静默切 weight 序）。**静默**正是要避免的那一种：调用方以为自己拿到 board 序，实际拿到的是重排过的序，而**没有任何东西会报错**。
+**为什么改**：v1.1 时权重序是 opt-in，`order_debug` 顺带选中它是必要的（否则投影与序不同源）。v1.4 把权重序设为唯一序后，这个联合语义退化成一句话：诊断开关只加投影。
 
-**实读锚点**：`src/core/commands/tasks.mjs#resolveOrder` —— 函数体第一句即 `if (debug) return "weight";`，**先于**空值判断与 `TASK_ORDER_MODES.includes(word)` 的词表校验；`src/server/routes/tasks.mjs` 的 `LIST_QUERY` 注释逐字写着同一句：「`order_debug` asks for the weight order's per-card projection (**and, by asking, selects that order**)」；两个读（`readOrdered` / `orderedCandidates`）共用这一个判定，**没有第二处**。
+**实读锚点**：`readOrdered` / `orderedCandidates` 都以 `debug = orderDebug === true` 计算投影；`resolveOrder`、`TASK_ORDER_MODES`、`TASK_ORDER_DEFAULT` 已删除；`src/server/routes/tasks.mjs` 的 `LIST_QUERY` 只剩 `order_debug`。
 
-**实跑（探针，`commands` 层）**：
+**v1.1 探针（历史，v1.4 起不再成立）**：
 
-| 请求 | 观测 |
-|---|---|
-| `order=board` | `orderDebug = null` ⇒ 板序路径 |
-| `order=board&order_debug=1` | `orderDebug = 数组(12)` ⇒ **权重序路径（debug 胜出）** |
-| `order=bogus` | 抛 `VALIDATION_FAILED` |
-| `order=bogus&order_debug=1` | **不抛**，返回权重序，`orderDebug` 数组(12) ⇒ 校验被 debug 短路 |
+| 请求 | v1.1 观测 | v1.4 之后 |
+|---|---|---|
+| `order=board` | `orderDebug = null` ⇒ 板序路径 | 该参数不存在，请求按权重序返回，`orderDebug = null` |
+| `order=board&order_debug=1` | `orderDebug = 数组(12)` ⇒ 权重序（debug 胜出） | 同上：权重序 + 投影数组 |
+| `order=bogus` | 抛 `VALIDATION_FAILED` | 参数不存在 ⇒ 不抛，按权重序返回 |
+| `order=bogus&order_debug=1` | 不抛，权重序 + 投影 | 同左 |
 
-（探针调的是 `commands.listOrderedTasks` —— 即路由的处理体，**宿主允许项**。故「返回 `200`」是对 HTTP 层的**推论**而非观测：该分支不抛，`src/server/routes/tasks.mjs` 也没有第二处 `order` 校验，处理体返回即 `200`。本 lane 未起 `taskd`。）
-
-**契约侧结论**：`order` 与 `order_debug` 的**联合语义**是一个**总函数** —— `order_debug` 真 ⇒ `weight`；否则 `order` 照常解析（缺省 `board`，非法值抛 `VALIDATION_FAILED`）。实现与 C3 据此断言，**含上表第 3 条**（它最容易被后来的重构顺手改掉，且不会让任何既有测试变红）。
+**契约侧结论**：序只有一个（权重序）；`order_debug` 是一个纯附加的投影开关。实现与 C3 据此断言。
 
 ### 13.2 a2 —— 投影覆盖**整个 ranking**（并据此计入 §8 R12 成本）
 
@@ -550,7 +550,7 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 
 **为什么必须登记到成本上（计入 §8 R12）**：`order_debug=1` 的成本 = **整个作用域的排序 + 整个作用域的投影**，**与 `limit` 无关**。⇒ 诊断开关**不得**出现在轮询路径上（轮询该用 `order=weight` 且**不带** `order_debug`）。这条附注已写进 §8 R12 的处置。
 
-**实读锚点**：`src/core/commands/tasks.mjs#readOrdered` 返回 `orderDebug: ranked.map(taskOrderDebugEntry)` —— `ranked` 是**排序后的全集**，`page` 只喂给 `tasks`；函数内注释逐字：「The projection covers the whole ranking, not the page — the question it answers is "why is this card where it is", and that needs the cards it beat.」候选读（`orderedCandidates`）同构。
+**实读锚点**：`src/core/commands/tasks.mjs#readOrdered` 返回 `orderDebug: debug ? ranked.map(taskOrderDebugEntry) : null` —— `ranked` 是**排序后的全集**，`page` 只喂给 `tasks`；函数内注释逐字：「The projection covers the whole ranking, not the page — the question it answers is "why is this card where it is", and that needs the cards it beat.」候选读（`orderedCandidates`）同构。
 
 **实跑（探针）**：12 张卡的作用域、`limit=1` ⇒ `tasks` 长度 **1**，`order_debug` 长度 **12**。
 
@@ -584,6 +584,17 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 ---
 
 ## 14. 修订记录
+
+### v1.4 —— 2026-10-29（operator decision；写面 `design/contracts/**` + `src/**`）
+
+**一句话**：**权重序成为唯一的列表序**（Terry 2026-10-29）。列表读不再有 `order` 参数，也没有 `board` 逃生口；md 导出不受影响（直读仓库层）；`order_debug` 仍是按需诊断——**序唯一，投影 opt-in**。
+
+| 处 | 订正 | 依据 |
+|---|---|---|
+| §0 ④ / §2 S1·S1a·S3 / §7.1 / §7.2 / §7.4 / §10.2-7 / §13.1 | 「不是默认」→「是唯一的序」；删除 `board` 逃生口及其参数；派发侧固定权重序，护栏改为可回溯 + 改权值发布 | 用户指示（Terry，2026-10-29）：「所有的任务列表查询全部强制使用权重排序，除非有其它特殊需求，权重排序是默认行为，不是 opt-in」；随后明确「删掉」`order=board` |
+| 实现 | 删除 `TASK_ORDER_MODES` / `TASK_ORDER_DEFAULT` / `resolveOrder` 与 HTTP `order` 参数、CLI `--order` flag；`readOrdered` / `orderedCandidates` 固定权重序，`order_debug` 按需返回 | `src/foundation/constants.mjs`、`src/core/commands/tasks.mjs`、`src/server/routes/tasks.mjs`、`src/cli/commands/issue.mjs` |
+
+**未改（一字未动）**：因子、权值向量（仍为 §5.1 推荐值；§12 的 U1–U4 仍待 Terry 拍板）、合成公式、tier 层序、tie-break、md 导出。
 
 ### v1.1 —— `T-20261014-063700`（doc-only；写面 `design/contracts/**`；基线 `9e4c1aa`）
 

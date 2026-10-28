@@ -714,9 +714,11 @@ describe("cli/issue — candidates (the poll read)", () => {
       dataOf(run(["relation", "add", blocker.task.identifier, "--type", "blocks", "--target", blocked.task.identifier, "--json"]));
 
       const candidates = dataOf(run(["issue", "candidates", "--assignee", "pollbot", "--json"]));
+      // Weight-ordered by default, so the two survivors may arrive in either
+      // order; the assertion's point is the exclusion.
       assert.deepEqual(
-        candidates.candidates.map((c) => c.identifier),
-        [ready.task.identifier, blocker.task.identifier],
+        candidates.candidates.map((c) => c.identifier).sort(),
+        [ready.task.identifier, blocker.task.identifier].sort(),
         "the blocked card is excluded (depends_on unmet) and so is the epic",
       );
       assert.equal(candidates.candidates[0].status, "todo");

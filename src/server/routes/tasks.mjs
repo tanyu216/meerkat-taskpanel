@@ -28,9 +28,9 @@ import { lookupFor, resolveTask, taskPayload } from "../task-view.mjs";
 /**
  * `GET /api/v1/tasks` — the board read's filters.
  *
- * `order` selects between the existing `board` order and the opt-in `weight`
- * order; `order_debug` asks for the weight order's per-card projection (and, by
- * asking, selects that order). Both are the C-WEIGHT-1 contract's §7.1 surface.
+ * The read is always the assignee weight order (operator decision, Terry
+ * 2026-10-29); there is no `order` parameter. `order_debug` asks for the weight
+ * order's per-card projection. This is the C-WEIGHT-1 contract's §7.1 surface.
  */
 const LIST_QUERY = shape({
   project_id: str(),
@@ -48,7 +48,6 @@ const LIST_QUERY = shape({
   include_archived: str(),
   limit: str(),
   offset: str(),
-  order: str(),
   order_debug: str(),
 });
 
@@ -81,7 +80,7 @@ function parseMetaFilters(pairs) {
 
 /** `GET /api/v1/tasks/candidates` — `assignee` is the one field the route insists on. */
 const CANDIDATES_QUERY = shape(
-  { assignee: str(), stale: str(), include_unassigned: str(), order: str(), order_debug: str() },
+  { assignee: str(), stale: str(), include_unassigned: str(), order_debug: str() },
   ["assignee"],
 );
 
@@ -223,7 +222,6 @@ export function registerTaskRoutes(router, surface) {
     const lookup = lookupFor(repos);
     const { tasks, orderDebug } = commands.listOrderedTasks({
       ...filter,
-      order: query.get("order") ?? undefined,
       orderDebug: truthy(query.get("order_debug")),
     });
     // One batched edge read: `parent_id` rides on every card so a client can
@@ -320,7 +318,6 @@ export function registerTaskRoutes(router, surface) {
       assignee: assignee.trim(),
       stale: truthy(query.get("stale")),
       includeUnassigned: truthy(query.get("include_unassigned")),
-      order: query.get("order") ?? undefined,
       orderDebug: truthy(query.get("order_debug")),
     });
     return { candidates, ...(orderDebug === null ? {} : { order_debug: orderDebug }) };

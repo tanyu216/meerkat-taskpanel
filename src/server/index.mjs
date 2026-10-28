@@ -358,9 +358,9 @@ export async function createTaskd(options = {}) {
       events: "/api/v1/events",
       static_hosting: await staticHost.probe(),
       project_order: "weights-v1",
-      // C-WEIGHT-1: the assignee task weight order exists on `/tasks` and
-      // `/tasks/candidates` (`?order=weight`). A client probes this rather than
-      // guessing whether the query parameter does anything.
+      // C-WEIGHT-1: the assignee task weight order is the **only** order of
+      // `/tasks` and `/tasks/candidates`. A client probes this rather than
+      // guessing whether `order_debug` does anything.
       task_order: TASK_ORDER_CAPABILITY,
       // G7 (T-20261014-212017-2/4): the attachment write surface — create, list
       // and remove — so a client feature-detects it instead of probing for a

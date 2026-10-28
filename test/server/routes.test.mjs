@@ -1087,9 +1087,12 @@ describe("server/routes — candidates (the poll read)", () => {
     dataOf(await call("POST", `/api/v1/tasks/${blocker.task.identifier}/relations`, { type: "blocks", target: blocked.task.identifier }));
 
     const candidates = dataOf(await call("GET", "/api/v1/tasks/candidates?assignee=pollbot"));
+    // The read is weight-ordered by default, so the two surviving cards may
+    // arrive in either order (the blocker unblocks an open card, so it leads).
+    // The point of this test is the exclusion, not the intra-bucket order.
     assert.deepEqual(
-      candidates.candidates.map((c) => c.identifier),
-      [ready.task.identifier, blocker.task.identifier],
+      candidates.candidates.map((c) => c.identifier).sort(),
+      [ready.task.identifier, blocker.task.identifier].sort(),
       "the blocked card is excluded (depends_on unmet) and so is the epic",
     );
     assert.deepEqual(
@@ -1833,7 +1836,8 @@ describe("server/routes — the board read's filters (GET /api/v1/tasks)", () =>
 
   it("keeps the filter under the limit: the page is filtered, not truncated first", async () => {
     // `limit=1` after the filter must still find the matching card even though a
-    // non-matching card sorts first in the board order.
+    // non-matching card was created first (so a page cut before the filter would
+    // have spent its one slot on the wrong card).
     const filtered = dataOf(await call("GET", "/api/v1/tasks?project_id=flt&target=lib&limit=1"));
     assert.equal(filtered.tasks.length, 1);
     assert.equal(filtered.tasks[0].meta.target, "lib");

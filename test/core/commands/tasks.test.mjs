@@ -288,7 +288,8 @@ describe("commands/tasks — create and update", () => {
         [review.id],
       );
 
-      const ordered = commands.listOrderedTasks({ reviewOfId: original.id, order: "weight" });
+      // The order is the default; the per-card projection is still opt-in.
+      const ordered = commands.listOrderedTasks({ reviewOfId: original.id, orderDebug: true });
       assert.deepEqual(ordered.tasks.map((task) => task.id), [review.id]);
       assert.deepEqual(ordered.orderDebug.map((entry) => entry.id), [review.id]);
     });
@@ -2218,10 +2219,17 @@ describe("commands/tasks — listCandidates (poll read)", () => {
       );
 
       const pooled = commands.listCandidates({ assignee: "linus", includeUnassigned: true });
+      // The bucket stays the first key; the weight order now refines *within*
+      // it, so the two pool cards may swap against creation order (the blocker
+      // unblocks one card, so it leads the pool).
       assert.deepEqual(
-        pooled.map((c) => c.identifier),
-        [assigned.identifier, pool.identifier, poolBlocker.identifier],
+        pooled.map((c) => c.reason),
+        ["ready", "unassigned", "unassigned"],
         "assigned first, then the pool; epic, blocked and another assignee's cards stay out",
+      );
+      assert.deepEqual(
+        pooled.map((c) => c.identifier).sort(),
+        [assigned.identifier, pool.identifier, poolBlocker.identifier].sort(),
       );
       assert.equal(pooled[1].reason, "unassigned");
       assert.equal(pooled[1].status, "todo");
