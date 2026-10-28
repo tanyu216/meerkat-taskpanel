@@ -61,7 +61,7 @@ Without `--include` the payload is byte-identical to what it always was.
 | `status` | string | copied — the eight lifecycle words |
 | `priority` | string | copied — `low` · `medium` · `high` · `urgent` |
 | `kind` | string | copied — `task` · `epic`; a review card is still `task` |
-| `sort_order` | number | copied — board order |
+| `sort_order` | number | copied — the repository's stored order key (always `0` in practice) |
 | `assignee_id` | string \| null | copied |
 | `assignee_kind` | string \| null | copied — the kind recorded with the reference |
 | `reporter_id` | string \| null | copied |
