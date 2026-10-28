@@ -71,7 +71,8 @@ run them.
 9. The project's gate path exists and fires on a scratch change, and it is idempotent. No
    secret, no host-absolute path, no generated file is committed.
 10. The E5 architecture decision is recorded before implementation starts, and the
-    agent-instruction baseline names the build/test/run commands and the design principles.
+    agent-instruction baseline names the build/test/run commands, the design principles, the
+    working agreement, the change and integration policy and the operational invariants.
 11. The root `GLOSSARY.md` carries the `## Product language` pointer (or says product terms
     are not recorded) and does not copy product terms; ADRs live at
     `docs/adr/NNNN-<slug>.md`.
@@ -90,7 +91,8 @@ run them.
 16. The directory tree is planned and scaffolded exactly, and the agent-instruction baseline
     (`CLAUDE.md` or `AGENTS.md`) exists as the file every role reads, carrying the entry
     points and the non-obvious top-level directories, plus a pointer to the full tree in
-    `docs/architecture.md` — not a copy of it.
+    `docs/architecture.md` — not a copy of it. Every command and pointer in it resolves; no
+    guessed example, no host-absolute path.
 17. The standard at `docs/tech-spec.md` is complete: every section is filled, the stack
     table lives there and nowhere else, every rule names its enforcement point (a test, a
     lint rule, a gate or `review`), and the agent-instruction baseline points at it rather
@@ -106,6 +108,13 @@ run them.
     the release publishes the artifact CI passed and treats a published version as
     immutable (fix forward), and every deploy has a healthcheck, a post-deploy check and a
     recorded rollback, with the data-recovery step when the release changes stored data.
+21. The baseline states its operating rules: decompose and test-first where the stack has a
+    test; verification through the project's gate; confirmation before an irreversible
+    integration; the protected line, the isolation for parallel work and the cleanup order;
+    one writer per surface, the identity and configuration roots, and the generated
+    artifacts that are never hand-edited.
+22. Every path and command the baseline names resolves against the tree and the manifest; on
+    an existing project the file was improved in place, not regenerated.
 
 ## Implementation branch
 

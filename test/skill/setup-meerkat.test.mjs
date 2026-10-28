@@ -391,6 +391,58 @@ describe("skill frontmatter and assets", () => {
     );
   });
 
+  it("carries the operating rules into the baseline", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+    const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+
+    const baseline = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
+    const step7 = arch.slice(arch.indexOf("### 7."), arch.indexOf("### 8."));
+
+    assert.match(baseline, /working agreement/i, "Step 5 requires a working agreement");
+    assert.match(
+      baseline,
+      /change and integration policy/i,
+      "Step 5 requires the project's change and integration policy",
+    );
+    assert.match(
+      baseline,
+      /operational invariants/i,
+      "Step 5 requires the operational invariants a fresh session can break",
+    );
+    assert.match(
+      baseline,
+      /decompose[\s\S]{0,160}(test-first|test first|failing test)/i,
+      "the working agreement decomposes first and starts from a test where one exists",
+    );
+    assert.match(baseline, /one writer per surface/i, "the invariants name the single-writer rule");
+    assert.match(
+      baseline,
+      /release line/i,
+      "the change policy names a protected line by role, not a repository's branch names",
+    );
+    assert.match(baseline, /isolat/i, "the change policy isolates parallel work");
+    assert.match(baseline, /cleanup|cleaned up/i, "the change policy states the cleanup order");
+
+    assert.match(
+      step7,
+      /working agreement/i,
+      "the architecture self-check audits the working agreement",
+    );
+    assert.match(check, /working agreement/i, "Linus's self-check audits the working agreement");
+    assert.match(
+      check,
+      /change and integration policy/i,
+      "Linus's self-check audits the change policy",
+    );
+    assert.match(
+      check,
+      /operational invariants/i,
+      "Linus's self-check audits the operational invariants",
+    );
+    assert.match(check, /resolves/i, "Linus's self-check audits that every pointer resolves");
+  });
+
   it("applies the six design principles to a feature change", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");

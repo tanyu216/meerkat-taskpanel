@@ -479,9 +479,24 @@ carry:
    recorded as an explicit decision, never a silent drift.
 6. **Gates** — what must pass before delivery: the gate path, the coverage floor and the
    security scan; point at the CI pipeline for the job detail.
-7. **Pointers** — link `docs/tech-spec.md` first, then `docs/architecture.md`,
-   `GLOSSARY.md`, `docs/adr/`, the contract artifact and the configuration surface; do not
-   copy their content.
+7. **Working agreement** — how a session works in this project: decompose before executing;
+   test-first, or the project's own red/green equivalent; verify in the place the project
+   designates; confirm with the human before landing, closing or deleting. State the rule,
+   not the ceremony.
+8. **Change and integration policy** — the project's own contract for how a change lands:
+   where parallel work is isolated, which branch or release line is protected, what must be
+   confirmed before it lands, and the cleanup order. Point at the contributing guide or the
+   standard for the detail; carry only the rules a fresh session would otherwise break.
+9. **Operational invariants** — the state a fresh session can break and cannot see from the
+   code: who may write a given surface (one writer per surface; a second writer is a defect),
+   where runtime identity and configuration are read from, and which artifacts are generated
+   and must never be hand-edited. One line each; point at the standard for the detail.
+10. **Pointers** — link the standard first (its recorded path; `docs/tech-spec.md` on a
+    project this flow created), then `docs/architecture.md`, `GLOSSARY.md`, `docs/adr/`, the
+    contract artifact and the configuration surface; do not copy their content.
+
+These items are a floor, not a ceiling. A rule a fresh session can break that no pointed-at
+document owns belongs here, one line each, with its enforcement.
 
 Leave out architecture prose, design documents, ADR bodies, directory inventories and
 details that will drift. This file is a map, not a mirror: every line is resident in every
@@ -491,8 +506,9 @@ layout changes; a stale pointer is worse than none. A session reads the standard
 first code change; the baseline says so and does not repeat it.
 
 Output: the agent-instruction baseline — `CLAUDE.md` or `AGENTS.md` — reviewed, with the
-entry-point map, the design principles, the pointer to `docs/tech-spec.md` and the other
-pointers, named as the entry baseline in the delivery.
+entry-point map, the design principles, the working agreement, the change and integration
+policy, the operational invariants and the pointer to the standard, named as the entry
+baseline in the delivery.
 
 ### 6. Record the gates, the release and the delivery path
 
@@ -563,8 +579,12 @@ Run `self-check.md` (Architecture branch). The architecture proof is:
   lives there and nowhere else, every rule names its enforcement point (a test, a lint rule,
   a gate or `review`), and no rule restates a canonical artifact;
 - `CLAUDE.md`/`AGENTS.md` exists as the baseline every role reads, carries the entry
-  commands, the entry-point map and the gates, and points at `docs/tech-spec.md`, the
-  architecture document and the full tree rather than copying them;
+  commands, the entry-point map, the gates, the working agreement, the change and integration
+  policy and the operational invariants, and points at the standard, the architecture
+  document and the full tree rather than copying them;
+- every path and command the baseline names resolves against the tree and the manifest — no
+  fabricated path or undefined command survives review; an existing baseline was improved in
+  place, not regenerated;
 - every ADR has a status, alternatives and consequences;
 - the scaffold checklist in Step 4 is complete, the smoke test passes and the documented
   local run works;
