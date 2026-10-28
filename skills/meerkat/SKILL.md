@@ -1,6 +1,6 @@
 ---
 name: meerkat
-description: Use this skill when the user asks about a Meerkat TaskPanel task itself — progress, status, what is left, remaining work, who is on it, why it is blocked, history, completion count, acceptance criteria, what to do next, or a card found by a bare id or title. It also runs every card operation through the local `taskctl` kanban — claim, heartbeat, comment, answer on-card questions, read or re-export the brief (`card.md`), create or split cards, link relations, move status, deliver with a report, review, accept or reopen, and export the board as markdown. Trigger on Meerkat, taskpanel, taskctl, the task board, a task card, `card.md`, card file, `export md`, re-export, brief, deliver, heartbeat, acceptance, review, or an awaiting question; on a `meerkat-loop` handoff or role workflow that only says read the brief or deliver the card. Works the same on any agent runtime — Claude, Codex, pi and OpenClaw are all covered.
+description: Use this skill when the user asks about a Meerkat TaskPanel task itself — progress, status, what is left, remaining work, who is on it, why it is blocked, history, completion count, acceptance criteria, what to do next, or a card found by a bare id or title. It also runs every card operation through the local `taskctl` kanban — claim, heartbeat, comment, answer on-card questions, read or re-export the brief (`card.md`), create or split cards (uploading a plan, spec or reference file as an attachment), link relations, move status, deliver with a report, review, accept or reopen, and export the board as markdown. Trigger on Meerkat, taskpanel, taskctl, the task board, a task card, `card.md`, card file, `export md`, re-export, brief, deliver, heartbeat, acceptance, review, or an awaiting question; on a `meerkat-loop` handoff or role workflow that only says read the brief or deliver the card. Works the same on any agent runtime — Claude, Codex, pi and OpenClaw are all covered.
 ---
 
 # Meerkat TaskPanel
@@ -120,6 +120,38 @@ edge live in
 card's `acceptance_mode` names who may close it. Do **not** "close" a card — especially a
 container — by canceling it: canceling is legal from most stages and has no child guard, so
 it succeeds silently and leaves the work orphaned.
+
+## Creating a card
+
+`issue create` is the whole handoff: the card lands in `todo` — the queue the loop's poll
+reads — in the same call, addressed to whoever it is assigned to. The queue is per assignee,
+not global: `issue candidates` returns a card only to that name, and an unassigned card is the
+public pool. Only `--status backlog` keeps it out of a queue. Describe the card by the `status`
+the create returned: a repeated create answers with the existing one. The INSERT gate:
+[`references/status-lifecycle.md#8-creating-a-card-in-a-status`](references/status-lifecycle.md#8-creating-a-card-in-a-status).
+
+**A document the work must follow is attached, not retyped.** When the human points at a file —
+a plan you wrote, a third-party spec, a vendor's PDF to read closely — that pointing *is* the
+instruction; nobody says "upload it". Attach it straight after the create, and when the file is
+the plan itself, store it as `plan.md` whatever it is called on disk — an export name like
+`draft-7f3a.md` is not a name anyone will look for:
+
+```bash
+taskctl issue create --project <p> --title "…" --acceptance "…"
+taskctl attachment add <ref> --file <path> --name plan.md   # the plan's one name; create has no --file
+```
+
+Anything else keeps its own name, and a plan that is not text keeps its extension (`plan.pdf`):
+the board derives the stored type from that name, so a PDF called `plan.md` would be filed as
+Markdown. The worker reads the card and its brief, never this conversation, so a path said only
+here reaches nobody: the file is attached and `--description` points at the attachment instead
+of retyping the document. A file named without a path gets one question for the path — never go
+hunting the tree for a document nobody named.
+
+**Say the outcome in one line, then stop**: the identifier, that it is queued, and the file
+when you attached one, in the conversation's language —
+`已建卡 PROJ-0007，已排队处理（附 spec.pdf）`. Do not ask whether to start, and with nothing
+to attach say nothing about attachments.
 
 ## The language of a card
 
