@@ -120,16 +120,16 @@ describe("commands/labels — registration (F3-B / F5-B)", () => {
 
   it("assigns colours that do not repeat inside a project, but may across projects", async () => {
     await board(({ repos, commands }) => {
-      commands.createProject({ id: "other", name: "Other", actor: HUMAN });
+      commands.createProject({ id: "oth", name: "Other", actor: HUMAN });
       commands.createTask({ projectId: "proj", title: "a", labels: ["one"], actor: AGENT });
       commands.createTask({ projectId: "proj", title: "b", labels: ["two"], actor: AGENT });
-      commands.createTask({ projectId: "other", title: "c", labels: ["one"], actor: AGENT });
+      commands.createTask({ projectId: "oth", title: "c", labels: ["one"], actor: AGENT });
 
       const one = repos.labels.getByNorm("proj", "one").color;
       const two = repos.labels.getByNorm("proj", "two").color;
       assert.notEqual(one, two, "unique inside the project");
       assert.equal(one, LABEL_PALETTE[0]);
-      assert.equal(repos.labels.getByNorm("other", "one").color, one, "a new project starts over");
+      assert.equal(repos.labels.getByNorm("oth", "one").color, one, "a new project starts over");
     });
   });
 
@@ -254,10 +254,10 @@ describe("commands/labels — the GC (F1 / F3 / F5)", () => {
 
   it("lists labels by use count, project and query", async () => {
     await board(({ commands }) => {
-      commands.createProject({ id: "other", name: "Other", actor: HUMAN });
+      commands.createProject({ id: "oth", name: "Other", actor: HUMAN });
       commands.createTask({ projectId: "proj", title: "a", labels: ["alpha", "beta"], actor: AGENT });
       commands.createTask({ projectId: "proj", title: "b", labels: ["alpha"], actor: AGENT });
-      commands.createTask({ projectId: "other", title: "c", labels: ["gamma"], actor: AGENT });
+      commands.createTask({ projectId: "oth", title: "c", labels: ["gamma"], actor: AGENT });
 
       assert.deepEqual(commands.listLabels({ projectId: "proj" }).map((l) => l.displayName), ["alpha", "beta"]);
       assert.deepEqual(commands.listLabels({}).map((l) => l.displayName).sort(), ["alpha", "beta", "gamma"]);

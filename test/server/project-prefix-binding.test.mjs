@@ -66,7 +66,15 @@ async function board(fn) {
   /** The projects the board currently lists — what C6 checks absence against. */
   const listed = async () => dataOf(await call("GET", "/api/v1/projects")).projects;
 
-  return fn({ call, dataOf, card, listed });
+  /**
+   * Seed a legacy row the way an import does. M8 refuses such an id on the
+   * create use-case, so history this old has to arrive through the repository
+   * seam — which stays lenient on purpose.
+   */
+  const seedProject = ({ id, name }) =>
+    taskd.board.repos.projects.create({ id, name, now: new Date().toISOString() });
+
+  return fn({ call, dataOf, card, listed, seedProject });
 }
 
 describe("C-PREFIX-1 §9 C — the prefix over the wire", () => {
@@ -129,22 +137,27 @@ describe("C-PREFIX-1 §9 C — the prefix over the wire", () => {
     });
   });
 
-  it("C7 · a project that predates the slot keeps the identifier its UUID gives it", async () => {
-    await board(async ({ call, dataOf, card }) => {
-      const project = dataOf(await call("POST", "/api/v1/projects", { name: "Legacy" })).project;
-      assert.equal(await card(project.id, "one"), `${identifierPrefix(project.id)}-0001`);
+  it("C7 · a legacy row that predates the slot keeps the identifier its UUID gives it", async () => {
+    await board(async ({ card, seedProject }) => {
+      // M8 closes the UUID-minting create path, so this row is history: it is
+      // seeded through the repository, exactly as an import would have written
+      // it, and the read path keeps numbering off it.
+      const id = "9f1d2c3b-4a5e-4f60-8b71-2c3d4e5f6a7b";
+      seedProject({ id, name: "Legacy" });
+      assert.equal(await card(id, "one"), `${identifierPrefix(id)}-0001`);
     });
   });
 
   it("C6′ · an update cannot put a prefix on a project that was created without one", async () => {
-    await board(async ({ call, dataOf, card }) => {
+    await board(async ({ call, dataOf, card, seedProject }) => {
       // M6 over the wire: `meta` merges, so the body cannot tell a delta from a
       // replacement — the stored slot has to win, and for a legacy project
       // there is no slot to win, so HIJACK must never become a prefix.
-      const project = dataOf(await call("POST", "/api/v1/projects", { name: "Legacy" })).project;
-      dataOf(await call("PATCH", `/api/v1/projects/${project.id}`, { meta: { prefix: "HIJACK" } }));
+      const id = "9f1d2c3b-4a5e-4f60-8b71-2c3d4e5f6a7b";
+      seedProject({ id, name: "Legacy" });
+      dataOf(await call("PATCH", `/api/v1/projects/${id}`, { meta: { prefix: "HIJACK" } }));
 
-      assert.equal(await card(project.id, "one"), `${identifierPrefix(project.id)}-0001`);
+      assert.equal(await card(id, "one"), `${identifierPrefix(id)}-0001`);
     });
   });
 });
