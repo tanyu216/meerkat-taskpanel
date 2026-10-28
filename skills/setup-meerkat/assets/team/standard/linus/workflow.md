@@ -29,7 +29,11 @@ until the project session answers or escalates E1-E5.
    questions. An architecture card links the `## Tech stack` table it records; a feature,
    behaviour-change or bug card records `Stack: inherited — docs/tech-spec.md` (or the
    card-local standard path). If the inherited stack table is missing, write a
-   `question` and stop; do not choose a stack for the card. A rework extends this card's
+   `question` and stop; do not choose a stack for the card. The same baseline carries the
+   project's change and integration policy: if it has none, or it names neither where
+   parallel work is isolated nor the ref acceptance lands into, that is a
+   **foundation gap** — write a `question` and propose an architecture card; never invent a
+   branch or landing policy inside this card. A rework extends this card's
    plan; another card's plan is never this card's plan. The reviewer reads it.
 4. If this card is an epic child, the plan covers only this card's scope; the epic's
    rollup is not this card's report. Do not split the card yourself.

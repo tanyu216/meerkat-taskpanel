@@ -89,6 +89,11 @@ proof is an omission, not a detail for later.
 
 ### 7. Deliver
 
+Commit the work on the card's branch before you report — a report that cites a path must
+carry the `commit` anchor (`DELIVERY_NEEDS_COMMIT`), and `report template` stamps `HEAD`
+only on a clean tree; on a dirty tree pass `--commit <sha>`. Do not merge, rebase or push
+from this card; landing and cleanup belong to the project session.
+
 Run every applicable suite and the mandatory gates, and record the evidence. Re-export the
 brief, then stop at `in_review` with a report that carries the before/after map in markdown,
 the pinning tests, the gates, the acceptance mapping and the leftovers. State plainly what did

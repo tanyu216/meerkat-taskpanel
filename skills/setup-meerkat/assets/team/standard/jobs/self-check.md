@@ -90,6 +90,8 @@ never delivered.
    omission, a red gate or an unanswered question is not delivered: finish it or ask and
    keep the card `in_progress`. Deliver at `in_review` with the coverage table and the
    leftovers, each with its owner and follow-up.
+7. The delivered tree is committed on the card's branch and the report carries the
+   `commit` anchor; nothing was merged, rebased or pushed from this card.
 
 ## Archive check
 

@@ -89,6 +89,11 @@ code, a test or evidence.
 
 ### 7. Deliver
 
+Commit the work on the card's branch before you report — a report that cites a path must
+carry the `commit` anchor (`DELIVERY_NEEDS_COMMIT`), and `report template` stamps `HEAD`
+only on a clean tree; on a dirty tree pass `--commit <sha>`. Do not merge, rebase or push
+from this card; landing and cleanup belong to the project session.
+
 Re-export the brief, then stop at `in_review` with a report: what changed, the tests and
 gates, the evidence anchors, the acceptance mapping and the leftovers. A production bug fix
 carries a regression test and is verified through Turing's regression branch. Delivery is

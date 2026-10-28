@@ -18,7 +18,9 @@ on the review card. You move nothing.
 
 Read the original card. If it is not `in_review`, or its `delivery_round` is not the round
 recorded on the review card, leave a `note` on the review card and stop. Do not deliver a
-verdict.
+verdict. If this round's `commit` anchor no longer resolves — a rebase or a force-push
+rewrote it — the evidence is gone: leave a `note` and stop; do not rebuild the review from
+the live tree.
 
 ## Read
 

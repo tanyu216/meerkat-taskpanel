@@ -136,6 +136,11 @@ testability, consistency, boundaries, feasibility and scope. Record the findings
 
 ### 6. Deliver
 
+Commit the work on the card's branch before you report — a report that cites a path must
+carry the `commit` anchor (`DELIVERY_NEEDS_COMMIT`), and `report template` stamps `HEAD`
+only on a clean tree; on a dirty tree pass `--commit <sha>`. Do not merge, rebase or push
+from this card; landing and cleanup belong to the project session.
+
 Re-export the brief first, mark the handoff required (`meta.stage_handoff=required`), then
 start the report from the template. Keep a one-line `Outcome:` first in `conclusion`, then
 the `## Handoff` block below it.

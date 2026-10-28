@@ -60,6 +60,11 @@ observations. The evidence must let the reviewer reproduce the verdict.
 
 ### 7. Deliver
 
+Commit the work on the card's branch before you report — a report that cites a path must
+carry the `commit` anchor (`DELIVERY_NEEDS_COMMIT`), and `report template` stamps `HEAD`
+only on a clean tree; on a dirty tree pass `--commit <sha>`. Do not merge, rebase or push
+from this card; landing and cleanup belong to the project session.
+
 Re-export the brief. Confirm there
 are no unrelated changes, the regression test is committed, and the fix card is still in
 the round you verified. Deliver at `in_review`; do not issue a verdict.

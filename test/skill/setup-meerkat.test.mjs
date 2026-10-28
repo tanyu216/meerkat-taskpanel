@@ -1010,9 +1010,11 @@ describe("skill frontmatter and assets", () => {
       assert.match(check, /not\s+the `## Handoff` block/, `${role} self-check is not the handoff`);
       assert.match(check, /re-export/i, `${role} self-check re-exports the brief`);
       assert.match(check, /card\.md/, `${role} self-check names the brief`);
+      assert.match(check, /`commit` anchor/i, `${role} self-check requires the commit anchor`);
     }
 
     for (const [file, heading] of [
+      ["jobs/workflow.md", "### 6. Deliver"],
       ["linus/architecture-workflow.md", "### 9. Deliver"],
       ["linus/implementation-workflow.md", "### 7. Deliver"],
       ["linus/refactor-workflow.md", "### 7. Deliver"],
@@ -1022,6 +1024,10 @@ describe("skill frontmatter and assets", () => {
     ]) {
       const text = readFileSync(join(team, file), "utf8");
       assert.ok(text.includes(heading), `${file} must end in ${heading}`);
+      const deliver = text.slice(text.indexOf(heading));
+      assert.match(deliver, /commit/i, `${file} commits before it delivers`);
+      assert.match(deliver, /DELIVERY_NEEDS_COMMIT/, `${file} names the delivery gate`);
+      assert.match(deliver, /do not merge, rebase or push/i, `${file} leaves landing to the loop`);
     }
 
     const testDesign = readFileSync(join(team, "turing", "test-design-workflow.md"), "utf8");
@@ -1029,6 +1035,62 @@ describe("skill frontmatter and assets", () => {
 
     const prompt = readFileSync(join(team, "reviewer", "reviewer-prompt.md"));
     assert.ok(prompt.length <= 2400, "the reviewer prompt must fit its 2,400-character inline budget");
+  });
+
+  it("leaves landing, merging and rebasing to the loop", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    for (const role of ["jobs", "linus", "turing"]) {
+      const check = readFileSync(join(team, role, "self-check.md"), "utf8");
+      assert.match(
+        check,
+        /nothing was merged, rebased or pushed/i,
+        `${role} self-check leaves integration to the loop`,
+      );
+    }
+
+    const reviewer = readFileSync(join(team, "reviewer", "workflow.md"), "utf8");
+    assert.match(
+      reviewer,
+      /no longer resolves|does not resolve/i,
+      "the reviewer refuses a review whose commit anchor is gone",
+    );
+
+    const manifest = readFileSync(join(team, "manifest.json"), "utf8");
+    assert.match(
+      manifest,
+      /Do not merge, rebase or push/i,
+      "the worker boundaries leave integration alone",
+    );
+
+    const roles = readFileSync(join(SKILL, "references", "roles.md"), "utf8");
+    assert.match(roles, /lands into|land into/i, "the reference says where acceptance lands the work");
+    assert.match(roles, /cleanup order/i, "the reference states the cleanup order");
+    assert.match(roles, /`commit` anchor/i, "the reference makes the commit anchor durable");
+  });
+
+  it("requires the change policy to name where a card starts and lands", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+    const baseline = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
+    const policy = baseline.slice(
+      baseline.indexOf("**Change and integration policy**"),
+      baseline.indexOf("**Operational invariants**"),
+    );
+    assert.ok(policy.length > 0, "the baseline requirements list a change and integration policy");
+    assert.match(policy, /starts? from/i, "the policy names the ref a card starts from");
+    assert.match(policy, /lands? into/i, "the policy names the ref acceptance lands into");
+    assert.match(
+      policy,
+      /commit rule/i,
+      "the policy names the commit rule that makes a delivery verifiable",
+    );
+
+    const linus = readFileSync(join(team, "linus", "workflow.md"), "utf8");
+    assert.match(linus, /foundation gap/i, "a missing change policy is a foundation gap, not an invention");
+
+    const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    assert.match(check, /starts? from/i, "the self-check audits where a card starts");
+    assert.match(check, /commit rule/i, "the self-check audits the commit rule");
   });
 
   it("runs the setup interview as one adversarial frontier round", () => {
