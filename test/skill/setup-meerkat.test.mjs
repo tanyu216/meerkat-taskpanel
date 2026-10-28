@@ -397,32 +397,38 @@ describe("skill frontmatter and assets", () => {
     const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
 
     const baseline = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
+    const required = baseline.slice(
+      baseline.indexOf("**Purpose and boundary**"),
+      baseline.indexOf("Leave out architecture prose"),
+    );
     const step7 = arch.slice(arch.indexOf("### 7."), arch.indexOf("### 8."));
 
-    assert.match(baseline, /working agreement/i, "Step 5 requires a working agreement");
+    assert.ok(required.includes("**Purpose and boundary**"), "the requirements slice starts at item 1");
+    assert.ok(required.includes("**Pointers**"), "the requirements slice reaches the last item");
+    assert.match(required, /\*\*Working agreement\*\*/i, "the list requires a working agreement");
     assert.match(
-      baseline,
-      /change and integration policy/i,
-      "Step 5 requires the project's change and integration policy",
+      required,
+      /\*\*Change and integration policy\*\*/i,
+      "the list requires the project's change and integration policy",
     );
     assert.match(
-      baseline,
-      /operational invariants/i,
-      "Step 5 requires the operational invariants a fresh session can break",
+      required,
+      /\*\*Operational invariants\*\*/i,
+      "the list requires the operational invariants a fresh session can break",
     );
     assert.match(
-      baseline,
+      required,
       /decompose[\s\S]{0,160}(test-first|test first|failing test)/i,
       "the working agreement decomposes first and starts from a test where one exists",
     );
-    assert.match(baseline, /one writer per surface/i, "the invariants name the single-writer rule");
+    assert.match(required, /one writer per surface/i, "the invariants name the single-writer rule");
     assert.match(
-      baseline,
+      required,
       /release line/i,
       "the change policy names a protected line by role, not a repository's branch names",
     );
-    assert.match(baseline, /isolat/i, "the change policy isolates parallel work");
-    assert.match(baseline, /cleanup|cleaned up/i, "the change policy states the cleanup order");
+    assert.match(required, /isolat/i, "the change policy isolates parallel work");
+    assert.match(required, /cleanup|cleaned up/i, "the change policy states the cleanup order");
 
     assert.match(
       step7,
