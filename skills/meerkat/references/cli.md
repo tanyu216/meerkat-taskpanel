@@ -149,7 +149,7 @@ taskctl issue create --project <id> --title <t> [flags]
 |---|---|
 | `--project <id>` | **Required.** The project; its id is the identifier prefix. |
 | `--title <t>` | **Required.** The one-line summary. |
-| `--acceptance-mode off\|agent\|human` | The card's acceptance decision. `off`: no review; the deliverer may close it directly (`in_progress → done`). `agent`: an independent review card must APPROVE before the loop closes it. `human`: only a human closes it. An explicit value wins over the project default; an unresolved card under a project `auto` falls back to `human` (`off` for an epic, which the board closes itself). A review card is always `off`. |
+| `--acceptance-mode off\|agent\|human` | The card's acceptance decision. `off`: no review; the deliverer may close it directly (`in_progress → done`). `agent`: an independent review card must APPROVE before the loop closes it. `human`: a human closes it after the review's verdict is recorded — **top-level only**: a card created with `--parent`, or one that already has a parent, refuses it. An explicit value wins over the project default; an unresolved card — task or epic — falls back to `agent` (a project-level `human` is a top-level default; a child naming no mode under it gets `agent`). A review card is always `off`. |
 | `--acceptance <text>` | One acceptance item; repeat for each. |
 | `--assignee <text>` / `--assignee-id <id>` / `--assignee-kind <agent\|human>` | Route the card. `--assignee-id` bypasses the dictionary. |
 | `--reporter <text>` / `--reporter-id <id>` / `--reporter-kind <agent\|human>` | Set the reporter. |

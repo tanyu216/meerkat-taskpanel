@@ -223,10 +223,15 @@ characters) excuses the report for one round, not acceptance.
 
 The mode is resolved once, at creation: `--acceptance-mode off|agent|human` is the card's
 snapshot; omitted, it follows the project's `acceptance` default (`auto` by default), where
-the creator decides or the card falls back to `human` (an epic falls back to `off`). An `off`
-card may go straight from `in_progress` to `done`; an `agent` card waits for the loop's
-current-round `APPROVE`; a `human` card is closed by a person. An agent may only tighten a
-mode (`off → agent|human`). A review card is always `off`. The board's matrix:
+the creator decides or the card falls back to `agent` — every unresolved card, task or epic,
+is reviewed. `human` is opt-in and **top-level only**: a card with a parent is never human,
+and a project-level `human` gives a child that names no mode `agent`. An `off`
+card may go straight from `in_progress` to `done`; an `agent` and a `human` card are both
+reviewed — an independent reviewer produces the verdict either way — and only the close
+differs: the loop accepts an `agent` card on `APPROVE`, a person closes a `human` card with
+the recorded verdict in hand. An epic is a card too: it is reviewed (against its children and
+rollup) and closed only after an `APPROVE`. An agent may only tighten a mode
+(`off → agent|human`). A review card is always `off`. The board's matrix:
 [`references/status-lifecycle.md#7-acceptance-one-mode-per-card`](references/status-lifecycle.md#7-acceptance-one-mode-per-card).
 
 ## Containers: when the card is an epic

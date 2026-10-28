@@ -78,9 +78,12 @@ describe("handoffs without a role stay byte-identical", () => {
     // Re-pinned when the question lane landed: the worker is told the loop
     // hands its question to the project session, and that the project session's
     // `decision:` note counts as an answer on re-claim.
+    // Re-pinned again when review became mode-independent and every unresolved
+    // card began to resolve `agent`: a card payload without a mode now names the
+    // reviewed default, not the old human fallback.
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "d6cc170579db2cbd808e823cc0d9b3fa6abb1af202373384f2ee4acfcca12d87",
+      "9a61fd94999d28ff5cc638ada68a057f0c5bd28117253f03b7ff4b0e3f915077",
     );
   });
 

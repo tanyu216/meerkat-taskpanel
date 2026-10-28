@@ -609,7 +609,8 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
         notes[1].body,
         /^Auto-rollup \(event\): 2\/2 child card\(s\) terminal — 2 done \(PROJ-\d+, PROJ-\d+\), 0 canceled \(none\)/,
       );
-      assert.match(notes[1].body, /awaiting human acceptance/);
+      assert.match(notes[1].body, /awaiting acceptance/);
+      assert.doesNotMatch(notes[1].body, /human acceptance/);
     });
   });
 
@@ -833,7 +834,15 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
   it("waits for a nested container to be accepted, then closes its parent", async () => {
     await board(async ({ commands }) => {
       const grand = linusTask(commands, { title: "Grandchild" });
-      const inner = commands.createTask({ projectId: "proj", title: "Inner", kind: "epic", actor: AGENT });
+      // An explicit off container: this case is about nested rollup timing, and
+      // it closes the inner epic with a plain agent actor.
+      const inner = commands.createTask({
+        projectId: "proj",
+        title: "Inner",
+        kind: "epic",
+        acceptanceMode: "off",
+        actor: AGENT,
+      });
       commands.addRelation({ type: "parent", source: inner.id, target: grand.id, actor: AGENT });
       const outer = commands.createTask({ projectId: "proj", title: "Outer", kind: "epic", actor: AGENT });
       commands.addRelation({ type: "parent", source: outer.id, target: inner.id, actor: AGENT });
@@ -1540,7 +1549,13 @@ describe("commands/tasks — one move, one revision", () => {
 
   it("costs two bumps for a reopen, not three (the bookkeeping is one UPDATE)", async () => {
     await board(async ({ db, commands }) => {
-      const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT, idem: "reopen-rev" });
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "Ship M1",
+        acceptanceMode: "off",
+        actor: AGENT,
+        idem: "reopen-rev",
+      });
       commands.claim({ id: task.id, actor: AGENT });
       commands.deliver({ taskId: task.id, report: report(), actor: AGENT });
       commands.moveStatus({ id: task.id, to: "done", actor: HUMAN });
@@ -1561,7 +1576,12 @@ describe("commands/tasks — one move, one revision", () => {
 describe("commands/tasks — archive (I6)", () => {
   it("refuses before the window and archives after it without touching status", async () => {
     await board(async ({ db, commands }) => {
-      const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "Ship M1",
+        acceptanceMode: "off",
+        actor: AGENT,
+      });
       commands.claim({ id: task.id, actor: AGENT });
       commands.deliver({ taskId: task.id, report: report(), actor: AGENT });
       commands.moveStatus({ id: task.id, to: "done", actor: HUMAN });
@@ -1601,7 +1621,13 @@ describe("commands/tasks — archive (I6)", () => {
 describe("commands/tasks — terminal states", () => {
   /** A card delivered and accepted the normal way. */
   function doneTask(commands, overrides = {}) {
-    const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT, ...overrides });
+    const task = commands.createTask({
+      projectId: "proj",
+      title: "Ship M1",
+      acceptanceMode: "off",
+      actor: AGENT,
+      ...overrides,
+    });
     commands.claim({ id: task.id, actor: AGENT });
     commands.deliver({ taskId: task.id, report: report(), actor: AGENT });
     commands.moveStatus({ id: task.id, to: "done", actor: HUMAN });
@@ -2080,7 +2106,7 @@ describe("commands/tasks — listCandidates (poll read)", () => {
 
   it("excludes a task whose depends_on is not done, and admits it once done", async () => {
     await board(async ({ db, commands }) => {
-      const blocker = linusTodo(commands, { title: "Blocker", allowDup: true });
+      const blocker = linusTodo(commands, { title: "Blocker", allowDup: true, acceptanceMode: "off" });
       const candidate = linusTodo(commands, { title: "Blocked", allowDup: true });
       commands.addRelation({ type: "blocks", source: blocker.id, target: candidate.id, actor: AGENT });
 
@@ -2961,7 +2987,15 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
 
   it("passes once every child is terminal, and re-opens when a child is added", async () => {
     await board(async ({ commands }) => {
-      const epic = commands.createTask({ projectId: "proj", title: "Container", kind: "epic", actor: AGENT });
+      // Explicit off: this case exercises the children-terminal and rollup
+      // gates, then closes the container by hand.
+      const epic = commands.createTask({
+        projectId: "proj",
+        title: "Container",
+        kind: "epic",
+        acceptanceMode: "off",
+        actor: AGENT,
+      });
       const child = commands.createTask({
         projectId: "proj",
         title: "Child",
@@ -3000,7 +3034,12 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
 
   it("a leaf card is unaffected; an empty epic has nothing to roll up", async () => {
     await board(async ({ commands }) => {
-      const leaf = commands.createTask({ projectId: "proj", title: "Leaf", actor: AGENT });
+      const leaf = commands.createTask({
+        projectId: "proj",
+        title: "Leaf",
+        acceptanceMode: "off",
+        actor: AGENT,
+      });
       deliverCard(commands, leaf);
       assert.equal(commands.moveStatus({ id: leaf.id, to: "done", actor: HUMAN }).status, "done");
 
@@ -3398,9 +3437,9 @@ describe("commands/tasks — review decision (0031)", () => {
       assert.equal(commands.createTask({ projectId: "req", title: "r", actor: AGENT }).acceptanceMode, "agent");
       assert.equal(commands.createTask({ projectId: "off", title: "o", actor: AGENT }).acceptanceMode, "off");
       // `proj` carries the column default (`auto`); an unresolved card falls
-      // back to human.
+      // back to agent — review is the default, never an unanswered human gate.
       const fallback = commands.createTask({ projectId: "proj", title: "d", actor: AGENT });
-      assert.equal(fallback.acceptanceMode, "human");
+      assert.equal(fallback.acceptanceMode, "agent");
       // 0038 — the explicit card value wins over the project default.
       const optIn = commands.createTask({ projectId: "off", title: "yes", actor: AGENT, acceptanceMode: "agent" });
       assert.equal(optIn.acceptanceMode, "agent");
@@ -3409,12 +3448,78 @@ describe("commands/tasks — review decision (0031)", () => {
     });
   });
 
-  it("falls an unresolved agent-created card back to human", async () => {
+  it("falls an unresolved card back to agent, whatever created it", async () => {
     await board(async ({ commands }) => {
       const agentCard = commands.createTask({ projectId: "proj", title: "decide", actor: AGENT });
-      assert.equal(agentCard.acceptanceMode, "human");
+      assert.equal(agentCard.acceptanceMode, "agent");
       const humanCard = commands.createTask({ projectId: "proj", title: "human", actor: HUMAN, allowDup: true });
-      assert.equal(humanCard.acceptanceMode, "human");
+      assert.equal(humanCard.acceptanceMode, "agent", "human is opt-in, not the fallback");
+    });
+  });
+
+  it("falls an unresolved epic back to agent — a container is reviewed too", async () => {
+    await board(async ({ commands }) => {
+      const epic = commands.createTask({ projectId: "proj", title: "epic", kind: "epic", actor: AGENT });
+      assert.equal(epic.acceptanceMode, "agent");
+      assert.equal(epic.kind, "epic");
+    });
+  });
+
+  it("keeps human top-level only at create and at update", async () => {
+    await board(async ({ commands, repos }) => {
+      commands.createProject({ id: "hum", name: "Human", acceptance: "human", actor: HUMAN });
+      const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
+
+      // A create that declares a parent is a child, so an explicit human is refused.
+      assert.throws(
+        () =>
+          commands.createTask({
+            projectId: "proj",
+            title: "child",
+            parent: epic.identifier,
+            acceptanceMode: "human",
+            actor: HUMAN,
+          }),
+        (err) => {
+          assert.equal(err.code, "VALIDATION_FAILED");
+          assert.equal(err.details.field, "acceptance_mode");
+          return true;
+        },
+      );
+      // Under a project-level `human`, a child that names no mode falls back to
+      // agent: the project value is a top-level default.
+      const child = commands.createTask({
+        projectId: "hum",
+        title: "quiet child",
+        parent: epic.identifier,
+        actor: AGENT,
+      });
+      assert.equal(child.acceptanceMode, "agent");
+      // No parent declared: the same project value is adopted as before.
+      const topLevel = commands.createTask({ projectId: "hum", title: "top", allowDup: true, actor: AGENT });
+      assert.equal(topLevel.acceptanceMode, "human");
+
+      // The parent-edge boundary refuses the other direction too.
+      const offChild = commands.createTask({
+        projectId: "proj",
+        title: "off child",
+        acceptanceMode: "off",
+        allowDup: true,
+        actor: AGENT,
+      });
+      commands.addRelation({ type: "parent", source: epic.id, target: offChild.id, actor: AGENT });
+      // An update to human on a card that already has a parent is refused even
+      // for a human writer, who is otherwise allowed to loosen a mode.
+      assert.throws(
+        () => commands.updateTask({ id: offChild.id, acceptanceMode: "human", actor: HUMAN }),
+        (err) => {
+          assert.equal(err.code, "VALIDATION_FAILED");
+          assert.equal(err.details.field, "acceptance_mode");
+          assert.equal(err.details.parentId, epic.id);
+          return true;
+        },
+      );
+      assert.equal(repos.tasks.get(offChild.id).acceptanceMode, "off");
     });
   });
 
@@ -3705,6 +3810,8 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
         projectId: "proj",
         title: "gate",
         meta: { acceptance: ["a", "b"] },
+        // Explicit off: the report gate is the subject here, not review.
+        acceptanceMode: "off",
         actor: AGENT,
       });
       commands.claim({ id: task.id, actor: AGENT });
@@ -3745,6 +3852,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
         projectId: "proj",
         title: "partial",
         meta: { acceptance: ["a"] },
+        acceptanceMode: "off",
         actor: AGENT,
       });
       commands.claim({ id: partial.id, actor: AGENT });
@@ -3765,6 +3873,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
         projectId: "proj",
         title: "not applicable",
         meta: { acceptance: ["a"] },
+        acceptanceMode: "off",
         actor: AGENT,
       });
       commands.claim({ id: notApplicable.id, actor: AGENT });
@@ -3791,7 +3900,12 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
 
   it("keeps an empty baseline vacuous, but a waiver does not satisfy a non-empty one", async () => {
     await board(async ({ commands }) => {
-      const empty = commands.createTask({ projectId: "proj", title: "empty", actor: AGENT });
+      const empty = commands.createTask({
+        projectId: "proj",
+        title: "empty",
+        acceptanceMode: "off",
+        actor: AGENT,
+      });
       commands.claim({ id: empty.id, actor: AGENT });
       commands.moveStatus({
         id: empty.id,
@@ -3807,6 +3921,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
         projectId: "proj",
         title: "waived",
         meta: { acceptance: ["a"] },
+        acceptanceMode: "off",
         actor: AGENT,
       });
       commands.claim({ id: waived.id, actor: AGENT });

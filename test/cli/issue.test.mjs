@@ -1233,7 +1233,8 @@ describe("cli/issue — acceptance authority", () => {
 
   it("refuses an agent closing its own delivery, and a human may close it", async () => {
     await board(async ({ run }) => {
-      const card = createIssue(run);
+      // Explicit human: an unresolved card is now `agent`, whose close needs a review.
+      const card = createIssue(run, ["--acceptance-mode", "human"]);
       dataOf(run(["issue", "move", card.task.identifier, "in_progress", "--agent", "linus", "--actor-kind", "claude", "--json"]));
       dataOf(
         run(["issue", "deliver", card.task.identifier, "--report-file", "-", "--agent", "linus", "--actor-kind", "claude", "--json"], {
@@ -1368,7 +1369,7 @@ describe("cli/issue — reconcile (the container backstop)", () => {
       // parent, and the epic below is attached after the fact (`relation add`
       // fires no status hook by design). This is the missed-event shape the
       // sweep exists for.
-      const child = createIssue(run, ["--title", "Child"]);
+      const child = createIssue(run, ["--title", "Child", "--acceptance-mode", "off"]);
       dataOf(run(["issue", "move", child.task.identifier, "in_progress", "--json"]));
       dataOf(
         run(["issue", "deliver", child.task.identifier, "--report-file", "-", "--json"], {
@@ -1454,7 +1455,7 @@ describe("cli/issue — reconcile (the container backstop)", () => {
 describe("cli/issue — `issue reopen` (done/canceled → todo)", () => {
   /** A card accepted the normal way, so the reopen edge has something to leave. */
   function doneCard(run) {
-    const created = createIssue(run);
+    const created = createIssue(run, ["--acceptance-mode", "off"]);
     const ref = created.task.identifier;
     dataOf(run(["issue", "move", ref, "in_progress", "--json"]));
     dataOf(
@@ -1520,10 +1521,12 @@ describe("cli/issue — acceptance mode (0038)", () => {
     });
   });
 
-  it("falls an unresolved card back to human", async () => {
+  it("falls an unresolved card back to agent", async () => {
     await board(async ({ run }) => {
       const result = createIssue(run, ["--title", "decide"]);
-      assert.equal(result.task.acceptance_mode, "human");
+      assert.equal(result.task.acceptance_mode, "agent");
+      const epic = createIssue(run, ["--title", "container", "--kind", "epic", "--allow-dup"]);
+      assert.equal(epic.task.acceptance_mode, "agent", "a container is reviewed too");
     });
   });
 

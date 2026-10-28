@@ -170,6 +170,67 @@ const SCENARIOS = [
     expectedOrder: APPROVE_ORDER,
   },
   {
+    name: "create_review (epic dispatch)",
+    tasks: [card({ kind: "epic" })],
+    expectedAction: "create_review",
+    expectedOrder: ["createReview:loop-review|PROJ-0001|r1"],
+  },
+  {
+    name: "approve (epic, on a faithful rollup)",
+    tasks: (() => {
+      const original = card({ kind: "epic" });
+      const child = card({
+        id: "T-3",
+        identifier: "PROJ-0003",
+        status: "done",
+        parent_id: original.id,
+        acceptance_mode: "off",
+      });
+      const review = reviewCard(original);
+      return [original, child, review];
+    })(),
+    verdicts: { "PROJ-0002": verdict("APPROVE") },
+    reportsByRef: {
+      "PROJ-0001": {
+        is_rollup: true,
+        acceptance: [{ ref: "PROJ-0003", status: "met", note: "done" }],
+        evidence: [{ kind: "commit", sha: "abc1234" }],
+      },
+    },
+    expectedAction: "approve",
+    expectedOrder: APPROVE_ORDER,
+  },
+  {
+    name: "record_verdict (human approve)",
+    tasks: (() => {
+      const original = card({ acceptance_mode: "human" });
+      const review = reviewCard(original);
+      return [original, review];
+    })(),
+    verdicts: { "PROJ-0002": verdict("APPROVE") },
+    expectedAction: "record_verdict",
+    expectedOrder: [
+      "comment:PROJ-0001:note",
+      'setMeta:PROJ-0001:{"review_verdict":"approve","review_verdict_round":"1"}',
+      "comment:PROJ-0002:note",
+      "move:PROJ-0002:done",
+    ],
+  },
+  {
+    name: "record_verdict (human approve, marker already applied)",
+    tasks: (() => {
+      const original = card({
+        acceptance_mode: "human",
+        meta: { review_verdict: "approve", review_verdict_round: "1" },
+      });
+      const review = reviewCard(original);
+      return [original, review];
+    })(),
+    verdicts: { "PROJ-0002": verdict("APPROVE") },
+    expectedAction: "record_verdict",
+    expectedOrder: ["comment:PROJ-0002:note", "move:PROJ-0002:done"],
+  },
+  {
     name: "reject_task",
     tasks: (() => {
       const original = card();
@@ -270,6 +331,48 @@ describe("workflow plan → execution", () => {
     });
   }
 
+  it("dispatches a delivered human card through the same create_review action", async () => {
+    const { plan, order } = await throughBothHalves({
+      tasks: [card({ acceptance_mode: "human" })],
+      verdicts: {},
+    });
+    assert.deepEqual(plan.actions.map((action) => action.type), ["create_review"]);
+    assert.deepEqual(order, ["createReview:loop-review|PROJ-0001|r1"]);
+  });
+
+  it("dispatches a delivered human epic, and applies its verdict without moving it", async () => {
+    const original = card({ kind: "epic", acceptance_mode: "human" });
+    const child = card({
+      id: "T-3",
+      identifier: "PROJ-0003",
+      status: "done",
+      parent_id: original.id,
+      acceptance_mode: "off",
+    });
+    const dispatch = await throughBothHalves({ tasks: [original], verdicts: {} });
+    assert.deepEqual(dispatch.plan.actions.map((action) => action.type), ["create_review"]);
+    assert.deepEqual(dispatch.order, ["createReview:loop-review|PROJ-0001|r1"]);
+
+    const applied = await throughBothHalves({
+      tasks: [original, child, reviewCard(original)],
+      verdicts: { "PROJ-0002": verdict("APPROVE") },
+      reportsByRef: {
+        "PROJ-0001": {
+          is_rollup: true,
+          acceptance: [{ ref: "PROJ-0003", status: "met", note: "done" }],
+          evidence: [{ kind: "commit", sha: "abc1234" }],
+        },
+      },
+    });
+    assert.deepEqual(applied.plan.actions.map((action) => action.type), ["record_verdict"]);
+    assert.deepEqual(applied.order, [
+      "comment:PROJ-0001:note",
+      'setMeta:PROJ-0001:{"review_verdict":"approve","review_verdict_round":"1"}',
+      "comment:PROJ-0002:note",
+      "move:PROJ-0002:done",
+    ]);
+  });
+
   it("sends the reviewer's numbered items, and nothing when the baseline already carries them", async () => {
     const original = card();
     const listed = await throughBothHalves({
@@ -298,6 +401,7 @@ describe("workflow plan → execution", () => {
       create_review: ["type", "original_ref", "project_id", "reviewer", "round", "idem", "target", "title", "description", "acceptance"],
       auto_accept: ["type", "original_ref", "round", "accepted_by", "held"],
       approve: ["type", "review_status", "review_ref", "original_ref", "round", "close_review", "accepted_by", "held"],
+      record_verdict: ["type", "review_status", "review_ref", "original_ref", "round", "reason", "close_review", "held"],
       reject_task: ["type", "review_status", "review_ref", "original_ref", "round", "rework_round", "findings", "must_fix", "close_review"],
       reject_epic: [
         "type", "review_status", "review_ref", "original_ref", "round", "rework_round",

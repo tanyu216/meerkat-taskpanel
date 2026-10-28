@@ -436,6 +436,86 @@ describe("commands/workflowTick — 0031", () => {
         false,
       );
       assert.equal(commands.getTask({ id: task.id }).acceptanceMode, "human");
+      // Round 2 — review is not gated by the mode: the human card is dispatched.
+      const dispatch = result.workflow.actions.find((item) => item.type === "create_review");
+      assert.ok(dispatch, JSON.stringify(result.workflow));
+      assert.equal(dispatch.originalRef, task.identifier);
+    });
+  });
+});
+
+describe("commands/workflowTick — containers are reviewed too (round 2)", () => {
+  /**
+   * A done child, then an epic attached to it afterwards. The child's own move
+   * cannot close the container (no edge yet), so the next `workflowTick` is what
+   * rolls the epic up — the one-pass reconcile-then-snapshot path.
+   */
+  function doneChild(commands, title) {
+    const child = commands.createTask({
+      projectId: "proj",
+      title,
+      assignee: "linus",
+      acceptanceMode: "off",
+      actor: HUMAN,
+    });
+    commands.claim({ id: child.id, actor: WORKER });
+    commands.deliver({ taskId: child.id, report: DELIVERY, actor: WORKER });
+    commands.moveStatus({ id: child.id, to: "done", actor: WORKER });
+    return child;
+  }
+
+  function lateEpic(commands, child, extra = {}) {
+    const epic = commands.createTask({
+      projectId: "proj",
+      title: "Container",
+      kind: "epic",
+      actor: HUMAN,
+      ...extra,
+    });
+    commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: HUMAN });
+    return epic;
+  }
+
+  it("rolls a finished epic up and dispatches its review in the same tick", async () => {
+    await board(({ commands }) => {
+      const child = doneChild(commands, "Child");
+      const epic = lateEpic(commands, child);
+      assert.equal(commands.getTask({ id: epic.id }).acceptanceMode, "agent");
+
+      const result = commands.workflowTick({ reviewer: "jobs" });
+
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
+      const dispatch = result.workflow.actions.find(
+        (item) => item.type === "create_review" && item.originalRef === epic.identifier,
+      );
+      assert.ok(dispatch, `a finished epic must be dispatched in the same pass: ${JSON.stringify(result.workflow)}`);
+      assert.equal(dispatch.round, 1);
+      assert.equal(
+        result.workflow.actions.some((item) => item.type === "auto_accept" && item.originalRef === epic.identifier),
+        false,
+        "an unmarked epic is reviewed, not auto-accepted",
+      );
+    });
+  });
+
+  it("keeps an explicit off epic on the auto-accept path", async () => {
+    await board(({ commands }) => {
+      const child = doneChild(commands, "Child");
+      const epic = lateEpic(commands, child, { acceptanceMode: "off" });
+
+      const result = commands.workflowTick({ reviewer: "jobs" });
+
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
+      const action = result.workflow.actions.find(
+        (item) => item.type === "auto_accept" && item.originalRef === epic.identifier,
+      );
+      assert.ok(action, JSON.stringify(result.workflow));
+      assert.equal(
+        result.workflow.actions.some(
+          (item) => item.type === "create_review" && item.originalRef === epic.identifier,
+        ),
+        false,
+      );
     });
   });
 });

@@ -503,16 +503,22 @@ export function classifyReconcileActions(actions, input = {}) {
 /**
  * Decide which `in_review` cards need a review card created.
  *
+ * Review is mode-independent: an `agent` and a `human` card are dispatched
+ * exactly the same way. The mode selects only who closes the original after an
+ * `APPROVE` (the loop for `agent`, a person for `human`); `off` is the one mode
+ * with no review — the loop auto-accepts it at delivery.
+ *
  * The guards, in the order they save the most work:
  *
  *   * a truncated board read dispatches **nothing** — "already reviewed" cannot
  *     be proven over an incomplete snapshot;
  *   * a review card of its own is never reviewed again (`flow=B`);
  *   * an active review card for the same **round** covers the card; a `done`
- *     review card whose original is still `in_review` is a finding, not a
- *     reason to create a second one; a `canceled` one releases the key (the
- *     board's idempotency key is released by a terminal card, so recreation is
- *     the consistent move);
+ *     review card whose original is still `in_review` is a finding for an
+ *     `agent` original (the loop closes it) and the designed waiting state for a
+ *     `human` one (the person closes) — either way, not a reason to create a
+ *     second one; a `canceled` one releases the key (the board's idempotency key
+ *     is released by a terminal card, so recreation is the consistent move);
  *   * the reviewer must not be the card's own assignee/claimer.
  *
  * @param {{tasks?: object[], config?: object, boardTruncated?: boolean, skipRefs?: Set<string>|string[]}} input
@@ -559,7 +565,11 @@ export function planReviewDispatch(input = {}) {
     // consulted here: a card created before the default changed keeps its
     // snapshot, and a manual review card on an `off` card is handled by its own
     // review card's outcome, not by dispatch.
-    if (acceptanceModeOf(task) !== "agent") continue;
+    // Review is mode-independent: `agent` and `human` both get an independent
+    // reviewer; the mode only selects who closes the original afterwards. `off`
+    // is the one mode with no review — the loop auto-accepts it at delivery.
+    const mode = acceptanceModeOf(task);
+    if (mode === "off") continue;
     const ref = String(task.identifier ?? "");
     if (ref === "" || skip.has(ref)) continue;
 
@@ -589,12 +599,22 @@ export function planReviewDispatch(input = {}) {
     if (covering.some((review) => !TERMINAL_STATUSES.has(review?.status))) continue;
     const done = covering.find((review) => review?.status === "done");
     if (done !== undefined) {
+      // A completed review over an `agent` original that is still open is a
+      // finding: the loop owns that close. Over a `human` original it is the
+      // designed end of the review — the person now closes the card — so it is
+      // a log-only standing state, not a finding.
       alerts.push({
-        type: "review_done_but_original_open",
+        type:
+          mode === "human" ? "review_awaiting_human_acceptance" : "review_done_but_original_open",
         original: ref,
         review: String(done.identifier ?? ""),
         round,
-        dedupKey: alertKey("review_done_open", ref, done.identifier ?? "", round),
+        dedupKey: alertKey(
+          mode === "human" ? "review_awaiting_human" : "review_done_open",
+          ref,
+          done.identifier ?? "",
+          round,
+        ),
       });
       continue;
     }
@@ -1077,26 +1097,45 @@ export function planReviewOutcomes(input = {}) {
           reopenOrExhausted({ review, reviewRef, originalRef, round, reason });
           continue;
         }
-        // 0038 — only an `agent` original is moved by an APPROVE. An `off` or
-        // `human` card may carry an ad-hoc review card; its verdict is recorded
-        // on that card, and the review card is closed, but the original's own
-        // mode owns acceptance. The marker is written with the round the
-        // original is on now; a crash after it but before the close is recovered
-        // on the next pass.
-        if (acceptanceModeOf(original) === "agent") {
+        // The verdict is recorded the same way in both reviewed modes; only the
+        // close differs. `agent` — the loop accepts the original and closes the
+        // review card. `human` — the loop records the round-scoped verdict on
+        // the original and closes the review card, leaving the original in
+        // `in_review` for a person. `off` keeps its own path: an ad-hoc review
+        // card's verdict is noted and the card closed, but the original's own
+        // mode owns acceptance.
+        //
+        // The marker is written with the round the original is on now; a crash
+        // after it but before the close is recovered on the next pass (`held`).
+        const mode = acceptanceModeOf(original);
+        if (mode === "agent" || mode === "human") {
           const held =
             String(original.meta?.review_verdict ?? "") === "approve" &&
             String(original.meta?.review_verdict_round ?? "") === String(originalRound);
-          actions.push({
-            type: "approve",
-            reviewStatus: review.status,
-            reviewRef,
-            originalRef,
-            round: originalRound,
-            closeReview,
-            acceptedBy: LOOP_ACCEPTOR,
-            ...(held ? { held } : {}),
-          });
+          if (mode === "agent") {
+            actions.push({
+              type: "approve",
+              reviewStatus: review.status,
+              reviewRef,
+              originalRef,
+              round: originalRound,
+              closeReview,
+              acceptedBy: LOOP_ACCEPTOR,
+              ...(held ? { held } : {}),
+            });
+          } else {
+            // The review card is still the loop's to close; the original is not.
+            actions.push({
+              type: "record_verdict",
+              reviewStatus: review.status,
+              reviewRef,
+              originalRef,
+              round: originalRound,
+              reason: "verdict_recorded",
+              closeReview,
+              ...(held ? { held } : {}),
+            });
+          }
         } else {
           actions.push({
             type: "close_review",
@@ -1469,7 +1508,7 @@ export function planWorkflowTick(input = {}) {
       rejected: count("reject_task") + count("reject_task_finish") + count("reject_epic"),
       dispatched: count("create_review"),
       autoAccepted: count("auto_accept"),
-      closed: count("close_review") + count("cancel_review"),
+      closed: count("close_review") + count("cancel_review") + count("record_verdict"),
       actions: actions.length,
       alerts: alerts.length,
     },

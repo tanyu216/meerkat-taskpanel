@@ -5,7 +5,8 @@
  *
  *   * `projects.acceptance` — `auto | off | agent | human`. `auto` means "the
  *     creator (in practice the loop) decides per card"; the other three are a
- *     concrete default.
+ *     concrete default. `human` here is a **top-level-only** default: a child
+ *     that names no mode under it resolves to `agent`.
  *   * `tasks.acceptance_mode` — `off | agent | human`. The resolved snapshot,
  *     frozen at creation. **`auto` is never stored on a card**: an unresolved
  *     card must not sit in a state whose owner is unknown.
@@ -16,7 +17,12 @@
  *               `in_progress → done` is allowed.
  *   * `agent` — an independent agent review card must APPROVE first; the loop
  *               applies the verdict and closes the card. A human may also close.
- *   * `human` — only a human closes it; no review card is dispatched.
+ *               **This is the fallback**: a card nobody declared is reviewed.
+ *   * `human` — an independent agent review card still runs and records its
+ *               verdict; only a human closes the card, with that verdict in
+ *               hand. Opt-in only, and only on a **top-level** card: a card with
+ *               a parent never resolves here (a person's decision is an
+ *               `awaiting` question, not a close of a subtask).
  *
  * `deploy` is deliberately **not** a card rule. Whether a card belongs to a
  * release line — and what confirming that means — is the loop's own decision;
@@ -39,10 +45,13 @@ export const PROJECT_ACCEPTANCES = Object.freeze(["auto", "off", "agent", "human
 export const DEFAULT_PROJECT_ACCEPTANCE = "auto";
 
 /**
- * What an unresolved card falls back to. `human` is the fail-safe direction: a
- * card nobody declared is left for a human rather than silently self-accepted.
+ * What an unresolved card falls back to. **Every card — task or epic — is
+ * reviewed**: review is the default, `human` is an explicit request and `off`
+ * an explicit opt-out. The fallback used to be `human` (and `off` for an epic),
+ * which made the one card kind whose job is to aggregate the others the only
+ * one nobody audited.
  */
-export const FALLBACK_CARD_ACCEPTANCE = "human";
+export const FALLBACK_CARD_ACCEPTANCE = "agent";
 
 /**
  * The card column's own default (`off`), used when a DTO predates the column or
@@ -123,16 +132,21 @@ export function cardAcceptanceOf(value) {
  *
  * Order:
  *   1. a review card is always `off` (flow B is never reviewed again);
- *   2. an explicit card value wins;
- *   3. a concrete project value is the default;
- *   4. project `auto` (or no project) falls back to `human`, except an epic,
- *      which falls back to `off` because the board closes containers itself.
+ *   2. an explicit card value wins — except `human` on a card that declares a
+ *      parent, which is refused (the mode is a top-level closure gate);
+ *   3. a concrete project value is the default — except `human`, which is a
+ *      **top-level-only** default: a child naming no mode falls through;
+ *   4. project `auto` (or no project) falls back to `agent`, for every kind.
+ *
+ * `kind` is accepted for callers that pass it; the fallback no longer branches
+ * on it. A container is reviewed like any other card.
  *
  * @param {{
  *   projectAcceptance?: unknown,
  *   requested?: unknown,
  *   reviewCard?: boolean,
  *   kind?: string,
+ *   hasParent?: boolean,
  * }} [input]
  * @returns {{mode: "off"|"agent"|"human", source: "review_card"|"requested"|"project"|"fallback"}}
  */
@@ -169,6 +183,23 @@ export function resolveCardAcceptance(input = {}) {
     return { mode: "off", source: "review_card" };
   }
 
+  const hasParent = input.hasParent === true;
+  if (requested === "human" && hasParent) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message:
+        "acceptance mode human is top-level only: a card with a parent is reviewed and closed " +
+        "by its own mode, never handed to a person",
+      details: {
+        field: "acceptance_mode",
+        received: requested,
+        hasParent: true,
+        allowed: ["off", "agent"],
+      },
+      hint: {
+        fix: "create the child with --acceptance-mode off or agent, or with no mode at all",
+      },
+    });
+  }
   if (requested !== null) return { mode: requested, source: "requested" };
 
   const projectGiven =
@@ -186,12 +217,13 @@ export function resolveCardAcceptance(input = {}) {
       },
     });
   }
-  if (project !== null && project !== "auto") return { mode: project, source: "project" };
-  // An epic is a container whose delivery is the system-written rollup; the
-  // board itself closes it. An unresolved `human` would stall every container,
-  // so the one card-mechanics fallback is `off`. (The creator can still state
-  // `agent`/`human` explicitly.)
-  if (input.kind === "epic") return { mode: "off", source: "fallback" };
+  // A project-level `human` is a top-level default only: a card that declares a
+  // parent (or already has one, at the update boundary) must state its own mode
+  // rather than inherit a person's closure gate.
+  if (project === "human" && !hasParent) return { mode: "human", source: "project" };
+  if (project !== null && project !== "auto" && project !== "human") {
+    return { mode: project, source: "project" };
+  }
   return { mode: FALLBACK_CARD_ACCEPTANCE, source: "fallback" };
 }
 

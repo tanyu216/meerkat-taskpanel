@@ -298,6 +298,58 @@ describe("commands/relations", () => {
     });
   });
 
+  it("refuses a parent edge whose child is human-accepted — the mode is top-level only", async () => {
+    await board(({ commands }) => {
+      const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
+      const child = commands.createTask({
+        projectId: "proj",
+        title: "Human child",
+        acceptanceMode: "human",
+        actor: HUMAN,
+      });
+      for (const force of [false, true]) {
+        assert.throws(
+          () =>
+            commands.addRelation({
+              type: "parent",
+              source: epic.id,
+              target: child.id,
+              actor: AGENT,
+              ...(force ? { force: true } : {}),
+            }),
+          (err) => {
+            assert.equal(err.code, "VALIDATION_FAILED");
+            assert.equal(err.details.field, "acceptance_mode");
+            assert.equal(err.details.mode, "human");
+            assert.equal(err.details.identifier, child.identifier);
+            return true;
+          },
+          force ? "--force skips graph shape, never the card's meaning" : "a human child is never legal",
+        );
+      }
+      // ...and no edge landed, so the card is still top-level.
+      assert.deepEqual(commands.listRelations({ taskId: child.id }).ancestors, []);
+    });
+  });
+
+  it("still attaches agents and off cards as children of a nested epic", async () => {
+    await board(({ commands }) => {
+      const outer = commands.createTask({ projectId: "proj", title: "Outer", kind: "epic", actor: AGENT });
+      const inner = commands.createTask({
+        projectId: "proj",
+        title: "Inner",
+        kind: "epic",
+        allowDup: true,
+        actor: AGENT,
+      });
+      const card = commands.createTask({ projectId: "proj", title: "Card", allowDup: true, actor: AGENT });
+      commands.addRelation({ type: "parent", source: outer.id, target: inner.id, actor: AGENT });
+      commands.addRelation({ type: "parent", source: inner.id, target: card.id, actor: AGENT });
+      assert.equal(commands.getTask({ id: inner.id }).acceptanceMode, "agent");
+      assert.equal(commands.getTask({ id: outer.id }).acceptanceMode, "agent");
+    });
+  });
+
   it("refuses a parent edge whose source is a review card promoted to epic", async () => {
     await board(({ commands }) => {
       const review = makeReview(commands);

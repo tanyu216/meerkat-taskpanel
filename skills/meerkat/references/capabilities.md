@@ -107,6 +107,7 @@ The plan is snake_case (`workflowToWire`). Action `type`s the loop executes:
 | `create_review` | create the review card (`original_ref`, `project_id`, `reviewer`, `round`, `idem`, `target`, `title`, `description`, `acceptance[]`). `acceptance[]` is the original's frozen baseline followed by the generic review items (4 for a card, 6 for an epic), and becomes the review card's own frozen baseline |
 | `auto_accept` | close a no-review original (`original_ref`, `accepted_by`, `round`) |
 | `approve` | apply an APPROVE verdict to an `agent` original and close its review card (`close_review` follows last) |
+| `record_verdict` | record an APPROVE verdict on a `human` original (`review_verdict` / `review_verdict_round`) and close its review card, without moving the original; a person closes it later |
 | `reject_task` / `reject_epic` / `reject_task_finish` | apply a REJECT verdict; the epic form also creates a fix child. `must_fix[]` is the reviewer's numbered list (or one pointer item when the findings are prose); the loop appends each item to the original's frozen baseline after the rework move, so the next round's report template and the next review card both carry it |
 | `close_review` / `cancel_review` | close the review card last |
 
@@ -114,7 +115,8 @@ Alert `type`s include `original_unseen`, `verdict_unreadable`, `verdict_incomple
 `verdict_unsupported` (a `met` with no resolvable anchor, or an APPROVE with no `command`
 anchor — reason `evidence_missing` / `no_command_evidence`), `acceptance_incomplete`,
 `acceptance_unverified`, `review_aging`, `actions_capped`, `dispatch_capped`,
-`self_review_not_independent`. Each carries a `dedup_key`. The acceptance/verdict alerts are log-only: the planner
+`review_awaiting_human_acceptance` (a finished review waiting on a person to close a `human`
+card — log-only), `self_review_not_independent`. Each carries a `dedup_key`. The acceptance/verdict alerts are log-only: the planner
 declines to plan an action the write gate would refuse, rather than producing one failure per
 tick. An epic's skip reasons are `rollup_unverified` (no current-round rollup) and
 `rollup_stale` (the rollup no longer matches the children); both appear on
@@ -123,7 +125,10 @@ tick. An epic's skip reasons are `rollup_unverified` (no current-round rollup) a
 An **epic's** only delivery report is its rollup: `report.is_rollup` is `true` on the wire,
 its acceptance items carry `ref: <child identifier>`, and `done` / an `APPROVE` refuse a
 missing or stale one (`ROLLUP_REQUIRED` / `ROLLUP_STALE`). The loop never writes a non-rollup
-report on an epic.
+report on an epic. An epic is otherwise a card like any other: its default `acceptance_mode`
+is `agent`, so a finished container is dispatched a `create_review` in the same tick that
+rolls it up; its review reads the children and the rollup, an `APPROVE` yields the ordinary
+`approve` action, and a `REJECT` yields `reject_epic`.
 
 ## 7. Workflow writes
 

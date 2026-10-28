@@ -337,7 +337,12 @@ describe("task-order — assertion 10: the scope reaches SQL before the order do
   it("counts open downstream cards for the `B` factor from one batched read", async () => {
     createProject("fan", "Fan");
     const hub = createTask({ projectId: "fan", title: "hub", priority: "low", assignee: "linus" });
-    const leaves = [1, 2, 3, 4].map((n) => createTask({ projectId: "fan", title: `leaf ${n}`, assignee: "linus" }));
+    // `off` on purpose: this is an order-weighting fixture, not an acceptance one, and
+    // `leaves[0]` is closed as a human below. An unresolved card would now fall back to
+    // `agent` and the close would (correctly) demand an approved review.
+    const leaves = [1, 2, 3, 4].map((n) =>
+      createTask({ projectId: "fan", title: `leaf ${n}`, assignee: "linus", acceptanceMode: "off" }),
+    );
     for (const leaf of leaves) {
       commands().addRelation({ type: "blocks", source: hub.id, target: leaf.id, actor: AGENT });
     }

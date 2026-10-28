@@ -1033,14 +1033,148 @@ describe("acceptance modes (the card decides who closes)", () => {
     assert.equal(action.held, undefined, "the loop never holds now");
   });
 
-  it("records an ad-hoc review on a human original without moving it", () => {
+  it("records an APPROVE on a human original, closes the review card, and leaves the original", () => {
     const result = plan({ acceptance_mode: "human" });
-    assert.deepEqual(types(result), ["close_review"]);
-    assert.equal(result.actions[0].reason, "verdict_recorded");
+    assert.deepEqual(types(result), ["record_verdict"]);
+    const action = result.actions[0];
+    assert.equal(action.originalRef, "T-1");
+    assert.equal(action.reviewRef, "T-2");
+    assert.equal(action.round, 1);
+    assert.equal(action.reason, "verdict_recorded");
+    assert.equal(action.closeReview, true);
+    assert.equal(action.acceptedBy, undefined, "the loop does not accept a human card");
+  });
+
+  it("recovers a human verdict already recorded on the original (held)", () => {
+    const result = planReviewOutcomes({
+      tasks: [
+        card({
+          acceptance_mode: "human",
+          meta: { review_verdict: "approve", review_verdict_round: "1" },
+        }),
+        reviewCard(),
+      ],
+      verdicts: { "T-2": verdict },
+      config: CONFIG,
+      now: NOW,
+    });
+    assert.deepEqual(types(result), ["record_verdict"]);
+    assert.equal(result.actions[0].held, true, "the writes are skipped and only the close runs");
+  });
+
+  it("rejects a human original onto the rework path", () => {
+    const result = planReviewOutcomes({
+      tasks: [card({ acceptance_mode: "human" }), reviewCard()],
+      verdicts: {
+        "T-2": {
+          ok: true,
+          verdict: "REJECT",
+          findings: "1. still missing the e2e case",
+          report: { author: REVIEWER_REPORT.author },
+        },
+      },
+      config: CONFIG,
+      now: NOW,
+    });
+    assert.deepEqual(types(result), ["reject_task"]);
+    assert.equal(result.actions[0].originalRef, "T-1");
   });
 
   it("records an ad-hoc review on an off original without moving it", () => {
     assert.deepEqual(types(plan({ acceptance_mode: "off" })), ["close_review"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Containers are reviewed too (round 2)
+// ---------------------------------------------------------------------------
+
+describe("epics are reviewed like any other card", () => {
+  const verdict = { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT };
+  const epicCard = (fields = {}) => card({ identifier: "E-1", kind: "epic", ...fields });
+  /** A terminal child so the current-round rollup is faithful. */
+  const doneChild = (epic) =>
+    card({ identifier: "T-3", status: "done", parent_id: epic.id, acceptance_mode: "off" });
+  const epicReview = () =>
+    reviewCard({ meta: { review_of: "E-1", flow: "B", review_round: 1 } });
+  const rollup = (child) => ({
+    is_rollup: true,
+    acceptance: [{ ref: child.identifier, status: "met", note: "done" }],
+    evidence: [{ kind: "commit", sha: "abc1234" }],
+  });
+
+  it("dispatches an agent-mode epic exactly as a task", () => {
+    const result = planReviewDispatch({ tasks: [epicCard({ acceptance_mode: "agent" })], config: CONFIG });
+    assert.deepEqual(types(result), ["create_review"]);
+    assert.equal(result.actions[0].originalRef, "E-1");
+    const task = planReviewDispatch({ tasks: [card()], config: CONFIG });
+    assert.equal(result.actions[0].reviewer, task.actions[0].reviewer);
+  });
+
+  it("dispatches a human-mode epic exactly as an agent-mode one", () => {
+    const human = planReviewDispatch({ tasks: [epicCard({ acceptance_mode: "human" })], config: CONFIG });
+    const agent = planReviewDispatch({ tasks: [epicCard({ acceptance_mode: "agent" })], config: CONFIG });
+    assert.deepEqual(types(human), ["create_review"]);
+    assert.deepEqual(human.actions, agent.actions);
+  });
+
+  it("still dispatches nothing for an explicit off epic", () => {
+    const result = planReviewDispatch({ tasks: [epicCard({ acceptance_mode: "off" })], config: CONFIG });
+    assert.deepEqual(result.actions, []);
+  });
+
+  it("approves an epic only on a faithful current-round rollup", () => {
+    const epic = epicCard({ acceptance_mode: "agent" });
+    const child = doneChild(epic);
+    const plan = (reportsByRef) =>
+      planReviewOutcomes({
+        tasks: [epic, child, epicReview()],
+        verdicts: { "T-2": verdict },
+        reportsByRef,
+        config: CONFIG,
+        now: NOW,
+      });
+
+    const result = plan({ "E-1": rollup(child) });
+    assert.deepEqual(types(result), ["approve"]);
+    assert.equal(result.actions[0].originalRef, "E-1");
+    assert.equal(result.actions[0].acceptedBy, LOOP_ACCEPTOR);
+
+    const unverified = plan({});
+    assert.equal(unverified.actions.some((action) => action.type === "approve"), false);
+    assert.ok(unverified.alerts.some((alert) => alert.type === "verdict_incomplete"));
+  });
+
+  it("records a human epic's APPROVE and leaves the container open for the person", () => {
+    const epic = epicCard({ acceptance_mode: "human" });
+    const child = doneChild(epic);
+    const result = planReviewOutcomes({
+      tasks: [epic, child, epicReview()],
+      verdicts: { "T-2": verdict },
+      reportsByRef: { "E-1": rollup(child) },
+      config: CONFIG,
+      now: NOW,
+    });
+    assert.deepEqual(types(result), ["record_verdict"]);
+    assert.equal(result.actions[0].originalRef, "E-1");
+    assert.equal(result.actions[0].acceptedBy, undefined);
+  });
+
+  it("rejects an epic onto the fix-child path", () => {
+    const epic = epicCard({ acceptance_mode: "agent" });
+    const child = doneChild(epic);
+    const result = planReviewOutcomes({
+      tasks: [epic, child, epicReview()],
+      verdicts: {
+        "T-2": { ok: true, verdict: "REJECT", findings: "1. a child is missing", report: { author: REVIEWER_REPORT.author } },
+      },
+      reportsByRef: { "E-1": rollup(child) },
+      config: CONFIG,
+      now: NOW,
+    });
+    assert.deepEqual(types(result), ["reject_epic"]);
+    assert.equal(result.actions[0].originalRef, "E-1");
+    assert.equal(result.actions[0].acceptanceMode, "off", "the fix child is never reviewed or handed to a person");
   });
 });
 
@@ -1110,6 +1244,32 @@ describe("planReviewDispatch — acceptance mode and project reviewers", () => {
     });
     assert.deepEqual(result.actions, []);
     assert.deepEqual(result.alerts, []);
+  });
+
+  it("dispatches a human card exactly as an agent card", () => {
+    const human = planReviewDispatch({
+      tasks: [card({ acceptance_mode: "human" })],
+      config: CONFIG,
+    });
+    const agent = planReviewDispatch({
+      tasks: [card({ acceptance_mode: "agent" })],
+      config: CONFIG,
+    });
+    assert.deepEqual(types(human), ["create_review"]);
+    assert.deepEqual(human.actions, agent.actions, "the mode selects the closer, not the review");
+  });
+
+  it("does not dispatch a human card whose current round already has a done review", () => {
+    const result = planReviewDispatch({
+      tasks: [card({ acceptance_mode: "human" }), reviewCard({ status: "done" })],
+      config: CONFIG,
+    });
+    assert.deepEqual(result.actions, [], "no second review loop");
+    assert.deepEqual(
+      result.alerts.map((alert) => alert.type),
+      ["review_awaiting_human_acceptance"],
+      "a finished review waiting on a person is the designed state, not a finding",
+    );
   });
 
   it("resolves project.reviewer ?? the deployment reviewer per card", () => {

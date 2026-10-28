@@ -257,6 +257,11 @@ is not `done` — literally `status !== "done"`, so a `canceled` predecessor wit
   one is `done`, and there is evidence to roll up, it writes the **rollup report**
   (`is_rollup = 1`) and moves the epic. Auto-close works from `todo`, `in_progress` and
   `blocked`; acceptance stays separate.
+- **An epic is reviewed like any other card.** Its default mode is `agent`, so the workflow
+  pass dispatches a review card for it in the same tick that rolls it up (the reconcile runs
+  before the snapshot). The reviewer reads the children and the rollup; `APPROVE` closes the
+  container (both cards), `REJECT` creates a fix child and reworks the container. An explicit
+  `off` epic skips the review and is auto-accepted by the loop.
 - **An epic's delivery is a rollup, always.** A report written on an epic is marked as its
   rollup; a `--no-report` waiver cannot deliver a container. The rollup must name **every
   live child** by `ref`: a `done` child is `met`, a `canceled` child is `not_applicable` with
@@ -291,23 +296,33 @@ idempotent; the ordinary path does not need it.
 
 `done` is the board's acceptance act, and the card's own `acceptance_mode` names who may
 perform it. There is no board-level policy and no scope matrix: a child is closed by whoever
-its own mode names, and a review card is the one structural exception.
+its own mode names, and a review card is the one structural exception. The mode is the
+**closer** selector, not a review selector — an `agent` and a `human` card are both reviewed;
+only `off` skips the review.
 
 <!-- acceptance-matrix:begin -->
 | Card mode | Review card | Who may move it to `done` |
 |---|---|---|
 | `off` | none | the deliverer (any actor kind), `taskd`, or a human; `in_progress → done` is allowed |
 | `agent` | yes — an agent reviewer | `taskd` (after a current-round `APPROVE`) or a human |
-| `human` | none | a human only |
+| `human` | yes — an agent reviewer | a human only |
 | a review card | — | a human or `taskd` — never the reviewer itself |
 <!-- acceptance-matrix:end -->
 
 The **project default** (`projects.acceptance`: `auto | off | agent | human`, default
 `auto`) is a default at creation only. The creator — in practice the loop — resolves it to
-one of the three card modes; a card **never stores `auto`**. An unresolved card falls back to
-`human`, except an epic, which falls back to `off` (the board closes containers itself). An
-explicit `--acceptance-mode` wins over the project value. The one structural rule: a review
-card is always `off`.
+one of the three card modes; a card **never stores `auto`**. An unresolved card — task or
+epic — falls back to `agent`: review is the default, and `human` is opt-in. An explicit
+`--acceptance-mode` wins over the project value. The structural rules:
+
+- a review card is always `off`;
+- **`human` is top-level only.** A card with a parent is never human-accepted: the parent
+  edge refuses a `human` child (even with `--force`), and
+  `issue update <child> --acceptance-mode human` is `VALIDATION_FAILED`. A person's decision
+  on a subtask is an `awaiting` question, not a close. A project-level `human` is a
+  top-level default — a child that names no mode under it resolves to `agent`;
+- an epic is a card like any other: it is dispatched a review card (against its children and
+  rollup) and closed only after an `APPROVE`; `off` remains the one explicit skip.
 
 - A worker agent delivers an `agent`, `human` or review card to `in_review`; a card whose mode
   is `off` may also go **straight to `done`** (`issue deliver --report-file - --to done`).
@@ -411,9 +426,9 @@ reconcile (unless `--dry-run`), reads a bounded snapshot, and returns
 `{alerts, actions, changes, summary}`.
 
 Actions are decisions, not effects. The **loop** executes `create_review`, `approve`,
-`reject_task`, `reject_epic`, `reject_task_finish`, `close_review` and `cancel_review`; the
-review card closes **last**, so a crash is recovered next pass. The board never moves a review
-card.
+`record_verdict`, `reject_task`, `reject_epic`, `reject_task_finish`, `close_review` and
+`cancel_review`; the review card closes **last**, so a crash is recovered next pass. The board
+never moves a review card.
 
 The fail-safe rules are part of the decision:
 
@@ -423,9 +438,10 @@ The fail-safe rules are part of the decision:
 - the dispatch key is `loop-review|<ref>|r<round>` — one card per pair;
 - a delivery on flow B (a review card) is never itself reviewed;
 - self-review is refused: the reviewer may not be the card's assignee/holder;
-- the card's `acceptance_mode` decides `approve` vs `close_review`: only an `agent` original
-  is accepted after `APPROVE`; an `off`/`human` original gets the verdict recorded and its
-  review card closed.
+- the card's `acceptance_mode` decides what an `APPROVE` closes: an `agent` original is
+  accepted by the loop (`approve`); a `human` original gets the verdict recorded and its
+  review card closed (`record_verdict`) and stays in `in_review` for a person; an `off`
+  original is only touched by an ad-hoc review card (`close_review`).
 
 `approve` actions carry `acceptedBy: loop-review`. A `reject_task` / `reject_epic` action
 carries `mustFix[]` — the reviewer's numbered findings, or one pointer item when the findings

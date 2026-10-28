@@ -262,7 +262,11 @@ describe("server/routes — tasks, the gate and deliver", () => {
 
   it("reopens a done card to todo with a reason — and only that way", async () => {
     const created = dataOf(
-      await call("POST", "/api/v1/tasks", { project_id: "demo", title: "Reopen me" }),
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Reopen me",
+        acceptance_mode: "off",
+      }),
     );
     const ref = created.task.identifier;
     dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }));
@@ -1705,7 +1709,7 @@ describe("server/routes — project acceptance (0038)", () => {
         acceptance: "auto",
       }),
     );
-    // 0038 — an unresolved card under an `auto` project falls back to human.
+    // 0038 — an unresolved card under an `auto` project falls back to agent.
     const omitted = dataOf(
       await call(
         "POST",
@@ -1714,7 +1718,7 @@ describe("server/routes — project acceptance (0038)", () => {
         AGENT,
       ),
     );
-    assert.equal(omitted.task.acceptance_mode, "human");
+    assert.equal(omitted.task.acceptance_mode, "agent");
 
     const stated = dataOf(
       await call(

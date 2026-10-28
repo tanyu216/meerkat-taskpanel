@@ -154,7 +154,7 @@ plain card does not grow a line.
 | `status` | Where the card sits in the lifecycle. | One of the canonical words (`backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`, plus the `awaiting` overlay). |
 | `priority` | Urgency. | `low` · `medium` · `high` · `urgent`. |
 | `kind` | The card's role. | `task` · `epic`. |
-| `acceptance_mode` | Who closes the card. | `off` · `agent` · `human`; **absent** means `off` (the deliverer may close it). A review card (flow B) is always `off`. |
+| `acceptance_mode` | Who closes the card. | `off` · `agent` · `human`; a created card always carries a concrete resolved value (`agent` when nothing was declared — task or epic). **Absent** is only the storage default on a raw write, and reads as `off`. `human` is top-level only: a card with a parent is never human-accepted. A review card (flow B) is always `off`. |
 | `labels` | Free-form tags, shown in order. | Inline array. |
 | `project` | The board project. | Its id. |
 | `assignee` | Who is on the hook. | A dictionary name; empty ⇒ unassigned. |
@@ -183,8 +183,8 @@ plain card does not grow a line.
 | `accepted_by` | Who accepted the card automatically. | `loop-auto` (no review was required) or `loop-review` (after an `approve`). |
 | `accepted_round` | The round that acceptance names. | Integer. |
 | `auto_accepted` | The acceptance was automated. | `1`. |
-| `review_verdict` | The applied review verdict. | Passed through from `meta.review_verdict`; the workflow planner compares lowercase `approve`. No writer in this tree sets it. |
-| `review_verdict_round` | The round that verdict applied to. | Integer. |
+| `review_verdict` | The applied review verdict on a card its mode leaves for a person. | `approve`; written by the loop's `record_verdict` action on a `human` card, and the workflow planner compares the lowercase word. A card the loop closes itself carries `accepted_by` instead. |
+| `review_verdict_round` | The round that verdict applied to. | Integer; written with `review_verdict`. |
 | `rework_round` | The original round a rework child targets. | Integer. |
 | `flow` | The workflow lane the card belongs to. | `A` (dispatch/review) · `B`; passed through, not validated, so a team may write its own word. |
 | `depends_on` | Blockers that must finish first. | Inline array of card ids; direction is `blocks` with **source = the blocker**. |

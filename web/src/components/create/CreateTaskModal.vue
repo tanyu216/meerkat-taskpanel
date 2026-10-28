@@ -24,6 +24,7 @@ import {
   taskRoster,
 } from "../../stores/board.js";
 import { createTaskOpen, createTaskStatus, pushToast } from "../../stores/ui.js";
+import { ACCEPTANCE_MODES, defaultAcceptanceMode } from "../../lib/acceptance-default.js";
 import { dismissMemberFrom } from "../../lib/light-dismiss.js";
 import { errorTextKey } from "../../i18n/messages.mjs";
 import { t } from "../../i18n/index.js";
@@ -67,22 +68,25 @@ const canSubmit = computed(() => form.title.trim() !== "" && form.project_id);
 
 /**
  * 0038 — the card's acceptance snapshot. The project's value is the default;
- * `auto` resolves to `human` here, exactly as the server's fail-safe does, so
- * the hint and the created card agree. The select stays a native `<select>`
- * like the project field above it, and it is sent only when the creator chose
- * something.
+ * `auto` resolves to `agent` here, exactly as the server's resolver does, so
+ * the hint and the created card agree. `human` is opt-in and top-level only: a
+ * card being given a parent is shown `agent` instead (`lib/acceptance-default.js`).
+ * The select stays a native `<select>` like the project field above it, and it
+ * is sent only when the creator chose something.
  */
 const selectedProject = computed(
   () => board.projects.find((project) => project.id === form.project_id) ?? null,
 );
 const projectAcceptance = computed(() => selectedProject.value?.acceptance ?? "auto");
 const acceptanceMode = computed({
-  get: () => form.acceptance_mode ?? (projectAcceptance.value === "auto" ? "human" : projectAcceptance.value),
+  get: () =>
+    form.acceptance_mode ??
+    defaultAcceptanceMode(projectAcceptance.value, { hasParent: form.parent !== "" }),
   set: (value) => {
     form.acceptance_mode = value;
   },
 });
-const acceptanceModes = ["off", "agent", "human"];
+const acceptanceModes = [...ACCEPTANCE_MODES];
 
 /**
  * The status control is a `<details>` dropdown rather than a native `<select>`:

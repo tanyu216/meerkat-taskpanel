@@ -202,7 +202,12 @@ export function createTask(ctx, input) {
 
       // 0038 — one acceptance decision. The project is the default, an explicit
       // card value wins, a review card is always `off`, and an unresolved
-      // `auto` project falls back to `human`.
+      // `auto` project falls back to `agent`. `human` is top-level only: a create
+      // that names a parent is a child, so it can neither request human nor
+      // inherit a project-level human default (round 2). The parent *relation* is
+      // added later (`relation add`), which re-checks the same invariant.
+      const parentRef = input.parent ?? input.meta?.parent;
+      const hasParent = parentRef !== undefined && parentRef !== null && String(parentRef).trim() !== "";
       const resolvedAcceptance = resolveCardAcceptance({
         projectAcceptance: project.acceptance,
         requested: input.acceptanceMode,
@@ -210,6 +215,7 @@ export function createTask(ctx, input) {
         // structural result it reads, so the two cannot drift.
         reviewCard: reviewIdentityOf(candidate).isReview,
         kind: candidate.kind,
+        hasParent,
       });
       candidate.acceptanceMode = resolvedAcceptance.mode;
 
@@ -518,6 +524,29 @@ function applyAcceptanceOverride(ctx, input) {
   const next = assertCardAcceptance(value, "acceptance_mode");
   const current = cardAcceptanceOf(task.acceptanceMode);
   if (next === current) return task;
+
+  // Round 2 — the mode is a top-level closure gate. A card that already has a
+  // parent can never be `human`, whichever writer asks; the parent *edge* guard
+  // (`commands/relations.mjs`) refuses the other direction. Structural, so it is
+  // not softened by the actor's permissions below.
+  if (next === "human") {
+    const parentEdge = ctx.repos.relations.getParent(task.id);
+    if (parentEdge !== null && parentEdge !== undefined) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message:
+          `${task.identifier} has a parent; acceptance mode human is top-level only — ` +
+          "a nontop-level card is reviewed and closed by its own mode",
+        details: {
+          field: "acceptance_mode",
+          taskId: task.id,
+          identifier: task.identifier,
+          parentId: parentEdge.source,
+          mode: "human",
+        },
+        hint: { fix: "keep the child on off or agent; a person's decision is an awaiting question" },
+      });
+    }
+  }
 
   const human = String(actor.kind ?? "") === "human";
   const tightening = current === "off" && (next === "agent" || next === "human");

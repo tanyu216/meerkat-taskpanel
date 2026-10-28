@@ -549,6 +549,32 @@ export async function runWorkflowTick(deps) {
           );
           break;
 
+        // Review is mode-independent; only the close differs. A `human` original
+        // gets the round-scoped verdict recorded and its review card closed, but
+        // is left in `in_review` for a person to close through the ordinary
+        // acceptance gate. The marker makes a crash between the writes and the
+        // close recoverable (`held`).
+        case "record_verdict":
+          if (action.held !== true) {
+            await step(comment, "comment", action.original_ref, {
+              kind: "note",
+              body:
+                `Review ${action.review_ref} (round ${action.round}): VERDICT: APPROVE. ` +
+                "This card's acceptance_mode is `human`, so the verdict is recorded " +
+                "and the card stays in in_review for a person to close.",
+            });
+            await step(setMeta, "setMeta", action.original_ref, {
+              review_verdict: "approve",
+              review_verdict_round: String(action.round),
+            });
+          }
+          await closeReviewCard(
+            action,
+            `Loop closed this review card after recording VERDICT: APPROVE on ${action.original_ref}; ` +
+              "the original awaits a person's close.",
+          );
+          break;
+
         case "reject_task": {
           const body = `VERDICT: REJECT (review ${action.review_ref}, round ${action.round}).\n\n${
             action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
@@ -722,6 +748,8 @@ function describeWorkflowAction(action) {
       return `auto-accept ${action.original_ref} (round ${action.round})`;
     case "approve":
       return `approve ${action.original_ref} (round ${action.round}) and close ${action.review_ref}`;
+    case "record_verdict":
+      return `record the APPROVE on ${action.original_ref} (round ${action.round}) and close ${action.review_ref}`;
     case "reject_task":
     case "reject_epic":
       return `${action.type} ${action.original_ref} (round ${action.round})`;

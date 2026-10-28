@@ -186,14 +186,22 @@ dispatch), which the loop then executes. The exact invocation and every action f
 shape and its structural identity are `references/review-workflow.md` in the same skill,
 which also owns every card write this section names.
 
-A flow-A delivery that lands in `in_review` **on a card whose `acceptance_mode` is `agent`** is
-dispatched to the configured reviewer as a **review card**. The reviewer is
-`project.reviewer ??` the deployment reviewer. Poll wakes every configured reviewer through the
-normal atomic claim; a dedicated reviewer sees only review cards and never the public pool.
+A flow-A delivery that lands in `in_review` **on a card whose `acceptance_mode` is `agent` or
+`human`** is dispatched to the configured reviewer as a **review card**; review is
+mode-independent. The mode selects only the closer: the loop accepts an `agent` original after
+an `APPROVE`, while a `human` original gets the verdict recorded and is left for a person. The
+reviewer is `project.reviewer ??` the deployment reviewer. Poll wakes every configured reviewer
+through the normal atomic claim; a dedicated reviewer sees only review cards and never the
+public pool.
 
 An `off` card gets no review card. The plan carries `auto_accept`, which the loop applies
 (`loop-auto`); an `off` card may also skip `in_review` entirely (`issue deliver --to done`). A
-`human` card is left for the person (`auto_accept_skipped`, reason `human_mode`).
+`human` card never reaches auto-accept at all — its mode is not `off`, so its review still
+runs and only the close is the person's; nothing is alerted for that state (silence is the
+implemented behaviour). A card with a parent is never `human`: a person's decision on a
+subtask is an `awaiting` question, and the board refuses the mode at the parent edge and at
+`issue update --acceptance-mode human`. Every unresolved card — an epic included — defaults
+to `agent`, so a finished container is dispatched a review card in the pass that rolls it up.
 
 What keeps it safe to run unattended:
 

@@ -322,7 +322,12 @@ describe("server/main — the container reconcile at startup", () => {
     try {
       const { commands } = first.board;
       commands.createProject({ id: "proj", name: "P", actor: AGENT });
-      const child = commands.createTask({ projectId: "proj", title: "child", actor: AGENT });
+      const child = commands.createTask({
+        projectId: "proj",
+        title: "child",
+        acceptanceMode: "off",
+        actor: AGENT,
+      });
       commands.claim({ id: child.id, actor: AGENT });
       commands.deliver({ taskId: child.id, report, actor: AGENT });
       commands.moveStatus({ id: child.id, to: "done", actor: { kind: "human", id: "Terry" } });

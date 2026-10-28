@@ -214,17 +214,21 @@ _Avoid_: review gate, checklist, policy
 **Acceptance mode**:
 The one word that decides who may move a card into `done`: `off` (the deliverer may close it,
 and `in_progress → done` is allowed), `agent` (an independent review card must APPROVE first;
-`taskd` or a human closes), `human` (a person only). Resolved once at creation and stored on
-the card; a card **never** stores `auto`. Authority decides *who*; the acceptance baseline
-decides *whether* the evidence suffices.
+`taskd` or a human closes), `human` (a person only, after the review's verdict is recorded).
+It never decides *whether* a review happens: `agent` and `human` are both dispatched a
+reviewer, and only `off` is not. `human` is **top-level only** — a card with a parent is never
+human-accepted; a person's decision on a subtask is an `awaiting` question. Resolved once at
+creation and stored on the card; a card **never** stores `auto`. Authority decides *who*; the
+acceptance baseline decides *whether* the evidence suffices.
 _中文_: 验收模式
 _Avoid_: acceptance policy, approver role, reviewer (the reviewer reports; it does not accept)
 
 **Project acceptance**:
 A project's default mode for new cards — `auto` (the default), `off`, `agent` or `human`.
-`auto` means the creator decides per card; an unresolved card falls back to `human`, except
-an epic, which falls back to `off` because the board closes containers itself. It is a
-default, not a mandate: an explicit `--acceptance-mode` wins.
+`auto` means the creator decides per card; an unresolved card — task or epic — falls back to
+`agent`, because review is the default. `human` is a **top-level-only** project default: a
+child that names no mode under it falls back to `agent`. It is a default, not a mandate: an
+explicit `--acceptance-mode` wins.
 _中文_: 项目验收默认
 _Avoid_: review policy (retired), board policy
 
@@ -247,8 +251,9 @@ outside the frozen acceptance)
 **Auto-accept**:
 The loop's `auto_accept` action for a delivered card whose `acceptance_mode` is `off`: it
 writes `meta.accepted_by=loop-auto` and moves the card `in_review → done`. A `human` card is
-left for the person; an `off` card may also be delivered straight to `done`. It is distinct
-from closing a review card.
+never auto-accepted — it is reviewed, the verdict is recorded, and a person closes it; an
+`off` card may also be delivered straight to `done`. It is distinct from closing a review
+card.
 _中文_: 自动验收
 
 **Report**:

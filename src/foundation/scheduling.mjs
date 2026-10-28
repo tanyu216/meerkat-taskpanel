@@ -538,23 +538,21 @@ export function buildHandoff(input) {
   const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.actorKind}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
   const flags = attribution.join(" ");
-  // 0038 — the card's own mode is the closing rule. `input.review` is only the
-  // fallback for a payload that predates the field: it says this agent is in
-  // the reviewer set, which is the best available guess without a card mode.
+  // 0038 — the card's own mode is the closing rule. An unreadable mode (a
+  // payload that predates the field) falls back to `agent`: every unresolved
+  // card is reviewed, so review is the only honest guess.
   const declaredMode = String(card.acceptance_mode ?? card.acceptanceMode ?? "")
     .trim()
     .toLowerCase();
   const acceptanceMode = ["off", "agent", "human"].includes(declaredMode)
     ? declaredMode
-    : input.review === true
-      ? "agent"
-      : "human";
+    : "agent";
   const acceptanceRule =
     acceptanceMode === "off"
       ? "stop at in_review — the loop auto-accepts an off card."
       : acceptanceMode === "agent"
         ? "stop at in_review — the loop dispatches an independent reviewer; do not move it to done yourself."
-        : "stop at in_review — a human accepts to done.";
+        : "stop at in_review — the loop dispatches an independent reviewer and a human accepts to done.";
   const brief = cardFileRel(ref);
   const processDir = cardDirRel(ref);
   const lines = [
@@ -627,7 +625,9 @@ export function buildHandoff(input) {
  * A reviewer is an independent agent, not the card's worker: it reads the
  * original, the delivery report, the comment trail and the container's children,
  * and delivers exactly one thing — a verdict report on the review card. It moves
- * nothing: the loop is the acceptor. The `review_not_ready` check is first because the board may
+ * nothing: the loop applies the verdict and closes the review card (the loop
+ * accepts an `agent` original; a person closes a `human` one). The
+ * `review_not_ready` check is first because the board may
  * have moved between the dispatch and the wake, and a verdict on a card that is
  * no longer delivered is worse than no verdict at all.
  *

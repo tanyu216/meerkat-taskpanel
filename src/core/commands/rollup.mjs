@@ -230,7 +230,7 @@ export function advanceContainer(ctx, containerId, now, options = {}) {
     container.id,
     `Auto-rollup (${options.source ?? "event"}): ${refs.length}/${refs.length} child card(s) terminal — ` +
       `${done.length} done (${joinRefs(done)}), ${canceled.length} canceled (${joinRefs(canceled)}). ` +
-      `Epic delivered to ${moved.status} at ${now}; awaiting human acceptance.`,
+      `Epic delivered to ${moved.status} at ${now}; awaiting acceptance.`,
     now,
     refs,
   );

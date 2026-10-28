@@ -28,10 +28,14 @@ The continue turn runs three deterministic commands, in this order:
    alerts and the peer-inspector liveness row. No alert moves a card, and no LLM turn starts by
    default.
 2. **workflow** — the write channel. The **board** computes the plan and the **loop** applies
-   it. For a flow-A delivery whose card is `acceptance_mode: agent`, dispatch an independent
-   reviewer, apply the reviewer's `VERDICT:` report to the original, and close the review card
-   last. An `off` card is not dispatched: the plan emits `auto_accept` and the loop closes the
-   original directly (`loop-auto`). A `human` card is left for a person. On by default;
+   it. For a flow-A delivery, dispatch an independent reviewer regardless of whether the card
+   is `acceptance_mode: agent` or `human`, apply the reviewer's `VERDICT:` report, and close
+   the review card last. Only the close differs: an `agent` original is accepted by the loop
+   (`loop-review`); a `human` original gets the verdict recorded and is left for a person to
+   close. There is no kind filter — a finished epic is dispatched in the same pass that rolls
+   it up, and its review reads the child cards and the rollup. An `off` card is not
+   dispatched: the plan emits `auto_accept` and the loop closes the original directly
+   (`loop-auto`). On by default;
    `--workflow=no` disables it. The reviewer is `project.reviewer ??` the deployment reviewer
    (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / per-kind config). An `agent` card with no
    effective reviewer fails the loop at startup: the board would have dispatched a review
@@ -160,8 +164,11 @@ list. An install that has no shim on `PATH` can use `<agent-dir>/bin/taskctl`, o
 The card's own `acceptance_mode` is authoritative and arrives on the card; the loop keeps no
 local copy and there is no board-level policy. In loop terms it closes what the plan lets
 `taskd` close: an `agent` original after a current-round `APPROVE`, its review card, and an
-`off` card the plan auto-accepts. A `human` card is never accepted by the loop — record the
-evidence, stop, and let the person close it. A worker always stops at `in_review`; review cards
+`off` card the plan auto-accepts. A `human` card is still reviewed, but it is never accepted
+by the loop — record the verdict on the original, close the review card, and let the person
+close it. A card with a parent is never `human` (the board refuses the mode at the parent edge
+and at `issue update --acceptance-mode human`), and every unresolved card — task or epic —
+defaults to `agent`. A worker always stops at `in_review`; review cards
 are never held, and the loop always closes the card it dispatched. The `meerkat` board
 skill's `references/review-workflow.md` is the semantic authority; this skill describes **when** the
 loop dispatches and **how** it executes the plan.

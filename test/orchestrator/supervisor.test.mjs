@@ -503,7 +503,24 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /meta\.epic_triage=off/);
     assert.doesNotMatch(text, /--kind epic/);
     assert.doesNotMatch(text, /relation add T-1 --type parent/);
-    assert.match(text, /stop at in_review — a human accepts to done/, "the default has no reviewer");
+    assert.match(
+      text,
+      /stop at in_review — the loop dispatches an independent reviewer; do not move it to done yourself/,
+      "the default mode is agent: an undeclared card is reviewed",
+    );
+  });
+
+  it("tells a human-mode worker its review still runs — the mode selects only the closer", () => {
+    const text = buildHandoff({
+      card: { identifier: "T-1", title: "Wire the supervisor", project: "P1", acceptance_mode: "human" },
+      agent: "alice",
+      actorKind: "claude",
+    });
+    assert.match(
+      text,
+      /the loop dispatches an independent reviewer and a human accepts to done/,
+      "human is reviewed; only the close is the person's",
+    );
   });
 
   it("sets the acceptance list before work and escalates questions to the project session", () => {

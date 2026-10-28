@@ -18,6 +18,7 @@
 import { RELATION_ANCESTOR_CAP, RELATION_CHAIN_MAX, RELATION_FANIN_MAX } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { reviewIdentityOf } from "../../foundation/review-identity.mjs";
+import { cardAcceptanceOf } from "./acceptance-mode.mjs";
 import { RELATION_TYPES, RELATION_TYPE, TASK_KIND } from "./enums.mjs";
 
 /**
@@ -217,6 +218,42 @@ export function assertParentEdgeHasNoReviewCard({ source, target }) {
     });
   }
   return true;
+}
+
+/**
+ * A card with a parent is never `human`-accepted.
+ *
+ * The mode is a **top-level closure gate**: a person closes a card they own, and
+ * a subtask's decision is expressed as an `awaiting` question, not by closing
+ * it. This is the parent-edge half of the invariant (the other is
+ * `issue update --acceptance-mode human`); both live outside `--force`, because
+ * `--force` skips graph shape, never the meaning of the card.
+ *
+ * Pure: takes the child Task DTO.
+ *
+ * @param {object|null|undefined} child the target of the parent edge
+ * @returns {true}
+ * @throws {DomainError} VALIDATION_FAILED with `details.field = "acceptance_mode"`
+ */
+export function assertParentEdgeHasNoHumanChild(child) {
+  if (cardAcceptanceOf(child?.acceptanceMode ?? child?.acceptance_mode) !== "human") return true;
+  throw new DomainError("VALIDATION_FAILED", {
+    message:
+      `a human-accepted card cannot be a child (${child.identifier ?? child.id}): ` +
+      "acceptance mode human is top-level only",
+    details: {
+      field: "acceptance_mode",
+      type: "parent",
+      taskId: child.id,
+      identifier: child.identifier,
+      mode: "human",
+    },
+    hint: {
+      fix:
+        'change the child to --acceptance-mode agent (or off) first; a person\'s decision ' +
+        "on a subtask is an awaiting question, not a close",
+    },
+  });
 }
 
 export function assertParentEdgeAllowed(edge, context) {
