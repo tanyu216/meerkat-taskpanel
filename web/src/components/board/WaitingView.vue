@@ -21,10 +21,12 @@
  *     `data-waiting-reason-kind="question"|"blocked"|"acceptance"` and the stylesheet's
  *     attribute rule sets `--status-color`; no component names a colour (B27's
  *     "zero new hues").
- *   * **A row opens B09.** The row body is the pointer's affordance and
- *     `[data-waiting-open]` its keyboard twin and accessible name; both land on
- *     the board's own detail surface for the task the row names. There is no
- *     second drawer and no anchor back to the board.
+ *   * **A row opens B09 on the tab its reason names.** The row body is the
+ *     pointer's affordance and `[data-waiting-open]` its keyboard twin and
+ *     accessible name; both land on the board's own detail surface for the task
+ *     the row names, passing the row's `tab` as a one-shot intent (a delivery
+ *     opens Acceptance, a question Activity). There is no second drawer and no
+ *     anchor back to the board.
  *
  * What M1 rendered here (the card component, and the triggering question as an
  * inline summary plus a `<details>`) is **replaced** by the design's row: the
@@ -91,7 +93,7 @@ const loadingNow = computed(() => projectLoading.value || board.waitingPending >
  */
 function onRow(event, row) {
   if (event.target.closest("button")) return;
-  openDetail(row.identifier);
+  openDetail(row.identifier, { tab: row.tab });
 }
 </script>
 
@@ -182,7 +184,7 @@ function onRow(event, row) {
           class="td-iconbtn td-waiting-open"
           data-waiting-open
           :aria-label="$t('waiting.open', row.identifier)"
-          @click.stop="openDetail(row.identifier)"
+          @click.stop="openDetail(row.identifier, { tab: row.tab })"
         >
           <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
         </button>

@@ -25,6 +25,7 @@ import {
   addDepends,
   COLUMN_STATUSES,
   closeDetail,
+  consumeDetailIntent,
   dependsCandidates,
   detailDepends,
   isAgentKind,
@@ -260,9 +261,14 @@ function onTabKeydown(event) {
 /* A different card starts on Details; a card without sessions can never leave
    a hidden Sessions tab selected. */
 watch(() => task.value?.id, () => {
-  // A card that stopped for a human opens where the question and the comment
-  // box are; every other card keeps the design's Details default.
-  activeTab.value = task.value?.status === "awaiting" ? "activity" : "details";
+  // A caller that knows more than the status does names the landing tab once
+  // (the waiting queue: a delivery opens Acceptance, a question Activity). The
+  // intent is consumed here and cleared in the same act, so it can never colour
+  // a later open. With no intent, the old rule stands: a card that stopped for
+  // a human opens where the question and the comment box are; every other card
+  // keeps the design's Details default.
+  const intentTab = consumeDetailIntent(task.value?.identifier);
+  activeTab.value = intentTab ?? (task.value?.status === "awaiting" ? "activity" : "details");
   cancelReopen();
 });
 watch(hasSessions, (present) => {

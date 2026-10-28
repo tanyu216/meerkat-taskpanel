@@ -4907,6 +4907,78 @@ export async function run() {
     });
     // The contract's own B27 rules, read while the queue is on screen.
     const waitingResults = await evaluateRuleSet(waitingRules);
+
+    // ---- TP-0018 · a waiting row opens the drawer on the tab its reason names
+    //
+    // The queue's row knows what the drawer cannot infer from status alone:
+    // TD-7 is a delivery waiting for acceptance, so it opens the Acceptance
+    // panel; TD-13 is a question, so it opens Activity (the old rule's answer,
+    // which must survive). Then the *same* delivered card opened from the board
+    // must land on Details — proof the one-shot intent was consumed and cleared
+    // rather than sticking to the drawer.
+    // The drawer's landing tab, read once the card's own read has landed — the
+    // tab is chosen in the drawer's card watcher, so reading two frames early
+    // would read the *previous* card's tab.
+    const drawerState = async () =>
+      page.evaluate(() => ({
+        selected: [...document.querySelectorAll("[data-detail-tab]")]
+          .filter((tab) => tab.getAttribute("aria-selected") === "true")
+          .map((tab) => tab.getAttribute("data-detail-tab")),
+        tabs: document.querySelectorAll("[data-detail-tab]").length,
+        identifier: document.querySelector("[data-detail-drawer]")?.getAttribute("data-identifier") ?? null,
+        state: document.querySelector("[data-detail-drawer]")?.getAttribute("data-state") ?? null,
+      }));
+    const settleTab = async (ref) => {
+      await page.waitForFunction(
+        (expected) => {
+          const drawer = document.querySelector("[data-detail-drawer]");
+          if (!drawer || drawer.getAttribute("data-state") !== "open") return false;
+          if (drawer.getAttribute("data-identifier") !== expected) return false;
+          // `aria-busy` is false only once the card's read has landed; the
+          // landing tab is selected in the same watcher that adopts it.
+          return drawer.getAttribute("aria-busy") === "false";
+        },
+        ref,
+        { timeout: 10_000 },
+      );
+    };
+
+    await page.click('[data-waiting-item][data-task="TD-7"] [data-waiting-open]');
+    await settleTab("TD-7");
+    await page.waitForTimeout(120);
+    const acceptanceOpen = await drawerState();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const acceptanceClosed = await page.evaluate(
+      () => document.querySelector("[data-detail-drawer]")?.getAttribute("data-state") ?? null,
+    );
+
+    await page.click('[data-waiting-item][data-task="TD-13"] [data-waiting-open]');
+    await settleTab("TD-13");
+    await page.waitForTimeout(120);
+    const questionOpen = await drawerState();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const questionClosed = await page.evaluate(
+      () => document.querySelector("[data-detail-drawer]")?.getAttribute("data-state") ?? null,
+    );
+
+    // The board opens no intent: the delivered card falls back to Details even
+    // though the previous waiting open left it on Acceptance.
+    await page.click('[data-nav-item="board"]');
+    await page.waitForTimeout(150);
+    await page.evaluate(() => {
+      const card = [...document.querySelectorAll("[data-card]")].find(
+        (el) => (el.querySelector("[data-card-identifier]")?.textContent ?? "").trim() === "TD-7",
+      );
+      card?.click();
+    });
+    await settleTab("TD-7");
+    await page.waitForTimeout(120);
+    const boardOpenTab = await drawerState();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+
     await page.click('[data-nav-item="board"]');
     await page.waitForTimeout(120);
 
@@ -4964,6 +5036,28 @@ export async function run() {
     );
     check(m1.headCount === "3 waiting on you", `head count ${m1.headCount}`);
     check(m1.headCountHidden === false, "a non-empty queue must show its tally");
+    // TP-0018 — the row names the drawer tab its reason opens, and the intent is
+    // one-shot: the board's later open of the same delivered card is Details.
+    check(
+      acceptanceOpen.state === "open" && acceptanceOpen.identifier === "TD-7",
+      `the acceptance row opened ${acceptanceOpen.identifier} in state ${acceptanceOpen.state}`,
+    );
+    check(
+      acceptanceOpen.selected.join(",") === "acceptance",
+      `a delivered waiting row opened the drawer on ${acceptanceOpen.selected.join("/")}, expected acceptance`,
+    );
+    check(
+      questionOpen.selected.join(",") === "activity",
+      `the awaiting fixture opened the drawer on ${questionOpen.selected.join("/")} (${questionOpen.tabs} tabs, ${questionOpen.identifier}/${questionOpen.state}), expected activity`,
+    );
+    check(
+      boardOpenTab.selected.join(",") === "details",
+      `the board opened the delivered card on ${boardOpenTab.selected.join("/")} (${boardOpenTab.tabs} tabs, ${boardOpenTab.identifier}/${boardOpenTab.state}), expected details — a stale waiting intent`,
+    );
+    check(
+      acceptanceClosed === "closed" && questionClosed === "closed",
+      `Escape must close each waiting open (${acceptanceClosed} / ${questionClosed})`,
+    );
     check(waitingView.current === "page", "the waiting nav item must carry aria-current");
     check(waitingView.viewVisible === true, "the waiting view must be visible");
     check(waitingView.boardHidden === true, "the board view must be hidden while the waiting view is up");

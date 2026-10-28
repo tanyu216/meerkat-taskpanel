@@ -255,6 +255,45 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
   });
 });
 
+describe("B27 · a row names the drawer tab its reason opens", () => {
+  /** A delivered card, as the wire states one whose acceptance is a human's. */
+  function delivered(overrides = {}) {
+    return {
+      id: "1",
+      identifier: "TD-1",
+      title: "Delivered",
+      status: "in_review",
+      delivery_round: 1,
+      parent_id: null,
+      review_of_id: null,
+      review_round: null,
+      status_changed_at: at(30),
+      updated_at: at(30),
+      acceptance_mode: "human",
+      assignee: { id: "a1", display_name: "linus", kind: "agent" },
+      ...overrides,
+    };
+  }
+
+  it("sends a question or a blocked row to Activity and an acceptance row to Acceptance", () => {
+    assert.equal(waitingRow(card("1", "TD-1")).tab, "activity");
+    assert.equal(waitingRow(card("2", "TD-2", { awaiting_reason: "blocked" })).tab, "activity");
+    assert.equal(acceptanceRow(delivered()).tab, "acceptance");
+  });
+
+  it("carries the tab through the merged queue", () => {
+    const awaiting = waitingRows([card("1", "TD-1")], {}, NOW);
+    const acceptance = acceptanceRowsFrom([delivered({ id: "2", identifier: "TD-2" })], NOW);
+    assert.deepEqual(
+      mergeWaitingRows(awaiting, acceptance).map((row) => [row.reasonKind, row.tab]),
+      [
+        ["question", "activity"],
+        ["acceptance", "acceptance"],
+      ],
+    );
+  });
+});
+
 describe("0034 · the payload comment is the question", () => {
   const wire = (id, kind, author_kind) => ({ id, kind, author_kind, body: id, created_at: at(0) });
 
@@ -296,6 +335,7 @@ describe("0034 · the payload comment is the question", () => {
 
 // The import is at the bottom so the file's shape stays "helpers, then rules".
 import {
+  acceptanceRow,
   acceptanceRows,
   acceptanceRowsFrom,
   acceptanceWaitingTasks as acceptanceWaitingTasksFor,
