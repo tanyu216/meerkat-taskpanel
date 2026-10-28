@@ -304,13 +304,13 @@ order  = sort by ( tier ↑, round3(score) ↓, <tie-break 链 §6.3> )
 
 **这条把「权重排序」从一件 UI 小事变成一件能改变团队行为的事**：
 
-- **正面**：这是权重排序真正值钱的地方——「哪张先被唤醒」今天就等于「板子的默认序」，而那只是**创建顺序**（§2 S1a）。权重序让「先做该做的」在**派发层**生效。
+- **正面**：这是权重排序真正值钱的地方——在 v1.4 之前，「哪张先被唤醒」等于板子的列表序，而那只是**创建顺序**（§2 S1a）；v1.4 起列表序与派发序合为一条，权重序让「先做该做的」在**派发层**直接生效。
 - **风险（必须上报）**：一个错的权值向量会**静默改变团队派发**，而且不会报错、不会红测试——只会表现为「最近总在做某些卡」。v1.4 起权重序是**唯一的**列表序，这条风险因此**扩大**（每一轮 tick 都按权重派发，没有运行时开关可退回）。⇒ 护栏：①**权值可回溯**——能力位 `task_order` + `order_debug=1` 让「为什么是这张被唤醒」逐卡核对；②**先小样本校准**（§5.3）；③权值向量集中在 `src/foundation/constants.mjs`，怀疑派发异常时回退 = 改权值并发布，而不是翻一个运行期开关。
 - **边界**：本契约**不**改 `planTick` 本身，也不改 supervisor；它只决定喂给它的**候选数组的顺序**。
 
 ### 7.5 与既有 `DESIGN.md` §20 的关系（一句话）
 
-§20 管**项目**（侧栏那一列），本契约管**卡**（板/列表/候选）。两者**同构不同参**：同构 = 服务端算序 + 客户端消费 + `order_debug` + 3 位小数 + 终态沉底；不同参 = 归一化方式（§6.2）、因子集、以及「**默认与否**」（§20 是唯一序，本契约是 opt-in）。
+§20 管**项目**（侧栏那一列），本契约管**卡**（板/列表/候选）。两者**同构不同参**：同构 = 服务端算序 + 客户端消费 + `order_debug` + 3 位小数 + 终态沉底 + **各自是所在面的唯一序**；不同参 = 归一化方式（§6.2）与因子集。
 
 ---
 
@@ -322,14 +322,14 @@ order  = sort by ( tier ↑, round3(score) ↓, <tie-break 链 §6.3> )
 | **R2** | **优先级域两侧不一致**：《前端》5 值含 `none`（`test/web/blocks.contract.mjs#DOMAINS.PRIORITY` 冻结、原型 `data-priority="none"` 实有 4 张卡、`web/src/stores/board.js#PRIORITIES` 五值）；《core/存储》4 值（`src/core/domain/enums.mjs#PRIORITIES`），**永远不产出 `none`** | `src/core/domain/priority.mjs#priorityRank` 对**未知值兜底 `medium`** | **潜在陷阱（服务端目前不会踩到，但别把它做出来）**：因为 core 只产出 4 值，服务端算序时 `none` **不会出现**；但只要有人在**五值域**（wire / web / 原型）上复用 `priorityRank`，`none` 会被算成 `medium`（`rank 1`）、**排在 `low`（`rank 0`）之上**——「没定优先级」压过「定为最低优先级」。⇒ **必须另写一张显式全表**覆盖 `none`：`none=.000, low=.000, medium=.333, high=.667, urgent=1.000`，**禁止**复用 `priorityRank` 的 `?? medium` 兜底 |
 | **R3** | **SLA 阈值已内化，但打分口径仍需拍板**（v1.3 订正：v1.0 时「产品侧未定义」为真） | 阈值表在 `docs/sla.md` §2，`src/foundation/constants.mjs#TASK_ORDER_SLA_HOURS` 取其状态可映射行；`docs/sla.md` §3 是**工作时间**口径，打分表刻意用墙钟 | §5.2 参数表 + 默认值 + 「无对应 ⇒ 记 0」；签核问题 2（墙钟 vs §3 工作日历） |
 | **R4** | **空值 / 缺失字段** | `status_changed_at` 可为空（`""`）；`blocked_at` 仅在 blocked 时有值；`priority` 缺省 `medium`；`labels` 可为 `[]` | 逐因子给**总函数**：`status_changed_at` 空 ⇒ **回退 `created_at`**；`blocked_at` 空 ⇒ 该卡非 blocked，`S` 走 `status_changed_at`；**任何缺失都不产生 `NaN`**（`NaN` 会毒化整个比较器，让 `sort` 输出垃圾——这是 JS 里最典型的排序事故）。**兜底值必须是 `0`（无压力），不是最大值**（否则缺数据的卡会插队） |
-| **R5** | **`score` 随时间变化 ⇒ 序不稳定** | 由定义（`W/A/S` 用 `now`） | 明示：权重序是**时钟相关**的。⇒ ①**默认序不变**（§7.1）；② 纯函数**不读时钟**——`now` 由调用方注入（**照抄** `src/shared/project-order.mjs#rankProjects` 的 `now` 传参惯例），保证同一 `(数据, now)` ⇒ 同一序，可复现、可测 |
+| **R5** | **`score` 随时间变化 ⇒ 序不稳定** | 由定义（`W/A/S` 用 `now`） | 明示：权重序是**时钟相关**的，且 v1.4 起没有逃生口。⇒ ① 纯函数**不读时钟**——`now` 由调用方注入（**照抄** `src/foundation/project-order.mjs#rankProjects` 的 `now` 传参惯例），保证同一 `(数据, now)` ⇒ 同一序，可复现、可测；② 跨时刻的序变化是「压力随时间变化」的表达，不是抖动（R6 保证单向） |
 | **R6** | **单调性 ⇒ 无振荡** | 封顶比值对时间是**单调不减**的；tier 只在人类改状态时变 | 给出**一条性质**：固定数据下，一张卡的分**永不因时间流逝而下降** ⇒ 唯一的序变化来自人类动作（改状态/优先级/依赖）。**不会出现 A、B 互相超越的抖动**。这是选择「封顶比值」而非「秩归一化」的附带收益（秩归一化下，别人加卡会让你的分**下降**） |
 | **R7** | **W 与 B27 的 `since` 是两只不同的钟** | W = `status_changed_at`（状态机写入）；B27 的 `since` = 触发评论的 `created_at`，**否则** `updated_at`（`web/src/lib/waiting-queue.js#sinceOf`） | **不得合并**：两者在「刚有人评论过」的卡上会**背离**（W 大、`since` 新）。本契约不改 B27，只在文档里点名，防止实现者顺手复用 |
 | **R8** | **时区 / 时钟** | 全库时间列一律 ISO-8601 UTC 定宽毫秒（迁移 `0001_core_tables.sql`；`src/core/domain/task.mjs#toIsoMillis` / `#ISO_MILLIS`），字典序 = 时间序 | 差值一律 `Date.parse` 后相减，**不做本地时区换算**（v1，墙钟口径）；**负值钳到 0**（时钟回拨 / 未来时间戳 ⇒ 记 `0`，不得产生负分） |
 | **R9** | **可选因子 `L` 依赖一张未机器校验的词表** | `sev:` 词表在 `guides/task-interface.md` §15，是**约定**不是 schema；`labels` 本身自由文本 | 默认**关**（权值 0）；要开需先接受这个前提（签核问题 3） |
 | **R10** | **`epic` / `deploy` 被权重序顶到最前** | `src/core/domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS` 排除它俩；`deploy` 的排除还是**当天的裁定**（`da20acc`） | 领取型读里**沿用**既有的 kind 过滤（不得绕过）；展示型读里 `epic` 多半会因为「挡下游多」拿高 `B`——用 tier 与既定列集兜住，并在实现卡的测试里**显式**断言「epic 不在候选清单首位」 |
 | **R11** | **可解释性：为什么这张排第一** | 有 `order_debug` 投影，但**客户端默认看不到** | `order_debug=1` 返回逐卡 `{ tier, factors: {raw, normalised, weighted}, score, rank }`。**不做**「人话解释」的自动生成（那是文案工程，会引入新的 i18n 键与原型面，越界） |
-| **R12** | **性能 / 规模** | `tasks.mjs#list` 是 `LIMIT ? OFFSET ?`，有 `ix_tasks_board (project_id, status, sort_order)`；本契约的排序键是**表达式**，**既有索引不覆盖**它 | **诚实结论**：权重序是一次**全筛选集排序**（`O(n log n)`），`sort_order` 索引只能加速过滤、**加速不了这个键**。可接受的前提是**作用域足够窄**（单个 assignee 的卡，几十张量级）。**若要在整个项目上跑，需要一次真实测量**——本 lane 未测（未进容器、未起 `taskd`），这一条**必须**由 C2 的实现卡补上测量，或由配套调研卡（`T-20261014-033502-2`）的 §4 结论接续。<br>**已测 —— v1.1 回填，关闭 §12 U6**：C2 实现卡（`T-20261014-043124`）新增 `test/core/commands/task-order-scale.test.mjs`：**1004 张卡的单项目**（4 个 assignee 轮转、创建时间散布 60 天），各取 3 次中位数。作者 host 实测 **整项目板序 8.0 ms / 权重序 14.3 ms / 首页 50 张 10.7 ms**；同卡独立验证腿（`T-20261014-043124-2`）另跑 **6.9 / 12.6 ms**；本订正 lane 今日 host 复跑 **5.7 / 9.8 ms、首页 50 张 8.2 ms**（`node --test`，宿主允许项，见 `docs/docker.md` §Host-allowed checks）。⇒ **定性预判成立**（全筛选集排序、既有索引不加速该键），但**千卡量级仍是十毫秒级**，且只在显式 `order=weight` 时付出；默认序走 SQL 索引，**零成本**。**两条附注**：① 这是**宿主**测量、非容器测量，且随负载浮动 ⇒ 只记**量级与区间**（十毫秒级），不把某一次读数写成常数；② `order_debug=1` 的投影覆盖**整个 ranking**（§13.2），诊断读的成本随整个作用域增长 ⇒ **不要把 `order_debug` 放进轮询路径** |
+| **R12** | **性能 / 规模** | `tasks.mjs#list` 是 `LIMIT ? OFFSET ?`，有 `ix_tasks_board (project_id, status, sort_order)`；本契约的排序键是**表达式**，**既有索引不覆盖**它 | **诚实结论**：权重序是一次**全筛选集排序**（`O(n log n)`），`sort_order` 索引只能加速过滤、**加速不了这个键**。可接受的前提是**作用域足够窄**（单个 assignee 的卡，几十张量级）。**若要在整个项目上跑，需要一次真实测量**——本 lane 未测（未进容器、未起 `taskd`），这一条**必须**由 C2 的实现卡补上测量，或由配套调研卡（`T-20261014-033502-2`）的 §4 结论接续。<br>**已测 —— v1.1 回填，关闭 §12 U6**：C2 实现卡（`T-20261014-043124`）新增 `test/core/commands/task-order-scale.test.mjs`：**1004 张卡的单项目**（4 个 assignee 轮转、创建时间散布 60 天），各取 3 次中位数。作者 host 实测 **整项目板序 8.0 ms / 权重序 14.3 ms / 首页 50 张 10.7 ms**；同卡独立验证腿（`T-20261014-043124-2`）另跑 **6.9 / 12.6 ms**；本订正 lane 今日 host 复跑 **5.7 / 9.8 ms、首页 50 张 8.2 ms**（`node --test`，宿主允许项，见 `docs/docker.md` §Host-allowed checks）。⇒ **定性预判成立**（全筛选集排序、既有索引不加速该键），但**千卡量级仍是十毫秒级**。v1.4 起**每次列表读**都付出这个成本（没有 opt-in）；只有 md 导出仍走 SQL 索引。**两条附注**：① 这是**宿主**测量、非容器测量，且随负载浮动 ⇒ 只记**量级与区间**（十毫秒级），不把某一次读数写成常数；② `order_debug=1` 的投影覆盖**整个 ranking**（§13.2），诊断读的成本随整个作用域增长 ⇒ **不要把 `order_debug` 放进轮询路径** |
 | **R13** | **超期（overdue）** | `S` 是**封顶比值**，`min(已耗 / 阈值, 1)` ⇒ **越过阈值后不再加分** | **这是刻意的决定，不是遗漏**。理由：① 超期后仍然继续加分，会让一张极度超期的卡**永久钉在第一**，把 anti-starvation 变成新形式的饥饿（饿死的是「重要但不超期」的活）；② 超期的**语义变化**（从「有压力」到「已违约」）是**另一类信号**，应由**告警/巡检**承担（`monitoring/`、`docs/sla.md` 定义的 patrol），不该塞进排序权重。⇒ 超期卡靠 `S = 1.0` **进第一梯队**，但**不靠继续加分**赢过所有人。若 Terry 要「越期越狠」，那要**新增**一个独立因子（如「超期倍数，另设封顶」），本契约不预置 |
 | **R14** | **`blocked` 一词有两个所指，必须分清** | ① `tasks.status == "blocked"`（卡自己声明的阻塞，`blocked_at` 计时）；② 「有未完成的 `depends_on` 前置」（卡被别的卡挡住，**状态可能仍是 `todo`**） | 两者**进的是同一层 T1**（都是「停滞、要自己出手」），但**取的是不同字段**：① 读 `status` + `blocked_at`；② 读 relation `blocks`。**不得**用「`status == blocked`」去近似「有未完成前置」（大量被依赖卡住的卡状态仍是 `todo`，实读 `listCandidates` 的 `allBlockersDone` 就是为这一类做的硬过滤） |
 | **R15** | **`blocked_at` 离开 blocked 后不清空**（它是「最近一次进入 blocked 的时刻」，`src/core/storage/repositories/tasks.mjs#moveCas` **只在 `to === "blocked"` 时写入、任何离开都不清**） | 同左（实读 `moveCas`：`if (to === "blocked") { sets.push("blocked_at = ?") }`，未见清除分支；对比 `awaiting_reason` 是**每次 move 都重写**、离开即清） | **S 因子的 `blocked_at` 分支必须被 `status == "blocked"` 严格门住**。若实现漏了这个门，一张「三个月前被阻塞过一次、早已解阻」的卡会带着三个月前的时间戳拿到 `S = 1.0` 而插到最前——**静默、无报错**。⇒ 实现与 C3 都要有一条断言：「非 blocked 卡的 `S` 只走 `status_changed_at`」 |
@@ -548,7 +548,7 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 
 **为什么这是对的**：投影回答的是「**这张卡为什么在这个位置**」，而这个答案**必然**要引用它赢过、输给的那些卡。把投影按页切等于把「它赢了谁」删掉，投影就退化成「它自己的因子值」，也就答不出 §8 R11 承诺的那个问题。
 
-**为什么必须登记到成本上（计入 §8 R12）**：`order_debug=1` 的成本 = **整个作用域的排序 + 整个作用域的投影**，**与 `limit` 无关**。⇒ 诊断开关**不得**出现在轮询路径上（轮询该用 `order=weight` 且**不带** `order_debug`）。这条附注已写进 §8 R12 的处置。
+**为什么必须登记到成本上（计入 §8 R12）**：`order_debug=1` 的成本 = **整个作用域的排序 + 整个作用域的投影**，**与 `limit` 无关**。⇒ 诊断开关**不得**出现在轮询路径上（轮询**不带** `order_debug`）。这条附注已写进 §8 R12 的处置。
 
 **实读锚点**：`src/core/commands/tasks.mjs#readOrdered` 返回 `orderDebug: debug ? ranked.map(taskOrderDebugEntry) : null` —— `ranked` 是**排序后的全集**，`page` 只喂给 `tasks`；函数内注释逐字：「The projection covers the whole ranking, not the page — the question it answers is "why is this card where it is", and that needs the cards it beat.」候选读（`orderedCandidates`）同构。
 
