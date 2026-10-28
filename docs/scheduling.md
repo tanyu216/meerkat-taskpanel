@@ -290,10 +290,10 @@ line) double-starts work. Guards:
   `max-concurrency − live subagents − queued cards` (default 8), and each project
   directory has its own cap (`--project-concurrency`). Workers and reviewers draw
   from the same budget — there is no per-role reservation; whichever cards are
-  offered first take the slots. The candidate read is **weight-ordered by
-  default**, so "first" means the highest-weight card (tier, then priority, time
-  in status, age, SLA pressure and downstream fan-out), not the oldest one. A
-  full fleet defers candidates rather than piling up handoffs.
+  offered first take the slots. The candidate read is **weight-ordered**, so
+  "first" means the highest-weight card (tier, then priority, time in status,
+  age, SLA pressure and downstream fan-out), not the oldest one. A full fleet
+  defers candidates rather than piling up handoffs.
 - **Crash recovery.** The **ping** clock prunes the legacy registry of pids that
   are gone every 60 seconds. The resident path releases a slot from the ledger:
   every live row is either a turn in flight or an orphan, so a row whose last
