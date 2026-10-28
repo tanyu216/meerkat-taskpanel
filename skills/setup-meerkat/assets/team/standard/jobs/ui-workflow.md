@@ -5,6 +5,9 @@ user sees or does; read it directly in standalone mode for a single feature opti
 prototype revision. The prototype answers the design questions with evidence; it does not
 write the PRD unless the change is product-scoped, and it is not a delivery.
 
+Board operations (claim, heartbeat, comment, report, deliver, move, brief refresh) are the
+`meerkat` board skill's contract; load it before the first write.
+
 ## Modes
 
 ### Card mode

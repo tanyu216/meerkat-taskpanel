@@ -44,11 +44,15 @@ The continue turn runs three deterministic commands, in this order:
    with no project directory for the card, or when the brief cannot be written, nothing is
    claimed.
 
-The exact `taskctl` invocations and the JSON keys each pass reads are the board skill's
-capability contract: `meerkat`, `references/capabilities.md`. This skill records only
+The exact `taskctl` invocations and the JSON keys each pass reads are the `meerkat` board
+skill's capability contract (`references/capabilities.md`). This skill records only
 the decisions — when to patrol, dispatch, claim, wake or notify. **The board's plan is the
 authority on actions**; a refused call carries a named code and hint, and the loop acts on that
 rather than pre-checking board rules here.
+
+**Board operations belong to the `meerkat` board skill.** Whenever a step needs a card read or
+write — claim, heartbeat, comment, question, report, deliver, move, relation, brief refresh,
+attachment — follow that skill; this one records only when and why.
 
 ### Invocation
 
@@ -113,9 +117,9 @@ same acceptance rules. Two drivers run it; the turn says which.
    human has answered, and `in_review` cards pending acceptance. **Both
    answer channels are the same record** — a human comment in the board UI and an answer typed
    in this conversation:
-   - Before asking, re-read the card (`taskctl comment list <ref> --limit 20 --json`). If a
-     human comment is newer than the question, the human already answered — so do not ask
-     again, do not write a second comment, and run a control tick.
+   - Before asking, re-read the card's comment trail (the `meerkat` board skill's comment
+     list). If a human comment is newer than the question, the human already answered — so
+     do not ask again, do not write a second comment, and run a control tick.
    - Otherwise ask the whole frontier in **one message**: one numbered block per card, each item
      Q1..Qn with a recommendation, worded so "yes" accepts it. Facts are yours to look up —
      never ask for a fact the card, code or docs can establish. A question that depends on
@@ -123,8 +127,8 @@ same acceptance rules. Two drivers run it; the turn says which.
      never drip one comment per item.
    - After they answer, re-read once more: if a human comment (a UI answer posted while you were
      asking) is already newer than the question, do not duplicate it; otherwise record their
-     answer verbatim with `taskctl comment add <ref> --as-human …`. The board comment is
-     authoritative; the in-session question is only the front-end.
+     answer verbatim as a human comment (`--as-human`, per the `meerkat` board skill). The
+     board comment is authoritative; the in-session question is only the front-end.
    - Apply the move the question ladder prescribes (an awaiting card resumes on the human
      comment; an in_progress agent question → `todo`/reattach) and run a control tick so the
      resumed card is processed promptly. Only a human comment resumes awaiting.
@@ -158,8 +162,8 @@ local copy and there is no board-level policy. In loop terms it closes what the 
 `taskd` close: an `agent` original after a current-round `APPROVE`, its review card, and an
 `off` card the plan auto-accepts. A `human` card is never accepted by the loop — record the
 evidence, stop, and let the person close it. A worker always stops at `in_review`; review cards
-are never held, and the loop always closes the card it dispatched. The board skill's
-`references/review-workflow.md` is the semantic authority; this skill describes **when** the
+are never held, and the loop always closes the card it dispatched. The `meerkat` board
+skill's `references/review-workflow.md` is the semantic authority; this skill describes **when** the
 loop dispatches and **how** it executes the plan.
 
 ### Event subscriber
@@ -191,12 +195,11 @@ which is also the subagent's cwd:
   **defers the card unclaimed**; a refused claim unregisters it again. A claim with no brief
   has nowhere to run.
 - `card.md` is the **authoritative brief** handed to the subagent and re-read on resume. The
-  hub rewrites it from the board: **never edit it**. It is a snapshot;
-  `taskctl issue get <ref> --json` remains the live state and the source of the `version` a
+  hub rewrites it from the board: **never edit it**. It is a snapshot; the live card (read as
+  JSON through the `meerkat` board skill) is the live state and the source of the `version` a
   write needs.
-- Other process files — including **downloaded attachments** — go in the same directory:
-  `taskctl attachment list <ref> --json`, then
-  `taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filename>`.
+- Other process files — including **downloaded attachments** — go in the same directory; the
+  `meerkat` board skill owns the attachment list and download commands.
 - The hub owns the refresh, debounced and rate-limited, for every registration; a failed
   refresh leaves the previous brief in place. Dispatch is separate: an event wakes a continue
   turn only while the resident pool is live.
@@ -239,8 +242,8 @@ only what the answers unblocked.
 requires: board task-interface v1   — board release >= 0.1.0
 ```
 
-The loop drives the board only through `taskctl` — the capability subset is the board skill's
-`references/capabilities.md` (including `events follow` for the live stream; the loop never
+The loop drives the board only through `taskctl` — the capability subset is the `meerkat`
+board skill's `references/capabilities.md` (including `events follow` for the live stream; the loop never
 calls the HTTP API). `task-interface v1` and the board-side workflow plan both ship in the
 0.1.0 baseline. Gate check before pointing a loop at a board:
 

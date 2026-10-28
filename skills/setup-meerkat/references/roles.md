@@ -33,15 +33,14 @@ matching product archive exists:
 - A producer card (design or architecture) sets `meta.stage_handoff=required` and writes a
   `## Handoff` block into its delivery report `conclusion`: the archived paths, the
   acceptance source, the delivery shape and the proposed next cards.
-- The project session creates the next card in `backlog` with `--meta design_stage=<ref>`,
-  copies the block into the description, seeds `--acceptance` from the acceptance source,
-  links `relation add <producer> --type blocks --target <next>`, then moves it to `todo`.
-  When the card changes code, the acceptance seed also carries the mandatory gates (100%
-  pass, >80% coverage, mock boundary, security scan), so the review card's baseline has
-  them.
-- An epic is `kind=epic` and is not claimable; children are `kind=task` linked with
-  `relation add <epic> --type parent --target <child>`. The epic's only delivery report is
-  the rollup.
+- The project session creates the next card in `backlog` with `meta.design_stage=<ref>`,
+  copies the block into the description, seeds its acceptance from the acceptance source,
+  links it to the producer with a `blocks` relation, then moves it to `todo`. The create,
+  relation and move commands are the `meerkat` board skill's contract. When the card changes
+  code, the acceptance seed also carries the mandatory gates (100% pass, >80% coverage, mock
+  boundary, security scan), so the review card's baseline has them.
+- An epic is `kind=epic` and is not claimable; children are `kind=task` linked to it with a
+  `parent` relation. The epic's only delivery report is the rollup.
 - `blocks` gates on `done`; a canceled producer withholds the downstream card forever, so
   remove the edge or cancel the downstream card.
 - Bug and small-change cards carry `meta.product_change=none`; they use the defect,
@@ -155,7 +154,8 @@ reason, and `partial`/`not_met` block delivery; a leftover lies outside the froz
 acceptance and names its owner. It is **not** the `## Handoff` block;
 that block is a producer card's cross-card transfer (Jobs design, Linus architecture only).
 The last stage of every workflow is **Deliver** — run the self-check, add the handoff block
-on a producer card, then `issue deliver` at `in_review`.
+on a producer card, then deliver at `in_review`; the `meerkat` board skill owns the delivery
+command.
 
 ## Manifest
 

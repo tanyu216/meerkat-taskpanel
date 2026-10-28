@@ -4,6 +4,9 @@ Read this from the role workflow when a development fix must be verified, includ
 production bug. The question is narrow: does the fix remove the defect without breaking
 anything around it?
 
+Board operations (claim, heartbeat, comment, report, deliver, move, brief refresh) are the
+`meerkat` board skill's contract; load it before the first write.
+
 ## Inputs
 
 - the bug card and the fix card/report, with the commit or artifact under test;

@@ -1,12 +1,13 @@
 # Jobs — self-check before delivery
 
-Run this after the design work and before delivery. First re-export the brief so the check
-runs against the current card, then work through every stage you ran; the skip rules at the
-end decide which stages apply.
+Run this after the design work and before delivery. First re-export the brief through the
+`meerkat` board skill so the check runs against the current card, then work through every
+stage you ran; the skip rules at the end decide which stages apply.
 
-Never hand-edit `card.md`; re-export it. This is the role's pre-delivery audit. It is not
-the `## Handoff` block: that block is a producer card's cross-card transfer (Jobs design,
-Linus architecture only).
+Never hand-edit `card.md`; re-export it. Board operations are the `meerkat` board skill's
+contract. This is the role's pre-delivery audit, not the delivery itself.
+It is not the `## Handoff` block: that block is a producer card's cross-card transfer
+(Jobs design, Linus architecture only).
 
 ## Direction check (stage 1)
 

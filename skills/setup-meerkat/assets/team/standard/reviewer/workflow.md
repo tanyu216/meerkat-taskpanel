@@ -21,8 +21,11 @@ verdict.
 
 ## Read
 
-- the original's description and every **frozen** acceptance item (`acceptance` in
-  `issue get --json`); `meta.acceptance` is only the seed;
+Board operations (claim, heartbeat, comment, report, deliver, move, brief refresh) are the
+`meerkat` board skill's contract; load it before the first write.
+
+- the original's description and every **frozen** acceptance item (the live card's
+  `acceptance`, read through the `meerkat` board skill); `meta.acceptance` is only the seed;
 - `.meerkat/<original>/card.md` (the authoritative brief) and
   `.meerkat/<original>/plan.md` (the worker's index, if it exists), plus notes, evidence,
   report drafts and attachments in that directory;

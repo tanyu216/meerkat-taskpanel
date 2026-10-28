@@ -8,6 +8,9 @@ or behaviour change inside the recorded architecture belongs to
 `implementation-workflow.md`. The architecture direction is **E5**: the project session
 reviews it and the human decides it. Do not implement product behaviour here.
 
+Board operations (claim, heartbeat, comment, report, deliver, move, brief refresh) are the
+`meerkat` board skill's contract; load it before the first write.
+
 Every step below names its output. A step is done when that output exists and is linked
 from `.meerkat/<id>/plan.md`; do not start the next step while a decision is open.
 
@@ -539,8 +542,8 @@ surface, the directory tree, the gate path, the release and deploy paths (or the
 `n/a`), the agent-instruction baseline (`CLAUDE.md` or `AGENTS.md`), the acceptance source,
 the `Delivery shape` (one task, or an epic with children) and the proposed implementation
 card(s). Deliver at `in_review` with the evidence. Do not create the implementation card;
-the project session triages it, seeds its acceptance and links it with
-`relation add <this-card> --type blocks --target <impl>` (or `parent` for an epic).
+the project session triages it, seeds its acceptance and links it to this card as a blocker
+(or as a parent for an epic), using the `meerkat` board skill's relation command.
 
 The self-check audits this card; the `## Handoff` block is the cross-card transfer. A
 producer card has both.

@@ -4,6 +4,9 @@ Read this from the role workflow for a card whose goal is to restructure code th
 works. The design freedom is in the shape of the code, never in what it does: a caller has
 to be unable to tell the refactor happened.
 
+Board operations (claim, heartbeat, comment, report, deliver, move, brief refresh) are the
+`meerkat` board skill's contract; load it before the first write.
+
 ## Inputs
 
 - `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot;

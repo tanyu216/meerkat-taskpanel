@@ -3,6 +3,9 @@
 Read this from the role workflow when the card builds or refreshes the test inventory for a
 feature or change. It covers planning, writing, review, execution, security and regression.
 
+Board operations (claim, heartbeat, comment, report, deliver, move, brief refresh) are the
+`meerkat` board skill's contract; load it before the first write.
+
 ## Inputs
 
 - `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot;

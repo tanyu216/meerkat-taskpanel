@@ -8,8 +8,8 @@ disable-model-invocation: true
 
 One idempotent pass over the things a working Meerkat TaskPanel deployment needs:
 
-1. **Install/repair** the server, `taskctl`, the board skill, the loop skill and the
-   supervisor.
+1. **Install/repair** the server, `taskctl`, the `meerkat` board skill, the loop skill and
+   the supervisor.
 2. **Point the CLI at the right board** — local `taskd` or a remote one — and confirm the
    choice before anything starts.
 3. **Offer the Matt Pocock integration** (`/setup-matt-pocock-skills`) when that skill is
@@ -20,6 +20,9 @@ One idempotent pass over the things a working Meerkat TaskPanel deployment needs
 
 This skill is **command-only** (`disable-model-invocation: true`). It installs software
 and writes files, so it never runs unless the user asks for it.
+
+Card operations themselves are the `meerkat` board skill's contract. This skill installs and
+configures, and the team workflows it ships defer every card write to that skill.
 
 In the commands below, `<skill-dir>` is the directory containing this `SKILL.md` and
 `<checkout>` is the detected source tree. Run the bundled scripts and `install.sh` by
@@ -190,8 +193,8 @@ Each worker role's `self-check.md` is its **pre-delivery audit** — it maps the
 requirements and acceptance to evidence and re-runs the gates. It is not the `## Handoff`
 block: only a producer card (Jobs design, Linus architecture) writes that block, to carry
 cross-card inputs to the project session. The last stage of every workflow is **Deliver**:
-run the self-check, add the handoff block on a producer card, then `issue deliver` at
-`in_review`.
+run the self-check, add the handoff block on a producer card, then deliver at `in_review`
+(the `meerkat` board skill owns the delivery command).
 
 A Jobs card keeps its working artifacts in `.meerkat/<id>/` — `spec.md`, `prototype/` and
 `prd.md` — and the workflow's **mandatory archive stage** promotes them to the **project's**
@@ -308,18 +311,16 @@ prints the install command. `--native-agent-defs none` writes none of them.
 
 ## Identity and decision rights (what the team inherits)
 
-- Every agent write carries `--agent <Role> --actor-kind <kind>`. On `issue create`, a
-  role also carries `--reporter <Role> --reporter-kind agent` (the creator is the
-  reporter, and create's reporter kind defaults to `human`) and `--assignee-kind agent`;
-  `issue assign` resolves a role name to kind `agent` by default. The creator, assignee
-  and report/comment author are the role, not a human.
-- A human decision or constraint is recorded only with `--as-human`; it signs the fixed
-  `TASKCTL_HUMAN`. Never use it for a role's own view.
-- The ladder is **subagent → main session → human**. A subagent asks with an agent
-  `question` comment and stops; the project session decides what it can, or escalates
-  E1-E5. Any human comment resumes an awaiting card, whatever its kind; the resumed worker
-  judges from its content whether it is a complete decision.
-- The reviewer never enters awaiting; insufficient evidence is a `VERDICT: REJECT`.
+The card identity rules — the agent signature, the reporter and the assignee kind — are the
+`meerkat` board skill's contract; the creator, assignee and report/comment author are the
+role, not a human. A human decision or constraint is recorded only with `--as-human`, which
+signs the fixed `TASKCTL_HUMAN`; never use it for a role's own view.
+
+The ladder is **subagent → main session → human**. A subagent asks with an agent `question`
+comment and stops; the project session decides what it can, or escalates E1-E5. Any human
+comment resumes an awaiting card, whatever its kind; the resumed worker judges from its
+content whether it is a complete decision. The reviewer never enters awaiting; insufficient
+evidence is a `VERDICT: REJECT`.
 
 ## Files
 
