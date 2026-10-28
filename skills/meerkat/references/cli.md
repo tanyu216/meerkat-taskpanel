@@ -591,6 +591,16 @@ taskctl attachment download 3f1c9a2e-… --out .meerkat/PROJ-0007/shot.png
 taskctl attachment remove 3f1c9a2e-…               # the id `list` prints
 ```
 
+A file that already exists when the card is created — a plan, a third-party spec, a vendor's
+PDF, a screenshot — is uploaded immediately after `issue create`: the create has no `--file`,
+so `attachment add` is the second call, and the card's brief lists it from then on. Any type the
+board accepts can ride on a card — a plan is the common case, not a restriction.
+
+A **plan** is stored under the fixed name `plan.md` (`--name`), whatever the file is called on
+disk: that is the name the worker and the reviewer look for, and a random export name is not.
+Every other document keeps its own name, and a plan that is not Markdown keeps its extension —
+`--name` also decides the stored `content_type` when the extension names one.
+
 Upload mints the metadata row, then stores the bytes — a row whose `PUT` never arrives answers
 an honest `404` on download. Removal deletes the row and the bytes in one transaction; it is
 **not recoverable**. An attachment id must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`.
