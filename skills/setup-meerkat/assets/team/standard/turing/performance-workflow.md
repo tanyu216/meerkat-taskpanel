@@ -4,6 +4,9 @@ Read this from the role workflow only when the card, the acceptance or the proje
 asks for performance, latency, throughput or resource testing. It never starts by default.
 Performance is a decision aid, not a correctness gate.
 
+Board operations (claim, heartbeat, comment, report, deliver, move, brief refresh) are the
+`meerkat` board skill's contract; load it before the first write.
+
 ## Steps
 
 ### 1. Define the question

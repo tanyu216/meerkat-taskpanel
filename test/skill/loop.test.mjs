@@ -186,13 +186,30 @@ describe("loop skill: SKILL.md", () => {
     assert.match(text, /\.meerkat\/<identifier>\//);
     assert.match(text, /authoritative brief/);
     assert.match(text, /never edit it/i);
-    assert.match(text, /taskctl attachment download/);
+    assert.match(text, /attachment/i, "the process directory still names attachments");
+    assert.match(
+      text,
+      /`meerkat`[^\n]*(board skill|card operation|capabilit)/i,
+      "the brief section delegates card operations to the meerkat board skill",
+    );
 
     const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
-    assert.match(operation, /taskctl export md/);
     assert.match(operation, /Register before claim/);
     assert.match(operation, /The hub refreshes every registered file/);
     assert.match(operation, /deferred\s+\*\*unclaimed\*\*|deferred\nunclaimed|deferred/);
+    assert.match(
+      operation,
+      /`meerkat`[^\n]*(board skill|card operation|capabilit)/i,
+      "operation.md delegates card operations to the meerkat board skill",
+    );
+  });
+
+  it("delegates card writes to the meerkat board skill instead of restating its verbs", () => {
+    const boardVerb = /\btaskctl (issue|comment|relation|report|attachment)\b/;
+    const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
+    for (const [file, content] of [["SKILL.md", text], ["references/operation.md", operation]]) {
+      assert.doesNotMatch(content, boardVerb, `${file} must not restate a board verb`);
+    }
   });
 
   it("names the attachment download command in the board skill's CLI reference", () => {
@@ -202,6 +219,30 @@ describe("loop skill: SKILL.md", () => {
     );
     assert.match(cli, /attachment download <attachment-id> --out <file>/);
     assert.match(cli, /--out \.meerkat\/PROJ-0007\/shot\.png/);
+  });
+});
+
+describe("board skill: the description covers indirect card operations", () => {
+  const text = readFileSync(join(ROOT, "skills", "meerkat", "SKILL.md"), "utf8");
+
+  it("triggers on the briefing and delivery language the loop and roles use", () => {
+    // A loop handoff or a role workflow rarely says "claim a card"; it says "read the
+    // brief", "re-export card.md" or "deliver the card". The description is the only
+    // trigger surface, so it must cover those phrasings, not just the direct commands.
+    const description = readFrontmatterField(text, "description");
+    assert.ok(typeof description === "string" && description.length > 0, "description exists");
+    for (const anchor of [
+      /card\.md/,
+      /re-export/i,
+      /brief/i,
+      /deliver/i,
+      /heartbeat/i,
+      /acceptance/i,
+      /taskctl/i,
+      /meerkat-loop|handoff|role/i,
+    ]) {
+      assert.match(description, anchor, `the description must cover ${anchor}`);
+    }
   });
 });
 

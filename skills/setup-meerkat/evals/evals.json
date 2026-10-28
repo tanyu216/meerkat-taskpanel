@@ -64,7 +64,7 @@
         "Each subagent question is recorded as an agent question comment on an in_progress card.",
         "The operational and epic-split items are answered in a note (never a decision kind or awaiting), and the card's single move is the E2 escalation to awaiting; the note preserves the operational answers for the resumed worker.",
         "The epic split is presented as the project session's decision; only a scope expansion is said to be E1 for the human.",
-        "The E2 question becomes issue move ... awaiting --awaiting-reason E2 --question with options and a recommendation.",
+        "The E2 question moves the card to awaiting with the E2 reason and a question carrying options and a recommendation.",
         "No example has the subagent writing decision, confirm or change.",
         "The questions are one round: one question string per card (one question comment), not one comment per item."
       ]

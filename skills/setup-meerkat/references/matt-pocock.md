@@ -12,9 +12,9 @@ skill can fire it through the Skill tool. Two honest routes:
    `/setup-matt-pocock-skills  — integrate meerkat-taskpanel as this repository's issue tracker`
    (the double space before the dash is free text, not syntax).
 2. **Read its `SKILL.md`** and follow the same process manually, with the user's
-   agreement. Choose Section A = **Other** and describe the `taskctl` board: cards via
-   `issue create/list/candidates/move`, comments, relations, and the board status
-   workflow. Keep the default triage labels if the `triage` skill is installed; use
+   agreement. Choose Section A = **Other** and describe the `taskctl` board: cards,
+   comments, relations and the board status workflow, with the command surface left to the
+   `meerkat` board skill. Keep the default triage labels if the `triage` skill is installed; use
    single-context domain docs unless the repository is a monorepo.
 
 Never claim the skill ran when it did not.

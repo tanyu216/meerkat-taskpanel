@@ -412,10 +412,56 @@ describe("skill frontmatter and assets", () => {
       "reviewer/self-check.md",
       "reviewer/reviewer-prompt.md",
     ];
-    const banned = /\bgit (?:worktree|merge|branch|checkout)\b|--no-ff|branch -d|\btaskctl\b|`\/init`|\bnpm run\b|\bdocker\b|\bpodman\b|\bsystemctl\b|\blaunchctl\b|\bcore\.hooksPath\b/;
+    const banned = /\bgit (?:worktree|merge|branch|checkout)\b|--no-ff|branch -d|\btaskctl\b|\bissue (?:create|move|get|update|deliver|heartbeat|assign)\b|\bcomment add\b|\brelation add\b|\battachment (?:download|list)\b|`\/init`|\bnpm run\b|\bdocker\b|\bpodman\b|\bsystemctl\b|\blaunchctl\b|\bcore\.hooksPath\b/;
     for (const rel of files) {
       const text = readFileSync(join(team, rel), "utf8");
       assert.doesNotMatch(text, banned, `${rel} must describe the task process, not project mechanics`);
+    }
+  });
+
+  it("points every card-operation passage at the meerkat board skill", () => {
+    // The role files are read by workers that may never see the board skill in a skill
+    // list. A pointer that names it — and where it is installed — is what makes the
+    // delegation executable under every actor kind, including codex and pi.
+    const team = join(SKILL, "assets", "team", "standard");
+    const files = [
+      "jobs/workflow.md",
+      "jobs/ui-workflow.md",
+      "jobs/self-check.md",
+      "linus/workflow.md",
+      "linus/architecture-workflow.md",
+      "linus/implementation-workflow.md",
+      "linus/refactor-workflow.md",
+      "linus/self-check.md",
+      "turing/workflow.md",
+      "turing/test-design-workflow.md",
+      "turing/regression-workflow.md",
+      "turing/performance-workflow.md",
+      "turing/self-check.md",
+      "reviewer/workflow.md",
+      "reviewer/reviewer-prompt.md",
+    ];
+    for (const rel of files) {
+      const text = readFileSync(join(team, rel), "utf8");
+      if (!/card\.md|acceptance|deliver|claim|heartbeat|brief/i.test(text)) continue;
+      assert.match(
+        text,
+        /`meerkat`[^\n]*(board skill|card operation|card brief)/i,
+        `${rel} mentions a card operation but does not point at the meerkat board skill`,
+      );
+    }
+  });
+
+  it("keeps board verbs in the meerkat skill, not in the setup reference", () => {
+    const boardVerb = /\bissue (?:create|move|get|update|deliver|heartbeat|assign)\b|\bcomment add\b|\brelation add\b|\battachment (?:download|list)\b/;
+    for (const rel of ["SKILL.md", "references/roles.md"]) {
+      const text = readFileSync(join(SKILL, rel), "utf8");
+      assert.doesNotMatch(text, boardVerb, `${rel} must not restate a board verb`);
+      assert.match(
+        text,
+        /`meerkat`[^\n]*(board skill|card operation)/i,
+        `${rel} must point at the meerkat board skill`,
+      );
     }
   });
 
@@ -672,8 +718,8 @@ describe("skill frontmatter and assets", () => {
     assert.match(roles, /Test execution vs review gate/);
     assert.match(roles, /product_change/);
     assert.match(roles, /epic/);
-    assert.match(roles, /--type parent --target/);
-    assert.match(roles, /--type blocks --target/);
+    assert.match(roles, /`meerkat`[^\n]*(board skill|card operation)/i, "card actions delegate to the board skill");
+    assert.doesNotMatch(roles, /relation add/, "the relation command lives in the board skill");
     assert.match(roles, /CWE Top 25|OWASP ASVS/);
     assert.match(roles, /API|browser/i);
     const manifest = JSON.parse(readFileSync(join(team, "manifest.json"), "utf8"));
@@ -1208,8 +1254,10 @@ describe("install-roles.mjs — project scope", () => {
     assert.equal(manifest.roles.find((role) => role.id === "reviewer").agent, "Grace");
     assert.equal(result.body.reviewerAgent, "Grace");
     const jobsWorkflow = readFileSync(join(project, ".meerkat", "roles", "jobs", "workflow.md"), "utf8");
-    assert.match(jobsWorkflow, /--agent Alice/);
-    assert.doesNotMatch(jobsWorkflow, /--agent Jobs/);
+    // The card-identity flags are the board skill's contract now; the rename still proves
+    // itself in the role's title and body, which the installer rewrites.
+    assert.match(jobsWorkflow, /You are \*\*Alice\*\*/);
+    assert.doesNotMatch(jobsWorkflow, /\bJobs\b/);
     const reviewerPrompt = readFileSync(
       join(project, ".meerkat", "roles", "reviewer", "reviewer-prompt.md"),
       "utf8",
