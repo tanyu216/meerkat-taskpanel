@@ -63,8 +63,8 @@ When any of these appears, push an IM message:
 
 `loop console --json` is the projection. `pending_acceptance[]` is **mode-agnostic**, so the
 host MUST enrich `in_review` refs with `issue list --status in_review --json` and filter by
-`acceptance_mode` (default `human`; configurable to `human,agent`). If enrichment fails,
-acceptance pushes fail closed.
+`acceptance_mode`: only a `human` card awaits a person, while an `agent` card is reviewed and
+closed by the loop. If enrichment fails, acceptance pushes fail closed.
 
 ### R2 — Decide in IM
 
