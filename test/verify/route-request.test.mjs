@@ -101,7 +101,6 @@ describe("route-request.mjs — the live surface", () => {
       "limit",
       "meta",
       "offset",
-      "order",
       "order_debug",
       "parent",
       "project_id",

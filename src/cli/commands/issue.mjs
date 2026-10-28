@@ -130,7 +130,7 @@ export const COMMANDS = [
   {
     name: "list",
     summary: "List tasks.",
-    usage: "issue list [--project <id>] [--status <status>]… [--assignee <name>|--assignee-id <id>] [--parent <ref>] [--kind <kind>] [--label <label>]… [--target <value>] [--meta <key>=<value>]… [--review-of <ref>] [--limit <n>] [--order board|weight] [--order-debug]",
+    usage: "issue list [--project <id>] [--status <status>]… [--assignee <name>|--assignee-id <id>] [--parent <ref>] [--kind <kind>] [--label <label>]… [--target <value>] [--meta <key>=<value>]… [--review-of <ref>] [--limit <n>] [--order-debug]",
     positionals: [],
     flags: [
       { flag: "project", key: "project", as: "string", value: "<id>" },
@@ -145,8 +145,7 @@ export const COMMANDS = [
       { flag: "review-of", key: "reviewOf", as: "string", value: "<ref>", summary: "Only the cards that review this task (id or identifier), across every round." },
       { flag: "limit", key: "limit", as: "number", value: "<n>" },
       { flag: "include-archived", key: "includeArchived", as: "boolean" },
-      { flag: "order", key: "order", as: "string", value: "board|weight", summary: "`weight` = the assignee weight order (C-WEIGHT-1); the default is the board's own deterministic order." },
-      { flag: "order-debug", key: "orderDebug", as: "boolean", summary: "Also return the weight order's per-card projection (implies --order weight)." },
+      { flag: "order-debug", key: "orderDebug", as: "boolean", summary: "Also return the weight order's per-card projection (the order itself is always the weight order)." },
     ],
     async run(ctx) {
       const { tasks, order_debug: orderDebug } = await ctx.client.get("/api/v1/tasks", {
@@ -163,7 +162,6 @@ export const COMMANDS = [
           review_of: ctx.flags.reviewOf,
           limit: ctx.flags.limit,
           include_archived: ctx.flags.includeArchived === true ? "1" : undefined,
-          order: ctx.flags.order,
           order_debug: ctx.flags.orderDebug === true ? "1" : undefined,
         },
       });
@@ -185,14 +183,13 @@ export const COMMANDS = [
   {
     name: "candidates",
     summary: "List the claimable cards for an assignee (the poll's read; claim still goes through issue move/claim semantics).",
-    usage: "issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board|weight] [--order-debug]",
+    usage: "issue candidates --assignee <name> [--stale] [--include-unassigned] [--order-debug]",
     positionals: [],
     flags: [
       { flag: "assignee", key: "assignee", as: "string", value: "<name>", required: true, summary: "Which assignee to list candidates for." },
       { flag: "stale", key: "stale", as: "boolean", summary: "Also include stale-recovery candidates (in_progress with an expired heartbeat)." },
       { flag: "include-unassigned", key: "includeUnassigned", as: "boolean", summary: "Also include claimable unassigned cards (the public pool) — the supervisor's `claim_unassigned` read." },
-      { flag: "order", key: "order", as: "string", value: "board|weight", summary: "`weight` refines the order *within* each claimability bucket (the bucket stays the first key)." },
-      { flag: "order-debug", key: "orderDebug", as: "boolean", summary: "Also return the weight order's per-card projection (implies --order weight)." },
+      { flag: "order-debug", key: "orderDebug", as: "boolean", summary: "Also return the weight order's per-card projection (the order itself is always the weight order, within each claimability bucket)." },
     ],
     async run(ctx) {
       const { candidates, order_debug: orderDebug } = await ctx.client.get("/api/v1/tasks/candidates", {
@@ -200,7 +197,6 @@ export const COMMANDS = [
           assignee: ctx.flags.assignee,
           stale: ctx.flags.stale === true ? "1" : undefined,
           include_unassigned: ctx.flags.includeUnassigned === true ? "1" : undefined,
-          order: ctx.flags.order,
           order_debug: ctx.flags.orderDebug === true ? "1" : undefined,
         },
       });

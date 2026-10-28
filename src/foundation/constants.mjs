@@ -665,19 +665,18 @@ export const TASK_ORDER_SLA_HOURS = Object.freeze({ blocked: 2, in_review: 24, a
  */
 export const TASK_LIST_DEFAULT_LIMIT = 200;
 
-/** The two `?order=` values (contract §7.1). `board` is the default; `weight` is opt-in. */
-export const TASK_ORDER_MODES = Object.freeze(["board", "weight"]);
-/**
- * The default `?order=` — the existing deterministic `sort_order, created_at,
- * project_id, identifier` order. The weight order is a **deliberate opt-in**: it
- * is clock-dependent (R5), and it is what `src/foundation/scheduling.mjs#planTick`
- * dispatches on, so making it the default would silently change who works next
- * (§7.1/§7.4).
- */
-export const TASK_ORDER_DEFAULT = "board";
 /**
  * The capability bit a client probes instead of guessing (§7.1), published beside
  * `project_order` on `/meta`.
+ *
+ * The weight order is the **only** order a task-list read returns (operator
+ * decision, Terry 2026-10-29): there is no `order=` parameter to opt out. The
+ * repository's deterministic `sort_order, created_at, project_id, identifier`
+ * order survives where it is the contract — the md export and the weight
+ * order's own tie-break — and a client that wants it can rebuild it from the
+ * fields already on the wire. The order is clock-dependent (R5) and it is what
+ * `src/foundation/scheduling.mjs#planTick` dispatches on (§7.4), which is why
+ * `order_debug` (this capability) must stay available for inspection.
  */
 export const TASK_ORDER_CAPABILITY = "weights-v1";
 

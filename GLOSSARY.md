@@ -574,8 +574,9 @@ others. Tiers come before any score: a card never outranks one in a better tier.
 _Avoid_: bucket, group, level
 
 **Weight order**:
-The optional ordering of a card list by urgency rather than by board position. It is
-computed by the server, consumed as-is by the client, and exposed for inspection on request.
+The ordering of a card list by urgency rather than by board position — the only one a
+list read returns. It is computed by the server, consumed as-is by the client, and
+exposed for inspection on request.
 _Avoid_: sort order (a different, stored value), ranking
 
 **SLA row**:

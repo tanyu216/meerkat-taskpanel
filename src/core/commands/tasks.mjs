@@ -17,8 +17,6 @@ import {
   CLAIM_STALE_SAME_MS,
   HEARTBEAT_FRESH_MS,
   TASK_LIST_DEFAULT_LIMIT,
-  TASK_ORDER_DEFAULT,
-  TASK_ORDER_MODES,
 } from "../../foundation/constants.mjs";
 import { reviewIdentityOf } from "../../foundation/review-identity.mjs";
 import { orderTasks, taskOrderDebugEntry } from "../../foundation/task-order.mjs";
@@ -1555,22 +1553,16 @@ export function archive(ctx, input) {
 }
 
 /**
- * The board / list read.
+ * The board / list read — always the assignee weight order.
  *
- * Two orders exist and one of them is opt-in (contract §7.1):
- *
- *   * `board` (the default, and what every caller got before this existed) — the
- *     repository's `sort_order, created_at, project_id, identifier`;
- *   * `weight` — the assignee weight order (`foundation/task-order.mjs`), requested
- *     with `?order=weight`.
- *
- * The default is deliberately untouched: the existing order is a frozen
- * commitment (md export reuses the same `ORDER BY`) and the weight order is
- * clock-dependent, so switching the default would change behaviour where nothing
- * tests it.
+ * Operator decision (Terry, 2026-10-29): the weight order
+ * (`foundation/task-order.mjs`) is not an option, it is the order. The
+ * repository's deterministic `sort_order, created_at, project_id, identifier`
+ * order survives where it is the contract — the md export and the weight
+ * order's own tie-break — never as a list-read parameter.
  *
  * @param {object} ctx
- * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], reviewOfId?: string, includeArchived?: boolean, limit?: number, offset?: number, order?: string, orderDebug?: boolean}} [filter]
+ * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], reviewOfId?: string, includeArchived?: boolean, limit?: number, offset?: number, orderDebug?: boolean}} [filter]
  */
 export function listTasks(ctx, filter = {}) {
   return readOrdered(ctx, filter).tasks;
@@ -1580,7 +1572,9 @@ export function listTasks(ctx, filter = {}) {
  * `listTasks` plus the `order_debug` projection, for the surface that wants both.
  *
  * A separate function rather than a changed return shape: every existing caller
- * of `listTasks` receives a bare array and must keep receiving one.
+ * of `listTasks` receives a bare array and must keep receiving one. `orderDebug`
+ * is populated only when the caller asks (`orderDebug: true`) — the order is
+ * unconditional, the per-card diagnostic is not.
  *
  * @param {object} ctx
  * @param {object} [filter] as `listTasks`, plus `orderDebug`
@@ -1592,32 +1586,12 @@ export function listOrderedTasks(ctx, filter = {}) {
 }
 
 /**
- * Validate `?order=` and let `order_debug` select the order it projects.
- *
- * `order_debug=1` is the *weight* order's diagnostic, so asking for it selects
- * that order — there is no board-order debug projection to return, and silently
- * ignoring the flag would be worse than honouring it.
- *
- * @param {unknown} value @param {boolean} debug
- */
-function resolveOrder(value, debug) {
-  if (debug) return "weight";
-  if (value === undefined || value === null || value === "") return TASK_ORDER_DEFAULT;
-  const word = String(value).trim().toLowerCase();
-  if (TASK_ORDER_MODES.includes(word)) return word;
-  throw new DomainError("VALIDATION_FAILED", {
-    message: `unknown order ${JSON.stringify(value)}`,
-    details: { field: "order", received: value, allowed: TASK_ORDER_MODES },
-  });
-}
-
-/**
  * Read a scope and order it.
  *
- * **Scope first, then order** (R16). Under `order=weight` the filter goes into
- * SQL with **no `LIMIT`**, the weight order is computed over that whole set, and
- * only then is the page sliced. Ordering the `LIMIT 200` page would be "the wrong
- * page, very neatly sorted" — the defect the contract names.
+ * **Scope first, then order** (R16). The filter goes into SQL with **no
+ * `LIMIT`**, the order is computed over that whole set, and only then is the
+ * page sliced. Ordering the `LIMIT 200` page would be "the wrong page, very
+ * neatly sorted" — the defect the contract names.
  *
  * The relation counts come from one batched read (`relations.openEdgeCounts`),
  * never one per card.
@@ -1626,7 +1600,7 @@ function resolveOrder(value, debug) {
  * @returns {{tasks: object[], orderDebug: object[]|null}}
  */
 function readOrdered(ctx, filter) {
-  const { order: requestedOrder, orderDebug: debugFlag, ...rest } = filter;
+  const { orderDebug: debugFlag, ...rest } = filter;
   // `kind=review` is a filter over the review marker, not a third kind: a
   // review card is an ordinary `kind=task` card carrying `review_of_id`. The
   // translation lives here, at the one chokepoint both list use-cases share, so
@@ -1634,8 +1608,7 @@ function readOrdered(ctx, filter) {
   // marker read is pushed into SQL — it holds under `limit`/`offset` and under
   // the weight order, which pages in JS after a full read.
   const scope = rest.kind === "review" ? { ...rest, kind: undefined, hasReviewMarker: true } : rest;
-  const order = resolveOrder(requestedOrder, debugFlag === true);
-  if (order !== "weight") return { tasks: ctx.repos.tasks.list(scope), orderDebug: null };
+  const debug = debugFlag === true;
 
   const scoped = ctx.repos.tasks.list({ ...scope, limit: null });
   const counts = ctx.repos.relations.openEdgeCounts(scoped.map((task) => task.id));
@@ -1648,9 +1621,12 @@ function readOrdered(ctx, filter) {
   const page = scope.limit === null ? ranked.slice(offset) : ranked.slice(offset, offset + limit);
   return {
     tasks: page.map((item) => item.card),
-    // The projection covers the whole ranking, not the page — the question it
-    // answers is "why is this card where it is", and that needs the cards it beat.
-    orderDebug: ranked.map(taskOrderDebugEntry),
+    // The projection is **opt-in**, even though the order it projects is not:
+    // shipping a per-card diagnostic on every list read would enlarge every
+    // response for a question nobody asked. When requested, it covers the whole
+    // ranking, not the page — the question it answers is "why is this card where
+    // it is", and that needs the cards it beat.
+    orderDebug: debug ? ranked.map(taskOrderDebugEntry) : null,
   };
 }
 
@@ -1701,8 +1677,11 @@ export function listCandidates(ctx, input = {}) {
 /**
  * `listCandidates` plus the `order_debug` projection (contract §7.1).
  *
+ * The projection is returned only on request (`orderDebug: true`); the candidate
+ * order itself is always the weight order.
+ *
  * @param {object} ctx
- * @param {object} [input] as `listCandidates`, plus `order` / `orderDebug`
+ * @param {object} [input] as `listCandidates`, plus `orderDebug`
  * @returns {{candidates: object[], orderDebug: object[]|null}}
  */
 export function listOrderedCandidates(ctx, input = {}) {
@@ -1714,7 +1693,7 @@ export function listOrderedCandidates(ctx, input = {}) {
 const CANDIDATE_BUCKET_RANK = Object.freeze({ ready: 0, unassigned: 1, stale_same: 2, stale_any: 2 });
 
 /**
- * The candidate read, in whatever order was asked for.
+ * The candidate read — always the assignee weight order within each bucket.
  *
  * **The scope is pushed into SQL** (R16). The previous form read
  * `list({status:"todo"})` — which the repository caps at 200 rows — and filtered
@@ -1723,18 +1702,18 @@ const CANDIDATE_BUCKET_RANK = Object.freeze({ ready: 0, unassigned: 1, stale_sam
  * unbounded, and the order is computed over the assignee's whole pool.
  *
  * @param {object} ctx
- * @param {{assignee?: string, stale?: boolean, includeUnassigned?: boolean, order?: string, orderDebug?: boolean}} [input]
+ * @param {{assignee?: string, stale?: boolean, includeUnassigned?: boolean, orderDebug?: boolean}} [input]
  * @returns {{candidates: object[], orderDebug: object[]|null}}
  */
 function orderedCandidates(ctx, input = {}) {
   const assignee = String(input.assignee ?? "").trim();
   const includeUnassigned = input.includeUnassigned === true;
   const ids = assigneeEntryIds(ctx, assignee);
-  const order = resolveOrder(input.order, input.orderDebug === true);
+  const debug = input.orderDebug === true;
   // An unknown assignee still has a recovery pool: the 6-hour takeover does not
   // depend on the asker owning the card.
   if (ids.length === 0 && !includeUnassigned && input.stale !== true) {
-    return { candidates: [], orderDebug: order === "weight" ? [] : null };
+    return { candidates: [], orderDebug: debug ? [] : null };
   }
 
   const now = ctx.now();
@@ -1779,10 +1758,10 @@ function orderedCandidates(ctx, input = {}) {
     if (reason !== null && blockersOpen(task) === 0) found.push({ task, reason });
   }
 
-  const byWeight =
-    order === "weight"
-      ? new Map(orderTasks(withRelationCounts(scoped, counts), { now }).map((item) => [item.card.id, item]))
-      : null;
+  // One ranking over the whole scoped set, consulted inside each bucket.
+  const byWeight = new Map(
+    orderTasks(withRelationCounts(scoped, counts), { now }).map((item) => [item.card.id, item]),
+  );
 
   // Ready, then the pool this agent may take, then recovery. The weight order
   // refines **within** a bucket and never reorders across one: the bucket says
@@ -1791,13 +1770,7 @@ function orderedCandidates(ctx, input = {}) {
   found.sort((a, b) => {
     const byBucket = CANDIDATE_BUCKET_RANK[a.reason] - CANDIDATE_BUCKET_RANK[b.reason];
     if (byBucket !== 0) return byBucket;
-    if (byWeight !== null) return byWeight.get(a.task.id).rank - byWeight.get(b.task.id).rank;
-    return (
-      (a.task.sortOrder ?? 0) - (b.task.sortOrder ?? 0) ||
-      (a.task.createdAt ?? "").localeCompare(b.task.createdAt ?? "") ||
-      (a.task.projectId ?? "").localeCompare(b.task.projectId ?? "") ||
-      (a.task.identifier ?? "").localeCompare(b.task.identifier ?? "")
-    );
+    return byWeight.get(a.task.id).rank - byWeight.get(b.task.id).rank;
   });
 
   return {
@@ -1806,8 +1779,10 @@ function orderedCandidates(ctx, input = {}) {
     ),
     // In the order the caller receives them, so the two arrays reconcile
     // line for line; `reason` rides along because the bucket is the first key.
-    orderDebug:
-      byWeight === null ? null : found.map(({ task, reason }) => ({ ...taskOrderDebugEntry(byWeight.get(task.id)), reason })),
+    // Opt-in: the order is unconditional, the per-card diagnostic is not.
+    orderDebug: debug
+      ? found.map(({ task, reason }) => ({ ...taskOrderDebugEntry(byWeight.get(task.id)), reason }))
+      : null,
   };
 }
 

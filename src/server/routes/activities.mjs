@@ -36,8 +36,9 @@ const MAX_REVISION = Number.MAX_SAFE_INTEGER;
 const MAX_LIMIT = 1_000;
 
 /**
- * Validate `?order=` the way `GET /tasks?order=` does (`tasks.mjs#resolveOrder`):
- * case/space tolerant, empty means the default, an unknown word is refused.
+ * Validate the activity trail's `?order=`: case/space tolerant, empty means the
+ * default, an unknown word is refused. (The task list has no `order` parameter —
+ * it is always weight-ordered — so this exists only here.)
  * @param {string|null|undefined} value
  */
 function readOrder(value) {

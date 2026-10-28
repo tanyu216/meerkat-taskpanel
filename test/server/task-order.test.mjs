@@ -5,8 +5,8 @@
  * proved here is the four §10.2 assertions that need a real SQLite board and the
  * real routes:
  *
- *   7  the default order did not move (and the weight order really is a
- *      different one — otherwise the first half would be vacuous);
+ *   7  the list read is always the weight order (there is no `order=` to opt
+ *      out), while the repository's own board order still exists for the export;
  *   8  the md export still walks the board order, byte for byte;
  *   9  `blocked_at` is gated on `status == "blocked"` (R15);
  *   10 the scope is pushed into SQL, so the order is computed over the whole set
@@ -94,28 +94,16 @@ describe("task-order — the surface", () => {
     assert.equal(meta.capabilities.project_order, "weights-v1");
   });
 
-  it("refuses an unknown order rather than silently falling back", async () => {
-    const result = await call("GET", "/api/v1/tasks?order=urgency");
-    assert.equal(result.status, 400);
-    assert.equal(result.body.error.code, "VALIDATION_FAILED");
-    assert.equal(result.body.error.details.field, "order");
-  });
-
-  it("refuses an unknown order on the candidate read too", async () => {
-    const result = await call("GET", "/api/v1/tasks/candidates?assignee=nobody&order=urgency");
-    assert.equal(result.status, 400);
-    assert.equal(result.body.error.code, "VALIDATION_FAILED");
-  });
 });
 
-describe("task-order — assertion 7: the default order did not move", () => {
+describe("task-order — assertion 7: every list read is the weight order", () => {
   const boardOrder = ["ORD-0001", "ORD-0002", "ORD-0003", "ORD-0004", "ORD-0005"];
 
   before(() => {
     createProject("ord", "Order");
     // Five cards, oldest first, with the priority *inverted* against age: the
-    // board order is creation order, the weight order is urgency first. Without
-    // that disagreement the first half of this suite would prove nothing.
+    // repository's own order is creation order, the weight order is urgency
+    // first. Without that disagreement this suite could not tell the two apart.
     ["low", "low", "medium", "high", "urgent"].forEach((priority, index) => {
       // `todo`, not `in_progress`: a card cannot be *created* in progress
       // (delivery-gate.mjs#assertCreationGate), and this fixture needs neither a
@@ -124,16 +112,22 @@ describe("task-order — assertion 7: the default order did not move", () => {
     });
   });
 
-  it("returns the existing deterministic order when `order` is absent", async () => {
-    assert.deepEqual(await listedOrder("?project_id=ord"), boardOrder);
-    assert.deepEqual(await listedOrder("?project_id=ord&order=board"), boardOrder);
+  it("returns the weight order, which is not the repository's own order", async () => {
+    const listed = await listedOrder("?project_id=ord");
+    assert.deepEqual([...listed].sort(), [...boardOrder].sort(), "same cards, different order");
+    assert.notDeepEqual(listed, boardOrder);
+    assert.equal(listed[0], "ORD-0005", "the urgent card leads the list");
+    assert.deepEqual(
+      repos().tasks.list({ projectId: "ord", limit: null }).map((task) => task.identifier),
+      boardOrder,
+      "…while the repository still walks its deterministic order (the export's)",
+    );
   });
 
-  it("returns a genuinely different order for `order=weight`", async () => {
-    const weight = await listedOrder("?project_id=ord&order=weight");
-    assert.deepEqual([...weight].sort(), [...boardOrder].sort(), "same cards, different order");
-    assert.notDeepEqual(weight, boardOrder);
-    assert.equal(weight[0], "ORD-0005", "the urgent card leads the weight order");
+  it("ignores a stray `order=` — the weight order is not optional", async () => {
+    // There is no `order` parameter; the query surface is declared, not
+    // enforced, so a stray one is ignored rather than selecting another order.
+    assert.deepEqual(await listedOrder("?project_id=ord&order=board"), await listedOrder("?project_id=ord"));
   });
 
   it("does not leak an `order_debug` key into a plain read", async () => {
@@ -158,22 +152,21 @@ describe("task-order — assertion 7: the default order did not move", () => {
   it("keeps `limit`/`offset` semantics on the whole scoped set", async () => {
     // The page is cut *after* the ordering, so page 2 continues where page 1
     // stopped — the failure mode R16 names is a page ordered in isolation.
-    const full = await listedOrder("?project_id=ord&order=weight");
-    const first = await listedOrder("?project_id=ord&order=weight&limit=2");
-    const second = await listedOrder("?project_id=ord&order=weight&limit=2&offset=2");
+    const full = await listedOrder("?project_id=ord");
+    const first = await listedOrder("?project_id=ord&limit=2");
+    const second = await listedOrder("?project_id=ord&limit=2&offset=2");
     assert.deepEqual([...first, ...second], full.slice(0, 4), "two pages of two are the first four");
     assert.deepEqual(first, full.slice(0, 2));
     assert.deepEqual(second, full.slice(2, 4));
-    assert.equal((await listedOrder("?project_id=ord&order=weight&offset=4")).length, 1);
+    assert.equal((await listedOrder("?project_id=ord&offset=4")).length, 1);
   });
 
-  it("treats an explicit `limit: null` as the whole scoped set, in both orders", () => {
+  it("treats an explicit `limit: null` as the whole scoped set", () => {
     // The repository reads `limit: null` as "no LIMIT clause"; the JS pagination
     // that the weight order adds on top has to read it the same way, or the
     // default page size silently reappears over an unbounded read.
     assert.equal(commands().listTasks({ projectId: "ord", limit: null }).length, 5);
-    assert.equal(commands().listTasks({ projectId: "ord", order: "weight", limit: null }).length, 5);
-    assert.equal(commands().listTasks({ projectId: "ord", order: "weight" }).length, 5, "the default page is 200");
+    assert.equal(commands().listTasks({ projectId: "ord" }).length, 5, "the default page is 200");
   });
 });
 
@@ -202,7 +195,7 @@ describe("task-order — assertion 8: the export is untouched", () => {
     );
     assert.notDeepEqual(
       emitted,
-      await listedOrder(`?project_id=${project}&order=weight`),
+      await listedOrder(`?project_id=${project}`),
       "…and the weight order is a different one, so the assertion has teeth",
     );
     assert.deepEqual(
@@ -282,13 +275,18 @@ describe("task-order — assertion 10: the scope reaches SQL before the order do
   });
 
   it("orders the untruncated set, so a card past row 200 can lead", async () => {
-    const { candidates } = dataOf(await call("GET", "/api/v1/tasks/candidates?assignee=linus&order=weight"));
+    const { candidates } = dataOf(await call("GET", "/api/v1/tasks/candidates?assignee=linus"));
     assert.deepEqual(
       candidates.slice(0, 2).map((row) => row.id),
       late.map((task) => task.id),
       "the two cards created last lead the weight order",
     );
     assert.equal(candidates.at(-1).priority, "low");
+  });
+
+  it("does not leak an `order_debug` key into a plain candidate read", async () => {
+    const data = dataOf(await call("GET", "/api/v1/tasks/candidates?assignee=linus"));
+    assert.equal("order_debug" in data, false, "the diagnostic stays opt-in");
   });
 
   it("keeps the claimability bucket as the first key", async () => {
@@ -302,7 +300,7 @@ describe("task-order — assertion 10: the scope reaches SQL before the order do
     createTask({ projectId: "buckets", title: "queued", priority: "low", assignee: "carol" });
 
     const { candidates } = dataOf(
-      await call("GET", "/api/v1/tasks/candidates?assignee=carol&stale=1&order=weight&order_debug=1"),
+      await call("GET", "/api/v1/tasks/candidates?assignee=carol&stale=1&order_debug=1"),
     );
     assert.deepEqual(candidates.map((row) => row.reason), ["ready", "stale_any"]);
     assert.equal(candidates[1].priority, "urgent", "…and the urgent recovery card still comes second");
@@ -318,7 +316,7 @@ describe("task-order — assertion 10: the scope reaches SQL before the order do
     const ordinary = createTask({ projectId: "epics", title: "ordinary", assignee: "dave" });
 
     const { candidates, order_debug: orderDebug } = dataOf(
-      await call("GET", "/api/v1/tasks/candidates?assignee=dave&order=weight&order_debug=1"),
+      await call("GET", "/api/v1/tasks/candidates?assignee=dave&order_debug=1"),
     );
     // The epic blocks three open cards — `B` at its cap of 1.0, the highest score
     // any card can reach on that factor — and is still absent, because automatic
@@ -367,7 +365,7 @@ describe("task-order — assertion 10: the scope reaches SQL before the order do
 describe("task-order — the candidate projection is unchanged by the order", () => {
   it("still emits the card's fields, its meta and `reason`, and writes nothing", async () => {
     const before = currentRevision(db());
-    const { candidates } = dataOf(await call("GET", "/api/v1/tasks/candidates?assignee=linus&order=weight"));
+    const { candidates } = dataOf(await call("GET", "/api/v1/tasks/candidates?assignee=linus"));
     assert.deepEqual(Object.keys(candidates[0]).sort(), [
       "created_at",
       "id",

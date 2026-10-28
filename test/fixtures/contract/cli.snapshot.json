@@ -624,14 +624,6 @@
               "short": null
             },
             {
-              "flag": "order",
-              "as": "string",
-              "value": "board|weight",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "order-debug",
               "as": "boolean",
               "value": null,
@@ -1020,14 +1012,6 @@
               "value": "<key>=<value>",
               "required": false,
               "repeat": true,
-              "short": null
-            },
-            {
-              "flag": "order",
-              "as": "string",
-              "value": "board|weight",
-              "required": false,
-              "repeat": false,
               "short": null
             },
             {

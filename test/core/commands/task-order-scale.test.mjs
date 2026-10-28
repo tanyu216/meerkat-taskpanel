@@ -122,14 +122,14 @@ function timeOf(runs, fn) {
 
 describe("task-order — R12: the weight order on a real project", () => {
   it("orders the whole project scope without truncating it", (t) => {
-    const { commands } = board;
+    const { commands, repos } = board;
     const total = commands.listTasks({ projectId: "scale", limit: null }).length;
     assert.ok(total >= PROJECT_SIZE, `the fixture really holds ${PROJECT_SIZE}+ cards, has ${total}`);
 
-    const boardOrder = timeOf(3, () => commands.listTasks({ projectId: "scale", limit: null }));
-    // The board read is the comparison: it is the `ORDER BY` SQLite can do with
-    // the existing index, so the difference is what the weight order costs.
-    const weight = timeOf(3, () => commands.listTasks({ projectId: "scale", order: "weight", limit: null }));
+    // The repository read is the comparison: it is the `ORDER BY` SQLite can do
+    // with the existing index, so the difference is what the weight order costs.
+    const boardOrder = timeOf(3, () => repos.tasks.list({ projectId: "scale", limit: null }));
+    const weight = timeOf(3, () => commands.listTasks({ projectId: "scale", limit: null }));
 
     assert.equal(weight.result.length, boardOrder.result.length, "same cards, both orders");
     assert.deepEqual(
@@ -140,26 +140,32 @@ describe("task-order — R12: the weight order on a real project", () => {
     // A valid total order: strict, and the same set twice.
     const ids = weight.result.map((task) => task.id);
     assert.equal(new Set(ids).size, ids.length, "no card appears twice");
-    assert.deepEqual(commands.listTasks({ projectId: "scale", order: "weight", limit: null }).map((task) => task.id), ids);
+    assert.deepEqual(commands.listTasks({ projectId: "scale", limit: null }).map((task) => task.id), ids);
 
     t.diagnostic(
-      `R12 · project scope of ${weight.result.length} cards — board order ${boardOrder.ms.toFixed(1)}ms, ` +
+      `R12 · project scope of ${weight.result.length} cards — repository order ${boardOrder.ms.toFixed(1)}ms, ` +
         `weight order ${weight.ms.toFixed(1)}ms (median of 3)`,
     );
   });
 
   it("orders a single assignee's scope, which is where it is meant to be used", (t) => {
     const { commands, repos } = board;
-    const scope = repos.tasks.list({ projectId: "scale", assigneeId: idsOf(board, "bench-0"), limit: null }).length;
-    const candidates = timeOf(3, () => commands.listCandidates({ assignee: "bench-0", order: "weight" }));
-    const plain = timeOf(3, () => commands.listCandidates({ assignee: "bench-0" }));
+    const assigneeId = idsOf(board, "bench-0");
+    const scope = repos.tasks.list({ projectId: "scale", assigneeId, limit: null }).length;
+    const candidates = timeOf(3, () => commands.listCandidates({ assignee: "bench-0" }));
+    const repository = timeOf(3, () =>
+      repos.tasks.list({ projectId: "scale", status: "todo", assigneeId, limit: null }),
+    );
 
     assert.ok(scope > 200, `the assignee's scope is ${scope} cards before any dependency filtering`);
     assert.ok(candidates.result.length > 0);
-    assert.equal(candidates.result.length, plain.result.length, "the order changes the sequence, not the set");
+    assert.ok(
+      candidates.result.length <= repository.result.length,
+      "the claim read can only narrow the assignee's todo scope",
+    );
 
     t.diagnostic(
-      `R12 · assignee scope of ${candidates.result.length} candidates — board order ${plain.ms.toFixed(1)}ms, ` +
+      `R12 · assignee scope of ${candidates.result.length} candidates — repository read ${repository.ms.toFixed(1)}ms, ` +
         `weight order ${candidates.ms.toFixed(1)}ms (median of 3)`,
     );
   });
@@ -168,7 +174,7 @@ describe("task-order — R12: the weight order on a real project", () => {
     // A page is `LIMIT`-shaped work on top of the ordering; this records what a
     // poll-sized page costs, which is the number a caller actually pays.
     const { commands } = board;
-    const page = timeOf(3, () => commands.listTasks({ projectId: "scale", order: "weight", limit: 50, offset: 0 }));
+    const page = timeOf(3, () => commands.listTasks({ projectId: "scale", limit: 50, offset: 0 }));
     assert.equal(page.result.length, 50);
     t.diagnostic(`R12 · first page of 50 from a ${PROJECT_SIZE}-card project: ${page.ms.toFixed(1)}ms (median of 3)`);
   });
