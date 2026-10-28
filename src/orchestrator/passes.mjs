@@ -184,7 +184,20 @@ export function createProjectAdmission(input) {
           // leave a worker with nothing to keep fresh; the card is terminal.
           return { ok: false, why: `card is already terminal (${watched.reason ?? "terminal"})` };
         }
-        registrations.set(action.identifier, { ref: cards[0].ref, out: cards[0].out });
+        // Only a registration this pass created may be released. A covered or
+        // reused registration belongs to another owner; releasing it would
+        // retire a brief someone else still depends on. Address the stop by a
+        // card this registration actually holds, never by a covered one.
+        if (watched.owned === true) {
+          const registered = Array.isArray(watched.cards)
+            ? watched.cards.find(
+                (entry) => typeof entry?.ref === "string" && typeof entry?.path === "string",
+              )
+            : undefined;
+          if (registered !== undefined) {
+            registrations.set(action.identifier, { ref: registered.ref, out: registered.path });
+          }
+        }
       }
 
       admittedDirs.set(action.identifier, resolved.dir);
@@ -193,15 +206,18 @@ export function createProjectAdmission(input) {
     },
     async release(identifier) {
       const registered = registrations.get(identifier);
-      if (registered === undefined) return { ok: true, stopped: false };
       registrations.delete(identifier);
       const dir = admittedDirs.get(identifier);
       admittedDirs.delete(identifier);
       // Admission reserves the project slot before the claim; a refused claim
       // must give it back, or one conflict would shrink the pass's capacity.
+      // That is independent of whether this pass owns a registration.
       if (dir !== undefined) {
         claimedByDir.set(dir, Math.max(0, (claimedByDir.get(dir) ?? 1) - 1));
       }
+      // No owned registration (reused/covered, or none was made): nothing to
+      // stop — the watch belongs to another owner.
+      if (registered === undefined) return { ok: true, stopped: false };
       return stopWatch({ ref: registered.ref, out: registered.out });
     },
     dirFor(identifier) {
@@ -506,6 +522,10 @@ export async function runPatrolOnce(opts, env = process.env) {
       // writes the first snapshot synchronously, and a terminal card opens no
       // stream — that card is not claimed.
       const cards = briefCards(resolved.dir, alert.identifier, task?.review_of);
+      // The registration to undo if the claim is refused, and only when this
+      // pass created it; a covered/reused watch belongs to another owner. It is
+      // addressed by a card the hub actually registered.
+      let owned = null;
       if (opts.dryRun !== true) {
         const watched = await registerCardWatch(opts, cards, {
           owner: `${opts.actorKind}:${action.agent}`,
@@ -517,6 +537,14 @@ export async function runPatrolOnce(opts, env = process.env) {
           );
           return { ok: false };
         }
+        if (watched.owned === true) {
+          const registered = Array.isArray(watched.cards)
+            ? watched.cards.find(
+                (entry) => typeof entry?.ref === "string" && typeof entry?.path === "string",
+              )
+            : undefined;
+          if (registered !== undefined) owned = { ref: registered.ref, out: registered.path };
+        }
       }
 
       const claimed = runCli(opts, action.agent, ["issue", "claim", alert.identifier], {
@@ -524,9 +552,7 @@ export async function runPatrolOnce(opts, env = process.env) {
       });
       if (!claimed.ok) {
         log(`patrol: claim refused ${alert.identifier} (${claimed.error ?? "conflict"}) — not dispatching`);
-        if (opts.dryRun !== true) {
-          await stopCardWatch(opts, { ref: cards[0].ref, out: cards[0].out });
-        }
+        if (owned !== null) await stopCardWatch(opts, owned);
         return { ok: false };
       }
       const { role, handoff } = wakeHandoff(

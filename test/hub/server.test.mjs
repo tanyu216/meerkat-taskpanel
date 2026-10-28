@@ -9,7 +9,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -251,6 +251,177 @@ describe("hub server (in process)", () => {
     assert.equal(JSON.parse(stopped.stdout).data.stopped, true);
     const after = await cli(["export", "watch", "DEMO-0060", "--out", review, "--watch-status", "--json"]);
     assert.equal(JSON.parse(after.stdout).data.running, false);
+  });
+
+  it("registers only the uncovered card when the original is already detached-watched", async () => {
+    // The loop's review admission: the original's brief is already owned by the
+    // registration made when it was dispatched, and `in_review` is not terminal.
+    board.add("DEMO-0080", "uuid-80", "# review\n");
+    board.add("DEMO-0081", "uuid-81", "# original\n");
+    const review = join(projectDir, "briefs", "DEMO-0080.md");
+    const original = join(projectDir, "briefs", "DEMO-0081.md");
+    const live = pointer();
+
+    const first = await hubCall(
+      live,
+      live.token,
+      { op: "watch", cards: [{ ref: "DEMO-0081", out: original }], ttl_ms: 0, detach: true },
+      { match: (record) => record?.type === "registered" || record?.type === "error" },
+    );
+    assert.equal(first.type, "registered", JSON.stringify(first));
+    assert.equal(first.running, true);
+
+    const answer = await hubCall(
+      live,
+      live.token,
+      {
+        op: "watch",
+        cards: [
+          { ref: "DEMO-0080", out: review },
+          { ref: "DEMO-0081", out: original },
+        ],
+        ttl_ms: 0,
+        detach: true,
+      },
+      { match: (record) => record?.type === "registered" || record?.type === "error" },
+    );
+    assert.equal(answer.type, "registered", JSON.stringify(answer));
+    assert.equal(answer.running, true);
+    assert.notEqual(answer.reused, true, "a partly-new set is a new registration");
+    assert.notEqual(answer.registration_id, first.registration_id);
+    assert.deepEqual(
+      answer.cards.map((card) => card.path),
+      [review],
+      "the covered original is not re-registered",
+    );
+    assert.equal(readFileSync(review, "utf8"), "# review\n");
+
+    // The original's registration still owns it and keeps refreshing.
+    board.update("DEMO-0081", { markdown: "# original v2\n" });
+    board.emit("uuid-81");
+    await waitFor(() => readFileSync(original, "utf8").includes("v2"));
+
+    // The narrowed registration cannot be addressed by the covered card.
+    const byOriginal = await hubCall(
+      live,
+      live.token,
+      { op: "watch-status", ref: "DEMO-0081" },
+      (record) => record.op === "watch-status",
+    );
+    assert.equal(byOriginal.registration_id, first.registration_id);
+
+    // Stopping the review registration leaves the original's alone.
+    const stopped = await hubCall(
+      live,
+      live.token,
+      { op: "watch-stop", ref: "DEMO-0080", out: review },
+      (record) => record.op === "watch-stop",
+    );
+    assert.equal(stopped.stopped, true);
+    const survived = await hubCall(
+      live,
+      live.token,
+      { op: "watch-status", ref: "DEMO-0081" },
+      (record) => record.op === "watch-status",
+    );
+    assert.equal(survived.running, true);
+    assert.equal(survived.registration_id, first.registration_id);
+  });
+
+  it("answers covered, with no new registration, when every requested card is watched", async () => {
+    board.add("DEMO-0090", "uuid-90", "# review\n");
+    board.add("DEMO-0091", "uuid-91", "# original\n");
+    const review = join(projectDir, "briefs", "DEMO-0090.md");
+    const original = join(projectDir, "briefs", "DEMO-0091.md");
+    const live = pointer();
+    const watchOne = (ref, out) =>
+      hubCall(
+        live,
+        live.token,
+        { op: "watch", cards: [{ ref, out }], ttl_ms: 0, detach: true },
+        { match: (record) => record?.type === "registered" || record?.type === "error" },
+      );
+    const reviewReg = await watchOne("DEMO-0090", review);
+    const originalReg = await watchOne("DEMO-0091", original);
+
+    const answer = await hubCall(
+      live,
+      live.token,
+      {
+        op: "watch",
+        cards: [
+          { ref: "DEMO-0090", out: review },
+          { ref: "DEMO-0091", out: original },
+        ],
+        ttl_ms: 0,
+        detach: true,
+      },
+      { match: (record) => record?.type === "registered" || record?.type === "error" },
+    );
+    assert.equal(answer.type, "registered", JSON.stringify(answer));
+    assert.equal(answer.registration_id, null, "nothing was registered");
+    assert.equal(answer.reused, true);
+    assert.equal(answer.running, true);
+    assert.equal(answer.reason, "covered");
+    assert.deepEqual(answer.cards.map((card) => card.path).sort(), [original, review].sort());
+
+    // Both existing registrations survive the covered answer.
+    const reviewStatus = await hubCall(
+      live,
+      live.token,
+      { op: "watch-status", ref: "DEMO-0090" },
+      (record) => record.op === "watch-status",
+    );
+    const originalStatus = await hubCall(
+      live,
+      live.token,
+      { op: "watch-status", ref: "DEMO-0091" },
+      (record) => record.op === "watch-status",
+    );
+    assert.equal(reviewStatus.registration_id, reviewReg.registration_id);
+    assert.equal(originalStatus.registration_id, originalReg.registration_id);
+    assert.equal(reviewStatus.running, true);
+    assert.equal(originalStatus.running, true);
+  });
+
+  it("still refuses the per-card request when a foreground registration holds the original", async () => {
+    board.add("DEMO-0100", "uuid-100", "# review\n");
+    board.add("DEMO-0101", "uuid-101", "# original\n");
+    const review = join(projectDir, "briefs", "DEMO-0100.md");
+    const original = join(projectDir, "briefs", "DEMO-0101.md");
+    const live = pointer();
+
+    // A foreground watcher holds the original's exact path; it ends when its
+    // client disconnects, so it does not promise a fresh brief until terminal.
+    const stream = hubRecords(
+      live,
+      { op: "watch", refs: ["DEMO-0101"], out: original, ttl_ms: 0, detach: false },
+      { idleMs: 10_000 },
+    );
+    const iterator = stream[Symbol.asyncIterator]();
+    const opened = await iterator.next();
+    assert.equal(opened.value.type, "open");
+
+    const answer = await hubCall(
+      live,
+      live.token,
+      {
+        op: "watch",
+        cards: [
+          { ref: "DEMO-0100", out: review },
+          { ref: "DEMO-0101", out: original },
+        ],
+        ttl_ms: 0,
+        detach: true,
+      },
+      { match: (record) => record?.type === "registered" || record?.type === "error" },
+    );
+    assert.equal(answer.type, "error", JSON.stringify(answer));
+    assert.equal(answer.data.code, "CLI_IO");
+    assert.match(answer.data.message, /already watched/);
+    assert.equal(existsSync(review), false, "the whole set is refused, as before");
+
+    await iterator.return();
   });
 
   it("registers the same watch through export md --watch", async () => {

@@ -223,6 +223,20 @@ has no review link. The loop therefore registers the review card and its origina
 refreshes its own file. The protocol is `cards: [{ref, out}, …]`; the CLI's `--out` /
 `--dir` spellings remain for one card and for a directory of cards.
 
+**Covered cards.** A review admission usually asks for a card that is already watched: the
+original's brief belongs to the live `ttl_ms: 0` registration made when its own worker was
+dispatched, and `in_review` is not terminal. A per-card `cards[]` request with `detach: true`
+therefore does not refuse the whole set for such a card — a card whose path belongs to a
+**live detached** registration is already covered, so it is dropped from the new registration
+and the rest are registered (the registration's `refs` narrow to the cards it actually
+holds, so `findRegistration` by ref cannot address the wrong registration). If nothing
+remains, the hub creates no registration and answers
+`{type:"registered", registration_id:null, reused:true, running:true, reason:"covered"}`.
+A **foreground** (non-detached) registration holding the original still refuses: a foreground
+watcher ends when its client disconnects, so it does not promise a fresh brief until the card
+is terminal. Reuse, cover and terminal answers are not owned by the caller; only a
+registration this request created is unregistered again when its claim is refused.
+
 It shares the loop's cadence — 300 ms debounce, 2 s maximum wait, `CARD_REFRESH_MIN_MS`
 (5 s) between batches — and refreshes are serial. Per-card failures are reported in the
 NDJSON stream and keep the previous file. `done` and `canceled` are terminal: a card that

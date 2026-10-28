@@ -23,12 +23,45 @@ import { cardFileRel } from "../foundation/card-brief.mjs";
 import { ensureHub, hubCall } from "../foundation/hub-client.mjs";
 import { connectBoard, createBoardSession } from "../foundation/transport/session.mjs";
 
-/** The answer to a `watch` request, or the hub's error record. */
+/**
+ * The answer to a `watch` request, or the hub's error record.
+ *
+ * The hub refuses with `{type:"error", data:{code,message,details}}`; accepting
+ * only `{op:"error"}` made the client wait out its timeout and report "the local
+ * hub did not answer in time" for a refusal it had already received.
+ */
 const WATCH_MATCH = (record) =>
-  record?.type === "registered" || record?.op === "error";
+  record?.type === "registered" || record?.type === "error" || record?.op === "error";
 
 /** The answer to a `watch-stop` request, or the hub's error record. */
-const STOP_MATCH = (record) => record?.op === "watch-stop" || record?.op === "error";
+const STOP_MATCH = (record) =>
+  record?.op === "watch-stop" || record?.type === "error" || record?.op === "error";
+
+/**
+ * Turn a hub refusal into `ok:false`. A `{type:"error"}` record carries the
+ * domain payload under `data`; the legacy `{op:"error", error}` shape is what
+ * the hub sends for an unknown operation.
+ *
+ * @param {object} record
+ * @param {string} fallback
+ * @returns {{ok: false, error: string, code?: string, details?: object}}
+ */
+function refusal(record, fallback) {
+  if (record?.type === "error") {
+    const data = record.data !== null && typeof record.data === "object" ? record.data : {};
+    return {
+      ok: false,
+      error: typeof data.message === "string" && data.message !== "" ? data.message : fallback,
+      ...(data.code === undefined ? {} : { code: data.code }),
+      ...(data.details === undefined ? {} : { details: data.details }),
+    };
+  }
+  const err = record?.error !== null && typeof record?.error === "object" ? record.error : {};
+  return {
+    ok: false,
+    error: typeof err.message === "string" && err.message !== "" ? err.message : fallback,
+  };
+}
 
 /**
  * The cards one dispatch needs a brief for: the card itself, plus its original
@@ -120,17 +153,24 @@ export async function registerCardWatch(opts, cards, deps = {}) {
       },
       { match: WATCH_MATCH },
     );
-    if (answer?.op === "error") {
-      return { ok: false, error: answer.error?.message ?? "the hub refused the registration" };
+    if (answer?.type === "error" || answer?.op === "error") {
+      return refusal(answer, "the hub refused the registration");
     }
     if (answer?.type !== "registered") {
       return { ok: false, error: "the hub did not answer the registration" };
     }
+    const registrationId = answer.registration_id ?? null;
     return {
       ok: true,
+      // Only a registration this call created may be released later. A reused
+      // (including covered) registration belongs to another owner; a terminal
+      // answer created nothing.
+      owned: answer.reused !== true && registrationId !== null,
       running: answer.running === true,
       reason: answer.reason ?? null,
-      registrationId: answer.registration_id ?? null,
+      registrationId,
+      // The hub's registered cards, not the requested ones: a covered card is
+      // absent here and must not be addressed by a later stop.
       cards: Array.isArray(answer.cards) ? answer.cards : [],
     };
   } catch (err) {
@@ -160,8 +200,8 @@ export async function stopCardWatch(opts, target, deps = {}) {
       },
       { match: STOP_MATCH },
     );
-    if (answer?.op === "error") {
-      return { ok: false, error: answer.error?.message ?? "the hub refused the stop" };
+    if (answer?.type === "error" || answer?.op === "error") {
+      return refusal(answer, "the hub refused the stop");
     }
     return { ok: true, stopped: answer?.stopped === true };
   } catch (err) {
