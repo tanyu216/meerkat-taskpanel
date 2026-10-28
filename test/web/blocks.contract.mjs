@@ -1583,6 +1583,12 @@ const BLOCKS = [
       "[data-activity-row]",
       "[data-activity-actor]",
       "[data-activity-ts]",
+      // TP-0037 · the entry a feed row can ask the drawer to focus, and the
+      // attribute that draws its ring while it holds focus. Data-driven: they
+      // exist only for a loaded comment/report, and the ring only while focused.
+      "[data-detail-comment-id]",
+      "[data-dv-report-id]",
+      "[data-detail-focus]",
     ],
     rules: [
       { kind: "count", selector: "[data-detail-drawer]", equals: 1 },
@@ -1772,6 +1778,24 @@ const BLOCKS = [
         kind: "count",
         selector: "[data-activity-ts]",
         within: "[data-detail-activity]",
+        min: 1,
+        when: "drawer open",
+      },
+      // TP-0037 · the two entries a feed row can name. The driven pass opens
+      // TD-1, which carries comments and reports, so both families address one
+      // row per record. (The ring itself is a focus-time state, measured in
+      // `web/scripts/dom-smoke.mjs`, not at rest.)
+      {
+        kind: "count",
+        selector: "[data-detail-comment-id]",
+        within: "[data-detail-comments]",
+        min: 1,
+        when: "drawer open",
+      },
+      {
+        kind: "count",
+        selector: "[data-dv-report-id]",
+        within: "[data-detail-panel=\"reports\"]",
         min: 1,
         when: "drawer open",
       },

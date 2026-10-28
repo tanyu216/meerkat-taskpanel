@@ -39,6 +39,7 @@ import {
   foldBursts,
   groupByDay,
   kindOf,
+  landingFor,
   markUnread,
   rowFrom,
   taskOptions,
@@ -492,5 +493,68 @@ describe("B26 · the store's address-bar shadow", () => {
 
     store.resetActivity();
     board.tasks = [];
+  });
+});
+
+describe("B26 · where a row lands in the drawer (B09)", () => {
+  /**
+   * The feed row already carries its filter bucket, so the landing is read off
+   * `group` — never off the raw wire event (a row's `event` is the *kind*, e.g.
+   * "comment", not "comment_added"). A burst has folded to `meta` by then and
+   * can never name a member's entry.
+   */
+  it("sends a comment row to Activity and names its comment", () => {
+    assert.deepEqual(landingFor({ group: "comment", changes: { commentId: "cm-2", kind: "decision" } }), {
+      tab: "activity",
+      focus: { kind: "comment", id: "cm-2" },
+    });
+  });
+
+  it("sends a delivery row to Reports and names its report", () => {
+    assert.deepEqual(landingFor({ group: "delivery", changes: { reportId: "rp-2", round: 2 } }), {
+      tab: "reports",
+      focus: { kind: "report", id: "rp-2", round: 2 },
+    });
+  });
+
+  it("falls back to the round when the delivery row names no report", () => {
+    assert.deepEqual(landingFor({ group: "delivery", changes: { round: 1 } }), {
+      tab: "reports",
+      focus: { kind: "report", id: null, round: 1 },
+    });
+    // `report_waived` has no report id but does carry the delivery round.
+    assert.deepEqual(landingFor({ group: "delivery", changes: { deliveryRound: 3 } }), {
+      tab: "reports",
+      focus: { kind: "report", id: null, round: 3 },
+    });
+  });
+
+  it("names no entry when the row has no id and no round to name", () => {
+    assert.deepEqual(landingFor({ group: "comment", changes: {} }), { tab: "activity", focus: null });
+    assert.deepEqual(landingFor({ group: "comment", changes: { commentId: "" } }), { tab: "activity", focus: null });
+    assert.deepEqual(landingFor({ group: "delivery", changes: {} }), { tab: "reports", focus: null });
+    assert.deepEqual(landingFor({ group: "delivery", changes: { reportId: "", round: "" } }), {
+      tab: "reports",
+      focus: null,
+    });
+  });
+
+  it("sends every other group, a burst, and nothing at all to Details", () => {
+    const rows = [
+      { group: "status", changes: { from: "todo", to: "done" } },
+      { group: "meta", changes: { fields: ["title"] } },
+      { group: "meta", burst: { count: 3, items: [] } },
+      { group: "weird" },
+      { changes: { commentId: "cm-1" } },
+      null,
+      undefined,
+    ];
+    for (const row of rows) assert.deepEqual(landingFor(row), { tab: "details", focus: null });
+  });
+
+  it("does not mutate its input", () => {
+    const row = Object.freeze({ group: "comment", changes: Object.freeze({ commentId: "cm-1" }) });
+    landingFor(row);
+    assert.equal(row.changes.commentId, "cm-1");
   });
 });

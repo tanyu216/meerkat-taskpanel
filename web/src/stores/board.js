@@ -166,14 +166,20 @@ export const board = reactive({
   drawerState: "closed",
   detail: null,
   /**
-   * A **one-shot** landing tab for the drawer (`{ ref, tab }`).
+   * A **one-shot** landing intent for the drawer (`{ ref, tab, focus }`).
    *
    * The drawer picks its tab from the card's status, which is all it can know on
    * its own. A caller that knows more — the waiting queue, whose row's
    * `reasonKind` says whether the reader is answering a question or judging a
-   * delivery — names the tab here instead, and the drawer consumes it once when
-   * it opens (`consumeDetailIntent`). Opening without an intent clears it, so a
-   * stale landing tab can never outlive the open that asked for it.
+   * delivery, or an Activity row, which names the comment or report it came from
+   * — writes the tab (and, when it has one, the entry) here instead, and the
+   * drawer consumes it once when it opens (`consumeDetailIntent`). Opening
+   * without an intent clears it, so a stale landing can never outlive the open
+   * that asked for it.
+   *
+   * `focus` is `{ kind: "comment", id }` or `{ kind: "report", id, round }`;
+   * the named entry may not be in the history the drawer has loaded, and that
+   * is the drawer's call to make against what it actually holds.
    */
   detailIntent: null,
   conflict: null,
@@ -1192,21 +1198,23 @@ let detailToken = 0;
 /**
  * Open the drawer on a card.
  *
- * `options.tab` is the **one-shot** landing tab (see `board.detailIntent`). Only
- * a caller that knows more than the card's status does passes it — the waiting
- * queue, whose row's `reasonKind` names the panel. Every other caller passes
- * nothing, which clears any intent left behind and keeps the status-only rule.
+ * `options.tab` / `options.focus` are the **one-shot** landing intent (see
+ * `board.detailIntent`). Only a caller that knows more than the card's status
+ * does passes them — the waiting queue, whose row's `reasonKind` names the
+ * panel, or an Activity row, which names the comment or report it came from.
+ * Every other caller passes nothing, which clears any intent left behind and
+ * keeps the status-only rule.
  *
  * @param {string} identifier the card's ref
- * @param {{tab?: string}} [options]
+ * @param {{tab?: string, focus?: {kind: string, id?: string|null, round?: number|null}|null}} [options]
  */
-export async function openDetail(identifier, { tab } = {}) {
+export async function openDetail(identifier, { tab, focus } = {}) {
   board.selectedRef = identifier;
   board.drawerState = "open";
-  // One-shot: this open states the tab it wants (or none, which withdraws a
+  // One-shot: this open states the landing it wants (or none, which withdraws a
   // previous one). The drawer takes it in the same card watcher that reads the
   // card, and clears it there.
-  board.detailIntent = tab ? { ref: identifier, tab } : null;
+  board.detailIntent = tab || focus ? { ref: identifier, tab: tab ?? null, focus: focus ?? null } : null;
   board.detail = null;
   const token = ++detailToken;
   /**
@@ -1260,20 +1268,21 @@ export async function openDetail(identifier, { tab } = {}) {
 }
 
 /**
- * Take the one-shot landing tab for `ref`, clearing it in the same act.
+ * Take the one-shot landing intent for `ref`, clearing it in the same act.
  *
  * The drawer calls this from its card watcher. A call for another ref (the
  * watcher's first firing with no card loaded, a stale read) leaves the intent
  * alone: only the open that asked for it may consume it, and only once.
  *
  * @param {string|undefined|null} ref the identifier the drawer just opened
- * @returns {string|null} the tab to land on, or `null` for the status rule
+ * @returns {{tab: string|null, focus: object|null}|null} the landing, or `null`
+ *   for the status rule
  */
 export function consumeDetailIntent(ref) {
   const intent = board.detailIntent;
   if (!intent || !ref || intent.ref !== ref) return null;
   board.detailIntent = null;
-  return intent.tab;
+  return { tab: intent.tab ?? null, focus: intent.focus ?? null };
 }
 
 export function closeDetail() {

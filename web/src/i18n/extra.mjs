@@ -121,6 +121,10 @@ export const EXTRA = {
     // so it has no catalogue key to reuse: it lives here, like every other
     // implementation-authored state, and reaches the block through `data-i18n`.
     "detail.saveError": "Couldn’t save — try again.",
+    // B26 → B09 — the entry a feed row named is older than the drawer's loaded
+    // history (comments cap at 200; a report may be gone). The tab still lands;
+    // this is the one info toast that says why the entry is not focused.
+    "detail.focusMiss": "That entry is older than the loaded history.",
     // v4 — the drawer's six-tab shell. The prototype's tab labels are
     // literals, but the shipped board is localised, so the same six words live
     // here (the prototype has no copy for a live session trail or a reports
@@ -255,6 +259,7 @@ export const EXTRA = {
     "attachment.previewError": "该附件无法加载。",
     "activity.filters.label": "动态筛选",
     "detail.saveError": "保存失败 —— 请重试。",
+    "detail.focusMiss": "该记录较旧，未在已加载历史中",
     // 同上：抽屉的六枚 tab 与报告/验收/会话轨迹文案。
     "drawer.tabs.label": "任务详情分区",
     "drawer.loading": "正在加载卡片",
