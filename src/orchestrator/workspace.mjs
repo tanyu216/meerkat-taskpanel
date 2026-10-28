@@ -159,6 +159,7 @@ export function createWorkspace(input) {
   const {
     projectDir,
     entry,
+    project = null,
     identifier,
     round = 1,
     previousBranch = null,
@@ -202,6 +203,8 @@ export function createWorkspace(input) {
     ok: true,
     workspace: {
       identifier,
+      // The board project, so landing can re-read its rules (`merge_ref`).
+      project: typeof project === "string" && project !== "" ? project : null,
       round,
       path,
       branch,

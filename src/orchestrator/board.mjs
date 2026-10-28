@@ -9,6 +9,7 @@
 import { dirname } from "node:path";
 
 import { TASKD_KIND } from "../foundation/constants.mjs";
+import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import {
   BOARD_CARD_ID,
@@ -410,7 +411,11 @@ export async function runWorkflowPass(opts, config, log) {
       // No record: a shared-mode card, or one delivered before worktrees. There
       // is nothing to merge.
       if (record === null) return { ok: true };
-      const merged = mergeWorkspace({ workspace: record });
+      // The project's own rules are read live, not frozen at admission: a
+      // declared `merge_ref` names the branch acceptance must land on.
+      const target = record.project ? resolveWakeTarget({ project: record.project }) : null;
+      const entry = target !== null && target.ok === true ? (target.entry ?? null) : null;
+      const merged = mergeWorkspace({ workspace: record, entry });
       if (merged.ok === true) return { ok: true };
       log(
         `workflow: landing ${action.original_ref} blocked (${merged.code}: ${merged.message}) — ` +

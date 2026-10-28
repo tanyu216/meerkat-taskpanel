@@ -179,6 +179,7 @@ function prepareDispatchTarget({
   const created = createWorkspace({
     projectDir,
     entry: target.entry ?? null,
+    project: target.project ?? card?.project ?? null,
     identifier,
     round,
     previousBranch: previous === null ? null : previous.branch,

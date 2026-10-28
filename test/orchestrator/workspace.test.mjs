@@ -89,6 +89,7 @@ describe("orchestrator/workspace — create and remove", () => {
     const result = ws.createWorkspace({
       projectDir: "/p",
       entry: entryNone,
+      project: "TP",
       identifier: "TP-0001",
       round: 2,
       previousBranch: "lane/TP-0001",
@@ -99,6 +100,7 @@ describe("orchestrator/workspace — create and remove", () => {
     assert.equal(result.ok, true);
     assert.deepEqual(result.workspace, {
       identifier: "TP-0001",
+      project: "TP",
       round: 2,
       path: "/p/.worktrees/TP-0001-r2",
       branch: "lane/TP-0001-r2",
@@ -243,6 +245,24 @@ describe("orchestrator/workspace — merge into the project branch", () => {
     });
     assert.equal(result.ok, false);
     assert.equal(result.code, "WORKSPACE_TARGET_DIRTY");
+    assert.equal(calls.some((call) => call.argv.includes("merge")), false, "nothing was attempted");
+  });
+
+  it("refuses to land when the project declares another integration branch", () => {
+    // The project rule is authoritative: `merge_ref` names the branch acceptance
+    // must land on, and a checkout sitting elsewhere is a refusal, not a merge.
+    const { run, calls } = recorder([
+      ["status --porcelain", OK("")],
+      ["rev-parse --abbrev-ref HEAD", OK("dev\n")],
+    ]);
+    const result = ws.mergeWorkspace({
+      workspace: { path: "/p/.worktrees/TP-0001", branch: "lane/TP-0001", project_dir: "/p", identifier: "TP-0001" },
+      entry: { merge_ref: "release/1.x" },
+      run,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "WORKSPACE_MERGE_TARGET_MISMATCH");
+    assert.match(result.message, /release\/1\.x/);
     assert.equal(calls.some((call) => call.argv.includes("merge")), false, "nothing was attempted");
   });
 
