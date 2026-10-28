@@ -2,9 +2,9 @@
 
 Run this after the design work and before delivery. First re-export the brief through the
 `meerkat` board skill so the check runs against the current card, then work through every
-stage you ran; the skip rules at the end decide which stages apply. The requirement →
-evidence table lives in `plan.md` and grows while you work — this check audits it, it does
-not write it from memory.
+stage you ran; the skip rules at the end decide which stages apply. The requirement → evidence
+table lives in `plan.md` and grows while you work — this check audits it, it does not write it
+from memory.
 
 Never hand-edit `card.md`; re-export it. Board operations are the `meerkat` board skill's
 contract. This is the role's pre-delivery audit, not the delivery itself.
