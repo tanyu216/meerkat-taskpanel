@@ -141,11 +141,26 @@ project's own working directory.
 
 ## The working tree
 
-The loop schedules conversations, not sandboxes. Parallel cards in one project share its
-working directory, and `--project-concurrency` above 1 means they run there at the same time.
-If cards can touch the same files, give each its own `git worktree` — a role or deployment
-convention; the loop neither creates nor merges worktrees, and it does not detect conflicts.
-It logs one warning per directory when it first admits parallel work in a git checkout.
+A card in a git project runs in its **own worktree**. Admission creates
+`.worktrees/<ref>[-r<round>]` on branch `lane/<ref>[-r<round>]` and points the queue's
+`target_dir` at it. The base is the project's declared `base_ref` (in `projects.json`), else
+the project directory's current branch; a rework continues from the previous round's lane
+branch. There is no hard-coded development branch.
+
+Creation is part of admission: a failure **defers** the card, and the loop never falls back
+to the project's shared checkout. `--workspace=shared` restores the old behaviour explicitly
+and logs one warning per directory when parallel cards share a git checkout.
+
+Acceptance **lands** the work: the lane branch is merged into the project's current branch
+before the card reaches `done`. A dirty project checkout or a merge conflict keeps the card
+in `in_review` — the verdict is already recorded — and leaves the worktree and branch for a
+human; the next tick retries. Cleanup happens only when the card is terminal: the worktree is
+removed first, then the merged branch; a dirty worktree is left for its owner. The loop's own
+`.meerkat/<identifier>/` sits **inside** the worktree, so it disappears with it — the delivery
+report is the durable evidence, the process directory is not.
+
+Roles, the decision policy and the process directory resolve from the project checkout;
+only the worker's working directory is the worktree.
 
 ## Team roles (optional)
 

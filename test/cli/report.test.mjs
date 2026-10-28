@@ -103,9 +103,21 @@ describe("cli/report template", () => {
 
   it("guesses evidence from git, and degrades without it", () => {
     const task = { identifier: "DEMO-0001", source_path: null };
-    const fromGit = evidenceFor({ task, run: () => "0123abc\n" });
+    const cleanGit = (_cmd, args) => (args[0] === "status" ? "" : "0123abc\n");
+    const fromGit = evidenceFor({ task, run: cleanGit });
     assert.equal(fromGit.source, "git");
     assert.deepEqual(fromGit.anchors, [{ kind: "commit", sha: "0123abc" }]);
+
+    // A dirty tree must not stamp HEAD: HEAD names the previous commit, and the
+    // delivery contract refuses a path anchor without a commit. The template
+    // degrades to a path anchor and tells the author to commit first.
+    const dirtyGit = (_cmd, args) => (args[0] === "status" ? " M src/a.mjs\n" : "0123abc\n");
+    const dirty = evidenceFor({ task: { ...task, source_path: "cards/demo.md" }, run: dirtyGit });
+    assert.equal(dirty.source, "dirty-tree");
+    assert.deepEqual(dirty.anchors, [{ kind: "path", path: "cards/demo.md" }]);
+    const dirtyNoSource = evidenceFor({ task, run: dirtyGit });
+    assert.equal(dirtyNoSource.source, "dirty-tree");
+    assert.equal(dirtyNoSource.anchors[0].kind, "path");
 
     // No git at all (a container has none): fall through to the task's source
     // path, then to a placeholder — never an empty list.
@@ -172,9 +184,12 @@ describe("cli/report template", () => {
       assert.equal(result.status, 0, result.stderr);
       const data = dataOf(result);
       assert.ok(data.report.evidence.length >= 1, "a report with no evidence would be refused by deliver");
-      assert.ok(["git", "source_path", "placeholder"].includes(data.evidence_source));
+      assert.ok(["git", "source_path", "placeholder", "dirty-tree"].includes(data.evidence_source));
       if (data.evidence_source === "placeholder") {
         assert.match(result.stderr, /placeholder you must replace/);
+      }
+      if (data.evidence_source === "dirty-tree") {
+        assert.match(result.stderr, /uncommitted changes/);
       }
     });
   });
@@ -249,7 +264,10 @@ describe("cli/report list", () => {
     return JSON.stringify({
       conclusion,
       acceptance: [{ text: "cli works", status: "met" }],
-      evidence: [{ kind: "path", path: "src/cli/index.mjs" }],
+      evidence: [
+        { kind: "commit", sha: "abc1234" },
+        { kind: "path", path: "src/cli/index.mjs" },
+      ],
       leftovers: null,
     });
   }

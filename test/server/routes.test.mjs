@@ -62,7 +62,10 @@ async function deliverCard(ref) {
       report: {
         conclusion: "delivered",
         acceptance: [{ text: "a", status: "met" }],
-        evidence: [{ kind: "path", path: "x" }],
+        evidence: [
+          { kind: "commit", sha: "abc1234" },
+          { kind: "path", path: "x" },
+        ],
       },
     }),
   );
@@ -217,7 +220,10 @@ describe("server/routes — tasks, the gate and deliver", () => {
       report: {
         conclusion: "M2 landed.",
         acceptance: [{ text: "cli works", status: "met" }],
-        evidence: [{ kind: "path", path: "src/cli/index.mjs" }],
+        evidence: [
+          { kind: "commit", sha: "abc1234" },
+          { kind: "path", path: "src/cli/index.mjs" },
+        ],
       },
     });
     const data = dataOf(result);
@@ -275,7 +281,10 @@ describe("server/routes — tasks, the gate and deliver", () => {
         report: {
           conclusion: "landed",
           acceptance: [{ text: "works", status: "met" }],
-          evidence: [{ kind: "path", path: "x" }],
+          evidence: [
+            { kind: "commit", sha: "abc1234" },
+            { kind: "path", path: "x" },
+          ],
         },
       }),
     );
@@ -287,7 +296,10 @@ describe("server/routes — tasks, the gate and deliver", () => {
       report: {
         conclusion: "sneaky",
         acceptance: [{ text: "works", status: "met" }],
-        evidence: [{ kind: "path", path: "x" }],
+        evidence: [
+          { kind: "commit", sha: "abc1234" },
+          { kind: "path", path: "x" },
+        ],
       },
     });
     assert.equal(backdoor.status, 409, JSON.stringify(backdoor.body));
@@ -346,7 +358,10 @@ describe("server/routes — the workflow plan on reconcile", () => {
         report: {
           conclusion: "Done.",
           acceptance: [{ text: "works", status: "met" }],
-          evidence: [{ kind: "path", path: "src/cli/index.mjs" }],
+          evidence: [
+            { kind: "commit", sha: "abc1234" },
+            { kind: "path", path: "src/cli/index.mjs" },
+          ],
         },
       }, { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "ada" }) }),
     );
@@ -840,7 +855,10 @@ describe("server/routes — the edges a happy path never reaches", () => {
         report: {
           conclusion: "done",
           acceptance: [{ text: "a", status: "met" }],
-          evidence: [{ kind: "path", path: "x" }],
+          evidence: [
+            { kind: "commit", sha: "abc1234" },
+            { kind: "path", path: "x" },
+          ],
         },
         seg: "seg9",
         session_id: "session-9",
@@ -1103,6 +1121,7 @@ describe("server/routes — candidates (the poll read)", () => {
       Object.keys(candidates.candidates[0]).sort(),
       [
         "created_at",
+        "delivery_round",
         "id",
         "identifier",
         "meta",

@@ -373,6 +373,7 @@ describe("task-order — the candidate projection is unchanged by the order", ()
     const { candidates } = dataOf(await call("GET", "/api/v1/tasks/candidates?assignee=linus"));
     assert.deepEqual(Object.keys(candidates[0]).sort(), [
       "created_at",
+      "delivery_round",
       "id",
       "identifier",
       "meta",

@@ -168,6 +168,13 @@ flag("--session-turn-timeout", (opts, value) => { opts.sessionTurnTimeout = numb
 flag("--session-poll-ms", (opts, value) => { opts.sessionPollMs = number("--session-poll-ms", value); });
 flag("--session-pool-max", (opts, value) => { opts.sessionPoolMax = number("--session-pool-max", value); });
 flag("--project-concurrency", (opts, value) => { opts.projectConcurrency = number("--project-concurrency", value); });
+flag("--workspace", (opts, value) => {
+  const mode = String(value ?? "").trim();
+  if (mode !== "worktree" && mode !== "shared") {
+    throw new Error(`--workspace must be worktree or shared, got '${value}'`);
+  }
+  opts.workspace = mode;
+});
 flag("--project-idle-ms", (opts, value) => { opts.projectIdleMs = number("--project-idle-ms", value); });
 flag("--allow-all-tools", (opts) => { opts.allowAllTools = true; }, "switch");
 flag("--allow-all-tools-reason", (opts, value) => { opts.allowAllToolsReason = value; });
@@ -296,6 +303,7 @@ function defaultOptions(env) {
     projectsJson: null,
     help: false,
     rolesDir: null,
+    workspace: undefined,
   };
 }
 
@@ -463,6 +471,20 @@ export function parseArgs(argv, env = process.env) {
     },
     30 * 60 * 1000,
   );
+  // A git project's cards get their own worktree by default. `shared` is the
+  // explicit old behaviour: every card in the project's checkout.
+  const workspaceMode = String(
+    opts.workspace ??
+      env.MEERKAT_TASKPANEL_WORKSPACE ??
+      opts.configFile.MEERKAT_TASKPANEL_WORKSPACE ??
+      "worktree",
+  ).trim();
+  if (workspaceMode !== "worktree" && workspaceMode !== "shared") {
+    throw new Error(
+      `--workspace / MEERKAT_TASKPANEL_WORKSPACE must be worktree or shared, got '${workspaceMode}'`,
+    );
+  }
+  opts.workspace = workspaceMode;
   const resident = String(opts.resident ?? "auto").trim().toLowerCase();
   if (resident !== "auto" && resident !== "no") throw new Error("--resident must be auto or no");
   opts.resident = resident;
@@ -742,6 +764,8 @@ export function loopCommandArgs(opts) {
   if (opts.projectConcurrency !== opts.maxConcurrency) {
     add("--project-concurrency", opts.projectConcurrency);
   }
+  // The child pass must use the same workspace mode it was resolved with.
+  add("--workspace", opts.workspace ?? "worktree");
   return args;
 }
 
@@ -831,6 +855,8 @@ Options:
   --session-poll-ms <ms>    Queue poll interval (default: 1000).
   --session-pool-max <n>    Max resident lane sessions (default: 8).
   --project-concurrency <n> Max live subagents per project (default: --max-concurrency).
+  --workspace <worktree|shared>
+                            Per-card git worktree for a git project (default: worktree).
   --project-idle-ms <ms>    Close an idle project session after this (default: 1800000).
   --allow-all-tools         Enable every agent tool. Requires --allow-all-tools-reason;
                             the session runs with the operator's full OS permissions.

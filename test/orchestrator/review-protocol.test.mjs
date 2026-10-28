@@ -81,7 +81,10 @@ describe("the review-card protocol", () => {
           input: JSON.stringify({
             conclusion: "delivered",
             acceptance: [{ text: "a", status: "met" }],
-            evidence: [{ kind: "path", path: "x" }],
+            evidence: [
+              { kind: "commit", sha: "abc1234" },
+              { kind: "path", path: "x" },
+            ],
           }),
         }),
       );

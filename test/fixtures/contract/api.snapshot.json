@@ -105,6 +105,10 @@
       "http": 503
     },
     {
+      "code": "DELIVERY_NEEDS_COMMIT",
+      "http": 422
+    },
+    {
       "code": "DICTIONARY_AMBIGUOUS",
       "http": 409
     },

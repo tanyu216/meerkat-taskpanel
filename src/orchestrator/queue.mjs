@@ -40,6 +40,7 @@ export function queuePaths(stateDir) {
     cards: join(dir, QUEUE_FILES.cards),
     ledger: join(dir, QUEUE_FILES.ledger),
     sessions: join(dir, QUEUE_FILES.sessions),
+    workspaces: join(dir, QUEUE_FILES.workspaces),
   };
 }
 

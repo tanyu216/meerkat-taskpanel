@@ -49,6 +49,8 @@ A single JSON object with a `projects` array:
 | `project` | string | **Required.** The board project identity — its **id** (preferred) or its name. |
 | `local_path` | string | **Optional.** The project's own directory: absolute, existing, a directory. |
 | `run_dir` | string | **Optional.** The launch directory a worker starts in. Checked the same way; consulted only when `local_path` is not given. |
+| `base_ref` | string | **Optional, loop-only.** The ref a card's worktree branches from. Default: the project directory's current branch. The board never reads it. |
+| `merge_ref` | string | **Optional, loop-only.** The branch acceptance must merge into. It must be the branch the project directory has checked out, or landing is refused. Default: whatever is checked out. |
 | *anything else* | *any* | Copied through unchanged and never interpreted; read it with `project map show`. |
 
 ```text

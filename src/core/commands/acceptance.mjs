@@ -24,7 +24,7 @@ import { isTerminalStatus } from "../domain/status.mjs";
 import { acceptanceAuthorityFor, assertAcceptanceAuthority, cardAcceptanceOf } from "../domain/acceptance-mode.mjs";
 import { parseReviewVerdict } from "../domain/workflow.mjs";
 import { coverageOf, unsupportedClaimsOf } from "../domain/acceptance.mjs";
-import { evidenceFromJson, evidenceHasCommand } from "../domain/report.mjs";
+import { COMMIT_SHA_PATTERN, evidenceFromJson, evidenceHasCommand } from "../domain/report.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { assertEpicRollupReady, assertRollupCoverage } from "./rollup.mjs";
 
@@ -42,6 +42,63 @@ import { assertEpicRollupReady, assertRollupCoverage } from "./rollup.mjs";
 export function assertAcceptance(ctx, task, actor) {
   const authority = acceptanceAuthorityFor(task);
   return assertAcceptanceAuthority(actor, { mode: authority.mode, reviewCard: authority.isReview });
+}
+
+/**
+ * A delivery that cites a path must also cite the commit it was made in.
+ *
+ * A path anchor is a claim about the working tree. An uncommitted tree can be
+ * stashed, reset or overwritten before the reviewer reads it, so the board
+ * refuses the report unless the same evidence names the commit that contains
+ * the work. This is the *shape* half: core cannot shell out to git
+ * (`test/core/domain/purity.test.mjs`), so the reviewer verifies that the sha
+ * resolves and that every path exists at it (`review-workflow.md`).
+ *
+ * Review cards are exempt: their path anchors name places the reviewer read,
+ * not work they produced. An epic is exempt too — a container has no working
+ * tree of its own, and its rollup evidence is the union of its children's,
+ * each of which passed this gate.
+ *
+ * @param {object} task
+ * @param {object|null|undefined} report the prepared or stored report
+ * @returns {true}
+ * @throws {DomainError} DELIVERY_NEEDS_COMMIT
+ */
+export function assertDeliveryCommitAnchor(task, report) {
+  if (task?.reviewOfId !== null && task?.reviewOfId !== undefined) return true;
+  if (task?.kind === TASK_KIND.EPIC) return true;
+
+  const items = evidenceFromJson(report?.evidence).items;
+  const pathAnchors = items
+    .filter((anchor) => anchor?.kind === "path" && typeof anchor.path === "string" && anchor.path.trim() !== "")
+    .map((anchor) => anchor.path);
+  if (pathAnchors.length === 0) return true;
+
+  const hasCommit = items.some(
+    (anchor) =>
+      anchor?.kind === "commit" &&
+      typeof anchor.sha === "string" &&
+      COMMIT_SHA_PATTERN.test(anchor.sha),
+  );
+  if (hasCommit) return true;
+
+  throw new DomainError("DELIVERY_NEEDS_COMMIT", {
+    message:
+      `${task?.identifier ?? "the card"}: a delivery that cites a path must also cite the ` +
+      "commit it was made in — an uncommitted tree can disappear before the review reads it",
+    details: {
+      taskId: task?.id ?? null,
+      identifier: task?.identifier ?? null,
+      round: report?.round ?? task?.deliveryRound ?? null,
+      pathAnchors,
+    },
+    hint: {
+      fix:
+        'commit the work, then add {"kind":"commit","sha":"<sha>"} to the report evidence ' +
+        "(taskctl report template <ref> --commit <sha>); put the commit anchor before any " +
+        "path anchor so bounding cannot drop it",
+    },
+  });
 }
 
 /**

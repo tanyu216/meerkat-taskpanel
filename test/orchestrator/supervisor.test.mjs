@@ -1491,6 +1491,34 @@ describe("parseArgs — the project map", () => {
   });
 });
 
+describe("parseArgs — the workspace mode", () => {
+  const ENV = { HOME: "/home/alice" };
+
+  it("defaults to worktree, accepts the flag, and refuses anything else", () => {
+    assert.equal(parseArgs(["--actor-kind", "claude", "--once"], ENV).workspace, "worktree");
+    assert.equal(
+      parseArgs(["--actor-kind", "claude", "--once", "--workspace", "shared"], ENV).workspace,
+      "shared",
+    );
+    assert.throws(
+      () => parseArgs(["--actor-kind", "claude", "--once", "--workspace", "sandbox"], ENV),
+      /worktree or shared/,
+    );
+  });
+
+  it("reads the environment and carries the mode into the child args", () => {
+    const opts = parseArgs(["--actor-kind", "claude", "--once"], {
+      ...ENV,
+      MEERKAT_TASKPANEL_WORKSPACE: "shared",
+    });
+    assert.equal(opts.workspace, "shared");
+    const args = loopCommandArgs(opts);
+    const at = args.indexOf("--workspace");
+    assert.notEqual(at, -1, "the child must receive the resolved mode");
+    assert.equal(args[at + 1], "shared");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // The SLA ledger on disk (fail-soft by construction)
 // ---------------------------------------------------------------------------

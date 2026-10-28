@@ -737,3 +737,136 @@ describe("commands/projects — the acceptance default (0038)", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// The delivery artifact contract: a report that cites a path must cite the
+// commit it was made in. A path-only report can outlive the working tree (a
+// concurrent stash, a reset), so the board refuses it before review.
+// ---------------------------------------------------------------------------
+describe("commands/delivery — a path anchor needs a commit anchor", () => {
+  const pathOnly = () => ({
+    conclusion: "done",
+    acceptance: [{ text: "x", status: "met" }],
+    evidence: [{ kind: "path", path: "src/core/a.mjs" }],
+    author: AGENT,
+  });
+  const pathAndCommit = () => ({
+    ...pathOnly(),
+    evidence: [
+      { kind: "commit", sha: "abc1234" },
+      { kind: "path", path: "src/core/a.mjs" },
+    ],
+  });
+  const commandOnly = () => ({
+    conclusion: "done",
+    acceptance: [{ text: "x", status: "met" }],
+    evidence: [{ kind: "command", cmd: "node --test x", exit_code: 0 }],
+    author: AGENT,
+  });
+
+  it("refuses a delivery that cites a path but names no commit", async () => {
+    await board(({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "path-only", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      assert.throws(
+        () => commands.deliver({ taskId: task.id, report: pathOnly(), actor: AGENT }),
+        (err) => {
+          assert.equal(err.code, "DELIVERY_NEEDS_COMMIT");
+          assert.deepEqual(err.details.pathAnchors, ["src/core/a.mjs"]);
+          return true;
+        },
+      );
+      assert.equal(commands.getTask({ id: task.id }).status, "in_progress", "a refused delivery moves nothing");
+      assert.equal(commands.listReports({ taskId: task.id }).length, 0, "and writes no report");
+    });
+  });
+
+  it("accepts a path anchor once the report names a commit", async () => {
+    await board(({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "with-commit", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      assert.equal(commands.deliver({ taskId: task.id, report: pathAndCommit(), actor: AGENT }).task.status, "in_review");
+    });
+  });
+
+  it("accepts command-only evidence (nothing was claimed about the tree)", async () => {
+    await board(({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "command-only", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      assert.equal(commands.deliver({ taskId: task.id, report: commandOnly(), actor: AGENT }).task.status, "in_review");
+    });
+  });
+
+  it("does not accept a malformed sha as the commit anchor", async () => {
+    await board(({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "bad-sha", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      assert.throws(
+        () =>
+          commands.deliver({
+            taskId: task.id,
+            report: {
+              ...pathOnly(),
+              evidence: [
+                { kind: "commit", sha: "not-a-sha" },
+                { kind: "path", path: "src/a.mjs" },
+              ],
+            },
+            actor: AGENT,
+          }),
+        // normalizeReportCreate rejects the malformed anchor first, so the
+        // delivery is refused as invalid content rather than as a missing
+        // commit — either way it never reaches review.
+        (err) => err.code === "REPORT_INVALID",
+      );
+    });
+  });
+
+  it("exempts a review card: its path anchors are places the reviewer read", async () => {
+    await board(({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        reviewOf: original.identifier,
+        reviewRound: original.deliveryRound,
+        actor: AGENT,
+      });
+      commands.claim({ id: review.id, actor: AGENT });
+      assert.equal(commands.deliver({ taskId: review.id, report: pathOnly(), actor: AGENT }).task.status, "in_review");
+    });
+  });
+
+  it("guards the move path: a stored path-only report cannot reach in_review", async () => {
+    await board(({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "written", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      commands.writeReport({ taskId: task.id, report: pathOnly(), actor: AGENT });
+      assert.throws(
+        () => commands.moveStatus({ id: task.id, to: "in_review", actor: AGENT }),
+        (err) => err.code === "DELIVERY_NEEDS_COMMIT",
+      );
+      const preflight = commands.canMove({ taskId: task.id, to: "in_review" });
+      assert.equal(preflight.ok, false);
+      assert.equal(preflight.reason, "DELIVERY_NEEDS_COMMIT");
+    });
+  });
+
+  it("leaves the waiver path alone (a waiver carries no evidence to inspect)", async () => {
+    await board(({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "waived", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      const moved = commands.moveStatus({
+        id: task.id,
+        to: "in_review",
+        actor: AGENT,
+        noReport: true,
+        reason: "no report, by design",
+      });
+      assert.equal(moved.status, "in_review");
+    });
+  });
+});

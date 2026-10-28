@@ -17,6 +17,8 @@ export const QUEUE_FILES = Object.freeze({
   cards: "cards.queue.json",
   ledger: "subagents.state.json",
   sessions: "sessions.state.json",
+  // Per-card worktree/branch records (`orchestrator/workspace.mjs`).
+  workspaces: "workspaces.json",
 });
 
 /** Every other file the loop keeps beside its state directory. */

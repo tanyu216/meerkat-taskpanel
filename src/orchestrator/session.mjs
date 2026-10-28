@@ -786,11 +786,11 @@ export function createSessionPool(input = {}) {
       return { batch: kept, dropped };
     };
     // The global cap is per tick, not per directory: planning is sequential and
-    // the budget is fixed before any turn starts. `claimedByDir` keeps
-    // `--project-concurrency` honest across a directory's two lanes, whose
-    // turns now overlap.
+    // the budget is fixed before any turn starts. `claimedByProject` keeps
+    // `--project-concurrency` honest across a project's worktrees and its two
+    // lanes, whose turns now overlap.
     let globalBudget = Math.max(0, maxConcurrency - liveSubagents(ledger).length);
-    const claimedByDir = new Map();
+    const claimedByProject = new Map();
     const jobs = [];
     for (const { key, dir, lane, cards } of groups.values()) {
       if (globalBudget === 0) {
@@ -813,9 +813,15 @@ export function createSessionPool(input = {}) {
         role: lane === "reviewer" ? "reviewer" : "project",
       });
       const live = liveSubagents(ledger);
+      // A project's cards may run in several worktrees; the cap is on the
+      // project, not on one directory. A row written before worktrees carries
+      // no project and falls back to its session key (the shared directory).
+      const project = String(cards[0]?.project ?? cards[0]?.project_dir ?? dir);
       const projectLive =
-        live.filter((subagent) => String(subagent.sessionKey ?? "") === dir).length +
-        (claimedByDir.get(dir) ?? 0);
+        live.filter(
+          (subagent) =>
+            String(subagent.project ?? subagent.projectDir ?? subagent.sessionKey ?? "") === project,
+        ).length + (claimedByProject.get(project) ?? 0);
       const budget = Math.max(0, Math.min(globalBudget, projectConcurrency - projectLive));
       if (budget === 0) {
         log(`session: ${dir} is at its project concurrency cap — leaving ${cards.length} card(s) pending`);
@@ -841,11 +847,13 @@ export function createSessionPool(input = {}) {
       const { batch, dropped } = await revalidateBatch(claimed.cards);
       if (dropped > 0) globalBudget += dropped;
       if (batch.length === 0) continue;
-      claimedByDir.set(dir, (claimedByDir.get(dir) ?? 0) + batch.length);
+      claimedByProject.set(project, (claimedByProject.get(project) ?? 0) + batch.length);
       const paths = agentPaths(opts.home, opts.actorKind);
       const roleSet = loadRoles({
         explicitDir: opts.rolesDir ?? null,
-        projectDir: dir,
+        // Roles and the decision policy live at the project root; a worktree
+        // does not carry `.meerkat/roles/`.
+        projectDir: String(cards[0]?.project_dir ?? dir),
         loopSkillDir: paths.loopSkill,
       });
       for (const warning of roleSet.warnings) {
@@ -951,6 +959,9 @@ export function createSessionPool(input = {}) {
           status: "completed",
           lastResult: `${lane} session turn completed`,
           queueId: card.id,
+          project: card.project ?? null,
+          projectDir: card.project_dir ?? dir,
+          workspace: card.workspace ?? null,
         });
         completeCards(stateDir, [card.id]);
       });
@@ -1001,6 +1012,13 @@ export function createSessionPool(input = {}) {
           await closeEntry(entry, { dropSession: true });
           log("session: control session reached max-age — reopened fresh next turn");
         }
+        continue;
+      }
+      // A swept worktree takes its session with it; a stale key must not be
+      // reused for a path that no longer exists.
+      if (!existsSync(dir)) {
+        await closeEntry(entry, { dropSession: true });
+        log(`session: project session ${entry.key} — its directory is gone; closed`);
         continue;
       }
       if (sessionMaxAgeMs > 0 && age > sessionMaxAgeMs) {

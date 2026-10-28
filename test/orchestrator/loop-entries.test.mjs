@@ -39,6 +39,7 @@ import {
   isGitCheckout,
 } from "../../src/orchestrator/passes.mjs";
 import { QUEUE_FILES, readCards } from "../../src/orchestrator/queue.mjs";
+import { findWorkspace } from "../../src/orchestrator/workspace.mjs";
 import { runContinue, runPollTick, runQuestionTick } from "../../src/orchestrator/runners.mjs";
 import {
   acquireContinueLock,
@@ -1201,5 +1202,104 @@ describe("continue spawn", () => {
     ], { PATH: emptyBin });
     assert.equal(run.status, 1, run.stderr);
     assert.equal(existsSync(lock), false, "a failed spawn leaves no lock behind");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-card worktree admission
+// ---------------------------------------------------------------------------
+
+describe("worktree admission", () => {
+  function fixture() {
+    const dir = tempDir("tp-worktree-admission-");
+    const app = join(dir, "app");
+    mkdirSync(join(app, ".git"), { recursive: true });
+    const projectsJson = join(dir, "projects.json");
+    writeFileSync(projectsJson, JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
+    return {
+      dir,
+      app,
+      opts: { projectsJson, actorKind: "claude", dryRun: false },
+      watchCards: () => ({ ok: true, running: true }),
+    };
+  }
+
+  const gitRunner = (calls) => (cmd, argv) => {
+    calls.push(argv);
+    if (argv.includes("rev-parse")) return { status: 0, stdout: "dev\n", stderr: "" };
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  const admissionFor = (f, runGit) =>
+    createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: 2,
+      stateDir: f.dir,
+      workspaceMode: "worktree",
+      runGit,
+      watchCards: f.watchCards,
+    });
+
+  it("admits a worker into its own worktree and records the lane", async () => {
+    const f = fixture();
+    const calls = [];
+    const admission = admissionFor(f, gitRunner(calls));
+    const action = { identifier: "T-1", agent: "alice" };
+    const card = { id: "u1", identifier: "T-1", project: "P", delivery_round: 1 };
+    assert.equal((await admission.admit(action, card)).ok, true);
+
+    const wt = join(f.app, ".worktrees", "T-1");
+    assert.equal(admission.dirFor("T-1"), wt);
+    const record = findWorkspace(f.dir, { identifier: "T-1", round: 1 });
+    assert.equal(record.path, wt);
+    assert.equal(record.branch, "lane/T-1");
+    assert.equal(record.project_dir, f.app);
+    assert.ok(calls.some((argv) => argv.includes("worktree") && argv.includes("add")));
+
+    const dispatch = createQueueDispatch({
+      opts: f.opts,
+      config: { reviewers: [] },
+      stateDir: f.dir,
+      admission,
+    });
+    assert.equal((await dispatch(action, card)).ok, true);
+    const [entry] = readCards(f.dir).value.cards;
+    assert.equal(entry.target_dir, wt, "the worker runs in the worktree");
+    assert.equal(entry.project_dir, f.app, "the project checkout stays the role root");
+    assert.equal(entry.workspace.branch, "lane/T-1");
+    assert.equal(entry.round, 1);
+  });
+
+  it("defers instead of falling back when the worktree cannot be created", async () => {
+    const f = fixture();
+    const runGit = (cmd, argv) =>
+      argv.includes("rev-parse")
+        ? { status: 0, stdout: "dev\n", stderr: "" }
+        : { status: 1, stdout: "", stderr: "fatal: nope" };
+    const admission = admissionFor(f, runGit);
+    const result = await admission.admit(
+      { identifier: "T-2", agent: "alice" },
+      { identifier: "T-2", project: "P", delivery_round: 1 },
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.why, /WORKSPACE_CREATE_FAILED/);
+    assert.equal(admission.dirFor("T-2"), null);
+    assert.equal(findWorkspace(f.dir, { identifier: "T-2" }), null, "nothing is registered");
+  });
+
+  it("routes a review into the original card's worktree", async () => {
+    const f = fixture();
+    const admission = admissionFor(f, gitRunner([]));
+    await admission.admit(
+      { identifier: "T-1", agent: "alice" },
+      { identifier: "T-1", project: "P", delivery_round: 1 },
+    );
+    const worktree = admission.dirFor("T-1");
+    const review = await admission.admit(
+      { identifier: "T-9", agent: "jobs" },
+      { identifier: "T-9", project: "P", review_of: "T-1", review_round: 1 },
+    );
+    assert.equal(review.ok, true);
+    assert.equal(admission.dirFor("T-9"), worktree, "the reviewer sees the delivered tree");
   });
 });

@@ -53,8 +53,12 @@ merging `dev`, and only after the user has confirmed.
   `.worktrees/` (also dockerignored, so it never enters the image's build context). Before
   creating one, follow the `using-git-worktrees` skill's Step 0 (isolation detection);
   `.worktrees/` here is the declared preference that skill honors over its own default.
-  (The board's own lanes — `lane/<ref>-segN` — are the automated instance of this pattern;
-  older ones live beside the checkout and you will find them in `git worktree list`.)
+  (The loop creates this pair itself for every card in a git project, per round:
+  `.worktrees/<ref>[-r<round>]` on `lane/<ref>[-r<round>]`, based on the project's declared
+  `base_ref` (else its current branch). Acceptance merges the lane branch back into the
+  project's current branch before the card reaches `done`; cleanup removes the worktree,
+  then the merged branch. Older `lane/<ref>-segN` worktrees live beside the checkout and you
+  will find them in `git worktree list`.)
 - **Report, confirm, then integrate.** When the work is done, say so and wait — the user
   decides whether it lands. Nothing here is self-closing.
 - **On confirmation, land it into `dev` and clean up** (a worktree *and* any branch that is

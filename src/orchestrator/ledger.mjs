@@ -102,6 +102,11 @@ export function upsertSubagent(ledger, record) {
     card: record.card ?? (index === -1 ? null : next.subagents[index].card ?? null),
     type: record.type ?? (index === -1 ? null : next.subagents[index].type ?? null),
     queueId: record.queueId ?? (index === -1 ? null : next.subagents[index].queueId ?? null),
+    // A card's project and its project checkout travel with the row so the
+    // per-project cap can count a project's worktrees as one project.
+    project: record.project ?? (index === -1 ? null : next.subagents[index].project ?? null),
+    projectDir: record.projectDir ?? (index === -1 ? null : next.subagents[index].projectDir ?? null),
+    workspace: record.workspace ?? (index === -1 ? null : next.subagents[index].workspace ?? null),
     status: record.status ?? (index === -1 ? "spawned" : next.subagents[index].status ?? "spawned"),
     startedAt: record.startedAt ?? (index === -1 ? new Date().toISOString() : next.subagents[index].startedAt),
     lastSeenAt: record.lastSeenAt ?? new Date().toISOString(),

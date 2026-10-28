@@ -133,8 +133,22 @@ export function evidenceFor(input) {
 
   const sha = run("git", ["rev-parse", "HEAD"]);
   if (sha !== null && /^[0-9a-f]{7,40}$/.test(sha.trim())) {
-    anchors.push({ kind: "commit", sha: sha.trim() });
-    return { anchors, source: "git" };
+    // `rev-parse HEAD` succeeds on a dirty tree and names the *previous*
+    // commit. Stamping that as the delivery sha is exactly the trap the
+    // delivery contract closes: the report would cite a commit that does not
+    // contain the work. Ask `status` too; a non-empty answer means "commit
+    // first", never "HEAD is close enough".
+    const status = run("git", ["status", "--porcelain"]);
+    if (status === null || status.trim() === "") {
+      anchors.push({ kind: "commit", sha: sha.trim() });
+      return { anchors, source: "git" };
+    }
+    if (task?.source_path !== null && task?.source_path !== undefined) {
+      anchors.push({ kind: "path", path: task.source_path });
+    } else {
+      anchors.push({ kind: "path", path: "<the files you changed>" });
+    }
+    return { anchors, source: "dirty-tree" };
   }
 
   if (task?.source_path !== null && task?.source_path !== undefined) {
@@ -182,6 +196,12 @@ export function buildTemplate(task, options = {}, context = {}) {
   }
   if (evidence.source === "git") {
     warnings.push("evidence anchors were filled from `git rev-parse HEAD`; add --path/--command for real proof");
+  }
+  if (evidence.source === "dirty-tree") {
+    warnings.push(
+      "the working tree has uncommitted changes, so the template cannot name a commit — " +
+        "commit the work, then pass --commit <sha>",
+    );
   }
 
   const report = {

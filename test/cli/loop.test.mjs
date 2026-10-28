@@ -71,6 +71,39 @@ describe("cli/commands/loop — the surface", () => {
     }
   });
 
+  it("accepts --workspace and refuses a value it does not know", () => {
+    // Raw argv is forwarded to the loop's own parser, so the CLI must declare
+    // the flag or the documented mode never reaches it.
+    const stateDir = makeTempDir("meerkat-taskpanel-loop-workspace-");
+    const accepted = runCli([
+      "--actor-kind",
+      "claude",
+      "loop",
+      "poll",
+      "--dry-run",
+      "--workspace",
+      "shared",
+      "--state-dir",
+      stateDir,
+    ]);
+    assert.notEqual(accepted.status, 2, accepted.stderr);
+    assert.doesNotMatch(accepted.stderr, /unknown option --workspace/);
+
+    const refused = runCli([
+      "--actor-kind",
+      "claude",
+      "loop",
+      "poll",
+      "--dry-run",
+      "--workspace",
+      "bogus",
+      "--state-dir",
+      stateDir,
+    ]);
+    assert.equal(refused.status, 2, refused.stderr);
+    assert.match(refused.stderr, /worktree or shared/);
+  });
+
   it("answers --help for the group and every verb", () => {
     const group = runCli(["loop", "--help"], { noIdentity: true });
     assert.equal(group.status, 0);

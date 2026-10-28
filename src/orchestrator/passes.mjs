@@ -17,7 +17,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { resolveWakeDir } from "../foundation/project-dir.mjs";
+import { resolveWakeDir, resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import { candidateArgs, pruneRegistry } from "../foundation/scheduling.mjs";
@@ -33,6 +33,14 @@ import { briefCards, openCardWatch, registerCardWatch, stopCardWatch } from "./c
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { mergeReviewerSets, parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
+import {
+  createWorkspace,
+  findWorkspace,
+  removeWorkspace,
+  removeWorkspaceRecord,
+  sweepWorkspaces,
+  upsertWorkspaceRecord,
+} from "./workspace.mjs";
 import {
   notifyNoResident,
   notifyReal,
@@ -124,64 +132,166 @@ export function isGitCheckout(dir) {
   return existsSync(join(String(dir), ".git"));
 }
 
+/**
+ * Where a card's handoff runs: its own worktree, the original's worktree (for a
+ * review), or the project directory when the deployment opts out or the project
+ * is not a git checkout.
+ *
+ * A worker in worktree mode never falls back to the shared tree: a failed
+ * creation is a defer, because the whole point is that the tree is private.
+ */
+function prepareDispatchTarget({
+  stateDir,
+  workspaceMode,
+  runGit,
+  exists,
+  mkdir,
+  target,
+  projectDir,
+  card,
+  identifier,
+  log,
+}) {
+  if (typeof stateDir === "string" && typeof card?.review_of === "string" && card.review_of !== "") {
+    const record = findWorkspace(stateDir, {
+      identifier: card.review_of,
+      round: card.review_round,
+    });
+    if (record !== null) {
+      return { ok: true, targetDir: record.path, workspace: record, created: false };
+    }
+    log(`admission: review ${identifier} has no recorded workspace; running in ${projectDir}`);
+    return { ok: true, targetDir: projectDir, workspace: null, created: false };
+  }
+
+  if (workspaceMode !== "worktree" || !isGitCheckout(projectDir)) {
+    return { ok: true, targetDir: projectDir, workspace: null, created: false };
+  }
+
+  const round = Number(card?.delivery_round ?? 1);
+  const existing = findWorkspace(stateDir, { identifier, round });
+  if (existing !== null) {
+    return { ok: true, targetDir: existing.path, workspace: existing, created: false };
+  }
+  // A rework continues from the previous round's lane branch: the rejected
+  // work is the starting point, not something to throw away.
+  const previous = findWorkspace(stateDir, { identifier });
+  const created = createWorkspace({
+    projectDir,
+    entry: target.entry ?? null,
+    project: target.project ?? card?.project ?? null,
+    identifier,
+    round,
+    previousBranch: previous === null ? null : previous.branch,
+    run: runGit,
+    exists,
+    mkdir,
+  });
+  if (created.ok !== true) {
+    return { ok: false, why: `${created.code}: ${created.message}` };
+  }
+  upsertWorkspaceRecord(stateDir, created.workspace);
+  return { ok: true, targetDir: created.workspace.path, workspace: created.workspace, created: true };
+}
+
+/** Undo a workspace this pass created but will not use. */
+function discardWorkspace({ stateDir, workspace, runGit }) {
+  if (workspace === null || workspace === undefined) return;
+  const result = removeWorkspace({ workspace, run: runGit });
+  if (result.worktreeRemoved) {
+    removeWorkspaceRecord(stateDir, {
+      identifier: workspace.identifier,
+      round: workspace.round,
+    });
+  }
+}
+
 export function createProjectAdmission(input) {
-  const { opts, projectConcurrency } = input;
-  const liveByDir = input.liveByDir ?? new Map();
-  const queuedByDir = input.queuedByDir ?? new Map();
+  const { opts, projectConcurrency, stateDir } = input;
+  // A caller that supplies project maps counts by project; the older direct
+  // callers still pass directory maps and keep the directory cap.
+  const byProject = input.liveByProject !== undefined || input.queuedByProject !== undefined;
+  const liveBy = byProject ? (input.liveByProject ?? new Map()) : (input.liveByDir ?? new Map());
+  const queuedBy = byProject ? (input.queuedByProject ?? new Map()) : (input.queuedByDir ?? new Map());
+  const workspaceMode = input.workspaceMode ?? "shared";
+  const runGit = input.runGit;
+  const exists = input.exists;
+  const mkdir = input.mkdir;
   const watchCards = input.watchCards ?? ((cards) => registerCardWatch(opts, cards));
   const stopWatch = input.stopWatch ?? ((target) => stopCardWatch(opts, target));
   const log = input.log ?? (() => {});
-  const admittedDirs = new Map();
+  const admitted = new Map();
   const registrations = new Map();
-  const claimedByDir = new Map();
+  const claimedBy = new Map();
   const warnedCheckouts = new Set();
+  const capacityKey = (project, dir) => (byProject ? project : dir);
 
   return {
     async admit(action, card) {
       const project = typeof card?.project === "string" ? card.project.trim() : "";
       if (project === "") return { ok: false, why: "the card names no project" };
-      const resolved = resolveWakeDir({ project, projectsJson: opts.projectsJson });
-      if (resolved.ok !== true) {
-        const first = String(resolved.message ?? "").split("\n")[0];
-        return { ok: false, why: `${resolved.code}: ${first}` };
+      const target = resolveWakeTarget({ project, projectsJson: opts.projectsJson });
+      if (target.ok !== true) {
+        const first = String(target.message ?? "").split("\n")[0];
+        return { ok: false, why: `${target.code}: ${first}` };
       }
-      const used =
-        (liveByDir.get(resolved.dir) ?? 0) +
-        (queuedByDir.get(resolved.dir) ?? 0) +
-        (claimedByDir.get(resolved.dir) ?? 0);
+      const projectDir = target.dir;
+      const key = capacityKey(project, projectDir);
+      const used = (liveBy.get(key) ?? 0) + (queuedBy.get(key) ?? 0) + (claimedBy.get(key) ?? 0);
       if (used >= projectConcurrency) {
         return { ok: false, why: `project ${project} is at its concurrency cap` };
       }
 
-      // Parallel cards share one working tree. That is a deployment convention
-      // (one worktree per card), not something the loop creates or enforces.
+      const identifier =
+        typeof card?.identifier === "string" && card.identifier !== ""
+          ? card.identifier
+          : action.identifier;
+
+      const prepared = prepareDispatchTarget({
+        stateDir,
+        workspaceMode,
+        runGit,
+        exists,
+        mkdir,
+        target,
+        projectDir,
+        project,
+        card,
+        identifier,
+        log,
+      });
+      if (prepared.ok !== true) return { ok: false, why: prepared.why };
+      const targetDir = prepared.targetDir;
+
+      // Shared-tree mode is explicit now; keep the warning for a deployment
+      // that has not switched to worktrees yet.
       if (
+        prepared.workspace === null &&
         projectConcurrency > 1 &&
-        isGitCheckout(resolved.dir) &&
-        !warnedCheckouts.has(resolved.dir)
+        isGitCheckout(projectDir) &&
+        !warnedCheckouts.has(projectDir)
       ) {
-        warnedCheckouts.add(resolved.dir);
+        warnedCheckouts.add(projectDir);
         log(
-          `admission: ${resolved.dir} is a shared git checkout; workers run in parallel — ` +
-            "per-card worktrees are a deployment convention, not enforced",
+          `admission: ${projectDir} is a shared git checkout; workers run in parallel — ` +
+            "set --workspace=worktree to isolate them",
         );
       }
 
       // One registration covers the card and, for a review, its original; each
       // gets its own exact file in the same target directory. The hub writes
       // the first snapshot before this returns.
-      const identifier = typeof card?.identifier === "string" && card.identifier !== ""
-        ? card.identifier
-        : action.identifier;
-      const cards = opts.dryRun === true ? null : briefCards(resolved.dir, identifier, card?.review_of);
+      const cards = opts.dryRun === true ? null : briefCards(targetDir, identifier, card?.review_of);
       if (cards !== null) {
         const watched = await watchCards(cards);
         if (watched?.ok !== true) {
+          if (prepared.created) discardWorkspace({ stateDir, workspace: prepared.workspace, runGit });
           return { ok: false, why: `card brief watch failed: ${watched?.error ?? "unknown error"}` };
         }
         if (watched.running === false) {
           // The hub wrote the final brief and opened no stream. Claiming would
           // leave a worker with nothing to keep fresh; the card is terminal.
+          if (prepared.created) discardWorkspace({ stateDir, workspace: prepared.workspace, runGit });
           return { ok: false, why: `card is already terminal (${watched.reason ?? "terminal"})` };
         }
         // Only a registration this pass created may be released. A covered or
@@ -200,20 +310,30 @@ export function createProjectAdmission(input) {
         }
       }
 
-      admittedDirs.set(action.identifier, resolved.dir);
-      claimedByDir.set(resolved.dir, (claimedByDir.get(resolved.dir) ?? 0) + 1);
+      admitted.set(action.identifier, {
+        targetDir,
+        projectDir,
+        project,
+        workspace: prepared.workspace,
+        created: prepared.created,
+      });
+      claimedBy.set(key, (claimedBy.get(key) ?? 0) + 1);
       return { ok: true };
     },
     async release(identifier) {
       const registered = registrations.get(identifier);
       registrations.delete(identifier);
-      const dir = admittedDirs.get(identifier);
-      admittedDirs.delete(identifier);
+      const entry = admitted.get(identifier);
+      admitted.delete(identifier);
       // Admission reserves the project slot before the claim; a refused claim
       // must give it back, or one conflict would shrink the pass's capacity.
-      // That is independent of whether this pass owns a registration.
-      if (dir !== undefined) {
-        claimedByDir.set(dir, Math.max(0, (claimedByDir.get(dir) ?? 1) - 1));
+      // A workspace this pass created is cleaned up too: nothing will run in it.
+      if (entry !== undefined) {
+        const key = capacityKey(entry.project, entry.projectDir);
+        claimedBy.set(key, Math.max(0, (claimedBy.get(key) ?? 1) - 1));
+        if (entry.created) {
+          discardWorkspace({ stateDir, workspace: entry.workspace, runGit });
+        }
       }
       // No owned registration (reused/covered, or none was made): nothing to
       // stop — the watch belongs to another owner.
@@ -221,7 +341,10 @@ export function createProjectAdmission(input) {
       return stopWatch({ ref: registered.ref, out: registered.out });
     },
     dirFor(identifier) {
-      return admittedDirs.get(identifier) ?? null;
+      return admitted.get(identifier)?.targetDir ?? null;
+    },
+    contextFor(identifier) {
+      return admitted.get(identifier) ?? null;
     },
   };
 }
@@ -245,10 +368,15 @@ export function createQueueDispatch(input) {
   const loggedRoleWarnings = new Set();
   return async (action, card) => {
     if (opts.dryRun) return { ok: true, pid: null, dryRun: true };
-    const dir = admission.dirFor(action.identifier);
-    if (dir === null) return { ok: false, error: "no admitted project directory" };
+    const context =
+      typeof admission.contextFor === "function" ? admission.contextFor(action.identifier) : null;
+    const dir = context?.targetDir ?? admission.dirFor(action.identifier);
+    if (dir === null || dir === undefined) return { ok: false, error: "no admitted project directory" };
+    // Roles and the decision policy resolve from the project checkout, not the
+    // worktree: `.meerkat/roles/` lives at the project root.
+    const projectDir = context?.projectDir ?? dir;
     const { role, agentRole, roleWarnings, handoff } = wakeHandoff(opts, config, action, card, {
-      projectDir: dir,
+      projectDir,
     });
     for (const warning of roleWarnings) {
       if (loggedRoleWarnings.has(warning)) continue;
@@ -261,7 +389,10 @@ export function createQueueDispatch(input) {
       agent: action.agent,
       agent_role: agentRole,
       project: card?.project ?? null,
+      project_dir: projectDir,
       target_dir: dir,
+      workspace: context?.workspace ?? null,
+      round: card?.delivery_round ?? card?.review_round ?? 1,
       handoff,
       // The subscriber maps an event's `task_id` (UUID) back to the card; the
       // identifier alone is not in the event. A review row also keeps its
@@ -364,8 +495,20 @@ export async function runPollOnce(opts, env = process.env) {
     }
     return counts;
   };
-  const liveByDir = countBy(live, "sessionKey");
-  const queuedByDir = countBy(queued, "target_dir");
+  // A project's cards now run in separate worktrees, so the per-project cap is
+  // counted by project, not by directory. A legacy ledger row without a project
+  // falls back to its session key (the shared directory), which is exactly the
+  // old behaviour.
+  const countByProject = (rows) => {
+    const counts = new Map();
+    for (const row of rows) {
+      const value = String(row?.project ?? row?.project_dir ?? row?.sessionKey ?? row?.target_dir ?? "");
+      if (value !== "") counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    return counts;
+  };
+  const liveByProject = countByProject(live);
+  const queuedByProject = countByProject(queued);
   const budget = Math.max(0, maxConcurrency - live.length - queued.length);
   if (budget === 0) {
     log(
@@ -404,8 +547,10 @@ export async function runPollOnce(opts, env = process.env) {
   const admission = createProjectAdmission({
     opts,
     projectConcurrency,
-    liveByDir,
-    queuedByDir,
+    stateDir,
+    workspaceMode: opts.workspace ?? "worktree",
+    liveByProject,
+    queuedByProject,
     watchCards,
     stopWatch,
     log,
@@ -492,6 +637,20 @@ export async function runPatrolOnce(opts, env = process.env) {
   if (!read.ok) return 1;
   const tasks = read.data.tasks ?? [];
 
+  // Terminal cards' worktrees are removed here, not when a turn completes: the
+  // reviewer may still need the tree after delivery. A path still named by a
+  // queued row or a live subagent is left alone.
+  const stateDir = dirname(String(opts.state));
+  const busyPaths = new Set([
+    ...readCards(stateDir)
+      .value.cards.filter((card) => card.status === "pending" || card.status === "processing")
+      .map((card) => card.target_dir),
+    ...liveSubagents(readLedger(stateDir).value).map((row) => row.sessionKey),
+  ]);
+  if (opts.dryRun !== true) {
+    sweepWorkspaces({ stateDir, tasks, isBusy: (path) => busyPaths.has(path), log });
+  }
+
   const patrol = await runPatrolTick({
     tasks,
     config,
@@ -510,18 +669,33 @@ export async function runPatrolOnce(opts, env = process.env) {
         log(`patrol: ${alert.identifier} — the card names no project; notify-only, no LLM turn`);
         return { ok: false };
       }
-      const resolved = resolveWakeDir({ project, projectsJson: opts.projectsJson });
-      if (resolved.ok !== true) {
-        const first = String(resolved.message ?? "").split("\n")[0];
-        log(`patrol: ${alert.identifier} — ${resolved.code}: ${first}; notify-only, no LLM turn`);
+      const target = resolveWakeTarget({ project, projectsJson: opts.projectsJson });
+      if (target.ok !== true) {
+        const first = String(target.message ?? "").split("\n")[0];
+        log(`patrol: ${alert.identifier} — ${target.code}: ${first}; notify-only, no LLM turn`);
         return { ok: false };
       }
+      const projectDir = target.dir;
       const action = { identifier: alert.identifier, agent: alert.agent ?? opts.agents[0] };
+      const prepared = prepareDispatchTarget({
+        stateDir,
+        workspaceMode: opts.workspace ?? "worktree",
+        target,
+        projectDir,
+        card: task,
+        identifier: alert.identifier,
+        log,
+      });
+      if (prepared.ok !== true) {
+        log(`patrol: ${alert.identifier} — ${prepared.why}; notify-only, no LLM turn`);
+        return { ok: false };
+      }
+      const targetDir = prepared.targetDir;
 
       // Same gate as poll: register the brief watch before the claim. The hub
       // writes the first snapshot synchronously, and a terminal card opens no
       // stream — that card is not claimed.
-      const cards = briefCards(resolved.dir, alert.identifier, task?.review_of);
+      const cards = briefCards(targetDir, alert.identifier, task?.review_of);
       // The registration to undo if the claim is refused, and only when this
       // pass created it; a covered/reused watch belongs to another owner. It is
       // addressed by a card the hub actually registered.
@@ -531,6 +705,7 @@ export async function runPatrolOnce(opts, env = process.env) {
           owner: `${opts.actorKind}:${action.agent}`,
         });
         if (watched.ok !== true || watched.running === false) {
+          if (prepared.created) discardWorkspace({ stateDir, workspace: prepared.workspace });
           log(
             `patrol: ${alert.identifier} — card brief watch failed: ` +
               `${watched.error ?? watched.reason ?? "unknown error"}; notify-only, no LLM turn`,
@@ -551,6 +726,7 @@ export async function runPatrolOnce(opts, env = process.env) {
         actorKind: opts.actorKind,
       });
       if (!claimed.ok) {
+        if (prepared.created) discardWorkspace({ stateDir, workspace: prepared.workspace });
         log(`patrol: claim refused ${alert.identifier} (${claimed.error ?? "conflict"}) — not dispatching`);
         if (owned !== null) await stopCardWatch(opts, owned);
         return { ok: false };
@@ -560,15 +736,18 @@ export async function runPatrolOnce(opts, env = process.env) {
         config,
         action,
         task ?? { identifier: alert.identifier },
-        { projectDir: resolved.dir },
+        { projectDir },
       );
       const identity = reviewIdentityOf(task);
-      const queued = enqueueCard(dirname(String(opts.state)), {
+      const queued = enqueueCard(stateDir, {
         card: alert.identifier,
         role,
         agent: action.agent,
         project,
-        target_dir: resolved.dir,
+        project_dir: projectDir,
+        target_dir: targetDir,
+        workspace: prepared.workspace,
+        round: task?.delivery_round ?? 1,
         handoff,
         task_id: task?.id ?? null,
         review_of: identity.originalRef,
@@ -578,7 +757,7 @@ export async function runPatrolOnce(opts, env = process.env) {
         log(`patrol: could not enqueue ${alert.identifier}: ${queued.error}`);
         return { ok: false };
       }
-      log(`patrol: enqueued ${alert.identifier} for ${action.agent} in ${resolved.dir}`);
+      log(`patrol: enqueued ${alert.identifier} for ${action.agent} in ${targetDir}`);
       return { ok: true };
     },
     notify: opts.dryRun ? () => {} : notifyReal(opts, log),

@@ -125,7 +125,8 @@ The first refusal wins, so the error you see is stable:
    `ACCEPTANCE_INCOMPLETE` when an item is missing or blocking) — §4a;
 6. for `todo → in_progress`: the claim gate (`not_assignee`, `EXECUTION_ACTIVE`,
    `CLAIM_LOST`, `not_claimable`);
-7. for `in_review`: the delivery gate (`REPORT_REQUIRED`);
+7. for `in_review`: the delivery gate (`REPORT_REQUIRED`), then the artifact contract
+   (`DELIVERY_NEEDS_COMMIT`) when the report cites a path but no commit;
 8. for `done`: the `agent` card's review evidence (`REVIEW_REQUIRED` when there is no
    current-round review), then the human open-review check (`REVIEW_PENDING`);
 9. the compare-and-swap write (`VERSION_CONFLICT` on a stale `--if-version`).
@@ -140,6 +141,13 @@ report counts only for the round it was written in.
 
 - A report for the card's current `delivery_round`. Every report counts, whether written live
   or imported as history.
+- **A path anchor must name its commit.** If the report's evidence contains a `path` anchor it
+  must also contain a `commit` anchor (`DELIVERY_NEEDS_COMMIT`): a path is a claim about the
+  working tree, and an uncommitted tree can be stashed or reset before the reviewer reads it.
+  The board checks the shape only — the reviewer verifies that the sha resolves and that every
+  path exists at it. Review cards and epics are exempt (a reviewer's paths name what it read;
+  a container's evidence is its rollup union, whose children passed the same gate). A waiver
+  carries no evidence, so the rule does not apply to it.
 - The escape hatch is the **audited waiver**: `--no-report --reason "<why>"` on a move to
   `in_review` (or on `issue deliver`). The reason needs at least **8 characters** after
   trimming; the waiver is stamped on the task row, recorded as a `report_waived` activity and

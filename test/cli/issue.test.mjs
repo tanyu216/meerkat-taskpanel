@@ -34,7 +34,10 @@ const deliverIssue = (run, ref) => {
       input: JSON.stringify({
         conclusion: "delivered",
         acceptance: [{ text: "a", status: "met" }],
-        evidence: [{ kind: "path", path: "x" }],
+        evidence: [
+          { kind: "commit", sha: "abc1234" },
+          { kind: "path", path: "x" },
+        ],
       }),
     }),
   );
@@ -653,7 +656,10 @@ describe("cli/issue — every flag the command declares", () => {
       const report = {
         conclusion: "done",
         acceptance: [{ text: "a", status: "met" }],
-        evidence: [{ kind: "path", path: "x" }],
+        evidence: [
+          { kind: "commit", sha: "abc1234" },
+          { kind: "path", path: "x" },
+        ],
       };
       const delivered = dataOf(
         run(["issue", "deliver", "DEMO-0001", "--report-file", "-", "--seg", "seg2", "--actor-kind", "claude", "--session-id", "session-2", "--json"], {
@@ -698,7 +704,10 @@ describe("cli/issue — the actor recorded on a report", () => {
       const report = {
         conclusion: "done",
         acceptance: [{ text: "a", status: "met" }],
-        evidence: [{ kind: "path", path: "x" }],
+        evidence: [
+          { kind: "commit", sha: "abc1234" },
+          { kind: "path", path: "x" },
+        ],
       };
 
       // No author in the payload: the CLI fills it in from the actor flags.
@@ -1257,7 +1266,10 @@ describe("cli/issue — acceptance authority", () => {
   const report = JSON.stringify({
     conclusion: "delivered",
     acceptance: [{ text: "a", status: "met" }],
-    evidence: [{ kind: "path", path: "x" }],
+    evidence: [
+      { kind: "commit", sha: "abc1234" },
+      { kind: "path", path: "x" },
+    ],
   });
 
   it("refuses an agent closing its own delivery, and a human may close it", async () => {
@@ -1297,7 +1309,10 @@ describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
     JSON.stringify({
       conclusion,
       acceptance: [{ text: "a", status: "met" }],
-      evidence: [{ kind: "path", path: "x" }],
+      evidence: [
+        { kind: "commit", sha: "abc1234" },
+        { kind: "path", path: "x" },
+      ],
     });
 
   it("re-closes a reopened epic unless a fix child exists first (the safe rejection path)", async () => {
@@ -1405,7 +1420,10 @@ describe("cli/issue — reconcile (the container backstop)", () => {
           input: JSON.stringify({
             conclusion: "done",
             acceptance: [{ text: "a", status: "met" }],
-            evidence: [{ kind: "path", path: "x" }],
+            evidence: [
+          { kind: "commit", sha: "abc1234" },
+          { kind: "path", path: "x" },
+        ],
           }),
         }),
       );
@@ -1464,7 +1482,10 @@ describe("cli/issue — reconcile (the container backstop)", () => {
           input: JSON.stringify({
             conclusion: "done",
             acceptance: [{ text: "a", status: "met" }],
-            evidence: [{ kind: "path", path: "x" }],
+            evidence: [
+          { kind: "commit", sha: "abc1234" },
+          { kind: "path", path: "x" },
+        ],
           }),
         }),
       );
@@ -1659,6 +1680,31 @@ describe("cli/issue — claim --check-blockers (opt-in dependency re-read)", () 
       assert.equal(error.code, "BLOCKED_BY_PREDECESSOR");
       assert.deepEqual(error.details.blockers.map((entry) => entry.identifier), [blocker.task.identifier]);
       assert.equal(dataOf(run(["issue", "get", blocked.task.identifier, "--json"])).task.status, "todo");
+    });
+  });
+});
+
+describe("cli/issue — the delivery artifact contract", () => {
+  it("refuses a path-only delivery end to end", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run);
+      dataOf(run(["issue", "move", card.task.identifier, "in_progress", "--json"]));
+      const refused = run(["issue", "deliver", card.task.identifier, "--report-file", "-", "--json"], {
+        input: JSON.stringify({
+          conclusion: "done",
+          acceptance: [{ text: "a", status: "met" }],
+          evidence: [{ kind: "path", path: "src/x.mjs" }],
+        }),
+      });
+      assert.equal(refused.status, 1);
+      const error = errorOf(refused);
+      assert.equal(error.code, "DELIVERY_NEEDS_COMMIT");
+      assert.deepEqual(error.details.pathAnchors, ["src/x.mjs"]);
+      assert.equal(
+        dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status,
+        "in_progress",
+        "the refused delivery moves nothing",
+      );
     });
   });
 });

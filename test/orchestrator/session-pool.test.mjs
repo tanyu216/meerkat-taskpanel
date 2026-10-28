@@ -574,6 +574,33 @@ describe("session pool", () => {
     await pool.stop();
   });
 
+  it("counts a project's worktrees as one project", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f, { projectConcurrency: 1 }),
+      kindPool: fake,
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    // Two worktrees of one project: different directories, one project slot.
+    const one = join(f.app, ".worktrees", "T-1");
+    const two = join(f.app, ".worktrees", "T-2");
+    mkdirSync(one, { recursive: true });
+    mkdirSync(two, { recursive: true });
+    enqueueCard(join(f.dir), { ...card(f, "T-1", one), project_dir: f.app });
+    enqueueCard(join(f.dir), { ...card(f, "T-2", two), project_dir: f.app });
+    await pool.tick();
+    const cards = readCards(f.dir).value.cards;
+    assert.equal(cards.filter((entry) => entry.status === "done").length, 1);
+    assert.equal(
+      cards.filter((entry) => entry.status === "pending").length,
+      1,
+      "the second worktree waits on the project cap, not on a directory",
+    );
+    await pool.stop();
+  });
+
   it("requeues a failed batch and fails a card with no target directory", async (t) => {
     const f = fixture(t);
     let fail = true;
