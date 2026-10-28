@@ -121,6 +121,42 @@ card's `acceptance_mode` names who may close it. Do **not** "close" a card — e
 container — by canceling it: canceling is legal from most stages and has no child guard, so
 it succeeds silently and leaves the work orphaned.
 
+## The language of a card
+
+Write in the language the work is actually being done in. English is not the default: the
+board stores text verbatim, so a card created in English pulls every later comment, question
+and report into English even when the human has been writing to you in another language —
+and each of those is a sentence they have to re-read in a second language.
+
+Decide it from evidence, in this order:
+
+1. **The human in this conversation.** Their own messages are the signal. If they write in
+   Chinese, the title, description, acceptance items, comments, questions and report are in
+   Chinese — even when the existing card is in English, because they are the one who has to
+   read and accept it. Mixed input does not cancel it: a Chinese question carrying an English
+   stack trace is a Chinese request. An explicit instruction ("write this one in English")
+   outranks everything below.
+2. **The card, then its project.** With no human message in this session — a loop tick, a
+   handoff, a subagent — inherit what is already there: this card's own text, or for a new
+   card the project's recent cards. A thread that changes language halfway is harder to
+   follow than one written in the "wrong" language.
+3. **The repository.** A project with no cards yet usually speaks its own language in
+   `README.md`, `CLAUDE.md`/`AGENTS.md` or `GLOSSARY.md`; use it. Only a project with no
+   signal at all falls back to English.
+
+**What never translates, whatever the prose around it:** identifiers, command lines, flags,
+error codes and status literals (`in_progress`, `E2`), field names, paths, code and log
+excerpts, and a quoted sentence — quote it in its original wording rather than paraphrasing
+it. A review card's first line stays exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.
+
+**A frozen acceptance item is a matching key, not prose.** Write the baseline in the card's
+language when you create the card; after that, each entry's `text` in the report's
+`acceptance[]` repeats the item character for character, because the gate matches report to
+baseline by normalised text. Translate the `note`, the `conclusion` and the `leftovers`
+around it, never the item itself. The same goes
+for anything another author wrote or the board froze — an existing comment, a delivered
+report: add your own text in your language and leave theirs as it is.
+
 ## Claim one card, deliver it, stop
 
 Read the claimable set for *you*, take exactly one, then work it:

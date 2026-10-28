@@ -511,6 +511,42 @@ describe("board skill: the acceptance list rule", () => {
   });
 });
 
+describe("board skill: the language of a card", () => {
+  const text = readFileSync(join(ROOT, "skills/meerkat/SKILL.md"), "utf8");
+  const section = text.slice(
+    text.indexOf("## The language of a card"),
+    text.indexOf("## Claim one card"),
+  );
+
+  it("decides the language from the conversation, not English by default", () => {
+    // The board stores text verbatim, so the first writer sets the language of the whole
+    // trail. A skill that says nothing leaves the model on its English default.
+    assert.ok(section.length > 0, "the skill has a language section before the write workflow");
+    assert.match(section, /not the default|never the default|not .{0,20}default/i);
+    assert.match(section, /the human/i);
+    assert.match(section, /conversation/i);
+    for (const surface of ["title", "comment", "question", "report"]) {
+      assert.match(section, new RegExp(surface, "i"), `the rule covers the ${surface}`);
+    }
+  });
+
+  it("inherits the card's language when no human is in the session", () => {
+    // A loop tick or a subagent has no human message to read, so the rule needs a fallback
+    // chain; otherwise the "no human" case silently becomes the English default again.
+    assert.match(section, /inherit/i);
+    assert.match(section, /README|CLAUDE\.md|GLOSSARY/);
+  });
+
+  it("keeps the matching keys and the protocol literals verbatim", () => {
+    // Acceptance coverage is matched by normalised text, so a translated item does not
+    // match its baseline and the delivery is refused.
+    assert.match(section, /matching key|matched[^.\n]*text/i);
+    assert.match(section, /character for character|verbatim/i);
+    assert.match(section, /VERDICT: APPROVE/);
+    assert.match(section, /identifiers|command lines/i);
+  });
+});
+
 describe("board skill: the container decision", () => {
   const skill = readFileSync(join(ROOT, "skills/meerkat/SKILL.md"), "utf8");
   const lifecycle = readFileSync(
