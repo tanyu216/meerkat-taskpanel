@@ -575,9 +575,10 @@ Run `self-check.md` (Architecture branch). The architecture proof is:
   secret is logged;
 - the directory tree is planned, scaffolded exactly, and carried by the agent-instruction
   baseline as a top-level map with a pointer;
-- the standard at `docs/tech-spec.md` is complete: every section is filled, the stack table
-  lives there and nowhere else, every rule names its enforcement point (a test, a lint rule,
-  a gate or `review`), and no rule restates a canonical artifact;
+- the recorded standard is complete (`docs/tech-spec.md` for a project this flow created, the
+  inherited binding otherwise): every section is filled, the stack table lives there and
+  nowhere else, every rule names its enforcement point (a test, a lint rule, a gate or
+  `review`), and no rule restates a canonical artifact;
 - `CLAUDE.md`/`AGENTS.md` exists as the baseline every role reads, carries the entry
   commands, the entry-point map, the gates, the working agreement, the change and integration
   policy and the operational invariants, and points at the standard, the architecture
@@ -602,10 +603,10 @@ Output: the requirement → artifact table in `plan.md`.
 ### 8. Architecture review
 
 Present the **architecture package** — the design-stance evidence, the options, the style
-ADR, the standard at `docs/tech-spec.md` (its stack table with pinned versions, its rules
-and their enforcement), the boundaries, the external contract, the configuration surface,
-the directory tree, the gate path, the release and deploy paths and the agent-instruction
-baseline — to the project session. E5 belongs to
+ADR, the recorded standard (`docs/tech-spec.md` for a project this flow created; its stack
+table with pinned versions, its rules and their enforcement), the boundaries, the external
+contract, the configuration surface, the directory tree, the gate path, the release and
+deploy paths and the agent-instruction baseline — to the project session. E5 belongs to
 the human; a public API contract is E5, and a configuration key that touches a secret is E4.
 Record the decision on the card. Do not start implementation before the review is recorded.
 
@@ -615,8 +616,9 @@ Output: the recorded E5 decision on the card.
 
 Re-export the brief, mark the handoff required, and write the architecture variant of the
 `## Handoff` block into the delivery report's `conclusion`: one architecture-package sentence
-naming the standard (`docs/tech-spec.md`, or the card-local delta), the architecture
-document, `.meerkat/<id>/architecture.md` (when the change is card-local), the style and
+naming the standard (`docs/tech-spec.md` for a new project, the inherited binding or the
+card-local delta otherwise), the architecture document, `.meerkat/<id>/architecture.md` (when
+the change is card-local), the style and
 other ADR paths, the contract artifact, the configuration surface, the directory tree, the
 gate path, the release and deploy paths (or their recorded `n/a`), the agent-instruction
 baseline (`CLAUDE.md` or `AGENTS.md`), the acceptance source,

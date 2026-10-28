@@ -395,6 +395,9 @@ describe("skill frontmatter and assets", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
     const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    const roles = readFileSync(join(SKILL, "references", "roles.md"), "utf8");
+    const manifest = readFileSync(join(team, "manifest.json"), "utf8");
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
 
     const baseline = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
     const required = baseline.slice(
@@ -447,6 +450,9 @@ describe("skill frontmatter and assets", () => {
       "Linus's self-check audits the operational invariants",
     );
     assert.match(check, /resolves/i, "Linus's self-check audits that every pointer resolves");
+    assert.match(roles, /working agreement/i, "the engineering reference names the operating rules");
+    assert.match(manifest, /working agreement/i, "the team manifest names the operating rules");
+    assert.match(skill, /working agreement/i, "the install skill names the operating rules");
   });
 
   it("applies the six design principles to a feature change", () => {
