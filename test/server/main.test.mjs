@@ -312,7 +312,10 @@ describe("server/main — the container reconcile at startup", () => {
     const report = {
       conclusion: "done",
       acceptance: [{ text: "a", status: "met" }],
-      evidence: [{ kind: "path", path: "x" }],
+      evidence: [
+        { kind: "commit", sha: "abc1234" },
+        { kind: "path", path: "x" },
+      ],
     };
 
     // Build the missed-event shape: a child finished with no container above it,

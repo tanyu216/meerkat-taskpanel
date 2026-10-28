@@ -32,7 +32,10 @@ const AGENT = { kind: "agent", id: "linus" };
 const REPORT = {
   conclusion: "done",
   acceptance: [{ text: "the child is done", status: "met" }],
-  evidence: [{ kind: "path", path: "src/example.mjs" }],
+  evidence: [
+    { kind: "commit", sha: "abc1234" },
+    { kind: "path", path: "src/example.mjs" },
+  ],
 };
 
 /** Run one child's `→ done` in a fresh process, against the shared database. */
