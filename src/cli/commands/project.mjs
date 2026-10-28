@@ -1,8 +1,12 @@
 /**
  * `project create|update|list|dir|map|readme` (A1/A6).
  *
- * A project is the identifier scope: its id becomes the identifier prefix
- * (`demo` → `DEMO-0001`). `--meta k=v` is repeatable and merges.
+ * A project is the identifier scope: its cards are numbered with a 1-4
+ * `A-Z0-9` prefix. `--prefix` declares it (`tp` → `TP-0001`) and beats the id;
+ * without one the id supplies it (`demo` → `DEMO-0001`), and a create with
+ * neither is refused by the server. `--meta k=v` is repeatable and merges;
+ * `--prefix` is sugar over the reserved `meta.prefix` key, so the two spellings
+ * must agree.
  *
  * A project owns **no** working directory — the board holds no path for it.
  * Which local directory maps to which project lives in one machine-local
@@ -31,6 +35,31 @@ import { fields, table } from "../output/human.mjs";
 /** `--meta k=v` repeated, in order, as a plain object. */
 function metaOf(flags) {
   return flags.meta === undefined ? undefined : flags.meta;
+}
+
+/**
+ * `metaOf` with `--prefix <p>` folded in as `meta.prefix`.
+ *
+ * `--prefix` is the friendly spelling of the one reserved metadata key, so the
+ * two must not disagree: a contradiction is a usage error (exit 2) decided here,
+ * before any request is sent, while the same value is accepted. Without
+ * `--prefix` the meta object comes back untouched, so every other request body
+ * stays byte-identical.
+ *
+ * @param {object} flags
+ */
+function metaWithPrefix(flags) {
+  if (flags.prefix === undefined) return metaOf(flags);
+  const declared = flags.meta === undefined ? undefined : flags.meta.prefix;
+  if (declared !== undefined && declared !== flags.prefix) {
+    throw new DomainError("CLI_USAGE", {
+      message:
+        `--prefix ${JSON.stringify(flags.prefix)} contradicts --meta prefix=${JSON.stringify(declared)}; ` +
+        "they name the same field",
+      hint: { fix: "pass the prefix once — with --prefix <p>, or with --meta prefix=<p>" },
+    });
+  }
+  return { ...(flags.meta ?? {}), prefix: flags.prefix };
 }
 
 /** The one map every local read and write uses. */
@@ -231,11 +260,19 @@ export const COMMANDS = [
     name: "create",
     summary: "Create a project.",
     usage:
-      "project create --id <id> --name <name> [--acceptance auto|off|agent|human] " +
+      "project create [--id <id>] [--prefix <p>] --name <name> [--acceptance auto|off|agent|human] " +
       "[--reviewer <agent>] [--meta k=v]…",
     positionals: [],
     flags: [
-      { flag: "id", key: "id", as: "string", value: "<id>", required: true, summary: "Project id; also the identifier prefix (must be unique across projects after normalization)." },
+      { flag: "id", key: "id", as: "string", value: "<id>", summary: "Project id; also the identifier prefix when --prefix is absent (must be unique across projects after normalization). Optional when --prefix is declared — the server mints an id." },
+      {
+        flag: "prefix",
+        key: "prefix",
+        as: "string",
+        value: "<p>",
+        summary:
+          "Identifier prefix for the project's cards: 1-4 characters of A-Z and 0-9 (normalized). Beats the id-derived prefix; needed only when no valid id supplies one.",
+      },
       { flag: "name", key: "name", as: "string", value: "<name>", required: true },
       { flag: "meta", key: "meta", as: "kv", summary: "Repeatable key=value metadata." },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
@@ -261,7 +298,7 @@ export const COMMANDS = [
         id: ctx.flags.id,
         name: ctx.flags.name,
         labels: ctx.flags.labels,
-        meta: metaOf(ctx.flags),
+        meta: metaWithPrefix(ctx.flags),
         readme: ctx.flags.readme,
         acceptance: ctx.flags.acceptance,
         reviewer: ctx.flags.reviewer,
@@ -277,11 +314,19 @@ export const COMMANDS = [
     name: "ensure",
     summary: "Create a project if it does not exist; leave an existing one untouched.",
     usage:
-      "project ensure <id> [--name <name>] [--acceptance auto|off|agent|human] " +
+      "project ensure <id> [--name <name>] [--prefix <p>] [--acceptance auto|off|agent|human] " +
       "[--reviewer <agent>] [--meta k=v]… [--label <label>]… [--readme <text>]",
     positionals: [{ name: "id", summary: "Project id." }],
     flags: [
       { flag: "name", key: "name", as: "string", value: "<name>", summary: "Required only when the project does not exist yet." },
+      {
+        flag: "prefix",
+        key: "prefix",
+        as: "string",
+        value: "<p>",
+        summary:
+          "Identifier prefix for a project this call creates: 1-4 characters of A-Z and 0-9 (normalized). Beats the id-derived prefix; ignored for an existing project.",
+      },
       { flag: "meta", key: "meta", as: "kv", summary: "Repeatable key=value metadata (used only on creation)." },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
@@ -306,7 +351,7 @@ export const COMMANDS = [
         {
           name: ctx.flags.name,
           labels: ctx.flags.labels,
-          meta: metaOf(ctx.flags),
+          meta: metaWithPrefix(ctx.flags),
           readme: ctx.flags.readme,
           acceptance: ctx.flags.acceptance,
             reviewer: ctx.flags.reviewer,
