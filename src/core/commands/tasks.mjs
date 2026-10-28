@@ -16,6 +16,7 @@ import {
   CLAIM_STALE_ANY_MS,
   CLAIM_STALE_SAME_MS,
   HEARTBEAT_FRESH_MS,
+  HUMAN_KIND,
   TASK_LIST_DEFAULT_LIMIT,
 } from "../../foundation/constants.mjs";
 import { reviewIdentityOf } from "../../foundation/review-identity.mjs";
@@ -166,6 +167,25 @@ export function createTask(ctx, input) {
         // Both columns, not just the id: `resolveAssignment` carries the kind the
         // reference was made under, and assigning only the id here was how the
         // kind went missing on this path before `0023` put it back on the record.
+        Object.assign(candidate, resolved.patch);
+        dictionaryAudit.push(...resolved.audit);
+      }
+      // The creator IS the reporter (0019), so a human's own card names them
+      // without being asked. Scoped to `human` on purpose: an agent write must
+      // not stamp the human as the filer (see `transport/actor.mjs`), and the
+      // loop's cards (`taskd`) have no person behind them. An explicit reporter
+      // — by name or by id — always wins. Identity, not a search: the name is
+      // exact-matched or created, never fuzzy-matched onto a different person.
+      const reporterGiven =
+        (input.reporter !== undefined && input.reporter !== null) ||
+        (input.reporterId !== undefined && input.reporterId !== null);
+      if (!reporterGiven && actor.kind === HUMAN_KIND) {
+        const resolved = resolveAssignment({ repos: ctx.repos, now }, {
+          kind: "reporter",
+          name: actor.id,
+          actorKind: HUMAN_KIND,
+          forceCreate: true,
+        });
         Object.assign(candidate, resolved.patch);
         dictionaryAudit.push(...resolved.audit);
       }

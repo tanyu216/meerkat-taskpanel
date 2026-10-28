@@ -74,11 +74,16 @@ describe("cli/dictionary — free text resolves against what exists", () => {
   it("selects an entry by id, bypassing the dictionary", async () => {
     await board(async ({ run }) => {
       create(run, ["--assignee", "linus"]);
-      const id = dataOf(run(["actors", "list", "--json"])).entries[0].id;
+      const before = dataOf(run(["actors", "list", "--json"])).entries;
+      const id = before.find((entry) => entry.display_name === "linus").id;
 
       const byId = create(run, ["--assignee-id", id, "--title", "Second"]);
       assert.equal(byId.task.assignee.id, id);
-      assert.equal(dataOf(run(["actors", "list", "--json"])).entries.length, 1, "no new entry");
+      assert.equal(
+        dataOf(run(["actors", "list", "--json"])).entries.length,
+        before.length,
+        "no new entry",
+      );
     });
   });
 });
@@ -90,9 +95,10 @@ describe("cli/dictionary — the read-only surface", () => {
       create(run, ["--assignee", "terry", "--title", "Second"]);
 
       // One read since 0019: assignees and reporters are one table, so the list
-      // carries all three (linus, elon, terry).
+      // carries linus, elon and terry — plus the human writer the second create
+      // records as its reporter (the first names `elon`, so it adds no writer).
       const all = dataOf(run(["actors", "list", "--json"]));
-      assert.equal(all.entries.length, 3);
+      assert.equal(all.entries.length, 4);
       for (const entry of all.entries) {
         assert.equal(typeof entry.display_name, "string");
         assert.equal(typeof entry.id, "string");

@@ -165,6 +165,61 @@ describe("commands/tasks — create and update", () => {
     });
   });
 
+  it("records a human writer as the reporter when the create names nobody (the creator IS the reporter)", async () => {
+    await board(({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: HUMAN });
+
+      assert.notEqual(task.reporterId, null, "a human's own card names them as reporter");
+      assert.equal(task.reporterKind, "human");
+      const entry = commands.listActors({})[0];
+      assert.equal(task.reporterId, entry.id);
+      assert.equal(entry.displayName, "Terry");
+      assert.equal(entry.useCount, 1, "the reporter reference is a dictionary use");
+    });
+  });
+
+  it("leaves an agent's card reporterless — an agent may not claim the human filed it", async () => {
+    await board(({ db, commands }) => {
+      // The default is human-only. `claude` is the interactive writer and
+      // `taskd` the loop's; widening it to either would make an agent's churn
+      // read as the leader dispatching work (SLA).
+      for (const kind of ["agent", "claude", "taskd"]) {
+        const task = commands.createTask({
+          projectId: "proj",
+          title: `Ship ${kind}`,
+          actor: { kind, id: `${kind}-writer` },
+        });
+        assert.equal(task.reporterId, null, kind);
+        assert.equal(task.reporterKind, null, kind);
+      }
+      assert.equal(countRows(db, "actors"), 0);
+    });
+  });
+
+  it("keeps an explicit reporter (and an explicit reporter id) over the human default", async () => {
+    await board(({ commands }) => {
+      const named = commands.createTask({ projectId: "proj", title: "one", reporter: "Sam", actor: HUMAN });
+      assert.equal(commands.listActors({})[0].displayName, "Sam", "the named reporter, not the writer");
+      assert.equal(named.reporterId, commands.listActors({})[0].id);
+
+      const samId = named.reporterId;
+      const byId = commands.createTask({ projectId: "proj", title: "two", reporterId: samId, actor: HUMAN });
+      assert.equal(byId.reporterId, samId);
+      assert.equal(commands.listActors({}).length, 1, "no second row, and no autofill overwrite");
+    });
+  });
+
+  it("reuses the human's row instead of growing a twin", async () => {
+    await board(({ commands }) => {
+      commands.createTask({ projectId: "proj", title: "filed for Terry", reporter: "Terry", actor: AGENT });
+      const byHuman = commands.createTask({ projectId: "proj", title: "Terry's own", actor: HUMAN });
+
+      assert.equal(commands.listActors({}).length, 1);
+      assert.equal(byHuman.reporterId, commands.listActors({})[0].id);
+      assert.equal(commands.listActors({})[0].useCount, 2);
+    });
+  });
+
   it("rolls the dictionary back with the task when the create fails", async () => {
     await board(async ({ db, commands, repos }) => {
       // A name that only fails later: an ambiguous one.

@@ -77,7 +77,13 @@ describe("cli/sla", () => {
     await withCli(
       async ({ run }) => {
         run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
-        run(["issue", "create", "--project", "demo", "--title", "T", "--status", "blocked", "--json"]);
+        // A worker files the card: a human write would now carry the writer as
+        // reporter, making the creation itself the board's newest leader event
+        // and putting the stall inside its lead.
+        run([
+          "issue", "create", "--project", "demo", "--title", "T", "--status", "blocked",
+          "--actor-kind", "claude", "--agent", "tester", "--json",
+        ]);
 
         const full = dataOf(run(["sla", "list", "--json"]));
         assert.ok(full.alerts.some((alert) => alert.sla_row === "leader_stalled"));
