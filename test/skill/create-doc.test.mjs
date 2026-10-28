@@ -87,6 +87,25 @@ describe("board skill: creating a card", () => {
     const description = readFrontmatterField(SKILL, "description");
     assert.match(description, /attachment/i, "a plan-bearing create is a trigger, not a side note");
   });
+
+  it("gates --as-human on a human conversation or an explicit human instruction", () => {
+    // The two triggers are alternatives, not a conjunction: either talking to
+    // the human, or a create that explicitly carries their instruction (even
+    // from a handoff). The anti-triggers keep the loop's and the agent's own
+    // cards out of the human's name.
+    assert.match(create, /interactive session with the human/i, "the conversational trigger is named");
+    assert.match(
+      create,
+      /,\s*or\s+when the instruction to create this card comes explicitly from them/i,
+      "the explicit-instruction trigger is joined with `or`, not `and`",
+    );
+    assert.match(create, /either one is enough/i, "one trigger suffices");
+    assert.match(create, /loop handoff/i, "the loop's own execution is an anti-trigger");
+    assert.match(create, /card brief/i);
+    assert.match(create, /file a card yourself|decide to file/i, "a self-initiated card outside a conversation");
+    assert.match(create, /claim, heartbeat, delivery or review/i, "the agent's own writes are excluded");
+    assert.match(create, /--reporter <name>/, "the fallback is named");
+  });
 });
 
 describe("board skill: cli.md states the second call", () => {

@@ -330,7 +330,9 @@ epic — falls back to `agent`: review is the default, and `human` is opt-in. An
   `mode` and `reviewCard`, never a policy or scope.
 - `REVIEW_PENDING` applies only to an **`agent`** card whose current-round review card is still
   open, and only to a human closing it; `taskd` is exempt.
-- `--actor-kind human` is reserved; a human write uses `--as-human`.
+- `--actor-kind human` is reserved; a human write uses `--as-human` — in a conversation with
+  the human, or when the instruction explicitly came from them (see the board skill's create
+  section).
 - The mode is board data, readable on the card (`acceptance_mode`) and on the project
   (`acceptance`); there is **no `taskctl` command that reads a policy**. Attempt the move and
   handle `ACCEPTANCE_FORBIDDEN`.

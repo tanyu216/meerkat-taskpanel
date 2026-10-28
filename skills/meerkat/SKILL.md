@@ -130,11 +130,13 @@ public pool. Only `--status backlog` keeps it out of a queue. Describe the card 
 the create returned: a repeated create answers with the existing one. The INSERT gate:
 [`references/status-lifecycle.md#8-creating-a-card-in-a-status`](references/status-lifecycle.md#8-creating-a-card-in-a-status).
 
-**A card the human asked for is theirs.** File it with `--as-human`: the board records that
-human as both the writer and the reporter, because the creator is the reporter. A card you
-decide to file yourself names nobody. `--as-human` is for the human's cards and the human's
-words only — never for your own claim, heartbeat, delivery or review. When it cannot be used,
-pass `--reporter <name>` explicitly.
+**File a card in the human's name when you are in an interactive session with the human, or
+when the instruction to create this card comes explicitly from them.** Either one is enough:
+`--as-human` records that human as both the writer and the reporter, because the creator is the
+reporter. Do not use it when you are working from a loop handoff or a card brief with no
+explicit human instruction, when you decide to file a card yourself outside a human
+conversation, or for your own claim, heartbeat, delivery or review. If the human asked but
+`--as-human` is unavailable, pass `--reporter <name>` for the create.
 
 **A document the work must follow is attached, not retyped.** When the human points at a file —
 a plan you wrote, a third-party spec, a vendor's PDF to read closely — that pointing *is* the
