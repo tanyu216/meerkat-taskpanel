@@ -257,7 +257,7 @@
               "flag": "body",
               "as": "string",
               "value": "<text>",
-              "required": true,
+              "required": false,
               "repeat": false,
               "short": null
             },
@@ -933,7 +933,24 @@
               "summary": "Task id or identifier."
             }
           ],
-          "flags": []
+          "flags": [
+            {
+              "flag": "include",
+              "as": "string",
+              "value": "<section>",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
         },
         {
           "name": "heartbeat",

@@ -199,6 +199,118 @@ describe("cli/issue — create, list, get", () => {
   });
 });
 
+describe("cli/issue — `issue get --include`", () => {
+  /** A card with comments, a report, a blocker edge and a session. */
+  async function seeded(run) {
+    const created = createIssue(run, ["--title", "Needs a progress answer"]);
+    const ref = created.task.identifier;
+    run(["comment", "add", ref, "--kind", "note", "--body", "first note", "--json"]);
+    run(["comment", "add", ref, "--kind", "decision", "--body", "second note", "--json"]);
+    const blocker = createIssue(run, ["--title", "Blocker"]);
+    run(["relation", "add", blocker.task.identifier, "--type", "blocks", "--target", ref, "--json"]);
+    run([
+      "session", "set", ref, "--seg", "work", "--owner-kind", "claude", "--owner", "linus", "--json",
+    ]);
+    deliverIssue(run, ref);
+    return { ref, blocker: blocker.task.identifier };
+  }
+
+  it("leaves the default payload alone and adds only the requested sections", async () => {
+    await board(async ({ run }) => {
+      const { ref } = await seeded(run);
+
+      const plain = dataOf(run(["issue", "get", ref, "--json"]));
+      assert.deepEqual(
+        Object.keys(plain).sort(),
+        ["attachments", "report_waivers", "task", "token_source"],
+        "without --include the payload is the one it always was",
+      );
+
+      const one = dataOf(run(["issue", "get", ref, "--json", "--include", "comments"]));
+      assert.deepEqual(Object.keys(one).sort(), [
+        "attachments", "comments", "report_waivers", "task", "token_source",
+      ]);
+      assert.equal(one.comments.length, 2);
+
+      const all = dataOf(run([
+        "issue", "get", ref, "--json",
+        "--include", "comments", "--include", "reports",
+        "--include", "relations", "--include", "sessions",
+      ]));
+      for (const key of ["comments", "reports", "relations", "sessions"]) {
+        assert.ok(Object.hasOwn(all, key), `--include all must carry ${key}`);
+      }
+    });
+  });
+
+  it("returns exactly what each standalone read returns", async () => {
+    await board(async ({ run }) => {
+      const { ref } = await seeded(run);
+      const got = dataOf(run([
+        "issue", "get", ref, "--json",
+        "--include", "comments", "--include", "reports",
+        "--include", "relations", "--include", "sessions",
+      ]));
+
+      assert.deepEqual(
+        got.comments,
+        dataOf(run(["comment", "list", ref, "--limit", "50", "--json"])).comments,
+      );
+      assert.deepEqual(got.reports, dataOf(run(["report", "list", ref, "--json"])).reports);
+      assert.deepEqual(got.sessions, dataOf(run(["session", "list", ref, "--json"])).sessions);
+
+      // `relation list` is the same object minus the two keys the card read already
+      // answers: `task_id` (it is `data.task.id`) and the CLI's own `token_source`.
+      const { task_id: _taskId, token_source: _tokenSource, ...edges } =
+        dataOf(run(["relation", "list", ref, "--json"]));
+      assert.deepEqual(got.relations, edges);
+      assert.equal(got.relations.blocked_by.length, 1);
+    });
+  });
+
+  it("caps the comment trail with --limit, newest first", async () => {
+    await board(async ({ run }) => {
+      const { ref } = await seeded(run);
+      const one = dataOf(run([
+        "issue", "get", ref, "--json", "--include", "comments", "--limit", "1",
+      ]));
+      assert.equal(one.comments.length, 1);
+      assert.equal(one.comments[0].body, "second note");
+
+      const none = dataOf(run([
+        "issue", "get", ref, "--json", "--include", "comments", "--limit", "0",
+      ]));
+      assert.equal(none.comments.length, 2, "0 means no cap");
+    });
+  });
+
+  it("refuses an unknown section, and --limit without the comments section", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+
+      const bogus = run(["issue", "get", "DEMO-0001", "--json", "--include", "bogus"]);
+      assert.equal(bogus.status, 2);
+      const err = errorOf(bogus);
+      assert.equal(err.code, "CLI_USAGE");
+      assert.match(JSON.stringify(err.hint), /comments\|reports\|relations\|sessions/);
+
+      const lonely = run(["issue", "get", "DEMO-0001", "--json", "--limit", "5"]);
+      assert.equal(lonely.status, 2);
+      assert.equal(errorOf(lonely).code, "CLI_USAGE");
+    });
+  });
+
+  it("summarises the included sections in the human read", async () => {
+    await board(async ({ run }) => {
+      const { ref } = await seeded(run);
+      const human = run(["issue", "get", ref, "--include", "comments", "--include", "reports"]);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /2 comments/);
+      assert.match(human.stdout, /1 report/);
+    });
+  });
+});
+
 describe("cli/issue — update, move, assign, archive", () => {
   it("updates metadata and acceptance, and refuses an empty update locally", async () => {
     await board(async ({ run }) => {

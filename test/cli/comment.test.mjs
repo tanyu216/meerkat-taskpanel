@@ -7,9 +7,13 @@
  */
 
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { cleanupTempDirs, dataOf, errorOf, withCli } from "./helpers/cli-harness.mjs";
+import {
+  cleanupTempDirs, dataOf, errorOf, makeTempDir, withCli,
+} from "./helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);
 
@@ -55,6 +59,33 @@ describe("cli/comment", () => {
 
       const newest = dataOf(run(["comment", "list", "DEMO-0001", "--limit", "1", "--json"]));
       assert.deepEqual(newest.comments.map((c) => c.body), ["second"], "--limit takes the newest N");
+    });
+  });
+
+  it("reads the body from --file or stdin, and requires exactly one source", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
+
+      const file = join(makeTempDir(), "body.md");
+      writeFileSync(file, "from a file", "utf8");
+      const fromFile = dataOf(run(["comment", "add", "DEMO-0001", "--file", file, "--json"]));
+      assert.equal(fromFile.comment.body, "from a file");
+
+      const fromStdin = dataOf(
+        run(["comment", "add", "DEMO-0001", "--file", "-", "--json"], { input: "from stdin" }),
+      );
+      assert.equal(fromStdin.comment.body, "from stdin");
+
+      const neither = run(["comment", "add", "DEMO-0001", "--json"]);
+      assert.equal(neither.status, 2, "a comment with no body is a usage error");
+      assert.equal(errorOf(neither).code, "CLI_USAGE");
+
+      // The long-standing precedence: when both are given, `--file` is the body.
+      const both = dataOf(
+        run(["comment", "add", "DEMO-0001", "--body", "ignored", "--file", file, "--json"]),
+      );
+      assert.equal(both.comment.body, "from a file");
     });
   });
 

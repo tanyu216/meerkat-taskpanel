@@ -232,7 +232,10 @@ describe("board skill: the description covers indirect card operations", () => {
     const description = readFrontmatterField(text, "description");
     assert.ok(typeof description === "string" && description.length > 0, "description exists");
     for (const anchor of [
-      /card\.md/,
+      // The *format* is what a reader needs to recognise, not a filename:
+      // `card.md` is the loop's location, and `export md --out` may name
+      // anything. Accept any of the ways the description can say it.
+      /card\.md|card file|export md/i,
       /re-export/i,
       /brief/i,
       /deliver/i,
