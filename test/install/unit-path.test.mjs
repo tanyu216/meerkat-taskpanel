@@ -82,6 +82,29 @@ describe("unit-path: the recipe", () => {
     }
   });
 
+  it("heads the PATH with the agent shim's directory, so a global taskctl cannot shadow it", () => {
+    // Every layer below the tick runs `taskctl` — the control turn's board reads, a
+    // worker's card operations. A `taskctl` installed globally (nvm's global bin is
+    // node's directory) would answer first and write the wrong actor identity.
+    assert.equal(
+      unitPath("/opt/node/bin", { shimDir: "/home/you/.claude/bin", cliDir: "/opt/cli/bin", scheduler: "launchd" }),
+      "/home/you/.claude/bin:/opt/cli/bin:/opt/node/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    );
+    assert.equal(
+      unitPath("/opt/node/bin", { shimDir: "/home/you/.claude/bin", cliDir: "/opt/cli/bin", scheduler: "cron" }),
+      "/home/you/.claude/bin:/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
+    );
+  });
+
+  it("keeps the shim directory when the agent CLI is not on PATH", () => {
+    // The shim is written by every agent install regardless of where the CLI lives,
+    // so losing it here would silently restore the 127 for board operations.
+    assert.equal(
+      unitPath("/opt/node/bin", { shimDir: "/home/you/.claude/bin", scheduler: "cron" }),
+      "/home/you/.claude/bin:/opt/node/bin:/usr/bin:/bin",
+    );
+  });
+
   it("deduplicates when the CLI and node share a directory (nvm puts its global bin there)", () => {
     assert.equal(
       unitPath("/opt/node/bin", { cliDir: "/opt/node/bin", scheduler: "launchd" }),
@@ -125,6 +148,15 @@ describe("unit-path: the CLI", () => {
     const run = runHelper(["path", "--scheduler", "launchd", "--cli-dir", "/opt/cli/bin"]);
     assert.equal(run.status, 0, run.stderr);
     assert.equal(run.stdout.trim(), unitPath(NODE_DIR, { cliDir: "/opt/cli/bin", scheduler: "launchd" }));
+  });
+
+  it("takes --shim-dir as the head of the PATH", () => {
+    const run = runHelper([
+      "path", "--scheduler", "cron", "--node-dir", "/opt/node/bin",
+      "--shim-dir", "/home/you/.claude/bin", "--cli-dir", "/opt/cli/bin",
+    ]);
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.stdout.trim(), "/home/you/.claude/bin:/opt/cli/bin:/opt/node/bin:/usr/bin:/bin");
   });
 
   it("takes --node-dir as the directory it is, not as a binary to strip", () => {
@@ -177,7 +209,8 @@ describe("install.sh: the units carry their own PATH instead of borrowing the ma
     );
     assert.equal(run.status, 0, run.stderr);
 
-    const expected = unitPath(NODE_DIR, { cliDir: bin, scheduler: "launchd" });
+    const shimDir = join(home, ".claude", "bin");
+    const expected = unitPath(NODE_DIR, { cliDir: bin, shimDir, scheduler: "launchd" });
 
     for (const kind of ["ping", "continue"]) {
       const file = join(home, ".claude", "scheduling", "launchd", `com.meerkat-taskpanel.${kind}.plist`);
@@ -194,7 +227,7 @@ describe("install.sh: the units carry their own PATH instead of borrowing the ma
 
       // And the value the *JS* side would compute for the same inputs is the same string
       // — the installer reads the recipe through its CLI, so the two cannot drift.
-      assert.equal(plistPath(text), unitPath(NODE_DIR, { cliDir: bin, scheduler: "launchd" }));
+      assert.equal(plistPath(text), unitPath(NODE_DIR, { cliDir: bin, shimDir, scheduler: "launchd" }));
     }
   });
 
@@ -209,7 +242,10 @@ describe("install.sh: the units carry their own PATH instead of borrowing the ma
 
     const text = readFileSync(join(home, ".claude", "scheduling", "cron", "meerkat-taskpanel.cron"), "utf8");
     const setting = text.split("\n").find((line) => line.startsWith("PATH="));
-    assert.equal(setting, `PATH=${unitPath(NODE_DIR, { cliDir: bin, scheduler: "cron" })}`);
+    assert.equal(
+      setting,
+      `PATH=${unitPath(NODE_DIR, { cliDir: bin, shimDir: join(home, ".claude", "bin"), scheduler: "cron" })}`,
+    );
 
     const jobs = text.split("\n").filter((line) => !line.startsWith("#") && /^\S+ \S+ \S+ \S+ \S+ /.test(line));
     assert.equal(jobs.length, 2, "a ping line and a continue line");
@@ -245,6 +281,12 @@ describe("install.sh: the units carry their own PATH instead of borrowing the ma
     const cli = spawnSync(ENV_BIN, ["claude"], { env: minimal, encoding: "utf8" });
     assert.equal(cli.status, 0, `layer ② must resolve: ${cli.stderr}`);
 
+    // ③ the board operations every layer below the tick runs: the shim must answer
+    //    by name, and it must be *this* install's shim — not a global taskctl.
+    const shim = spawnSync(ENV_BIN, ["sh", "-c", "command -v taskctl"], { env: minimal, encoding: "utf8" });
+    assert.equal(shim.status, 0, `the shim must resolve: ${shim.stderr}`);
+    assert.equal(shim.stdout.trim(), join(home, ".claude", "bin", "taskctl"));
+
     // …and the default suffix is not narrowed: the worker's own tool tree still runs.
     const sh = spawnSync(ENV_BIN, ["sh", "-c", "exit 0"], { env: minimal, encoding: "utf8" });
     assert.equal(sh.status, 0, "sh must stay reachable through the scheduler's default suffix");
@@ -268,7 +310,10 @@ describe("install.sh: the units carry their own PATH instead of borrowing the ma
     const text = readFileSync(join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist"), "utf8");
     const rendered = plistPath(text);
     assert.ok(!rendered.split(":").includes(bin), "the unresolvable CLI directory must not be invented");
-    assert.equal(rendered.split(":")[0], NODE_DIR, "node's own directory is still the head");
+    // The shim is written for every agent install, so it heads the PATH even here —
+    // board operations keep working while the woken CLI does not.
+    assert.equal(rendered.split(":")[0], join(home, ".claude", "bin"), "the shim directory is the head");
+    assert.ok(rendered.split(":").includes(NODE_DIR), "node's own directory is still present");
   });
 });
 
@@ -290,7 +335,7 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
     const path = `${bin}:${process.env.PATH}`;
     const loop = join(home, ".claude", "meerkat-taskpanel");
     const expected = [
-      `PATH=${unitPath(NODE_DIR, { cliDir: bin, scheduler: "cron" })}`,
+      `PATH=${unitPath(NODE_DIR, { cliDir: bin, shimDir: join(home, ".claude", "bin"), scheduler: "cron" })}`,
       `* * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log ${loop}/supervisor.log --state-dir ${loop} >/dev/null 2>&1`,
       `*/10 * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --continue-once --actor-kind claude --agent alice --log ${loop}/supervisor.log --state-dir ${loop} >/dev/null 2>&1`,
     ];

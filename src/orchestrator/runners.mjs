@@ -17,7 +17,6 @@ import {
   planContinueInvocation,
   planPatrol,
   planTick,
-  quoteArg,
 } from "../foundation/scheduling.mjs";
 import {
   BOARD_CARD_ID,
@@ -26,7 +25,7 @@ import {
   recordSlaAlerts,
 } from "../foundation/sla-patrol.mjs";
 import { loadRoles, selectReviewerRole, selectRole } from "../foundation/roles.mjs";
-import { agentPaths, loopCommandArgs, resolveLoopConfig } from "./options.mjs";
+import { agentPaths, loopBoardCommand, loopCliCommand, resolveLoopConfig } from "./options.mjs";
 import { enqueueContinue } from "./queue.mjs";
 import {
   acquireContinueLock,
@@ -1026,7 +1025,8 @@ export async function runContinue(opts, deps = {}) {
   const prompt = buildContinuePrompt({
     actorKind: opts.actorKind,
     agent,
-    cliCommand: `${quoteArg(process.execPath)} ${quoteArg(opts.cli)} ${loopCommandArgs(opts).map(quoteArg).join(" ")}`,
+    cliCommand: loopCliCommand(opts),
+    boardCommand: loopBoardCommand(opts),
     continueIntervalSeconds: opts.continueInterval,
     openedBy: opts.openedBy,
     decisionPolicy: roleSet.decisionPolicy,

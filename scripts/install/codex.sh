@@ -22,6 +22,7 @@ export_tp_env ".codex" "codex"
 
 # The shim first (the snippet below points at it), then the AGENTS.md snippet.
 emit_file "taskctl-shim.sh" "$TP_SHIM" --exec
+reconcile_taskctl_on_path
 append_snippet "$(target_home)/.codex/AGENTS.md" "codex/AGENTS.md.snippet" "meerkat-taskpanel"
 
 # Scheduling is the automation — Codex has no hooks.

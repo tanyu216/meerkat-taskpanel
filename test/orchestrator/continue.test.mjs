@@ -123,6 +123,27 @@ describe("buildContinuePrompt", () => {
     }
   });
 
+  it("runs its board reads through the same command the passes use", () => {
+    // The control lane's allowlist is Bash(taskctl *),Bash(node *). A bare
+    // `taskctl` line is permitted but cannot resolve on the unit PATH; a line
+    // with any other prefix is resolvable but refused. Both forms must be the
+    // caller's command, and that command must start with the allowed name.
+    const withCli = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      cliCommand: "node /opt/cli/index.mjs --actor-kind claude --agent alice --log /tmp/loop.log",
+      boardCommand: "node /opt/cli/index.mjs --actor-kind claude --agent alice",
+    });
+    // Board reads use the board prefix — never the loop's own flags, which
+    // `issue`/`comment` refuse.
+    assert.match(
+      withCli,
+      /\n\s+node \/opt\/cli\/index\.mjs --actor-kind claude --agent alice issue list --status in_progress --json/,
+    );
+    assert.doesNotMatch(withCli, /\n\s+taskctl /, "a bare taskctl cannot resolve on the unit PATH");
+    assert.doesNotMatch(withCli, /issue list --status in_progress --json.*--log/);
+  });
+
   it("runs patrol, then workflow, then poll", () => {
     const patrol = prompt.indexOf(`taskctl loop patrol`);
     const workflow = prompt.indexOf(`taskctl loop workflow`);
