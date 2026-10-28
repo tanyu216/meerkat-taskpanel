@@ -3,7 +3,7 @@
  *
  * Authority: `design/BLOCKS.md` B27, `design/DESIGN.md` §30. The view answers
  * one question — "what is on *my* side" — and the projection is the whole of it,
- * as pure functions, so the order and the six fields a row owes can be asserted
+ * as pure functions, so the order and the fields a row owes can be asserted
  * without a browser.
  *
  * Three rules are load-bearing:
@@ -16,10 +16,14 @@
  *     began — the human comment that triggered it when M1 has read one, the card's
  *     own last change otherwise — and it is both the row's `data-since` and the
  *     `datetime` its visible stamp is printed from, so the two cannot disagree.
- *   * **The reason is an attribute.** `data-waiting-reason-kind` is `question`
- *     or `blocked` for the `awaiting` overlay, and `acceptance` for an
- *     `in_review` card whose own `acceptance_mode` is `human`; the chip's copy
- *     comes from `waiting.reason.<kind>`.
+ *   * **The reason is an attribute, the act is the copy.** `data-waiting-reason-kind`
+ *     is `question` or `blocked` for the `awaiting` overlay, and `acceptance`
+ *     for an `in_review` card whose own `acceptance_mode` is `human`; the chip's
+ *     copy states the human's **act** (`waiting.action.<kind>` — Answer /
+ *     Unblock / Accept), while the attribute keeps the state for the dot's
+ *     colour and for a reader that needs the semantic value. A second line
+ *     carries the **ask**: the triggering question's first sentence, or the
+ *     delivery round and its acceptance count.
  *
  * **One data note, stated rather than papered over.** The core's awaiting
  * categories are `E1`–`E5` (`src/core/domain/enums.mjs#AWAITING_REASONS`), and
@@ -147,6 +151,60 @@ export function reasonKeyOf(kind) {
   return `waiting.reason.${WAITING_REASON_KINDS.includes(kind) ? kind : "question"}`;
 }
 
+/** The normalised reason kind (`question` for anything the domain does not name). */
+function normalisedKind(kind) {
+  return WAITING_REASON_KINDS.includes(kind) ? kind : "question";
+}
+
+/**
+ * The **act** the row asks of its reader — the chip's copy and the opener's
+ * visible label. `reasonKey.<kind>` names the state; this names what the human
+ * does about it (Answer / Unblock / Accept).
+ *
+ * @param {"question"|"blocked"|"acceptance"} kind
+ */
+export function actionKeyOf(kind) {
+  return `waiting.action.${normalisedKind(kind)}`;
+}
+
+/**
+ * The opener's accessible name for a kind. The verb is the action, never the
+ * generic "Open": a screen reader hears what pressing the row does.
+ *
+ * @param {"question"|"blocked"|"acceptance"} kind
+ */
+export function openKeyOf(kind) {
+  const normalised = normalisedKind(kind);
+  if (normalised === "blocked") return "waiting.open.unblock";
+  if (normalised === "acceptance") return "waiting.open.accept";
+  return "waiting.open.answer";
+}
+
+/**
+ * The first sentence of a comment — the text up to the first sentence-final
+ * punctuation (`。．.！!？?`) or the first newline, whichever comes first,
+ * punctuation included.
+ *
+ * Mirrors `src/core/domain/awaiting.mjs#firstSentence`; the web cannot import
+ * from `src/`, so the rule is restated here and asserted against a fixture
+ * rather than trusted to stay in step (`test/web/waiting.queue.test.mjs`).
+ *
+ * It lives in this projection rather than in `stores/board.js` because a row's
+ * preview is a field of the row: `board.js` imports this module, so importing
+ * back would close a cycle.
+ *
+ * @param {unknown} body
+ * @returns {string}
+ */
+export function firstSentence(body) {
+  const text = String(body ?? "");
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === "\n" || "。．.！!？?".includes(ch)) return text.slice(0, i + 1).trim();
+  }
+  return text.trim();
+}
+
 /**
  * The instant a card's wait began: the triggering comment's own stamp when M1 has
  * read it, else the card's last change — never a clock read *here*, so a row is
@@ -181,6 +239,14 @@ export function waitingRow(task, payload = null) {
     actorKind: kindLabel(task.assignee?.kind),
     reasonKind,
     reasonKey: reasonKeyOf(reasonKind),
+    actionKey: actionKeyOf(reasonKind),
+    openKey: openKeyOf(reasonKind),
+    // The ask: the triggering comment's first sentence. The comment is already
+    // read for `since`, so the preview costs no second request.
+    preview: firstSentence(payload?.body),
+    previewKey: null,
+    previewRound: null,
+    previewCount: null,
     since: sinceOf(task, payload),
     payload: payload ?? null,
   };
@@ -203,8 +269,22 @@ export function waitingRows(tasks, payloads = {}, now = Date.now()) {
 }
 
 /**
- * One acceptance card → one queue row. Same six fields as an awaiting row, so
- * the view renders one table; `reasonKind` is what tells the two apart.
+ * The delivery round a wire card reached. A card in the acceptance queue has
+ * been delivered at least once, so a wire with no `delivery_round` reads as
+ * round 1 rather than printing `null` at the reader.
+ */
+function deliveryRoundOf(task) {
+  return Number.isInteger(task?.delivery_round) && task.delivery_round > 0 ? task.delivery_round : 1;
+}
+
+/** How many frozen acceptance items the card carries. */
+function acceptanceCountOf(task) {
+  return Array.isArray(task?.acceptance) ? task.acceptance.length : 0;
+}
+
+/**
+ * One acceptance card → one queue row. Same fields as an awaiting row, so the
+ * view renders one table; `reasonKind` is what tells the two apart.
  *
  * @param {object} task a wire card whose `in_review` delivery is the human's
  */
@@ -219,6 +299,15 @@ export function acceptanceRow(task) {
     actorKind: kindLabel(task.assignee?.kind),
     reasonKind: "acceptance",
     reasonKey: reasonKeyOf("acceptance"),
+    actionKey: actionKeyOf("acceptance"),
+    openKey: openKeyOf("acceptance"),
+    // The ask: the delivery round and how many acceptance items it carries.
+    // Both are already on the list wire (`delivery_round`, `acceptance`); no
+    // report read is added for the conclusion.
+    preview: "",
+    previewKey: "waiting.preview.acceptance",
+    previewRound: deliveryRoundOf(task),
+    previewCount: acceptanceCountOf(task),
     since: acceptanceSinceOf(task),
     payload: null,
     kind: "acceptance",

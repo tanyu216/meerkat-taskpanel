@@ -176,6 +176,18 @@ export const EXTRA = {
     "waiting.reason.E3": "Design / aesthetic direction",
     "waiting.reason.E4": "Security / data safety",
     "waiting.reason.E5": "Architecture direction",
+    // TP-0019 — the queue states the human's **act**, not only the card's
+    // state, and gives the ask a second line. The chip's copy is the action;
+    // the opener repeats it as its visible label and names it in the accessible
+    // name. The acceptance preview is two positional `%s` (round, count) drawn
+    // from `delivery_round` and the frozen acceptance list — no report read.
+    "waiting.action.question": "Answer",
+    "waiting.action.blocked": "Unblock",
+    "waiting.action.acceptance": "Accept",
+    "waiting.open.answer": "Answer %s",
+    "waiting.open.unblock": "Unblock %s",
+    "waiting.open.accept": "Accept %s",
+    "waiting.preview.acceptance": "Round %s · %s acceptance items",
     // The event vocabulary the prototype never had: archive, sessions, import
     // progress, and the generic fallback an unknown event reads as.
     "activity.archived": "archived this task",
@@ -292,6 +304,14 @@ export const EXTRA = {
     "waiting.reason.E3": "设计 / 美学方向",
     "waiting.reason.E4": "安全 / 数据安全",
     "waiting.reason.E5": "架构方向",
+    // TP-0019 — 行动与问题：标签写「你该做什么」，第二行写「在问什么」。
+    "waiting.action.question": "回答",
+    "waiting.action.blocked": "解除阻塞",
+    "waiting.action.acceptance": "验收",
+    "waiting.open.answer": "回答 %s",
+    "waiting.open.unblock": "解除阻塞 %s",
+    "waiting.open.accept": "验收 %s",
+    "waiting.preview.acceptance": "第 %s 轮 · %s 条验收项",
     "activity.archived": "归档了任务",
     "activity.session": "记录了会话",
     "activity.progress": "记录了进度",

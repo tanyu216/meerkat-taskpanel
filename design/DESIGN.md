@@ -2042,14 +2042,16 @@ to be fixed. Two roots, two questions: a merge would answer neither well.
 
 ### 30.2 The rows, and why the wait is the sort key
 
-A waiting row is B26's row by *measurement*, not by class: the same 30px line, the same 12px
-actor, the same 11px identifier and stamp, the same 10px gutter, the same 24px opener — spelled
-in its own family (`.td-waiting-*`) so that either view can move without dragging the other.
+A waiting row is B26's row by *measurement*, not by class: the same 30px first line, the same
+12px actor, the same 11px identifier and stamp, the same 10px gutter, the same 24px opener —
+spelled in its own family (`.td-waiting-*`) so that either view can move without dragging the
+other. Since TP-0019 it is **two lines**: the act and the card on the first, the ask beneath
+it, with `.td-waiting-item` growing by `min-height` rather than a fixed height.
 
 One difference is deliberate: **there is no tick rail**. B26's rail exists to say "unread" or
 "a folded burst", and every item in this queue is unread by definition, so the rail would be a
 mark that means nothing — decoration on the one line that has least room for it. What carries
-the kind here is the reason chip, which is a fact.
+the kind here is the act chip, which is a fact.
 
 **Why oldest first.** The queue's whole value is that its overdue end is visible. A chronology
 reads newest first because "what happened" is a question about now; a queue read the same way
@@ -2058,23 +2060,25 @@ the failure a queue exists to prevent. So the list runs oldest → newest, and t
 waited longest is the first thing the reader meets. (`Rejected: newest first, for symmetry
 with the feed` — see §30.6.)
 
-Three things the rows state, and how:
+Five things the rows state, and how:
 
 | | |
 |---|---|
+| The act | `[data-waiting-action]` is the chip's visible copy: Answer / Unblock / Accept (`waiting.action.<kind>`). The semantic state stays on `data-waiting-reason-kind`, which is what colours the dot; the copy names what the reader does |
+| The ask | `[data-waiting-preview]` is the second line. A question or a block shows the triggering comment's first sentence (already read for `since`, so no extra request); an acceptance shows the delivery round and the acceptance count (`第 N 轮 · M 条验收项`), drawn from `delivery_round` and the frozen acceptance list already on the list wire |
 | The wait | `[data-waiting-since]` carries the instant on `datetime`, the row carries it again on `data-since`, and the visible text is that instant read the way the feed reads one. The three `time.*` keys are reused rather than restated, and in the shipped document the text already equals what the page would compute — so the script has nothing to recompute here, and a reader without it sees the same sentence |
 | The identifier | `[data-waiting-task]` renders at most ten characters plus `…`, whole value on `title` — R8 ③'s rule, the one B07's cards and B08's rows follow. Waiting is the first surface that can *prove* the rule without a script: `PROJ-0007` is the board's longest identifier at nine characters, so at the ten-character cap (§24.3, revision 2026-10-14) its cell reads `PROJ-0007` in the markup itself, whole |
-| The open press | `[data-waiting-open]` is the keyboard affordance and the row body its pointer twin, and both land on the board's own **B09** for the task the row names. The queue is a way *into* a task, never a second task page |
+| The open press | `[data-waiting-open]` is the keyboard affordance and the row body its pointer twin, and both land on the board's own **B09** for the task the row names. The opener shows the action word and names it in the accessible name (`Answer TD-13`, never `Open TD-13`). The queue is a way *into* a task, never a second task page |
 
 ### 30.3 The kinds, and how a colour reaches the chip without a new hue
 
 `data-waiting-reason-kind` is the whole domain, and it has three values:
 
-| Kind | What it means | Its dot |
-|---|---|---|
-| `question` | someone asked, and the answer is yours — an `awaiting` card | `--color-td-st-review`, through `--status-color` |
-| `blocked` | the task cannot move without you | `--color-td-st-blocked`, through `--status-color` |
-| `acceptance` | the work is delivered and the card's own mode leaves the closing to you — an `in_review` card whose `acceptance_mode` is `human` | `--color-td-st-done`, through `--status-color` |
+| Kind | What it means | The act (chip copy) | Its dot |
+|---|---|---|---|
+| `question` | someone asked, and the answer is yours — an `awaiting` card | Answer (`waiting.action.question`) | `--color-td-st-review`, through `--status-color` |
+| `blocked` | the task cannot move without you | Unblock (`waiting.action.blocked`) | `--color-td-st-blocked`, through `--status-color` |
+| `acceptance` | the work is delivered and the card's own mode leaves the closing to you — an `in_review` card whose `acceptance_mode` is `human` | Accept (`waiting.action.acceptance`) | `--color-td-st-done`, through `--status-color` |
 
 The third kind is a **ruling change, recorded here** (revision 2026-10-19, M6): the queue asks
 "what is on my side", and on a card whose `acceptance_mode` is `human` a delivered card
@@ -2085,6 +2089,12 @@ queue lists it. Each kind reads a
 token because the work is delivered and the outstanding act is the acceptance. The chip is still
 one attribute → one custom property, the rule the `[data-status]` and `[data-priority]` bindings
 already follow, so no component names a colour and no hue enters the sheet.
+
+**The chip's copy is the act, not the state.** TP-0019's reading: a chip that says 「待回答」 or
+「待你验收」 tells a reader what the card *is* and leaves them to infer what is owed. The
+visible text is now `[data-waiting-action]` — Answer / Unblock / Accept (`waiting.action.<kind>`)
+— while `data-waiting-reason-kind` remains the semantic attribute and the dot's colour source.
+The kind is therefore still a fact of the card; the copy is a fact of the human's next move.
 
 The header states the queue's size — `[data-waiting-count]` is `waiting.count` around a number
 — and its heading is `waiting.title`, byte-identical to `nav.waiting`: the destination pressed
@@ -2177,7 +2187,7 @@ and the script-off frame), with the two attribute-moved frames disclosed in its 
 |---|---|
 | Merge Waiting into Activity | The ruling keeps two entries and Terry's request names two; the two answer different questions (§30.1), and a merged surface would have to be both a chronology and a queue — which means one of the two readings is wrong for half its rows |
 | Read the queue newest first, like the feed | Symmetry with B26 is worth less than the queue working: the oldest wait is the one at risk, and the top of the list is the only place a reader reliably looks |
-| Give each row a second line with the reason as a sentence | The 30px line is the family's density target (B26 §7), and the reason is one of two values — a chip says it in 60px, a sentence costs every row a second line |
+| Give each row a second line with the reason as a sentence | The 30px line is the family's density target (B26 §7), and the reason is one of two values — a chip says it in 60px, a sentence costs every row a second line. (TP-0019 later gave each row a second line **for the ask** — the question's first sentence, or the round + acceptance count — while keeping the reason a chip and the first line's 30px density; this rejection is about replacing the chip, not about the preview.) |
 | Copy B26's tick rail | It would be a mark that encodes nothing (§30.2). Every row here is unread, and there is no burst |
 | Put the tally in the sidebar as a second `[data-nav-count]` | It would restate, on the other side of the screen, the sentence the header already carries — Activity's pill earns its place because its number is not the length of what is on screen |
 | Make the row's task an anchor back to the board, the way `[data-activity-task]` is | That anchor exists in B26 because the feed is a log you follow up on; here the reader is already being asked to act, so the row opens the task in place, and a second route would make the queue leave the view it belongs to |

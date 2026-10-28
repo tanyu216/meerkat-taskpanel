@@ -86,6 +86,11 @@ function fixture(projectId, status, overrides = {}) {
     // this" from `acceptance_mode === "human"`, and an absent field would read
     // as `off` and silently empty the queue.
     acceptance_mode: overrides.acceptance_mode ?? "off",
+    // TP-0019 — the acceptance row's second line reads these two already-wire
+    // fields (the frozen list's length and the delivered round); a fixture that
+    // omitted them would read as round 1 / zero items.
+    delivery_round: overrides.delivery_round ?? 1,
+    acceptance: overrides.acceptance ?? [],
     meta: overrides.meta ?? {},
     assignee: overrides.assignee ?? { id: "a1", display_name: "linus", kind: "agent" },
     reporter: { id: "h1", display_name: "Terry", kind: "human" },
@@ -215,8 +220,8 @@ export function fixtureApi() {
     fixture("p1", "todo", { identifier: "TD-4", title: "Polish the empty states", priority: "medium", labels: ["ui"], assignee: AGENT.codex }),
     fixture("p1", "in_progress", { identifier: "TD-5", title: "Fix the renderer", priority: "urgent", labels: ["bug", "ui"], assignee: AGENT.codex }),
     fixture("p1", "in_progress", { identifier: "TD-6", title: "Profile the board scroll", priority: "high", labels: ["perf"], assignee: AGENT.claude }),
-    fixture("p1", "in_review", { identifier: "TD-7", title: "Audit the token store", priority: "medium", labels: ["security"], assignee: AGENT.openclaw, acceptance_mode: "human" }),
-    fixture("p1", "in_review", { identifier: "TD-8", title: "Redesign the sidebar rail", priority: "low", labels: ["design", "ui"], assignee: AGENT.pi, acceptance_mode: "human" }),
+    fixture("p1", "in_review", { identifier: "TD-7", title: "Audit the token store", priority: "medium", labels: ["security"], assignee: AGENT.openclaw, acceptance_mode: "human", delivery_round: 2, acceptance: ["Scope is met", "Docs updated", "Tests pass"] }),
+    fixture("p1", "in_review", { identifier: "TD-8", title: "Redesign the sidebar rail", priority: "low", labels: ["design", "ui"], assignee: AGENT.pi, acceptance_mode: "human", acceptance: ["Rail matches the prototype"] }),
     fixture("p1", "blocked", { identifier: "TD-9", title: "Waiting on review", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
     // M1 · the 「等你回复」card. Its status is the overlay, so it is *listed* under
     // in_progress (the seventh column count does not change) and it wears the
@@ -4787,7 +4792,7 @@ export async function run() {
       const rows = [...document.querySelectorAll("[data-waiting-item]")];
       // M6 — the queue now has two producers: the awaiting card (TD-13) and the
       // delivered cards whose own `acceptance_mode` is `human` (TD-7, TD-8).
-      // The six-field rule below is about the awaiting row, so it
+      // The per-row field rule below is about the awaiting row, so it
       // selects that row explicitly; the order rule is asserted separately.
       const item = rows.find((row) => row.getAttribute("data-task") === "TD-13") ?? null;
       // Resolve the accent the same way the stylesheet does, so the comparison is
@@ -4825,9 +4830,9 @@ export async function run() {
         countText: countPill?.textContent?.trim() ?? null,
         countHidden: countPill ? countPill.hasAttribute("hidden") : null,
         rows: rows.length,
-        // B27.1 — the six fields a row owes, read off the one row this fixture
-        // has: actor (+ kind), reason (+ kind), identifier (with the whole value
-        // on `title`), title, the stamp, the opener.
+        // B27.1 — the fields a row owes, read off the one row this fixture has:
+        // actor (+ kind), reason (+ kind), action, identifier (with the whole
+        // value on `title`), title, preview, the stamp, the opener.
         itemTask: item?.getAttribute("data-task") ?? null,
         itemIds: rows.map((row) => row.getAttribute("data-task")),
         acceptance: (() => {
@@ -4836,6 +4841,8 @@ export async function run() {
           return {
             reason: row.querySelector("[data-waiting-reason]")?.textContent?.trim() ?? null,
             reasonKind: row.querySelector("[data-waiting-reason]")?.getAttribute("data-waiting-reason-kind") ?? null,
+            action: row.querySelector("[data-waiting-action]")?.textContent?.trim() ?? null,
+            preview: row.querySelector("[data-waiting-preview]")?.textContent?.trim() ?? null,
             actor: row.querySelector("[data-waiting-actor]")?.textContent?.trim() ?? null,
             since: row.getAttribute("data-since"),
           };
@@ -4845,12 +4852,15 @@ export async function run() {
         actorKind: item?.querySelector("[data-waiting-actor]")?.getAttribute("data-assignee-kind") ?? null,
         reason: item?.querySelector("[data-waiting-reason]")?.textContent?.trim() ?? null,
         reasonKind: item?.querySelector("[data-waiting-reason]")?.getAttribute("data-waiting-reason-kind") ?? null,
+        action: item?.querySelector("[data-waiting-action]")?.textContent?.trim() ?? null,
+        preview: item?.querySelector("[data-waiting-preview]")?.textContent?.trim() ?? null,
         task: item?.querySelector("[data-waiting-task]")?.textContent?.trim() ?? null,
         taskTitleAttr: item?.querySelector("[data-waiting-task]")?.getAttribute("title") ?? null,
         taskTitle: item?.querySelector("[data-waiting-task-title]")?.textContent?.trim() ?? null,
         sinceDatetime: item?.querySelector("[data-waiting-since]")?.getAttribute("datetime") ?? null,
         sinceText: item?.querySelector("[data-waiting-since]")?.textContent?.trim() ?? null,
         openLabel: item?.querySelector("[data-waiting-open]")?.getAttribute("aria-label") ?? null,
+        openText: item?.querySelector("[data-waiting-open] .td-waiting-open-label")?.textContent?.trim() ?? null,
         // B27.2 — the head's name and its tally.
         headTitle: document.querySelector("[data-waiting-title]")?.textContent?.trim() ?? null,
         // R15 ④ — the head's description: a `<p>` inside the header's text block,
@@ -4931,7 +4941,7 @@ export async function run() {
     check(awaitingMenuLabels.some((label) => /Canceled/i.test(label)), "awaiting menu must offer Canceled");
 
     // B27 — the queue. Three rows (one awaiting question, two accepted-waiting
-    // deliveries), the awaiting row's six fields, the stamp it carries stated
+    // deliveries), the awaiting row's fields, the stamp it carries stated
     // twice (attribute + `datetime`), and the head's own name and tally.
     check(m1.rows === 3, `[data-waiting-item] count ${m1.rows} !== 3`);
     // Oldest first: TD-7/TD-8 are delivered cards from the fixture's older
@@ -4942,18 +4952,28 @@ export async function run() {
       `waiting row order ${JSON.stringify(m1.itemIds)}`,
     );
     check(m1.acceptance !== null, "the delivered human-mode card must be in the queue");
-    check(m1.acceptance.reason === "Ready for acceptance" && m1.acceptance.reasonKind === "acceptance", `acceptance reason ${m1.acceptance?.reason} (${m1.acceptance?.reasonKind})`);
+    // TP-0019 — an acceptance row states the act (Accept) and the ask (round +
+    // acceptance count), both from fields the list wire already carries.
+    check(m1.acceptance.reason === "Accept" && m1.acceptance.reasonKind === "acceptance", `acceptance reason ${m1.acceptance?.reason} (${m1.acceptance?.reasonKind})`);
+    check(m1.acceptance.action === "Accept", `acceptance action ${m1.acceptance?.action}`);
+    check(m1.acceptance.preview === "Round 2 · 3 acceptance items", `acceptance preview ${JSON.stringify(m1.acceptance?.preview)}`);
     check(m1.acceptance.actor === "elon", `acceptance row's actor ${m1.acceptance?.actor} — the assignee that delivered it`);
     check(m1.acceptance.since === "2026-10-01T00:00:00Z", `acceptance row's since ${m1.acceptance?.since} — the delivery instant`);
     check(m1.itemTask === "TD-13", `the row names ${m1.itemTask}, expected TD-13`);
     check(m1.actor === "linus" && m1.actorKind === "agent", `actor ${m1.actor} (${m1.actorKind}) — the card's assignee waits`);
-    check(m1.reason === "Question" && m1.reasonKind === "question", `reason ${m1.reason} (${m1.reasonKind})`);
+    // `data-waiting-reason-kind` still carries the semantic state; the chip's
+    // visible copy is the act.
+    check(m1.reasonKind === "question", `reason kind ${m1.reasonKind}`);
+    check(m1.reason === "Answer" && m1.action === "Answer", `question row action ${m1.reason} / ${m1.action}`);
+    // The preview is the triggering comment's first sentence — and only that.
+    check(m1.preview === "范围确认：这一版不做第 8 列。", `question preview ${JSON.stringify(m1.preview)}`);
     check(m1.task === "TD-13" && m1.taskTitleAttr === "TD-13", `task cell ${m1.task} / title ${m1.taskTitleAttr}`);
     check(m1.taskTitle === "Confirm the release scope before the cut", `task title ${m1.taskTitle}`);
     check(m1.itemSince === AWAITING_COMMENT_AT, `the row's since ${m1.itemSince} !== the triggering comment ${AWAITING_COMMENT_AT}`);
     check(m1.sinceDatetime === m1.itemSince, `stamp datetime ${m1.sinceDatetime} !== the row's own ${m1.itemSince}`);
     check(/^\d+[dhm] ago$/.test(m1.sinceText ?? ""), `stamp text ${m1.sinceText}`);
-    check((m1.openLabel ?? "").startsWith("Open "), `opener aria-label ${m1.openLabel}`);
+    check(m1.openLabel === "Answer TD-13", `opener aria-label ${m1.openLabel}`);
+    check(m1.openText === "Answer", `opener visible label ${m1.openText}`);
     check(m1.headTitle === "Waiting on me", `head title ${m1.headTitle}`);
     // R15 ④ — the header states what the view is as well as what it is called.
     check(m1.headSub === "Everything waiting on your answer, oldest first.", `R15 ④: head description ${JSON.stringify(m1.headSub)}`);
@@ -5373,6 +5393,12 @@ export async function run() {
           (selector) => document.querySelector(selector)?.textContent?.trim() ?? null,
         ),
         waitingSub: document.querySelector("[data-waiting-head] p")?.textContent?.trim() ?? null,
+        // TP-0019 — the zh rename covers acceptance as well as answering, the
+        // heading and the nav name stay one string, and the chip's act is the
+        // catalogue's zh word (not an English literal).
+        waitingTitle: document.querySelector("[data-waiting-title]")?.textContent?.trim() ?? null,
+        waitingNav: document.querySelector('[data-nav-item="waiting"] [data-side-text]')?.textContent?.trim() ?? null,
+        waitingAction: document.querySelector('[data-waiting-item][data-task="TD-13"] [data-waiting-action]')?.textContent?.trim() ?? null,
       };
     });
     await page.evaluate(() => document.querySelector('[data-lang-option="en"]')?.click());
@@ -5532,9 +5558,14 @@ export async function run() {
       `R15 ② zh: the board's converted triggers read ${b26Zh.boardTriggers.join(" / ")}`,
     );
     b26Check(
-      b26Zh.waitingSub === "所有等你答复的事项，最久的排在最前。",
+      b26Zh.waitingSub === "所有等你答复或验收的事项，最久的排在最前。",
       `R15 ④ zh: the queue's description reads ${JSON.stringify(b26Zh.waitingSub)}`,
     );
+    b26Check(
+      b26Zh.waitingTitle === "等你处理" && b26Zh.waitingNav === "等你处理",
+      `TP-0019 zh: the queue's name and its nav item must read 「等你处理」 — ${JSON.stringify(b26Zh.waitingTitle)} / ${JSON.stringify(b26Zh.waitingNav)}`,
+    );
+    b26Check(b26Zh.waitingAction === "回答", `TP-0019 zh: the chip's act reads ${JSON.stringify(b26Zh.waitingAction)}`);
     b26Check(b26En.title === "Activity", `en copy after the cycle ${b26En.title}`);
     b26Check((b26En.openLabel ?? "").startsWith("Open "), `en open label ${b26En.openLabel}`);
     await page.click('[data-nav-item="board"]');
@@ -6600,7 +6631,7 @@ if (isEntryPoint) run().then(
         console.log(`M1 · B27 (waiting) — ${report.m1Failures.length} failed:`);
         for (const failure of report.m1Failures) console.log(`  ✗ ${failure}`);
       } else {
-        console.log("M1 · B27 (waiting) — the board badge, the queue's six fields, the tally, the filter bar's stand-down and the move menu all pass");
+        console.log("M1 · B27 (waiting) — the board badge, the queue's fields (act + preview included), the tally, the filter bar's stand-down and the move menu all pass");
       }
       if (report.r6.failures.length > 0) {
         console.log(`R6 (fidelity) — ${report.r6.failures.length} failed:`);
