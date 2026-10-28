@@ -40,6 +40,7 @@ import {
   saveDetailField,
   uploadAttachment,
 } from "../../stores/board.js";
+import { acceptanceRowsFor } from "../../lib/acceptance.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { activityLine, relativeTime } from "../../lib/activity.js";
 import { newestFirst } from "../../lib/time.js";
@@ -300,8 +301,10 @@ const sessionTrail = computed(() => {
 /* ------------------------------------------------------- v4 · report family */
 /**
  * The report family (`GET /api/v1/tasks/:ref/reports`, `reportToWire`): the
- * Reports tab lists every round in the API's own ASC order; Acceptance reads
- * the latest round's criteria; Leftovers lists each round's remaining note.
+ * Reports tab lists every round in the API's own ASC order; Acceptance lists
+ * the card's own frozen criteria (`task.acceptance`) joined to the latest
+ * round's verdicts — the two are different things, and a card with no delivery
+ * still has criteria; Leftovers lists each round's remaining note.
  * The read is best-effort in `openDetail` (a board that predates the route
  * answers `[]`, which is the empty state — never an error).
  */
@@ -324,11 +327,7 @@ const latestReport = computed(() => {
   return rows[0] ?? null;
 });
 const acceptanceRows = computed(() =>
-  (latestReport.value?.acceptance ?? []).map((item, index) => ({
-    id: `${latestReport.value?.id ?? "latest"}-${index}`,
-    text: item?.text ?? "",
-    status: item?.status ?? "not_applicable",
-  })),
+  acceptanceRowsFor(task.value?.acceptance ?? [], latestReport.value?.acceptance ?? []),
 );
 const leftoverRows = computed(() =>
   reports.value.map((report) => ({
@@ -1721,13 +1720,22 @@ function copyId() {
         <section class="td-section" data-dv-tab-block="acceptance">
           <h3 class="td-section-title" data-i18n="drawer.tab.acceptance">{{ $t("drawer.tab.acceptance") }}</h3>
           <ul class="td-dv-list">
-            <li v-for="row in acceptanceRows" :key="row.id" class="td-dv-item">
+            <li
+              v-for="row in acceptanceRows"
+              :key="row.id"
+              class="td-dv-item"
+              :data-acceptance-paired="row.paired ? 'true' : 'false'"
+              :data-acceptance-extra="row.extra ? 'true' : undefined"
+            >
               <span class="td-dv-mark" :data-acceptance-status="row.status" role="img" :aria-label="$t(`drawer.acceptance.${row.status}`)">
                 <svg v-if="row.status === 'met'" class="td-dv-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 13l4.5 4.5L19 7" /></svg>
                 <svg v-else-if="row.status === 'not_met'" class="td-dv-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" /></svg>
                 <svg v-else class="td-dv-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 12h12" /></svg>
               </span>
-              <span class="td-dv-text">{{ row.text }}</span>
+              <span class="td-dv-text">
+                {{ row.text }}
+                <span v-if="row.note" class="td-dv-note" data-acceptance-note>{{ row.note }}</span>
+              </span>
             </li>
           </ul>
           <p v-if="acceptanceRows.length === 0" class="td-dv-empty" data-i18n="drawer.acceptance.empty">{{ $t("drawer.acceptance.empty") }}</p>

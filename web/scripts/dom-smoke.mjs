@@ -86,6 +86,11 @@ function fixture(projectId, status, overrides = {}) {
     // this" from `acceptance_mode === "human"`, and an absent field would read
     // as `off` and silently empty the queue.
     acceptance_mode: overrides.acceptance_mode ?? "off",
+    // 0032 — the card's frozen acceptance baseline (`task.acceptance` on the
+    // wire). Present on every card: a card with no list answers `[]`, which is
+    // the Acceptance tab's genuinely-empty case, distinct from "no verdict yet".
+    acceptance: overrides.acceptance ?? [],
+    acceptance_revision: overrides.acceptance_revision ?? 0,
     meta: overrides.meta ?? {},
     assignee: overrides.assignee ?? { id: "a1", display_name: "linus", kind: "agent" },
     reporter: { id: "h1", display_name: "Terry", kind: "human" },
@@ -192,6 +197,9 @@ export function fixtureApi() {
       priority: "low",
       labels: ["design"],
       assignee: AGENT.pi,
+      // The two criteria its delivery reports answer, spelled exactly as the
+      // report spells them so the Acceptance tab pairs by normalised text.
+      acceptance: ["Criterion one", "Criterion two"],
       meta: {
         attachment_count: 5,
         attachments: [
@@ -211,7 +219,16 @@ export function fixtureApi() {
     // contract's own anchor sample, so the driven assertions and the contract's
     // table name the same string.
     fixture("p1", "backlog", { identifier: "PROJ-0007", title: "Collect the install survey", priority: "none", labels: [], assignee: AGENT.human }),
-    fixture("p1", "todo", { identifier: "TD-3", title: "Wire the board", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
+    // TD-3 is the pre-delivery card: it carries criteria but no report, so the
+    // Acceptance tab must list them as pending rather than claiming it has none.
+    fixture("p1", "todo", {
+      identifier: "TD-3",
+      title: "Wire the board",
+      priority: "high",
+      labels: ["bug"],
+      assignee: AGENT.claude,
+      acceptance: ["Wire the board end to end", "Explain the empty state"],
+    }),
     fixture("p1", "todo", { identifier: "TD-4", title: "Polish the empty states", priority: "medium", labels: ["ui"], assignee: AGENT.codex }),
     fixture("p1", "in_progress", { identifier: "TD-5", title: "Fix the renderer", priority: "urgent", labels: ["bug", "ui"], assignee: AGENT.codex }),
     fixture("p1", "in_progress", { identifier: "TD-6", title: "Profile the board scroll", priority: "high", labels: ["perf"], assignee: AGENT.claude }),
@@ -400,7 +417,10 @@ export function fixtureApi() {
         seg: "3",
         session_id: "sess-2",
         conclusion: "Second round closed the gap.",
-        acceptance: [{ text: "Criterion one", status: "met" }, { text: "Criterion two", status: "met" }],
+        acceptance: [
+          { text: "Criterion one", status: "met", note: "evidence[1]" },
+          { text: "Criterion two", status: "met" },
+        ],
         evidence: [],
         evidence_truncated: false,
         leftovers: null,
@@ -1292,10 +1312,23 @@ export async function run() {
     const acceptanceRead = await page.evaluate(() => ({
       items: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
       statuses: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-status]')].map((e) => e.getAttribute("data-acceptance-status")),
+      paired: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-paired]')].map((e) => e.getAttribute("data-acceptance-paired")),
+      notes: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-note]')].map((e) => e.textContent.trim()),
+      extras: document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-extra="true"]').length,
     }));
     drawerTabsCheck(
       acceptanceRead.items === 2 && acceptanceRead.statuses.join(",") === "met,met",
       `Acceptance read ${acceptanceRead.items} item(s) / ${acceptanceRead.statuses.join("/")}`,
+    );
+    // TD-1 carries the two criteria its reports answer, so every row is a
+    // pairing — not a bare verdict list, and not a duplicate for the extras.
+    drawerTabsCheck(
+      acceptanceRead.paired.join(",") === "true,true" && acceptanceRead.extras === 0,
+      `Acceptance pairing read ${acceptanceRead.paired.join("/")} with ${acceptanceRead.extras} extra row(s)`,
+    );
+    drawerTabsCheck(
+      acceptanceRead.notes.join("|") === "evidence[1]",
+      `Acceptance notes read ${JSON.stringify(acceptanceRead.notes)}, expected the round's own note`,
     );
 
     await page.click('[data-detail-tab="leftovers"]');
@@ -1307,6 +1340,38 @@ export async function run() {
     drawerTabsCheck(
       leftoversRead.rows === 2 && leftoversRead.empty === 1,
       `Leftovers read ${leftoversRead.rows} row(s), ${leftoversRead.empty} empty round(s)`,
+    );
+
+    /* The pre-delivery half: a `todo` card with criteria and no report. The tab
+       must list the card's own criteria as pending — the defect was that it
+       rendered the (absent) verdict list and said the card had no criteria. */
+    await page.evaluate(() => {
+      const card = [...document.querySelectorAll("[data-card]")].find(
+        (el) => (el.querySelector("[data-card-identifier]")?.textContent ?? "").trim() === "TD-3",
+      );
+      card?.click();
+    });
+    await page.waitForTimeout(300);
+    await page.click('[data-detail-tab="acceptance"]');
+    await page.waitForTimeout(120);
+    const pendingRead = await page.evaluate(() => ({
+      items: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
+      texts: [...document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-text')].map((e) => e.textContent.trim()),
+      statuses: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-status]')].map((e) => e.getAttribute("data-acceptance-status")),
+      paired: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-paired]')].map((e) => e.getAttribute("data-acceptance-paired")),
+      empty: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-empty').length,
+    }));
+    drawerTabsCheck(
+      pendingRead.items === 2 && pendingRead.empty === 0,
+      `a todo card read ${pendingRead.items} row(s) and ${pendingRead.empty} empty state(s), expected its 2 criteria`,
+    );
+    drawerTabsCheck(
+      pendingRead.statuses.join(",") === "pending,pending" && pendingRead.paired.join(",") === "false,false",
+      `a todo card's criteria read ${pendingRead.statuses.join("/")} (paired ${pendingRead.paired.join("/")} ), expected pending and unpaired`,
+    );
+    drawerTabsCheck(
+      pendingRead.texts.join("|") === "Wire the board end to end|Explain the empty state",
+      `a todo card's criteria read ${JSON.stringify(pendingRead.texts)}`,
     );
 
     /* Data-driven visibility, the other half: a card with no session rows has
@@ -1332,6 +1397,8 @@ export async function run() {
         sectionHidden: document.querySelector("[data-detail-agent-session]")?.hidden ?? null,
         selected: tabs.filter((tab) => tab.getAttribute("aria-selected") === "true").map((tab) => tab.getAttribute("data-detail-tab")),
         reports: document.querySelector('[data-detail-panel="reports"]')?.textContent ?? "",
+        acceptance: document.querySelector('[data-detail-panel="acceptance"]')?.textContent ?? "",
+        acceptanceItems: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
       };
     });
     drawerTabsCheck(
@@ -1349,6 +1416,12 @@ export async function run() {
     drawerTabsCheck(
       noSessionsRead.reports.includes("No reports yet."),
       "a card with no reports does not say so in the Reports panel",
+    );
+    // The genuinely empty acceptance case: no criteria and no report. The copy
+    // must name both missing things — "no acceptance criteria yet" was the lie.
+    drawerTabsCheck(
+      noSessionsRead.acceptanceItems === 0 && noSessionsRead.acceptance.includes("No acceptance criteria or verdicts yet."),
+      `a card with no criteria and no report read ${noSessionsRead.acceptanceItems} row(s): ${JSON.stringify(noSessionsRead.acceptance.trim())}`,
     );
 
     await page.evaluate(() => {
