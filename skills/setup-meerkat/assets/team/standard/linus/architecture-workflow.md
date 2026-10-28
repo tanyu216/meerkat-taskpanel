@@ -522,9 +522,12 @@ carry:
    designates; confirm with the human before landing, closing or deleting. State the rule,
    not the ceremony.
 8. **Change and integration policy** — the project's own contract for how a change lands:
-   where parallel work is isolated, which branch or release line is protected, what must be
-   confirmed before it lands, and the cleanup order. Point at the contributing guide or the
-   standard for the detail; carry only the rules a fresh session would otherwise break.
+   where parallel work is isolated, which branch or release line is protected, the ref a
+   card starts from and the ref acceptance lands into, what must be confirmed before it
+   lands, the commit rule that makes a delivery verifiable (the delivered tree is committed
+   and the report names that commit), and the cleanup order. Point at the contributing guide
+   or the standard for the detail; carry only the rules a fresh session would otherwise
+   break.
 9. **Operational invariants** — the state a fresh session can break and cannot see from the
    code: who may write a given surface (one writer per surface; a second writer is a defect),
    where runtime identity and configuration are read from, and which artifacts are generated
@@ -623,6 +626,11 @@ Record the decision on the card. Do not start implementation before the review i
 Output: the recorded E5 decision on the card.
 
 ### 9. Deliver
+
+Commit the work on the card's branch before you report — a report that cites a path must
+carry the `commit` anchor (`DELIVERY_NEEDS_COMMIT`), and `report template` stamps `HEAD`
+only on a clean tree; on a dirty tree pass `--commit <sha>`. Do not merge, rebase or push
+from this card; landing and cleanup belong to the project session.
 
 Re-export the brief, mark the handoff required, and write the architecture variant of the
 `## Handoff` block into the delivery report's `conclusion`: one architecture-package sentence

@@ -110,9 +110,10 @@ run them.
     recorded rollback, with the data-recovery step when the release changes stored data.
 21. The baseline states its operating rules: decompose and test-first where the stack has a
     test; verification through the project's gate; confirmation before an irreversible
-    integration; the protected line, the isolation for parallel work and the cleanup order;
-    one writer per surface, the identity and configuration roots, and the generated
-    artifacts that are never hand-edited.
+    integration; the ref a card starts from and the ref acceptance lands into; the protected
+    line, the isolation for parallel work and the cleanup order; the commit rule that makes
+    a delivery verifiable; one writer per surface, the identity and configuration roots, and
+    the generated artifacts that are never hand-edited.
 22. Every path and command the baseline names resolves against the tree and the manifest; on
     an existing project the file was improved in place, not regenerated.
 23. Constants and enumerations have one home each: a deployment-dependent value is a
@@ -150,4 +151,6 @@ Confirm the report gives every baseline item its status and falsifiable evidence
 each leftover its owner and follow-up. The report is `plan.md`'s table projected onto the
 card's acceptance — not a narrative rewritten at delivery. A card with an open omission, a
 red gate or an unanswered question is not delivered: close it and re-run, or ask and keep
-the card `in_progress`. Only then deliver at `in_review`. Do not accept your own work.
+the card `in_progress`. The delivered tree is committed on the card's branch and the report
+carries the `commit` anchor; nothing was merged, rebased or pushed from this card. Only then
+deliver at `in_review`. Do not accept your own work.

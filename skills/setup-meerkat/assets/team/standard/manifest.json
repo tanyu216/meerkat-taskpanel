@@ -29,7 +29,8 @@
         "Do not silently expand scope; record a decision request on the card.",
         "A design filename never carries the task id; archiving is mandatory before review.",
         "Do not create downstream cards; the project session triages, creates, seeds and links them.",
-        "Do not split a large feature into an epic yourself; propose the shape in the handoff."
+        "Do not split a large feature into an epic yourself; propose the shape in the handoff.",
+        "Do not merge, rebase or push from this card; the delivered tree is committed and a reported commit is never rewritten."
       ],
       "workflow": "jobs/workflow.md",
       "self_check": "jobs/self-check.md"
@@ -65,7 +66,8 @@
         "Do not read another card's plan as this card's plan.",
         "Do not split a card into an epic or children yourself.",
         "Do not integrate or clean up a card yourself; the project session does it after approval.",
-        "Do not take work that is not architecture, implementation, refactoring or a bug fix; operations on a running system goes outside the roles."
+        "Do not take work that is not architecture, implementation, refactoring or a bug fix; operations on a running system goes outside the roles.",
+        "Do not merge, rebase or push from this card; the delivered tree is committed and a reported commit is never rewritten."
       ],
       "workflow": "linus/workflow.md",
       "self_check": "linus/self-check.md"
@@ -92,7 +94,8 @@
         "Do not accept fake tests, coverage padding or mock-only integration tests.",
         "Do not run the performance branch without a request and a threshold.",
         "Do not edit a glossary or an ADR; a term conflict is a question.",
-        "Does not replace the review gate; the reviewer runs the declared gate."
+        "Does not replace the review gate; the reviewer runs the declared gate.",
+        "Do not merge, rebase or push from this card; deliver committed evidence and leave landing to the project session."
       ],
       "workflow": "turing/workflow.md",
       "self_check": "turing/self-check.md"

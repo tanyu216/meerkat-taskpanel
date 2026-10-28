@@ -85,4 +85,6 @@ Confirm the report names the branch, every baseline item's status and falsifiabl
 the coverage, and each leftover's owner and follow-up. The report is `plan.md`'s table
 projected onto the card's acceptance — not a narrative rewritten at delivery. A card with an
 open omission, a red gate or an unanswered question is not delivered: close it and re-run, or
-ask and keep the card `in_progress`. Deliver at `in_review`. Do not issue a verdict.
+ask and keep the card `in_progress`. The delivered tree is committed on the card's branch and
+the report carries the `commit` anchor; nothing was merged, rebased or pushed from this card.
+Deliver at `in_review`. Do not issue a verdict.

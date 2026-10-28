@@ -167,6 +167,25 @@ The last stage of every workflow is **Deliver** — run the self-check, add the 
 on a producer card, then deliver at `in_review`; the `meerkat` board skill owns the delivery
 command.
 
+## Delivery, landing and cleanup
+
+Delivery is not landing. A worker commits its work on the card's branch and reports the
+`commit` anchor; it never merges, rebases or pushes. The anchor is append-only evidence: a
+rebase or amend after the report moves the delivered sha, so the reviewer treats an anchor
+that no longer resolves as an invalid review — it leaves a note instead of a verdict.
+
+The loop lands the work, not the card's author. On approval the lane branch is merged into
+the ref acceptance targets before the card reaches `done`; a dirty project checkout or a
+merge conflict keeps the card `in_review` and leaves the worktree and branch for a human.
+Cleanup happens only when the card is terminal, in the project's cleanup order: the worktree
+is removed first, then the merged branch.
+
+Which ref a card starts from, which ref acceptance lands into, the protected line and the
+commit convention are the project's own contract, carried by its agent-instruction baseline.
+When that baseline has no change and integration policy, or names no landing target, a
+worker treats it as a foundation gap: it asks with an agent `question` and proposes an
+architecture card, rather than inventing a branch or landing policy inside a feature card.
+
 ## Manifest
 
 ```json
