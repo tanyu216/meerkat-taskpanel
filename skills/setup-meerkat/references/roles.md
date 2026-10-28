@@ -134,7 +134,8 @@ reliable, efficient, elegant, not over-engineered, high cohesion and low couplin
 architecture-style decision (DDD or a named simpler style), the boundaries, the data model
 and the planned directory tree. The contract artifact is canonical, `CLAUDE.md`/`AGENTS.md`
 carry a top-level tree map and a pointer to the standard, and the agent-instruction baseline
-is the file every role reads, carrying the six design principles as binding requirements for
+is the file every role reads, carrying the six design principles, the working agreement, the
+change and integration policy and the operational invariants as binding requirements for
 every agent. A feature or module change applies the same six in `implementation-workflow.md`
 Step 2.
 The root glossary carries a

@@ -356,6 +356,105 @@ describe("skill frontmatter and assets", () => {
     assert.match(roles, /docs\/tech-spec\.md/, "the engineering reference names the specification");
   });
 
+  it("binds the baseline to the project's own standard and gives the review a method", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+
+    const baseline = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
+
+    assert.match(
+      baseline,
+      /existing project[\s\S]{0,240}(own documents|recorded path|already name)/i,
+      "an existing project binds its own recorded standard, not the new-project path",
+    );
+    assert.doesNotMatch(
+      baseline,
+      /A project without this file is not an architecture delivery/,
+      "the standard rule no longer rejects a project whose standard lives elsewhere",
+    );
+    assert.match(
+      baseline,
+      /resolve every line|fabricated path/i,
+      "the review has a method that catches a fabricated path",
+    );
+    assert.match(baseline, /ownership test/i, "the baseline review applies the ownership test");
+    assert.match(baseline, /deletion test/i, "the baseline review applies the deletion test");
+    assert.match(
+      baseline,
+      /improve[\s\S]{0,200}regenerat/i,
+      "an existing baseline is improved in place, not regenerated",
+    );
+    assert.match(
+      baseline,
+      /command, a gate or the\s+layout/i,
+      "the baseline's drift trigger covers commands, gates and the layout",
+    );
+  });
+
+  it("carries the operating rules into the baseline", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+    const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    const roles = readFileSync(join(SKILL, "references", "roles.md"), "utf8");
+    const manifest = readFileSync(join(team, "manifest.json"), "utf8");
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+
+    const baseline = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
+    const required = baseline.slice(
+      baseline.indexOf("**Purpose and boundary**"),
+      baseline.indexOf("Leave out architecture prose"),
+    );
+    const step7 = arch.slice(arch.indexOf("### 7."), arch.indexOf("### 8."));
+
+    assert.ok(required.includes("**Purpose and boundary**"), "the requirements slice starts at item 1");
+    assert.ok(required.includes("**Pointers**"), "the requirements slice reaches the last item");
+    assert.match(required, /\*\*Working agreement\*\*/i, "the list requires a working agreement");
+    assert.match(
+      required,
+      /\*\*Change and integration policy\*\*/i,
+      "the list requires the project's change and integration policy",
+    );
+    assert.match(
+      required,
+      /\*\*Operational invariants\*\*/i,
+      "the list requires the operational invariants a fresh session can break",
+    );
+    assert.match(
+      required,
+      /decompose[\s\S]{0,160}(test-first|test first|failing test)/i,
+      "the working agreement decomposes first and starts from a test where one exists",
+    );
+    assert.match(required, /one writer per surface/i, "the invariants name the single-writer rule");
+    assert.match(
+      required,
+      /release line/i,
+      "the change policy names a protected line by role, not a repository's branch names",
+    );
+    assert.match(required, /isolat/i, "the change policy isolates parallel work");
+    assert.match(required, /cleanup|cleaned up/i, "the change policy states the cleanup order");
+
+    assert.match(
+      step7,
+      /working agreement/i,
+      "the architecture self-check audits the working agreement",
+    );
+    assert.match(check, /working agreement/i, "Linus's self-check audits the working agreement");
+    assert.match(
+      check,
+      /change and integration policy/i,
+      "Linus's self-check audits the change policy",
+    );
+    assert.match(
+      check,
+      /operational invariants/i,
+      "Linus's self-check audits the operational invariants",
+    );
+    assert.match(check, /resolves/i, "Linus's self-check audits that every pointer resolves");
+    assert.match(roles, /working agreement/i, "the engineering reference names the operating rules");
+    assert.match(manifest, /working agreement/i, "the team manifest names the operating rules");
+    assert.match(skill, /working agreement/i, "the install skill names the operating rules");
+  });
+
   it("applies the six design principles to a feature change", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");

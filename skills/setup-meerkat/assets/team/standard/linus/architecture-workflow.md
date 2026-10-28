@@ -431,14 +431,27 @@ README.
 The agent-instruction baseline is a **requirement for every agent** on this project, not an
 optional nicety. Produce it after the scaffold so it observes the real tree: the host's init
 step writes `CLAUDE.md` or `AGENTS.md` per the host's read order. Without an init step,
-produce the same content directly and say so. Run the init step with `docs/tech-spec.md`
-named as the project's standard: the baseline points at it, and the spec — not the baseline
-— carries the rules. A project without this file is not an architecture delivery.
+produce the same content directly and say so. Name the standard by its actual path:
+`docs/tech-spec.md` is the path this flow creates for a new project (or the card-local
+delta); an existing project binds the document or small set of documents its own README or
+architecture document already names as the standard, and the baseline points there — never
+at a substitute. The spec, not the baseline, carries the rules. A project that records no
+standard is not an architecture delivery: this flow creates one or asks.
 
-Review the generated file — an init step guesses commands and layout — and correct both
-against the planned tree and the recorded stack. Keep one source of truth: if the host reads
-`CLAUDE.md`, write it; if it reads `AGENTS.md`, generate it; make the other a pointer. Do
-not maintain `CLAUDE.md` and `AGENTS.md` as competing copies.
+On an existing project, improve the baseline that is there: keep every section that still
+resolves, add what is missing, and regenerate only when the card asks for it — a rewrite that
+drops an existing agreement is a regression.
+
+Review the generated file — an init step guesses commands and layout. Resolve every line
+before accepting it: open each named path against the tree, run each documented command or
+confirm the manifest defines it, and check every port, environment key and directory against
+the recorded configuration surface and tree. Remove or correct what does not resolve; a
+fabricated path or an undefined command is the failure this review exists to catch. Then
+apply two tests to every remaining line: the **ownership test** — if another document owns
+the fact, keep a one-line pointer and delete the restatement — and the **deletion test** —
+without it, would a fresh session make a mistake? Keep one source of truth: if the host
+reads `CLAUDE.md`, write it; if it reads `AGENTS.md`, generate it; make the other a pointer.
+Do not maintain `CLAUDE.md` and `AGENTS.md` as competing copies.
 
 The task entry — the `/meerkat` keywords and the card scope — belongs to the install
 skill; if the file already carries it, leave it untouched.
@@ -466,20 +479,36 @@ carry:
    recorded as an explicit decision, never a silent drift.
 6. **Gates** — what must pass before delivery: the gate path, the coverage floor and the
    security scan; point at the CI pipeline for the job detail.
-7. **Pointers** — link `docs/tech-spec.md` first, then `docs/architecture.md`,
-   `GLOSSARY.md`, `docs/adr/`, the contract artifact and the configuration surface; do not
-   copy their content.
+7. **Working agreement** — how a session works in this project: decompose before executing;
+   test-first, or the project's own red/green equivalent; verify in the place the project
+   designates; confirm with the human before landing, closing or deleting. State the rule,
+   not the ceremony.
+8. **Change and integration policy** — the project's own contract for how a change lands:
+   where parallel work is isolated, which branch or release line is protected, what must be
+   confirmed before it lands, and the cleanup order. Point at the contributing guide or the
+   standard for the detail; carry only the rules a fresh session would otherwise break.
+9. **Operational invariants** — the state a fresh session can break and cannot see from the
+   code: who may write a given surface (one writer per surface; a second writer is a defect),
+   where runtime identity and configuration are read from, and which artifacts are generated
+   and must never be hand-edited. One line each; point at the standard for the detail.
+10. **Pointers** — link the standard first (its recorded path; `docs/tech-spec.md` on a
+    project this flow created), then `docs/architecture.md`, `GLOSSARY.md`, `docs/adr/`, the
+    contract artifact and the configuration surface; do not copy their content.
+
+These items are a floor, not a ceiling. A rule a fresh session can break that no pointed-at
+document owns belongs here, one line each, with its enforcement.
 
 Leave out architecture prose, design documents, ADR bodies, directory inventories and
 details that will drift. This file is a map, not a mirror: every line is resident in every
 session, so carry only what a fresh session cannot reconstruct with `ls`, the manifest or a
-pointer — the rest goes behind the pointer. Update the file when a command or the layout
-changes. A session reads the standard before the first code change; the baseline says so
-and does not repeat it.
+pointer — the rest goes behind the pointer. Update the file when a command, a gate or the
+layout changes; a stale pointer is worse than none. A session reads the standard before the
+first code change; the baseline says so and does not repeat it.
 
 Output: the agent-instruction baseline — `CLAUDE.md` or `AGENTS.md` — reviewed, with the
-entry-point map, the design principles, the pointer to `docs/tech-spec.md` and the other
-pointers, named as the entry baseline in the delivery.
+entry-point map, the design principles, the working agreement, the change and integration
+policy, the operational invariants and the pointer to the standard, named as the entry
+baseline in the delivery.
 
 ### 6. Record the gates, the release and the delivery path
 
@@ -546,12 +575,17 @@ Run `self-check.md` (Architecture branch). The architecture proof is:
   secret is logged;
 - the directory tree is planned, scaffolded exactly, and carried by the agent-instruction
   baseline as a top-level map with a pointer;
-- the standard at `docs/tech-spec.md` is complete: every section is filled, the stack table
-  lives there and nowhere else, every rule names its enforcement point (a test, a lint rule,
-  a gate or `review`), and no rule restates a canonical artifact;
+- the recorded standard is complete (`docs/tech-spec.md` for a project this flow created, the
+  inherited binding otherwise): every section is filled, the stack table lives there and
+  nowhere else, every rule names its enforcement point (a test, a lint rule, a gate or
+  `review`), and no rule restates a canonical artifact;
 - `CLAUDE.md`/`AGENTS.md` exists as the baseline every role reads, carries the entry
-  commands, the entry-point map and the gates, and points at `docs/tech-spec.md`, the
-  architecture document and the full tree rather than copying them;
+  commands, the entry-point map, the gates, the working agreement, the change and integration
+  policy and the operational invariants, and points at the standard, the architecture
+  document and the full tree rather than copying them;
+- every path and command the baseline names resolves against the tree and the manifest — no
+  fabricated path or undefined command survives review; an existing baseline was improved in
+  place, not regenerated;
 - every ADR has a status, alternatives and consequences;
 - the scaffold checklist in Step 4 is complete, the smoke test passes and the documented
   local run works;
@@ -569,10 +603,10 @@ Output: the requirement → artifact table in `plan.md`.
 ### 8. Architecture review
 
 Present the **architecture package** — the design-stance evidence, the options, the style
-ADR, the standard at `docs/tech-spec.md` (its stack table with pinned versions, its rules
-and their enforcement), the boundaries, the external contract, the configuration surface,
-the directory tree, the gate path, the release and deploy paths and the agent-instruction
-baseline — to the project session. E5 belongs to
+ADR, the recorded standard (`docs/tech-spec.md` for a project this flow created; its stack
+table with pinned versions, its rules and their enforcement), the boundaries, the external
+contract, the configuration surface, the directory tree, the gate path, the release and
+deploy paths and the agent-instruction baseline — to the project session. E5 belongs to
 the human; a public API contract is E5, and a configuration key that touches a secret is E4.
 Record the decision on the card. Do not start implementation before the review is recorded.
 
@@ -582,8 +616,9 @@ Output: the recorded E5 decision on the card.
 
 Re-export the brief, mark the handoff required, and write the architecture variant of the
 `## Handoff` block into the delivery report's `conclusion`: one architecture-package sentence
-naming the standard (`docs/tech-spec.md`, or the card-local delta), the architecture
-document, `.meerkat/<id>/architecture.md` (when the change is card-local), the style and
+naming the standard (`docs/tech-spec.md` for a new project, the inherited binding or the
+card-local delta otherwise), the architecture document, `.meerkat/<id>/architecture.md` (when
+the change is card-local), the style and
 other ADR paths, the contract artifact, the configuration surface, the directory tree, the
 gate path, the release and deploy paths (or their recorded `n/a`), the agent-instruction
 baseline (`CLAUDE.md` or `AGENTS.md`), the acceptance source,

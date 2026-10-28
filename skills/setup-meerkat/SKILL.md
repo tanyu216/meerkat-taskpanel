@@ -277,7 +277,8 @@ change.
 
 Linus establishes the project's agent-instruction baseline (the host's `CLAUDE.md` or
 `AGENTS.md`) as a foundation outcome. It is the file every role reads, not an optional step,
-and it carries the entry commands, layout pointers, gates and the six principles. The
+and it carries the entry commands, layout pointers, gates, the six principles, the working
+agreement, the change and integration policy and the operational invariants. The
 architecture flow records the project's standard technical specification at
 `docs/tech-spec.md` — the stack, naming, layering, errors, configuration, logging, tests and
 gates, each rule with its enforcement point — and the baseline points at it for the
@@ -293,7 +294,8 @@ the external contract when one exists, the configuration surface, the logging co
 the planned directory tree against the design stance — simple, reliable, efficient, elegant,
 not over-engineered, and high cohesion / low coupling — records the standard at
 `docs/tech-spec.md` and the evidence in the architecture document and ADRs, and carries the
-top-level tree map and the six design principles into the agent-instruction baseline, where
+top-level tree map, the six design principles, the working agreement, the change and
+integration policy and the operational invariants into the agent-instruction baseline, where
 they bind every agent. A feature or
 module inside the recorded architecture is
 implementation work. The same six principles are applied as questions in
