@@ -1121,6 +1121,7 @@ describe("server/routes — candidates (the poll read)", () => {
       Object.keys(candidates.candidates[0]).sort(),
       [
         "created_at",
+        "delivery_round",
         "id",
         "identifier",
         "meta",

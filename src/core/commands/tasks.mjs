@@ -1942,6 +1942,9 @@ function candidateOf(task, reason, resolveRef = null) {
     // id remains a valid fallback because `issue get` accepts either spelling.
     review_of: reviewOf,
     review_round: identity.auditedRound,
+    // The admission pass names the card's worktree by round; the round is a
+    // board fact, read here so the loop needs no second `issue get`.
+    delivery_round: task.deliveryRound,
   };
 }
 

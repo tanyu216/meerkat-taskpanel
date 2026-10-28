@@ -497,7 +497,7 @@ export function writeProjectMap(file, projects, options = {}) {
  * }} [input]
  * @returns {{ok: true, dir: string} | {ok: false, code: string, message: string, project?: string|null, path?: string|null, file?: string|null}}
  */
-export function resolveWakeDir(input = {}) {
+export function resolveWakeTarget(input = {}) {
   const read = input.read ?? readFileSync;
   const projectsJson = input.projectsJson ?? defaultProjectsJson(input.env ?? process.env);
   const where = projectsJson ? ` at ${projectsJson}` : "";
@@ -529,12 +529,26 @@ export function resolveWakeDir(input = {}) {
   // A worker is started *somewhere*: the map's "no directory" answer is a
   // complete answer for `project dir`, but not for a wake.
   if (resolved.dir === null) {
-    return checkTargetDirectory(undefined, {
+    const checked = checkTargetDirectory(undefined, {
       project: typeof input.project === "string" ? input.project : null,
       file: projectsJson,
       ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
     });
+    if (!checked.ok) return checked;
+    return { ok: true, dir: checked.dir, project: resolved.project, entry: resolved.entry };
   }
 
-  return { ok: true, dir: resolved.dir };
+  return { ok: true, dir: resolved.dir, project: resolved.project, entry: resolved.entry };
+}
+
+/**
+ * The wake directory alone. Kept as the narrow read the callers that do not
+ * need the project entry (and its `base_ref`) already use.
+ *
+ * @param {object} [input]
+ * @returns {{ok: true, dir: string} | {ok: false, code: string, message: string}}
+ */
+export function resolveWakeDir(input = {}) {
+  const target = resolveWakeTarget(input);
+  return target.ok ? { ok: true, dir: target.dir } : target;
 }

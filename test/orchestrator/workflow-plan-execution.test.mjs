@@ -79,7 +79,7 @@ function verdict(word, findings = "") {
 }
 
 /** Run the planner, wire the plan, run the executor with recording fakes. */
-async function throughBothHalves(input) {
+async function throughBothHalves(input, overrides = {}) {
   const plan = planWorkflowTick({ ...input, config: CONFIG, now: NOW });
   const wirePlan = workflowToWire(plan);
   const order = [];
@@ -88,6 +88,11 @@ async function throughBothHalves(input) {
     plan: wirePlan,
     config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
     dryRun: false,
+    // Landing runs before a card reaches `done`; the real adapter merges the
+    // lane branch. These cases record its place in the sequence.
+    land:
+      overrides.land ??
+      (async (action) => (order.push(`land:${action.original_ref}`), { ok: true })),
     createReview: async (action) => (order.push(`createReview:${action.idem}`), { ok: true, ref: "PROJ-0003" }),
     createFixChild: async (action) => (order.push(`createFixChild:${action.original_ref}`), { ok: true, ref: "PROJ-0004" }),
     linkFixChild: async (epic, child) => (order.push(`linkFixChild:${epic}:${child}`), { ok: true }),
@@ -107,6 +112,7 @@ async function throughBothHalves(input) {
 }
 
 const APPROVE_ORDER = [
+  "land:PROJ-0001",
   "comment:PROJ-0001:note",
   'setMeta:PROJ-0001:{"accepted_by":"loop-review","accepted_round":"1"}',
   "move:PROJ-0001:done",
@@ -153,6 +159,7 @@ const SCENARIOS = [
     tasks: [card({ acceptance_mode: "off" })],
     expectedAction: "auto_accept",
     expectedOrder: [
+      "land:PROJ-0001",
       'setMeta:PROJ-0001:{"accepted_by":"loop-auto","accepted_round":"1","auto_accepted":"1"}',
       "comment:PROJ-0001:note",
       "move:PROJ-0001:done",
@@ -330,6 +337,24 @@ describe("workflow plan → execution", () => {
       assert.deepEqual(order, scenario.expectedOrder, "the executor's write order is the review-card-last protocol");
     });
   }
+
+  it("keeps the card out of done when the lane branch cannot be merged", async () => {
+    const original = card();
+    const review = reviewCard(original);
+    const landing = [];
+    const { order, result } = await throughBothHalves(
+      { tasks: [original, review], verdicts: { "PROJ-0002": verdict("APPROVE") } },
+      {
+        land: async (action) => (
+          landing.push(action.original_ref),
+          { ok: false, error: "WORKSPACE_MERGE_CONFLICT: conflict" }
+        ),
+      },
+    );
+    assert.equal(result.failed, 1);
+    assert.deepEqual(landing, ["PROJ-0001"], "landing is attempted first");
+    assert.deepEqual(order, [], "no acceptance write happens before the landing");
+  });
 
   it("dispatches a delivered human card through the same create_review action", async () => {
     const { plan, order } = await throughBothHalves({

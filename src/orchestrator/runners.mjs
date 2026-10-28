@@ -399,6 +399,10 @@ export async function runWorkflowTick(deps) {
     comment = null,
     setMeta = null,
     appendAcceptance = null,
+    // Landing runs before a card is moved to `done`: the lane branch is merged
+    // into the project's current branch. `null` keeps the old (shared-tree)
+    // behaviour for a caller that does not wire it.
+    land = null,
     notify = () => {},
     log,
   } = deps;
@@ -515,6 +519,10 @@ export async function runWorkflowTick(deps) {
           if (typeof action.accepted_by !== "string" || action.accepted_by === "") {
             throw new Error("auto_accept action is missing accepted_by");
           }
+          // Land first: a card reaches `done` only after its lane branch is in
+          // the project's current branch. A failed merge throws before any
+          // board write and is retried on the next tick.
+          if (typeof land === "function") await step(land, "land", action);
           if (action.held !== true) {
             await step(setMeta, "setMeta", action.original_ref, {
               accepted_by: action.accepted_by,
@@ -534,6 +542,10 @@ export async function runWorkflowTick(deps) {
           if (typeof action.accepted_by !== "string" || action.accepted_by === "") {
             throw new Error("approve action is missing accepted_by");
           }
+          // Land before the acceptance writes: `done` means the work is in the
+          // project's current branch. A conflict leaves the card in `in_review`
+          // with its verdict recorded and the lane branch intact.
+          if (typeof land === "function") await step(land, "land", action);
           await step(comment, "comment", action.original_ref, {
             kind: "note",
             body: `Loop acceptance after review ${action.review_ref} (round ${action.round}): VERDICT: APPROVE.`,

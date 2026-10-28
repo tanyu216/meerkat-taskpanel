@@ -174,23 +174,28 @@ session service (`taskctl loop session`)
   fresh conversation after `--session-max-age` (24 h).
 - **Concurrency and the working tree.** Planning and claiming are sequential; the project
   turns then fan out, so one slow project does not serialize the others. The per-tick
-  budget is fixed before the first send, and `--project-concurrency` counts both lanes of a
-  directory. The loop does **not** isolate the working tree: parallel cards in one checkout
-  share it. A per-card `git worktree add .worktrees/<id>` is a deployment/role convention;
-  the pool only logs one warning per directory when it admits parallel work in a git
-  checkout (see "No workspace isolation" below).
+  budget is fixed before the first send, and `--project-concurrency` counts a project's
+  worktrees and both of its lanes as one project. Each card in a git project runs in its own
+  worktree (see "Per-card workspace isolation" below); `--workspace=shared` is the explicit
+  opt-out and logs one warning per directory when parallel cards share a git checkout.
 - **One lock** — a second `taskctl loop session` on the same state directory is refused
   (`session.lock`). The pool writes a heartbeat every 15 s so a pass in another
   process can tell "busy" from "gone".
 
-### No workspace isolation
+### Per-card workspace isolation
 
-The loop schedules conversations, not sandboxes. Every card in a project runs in that
-project's working directory, so `--project-concurrency` above 1 means parallel workers share
-one checkout. If two cards can touch the same files, the deployment gives each its own
-`git worktree add .worktrees/<id>` and delivers from there — the loop neither creates nor
-merges worktrees, and it does not detect conflicts. It logs one warning per directory the
-first time it admits parallel work in a git checkout.
+The loop creates a git worktree for every card in a git project
+(`.worktrees/<ref>[-r<round>]` on branch `lane/<ref>[-r<round>]`) and points the queue's
+`target_dir` at it. The base is the project's declared `base_ref`, else the project
+directory's current branch; a rework starts from the previous round's lane branch. A
+creation failure defers the card — there is no fallback to the shared checkout.
+`--workspace=shared` restores the old behaviour explicitly.
+
+The per-project cap counts a project's worktrees as one project (`--project-concurrency`),
+not one directory. Acceptance **lands** the work: the lane branch is merged into the
+project's current branch before the card reaches `done`; a dirty project checkout or a
+merge conflict keeps the card in `in_review` and leaves the worktree and branch for a human.
+Cleanup (worktree first, then the merged branch) happens only when the card is terminal.
 
 ### No resident pool: what still runs
 
@@ -1780,6 +1785,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--ping-interval <sec>` | `60` | liveness clock: prune dead worker pids; no board read |
 | `--continue-interval <sec>` | `600` | judgment clock: wake the agent kind for one `Continue` turn |
 | `--max-concurrency <n>` | `8` | cap on simultaneously running subagents; workers and reviewers share it and the split follows demand (no per-role reservation) |
+| `--workspace=worktree\|shared` | `worktree` | a git project's cards each run in `.worktrees/<ref>[-r<round>]` on `lane/<ref>[-r<round>]`; a creation failure defers the card (no fallback). `shared` restores the old shared-checkout behaviour |
 | `--claim-unassigned=yes\|no` | from per-kind config → `yes` | also claim unassigned cards (the public pool) |
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |
 | `--recover-stale=yes\|no` | from per-kind config → `yes` | add stale `in_progress` cards to the candidate read (`--stale`); the claim itself is `issue claim` (holder after 10 min, anyone after 6 h) |

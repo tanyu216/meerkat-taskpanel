@@ -523,8 +523,10 @@ whole fleet; `--claim-unassigned <yes|no>` (or the shorthand `--assignee-only`) 
 claim pool; `--recover-stale <yes|no>` recovers stale in-progress claims. `--workflow
 <yes|no>` applies the board's plan and `--reviewer <agent>` names the independent reviewer;
 `--workflow-max-actions` and `--review-aging-minutes` bound workflow execution and
-silent-review escalation. `--allow-all-tools` gives spawned agents the unrestricted tool set
-and **requires** a non-empty `--allow-all-tools-reason` naming who authorized it.
+silent-review escalation. `--workspace <worktree|shared>` says where a card runs: its own
+worktree and lane branch (the default) or the project checkout. `--allow-all-tools` gives
+spawned agents the unrestricted tool set and **requires** a non-empty
+`--allow-all-tools-reason` naming who authorized it.
 
 **SLA, events and notifications.** `--patrol-interval <sec>` sets the SLA measurement
 period; `--patrol-llm` lets the patrol move a card (default: notify only); `--notify <cmd>`

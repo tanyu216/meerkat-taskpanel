@@ -1747,6 +1747,14 @@
               "required": false,
               "repeat": false,
               "short": null
+            },
+            {
+              "flag": "workspace",
+              "as": "string",
+              "value": "<worktree|shared>",
+              "required": false,
+              "repeat": false,
+              "short": null
             }
           ]
         },
@@ -2134,6 +2142,14 @@
               "flag": "workflow-max-actions",
               "as": "string",
               "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workspace",
+              "as": "string",
+              "value": "<worktree|shared>",
               "required": false,
               "repeat": false,
               "short": null
@@ -2527,6 +2543,14 @@
               "required": false,
               "repeat": false,
               "short": null
+            },
+            {
+              "flag": "workspace",
+              "as": "string",
+              "value": "<worktree|shared>",
+              "required": false,
+              "repeat": false,
+              "short": null
             }
           ]
         },
@@ -2914,6 +2938,14 @@
               "flag": "workflow-max-actions",
               "as": "string",
               "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workspace",
+              "as": "string",
+              "value": "<worktree|shared>",
               "required": false,
               "repeat": false,
               "short": null
@@ -3323,6 +3355,14 @@
               "required": false,
               "repeat": false,
               "short": null
+            },
+            {
+              "flag": "workspace",
+              "as": "string",
+              "value": "<worktree|shared>",
+              "required": false,
+              "repeat": false,
+              "short": null
             }
           ]
         },
@@ -3710,6 +3750,14 @@
               "flag": "workflow-max-actions",
               "as": "string",
               "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workspace",
+              "as": "string",
+              "value": "<worktree|shared>",
               "required": false,
               "repeat": false,
               "short": null
@@ -4119,6 +4167,14 @@
               "required": false,
               "repeat": false,
               "short": null
+            },
+            {
+              "flag": "workspace",
+              "as": "string",
+              "value": "<worktree|shared>",
+              "required": false,
+              "repeat": false,
+              "short": null
             }
           ]
         },
@@ -4506,6 +4562,14 @@
               "flag": "workflow-max-actions",
               "as": "string",
               "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workspace",
+              "as": "string",
+              "value": "<worktree|shared>",
               "required": false,
               "repeat": false,
               "short": null
@@ -4907,6 +4971,14 @@
               "required": false,
               "repeat": false,
               "short": null
+            },
+            {
+              "flag": "workspace",
+              "as": "string",
+              "value": "<worktree|shared>",
+              "required": false,
+              "repeat": false,
+              "short": null
             }
           ]
         },
@@ -5294,6 +5366,14 @@
               "flag": "workflow-max-actions",
               "as": "string",
               "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "workspace",
+              "as": "string",
+              "value": "<worktree|shared>",
               "required": false,
               "repeat": false,
               "short": null

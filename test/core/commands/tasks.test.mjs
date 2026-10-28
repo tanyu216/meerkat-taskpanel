@@ -2046,6 +2046,7 @@ describe("commands/tasks — listCandidates (poll read)", () => {
         Object.keys(candidates[0]).sort(),
         [
           "created_at",
+          "delivery_round",
           "id",
           "identifier",
           "meta",

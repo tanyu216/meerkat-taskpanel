@@ -35,6 +35,7 @@ describe("loop-state — the loop's state vocabulary", () => {
       cards: "cards.queue.json",
       ledger: "subagents.state.json",
       sessions: "sessions.state.json",
+      workspaces: "workspaces.json",
     });
     assert.deepEqual(LIVE_STATUSES, ["spawned", "running", "reattaching"]);
     assert.equal(SESSION_LOCK_FILE, "session.lock");
