@@ -19,6 +19,7 @@ import test, { after, describe, it } from "node:test";
 import { createContext, readStdin, run, wantsJson } from "../../src/cli/index.mjs";
 import { COMMANDS as tokenCommands } from "../../src/cli/commands/token.mjs";
 import { allCommands, commandPath, groups, registry, topLevel } from "../../src/cli/commands/index.mjs";
+import { BOOLEAN_FLAGS, tokenize } from "../../src/cli/argv.mjs";
 import { actorLabel, fields, table, taskLine } from "../../src/cli/output/human.mjs";
 import { commandSynopsis, flagSynopsis, commandUsage, groupUsage, topLevelUsage, versionLine } from "../../src/cli/usage.mjs";
 import { CONTRACT_SCHEMA_VERSION, VERSION } from "../../src/foundation/constants.mjs";
@@ -245,6 +246,68 @@ describe("cli/commands — the registry", () => {
       const names = (command.flags ?? []).map((spec) => spec.flag);
       assert.equal(new Set(names).size, names.length, `${commandPath(group, command)} repeats a flag`);
     }
+  });
+});
+
+describe("cli/argv — the tokenizer's switch set matches the command table", () => {
+  /**
+   * Every flag the surface declares, with `as` defaulted exactly as `bindFlags`
+   * does. Generated flags (create/update/move/claim) are already materialized in
+   * each command's `flags`, so walking the registry covers them too.
+   */
+  const declared = [
+    ...registry.globals.map((spec) => ({ where: "(global)", ...spec })),
+    ...allCommands().flatMap(({ group, command }) =>
+      (command.flags ?? []).map((spec) => ({ where: commandPath(group, command), ...spec })),
+    ),
+  ].map((spec) => ({ ...spec, as: spec.as ?? "string" }));
+
+  const booleanNames = [...new Set(declared.filter((s) => s.as === "boolean").map((s) => s.flag))].sort();
+  const valuedNames = new Set(declared.filter((s) => s.as !== "boolean").map((s) => s.flag));
+
+  // `workflow` is the one deliberate dual-type name: a switch on `issue
+  // reconcile` (`issue.mjs`), a value on every `loop` verb (`--workflow yes`).
+  // One global tokenizer cannot treat it as both, so the Set omits it and the
+  // loop keeps its value form. Any *new* conflict fails the first test instead
+  // of silently changing a command's parsing.
+  const DUAL_TYPE = ["workflow"];
+
+  it("has exactly the one known dual-type name", () => {
+    const conflicts = booleanNames.filter((name) => valuedNames.has(name)).sort();
+    assert.deepEqual(conflicts, DUAL_TYPE);
+  });
+
+  it("knows every other declared boolean flag", () => {
+    const missing = booleanNames
+      .filter((name) => !DUAL_TYPE.includes(name) && !BOOLEAN_FLAGS.has(name))
+      .sort();
+    assert.deepEqual(missing, [], "a boolean flag missing from the Set would consume its next token");
+  });
+
+  it("carries no stale switch", () => {
+    const stale = [...BOOLEAN_FLAGS].filter((name) => !booleanNames.includes(name)).sort();
+    assert.deepEqual(stale, [], "a removed flag left in the Set is a tokenizer lie");
+  });
+
+  it("never lets a switch consume the token after it", () => {
+    for (const name of booleanNames) {
+      if (DUAL_TYPE.includes(name)) continue;
+      const { positionals, flags } = tokenize([`--${name}`, "NEXT"]);
+      assert.deepEqual(positionals, ["NEXT"], `--${name} consumed the next token`);
+      assert.deepEqual(flags.get(name), [true], `--${name} did not bind as a switch`);
+    }
+  });
+
+  it("keeps the workflow exception's two forms (loop value, reconcile switch)", () => {
+    // The exception is only safe while the loop's value form still works: if
+    // `workflow` ever entered the Set, `yes` would become a stray positional.
+    const loop = tokenize(["--workflow", "yes"]);
+    assert.deepEqual(loop.positionals, []);
+    assert.deepEqual(loop.flags.get("workflow"), ["yes"]);
+    assert.deepEqual(
+      tokenize(["issue", "reconcile", "--workflow"]).flags.get("workflow"),
+      [true],
+    );
   });
 });
 

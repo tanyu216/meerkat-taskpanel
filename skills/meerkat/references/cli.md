@@ -81,7 +81,7 @@ running, `taskctl` starts one (detached, logging to `<dataDir>/logs/taskd.log`) 
 | `--token <token>` | Access token. Priority: `--token` > `$TASKD_TOKEN` > `$TASKD_TOKEN_FILE` > the pointer's token file > none (loopback needs no token). Never echoed. |
 | `--if-version <n>` | Optimistic concurrency: refuse the write with `VERSION_CONFLICT` if the task moved on. |
 | `--actor-kind <name>` | The platform (`claude`, `codex`, `openclaw`, `pi`; automation uses `system`). **Required on every command that talks to the board** — `--help`, `--version`, the local read `status`, and every `project map` action need none. `human` is reserved and refused; use `--as-human`. |
-| `--as-human` | Write as the configured human (`$TASKCTL_HUMAN`). Also satisfies the identity requirement. |
+| `--as-human` | Write as the configured human (`$TASKCTL_HUMAN`). Use it when you are in a conversation with the human or the instruction explicitly came from them; never for the loop's or your own writes. Also satisfies the identity requirement. |
 | `--session-id <id>` | Agent session identifier. Requires `--actor-kind`. |
 | `--agent <name>` | The role/person recorded on writes (`jobs`, `linus`, `turing`, …). Defaults to `$TASKCTL_AGENT` / `$USER`; a team passes it per call. |
 | `--version` | Print the release version and exit. |

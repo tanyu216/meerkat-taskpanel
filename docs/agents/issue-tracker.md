@@ -22,7 +22,7 @@ exported brief.
 
 | The skills say | Do this here |
 |---|---|
-| create an issue | `taskctl --as-human issue create --project <id> --title … --acceptance "…"` (drop `--as-human` for a card you file yourself) |
+| create an issue | when you are in a conversation with the human or the create carries their explicit instruction: `taskctl --as-human issue create --project <id> --title … --acceptance "…"`; otherwise drop `--as-human` |
 | list open issues | `taskctl issue list --status todo --status in_progress --json` |
 | read an issue | `taskctl issue get <ref> --json` |
 | comment on an issue | `taskctl comment add <ref> --kind note --body …` |

@@ -17,7 +17,15 @@
 
 import { DomainError } from "../foundation/errors.mjs";
 
-/** Flag names that never take a value. Everything else consumes the next token. */
+/**
+ * Flag names that never take a value. Everything else consumes the next token.
+ *
+ * This must stay a superset of every `as: "boolean"` flag the command table
+ * declares; `test/cli/units.test.mjs` derives that set and fails on a gap. The
+ * one deliberate exception is `workflow`: a switch on `issue reconcile`, a value
+ * on every `loop` verb (`--workflow yes`). One global tokenizer cannot be both,
+ * so it stays out and the loop keeps its value form.
+ */
 export const BOOLEAN_FLAGS = Object.freeze(
   new Set([
     "json",
@@ -30,7 +38,10 @@ export const BOOLEAN_FLAGS = Object.freeze(
     "show",
     "check",
     "include-archived",
+    "include-unassigned",
+    "order-debug",
     "stale",
+    "failed",
     "quiet",
     "check-blockers",
     "once",
@@ -41,9 +52,12 @@ export const BOOLEAN_FLAGS = Object.freeze(
     "require-dir",
     "no-dir",
     "watch",
+    "md",
     "dry-run",
     "take-over",
     "allow-all-tools",
+    "allow-dup",
+    "allow-steal",
     "assignee-only",
     "patrol-llm",
     "ping-once",
