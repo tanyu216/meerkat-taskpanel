@@ -22,10 +22,10 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import { taskDirName } from "../foundation/card-brief.mjs";
+import { MEERKAT_PROCESS_DIR, taskDirName } from "../foundation/card-brief.mjs";
 import { QUEUE_FILES } from "../foundation/loop-state.mjs";
 import { readJsonFile, writeJsonFile } from "./queue.mjs";
 
@@ -212,22 +212,42 @@ export function createWorkspace(input) {
   };
 }
 
+/** Delete a directory tree; best effort — a missing one is not a failure. */
+function removeDirSync(dir) {
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // The removal below reports whatever git says; this is only the loop's
+    // own scratch directory.
+  }
+}
+
 /**
  * Remove the worktree, then its branch. The order is load-bearing: git refuses
  * to delete a branch that is still checked out in a worktree.
  *
- * A dirty worktree is left in place and its branch is kept — the owner may
- * still need the changes; a removal that cannot run is never forced.
+ * The loop's own process directory inside the tree is cleared first so a card
+ * brief cannot make every cleanup fail; any *other* dirt is left in place and
+ * its branch is kept — the owner may still need the changes, and a removal that
+ * cannot run is never forced.
  *
- * @param {{workspace: object, run?: Function}} input
+ * @param {{workspace: object, run?: Function, removeDir?: Function}} input
  * @returns {{ok: boolean, worktreeRemoved: boolean, branchRemoved: boolean, reason: string|null}}
  */
-export function removeWorkspace({ workspace, run = runGit }) {
+export function removeWorkspace({ workspace, run = runGit, removeDir = removeDirSync }) {
   const projectDir = String(workspace.project_dir ?? "");
   const path = String(workspace.path ?? "");
   const branch = String(workspace.branch ?? "");
 
-  const removed = run("git", ["-C", projectDir, "worktree", "remove", path]);
+  let removed = run("git", ["-C", projectDir, "worktree", "remove", path]);
+  if ((removed === null || removed.status !== 0) && path !== "") {
+    // The loop writes the card brief into `<worktree>/.meerkat/<ref>/`, and git
+    // refuses to remove a worktree that holds untracked files. Clear the loop's
+    // own process directory and retry once — a dirty tree that survives the
+    // retry is still left for its owner.
+    removeDir(join(path, MEERKAT_PROCESS_DIR));
+    removed = run("git", ["-C", projectDir, "worktree", "remove", path]);
+  }
   if (removed === null || removed.status !== 0) {
     return {
       ok: false,

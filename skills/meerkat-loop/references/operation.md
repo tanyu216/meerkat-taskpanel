@@ -155,7 +155,9 @@ Acceptance **lands** the work: the lane branch is merged into the project's curr
 before the card reaches `done`. A dirty project checkout or a merge conflict keeps the card
 in `in_review` — the verdict is already recorded — and leaves the worktree and branch for a
 human; the next tick retries. Cleanup happens only when the card is terminal: the worktree is
-removed first, then the merged branch; a dirty worktree is left for its owner.
+removed first, then the merged branch; a dirty worktree is left for its owner. The loop's own
+`.meerkat/<identifier>/` sits **inside** the worktree, so it disappears with it — the delivery
+report is the durable evidence, the process directory is not.
 
 Roles, the decision policy and the process directory resolve from the project checkout;
 only the worker's working directory is the worktree.

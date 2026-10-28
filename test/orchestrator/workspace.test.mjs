@@ -172,6 +172,26 @@ describe("orchestrator/workspace — create and remove", () => {
     );
   });
 
+  it("clears the loop's own process dir and retries, so a brief cannot block removal", () => {
+    // git refuses `worktree remove` when untracked files remain, and the loop
+    // itself writes the card brief into <worktree>/.meerkat/<ref>/.
+    let attempts = 0;
+    const run = (cmd, argv) => {
+      if (!argv.includes("remove")) return OK("");
+      attempts += 1;
+      return attempts === 1 ? FAIL("contains modified or untracked files") : OK("");
+    };
+    const cleared = [];
+    const result = ws.removeWorkspace({
+      workspace: { path: "/p/.worktrees/TP-0001", branch: "lane/TP-0001", project_dir: "/p" },
+      run,
+      removeDir: (dir) => cleared.push(dir),
+    });
+    assert.equal(result.ok, true);
+    assert.equal(attempts, 2, "the removal is retried once");
+    assert.deepEqual(cleared, ["/p/.worktrees/TP-0001/.meerkat"]);
+  });
+
   it("leaves a dirty worktree in place and does not delete its branch", () => {
     const { run, calls } = recorder([["worktree remove", FAIL("contains modified files")]]);
     const result = ws.removeWorkspace({
