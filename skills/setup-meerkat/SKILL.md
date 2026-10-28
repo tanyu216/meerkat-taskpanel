@@ -241,7 +241,7 @@ The standard template is `assets/team/standard/`:
 | Role | Board agent | Native agent | Scope |
 |---|---|---|---|
 | Jobs | `Jobs` | `jobs` | product planning, prototype validation, PRD, product glossary/ADRs, visual/interaction design |
-| Linus | `Linus` | `linus` | system architecture and project foundation (system-init design), implementation, refactoring, bugs, agent-instruction baseline, code glossary/ADRs |
+| Linus | `Linus` | `linus` | system architecture and project foundation (system-init design), the technical specification, implementation, refactoring, bugs, agent-instruction baseline, code glossary/ADRs |
 | Turing | `Turing` | `turing` | test design, post-fix regression (incl. production), optional performance, security, canonical terms |
 | Reviewer | `Reviewer` | `reviewer` | independent fourth role; verdict only |
 
@@ -284,7 +284,11 @@ change.
 
 Linus establishes the project's agent-instruction baseline (the host's `CLAUDE.md` or
 `AGENTS.md`) as a foundation outcome. It is the file every role reads, not an optional step,
-and it carries the entry commands, layout pointers, conventions, gates and the six principles.
+and it carries the entry commands, layout pointers, gates and the six principles. The
+architecture flow records the project's standard technical specification at
+`docs/tech-spec.md` — the stack, naming, layering, errors, configuration, logging, tests and
+gates, each rule with its enforcement point — and the baseline points at it for the
+conventions rather than restating them.
 The `/meerkat` task entry and its scope are the project-init stage's job (§4), not the
 architecture flow's.
 The project owns its own working-tree, branch and integration contract; the team's role
@@ -294,9 +298,10 @@ The architecture branch is the project's **system-initialization design flow**, 
 feature or module design. It decides the architecture style (DDD or a named simpler style),
 the external contract when one exists, the configuration surface, the logging contract and
 the planned directory tree against the design stance — simple, reliable, efficient, elegant,
-not over-engineered, and high cohesion / low coupling — records the evidence in the
-architecture document and ADRs, and carries the top-level tree map and the six design
-principles into the agent-instruction baseline, where they bind every agent. A feature or
+not over-engineered, and high cohesion / low coupling — records the standard at
+`docs/tech-spec.md` and the evidence in the architecture document and ADRs, and carries the
+top-level tree map and the six design principles into the agent-instruction baseline, where
+they bind every agent. A feature or
 module inside the recorded architecture is
 implementation work. The same six principles are applied as questions in
 `implementation-workflow.md` Step 2 and audited by the implementation branch of

@@ -122,18 +122,21 @@ tree.
 
 ## Engineering artifacts
 
-Linus keeps durable architecture at `docs/architecture.md`, the codebase vocabulary at root
-`GLOSSARY.md`, and engineering decisions at `docs/adr/NNNN-<slug>.md`; a card-local
-architecture change may live in `.meerkat/<id>/architecture.md`. The architecture document
-carries the canonical `## Tech stack` table (frontend, backend, persistence and
-container/build), and an implementation card inherits that table rather than re-choosing.
-It also carries the design-stance evidence (simple, reliable, efficient, elegant, not
-over-engineered, high cohesion and low coupling), the architecture-style decision (DDD or a
-named simpler style), the external contract, the configuration surface, the logging
-contract and the planned directory tree. The contract artifact is canonical, `CLAUDE.md`/`AGENTS.md` carry a top-level
-tree map and a pointer, and the agent-instruction baseline is the file every role reads,
-carrying the six design principles as binding requirements for every agent. A feature or
-module change applies the same six in `implementation-workflow.md` Step 2.
+Linus keeps the project's standard at `docs/tech-spec.md`, durable architecture at
+`docs/architecture.md`, the codebase vocabulary at root `GLOSSARY.md`, and engineering
+decisions at `docs/adr/NNNN-<slug>.md`; a card-local foundation change may live in
+`.meerkat/<id>/tech-spec.md` or `.meerkat/<id>/architecture.md`. The standard carries the
+canonical `## Tech stack` table (frontend, backend, persistence and container/build) and the
+normative rules — naming, layering, errors, configuration, logging, tests and gates — each
+with its enforcement point, and an implementation card inherits it rather than re-choosing.
+The architecture document carries the design narrative: the design-stance evidence (simple,
+reliable, efficient, elegant, not over-engineered, high cohesion and low coupling), the
+architecture-style decision (DDD or a named simpler style), the boundaries, the data model
+and the planned directory tree. The contract artifact is canonical, `CLAUDE.md`/`AGENTS.md`
+carry a top-level tree map and a pointer to the standard, and the agent-instruction baseline
+is the file every role reads, carrying the six design principles as binding requirements for
+every agent. A feature or module change applies the same six in `implementation-workflow.md`
+Step 2.
 The root glossary carries a
 `## Product language` section that links `design/glossary.md`; product terms are not copied
 there. Turing keeps each card's `test-plan.md`, `regression.md` and `performance.md`, with

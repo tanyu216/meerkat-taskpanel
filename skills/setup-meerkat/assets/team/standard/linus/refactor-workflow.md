@@ -13,6 +13,7 @@ Board operations (claim, heartbeat, comment, report, deliver, move, brief refres
 - this card's `.meerkat/<id>/plan.md`, written by you before starting — the candidate report
   below lives here, as ordinary markdown, and is the reviewer's evidence;
 - `GLOSSARY.md` and the ADRs in the area — a recorded decision is not re-litigated here;
+- the standard at `docs/tech-spec.md` — its rules bind the refactor;
 - the tests that pin the current behaviour, the callers, and the published contract.
 
 ## Steps

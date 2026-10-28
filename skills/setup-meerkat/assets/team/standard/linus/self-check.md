@@ -60,10 +60,11 @@ run them.
 
 6. Every quality attribute and constraint maps to the architecture document or an ADR; every
    ADR has alternatives, consequences and a status.
-7. The `## Tech stack` table exists, its four core layers are complete, versions are pinned
-   and the container base image matches the backend runtime. No row says `TBD`; the
-   frontend, persistence and container rows name the choices the table requires; a choice
-   outside the recommended baseline carries the human's E5 approval.
+7. The `## Tech stack` table exists in `docs/tech-spec.md`, its four core layers are
+   complete, versions are pinned and the container base image matches the backend runtime.
+   No row says `TBD`; the frontend, persistence and container rows name the choices the
+   table requires; a choice outside the recommended baseline carries the human's E5
+   approval.
 8. The skeleton builds, the smoke test passes, the documented local run works, and the
    scaffold instantiates the recorded stack and the planned directory tree (the container
    build file builds when the runtime form is a container).
@@ -90,14 +91,18 @@ run them.
     (`CLAUDE.md` or `AGENTS.md`) exists as the file every role reads, carrying the entry
     points and the non-obvious top-level directories, plus a pointer to the full tree in
     `docs/architecture.md` — not a copy of it.
-17. The agent-instruction baseline carries the design principles as binding requirements
+17. The standard at `docs/tech-spec.md` is complete: every section is filled, the stack
+    table lives there and nowhere else, every rule names its enforcement point (a test, a
+    lint rule, a gate or `review`), and the agent-instruction baseline points at it rather
+    than restating it.
+18. The agent-instruction baseline carries the design principles as binding requirements
     every agent follows — simple, reliable, efficient, elegant, not over-engineered, high
     cohesion and low coupling, with the conflict ordering — rather than leaving them in the
     architecture document only.
-18. The logging contract holds: one logger module, key flows emit an `info` line, every
+19. The logging contract holds: one logger module, key flows emit an `info` line, every
     caught exception emits one `error` line with its code and correlation id, and no secret
     or personal data is logged. Otherwise the recorded `n/a` is present.
-19. The release and deploy paths are recorded separately, each with its `n/a` when absent:
+20. The release and deploy paths are recorded separately, each with its `n/a` when absent:
     the release publishes the artifact CI passed and treats a published version as
     immutable (fix forward), and every deploy has a healthcheck, a post-deploy check and a
     recorded rollback, with the data-recovery step when the release changes stored data.

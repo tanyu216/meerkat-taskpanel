@@ -301,6 +301,51 @@ describe("skill frontmatter and assets", () => {
     );
   });
 
+  it("records a standard technical specification and points the baseline at it", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+    const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    const linus = readFileSync(join(team, "linus", "workflow.md"), "utf8");
+    const roles = readFileSync(join(SKILL, "references", "roles.md"), "utf8");
+
+    assert.match(
+      arch,
+      /docs\/tech-spec\.md/,
+      "the flow records one standard technical specification",
+    );
+    const seed = arch.slice(arch.indexOf("### 2."), arch.indexOf("### 3."));
+    assert.match(
+      seed,
+      /docs\/tech-spec\.md/,
+      "Step 2 seeds the stack table into the specification",
+    );
+    const design = arch.slice(arch.indexOf("### 3."), arch.indexOf("### 4."));
+    assert.match(
+      design,
+      /enforcement point/i,
+      "every rule names the enforcement that catches a violation",
+    );
+    assert.match(design, /docs\/tech-spec\.md/, "Step 3 completes the specification");
+    const baseline = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
+    assert.match(
+      baseline,
+      /docs\/tech-spec\.md[\s\S]{0,600}(point|pointer)/i,
+      "the agent-instruction baseline points at the specification",
+    );
+    assert.match(check, /docs\/tech-spec\.md/, "the self-check audits the specification");
+    assert.match(
+      check,
+      /enforcement point/i,
+      "the self-check audits the enforcement points",
+    );
+    assert.match(
+      linus,
+      /inherited[\s\S]{0,80}docs\/tech-spec\.md/i,
+      "a feature card inherits the stack from the specification",
+    );
+    assert.match(roles, /docs\/tech-spec\.md/, "the engineering reference names the specification");
+  });
+
   it("applies the six design principles to a feature change", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");

@@ -27,8 +27,8 @@ until the project session answers or escalates E1-E5.
 3. Write `.meerkat/<id>/plan.md` **before starting** — the loop requires it. It carries
    this card's branch, design, steps, risks, test plan, acceptance mapping and open
    questions. An architecture card links the `## Tech stack` table it records; a feature,
-   behaviour-change or bug card records `Stack: inherited — docs/architecture.md` (or the
-   card-local architecture path). If the inherited stack table is missing, write a
+   behaviour-change or bug card records `Stack: inherited — docs/tech-spec.md` (or the
+   card-local standard path). If the inherited stack table is missing, write a
    `question` and stop; do not choose a stack for the card. A rework extends this card's
    plan; another card's plan is never this card's plan. The reviewer reads it.
 4. If this card is an epic child, the plan covers only this card's scope; the epic's
@@ -55,7 +55,8 @@ its alternatives and pinned versions, in one round.
 
 ## Language
 
-You own the codebase `GLOSSARY.md` and `docs/adr/`. The root glossary carries a
+You own the codebase `GLOSSARY.md`, `docs/adr/` and the project's standard at
+`docs/tech-spec.md`. The root glossary carries a
 `## Product language` section that links `design/glossary.md` and states that product terms
 live there; do not copy product terms into the root. If `design/glossary.md` does not exist
 yet, say product terms are not recorded rather than leaving a dangling link. Update the

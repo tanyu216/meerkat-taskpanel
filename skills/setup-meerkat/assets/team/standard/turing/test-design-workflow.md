@@ -14,7 +14,8 @@ Board operations (claim, heartbeat, comment, report, deliver, move, brief refres
   when it had a design stage: it names the archived spec/PRD, the acceptance source and the
   implementation/fix card or report. Read the named report; do not assume it lives under
   this card's id;
-- the architecture document and ADRs, when the repository has them.
+- the standard at `docs/tech-spec.md` (the test layout, naming and gate it binds), the
+  architecture document and ADRs, when the repository has them.
 
 A card with `meta.product_change=none` is a small change or bug: build the inventory from
 the card, its acceptance and (for a bug) the defect surface; it does not read design

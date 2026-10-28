@@ -45,10 +45,10 @@ A card that mixes both runs this flow first and proposes the implementation card
 `## Handoff`; it does not implement them here. If the classification is unclear, write an
 agent `question` and stop — do not route another role's work.
 
-An existing project inherits its recorded foundation. Read its architecture document, ADRs,
-contract, `.env.example` and tree, and record `inherited — <path>`. A foundation change is
-a delta; re-scaffolding or re-choosing a recorded decision is a decision the card must ask
-for, not a side effect of running this flow.
+An existing project inherits its recorded foundation. Read its standard, architecture
+document, ADRs, contract, `.env.example` and tree, and record `inherited — <path>`. A
+foundation change is a delta; re-scaffolding or re-choosing a recorded decision is a
+decision the card must ask for, not a side effect of running this flow.
 
 ## Inputs
 
@@ -56,9 +56,9 @@ for, not a side effect of running this flow.
 - `.meerkat/<id>/plan.md`;
 - this card's `## Handoff` block, when the project session created this card from a design
   card;
-- the existing repository, if any: its manifests, architecture document, ADRs, API
-  contract, `.env.example`, directory tree and `GLOSSARY.md`. Extend it; never fork a
-  second foundation.
+- the existing repository, if any: its manifests, its standard (`docs/tech-spec.md`), its
+  architecture document, ADRs, API contract, `.env.example`, directory tree and
+  `GLOSSARY.md`. Extend it; never fork a second foundation.
 
 ## Steps
 
@@ -128,9 +128,9 @@ instantiates.
 #### Record the stack
 
 Before designing the skeleton, fix and record the stack as **one** decision bundle, not one
-row at a time. Write a `## Tech stack` table into `docs/architecture.md` (new project) or
-`.meerkat/<id>/architecture.md` (card-local change). Every row records a concrete choice,
-or `n/a — <reason>` when the layer does not apply.
+row at a time. Write a `## Tech stack` table into `docs/tech-spec.md` (new project) or
+`.meerkat/<id>/tech-spec.md` (card-local change); `docs/architecture.md` points at it. Every
+row records a concrete choice, or `n/a — <reason>` when the layer does not apply.
 
 | Layer | Record | `n/a` is allowed when |
 |---|---|---|
@@ -144,10 +144,10 @@ Rules:
 
 1. A row with `TBD`, "standard stack" or "decided per project" is not a decision; pick one
    option per row, and do not mix two frameworks or two component libraries.
-2. An existing project inherits its stack: read its build and package manifests and its
-   container files, and record `inherited — <path>`. Do not re-choose or migrate without a
-   card that asks for it. If the inherited table is missing, write a `question` and stop;
-   do not choose a stack for another card.
+2. An existing project inherits its stack: read its standard, build and package manifests
+   and its container files, and record `inherited — <path>`. Do not re-choose or migrate
+   without a card that asks for it. If the inherited table is missing, write a `question`
+   and stop; do not choose a stack for another card.
 3. Check compatibility across the rows: framework ↔ build tool ↔ language; engine ↔
    driver/ORM ↔ migration tool; base image ↔ runtime; UI component layer ↔ styling layer.
 4. A departure from the confirmed table, a new dependency or a licence carries a written
@@ -159,8 +159,8 @@ Rules:
 There is no preferred stack. The card chooses and justifies; the table records that choice,
 it is not a menu to pick from.
 
-Output: the answered questions in `plan.md`, the ADRs, and the `## Tech stack` table linked
-from `.meerkat/<id>/plan.md`.
+Output: the answered questions in `plan.md`, the ADRs, and the `## Tech stack` table in
+`docs/tech-spec.md` (or the card-local delta), linked from `.meerkat/<id>/plan.md`.
 
 ### 3. Design the system skeleton
 
@@ -176,6 +176,7 @@ One artifact is canonical per design area; every other location points to it.
 |---|---|
 | Boundaries and data model | `docs/architecture.md` |
 | Architecture style | `docs/adr/NNNN-<slug>.md`, summarised in the architecture document |
+| Standard and conventions (stack, naming, layering, errors, configuration, logging, tests, gates) | `docs/tech-spec.md`; the architecture document, the baseline and the README point at it, and it points at the detailed artifacts |
 | External contract | The OpenAPI document (or the stack's schema language); the architecture document only points at it |
 | Configuration | `.env.example` plus the typed schema; other documents point at them |
 | Directory tree | `docs/architecture.md`; `CLAUDE.md`/`AGENTS.md` carry a top-level map and a pointer |
@@ -362,7 +363,40 @@ path that proves the skeleton — not a product feature.
 
 Output: the skeleton design in the architecture document — boundaries and data model, the
 external contract, the configuration surface and the directory tree — with the vertical
-slice named.
+slice named, and the standard in `docs/tech-spec.md`.
+
+#### The technical specification
+
+The project has one standard: `docs/tech-spec.md` — a card-local foundation delta is
+`.meerkat/<id>/tech-spec.md`. It is normative, not a design narrative: what a code change
+must comply with, in the fewest lines that can be checked. The architecture document keeps
+the design — positioning, style, boundaries, data model and tree — and points here; this
+document points at the canonical artifact for each detail and never restates it.
+
+| Section | Must contain | Done when |
+|---|---|---|
+| Authority and change | what it binds, who may change it (a card, an ADR, the human's E5), the review gate, what it deliberately does not govern | a reader knows how to change a rule and where the decision is recorded |
+| Tech stack | the `## Tech stack` table: frontend, backend, persistence, container/build and contracts, versions pinned, `n/a — <reason>` per absent layer | every row is a concrete choice; no `TBD` |
+| Structure and dependencies | the one-way dependency direction, module ownership and the tree rule; pointer to the tree in the architecture document | a new file has exactly one legal home |
+| Naming | files, modules, types, routes, database objects, environment keys and test files | a reviewer can reject a name by citing one line |
+| Errors and contract | one error taxonomy, the envelope, validation, pagination and versioning; pointer to the contract artifact | a failure has one code and one shape |
+| Configuration | one inventory, one loader, the load order, fail-fast and the reload policy; pointer to `.env.example` | an unlisted key is a defect |
+| Logging | one logger, the level meanings, the mandatory `info` and `error` sites, the correlation id and redaction | a key flow has its line; no secret is logged |
+| Tests and gates | test layout and naming, the coverage floor, the local gates and the CI checks | a change knows what must pass before delivery |
+| Release and delivery | release and deploy invariants, artifact immutability, rollback and its data plan | each path records its invariant or its `n/a` |
+
+A rule is one line, imperative, with the enforcement that catches a violation — a test, a
+lint rule, a gate, or `review`. A rule with no enforcement point is a wish: remove it or
+record it as review-only. Number the rules (`TS-01`, …) so a card and a review can cite one.
+The six design principles live in the architecture document's design stance; this document
+cites them rather than restating them.
+
+Changing a rule is a recorded decision — an ADR and the human's E5, never a silent edit; a
+pinned version changes through the same path. A published rule is not weakened quietly: the
+change names the rule it replaces and why.
+
+Output: `docs/tech-spec.md` (or the card-local delta) with every section filled, the stack
+table in its own section, and every rule naming its enforcement point.
 
 ### 4. Scaffold the project
 
@@ -373,6 +407,7 @@ written `n/a — <reason>`, never a missing file.
 | Area | Must contain | Done when |
 |---|---|---|
 | Layout and entry points | the directory tree planned in Step 3, instantiated exactly; source tree, test tree, docs, migrations, entry files | a newcomer finds the entry from the README and every planned directory exists |
+| Standard | every section of `docs/tech-spec.md` filled from the recorded decisions, each rule naming its enforcement | the stack table matches the manifests, no section says `TBD`, and a rule the scaffold cannot meet is a recorded decision, not a silent drift |
 | Contracts | when the system exposes an HTTP API: the envelope and error helper, the boundary validator, the pagination helper, the canonical contract document and one smoke request; otherwise the recorded `n/a` | a request round-trips through the envelope and a validation failure returns the documented error shape |
 | Configuration surface | `.env.example` naming every key the app reads, the typed loader and schema, the load order, the reload policy, no secret | a missing required key fails loudly, never a silent default |
 | Logging | the logger module and factory, the startup level and format keys, the correlation-id helper, and the mandatory `info`/`error` call sites wired into the vertical slice | a key flow emits its `info` line, a thrown exception emits one `error` line with its code, and no application module calls `console` directly |
@@ -383,7 +418,7 @@ written `n/a — <reason>`, never a missing file.
 | Container / build path | only when the runtime form is a container: build file, non-root user, healthcheck, local multi-service definition; otherwise the recorded `n/a` | the build file builds and the healthcheck passes |
 | CI skeleton | a pipeline running the Step 6 checks | it runs on a pull request |
 | VCS | ignore rules for build output, data directories and environment files | no generated file is committed |
-| Docs | README with purpose, run, test and a link to the architecture document | every link resolves |
+| Docs | README with purpose, run, test and links to the architecture document and the standard | every link resolves |
 
 Never commit a secret, add a dependency or licence without a decision, or create a second
 source of truth.
@@ -396,8 +431,9 @@ README.
 The agent-instruction baseline is a **requirement for every agent** on this project, not an
 optional nicety. Produce it after the scaffold so it observes the real tree: the host's init
 step writes `CLAUDE.md` or `AGENTS.md` per the host's read order. Without an init step,
-produce the same content directly and say so. A project without this file is not an
-architecture delivery.
+produce the same content directly and say so. Run the init step with `docs/tech-spec.md`
+named as the project's standard: the baseline points at it, and the spec — not the baseline
+— carries the rules. A project without this file is not an architecture delivery.
 
 Review the generated file — an init step guesses commands and layout — and correct both
 against the planned tree and the recorded stack. Keep one source of truth: if the host reads
@@ -418,11 +454,11 @@ carry:
 3. **Layout** — the entry points and the top-level directories a newcomer must know first,
    one line of purpose each, with a pointer to the canonical tree in `docs/architecture.md`.
    Do not restate the full tree: `ls` and the architecture document already carry it.
-4. **Conventions** — the one-line rule for dependency direction and module boundaries, the
-   error model, the configuration surface, the external contract and the logging contract
-   (key flows log `info`, a caught exception logs one `error` with its code, never a
-   secret), each pointing at its canonical artifact (the architecture document,
-   `.env.example`, the contract file) rather than restating it.
+4. **Conventions** — point at `docs/tech-spec.md`: the project's standard carries the
+   dependency direction and module boundaries, the error model, the configuration surface,
+   the external contract and the logging contract (key flows log `info`, a caught exception
+   logs one `error` with its code, never a secret), and it points at `.env.example` and the
+   contract file. Name it once here; do not restate a rule.
 5. **Design principles** — the six principles bind every agent, not only the architect:
    simple, reliable, efficient, elegant, not over-engineered, and high cohesion / low
    coupling, with the conflict ordering including the boundary rule. Name all six in the
@@ -430,18 +466,20 @@ carry:
    recorded as an explicit decision, never a silent drift.
 6. **Gates** — what must pass before delivery: the gate path, the coverage floor and the
    security scan; point at the CI pipeline for the job detail.
-7. **Pointers** — link `docs/architecture.md`, `GLOSSARY.md`, `docs/adr/`, the contract
-   artifact and the configuration surface; do not copy their content.
+7. **Pointers** — link `docs/tech-spec.md` first, then `docs/architecture.md`,
+   `GLOSSARY.md`, `docs/adr/`, the contract artifact and the configuration surface; do not
+   copy their content.
 
 Leave out architecture prose, design documents, ADR bodies, directory inventories and
 details that will drift. This file is a map, not a mirror: every line is resident in every
 session, so carry only what a fresh session cannot reconstruct with `ls`, the manifest or a
 pointer — the rest goes behind the pointer. Update the file when a command or the layout
-changes.
+changes. A session reads the standard before the first code change; the baseline says so
+and does not repeat it.
 
 Output: the agent-instruction baseline — `CLAUDE.md` or `AGENTS.md` — reviewed, with the
-entry-point map, the design principles and the pointers, named as the entry baseline in the
-delivery.
+entry-point map, the design principles, the pointer to `docs/tech-spec.md` and the other
+pointers, named as the entry baseline in the delivery.
 
 ### 6. Record the gates, the release and the delivery path
 
@@ -497,7 +535,8 @@ Run `self-check.md` (Architecture branch). The architecture proof is:
 - the architecture style is recorded and justified (DDD with its contexts and aggregates,
   or a named simpler style with DDD's rejection), and the boundaries and tree instantiate
   it;
-- the `## Tech stack` table is complete, versions are pinned and Step 4 instantiates it;
+- the `## Tech stack` table is in `docs/tech-spec.md`, complete, versions pinned and Step 4
+  instantiates it;
 - when the system exposes an HTTP API, the envelope, error codes, validation and pagination
   are recorded, one helper implements the envelope, and the canonical contract matches;
 - the configuration surface is recorded: `.env.example` names every key, the loader fails
@@ -507,9 +546,12 @@ Run `self-check.md` (Architecture branch). The architecture proof is:
   secret is logged;
 - the directory tree is planned, scaffolded exactly, and carried by the agent-instruction
   baseline as a top-level map with a pointer;
+- the standard at `docs/tech-spec.md` is complete: every section is filled, the stack table
+  lives there and nowhere else, every rule names its enforcement point (a test, a lint rule,
+  a gate or `review`), and no rule restates a canonical artifact;
 - `CLAUDE.md`/`AGENTS.md` exists as the baseline every role reads, carries the entry
-  commands, the entry-point map and the gates, and links rather than copies the architecture
-  document and the full tree;
+  commands, the entry-point map and the gates, and points at `docs/tech-spec.md`, the
+  architecture document and the full tree rather than copying them;
 - every ADR has a status, alternatives and consequences;
 - the scaffold checklist in Step 4 is complete, the smoke test passes and the documented
   local run works;
@@ -527,9 +569,10 @@ Output: the requirement → artifact table in `plan.md`.
 ### 8. Architecture review
 
 Present the **architecture package** — the design-stance evidence, the options, the style
-ADR, the stack table with pinned versions and rejected alternatives, the boundaries, the
-external contract, the configuration surface, the directory tree, the gate path, the release
-and deploy paths and the agent-instruction baseline — to the project session. E5 belongs to
+ADR, the standard at `docs/tech-spec.md` (its stack table with pinned versions, its rules
+and their enforcement), the boundaries, the external contract, the configuration surface,
+the directory tree, the gate path, the release and deploy paths and the agent-instruction
+baseline — to the project session. E5 belongs to
 the human; a public API contract is E5, and a configuration key that touches a secret is E4.
 Record the decision on the card. Do not start implementation before the review is recorded.
 
@@ -539,10 +582,11 @@ Output: the recorded E5 decision on the card.
 
 Re-export the brief, mark the handoff required, and write the architecture variant of the
 `## Handoff` block into the delivery report's `conclusion`: one architecture-package sentence
-naming the architecture document, `.meerkat/<id>/architecture.md` (when the change is
-card-local), the style and other ADR paths, the contract artifact, the configuration
-surface, the directory tree, the gate path, the release and deploy paths (or their recorded
-`n/a`), the agent-instruction baseline (`CLAUDE.md` or `AGENTS.md`), the acceptance source,
+naming the standard (`docs/tech-spec.md`, or the card-local delta), the architecture
+document, `.meerkat/<id>/architecture.md` (when the change is card-local), the style and
+other ADR paths, the contract artifact, the configuration surface, the directory tree, the
+gate path, the release and deploy paths (or their recorded `n/a`), the agent-instruction
+baseline (`CLAUDE.md` or `AGENTS.md`), the acceptance source,
 the `Delivery shape` (one task, or an epic with children) and the proposed implementation
 card(s). Deliver at `in_review` with the evidence. Do not create the implementation card;
 the project session triages it, seeds its acceptance and links it to this card as a blocker
@@ -557,6 +601,8 @@ producer card has both.
   belongs to `implementation-workflow.md`.
 - An existing project inherits its style, contract, configuration surface and tree;
   changing one is a recorded decision, not a silent retrofit.
+- The standard is one document: changing a rule is a recorded decision (an ADR and the
+  human's E5), never a silent edit.
 - Write only the skeleton and its smoke test here; product behaviour belongs to the
   implementation branch.
 - Migrations are append-only. A published contract or schema change needs the human.

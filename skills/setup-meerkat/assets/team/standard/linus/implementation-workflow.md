@@ -16,7 +16,8 @@ Board operations (claim, heartbeat, comment, report, deliver, move, brief refres
   source. Read those paths; the card and the frozen `acceptance` remain the contract; where
   a design artifact disagrees, write a `question` instead of choosing. Never read the design
   card's `plan.md` as this card's plan;
-- the architecture document and ADRs, when the repository has them;
+- the standard at `docs/tech-spec.md`, the architecture document and ADRs, when the
+  repository has them;
 - for a bug: the report, the reproduction and any production evidence. A bug fix does not
   need the design artifacts; reproduce the defect and fix its root cause.
 
@@ -35,7 +36,8 @@ code. List the blast radius: callers, contracts, migrations, configuration and d
 
 Apply the six principles as the tie-breakers for this change, before naming files or
 freezing the design. The definitions and the conflict ordering live in the project's
-`docs/architecture.md` (the agent-instruction baseline restates them for every agent).
+`docs/architecture.md`; the standard at `docs/tech-spec.md` carries the enforceable rules,
+and the agent-instruction baseline points at it.
 Answer each question for this change and name the evidence:
 
 - **Simple** — can a newcomer follow one primary use case end to end without a diagram, and

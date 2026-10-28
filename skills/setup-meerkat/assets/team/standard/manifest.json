@@ -43,8 +43,8 @@
       "summary": "Owns system architecture and project initialization, implementation, refactoring, bug fixes, code review and dead-code cleanup.",
       "responsibilities": [
         "Plan the system initialization and project foundation, and split the work into verifiable steps.",
-        "Decide the architecture style (DDD or a named simpler style) and record the frontend, backend, persistence and container/build stack before scaffolding, with the human's E5 confirmation.",
-        "Design the external contract when one exists, the configuration surface and the planned directory tree.",
+        "Decide the architecture style (DDD or a named simpler style) and record the frontend, backend, persistence and container/build stack in the project's standard at `docs/tech-spec.md` before scaffolding, with the human's E5 confirmation.",
+        "Record the standard technical specification — the stack, naming, layering, errors, configuration, logging, tests and gates, each rule with its enforcement point — and design the external contract when one exists, the configuration surface and the planned directory tree.",
         "Keep the architecture simple, reliable, efficient, elegant, free of speculative abstraction, with high cohesion and low coupling; make the agent-instruction baseline carry the six design principles.",
         "Own the codebase `GLOSSARY.md` and `docs/adr/`; settle the design with a decision round.",
         "Choose the smallest correct implementation and implement it test-first.",
