@@ -404,6 +404,9 @@ against the planned tree and the recorded stack. Keep one source of truth: if th
 `CLAUDE.md`, write it; if it reads `AGENTS.md`, generate it; make the other a pointer. Do
 not maintain `CLAUDE.md` and `AGENTS.md` as competing copies.
 
+The task entry — the board block and its scope — belongs to the install skill; if the file
+already carries it, leave it untouched.
+
 The file is the entry map every session and every role reads first, not a manual. It must
 carry:
 

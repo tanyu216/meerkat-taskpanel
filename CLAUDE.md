@@ -291,7 +291,8 @@ authoritative home, because the container image drops `design/`.
 
 ### Issue tracker
 
-Work is tracked as cards on the local Meerkat TaskPanel board through `taskctl`. See `docs/agents/issue-tracker.md`.
+Work is tracked as cards on the local Meerkat TaskPanel board; `/meerkat` is the entry for
+every card operation. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

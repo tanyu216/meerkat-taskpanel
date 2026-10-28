@@ -14,9 +14,11 @@ One idempotent pass over the things a working Meerkat TaskPanel deployment needs
    choice before anything starts.
 3. **Offer the Matt Pocock integration** (`/setup-matt-pocock-skills`) when that skill is
    present, without overwriting an unrelated tracker.
-4. **Install a team** — the standard Jobs/Linus/Turing + reviewer roles, or a custom team —
+4. **Leave the task entry** — run the host's init step (`/init`), then write the `/meerkat`
+   keywords into `CLAUDE.md`/`AGENTS.md` so every later session starts from the board.
+5. **Install a team** — the standard Jobs/Linus/Turing + reviewer roles, or a custom team —
    into the loop, globally or per project.
-5. **Write the fixed human name** so `--as-human` signs the person, never a role.
+6. **Write the fixed human name** so `--as-human` signs the person, never a role.
 
 This skill is **command-only** (`disable-model-invocation: true`). It installs software
 and writes files, so it never runs unless the user asks for it.
@@ -71,7 +73,8 @@ If the JSON is malformed, stop and report; never guess a path.
 Run the setup as one decision round. Detection is the fact-gatherer: never ask the user for
 a board URL, role root, actor kind or human name that `detect.mjs` can establish. The
 **frontier** is every setup *decision* detection leaves open — the board target, the install
-set, the team shape, the role set, the scope, the identity and the tracker integration.
+set, the team shape, the role set, the install scope, the identity, the tracker integration,
+the task-entry target file and the card scope.
 
 Ask the whole frontier in **one numbered round**, each question carrying a recommended
 answer and worded so "yes" accepts it; `--yes` is the same shorthand for the recommended
@@ -87,6 +90,18 @@ producer. Work that belongs outside the roles is not force-fit into one: it goes
 outside them, and that is an answer, not a gap. An unowned card shape is a finding only when
 a defined role owns that shape. The matrix is persisted as `ownership.md` in the roles root;
 the loop routes work by it.
+
+One of those questions is the **card scope**: what work becomes a card here? Ask it as a
+real question, not a formality — a board that accepts every request stops being a signal, and
+a card costs a claim, an acceptance and a delivery report, so work that needs no trail
+should not pay for one. The recommended answer is **the work a role owns**: product design,
+development and architecture, bug fixes and refactors, test design, regression, performance
+and independent review — whatever the ownership matrix the team question just settled assigns
+to a role. Outside the roles is outside the board: a question, a lookup, a one-off command, a
+scratch experiment, the change being made in this conversation right now, or work the human
+is doing themselves has no owner, so it does not become a card. A narrower answer ("only work
+that crosses sessions") or a wider one ("every change, chores included") is valid: record it,
+because the baseline carries it and every later session follows it.
 
 The round closes only when the frontier is empty. Do not install, write a file or start a
 daemon before that, and never treat an incomplete answer as consent. `--yes` never authorizes
@@ -167,10 +182,54 @@ The Matt skill is `disable-model-invocation: true`; this skill cannot call it th
 the Skill tool. Say which route was taken; never claim a skill ran when it did not.
 Write only the per-repository outputs (`docs/agents/issue-tracker.md`,
 `docs/agents/domain.md`, optionally `docs/agents/triage-labels.md`, and the
-`## Agent skills` block in the existing `CLAUDE.md`/`AGENTS.md`). Never create board
-labels: the registry is read-only and grows when a card names a label.
+`## Agent skills` block in the existing `CLAUDE.md`/`AGENTS.md`). The `## Agent skills` block
+is the tracker's; the task entry in §4 is a separate block, written after it. Never create
+board labels: the registry is read-only and grows when a card names a label.
 
-## 4. Team
+## 4. The project's task entry
+
+The board is the entry only when the project's own instruction file says so. Run the host's
+init step over `--project` first — `/init` where the host has one (Claude Code and Codex do) —
+so the file describes the real tree. That step reads the code, not the board, and never writes
+the task entry: add the block below yourself. Without an init step, skip it and write the
+block directly.
+
+Target the file the host reads — `CLAUDE.md`, or `AGENTS.md` where that is the read order —
+and make the other a pointer. Ask before the first write to an existing file, and leave
+everything outside the markers alone.
+
+```markdown
+<!-- meerkat:task-entry -->
+## Task management
+
+`/meerkat` is the entry for every card on the local Meerkat TaskPanel board: a card is
+created, claimed, kept alive with a heartbeat and delivered through that skill, never through
+a side-channel queue (a TODO file, a chat list, a private plan). A card stops at `in_review`;
+a human accepts it to `done`.
+
+## Task scope
+
+Cards are for work a role owns — product design, development and architecture, bug fixes,
+refactors, test design and independent review. A question, a lookup, a one-off command, a
+scratch experiment or a change being made in this conversation has no owner, so it is not a
+card; the board is not a log of the session.
+<!-- /meerkat:task-entry -->
+```
+
+- Keep the keywords, drop the prose: `/meerkat`, `card`, `claim`, `heartbeat`, `deliver`,
+  `in_review` and `done` are what a later session greps for, and what sends it to the board
+  skill instead of an invented queue.
+- The markers make the block one managed unit: on a re-run replace what sits between them and
+  report identical bytes as `unchanged` — never a second copy. A project with its own task
+  section that predates the markers is a conflict: ask, then wrap or replace it.
+- Point at `docs/agents/issue-tracker.md` when §3 wrote one; otherwise this block is the
+  whole statement.
+- **The scope paragraph is the interview's answer.** The block ships the recommended default
+  (the work a role owns). When the user narrowed or widened it in the setup round, rewrite
+  that scope paragraph before writing the block, and say so in the summary — a scope that
+  lives only in the conversation is lost on the next session.
+
+## 5. Team
 
 The team shape is one frontier question in the setup round (§The setup interview):
 **standard** / **custom** / **skip**, with a recommendation and the trade-off. Ask it once,
@@ -226,6 +285,8 @@ change.
 Linus establishes the project's agent-instruction baseline (the host's `CLAUDE.md` or
 `AGENTS.md`) as a foundation outcome. It is the file every role reads, not an optional step,
 and it carries the entry commands, layout pointers, conventions, gates and the six principles.
+The `/meerkat` task entry and its scope are the project-init stage's job (§4), not the
+architecture flow's.
 The project owns its own working-tree, branch and integration contract; the team's role
 workflows do not restate it.
 
@@ -297,17 +358,20 @@ that extension is installed. The loop's project session also uses that extension
 one subagent per card; `detect.mjs` reports a missing extension and `install.sh --target pi`
 prints the install command. `--native-agent-defs none` writes none of them.
 
-## 5. Verify and finish
+## 6. Verify and finish
 
 1. Re-run `<skill-dir>/scripts/detect.mjs --json`; report roles present and the selected agents.
 2. Run `<skill-dir>/scripts/install-roles.mjs --validate <roles-root>`; it must be `ok`.
 3. Print the next command to load/restart the supervisor
    (`install.sh --supervisor=enable` for the actor kind), and note that a running pool
    picks up role edits on its next dispatch.
-4. Summarize: what was installed, where, the effective roles root, the human name, and
-   what was skipped and why.
-5. A second run must change **no managed content**: role files, native definitions and
-   env keys report `unchanged`; `install.sh` may re-copy identical runtime bytes, which
+4. Re-read the host's instruction file: the task entry block (`<!-- meerkat:task-entry -->`)
+   is present exactly once and names `/meerkat`.
+5. Summarize: what was installed, where, the effective roles root, the human name, the task
+   entry's target file, and what was skipped and why.
+6. A second run must change **no managed content**: role files, native definitions and
+   env keys report `unchanged`, and the task-entry block reports `unchanged` rather than
+   being appended twice; `install.sh` may re-copy identical runtime bytes, which
    is still idempotent. Report every action as `written` / `unchanged` / `skip` /
    `conflict`.
 

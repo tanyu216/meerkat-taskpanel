@@ -25,7 +25,8 @@
         "<home>/.claude/skills/setup-meerkat/SKILL.md exists after installation.",
         "The roles root is <home>/.claude/skills/meerkat-loop/roles with manifest.json, an ownership routing guide, and four roles.",
         ".claude/agents/jobs.md and .codex/agents/reviewer.toml exist.",
-        "A second identical run leaves the role files and native agent definitions unchanged (content-hash identical), and the role installer reports every action as unchanged."
+        "A second identical run leaves the role files and native agent definitions unchanged (content-hash identical), and the role installer reports every action as unchanged.",
+        "The project's CLAUDE.md (or AGENTS.md) carries the <!-- meerkat:task-entry --> block exactly once, naming /meerkat as the task entry, and a second run leaves those bytes unchanged."
       ]
     },
     {
@@ -138,6 +139,20 @@
         "The report records the declared gate (`npm run verify:docker`) with its command and exit code, run by the reviewer.",
         "Every must-fix item is numbered and carries file/line, reproduction, expected versus actual and the missing case.",
         "The reviewer moves neither card and does not enter awaiting."
+      ]
+    },
+    {
+      "id": 11,
+      "name": "card-scope",
+      "prompt": "Set up meerkat here. Not everything should become a task card — we mostly want features, bugs and design work tracked; quick questions and one-off commands are just chat.",
+      "expected_output": "The setup interview asks the card scope as one frontier question with a recommended answer — the work a role owns, read from the ownership matrix (product design, development, bug fixes, refactors, tests and review) — and records the user's narrower answer; the written baseline block carries that answer in its Task scope paragraph rather than the default; a second run replaces the block instead of appending.",
+      "files": [],
+      "assertions": [
+        "The card scope is asked as its own frontier question with a recommended default, not silently assumed.",
+        "The recommended default is the work a role owns (the ownership matrix just settled) — product design, development, bug fixes — and work with no owner (questions, lookups, one-off commands) is stated as not becoming a card.",
+        "The user's narrower answer is written into the Task scope paragraph of the marked task-entry block in CLAUDE.md/AGENTS.md, replacing the default text.",
+        "The answer is persisted in the project's instruction file, not only in the conversation.",
+        "A second run reports the block unchanged rather than appending a second copy."
       ]
     }
   ]

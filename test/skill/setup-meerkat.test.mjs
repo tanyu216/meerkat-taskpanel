@@ -92,6 +92,42 @@ describe("skill frontmatter and assets", () => {
     assert.ok(description.length >= 20);
   });
 
+  it("leaves the /meerkat task entry in the project's instruction file", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    const evals = JSON.parse(readFileSync(join(SKILL, "evals", "evals.json"), "utf8"));
+
+    assert.match(skill, /^## 4\. The project's task entry$/m, "the task entry is its own stage");
+    assert.match(skill, /\/init/, "the stage runs the host's init step before writing");
+    assert.match(
+      skill,
+      /init step[\s\S]{0,300}(never|does not)[\s\S]{0,120}task entry/i,
+      "the stage says an init draft does not carry the entry",
+    );
+    assert.match(skill, /CLAUDE\.md[\s\S]{0,200}AGENTS\.md/, "the block lands in the host's file");
+
+    const open = skill.indexOf("<!-- meerkat:task-entry -->");
+    const close = skill.indexOf("<!-- /meerkat:task-entry -->");
+    assert.ok(open > 0 && close > open, "the skill carries the block, fenced by markers");
+    const block = skill.slice(open, close);
+    for (const keyword of ["/meerkat", "card", "claim", "heartbeat", "deliver", "in_review", "done"]) {
+      assert.ok(block.includes(keyword), `the block keeps the keyword ${keyword}`);
+    }
+
+    assert.match(
+      skill,
+      /second run|re-run|idempoten/i,
+      "the block is one managed unit, not an append on every run",
+    );
+    const verify = skill.slice(skill.indexOf("## 6. Verify"));
+    assert.match(verify, /task entry/i, "the verify stage checks the block is present once");
+
+    const team = evals.evals.find((entry) => entry.name === "standard-team");
+    assert.ok(
+      team.assertions.some((line) => line.includes("/meerkat")),
+      "the standard-team eval expects the task entry",
+    );
+  });
+
   it("ships the standard team, an ownership guide, and native templates", () => {
     const team = join(SKILL, "assets", "team", "standard");
     for (const rel of [
@@ -452,6 +488,39 @@ describe("skill frontmatter and assets", () => {
     }
   });
 
+  it("leaves the task entry to the install, not to the architecture flow", () => {
+    // One writer per surface. The install writes the entry and its scope; the architecture
+    // flow that also ran an init step used to duplicate it, and two writers drift.
+    const team = join(SKILL, "assets", "team", "standard");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+    const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+
+    const step5 = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
+    const step7 = arch.slice(arch.indexOf("### 7."), arch.indexOf("### 8."));
+
+    assert.doesNotMatch(
+      step5,
+      /<!--\s*\/?meerkat:task-entry\s*-->/,
+      "the architecture flow does not write the install's block",
+    );
+    assert.match(step5, /install\s+skill/i, "it says whose job the task entry is");
+    assert.doesNotMatch(step5, /\*\*Task entry\*\*/, "the entry is not a baseline item here");
+
+    assert.doesNotMatch(step7, /`\/meerkat`/, "the architecture self-check does not audit the entry");
+    assert.doesNotMatch(check, /`\/meerkat`/, "Linus's self-check does not audit the entry");
+    assert.doesNotMatch(check, /task\s+entry/i, "Linus's self-check leaves the entry to the install");
+
+    const markers = ["<!-- meerkat:task-entry -->", "<!-- /meerkat:task-entry -->"];
+    const open = skill.indexOf(markers[0]);
+    const close = skill.indexOf(markers[1]);
+    assert.ok(open > 0 && close > open, "the install still writes the block");
+    const block = skill.slice(open, close);
+    for (const keyword of ["/meerkat", "card", "claim", "heartbeat", "deliver", "in_review", "done"]) {
+      assert.ok(block.includes(keyword), `the block keeps the keyword ${keyword}`);
+    }
+  });
+
   it("keeps board verbs in the meerkat skill, not in the setup reference", () => {
     const boardVerb = /\bissue (?:create|move|get|update|deliver|heartbeat|assign)\b|\bcomment add\b|\brelation add\b|\battachment (?:download|list)\b/;
     for (const rel of ["SKILL.md", "references/roles.md"]) {
@@ -792,6 +861,39 @@ describe("skill frontmatter and assets", () => {
     assert.match(skill, /--yes.*never authorizes/);
   });
 
+  it("asks which work becomes a card and writes the answer into the baseline", () => {
+    // A board that accepts every request stops being a signal, and a card costs a claim, a
+    // heartbeat, an acceptance and a report. The scope is a setup decision, so the interview
+    // must ask it and the baseline must carry the answer.
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    const interview = skill.slice(skill.indexOf("## The setup interview"), skill.indexOf("## 2. Install"));
+
+    assert.match(interview, /card scope/i, "the frontier carries the card scope");
+    assert.match(interview, /recommended/i, "it is a question with a recommended answer");
+    assert.match(interview, /a role owns|role owns/i, "the default is the roles' remit");
+    assert.match(interview, /ownership/i, "the scope follows the ownership matrix");
+    assert.match(interview, /product design/i, "the default names product design");
+    assert.match(interview, /bug fix/i, "the default names bug fixes");
+    assert.match(interview, /not every|not everything|does not become|is not a card/i, "routine work stays out");
+
+    const markers = ["<!-- meerkat:task-entry -->", "<!-- /meerkat:task-entry -->"];
+    const blockOf = (text) => {
+      const open = text.indexOf(markers[0]);
+      const close = text.indexOf(markers[1]);
+      return open >= 0 && close > open ? text.slice(open, close + markers[1].length) : null;
+    };
+    const block = blockOf(skill);
+    assert.ok(block, "the install carries the task-entry block");
+    assert.match(block, /Task scope/, "the block says what becomes a card");
+    assert.match(block, /a role owns|role owns/i, "the block scopes cards to what a role owns");
+    assert.match(block, /question|lookup|one-off/i, "the block names what stays out");
+    assert.match(
+      skill,
+      /rewrite[^\n]*scope|scope[^\n]*rewrite|answer[^\n]*block/i,
+      "a non-default answer rewrites the scope, it is not ignored",
+    );
+  });
+
   it("co-designs a custom team against card shapes", () => {
     const roles = readFileSync(join(SKILL, "references", "roles.md"), "utf8");
     assert.match(roles, /counterexample/i);
@@ -808,7 +910,7 @@ describe("skill frontmatter and assets", () => {
   it("keeps the skill-creator eval prompts parseable", () => {
     const evals = JSON.parse(readFileSync(join(SKILL, "evals", "evals.json"), "utf8"));
     assert.equal(evals.skill_name, "setup-meerkat");
-    assert.equal(evals.evals.length, 10);
+    assert.equal(evals.evals.length, 11);
     for (const entry of evals.evals) {
       assert.equal(typeof entry.prompt, "string");
       assert.ok(entry.prompt.length > 20, `eval ${entry.id}: prompt`);
@@ -820,6 +922,7 @@ describe("skill frontmatter and assets", () => {
       "custom-team-co-design",
       "decision-round",
       "reviewer-catches-omission",
+      "card-scope",
     ]) {
       assert.ok(names.has(name), `eval ${name} must exist`);
     }
