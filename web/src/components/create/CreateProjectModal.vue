@@ -13,9 +13,9 @@
  * prefix never reaches the network.
  *
  * A refusal is answered, never swallowed (C-PREFIX-1 M7): the server's own
- * refusals — a prefix that normalizes away, one already taken, a conflict — are
- * what `submit()` reports back to the reader, in the app's words, with the
- * dialog still open.
+ * refusals — a prefix that normalizes away, one the 1-4 rule rejects, one
+ * already taken, a conflict — are what `submit()` reports back to the reader,
+ * in the app's words, with the dialog still open.
  */
 import { computed, reactive, watch } from "vue";
 
@@ -43,15 +43,20 @@ watch(createProjectOpen, (open) => {
  *
  * The wire's own message is English and technical (`project prefix "####" has no
  * usable identifier prefix`), so the dialog speaks the app's vocabulary instead.
- * The two 400s are told apart by the refusal's **declared field**, not by its
- * message: a prefix that normalizes away to nothing (M4) and one another project
- * already numbers its cards with (M5) need different repairs from the reader,
- * and neither is what a 409 or an unreachable board means.
+ * The 400s are told apart by the refusal's **declared details**, not by its
+ * message, and in a fixed order: a prefix another project already numbers its
+ * cards with (M5) needs a different repair from one the 1-4 `[A-Z0-9]` rule
+ * rejects (M8, which reports `max`), and both differ from a prefix that
+ * normalizes away to nothing (M4) — and none of them is what a 409 or an
+ * unreachable board means. The collision check runs last on the server, so a
+ * value that fails the shape rule never arrives here as a collision.
  */
 function refusalText(err) {
   const declared = err instanceof ApiError && err.code === "VALIDATION_FAILED" && err.details?.field === "meta.prefix";
   if (!declared) return t("toast.projectCreateFailed");
-  return err.details.conflictProjectId === undefined ? t("toast.projectPrefixUnusable") : t("toast.projectPrefixTaken");
+  if (err.details.conflictProjectId !== undefined) return t("toast.projectPrefixTaken");
+  if (err.details.max !== undefined) return t("toast.projectPrefixTooLong");
+  return t("toast.projectPrefixUnusable");
 }
 
 async function submit() {
@@ -104,7 +109,12 @@ async function submit() {
           </label>
           <label class="flex flex-col gap-1 mb-3">
             <span data-i18n="createProject.field.prefix">{{ $t("createProject.field.prefix") }}</span>
-            <input v-model="form.prefix" class="input input-sm td-input td-mono w-full" type="text" maxlength="4" data-create-project-prefix :placeholder="$t('createProject.field.prefixHint')" />
+            <!-- C-PREFIX-1 M1/M2 — four characters, typed as upper-case where the
+                 keyboard offers it; the input carries no `pattern` (§7.3): the
+                 server's 1-4 [A-Z0-9] rule is the one authority, and a native
+                 pattern would block the POST whose refusal dom-smoke's M7 leg
+                 reads. -->
+            <input v-model="form.prefix" class="input input-sm td-input td-mono w-full" type="text" maxlength="4" required autocapitalize="characters" spellcheck="false" autocomplete="off" data-create-project-prefix :placeholder="$t('createProject.field.prefixHint')" />
           </label>
           <label class="flex flex-col gap-1 mb-3">
             <span data-i18n="createProject.field.acceptance">{{ $t("createProject.field.acceptance") }}</span>

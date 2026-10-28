@@ -37,12 +37,14 @@ export const EXTRA = {
     "conflict.dismiss": "Dismiss",
     "toast.moveFailed": "Could not move %s — the transition is not allowed",
     // C-PREFIX-1 M7 — a refused create-project. The wire explains itself in
-    // English and technical terms, so these three are the dialog's own words;
-    // which one is shown follows the refusal's `details.field`/`conflictProjectId`
-    // (see `CreateProjectModal.vue`). No catalogue key exists for any of them:
-    // the prototype has no network, so it has no refused create at all.
+    // English and technical terms, so these four are the dialog's own words;
+    // which one is shown follows the refusal's `details.field`, then
+    // `conflictProjectId`, then `max` (see `CreateProjectModal.vue`). No
+    // catalogue key exists for any of them: the prototype has no network, so it
+    // has no refused create at all.
     "toast.projectCreateFailed": "Could not create the project",
     "toast.projectPrefixUnusable": "Could not create the project — the identifier prefix has no letters or digits",
+    "toast.projectPrefixTooLong": "Could not create the project — the identifier prefix must be 1 to 4 characters of A-Z and 0-9",
     "toast.projectPrefixTaken": "Could not create the project — another project already numbers its cards with that prefix",
     "toast.reportRequired": "Moving %s to In Review needs a report",
     "toast.reopened": "Reopened",
@@ -223,6 +225,7 @@ export const EXTRA = {
     "toast.moveFailed": "无法移动 %s —— 该状态迁移不被允许",
     "toast.projectCreateFailed": "无法创建项目",
     "toast.projectPrefixUnusable": "无法创建项目 —— 标识前缀不含任何字母或数字",
+    "toast.projectPrefixTooLong": "无法创建项目 —— 标识前缀必须为 1 到 4 个字母或数字",
     "toast.projectPrefixTaken": "无法创建项目 —— 已有项目用该前缀编号",
     "toast.reportRequired": "将 %s 移至待评审需要一份报告",
     "toast.reopened": "已重开",
