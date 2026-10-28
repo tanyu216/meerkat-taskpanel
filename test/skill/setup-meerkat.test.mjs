@@ -356,6 +356,41 @@ describe("skill frontmatter and assets", () => {
     assert.match(roles, /docs\/tech-spec\.md/, "the engineering reference names the specification");
   });
 
+  it("binds the baseline to the project's own standard and gives the review a method", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+
+    const baseline = arch.slice(arch.indexOf("### 5."), arch.indexOf("### 6."));
+
+    assert.match(
+      baseline,
+      /existing project[\s\S]{0,240}(own documents|recorded path|already name)/i,
+      "an existing project binds its own recorded standard, not the new-project path",
+    );
+    assert.doesNotMatch(
+      baseline,
+      /A project without this file is not an architecture delivery/,
+      "the standard rule no longer rejects a project whose standard lives elsewhere",
+    );
+    assert.match(
+      baseline,
+      /resolve every line|fabricated path/i,
+      "the review has a method that catches a fabricated path",
+    );
+    assert.match(baseline, /ownership test/i, "the baseline review applies the ownership test");
+    assert.match(baseline, /deletion test/i, "the baseline review applies the deletion test");
+    assert.match(
+      baseline,
+      /improve[\s\S]{0,200}regenerat/i,
+      "an existing baseline is improved in place, not regenerated",
+    );
+    assert.match(
+      baseline,
+      /command, a gate or the\s+layout/i,
+      "the baseline's drift trigger covers commands, gates and the layout",
+    );
+  });
+
   it("applies the six design principles to a feature change", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");

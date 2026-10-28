@@ -431,14 +431,27 @@ README.
 The agent-instruction baseline is a **requirement for every agent** on this project, not an
 optional nicety. Produce it after the scaffold so it observes the real tree: the host's init
 step writes `CLAUDE.md` or `AGENTS.md` per the host's read order. Without an init step,
-produce the same content directly and say so. Run the init step with `docs/tech-spec.md`
-named as the project's standard: the baseline points at it, and the spec — not the baseline
-— carries the rules. A project without this file is not an architecture delivery.
+produce the same content directly and say so. Name the standard by its actual path:
+`docs/tech-spec.md` is the path this flow creates for a new project (or the card-local
+delta); an existing project binds the document or small set of documents its own README or
+architecture document already names as the standard, and the baseline points there — never
+at a substitute. The spec, not the baseline, carries the rules. A project that records no
+standard is not an architecture delivery: this flow creates one or asks.
 
-Review the generated file — an init step guesses commands and layout — and correct both
-against the planned tree and the recorded stack. Keep one source of truth: if the host reads
-`CLAUDE.md`, write it; if it reads `AGENTS.md`, generate it; make the other a pointer. Do
-not maintain `CLAUDE.md` and `AGENTS.md` as competing copies.
+On an existing project, improve the baseline that is there: keep every section that still
+resolves, add what is missing, and regenerate only when the card asks for it — a rewrite that
+drops an existing agreement is a regression.
+
+Review the generated file — an init step guesses commands and layout. Resolve every line
+before accepting it: open each named path against the tree, run each documented command or
+confirm the manifest defines it, and check every port, environment key and directory against
+the recorded configuration surface and tree. Remove or correct what does not resolve; a
+fabricated path or an undefined command is the failure this review exists to catch. Then
+apply two tests to every remaining line: the **ownership test** — if another document owns
+the fact, keep a one-line pointer and delete the restatement — and the **deletion test** —
+without it, would a fresh session make a mistake? Keep one source of truth: if the host
+reads `CLAUDE.md`, write it; if it reads `AGENTS.md`, generate it; make the other a pointer.
+Do not maintain `CLAUDE.md` and `AGENTS.md` as competing copies.
 
 The task entry — the `/meerkat` keywords and the card scope — belongs to the install
 skill; if the file already carries it, leave it untouched.
@@ -473,9 +486,9 @@ carry:
 Leave out architecture prose, design documents, ADR bodies, directory inventories and
 details that will drift. This file is a map, not a mirror: every line is resident in every
 session, so carry only what a fresh session cannot reconstruct with `ls`, the manifest or a
-pointer — the rest goes behind the pointer. Update the file when a command or the layout
-changes. A session reads the standard before the first code change; the baseline says so
-and does not repeat it.
+pointer — the rest goes behind the pointer. Update the file when a command, a gate or the
+layout changes; a stale pointer is worse than none. A session reads the standard before the
+first code change; the baseline says so and does not repeat it.
 
 Output: the agent-instruction baseline — `CLAUDE.md` or `AGENTS.md` — reviewed, with the
 entry-point map, the design principles, the pointer to `docs/tech-spec.md` and the other
