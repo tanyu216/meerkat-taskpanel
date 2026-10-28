@@ -287,6 +287,20 @@ authoritative home, because the container image drops `design/`.
 - **Stopping `taskd`:** `SIGTERM`/`SIGINT` is graceful and bounded — it ends SSE streams with a
   named `shutdown` frame before closing, because `/api/v1/events` never ends on its own.
 
+## Agent skills
+
+### Issue tracker
+
+Work is tracked as cards on the local Meerkat TaskPanel board through `taskctl`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles keep their default label strings. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/agents/domain.md`.
+
 ## Docs to read next (do not re-paste)
 
 - `GLOSSARY.md` — the canonical vocabulary: one word per concept, the words to avoid, and the terms that are *not* in the model.
