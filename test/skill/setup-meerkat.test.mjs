@@ -122,6 +122,14 @@ describe("skill frontmatter and assets", () => {
       /docs\/agents\//,
       "the stage stands alone — no tracker-integration artifact is required",
     );
+    assert.match(stage4, /ownership\.md/, "the stage names the team's routing guide");
+    assert.match(stage4, /roles root/i, "it points a session at the installed guide");
+    assert.match(stage4, /workflow/i, "it sends that session to the workflow the guide names");
+    assert.match(
+      stage4,
+      /installed[^.]{0,40}authoritative/i,
+      "the installed copy wins over the template it was seeded from",
+    );
 
     assert.match(
       skill,
@@ -135,6 +143,10 @@ describe("skill frontmatter and assets", () => {
     assert.ok(
       team.assertions.some((line) => line.includes("/meerkat")),
       "the standard-team eval expects the task entry",
+    );
+    assert.ok(
+      team.assertions.some((line) => line.includes("ownership.md")),
+      "the standard-team eval expects the team routing requirement",
     );
   });
 

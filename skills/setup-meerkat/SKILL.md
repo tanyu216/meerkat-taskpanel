@@ -206,6 +206,12 @@ write the requirements yourself.
 - The card scope: what work becomes a card here, and what stays out — a question, a lookup or
   a one-off command has no owner, so it is not a card; the recommended default is the work a
   role owns (the setup interview's answer).
+- When the setup installed a team, how a session routes its own work: taking on work a role
+  owns, it reads that team's `ownership.md` from the loop's roles root (§5) and follows the
+  workflow the guide names for that work shape — the loop injects the guide only for cards it
+  dispatches, so a session that takes the work itself has to read it. The installed copy is
+  authoritative; the template the team was installed from is only a seed. The card is still
+  created and delivered through `/meerkat`.
 
 Keep the keywords — `/meerkat`, `card`, `claim`, `heartbeat`, `deliver`, `in_review` and
 `done` — because a later session greps for them, and they are what sends it to the board

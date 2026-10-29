@@ -26,7 +26,8 @@
         "The roles root is <home>/.claude/skills/meerkat-loop/roles with manifest.json, an ownership routing guide, and four roles.",
         ".claude/agents/jobs.md and .codex/agents/reviewer.toml exist.",
         "A second identical run leaves the role files and native agent definitions unchanged (content-hash identical), and the role installer reports every action as unchanged.",
-        "The project's CLAUDE.md (or AGENTS.md) states the task entry once — /meerkat as the entry and the card scope — in the instruction file's own shape, with no marker block, and a second run leaves it unchanged."
+        "The project's CLAUDE.md (or AGENTS.md) states the task entry once — /meerkat as the entry and the card scope — in the instruction file's own shape, with no marker block, and a second run leaves it unchanged.",
+        "The same file says a session that takes on work a role owns reads the team's ownership.md from the loop's roles root and follows the workflow it names, with the installed copy authoritative over the template it was installed from."
       ]
     },
     {

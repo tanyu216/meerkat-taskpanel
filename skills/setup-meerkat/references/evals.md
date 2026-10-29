@@ -20,7 +20,10 @@ and Claude/Codex agent definitions; the second run changes no managed content (r
 files and agent definitions are `unchanged`; the installer may re-copy identical
 runtime bytes); the project's `CLAUDE.md`/`AGENTS.md` states the task entry once, naming
 `/meerkat` and carrying the card scope, with no marker block, and a re-run leaves it
-unchanged.
+unchanged; and, because a team was installed, the same file says how a session that takes
+on work a role owns routes it — `ownership.md` from the loop's roles root, the workflow it
+names for that work shape, the installed copy authoritative over the template it was
+installed from.
 
 ## 3. Project-scoped custom reviewer
 
