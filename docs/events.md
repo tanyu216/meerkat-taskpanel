@@ -342,7 +342,7 @@ queue plus the subagent ledger are the dispatch authorities.
 
 Everything else is named in `IGNORED_EVENTS`. Two entries are worth their reasons:
 
-- `epic_auto_start` is board-authored (`taskd`), which actor suppression already ignores; listing
+- `epic_auto_start` is board-authored (`system`), which actor suppression already ignores; listing
   it as a dispatch was a contradiction, not a behaviour.
 - `task_resumed` is ignored on purpose: the human's `comment_added` already refreshes the brief,
   and the next continue clock picks the returned card up. Whether it should wake a turn
@@ -353,7 +353,7 @@ A name neither list knows is a newer board and is ignored, never an error.
 **Suppression is by actor identity, not by a role word:**
 
 - a `human` event is never suppressed;
-- events authored by the board itself (`actor_id = taskd`) are ignored;
+- events authored by the board itself (`actor_id` is `system` or the workflow pass's `Orchestrator`) are ignored;
 - events authored by this loop's own agents (`actor_id ∈ --agent`, non-human) are ignored, which
   covers claims and the workflow pass.
 
@@ -580,7 +580,8 @@ Notes that the table cannot carry:
   rows remain readable through the activity routes.
 - `import_completed` is what a historical importer wrote at the end of a whole-directory import.
   The loop still classifies it as a dispatch (an import is work to discover) for boards that carry
-  such rows; `taskd`/`md-import` authorship is what lets it through the board-write suppression.
+  such rows; its `md-import` actor id is what lets it through the board-write suppression (the rule
+  is the id, not the kind — an importer also wrote `system`).
 - A `task_updated` row carries the patched **field names** plus the new dictionary/label values
   it resolved; it is not a diff of the patched fields. Consumers that need the old value read the
   state, not the row.
@@ -609,19 +610,30 @@ fields a task event already carries; there is no separate dictionary event to su
 ## 9. Actor identity
 
 `actor_kind` is an **open string** at the schema level. The only value with built-in meaning is
-`human`. The board's own writes use the concrete platform name `taskd`. An actor kind otherwise
-names the platform it runs on (`claude`, `codex`, `pi`, …).
+`human`. An actor kind otherwise names the platform the writer runs on (`claude`, `codex`,
+`pi`, …), or is the board's own `system` — the writes no agent and no person made (epic rollup,
+the label GC, the loop's workflow pass). What used to be `--actor-kind taskd` was renamed
+`system` on 2026-10-30: `taskd` put the service *process* on the record, which a reader could not
+tell from an agent.
 
-Two words are deliberately **not** kinds we write: `system` names no platform, and `agent` names a
-category ("not the human") rather than a writer. `test/contract/actor-kind.test.mjs` scans source
-for them. Historical rows that carried either are kept as recorded; the UI classifies by kind and
-the loop by id, so such a row simply reads as a non-human writer rather than breaking a surface.
+`system` is a role word rather than a platform, and that cost is accepted deliberately: the
+record's job is to tell a person from an agent from the board, and "system" is the word a reader
+already knows. It is affordable because **no rule trusts a kind any more** — acceptance is decided
+by the review evidence (an independent current-round `APPROVE`, never by the actor who wrote the
+verdict), and `awaiting`/decision/SLA rules only ever test `human`. Declaring `system` therefore
+buys no authority.
+
+One word is deliberately **not** a kind we write: `agent` names a category ("not the human")
+rather than a writer. `test/contract/actor-kind.test.mjs` scans source for it and for the retired
+`taskd`. Historical rows that carried any of them are kept as recorded; the UI classifies by kind
+and the loop by id, so such a row simply reads as a non-human writer rather than breaking a
+surface.
 
 This matters to the stream because suppression is by actor, not by a role word:
 
 - the loop ignores its own agents' writes and the board's housekeeping by `actor_id`;
 - a human's write is never suppressed;
-- an unknown actor kind is still a valid actor: it simply is not `human` and not `taskd`.
+- an unknown actor kind is still a valid actor: it simply is not `human` and not `system`.
 
 ## 10. How the design is enforced
 

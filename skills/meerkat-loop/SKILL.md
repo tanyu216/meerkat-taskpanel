@@ -162,9 +162,10 @@ list. An install that has no shim on `PATH` can use `<agent-dir>/bin/taskctl`, o
 ### Who may close
 
 The card's own `acceptance_mode` is authoritative and arrives on the card; the loop keeps no
-local copy and there is no board-level policy. In loop terms it closes what the plan lets
-`taskd` close: an `agent` original after a current-round `APPROVE`, its review card, and an
-`off` card the plan auto-accepts. A `human` card is still reviewed, but it is never accepted
+local copy and there is no board-level policy. The authority is the evidence, not the kind:
+an `agent` original is closable once a current-round `APPROVE` exists, and never by the
+actor that wrote the verdict — so the loop applies the plan as `system` under the id
+`Orchestrator`, closes its review card, and auto-accepts an `off` card the plan names. A `human` card is still reviewed, but it is never accepted
 by the loop — record the verdict on the original, close the review card, and let the person
 close it. A card with a parent is never `human` (the board refuses the mode at the parent edge
 and at `issue update --acceptance-mode human`), and every unresolved card — task or epic —

@@ -16,7 +16,7 @@
  * from the `peer_*` values this response publishes.
  */
 
-import { DEFAULT_BOARD_LIMIT, TASKD_KIND } from "../../foundation/constants.mjs";
+import { DEFAULT_BOARD_LIMIT, SLA_MECHANISM } from "../../foundation/constants.mjs";
 import {
   DEFAULT_TRAIL_LIMIT,
   leaderAttributionWarning,
@@ -104,7 +104,7 @@ export function slaSnapshot(ctx, input = {}) {
     now,
     periodSeconds,
     rows: config.rows,
-    mechanism: TASKD_KIND,
+    mechanism: SLA_MECHANISM,
     mechanismActor: null,
     leaderId: input.leaderId ?? null,
     lookbackDays: config.leaderLookbackDays,

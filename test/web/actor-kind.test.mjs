@@ -15,7 +15,9 @@ import { describe, it } from "node:test";
 
 import {
   DESIGN_PLATFORMS,
+  authorLabel,
   isAgentKind,
+  isSystemKind,
   kindLabel,
   platformForActor,
   platformOfKind,
@@ -37,6 +39,26 @@ describe("platformOfKind", () => {
       assert.equal(isAgentKind(platform), true);
     }
     for (const kind of ["agent", "human", "unknown", "", null, undefined]) assert.equal(platformOfKind(kind), null);
+  });
+});
+
+describe("the author word a comment's meta line shows", () => {
+  it("names the board's own writes `system`, not an agent's and not a person's", () => {
+    assert.equal(isSystemKind("system"), true);
+    assert.equal(isSystemKind(" System "), true);
+    assert.equal(isSystemKind("claude"), false);
+    assert.equal(isSystemKind(null), false);
+
+    assert.equal(authorLabel("system"), "system");
+    assert.equal(authorLabel("claude"), "agent");
+    assert.equal(authorLabel("agent"), "agent");
+    assert.equal(authorLabel("human"), "human");
+    // Nothing recorded reads as a person's, the repo's long-standing prior.
+    assert.equal(authorLabel(null), "human");
+    assert.equal(authorLabel(""), "human");
+
+    // The assignee domain stays two-valued: `system` is a writer, not an assignee.
+    assert.equal(kindLabel("system"), "agent");
   });
 });
 

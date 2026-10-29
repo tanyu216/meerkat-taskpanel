@@ -7,7 +7,7 @@
  * trivially testable with a frozen clock and a temp database.
  */
 
-import { TASKD_KIND } from "../../foundation/constants.mjs";
+import { SYSTEM_KIND } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { newId } from "../../foundation/ids.mjs";
 import { DEFAULT_SLA_CONFIG } from "../../foundation/sla-config.mjs";
@@ -96,7 +96,8 @@ export function actorOf(actor, options = {}) {
 /**
  * The actor for automated housekeeping (the board itself).
  *
- * Both halves are the board's concrete platform name. A vague role word would
- * not name a writer; `taskd` does.
+ * Both halves are the board's own kind: what the reader needs to know is that
+ * no person and no agent wrote this, and `system` says so without naming a
+ * process the user has never heard of.
  */
-export const BOARD_ACTOR = Object.freeze({ kind: TASKD_KIND, id: TASKD_KIND });
+export const BOARD_ACTOR = Object.freeze({ kind: SYSTEM_KIND, id: SYSTEM_KIND });

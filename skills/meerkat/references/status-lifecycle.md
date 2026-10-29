@@ -261,7 +261,7 @@ is not `done` — literally `status !== "done"`, so a `canceled` predecessor wit
 
 - **Never claimable.** `issue move <epic> in_progress` is `not_claimable`.
 - **The board starts it.** The first child to enter the work moves the container
-  `todo → in_progress` (actor kind `taskd`, no claim), with an `epic_auto_start` activity and
+  `todo → in_progress` (actor kind `system`, no claim), with an `epic_auto_start` activity and
   a `kind=note` comment naming the child. A `backlog` epic is not auto-started.
 - **The board closes it to `in_review`, never `done`.** When every child is terminal, at least
   one is `done`, and there is evidence to roll up, it writes the **rollup report**
@@ -313,10 +313,10 @@ only `off` skips the review.
 <!-- acceptance-matrix:begin -->
 | Card mode | Review card | Who may move it to `done` |
 |---|---|---|
-| `off` | none | the deliverer (any actor kind), `taskd`, or a human; `in_progress → done` is allowed |
-| `agent` | yes — an agent reviewer | `taskd` (after a current-round `APPROVE`) or a human |
+| `off` | none | the deliverer (any actor kind), or a human; `in_progress → done` is allowed |
+| `agent` | yes — an agent reviewer | anyone but the reviewer, after a current-round `APPROVE`; a human may always |
 | `human` | yes — an agent reviewer | a human only |
-| a review card | — | a human or `taskd` — never the reviewer itself |
+| a review card | — | a human, or any actor but its reviewer — never the one who wrote the verdict |
 <!-- acceptance-matrix:end -->
 
 The **project default** (`projects.acceptance`: `auto | off | agent | human`, default
@@ -339,7 +339,8 @@ epic — falls back to `agent`: review is the default, and `human` is opt-in. An
 - A worker that closes an `agent` or `human` card gets `ACCEPTANCE_FORBIDDEN`; `details` carry
   `mode` and `reviewCard`, never a policy or scope.
 - `REVIEW_PENDING` applies only to an **`agent`** card whose current-round review card is still
-  open, and only to a human closing it; `taskd` is exempt.
+  open, and only to a human closing it; a non-human closer is exempt (its protocol is to move
+  the original first and close the review card last).
 - `--actor-kind human` is reserved; a human write uses `--as-human` — in a conversation with
   the human, or when the instruction explicitly came from them (see the board skill's create
   section).

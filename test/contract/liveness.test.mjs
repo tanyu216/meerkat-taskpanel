@@ -138,7 +138,7 @@ describe("contract/liveness — every non-terminal status can reach canceled", (
     assert.ok(allowedTargets("in_review").includes("done"));
     for (const mode of ["off", "agent", "human"]) {
       assert.ok(
-        ["human", "taskd", "agent"].some((kind) => acceptanceAllows(kind, mode)),
+        ["human", "system", "agent"].some((kind) => acceptanceAllows(kind, mode)),
         `${mode} has at least one acceptor — a mode no actor satisfies is a guaranteed stall`,
       );
     }

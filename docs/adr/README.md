@@ -22,6 +22,7 @@ what a change must comply with.
 | [0001](0001-architecture-style.md) | Layered modulith; DDD rejected | Accepted (reconstructed) |
 | [0002](0002-stack-bundle.md) | Node 22 + `node:sqlite`, zero runtime dependencies; Vue built offline | Accepted (reconstructed) |
 | [0003](0003-delivery-report-anchors-at-write.md) | A `met` claim needs its evidence anchor at delivery, not only at close | Accepted |
+| [0004](0004-actor-kind-system.md) | The board writes as `system`; acceptance is decided by evidence, not by actor kind | Accepted |
 
 ## Writing one
 

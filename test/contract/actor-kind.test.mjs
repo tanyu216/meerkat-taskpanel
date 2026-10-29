@@ -1,16 +1,22 @@
 /**
- * The actor-kind rule: an actor's kind is `human`, or the concrete platform a
- * writer runs on (`claude`, `codex`, `pi`, `openclaw`, …),
- * or the board's own platform name `taskd`.
+ * The actor-kind rule: an actor's kind is `human`, the concrete platform a
+ * writer runs on (`claude`, `codex`, `pi`, `openclaw`, …), or the board's own
+ * kind `system`.
  *
- * What must not appear in our own writes is a vague role word. `system` names no
- * platform, and `agent` names a category ("not the human") rather than a
- * writer. The schema keeps the column open on purpose — an agent kind may call itself
- * anything — so this is a **repository** rule, enforced statically, not a
- * runtime vocabulary.
+ * What must not appear in our own writes is `taskd` — the retired name, which
+ * put the service process on the record as if it were a writer — or `agent`, a
+ * category ("not the human") rather than a writer. The schema keeps the column
+ * open on purpose — an agent kind may call itself anything — so this is a
+ * **repository** rule, enforced statically, not a runtime vocabulary.
  *
- * Historical rows may still carry `system`/`agent`; they are facts about the
- * past and are never rewritten. The scan therefore covers source only, not
+ * `system` is the one recording role rather than a platform, and the scan admits
+ * it on purpose (2026-10-30): a user reads "system" where they could not read
+ * "taskd". The cost that made the older rule ban it is paid elsewhere — no rule
+ * trusts a kind any more, because acceptance is decided by the review evidence
+ * (an independent current-round APPROVE, never by the actor who wrote it).
+ *
+ * Historical rows may still carry `taskd`/`system`/`agent`; they are facts about
+ * the past and are never rewritten. The scan therefore covers source only, not
  * migrations or test fixtures.
  */
 
@@ -22,7 +28,12 @@ import test, { describe, it } from "node:test";
 
 import { BOARD_ACTOR } from "../../src/core/commands/context.mjs";
 import { acceptanceAllows } from "../../src/core/domain/acceptance-mode.mjs";
-import { HUMAN_KIND, TASKD_KIND } from "../../src/foundation/constants.mjs";
+import {
+  HUMAN_KIND,
+  ORCHESTRATOR_ACTOR_ID,
+  SLA_MECHANISM,
+  SYSTEM_KIND,
+} from "../../src/foundation/constants.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const SCAN_ROOTS = ["src", "scripts", "skills"];
@@ -33,14 +44,14 @@ const EXTENSIONS = new Set([".mjs", ".js", ".sh"]);
 
 const BANNED = [
   {
-    name: "a vague `system` kind",
-    pattern: /\b(?:actorKind|kind|author_kind|actor_kind)\s*[:=]\s*["']system["']/,
+    name: "the retired `taskd` kind",
+    pattern: /\b(?:actorKind|kind|author_kind|actor_kind)\s*[:=]\s*["']taskd["']/,
   },
   {
     name: "a vague `agent` kind",
     pattern: /\b(?:actorKind|kind|author_kind|actor_kind)\s*[:=]\s*["']agent["']/,
   },
-  { name: "`--actor-kind system`", pattern: /--actor-kind\s+system\b/ },
+  { name: "`--actor-kind taskd`", pattern: /--actor-kind\s+taskd\b/ },
   { name: "`--actor-kind agent`", pattern: /--actor-kind\s+agent\b/ },
 ];
 
@@ -60,19 +71,21 @@ function* walk(dir) {
 }
 
 describe("contract/actor-kind — concrete writers, not vague roles", () => {
-  it("names the board with the concrete platform `taskd`", () => {
+  it("names the board's own kind `system`, and keeps the SLA label apart", () => {
     assert.equal(HUMAN_KIND, "human");
-    assert.equal(TASKD_KIND, "taskd");
-    assert.deepEqual({ ...BOARD_ACTOR }, { kind: "taskd", id: "taskd" });
-    // 0038 — the pair an `agent`-mode card accepts (replacing the retired
-    // `ACCEPTANCE_ACTOR_KINDS` constant).
-    assert.deepEqual(
-      [HUMAN_KIND, TASKD_KIND].filter((kind) => acceptanceAllows(kind, "agent")),
-      ["human", "taskd"],
-    );
+    assert.equal(SYSTEM_KIND, "system");
+    assert.deepEqual({ ...BOARD_ACTOR }, { kind: "system", id: "system" });
+    // The SLA mechanism is a *label*, not a kind: renaming the kind must not
+    // silently re-key every outstanding alert.
+    assert.equal(SLA_MECHANISM, "taskd");
+    // A kind is no longer an acceptance allow-list: the evidence decides, and a
+    // `human` card still admits exactly one kind.
+    assert.equal(acceptanceAllows(HUMAN_KIND, "agent"), true);
+    assert.equal(acceptanceAllows(SYSTEM_KIND, "human"), false);
+    assert.equal(acceptanceAllows("", "agent"), false);
   });
 
-  it("leaves no `system` or `agent` kind in a production write", () => {
+  it("leaves no `taskd` or `agent` kind in a production write", () => {
     const offenders = [];
     for (const root of SCAN_ROOTS) {
       const dir = join(ROOT, root);
@@ -95,14 +108,19 @@ describe("contract/actor-kind — concrete writers, not vague roles", () => {
     assert.deepEqual(offenders, [], `vague actor kinds remain:\n${offenders.join("\n")}`);
   });
 
-  it("no longer exports the old SYSTEM_ACTOR name", async () => {
+  it("no longer exports the retired names", async () => {
     const context = await import("../../src/core/commands/context.mjs");
     const commands = await import("../../src/core/commands/index.mjs");
     const core = await import("../../src/core/index.mjs");
+    const constants = await import("../../src/foundation/constants.mjs");
     assert.equal("SYSTEM_ACTOR" in context, false);
     assert.equal("SYSTEM_ACTOR" in commands, false);
     assert.equal("SYSTEM_ACTOR" in core, false);
     assert.equal("BOARD_ACTOR" in commands, true);
     assert.equal("BOARD_ACTOR" in core, true);
+    // The retired name is gone rather than aliased: two spellings of one kind is
+    // exactly the drift this rule exists to prevent.
+    assert.equal("TASKD_KIND" in constants, false);
+    assert.equal(ORCHESTRATOR_ACTOR_ID, "Orchestrator");
   });
 });

@@ -476,21 +476,33 @@ describe("board skill: the acceptance matrix has one home", () => {
     assert.deepEqual(modes, ["off", "agent", "human", "a review card"]);
 
     // Each mode row's `done` cell is read against the domain's own predicate.
+    // The two questions the matrix answers are "may a person?" and "may an agent
+    // that is not the reviewer?" — the kind is no longer an allow-list.
     const cellAllows = (cell) => cell.replace(/`/g, "").toLowerCase();
+    const admitsAnAgent = (cell) =>
+      cell.includes("deliverer") || cell.includes("any actor kind") || cell.includes("anyone but the reviewer");
     for (const [index, mode] of ["off", "agent", "human"].entries()) {
       const cell = cellAllows(data[index][2]);
       assert.equal(cell.includes("human"), acceptanceAllows("human", mode), `${mode} × human`);
-      assert.equal(cell.includes("taskd"), acceptanceAllows("taskd", mode), `${mode} × taskd`);
       assert.equal(
-        cell.includes("deliverer") || cell.includes("any actor kind"),
-        acceptanceAllows("claude", mode),
-        `${mode} × an agent`,
+        admitsAnAgent(cell),
+        acceptanceAllows("claude", mode, { actorId: "w1", verdictAuthorId: "r1" }),
+        `${mode} × another agent`,
       );
     }
 
     const review = cellAllows(data[3][2]);
-    assert.ok(review.includes("human") && review.includes("taskd"), "the acceptor closes a review card");
-    assert.equal(acceptanceAllows("claude", "off", { reviewCard: true }), false, "never the reviewer");
+    assert.ok(review.includes("human") && review.includes("never"), "the verdict's author never closes it");
+    assert.equal(
+      acceptanceAllows("claude", "off", { reviewCard: true, actorId: "r1", verdictAuthorId: "r1" }),
+      false,
+      "never the reviewer",
+    );
+    assert.equal(
+      acceptanceAllows("claude", "off", { reviewCard: true, actorId: "w1", verdictAuthorId: "r1" }),
+      true,
+      "another agent closes it after the verdict",
+    );
   });
 });
 
