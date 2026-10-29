@@ -102,6 +102,50 @@ export function assertDeliveryCommitAnchor(task, report) {
 }
 
 /**
+ * A `met` claim must name its anchor in the report it is written in.
+ *
+ * The acceptance gate runs the same rule when the card is closed, but by then
+ * the report is frozen: it binds a round, and a round can only be repaired by
+ * delivering a new one — after a whole review has already been spent on it. A
+ * report that can never be accepted is cheaper to refuse at the writer.
+ *
+ * Only `met` is judged. `not_met`/`partial` are honest progress, and an item a
+ * worker cannot anchor can say so instead of claiming it.
+ *
+ * @param {object} task
+ * @param {object|null|undefined} report the prepared or stored report
+ * @returns {true}
+ * @throws {DomainError} ACCEPTANCE_INCOMPLETE
+ */
+export function assertDeliveryEvidenceAnchors(task, report) {
+  if (task?.reviewOfId !== null && task?.reviewOfId !== undefined) return true;
+  if (task?.kind === TASK_KIND.EPIC) return true;
+  if (cardAcceptanceOf(task?.acceptanceMode) !== "agent") return true;
+
+  const evidence = evidenceFromJson(report?.evidence).items;
+  const unsupported = unsupportedClaimsOf({ reportItems: report?.acceptance ?? [], evidence });
+  if (unsupported.length === 0) return true;
+
+  throw new DomainError("ACCEPTANCE_INCOMPLETE", {
+    message:
+      `${task?.identifier ?? "the card"}: ${unsupported.length} met acceptance item(s) name no ` +
+      "evidence anchor — a report that cannot be accepted is refused before it is written",
+    details: {
+      taskId: task?.id ?? null,
+      identifier: task?.identifier ?? null,
+      source: "delivery",
+      round: report?.round ?? task?.deliveryRound ?? null,
+      unsupported,
+    },
+    hint: {
+      fix:
+        "cite the anchor in the note, e.g. a met item's note ends with (evidence[1]); mark it " +
+        "not_met or partial instead if there is nothing to point at",
+    },
+  });
+}
+
+/**
  * Does the current-round delivery report cover the card's frozen baseline?
  *
  * This is the 0032 acceptance gate. A review card is exempt here — its evidence

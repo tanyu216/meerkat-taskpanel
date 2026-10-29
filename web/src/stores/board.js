@@ -28,7 +28,10 @@ import { AWAITING, COLUMN_STATUSES, PRIORITIES, STATUSES } from "../lib/board-en
 
 export { isAgentKind, kindLabel, platformForActor, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
-import { acceptanceWaitingTasks, payloadCommentOf } from "../lib/waiting-queue.js";
+import { acceptanceWaitingTasks, firstSentence, payloadCommentOf } from "../lib/waiting-queue.js";
+// The preview's sentence rule moved into the projection (a row's field); it is
+// re-exported here so an existing import site keeps its one store entry point.
+export { firstSentence };
 import {
   detailRefetch,
   invalidatesWaitingPayload,
@@ -163,6 +166,17 @@ export const board = reactive({
   selectedRef: null,
   drawerState: "closed",
   detail: null,
+  /**
+   * A **one-shot** landing tab for the drawer (`{ ref, tab }`).
+   *
+   * The drawer picks its tab from the card's status, which is all it can know on
+   * its own. A caller that knows more — the waiting queue, whose row's
+   * `reasonKind` says whether the reader is answering a question or judging a
+   * delivery — names the tab here instead, and the drawer consumes it once when
+   * it opens (`consumeDetailIntent`). Opening without an intent clears it, so a
+   * stale landing tab can never outlive the open that asked for it.
+   */
+  detailIntent: null,
   conflict: null,
   /**
    * M1 — the 「等你回复」payload, per task id: the human comment that triggered
@@ -304,24 +318,33 @@ function matchesSearch(task, needle) {
   return hay.includes(needle);
 }
 
+/**
+ * The assignee narrowing, as **one** predicate: does this card pass the
+ * sidebar's current name condition?
+ *
+ * The board view and both halves of the waiting queue read this one function, so
+ * a roster press cannot mean three things (`lib/assignee-filter.js`): before R13
+ * the third arm did not exist, and a name matched nothing and let every row
+ * through (`design/fidelity-r13.md` §2.6). It is also the **only** filter the
+ * queue applies (TP-0021) — a board-view filter never reaches it.
+ *
+ * @param {{assignee?: {display_name?: string, kind?: string}|null}} task
+ */
+function passesAssignee(task) {
+  return actorMatches(assigneeFilterValue(), task?.assignee?.display_name ?? "", task?.assignee?.kind, ME);
+}
+
 export const visibleTasks = computed(() => {
-  const { search, assignee, priority, label } = board.filters;
+  const { search, priority, label } = board.filters;
   const needle = search.trim().toLowerCase();
   const byStatus = statusFilterValues();
   return board.tasks.filter((task) => {
     if (!matchesSearch(task, needle)) return false;
-    /* R13 — `me` is the local human, the two *kinds* compare the assignee's kind,
-     * and everything else the control holds is a given name compared against the
-     * card's own assignee. Before R13 the third arm did not exist: a name matched
-     * nothing and every row came through, which is the defect Terry reported
-     * (`design/fidelity-r13.md` §2.6). */
-    if (assignee !== "all") {
-      // One predicate for the board, the activity feed and the waiting queue
-      // (`lib/assignee-filter.js`): an **unassigned** card is in neither the
-      // human row nor the agent row, and since 0023 a kind is a platform — so
-      // `agent` means "not the human", never "the literal string `agent`".
-      if (!actorMatches(assignee, task.assignee?.display_name ?? "", task.assignee?.kind, ME)) return false;
-    }
+    // One predicate for the board, the activity feed and the waiting queue
+    // (`lib/assignee-filter.js`): an **unassigned** card is in neither the human
+    // row nor the agent row, and since 0023 a kind is a platform — so `agent`
+    // means "not the human", never "the literal string `agent`".
+    if (!passesAssignee(task)) return false;
     if (priority !== "all" && priorityOf(task) !== priority) return false;
     /* R11 ① — multiple choice is **OR** (a card passes when it is in *any* chosen
      * status), and it is ANDed with the clauses above. The comparison is against
@@ -382,10 +405,18 @@ export const projectLoading = computed(() => board.loading && !board.loaded);
  * The cards the 「等你回复」view shows, and the number its nav pill prints.
  *
  * One predicate for both (design §8-05): the view and the count read the same
- * derivation, so they cannot disagree — and both are built on `visibleTasks`, so
- * a card hidden by an active filter is in neither.
+ * derivation, so they cannot disagree.
+ *
+ * Derived from `board.tasks` — the whole reading, unfiltered — rather than from
+ * `visibleTasks`, and narrowed by the **assignee condition alone** (TP-0021).
+ * The waiting view hides the filter bar, so a status / priority / label / search
+ * filter narrowing this queue would be invisible to the reader, and it would
+ * contradict the reason the view has no filter of its own: a queue of what is
+ * owed must not let a reader hide the overdue item (`design/DESIGN.md` §30.6).
+ * The assignee narrowing stays because it is the sidebar's name narrowing —
+ * *whose* queue is being read — not a board-view filter.
  */
-export const waitingTasks = computed(() => visibleTasks.value.filter(isAwaiting));
+export const waitingTasks = computed(() => board.tasks.filter((task) => isAwaiting(task) && passesAssignee(task)));
 
 /**
  * The cards whose **delivery** waits on this human: an `in_review` card whose
@@ -409,38 +440,15 @@ export const acceptanceTasks = computed(() => acceptanceWaitingTasks(board.tasks
  * result, never to its input — filtering the input would let a child assigned to
  * someone else count as resolved (`lib/waiting-queue.js#acceptanceRowsFrom`).
  *
- * Only the assignee condition applies: an acceptance is not a board column, so
- * a status/priority/label filter must not make it disappear.
+ * Only the assignee condition applies — the same `passesAssignee` predicate the
+ * question half uses (TP-0021): an acceptance is not a board column, so a
+ * status/priority/label filter must not make it disappear, and the two halves of
+ * one queue must not apply different rules.
  */
-export const visibleAcceptanceTasks = computed(() =>
-  acceptanceTasks.value.filter((task) =>
-    actorMatches(assigneeFilterValue(), task.assignee?.display_name ?? "", task.assignee?.kind, ME),
-  ),
-);
+export const visibleAcceptanceTasks = computed(() => acceptanceTasks.value.filter((task) => passesAssignee(task)));
 
 /** The nav pill: the awaiting rows plus the acceptance rows the narrowing leaves. */
 export const waitingCount = computed(() => waitingTasks.value.length + visibleAcceptanceTasks.value.length);
-
-/**
- * The first sentence of a payload comment — the text up to the first
- * sentence-final punctuation (`。．.！!？?`) or the first newline, whichever
- * comes first, punctuation included.
- *
- * Mirrors `src/core/domain/awaiting.mjs#firstSentence`; the web cannot import
- * from `src/`, so the rule is restated here and asserted against a fixture
- * rather than trusted to stay in step.
- *
- * @param {unknown} body
- * @returns {string}
- */
-export function firstSentence(body) {
-  const text = String(body ?? "");
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-    if (ch === "\n" || "。．.！!？?".includes(ch)) return text.slice(0, i + 1).trim();
-  }
-  return text.trim();
-}
 
 /**
  * Load the payload comment for every awaiting card of the current project.
@@ -1176,9 +1184,24 @@ function personKind(field, name) {
 /** Monotonic detail generation: an older fan-out may never land over a newer patch. */
 let detailToken = 0;
 
-export async function openDetail(identifier) {
+/**
+ * Open the drawer on a card.
+ *
+ * `options.tab` is the **one-shot** landing tab (see `board.detailIntent`). Only
+ * a caller that knows more than the card's status does passes it — the waiting
+ * queue, whose row's `reasonKind` names the panel. Every other caller passes
+ * nothing, which clears any intent left behind and keeps the status-only rule.
+ *
+ * @param {string} identifier the card's ref
+ * @param {{tab?: string}} [options]
+ */
+export async function openDetail(identifier, { tab } = {}) {
   board.selectedRef = identifier;
   board.drawerState = "open";
+  // One-shot: this open states the tab it wants (or none, which withdraws a
+  // previous one). The drawer takes it in the same card watcher that reads the
+  // card, and clears it there.
+  board.detailIntent = tab ? { ref: identifier, tab } : null;
   board.detail = null;
   const token = ++detailToken;
   /**
@@ -1222,16 +1245,39 @@ export async function openDetail(identifier) {
   } catch (err) {
     if (!current()) return;
     board.drawerState = "closed";
+    // A read that never landed must not leave its landing tab behind for the
+    // next open to inherit.
+    board.detailIntent = null;
     // The wire's message is never shown (④) — the code names the sentence, and
     // the card's own ref makes it answer "which one?".
     pushToast(t(errorTextKey(err), identifier), "danger");
   }
 }
 
+/**
+ * Take the one-shot landing tab for `ref`, clearing it in the same act.
+ *
+ * The drawer calls this from its card watcher. A call for another ref (the
+ * watcher's first firing with no card loaded, a stale read) leaves the intent
+ * alone: only the open that asked for it may consume it, and only once.
+ *
+ * @param {string|undefined|null} ref the identifier the drawer just opened
+ * @returns {string|null} the tab to land on, or `null` for the status rule
+ */
+export function consumeDetailIntent(ref) {
+  const intent = board.detailIntent;
+  if (!intent || !ref || intent.ref !== ref) return null;
+  board.detailIntent = null;
+  return intent.tab;
+}
+
 export function closeDetail() {
   detailToken += 1;
   board.drawerState = "closed";
   board.selectedRef = null;
+  // Closing withdraws whatever landing tab was asked for; an open that never
+  // resolves must not colour a later one.
+  board.detailIntent = null;
 }
 
 /**

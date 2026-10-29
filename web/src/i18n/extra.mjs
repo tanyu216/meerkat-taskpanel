@@ -139,13 +139,29 @@ export const EXTRA = {
     "drawer.report.round": "round %s",
     "drawer.reports.empty": "No reports yet.",
     "drawer.commentHintAwaiting": "Submitting answers the question — the card is re-queued for the agent.",
-    "drawer.acceptance.empty": "No acceptance criteria yet.",
+    // The tab shows the card's criteria unconditionally; only the *verdicts*
+    // are absent before a delivery, so this copy must never claim the card has
+    // no criteria (that was the defect). It speaks about verdicts alone.
+    "drawer.acceptance.empty": "No acceptance verdicts yet.",
     "drawer.leftovers.empty": "No leftovers — this round closed with nothing outstanding.",
     "drawer.leftovers.round": "round %s",
     "drawer.acceptance.met": "Met",
     "drawer.acceptance.partial": "Partial",
     "drawer.acceptance.not_met": "Not met",
     "drawer.acceptance.not_applicable": "Not applicable",
+    // The UI-only face of a criterion no report has answered yet: the card has
+    // criteria, the verdict list does not. Not a wire status.
+    "drawer.acceptance.pending": "Pending",
+    // The tab's delivery summary and its two actions. The prototype's panel is
+    // read-only (it has no board), so this whole vocabulary is
+    // implementation-only, like Reopen's: the card's own `acceptance_mode`
+    // assigns the act to the human, and these are the words for it.
+    "drawer.acceptance.summary": "Delivery",
+    "drawer.acceptance.author": "Reported by %s",
+    "drawer.accept": "Accept and close",
+    "drawer.sendBack": "Send back for rework",
+    "drawer.sendBackReason": "What should the worker fix before resubmitting?",
+    "drawer.sendBackConfirm": "Send back",
     "drawer.session.status.running": "Running",
     "drawer.session.status.closed": "Closed",
     "drawer.session.status.failed": "Failed",
@@ -176,6 +192,18 @@ export const EXTRA = {
     "waiting.reason.E3": "Design / aesthetic direction",
     "waiting.reason.E4": "Security / data safety",
     "waiting.reason.E5": "Architecture direction",
+    // TP-0019 — the queue states the human's **act**, not only the card's
+    // state, and gives the ask a second line. The chip's copy is the action;
+    // the opener repeats it as its visible label and names it in the accessible
+    // name. The acceptance preview is two positional `%s` (round, count) drawn
+    // from `delivery_round` and the frozen acceptance list — no report read.
+    "waiting.action.question": "Answer",
+    "waiting.action.blocked": "Unblock",
+    "waiting.action.acceptance": "Accept",
+    "waiting.open.answer": "Answer %s",
+    "waiting.open.unblock": "Unblock %s",
+    "waiting.open.accept": "Accept %s",
+    "waiting.preview.acceptance": "Round %s · %s acceptance items",
     // The event vocabulary the prototype never had: archive, sessions, import
     // progress, and the generic fallback an unknown event reads as.
     "activity.archived": "archived this task",
@@ -267,13 +295,23 @@ export const EXTRA = {
     "drawer.report.round": "第 %s 轮",
     "drawer.reports.empty": "暂无报告。",
     "drawer.commentHintAwaiting": "提交即作为答复 —— 卡片会重新排队交给 Agent。",
-    "drawer.acceptance.empty": "暂无验收项。",
+    // 同上：只说没有验收结论，不说卡片没有验收项。
+    "drawer.acceptance.empty": "暂无验收结论。",
     "drawer.leftovers.empty": "本轮无遗留。",
     "drawer.leftovers.round": "第 %s 轮",
     "drawer.acceptance.met": "已满足",
     "drawer.acceptance.partial": "部分满足",
     "drawer.acceptance.not_met": "未满足",
     "drawer.acceptance.not_applicable": "不适用",
+    // 仅供界面：卡片有验收项、报告尚未给出结论。
+    "drawer.acceptance.pending": "待判定",
+    // 同上：原型里的验收面板只读（原型没有看板），这组词只属于实现。
+    "drawer.acceptance.summary": "本次交付",
+    "drawer.acceptance.author": "提交人：%s",
+    "drawer.accept": "验收并关闭",
+    "drawer.sendBack": "退回重做",
+    "drawer.sendBackReason": "说明需要返工的地方，让执行者知道改什么。",
+    "drawer.sendBackConfirm": "退回",
     "drawer.session.status.running": "运行中",
     "drawer.session.status.closed": "已关闭",
     "drawer.session.status.failed": "失败",
@@ -292,6 +330,14 @@ export const EXTRA = {
     "waiting.reason.E3": "设计 / 美学方向",
     "waiting.reason.E4": "安全 / 数据安全",
     "waiting.reason.E5": "架构方向",
+    // TP-0019 — 行动与问题：标签写「你该做什么」，第二行写「在问什么」。
+    "waiting.action.question": "回答",
+    "waiting.action.blocked": "解除阻塞",
+    "waiting.action.acceptance": "验收",
+    "waiting.open.answer": "回答 %s",
+    "waiting.open.unblock": "解除阻塞 %s",
+    "waiting.open.accept": "验收 %s",
+    "waiting.preview.acceptance": "第 %s 轮 · %s 条验收项",
     "activity.archived": "归档了任务",
     "activity.session": "记录了会话",
     "activity.progress": "记录了进度",

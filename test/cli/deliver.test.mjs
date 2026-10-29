@@ -24,7 +24,7 @@ after(cleanupTempDirs);
 
 const REPORT = {
   conclusion: "M2 landed: the CLI is a client and the gate is visible.",
-  acceptance: [{ text: "cli works", status: "met" }],
+  acceptance: [{ text: "cli works", status: "met", note: "the suite ran green (evidence[1])" }],
   evidence: [{ kind: "commit", sha: "dcd7d15" }],
 };
 
@@ -199,6 +199,53 @@ describe("cli/deliver — a bad report costs nothing (case 4)", () => {
       assert.equal(result.status, 1);
       assert.equal(errorOf(result).code, "CLI_IO");
       assert.match(errorOf(result).message, /not valid JSON/);
+    });
+  });
+
+  // The acceptance gate judges anchors when the card closes, and by then the
+  // report is frozen — it binds a round, and a review may already have been
+  // spent on it. An anchorless `met` is refused while it can still be edited.
+  it("refuses a `met` that names no evidence anchor, and leaves the card in progress", async () => {
+    await readyBoard(async ({ run }) => {
+      const result = run(["issue", "deliver", "DEMO-0001", "--report-file", "-", "--json"], {
+        input: JSON.stringify({ ...REPORT, acceptance: [{ text: "cli works", status: "met" }] }),
+      });
+      assert.equal(result.status, 1);
+      const error = errorOf(result);
+      assert.equal(error.code, "ACCEPTANCE_INCOMPLETE");
+      assert.equal(error.details.source, "delivery");
+      assert.equal(error.details.unsupported[0].reason, "no_anchor");
+      assert.match(error.hint.fix, /evidence\[1\]/);
+
+      const after_ = dataOf(run(["issue", "get", "DEMO-0001", "--json"]));
+      assert.equal(after_.task.status, "in_progress", "a refused report writes nothing");
+      assert.equal(after_.task.report_latest_id, null);
+    });
+  });
+
+  it("accepts the same claim once its note cites the anchor", async () => {
+    await readyBoard(async ({ run }) => {
+      const result = run(["issue", "deliver", "DEMO-0001", "--report-file", "-", "--json"], {
+        input: JSON.stringify({
+          ...REPORT,
+          acceptance: [{ text: "cli works", status: "met", note: "ran it (evidence[1])" }],
+        }),
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(dataOf(result).task.status, "in_review");
+    });
+  });
+
+  it("keeps an off card's lighter contract: no anchor required", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      run(["issue", "create", "--project", "demo", "--title", "Ship M2", "--acceptance", "cli works", "--acceptance-mode", "off", "--json"]);
+      run(["issue", "move", "DEMO-0001", "in_progress", "--json"]);
+      const result = run(["issue", "deliver", "DEMO-0001", "--report-file", "-", "--json"], {
+        input: JSON.stringify({ ...REPORT, acceptance: [{ text: "cli works", status: "met" }] }),
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(dataOf(result).task.status, "in_review");
     });
   });
 });

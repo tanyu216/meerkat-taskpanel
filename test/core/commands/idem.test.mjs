@@ -22,7 +22,7 @@ const AGENT = { kind: "agent", id: "linus" };
 
 const REPORT = {
   conclusion: "done",
-  acceptance: [{ text: "it works", status: "met" }],
+  acceptance: [{ text: "it works", status: "met", note: "ran it (evidence[1])" }],
   evidence: [{ kind: "commit", sha: "abc1234" }],
   author: AGENT,
 };

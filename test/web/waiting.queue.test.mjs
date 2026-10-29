@@ -4,8 +4,8 @@
  * The queue is a derivation like B26's feed, and the whole of it is one pure
  * module, so its three rules can be asserted here without a browser: the order
  * (oldest first), the instant a row carries, and the two-value reason attribute.
- * The render — the six fields, the stamp stated twice, the opener — is measured
- * live in `web/scripts/dom-smoke.mjs`.
+ * The render — the row's fields (act and preview included), the stamp stated
+ * twice, the opener — is measured live in `web/scripts/dom-smoke.mjs`.
  *
  * Authority: `design/BLOCKS.md` B27, `design/DESIGN.md` §30.
  */
@@ -15,6 +15,9 @@ import { describe, it } from "node:test";
 import {
   AWAITING_CATEGORIES,
   WAITING_REASON_KINDS,
+  actionKeyOf,
+  firstSentence,
+  openKeyOf,
   payloadCommentOf,
   reasonKeyOf,
   reasonKindOf,
@@ -22,7 +25,7 @@ import {
   waitingRow,
   waitingRows,
 } from "../../web/src/lib/waiting-queue.js";
-import { payloadOf } from "../../src/core/domain/awaiting.mjs";
+import { firstSentence as domainFirstSentence, payloadOf } from "../../src/core/domain/awaiting.mjs";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -109,7 +112,7 @@ describe("B27 · the queue", () => {
     assert.deepEqual(rows.map((row) => row.id), ["a", "b"]);
   });
 
-  it("projects the six fields a row owes, with the identifier capped at ten characters", () => {
+  it("projects the fields a row owes, with the identifier capped at ten characters", () => {
     const [row] = waitingRows([card("1", "INVENTORY-0042", { title: "Long id" })], {}, NOW);
     assert.equal(row.identifier, "INVENTORY-0042", "the row keeps the whole value for its `title`");
     assert.equal(row.display, "INVENTORY-…", "the cell is the capped value");
@@ -135,6 +138,86 @@ describe("B27 · the queue", () => {
     const [row] = waitingRows([card("1", "TD-1", { assignee: { display_name: "jobs", kind: "agent" } })], {}, NOW);
     assert.equal(row.actor, "jobs");
     assert.equal(waitingRow(card("2", "TD-2", { assignee: null })).actor, "");
+  });
+});
+
+describe("TP-0019 · a row states the action and the ask", () => {
+  it("names the human's act, and the opener's accessible name, for every kind", () => {
+    assert.equal(actionKeyOf("question"), "waiting.action.question");
+    assert.equal(actionKeyOf("blocked"), "waiting.action.blocked");
+    assert.equal(actionKeyOf("acceptance"), "waiting.action.acceptance");
+    assert.equal(actionKeyOf("nonsense"), "waiting.action.question");
+    assert.equal(openKeyOf("question"), "waiting.open.answer");
+    assert.equal(openKeyOf("blocked"), "waiting.open.unblock");
+    assert.equal(openKeyOf("acceptance"), "waiting.open.accept");
+
+    const [question] = waitingRows([card("1", "TD-1")], {}, NOW);
+    assert.equal(question.actionKey, "waiting.action.question");
+    assert.equal(question.openKey, "waiting.open.answer");
+  });
+
+  it("previews the triggering question's first sentence from the payload already read", () => {
+    const payload = { body: "First one. Second one.", created_at: at(30) };
+    const [row] = waitingRows([card("1", "TD-1")], { 1: payload }, NOW);
+    assert.equal(row.preview, "First one.");
+    assert.equal(row.previewKey, null);
+    // Nothing has been read yet: the preview invents no sentence.
+    const [bare] = waitingRows([card("2", "TD-2")], {}, NOW);
+    assert.equal(bare.preview, "");
+  });
+
+  it("states an action and a preview for a blocked row too", () => {
+    const [row] = waitingRows(
+      [card("1", "TD-1", { awaiting_reason: "blocked" })],
+      { 1: { body: "unblock me. later" } },
+      NOW,
+    );
+    assert.equal(row.reasonKind, "blocked");
+    assert.equal(row.actionKey, "waiting.action.blocked");
+    assert.equal(row.openKey, "waiting.open.unblock");
+    assert.equal(row.preview, "unblock me.");
+  });
+
+  it("composes an acceptance preview from delivery_round and the acceptance count", () => {
+    const task = {
+      id: "1",
+      identifier: "TD-1",
+      title: "Delivered 1",
+      status: "in_review",
+      delivery_round: 2,
+      acceptance: ["one", "two", "three"],
+      parent_id: null,
+      review_of_id: null,
+      review_round: null,
+      status_changed_at: at(30),
+      updated_at: at(30),
+      acceptance_mode: "human",
+      assignee: { id: "a1", display_name: "linus", kind: "agent" },
+    };
+    const [row] = acceptanceRowsFrom([task], NOW);
+    assert.equal(row.actionKey, "waiting.action.acceptance");
+    assert.equal(row.openKey, "waiting.open.accept");
+    assert.equal(row.preview, "");
+    assert.equal(row.previewKey, "waiting.preview.acceptance");
+    assert.equal(row.previewRound, 2);
+    assert.equal(row.previewCount, 3);
+  });
+
+  it("keeps firstSentence in step with the domain's copy", () => {
+    const bodies = [
+      "第一句。第二句",
+      "First one. Second one",
+      "Really? Yes",
+      "等等！后面",
+      "line one\nline two",
+      "no punctuation at all",
+      "  padded.  more  ",
+      "",
+      null,
+    ];
+    for (const body of bodies) {
+      assert.equal(firstSentence(body), domainFirstSentence(body), JSON.stringify(body));
+    }
   });
 });
 
@@ -255,6 +338,45 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
   });
 });
 
+describe("B27 · a row names the drawer tab its reason opens", () => {
+  /** A delivered card, as the wire states one whose acceptance is a human's. */
+  function delivered(overrides = {}) {
+    return {
+      id: "1",
+      identifier: "TD-1",
+      title: "Delivered",
+      status: "in_review",
+      delivery_round: 1,
+      parent_id: null,
+      review_of_id: null,
+      review_round: null,
+      status_changed_at: at(30),
+      updated_at: at(30),
+      acceptance_mode: "human",
+      assignee: { id: "a1", display_name: "linus", kind: "agent" },
+      ...overrides,
+    };
+  }
+
+  it("sends a question or a blocked row to Activity and an acceptance row to Acceptance", () => {
+    assert.equal(waitingRow(card("1", "TD-1")).tab, "activity");
+    assert.equal(waitingRow(card("2", "TD-2", { awaiting_reason: "blocked" })).tab, "activity");
+    assert.equal(acceptanceRow(delivered()).tab, "acceptance");
+  });
+
+  it("carries the tab through the merged queue", () => {
+    const awaiting = waitingRows([card("1", "TD-1")], {}, NOW);
+    const acceptance = acceptanceRowsFrom([delivered({ id: "2", identifier: "TD-2" })], NOW);
+    assert.deepEqual(
+      mergeWaitingRows(awaiting, acceptance).map((row) => [row.reasonKind, row.tab]),
+      [
+        ["question", "activity"],
+        ["acceptance", "acceptance"],
+      ],
+    );
+  });
+});
+
 describe("0034 · the payload comment is the question", () => {
   const wire = (id, kind, author_kind) => ({ id, kind, author_kind, body: id, created_at: at(0) });
 
@@ -296,6 +418,7 @@ describe("0034 · the payload comment is the question", () => {
 
 // The import is at the bottom so the file's shape stays "helpers, then rules".
 import {
+  acceptanceRow,
   acceptanceRows,
   acceptanceRowsFrom,
   acceptanceWaitingTasks as acceptanceWaitingTasksFor,

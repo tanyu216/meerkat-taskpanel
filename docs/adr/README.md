@@ -21,6 +21,7 @@ what a change must comply with.
 |---|---|---|
 | [0001](0001-architecture-style.md) | Layered modulith; DDD rejected | Accepted (reconstructed) |
 | [0002](0002-stack-bundle.md) | Node 22 + `node:sqlite`, zero runtime dependencies; Vue built offline | Accepted (reconstructed) |
+| [0003](0003-delivery-report-anchors-at-write.md) | A `met` claim needs its evidence anchor at delivery, not only at close | Accepted |
 
 ## Writing one
 

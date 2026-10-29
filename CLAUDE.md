@@ -44,7 +44,10 @@ Linus architecture, implementation, refactors and bugs, Turing test design, regr
 performance, and Reviewer independent review. The installed copy is authoritative; the template
 under `skills/setup-meerkat/assets/team/standard/` is only what `/setup-meerkat` seeds it from.
 The loop injects the guide only for cards it dispatches, so a session taking the work itself
-reads it first. The card is still created and delivered through `/meerkat`.
+reads it first. The card is still created and delivered through `/meerkat`. The role workflows
+name the card's branch but not where it lives: isolate before the first edit per **Branch &
+worktree workflow** below — a parallel task works in `.worktrees/<slug>`, never in the primary
+checkout.
 
 **Decompose before executing.** Any request that is more than a couple of tool calls gets a
 todo list first (TodoWrite): one item per independently verifiable step — a test that must go

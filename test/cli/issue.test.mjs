@@ -42,7 +42,7 @@ const deliverIssue = (run, ref) => {
     run(["issue", "deliver", ref, "--report-file", "-", "--json"], {
       input: JSON.stringify({
         conclusion: "delivered",
-        acceptance: [{ text: "a", status: "met" }],
+        acceptance: [{ text: "a", status: "met", note: "ran it (evidence[1])" }],
         evidence: [
           { kind: "commit", sha: "abc1234" },
           { kind: "path", path: "x" },
@@ -747,7 +747,7 @@ describe("cli/issue — every flag the command declares", () => {
       dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--json"]));
       const report = {
         conclusion: "done",
-        acceptance: [{ text: "a", status: "met" }],
+        acceptance: [{ text: "a", status: "met", note: "ran it (evidence[1])" }],
         evidence: [
           { kind: "commit", sha: "abc1234" },
           { kind: "path", path: "x" },
@@ -795,7 +795,7 @@ describe("cli/issue — the actor recorded on a report", () => {
       dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--json"]));
       const report = {
         conclusion: "done",
-        acceptance: [{ text: "a", status: "met" }],
+        acceptance: [{ text: "a", status: "met", note: "ran it (evidence[1])" }],
         evidence: [
           { kind: "commit", sha: "abc1234" },
           { kind: "path", path: "x" },
@@ -1359,7 +1359,7 @@ describe("cli/issue — claim and stale recovery", () => {
 describe("cli/issue — acceptance authority", () => {
   const report = JSON.stringify({
     conclusion: "delivered",
-    acceptance: [{ text: "a", status: "met" }],
+    acceptance: [{ text: "a", status: "met", note: "ran it (evidence[1])" }],
     evidence: [
       { kind: "commit", sha: "abc1234" },
       { kind: "path", path: "x" },
@@ -1402,7 +1402,7 @@ describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
   const report = (conclusion = "delivered") =>
     JSON.stringify({
       conclusion,
-      acceptance: [{ text: "a", status: "met" }],
+      acceptance: [{ text: "a", status: "met", note: "ran it (evidence[1])" }],
       evidence: [
         { kind: "commit", sha: "abc1234" },
         { kind: "path", path: "x" },
@@ -1513,7 +1513,7 @@ describe("cli/issue — reconcile (the container backstop)", () => {
         run(["issue", "deliver", child.task.identifier, "--report-file", "-", "--json"], {
           input: JSON.stringify({
             conclusion: "done",
-            acceptance: [{ text: "a", status: "met" }],
+            acceptance: [{ text: "a", status: "met", note: "ran it (evidence[1])" }],
             evidence: [
           { kind: "commit", sha: "abc1234" },
           { kind: "path", path: "x" },
@@ -1575,7 +1575,7 @@ describe("cli/issue — reconcile (the container backstop)", () => {
         run(["issue", "deliver", done.task.identifier, "--report-file", "-", "--json"], {
           input: JSON.stringify({
             conclusion: "done",
-            acceptance: [{ text: "a", status: "met" }],
+            acceptance: [{ text: "a", status: "met", note: "ran it (evidence[1])" }],
             evidence: [
           { kind: "commit", sha: "abc1234" },
           { kind: "path", path: "x" },
@@ -1786,7 +1786,7 @@ describe("cli/issue — the delivery artifact contract", () => {
       const refused = run(["issue", "deliver", card.task.identifier, "--report-file", "-", "--json"], {
         input: JSON.stringify({
           conclusion: "done",
-          acceptance: [{ text: "a", status: "met" }],
+          acceptance: [{ text: "a", status: "met", note: "ran it (evidence[1])" }],
           evidence: [{ kind: "path", path: "src/x.mjs" }],
         }),
       });

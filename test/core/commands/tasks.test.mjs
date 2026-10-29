@@ -25,6 +25,7 @@ import {
   cleanupTempDirs,
   countRows,
   ensureActor,
+  insertReport,
   insertTask,
   revision,
   withBoard,
@@ -3874,7 +3875,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
       commands.claim({ id: task.id, actor: AGENT });
       commands.deliver({
         taskId: task.id,
-        report: report({ acceptance: [{ text: "b", status: "met" }] }),
+        report: report({ acceptance: [{ text: "b", status: "met", note: "ran it (evidence[1])" }] }),
         actor: AGENT,
       });
       assert.throws(
@@ -4093,7 +4094,7 @@ describe("commands/tasks — a claim must point at its evidence", () => {
     author: AGENT_ACTOR,
   });
 
-  it("refuses an agent card's anchorless met, and lets an off card keep its lighter contract", async () => {
+  it("refuses an agent card's anchorless met at delivery, and lets an off card keep its lighter contract", async () => {
     for (const [mode, expected] of [
       ["agent", "ACCEPTANCE_INCOMPLETE"],
       ["off", null],
@@ -4107,10 +4108,9 @@ describe("commands/tasks — a claim must point at its evidence", () => {
           actor: AGENT_ACTOR,
         });
         commands.claim({ id: task.id, actor: AGENT_ACTOR });
-        commands.deliver({ taskId: task.id, report: claimReport("looks right"), actor: AGENT_ACTOR });
         let code = null;
         try {
-          commands.moveStatus({ id: task.id, to: "done", actor: TASKD });
+          commands.deliver({ taskId: task.id, report: claimReport("looks right"), actor: AGENT_ACTOR });
         } catch (err) {
           code = err.code;
         }
@@ -4119,8 +4119,11 @@ describe("commands/tasks — a claim must point at its evidence", () => {
     }
   });
 
-  it("names the unsupported item and how to fix it", async () => {
-    await board(async ({ commands }) => {
+  // The delivery gate is a service rule, so a raw writer walks past it. The
+  // acceptance gate is the backstop for a row that got in anyway, and it still
+  // names the item and the fix.
+  it("names the unsupported item and how to fix it, on a report written around the command", async () => {
+    await board(async ({ commands, db }) => {
       const task = commands.createTask({
         projectId: "proj",
         title: "Ship it",
@@ -4129,7 +4132,20 @@ describe("commands/tasks — a claim must point at its evidence", () => {
         actor: AGENT_ACTOR,
       });
       commands.claim({ id: task.id, actor: AGENT_ACTOR });
-      commands.deliver({ taskId: task.id, report: claimReport("I ran it, trust me"), actor: AGENT_ACTOR });
+      // The claim registered the actor with a generated id, so the report's FK
+      // has to name that row — not the fixture's display string.
+      const authorId = db.prepare("SELECT id FROM actors WHERE normalized_name = ?").get("linus").id;
+      insertReport(db, {
+        task_id: task.id,
+        round: task.deliveryRound,
+        acceptance_json: JSON.stringify([
+          { text: "domain has no Node I/O", status: "met", note: "I ran it, trust me" },
+        ]),
+        evidence_json: JSON.stringify([{ kind: "commit", sha: "dcd7d15" }]),
+        author_id: authorId,
+      });
+      commands.moveStatus({ id: task.id, to: "in_review", actor: AGENT_ACTOR });
+
       assert.throws(
         () => commands.moveStatus({ id: task.id, to: "done", actor: TASKD }),
         (err) =>

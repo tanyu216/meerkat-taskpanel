@@ -20,6 +20,7 @@ import {
   assertAcceptanceCoverage,
   assertChildrenTerminal,
   assertDeliveryCommitAnchor,
+  assertDeliveryEvidenceAnchors,
   assertReviewReady,
 } from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
@@ -247,6 +248,10 @@ export function deliver(ctx, input) {
       // it was made in. Runs on the *prepared* row (after bounding), so a
       // truncated-away commit anchor is a refusal, not a silent pass.
       assertDeliveryCommitAnchor(task, prepared);
+      // The same shape rule for acceptance claims: a `met` that names no anchor
+      // can never be accepted, and the round binds the report — refusing it now
+      // costs the worker one edit instead of the review a wasted round.
+      assertDeliveryEvidenceAnchors(task, prepared);
       const isRollup = task.kind === TASK_KIND.EPIC;
       if (isRollup) assertRollupCoverage(ctx, task, prepared.acceptance);
       const report = insertDeliveryReport(ctx, {

@@ -7,7 +7,7 @@
  * ball is in *the reader's* court, and only by how long they have waited
  * (`design/DESIGN.md` §30.1 — two destinations, two questions).
  *
- * Four things it is careful about, each of them a design rule:
+ * Five things it is careful about, each of them a design rule:
  *
  *   * **Oldest first** (§30.2). The top row has waited longest, so the list is an
  *     overdue-first inbox. Reverse it and the item that has waited five days hides
@@ -17,21 +17,29 @@
  *     `datetime` its visible text is printed from are the *same* value, and the
  *     text uses B26's three `time.*` keys — one time vocabulary across the two
  *     views, so the two read the same way.
- *   * **The reason is an attribute, the colour a variable.** The chip carries
- *     `data-waiting-reason-kind="question"|"blocked"|"acceptance"` and the stylesheet's
- *     attribute rule sets `--status-color`; no component names a colour (B27's
- *     "zero new hues").
- *   * **A row opens B09.** The row body is the pointer's affordance and
- *     `[data-waiting-open]` its keyboard twin and accessible name; both land on
- *     the board's own detail surface for the task the row names. There is no
- *     second drawer and no anchor back to the board.
+ *   * **The state is an attribute, the act is the copy, the colour a variable.**
+ *     The chip carries `data-waiting-reason-kind="question"|"blocked"|"acceptance"`
+ *     and the stylesheet's attribute rule sets `--status-color`; its visible text,
+ *     `[data-waiting-action]`, names what the human does (Answer / Unblock /
+ *     Accept). No component names a colour (B27's "zero new hues").
+ *   * **A row states the ask, not only the state.** `[data-waiting-preview]` is a
+ *     second line: the triggering comment's first sentence for a question (already
+ *     read for `since`, so no extra request), the delivery round and acceptance
+ *     count for an acceptance row.
+ *   * **A row opens B09 on the tab its reason names.** The row body is the
+ *     pointer's affordance and `[data-waiting-open]` its keyboard twin; both land
+ *     on the board's own detail surface for the task the row names, passing the
+ *     row's `tab` as a one-shot intent (a delivery opens Acceptance, a question
+ *     Activity). The accessible name names the act. There is no second drawer and
+ *     no anchor back to the board.
  *
  * What M1 rendered here (the card component, and the triggering question as an
  * inline summary plus a `<details>`) is **replaced** by the design's row: the
  * queue is a way *into* a card, and the card — with the question on it — is one
- * press away. The triggering comment is still read, because its instant is what
- * `since` reports; it is no longer painted here. That replacement is registered in
- * the card's report (`T-20261013-014701-7`), hooks and all.
+ * press away. The triggering comment is still read; its instant is `since` and,
+ * since TP-0019, its first sentence is the row's preview — but the full comment
+ * body still waits in B09. That replacement is registered in the card's report
+ * (`T-20261013-014701-7`), hooks and all.
  */
 import { computed, watch } from "vue";
 
@@ -91,7 +99,7 @@ const loadingNow = computed(() => projectLoading.value || board.waitingPending >
  */
 function onRow(event, row) {
   if (event.target.closest("button")) return;
-  openDetail(row.identifier);
+  openDetail(row.identifier, { tab: row.tab });
 }
 </script>
 
@@ -156,15 +164,15 @@ function onRow(event, row) {
         @click="onRow($event, row)"
       >
         <span class="td-waiting-actor td-mono" data-waiting-actor :data-assignee-kind="row.actorKind">{{ row.actor }}</span>
-        <!-- The two kinds are catalogue sentences, so they are two static hooks
-             rather than one computed key — the same reading B26's day headings use.
-             The chip is `.td-waiting-reason`, **not** the status chip: it carries
-             its own 18px box, its own 4px radius and its own `::before` dot, and
-             wearing `.td-chip` would hand all three to another family. -->
+        <!-- The chip states the human's **act**, not the card's state: Answer /
+             Unblock / Accept. `data-waiting-reason-kind` keeps the semantic state
+             (and with it the dot's `--status-color`), while `[data-waiting-action]`
+             is the visible act inside the chip. The chip is `.td-waiting-reason`,
+             **not** the status chip: it carries its own 18px box, its own 4px
+             radius and its own `::before` dot, and wearing `.td-chip` would hand
+             all three to another family. -->
         <span class="td-waiting-reason" data-waiting-reason :data-waiting-reason-kind="row.reasonKind">
-          <span v-if="row.reasonKind === 'blocked'" data-i18n="waiting.reason.blocked">{{ $t("waiting.reason.blocked") }}</span>
-          <span v-else-if="row.reasonKind === 'acceptance'" data-i18n="waiting.reason.acceptance">{{ $t("waiting.reason.acceptance") }}</span>
-          <span v-else data-i18n="waiting.reason.question">{{ $t("waiting.reason.question") }}</span>
+          <span data-waiting-action>{{ $t(row.actionKey) }}</span>
         </span>
         <span class="td-waiting-task-cell">
           <span class="td-waiting-task td-mono" data-waiting-task :title="row.identifier">{{ row.display }}</span>
@@ -181,11 +189,17 @@ function onRow(event, row) {
           type="button"
           class="td-iconbtn td-waiting-open"
           data-waiting-open
-          :aria-label="$t('waiting.open', row.identifier)"
-          @click.stop="openDetail(row.identifier)"
+          :aria-label="$t(row.openKey, row.identifier)"
+          @click.stop="openDetail(row.identifier, { tab: row.tab })"
         >
           <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+          <span class="td-waiting-open-label">{{ $t(row.actionKey) }}</span>
         </button>
+        <!-- B27.1's second line — the ask itself. A question (or a block) shows
+             the triggering comment's first sentence; an acceptance shows the
+             delivery round and its acceptance count. Both are already on the
+             wire/comment read, so this line costs no request. -->
+        <span class="td-waiting-preview" data-waiting-preview>{{ row.previewKey ? $t(row.previewKey, row.previewRound, row.previewCount) : row.preview }}</span>
       </li>
     </ul>
 

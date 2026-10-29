@@ -21,7 +21,7 @@ const REVIEWER = { kind: "agent", id: "jobs" };
 
 const DELIVERY = {
   conclusion: "The thing is done.",
-  acceptance: [{ text: "the thing works", status: "met" }],
+  acceptance: [{ text: "the thing works", status: "met", note: "ran it (evidence[1])" }],
   evidence: [{ kind: "commit", sha: "abc1234" }],
   author: WORKER,
 };
@@ -231,7 +231,7 @@ describe("commands/workflowTick — 0031", () => {
         taskId: task.id,
         report: {
           conclusion: "done",
-          acceptance: items.map((text) => ({ text, status: "met" })),
+          acceptance: items.map((text) => ({ text, status: "met", note: "ran it (evidence[1])" })),
           evidence: [{ kind: "commit", sha: "abc1234" }],
           author: WORKER,
         },

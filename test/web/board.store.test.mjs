@@ -1015,6 +1015,76 @@ describe("web/board — opening the detail drawer", () => {
   });
 });
 
+/**
+ * TP-0018 — the drawer's **one-shot** landing tab.
+ *
+ * The drawer can only infer a tab from the card's status, so a caller that knows
+ * more (the waiting queue: a delivery opens Acceptance, a question Activity)
+ * writes `board.detailIntent` through `openDetail`'s `{ tab }` option. The
+ * drawer consumes it once. These readings pin the store half of that contract —
+ * the browser leg in `web/scripts/dom-smoke.mjs` pins the rendering.
+ */
+describe("web/board — the drawer's one-shot landing tab", () => {
+  it("stores the tab the caller names and the drawer consumes it exactly once", async () => {
+    const { board, consumeDetailIntent, openDetail } = await freshBoard();
+    board.currentProjectId = "p1";
+    installFetch(detailRoutes("TD-7", wireTask("TD-7", { status: "in_review" })));
+
+    await openDetail("TD-7", { tab: "acceptance" });
+    assert.deepEqual(board.detailIntent, { ref: "TD-7", tab: "acceptance" });
+
+    assert.equal(consumeDetailIntent("TD-7"), "acceptance");
+    assert.equal(board.detailIntent, null, "the read clears the intent in the same act");
+    assert.equal(consumeDetailIntent("TD-7"), null, "a second read gets nothing");
+  });
+
+  it("leaves the intent for the open that asked for it, not some other ref", async () => {
+    const { board, consumeDetailIntent, openDetail } = await freshBoard();
+    board.currentProjectId = "p1";
+    installFetch(detailRoutes("TD-7", wireTask("TD-7", { status: "in_review" })));
+
+    await openDetail("TD-7", { tab: "acceptance" });
+    assert.equal(consumeDetailIntent("TD-1"), null, "another card may not consume it");
+    assert.equal(consumeDetailIntent(null), null, "the watcher's first, empty firing is not a match");
+    assert.deepEqual(board.detailIntent, { ref: "TD-7", tab: "acceptance" }, "an unmatched read leaves it alone");
+  });
+
+  it("withdraws a previous intent when a later open names no tab", async () => {
+    const { board, consumeDetailIntent, openDetail } = await freshBoard();
+    board.currentProjectId = "p1";
+    installFetch({
+      ...detailRoutes("TD-7", wireTask("TD-7", { status: "in_review" })),
+      ...detailRoutes("TD-2", wireTask("TD-2", { status: "todo" })),
+    });
+
+    await openDetail("TD-7", { tab: "acceptance" });
+    await openDetail("TD-2");
+    assert.equal(board.detailIntent, null, "a no-intent open withdraws the stale tab");
+    assert.equal(consumeDetailIntent("TD-2"), null);
+  });
+
+  it("clears the intent on close and when the read fails", async () => {
+    const { board, closeDetail, consumeDetailIntent, openDetail } = await freshBoard();
+    board.currentProjectId = "p1";
+    installFetch(detailRoutes("TD-7", wireTask("TD-7", { status: "in_review" })));
+
+    await openDetail("TD-7", { tab: "acceptance" });
+    closeDetail();
+    assert.equal(board.detailIntent, null, "closing withdraws the landing tab");
+
+    const second = await freshBoard();
+    second.board.currentProjectId = "p1";
+    installFetch({
+      ...detailRoutes("TD-9", wireTask("TD-9")),
+      // Last, so it wins the key: the card read is the one that fails.
+      "GET /api/v1/tasks/TD-9": () => failure(500, "INTERNAL", "boom"),
+    });
+    await second.openDetail("TD-9", { tab: "activity" });
+    assert.equal(second.board.drawerState, "closed", "a failed read closes the drawer");
+    assert.equal(second.board.detailIntent, null, "a read that never landed leaves no landing tab behind");
+  });
+});
+
 /* ------------------------------------------------ the drawer's prerequisite list */
 
 /**
@@ -1409,5 +1479,130 @@ describe("board store — the acceptance half of the waiting queue", () => {
     assert.deepEqual(mod.acceptanceTasks.value, [], "the whole reading still sees the child");
     assert.deepEqual(mod.visibleAcceptanceTasks.value, []);
     assert.equal(mod.waitingCount.value, 0);
+  });
+});
+
+/* ------------------------------------- waiting: a board filter never narrows it */
+
+/**
+ * TP-0021 — the waiting queue answers *what is owed by me*, and the board's own
+ * filters are a way of looking at the board, not a statement about who is owed a
+ * reply. The view hides the filter bar (there is no second, queue-specific
+ * filter), so a queue narrowed by a status / priority / label / search filter is
+ * a narrowing the reader cannot see — the exact failure `design/DESIGN.md` §30.6
+ * rules out ("a filter would let a reader hide the overdue item").
+ *
+ * Both halves of the queue are derived from the **whole** board reading and
+ * narrowed by the sidebar's assignee condition alone, so a card hidden from the
+ * board stays in the queue, and the two halves cannot apply different rules.
+ */
+describe("board store — the waiting queue is not narrowed by board filters", () => {
+  const question = (over = {}) => ({
+    id: "a1",
+    identifier: "TD-A",
+    title: "Needs an answer",
+    status: "awaiting",
+    awaiting_reason: "E1",
+    version: 1,
+    priority: "high",
+    labels: ["UI"],
+    assignee: { display_name: "elon", kind: "claude" },
+    ...over,
+  });
+  const delivered = (over = {}) => ({
+    id: "o1",
+    identifier: "TD-1",
+    title: "Delivered",
+    status: "in_review",
+    delivery_round: 1,
+    parent_id: null,
+    review_of_id: null,
+    review_round: null,
+    acceptance_mode: "human",
+    version: 1,
+    labels: [],
+    assignee: { display_name: "elon", kind: "claude" },
+    ...over,
+  });
+  const clearBoardFilters = (mod) => {
+    mod.writeStatusFilter([]);
+    mod.writePriorityFilter("all");
+    mod.board.filters.label = "all";
+    mod.board.filters.search = "";
+  };
+
+  it("keeps a waiting card in the queue and in the count with a status, priority, label or search filter active", async () => {
+    const mod = await freshBoard();
+    clearBoardFilters(mod);
+    mod.board.tasks = [question()];
+    // The scenario the round-1 review named as missing: a board filter is active
+    // **and** the sidebar's assignee narrowing is too, and the card passes the
+    // latter — so the queue must still hold it. `elon` is a given name, the
+    // non-static arm of the shared predicate.
+    mod.writeAssigneeFilter("elon");
+
+    const boardFilters = [
+      ["status", () => mod.writeStatusFilter(["todo"])],
+      ["priority", () => mod.writePriorityFilter("low")],
+      ["label", () => (mod.board.filters.label = "infra")],
+      ["search", () => (mod.board.filters.search = "no such card")],
+    ];
+    for (const [name, apply] of boardFilters) {
+      clearBoardFilters(mod);
+      apply();
+      assert.equal(mod.visibleTasks.value.length, 0, `the ${name} filter hides the card from the board`);
+      assert.equal(mod.waitingTasks.value.length, 1, `the ${name} filter does not narrow the queue`);
+      assert.deepEqual(mod.waitingTasks.value.map((task) => task.id), ["a1"], `the ${name} filter does not narrow the queue`);
+      assert.equal(mod.waitingCount.value, 1, `the ${name} filter does not narrow the nav count`);
+    }
+  });
+
+  it("narrows the question half and the acceptance half by the same assignee rule", async () => {
+    const mod = await freshBoard();
+    clearBoardFilters(mod);
+    mod.board.tasks = [question(), delivered()];
+
+    assert.deepEqual(mod.waitingTasks.value.map((task) => task.id), ["a1"]);
+    assert.deepEqual(mod.visibleAcceptanceTasks.value.map((task) => task.id), ["o1"]);
+    assert.equal(mod.waitingCount.value, 2, "the count reads the two derivations the view reads");
+
+    mod.writeAssigneeFilter("elon");
+    assert.deepEqual(mod.waitingTasks.value.map((task) => task.id), ["a1"], "the named assignee keeps the question");
+    assert.deepEqual(mod.visibleAcceptanceTasks.value.map((task) => task.id), ["o1"], "…and the acceptance");
+    assert.equal(mod.waitingCount.value, 2);
+
+    mod.writeAssigneeFilter("jobs");
+    assert.deepEqual(mod.waitingTasks.value, [], "another agent's name leaves no question row");
+    assert.deepEqual(mod.visibleAcceptanceTasks.value, [], "…and no acceptance row");
+    assert.equal(mod.waitingCount.value, 0);
+
+    mod.writeAssigneeFilter("agent");
+    assert.equal(mod.waitingTasks.value.length, 1, "a platform kind is an agent");
+    assert.equal(mod.visibleAcceptanceTasks.value.length, 1);
+    assert.equal(mod.waitingCount.value, 2);
+
+    mod.writeAssigneeFilter("me");
+    assert.equal(mod.waitingTasks.value.length, 0, "me is the human, not the assignee");
+    assert.equal(mod.visibleAcceptanceTasks.value.length, 0);
+    assert.equal(mod.waitingCount.value, 0);
+  });
+
+  it("changes the queue only when the assignee condition changes", async () => {
+    const mod = await freshBoard();
+    clearBoardFilters(mod);
+    mod.board.tasks = [question(), delivered()];
+    assert.equal(mod.waitingCount.value, 2);
+
+    mod.writeStatusFilter(["backlog"]);
+    assert.equal(mod.waitingCount.value, 2, "a status filter changes the board, not the queue");
+    mod.writePriorityFilter("urgent");
+    assert.equal(mod.waitingCount.value, 2, "a priority filter changes the board, not the queue");
+    mod.board.filters.label = "infra";
+    assert.equal(mod.waitingCount.value, 2, "a label filter changes the board, not the queue");
+    mod.board.filters.search = "no such card";
+    assert.equal(mod.waitingCount.value, 2, "a search changes the board, not the queue");
+
+    mod.writeAssigneeFilter("jobs");
+    assert.equal(mod.waitingCount.value, 0, "the assignee condition does change the queue");
   });
 });
