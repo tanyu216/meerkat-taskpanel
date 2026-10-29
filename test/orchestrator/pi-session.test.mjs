@@ -162,6 +162,13 @@ describe("pi subagent dependency", () => {
     mkdirSync(join(home, ".pi", "agent", "extensions", "subagent"), { recursive: true });
     assert.equal(piSubagentsInstalled(home), true);
   });
+
+  it("recognises the npm layout (no ~/.pi/agent/extensions)", (t) => {
+    const f = fixture(t);
+    const home = join(f.dir, "home-npm");
+    mkdirSync(join(home, ".pi", "agent", "npm", "node_modules", "pi-subagents"), { recursive: true });
+    assert.equal(piSubagentsInstalled(home), true);
+  });
 });
 
 describe("pi resident session", () => {

@@ -415,11 +415,16 @@ function detectMatt(project, home) {
 }
 
 /**
- * The extension directories `pi-subagents` installs into (its docs name the first).
- * Pi has no native subagent mechanism, and the loop's project session needs one to
- * spawn the worker/reviewer. A directory check is a heuristic, not a load test.
+ * The directories `pi-subagents` installs into.
+ *
+ * pi 1.x puts the package under `~/.pi/agent/npm/node_modules` and never creates
+ * `~/.pi/agent/extensions`; the latter is the legacy layout the package's own
+ * git-clone installer writes. Pi has no native subagent mechanism, and the loop's
+ * project session needs one to spawn the worker/reviewer. A directory check is a
+ * heuristic, not a load test.
  */
 const PI_SUBAGENT_DIRS = [
+  join(".pi", "agent", "npm", "node_modules", "pi-subagents"),
   join(".pi", "agent", "extensions", "subagent"),
   join(".pi", "agent", "extensions", "pi-subagents"),
 ];

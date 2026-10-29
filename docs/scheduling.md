@@ -1494,10 +1494,11 @@ design — an adapter implements `openSession({cwd, sessionId, role}) →
 {send, interrupt, close}` in `src/orchestrator/actor-kinds/`, and the pool manager never
 names a CLI.
 
-Pi has no native subagents. The pool's Pi adapter warns when
-`~/.pi/agent/extensions/subagent` is missing; `setup-meerkat` reports the same check and
-`install.sh --target pi` prints `pi install npm:pi-subagents`. Without the extension the
-project session cannot spawn worker/reviewer subagents.
+Pi has no native subagents. The pool's Pi adapter warns when no `pi-subagents` payload is
+found — `~/.pi/agent/npm/node_modules/pi-subagents` for a pi 1.x npm install, or the legacy
+`~/.pi/agent/extensions/{subagent,pi-subagents}` pair; `setup-meerkat` reports the same
+check and `install.sh --target pi` prints `pi install npm:pi-subagents`. Without the
+extension the project session cannot spawn worker/reviewer subagents.
 
 Installers also install the **loop skill** itself, at `<agent-dir>/skills/meerkat-loop/` —
 the operator's documentation and the decisions the loop applies. It is always a copy:

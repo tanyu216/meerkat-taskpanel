@@ -44,8 +44,9 @@ actor kind's shim (`<home>/<agent-dir>/bin/taskctl`), the checkout's
 ## Pi subagents
 
 Pi has no native subagent mechanism, and the loop's project session spawns one subagent per
-card. The check looks for `~/.pi/agent/extensions/subagent` (and the `pi-subagents` alias)
-and reports:
+card. The check looks for `~/.pi/agent/npm/node_modules/pi-subagents` (where pi 1.x's
+`pi install npm:pi-subagents` puts the package) and for the legacy
+`~/.pi/agent/extensions/subagent` (and the `pi-subagents` alias) and reports:
 
 - `installed` — the directory exists;
 - `extensionDir` — the directory found, or the expected path;

@@ -874,8 +874,10 @@ Pi has no timer of its own, so step 1 also drops the units under
 [Scheduling units](#scheduling-units-claude-codex-pi)).
 
 The loop dispatches one subagent per card, and Pi has no native subagent mechanism. A Pi
-host therefore needs an extension; the installer checks
-`~/.pi/agent/extensions/subagent` and prints the recommended command when it is missing:
+host therefore needs an extension; the installer checks the npm layout pi 1.x writes
+(`~/.pi/agent/npm/node_modules/pi-subagents`) and the legacy
+`~/.pi/agent/extensions/{subagent,pi-subagents}` pair, and prints the recommended command
+when neither is present:
 
 ```bash
 pi install npm:pi-subagents

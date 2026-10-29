@@ -32,8 +32,15 @@ write_agent_config
 # Pi host needs an extension for the project session to spawn worker/reviewer subagents.
 # Check the recommended one and print the install command; install nothing: the installer
 # is offline and a package install is the operator's decision.
+#
+# Two layouts exist, and a working install may have only the newer one:
+#   * `pi install npm:pi-subagents` (pi 1.x) puts the package under
+#     ~/.pi/agent/npm/node_modules and does NOT create ~/.pi/agent/extensions;
+#   * the package's own git-clone installer writes ~/.pi/agent/extensions/{subagent,pi-subagents}.
+# Checking only the legacy pair made every npm install print a false "missing" warning.
 pi_ext=""
 for candidate in \
+  "$(target_home)/.pi/agent/npm/node_modules/pi-subagents" \
   "$(target_home)/.pi/agent/extensions/subagent" \
   "$(target_home)/.pi/agent/extensions/pi-subagents"; do
   if [ -d "$candidate" ]; then

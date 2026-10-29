@@ -24,8 +24,14 @@ import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 /** Per-turn cap used when the caller does not state one. */
 export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
 
-/** The extension directories `pi-subagents` installs into. */
+/**
+ * The directories `pi-subagents` installs into: the npm payload pi 1.x writes
+ * (`~/.pi/agent/npm/node_modules`) and the legacy `extensions/` pair the
+ * package's own git-clone installer writes. npm installs do not create the
+ * legacy directory, so checking it alone warned on a working install.
+ */
 const PI_SUBAGENT_DIRS = [
+  join(".pi", "agent", "npm", "node_modules", "pi-subagents"),
   join(".pi", "agent", "extensions", "subagent"),
   join(".pi", "agent", "extensions", "pi-subagents"),
 ];

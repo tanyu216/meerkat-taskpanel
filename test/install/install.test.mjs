@@ -83,6 +83,17 @@ describe("install.sh: targets", () => {
     assert.doesNotMatch(run.stderr, /pi install npm:pi-subagents/);
   });
 
+  it("recognises the npm layout `pi install npm:pi-subagents` uses", () => {
+    // pi 1.x installs the package under ~/.pi/agent/npm/node_modules and never
+    // creates ~/.pi/agent/extensions — the legacy git-clone layout. Only checking
+    // the latter warns on every install of a working extension.
+    const home = makeTempDir();
+    mkdirSync(join(home, ".pi", "agent", "npm", "node_modules", "pi-subagents"), { recursive: true });
+    const run = runInstall(["--target", "pi", "--prefix", home]);
+    assert.equal(run.status, 0, run.stderr);
+    assert.doesNotMatch(run.stderr, /pi install npm:pi-subagents/);
+  });
+
   it("prints a per-agent-kind summary and exits non-zero when an agent kind fails", () => {
     // A target home whose parent is a regular file makes the skill copy fail with
     // ENOTDIR — the honest "agent-kind failed" path: exit 1 and a FAIL summary line.

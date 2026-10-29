@@ -1535,6 +1535,26 @@ describe("detect.mjs — read-only discovery", () => {
     assert.equal(present.body.missing.includes("pi-subagents"), false);
     assert.equal(present.body.actions.includes("install-pi-subagents"), false);
   });
+
+  it("recognises the npm layout `pi install npm:pi-subagents` uses", (t) => {
+    // pi 1.x writes the package under ~/.pi/agent/npm/node_modules and does not
+    // create ~/.pi/agent/extensions; the legacy-only check reported a working
+    // install as missing.
+    const home = temp(t);
+    const project = temp(t);
+    mkdirSync(join(home, ".pi", "agent", "npm", "node_modules", "pi-subagents"), { recursive: true });
+    const result = runJson(
+      t,
+      DETECT,
+      ["--home", home, "--project", project, "--actor-kind", "pi", "--no-network"],
+      { cwd: project, env: { HOME: home, PATH: temp(t) } },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.body.piSubagents.installed, true);
+    assert.equal(result.body.piSubagents.recommended, null);
+    assert.equal(result.body.missing.includes("pi-subagents"), false);
+    assert.equal(result.body.actions.includes("install-pi-subagents"), false);
+  });
 });
 
 describe("install-roles.mjs — project scope", () => {
