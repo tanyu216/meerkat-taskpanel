@@ -354,8 +354,10 @@ The board's plan is a function of the **original's mode** and the verdict:
 
 The executor sequences each one so a crash leaves a recoverable, re-plannable state:
 
-- **`approve`** — comment the verdict on the original, write `meta.accepted_by=loop-review`,
-  move the original `in_review → done`, then close the review card. When the loop runs with
+- **`approve`** — write `meta.accepted_by=loop-review`, comment the verdict on the original,
+  move the original `in_review → done`, then close the review card. The marker is written before
+  the comment so a crash between them is recovered by the `held` marker instead of re-posting the
+  note on every pass. When the loop runs with
   per-card worktree lanes, a **landing** step runs first: the lane branch is merged into the
   project's current branch, and a dirty checkout or a merge conflict keeps the card in
   `in_review` with its verdict recorded (see [scheduling.md](scheduling.md)). An `auto_accept`

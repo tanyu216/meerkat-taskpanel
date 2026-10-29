@@ -113,8 +113,8 @@ async function throughBothHalves(input, overrides = {}) {
 
 const APPROVE_ORDER = [
   "land:PROJ-0001",
-  "comment:PROJ-0001:note",
   'setMeta:PROJ-0001:{"accepted_by":"loop-review","accepted_round":"1"}',
+  "comment:PROJ-0001:note",
   "move:PROJ-0001:done",
   "comment:PROJ-0002:note",
   "move:PROJ-0002:done",
@@ -175,6 +175,22 @@ const SCENARIOS = [
     verdicts: { "PROJ-0002": verdict("APPROVE") },
     expectedAction: "approve",
     expectedOrder: APPROVE_ORDER,
+  },
+  {
+    name: "approve (acceptance marker already landed)",
+    tasks: (() => {
+      const original = card({ meta: { accepted_by: "loop-review", accepted_round: "1" } });
+      const review = reviewCard(original);
+      return [original, review];
+    })(),
+    verdicts: { "PROJ-0002": verdict("APPROVE") },
+    expectedAction: "approve",
+    expectedOrder: [
+      "land:PROJ-0001",
+      "move:PROJ-0001:done",
+      "comment:PROJ-0002:note",
+      "move:PROJ-0002:done",
+    ],
   },
   {
     name: "create_review (epic dispatch)",
@@ -354,6 +370,71 @@ describe("workflow plan → execution", () => {
     assert.equal(result.failed, 1);
     assert.deepEqual(landing, ["PROJ-0001"], "landing is attempted first");
     assert.deepEqual(order, [], "no acceptance write happens before the landing");
+  });
+
+  it("a refused `done` leaves the marker and one note, and the retry posts nothing", async () => {
+    const deps = (record) => ({
+      config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
+      dryRun: false,
+      land: async () => ({ ok: true }),
+      createReview: async () => ({ ok: true }),
+      createFixChild: async () => ({ ok: true }),
+      linkFixChild: async () => ({ ok: true }),
+      move: async (ref, to) => (record.push(`move:${ref}:${to}`), { ok: true }),
+      comment: async (ref, { kind }) => (record.push(`comment:${ref}:${kind}`), { ok: true }),
+      setMeta: async (ref, meta) => (record.push(`setMeta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+      appendAcceptance: async () => ({ ok: true }),
+      notify: () => {},
+      now: () => NOW,
+      log: () => {},
+    });
+
+    const original = card();
+    const review = reviewCard(original);
+    const firstPlan = planWorkflowTick({
+      tasks: [original, review],
+      verdicts: { "PROJ-0002": verdict("APPROVE") },
+      config: CONFIG,
+      now: NOW,
+    });
+
+    // The live failure: the board's acceptance gate refuses the `done` move.
+    const first = [];
+    const failedRun = await runWorkflowTick({
+      ...deps(first),
+      plan: workflowToWire(firstPlan),
+      move: async (ref, to) => {
+        first.push(`move:${ref}:${to}`);
+        if (ref === "PROJ-0001" && to === "done") {
+          return { ok: false, error: "ACCEPTANCE_INCOMPLETE: 1 blocking" };
+        }
+        return { ok: true };
+      },
+    });
+    assert.equal(failedRun.failed, 1);
+    assert.deepEqual(first, [
+      'setMeta:PROJ-0001:{"accepted_by":"loop-review","accepted_round":"1"}',
+      "comment:PROJ-0001:note",
+      "move:PROJ-0001:done",
+    ]);
+
+    // The next pass reads the marker the failed one left behind.
+    const recoveryPlan = planWorkflowTick({
+      tasks: [card({ meta: { accepted_by: "loop-review", accepted_round: "1" } }), review],
+      verdicts: { "PROJ-0002": verdict("APPROVE") },
+      config: CONFIG,
+      now: NOW,
+    });
+    assert.equal(recoveryPlan.actions[0]?.held, true, "the marker makes the retry a recovery");
+
+    const second = [];
+    const recovered = await runWorkflowTick({ ...deps(second), plan: workflowToWire(recoveryPlan) });
+    assert.equal(recovered.failed, 0);
+    assert.deepEqual(
+      second,
+      ["move:PROJ-0001:done", "comment:PROJ-0002:note", "move:PROJ-0002:done"],
+      "the recovery pass moves and closes; it never re-posts the acceptance note",
+    );
   });
 
   it("dispatches a delivered human card through the same create_review action", async () => {

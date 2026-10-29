@@ -546,14 +546,21 @@ export async function runWorkflowTick(deps) {
           // project's current branch. A conflict leaves the card in `in_review`
           // with its verdict recorded and the lane branch intact.
           if (typeof land === "function") await step(land, "land", action);
-          await step(comment, "comment", action.original_ref, {
-            kind: "note",
-            body: `Loop acceptance after review ${action.review_ref} (round ${action.round}): VERDICT: APPROVE.`,
-          });
-          await step(setMeta, "setMeta", action.original_ref, {
-            accepted_by: action.accepted_by,
-            accepted_round: String(action.round),
-          });
+          // Marker first, note second (the same order as `auto_accept`): a crash
+          // between them is recovered by `held` on the next pass — land/move/
+          // close re-run and the note is not posted twice. The marker is the
+          // acceptance of record; the note is informational, so losing it is
+          // preferable to duplicating it.
+          if (action.held !== true) {
+            await step(setMeta, "setMeta", action.original_ref, {
+              accepted_by: action.accepted_by,
+              accepted_round: String(action.round),
+            });
+            await step(comment, "comment", action.original_ref, {
+              kind: "note",
+              body: `Loop acceptance after review ${action.review_ref} (round ${action.round}): VERDICT: APPROVE.`,
+            });
+          }
           await step(move, "move", action.original_ref, "done");
           await closeReviewCard(
             action,

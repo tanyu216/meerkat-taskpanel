@@ -1029,7 +1029,28 @@ describe("acceptance modes (the card decides who closes)", () => {
     assert.equal(action.round, 1);
     assert.equal(action.acceptedBy, LOOP_ACCEPTOR);
     assert.equal(action.closeReview, true);
-    assert.equal(action.held, undefined, "the loop never holds now");
+    assert.equal(action.held, undefined, "a fresh card carries no acceptance marker");
+  });
+
+  it("recovers an agent acceptance already written to the original (held)", () => {
+    const result = plan({
+      acceptance_mode: "agent",
+      meta: { accepted_by: LOOP_ACCEPTOR, accepted_round: "1" },
+    });
+    assert.deepEqual(types(result), ["approve"]);
+    assert.equal(
+      result.actions[0].held,
+      true,
+      "the marker is on the card: only land/move/close remain",
+    );
+  });
+
+  it("does not treat another round's acceptance marker as held", () => {
+    const result = plan({
+      acceptance_mode: "agent",
+      meta: { accepted_by: LOOP_ACCEPTOR, accepted_round: "0" },
+    });
+    assert.equal(result.actions[0].held, undefined);
   });
 
   it("records an APPROVE on a human original, closes the review card, and leaves the original", () => {
