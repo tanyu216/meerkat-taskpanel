@@ -37,6 +37,10 @@ web/dist
 .env
 # per-kind configs — machine-local, never image input
 .env.*
+# the inventory ships with the context: it holds no secret, and the container's
+# `node --test` reads it (`test/contract/config-keys.test.mjs`). A file the gate
+# cannot see inside the image is a gate that silently skips — see `design/`.
+!.env.example
 
 # the machine-local project map — host paths must never be baked into the image
 /projects.json

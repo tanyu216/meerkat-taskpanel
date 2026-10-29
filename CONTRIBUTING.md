@@ -76,7 +76,9 @@ See [.githooks/README.md](.githooks/README.md) for what each hook enforces.
 
 ## Conventions the gates enforce
 
-These are checked, not merely preferred. Skipping one turns CI red.
+These are checked, not merely preferred. Skipping one turns CI red. This table lists the
+**gates**; the **rules** they enforce are numbered `TS-NN` in
+[docs/tech-spec.md](docs/tech-spec.md) — cite one rather than restating it.
 
 | Convention | Enforced by |
 |---|---|
@@ -88,8 +90,7 @@ These are checked, not merely preferred. Skipping one turns CI red.
 | **The container gate runs before a branch push leaves the machine** (`SKIP_CONTAINER_VERIFY=1` opts out for one push) | `.githooks/pre-push` |
 | **A version tag needs a filled `## [X.Y.Z] - YYYY-MM-DD` CHANGELOG section** (real date, at least one entry, no `_Nothing yet._`, empty `[Unreleased]`) | `version-gate.yml`, `.githooks/pre-push`, `.githooks/pre-tag` |
 | **CHANGELOG entries are written on the release branch** (`release/vX.Y.Z`, the PR `release-prep` opens), never on a feature branch and never on `dev`; `[Unreleased]` stays empty between releases | review + `CLAUDE.md` (the tag gate enforces that the section is real) |
-| **Every failure is a domain error with a code** — never a bare `Error` | review |
-| **Layering:** `cli\|server -> core -> foundation`. `src/core/domain/` imports no Node builtins | review |
+| **The numbered rules in the standard** — layering, the error model, enumerations, configuration, logging | [docs/tech-spec.md](docs/tech-spec.md) `TS-NN`, each naming its own enforcement |
 
 ## Releasing
 

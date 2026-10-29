@@ -51,7 +51,9 @@ Meerkat TaskPanel 是为 AI Agent 团队而生的任务看板。它关注的是 
 
 Meerkat TaskPanel 是三层薄结构，依赖方向始终向内。`src/cli` 与 `src/server` 是入口。`src/core` 持有领域模型、SQLite 存储与用例。`src/foundation` 是它们共享的 DTO 与辅助函数。
 
-`meerkat-loop` 不属于这三层。它是一个独立 skill，只通过 `taskctl` 驱动看板，见 [meerkat-loop 调度器](#meerkat-loop-调度器)。完整目录树见[仓库结构](#仓库结构)；想为自己的 agent kind 安装 skill/插件，见[安装（agent kind 细节）](#安装agent-kind-细节)。
+`meerkat-loop` 不属于这三层。它是一个独立 skill，只通过 `taskctl` 驱动看板，见 [meerkat-loop 调度器](#meerkat-loop-调度器)。想为自己的 agent kind 安装 skill/插件，见[安装（agent kind 细节）](#安装agent-kind-细节)。
+
+系统记录见 [docs/architecture.md](docs/architecture.md)：边界、数据模型、契约、配置、安全与权威目录树。一次改动必须满足的规则见 [docs/tech-spec.md](docs/tech-spec.md)；哪份文档拥有哪个领域，见 [docs/README.md](docs/README.md)。
 
 ## 截图
 

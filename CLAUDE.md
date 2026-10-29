@@ -13,6 +13,27 @@ same state on a kanban board (deliberately read-only). Persistence is a single S
 database (Node's built-in `node:sqlite`) — no external services. Node **>= 22**,
 **zero runtime dependencies**, MIT, public repo.
 
+## Design principles
+
+Six principles bind every agent here, not only the architect. A change that violates one is
+recorded as an explicit decision with its cost, never a silent drift.
+
+- **Simple** — one obvious way to do each thing; no abstraction before a second caller. A
+  newcomer follows one primary use case end to end without a diagram.
+- **Reliable** — every dependency's failure mode is named: fail-fast configuration, timeouts,
+  idempotency, health and observability.
+- **Efficient** — no optimization without a measured number and a stated bound.
+- **Elegant** — one source of truth, consistent naming, boring technology, least surprise: the
+  tree, the contract and the names tell one story.
+- **Not over-engineered** — every abstraction and dependency names its forcing function (what
+  breaks if you delete it); the smallest skeleton that proves the architecture.
+- **High cohesion, low coupling** — one owner and one reason to change per module; dependencies
+  point one way; no reach-through or shared mutable state.
+
+When they conflict: **simplicity and reliability win; efficiency needs a measurement; elegance
+constrains how, it never adds machinery.** A boundary is not traded for speed — crossing one is
+a recorded decision.
+
 ## How to work here
 
 **Work by the team's workflow.** Before starting work a role owns, read the team's
@@ -129,10 +150,17 @@ bash install.sh --target claude|openclaw|codex|pi|server|all   # --prefix --link
 npx meerkat-taskpanel [install] [--target …] [--no-server] [--prefix <home>]   # defaults to all: server + every agent
 ```
 
-`test:coverage` gates `src/core/**`, `src/foundation/**`, `src/cli/**` and `src/server/**`; the
-floors live once, in `package.json`. Other checkers: `verify:migrations`, `verify:changelog`.
+`test:coverage` gates `src/core/**`, `src/foundation/**`, `src/cli/**` and `src/server/**` at
+**80 % line, branch and function**; the floors live once, in `package.json`. Other checkers:
+`verify:migrations`, `verify:changelog`. Security is three arms plus an inventory — dependency
+audit (`osv-scanner` + `npm audit`), secret scan (`gitleaks`), SAST (CodeQL) and an SBOM
+(`syft`) — and the block threshold, waiver caps, strict switch and exit codes are
+`docs/tech-spec.md` § Security toolchain (`security-success` in CI is the one required check).
 
 ## Repository layout
+
+The canonical tree, one line of purpose per directory, is `docs/architecture.md` § Directory
+tree. What follows is only what a session needs before its first command.
 
 `dist/`, `.data/`, `node_modules/`, `coverage/` and `.meerkat/` are build/runtime output —
 gitignored, never committed. `.meerkat/<identifier>/` is the loop's per-task process
@@ -190,11 +218,14 @@ the release workflow stages the image's build there before `npm pack`.
   (`test/design/`, `test/web/blocks.*`, `test/web/i18n.catalogue.test.mjs`), so editing them
   changes what green means. `design/` is excluded from the image by `.dockerignore`, so
   design-derived tests self-skip inside Docker — do not read that skip as a pass.
-- **`ARCHITECTURE.md` is not in this tree** (and never has been), yet `src/**`, `scripts/**`,
-  `test/**`, `docs/**` and `design/**` cite it by section (`ARCHITECTURE §4.6`, `§7.1`, …).
-  Those citations are historical orientation only — none resolves to a file. Project ordering
-  lives in `design/DESIGN.md` §20; do not add a new `ARCHITECTURE.md` citation, name the live
-  document instead. See `docs/README.md`.
+- **Cite the live document, never `ARCHITECTURE.md`.** That file is not in this tree (and never
+  has been), yet `src/**`, `scripts/**`, `test/**`, `docs/**` and `design/**` cite it by section
+  (`ARCHITECTURE §4.6`, `§7.1`, …) — historical orientation only, none resolves. The system
+  record is `docs/architecture.md`; project ordering is `design/DESIGN.md` §20. Do not add a new
+  citation. See `docs/README.md`.
+- **Configuration has one inventory:** `.env.example` at the root, held to
+  `src/foundation/constants.mjs` by `test/contract/config-keys.test.mjs`. A key the application
+  reads but the file omits is a defect; a key it lists that nothing reads is dead configuration.
 
 ## Git hooks (gates, run on the host)
 
@@ -242,7 +273,8 @@ The mechanisms those rules rest on, by home:
 - `docs/agents/development.md` — one writer per data directory and `DB_BUSY`; auth (`TASKD_ALLOW_CIDRS`
   and the token, loopback trusted); the bounded `SIGTERM` stop.
 - `docs/ops/install.md` — config topology: `.env` layering, the per-kind `.env.<actor-kind>` at the
-  program root, the install root, and the `taskd` guard unit.
+  program root, the install root, and the `taskd` guard unit. The key inventory itself is
+  `.env.example` at the root.
 - `docs/ops/observability.md` — log levels, rotation, and why logger events are not activity events.
 - `docs/events.md` — the event system's design: the activity log and revision cursor, the SSE
   contract, each consumer's policy, and the local event hub.
@@ -272,10 +304,12 @@ Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/age
 
 ## Docs to read next (do not re-paste)
 
+- `docs/tech-spec.md` — **this repository's standard, read it before the first code change**: the numbered rules (`TS-NN`) a change must satisfy, each naming its enforcement, plus the stack table and the security toolchain with its decision policy.
+- `docs/architecture.md` — the system record: boundaries, the layered style, the data model, the contract, configuration, security, the canonical directory tree. Provisional until a human accepts it.
+- `docs/adr/` — the recorded decisions and their status vocabulary.
 - `GLOSSARY.md` — the canonical vocabulary: one word per concept, the words to avoid, and the terms that are *not* in the model.
-- `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
-- `CONTRIBUTING.md` — the container gate, PR flow, conventions the gates enforce.
-- `docs/tech-spec.md` — this repository's standard: the authoritative pointer per section, and the security toolchain with its decision policy.
+- `CONTRIBUTING.md` — how a change lands: isolation, the gate, the PR flow, cleanup. `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
+- `.env.example` — the configuration inventory (every key the application reads, grouped by the file it lands in).
 - `docs/agents/development.md` — the two build layers and the server operations (one writer, bounded stop, lock contention).
 - `docs/agents/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
 - `docs/agents/contract.md` — the API and CLI contract snapshots + route-request lint.

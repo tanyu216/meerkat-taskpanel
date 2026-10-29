@@ -19,6 +19,9 @@ dist/
 .env
 # per-kind configs — one per actor kind, written beside the program root
 .env.*
+# the inventory is documentation and carries no secret — it must be tracked, so
+# this negation has to follow `.env.*` (last match wins)
+!.env.example
 
 # the machine-local project → directory map at the config root: host paths, never tracked
 /projects.json

@@ -65,8 +65,8 @@ no `design/`, no `node_modules`). The image:
 - reads the install-root `.env` like a host install. `.env` is in `.dockerignore`, so a
   developer's file (and any token in it) is never baked into the image. The compose files set
   `MEERKAT_TASKPANEL_ENV_FILE=/app/.data/.env`, so an Access-panel save lands on the data
-  volume and survives a container recreate; the scaffold (`docker/serve-skeleton.mjs`) uses
-  the same loader. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` is the escape hatch for a
+  volume and survives a container recreate; the daemon reads it through the same loader.
+  `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` is the escape hatch for a
   read-only install root.
 - has no host project map. `projects.json` is in `.dockerignore` (it holds host paths) and
   `/app` is not the compose volume, so a map written inside the container is lost on
@@ -228,23 +228,19 @@ curl -s http://127.0.0.1:9527/health
 docker compose -p meerkat-taskpanel-local -f docker/docker-compose.yml down -v
 ```
 
-`/health` answers:
+The service in `docker-compose.yml` is the **real daemon** (`command: node
+src/server/main.mjs`), so the same process serves the API, the SSE stream and the built
+board from `web/dist`. The M0 placeholder that answered only `/health` has been deleted:
+a healthcheck against a liveness-only service is not a gate.
+
+The daemon's `/health` is unauthenticated and always 200 (`src/server/index.mjs`):
 
 ```json
-{"status":"ok","stage":"scaffold","version":"1.0.0","uptimeMs":42}
+{"status":"ok","stage":"…","version":"0.1.2","uptimeMs":42,"revision":0}
 ```
 
-Anything else returns `404 {"error":"not_found"}`.
-
-> **M0 note (still true after M6a).** `docker/serve-skeleton.mjs` is a deploy skeleton:
-> it serves `/health` and nothing else, purely so the compose path (build → healthcheck →
-> teardown) can be exercised without starting a real board with real state. The **real**
-> HTTP surface now exists under `src/server/` (M6a) and is what the container suite starts
-> and drives: `docker run --rm meerkat-taskpanel:verify node src/server/main.mjs`, plus the
-> `test/server/*` integration cases that run inside `npm run verify:docker`. Pointing
-> `docker-compose.yml`'s `command` at `src/server/main.mjs` is a one-line deploy change
-> left for a follow-up card, because the compose healthcheck contract (`/health` says
-> ok) is shared by both servers and this milestone keeps it pinned as-is.
+The `503`-capable `/health` in `docs/ops/observability.md` is the **metrics sidecar's** SLO
+verdict, a different process on a different port — do not read the two as one endpoint.
 
 The board's runtime state is bind-mounted from the repository (`../.data` →
 `/app/.data`), so `docker compose down -v` never destroys it. Only named volumes are

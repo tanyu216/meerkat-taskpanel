@@ -9,14 +9,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { CARD_ACCEPTANCE_MODES } from "../../src/core/domain/acceptance-mode.mjs";
 import {
   ACCEPTANCE_MODES,
   defaultAcceptanceMode,
 } from "../../web/src/lib/acceptance-default.js";
 
 describe("create dialog — the acceptance preselect", () => {
-  it("offers the three card modes", () => {
-    assert.deepEqual([...ACCEPTANCE_MODES], ["off", "agent", "human"]);
+  it("offers exactly the card modes the domain stores", () => {
+    assert.deepEqual([...ACCEPTANCE_MODES], [...CARD_ACCEPTANCE_MODES]);
   });
 
   it("preselects agent for the project auto default and an unknown project word", () => {

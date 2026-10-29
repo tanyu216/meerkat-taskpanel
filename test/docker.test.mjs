@@ -7,8 +7,9 @@
  *   3. static assertions on the container artifacts (Dockerfile, compose, profiles,
  *      .dockerignore, CI workflow)
  *
- * Deliberately does NOT bind `docker/serve-skeleton.mjs` to a port — that would leak a
- * listening socket into the test run. The server is covered by syntax + static checks.
+ * Deliberately binds no server to a port — that would leak a listening socket into the
+ * test run. The compose service is covered by static checks; the daemon itself by
+ * `test/server/**` inside the container suite.
  *
  * Run with: node --test
  */
@@ -320,6 +321,26 @@ describe("profiles: runProfiles", () => {
 //   3. `MEERKAT_TASKPANEL_OFFLINE=1` refuses even that one pull;
 //   4. the build itself carries the builder's no-pull flag.
 // ---------------------------------------------------------------------------
+
+describe("base-image: runtime floor", () => {
+  it("every Node base image satisfies the engines floor the manifest declares", async () => {
+    /* `docs/tech-spec.md` TS-04: the container runtime and the runtime the manifest
+     * pins are one decision. They drift silently otherwise — a bumped `engines` or a
+     * bumped image tag, each green on its own. */
+    const manifest = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
+    const floor = Number(/>=\s*(\d+)/.exec(manifest.engines?.node ?? "")?.[1]);
+    assert.ok(Number.isFinite(floor), "package.json must pin a `>=N` Node floor in engines");
+
+    const dockerfile = await readFile(join(ROOT, "docker", "Dockerfile"), "utf8");
+    const majors = parseBaseImages(dockerfile)
+      .filter((ref) => ref.startsWith("node:"))
+      .map((ref) => Number(ref.slice("node:".length).split(/[-.]/)[0]));
+    assert.ok(majors.length > 0, "the Dockerfile must build on a node base image");
+    for (const major of majors) {
+      assert.ok(major >= floor, `node:${major} in Dockerfile is below engines ${manifest.engines.node}`);
+    }
+  });
+});
 
 describe("base-image: parseBaseImages", () => {
   it("returns the external FROM refs, deduped, in file order", () => {
@@ -834,7 +855,10 @@ describe("static: docker-compose.yml", () => {
     assert.match(text, /TASKD_PORT[:=]\s*"?9527"?/);
     assert.match(text, /9527:9527/);
     assert.match(text, /\.\.\/\.data:\/app\/\.data/);
-    assert.match(text, /docker\/serve-skeleton\.mjs/);
+    // The deploy service runs the real daemon, not the retired M0 skeleton: a
+    // healthcheck against a liveness-only placeholder is not a gate.
+    assert.match(text, /command:\s*\["node","src\/server\/main\.mjs"\]/);
+    assert.doesNotMatch(text, /serve-skeleton/);
     assert.match(text, /healthcheck:/);
     assert.match(text, /\/health/);
     assert.match(text, /interval:\s*5s/);
@@ -883,25 +907,15 @@ describe("static: the dev / manual-preview environment", () => {
   });
 });
 
-describe("static: serve-skeleton", () => {
-  it("exists, parses, and only serves /health", async () => {
-    const path = join(ROOT, "docker", "serve-skeleton.mjs");
-    assert.ok(existsSync(path), "docker/serve-skeleton.mjs must exist");
-
-    const syntax = spawnSync(process.execPath, ["--check", path], { encoding: "utf8" });
-    assert.equal(syntax.status, 0, `node --check failed: ${syntax.stderr}`);
-
-    const text = await read("docker/serve-skeleton.mjs");
-    assert.match(text, /\/health/);
-    assert.match(text, /not_found/);
-    assert.match(text, /"scaffold"/);
-    assert.match(text, /TASKD_HOST/);
-    assert.match(text, /TASKD_PORT/);
-    assert.match(text, /SIGTERM/);
-    assert.match(text, /node:http/);
-    // It must declare itself a skeleton, not the M6 server.
-    assert.match(text, /M0/);
-    assert.match(text, /M6/);
+describe("static: no placeholder server", () => {
+  it("keeps the M0 deploy skeleton deleted — the compose service runs the real server", async () => {
+    assert.equal(
+      existsSync(join(ROOT, "docker", "serve-skeleton.mjs")),
+      false,
+      "docker/serve-skeleton.mjs answered only /health; the deploy path runs src/server/main.mjs",
+    );
+    const compose = await read("docker/docker-compose.yml");
+    assert.match(compose, /command:\s*\["node","src\/server\/main\.mjs"\]/);
   });
 });
 

@@ -13,8 +13,8 @@
  *     exercises on a card they own, not on a subtask.
  */
 
-/** The three values a card stores; `auto` is a project word. */
-export const ACCEPTANCE_MODES = Object.freeze(["off", "agent", "human"]);
+/** The three values a card stores — declared once in `board-enums.js`. */
+export { ACCEPTANCE_MODES } from "./board-enums.js";
 
 /** What an unresolved card falls back to. */
 export const FALLBACK_ACCEPTANCE = "agent";

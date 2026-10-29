@@ -12,6 +12,14 @@ closing list of words that do **not** mean what a newcomer expects them to.
 > zh-CN README keeps such terms in English (`epic`, `rollup`, `append-only`), and inventing a
 > translation would mint vocabulary the project does not use.
 
+## Product language
+
+The product's own vocabulary — the board's views, the drawer, the roster, the create dialog's
+fields, the status and priority chips — is recorded in [`design/DESIGN.md`](design/DESIGN.md) and
+the prototype under `design/`. Its terms are **not copied here**: this file is the codebase's
+vocabulary, and a word the UI owns belongs to the UI's document. Where the two name the same
+concept, the codebase word is the one code and `taskctl` output use.
+
 ## Language
 
 ### The board

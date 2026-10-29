@@ -51,7 +51,9 @@ Meerkat TaskPanel is a task board built for AI-agent teams. Its subject is the c
 
 Meerkat TaskPanel is three thin layers, with the dependency arrow always pointing inward. `src/cli` and `src/server` are the front doors. `src/core` owns the domain model, SQLite storage and use-cases. `src/foundation` holds the DTOs and helpers they agree on.
 
-`meerkat-loop` is not one of these layers. It is a separate skill that drives the board through `taskctl`; see [The meerkat-loop scheduler](#the-meerkat-loop-scheduler). The full tree is in [Repository layout](#repository-layout); to install the skill or plugin for your agent kind, start with [Agent-kind install details](#agent-kind-install-details).
+`meerkat-loop` is not one of these layers. It is a separate skill that drives the board through `taskctl`; see [The meerkat-loop scheduler](#the-meerkat-loop-scheduler). To install the skill or plugin for your agent kind, start with [Agent-kind install details](#agent-kind-install-details).
+
+The system record is [docs/architecture.md](docs/architecture.md) — boundaries, data model, contract, configuration, security and the canonical directory tree. The rules a change here must satisfy are [docs/tech-spec.md](docs/tech-spec.md), and [docs/README.md](docs/README.md) indexes which document owns which area.
 
 ## Screenshots
 
