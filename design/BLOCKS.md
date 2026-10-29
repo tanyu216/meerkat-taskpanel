@@ -1277,6 +1277,15 @@ is in *their* court, and only by how long they have been waiting. Two destinatio
 roots, two questions; the ruling that keeps them apart is Elon's (card comment, 2026-10-12
 19:04) and the reasoning is DESIGN.md §30.1.
 
+**Which filters narrow it — none of the board's.** The queue is derived from the whole board
+reading, not from the board's visible set, and narrowed by exactly one condition: the sidebar's
+assignee (whose queue is being read). The status / priority / label / search filters belong to
+the board view and never reach the queue — the waiting view hides the filter bar, so a filter
+narrowing it would hide an overdue item invisibly, the failure §30.6's rejected "give `waiting`
+its own filter bar" alternative already names. Both halves of the one queue — awaiting questions
+and waiting acceptances — apply that same assignee narrowing, and the header's tally reads the
+same two derivations the rows do, so the count cannot disagree with what is on screen (TP-0021).
+
 | | |
 |---|---|
 | Root | `[data-waiting-view]` — fourth child of `main.td-main`, beside `[data-board-view]`, `[data-list]` and `[data-activity-view]`; ships **`hidden`**, because the no-script default view is the board |
