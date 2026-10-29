@@ -43,7 +43,7 @@ jobs:
           node-version: "24"
 
       # The frontend's build-time devDependencies are the documented exception to
-      # the zero-dependency rule (docs/docker.md); the lockfile pins them.
+      # the zero-dependency rule (docs/agents/docker.md); the lockfile pins them.
       - name: Install the frontend build-time dependencies
         run: npm ci --prefix web
 

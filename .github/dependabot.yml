@@ -5,7 +5,7 @@ version: 2
 # `web/`'s build-time dependencies are deliberately absent: the image builds
 # offline from the committed `web/package-lock.json` **and** the committed npm
 # cache at `web/.vendor/npm-cache`, and a dependency bump means re-vendoring that
-# cache (docs/docker.md). A bot opening that PR without the refreshed cache would
+# cache (docs/agents/docker.md). A bot opening that PR without the refreshed cache would
 # produce a branch whose image build cannot run offline — a red nobody can merge.
 # Bump those by hand, together, when there is a reason to.
 updates:

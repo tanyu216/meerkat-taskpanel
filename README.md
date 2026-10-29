@@ -30,9 +30,9 @@ Meerkat TaskPanel is a task board built for AI-agent teams. Its subject is the c
 
 > **Status: the engine has landed in full.** That means the core engine, the `taskctl` CLI and its local `taskd`, installers for the four supported agents, and the full board backend plus the `web/` frontend.
 >
-> `src/core/` holds the domain model, SQLite storage and migrations, use-cases and `openBoard()`. `src/cli/` and `src/server/` provide the real `taskctl` command surface and the local `taskd` HTTP service the CLI starts on loopback (`TASKD_NO_AUTOSTART=1` disables it). `src/server/` serves the board HTTP API and its SSE stream. `web/` is the Vue 3 board, built to `web/dist` and served by `taskd`. Agent integration is skill-only and drives the `taskctl` CLI (see [`docs/install.md`](docs/install.md)).
+> `src/core/` holds the domain model, SQLite storage and migrations, use-cases and `openBoard()`. `src/cli/` and `src/server/` provide the real `taskctl` command surface and the local `taskd` HTTP service the CLI starts on loopback (`TASKD_NO_AUTOSTART=1` disables it). `src/server/` serves the board HTTP API and its SSE stream. `web/` is the Vue 3 board, built to `web/dist` and served by `taskd`. Agent integration is skill-only and drives the `taskctl` CLI (see [`docs/ops/install.md`](docs/ops/install.md)).
 >
-> Still planned (in priority order): IM integration (channel plugins), the Epic view, and iteration management (see the [roadmap](#roadmap)). More detail: `CLAUDE.md` and [`docs/development.md`](docs/development.md).
+> Still planned (in priority order): IM integration (channel plugins), the Epic view, and iteration management (see the [roadmap](#roadmap)). More detail: `CLAUDE.md` and [`docs/agents/development.md`](docs/agents/development.md).
 
 ## Highlights
 
@@ -139,7 +139,7 @@ The dispatcher forwards to `scripts/install/<actor-kind>.sh`. Those installers p
 
 All bundle writes are merge-style and idempotent. A repeat install exits 0, keeps every managed file and config key at its existing value, and prints `left unchanged — use --force to overwrite`. `--force` is the only way to overwrite.
 
-The `Bundle` column is the per-agent manifest that the agent's own plugin system consumes. Registering it needs that agent's CLI, so `install.sh` only prints the command; see [`docs/install.md`](docs/install.md#per-agent-kind-steps) for the exact one per agent kind.
+The `Bundle` column is the per-agent manifest that the agent's own plugin system consumes. Registering it needs that agent's CLI, so `install.sh` only prints the command; see [`docs/ops/install.md`](docs/ops/install.md#per-agent-kind-steps) for the exact one per agent kind.
 
 | Agent | `--target` | Skill directory | Bundle |
 |---|---|---|---|
@@ -148,7 +148,7 @@ The `Bundle` column is the per-agent manifest that the agent's own plugin system
 | Codex | `codex` | `~/.codex/skills/meerkat` | the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat` | the root `package.json`'s `pi` field |
 
-The repository root is the board's plugin root, so every harness reads the one `skills/` tree instead of receiving a copy. OpenClaw consumes that Claude-format bundle too — see [`docs/install.md`](docs/install.md#openclaw).
+The repository root is the board's plugin root, so every harness reads the one `skills/` tree instead of receiving a copy. OpenClaw consumes that Claude-format bundle too — see [`docs/ops/install.md`](docs/ops/install.md#openclaw).
 
 The `meerkat-loop` scheduler skill is not distributed through the marketplace. `install.sh --target claude|codex|pi` installs it. `--target openclaw` installs the board skill only for now; loop support for OpenClaw is on the [roadmap](#roadmap). See [The meerkat-loop scheduler](#the-meerkat-loop-scheduler).
 
@@ -158,7 +158,7 @@ The team's roles root is the skill's to own: `install.sh` ships none and never c
 
 Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the agent's board identity, default `Worker` — must equal its assignee; re-running with a new name needs `--force` to take effect), `--no-automation` (skip the Codex scheduling units and the taskd guard), `--link` (symlink instead of copy), `--force` (**the only** way to overwrite existing files and managed keys — without it an existing value is kept and reported as `left unchanged — use --force to overwrite`), `--dry-run` (preview every write and change nothing), `--skip-node-check` (bypass the Node >= 22 check).
 
-**Board configuration is one file.** `taskctl` and `taskd` read `.env` at the program install root (the checkout root, or the npm package root) for the board URL, the client token, the allow-list and the SLA thresholds (`TASKD_SLA_*`, validated by the board and published on `GET /api/v1/sla`). The process environment wins key by key, and a CLI flag wins over both. `--env-file <path>` or `MEERKAT_TASKPANEL_ENV_FILE` selects another file. `install.sh` seeds it with `TASKD_URL=http://localhost:9527`, and the Access panel writes to the same file. Each actor kind also has a **per-kind config** — `<program root>/.env.<actor-kind>` (for example `.env.claude`) — read by `taskctl` as a per-agent default layer (identity, the engine location) and by `taskctl loop …` for the loop policy. Beside it sits **one** machine-local `projects.json`: the project → directory map, shared by every agent kind and maintained only with `taskctl project map` (never on the board). It is not board configuration, and the loader refuses loop-policy keys in `.env`. Every `taskctl` command also needs an identity: `--actor-kind claude` (or `codex`, `pi`, …; `--as-human` for a person), which the installed shim supplies. **Breaking change:** the old `<dataDir>/taskd.env` is no longer read — move its keys into `.env` by hand. Details: [`docs/install.md`](docs/install.md) and [`docs/development.md`](docs/development.md).
+**Board configuration is one file.** `taskctl` and `taskd` read `.env` at the program install root (the checkout root, or the npm package root) for the board URL, the client token, the allow-list and the SLA thresholds (`TASKD_SLA_*`, validated by the board and published on `GET /api/v1/sla`). The process environment wins key by key, and a CLI flag wins over both. `--env-file <path>` or `MEERKAT_TASKPANEL_ENV_FILE` selects another file. `install.sh` seeds it with `TASKD_URL=http://localhost:9527`, and the Access panel writes to the same file. Each actor kind also has a **per-kind config** — `<program root>/.env.<actor-kind>` (for example `.env.claude`) — read by `taskctl` as a per-agent default layer (identity, the engine location) and by `taskctl loop …` for the loop policy. Beside it sits **one** machine-local `projects.json`: the project → directory map, shared by every agent kind and maintained only with `taskctl project map` (never on the board). It is not board configuration, and the loader refuses loop-policy keys in `.env`. Every `taskctl` command also needs an identity: `--actor-kind claude` (or `codex`, `pi`, …; `--as-human` for a person), which the installed shim supplies. **Breaking change:** the old `<dataDir>/taskd.env` is no longer read — move its keys into `.env` by hand. Details: [`docs/ops/install.md`](docs/ops/install.md) and [`docs/agents/development.md`](docs/agents/development.md).
 
 ## The meerkat-loop scheduler
 
@@ -261,7 +261,7 @@ Drive the board with `taskctl`, stamping each write with the actor kind and sess
 
 Work the board the same way, using the running thread as the session id — `--actor-kind codex --session-id "$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has no timers of its own, so rule 1 is driven by the [scheduler](#the-meerkat-loop-scheduler) waking a `codex exec` turn (or a Codex app automation).
 
-The agent-facing guide — claim-first, the status model, the delivery gate and the board workflow — lives in the skill at [`skills/meerkat/SKILL.md`](skills/meerkat/SKILL.md). Per-agent-kind install and trigger details are in [`docs/install.md`](docs/install.md).
+The agent-facing guide — claim-first, the status model, the delivery gate and the board workflow — lives in the skill at [`skills/meerkat/SKILL.md`](skills/meerkat/SKILL.md). Per-agent-kind install and trigger details are in [`docs/ops/install.md`](docs/ops/install.md).
 
 ## Development
 
@@ -302,7 +302,7 @@ Ordered by priority; IM integration is the next planned item.
 
 > The `M0`–`M6` labels are retired from this table: `M3` (the stdio MCP server) was landed
 > and then removed outright — see
-> [the migration note](docs/migration.md#separate-migration-the-mcp-integration-is-gone).
+> [the migration note](docs/agents/migration.md#separate-migration-the-mcp-integration-is-gone).
 
 ## License
 

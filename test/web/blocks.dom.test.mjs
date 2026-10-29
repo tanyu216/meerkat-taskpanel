@@ -13,7 +13,7 @@
  *     — no `web/dist`, no Playwright, no launchable Chromium, or (for the parity
  *     leg) no `design/prototype/index.html` to compare against. That is the
  *     container's normal state: the image carries no browser, and rendering is a
- *     host-allowed exception (plan §9.1 exception 4; `docs/docker.md`).
+ *     host-allowed exception (plan §9.1 exception 4; `docs/agents/docker.md`).
  *   * **fails** on any other non-zero exit — a contract rule, a console error, a
  *     page error, a viewport overflow, a broken interaction, or a geometry
  *     assertion that does not hold.

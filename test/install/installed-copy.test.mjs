@@ -182,7 +182,7 @@ describe("the installed skill is a copy, not a link", () => {
   it("writes a taskctl shim for every agent kind — the rung that carries the identity", () => {
     // The shim is what pins `--agent <name> --actor-kind <kind>` on every call, and an agent kind
     // without one records its writes with no kind — which the board reads as a person's.
-    // `docs/install.md` promises it for every agent kind, not only the two bundle agent kinds.
+    // `docs/ops/install.md` promises it for every agent kind, not only the two bundle agent kinds.
     for (const { kind, dir } of KINDS) {
       const shim = join(home, dir, "bin", "taskctl");
       assert.ok(existsSync(shim), `${kind}: the shim must be installed at ${shim}`);

@@ -1,4 +1,4 @@
-# Agent-kind profile: Claude Code. See docs/docker.md § Profiles and docs/install.md.
+# Agent-kind profile: Claude Code. See docs/agents/docker.md § Profiles and docs/ops/install.md.
 actor_kind: claude
 label: Claude Code
 installer: scripts/install/claude.sh

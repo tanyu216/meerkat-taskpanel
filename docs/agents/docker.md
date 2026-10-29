@@ -23,7 +23,7 @@ runtime image. See [The web build stage](#the-web-build-stage).
 
 **Docker is not the distribution path.** The user-facing install is `npx meerkat-taskpanel`
 (or `install.sh --target server`) on the user's own machine, which materializes the runtime
-at `~/.meerkat-taskpanel` — see [install.md § Install methods](install.md#install-methods).
+at `~/.meerkat-taskpanel` — see [install.md § Install methods](../ops/install.md#install-methods).
 The container keeps its own layout (`/app`, with `/app/.data` as the compose volume) and the
 install tree never enters the image. What the container gate checks is the *installer*: step
 8 below runs both entry points against a throwaway home, the same rule as every other
@@ -344,7 +344,7 @@ Each step prints an `== ... ==` header and the script aborts on the first failur
 > it with npm pinned to a dead registry (so a missing file cannot be fetched), and boots the
 > installed board. The *published*-package smoke — `scripts/verify/published-smoke.mjs` — is
 > deliberately not here: it installs from the real registry, which the container does not
-> reach. It runs in the release pipeline's `smoke` job ([publishing.md](publishing.md) §3).
+> reach. It runs in the release pipeline's `smoke` job ([publishing.md](../ops/publishing.md) §3).
 > Step 8 materializes the server tree at a
 > temporary `--prefix`, drives both entry points (`scripts/install/cli.mjs`, which is what
 > `npx` runs, and `install.sh --target server`), and finally starts the installed

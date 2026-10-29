@@ -1,4 +1,4 @@
-# Agent-kind profile: Pi. See docs/docker.md § Profiles and docs/install.md.
+# Agent-kind profile: Pi. See docs/agents/docker.md § Profiles and docs/ops/install.md.
 actor_kind: pi
 label: Pi
 installer: scripts/install/pi.sh

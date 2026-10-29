@@ -1,4 +1,4 @@
-# Agent-kind profile: Codex. See docs/docker.md § Profiles and docs/install.md.
+# Agent-kind profile: Codex. See docs/agents/docker.md § Profiles and docs/ops/install.md.
 actor_kind: codex
 label: Codex
 installer: scripts/install/codex.sh

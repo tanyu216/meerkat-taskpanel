@@ -6,5 +6,5 @@ dist/
 # 2026-10-09): the image's `webbuild` stage installs the frontend from it fully offline
 # (`npm ci --offline`, so `docker build --network=none` succeeds). Do not add `.vendor`
 # here. It is a generated artefact (linux/arm64) — re-vendor it after any dependency bump;
-# see docs/docker.md.
+# see docs/agents/docker.md.
 !.vendor/

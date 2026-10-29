@@ -20,7 +20,7 @@ the API ships in every commit, and a route or error-code change must be
 accompanied by an explicit snapshot update (`node scripts/verify/contract.mjs
 --update`); the request lint is the pairing half — it proves the declaration the
 snapshot freezes is the one the handler honours (see
-[`../docs/contract.md`](../docs/contract.md)). The two tree gates: a
+[`../docs/agents/contract.md`](../docs/agents/contract.md)). The two tree gates: a
 host-absolute path is a statement about one machine, and a walkable reference
 into an external framework's private store is an instruction to leave this
 repository, which a session reading the tree will follow (see
@@ -31,7 +31,7 @@ and `signposts` jobs in `check.yml`.
 ## The container gate runs at `pre-push`
 
 The authoritative suite is `npm run verify:docker` — it builds the image and runs
-everything that *runs* ([`../docs/docker.md`](../docs/docker.md)). It is the last
+everything that *runs* ([`../docs/agents/docker.md`](../docs/agents/docker.md)). It is the last
 gate in `pre-push`, after the static ones:
 
 - it runs only when a **branch commit** is moving. A tag-only push and a branch
@@ -65,7 +65,7 @@ ALLOW_PUSH_MAIN=1 git push origin main   # deliberate release push
 ```
 
 The **real** enforcement is GitHub's branch-protection rule on `main`
-([`../docs/publishing.md`](../docs/publishing.md) §3.3) — a hook is a courtesy and
+([`../docs/ops/publishing.md`](../docs/ops/publishing.md) §3.3) — a hook is a courtesy and
 `git push --no-verify` bypasses it, along with everything else here. This one
 exists so that a mistaken `git push origin main` is a local error message rather
 than a rejected round trip. `ALLOW_PUSH_MAIN=1` is the narrow escape hatch for a
@@ -94,7 +94,7 @@ are not hooked the way commits are. The rule is therefore enforced at the
 earliest points git *does* offer:
 
 1. `.githooks/pre-tag vX.Y.Z` — run it yourself before tagging (documented in
-   [`../docs/publishing.md`](../docs/publishing.md));
+   [`../docs/ops/publishing.md`](../docs/ops/publishing.md));
 2. `.githooks/pre-push` — refuses a version tag on its way out;
 3. `.github/workflows/version-gate.yml` — the authoritative check on tag push;
 4. `.github/workflows/release-tag.yml` — runs the same gate on the exact commit it is

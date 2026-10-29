@@ -13,7 +13,7 @@
  * carries no browser). It is resolved from an already-installed location (a
  * global npm root, `PLAYWRIGHT_ROOT`, or the current tree); when it is absent the
  * script exits **2** ("skip"), following the "absent tool ⇒ SKIP, never FAIL"
- * precedent. Rendering is a host-allowed exception (`docs/docker.md`;
+ * precedent. Rendering is a host-allowed exception (`docs/agents/docker.md`;
  * plan §9.1 exception 4).
  *
  * Deliberately under `web/scripts/`, not `test/`, so `node --test` never collects

@@ -4,7 +4,7 @@ The minimum observability surface for Meerkat TaskPanel: a metrics endpoint, a h
 committed alerting-rules file and an OpenTelemetry export — **zero runtime dependencies,
 runnable offline**.
 
-The operator-facing runbook is [`docs/observability.md`](../docs/observability.md). This
+The operator-facing runbook is [`docs/ops/observability.md`](../docs/ops/observability.md). This
 file is the map for someone editing the code.
 
 ## Layout
@@ -33,7 +33,7 @@ node monitoring/exporter.mjs
 ```
 
 Loopback `127.0.0.1:9105` by default; `MONITORING_HOST`, `MONITORING_PORT`,
-`MONITORING_OTLP_ENDPOINT` and friends are documented in `docs/observability.md`.
+`MONITORING_OTLP_ENDPOINT` and friends are documented in `docs/ops/observability.md`.
 
 ## The one rule this directory lives by
 

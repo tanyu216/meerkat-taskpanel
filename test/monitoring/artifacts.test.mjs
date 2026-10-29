@@ -26,7 +26,7 @@ const ARTEFACTS = Object.freeze({
   prometheus: "monitoring/prometheus/prometheus.yml",
   rules: "monitoring/prometheus/meerkat-taskpanel.rules.yml",
   collector: "monitoring/otel/collector.yml",
-  docs: "docs/observability.md",
+  docs: "docs/ops/observability.md",
   readme: "monitoring/README.md",
 });
 
@@ -153,7 +153,7 @@ describe("observability artifacts — Prometheus and collector config", () => {
 describe("observability artifacts — runbook and dependency policy", () => {
   it("documents startup, shutdown, the metrics and the thresholds", async () => {
     const docs = await read(ARTEFACTS.docs);
-    assert.ok(docs.length > 1_500, "docs/observability.md looks too thin");
+    assert.ok(docs.length > 1_500, "docs/ops/observability.md looks too thin");
     for (const needle of [
       "monitoring/exporter.mjs",
       "/metrics",
@@ -170,7 +170,7 @@ describe("observability artifacts — runbook and dependency policy", () => {
       "MONITORING_PORT",
       "no network",
     ]) {
-      assert.ok(docs.includes(needle), `docs/observability.md must mention ${needle}`);
+      assert.ok(docs.includes(needle), `docs/ops/observability.md must mention ${needle}`);
     }
   });
 

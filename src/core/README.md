@@ -20,7 +20,7 @@ Rules that are enforced, not just documented:
   A **future** table rebuild must re-create every index and trigger the dropped table had, so
   an upgraded board and a fresh install end on the same schema. The `00xx` numbers cited here
   and in code comments are pre-release design labels: the 0.1.0 baseline squashed the
-  `0001..0042` history into `0001_init.sql` (`docs/migration.md`);
+  `0001..0042` history into `0001_init.sql` (`docs/agents/migration.md`);
 * the delivery gate is a database trigger *and* a domain check, and the two are
   tested against each other (`test/contract/`);
 * a **review card** is an ordinary `kind=task` card carrying the immutable

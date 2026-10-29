@@ -233,7 +233,7 @@ be regenerated with `--update`. (That is why the check is stronger than a
 
 The `contract` job is the pull-request-time authority; `version-gate.yml` carries the same
 check at tag time. See
-[`.githooks/README.md`](../.githooks/README.md) for the hook table.
+[`.githooks/README.md`](../../.githooks/README.md) for the hook table.
 
 ## Changing the API
 
@@ -306,6 +306,6 @@ git add test/fixtures/contract/cli.snapshot.json
 
 ## See also
 
-- [`../src/core/README.md`](../src/core/README.md) — the domain rules the error
+- [`../src/core/README.md`](../../src/core/README.md) — the domain rules the error
   codes name.
-- [`publishing.md`](publishing.md) — the release flow the tag-time gates sit in.
+- [`publishing.md`](../ops/publishing.md) — the release flow the tag-time gates sit in.

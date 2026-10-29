@@ -193,8 +193,8 @@ describe("release.yml: the smoke", () => {
   });
 });
 
-describe("docs/publishing.md matches the pipeline", () => {
-  const DOC = "docs/publishing.md";
+describe("docs/ops/publishing.md matches the pipeline", () => {
+  const DOC = "docs/ops/publishing.md";
 
   it("names the three dispatches and the OIDC publish", async () => {
     const doc = await read(DOC);

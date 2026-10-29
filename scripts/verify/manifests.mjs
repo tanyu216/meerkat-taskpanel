@@ -12,7 +12,7 @@
  * repository-root marketplace and installs the same `./` bundle as Claude Code, so its
  * expected manifest is the board plugin's (see KIND_BUNDLES.codex). OpenClaw has none
  * either — it reads that same `./` bundle, which is why no native OpenClaw manifest
- * ships (see KIND_BUNDLES.openclaw and docs/install.md).
+ * ships (see KIND_BUNDLES.openclaw and docs/ops/install.md).
  *
  * Exits non-zero with a readable message on the first failure. Node builtins only.
  */

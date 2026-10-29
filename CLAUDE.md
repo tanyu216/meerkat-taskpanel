@@ -15,6 +15,16 @@ database (Node's built-in `node:sqlite`) — no external services. Node **>= 22*
 
 ## How to work here
 
+**Work by the team's workflow.** Before starting work a role owns, read the team's
+`ownership.md` from the loop's roles root — `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, else
+`<project>/.meerkat/roles/`, else `<agent-dir>/skills/meerkat-loop/roles/` — and follow the
+workflow it names for that work shape: for the standard team, Jobs takes product design and UI,
+Linus architecture, implementation, refactors and bugs, Turing test design, regression and
+performance, and Reviewer independent review. The installed copy is authoritative; the template
+under `skills/setup-meerkat/assets/team/standard/` is only what `/setup-meerkat` seeds it from.
+The loop injects the guide only for cards it dispatches, so a session taking the work itself
+reads it first. The card is still created and delivered through `/meerkat`.
+
 **Decompose before executing.** Any request that is more than a couple of tool calls gets a
 todo list first (TodoWrite): one item per independently verifiable step — a test that must go
 green, a file to change, a gate to run — kept current while you work (exactly one
@@ -141,7 +151,7 @@ the release workflow stages the image's build there before `npm pack`.
   starting or serving the app, the CLI, agent skill installs, plugin installs, migration
   rehearsals — runs in the container (`npm run verify:docker`, `docker/verify-in-container.sh`).
   `.githooks/pre-push` runs that gate on every branch push, so the push itself is the merge-time
-  container check. Host-allowed (static/pure only, per `docs/docker.md` §Host-allowed checks):
+  container check. Host-allowed (static/pure only, per `docs/agents/docker.md` §Host-allowed checks):
   `node --test`, `node --check`, the `scripts/verify/*` checkers, `git` and file inspection,
   prototype screenshots, and the browser-rendered `web/` DOM/selector checks (the image has no
   Chromium).
@@ -151,7 +161,7 @@ the release workflow stages the image's build there before `npm pack`.
 - **`web/` is the one exception, and it is build-time only.** Its committed
   `web/package-lock.json` + committed npm cache at `web/.vendor/npm-cache` let the image's
   `webbuild` stage run `npm ci --offline`, so the image builds with no network. The cache is a
-  **generated artefact** (linux/arm64) — after a dependency bump, re-vendor per `docs/docker.md`
+  **generated artefact** (linux/arm64) — after a dependency bump, re-vendor per `docs/agents/docker.md`
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
 - **The skills are authored source, never generated.** `skills/meerkat/`,
   `skills/meerkat-loop/` (docs + decisions only) and `skills/setup-meerkat/` (standalone)
@@ -163,7 +173,7 @@ the release workflow stages the image's build there before `npm pack`.
 - **Migrations are append-only.** Never edit or delete a committed
   `src/core/storage/migrations/*.sql`; add a new numbered file. The DB runner refuses a database
   whose applied file changed, and adding a migration reds several hand-kept version lists — see
-  `npm run verify:migrations` and `docs/migration.md`.
+  `npm run verify:migrations` and `docs/agents/migration.md`.
 - **The contracts are explicit.** A route, error code or wire-field change must update
   `test/fixtures/contract/api.snapshot.json` via `node scripts/verify/contract.mjs --update` —
   never let it drift. Adding a new `DomainError` code touches `ERROR_CODES`, its bucket and that
@@ -229,12 +239,13 @@ The mechanisms those rules rest on, by home:
 - `skills/meerkat/` — every board rule: the claim/heartbeat/deliver cycle, the round-scoped
   delivery gate, review cards (flow B), `projects.json`, the brief.
 - `skills/meerkat-loop/` — when the loop patrols, dispatches and claims; the local event hub.
-- `docs/development.md` — one writer per data directory and `DB_BUSY`; auth (`TASKD_ALLOW_CIDRS`
+- `docs/agents/development.md` — one writer per data directory and `DB_BUSY`; auth (`TASKD_ALLOW_CIDRS`
   and the token, loopback trusted); the bounded `SIGTERM` stop.
-- `docs/install.md` — config topology: `.env` layering, the per-kind `.env.<actor-kind>` at the
+- `docs/ops/install.md` — config topology: `.env` layering, the per-kind `.env.<actor-kind>` at the
   program root, the install root, and the `taskd` guard unit.
-- `docs/observability.md` — log levels, rotation, and why logger events are not activity events.
-- `docs/events.md` — the local event hub's contract.
+- `docs/ops/observability.md` — log levels, rotation, and why logger events are not activity events.
+- `docs/events.md` — the event system's design: the activity log and revision cursor, the SSE
+  contract, each consumer's policy, and the local event hub.
 
 ## Agent skills
 
@@ -264,8 +275,8 @@ Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/age
 - `GLOSSARY.md` — the canonical vocabulary: one word per concept, the words to avoid, and the terms that are *not* in the model.
 - `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
 - `CONTRIBUTING.md` — the container gate, PR flow, conventions the gates enforce.
-- `docs/development.md` — layout, commands, the two build layers, skills generation, constraints.
-- `docs/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
-- `docs/contract.md` — the API and CLI contract snapshots + route-request lint.
-- `docs/migration.md`, `docs/scheduling.md`, `docs/observability.md`, `docs/security.md` — the named subsystems.
+- `docs/agents/development.md` — layout, commands, the two build layers, skills generation, constraints.
+- `docs/agents/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
+- `docs/agents/contract.md` — the API and CLI contract snapshots + route-request lint.
+- `docs/agents/migration.md`, `docs/scheduling.md`, `docs/ops/observability.md`, `docs/security.md` — the named subsystems.
 - `src/core/README.md` — what the core engine owns and the rules it enforces.

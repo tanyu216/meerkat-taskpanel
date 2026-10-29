@@ -1,11 +1,22 @@
-# Acceptance: who closes a card
+# The acceptance model: who closes a card
 
-`done` is the board's acceptance act. A card's **acceptance mode** is the one word that decides
-who may perform it. It does **not** decide whether the card is reviewed: every card except an
-explicit `off` is sent to an independent reviewer, and the mode only selects the **closer** —
-the loop for `agent`, a person for `human`.
+This page is the **design** of the board's acceptance model, not a procedure. It answers one
+question — once a card is delivered, who is allowed to move it to `done` — and records the
+invariants that make that answer enforceable at every layer.
 
-Two layers, one word:
+Two decisions are deliberately separate:
+
+- **Review is independent of acceptance.** Every card except an explicit `off` is sent to an
+  independent reviewer; a person's intention to close the card themselves never skips the
+  review.
+- **Acceptance is the closer.** The card's *acceptance mode* is a single word that names who may
+  perform the `done` move: the loop after a current-round `APPROVE`, or a person.
+
+`done` is the board's acceptance act. `canceled` is abandonment, never an acceptance: it is
+legal from most stages and has no child guard, so treating it as "closing" a card silently
+orphans the work.
+
+## Vocabulary: two layers, one word
 
 - `projects.acceptance` — `auto | off | agent | human`, the default a new card inherits.
   `auto` means "the creator decides per card"; it is never stored on a card.
@@ -77,7 +88,7 @@ In agent terms:
 The SLA patrol keeps the last state as an acceptance reminder: a finished review does not
 silence the card's only watcher.
 
-## Enforcement
+## Enforcement: three layers
 
 The mode is enforced at three layers, so a raw writer cannot bypass it:
 
@@ -90,7 +101,9 @@ The mode is enforced at three layers, so a raw writer cannot bypass it:
   must cover the frozen acceptance, point each `met` at an evidence anchor, and record a
   command the reviewer ran; `ACCEPTANCE_INCOMPLETE` names what is missing.
 
-## What the board does not enforce
+## Deliberate gaps
+
+Two limits are design decisions, not oversights:
 
 - **A person may close a `human` card while its review is still open.** The recorded verdict is
   what the design expects them to close on, but the board does not make them wait for it.

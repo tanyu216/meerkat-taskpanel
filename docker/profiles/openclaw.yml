@@ -1,4 +1,4 @@
-# Agent-kind profile: OpenClaw. See docs/docker.md § Profiles and docs/install.md.
+# Agent-kind profile: OpenClaw. See docs/agents/docker.md § Profiles and docs/ops/install.md.
 actor_kind: openclaw
 label: OpenClaw
 installer: scripts/install/openclaw.sh
@@ -9,7 +9,7 @@ wrapper: scripts/run.mjs
 # install. It carries no native manifest of its own: a native OpenClaw plugin is an
 # in-process runtime module (package.json#openclaw.extensions + an entry point importing
 # the OpenClaw SDK), a runtime dependency this project does not take. The detector reports
-# the root as `bundle`/`claude`, the root carrying `.claude-plugin/` — see docs/install.md.
+# the root as `bundle`/`claude`, the root carrying `.claude-plugin/` — see docs/ops/install.md.
 bundle: .
 bundle_kind: bundle
 bundle_format: claude

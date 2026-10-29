@@ -13,7 +13,7 @@
  *
  * The two `closest()` answers are the whole input, so they are faked exactly:
  * no DOM library is needed, and none exists (the test layer is Node builtins
- * only — `docs/development.md`).
+ * only — `docs/agents/development.md`).
  */
 
 import assert from "node:assert/strict";

@@ -1,27 +1,56 @@
 # Docs
 
-Documentation for Meerkat TaskPanel.
+Documentation for Meerkat TaskPanel, grouped by **reader**: what a session must follow while
+working in this repository, what the product is designed to do, and what an operator runs.
+
+## Agent execution
+
+The rules and gates a session follows while working in this repository. The tracker files are
+the per-repository outputs of the Matt Pocock integration; the rest are this repository's own
+operating procedure.
 
 | Document | Contents |
 |---|---|
-| [install.md](install.md) | Installing: `npx` / npm and source-checkout methods, the server runtime tree at `~/.meerkat-taskpanel`, and installing the skill into Claude Code, OpenClaw, Codex or Pi; `install.sh` usage, the per-agent-kind table and flags. |
-| [publishing.md](publishing.md) | Releasing a version: npm packaging / publish (the tarball is a runnable board carrying `web/dist`), the git tag + GitHub Release pipeline, and the per-agent publication steps (Claude Code marketplace / OpenClaw / Codex / Pi). |
-| [development.md](development.md) | Repository layout, Node requirement, test / verify / build commands, the two build layers (engine vs `web/`) and the offline / dependency policy. |
-| [docker.md](docker.md) | Why verification and the four-agent-kind installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
-| [migration.md](migration.md) | The append-only SQL schema gate, and the note recording the MCP integration's removal. |
-| [projects.md](projects.md) | What a project is, how its id becomes the identifier prefix, and why that prefix must be unique across projects. |
-| [acceptance.md](acceptance.md) | Who closes a card: the two-layer vocabulary (`projects.acceptance` vs `tasks.acceptance_mode`), how a mode is chosen at creation and why the fallback is `agent`, the three modes, why review is independent of the mode, the standing states, the three enforcement layers, and what the board deliberately leaves unenforced. |
-| [contract.md](contract.md) | The contract snapshots — the HTTP API (routes, error codes, wire fields) and the CLI surface (`taskctl` commands, flags, envelope keys): what each freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
-| [scheduling.md](scheduling.md) | The ping/continue scheduler, the deterministic loop passes, the fire-only cost gate, the atomic-claim dispatch, the event subscriber, the three-agent-kind trigger differences, and why OpenClaw uses openclaw-team instead. |
-| [observability.md](observability.md) | The metrics sidecar (`/metrics`, the SLO `/health` verdict, Prometheus rules, OTLP export) and the processes' own structured logs: levels, the text line, request correlation, redaction, `taskd.log` ownership and rotation, and the `TASKD_LOG_*` keys. |
-| [sla.md](sla.md) | The in-repo SLA contract: the threshold table, the tier ladder, the working-hours basis, the alert tuple, de-duplication, the pre-emit re-check and the peer-inspector interop. |
-| [events.md](events.md) | The live stream's event catalogue: every activity, its writer and payload, which surface consumes it, the feed's admission policy, the loop's dispatch whitelist, and the actor-kind rule. |
-| [web-local-first.md](web-local-first.md) | The board frontend is loopback-only: why a remote browser gets 401 (no token injection) and what implementing it would take. |
-| [im-integration.md](im-integration.md) | The planned IM integration: the plugin host + `channel-kit` contract, how “needs a human” is pushed, how replies are anchored and written as human comments, the resident IM session, and the per-platform adapter strategy (third-party SDKs, independent packages). |
-| [`../skills/meerkat/SKILL.md`](../skills/meerkat/SKILL.md) | The agent-facing skill definition. |
-| [`../skills/meerkat/references/cli.md`](../skills/meerkat/references/cli.md) | The `taskctl` command surface (implemented). |
+| [development.md](agents/development.md) | Repository layout, Node requirement, test / verify / build commands, the two build layers (engine vs `web/`) and the offline / dependency policy. |
+| [docker.md](agents/docker.md) | Why verification and the four-agent-kind installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
+| [contract.md](agents/contract.md) | The contract snapshots — the HTTP API (routes, error codes, wire fields) and the CLI surface (`taskctl` commands, flags, envelope keys): what each freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
+| [migration.md](agents/migration.md) | The append-only SQL schema gate, and the note recording the MCP integration's removal. |
+| [issue-tracker.md](agents/issue-tracker.md) | How this repository's work is tracked as cards: the `taskctl` workflow, the commands the engineering skills expect, and the conventions that differ from a hosted tracker. |
+| [domain.md](agents/domain.md) | How the engineering skills consume this repository's domain documentation (`GLOSSARY.md`, ADRs, `design/`). |
+| [triage-labels.md](agents/triage-labels.md) | The five canonical triage roles and the label strings this repository uses for them. |
 
-Start with the [README](../README.md) for what the project is and its current status.
+## Design
+
+How the product behaves, and why.
+
+| Document | Contents |
+|---|---|
+| [acceptance.md](acceptance.md) | The acceptance model — who may close a card: the two-layer vocabulary (`projects.acceptance` vs `tasks.acceptance_mode`), resolution at creation and why the fallback is `agent`, the three modes, review's independence from the closer, the standing states, the three enforcement layers, and the two deliberate gaps. |
+| [scheduling.md](scheduling.md) | The scheduling model: the ping/continue clocks, the deterministic loop passes, the fire-only cost gate, the atomic-claim dispatch, the event subscriber, the three-agent-kind trigger differences, and why OpenClaw installs the board skill only. |
+| [sla.md](sla.md) | The SLA design: the wait-time model, why the board computes and the loop notifies, the threshold table and tier ladder, the working-hours basis, the alert tuple, the row detectors, de-duplication and pre-emit re-check, the peer watchdog, and the decisions with their costs. |
+| [events.md](events.md) | The event system's design: the append-only activity log and its revision cursor, the SSE contract and its delivery semantics, each consumer's refresh policy (board, ledger, feed, loop, card watcher), the local event hub, the event catalogue, and the decisions and costs behind them. |
+| [projects.md](projects.md) | The project subsystem: the id and the effective identifier prefix (derivation, uniqueness, immutability), what a project carries, its lifecycle and wire surface, the server-ranked `PROJECTS` order, and why the working directory lives in the machine-local `projects.json` instead. |
+| [security.md](security.md) | Dependency security: what the supply-chain scan covers, what blocks, how an advisory is waived, and why an alert does not red a build unless someone asks. |
+| [access.md](access.md) | Access and security design: the local-first trust model, the request gate (loopback / allow-list / token), the credential's shape, storage and rotation, managing access from the panel and the CLI, what remote clients get today (and why the built board is loopback-only), the API surface's other guards, and the limits this design does not cover. |
+| [im-integration.md](im-integration.md) | The planned IM integration: the plugin host + `channel-kit` contract, how “needs a human” is pushed, how replies are anchored and written as human comments, the resident IM session, and the per-platform adapter strategy (third-party SDKs, independent packages). |
+
+## Operations
+
+Installing, releasing and watching a deployment.
+
+| Document | Contents |
+|---|---|
+| [install.md](ops/install.md) | Installing: `npx` / npm and source-checkout methods, the server runtime tree at `~/.meerkat-taskpanel`, and installing the skill into Claude Code, OpenClaw, Codex or Pi; `install.sh` usage, the per-agent-kind table and flags. |
+| [publishing.md](ops/publishing.md) | Releasing a version: npm packaging / publish (the tarball is a runnable board carrying `web/dist`), the git tag + GitHub Release pipeline, and the per-agent publication steps (Claude Code marketplace / OpenClaw / Codex / Pi). |
+| [observability.md](ops/observability.md) | The metrics sidecar (`/metrics`, the SLO `/health` verdict, Prometheus rules, OTLP export) and the processes' own structured logs: levels, the text line, request correlation, redaction, `taskd.log` ownership and rotation, and the `TASKD_LOG_*` keys. |
+
+The agent-facing skill definitions live beside the skills themselves:
+[`../skills/meerkat/SKILL.md`](../skills/meerkat/SKILL.md) and
+[`../skills/meerkat/references/cli.md`](../skills/meerkat/references/cli.md).
+
+Start with the [README](../README.md) for what the project is and its current status. `design/`
+is a live oracle for tests and a record of past rounds, not documentation: its citations of
+`docs/…` paths name the pre-move layout and are deliberately not kept in step with this tree.
 
 ## On `ARCHITECTURE.md` citations
 
@@ -36,7 +65,7 @@ this repository. Where a topic has a live authority, the citation names it expli
 | Cited as | Live authority |
 |---|---|
 | Project ordering (`ARCHITECTURE §4.6`) | [`../design/DESIGN.md`](../design/DESIGN.md) §20, implemented by `src/foundation/project-order.mjs` |
-| Container verification (`ARCHITECTURE §9.1`) | [docker.md](docker.md) |
+| Container verification (`ARCHITECTURE §9.1`) | [docker.md](agents/docker.md) |
 
 **Do not add a new `ARCHITECTURE.md` citation.** Name the live document instead.
 

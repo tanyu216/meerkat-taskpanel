@@ -68,7 +68,7 @@
  *       could not run
  * (no Playwright, no `web/dist`).
  *
- * Host-side on purpose: `docs/docker.md` §Host-allowed-checks keeps
+ * Host-side on purpose: `docs/agents/docker.md` §Host-allowed-checks keeps
  * browser-rendered frontend checks on the host because the image carries no
  * Chromium. No `npm install` is performed — Playwright is resolved if present.
  */

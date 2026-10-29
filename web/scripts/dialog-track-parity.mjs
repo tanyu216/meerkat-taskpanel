@@ -46,7 +46,7 @@
  * Exit: 0 every assertion holds; 1 at least one failed; 2 the leg could not run
  * (no Playwright, no `web/dist`, no `design/prototype/index.html`).
  *
- * Host-side on purpose: `docs/docker.md` §Host-allowed-checks keeps browser-rendered
+ * Host-side on purpose: `docs/agents/docker.md` §Host-allowed-checks keeps browser-rendered
  * frontend checks on the host because the image carries no Chromium — and the image
  * also drops `design/` (`.dockerignore`), so this leg **skips** there rather than
  * passing. The fixture board `dom-smoke.mjs` serves is the carrier; no database, no

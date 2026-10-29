@@ -32,7 +32,7 @@ groups:
           severity: critical
         annotations:
           summary: "meerkat-taskpanel availability is below 99.9%"
-          description: "More than 0.1% of observations in the last 5 minutes were failures. See docs/observability.md."
+          description: "More than 0.1% of observations in the last 5 minutes were failures. See docs/ops/observability.md."
 
       - alert: MeerkatTaskPanelErrorRate5xxAboveBudget
         # The 5xx subset only: an outage that answers 503 is a different failure mode from
@@ -48,7 +48,7 @@ groups:
           severity: critical
         annotations:
           summary: "meerkat-taskpanel 5xx error rate is above 0.1%"
-          description: "Server errors exceeded the 0.1% budget over the last 5 minutes. See docs/observability.md."
+          description: "Server errors exceeded the 0.1% budget over the last 5 minutes. See docs/ops/observability.md."
 
       - alert: MeerkatTaskPanelP95LatencyAboveBudget
         # Bucket-resolution p95, the same interpolation /health computes locally.
@@ -62,4 +62,4 @@ groups:
           severity: warning
         annotations:
           summary: "meerkat-taskpanel p95 latency is above 300ms"
-          description: "p95 request duration exceeded the 300ms budget for 10 minutes. See docs/observability.md."
+          description: "p95 request duration exceeded the 300ms budget for 10 minutes. See docs/ops/observability.md."
