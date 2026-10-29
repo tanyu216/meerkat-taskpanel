@@ -318,9 +318,27 @@ if (isEntryPoint(import.meta.url)) {
     process.exit(CLI_EXIT.USAGE);
   }
 
+  // Letting the writes drain (below) exposes what `process.exit()` used to hide: a
+  // reader that stops early — `… | head`, `… | jq -c 'first'` — closes the pipe, and
+  // the next chunk surfaces as an unhandled `'error'` event, which would print a
+  // stack trace where every other CLI just stops. The reader asked for no more, so
+  // there is nothing to report and nothing failed. Any other write error is still a
+  // crash, exactly as it was without a listener.
+  for (const stream of [process.stdout, process.stderr]) {
+    stream.on("error", (failure) => {
+      if (failure?.code === "EPIPE") process.exit(CLI_EXIT.OK);
+      throw failure;
+    });
+  }
+
   const code = await run(process.argv.slice(2), {
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),
   });
-  process.exit(code);
+  // A pipe holds 64 KiB before it pushes back, so a larger `--json` payload is
+  // still queued when `run` returns. `process.exit()` discards that queue: the
+  // reader gets a truncated document and exit 0 — which is how the loop's board
+  // read failed silently for a day. Report the code and let the loop end once
+  // the queued writes have drained.
+  process.exitCode = code;
 }

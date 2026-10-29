@@ -6,12 +6,21 @@
  */
 
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { cleanupTempDirs, dataOf, errorOf, makeTempDir, withCli } from "./helpers/cli-harness.mjs";
+import {
+  CLI,
+  baseEnv,
+  cleanupTempDirs,
+  dataOf,
+  errorOf,
+  makeTempDir,
+  withCli,
+} from "./helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);
 
@@ -225,6 +234,89 @@ describe("cli/issue — create, list, get", () => {
 
       const all = dataOf(run(["issue", "list", "--json"]));
       assert.equal(all.tasks.length, 2, "the reuse wrote nothing; the dup added one");
+    });
+  });
+
+  // A pipe holds 64 KiB before it starts pushing back. `process.exit()` right
+  // after a large `write()` drops everything still buffered, so the reader gets
+  // a truncated — but exit-0 — stdout. The loop's board read is exactly this
+  // call, and a truncated board is a loop that sees nothing.
+  it("gives the pipe the whole list when the payload outgrows the pipe buffer", async () => {
+    const filler = "lorem ipsum ".repeat(700);
+    await board(async ({ run }) => {
+      for (let index = 0; index < 12; index += 1) {
+        createIssue(run, ["--title", `bulk ${index}`, "--description", filler]);
+      }
+      const listed = run(["issue", "list", "--limit", "500", "--json"]);
+      assert.equal(listed.status, 0);
+      assert.ok(
+        listed.stdout.length > 65_536,
+        `the payload must outgrow the pipe buffer to prove anything: ${listed.stdout.length} bytes`,
+      );
+      const body = JSON.parse(listed.stdout);
+      assert.equal(body.ok, true);
+      assert.equal(body.data.tasks.length, 12);
+    });
+  });
+
+  // The other half of letting stdout drain: the reader may stop first. `… | head`
+  // closes the pipe mid-document, and Node raises `EPIPE` on the stream — which
+  // without a listener is an unhandled `'error'` event: a stack trace and exit 1
+  // where a silent stop is the convention. The reader asked for no more, so the
+  // CLI must not turn that into a crash.
+  it("stops quietly when the reader closes the pipe early", async () => {
+    await board(async ({ run, url, dataDir }) => {
+      const card = createIssue(run, ["--title", "big", "--description", "x".repeat(120_000)]);
+      const child = spawn(
+        process.execPath,
+        [
+          CLI,
+          "--as-human=true",
+          "issue",
+          "get",
+          card.task.identifier,
+          "--json",
+          "--url",
+          url,
+        ],
+        {
+          env: {
+            ...baseEnv(),
+            TASKD_DATA_DIR: dataDir,
+            TASKD_RUNTIME_POINTER: join(dataDir, "runtime.json"),
+            TASKD_PORT: "0",
+            TASKD_NO_AUTOSTART: "1",
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      let stderr = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      // Read one chunk (as much as the pipe held) and hang up, like `head` does.
+      // The exit listener keeps a CLI that dies before writing from hanging the
+      // test on a `data` event that will never come.
+      await new Promise((resolve) => {
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        child.stdout.once("data", () => {
+          child.stdout.destroy();
+          done();
+        });
+        child.once("exit", done);
+      });
+      const code = await new Promise((resolve) => {
+        if (child.exitCode !== null) resolve(child.exitCode);
+        else child.once("exit", resolve);
+      });
+      assert.equal(code, 0, `an early-closing reader must not crash the CLI: ${stderr}`);
+      assert.equal(stderr.includes("EPIPE"), false, stderr);
     });
   });
 });
