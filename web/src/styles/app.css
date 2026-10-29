@@ -373,6 +373,8 @@ svg[data-token-icon][hidden] { display: none; }
 .td-dv-mark[data-acceptance-status="not_met"] { color: var(--brand-st-blocked); border-color: var(--brand-st-blocked); }
 .td-dv-tick { width: 9px; height: 9px; }
 .td-dv-text { font-size: 13px; line-height: 1.5; color: var(--brand-text-2); }
+/* The verdict's own note (implementation-only: the prototype shows no note). */
+.td-dv-note { display: block; margin-top: 2px; font-size: 12px; line-height: 1.45; color: var(--brand-text-3); }
 .td-dv-empty { font-size: 12px; line-height: 1.5; color: var(--brand-text-3); font-style: italic; }
 .td-dv-round-mono { flex: none; width: 52px; font-size: 11px; color: var(--brand-text-3); }
 
