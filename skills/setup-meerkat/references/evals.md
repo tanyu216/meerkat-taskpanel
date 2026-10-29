@@ -130,3 +130,22 @@ bug fixes, refactors, tests and review) — and work with no owner (questions, l
 commands) is named as not becoming a card; the user's narrower answer replaces the default
 scope statement in the instruction file the init step updated, so it is persisted for later
 sessions; a second run reports the entry unchanged instead of restating it.
+
+## 12. CI security gap
+
+> Set up meerkat in this repo. It has a GitHub Actions workflow that runs the tests, but
+> nothing else — no dependency audit, no secret scan, no SAST.
+
+Assert: the check reads the project's CI files and reports each arm's state with evidence,
+rather than inferring coverage from the tools installed on the machine; only the missing
+required arms are asked about, each with a recommended answer, and a covered arm is never
+questioned; the file is shown before it is written and only an explicit yes creates it
+(`--yes` alone does not authorise the optional SBOM arm); each missing arm becomes its own
+`security-<arm>.yml`, an existing workflow is never edited, and a differing file at the
+target path is a conflict, not an overwrite; for a provider other than GitHub Actions the
+addition is composed into that provider's own pipeline file from the printed commands (diff
+shown first, fewest lines changed), never refused and never copied from a per-provider
+template; a project with no CI is reported `absent` with
+no file created, because pipeline creation belongs to the architecture flow; re-running the
+check after the write reports the arm covered, and the summary names the project's own
+standard as the record to update.

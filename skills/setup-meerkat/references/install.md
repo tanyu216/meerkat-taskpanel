@@ -106,6 +106,13 @@ CodeQL (public GitHub) or Semgrep (elsewhere). The defaults, official sources an
 caveat are in `references/security-tools.md`; the recorded floors are in
 `assets/security/toolchain.json`.
 
+The same check reads the project's CI configuration. When a pipeline exists but an arm has
+no scanner in it, ask before acting: `--ci-plan` shows what would change and `--ci-write`
+creates it for GitHub Actions, one file per arm. For any other provider the script prints the
+arm's command and the skill composes the addition in that provider's own pipeline file, diff
+first. A project with no CI is left alone — building the pipeline is the architecture flow's
+job.
+
 ## `setup-meerkat` itself
 
 `install.sh --target claude` copies `skills/setup-meerkat/` to
