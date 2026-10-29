@@ -80,7 +80,7 @@ describe("the review-card protocol", () => {
         ctx.run(["issue", "deliver", original.task.identifier, "--report-file", "-", "--json"], {
           input: JSON.stringify({
             conclusion: "delivered",
-            acceptance: [{ text: "a", status: "met" }],
+            acceptance: [{ text: "a", status: "met", note: "evidence[1] — the commit" }],
             evidence: [
               { kind: "commit", sha: "abc1234" },
               { kind: "path", path: "x" },
