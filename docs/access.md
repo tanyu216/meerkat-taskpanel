@@ -52,7 +52,8 @@ Two consequences worth stating separately:
   HTML document itself, so it never reaches the app shell — not even its error state. The
   server is doing exactly what this design says; the missing piece is on the client side (§6).
 - **`/health` is the one unauthenticated route, on purpose.** It is the liveness probe the CLI
-  polls to discover a board, before a token exists, and it exposes only "I am here".
+  polls to discover a board, before a token exists, and it exposes only "I am here". It answers
+  every address, including one outside the allow-list — a liveness signal is not a board fact.
 
 Every refusal keeps the ordinary error envelope —
 `{ok:false,error:{code,message,http,details,hint}}` — and names itself in `details.reason`, so
@@ -92,6 +93,14 @@ since a URL is the part of a request that ends up in proxy and access logs.
 The *source* is reported (`token_source`); the value never is. The precedence lives in
 `src/foundation/transport/token.mjs` and is shared by every entry point.
 
+**A token in a config file is a secret file.** A client that talks to a remote board keeps its
+address and credential in the effective `.env` (`TASKD_URL` plus one of the two token keys). The
+loader enforces both halves: setting `TASKD_TOKEN` *and* `TASKD_TOKEN_FILE` in the same file is a
+`CONFIG_FILE_INVALID` error ("keep exactly one"), and a file that carries an inline `TASKD_TOKEN`
+must be `0600` — anything wider is `CONFIG_FILE_INSECURE`. Prefer `TASKD_TOKEN_FILE` when the
+credential should not sit in a file that also holds ordinary settings. See
+[`skills/meerkat/references/cli.md`](../skills/meerkat/references/cli.md).
+
 **Rotation.** `POST /api/v1/token` (loopback only) mints a fresh token and swaps the in-process
 copy at once, so a remote holder of the old token is locked out on its next request. The
 response names the file, never the token: the caller is by definition on the machine that owns
@@ -124,17 +133,19 @@ serve. Turning the list on while it is empty is a real, supported setting — it
 remote caller — and is not replaced by the defaults. A hand-written `.env` that names ranges
 without the switch keeps the historic meaning: a list present means the list is in force.
 
-**Parsing fails closed.** A malformed entry is dropped, never treated as a wildcard; a typo in a
-security control must not widen access. Two spellings of one address are normalised together: a
-dual-stack socket reports an IPv4 client as `::ffff:10.0.0.7`, so it is compared as `10.0.0.7`
-and a `10.0.0.0/8` list matches it. IPv4 and IPv6 are compared as byte arrays, so one prefix
-loop covers both families. A hand-written invalid range in the process environment is logged
-(`allow_list_invalid`) and cannot match anything.
+**Parsing fails closed.** Nothing malformed is ever promoted to a wildcard. When the policy comes
+from the process environment, an unparseable entry is dropped and reported once at start
+(`allow_list_invalid`), so a typo can only narrow reach — never widen it. The `.env` loader is
+stricter still: an invalid range in the file is `ACCESS_CONFIG_INVALID`, and the board refuses to
+start rather than serve a quietly smaller list. Two spellings of one address are normalised
+together: a dual-stack socket reports an IPv4 client as `::ffff:10.0.0.7`, so it is compared as
+`10.0.0.7` and a `10.0.0.0/8` list matches it. IPv4 and IPv6 are compared as byte arrays, so one
+prefix loop covers both families.
 
-**Bounds.** At most 64 entries, each validated by the server's own parser (`parseCidr`), so the
-Access panel cannot persist a range the request path would read differently. A save refuses an
-invalid entry rather than dropping it, because dropping one entry is the mistake that narrows a
-list without saying so.
+**Bounds.** A list persisted through the panel or the config file is capped at 64 entries, each
+validated by the server's own parser (`parseCidr`), so the panel cannot save a range the request
+path would read differently. A save refuses an invalid entry rather than dropping it, because
+dropping one entry is the mistake that narrows a list without saying so.
 
 ## 5. Managing access
 
@@ -182,8 +193,9 @@ taskctl issue list --url http://board-host:9527 --token td_…
 Every route works, including the SSE stream (the transport sends the header there too).
 
 **What does not: the built web board.** The frontend is same-origin and relative by design —
-`services/api.js` fixes `/api/v1` and sends no `Authorization` header; `services/events.js`
-opens `/api/v1/events` with only an `?after=` cursor. From a remote browser every request,
+`web/src/services/api.js` fixes `/api/v1` and sends no `Authorization` header;
+`web/src/services/events.js` opens `/api/v1/events` with only an `?after=` cursor. From a
+remote browser every request,
 including the document, is answered `401` before the app can start (§2). This is a missing
 client capability, not a hole: the server behaves exactly as described above. The Access panel
 does not change it — it is itself loopback-only.
@@ -201,9 +213,11 @@ ssh -N -L 9527:127.0.0.1:9527 <host-running-taskd>
 
 1. **Token injection (frontend).** Hand the page a token on load — e.g. `?token=<t>` on the
    initial navigation — keep it in memory (`sessionStorage` only if it must survive a reload),
-   and teach `services/api.js` to send `Authorization: Bearer` and `services/events.js` to
-   append `?token=`. Required care: never let the token into a URL that gets logged, never send
-   it cross-origin, and clear it on `401` so a stale token cannot wedge the UI.
+   and teach `web/src/services/api.js` to send `Authorization: Bearer` and
+   `web/src/services/events.js` to append `?token=`. Required care: consume the token from the
+   initial URL and scrub it (`history.replaceState`) before any further request, because a
+   navigation URL is what lands in history and proxy logs; never send it cross-origin; and clear
+   it on `401` so a stale token cannot wedge the UI.
 2. **Same-origin cookie (server).** Have `taskd` set an `HttpOnly`, `SameSite=Strict` cookie
    after a token-bearing handshake and accept that cookie in `auth.mjs`. The browser then
    attaches it to both the API and the SSE request, and no frontend code changes. Required
@@ -227,10 +241,12 @@ Access control is one layer; the service also refuses malformed and leaking traf
 - **One error vocabulary.** Every failure is the `{ok:false,error:{code,message,http,details,hint}}`
   envelope. The UI renders `code`, never the server's `message`; a 4xx is the caller's error and
   is not logged as a fault, a 5xx is.
-- **Secrets never leave.** The token is never echoed in a response and never logged;
-  `redactText` / `redactDeep` strip `td_…` and `Bearer …` from messages, errors and log records;
-  the request log carries the pathname only, not the query string — which is the other reason
-  `?token=` is the fallback form.
+- **Secrets never leave, except where the owner asks.** Ordinary responses never echo the token
+  and logs never contain it; `redactText` / `redactDeep` strip `td_…` and `Bearer …` from
+  messages, errors and log records, and the request log carries the pathname only, not the query
+  string — which is the other reason `?token=` is the fallback form. The one deliberate
+  exception is `GET /access` (§5), which is loopback-only and exists to show the persisted
+  credential.
 - **Headers are attributed, not trusted.** `x-taskctl-actor`, `x-taskctl-session` and
   `x-taskctl-seg` say who a write is *for*. They are claims recorded in the audit trail, not
   authentication: any caller holding the token may name any actor.
