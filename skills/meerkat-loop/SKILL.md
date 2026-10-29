@@ -223,7 +223,8 @@ Precedence is whole-manifest: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, the
 the loop behaves exactly as before. The loop's own `references/decision-policy.md` is the
 single decision-authority source; a team's `decision-policy.md` is ignored. An `ownership.md`,
 if the team has one, is a short routing guide the project session reads to assign one
-accountable role per work shape; the card's assignee still selects the executing role. A shape
+accountable role per work shape; the create names that role as the card's assignee, and the
+assignee still selects the executing role. A shape
 the guide does not describe goes to a worker outside the roles — a board name absent from the
 manifest — rather than being force-fit into a role.
 `MEERKAT_TASKPANEL_AGENTS` lists the team's board names; without it the loop only scans its

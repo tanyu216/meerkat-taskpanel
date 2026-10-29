@@ -24,8 +24,9 @@ not describe is not forced into a row.
    project session triages and splits it.
 2. **The reviewer is independent.** A producer never reviews its own card; review is
    always the Reviewer lane.
-3. **The assignee executes.** This guide tells the project session whom to assign; the
-   card's assignee still selects the executing role and workflow.
+3. **The assignee executes — set at creation.** Create each card with its one accountable
+   role's board name (`--assignee <role>`); the card's assignee still selects the executing
+   role and workflow. An unassigned team card is unowned and may sit.
 4. **A shape outside the rows is not force-fit.** Work that is none of them — operations on
    a running system, an external account, a manual task — goes to a worker identity outside
    the roles. That worker carries its own flow and inherits no role workflow,

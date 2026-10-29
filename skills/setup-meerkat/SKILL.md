@@ -359,7 +359,9 @@ Use `configure-env.mjs`; a different existing value is a conflict, not an overwr
 an explicit yes for each key before writing it: an empty installer default (for example
 `MEERKAT_TASKPANEL_REVIEWER=`) is **not** consent, and `--force` is never implied by an
 empty value — ask before replacing it. Without `MEERKAT_TASKPANEL_AGENTS` the loop scans
-only its default agent and a role card is never claimed.
+only its default agent and a role card is never claimed. Creating a team card is the routing
+step: pass the role's board name as `--assignee <role> --assignee-kind agent`; an unassigned
+team card is unowned.
 
 Native agent definitions are written for every host with a native format: Claude
 (`.claude/agents/<name>.md`), Codex (`.codex/agents/<name>.toml`) and Pi
