@@ -80,7 +80,8 @@ describe("the review-card protocol", () => {
         ctx.run(["issue", "deliver", original.task.identifier, "--report-file", "-", "--json"], {
           input: JSON.stringify({
             conclusion: "delivered",
-            acceptance: [{ text: "a", status: "met" }],
+            // ADR-0003: delivery refuses an unanchored `met` at write time.
+            acceptance: [{ text: "a", status: "met", note: "the commit (evidence[1])" }],
             evidence: [
               { kind: "commit", sha: "abc1234" },
               { kind: "path", path: "x" },
