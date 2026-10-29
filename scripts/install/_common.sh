@@ -234,14 +234,50 @@ agent_name() {
 # user's voice. Without it, that flag would sign with the *agent's* name, which is
 # the one thing it must not do.
 #
-# The default is the OS user, which is who installs the board; never empty, so a
-# agent with no `$USER`/`$LOGNAME` behaves exactly as it did before this existed.
+# An explicit name always wins. Failing that, a name an earlier install already
+# recorded is kept, and only then does the OS user — who installs the board —
+# supply it; never empty, so a agent with no `$USER`/`$LOGNAME` behaves exactly as
+# it did before this existed.
 human_name() {
   local name="${MEERKAT_TASKPANEL_HUMAN_NAME:-}"
+  [ -n "$name" ] || name="$(recorded_human_name "${1:-}")"
   [ -n "$name" ] || name="${USER:-}"
   [ -n "$name" ] || name="${LOGNAME:-}"
   [ -n "$name" ] || name="$(agent_name)"
   printf '%s\n' "$name"
+}
+
+# recorded_human_name [agent_dir] — the human name an earlier install recorded.
+#
+# `--force` re-writes every artifact this installer owns, and the human name is not
+# one of them: it names a person. Re-deriving it from `$USER` on a machine whose
+# board signs as someone else does not fail — it silently re-signs that person's
+# decisions under a second name, which the append-only actor table then keeps. So a
+# run that says nothing about the human reads the record instead:
+#
+#   * <target home>/.meerkat-taskpanel/.env  `TASKCTL_HUMAN` — the board's own
+#     config, the identity taskctl/taskd actually load;
+#   * <agent dir>/bin/taskctl                the shim's `TASKCTL_HUMAN:-<name>`
+#     default, which every agent kind bakes in on install.
+#
+# The board's config wins: it is the copy an operator edits. Prints nothing (and
+# always succeeds) when neither artifact exists or neither carries a name.
+recorded_human_name() {
+  local agent_dir="${1:-}"
+  local board_env name shim
+  board_env="$(target_home)/.meerkat-taskpanel/.env"
+  name=""
+  if [ -f "$board_env" ]; then
+    name="$(sed -n 's/^TASKCTL_HUMAN=//p' "$board_env" | tail -n 1 | sed 's/^["'\'']//; s/["'\'']$//')"
+  fi
+  if [ -z "$name" ] && [ -n "$agent_dir" ]; then
+    shim="$(target_home)/$agent_dir/bin/taskctl"
+    if [ -f "$shim" ]; then
+      name="$(sed -n 's/^human="\${TASKCTL_HUMAN:-\(.*\)}"$/\1/p' "$shim" | tail -n 1)"
+    fi
+  fi
+  if [ -n "$name" ]; then printf '%s\n' "$name"; fi
+  return 0
 }
 
 # export_tp_env <agent_dir> <label> — export the TP_* variables the template renderer reads.
@@ -253,7 +289,7 @@ export_tp_env() {
   agent_dir="$1"
   label="$2"
   TP_AGENT="$(agent_name)"
-  TP_HUMAN="$(human_name)"
+  TP_HUMAN="$(human_name "$agent_dir")"
   # A full server install materializes the runtime tree; the agent shims and the
   # loop must drive *that* tree, not the npm cache / checkout they were copied
   # from. Agent-only installs leave the override unset and keep the old behavior.
