@@ -161,7 +161,9 @@ _Avoid_: owner, holder, claimer
 **Claimer**:
 The actor currently executing a card, as distinct from its assignee. A card can be assigned
 to one actor and claimed by another; the claim is the execution lock, the assignment is the
-route.
+route. Claiming an **unassigned** card also records the route — the claimant becomes its
+assignee — so a claimed card is never left without one; a card already assigned keeps its
+assignee.
 _Avoid_: holder, owner (see *Assignee*)
 
 **Heartbeat**:
