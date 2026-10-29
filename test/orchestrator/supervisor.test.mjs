@@ -983,12 +983,31 @@ describe("runWorkflowTick (injected deps)", () => {
       }),
     );
     assert.deepEqual(order, [
-      "comment:T-1:note",
       'meta:T-1:{"accepted_by":"loop-review","accepted_round":"1"}',
+      "comment:T-1:note",
       "move:T-1:done",
       "comment:T-2:note",
       "move:T-2:done",
     ]);
+    assert.equal(result.executed, 1);
+    assert.equal(result.failed, 0);
+  });
+
+  it("skips the acceptance note and marker when the plan is already held", async () => {
+    const order = [];
+    const result = await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [], changes: [], summary: {}, actions: [approve({ held: true })] },
+        comment: async (ref) => (order.push(`comment:${ref}`), { ok: true }),
+        setMeta: async (ref) => (order.push(`meta:${ref}`), { ok: true }),
+        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+      }),
+    );
+    assert.deepEqual(
+      order,
+      ["move:T-1:done", "comment:T-2", "move:T-2:done"],
+      "a recovery pass finishes the move and the close only",
+    );
     assert.equal(result.executed, 1);
     assert.equal(result.failed, 0);
   });
@@ -1004,8 +1023,8 @@ describe("runWorkflowTick (injected deps)", () => {
       }),
     );
     assert.deepEqual(order, [
-      "comment:T-1",
       'meta:T-1:{"accepted_by":"loop-review","accepted_round":"1"}',
+      "comment:T-1",
       "move:T-1:done",
       "comment:T-2",
       "move:T-2:done",
@@ -2266,7 +2285,7 @@ describe("the workflow plan survives the wire and executes", () => {
 
   const DELIVERY = {
     conclusion: "The thing is done.",
-    acceptance: [{ text: "the thing works", status: "met" }],
+    acceptance: [{ text: "the thing works", status: "met", note: "evidence[1] — the commit" }],
     evidence: [{ kind: "commit", sha: "abc1234" }],
   };
   const VERDICT = {
@@ -2326,8 +2345,8 @@ describe("the workflow plan survives the wire and executes", () => {
       });
 
       assert.deepEqual(order, [
-        `comment:${original.identifier}:note`,
         `meta:${original.identifier}`,
+        `comment:${original.identifier}:note`,
         `move:${original.identifier}:done`,
         `comment:${review.identifier}:note`,
         `move:${review.identifier}:done`,

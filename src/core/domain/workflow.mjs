@@ -1109,10 +1109,14 @@ export function planReviewOutcomes(input = {}) {
         // after it but before the close is recovered on the next pass (`held`).
         const mode = acceptanceModeOf(original);
         if (mode === "agent" || mode === "human") {
-          const held =
-            String(original.meta?.review_verdict ?? "") === "approve" &&
-            String(original.meta?.review_verdict_round ?? "") === String(originalRound);
+          // Each executor writes a different marker before its note:
+          //   * agent  — `approve` writes accepted_by / accepted_round;
+          //   * human  — `record_verdict` writes review_verdict / review_verdict_round.
+          // A marker from an earlier round is history, not a half-applied action.
           if (mode === "agent") {
+            const held =
+              nonEmpty(original.meta?.accepted_by) !== null &&
+              String(original.meta?.accepted_round ?? "") === String(originalRound);
             actions.push({
               type: "approve",
               reviewStatus: review.status,
@@ -1124,6 +1128,9 @@ export function planReviewOutcomes(input = {}) {
               ...(held ? { held } : {}),
             });
           } else {
+            const held =
+              String(original.meta?.review_verdict ?? "") === "approve" &&
+              String(original.meta?.review_verdict_round ?? "") === String(originalRound);
             // The review card is still the loop's to close; the original is not.
             actions.push({
               type: "record_verdict",
@@ -1502,9 +1509,9 @@ export function planWorkflowTick(input = {}) {
     summary: {
       reconciled: reconcile.changes.length,
       approved: count("approve"),
-      // Kept on the wire for older consumers; `human` is a card mode now, so
-      // the loop never holds an approval.
-      held: 0,
+      // A held action is a crash recovery: the marker is already on the card,
+      // so only land/move/close remain. Kept on the wire for older consumers.
+      held: actions.filter((action) => action.held === true).length,
       rejected: count("reject_task") + count("reject_task_finish") + count("reject_epic"),
       dispatched: count("create_review"),
       autoAccepted: count("auto_accept"),
