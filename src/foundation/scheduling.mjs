@@ -439,6 +439,90 @@ export function candidateArgs(agent, claimUnassigned, recoverStale = false) {
   return args;
 }
 
+/** A `todo` card older than this with no one to claim it is a finding. */
+export const STRANDED_TODO_AGING_MS = 30 * 60 * 1000;
+
+/**
+ * The stranded-`todo` findings the workflow pass reports.
+ *
+ * Two ways a `todo` card has no one to claim it, and they are not the same gate:
+ *
+ *   * **assigned to an agent name outside the scan set** — always a finding: no
+ *     scan will ever claim it (`MEERKAT_TASKPANEL_AGENTS` is the claim authority).
+ *     A card owned by a **human** is not: a person is the owner, not a missed route.
+ *     An epic is not: it never carries work.
+ *   * **unassigned** — a finding only when this loop will not take the public pool
+ *     (`claim_unassigned: no`); with the pool on, an unassigned card is the normal
+ *     path, not a defect.
+ *
+ * The caller supplies the reads: `todoTasks` (every `todo` card) and
+ * `unassignedPool` (the `issue candidates --include-unassigned` pool, already
+ * blocker-filtered). Pure: no I/O, no clock — `now` and `agingMs` are arguments.
+ *
+ * @param {{todoTasks?: object[], unassignedPool?: object[], agents?: string[], reviewer?: string|null, claimUnassigned?: boolean, now?: number, agingMs?: number}} [input]
+ * @returns {{type: string, reason: string, original: string, assignee?: string, dedupKey: string}[]}
+ */
+export function planStrandedTodoAlerts(input = {}) {
+  const todoTasks = Array.isArray(input.todoTasks) ? input.todoTasks : [];
+  const unassignedPool = Array.isArray(input.unassignedPool) ? input.unassignedPool : [];
+  const agents = Array.isArray(input.agents) ? input.agents : [];
+  const reviewer = typeof input.reviewer === "string" && input.reviewer.trim() !== ""
+    ? input.reviewer.trim()
+    : null;
+  const claimUnassigned = input.claimUnassigned !== false;
+  const now = typeof input.now === "number" ? input.now : Date.now();
+  const agingMs = typeof input.agingMs === "number" && input.agingMs >= 0
+    ? input.agingMs
+    : STRANDED_TODO_AGING_MS;
+  const scanned = new Set(
+    [...agents, reviewer]
+      .filter((name) => typeof name === "string" && name.trim() !== "")
+      .map((name) => name.trim().toLowerCase()),
+  );
+  const ageOf = (task) => {
+    const raw = task?.status_changed_at ?? task?.created_at ?? null;
+    if (typeof raw !== "string" || raw === "") return null;
+    const since = Date.parse(raw);
+    return Number.isNaN(since) ? null : now - since;
+  };
+  const isOld = (task) => {
+    const age = ageOf(task);
+    return age !== null && age > agingMs;
+  };
+
+  const alerts = [];
+  for (const task of todoTasks) {
+    if (task?.kind === "epic") continue;
+    const ref = task?.assignee ?? null;
+    const name = typeof ref === "string" ? ref : ref?.display_name ?? ref?.id ?? null;
+    if (name === null) continue;
+    const kind = typeof ref === "object" && ref !== null ? ref.kind ?? null : null;
+    if (kind === "human") continue;
+    if (scanned.has(String(name).toLowerCase())) continue;
+    if (!isOld(task)) continue;
+    alerts.push({
+      type: "unowned_todo",
+      reason: "assignee_not_scanned",
+      original: String(task.identifier ?? ""),
+      assignee: String(name),
+      dedupKey: `unowned_todo|${task.identifier}|assignee|${name}`,
+    });
+  }
+  if (claimUnassigned === false) {
+    for (const task of unassignedPool) {
+      if (task?.reason !== "unassigned") continue;
+      if (!isOld(task)) continue;
+      alerts.push({
+        type: "unowned_todo",
+        reason: "unassigned",
+        original: String(task.identifier ?? ""),
+        dedupKey: `unowned_todo|${task.identifier}|unassigned`,
+      });
+    }
+  }
+  return alerts;
+}
+
 /**
  * The wake argv for an agent kind. Claude, Codex and Pi have no timers, so the loop
  * lives outside them, waking each agent kind's own **headless** entry point — and,

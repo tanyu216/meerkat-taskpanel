@@ -353,6 +353,7 @@ After installation, offer to merge (with consent) into the per-kind config that
 ```text
 MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing
 MEERKAT_TASKPANEL_REVIEWER=Reviewer
+MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no
 ```
 
 Use `configure-env.mjs`; a different existing value is a conflict, not an overwrite. Get
@@ -361,7 +362,9 @@ an explicit yes for each key before writing it: an empty installer default (for 
 empty value — ask before replacing it. Without `MEERKAT_TASKPANEL_AGENTS` the loop scans
 only its default agent and a role card is never claimed. Creating a team card is the routing
 step: pass the role's board name as `--assignee <role> --assignee-kind agent`; an unassigned
-team card is unowned.
+team card is unowned. A team is therefore **assignee-only**: ask before flipping an existing
+`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes` to `no`, because an unassigned card is a defect to
+report, not work for whichever role scans first.
 
 Native agent definitions are written for every host with a native format: Claude
 (`.claude/agents/<name>.md`), Codex (`.codex/agents/<name>.toml`) and Pi

@@ -275,13 +275,17 @@ per-kind config (`<program root>/.env.<actor-kind>`, with the user's consent):
 ```text
 MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing
 MEERKAT_TASKPANEL_REVIEWER=Reviewer
+MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no
 ```
 
 Without `MEERKAT_TASKPANEL_AGENTS` the loop scans only its default agent; a role card is
 never claimed. A team card must also be **created** with that role's board name as its
 `--assignee`; the installed scheduling units carry no `--agent`, so this key is the loop's
 identity. The reviewer is added by the existing reviewer scan. A role may also be listed
-with repeated `--agent` flags on a manual run.
+with repeated `--agent` flags on a manual run. A team install is **assignee-only**
+(`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no`): with routing at creation, an unassigned card is a
+defect the workflow pass reports, not work for whichever role scans first. Ask before
+changing an existing `yes`.
 
 ## Native agent definitions
 

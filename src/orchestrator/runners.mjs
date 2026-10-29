@@ -745,6 +745,8 @@ const WORKFLOW_NOTIFY_TYPES = new Set([
   "original_unexpected_status",
   "review_stale_round",
   "actions_capped",
+  // A `todo` card no scan can claim: notify once per card state, not per tick.
+  "unowned_todo",
 ]);
 
 function describeWorkflowAlert(alert) {

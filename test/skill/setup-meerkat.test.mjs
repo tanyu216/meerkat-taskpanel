@@ -909,6 +909,17 @@ describe("skill frontmatter and assets", () => {
     assert.match(policy, /outside\s+the\s+roles/i, "the decision policy allows an outside worker");
   });
 
+  it("makes a team assignee-only so an unowned card is reported, not raced", () => {
+    // With routing at creation, an unassigned team card is a defect. If the pool is
+    // on, whichever role scans first claims it and the defect is silent; off, the
+    // workflow pass reports it and the operator routes it.
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    const roles = readFileSync(join(SKILL, "references", "roles.md"), "utf8");
+    assert.match(skill, /MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no/, "the documented team config is assignee-only");
+    assert.match(skill, /assignee-only/i, "the policy is stated, not just the key");
+    assert.match(roles, /MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no/, "the roles reference states it too");
+  });
+
   it("keeps every command the reviewer is told to run inside its lane allowlist", () => {
     // A rule the lane cannot execute is a rule the reviewer learns to skip. If
     // the assets tell the reviewer to run a kind of command, the lane must
