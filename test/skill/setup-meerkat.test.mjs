@@ -196,6 +196,13 @@ describe("skill frontmatter and assets", () => {
     assert.ok(matrix.arms["dependency-audit"] && matrix.arms["secret-scan"] && matrix.arms.sast);
     assert.ok(existsSync(join(SKILL, "references", "security-tools.md")), "the matrix is documented");
     assert.ok(existsSync(join(SKILL, "scripts", "security-tools.mjs")), "the check ships with the skill");
+    for (const [arm, entry] of Object.entries(matrix.arms)) {
+      assert.ok(Array.isArray(entry.ciMatch) && entry.ciMatch.length > 0, `${arm} names its CI tokens`);
+      assert.ok(
+        existsSync(join(SKILL, "assets", "security", entry.ciAsset)),
+        `${arm}'s generated workflow ${entry.ciAsset} ships with the skill`,
+      );
+    }
   });
 
   it("points the reviewer at the manual checklist from both copies", () => {
@@ -221,6 +228,21 @@ describe("skill frontmatter and assets", () => {
     assert.match(stage, /--upgrade/);
     assert.match(stage, /never install/i, "the check never installs on its own");
     assert.match(stage, /references\/security-tools\.md/);
+    assert.match(stage, /--ci-plan/);
+    assert.match(stage, /--ci-write/);
+  });
+
+  it("asks about a CI security gap only when a pipeline exists", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    assert.match(skill, /CI security coverage/, "the setup frontier names the CI question");
+    const stage = skill.slice(skill.indexOf("## 6. Security toolchain"), skill.indexOf("## 7. Verify"));
+    assert.match(stage, /only\b[^.]*missing/i, "the question is limited to the missing arms");
+    assert.match(stage, /no CI at all/i, "an absent pipeline is not this skill's finding");
+    assert.match(stage, /SBOM/, "the optional arm is named as optional");
+    assert.match(stage, /conflict/i, "an existing file is never overwritten");
+    assert.match(stage, /any other provider/i, "a non-GitHub pipeline is still served");
+    assert.match(stage, /no per-provider template ships/i, "the addition is composed, not templated");
+    assert.match(stage, /the fewest lines/i, "an in-place edit stays minimal");
   });
 
   it("makes the security toolchain record its decision policy, not only its tools", () => {
@@ -1274,7 +1296,7 @@ describe("skill frontmatter and assets", () => {
   it("keeps the skill-creator eval prompts parseable", () => {
     const evals = JSON.parse(readFileSync(join(SKILL, "evals", "evals.json"), "utf8"));
     assert.equal(evals.skill_name, "setup-meerkat");
-    assert.equal(evals.evals.length, 11);
+    assert.equal(evals.evals.length, 12);
     for (const entry of evals.evals) {
       assert.equal(typeof entry.prompt, "string");
       assert.ok(entry.prompt.length > 20, `eval ${entry.id}: prompt`);
@@ -1287,6 +1309,7 @@ describe("skill frontmatter and assets", () => {
       "decision-round",
       "reviewer-catches-omission",
       "card-scope",
+      "ci-security-gap",
     ]) {
       assert.ok(names.has(name), `eval ${name} must exist`);
     }
