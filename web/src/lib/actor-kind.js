@@ -1,8 +1,8 @@
 /**
  * Reading an actor's kind.
  *
- * A kind is a **platform** (`claude`, `codex`, …), the word `human`, or
- * **nothing** (`null` — the reference recorded none). Since the server-side
+ * A kind is a **platform** (`claude`, `codex`, …), the word `human`, the board's
+ * own `system`, or **nothing** (`null` — the reference recorded none). Since the server-side
  * `0023`, the kind lives on the *reference* (a card's `assignee_kind`, a
  * comment's `author_kind`) rather than on the person's registry row: one row per
  * person cannot hold "worked from `claude` on Tuesday, from `codex` on Friday".
@@ -74,6 +74,36 @@ export function isAgentKind(kind) {
 
 /** The kind as `data-assignee-kind`'s two-valued domain. */
 export function kindLabel(kind) {
+  return isAgentKind(kind) ? "agent" : "human";
+}
+
+/**
+ * Is this actor the board itself?
+ *
+ * `system` is the board's own kind — the writes no agent and no person made
+ * (epic rollup, the label GC, the loop's automation). It is a third *word* in
+ * the drawer, not a third `data-assignee-kind`: an assignee is always a person
+ * or an agent, and the closed two-valued attribute stays closed.
+ *
+ * @param {unknown} kind
+ */
+export function isSystemKind(kind) {
+  return typeof kind === "string" && kind.trim().toLowerCase() === "system";
+}
+
+/**
+ * The word a **comment's** meta line shows for its author.
+ *
+ * Three values, unlike `kindLabel`: the line states who wrote the comment, and
+ * the board's own writes are neither a person's nor an agent's. It returns a
+ * catalogue key suffix (`comment.<label>`), so the three translations live in
+ * one place.
+ *
+ * @param {unknown} kind
+ * @returns {"human"|"system"|"agent"}
+ */
+export function authorLabel(kind) {
+  if (isSystemKind(kind)) return "system";
   return isAgentKind(kind) ? "agent" : "human";
 }
 

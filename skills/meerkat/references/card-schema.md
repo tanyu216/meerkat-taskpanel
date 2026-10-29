@@ -160,7 +160,7 @@ plain card does not grow a line.
 | `assignee` | Who is on the hook. | A dictionary name; empty ⇒ unassigned. |
 | `assignee_kind` | The kind a **new** name becomes. | `agent` · `human`; written only when it differs from the default (`agent`). |
 | `created_by` | Who created the card. | A name. |
-| `created_by_kind` | What that provenance key is. | `human` · a platform (`claude`, `codex`, …) · `taskd`; written only when not the default. |
+| `created_by_kind` | What that provenance key is. | `human` · a platform (`claude`, `codex`, …) · `system`; written only when not the default. |
 | `created_at` | When the card was created. | ISO 8601, normalised to ms-Z. |
 | `updated_at` | Last content change. | Same coercion. |
 | `status_changed_at` | When `status` last changed. | Same coercion. |

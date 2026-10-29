@@ -27,6 +27,7 @@ import {
   closeDetail,
   dependsCandidates,
   detailDepends,
+  authorLabel,
   isAgentKind,
   kindLabel,
   labelRoster,
@@ -180,7 +181,11 @@ const activityRows = computed(() =>
   newestFirst(activities.value).map((row) => ({
     id: row.id,
     actor: row.actor_id ?? "—",
-    agent: row.actor_kind === "agent",
+    // An actor's kind is a platform (`claude`, `codex`, …) or the reserved
+    // `human`; only the assignee category ever reads the literal `agent`. The
+    // rule lives in `lib/actor-kind.js` — comparing to `"agent"` here made the
+    // branch dead and dressed every agent's row as a person's.
+    agent: isAgentKind(row.actor_kind),
     line: activityLine(row),
     stamp: relativeTime(row.created_at),
   })),
@@ -189,8 +194,9 @@ const activityRows = computed(() =>
 /**
  * The comment rows (B09's `[data-detail-comments]`): avatar, meta line and body.
  * The meta line names three things — the author, the kind, and when — and the
- * kind is the comment's own `decision` first, then the author's `agent`/`human`
- * (the catalogue's `comment.*` trio, R14 D40). A decision comment is *quoted*
+ * kind is the comment's own `decision` first, then the author's `agent`/`human`/
+ * `system` (the catalogue's `comment.*` trio, R14 D40, plus the implementation's
+ * `comment.system` in `i18n/extra.mjs` — the prototype has no board writer). A decision comment is *quoted*
  * (`[data-detail-comments] .td-comment-decision`) and its kind rides a chip, as
  * the prototype has it.
  *
@@ -201,13 +207,18 @@ const activityRows = computed(() =>
 const commentRows = computed(() =>
   newestFirst(comments.value).map((row) => {
     const name = row.author?.display_name ?? row.author_id ?? "—";
-    const kind = row.author_kind ?? "human";
     const decision = row.kind === "decision";
     return {
       id: row.id,
       name,
       initials: initial(name),
-      agent: kind === "agent",
+      // Same rule as the activity trail: `human` is the one reserved kind, and
+      // an absent kind reads as a person's (nothing was recorded).
+      agent: isAgentKind(row.author_kind),
+      // The *word* is three-valued: the board's own writes (`system`) are
+      // neither a person's nor an agent's, and saying "human" for them would be
+      // the same lie the kind column stopped telling.
+      label: authorLabel(row.author_kind),
       decision,
       stamp: relativeTime(row.created_at),
       body: row.body ?? "",
@@ -315,6 +326,7 @@ const reportRows = computed(() =>
       conclusion: report.conclusion ?? "",
       author: name,
       agent: isAgentKind(report.author_kind),
+      label: authorLabel(report.author_kind),
       stamp: relativeTime(report.created_at),
     };
   }),
@@ -1668,7 +1680,7 @@ function copyId() {
               <div class="td-comment-meta">
                 <span class="font-medium text-(--brand-text)" :class="{ 'td-mono': row.agent }">{{ row.name }}</span>
                 <span v-if="row.decision" class="badge badge-sm td-chip" data-i18n="comment.decision">{{ $t("comment.decision") }}</span>
-                <span v-else :data-i18n="`comment.${row.agent ? 'agent' : 'human'}`">{{ $t(`comment.${row.agent ? 'agent' : 'human'}`) }}</span>
+                <span v-else :data-i18n="`comment.${row.label}`">{{ $t(`comment.${row.label}`) }}</span>
                 <span v-if="row.stamp" class="td-mono" :title="row.stamp.absolute" :data-i18n="`${row.stamp.key}`">{{ $t(row.stamp.key, row.stamp.arg) }}</span>
               </div>
               <div class="td-comment-body">{{ row.body }}</div>
@@ -1707,7 +1719,7 @@ function copyId() {
               <div class="td-dv-report-head">
                 <span class="badge badge-sm td-chip td-dv-round">{{ $t("drawer.report.round", row.round) }}</span>
                 <span class="td-dv-author td-mono">{{ row.author }}</span>
-                <span class="td-dv-kind">{{ $t(row.agent ? "comment.agent" : "comment.human") }}</span>
+                <span class="td-dv-kind">{{ $t(`comment.${row.label}`) }}</span>
                 <span v-if="row.stamp" class="td-dv-ts td-mono" :title="row.stamp.absolute">{{ row.stamp.absolute }}</span>
               </div>
               <p class="td-dv-conclusion">{{ row.conclusion }}</p>

@@ -86,12 +86,13 @@ describe("loop/subscribe — event rules", () => {
   });
 
   it("does not dispatch the board's own epic start", () => {
-    // `epic_auto_start` is written by `taskd`, so suppression by author already
-    // wins; it belongs in the explicit ignore list, not the dispatch whitelist.
+    // `epic_auto_start` is written by the board (`system`), so suppression by
+    // author already wins; it belongs in the explicit ignore list, not the
+    // dispatch whitelist.
     assert.equal(IGNORED_EVENTS.includes("epic_auto_start"), true);
     assert.equal(DISPATCH_EVENTS.includes("epic_auto_start"), false);
     assert.equal(
-      classify(activity("epic_auto_start", { actor_kind: "taskd", actor_id: "taskd" }), { agents: ["linus"] }),
+      classify(activity("epic_auto_start", { actor_kind: "system", actor_id: "system" }), { agents: ["linus"] }),
       "ignore",
     );
   });
@@ -108,14 +109,18 @@ describe("loop/subscribe — event rules", () => {
 
   it("suppresses the board's own housekeeping and this loop's agents", () => {
     const ctx = { agents: ["linus"] };
-    assert.equal(classify(activity("task_created", { actor_kind: "taskd", actor_id: "taskd" }), ctx), "ignore");
-    assert.equal(classify(activity("task_moved", { actor_kind: "taskd", actor_id: "linus" }), ctx), "ignore");
+    assert.equal(classify(activity("task_created", { actor_kind: "system", actor_id: "system" }), ctx), "ignore");
+    assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "linus" }), ctx), "ignore");
+    // The workflow pass's automation writes as the board, under its own id.
+    assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "Orchestrator" }), ctx), "ignore");
     // The importer is the board's platform under a component id: it must pass.
-    assert.equal(classify(activity("import_completed", { actor_kind: "taskd", actor_id: "md-import" }), ctx), "dispatch");
+    assert.equal(classify(activity("import_completed", { actor_kind: "system", actor_id: "md-import" }), ctx), "dispatch");
     // A human whose id happens to match an agent is still a human.
     assert.equal(classify(activity("task_created", { actor_kind: "human", actor_id: "linus" }), ctx), "dispatch");
-    // Legacy rows used kind `system`; the same ids still classify correctly.
-    assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "taskd" }), ctx), "ignore");
+    // A `system` kind alone is not enough: the id decides, so an importer stays visible.
+    assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "md-import" }), ctx), "dispatch");
+    // Legacy rows carried the retired kind; the same ids still classify correctly.
+    assert.equal(classify(activity("task_moved", { actor_kind: "taskd", actor_id: "taskd" }), ctx), "ignore");
     assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "linus" }), ctx), "ignore");
   });
 

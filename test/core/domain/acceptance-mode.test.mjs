@@ -126,28 +126,31 @@ describe("domain/acceptance-mode — resolveCardAcceptance", () => {
 describe("domain/acceptance-mode — acceptanceAllows", () => {
   it("off lets any non-blank writer close the card", () => {
     assert.equal(acceptanceAllows("human", "off"), true);
-    assert.equal(acceptanceAllows("taskd", "off"), true);
+    assert.equal(acceptanceAllows("system", "off"), true);
     assert.equal(acceptanceAllows("claude", "off"), true);
     assert.equal(acceptanceAllows("", "off"), false);
   });
 
-  it("agent is closed by the human or the board, never an arbitrary worker", () => {
-    assert.equal(acceptanceAllows("human", "agent"), true);
-    assert.equal(acceptanceAllows("taskd", "agent"), true);
-    assert.equal(acceptanceAllows("claude", "agent"), false);
-    assert.equal(acceptanceAllows("", "agent"), false);
+  it("agent is closed by anyone but the actor who wrote the verdict", () => {
+    // The APPROVE is the authority; the kind only says which platform wrote.
+    assert.equal(acceptanceAllows("human", "agent", { actorId: "r1", verdictAuthorId: "r1" }), true);
+    assert.equal(acceptanceAllows("claude", "agent", { actorId: "w1", verdictAuthorId: "r1" }), true);
+    assert.equal(acceptanceAllows("system", "agent", { actorId: "sys", verdictAuthorId: "r1" }), true);
+    assert.equal(acceptanceAllows("claude", "agent", { actorId: "r1", verdictAuthorId: "r1" }), false);
+    assert.equal(acceptanceAllows("", "agent", { actorId: "w1", verdictAuthorId: "r1" }), false);
   });
 
   it("human is closed by a human only", () => {
     assert.equal(acceptanceAllows("human", "human"), true);
-    assert.equal(acceptanceAllows("taskd", "human"), false);
+    assert.equal(acceptanceAllows("system", "human"), false);
     assert.equal(acceptanceAllows("claude", "human"), false);
   });
 
-  it("a review card is only closed by the human or the board, whatever its mode", () => {
-    assert.equal(acceptanceAllows("human", "off", { reviewCard: true }), true);
-    assert.equal(acceptanceAllows("taskd", "off", { reviewCard: true }), true);
-    assert.equal(acceptanceAllows("claude", "off", { reviewCard: true }), false);
+  it("a review card is closed after its verdict, never by its author", () => {
+    assert.equal(acceptanceAllows("human", "off", { reviewCard: true, actorId: "r1", verdictAuthorId: "r1" }), true);
+    assert.equal(acceptanceAllows("system", "off", { reviewCard: true, actorId: "sys", verdictAuthorId: "r1" }), true);
+    assert.equal(acceptanceAllows("claude", "off", { reviewCard: true, actorId: "w1", verdictAuthorId: "r1" }), true);
+    assert.equal(acceptanceAllows("claude", "off", { reviewCard: true, actorId: "r1", verdictAuthorId: "r1" }), false);
   });
 });
 
@@ -180,9 +183,13 @@ describe("domain/acceptance-mode — acceptanceAuthorityFor", () => {
     const authority = acceptanceAuthorityFor({ acceptanceMode: "off", reviewOfId: "orig-1", meta: {} });
     assert.equal(authority.isReview, true);
     assert.equal(authority.mode, "off");
-    assert.equal(authority.canAccept("claude"), false, "the reviewer never closes its own verdict");
-    assert.equal(authority.canAccept("taskd"), true);
-    assert.equal(authority.canAccept("human"), true);
+    assert.equal(
+      authority.canAccept("claude", { actorId: "r1", verdictAuthorId: "r1" }),
+      false,
+      "the reviewer never closes its own verdict",
+    );
+    assert.equal(authority.canAccept("claude", { actorId: "w1", verdictAuthorId: "r1" }), true);
+    assert.equal(authority.canAccept("human", { actorId: "h1", verdictAuthorId: "r1" }), true);
   });
 
   it("lets an ordinary off card's deliverer close it", () => {
@@ -194,14 +201,15 @@ describe("domain/acceptance-mode — acceptanceAuthorityFor", () => {
   it("reads a legacy meta-only review card", () => {
     const authority = acceptanceAuthorityFor({ acceptanceMode: "off", meta: { review_of: "PROJ-1" } });
     assert.equal(authority.isReview, true);
-    assert.equal(authority.canAccept("claude"), false);
+    assert.equal(authority.canAccept("claude", { actorId: "r1", verdictAuthorId: "r1" }), false);
   });
 
   it("reads the wire spelling", () => {
     const authority = acceptanceAuthorityFor({ acceptance_mode: "agent", review_of_id: null, meta: {} });
     assert.equal(authority.isReview, false);
     assert.equal(authority.mode, "agent");
-    assert.equal(authority.canAccept("claude"), false);
-    assert.equal(authority.canAccept("taskd"), true);
+    assert.equal(authority.canAccept("claude", { actorId: "r1", verdictAuthorId: "r1" }), false);
+    assert.equal(authority.canAccept("claude", { actorId: "w1", verdictAuthorId: "r1" }), true);
+    assert.equal(authority.canAccept("system", { actorId: "sys", verdictAuthorId: "r1" }), true);
   });
 });

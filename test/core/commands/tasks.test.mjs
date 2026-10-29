@@ -181,9 +181,9 @@ describe("commands/tasks — create and update", () => {
   it("leaves an agent's card reporterless — an agent may not claim the human filed it", async () => {
     await board(({ db, commands }) => {
       // The default is human-only. `claude` is the interactive writer and
-      // `taskd` the loop's; widening it to either would make an agent's churn
+      // `system` the board's; widening it to either would make an agent's churn
       // read as the leader dispatching work (SLA).
-      for (const kind of ["agent", "claude", "taskd"]) {
+      for (const kind of ["agent", "claude", "system"]) {
         const task = commands.createTask({
           projectId: "proj",
           title: `Ship ${kind}`,
@@ -623,7 +623,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
         .all(epic.id);
       assert.equal(reports.length, 1, "the board wrote exactly one rollup report");
       assert.equal(reports[0].is_rollup, 1, "0033 — the board's report is the rollup");
-      assert.equal(reports[0].author_kind, "taskd", "the board wrote it, not the last agent");
+      assert.equal(reports[0].author_kind, "system", "the board wrote it, not the last agent");
       assert.equal(reports[0].round, 1);
       const items = JSON.parse(reports[0].acceptance_json);
       assert.equal(items.length, 2, "one criterion per child");
@@ -657,7 +657,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       );
       assert.deepEqual(
         notes.map((note) => note.author_kind),
-        ["taskd", "taskd"],
+        ["system", "system"],
       );
       assert.match(notes[0].body, /^Auto-start \(event\): child PROJ-\d+ is in progress/);
       assert.match(
@@ -785,7 +785,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
         JSON.stringify([{ text: "child done", status: "met", ref: "PROJ-0098" }]),
         JSON.stringify([{ kind: "path", path: "x" }]),
         "system",
-        ensureActor(db, "taskd", "system"),
+        ensureActor(db, "system", "system"),
         TS,
       );
 
@@ -1036,7 +1036,7 @@ describe("commands/tasks — the container lifecycle (system start, notes, recon
 
       const [note] = notesFor(db, epic.id);
       assert.equal(note.kind, "note");
-      assert.equal(note.author_kind, "taskd", "the board wrote it");
+      assert.equal(note.author_kind, "system", "the board wrote it");
       assert.match(note.body, /^Auto-start \(event\): child PROJ-\d+ is in progress; epic moved todo → in_progress at /);
     });
   });
@@ -1986,7 +1986,7 @@ describe("commands/tasks — acceptance authority (the card's mode)", () => {
 
       const bySystem = delivered(commands, "off");
       assert.equal(
-        commands.moveStatus({ id: bySystem.id, to: "done", actor: { kind: "taskd", id: "taskd" } }).status,
+        commands.moveStatus({ id: bySystem.id, to: "done", actor: { kind: "system", id: "system" } }).status,
         "done",
       );
     });
@@ -2022,6 +2022,7 @@ describe("commands/tasks — acceptance authority (the card's mode)", () => {
       );
     });
   });
+
 });
 
 describe("commands/tasks — listCandidates (poll read)", () => {
@@ -2684,7 +2685,7 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
 });
 
 describe("commands/tasks — the acceptance mode and the two terminality gates", () => {
-  const TASKD = { kind: "taskd", id: "taskd" };
+  const SYSTEM = { kind: "system", id: "system" };
 
   /** Put a card in `in_review` the legal way (claim, then deliver). */
   const deliverCard = (commands, task, actor = AGENT) => {
@@ -2710,7 +2711,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
   /* --------------------------------------------------------------- mode */
 
   it("human mode: only a human closes; the board and an agent are refused", async () => {
-    for (const actor of [TASKD, AGENT]) {
+    for (const actor of [SYSTEM, AGENT]) {
       await board(async ({ commands }) => {
         const task = commands.createTask({
           projectId: "proj",
@@ -2738,7 +2739,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
   });
 
   it("off mode: any non-blank writer closes, including the worker", async () => {
-    for (const actor of [AGENT, { kind: "claude", id: "claude" }, TASKD, HUMAN]) {
+    for (const actor of [AGENT, { kind: "claude", id: "claude" }, SYSTEM, HUMAN]) {
       await board(async ({ commands }) => {
         const task = commands.createTask({
           projectId: "proj",
@@ -2765,7 +2766,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
     });
   });
 
-  it("agent mode: an agent is refused, and the board needs a review first", async () => {
+  it("agent mode: the evidence is the gate, not the kind", async () => {
     await board(async ({ commands }) => {
       const task = commands.createTask({
         projectId: "proj",
@@ -2774,12 +2775,14 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
         actor: AGENT,
       });
       deliverCard(commands, task);
+      // No review has run, so every writer is refused by the evidence gate —
+      // including the board's own kind. Declaring a kind buys no authority.
       assert.equal(
         refusal(() => commands.moveStatus({ id: task.id, to: "done", actor: AGENT })),
-        "ACCEPTANCE_FORBIDDEN",
+        "REVIEW_REQUIRED",
       );
       assert.equal(
-        refusal(() => commands.moveStatus({ id: task.id, to: "done", actor: TASKD })),
+        refusal(() => commands.moveStatus({ id: task.id, to: "done", actor: SYSTEM })),
         "REVIEW_REQUIRED",
       );
       assert.equal(commands.getTask({ id: task.id }).status, "in_review");
@@ -2806,7 +2809,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       return review;
     };
 
-    for (const actor of [HUMAN, TASKD]) {
+    for (const actor of [HUMAN, SYSTEM]) {
       await board(async ({ commands }) => {
         const review = makeReview(commands);
         assert.equal(commands.moveStatus({ id: review.id, to: "done", actor }).status, "done");
@@ -2821,7 +2824,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
     });
   });
 
-  it("authority is decided before the review/children gates", async () => {
+  it("the agent that wrote the verdict never closes the card it reviewed", async () => {
     await board(async ({ commands }) => {
       const original = commands.createTask({
         projectId: "proj",
@@ -2830,15 +2833,35 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
         actor: AGENT,
       });
       deliverCard(commands, original);
-      commands.createTask({
+      const review = commands.createTask({
         projectId: "proj",
         title: "Review",
         allowDup: true,
         meta: { review_of: original.identifier, review_round: 1 },
         actor: AGENT,
       });
-      // An agent is refused as an acceptor before the pending review is read.
-      assert.equal(refusal(() => commands.moveStatus({ id: original.id, to: "done", actor: AGENT })), "ACCEPTANCE_FORBIDDEN");
+      commands.claim({ id: review.id, actor: AGENT });
+      commands.deliver({
+        taskId: review.id,
+        report: report({
+          conclusion: "VERDICT: APPROVE\nlooks good",
+          evidence: [
+            { kind: "commit", sha: "dcd7d15" },
+            { kind: "command", cmd: "node --test test/io.test.mjs", exit_code: 0 },
+          ],
+        }),
+        actor: AGENT,
+      });
+      // The evidence is complete, and the writer is still refused because it is
+      // the verdict's author — the exclusion is checked before any gate it
+      // would otherwise pass.
+      assert.equal(
+        refusal(() => commands.moveStatus({ id: original.id, to: "done", actor: AGENT })),
+        "ACCEPTANCE_FORBIDDEN",
+      );
+      // Another actor applies the same APPROVE (the review card is still open,
+      // which is the loop's protocol: original first, review card last).
+      assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: SYSTEM }).status, "done");
     });
   });
 
@@ -3022,7 +3045,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
         actor: AGENT,
       });
       deliverCard(commands, original);
-      assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: TASKD }).status, "done");
+      assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: SYSTEM }).status, "done");
     });
   });
 
@@ -3476,7 +3499,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
 // ---------------------------------------------------------------------------
 
 describe("commands/tasks — review decision (0031)", () => {
-  const TASKD = { kind: "taskd", id: "board" };
+  const SYSTEM = { kind: "system", id: "board" };
 
   /** Create, claim and deliver a card; returns the delivered in_review row. */
   function deliverOne(commands, projectId, title, actor = AGENT) {
@@ -3616,7 +3639,7 @@ describe("commands/tasks — review decision (0031)", () => {
       assert.equal(original.acceptanceMode, "agent");
 
       assert.throws(
-        () => commands.moveStatus({ id: original.id, to: "done", actor: TASKD }),
+        () => commands.moveStatus({ id: original.id, to: "done", actor: SYSTEM }),
         (err) => err.code === "REVIEW_REQUIRED",
       );
 
@@ -3641,7 +3664,7 @@ describe("commands/tasks — review decision (0031)", () => {
         actor: AGENT,
       });
 
-      const done = commands.moveStatus({ id: original.id, to: "done", actor: TASKD });
+      const done = commands.moveStatus({ id: original.id, to: "done", actor: SYSTEM });
       assert.equal(done.status, "done");
     });
   });
@@ -4057,7 +4080,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
 });
 
 describe("commands/tasks — a claim must point at its evidence", () => {
-  const TASKD = { kind: "taskd", id: "taskd" };
+  const SYSTEM = { kind: "system", id: "system" };
   const AGENT_ACTOR = { kind: "agent", id: "linus" };
   const REVIEWER = { kind: "agent", id: "jobs" };
 
@@ -4086,7 +4109,7 @@ describe("commands/tasks — a claim must point at its evidence", () => {
         commands.deliver({ taskId: task.id, report: claimReport("looks right"), actor: AGENT_ACTOR });
         let code = null;
         try {
-          commands.moveStatus({ id: task.id, to: "done", actor: TASKD });
+          commands.moveStatus({ id: task.id, to: "done", actor: SYSTEM });
         } catch (err) {
           code = err.code;
         }
@@ -4107,7 +4130,7 @@ describe("commands/tasks — a claim must point at its evidence", () => {
       commands.claim({ id: task.id, actor: AGENT_ACTOR });
       commands.deliver({ taskId: task.id, report: claimReport("I ran it, trust me"), actor: AGENT_ACTOR });
       assert.throws(
-        () => commands.moveStatus({ id: task.id, to: "done", actor: TASKD }),
+        () => commands.moveStatus({ id: task.id, to: "done", actor: SYSTEM }),
         (err) =>
           err.code === "ACCEPTANCE_INCOMPLETE" &&
           err.details.unsupported[0].reason === "no_anchor" &&
@@ -4158,7 +4181,7 @@ describe("commands/tasks — a claim must point at its evidence", () => {
       commands.moveStatus({ id: review.id, to: "done", actor: HUMAN });
 
       assert.throws(
-        () => commands.moveStatus({ id: original.id, to: "done", actor: TASKD }),
+        () => commands.moveStatus({ id: original.id, to: "done", actor: SYSTEM }),
         (err) => err.code === "ACCEPTANCE_INCOMPLETE" && err.details.reason === "no_command_evidence",
       );
     });

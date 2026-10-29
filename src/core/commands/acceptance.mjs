@@ -24,6 +24,7 @@ import { isTerminalStatus } from "../domain/status.mjs";
 import { acceptanceAuthorityFor, assertAcceptanceAuthority, cardAcceptanceOf } from "../domain/acceptance-mode.mjs";
 import { parseReviewVerdict } from "../domain/workflow.mjs";
 import { coverageOf, unsupportedClaimsOf } from "../domain/acceptance.mjs";
+import { normalizeName } from "../domain/dictionary.mjs";
 import { COMMIT_SHA_PATTERN, evidenceFromJson, evidenceHasCommand } from "../domain/report.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { assertEpicRollupReady, assertRollupCoverage } from "./rollup.mjs";
@@ -35,13 +36,67 @@ import { assertEpicRollupReady, assertRollupCoverage } from "./rollup.mjs";
  * one structural override is the review card itself (its reviewer reports a
  * verdict; the acceptor closes it).
  *
+ * **The authority is the evidence, not the kind.** An `agent` card is closed by
+ * anyone who did not write the current-round APPROVE; a review card the same.
+ * Declaring a kind therefore buys no right to accept — which is what makes the
+ * board's own `system` kind harmless to keep.
+ *
  * @param {object} ctx
  * @param {object} task
  * @param {{kind?: string, id?: string}} actor
  */
 export function assertAcceptance(ctx, task, actor) {
   const authority = acceptanceAuthorityFor(task);
-  return assertAcceptanceAuthority(actor, { mode: authority.mode, reviewCard: authority.isReview });
+  return assertAcceptanceAuthority(actor, {
+    mode: authority.mode,
+    reviewCard: authority.isReview,
+    actorId: actorRowId(ctx, actor),
+    verdictAuthorId: verdictAuthorIdFor(ctx, task),
+  });
+}
+
+/**
+ * The actor row id behind an `--agent` name, or `null`.
+ *
+ * Two identity spellings meet here: the command layer carries the raw name
+ * (`--agent Reviewer`), while `task_reports.author_id` is a row id. Comparing
+ * the two as strings is how a review would be "closed by its own reviewer" and
+ * pass. The lookup is **exact after normalisation** — no fuzzy match, because
+ * verification must not equate two different people — and it never writes: an
+ * actor that has not written before cannot be the author of a stored verdict.
+ *
+ * @param {object} ctx
+ * @param {{kind?: string, id?: string}|null|undefined} actor
+ * @returns {string|null}
+ */
+function actorRowId(ctx, actor) {
+  const name = typeof actor?.id === "string" ? normalizeName(actor.id) : "";
+  if (name === "") return null;
+  const row = ctx.repos.dictionary
+    .list()
+    .find((entry) => normalizeName(entry.displayName) === name);
+  return row?.id ?? null;
+}
+
+/**
+ * The actor whose verdict decides who may close this card.
+ *
+ * - a review card: its own report for the current round — the verdict the
+ *   reviewer wrote;
+ * - an original card: the author of the review card's APPROVE (see
+ *   `approvedReview`), or nothing when no verdict exists yet.
+ *
+ * A `null` answer means "no verdict to exclude", which is the honest reading of
+ * a card no review has reached.
+ */
+function verdictAuthorIdFor(ctx, task) {
+  if (task.reviewOfId !== null && task.reviewOfId !== undefined) {
+    // A review card's verdict is its own report for the current round. The
+    // stored row is the authority: it was resolved when the verdict was written,
+    // so the comparison needs no second spelling of the same name.
+    return ctx.repos.reports.latestForRound(task.id, task.deliveryRound)?.authorId ?? null;
+  }
+  return approvedReview(ctx, task)?.verdict.report?.authorId ?? null;
 }
 
 /**
@@ -227,6 +282,34 @@ function assertCoverageOrThrow({
 }
 
 /**
+ * The current-round review whose verdict is an `APPROVE`, with that verdict.
+ *
+ * One definition of "the verdict" for both questions this module answers: the
+ * evidence gate (`assertReviewEvidence`) and the authority gate (who may close —
+ * never the agent that wrote the verdict). Two readers of one fact, so they
+ * cannot disagree about which review made the card closable.
+ *
+ * A review card has no review of its own: it is flow B, and its own report is
+ * the verdict. The caller answers that case directly.
+ *
+ * @param {object} ctx
+ * @param {object} task the original card
+ * @returns {{review: object, verdict: object}|null}
+ */
+export function approvedReview(ctx, task) {
+  if (task.reviewOfId !== null && task.reviewOfId !== undefined) return null;
+  for (const review of currentRoundReviews(ctx, task)) {
+    if (review.status !== "in_review" && review.status !== "done") continue;
+    const verdict = parseReviewVerdict(
+      ctx.repos.reports.listByTask(review.id),
+      review.deliveryRound ?? null,
+    );
+    if (verdict.ok === true && verdict.verdict === "APPROVE") return { review, verdict };
+  }
+  return null;
+}
+
+/**
  * Does an `agent` card have the evidence its mode promised?
  *
  * The evidence is a **current-round** review card with an `APPROVE` verdict.
@@ -246,21 +329,10 @@ export function assertReviewEvidence(ctx, task) {
   if (task.reviewOfId !== null && task.reviewOfId !== undefined) return true;
 
   const reviews = currentRoundReviews(ctx, task);
-  let approvedReview = null;
-  let approvedVerdict = null;
-  for (const review of reviews) {
-    if (review.status !== "in_review" && review.status !== "done") continue;
-    const verdict = parseReviewVerdict(
-      ctx.repos.reports.listByTask(review.id),
-      review.deliveryRound ?? null,
-    );
-    if (verdict.ok === true && verdict.verdict === "APPROVE") {
-      approvedReview = review;
-      approvedVerdict = verdict;
-      break;
-    }
-  }
-  if (approvedVerdict !== null) {
+  const approved = approvedReview(ctx, task);
+  if (approved !== null) {
+    const approvedReview = approved.review;
+    const approvedVerdict = approved.verdict;
     // 0032 — an APPROVE is only evidence when its report answers every criterion
     // of the original (and of the review card's own copied baseline). A reviewer
     // that writes `VERDICT: APPROVE` over a report that never mentions half the

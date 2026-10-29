@@ -28,11 +28,12 @@ import {
   EVENT_DEBOUNCE_MAX_MS,
   EVENT_DEBOUNCE_MS,
   HUMAN_KIND,
+  ORCHESTRATOR_ACTOR_ID,
   SSE_SUBSCRIBE_IDLE_MS,
   SUBSCRIBE_BACKOFF_MAX_MS,
   SUBSCRIBE_RETRY_MS,
   SUBSCRIBE_STATE_WRITE_MIN_MS,
-  TASKD_KIND,
+  SYSTEM_KIND,
 } from "../foundation/constants.mjs";
 
 import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./options.mjs";
@@ -119,20 +120,34 @@ const UPDATED_FIELDS = new Set(TASK_UPDATED_DISPATCH_FIELDS);
 /**
  * Did this loop (or the board itself) write the activity?
  *
- * Suppression is by author, not by role word: a human's event is never
- * suppressed; `taskd` is the board's own housekeeping; an event authored by one
- * of `opts.agents` is our echo. `import_completed` is authored by `taskd` but
- * under `md-import`, so it survives — an import is work to discover.
+ * Suppression is by author **id**, not by kind: a human's event is never
+ * suppressed; the board's own housekeeping (`system`) and the workflow pass's
+ * automation (`Orchestrator`) are our echo; an event authored by one of
+ * `opts.agents` is ours too. `import_completed` is authored under `md-import`, so
+ * it survives — an import is work to discover. That is why the rule stays on ids
+ * rather than "any `system` write": a historical importer's rows are `system`
+ * too, and suppressing them would hide the import.
  *
  * @param {object} activity an `activityToWire` payload
  * @param {{agents: string[]}} context
  * @returns {boolean}
  */
+/**
+ * The ids the board writes under: its own housekeeping, the workflow pass's
+ * automation, and — for rows recorded before 2026-10-30 — the retired `taskd`
+ * id. History is never rewritten, so a replay from a lost cursor still sees it,
+ * and the board's own deliveries must not wake the loop.
+ *
+ * The *kind* is deliberately not consulted: `md-import` also wrote `system`, and
+ * an import is work to discover.
+ */
+const BOARD_ACTOR_IDS = Object.freeze(new Set([SYSTEM_KIND, ORCHESTRATOR_ACTOR_ID, "taskd"]));
+
 export function isOwnWrite(activity, context) {
   if (activity?.actor_kind === HUMAN_KIND) return false;
   const id = activity?.actor_id;
   if (typeof id !== "string" || id === "") return false;
-  if (id === TASKD_KIND) return true;
+  if (BOARD_ACTOR_IDS.has(id)) return true;
   return Array.isArray(context?.agents) && context.agents.includes(id);
 }
 

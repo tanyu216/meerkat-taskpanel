@@ -1908,6 +1908,35 @@ const BLOCKS = [
       { kind: "computed", probe: "div[data-detail-relations]", count: 1 },
       { kind: "computed", probe: "div[data-detail-attachments]", count: 1 },
       { kind: "computed", probe: "div[data-detail-comments]", count: 1 },
+      // 2026-10-30 — the meta line's third word is the author's *category*, and
+      // the wire's `author_kind` is a **platform** (`claude`, `codex`, `pi`),
+      // the reserved `human`, or the board's own `system` (the literal `agent`
+      // is the assignee category a card records when it names no platform). The
+      // drawer reads the column through `authorLabel` (`web/src/lib/actor-kind.js`);
+      // comparing the kind to `"agent"` instead made the branch dead, so every
+      // agent — and the loop's own workflow pass — wore the human label.
+      //
+      // TD-1's fixture carries one comment of each category, so a regression has
+      // nowhere to hide: a mislabelled row loses its own word and the rule fails
+      // with "nothing matches" rather than passing on a neighbour's row.
+      {
+        kind: "text",
+        probe: "[data-detail-comments] .td-comment-meta [data-i18n=\"comment.agent\"]",
+        oneOf: ["agent", "Agent"],
+        when: "drawer open",
+      },
+      {
+        kind: "text",
+        probe: "[data-detail-comments] .td-comment-meta [data-i18n=\"comment.human\"]",
+        oneOf: ["human", "人类"],
+        when: "drawer open",
+      },
+      {
+        kind: "text",
+        probe: "[data-detail-comments] .td-comment-meta [data-i18n=\"comment.system\"]",
+        oneOf: ["system", "系统"],
+        when: "drawer open",
+      },
       { kind: "computed", probe: "div[data-detail-activity]", count: 1 },
       { kind: "computed", probe: "section[data-detail-agent-session]", count: 1 },
       // R14 D28 (A18) — the id copy control is the prototype's `.td-copy` box and

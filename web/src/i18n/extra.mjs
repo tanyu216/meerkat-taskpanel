@@ -136,6 +136,10 @@ export const EXTRA = {
     "drawer.tab.acceptance": "Acceptance",
     "drawer.tab.leftovers": "Leftovers",
     "drawer.tab.sessions": "Sessions",
+    // The drawer's third author word. The prototype knows only `comment.agent`
+    // and `comment.human`; the board's own writes carry the `system` kind, and
+    // saying "human" for them is the lie this key exists to stop.
+    "comment.system": "system",
     "drawer.report.round": "round %s",
     "drawer.reports.empty": "No reports yet.",
     "drawer.commentHintAwaiting": "Submitting answers the question — the card is re-queued for the agent.",
@@ -264,6 +268,7 @@ export const EXTRA = {
     "drawer.tab.acceptance": "验收",
     "drawer.tab.leftovers": "遗留",
     "drawer.tab.sessions": "会话",
+    "comment.system": "系统",
     "drawer.report.round": "第 %s 轮",
     "drawer.reports.empty": "暂无报告。",
     "drawer.commentHintAwaiting": "提交即作为答复 —— 卡片会重新排队交给 Agent。",

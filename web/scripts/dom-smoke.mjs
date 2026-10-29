@@ -250,8 +250,17 @@ export function fixtureApi() {
     // TD-1 · the drawer's comment list (B09), served **oldest-first** on
     // purpose: the route's `order` parameter is not honoured by this fixture, so
     // the drawer's own newest-first ordering is what the interaction pass reads.
+    // `author_kind` is a **platform** on this column (`claude`, `codex`, `pi`, or
+    // the board's own `taskd`), never the literal `agent` — that value belongs to
+    // an assignee who names no platform. A fixture that wrote `agent` here made
+    // the drawer's `kind === "agent"` comparison look right while every real
+    // agent (and the loop's workflow pass) wore the human label; the B09 rule
+    // that reads this row's label is what keeps that from returning. `TD-13`
+    // keeps the category value on purpose: `isAgentKind` must read it as an
+    // agent too, and this is the one row that proves it.
     "TD-1": [
-      { id: "cm-4", task_id: "td_TD_1", kind: "note", author_kind: "agent", author_id: "jobs", body: "先起草第一段。", refs: [], created_at: "2026-10-12T00:03:00Z" },
+      { id: "cm-6", task_id: "td_TD_1", kind: "note", author_kind: "system", author_id: "system", body: "自动启动：子卡进入 in_progress。", refs: [], created_at: "2026-10-12T00:02:00Z" },
+      { id: "cm-4", task_id: "td_TD_1", kind: "note", author_kind: "claude", author_id: "jobs", body: "先起草第一段。", refs: [], created_at: "2026-10-12T00:03:00Z" },
       { id: "cm-5", task_id: "td_TD_1", kind: "note", author_kind: "human", author_id: "Terry", body: "补上第二段，再走一遍。", refs: [], created_at: "2026-10-12T00:04:00Z" },
     ],
     "TD-13": [
@@ -1375,7 +1384,7 @@ export async function run() {
       const activities = stamps("[data-detail-activity] [data-activity-row] [data-activity-ts]");
       return { comments, activities, commentsDesc: descending(comments), activitiesDesc: descending(activities) };
     });
-    drawerTabsCheck(chronoRead.comments.length === 2, `drawer comments ${chronoRead.comments.length}, expected 2`);
+    drawerTabsCheck(chronoRead.comments.length === 3, `drawer comments ${chronoRead.comments.length}, expected 3`);
     drawerTabsCheck(chronoRead.commentsDesc, `drawer comments are not newest-first: ${chronoRead.comments.join(" | ")}`);
     drawerTabsCheck(chronoRead.activities.length === 4, `drawer activity rows ${chronoRead.activities.length}, expected 4`);
     drawerTabsCheck(chronoRead.activitiesDesc, `drawer activity rows are not newest-first: ${chronoRead.activities.join(" | ")}`);
