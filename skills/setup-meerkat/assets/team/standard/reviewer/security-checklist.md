@@ -6,6 +6,9 @@ Tier 1 is answered on every code-changing card; Tiers 2 and 3 are answered for t
 the card changes. A documentation-only card records one `n/a — <reason>` per tier.
 An automated scanner never answers a row for you: its finding is evidence you classify.
 
+The list is a floor, not a ceiling. A security check this card's surface calls for and no
+row above names is still yours: run it, and record it the same way.
+
 ## Tier 1 — core (always)
 
 | # | Topic | What proves it |
