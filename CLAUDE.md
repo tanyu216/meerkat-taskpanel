@@ -275,8 +275,9 @@ Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/age
 - `GLOSSARY.md` — the canonical vocabulary: one word per concept, the words to avoid, and the terms that are *not* in the model.
 - `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
 - `CONTRIBUTING.md` — the container gate, PR flow, conventions the gates enforce.
-- `docs/agents/development.md` — layout, commands, the two build layers, skills generation, constraints.
+- `docs/tech-spec.md` — this repository's standard: the authoritative pointer per section, and the security toolchain with its decision policy.
+- `docs/agents/development.md` — the two build layers and the server operations (one writer, bounded stop, lock contention).
 - `docs/agents/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
 - `docs/agents/contract.md` — the API and CLI contract snapshots + route-request lint.
-- `docs/agents/migration.md`, `docs/scheduling.md`, `docs/ops/observability.md`, `docs/security.md` — the named subsystems.
+- `docs/agents/migration.md`, `docs/scheduling.md`, `docs/ops/observability.md` — the named subsystems.
 - `src/core/README.md` — what the core engine owns and the rules it enforces.

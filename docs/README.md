@@ -11,7 +11,8 @@ operating procedure.
 
 | Document | Contents |
 |---|---|
-| [development.md](agents/development.md) | Repository layout, Node requirement, test / verify / build commands, the two build layers (engine vs `web/`) and the offline / dependency policy. |
+| [tech-spec.md](tech-spec.md) | This repository's standard: one authoritative pointer per section (stack, structure, naming, errors, configuration, logging, tests and gates, server operations, release), with the security toolchain and its decision policy written out in full. |
+| [development.md](agents/development.md) | The operational facts you cannot read off the code: the two build layers (`dist` vs `web/dist`, the offline `web/` build) and the server invariants (one writer per data directory, the bounded stop, lock contention as a 503). Commands and layout live in `CLAUDE.md`. |
 | [docker.md](agents/docker.md) | Why verification and the four-agent-kind installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
 | [contract.md](agents/contract.md) | The contract snapshots — the HTTP API (routes, error codes, wire fields) and the CLI surface (`taskctl` commands, flags, envelope keys): what each freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
 | [migration.md](agents/migration.md) | The append-only SQL schema gate, and the note recording the MCP integration's removal. |
@@ -31,7 +32,6 @@ How the product behaves, and why.
 | [sla.md](sla.md) | The SLA design: the wait-time model, why the board computes and the loop notifies, the threshold table and tier ladder, the working-hours basis, the alert tuple, the row detectors, de-duplication and pre-emit re-check, the peer watchdog, and the decisions with their costs. |
 | [events.md](events.md) | The event system's design: the append-only activity log and its revision cursor, the SSE contract and its delivery semantics, each consumer's refresh policy (board, ledger, feed, loop, card watcher), the local event hub, the event catalogue, and the decisions and costs behind them. |
 | [projects.md](projects.md) | The project subsystem: the id and the effective identifier prefix (derivation, uniqueness, immutability), what a project carries, its lifecycle and wire surface, the server-ranked `PROJECTS` order, and why the working directory lives in the machine-local `projects.json` instead. |
-| [security.md](security.md) | Security scanning: the dependency, secret and SAST arms, the SBOM, what blocks, how an advisory is waived, and why an alert does not red a build unless someone asks. |
 | [access.md](access.md) | Access and security design: the local-first trust model, the request gate (loopback / allow-list / token), the credential's shape, storage and rotation, managing access from the panel and the CLI, what remote clients get today (and why the built board is loopback-only), the API surface's other guards, and the limits this design does not cover. |
 | [im-integration.md](im-integration.md) | The planned IM integration: the plugin host + `channel-kit` contract, how “needs a human” is pushed, how replies are anchored and written as human comments, the resident IM session, and the per-platform adapter strategy (third-party SDKs, independent packages). |
 

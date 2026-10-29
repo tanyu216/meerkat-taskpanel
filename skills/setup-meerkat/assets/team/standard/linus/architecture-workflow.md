@@ -480,7 +480,7 @@ document points at the canonical artifact for each detail and never restates it.
 | Configuration | one inventory, one loader, the load order, fail-fast, the configuration-versus-constant boundary and the reload policy; pointer to `.env.example` | an unlisted key is a defect, and a deployment-dependent literal in code is not a key |
 | Logging | one logger, the level meanings, the mandatory `info` and `error` sites, the correlation id and redaction | a key flow has its line; no secret is logged |
 | Tests and gates | test layout and naming, the coverage floor, the local gates and the CI checks | a change knows what must pass before delivery |
-| Security toolchain | one row per arm — dependency audit, secret scan, SAST, SBOM — with the tool, its version floor, the exact local and CI command, the report path and who may waive a finding; `n/a — <reason>` per arm the project does not run | every arm has a command that fails on an unaddressed high/critical finding, or records why it does not apply |
+| Security toolchain | one row per arm — dependency audit, secret scan, SAST, SBOM — with the tool, its version floor, the exact local and CI command, the report path and who may waive a finding; plus the decision policy: the block threshold, the waiver window and its caps, the strict switch and the exit-code meaning; `n/a — <reason>` per arm the project does not run | every arm has a command that fails on an unaddressed high/critical finding over the recorded threshold, or records why it does not apply |
 | Release and delivery | release and deploy invariants, artifact immutability, rollback and its data plan | each path records its invariant or its `n/a` |
 | Project documents | the core set and its paths — `README.md`, `GLOSSARY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`; the community group (`LICENSE`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS`, issue/PR templates) when Step 1 records a community open-source project, otherwise `n/a — not a community open-source project`; who owns the vocabulary, the change policy and the release record | every required document exists or its `n/a` is recorded, and no two documents restate the same rule |
 
@@ -607,8 +607,9 @@ carry:
    recorded as an explicit decision, never a silent drift.
 6. **Gates** — what must pass before delivery: the gate path, the coverage floor and the
    security scan's three arms (dependency audit, secret scan, SAST), each with the command
-   the standard records or its recorded `n/a — <reason>`; point at the CI pipeline for the
-   job detail.
+   the standard records or its recorded `n/a — <reason>`, and the decision policy the
+   standard records — the block threshold, the waiver rules, the strict switch and the exit
+   codes; point at the CI pipeline for the job detail.
 7. **Working agreement** — how a session works in this project: decompose before executing;
    test-first, or the project's own red/green equivalent; verify in the place the project
    designates; confirm with the human before landing, closing or deleting. State the rule,
@@ -672,14 +673,17 @@ is free to use; the standard records the exact command, never a tool name alone.
 
 | Arm | Default tool | What the standard records | Blocks when |
 |---|---|---|---|
-| Dependency audit | `osv-scanner` (alternative: `trivy`, or `npm audit --audit-level=high` for a JS lockfile) | one scan of every lockfile and the tree, as JSON | an advisory scores CVSS >= 7.0 and no unexpired waiver covers it |
+| Dependency audit | `osv-scanner` (alternative: `trivy`, or `npm audit --audit-level=high` for a JS lockfile) | one scan of every lockfile and the tree, as JSON | an advisory at or above the recorded threshold, with no unexpired waiver |
 | Secret scan | `gitleaks` | a tree and history scan, as JSON | a credential is committed, in the tree or the history |
 | SAST | CodeQL on a public GitHub repository; `semgrep` on any other host or offline | the static-analysis invocation, its rule set and the languages it does not cover | a high/critical rule finding is unaddressed |
 | SBOM (inventory) | `syft` | SPDX or CycloneDX output | never blocks; it is the inventory the other answers are checked against |
 
-Pin each tool to a minimum version, and record the check that proves it is present. A
-committed secret is not waivered the way an advisory is: rotate it, purge it, then record
-what happened. A `.vue` (or Svelte) single-file component has no extractor in either SAST
+Record the decision policy with the tools — never a tool name alone: the threshold that
+blocks, the waiver window and its caps, the strict switch and what each exit code means. A
+project that grants no waivers records that, rather than leaving the field empty. Pin each
+tool to a minimum version, and record the check that proves it is present. A committed
+secret is not waivered the way an advisory is: rotate it, purge it, then record what
+happened. A `.vue` (or Svelte) single-file component has no extractor in either SAST
 default: the standard records those files `n/a — no extractor`, and the reviewer's manual
 checklist covers them.
 

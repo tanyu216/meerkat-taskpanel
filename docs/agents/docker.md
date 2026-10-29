@@ -514,9 +514,8 @@ of its properties are not reproduced by `verify:docker`:
   scripts — but the standalone check is not.)
 
 "Locally green means CI green" therefore holds for the `docker` job exactly, and for the
-`check` job only up to the Node version and that standalone checker. See
-[development.md](development.md#local-and-ci-run-the-same-commands) for the local
-equivalent of each job.
+`check` job only up to the Node version and that standalone checker. The local equivalent
+of each job is the command list in [CLAUDE.md](../../CLAUDE.md).
 
 ## Cleanup
 

@@ -232,7 +232,7 @@ published — so "a release with no bill of materials" is not a state this pipel
 reach. `security-scan.yml` also attaches an SBOM for the same tag, best-effort and after
 the fact; both jobs run the same action over the same commit, and it is `release.yml`'s copy
 whose presence the release depends on. The scanner, its threshold and the waiver ledger are
-documented in [security.md](../security.md).
+documented in [tech-spec.md § Security toolchain](../tech-spec.md#security-toolchain-and-decision-policy).
 
 Tags are cut from `main` — §3.3 states that policy and the repository settings that back it.
 
@@ -514,9 +514,8 @@ pi list
 
 Every manifest points at the repository's one `skills/` tree, so the npm whitelist ships the
 skills directly and no bundle carries a generated copy of its own (see
-[development.md](../agents/development.md#the-skills-are-authored-never-generated)). The loop needs no
-payload step: it is `src/orchestrator/` inside the published tree, and the units run
-`taskctl loop …`.
+[CLAUDE.md](../../CLAUDE.md)). The loop needs no payload step: it is `src/orchestrator/`
+inside the published tree, and the units run `taskctl loop …`.
 
 The `files` whitelist must also name each dot-directory the plugins live in
 (`.claude-plugin`, `.pi`): npm does not include dot files by

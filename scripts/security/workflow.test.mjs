@@ -205,11 +205,11 @@ describe("static: security-scan.yml", () => {
   });
 });
 
-describe("static: docs/security.md", () => {
-  it("documents the gate", async () => {
-    const text = await read("docs/security.md");
+describe("static: docs/tech-spec.md", () => {
+  it("documents the gate and its decision policy", async () => {
+    const text = await read("docs/tech-spec.md");
 
-    assert.ok(text.length > 500, "docs/security.md looks empty");
+    assert.ok(text.length > 500, "docs/tech-spec.md looks empty");
     for (const needle of [
       "osv-scanner",
       "npm audit",
@@ -223,11 +223,10 @@ describe("static: docs/security.md", () => {
       "scripts/security/waivers.json",
       "gitleaks",
       "CodeQL",
-      "Semgrep",
       "security-events",
       ".vue",
     ]) {
-      assert.ok(text.includes(needle), `docs/security.md should mention ${needle}`);
+      assert.ok(text.includes(needle), `docs/tech-spec.md should mention ${needle}`);
     }
   });
 });

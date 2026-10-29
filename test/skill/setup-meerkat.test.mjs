@@ -223,6 +223,22 @@ describe("skill frontmatter and assets", () => {
     assert.match(stage, /references\/security-tools\.md/);
   });
 
+  it("makes the security toolchain record its decision policy, not only its tools", () => {
+    const arch = readFileSync(
+      join(SKILL, "assets", "team", "standard", "linus", "architecture-workflow.md"),
+      "utf8",
+    );
+    const section = arch.slice(arch.indexOf("#### Security toolchain"));
+    assert.match(section, /recorded threshold/i, "the block threshold is the project's, not the template's");
+    assert.match(section, /waiver window/i);
+    assert.match(section, /exit code/i);
+
+    const row = arch.split("\n").find((line) => line.startsWith("| Security toolchain |"));
+    assert.ok(row, "the tech-spec table has a Security toolchain row");
+    assert.match(row, /block threshold/i);
+    assert.match(row, /exit-code/i);
+  });
+
   it("runs a design card as plan → prototype → PRD → self-check → deliver", () => {
     const jobs = join(SKILL, "assets", "team", "standard", "jobs");
     const workflow = readFileSync(join(jobs, "workflow.md"), "utf8");
