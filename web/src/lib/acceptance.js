@@ -128,3 +128,27 @@ export function acceptanceRowsFor(criteria, reportItems) {
   }
   return rows;
 }
+
+/**
+ * The delivery summary the Acceptance panel leads with: the three facts a
+ * person needs before acting — **which round**, **who reported it** and **what
+ * it concluded** — read off the latest report.
+ *
+ * It is deliberately the report's own header, not the criteria list's: the tab
+ * used to open straight into verdict rows, so a reader arriving to accept a
+ * card had to leave the tab to find out whose delivery they were accepting.
+ *
+ * A card with no report has nothing to summarise (`null`): criteria alone are
+ * not a delivery, and the panel must not invent a round for them.
+ *
+ * @param {object|null|undefined} report a wire report (`reports[].round/author/conclusion`)
+ * @returns {{round: number|null, author: string, conclusion: string}|null}
+ */
+export function deliverySummaryOf(report) {
+  if (report === null || typeof report !== "object") return null;
+  return {
+    round: Number.isInteger(report.round) ? report.round : null,
+    author: report.author?.display_name ?? report.author_id ?? "",
+    conclusion: typeof report.conclusion === "string" ? report.conclusion : "",
+  };
+}
