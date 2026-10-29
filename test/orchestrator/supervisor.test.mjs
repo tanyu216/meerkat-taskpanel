@@ -2344,7 +2344,9 @@ describe("the workflow plan survives the wire and executes", () => {
 
   const DELIVERY = {
     conclusion: "The thing is done.",
-    acceptance: [{ text: "the thing works", status: "met" }],
+    // ADR-0003: delivery refuses an unanchored `met` at write time, so the
+    // fixture must cite the evidence row it rests on.
+    acceptance: [{ text: "the thing works", status: "met", note: "the commit (evidence[1])" }],
     evidence: [{ kind: "commit", sha: "abc1234" }],
   };
   const VERDICT = {
