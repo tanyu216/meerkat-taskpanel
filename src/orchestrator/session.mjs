@@ -590,6 +590,7 @@ export function createSessionPool(input = {}) {
       openedBy: opts.openedBy,
       decisionPolicy: roleSet.decisionPolicy,
       ownership: roleSet.ownership,
+      owners: roleSet.roles.map((role) => role.agent),
     });
     let outcome;
     try {

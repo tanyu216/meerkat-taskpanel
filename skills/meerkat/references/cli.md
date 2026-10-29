@@ -164,6 +164,13 @@ taskctl issue create --project <id> --title <t> [flags]
 | `--allow-dup` / `--force-create` | Skip the duplicate guard / the fuzzy dictionary step. |
 | `--review-of <ref> [--review-round <n>]` | Create a review card for that original and round. |
 
+**Routing is the handoff.** In a team project `--assignee` is part of the create, not a later
+step: the loop scans only the names in `MEERKAT_TASKPANEL_AGENTS`, so a card with no assignee
+(or one assigned to a name nobody scans) is never claimed. Read the project's `ownership.md`
+and pass the one accountable role (`--assignee <role> --assignee-kind agent`) in the same
+call. Without a team roles root, leave it unassigned — the public pool, claimed by the default
+worker — or name your own worker identity; never invent a role name.
+
 ### The weight order (every task list)
 
 `issue list` and `issue candidates` are **always weight-ordered**: a hard **tier** (can I move

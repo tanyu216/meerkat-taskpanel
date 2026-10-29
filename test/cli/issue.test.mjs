@@ -1288,10 +1288,11 @@ describe("cli/issue — claim and stale recovery", () => {
     });
   });
 
-  it("claims an unassigned card as a name the board has never seen", async () => {
+  it("claims an unassigned card as a name the board has never seen, and records the route", async () => {
     // No setup-meerkat, no team: the only thing a fresh agent has is its own
-    // name. An empty assignee is the open pool, so the claim must be accepted
-    // and attributed, without turning the claim into an assignment.
+    // name. An empty assignee is the open pool, so the claim must be accepted —
+    // and it records the claimant as the route, so a claimed card is never left
+    // unowned. (A card already routed elsewhere keeps its assignee.)
     await board(async ({ run }) => {
       const card = createIssue(run);
       const claimed = dataOf(
@@ -1299,7 +1300,8 @@ describe("cli/issue — claim and stale recovery", () => {
       );
       assert.equal(claimed.task.status, "in_progress");
       assert.equal(claimed.task.claimed_by_actor.display_name, "ghost");
-      assert.equal(claimed.task.assignee, null, "a claim is not an assignment");
+      assert.equal(claimed.task.assignee.display_name, "ghost", "the public-pool claim records the route");
+      assert.equal(claimed.task.assignee.kind, "claude", "…under the platform the claim was made on");
     });
   });
 

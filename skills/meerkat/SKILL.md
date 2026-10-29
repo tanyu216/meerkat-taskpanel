@@ -131,6 +131,22 @@ public pool. Only `--status backlog` keeps it out of a queue. Describe the card 
 the create returned: a repeated create answers with the existing one. The INSERT gate:
 [`references/status-lifecycle.md#8-creating-a-card-in-a-status`](references/status-lifecycle.md#8-creating-a-card-in-a-status).
 
+**Route the card at creation.** The create *is* the routing decision, not a step after it.
+When the project has a team roles root, read its `ownership.md`, pick the one accountable role
+for the card's work shape, and name it in the same call:
+
+```bash
+taskctl issue create --project <p> --title "…" --assignee <role> --assignee-kind agent --acceptance "…"
+```
+
+An unassigned card in a team project is **unowned**, not handed off: the loop scans only the
+names in `MEERKAT_TASKPANEL_AGENTS`, so an unassigned or untargeted card may sit until someone
+routes it. A shape the guide does not cover goes to a worker outside the roles, named
+explicitly. **Without a team roles root, do not invent a role name** — leave the card
+unassigned (the public pool, claimed by the default worker) or name your own worker identity.
+Ambiguous between two rows: split it into one card per shape, or leave it for the project
+session to decide.
+
 **File a card in the human's name when you are in an interactive session with the human, or
 when the instruction to create this card comes explicitly from them.** Either one is enough:
 `--as-human` records that human as both the writer and the reporter, because the creator is the
@@ -146,7 +162,7 @@ the plan itself, store it as `plan.md` whatever it is called on disk — an expo
 `draft-7f3a.md` is not a name anyone will look for:
 
 ```bash
-taskctl --as-human issue create --project <p> --title "…" --acceptance "…"
+taskctl --as-human issue create --project <p> --title "…" [--assignee <role>] --acceptance "…"
 taskctl attachment add <ref> --file <path> --name plan.md   # the plan's one name; create has no --file
 ```
 
@@ -304,7 +320,7 @@ already delivered strands every child attached after it. A card that has deliver
 ```bash
 taskctl issue update <ref> --kind epic       # the card keeps its status
 taskctl comment add <ref> --kind note --body "split into N cards: …"
-taskctl issue create --project <p> --title "…" --target <t> --acceptance "…"
+taskctl issue create --project <p> --title "…" [--assignee <role>] --target <t> --acceptance "…"
 taskctl relation add <ref> --type parent --target <child>     # <ref> is the parent
 ```
 

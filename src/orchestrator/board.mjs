@@ -10,6 +10,7 @@ import { dirname } from "node:path";
 
 import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
+import { planStrandedTodoAlerts } from "../foundation/scheduling.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import {
   BOARD_CARD_ID,
@@ -299,6 +300,42 @@ export async function runSlaPass(opts, log, periodSeconds = opts.patrolInterval)
  * not the first worker's — and not the reviewer's either, which matters because
  * the actor who wrote a verdict may not close the card it reviewed.
  */
+/**
+ * The `todo` cards no scan can claim, read from the board and turned into
+ * workflow alerts. Two reads: the whole `todo` set — an assignee outside the scan
+ * set strands a card whatever the pool policy — and, only under
+ * `claim_unassigned: no`, the public pool, where being unowned is the normal
+ * state rather than a defect.
+ */
+function strandedTodoAlerts(opts, config, invoke, log) {
+  const agents = Array.isArray(opts.agents) ? opts.agents : [];
+  const agent = agents[0];
+  if (typeof agent !== "string" || agent === "") return [];
+  const todoRead = invoke(["issue", "list", "--status", "todo", "--limit", String(opts.boardLimit)]);
+  if (!todoRead.ok) {
+    log(`workflow: stranded-todo read failed (${todoRead.error ?? "unknown"})`);
+    return [];
+  }
+  const todoTasks = Array.isArray(todoRead.data?.tasks) ? todoRead.data.tasks : [];
+  let unassignedPool = [];
+  if (config.claimUnassigned === false) {
+    const poolRead = invoke(["issue", "candidates", "--assignee", agent, "--include-unassigned"]);
+    if (poolRead.ok) {
+      unassignedPool = Array.isArray(poolRead.data?.candidates) ? poolRead.data.candidates : [];
+    } else {
+      log(`workflow: stranded-pool read failed (${poolRead.error ?? "unknown"})`);
+    }
+  }
+  return planStrandedTodoAlerts({
+    todoTasks,
+    unassignedPool,
+    agents,
+    reviewer: config.reviewer,
+    claimUnassigned: config.claimUnassigned,
+    now: Date.now(),
+  });
+}
+
 export async function runWorkflowPass(opts, config, log) {
   if (config.workflow !== true) return null;
   const automation = { actorKind: SYSTEM_KIND };
@@ -334,8 +371,18 @@ export async function runWorkflowPass(opts, config, log) {
       `${Array.isArray(planData.actions) ? planData.actions.length : 0} action(s)`,
   );
 
+  // Stranded `todo` cards ride with the board's plan: the workflow tick logs and
+  // notifies every alert the same way, and the ledger de-duplicates them by state.
+  const stranded = strandedTodoAlerts(opts, config, invoke, log);
+  const workflowPlan = stranded.length === 0
+    ? planData.workflow
+    : {
+        ...planData.workflow,
+        alerts: [...(Array.isArray(planData.workflow.alerts) ? planData.workflow.alerts : []), ...stranded],
+      };
+
   const result = await runWorkflowTick({
-    plan: planData.workflow,
+    plan: workflowPlan,
     config,
     dryRun: opts.dryRun,
     ledger: loadSlaLedger(opts.workflowLedger),

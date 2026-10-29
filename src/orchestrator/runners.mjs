@@ -745,6 +745,8 @@ const WORKFLOW_NOTIFY_TYPES = new Set([
   "original_unexpected_status",
   "review_stale_round",
   "actions_capped",
+  // A `todo` card no scan can claim: notify once per card state, not per tick.
+  "unowned_todo",
 ]);
 
 function describeWorkflowAlert(alert) {
@@ -1071,6 +1073,7 @@ export async function runContinue(opts, deps = {}) {
     openedBy: opts.openedBy,
     decisionPolicy: roleSet.decisionPolicy,
     ownership: roleSet.ownership,
+    owners: roleSet.roles.map((role) => role.agent),
     includePoll: false,
   });
   const invocation = planContinueInvocation({

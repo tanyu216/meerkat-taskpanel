@@ -15,5 +15,5 @@
 
 PATH={{UNIT_PATH_CRON}}
 
-{{PING_CRON}} {{NODE}} {{CLI}} loop run --ping-once --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}} >/dev/null 2>&1
-{{CONTINUE_CRON}} {{NODE}} {{CLI}} loop run --continue-once --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}} >/dev/null 2>&1
+{{PING_CRON}} {{NODE}} {{CLI}} loop run --ping-once --actor-kind {{ACTOR_KIND}} --log {{LOG}} --state-dir {{STATE_DIR}} >/dev/null 2>&1
+{{CONTINUE_CRON}} {{NODE}} {{CLI}} loop run --continue-once --actor-kind {{ACTOR_KIND}} --log {{LOG}} --state-dir {{STATE_DIR}} >/dev/null 2>&1

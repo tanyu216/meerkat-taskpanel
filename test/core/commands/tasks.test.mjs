@@ -1288,6 +1288,30 @@ describe("commands/tasks — claim and heartbeat", () => {
     });
   });
 
+  it("records the claimant as the assignee of a public-pool card and never overwrites a route", async () => {
+    await board(async ({ db, commands }) => {
+      ensureActor(db, "linus");
+
+      const open = commands.createTask({ projectId: "proj", title: "Open pool", actor: AGENT });
+      assert.equal(open.assigneeId, null, "created unassigned: the public pool");
+      const claimed = commands.claim({ id: open.id, actor: AGENT });
+      assert.equal(actorName(db, claimed.task.assigneeId), "linus");
+      assert.equal(claimed.task.assigneeKind, "agent");
+
+      // Routed elsewhere: a steal records the executor, and the route stands.
+      const routed = commands.createTask({
+        projectId: "proj",
+        title: "Routed",
+        assignee: "terry",
+        assigneeKind: "agent",
+        actor: AGENT,
+      });
+      const taken = commands.claim({ id: routed.id, actor: AGENT, allowSteal: true, reason: "pool backfill test" });
+      assert.equal(taken.stole, true);
+      assert.equal(taken.task.assigneeId, routed.assigneeId, "the route is not rewritten by the thief");
+    });
+  });
+
   it("takes over a stale claim and only the holder may pulse it", async () => {
     await board(async ({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });

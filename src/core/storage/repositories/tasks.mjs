@@ -435,12 +435,17 @@ export function createTasksRepository(db) {
           try {
             info = db
               .prepare(
+                // An unassigned card is the public pool: taking it also records
+                // the route, so a claimed card is never left without an owner.
+                // A card already routed elsewhere keeps its assignee — the claim
+                // records the executor, not a new owner.
                 `UPDATE tasks
                     SET status = 'in_progress', claimed_by = ?, claimed_kind = ?, claimed_at = ?, heartbeat_at = ?,
+                        assignee_id = COALESCE(assignee_id, ?), assignee_kind = COALESCE(assignee_kind, ?),
                         status_changed_at = ?, version = version + 1, updated_at = ?
                   WHERE ${where.join(" AND ")}`,
               )
-              .run(actor, claimedKind, now, now, now, now, ...values);
+              .run(actor, claimedKind, now, now, actor, claimedKind ?? "agent", now, now, ...values);
           } catch (err) {
             throw mapSqliteError(err, { op: "tasks.claimCas", table: "tasks" });
           }
@@ -605,11 +610,15 @@ export function createTasksRepository(db) {
           }
           const info = db
             .prepare(
+              // Same rule as `claimCas`: an unowned row is adopted, a routed row
+              // keeps its owner across the change of executor.
               `UPDATE tasks
-                  SET claimed_by = ?, claimed_kind = ?, claimed_at = ?, heartbeat_at = ?, version = version + 1, updated_at = ?
+                  SET claimed_by = ?, claimed_kind = ?, claimed_at = ?, heartbeat_at = ?,
+                      assignee_id = COALESCE(assignee_id, ?), assignee_kind = COALESCE(assignee_kind, ?),
+                      version = version + 1, updated_at = ?
                 WHERE ${where.join(" AND ")}`,
             )
-            .run(actor, claimedKind, now, now, now, ...values);
+            .run(actor, claimedKind, now, now, actor, claimedKind ?? "agent", now, ...values);
           if (Number(info.changes) === 0) throw lostUpdate(db, id, ifVersion);
           return requireTask(id);
         },
