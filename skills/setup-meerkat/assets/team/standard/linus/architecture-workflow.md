@@ -420,6 +420,7 @@ document points at the canonical artifact for each detail and never restates it.
 | Configuration | one inventory, one loader, the load order, fail-fast, the configuration-versus-constant boundary and the reload policy; pointer to `.env.example` | an unlisted key is a defect, and a deployment-dependent literal in code is not a key |
 | Logging | one logger, the level meanings, the mandatory `info` and `error` sites, the correlation id and redaction | a key flow has its line; no secret is logged |
 | Tests and gates | test layout and naming, the coverage floor, the local gates and the CI checks | a change knows what must pass before delivery |
+| Security toolchain | one row per arm — dependency audit, secret scan, SAST, SBOM — with the tool, its version floor, the exact local and CI command, the report path and who may waive a finding; `n/a — <reason>` per arm the project does not run | every arm has a command that fails on an unaddressed high/critical finding, or records why it does not apply |
 | Release and delivery | release and deploy invariants, artifact immutability, rollback and its data plan | each path records its invariant or its `n/a` |
 
 A rule is one line, imperative, with the enforcement that catches a violation — a test, a
@@ -516,7 +517,9 @@ carry:
    generated file, not "the six principles" as a phrase; a change that violates one is
    recorded as an explicit decision, never a silent drift.
 6. **Gates** — what must pass before delivery: the gate path, the coverage floor and the
-   security scan; point at the CI pipeline for the job detail.
+   security scan's three arms (dependency audit, secret scan, SAST), each with the command
+   the standard records or its recorded `n/a — <reason>`; point at the CI pipeline for the
+   job detail.
 7. **Working agreement** — how a session works in this project: decompose before executing;
    test-first, or the project's own red/green equivalent; verify in the place the project
    designates; confirm with the human before landing, closing or deleting. State the rule,
@@ -567,7 +570,28 @@ typecheck (including the duplicated-literal rule) → tests with the coverage fl
 and canonical-contract checks → a configuration-key check (every key the application reads
 is named in `.env.example`) → an enumeration drift check (each documented wire enum matches
 the values its handler accepts) → build the artifact → security scan (dependency audit,
-secret scan, SAST) with no unaddressed high or critical finding.
+default `osv-scanner`; secret scan; SAST) with no unaddressed high or critical finding. Each
+arm's command is recorded in the standard; an arm the project does not run records
+`n/a — <reason>`.
+
+#### Security toolchain
+
+Four arms and one rule each: an arm either has a command that fails on an unaddressed
+high/critical finding, or it records `n/a — <reason>` in the standard. Every default tool
+is free to use; the standard records the exact command, never a tool name alone.
+
+| Arm | Default tool | What the standard records | Blocks when |
+|---|---|---|---|
+| Dependency audit | `osv-scanner` (alternative: `trivy`, or `npm audit --audit-level=high` for a JS lockfile) | one scan of every lockfile and the tree, as JSON | an advisory scores CVSS >= 7.0 and no unexpired waiver covers it |
+| Secret scan | `gitleaks` | a tree and history scan, as JSON | a credential is committed, in the tree or the history |
+| SAST | CodeQL on a public GitHub repository; `semgrep` on any other host or offline | the static-analysis invocation, its rule set and the languages it does not cover | a high/critical rule finding is unaddressed |
+| SBOM (inventory) | `syft` | SPDX or CycloneDX output | never blocks; it is the inventory the other answers are checked against |
+
+Pin each tool to a minimum version, and record the check that proves it is present. A
+committed secret is not waivered the way an advisory is: rotate it, purge it, then record
+what happened. A `.vue` (or Svelte) single-file component has no extractor in either SAST
+default: the standard records those files `n/a — no extractor`, and the reviewer's manual
+checklist covers them.
 
 #### Release and deploy
 

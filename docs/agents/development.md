@@ -154,8 +154,9 @@ These live in GitHub, not in the repository, so nothing here can assert them. On
 - **Require a pull request before merging.**
 - **Require status checks to pass.** Require exactly two checks: `ci-success` (aggregates
   `check (22)`, `check (24)`, `docker`, `contract`, `paths` and `signposts` from `check.yml`)
-  and `security-success` (aggregates `Dependency scan (osv-scanner + npm audit)` and
-  `SBOM (syft)` from `security-scan.yml`). Aggregation is the point: a job that is renamed,
+  and `security-success` (aggregates `Dependency scan (osv-scanner + npm audit)`,
+  `Secret scan (gitleaks)`, `SAST (CodeQL)` and `SBOM (syft)` from `security-scan.yml`).
+  Aggregation is the point: a job that is renamed,
   removed or silently skipped fails the aggregate, instead of leaving the rule waiting for a
   check that will never report. `docker` is still the authoritative job — the aggregate
   covers it, so a rule that requires the aggregate and not `docker` alone is correct.

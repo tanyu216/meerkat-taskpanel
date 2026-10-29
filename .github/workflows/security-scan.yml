@@ -1,12 +1,17 @@
 name: security-scan
 
-# Dependency-security gate.
+# Security gate.
 #
-# Three sources feed one verdict, and the verdict is `scripts/security/scan-gate.mjs`:
+# The scan has three arms plus an inventory, and the verdict is
+# `scripts/security/scan-gate.mjs`:
 #
-#   osv-scanner  →  osv-results.json  ┐
-#   npm audit    →  npm-audit.json    ├→  CVSS >= 7.0 blocks
-#   syft         →  sbom.spdx.json    ┘   unless an unexpired waiver covers it
+#   osv-scanner  →  osv-results.json      ┐
+#   npm audit    →  npm-audit.json        ├→  CVSS >= 7.0 blocks unless an
+#   gitleaks     →  gitleaks-report.json  ┘   unexpired waiver covers it; a
+#   syft         →  sbom.spdx.json            committed secret is never waivable
+#
+# CodeQL (the SAST arm) uploads its own findings to code scanning; it is not part of
+# this verdict.
 #
 # Triggers:
 #
@@ -33,8 +38,8 @@ name: security-scan
 # its **build chain** — `web/`'s build-time devDependencies, pinned by the one committed
 # lockfile `web/package-lock.json`.
 #
-# `security-success` aggregates the two jobs for branch protection. Both jobs always
-# report; only the expensive steps are conditional, so a required check can never go
+# `security-success` aggregates the four jobs for branch protection. Every job always
+# reports; only the expensive steps are conditional, so a required check can never go
 # missing because a pull request happened not to touch a lockfile.
 
 on:
@@ -227,6 +232,77 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # History matters: a secret deleted from HEAD is still leaked.
+          fetch-depth: 0
+
+      # The CLI/image only. `gitleaks-action` needs a license key on organization
+      # accounts; the MIT-licensed CLI does not. Findings never fail this step — the
+      # gate below decides, exactly as the dependency arm does.
+      - name: gitleaks (tree and history)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git --redact --report-format json --report-path /repo/gitleaks-report.json /repo
+
+      # A committed secret is critical and is never waivable. `--format gitleaks` is
+      # forced because an empty report is otherwise shapeless.
+      - name: Secret gate (a committed secret is never waivable)
+        env:
+          SCAN_STRICT: ${{ (github.event.inputs.strict == 'true' || vars.SCAN_STRICT == '1') && '1' || '' }}
+        run: |
+          node scripts/security/scan-gate.mjs \
+            --input gitleaks-report.json \
+            --format gitleaks \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the secret report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: secret-scan-report
+          path: gitleaks-report.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  sast:
+    name: SAST (CodeQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+
+      # The job always runs, so the aggregate never sees `skipped`; only the analysis
+      # steps are conditional. A fork pull request or a private mirror has no
+      # code-scanning upload permission.
+      - name: A fork pull request or a private mirror has no upload permission
+        if: ${{ !(github.event.repository.private == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) }}
+        run: echo "::notice::CodeQL analysis is skipped here — a fork pull request or a private mirror has no code-scanning upload permission"
+
+      - uses: github/codeql-action/init@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          category: /language:javascript-typescript
+
   sbom:
     name: SBOM (syft)
     runs-on: ubuntu-latest
@@ -280,7 +356,7 @@ jobs:
   security-success:
     name: security-success
     if: always()
-    needs: [dependency-scan, sbom]
+    needs: [dependency-scan, secrets, sast, sbom]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -297,5 +373,5 @@ jobs:
               console.error(`security jobs did not succeed: ${failed.join(", ")}`);
               process.exit(1);
             }
-            console.log("both security jobs succeeded");
+            console.log("every security job succeeded");
           '

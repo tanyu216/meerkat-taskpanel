@@ -22,9 +22,11 @@ Never edit `card.md`; re-export it. This is not the `## Handoff` block.
    tree has moved past it, the report says so.
 4. **Earlier findings are answered.** Every item the baseline carries from an earlier round
    is resolved with its evidence or explicitly deferred. None was dropped.
-5. **The gate is recorded.** You ran the declared gate yourself, or recorded
-   `n/a — none declared` and why the card has no runnable gate. A gate you read about but
-   did not run is not evidence.
+5. **The gate is recorded.** You ran the declared gate yourself — including the project's
+   documented scan (dependency audit, default `osv-scanner`; secret scan; SAST) — or
+   recorded `n/a — none declared` and why the card has no runnable gate. Every row of
+   `security-checklist.md` has a disposition; a blank row is an omission. An arm you only
+   read about is recorded as read, with its CI job and the delivered sha — never as a run.
 6. **Must-fix items are numbered.** A REJECT's findings are a numbered list, each with
    file/line, reproduction, expected versus actual and the missing case, because the loop
    appends them to the original's acceptance.

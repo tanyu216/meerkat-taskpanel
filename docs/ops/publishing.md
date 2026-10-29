@@ -322,7 +322,8 @@ does not hand its workflows). They are stated as policy, with the human steps th
    - `ci-success` (from `check.yml`) covers the `check` job (both matrix legs), `docker`,
      `contract`, `paths` and `signposts`;
    - `security-success` (from `security-scan.yml`) covers the `Dependency scan
-     (osv-scanner + npm audit)` and `SBOM (syft)` jobs.
+     (osv-scanner + npm audit)`, `Secret scan (gitleaks)`, `SAST (CodeQL)` and `SBOM (syft)`
+     jobs.
 
    The underlying jobs still appear in the UI under the names they declare: `check (22)`,
    `check (24)`, `docker`, `contract`. Requiring the aggregate rather than each job is the

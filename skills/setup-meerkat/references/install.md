@@ -83,6 +83,29 @@ MEERKAT_TASKPANEL_HUMAN_NAME="Terry" bash install.sh --target claude,server
 
 `--as-human` signs that name; it is never the loop's own voice.
 
+## The security toolchain
+
+After the install, check the tools the project's security scan needs. Detection is
+read-only and offline:
+
+```bash
+node <skill-dir>/scripts/security-tools.mjs --check --json --project <dir>
+```
+
+`--print` shows the install/upgrade command for every tool that is not `ok`. Act only
+after an explicit yes, and only on the named tools:
+
+```bash
+node <skill-dir>/scripts/security-tools.mjs --install --tool gitleaks --project <dir>
+node <skill-dir>/scripts/security-tools.mjs --upgrade --json --project <dir>
+```
+
+`--dry-run` prints what those two would run and executes nothing. The host comes from
+`<dir>/.git/config`; `--host github|other` overrides it, which is how SAST defaults to
+CodeQL (public GitHub) or Semgrep (elsewhere). The defaults, official sources and the Vue
+caveat are in `references/security-tools.md`; the recorded floors are in
+`assets/security/toolchain.json`.
+
 ## `setup-meerkat` itself
 
 `install.sh --target claude` copies `skills/setup-meerkat/` to

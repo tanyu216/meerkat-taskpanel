@@ -48,7 +48,7 @@ branches come off it. The flow is:
    -b <branch> dev`).
 2. Push the branch and **open a pull request into `dev`**.
 3. Wait for CI. `pull_request` runs `check.yml` (the static gates, the Node 22/24 matrix,
-   the container job and the two security jobs) plus the separate `web-dom.yml` browser
+   the container job and the four security jobs) plus the separate `web-dom.yml` browser
    lane. Green CI is the entry bar.
 4. Merge. `main` advances only when `dev` is merged into it as a release (below).
 
@@ -56,7 +56,8 @@ branches come off it. The flow is:
 > on `main`, enable *Require a pull request before merging* and require exactly two status
 > checks: `ci-success` (which aggregates the `check`, `docker`, `contract`, `paths` and
 > `signposts` jobs) and `security-success` (which aggregates `Dependency scan (osv-scanner +
-> npm audit)` and `SBOM (syft)`). The same rule is worth setting on `dev`, which is where
+> npm audit)`, `Secret scan (gitleaks)`, `SAST (CodeQL)` and `SBOM (syft)`). The same rule
+> is worth setting on `dev`, which is where
 > work is merged. The `pre-push` hook refuses a direct push to `main` and runs the container
 > gate as the local half, but it is still a courtesy — `git push --no-verify` bypasses it,
 > and a fresh clone has no hooks at all until you install them (below).

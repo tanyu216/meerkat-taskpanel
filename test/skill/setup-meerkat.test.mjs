@@ -136,7 +136,7 @@ describe("skill frontmatter and assets", () => {
       /second run|re-run|idempoten/i,
       "the entry is stated once, not appended on every run",
     );
-    const verify = skill.slice(skill.indexOf("## 6. Verify"));
+    const verify = skill.slice(skill.indexOf("## 7. Verify"));
     assert.match(verify, /task entry/i, "the verify stage checks the entry is stated once");
 
     const team = evals.evals.find((entry) => entry.name === "standard-team");
@@ -171,12 +171,56 @@ describe("skill frontmatter and assets", () => {
       "reviewer/workflow.md",
       "reviewer/self-check.md",
       "reviewer/reviewer-prompt.md",
+      "reviewer/security-checklist.md",
       "agents/claude/role.md.tmpl",
       "agents/codex/role.toml.tmpl",
       "agents/pi/role.md.tmpl",
     ]) {
       assert.ok(existsSync(join(team, rel)), `${rel} must exist`);
     }
+  });
+
+  it("ships the reviewer's manual security checklist and the free-tool matrix", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const checklist = readFileSync(join(team, "reviewer", "security-checklist.md"), "utf8");
+    const lines = checklist.split("\n").length;
+    assert.ok(lines >= 50 && lines <= 90, `the checklist stays compact (got ${lines} lines)`);
+    for (const needle of ["OWASP Top 10", "OWASP ASVS", "CWE Top 25", "not_met", "n/a —"]) {
+      assert.ok(checklist.includes(needle), `the checklist names ${needle}`);
+    }
+    for (let i = 1; i <= 10; i += 1) assert.match(checklist, new RegExp(`A0?${i}\\b`));
+    for (let i = 1; i <= 14; i += 1) assert.match(checklist, new RegExp(`\\bV${i}\\b`));
+
+    const matrix = JSON.parse(readFileSync(join(SKILL, "assets", "security", "toolchain.json"), "utf8"));
+    assert.equal(matrix.version, 1);
+    assert.ok(matrix.arms["dependency-audit"] && matrix.arms["secret-scan"] && matrix.arms.sast);
+    assert.ok(existsSync(join(SKILL, "references", "security-tools.md")), "the matrix is documented");
+    assert.ok(existsSync(join(SKILL, "scripts", "security-tools.mjs")), "the check ships with the skill");
+  });
+
+  it("points the reviewer at the manual checklist from both copies", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    for (const rel of ["reviewer/workflow.md", "reviewer/reviewer-prompt.md", "reviewer/self-check.md"]) {
+      const text = readFileSync(join(team, rel), "utf8");
+      assert.match(text, /security-checklist\.md/, `${rel} points at the checklist`);
+    }
+    const manifest = JSON.parse(readFileSync(join(team, "manifest.json"), "utf8"));
+    assert.ok(
+      manifest.roles.find((role) => role.id === "reviewer")
+        .responsibilities.some((line) => /security-checklist\.md/.test(line)),
+      "the reviewer's responsibility names the checklist",
+    );
+  });
+
+  it("checks the security toolchain and installs only on request", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    assert.match(skill, /^## 6\. Security toolchain$/m);
+    const stage = skill.slice(skill.indexOf("## 6. Security toolchain"), skill.indexOf("## 7. Verify"));
+    assert.match(stage, /security-tools\.mjs/);
+    assert.match(stage, /--install/);
+    assert.match(stage, /--upgrade/);
+    assert.match(stage, /never install/i, "the check never installs on its own");
+    assert.match(stage, /references\/security-tools\.md/);
   });
 
   it("runs a design card as plan → prototype → PRD → self-check → deliver", () => {
@@ -649,6 +693,7 @@ describe("skill frontmatter and assets", () => {
       "reviewer/workflow.md",
       "reviewer/self-check.md",
       "reviewer/reviewer-prompt.md",
+      "reviewer/security-checklist.md",
     ];
     const banned = /\bgit (?:worktree|merge|branch|checkout)\b|--no-ff|branch -d|\btaskctl\b|\bissue (?:create|move|get|update|deliver|heartbeat|assign)\b|\bcomment add\b|\brelation add\b|\battachment (?:download|list)\b|`\/init`|\bnpm run\b|\bdocker\b|\bpodman\b|\bsystemctl\b|\blaunchctl\b|\bcore\.hooksPath\b/;
     for (const rel of files) {
@@ -953,6 +998,7 @@ describe("skill frontmatter and assets", () => {
       assert.match(text, /commit|sha/i, `${name} verifies the delivered commit`);
       assert.match(text, /earlier round|prior finding|earlier finding/i, `${name} re-checks earlier findings`);
       assert.match(text, /declared gate|none declared/i, `${name} runs the project's gate`);
+      assert.match(text, /osv-scanner/, `${name} runs the dependency audit`);
       assert.match(text, /falsifiable/i, `${name} says what counts as proof`);
       assert.match(text, /evidence\[n\]/, `${name} requires an anchor reference`);
       assert.match(text, /REJECT/);
@@ -974,6 +1020,7 @@ describe("skill frontmatter and assets", () => {
       assert.match(text, /websocket/);
       assert.match(text, /internal/i);
       assert.match(text, /security scan/i);
+      assert.match(text, /osv-scanner/, "the security scan names its dependency scanner");
       assert.match(text, /API|browser/i);
     }
 
@@ -995,6 +1042,16 @@ describe("skill frontmatter and assets", () => {
       manifest.roles.find((role) => role.id === "reviewer")
         .responsibilities.some((line) => /CWE Top 25|OWASP/i.test(line)),
       "the reviewer audits the security standards",
+    );
+    assert.ok(
+      manifest.roles.find((role) => role.id === "turing")
+        .responsibilities.some((line) => /osv-scanner/.test(line)),
+      "Turing owns the dependency security scan",
+    );
+    assert.ok(
+      manifest.roles.find((role) => role.id === "reviewer")
+        .responsibilities.some((line) => /osv-scanner/.test(line)),
+      "the reviewer runs the dependency audit with the gate",
     );
     const reviewerRole = manifest.roles.find((role) => role.id === "reviewer");
     assert.equal(reviewerRole.self_check, "reviewer/self-check.md", "the reviewer has a pre-verdict audit");

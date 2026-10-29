@@ -19,7 +19,9 @@ One idempotent pass over the things a working Meerkat TaskPanel deployment needs
    the board. The host owns where it lands.
 5. **Install a team** — the standard Jobs/Linus/Turing + reviewer roles, or a custom team —
    into the loop, globally or per project.
-6. **Write the fixed human name** so `--as-human` signs the person, never a role.
+6. **Check the security toolchain** — detect the free scanners the project's gates need,
+   print the install/upgrade commands, and install or upgrade only on an explicit yes.
+7. **Write the fixed human name** so `--as-human` signs the person, never a role.
 
 This skill is **command-only** (`disable-model-invocation: true`). It installs software
 and writes files, so it never runs unless the user asks for it.
@@ -366,18 +368,53 @@ that extension is installed. The loop's project session also uses that extension
 one subagent per card; `detect.mjs` reports a missing extension and `install.sh --target pi`
 prints the install command. `--native-agent-defs none` writes none of them.
 
-## 6. Verify and finish
+## 6. Security toolchain
+
+The team's security scan is three arms — dependency audit, secret scan and SAST — plus an
+optional SBOM. The free defaults, their official sources and the per-manager install
+commands are in `references/security-tools.md`; the machine-readable floors are
+`assets/security/toolchain.json`.
+
+Detect first. The check never installs and never reaches the network:
+
+```bash
+node <skill-dir>/scripts/security-tools.mjs --check --json --project <dir>
+```
+
+It reports each tool as `ok`, `update-available`, `outdated`, `missing`, `unknown` or `ci`
+(CodeQL on a public GitHub repository runs in CI, not on this machine). When anything is
+not `ok`, show the commands and ask:
+
+```bash
+node <skill-dir>/scripts/security-tools.mjs --print --project <dir>
+```
+
+Only after an explicit yes, act on the named tools:
+
+```bash
+node <skill-dir>/scripts/security-tools.mjs --install --tool <id> --project <dir>
+node <skill-dir>/scripts/security-tools.mjs --upgrade --json --project <dir>
+```
+
+`--dry-run` prints what those two would run and executes nothing. The host comes from
+`<dir>/.git/config`; `--host` overrides it. A tool this host cannot install prints its
+official URL instead. A `.vue` (or Svelte) single-file component has no SAST extractor in
+either default: say so, and let the reviewer's manual checklist cover it.
+
+## 7. Verify and finish
 
 1. Re-run `<skill-dir>/scripts/detect.mjs --json`; report roles present and the selected agents.
 2. Run `<skill-dir>/scripts/install-roles.mjs --validate <roles-root>`; it must be `ok`.
-3. Print the next command to load/restart the supervisor
+3. Re-run `<skill-dir>/scripts/security-tools.mjs --check --json --project <dir>`; report
+   what is missing, behind its floor, and what the project's CI provides.
+4. Print the next command to load/restart the supervisor
    (`install.sh --supervisor=enable` for the actor kind), and note that a running pool
    picks up role edits on its next dispatch.
-4. Re-read the host's instruction file: the task entry is stated once, names `/meerkat`, and
+5. Re-read the host's instruction file: the task entry is stated once, names `/meerkat`, and
    carries the card scope.
-5. Summarize: what was installed, where, the effective roles root, the human name, the
+6. Summarize: what was installed, where, the effective roles root, the human name, the
    instruction file that received the task entry, and what was skipped and why.
-6. A second run must change **no managed content**: role files, native definitions and
+7. A second run must change **no managed content**: role files, native definitions and
    env keys report `unchanged`, and the task entry reports `unchanged` rather than being
    restated or duplicated; `install.sh` may re-copy identical runtime bytes, which
    is still idempotent. Report every action as `written` / `unchanged` / `skip` /
@@ -401,10 +438,11 @@ evidence is a `VERDICT: REJECT`.
 ```text
 skills/setup-meerkat/
 ├── SKILL.md
-├── references/{detection,install,matt-pocock,roles,evals}.md
+├── references/{detection,install,matt-pocock,roles,evals,security-tools}.md
 ├── evals/evals.json
-├── scripts/{detect,install-roles,configure-env}.mjs
+├── scripts/{detect,install-roles,configure-env,security-tools}.mjs
 ├── scripts/lib/{agent-kinds,atomic,env-merge,validate,entry-guard}.mjs
+├── assets/security/toolchain.json
 └── assets/team/standard/{manifest.json,ownership.md,jobs/,linus/,turing/,reviewer/,agents/}
 ```
 

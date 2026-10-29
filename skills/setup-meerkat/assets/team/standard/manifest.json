@@ -84,6 +84,7 @@
         "Settle the test plan with a decision round; use the canonical terms.",
         "Write and review the test plan; trace every acceptance item to a test.",
         "Run unit, integration, API, browser-based, boundary and security tests with reproducible evidence.",
+        "Run the project's documented security scan (dependency audit, default `osv-scanner`; secret scan; SAST); a serious finding blocks.",
         "Verify a fix before and after, including production bugs, and guard the blast radius.",
         "Run performance tests only when a card, acceptance or the project session asks.",
         "Start each card with its own plan; read design inputs only from the card's `## Handoff`; a child card covers only its scope.",
@@ -113,7 +114,7 @@
         "Verify at the delivered commit; a claim visible only in the working tree is unverified.",
         "Answer every baseline item with a status, how it was checked, and a falsifiable anchor; unverifiable is not met.",
         "Re-check every finding the baseline carries from an earlier round; a silent drop is a REJECT.",
-        "Run the project's declared gate (or record n/a — none declared) and the security audit against CWE Top 25, OWASP Top 10 and OWASP ASVS.",
+        "Run the project's declared gate (or record n/a — none declared) — including its documented scan (dependency audit, default `osv-scanner`; secret scan; SAST) — walk `security-checklist.md`, and audit the changed surface against CWE Top 25, OWASP Top 10 and OWASP ASVS.",
         "Audit the requirements, plan, PRD, handoff and comment trail at the depth the card warrants.",
         "Deliver a VERDICT report on the review card."
       ],
