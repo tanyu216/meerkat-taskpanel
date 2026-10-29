@@ -1015,6 +1015,76 @@ describe("web/board — opening the detail drawer", () => {
   });
 });
 
+/**
+ * TP-0018 — the drawer's **one-shot** landing tab.
+ *
+ * The drawer can only infer a tab from the card's status, so a caller that knows
+ * more (the waiting queue: a delivery opens Acceptance, a question Activity)
+ * writes `board.detailIntent` through `openDetail`'s `{ tab }` option. The
+ * drawer consumes it once. These readings pin the store half of that contract —
+ * the browser leg in `web/scripts/dom-smoke.mjs` pins the rendering.
+ */
+describe("web/board — the drawer's one-shot landing tab", () => {
+  it("stores the tab the caller names and the drawer consumes it exactly once", async () => {
+    const { board, consumeDetailIntent, openDetail } = await freshBoard();
+    board.currentProjectId = "p1";
+    installFetch(detailRoutes("TD-7", wireTask("TD-7", { status: "in_review" })));
+
+    await openDetail("TD-7", { tab: "acceptance" });
+    assert.deepEqual(board.detailIntent, { ref: "TD-7", tab: "acceptance" });
+
+    assert.equal(consumeDetailIntent("TD-7"), "acceptance");
+    assert.equal(board.detailIntent, null, "the read clears the intent in the same act");
+    assert.equal(consumeDetailIntent("TD-7"), null, "a second read gets nothing");
+  });
+
+  it("leaves the intent for the open that asked for it, not some other ref", async () => {
+    const { board, consumeDetailIntent, openDetail } = await freshBoard();
+    board.currentProjectId = "p1";
+    installFetch(detailRoutes("TD-7", wireTask("TD-7", { status: "in_review" })));
+
+    await openDetail("TD-7", { tab: "acceptance" });
+    assert.equal(consumeDetailIntent("TD-1"), null, "another card may not consume it");
+    assert.equal(consumeDetailIntent(null), null, "the watcher's first, empty firing is not a match");
+    assert.deepEqual(board.detailIntent, { ref: "TD-7", tab: "acceptance" }, "an unmatched read leaves it alone");
+  });
+
+  it("withdraws a previous intent when a later open names no tab", async () => {
+    const { board, consumeDetailIntent, openDetail } = await freshBoard();
+    board.currentProjectId = "p1";
+    installFetch({
+      ...detailRoutes("TD-7", wireTask("TD-7", { status: "in_review" })),
+      ...detailRoutes("TD-2", wireTask("TD-2", { status: "todo" })),
+    });
+
+    await openDetail("TD-7", { tab: "acceptance" });
+    await openDetail("TD-2");
+    assert.equal(board.detailIntent, null, "a no-intent open withdraws the stale tab");
+    assert.equal(consumeDetailIntent("TD-2"), null);
+  });
+
+  it("clears the intent on close and when the read fails", async () => {
+    const { board, closeDetail, consumeDetailIntent, openDetail } = await freshBoard();
+    board.currentProjectId = "p1";
+    installFetch(detailRoutes("TD-7", wireTask("TD-7", { status: "in_review" })));
+
+    await openDetail("TD-7", { tab: "acceptance" });
+    closeDetail();
+    assert.equal(board.detailIntent, null, "closing withdraws the landing tab");
+
+    const second = await freshBoard();
+    second.board.currentProjectId = "p1";
+    installFetch({
+      ...detailRoutes("TD-9", wireTask("TD-9")),
+      // Last, so it wins the key: the card read is the one that fails.
+      "GET /api/v1/tasks/TD-9": () => failure(500, "INTERNAL", "boom"),
+    });
+    await second.openDetail("TD-9", { tab: "activity" });
+    assert.equal(second.board.drawerState, "closed", "a failed read closes the drawer");
+    assert.equal(second.board.detailIntent, null, "a read that never landed leaves no landing tab behind");
+  });
+});
+
 /* ------------------------------------------------ the drawer's prerequisite list */
 
 /**

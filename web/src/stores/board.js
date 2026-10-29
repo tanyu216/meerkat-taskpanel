@@ -163,6 +163,17 @@ export const board = reactive({
   selectedRef: null,
   drawerState: "closed",
   detail: null,
+  /**
+   * A **one-shot** landing tab for the drawer (`{ ref, tab }`).
+   *
+   * The drawer picks its tab from the card's status, which is all it can know on
+   * its own. A caller that knows more — the waiting queue, whose row's
+   * `reasonKind` says whether the reader is answering a question or judging a
+   * delivery — names the tab here instead, and the drawer consumes it once when
+   * it opens (`consumeDetailIntent`). Opening without an intent clears it, so a
+   * stale landing tab can never outlive the open that asked for it.
+   */
+  detailIntent: null,
   conflict: null,
   /**
    * M1 — the 「等你回复」payload, per task id: the human comment that triggered
@@ -1176,9 +1187,24 @@ function personKind(field, name) {
 /** Monotonic detail generation: an older fan-out may never land over a newer patch. */
 let detailToken = 0;
 
-export async function openDetail(identifier) {
+/**
+ * Open the drawer on a card.
+ *
+ * `options.tab` is the **one-shot** landing tab (see `board.detailIntent`). Only
+ * a caller that knows more than the card's status does passes it — the waiting
+ * queue, whose row's `reasonKind` names the panel. Every other caller passes
+ * nothing, which clears any intent left behind and keeps the status-only rule.
+ *
+ * @param {string} identifier the card's ref
+ * @param {{tab?: string}} [options]
+ */
+export async function openDetail(identifier, { tab } = {}) {
   board.selectedRef = identifier;
   board.drawerState = "open";
+  // One-shot: this open states the tab it wants (or none, which withdraws a
+  // previous one). The drawer takes it in the same card watcher that reads the
+  // card, and clears it there.
+  board.detailIntent = tab ? { ref: identifier, tab } : null;
   board.detail = null;
   const token = ++detailToken;
   /**
@@ -1222,16 +1248,39 @@ export async function openDetail(identifier) {
   } catch (err) {
     if (!current()) return;
     board.drawerState = "closed";
+    // A read that never landed must not leave its landing tab behind for the
+    // next open to inherit.
+    board.detailIntent = null;
     // The wire's message is never shown (④) — the code names the sentence, and
     // the card's own ref makes it answer "which one?".
     pushToast(t(errorTextKey(err), identifier), "danger");
   }
 }
 
+/**
+ * Take the one-shot landing tab for `ref`, clearing it in the same act.
+ *
+ * The drawer calls this from its card watcher. A call for another ref (the
+ * watcher's first firing with no card loaded, a stale read) leaves the intent
+ * alone: only the open that asked for it may consume it, and only once.
+ *
+ * @param {string|undefined|null} ref the identifier the drawer just opened
+ * @returns {string|null} the tab to land on, or `null` for the status rule
+ */
+export function consumeDetailIntent(ref) {
+  const intent = board.detailIntent;
+  if (!intent || !ref || intent.ref !== ref) return null;
+  board.detailIntent = null;
+  return intent.tab;
+}
+
 export function closeDetail() {
   detailToken += 1;
   board.drawerState = "closed";
   board.selectedRef = null;
+  // Closing withdraws whatever landing tab was asked for; an open that never
+  // resolves must not colour a later one.
+  board.detailIntent = null;
 }
 
 /**

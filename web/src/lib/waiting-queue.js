@@ -6,7 +6,7 @@
  * as pure functions, so the order and the six fields a row owes can be asserted
  * without a browser.
  *
- * Three rules are load-bearing:
+ * Four rules are load-bearing:
  *
  *   * **Oldest first.** The queue's top row has waited longest, so the list reads
  *     as an overdue-first inbox. B26's feed is deliberately the reverse — a
@@ -20,6 +20,13 @@
  *     or `blocked` for the `awaiting` overlay, and `acceptance` for an
  *     `in_review` card whose own `acceptance_mode` is `human`; the chip's copy
  *     comes from `waiting.reason.<kind>`.
+ *   * **The row names the tab it opens.** `tab` is where a click on the row
+ *     lands in B09: an acceptance row opens the drawer's Acceptance panel (the
+ *     delivery the reader is being asked to judge), every other reason opens
+ *     Activity (the question and the box that answers it). The drawer's own
+ *     status-only rule cannot know this — a delivered card is `in_review`, which
+ *     the old rule sent to Details — so the intent rides the row and the drawer
+ *     consumes it once (`stores/board.js#consumeDetailIntent`).
  *
  * **One data note, stated rather than papered over.** The core's awaiting
  * categories are `E1`–`E5` (`src/core/domain/enums.mjs#AWAITING_REASONS`), and
@@ -148,6 +155,21 @@ export function reasonKeyOf(kind) {
 }
 
 /**
+ * The drawer tab a row of this reason opens.
+ *
+ * The delivery being judged is on Acceptance; a question (or a block) is
+ * answered on Activity, where the comment box is. The two must not be inferred
+ * from status alone: a delivered card is `in_review`, which the drawer's old
+ * status-only rule sent to Details.
+ *
+ * @param {"question"|"blocked"|"acceptance"} kind
+ * @returns {"activity"|"acceptance"}
+ */
+export function tabForReason(kind) {
+  return kind === "acceptance" ? "acceptance" : "activity";
+}
+
+/**
  * The instant a card's wait began: the triggering comment's own stamp when M1 has
  * read it, else the card's last change — never a clock read *here*, so a row is
  * reproducible.
@@ -181,6 +203,8 @@ export function waitingRow(task, payload = null) {
     actorKind: kindLabel(task.assignee?.kind),
     reasonKind,
     reasonKey: reasonKeyOf(reasonKind),
+    // A question (or a block) is answered on Activity, where the composer is.
+    tab: tabForReason(reasonKind),
     since: sinceOf(task, payload),
     payload: payload ?? null,
   };
@@ -219,6 +243,8 @@ export function acceptanceRow(task) {
     actorKind: kindLabel(task.assignee?.kind),
     reasonKind: "acceptance",
     reasonKey: reasonKeyOf("acceptance"),
+    // The delivery the human must judge is on the drawer's Acceptance panel.
+    tab: tabForReason("acceptance"),
     since: acceptanceSinceOf(task),
     payload: null,
     kind: "acceptance",
