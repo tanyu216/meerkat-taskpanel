@@ -10,16 +10,17 @@ what a change must comply with.
 | Status | Means |
 |---|---|
 | `Proposed` | Written, not yet decided |
-| `Accepted` | The human accepted it (E5); a change binds to it |
-| `Accepted (reconstructed) — E5 pending` | Read back from the tree after the fact. It binds today's behaviour, but a human has not yet accepted it, so it cannot be cited as approval for a further change |
+| `Accepted` | The human accepted it (E5); a change binds to it. A decision read back from the tree says so on its own line and keeps the reading's provenance |
+| `Accepted (reconstructed)` | Read back from the tree after the fact and accepted on that basis; it binds, and the ADR names the tree state it was read from |
+| `Accepted — E5 pending` | Read back from the tree but **not yet accepted**: it describes today's behaviour, and it cannot be cited as approval for a further change |
 | `Superseded by ADR-NNNN` | Replaced; kept for history, never edited |
 
 ## Index
 
 | ADR | Decision | Status |
 |---|---|---|
-| [0001](0001-architecture-style.md) | Layered modulith; DDD rejected | Accepted (reconstructed) — E5 pending |
-| [0002](0002-stack-bundle.md) | Node 22 + `node:sqlite`, zero runtime dependencies; Vue built offline | Accepted (reconstructed) — E5 pending |
+| [0001](0001-architecture-style.md) | Layered modulith; DDD rejected | Accepted (reconstructed) |
+| [0002](0002-stack-bundle.md) | Node 22 + `node:sqlite`, zero runtime dependencies; Vue built offline | Accepted (reconstructed) |
 
 ## Writing one
 

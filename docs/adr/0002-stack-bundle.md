@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted (reconstructed) — E5 pending
+Accepted (reconstructed) — 2026-10-30 (E5).
+
+Read back from the tree at `999a5a8c` and accepted on that basis; the provenance stays so a
+later reader can tell a derived decision from one taken in a decision round.
 
 ## Context
 
