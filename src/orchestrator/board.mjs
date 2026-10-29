@@ -149,8 +149,8 @@ export function readOpenQuestions(opts, log, run = runCli) {
 /**
  * Read the board — the legacy stale-heartbeat patrol's input. The SLA rows come
  * from `sla list` (the board computes them); this one read is what the older
- * `{stale: […]}` envelope still uses, and its shape is a published consumer
- * contract.
+ * per-card heartbeat alert stream (`{type: "stale" | "heartbeat-unreadable", …}`)
+ * still uses, and its shape is a published consumer contract.
  */
 export function readBoard(opts, log) {
   const read = runCli(opts, opts.agents[0], ["issue", "list", "--limit", String(opts.boardLimit)]);

@@ -115,7 +115,7 @@ const rowsOf = (result) => result.alerts.map((alert) => alert.sla_row).sort();
 // Working hours
 // ---------------------------------------------------------------------------
 
-describe("elapsedWorkingMinutes (the measurement basis, §6.4)", () => {
+describe("elapsedWorkingMinutes (the measurement basis, §3)", () => {
   it("counts wall-clock minutes inside the window", () => {
     // 12:00 → 13:00 Shanghai is entirely inside 09:00–23:00.
     assert.equal(elapsedWorkingMinutes("2026-10-14T04:00:00.000Z", "2026-10-14T05:00:00.000Z"), 60);
@@ -218,7 +218,7 @@ describe("SLA_ROWS (the docs/sla.md runtime mapping table, hook H6)", () => {
 
   it("says which code path covers each row, including the rows it does not emit", () => {
     // Every row now names this module as a producer: `heartbeat_stale` because
-    // the SLA channel must exist beside the legacy envelope (§10.4, "F4"), and
+    // the SLA channel must exist beside the legacy alert stream (§6.5, "F4"), and
     // `inspector_liveness` because the row is emitted whenever the deployment
     // wires the peer's marker (§8.4, "F3"). Neither *replaces* what was there.
     assert.equal(SLA_ROWS.heartbeat_stale.coveredBy, "sla-patrol+legacy-stale-alert");
@@ -611,7 +611,7 @@ describe("defect_card_creation", () => {
   });
 });
 
-describe("heartbeat_stale (the SLA channel beside the legacy envelope, §10.4 / F4)", () => {
+describe("heartbeat_stale (the SLA channel beside the legacy alert stream, §6.5 / F4)", () => {
   const hbAlert = (result) => result.alerts.find((entry) => entry.sla_row === "heartbeat_stale");
 
   it("emits the §4 tuple for a stale heartbeat, which the legacy envelope cannot", () => {
@@ -919,7 +919,7 @@ describe("leader_stalled", () => {
     assert.equal(alert.target, "leader");
     // The newest leader-attributed event is the card's own creation (the leader
     // is the only dispatcher, §⑩), read verbatim from the frontmatter — an exact
-    // candidate inside the lookback, so §6.2's rule makes it `high`.
+    // candidate inside the lookback, so §6's rule makes it `high`.
     assert.equal(alert.measure_start_kind, "created_at");
     assert.equal(alert.measure_start_source, "frontmatter");
     assert.equal(alert.confidence, "high");

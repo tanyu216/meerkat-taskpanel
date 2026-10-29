@@ -37,11 +37,11 @@
  *   * **`leader_stalled` attribution is on the author, not the kind** (§6.3-D,
  *     "F2"). A `change` comment written by a *worker* must not reset the stall
  *     clock; one written by the *leader* must. See `isLeaderTrailEntry`.
- *   * **`heartbeat_stale` is a real SLA channel** (§10.4, "F4"). The legacy
- *     `{stale:[…]}` envelope stays exactly as its published consumer knows it,
- *     and this pass emits the §4 tuple *beside* it — the legacy shape is not a
- *     substitute for the channel.
- *   * **`confidence` is pinned** (§6.2, "F6"): `high` iff the chosen origin was
+ *   * **`heartbeat_stale` is a real SLA channel** (§6.5, "F4"). The legacy
+ *     per-card alert (`{type: "stale" | "heartbeat-unreadable", …}`) stays
+ *     exactly as its published consumer knows it, and this pass emits the §4
+ *     tuple *beside* it — the legacy shape is not a substitute for the channel.
+ *   * **`confidence` is pinned** (§6, "F6"): `high` iff the chosen origin was
  *     read verbatim, `low` iff it was derived, approximated or undecidable.
  *   * **`inspector_liveness` is the mutual watchdog** (§5.3 / §8.4, "F3"): each
  *     mechanism publishes a last-successful-run marker and watches the peer's,
@@ -170,7 +170,7 @@ export function leaderAttributionWarning(leaderId, cards, trails) {
 const REASSIGN_SHAPE = /改派|reassign|assignee\s*[:=]/i;
 
 /**
- * The measurement basis (§6.4): a **fixed civil window in Asia/Shanghai**,
+ * The measurement basis (§3): a **fixed civil window in Asia/Shanghai**,
  * accumulated, off-hours rolled over. Asia/Shanghai is UTC+8 all year (no DST),
  * so the conversion is exact integer arithmetic and needs no timezone database —
  * and a host in another zone still measures the same `T`, which is the point.
@@ -308,7 +308,7 @@ export function trailReadCandidates(cards, input = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Working hours (§6.4)
+// Working hours (§3)
 // ---------------------------------------------------------------------------
 
 function instant(value) {
@@ -805,7 +805,7 @@ function defectDetection(card, trail, context) {
   // §6.3-B, "F6": the chosen origin is an exact timestamp — the frontmatter
   // `status_changed_at`, or one uniquely-identified `kind=defect` entry — so
   // reading it verbatim is `confidence: "high"`. The **only** path that lowers
-  // it is an *undecidable* open predicate (§6.2's "no readable candidate"
+  // it is an *undecidable* open predicate (§6's "no readable candidate"
   // clause), and there is exactly one of those here: a board snapshot the read
   // did not complete (`boardTruncated`), where "no fix card in the snapshot" may
   // simply mean the fix card was past the page. That is still reported as open —
@@ -918,7 +918,7 @@ function acceptanceDetection(card, context) {
  * `change` does not reset the stall clock; the leader's does. That single set is
  * what both mechanisms must use, so neither may add or drop a member.
  *
- * **Confidence follows §6.2/§6.3-D ("F6")**: an exact leader-event timestamp is
+ * **Confidence follows §6/§6.3-D ("F6")**: an exact leader-event timestamp is
  * `high` — picking the *latest* of several exact candidates is deterministic and
  * does not lower it. `low` is reserved for the one case the contract names: a
  * lookback window with **no** leader event. The pre-lookback origin is still
@@ -968,9 +968,9 @@ function leaderStalledDetection(context) {
 }
 
 /**
- * The `worker heartbeat stale` row, as the **SLA channel** (§10.4, "F4").
+ * The `worker heartbeat stale` row, as the **SLA channel** (§6.5, "F4").
  *
- * The legacy `{stale:[…]}` alert keeps its published envelope and its consumer —
+ * The legacy per-card alert keeps its published shape and its consumer —
  * this pass does not touch it. But the legacy shape carries no `dedup_key`, no
  * `sla_row` and no working-hours basis, so it cannot take part in the shared
  * ledger: the peer mechanism's identical finding about the same heartbeat would
@@ -1150,7 +1150,7 @@ const LEADER_OWED_ROWS = new Set([
  * of §6.3-D ("F2"): the author decides, the kind does not. `inLookback` records
  * whether that event is recent enough for the row to call it exact — a board
  * whose newest such event is a week old is not the same as a board that has
- * never shown one, and §6.2 wants that difference in the `confidence`, not in
+ * never shown one, and §6 wants that difference in the `confidence`, not in
  * silence.
  */
 function boardContext(cards, trails, options = {}) {

@@ -447,11 +447,12 @@ What that means concretely:
 ### Two rows that used to be exceptions
 
 - **`heartbeat_stale` now emits the §4 tuple as well**, beside the legacy
-  `{stale: […]}` alert. The legacy envelope is a published consumer contract and
-  keeps working exactly as before, but it carries no `dedup_key` and no
-  `sla_row`, so it cannot take part in the shared ledger — without the tuple the
-  two mechanisms would each notify the same stale heartbeat. The stale heartbeat
-  therefore goes out twice, to two different channels, on purpose.
+  per-card heartbeat alert (`{type: "stale" | "heartbeat-unreadable", …}`). That
+  shape is a published consumer contract and keeps working exactly as before, but
+  it carries no `dedup_key` and no `sla_row`, so it cannot take part in the
+  shared ledger — without the tuple the two mechanisms would each notify the same
+  stale heartbeat. The stale heartbeat therefore goes out twice, to two different
+  channels, on purpose.
 - **`inspector_liveness` is the mutual watchdog.** Every completed pass rewrites
   this mechanism's own last-successful-run marker
   (`--sla-last-ok`, default `loop-patrol-last-ok.json` beside the state file).
@@ -472,8 +473,9 @@ continue turn after patrol.
 
 The board computes one plan through `issue reconcile --workflow` (see
 [`status-lifecycle.md`](../skills/meerkat/references/status-lifecycle.md#11-the-boards-workflow-decisions) —
-provenance: `src/core/domain/workflow.mjs`). The loop never re-derives a decision. The
-plan has four parts, in this order:
+provenance: `src/core/domain/workflow.mjs`; the lifecycle the plan acts on is
+[lifecycle.md](lifecycle.md)). The loop never re-derives a decision. The plan has four parts,
+in this order:
 
 1. **reconcile.** The board replays the container rules
    (`src/core/commands/rollup.mjs`) and returns the classified changes and notices.
