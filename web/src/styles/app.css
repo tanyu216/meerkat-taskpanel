@@ -1662,10 +1662,12 @@ svg[data-token-icon][hidden] { display: none; }
 .td-waiting-item {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 10px;
+  column-gap: 8px;
+  row-gap: 2px;
+  min-height: 30px;
+  padding: 4px 10px;
   cursor: pointer;
   border-top: 1px solid var(--brand-border);
 }
@@ -1689,11 +1691,12 @@ svg[data-token-icon][hidden] { display: none; }
 .td-waiting-actor[data-assignee-kind="agent"] {
   color: var(--brand-text-2);
 }
-/* The reason chip: what kind of wait this is. Its dot is coloured through
-   the one-attribute → one-custom-property rule the `[data-waiting-reason-kind]`
-   bindings at the top of this section state — declared beside the
-   `[data-status]` bindings in this file — so this component never names a
-   colour. */
+/* The act chip: what the human does about this wait (Answer / Unblock /
+   Accept). Its dot is coloured through the one-attribute → one-custom-property
+   rule the `[data-waiting-reason-kind]` bindings at the top of this section
+   state — declared beside the `[data-status]` bindings in this file — so this
+   component never names a colour. The chip's copy is the act; the semantic
+   state stays on `data-waiting-reason-kind`. */
 .td-waiting-reason {
   display: inline-flex;
   flex: none;
@@ -1748,10 +1751,32 @@ svg[data-token-icon][hidden] { display: none; }
   color: var(--brand-text-3);
   text-align: right;
 }
+/* The second line — the ask itself. It takes the row's full width and always
+   starts a line of its own (`order` past every first-line field), so the first
+   line keeps its actor / act / title / wait / opener rhythm and the preview
+   reads as the sentence under it. One clipped line: the whole ask is one press
+   away in B09, and a queue row is a summary, not the card. */
+.td-waiting-preview {
+  flex: 1 1 100%;
+  order: 6;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--brand-text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .td-waiting-open {
   flex: none;
-  width: 24px;
+  width: auto;
   height: 24px;
+  padding: 0 6px;
+  gap: 4px;
+}
+.td-waiting-open-label {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
 }
 
 /* --- B27.3 the empty state --------------------------------------- */

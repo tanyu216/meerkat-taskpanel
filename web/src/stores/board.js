@@ -28,7 +28,10 @@ import { AWAITING, COLUMN_STATUSES, PRIORITIES, STATUSES } from "../lib/board-en
 
 export { isAgentKind, kindLabel, platformForActor, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
-import { acceptanceWaitingTasks, payloadCommentOf } from "../lib/waiting-queue.js";
+import { acceptanceWaitingTasks, firstSentence, payloadCommentOf } from "../lib/waiting-queue.js";
+// The preview's sentence rule moved into the projection (a row's field); it is
+// re-exported here so an existing import site keeps its one store entry point.
+export { firstSentence };
 import {
   detailRefetch,
   invalidatesWaitingPayload,
@@ -446,27 +449,6 @@ export const visibleAcceptanceTasks = computed(() => acceptanceTasks.value.filte
 
 /** The nav pill: the awaiting rows plus the acceptance rows the narrowing leaves. */
 export const waitingCount = computed(() => waitingTasks.value.length + visibleAcceptanceTasks.value.length);
-
-/**
- * The first sentence of a payload comment — the text up to the first
- * sentence-final punctuation (`。．.！!？?`) or the first newline, whichever
- * comes first, punctuation included.
- *
- * Mirrors `src/core/domain/awaiting.mjs#firstSentence`; the web cannot import
- * from `src/`, so the rule is restated here and asserted against a fixture
- * rather than trusted to stay in step.
- *
- * @param {unknown} body
- * @returns {string}
- */
-export function firstSentence(body) {
-  const text = String(body ?? "");
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-    if (ch === "\n" || "。．.！!？?".includes(ch)) return text.slice(0, i + 1).trim();
-  }
-  return text.trim();
-}
 
 /**
  * Load the payload comment for every awaiting card of the current project.
