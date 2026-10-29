@@ -2266,7 +2266,7 @@ describe("the workflow plan survives the wire and executes", () => {
 
   const DELIVERY = {
     conclusion: "The thing is done.",
-    acceptance: [{ text: "the thing works", status: "met" }],
+    acceptance: [{ text: "the thing works", status: "met", note: "the commit — evidence[1]" }],
     evidence: [{ kind: "commit", sha: "abc1234" }],
   };
   const VERDICT = {
