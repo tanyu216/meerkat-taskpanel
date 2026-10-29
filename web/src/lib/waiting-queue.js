@@ -128,8 +128,8 @@ export function payloadCommentOf(comments) {
   return null;
 }
 
-/** The awaiting categories the core writes, all of them questions to a human. */
-export const AWAITING_CATEGORIES = Object.freeze(["E1", "E2", "E3", "E4", "E5"]);
+/** The awaiting categories the core writes — declared once in `board-enums.js`. */
+export { AWAITING_CATEGORIES } from "./board-enums.js";
 
 /**
  * The kind a card's awaiting category maps to.

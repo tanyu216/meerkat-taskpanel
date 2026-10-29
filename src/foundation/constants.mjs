@@ -214,6 +214,79 @@ export const PER_KIND_CONFIG_KEYS = Object.freeze([
 ]);
 
 /**
+ * Loop policy the per-kind config carries and the board loader ignores.
+ *
+ * `src/orchestrator/options.mjs` and `src/foundation/scheduling.mjs` read these
+ * from the file, the process environment or a flag; `docs/ops/install.md` is the
+ * operator's prose for them and `.env.example` is the inventory. Listed here so
+ * that inventory has one machine-readable home — `PER_KIND_CONFIG_KEYS` above is
+ * only the board path's subset of this surface.
+ */
+export const LOOP_CONFIG_KEYS = Object.freeze([
+  "MEERKAT_TASKPANEL_AGENTS",
+  "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS",
+  "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON",
+  "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED",
+  "MEERKAT_TASKPANEL_CONTINUE",
+  "MEERKAT_TASKPANEL_CONTINUE_INTERVAL",
+  "MEERKAT_TASKPANEL_EVENT_CONTINUE",
+  "MEERKAT_TASKPANEL_MAX_CONCURRENCY",
+  "MEERKAT_TASKPANEL_PING_INTERVAL",
+  "MEERKAT_TASKPANEL_PROJECT_CONCURRENCY",
+  "MEERKAT_TASKPANEL_PROJECT_IDLE_MS",
+  "MEERKAT_TASKPANEL_RECOVER_STALE",
+  "MEERKAT_TASKPANEL_REPO",
+  "MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES",
+  "MEERKAT_TASKPANEL_REVIEWER",
+  "MEERKAT_TASKPANEL_ROLES_DIR",
+  "MEERKAT_TASKPANEL_SESSION_MAX_AGE",
+  "MEERKAT_TASKPANEL_SESSION_POLL_MS",
+  "MEERKAT_TASKPANEL_SESSION_POOL_MAX",
+  "MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT",
+  "MEERKAT_TASKPANEL_SLA_LEADER",
+  "MEERKAT_TASKPANEL_SLA_PEER",
+  "MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND",
+  "MEERKAT_TASKPANEL_WORKFLOW",
+  "MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS",
+  "MEERKAT_TASKPANEL_WORKSPACE",
+]);
+
+/**
+ * Locators: a path to a *file*, not a value in one, so they cannot be written
+ * inside the file they locate. Read from the process environment only.
+ */
+export const LOCATOR_CONFIG_KEYS = Object.freeze([ENV_FILE_ENV, "MEERKAT_TASKPANEL_CONFIG_DIR"]);
+
+/**
+ * Identity injected by the agent shim on every call — never written by hand, and
+ * stripped from a spawned `taskd`'s environment.
+ */
+export const SHIM_CONFIG_KEYS = Object.freeze([
+  "TASKCTL_ACTOR_KIND",
+  "TASKCTL_SESSION_ID",
+  "TASKCTL_AGENT_PLATFORM",
+]);
+
+/**
+ * The configuration surface, grouped by the file (or channel) each key lands in.
+ *
+ * This is the machine-readable side of `.env.example`; `test/contract/config-keys.test.mjs`
+ * compares the two in both directions. A new key is added here first, then to the
+ * inventory, then to its installer template (if the installer writes it).
+ */
+export const CONFIG_KEY_GROUPS = Object.freeze({
+  shared: CLIENT_CONFIG_KEYS,
+  loop: LOOP_CONFIG_KEYS,
+  locator: LOCATOR_CONFIG_KEYS,
+  shim: SHIM_CONFIG_KEYS,
+});
+
+/** Every key this project reads, deduplicated — the inventory's closed set. */
+export const ALL_CONFIG_KEYS = Object.freeze([
+  ...new Set(Object.values(CONFIG_KEY_GROUPS).flat()),
+]);
+
+/**
  * Client-only keys stripped from a spawned `taskd`'s environment.
  *
  * `MEERKAT_TASKPANEL_ENV_FILE` is deliberately *not* here: the child must read
@@ -225,10 +298,8 @@ export const SPAWN_ENV_OMIT = Object.freeze([
   URL_ENV,
   NO_AUTOSTART_ENV,
   "TASKCTL_AGENT",
-  "TASKCTL_ACTOR_KIND",
+  ...SHIM_CONFIG_KEYS,
   "TASKCTL_HUMAN",
-  "TASKCTL_SESSION_ID",
-  "TASKCTL_AGENT_PLATFORM",
 ]);
 
 /** `<repo>/.data` — gitignored; overridden by `TASKD_DATA_DIR`. */

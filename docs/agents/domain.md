@@ -7,15 +7,16 @@ codebase.
 
 - **`GLOSSARY.md`** at the repo root — the canonical vocabulary, the words to avoid, and the
   terms that are *not* in the model.
-- **`docs/adr/`**: read ADRs that touch the area you are about to work in. (`GLOSSARY-MAP.md`
+- **`docs/adr/`**: read ADRs that touch the area you are about to work in. It exists, with the
+  index and the status vocabulary in [`docs/adr/README.md`](../adr/README.md). (`GLOSSARY-MAP.md`
   does not exist here: this is a single-context repo.)
 - **`design/DESIGN.md` §20** for the project's ordering, and `design/` for the live design
   oracle the tests read.
 
 If any of these files do not exist, **proceed silently**. Do not flag their absence and do not
 suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and
-`/improve-codebase-architecture`) creates them lazily when terms or decisions actually get
-resolved.
+`/improve-codebase-architecture`) adds an ADR when a decision is actually resolved; it does not
+scaffold the directory.
 
 ## File structure
 
@@ -24,7 +25,7 @@ Single-context repo:
 ```
 /
 ├── GLOSSARY.md
-├── docs/adr/          ← created lazily by /domain-modeling
+├── docs/adr/          ← the recorded decisions; add one per durable decision
 └── src/
 ```
 

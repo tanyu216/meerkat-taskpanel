@@ -24,6 +24,7 @@ import { api, ApiError } from "../services/api.js";
 // re-exported here so a component has one import site.
 import { actorMatches } from "../lib/assignee-filter.js";
 import { isAgentKind, kindLabel, platformForActor, platformOfKind } from "../lib/actor-kind.js";
+import { AWAITING, COLUMN_STATUSES, PRIORITIES, STATUSES } from "../lib/board-enums.js";
 
 export { isAgentKind, kindLabel, platformForActor, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
@@ -51,13 +52,10 @@ import { pushStickyToast, pushToast } from "./ui.js";
  * The vocabulary is here because the move menu, the i18n labels and the waiting
  * view all need to know the word.
  */
-export const STATUSES = Object.freeze(["backlog", "todo", "in_progress", "in_review", "blocked", "done", "canceled", "awaiting"]);
-/** M1 — running, but parked on a human. */
-export const AWAITING = "awaiting";
-/** The seven *stage* statuses — the board's columns, and `[data-card]`'s `data-status`. */
-export const COLUMN_STATUSES = Object.freeze(STATUSES.filter((status) => status !== AWAITING));
-/** The five priorities (contract `DOMAINS.PRIORITY`). */
-export const PRIORITIES = Object.freeze(["urgent", "high", "medium", "low", "none"]);
+// The vocabulary itself lives in `lib/board-enums.js` — one browser-side copy,
+// held to `src/core/domain/enums.mjs` by `test/web/enums.drift.test.mjs` — and is
+// re-exported here so a component keeps one import site (`stores/board.js`).
+export { AWAITING, COLUMN_STATUSES, PRIORITIES, STATUSES };
 /** The human owner the "Assignee: Me" filter resolves to (the prototype's `ME`). */
 export const ME = "Terry";
 

@@ -21,6 +21,7 @@ import {
   platformOf,
   reporterRoster,
   PRIORITIES,
+  STATUSES,
   taskRoster,
 } from "../../stores/board.js";
 import { createTaskOpen, createTaskStatus, pushToast } from "../../stores/ui.js";
@@ -32,8 +33,10 @@ import { t } from "../../i18n/index.js";
 import ComboField from "../combo/ComboField.vue";
 import MarkdownEditor from "./MarkdownEditor.vue";
 
-// Statuses a task can be *created* in — the creation gate forbids in_review/done.
-const createStatuses = ["backlog", "todo", "in_progress", "blocked", "canceled"];
+// Statuses a task can be *created* in — the creation gate forbids in_review/done,
+// and `awaiting` is an overlay a card wears later, never a creation state.
+const CREATION_FORBIDDEN_STATUSES = new Set(["in_review", "done", "awaiting"]);
+const createStatuses = STATUSES.filter((status) => !CREATION_FORBIDDEN_STATUSES.has(status));
 
 const form = reactive({
   title: "",

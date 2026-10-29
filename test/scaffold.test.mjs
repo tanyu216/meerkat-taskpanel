@@ -349,6 +349,17 @@ describe("repository guard files", () => {
     }
   });
 
+  it("ships the community document group the project's posture requires", () => {
+    /* Step 1 of the architecture flow records this project as community open-source
+     * (MIT, public npm, a private-advisory path), so the group is real files rather
+     * than an `n/a` in the standard. */
+    for (const file of ["SECURITY.md", "CODE_OF_CONDUCT.md", "LICENSE", ".github/CODEOWNERS"]) {
+      assert.ok(existsSync(join(ROOT, file)), `${file} must exist`);
+    }
+    const security = readFileSync(join(ROOT, "SECURITY.md"), "utf8");
+    assert.match(security, /advisory/i, "SECURITY.md must name the disclosure channel");
+  });
+
   it("CODEOWNERS routes the repository, not just some paths", async () => {
     /* A CODEOWNERS file with only narrow rules leaves everything else unreviewed, which
      * is the exact opposite of what the file is for. Require the catch-all rule. */
@@ -365,6 +376,76 @@ describe("repository guard files", () => {
     for (const rule of rules) {
       assert.match(rule, /@[A-Za-z0-9-]+/, `every CODEOWNERS rule needs an owner: ${rule}`);
     }
+  });
+});
+
+describe("foundation documents", () => {
+  it("records the architecture: one architecture document and an ADR home", () => {
+    const architecture = readFileSync(join(ROOT, "docs", "architecture.md"), "utf8");
+    for (const heading of [
+      "## Purpose and boundary",
+      "## Architecture style",
+      "## Module boundaries",
+      "## Data model and migrations",
+      "## External contract",
+      "## Configuration surface",
+      "## Logging and observability",
+      "## Security boundaries",
+      "## Directory tree",
+      "## Dispositions",
+    ]) {
+      assert.ok(architecture.includes(heading), `docs/architecture.md must carry "${heading}"`);
+    }
+    // The record is a reconstruction until a human accepts it (E5).
+    assert.match(architecture, /Reconstructed from .+ — E5 pending/);
+
+    const adrIndex = readFileSync(join(ROOT, "docs", "adr", "README.md"), "utf8");
+    assert.match(adrIndex, /0001-architecture-style\.md/);
+    for (const adr of ["0001-architecture-style.md", "0002-stack-bundle.md"]) {
+      const text = readFileSync(join(ROOT, "docs", "adr", adr), "utf8");
+      assert.match(text, /^# /m, `${adr} needs a title`);
+      assert.match(text, /^## Status$/m, `${adr} needs a Status section`);
+      assert.match(text, /^## Decision$/m, `${adr} needs a Decision section`);
+      assert.match(text, /Accepted \(reconstructed\) — E5 pending/, `${adr} must record its provisional state`);
+    }
+  });
+
+  it("completes the standard: every section present and the stack table owned here", () => {
+    const spec = readFileSync(join(ROOT, "docs", "tech-spec.md"), "utf8");
+    for (const heading of [
+      "## Authority and change",
+      "## Tech stack",
+      "## Structure and dependencies",
+      "## Naming",
+      "## Errors and contract",
+      "## Configuration",
+      "## Logging",
+      "## Tests and gates",
+      "## Security toolchain",
+      "## Release and delivery",
+      "## Project documents",
+    ]) {
+      assert.ok(spec.includes(heading), `docs/tech-spec.md must carry "${heading}"`);
+    }
+    // The stack table has one row per layer, and the container image must match the
+    // runtime the manifest pins.
+    for (const layer of ["Frontend", "Backend", "Persistence", "Container / build", "Contracts"]) {
+      assert.match(spec, new RegExp(`\\|\\s*${layer}\\s*\\|`), `the stack table needs a ${layer} row`);
+    }
+    assert.match(spec, /node:22-bookworm-slim/);
+    // Rules are numbered so a card or a review can cite one.
+    assert.match(spec, /TS-01/);
+  });
+
+  it("inventories the configuration surface at the root and tracks it", async () => {
+    assert.ok(existsSync(join(ROOT, ".env.example")), ".env.example must exist");
+    const ignored = spawnSync("git", ["check-ignore", "-q", ".env.example"], { cwd: ROOT });
+    assert.notEqual(ignored.status, 0, ".env.example must not be gitignored");
+  });
+
+  it("gives the glossary its product-language pointer", () => {
+    const glossary = readFileSync(join(ROOT, "GLOSSARY.md"), "utf8");
+    assert.match(glossary, /^## Product language$/m);
   });
 });
 
