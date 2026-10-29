@@ -268,6 +268,58 @@ describe("repositories/tasks", () => {
     });
   });
 
+  it("backfills the assignee on a public-pool claim and keeps a routed one", async () => {
+    await board(({ db, repos }) => {
+      ensureActor(db, "linus");
+      ensureActor(db, "elon");
+
+      // The open pool: an unassigned card becomes routed to whoever takes it.
+      const open = makeTask(repos, { title: "Open pool" });
+      const claimed = repos.tasks.claimCas({ id: open.id, actor: "linus", claimedKind: "claude", now: TS2 });
+      assert.equal(claimed.claimed, true);
+      assert.equal(claimed.task.assigneeId, "linus");
+      assert.equal(claimed.task.assigneeKind, "claude", "the kind the claim was made under");
+
+      // A routed card keeps its route: the claim records the executor, not a new owner.
+      const routed = makeTask(repos, { title: "Routed", assigneeId: "elon", assigneeKind: "agent" });
+      const taken = repos.tasks.claimCas({ id: routed.id, actor: "linus", claimedKind: "claude", now: TS2 });
+      assert.equal(taken.claimed, true);
+      assert.equal(taken.task.assigneeId, "elon");
+      assert.equal(taken.task.assigneeKind, "agent");
+
+      // No stated kind: the dictionary's own default ("agent") is written, never null.
+      const plain = makeTask(repos, { title: "Plain" });
+      const bare = repos.tasks.claimCas({ id: plain.id, actor: "linus", now: TS2 });
+      assert.equal(bare.task.assigneeId, "linus");
+      assert.equal(bare.task.assigneeKind, "agent");
+    });
+  });
+
+  it("backfills the assignee on a stale takeover only when the row had none", async () => {
+    await board(({ db, repos }) => {
+      ensureActor(db, "linus");
+      ensureActor(db, "elon");
+
+      // A legacy in_progress row with no route — the state before the backfill existed.
+      const orphan = makeTask(repos, { title: "Orphan" });
+      db.prepare(
+        "UPDATE tasks SET status = 'in_progress', claimed_by = 'linus', claimed_kind = 'claude', claimed_at = ?, heartbeat_at = ? WHERE id = ?",
+      ).run(STALE_CLAIM_AT, STALE_CLAIM_AT, orphan.id);
+      const adopted = repos.tasks.stealStaleClaim({ id: orphan.id, actor: "elon", claimedKind: "claude", now: TS2, staleBefore: TS2 });
+      assert.equal(adopted.claimedBy, "elon");
+      assert.equal(adopted.assigneeId, "elon", "an unowned stale claim is adopted, not left unowned");
+
+      // A routed stale row keeps its owner across the takeover.
+      const routed = makeTask(repos, { title: "Routed", assigneeId: "linus", assigneeKind: "agent" });
+      db.prepare(
+        "UPDATE tasks SET status = 'in_progress', claimed_by = 'linus', claimed_kind = 'claude', claimed_at = ?, heartbeat_at = ? WHERE id = ?",
+      ).run(STALE_CLAIM_AT, STALE_CLAIM_AT, routed.id);
+      const stolen = repos.tasks.stealStaleClaim({ id: routed.id, actor: "elon", claimedKind: "claude", now: TS2, staleBefore: TS2 });
+      assert.equal(stolen.claimedBy, "elon");
+      assert.equal(stolen.assigneeId, "linus", "the route survives a change of executor");
+    });
+  });
+
   it("moves status, marking blocked_at only on the way in", async () => {
     await board(({ repos }) => {
       const task = makeTask(repos);
