@@ -4,4 +4,4 @@
 # frontend, or `npx meerkat-taskpanel` would install an API-only server.
 #
 # Keep this file so web/dist survives `npm pack`, and do not ignore `dist` in it.
-# test/verify/pack-manifest.test.mjs pins both halves. See docs/publishing.md §2.
+# test/verify/pack-manifest.test.mjs pins both halves. See docs/ops/publishing.md §2.

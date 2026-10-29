@@ -13,7 +13,7 @@ exactly as it did before the feature.
 ├── jobs/{workflow.md,ui-workflow.md,self-check.md}
 ├── linus/{workflow.md,architecture-workflow.md,implementation-workflow.md,refactor-workflow.md,self-check.md}
 ├── turing/{workflow.md,test-design-workflow.md,regression-workflow.md,performance-workflow.md,self-check.md}
-└── reviewer/{workflow.md,self-check.md,reviewer-prompt.md}
+└── reviewer/{workflow.md,self-check.md,reviewer-prompt.md,security-checklist.md}
 ```
 
 ## Card and plan lifecycle
@@ -39,7 +39,9 @@ matching product archive exists:
   relation and move commands are the `meerkat` board skill's contract. When the card changes
   code, the acceptance seed also names the project's declared gate (`meta.review_gate`, one
   authoritative command) — or the four default gates when the project declares none — so the
-  review card's baseline carries what must be re-run.
+  review card's baseline carries what must be re-run. When the security arms are separate
+  commands, the seed records each one; the toolchain table in the project's standard is the
+  list of what those commands are.
 - An epic is `kind=epic` and is not claimable; children are `kind=task` linked to it with a
   `parent` relation. The epic's only delivery report is the rollup.
 - `blocks` gates on `done`; a canceled producer withholds the downstream card forever, so
@@ -66,7 +68,7 @@ skip.
 |---|---|
 | The declared gate | run it itself, at the delivered commit; a red gate is a REJECT |
 | Mocks | only at http/websocket/db/redis and comparable external boundaries; never an internal module or function |
-| Security | audit the changed surface against CWE Top 25 / OWASP Top 10 / OWASP ASVS, or record why it does not change |
+| Security | walk `security-checklist.md` against CWE Top 25 / OWASP Top 10 / OWASP ASVS and run the three scan arms, or record why they do not change |
 | Evidence | every `met` is falsifiable and cites an anchor; a claim that cannot be reproduced is `not_met` |
 
 A separate Turing card is for test design and authoring (unit, integration, API and
@@ -75,8 +77,11 @@ its own plan/report and is reviewed like any worker card; it does not replace th
 gate.
 
 The reviewer audits the changed surface against **CWE Top 25**, **OWASP Top 10** and
-**OWASP ASVS** (at the project's target level). A high/critical finding, or an unresolved
-ASVS requirement at that level, is a REJECT unless a human accepts the risk under E4.
+**OWASP ASVS** (at the project's target level) by walking `security-checklist.md`, and runs
+the project's documented scan — dependency audit (default `osv-scanner`), secret scan and
+SAST. A worker card runs the arms; the reviewer walks the checklist and issues the verdict.
+A high/critical finding, a committed secret, or an unresolved ASVS requirement at that
+level, is a REJECT unless a human accepts the risk under E4.
 
 ## Project artifacts
 
@@ -123,8 +128,10 @@ tree.
 ## Engineering artifacts
 
 Linus keeps the project's standard at `docs/tech-spec.md`, durable architecture at
-`docs/architecture.md`, the codebase vocabulary at root `GLOSSARY.md`, and engineering
-decisions at `docs/adr/NNNN-<slug>.md`; a card-local foundation change may live in
+`docs/architecture.md`, the codebase vocabulary at root `GLOSSARY.md`, the project document
+set (`README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, and on a community open-source project
+`LICENSE` and the community files), and engineering decisions at `docs/adr/NNNN-<slug>.md`;
+a card-local foundation change may live in
 `.meerkat/<id>/tech-spec.md` or `.meerkat/<id>/architecture.md`. The standard carries the
 canonical `## Tech stack` table (frontend, backend, persistence and container/build) and the
 normative rules — naming, layering, errors, configuration, constants and enumerations,

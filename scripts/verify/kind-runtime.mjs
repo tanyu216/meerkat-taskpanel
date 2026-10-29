@@ -247,7 +247,7 @@ function checkAbsences() {
   // "no hook, trigger **or shim**", with the shim lumped in beside the two *automation*
   // forms. The shim is not one of them — it is the identity wrapper around a command the
   // agent already runs itself, so it is orthogonal to which automation an agent kind has (see
-  // `docs/install.md`, where every agent kind gets one). Pi has none of the automation; it does
+  // `docs/ops/install.md`, where every agent kind gets one). Pi has none of the automation; it does
   // have a shim, and `KINDS.pi.shim` above says so.
   check("coverage map", "pi ships no hook and no trigger", () => {
     for (const rel of [".agents/hooks", ".agents/meerkat-taskpanel-claim.sh"]) {

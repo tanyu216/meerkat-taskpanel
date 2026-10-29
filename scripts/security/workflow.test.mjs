@@ -131,6 +131,29 @@ describe("static: security-scan.yml", () => {
     assert.match(text, /^ {4}if: always\(\)$/m, "the aggregator runs even when a dependency fails");
   });
 
+  it("runs a secret scan and a SAST arm", async () => {
+    const text = await read(WORKFLOW);
+
+    assert.match(text, /ghcr\.io\/gitleaks\/gitleaks:v\d+\.\d+\.\d+/, "gitleaks is pinned to a version");
+    assert.match(text, /git --redact --report-format json/, "the secret scan reads the tree and its history");
+    assert.match(text, /--format gitleaks/, "an empty gitleaks report is still a real report");
+    assert.match(text, /github\/codeql-action\/init@[0-9a-f]{40}/, "CodeQL init is pinned to a commit");
+    assert.match(text, /github\/codeql-action\/analyze@[0-9a-f]{40}/, "CodeQL analyze is pinned to a commit");
+    assert.match(text, /languages: javascript-typescript/);
+    assert.match(text, /security-events: write/, "CodeQL uploads results to code scanning");
+    assert.match(text, /^\s*secrets:$/m, "a dedicated secret-scan job");
+    assert.match(text, /^\s*sast:$/m, "a dedicated SAST job");
+  });
+
+  it("aggregates every security job behind security-success", async () => {
+    const text = await read(WORKFLOW);
+    const needs = text.match(/^ {4}needs: \[(.+)\]$/m);
+    assert.ok(needs, "security-success declares its needs");
+    for (const job of ["dependency-scan", "sbom", "secrets", "sast"]) {
+      assert.ok(needs[1].includes(job), `${job} is behind the required check`);
+    }
+  });
+
   it("produces the SBOM itself with syft, including on a tag push", async () => {
     const text = await read(WORKFLOW);
 
@@ -198,6 +221,11 @@ describe("static: docs/security.md", () => {
       "30",
       "scripts/security/scan-gate.mjs",
       "scripts/security/waivers.json",
+      "gitleaks",
+      "CodeQL",
+      "Semgrep",
+      "security-events",
+      ".vue",
     ]) {
       assert.ok(text.includes(needle), `docs/security.md should mention ${needle}`);
     }

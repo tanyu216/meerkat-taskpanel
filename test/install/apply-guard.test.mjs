@@ -274,6 +274,7 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
     "skills/setup-meerkat/scripts/detect.mjs",
     "skills/setup-meerkat/scripts/install-roles.mjs",
     "skills/setup-meerkat/scripts/configure-env.mjs",
+    "skills/setup-meerkat/scripts/security-tools.mjs",
     "web/scripts/dom-smoke.mjs",
   ];
 

@@ -97,11 +97,18 @@ and still missed the point; the depth checks below only add to them.
   and code glossaries; an unresolved term conflict is recorded rather than silently
   normalized.
 - **Security.** Audit the changed surface against CWE Top 25, OWASP Top 10 and OWASP ASVS at
-  the project's target level: authorization, input validation, secrets, injection, path
-  traversal, SSRF. Record each finding with the standard, the item (for example `CWE-89`,
-  `A01`, `V5.3`), severity and disposition. A high/critical finding, or an unresolved ASVS
-  requirement at the target level, is a REJECT unless a human accepts the risk under E4. A
-  design-only or documentation card records `n/a — <why the surface does not change>`.
+  the project's target level, walking `security-checklist.md` (beside this file): every row
+  gets `met`, `not_met` or `n/a — <reason>`, and an anchor. The manual rows are yours — no
+  worker self-check claims them. Run the project's documented scan — dependency audit
+  (default `osv-scanner`), secret scan and SAST — with the command the project's standard
+  records, against the delivered commit. An arm this lane cannot execute is recorded as
+  read: name the CI job and the delivered sha it ran on, and say the report was read, not
+  re-run — a report read is corroboration, never a command anchor. Record each finding
+  with its source (a checklist row, the standard, or the advisory id), severity and
+  disposition. A high/critical finding, an unwaived high/critical advisory, a committed
+  secret, or an unresolved ASVS requirement at the target level, is a REJECT unless a human
+  accepts the risk under E4. A design-only or documentation card records `n/a — <why the
+  surface does not change>`.
 - **Tests.** Judge the tests the delivery rests on: real-scenario and boundary cases, mocks
   only at http / websocket / db / redis and comparable external boundaries, never an
   internal module or function, no test that would pass with the change reverted.

@@ -294,7 +294,7 @@ describe("supervisor: the systemd linger probe", () => {
 
 describe("supervisor: the docs and the implementation agree", () => {
   it("the interface docs describe the flag surface this implements", () => {
-    const install = doc("docs/install.md");
+    const install = doc("docs/ops/install.md");
     for (const form of [
       "--supervisor=enable|disable|status",
       "--enable-supervisor",
@@ -304,7 +304,7 @@ describe("supervisor: the docs and the implementation agree", () => {
       "--scheduler auto|launchd|systemd|cron",
       "MEERKAT_TASKPANEL_SUPERVISOR",
     ]) {
-      assert.ok(install.includes(form), `docs/install.md must document ${form}`);
+      assert.ok(install.includes(form), `docs/ops/install.md must document ${form}`);
     }
   });
 
@@ -434,11 +434,11 @@ describe("supervisor: the docs and the implementation agree", () => {
   });
 
   it("the enable report the docs print is the one the launchd plan produces", () => {
-    // The doc's example (`docs/install.md` §Enabling the supervisor (opt-in)) is written
+    // The doc's example (`docs/ops/install.md` §Enabling the supervisor (opt-in)) is written
     // with `<agent>` as a placeholder; filling it in must give exactly the string the
     // launchd mechanism reports, or the doc is lying about what a user will see.
-    const documented = doc("docs/install.md").match(/^supervisor: enabled \(kind=claude, scheduler=launchd, units=(.*)\)$/m);
-    assert.notEqual(documented, null, "the enable report must be quoted in docs/install.md");
+    const documented = doc("docs/ops/install.md").match(/^supervisor: enabled \(kind=claude, scheduler=launchd, units=(.*)\)$/m);
+    assert.notEqual(documented, null, "the enable report must be quoted in docs/ops/install.md");
     assert.equal(
       documented[1].replace("<agent>", "alice"),
       `${supervisorBase("alice", "claude")}.session,.ping,.continue,.subscribe`,
@@ -458,12 +458,12 @@ describe("supervisor: the docs and the implementation agree", () => {
   });
 
   it("the opt-in is documented in the install docs, not in the skill", () => {
-    for (const relative of ["docs/install.md", "docs/scheduling.md"]) {
+    for (const relative of ["docs/ops/install.md", "docs/scheduling.md"]) {
       assert.doesNotMatch(doc(relative), /Not yet wired/, `${relative} still says the flag is not implemented`);
     }
-    const install = doc("docs/install.md");
-    assert.match(install, /--supervisor=enable/, "docs/install.md must name the opt-in");
-    assert.match(install, /disable/, "docs/install.md must name the way back out");
+    const install = doc("docs/ops/install.md");
+    assert.match(install, /--supervisor=enable/, "docs/ops/install.md must name the opt-in");
+    assert.match(install, /disable/, "docs/ops/install.md must name the way back out");
     for (const relative of ["skills/meerkat-loop/SKILL.md", "skills/meerkat-loop/references/operation.md"]) {
       const text = doc(relative);
       assert.doesNotMatch(text, /install\.sh/, `${relative} must not carry installation instructions`);
@@ -473,7 +473,7 @@ describe("supervisor: the docs and the implementation agree", () => {
 
   it("OpenClaw's exclusion is still stated, and still true of the loop agent kinds", () => {
     const scheduling = doc("docs/scheduling.md");
-    assert.match(scheduling, /OpenClaw: do not build a supervisor/);
+    assert.match(scheduling, /OpenClaw: no loop units/);
     assert.match(scheduling, /--supervisor-actor-kinds openclaw` is \*\*rejected\*\*/);
     assert.ok(!LOOP_KINDS.includes("openclaw"));
   });

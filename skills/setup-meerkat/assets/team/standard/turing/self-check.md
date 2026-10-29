@@ -50,7 +50,7 @@ delivery.
 | Test suites | unit, integration, API and browser-based (where applicable): 100% pass; any failure is a failure |
 | Coverage | line, branch and function all >80% (or the project's stricter floor) |
 | Mocks | only at http / websocket / db / redis and comparable external boundaries; never an internal module or function |
-| Security scan | the project's documented scan (dependency audit, secret scan, SAST); no unaddressed high/critical |
+| Security scan | the project's documented scan — dependency audit (default `osv-scanner`), secret scan, SAST — each arm run with the command the standard records, or its recorded `n/a — <reason>`; no unaddressed high/critical |
 
 ## Test-design branch
 

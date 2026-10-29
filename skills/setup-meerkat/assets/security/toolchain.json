@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "vue": "unsupported — neither default SAST tool extracts .vue single-file components; the reviewer's checklist covers them by hand",
+  "arms": {
+    "dependency-audit": {
+      "default": "osv-scanner",
+      "alternatives": ["trivy"],
+      "optional": false
+    },
+    "secret-scan": {
+      "default": "gitleaks",
+      "optional": false
+    },
+    "sast": {
+      "github": "codeql",
+      "other": "semgrep",
+      "optional": false
+    },
+    "sbom": {
+      "default": "syft",
+      "optional": true
+    }
+  },
+  "tools": {
+    "osv-scanner": {
+      "repo": "https://github.com/google/osv-scanner",
+      "license": "Apache-2.0",
+      "free": true,
+      "minVersion": "2.0.0",
+      "recommended": "2.7.0",
+      "versionArgs": [["--version"]],
+      "versionPattern": "v?(\\d+\\.\\d+\\.\\d+)",
+      "install": {
+        "brew": ["brew", "install", "osv-scanner"],
+        "go": ["go", "install", "github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.7.0"]
+      },
+      "upgrade": {
+        "brew": ["brew", "upgrade", "osv-scanner"],
+        "go": ["go", "install", "github.com/google/osv-scanner/v2/cmd/osv-scanner@latest"]
+      }
+    },
+    "gitleaks": {
+      "repo": "https://github.com/gitleaks/gitleaks",
+      "license": "MIT",
+      "free": true,
+      "minVersion": "8.18.0",
+      "recommended": "8.30.1",
+      "versionArgs": [["version"], ["--version"]],
+      "versionPattern": "v?(\\d+\\.\\d+\\.\\d+)",
+      "install": {
+        "brew": ["brew", "install", "gitleaks"],
+        "go": ["go", "install", "github.com/gitleaks/gitleaks/v8@v8.30.1"]
+      },
+      "upgrade": {
+        "brew": ["brew", "upgrade", "gitleaks"],
+        "go": ["go", "install", "github.com/gitleaks/gitleaks/v8@latest"]
+      }
+    },
+    "semgrep": {
+      "repo": "https://github.com/semgrep/semgrep",
+      "license": "LGPL-2.1 (engine); rules under the Semgrep Rules License",
+      "free": true,
+      "minVersion": "1.100.0",
+      "recommended": "1.182.0",
+      "versionArgs": [["--version"]],
+      "versionPattern": "(\\d+\\.\\d+\\.\\d+)",
+      "install": {
+        "brew": ["brew", "install", "semgrep"],
+        "pipx": ["pipx", "install", "semgrep==1.182.0"]
+      },
+      "upgrade": {
+        "brew": ["brew", "upgrade", "semgrep"],
+        "pipx": ["pipx", "install", "--force", "semgrep==1.182.0"]
+      },
+      "note": "rules are fetched from the Semgrep registry unless --config points at a vendored directory; run with --metrics=off"
+    },
+    "trivy": {
+      "repo": "https://github.com/aquasecurity/trivy",
+      "license": "Apache-2.0",
+      "free": true,
+      "minVersion": "0.50.0",
+      "recommended": "0.76.1",
+      "versionArgs": [["--version"]],
+      "versionPattern": "version:?\\s*v?(\\d+\\.\\d+\\.\\d+)",
+      "install": {
+        "brew": ["brew", "install", "trivy"]
+      },
+      "upgrade": {
+        "brew": ["brew", "upgrade", "trivy"]
+      }
+    },
+    "syft": {
+      "repo": "https://github.com/anchore/syft",
+      "license": "Apache-2.0",
+      "free": true,
+      "minVersion": "1.0.0",
+      "recommended": "1.55.0",
+      "versionArgs": [["version"], ["--version"]],
+      "versionPattern": "v?(\\d+\\.\\d+\\.\\d+)",
+      "install": {
+        "brew": ["brew", "install", "syft"],
+        "go": ["go", "install", "github.com/anchore/syft/cmd/syft@v1.55.0"]
+      },
+      "upgrade": {
+        "brew": ["brew", "upgrade", "syft"],
+        "go": ["go", "install", "github.com/anchore/syft/cmd/syft@latest"]
+      }
+    },
+    "codeql": {
+      "repo": "https://github.com/github/codeql-action",
+      "license": "MIT (action); the CodeQL CLI runs under GitHub's CodeQL Terms",
+      "free": true,
+      "minVersion": "3.0.0",
+      "recommended": "3.27.3",
+      "local": false,
+      "note": "on a public GitHub repository CodeQL runs in CI; a local install goes through the gh extension",
+      "install": {
+        "gh": ["gh", "extension", "install", "github/gh-codeql"]
+      },
+      "upgrade": {
+        "gh": ["gh", "extension", "upgrade", "github/gh-codeql"]
+      }
+    }
+  }
+}

@@ -132,7 +132,10 @@ esac
 echo "  OK  refused with exit $STATUS and error code REPORT_REQUIRED"
 
 step "taskctl report template $ID > report.json"
-node "$CLI" report template "$ID" > "$REPORT_FILE"
+# A command anchor, not the default placeholder: the verify image has no git, so the
+# template cannot stamp a commit, and its placeholder is a *path* anchor — which the
+# delivery gate now refuses without a commit. A real command is evidence either way.
+node "$CLI" report template "$ID" --command "node --version:0" > "$REPORT_FILE"
 echo "  wrote a report template to $REPORT_FILE"
 
 step "taskctl issue deliver $ID --report-file report.json  (POSITIVE)"

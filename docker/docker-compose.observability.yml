@@ -11,7 +11,7 @@
 # (`node monitoring/exporter.mjs` plus the unit suite). The two upstream images below are
 # pinned on purpose — an unpinned `:latest` would make "reproducible" a claim rather than a
 # fact — but they are still *pulls*, so `docker compose up` needs the images present. See
-# docs/observability.md for the offline path.
+# docs/ops/observability.md for the offline path.
 
 name: meerkat-taskpanel-observability
 

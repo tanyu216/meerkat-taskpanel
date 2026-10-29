@@ -6,7 +6,7 @@
 # are exactly this design. Its cadence is deliberately not repeated here: the
 # framework's own AUTOMATIONS.md is the single source of truth for it, and a number
 # copied into this file is a number that drifts. OpenClaw users install that
-# framework instead; see docs/scheduling.md and docs/install.md.
+# framework instead; see docs/scheduling.md and docs/ops/install.md.
 #
 # That is why this script calls neither `install_loop_skill` nor `install_scheduling`:
 # there is no `~/.openclaw/skills/meerkat-loop` and no `~/.openclaw/scheduling`, on

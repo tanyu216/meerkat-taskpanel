@@ -9,7 +9,7 @@ Meerkat TaskPanel ships as **a local server**, **three Agent Skills** and **one 
   board moving when no agent is looking. Installed for **every agent except OpenClaw**
   (claude, codex, pi); OpenClaw gets the board on its own, because the
   openclaw-team framework already runs an equivalent poll / patrol (see
-  [`scheduling.md`](scheduling.md#openclaw-do-not-build-a-supervisor)).
+  [`scheduling.md`](../scheduling.md#openclaw-no-loop-units)).
 - **`setup-meerkat`** (`skills/setup-meerkat/`) — the user-invoked `/setup-meerkat`
   command: it detects what is installed, repairs what is missing, offers the Matt Pocock
   issue-tracker integration, and installs an optional Jobs/Linus/Turing plus reviewer
@@ -173,7 +173,7 @@ match the assignee the board uses for it; it defaults to `Worker`.
 | Agent | `--target` | Board skill | Loop skill | Bundle |
 |---|---|---|---|---|
 | Claude Code | `claude` | `~/.claude/skills/meerkat` | `~/.claude/skills/meerkat-loop` | `.` — the repository root (`.claude-plugin/plugin.json`) |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `.` — the same root bundle |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat` | **none** — see [OpenClaw](../scheduling.md#openclaw-no-loop-units) | `.` — the same root bundle |
 | Codex | `codex` | `~/.codex/skills/meerkat` | `~/.codex/skills/meerkat-loop` | `.` — the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat` | `~/.agents/skills/meerkat-loop` | `.` — the root `package.json`'s `pi` field |
 
@@ -245,7 +245,7 @@ agent kind**: two agents on one installation share it.
 It is maintained **only through `taskctl project map`** — `list`, `show <id>`,
 `set <id> --local-path <dir>` / `--run-dir <dir>` / `--no-dir`, and `remove <id>` — and
 read through `taskctl project dir <id>`. The reference,
-[`projects-json.md`](../skills/meerkat/references/projects-json.md), documents the schema
+[`projects-json.md`](../../skills/meerkat/references/projects-json.md), documents the schema
 and the validation codes: an entry names the board `project`, may name a directory
 (`local_path`, or the `run_dir` launch directory for a project that has none of its own),
 and may carry other keys the CLI copies through unchanged. Those commands are
@@ -270,7 +270,7 @@ place with a warning; repair it with `taskctl project map set`.
 | Artefact | Where | What |
 |---|---|---|
 | loop skill | `<agent-dir>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md` and `references/`. The execution body is `taskctl loop …` in the runtime tree, not a copy. Always **copied**, never symlinked |
-| loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, `continue.state.json`, `supervisor.log` (see [`scheduling.md §The loop's state directory`](scheduling.md#the-loops-state-directory)) |
+| loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, `continue.state.json`, `supervisor.log` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
 | launchd | `<agent-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist` | `KeepAlive` for the resident pool and the event subscriber; `StartInterval` 60 / 600 for the two clocks |
 | systemd | `<agent-dir>/scheduling/systemd/meerkat-taskpanel-{session,ping,continue,subscribe}.{service,timer}` | `Type=simple` + `Restart=always` for the pool and subscriber; 60s / 600s timers for the clocks |
 | cron | `<agent-dir>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue — **no pool**: no worker dispatch |
@@ -283,7 +283,7 @@ session's `exec claude`, and the worker's own tool tree (including `taskctl`), r
 that same set. The shim heads the list so a globally installed `taskctl` cannot shadow it
 and write the wrong actor identity. If the agent CLI is not on `PATH` at install time, the
 installer says so and renders the shim directory and node's alone rather than guessing.
-See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
+See [`scheduling.md` §What the loop's units run with](../scheduling.md#what-the-loops-units-run-with).
 | per-kind config | `<program root>/.env.<actor-kind>` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW` and `MEERKAT_TASKPANEL_REVIEWER`, the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE`, the concurrency cap's `MEERKAT_TASKPANEL_MAX_CONCURRENCY`, and the pool's `MEERKAT_TASKPANEL_RESIDENT`, `..._SESSION_MAX_AGE`, `..._SESSION_TURN_TIMEOUT`, `..._SESSION_POLL_MS`, `..._SESSION_POOL_MAX`, `..._PROJECT_CONCURRENCY` and `..._PROJECT_IDLE_MS`. Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
 | log (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
@@ -293,7 +293,7 @@ See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-lo
 `<agent-dir>` is `~/.claude`, `~/.codex` or `~/.agents`. **OpenClaw gets none of these, and no
 `meerkat-loop` skill** — it installs the board skill only and uses the
 [openclaw-team](https://github.com/tanyu216/openclaw-team) framework's own
-`poll`/`patrol` instead (see [`scheduling.md`](scheduling.md#openclaw-do-not-build-a-supervisor)).
+`poll`/`patrol` instead (see [`scheduling.md`](../scheduling.md#openclaw-no-loop-units)).
 
 **Load one of them to start the supervisor** — this is the **manual** path, and a plain
 install stops here (nothing is loaded for you):
@@ -331,7 +331,7 @@ the installer itself runs as, which is why it is not called `--actor-kind` here:
 the per-command identity flag (`taskctl loop … --actor-kind claude|codex|pi`).
 **`openclaw` is rejected** in this list (reason on stderr, exit 2) — it has no loop
 supervisor to enable (see
-[`scheduling.md §OpenClaw: do not build a supervisor`](scheduling.md#openclaw-do-not-build-a-supervisor)).
+[`scheduling.md §OpenClaw: no loop units`](../scheduling.md#openclaw-no-loop-units)).
 
 **One entry point, three actions.** `--supervisor=enable|disable|status` (aliases
 `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`), with
@@ -376,11 +376,11 @@ runs patrol + workflow — and `--supervisor=status` reports whether it is `stre
 one unit in the service manager; `--event-continue=no` is the runtime soft-off. Inside that turn the poll is still the
 $0 local scan; it claims and enqueues, and the project session spawns the
 subagent — so a worker turn still starts only when a claim succeeded (see
-[`scheduling.md §The cost gate`](scheduling.md#the-cost-gate-a-worker-turn-starts-only-on-fire)).
+[`scheduling.md §The cost gate`](../scheduling.md#the-cost-gate-a-worker-turn-starts-only-on-fire)).
 A cron install has no pool; it runs the clocks only, and dispatch stays paused.
 
 The exact per-OS commands, their failure modes, and the `loginctl enable-linger` caveat are
-in [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in).
+in [`scheduling.md §Enabling the supervisor (opt-in)`](../scheduling.md#enabling-the-supervisor-opt-in).
 
 An enable that the OS refuses — a `launchctl bootstrap` with no GUI session, a
 `systemctl --user` with no D-Bus — is **reported, not disguised**: the install prints
@@ -395,7 +395,7 @@ The board server `taskd` (`src/server/main.mjs`) is kept alive by an **OS-level 
 and — alone among the units `install.sh` writes — it is **enabled at install time**.
 `taskctl` lazy-starts `taskd` only when a CLI call needs it, so an idle board whose
 server dies stays down until the next call (see
-[`scheduling.md § The taskd guard (keepalive)`](scheduling.md#the-taskd-guard-keepalive));
+[`scheduling.md § The taskd guard (keepalive)`](../scheduling.md#the-taskd-guard-keepalive));
 the guard closes that gap by restarting the server after any exit.
 
 This is a deliberate, **narrow exception** to the rule that the installer never starts
@@ -414,7 +414,7 @@ still written and left for you to load, and OpenClaw still gets none.
 `<prefix>` is `--prefix` (default `$HOME`). There is **one guard per machine** — and
 therefore **one guarded board** — not one per agent kind: the label and unit name carry
 no agent or actor-kind segment, and which board it serves is chosen at install time. See
-[`scheduling.md § One guard per machine`](scheduling.md#one-guard-per-machine).
+[`scheduling.md § One guard per machine`](../scheduling.md#one-guard-per-machine).
 
 **What install does:** it writes the unit and loads it immediately — no question, no
 separate flag:
@@ -453,7 +453,7 @@ taskd guard: not loaded — a board is already serving http://127.0.0.1:9527 (pi
 
 Neither line fails the install. The unit names the **absolute** node that ran the install,
 so a node that lives only under nvm or Homebrew still starts the server — see
-[`scheduling.md § The taskd guard (keepalive)`](scheduling.md#the-taskd-guard-keepalive).
+[`scheduling.md § The taskd guard (keepalive)`](../scheduling.md#the-taskd-guard-keepalive).
 
 **Which program the unit runs.** With the server target selected (`--target server` /
 `all`, which includes it, and always for an npm/npx install unless `--no-server`), the unit
@@ -467,7 +467,7 @@ other, so re-pointing an agent-only install at a server install (or back) is a d
 `--force`.
 
 **A second board does not inherit the guard.** The guard is one per machine
-([`scheduling.md § One guard per machine`](scheduling.md#one-guard-per-machine)), so a
+([`scheduling.md § One guard per machine`](../scheduling.md#one-guard-per-machine)), so a
 re-install for a *different* board is refused rather than silently re-pointing the machine's
 only guard (on Linux, systemd reads `~/.config/systemd/user/meerkat-taskpanel-taskd.service`
 and that file is the guard). The refusal names both boards, leaves the unit alone, and is
@@ -511,7 +511,7 @@ writes and loads nothing and reports `taskd guard: skipped (dry-run)`;
 
 The unit files in full, the restart and back-off semantics, and how the guard coexists
 with `taskctl`'s lazy start are in
-[`scheduling.md § The taskd guard (keepalive)`](scheduling.md#the-taskd-guard-keepalive).
+[`scheduling.md § The taskd guard (keepalive)`](../scheduling.md#the-taskd-guard-keepalive).
 
 
 ### The claim-unassigned question
@@ -548,7 +548,7 @@ which runs regardless. The file is merge-style: a re-run without
 `--force` keeps the existing value, and it also records where the board engine
 lives (`MEERKAT_TASKPANEL_REPO=<runtime tree>`) — a key the installer adds when it is
 missing, so an install made before that key existed still learns it (see
-[`scheduling.md §The loop's state directory`](scheduling.md#the-loops-state-directory)).
+[`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)).
 
 The same merge rule covers the workflow channel's two keys, written with their defaults when
 the file is created and added only when missing on an upgrade:
@@ -575,12 +575,12 @@ kind is `<dir>/.env.<actor-kind>`, and the project map is `<dir>/projects.json`.
 The SLA thresholds are seeded as a **commented** block in the same `.env` (every
 `TASKD_SLA_*` key with its default). Uncomment a line to override it: `taskd` validates the
 table and publishes it on `GET /api/v1/sla`, and the loop reads it on the next patrol pass —
-no restart and no per-agent-kind copy. See [`sla.md §2.1`](sla.md#21-install-level-overrides).
+no restart and no per-agent-kind copy. See [`sla.md §2.1`](../sla.md#21-install-level-overrides).
 
 `--reviewer` (or `MEERKAT_TASKPANEL_REVIEWER`) is what turns review dispatch on. With it
 unset the supervisor still reconciles containers and applies verdicts already in flight —
 it simply creates no new review cards, and deliveries wait for a human.
-[`scheduling.md §The workflow channel`](scheduling.md#the-workflow-channel-review-acceptance-and-containers)
+[`scheduling.md §The workflow channel`](../scheduling.md#the-workflow-channel-review-acceptance-and-containers)
 is the full contract.
 
 ### Interactive wizard
@@ -659,7 +659,7 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--continue=yes\|no` | Enable the continue turn. Persisted to the per-kind config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
 | `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints the per-agent-kind load state and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
 | `--supervisor-actor-kinds <list>` | Which loop agent kinds the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}` (default: the loop actor kinds present in `--target`). Not `--actor-kind`: that is the loop's per-command identity flag, and this flag selects a set. `openclaw` is **rejected** (reason on stderr, exit 2). |
-| `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per agent kind — see [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in). |
+| `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per agent kind — see [`scheduling.md §Enabling the supervisor (opt-in)`](../scheduling.md#enabling-the-supervisor-opt-in). |
 | `MEERKAT_TASKPANEL_SUPERVISOR=enable\|disable\|status` | The non-interactive form of `--supervisor` (an explicit flag wins) — the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`. |
 | `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied (it is standalone docs + decisions). For `--target server` it only warns: the runtime tree is always copied, because it must survive the checkout and the npx cache. |
 | `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags — but operator data is kept: an installed `roles/` directory, an existing config-root `projects.json`, config keys the template does not carry, and the server `.env` / `.data`. An old skill-beside map is migrated into the config root rather than kept beside the skill. |
@@ -793,7 +793,7 @@ is reported as a claude bundle.
 > scheduling unit and **no `meerkat-loop` skill**: it already has a scheduler in the
 > [openclaw-team](https://github.com/tanyu216/openclaw-team) framework, whose
 > per-agent poll and `task-patrol` automations *are* the design in
-> [`scheduling.md`](scheduling.md). `install.sh --target openclaw` writes the board skill
+> [`scheduling.md`](../scheduling.md). `install.sh --target openclaw` writes the board skill
 > only — install that framework instead. The exclusion is permanent, not a gap: two
 > supervisors on one board would only race each other for the same cards.
 
@@ -916,7 +916,7 @@ as does `npm link` or a global install.
 ## Verifying the install
 
 **Everything that runs is verified inside the container** (see
-[`docker.md`](docker.md) and ARCHITECTURE §9.1): the four agent CLIs are not installed in
+[`docker.md`](../agents/docker.md) and ARCHITECTURE §9.1): the four agent CLIs are not installed in
 the image and there is no network, so the container asserts each agent kind's *detection
 contract* offline instead.
 
@@ -962,7 +962,7 @@ shim with a canned one — it records every argv — then drives the generated S
 hook, asserting the **actual invocation** (exit code + argv + output), not just "it ran".
 This is the step that covers the claim path in CI, where the real CLIs are absent. The full
 matrix and the per-agent-kind coverage boundary (Pi has no hook) are in
-[`scheduling.md`](scheduling.md#verifying-the-generated-hook).
+[`scheduling.md`](../scheduling.md#verifying-the-generated-hook).
 
 ## Isolated installs and testing
 
@@ -997,7 +997,7 @@ rm -rf ~/.agents/skills/meerkat ~/.agents/skills/meerkat-loop      # pi
 ```
 
 Nothing is written outside those directories, and nothing is sent over the network — see
-[`PRIVACY.md`](../PRIVACY.md).
+[`PRIVACY.md`](../../PRIVACY.md).
 
 ## Troubleshooting
 

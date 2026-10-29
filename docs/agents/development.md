@@ -80,7 +80,7 @@ npm run test:coverage   # node --test + the coverage gate (see below)
 npm run verify:installed # pack the tarball, install it offline, boot it
 ```
 
-Release tooling (the pipeline that uses it is in [publishing.md §3](publishing.md)):
+Release tooling (the pipeline that uses it is in [publishing.md §3](../ops/publishing.md)):
 
 ```bash
 node scripts/release/bump.mjs 1.2.3 --changelog      # four carriers + a CHANGELOG scaffold
@@ -126,7 +126,7 @@ and turns the job red.
 
 ## Contributing: the pull-request flow
 
-[CONTRIBUTING.md](../CONTRIBUTING.md) is the contributor-facing version of this section.
+[CONTRIBUTING.md](../../CONTRIBUTING.md) is the contributor-facing version of this section.
 The mechanics:
 
 1. Branch off `dev`.
@@ -145,7 +145,7 @@ Nothing in the tree can *require* step 2 — that is GitHub's rule to set (below
 `pre-push` hook refuses a direct push to `main` as the local half, so the mistake surfaces
 before the network; it is still a courtesy, `git push --no-verify` bypasses it, and a fresh
 clone has no hooks at all until `git config core.hooksPath .githooks` — see
-[.githooks/README.md](../.githooks/README.md).
+[.githooks/README.md](../../.githooks/README.md).
 
 ### Repository settings a maintainer must set by hand
 
@@ -154,8 +154,9 @@ These live in GitHub, not in the repository, so nothing here can assert them. On
 - **Require a pull request before merging.**
 - **Require status checks to pass.** Require exactly two checks: `ci-success` (aggregates
   `check (22)`, `check (24)`, `docker`, `contract`, `paths` and `signposts` from `check.yml`)
-  and `security-success` (aggregates `Dependency scan (osv-scanner + npm audit)` and
-  `SBOM (syft)` from `security-scan.yml`). Aggregation is the point: a job that is renamed,
+  and `security-success` (aggregates `Dependency scan (osv-scanner + npm audit)`,
+  `Secret scan (gitleaks)`, `SAST (CodeQL)` and `SBOM (syft)` from `security-scan.yml`).
+  Aggregation is the point: a job that is renamed,
   removed or silently skipped fails the aggregate, instead of leaving the rule waiting for a
   check that will never report. `docker` is still the authoritative job — the aggregate
   covers it, so a rule that requires the aggregate and not `docker` alone is correct.
@@ -292,7 +293,7 @@ install at the tree. `bin/taskd` and `bin/taskctl` are thin launchers that exec 
 `src/server/main.mjs` / `src/cli/index.mjs`, so the npx cache can be pruned and the checkout
 can move without disturbing an installed board. This is separate from `dist/`: that is the
 npm **release tree** written by `scripts/build.mjs`, while the tarball's runnable frontend is
-`web/dist` (see [publishing.md](publishing.md#2-npm)).
+`web/dist` (see [publishing.md](../ops/publishing.md#2-npm)).
 
 Security-relevant environment variables:
 
@@ -410,10 +411,10 @@ state (§4.3); the row still exists in `task_activities` and under
 `/tasks/:ref/activities` (or the board-wide `/activities`).
 
 > **The built board is loopback-only.** It injects no token, so a browser reaching
-> `taskd` from a non-loopback address is answered 401 across the board — a known
-> local-first limitation, not a defect. See
-> [web-local-first.md](web-local-first.md) for what works, the SSH-forward
-> workaround, and what a fix would require.
+> `taskd` from a non-loopback address is answered 401 for every request — the page
+> itself included — a known local-first limitation, not a defect. See
+> [access.md](../access.md) for the full model, the SSH-forward workaround, and
+> what a fix would require.
 
 ## The skills are authored, never generated
 

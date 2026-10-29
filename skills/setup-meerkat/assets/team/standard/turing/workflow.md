@@ -76,7 +76,8 @@ branch never starts by default; it needs an explicit request and a threshold.
   cases (empty, max, unicode, concurrency, failure), API endpoints/contracts, and real
   browser flows. Reject coverage padding, constructor-only and mock-only tests.
 - Run a security review — authorization, input validation, secrets, injection, path
-  traversal, SSRF — and record severity.
+  traversal, SSRF — and record severity. The reviewer owns the final checklist and the
+  verdict; you deliver findings.
 
 ## Test execution vs review gate
 

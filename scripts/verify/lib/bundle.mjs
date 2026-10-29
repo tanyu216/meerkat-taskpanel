@@ -16,7 +16,7 @@
  *
  * Detection precedence (OpenClaw):
  *   1. `openclaw.plugin.json`, or a `package.json` carrying `openclaw.extensions`
- *      -> a NATIVE plugin (skill-only packs cannot use this: see docs/install.md)
+ *      -> a NATIVE plugin (skill-only packs cannot use this: see docs/ops/install.md)
  *   2. `.codex-plugin/` | `.cursor-plugin/` | `.claude-plugin/` markers -> that bundle
  *   3. root `plugin.json` declaring the Agent Plugins `$schema` -> an Agent bundle
  *   4. the default Claude layout (`skills/`, `commands/`, `agents/`, …)

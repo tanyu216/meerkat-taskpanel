@@ -27,7 +27,7 @@ export const VERSION = "0.1.2";
  * (`scripts/verify/contract.mjs` reads it, it is not a second copy), and
  * `taskctl --version --json` publishes it, so a consumer can read the provider's
  * declared number **at runtime** instead of hard-coding one that silently drifts.
- * Bump it when the snapshot's own layout changes shape — see `docs/contract.md`.
+ * Bump it when the snapshot's own layout changes shape — see `docs/agents/contract.md`.
  */
 export const CONTRACT_SCHEMA_VERSION = 4;
 

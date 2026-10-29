@@ -249,7 +249,7 @@ export function allowedTargets(from, kind = null, acceptanceMode = null, reviewC
   if (base === undefined) return Object.freeze([]);
   // A review card has no reopen edge. Reopening the *original* is what starts
   // the next round; a review card is an artefact of the round it audited, and
-  // 0041 enforces the same rule in the terminal trigger.
+  // The terminal trigger (`tr_tasks_review_no_reopen`) enforces the same rule.
   if (reviewCard && isTerminalStatus(from)) return Object.freeze([]);
   const extra = [];
   if (kind === TASK_KIND.EPIC) extra.push(...(EPIC_ONLY_TRANSITIONS[from] ?? []));
@@ -289,7 +289,7 @@ export function canTransition(from, to, kind = null, acceptanceMode = null, revi
  */
 export function transitionReasonCode(from, to, kind = null, acceptanceMode = null, reviewCard = false) {
   if (canTransition(from, to, kind, acceptanceMode, reviewCard)) return null;
-  // 0041 — the terminal trigger refuses a review card's reopen with
+  // The terminal trigger refuses a review card's reopen with
   // `INVALID_TRANSITION`, not `TERMINAL_STATE`: the card is terminal, but the
   // reason it cannot come back is that it is a review artefact.
   if (reviewCard && isTerminalStatus(from) && to === REOPEN_TARGET) return "INVALID_TRANSITION";

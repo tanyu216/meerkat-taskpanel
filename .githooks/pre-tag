@@ -20,7 +20,7 @@
 # So the tag is never created in the first place. Git has no native `pre-tag`
 # hook, so this one is invoked explicitly by the release process; the same rules
 # are also enforced by `.githooks/pre-push` (everything leaving the machine) and
-# by CI (`.github/workflows/version-gate.yml`). See docs/publishing.md.
+# by CI (`.github/workflows/version-gate.yml`). See docs/ops/publishing.md.
 #
 # Exit: 0 all gates pass (or the ref is not a version tag) · 1 a gate failed ·
 # 2 usage.

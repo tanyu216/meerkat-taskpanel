@@ -128,7 +128,7 @@ describe("dependabot keeps the pins fresh, but not the vendored frontend", () =>
 
   it("does not open npm PRs for web/", async () => {
     // A bot bump without a re-vendored `web/.vendor/npm-cache` cannot build
-    // offline; see docs/docker.md. Those bumps are a hand operation.
+    // offline; see docs/agents/docker.md. Those bumps are a hand operation.
     const text = await readFile(join(ROOT, ".github", "dependabot.yml"), "utf8");
     assert.doesNotMatch(text, /package-ecosystem: npm/);
   });

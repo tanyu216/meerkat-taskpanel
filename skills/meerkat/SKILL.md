@@ -30,7 +30,8 @@ taskctl --help                       # when the shim is on PATH
 `scripts/run.mjs` locates the CLI (`$MEERKAT_TASKPANEL_ROOT`, `$MEERKAT_TASKPANEL_REPO`, the
 checkout, the shim, `PATH`) and propagates stdio and the exit code. The shim adds
 `--actor-kind <kind>` and a default `--agent <name>`; `--actor-kind` is required except on
-`--help`, `--version` and `status`, and a human writes with `--as-human`. Configuration is one
+`--help`, `--version`, `status` and the `project map` actions (local, boardless), and a human
+writes with `--as-human`. Configuration is one
 `.env` at the program root, read by both `taskctl` and `taskd` (process env wins key by key;
 `--env-file` or `MEERKAT_TASKPANEL_ENV_FILE` selects another). Each actor kind also has a
 per-kind config beside it, `<program root>/.env.<actor-kind>`, read by `taskctl` as a
@@ -258,8 +259,10 @@ the card is the author's intent, not this delivery's evidence.
 ### Delivering
 
 `issue deliver` writes the report and moves to `in_review` in one transaction; use it rather
-than a separate report write and move. A waiver (`--no-report --reason "<why>"`, ≥ 8
-characters) excuses the report for one round, not acceptance.
+than a separate report write and move. The gate reads the **current** delivery round's report —
+a report from an earlier round is history, not evidence, so re-deliver rather than reuse it. A
+waiver (`--no-report --reason "<why>"`, ≥ 8 characters) excuses the report for one round, not
+acceptance.
 
 The mode is resolved once, at creation: `--acceptance-mode off|agent|human` is the card's
 snapshot; omitted, it follows the project's `acceptance` default (`auto` by default), where

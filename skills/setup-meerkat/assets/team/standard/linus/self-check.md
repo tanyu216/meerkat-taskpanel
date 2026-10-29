@@ -55,7 +55,7 @@ declared gate (or the same bars when none is declared) on the delivered commit.
 | Test suites | unit, integration, API and browser-based (where applicable): 100% pass; any failure is a failure |
 | Coverage | line, branch and function all >80% (or the project's stricter floor) |
 | Mocks | only at http / websocket / db / redis and comparable external boundaries; never an internal module or function |
-| Security scan | the project's documented scan (dependency audit, secret scan, SAST); no unaddressed high/critical |
+| Security scan | the project's documented scan — dependency audit (default `osv-scanner`), secret scan, SAST — each arm run with the command the standard records, or its recorded `n/a — <reason>`; no unaddressed high/critical |
 
 A red gate is a blocker. A design-only or documentation card records `n/a` and does not
 run them.
@@ -127,6 +127,18 @@ run them.
     each enum is one definition with a recorded wire form and unknown-value policy, and the
     database constraint, the contract and the UI label map agree. Otherwise the recorded
     `n/a` is present.
+24. The standard's security toolchain is complete: every arm names a free tool, its version
+    floor, one local command, one CI command, the report it writes and who may waive a
+    finding; an arm the project does not run records `n/a — <reason>`. A `.vue` or Svelte
+    single-file component is named as uncovered rather than assumed scanned.
+25. The document set is complete and single-sourced: `README.md`, `GLOSSARY.md`,
+    `CONTRIBUTING.md` and `CHANGELOG.md` exist; when the card records a community
+    open-source project, `LICENSE`, `SECURITY.md`, `CODE_OF_CONDUCT.md`,
+    `.github/CODEOWNERS` and the issue/PR templates exist too, and otherwise the standard
+    records `n/a — not a community open-source project`. The changelog has one empty
+    unreleased section between releases; the baseline points at `CONTRIBUTING.md` instead of
+    restating the change policy; and no two documents own the same rule. The root glossary
+    is item 11's finding, not repeated here.
 
 **Reconstruction and audit.** Also check:
 

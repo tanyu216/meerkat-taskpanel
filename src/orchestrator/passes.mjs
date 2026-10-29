@@ -806,7 +806,7 @@ export async function runWorkflowOnce(opts, env = process.env) {
   // creates, and its cards cannot be closed without one, so it must have an
   // effective reviewer. A `human` default is reviewed too, but it is not
   // checked here: an unconfigured reviewer is the documented manual opt-out
-  // (`docs/install.md`) — the board reports `reviewer_not_configured` per card
+  // (`docs/ops/install.md`) — the board reports `reviewer_not_configured` per card
   // and the person can still close it. The board resolves
   // `project.reviewer ?? global`; this start-up read is the only place the loop
   // can see the project rows before the reconcile plan.

@@ -215,7 +215,7 @@ describe("install.sh: scheduling units", () => {
 
   it("the bypass's environment form skips exactly the same artefacts through the dispatcher", () => {
     // `MEERKAT_TASKPANEL_NO_AUTOMATION=1` is the environment spelling of
-    // `--no-automation` (docs/install.md). It travels through install.sh, so the
+    // `--no-automation` (docs/ops/install.md). It travels through install.sh, so the
     // dispatcher must not overwrite the caller's value with its own empty one —
     // the failure that would make the documented form skip nothing.
     const home = makeTempDir();

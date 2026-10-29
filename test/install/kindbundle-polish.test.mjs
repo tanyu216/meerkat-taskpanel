@@ -61,7 +61,7 @@ function fakeCliEnv(home, bin, log) {
 
 describe("kindbundle polish: docs (D2)", () => {
   const docs = {
-    "docs/install.md": readFileSync(join(ROOT, "docs", "install.md"), "utf8"),
+    "docs/ops/install.md": readFileSync(join(ROOT, "docs", "ops", "install.md"), "utf8"),
     "README.md": readFileSync(join(ROOT, "README.md"), "utf8"),
     "README.zh-CN.md": readFileSync(join(ROOT, "README.zh-CN.md"), "utf8"),
   };
@@ -73,8 +73,8 @@ describe("kindbundle polish: docs (D2)", () => {
     }
   });
 
-  it("docs/install.md spells out merge-style idempotence, exit 0, and the --force notice", () => {
-    const text = docs["docs/install.md"];
+  it("docs/ops/install.md spells out merge-style idempotence, exit 0, and the --force notice", () => {
+    const text = docs["docs/ops/install.md"];
     assert.match(text, /left unchanged — use --force to\s+overwrite/, "must quote the notice");
     assert.match(text, /merge-style and idempotent/i);
     assert.match(text, /exits? (non-zero|0|\*\*0\*\*)/i);

@@ -53,7 +53,7 @@
  * property of the machine the review runs on, not of this checkout. Playwright is a
  * host tool resolved from an already-installed location, exactly as `dom-smoke.mjs`
  * does; the image carries no browser, so inside the container this exits 2 ("skip") —
- * rendering is a host-allowed exception (plan §9.1 exception 4; `docs/docker.md`).
+ * rendering is a host-allowed exception (plan §9.1 exception 4; `docs/agents/docker.md`).
  *
  * Usage: node web/scripts/shot-compare.mjs --out=<dir> [--json] [--strict]
  * Exit:  0 = captured + every check green · 1 = a check or a capture failed, or the

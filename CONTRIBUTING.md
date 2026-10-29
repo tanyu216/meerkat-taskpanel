@@ -1,8 +1,8 @@
 # Contributing
 
 Thanks for looking. This file is the short version of "how work lands here"; the prose
-sources of truth are [docs/development.md](docs/development.md) (layout and commands) and
-[docs/docker.md](docs/docker.md) (why verification is containerised).
+sources of truth are [docs/agents/development.md](docs/agents/development.md) (layout and commands) and
+[docs/agents/docker.md](docs/agents/docker.md) (why verification is containerised).
 
 ## Requirements
 
@@ -22,7 +22,7 @@ npm run verify:docker          # build the image + run the whole suite + tear do
 
 Only pure static checks may run on the host: `node --check`, `node --test`, the
 `scripts/verify/*` checkers, `git`, and prototype screenshots. The full list is under
-"Host-allowed checks" in [docs/docker.md](docs/docker.md).
+"Host-allowed checks" in [docs/agents/docker.md](docs/agents/docker.md).
 
 ## Before you open a pull request
 
@@ -48,7 +48,7 @@ branches come off it. The flow is:
    -b <branch> dev`).
 2. Push the branch and **open a pull request into `dev`**.
 3. Wait for CI. `pull_request` runs `check.yml` (the static gates, the Node 22/24 matrix,
-   the container job and the two security jobs) plus the separate `web-dom.yml` browser
+   the container job and the four security jobs) plus the separate `web-dom.yml` browser
    lane. Green CI is the entry bar.
 4. Merge. `main` advances only when `dev` is merged into it as a release (below).
 
@@ -56,7 +56,8 @@ branches come off it. The flow is:
 > on `main`, enable *Require a pull request before merging* and require exactly two status
 > checks: `ci-success` (which aggregates the `check`, `docker`, `contract`, `paths` and
 > `signposts` jobs) and `security-success` (which aggregates `Dependency scan (osv-scanner +
-> npm audit)` and `SBOM (syft)`). The same rule is worth setting on `dev`, which is where
+> npm audit)`, `Secret scan (gitleaks)`, `SAST (CodeQL)` and `SBOM (syft)`). The same rule
+> is worth setting on `dev`, which is where
 > work is merged. The `pre-push` hook refuses a direct push to `main` and runs the container
 > gate as the local half, but it is still a courtesy — `git push --no-verify` bypasses it,
 > and a fresh clone has no hooks at all until you install them (below).
@@ -93,7 +94,7 @@ These are checked, not merely preferred. Skipping one turns CI red.
 ## Releasing
 
 Releases are three dispatches and one human merge — see
-[docs/publishing.md §3](docs/publishing.md) for the full shape:
+[docs/ops/publishing.md §3](docs/ops/publishing.md) for the full shape:
 
 1. `gh workflow run release-prep.yml -f version=X.Y.Z` — opens `release/vX.Y.Z` with the
    bumped carriers and a CHANGELOG section drafted from the commit log. **Edit the section**
@@ -108,7 +109,7 @@ Releases are three dispatches and one human merge — see
 
 Publishing needs no secret. The one npm-side prerequisite — npm's Trusted Publishing entry
 for `tanyu216/meerkat-taskpanel`, workflow `release.yml` — is written down in
-[docs/publishing.md §2.1](docs/publishing.md). If Actions cannot publish, the manual
+[docs/ops/publishing.md §2.1](docs/ops/publishing.md). If Actions cannot publish, the manual
 fallback is §3.4, and it is unprovenanced.
 
 ## Reporting a bug or proposing a change

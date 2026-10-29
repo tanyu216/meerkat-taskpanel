@@ -16,7 +16,7 @@
 # every verification step are offline, and — because the cache is committed — so is the
 # frontend build stage: `npm ci --offline` never reaches the registry, so `docker build
 # --network=none` succeeds. The cache is a GENERATED artefact, produced inside a container
-# by the vendoring step in `docs/docker.md`: re-run it after any `web/package.json`
+# by the vendoring step in `docs/agents/docker.md`: re-run it after any `web/package.json`
 # dependency bump, and commit the refreshed cache with the lockfile.
 #
 # It must cover **both** linux architectures. The cache holds platform-specific optional

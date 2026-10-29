@@ -660,7 +660,7 @@ esac
 # Which loop actor kinds the action applies to: --supervisor-actor-kinds, else the loop actor kinds this
 # install covers. OpenClaw is never among them, and is rejected explicitly when named —
 # it runs openclaw-team's own poll/patrol, so there is no meerkat-loop supervisor to
-# enable (docs/scheduling.md §OpenClaw: do not build a supervisor).
+# enable (docs/scheduling.md §OpenClaw: no loop units).
 if [ -n "$SUPERVISOR_ACTOR_KINDS_FLAG" ]; then
   SUPERVISOR_ACTOR_KINDS=""
   OLD_IFS="$IFS"
@@ -838,7 +838,7 @@ else
   if [ -n "$DRY_RUN" ]; then
     echo "install.sh: dry run complete — nothing was changed"
   else
-    echo "install.sh: done. Next step: register the agent's plugin/bundle (see docs/install.md),"
+    echo "install.sh: done. Next step: register the agent's plugin/bundle (see docs/ops/install.md),"
     echo "             or point the agent at the installed skill directory."
   fi
 fi

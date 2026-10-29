@@ -15,6 +15,16 @@ database (Node's built-in `node:sqlite`) — no external services. Node **>= 22*
 
 ## How to work here
 
+**Work by the team's workflow.** Before starting work a role owns, read the team's
+`ownership.md` from the loop's roles root — `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, else
+`<project>/.meerkat/roles/`, else `<agent-dir>/skills/meerkat-loop/roles/` — and follow the
+workflow it names for that work shape: for the standard team, Jobs takes product design and UI,
+Linus architecture, implementation, refactors and bugs, Turing test design, regression and
+performance, and Reviewer independent review. The installed copy is authoritative; the template
+under `skills/setup-meerkat/assets/team/standard/` is only what `/setup-meerkat` seeds it from.
+The loop injects the guide only for cards it dispatches, so a session taking the work itself
+reads it first. The card is still created and delivered through `/meerkat`.
+
 **Decompose before executing.** Any request that is more than a couple of tool calls gets a
 todo list first (TodoWrite): one item per independently verifiable step — a test that must go
 green, a file to change, a gate to run — kept current while you work (exactly one
@@ -141,7 +151,7 @@ the release workflow stages the image's build there before `npm pack`.
   starting or serving the app, the CLI, agent skill installs, plugin installs, migration
   rehearsals — runs in the container (`npm run verify:docker`, `docker/verify-in-container.sh`).
   `.githooks/pre-push` runs that gate on every branch push, so the push itself is the merge-time
-  container check. Host-allowed (static/pure only, per `docs/docker.md` §Host-allowed checks):
+  container check. Host-allowed (static/pure only, per `docs/agents/docker.md` §Host-allowed checks):
   `node --test`, `node --check`, the `scripts/verify/*` checkers, `git` and file inspection,
   prototype screenshots, and the browser-rendered `web/` DOM/selector checks (the image has no
   Chromium).
@@ -151,7 +161,7 @@ the release workflow stages the image's build there before `npm pack`.
 - **`web/` is the one exception, and it is build-time only.** Its committed
   `web/package-lock.json` + committed npm cache at `web/.vendor/npm-cache` let the image's
   `webbuild` stage run `npm ci --offline`, so the image builds with no network. The cache is a
-  **generated artefact** (linux/arm64) — after a dependency bump, re-vendor per `docs/docker.md`
+  **generated artefact** (linux/arm64) — after a dependency bump, re-vendor per `docs/agents/docker.md`
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
 - **The skills are authored source, never generated.** `skills/meerkat/`,
   `skills/meerkat-loop/` (docs + decisions only) and `skills/setup-meerkat/` (standalone)
@@ -163,7 +173,7 @@ the release workflow stages the image's build there before `npm pack`.
 - **Migrations are append-only.** Never edit or delete a committed
   `src/core/storage/migrations/*.sql`; add a new numbered file. The DB runner refuses a database
   whose applied file changed, and adding a migration reds several hand-kept version lists — see
-  `npm run verify:migrations` and `docs/migration.md`.
+  `npm run verify:migrations` and `docs/agents/migration.md`.
 - **The contracts are explicit.** A route, error code or wire-field change must update
   `test/fixtures/contract/api.snapshot.json` via `node scripts/verify/contract.mjs --update` —
   never let it drift. Adding a new `DomainError` code touches `ERROR_CODES`, its bucket and that
@@ -208,95 +218,49 @@ authoritative home, because the container image drops `design/`.
 
 ## Key invariants to remember
 
-- **One config file at the install root.** `.env` (gitignored and dockerignored) is read by
-  both `taskd` and `taskctl`; the process environment wins key by key and CLI flags win above
-  both. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` selects another path. This file is
-  board-facing only: each actor kind also has a **per-kind config**,
-  `<program root>/.env.<actor-kind>` (for example `.env.claude`), read by `taskctl` as a
-  per-agent default layer (identity, the engine location) and by
-  `taskctl loop …` for the loop policy; the loader refuses loop-policy keys here, so the
-  two never merge. The one machine-local project map, `projects.json`, sits beside those
-  files at the same config root. `--config` overrides it for a loop run, and
-  `MEERKAT_TASKPANEL_CONFIG_DIR` relocates the directory (tests, containers, read-only
-  roots). The old
-  `<dataDir>/taskd.env` is no longer read (hard switch). Identity (`--actor-kind`) is required
-  on every command that talks to the board, except `--help` / `--version`, the local read
-  `taskctl status` (it reads the runtime pointer, never the board) and the local
-  `taskctl project map` actions (they read and write the config-root map, never the board);
-  `--agent` names the role
-  and is not a shared-file key. The install root is the **running program's** root: the checkout, `/app`
-  in the image, or `~/.meerkat-taskpanel` for an installed tree. On a combined install
-  (`--target all`, which includes the server, or npm/npx) the agent shims and per-kind config
-  name the installed tree (`MEERKAT_TASKPANEL_REPO`, `MEERKAT_TASKPANEL_ENV_FILE`) — never
-  the checkout and never the npx cache; `--no-server` installs keep pointing at the checkout.
-- **The `taskd` guard follows the same root.** Selecting the server target writes
-  `ExecStart` = `<node> <home>/.meerkat-taskpanel/src/server/main.mjs` and pins
-  `TASKD_DATA_DIR=<home>/.meerkat-taskpanel/.data` in the unit; without it the unit runs the
-  checkout's entry. One guard per machine, and switching layout is a deliberate `--force`
-  (a mismatched unit is refused with exit 3, non-fatal).
-- **The loop speaks only `taskctl`.** `src/orchestrator/**` never calls the board's HTTP API
-  directly — the live event stream is `taskctl events follow` (the local event hub), not
-  `fetch`, and the loop carries no board discovery or token code. Board capability detail (invocations,
-  JSON keys) lives in `skills/meerkat/references/capabilities.md`; the loop skill
-  records decisions only.
-- **One local event hub per user and board.** `taskctl events hub` owns the host's single
-  SSE connection to a board and fans it out to local consumers (`events follow` and watch
-  registrations); it binds loopback, publishes an owner-only pointer, and is started detached
-  on demand. `export watch` registers with it (`--detach`), `--standalone` keeps the direct
-  stream, and the loop's subscriber consumes `events follow`. The loop's poll **registers the
-  card brief before the claim** (`cards[]`, per-card absolute paths, `ttl_ms: 0`) and unregisters
-  it if the claim is refused; the hub — not the subscriber — owns every brief write, until the
-  card is `done` or `canceled`. The board still never writes a user directory: the hub is a
-  client-side process.
-- The **delivery gate** requires a report **for the current delivery round** before a card can
-  move to `in_review`; a report from an earlier round is history, not evidence. It is enforced by
-  a DB trigger *and* a domain check, tested against each other under `test/contract/`. There is
-  one narrow escape hatch (M2, F-B1): `--no-report --reason "<why>"` (reason ≥ 8 characters,
-  mutually exclusive with `--report-file`, only on a move to `in_review`, recorded as a
-  `report_waived` activity, valid only for the current delivery round).
-- **A review card is flow B, not a kind.** It is an ordinary `kind=task` card carrying the
-  immutable `review_of_id` / `review_round` marker. Every layer reads that identity through
-  `src/foundation/review-identity.mjs` (the columns are authority; `meta.review_of` is a
-  readable/legacy mirror), so the workflow planners, the SLA patrol and the CLI agree. A
-  review card cannot be reopened, cannot be a parent or a child, and cannot itself be
-  reviewed; the command layer refuses first, and the `0041` triggers refuse a raw writer.
-- Invariants are pushed **down into the database** (triggers), not only enforced in the app layer.
-- **Single writer.** One local service owns the SQLite file: `taskd` takes `<dataDir>/writer.lock`
-  with `O_EXCL` *before* opening the DB, refuses a second instance with `BOARD_ALREADY_RUNNING`,
-  and removes a fossil lock whose pid is gone. Write-lock contention past `busy_timeout` (pinned
-  5 s) is a bounded retry, then `503 DB_BUSY` + `Retry-After: 1` — never a 500.
-- **The board holds no project directory.** A project carries no `workspace_path`, the CLI has no
-  `context` command (`src/core/commands/context.mjs` is actor/execution context, unrelated) and no
-  registry `root` anchor; a card's `target` is an opaque per-card value, never derived from a
-  project. The project→directory map is **one** machine-local `projects.json` at the config
-  root (the program root, or `MEERKAT_TASKPANEL_CONFIG_DIR`), maintained only through
-  `taskctl project map` and read through `taskctl project dir`; agents never parse or edit it
-  (`skills/meerkat/references/projects-json.md`). Whether a project's source data is
-  managed with `meta` is the agent's own decision and taskpanel neither prescribes nor advises it.
-  An entry names its directory as `local_path`, else as the `run_dir` launch pad, or names **none** —
-  a project with no local directory is a complete answer (`dir: null`, exit 0), distinct from the
-  `PROJECT_DIR_UNMAPPED` "no entry — ask the user" case; a *wake* needs a directory, so it refuses
-  both of those. Both keys are **worker** directories, not data locations — where a task's results
-  live is the business's call, and the entry's other keys (the metadata an agent reads) are the
-  business's to define, never validated or interpreted here.
-- **Auth:** a loopback caller is trusted; a remote caller must be inside `TASKD_ALLOW_CIDRS` and
-  present the token. `POST /token` is loopback-only. The built board injects no token, so serving
-  it to a remote browser is 401 by design (`docs/web-local-first.md`).
-- **Diagnostics go through `src/foundation/log.mjs`.** The logger is callable as the long-standing
-  `logger({ event, ... })` seam and also carries `.debug/.info/.warn/.error`. `taskd` owns and
-  rotates `<dataDir>/logs/taskd.log`; the service units and the lazy start do **not** redirect
-  into it. Levels: success is `info` (or `debug` for per-command detail), a 4xx refusal is
-  `warn`, a 5xx/unmapped failure is `error`. Logger events are **not** activity events — new
-  names go in `EVENT_LEVELS`, never `ACTIVITY_EVENTS`.
-- **Stopping `taskd`:** `SIGTERM`/`SIGINT` is graceful and bounded — it ends SSE streams with a
-  named `shutdown` frame before closing, because `/api/v1/events` never ends on its own.
+Repo-layer rules a change here must respect. **Board usage is the `meerkat` skill's** — how a
+card is claimed, delivered, reviewed or closed, and what `projects.json` means, live in
+`skills/meerkat/`; do not restate them here.
+
+- **Invariants live in the database first.** A rule that must hold for every writer is a trigger
+  under `src/core/storage/migrations/`, mirrored by a domain check and tested against it under
+  `test/contract/`. Shipping only the app-layer half is a bug: a raw writer walks past it.
+- **One reader for a review card's identity.** The `review_of_id` / `review_round` columns are
+  authority and `meta.review_of` is a mirror; every layer reads them through
+  `src/foundation/review-identity.mjs`. A second reader forks the workflow planners, the SLA
+  patrol and the CLI. The card rules themselves (cannot be reopened, a parent, a child or
+  reviewed) are the `meerkat` skill's.
+- **The loop speaks only `taskctl`.** `src/orchestrator/**` never calls the board's HTTP API —
+  the live stream is `taskctl events follow` (the local hub), not `fetch` — and the loop carries
+  no board discovery or token code.
+
+The mechanisms those rules rest on, by home:
+
+- `skills/meerkat/` — every board rule: the claim/heartbeat/deliver cycle, the round-scoped
+  delivery gate, review cards (flow B), `projects.json`, the brief.
+- `skills/meerkat-loop/` — when the loop patrols, dispatches and claims; the local event hub.
+- `docs/agents/development.md` — one writer per data directory and `DB_BUSY`; auth (`TASKD_ALLOW_CIDRS`
+  and the token, loopback trusted); the bounded `SIGTERM` stop.
+- `docs/ops/install.md` — config topology: `.env` layering, the per-kind `.env.<actor-kind>` at the
+  program root, the install root, and the `taskd` guard unit.
+- `docs/ops/observability.md` — log levels, rotation, and why logger events are not activity events.
+- `docs/events.md` — the event system's design: the activity log and revision cursor, the SSE
+  contract, each consumer's policy, and the local event hub.
 
 ## Agent skills
 
 ### Issue tracker
 
 Work is tracked as cards on the local Meerkat TaskPanel board; `/meerkat` is the entry for
-every card operation. See `docs/agents/issue-tracker.md`.
+every card operation — a card is created, claimed, kept alive with a heartbeat and delivered
+through that skill, never through a side-channel queue. A card stops at `in_review`; the
+card's `acceptance_mode` names who moves it to `done` (`agent`: the loop after a current-round
+`APPROVE`; `human`: a person; `off`: the deliverer). See `docs/agents/issue-tracker.md`.
+
+A card is the work a role owns: product design, architecture, implementation, bug fixes,
+refactors, test design, regression, performance and independent review. A question, a lookup,
+a one-off command, a scratch experiment, or the change being made in this conversation right
+now has no owner, so it is not a card.
 
 ### Triage labels
 
@@ -311,8 +275,8 @@ Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/age
 - `GLOSSARY.md` — the canonical vocabulary: one word per concept, the words to avoid, and the terms that are *not* in the model.
 - `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
 - `CONTRIBUTING.md` — the container gate, PR flow, conventions the gates enforce.
-- `docs/development.md` — layout, commands, the two build layers, skills generation, constraints.
-- `docs/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
-- `docs/contract.md` — the API and CLI contract snapshots + route-request lint.
-- `docs/migration.md`, `docs/scheduling.md`, `docs/observability.md`, `docs/security.md` — the named subsystems.
+- `docs/agents/development.md` — layout, commands, the two build layers, skills generation, constraints.
+- `docs/agents/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
+- `docs/agents/contract.md` — the API and CLI contract snapshots + route-request lint.
+- `docs/agents/migration.md`, `docs/scheduling.md`, `docs/ops/observability.md`, `docs/security.md` — the named subsystems.
 - `src/core/README.md` — what the core engine owns and the rules it enforces.

@@ -1,15 +1,43 @@
-# Scheduling & continue
+# The scheduling model: task-card dispatch, the supervisor and the loop
 
-How a board gets worked **continuously** when the agent kind that does the work has no
-clock: a liveness ping, a periodic judgment turn, the atomic claim, the resident
-session that spawns the worker, and the notify-only patrol that catches what the
-scan misses. The scheduler lives **outside** the agent application — `taskctl loop …`
-(`src/orchestrator/`), which ships with the toolkit; the
-**[`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill** carries the decisions — and the
-application is only ever the worker that gets woken. The deterministic passes are
-`taskctl loop patrol|workflow|poll`, run by the continue turn.
+A board is a state machine; something has to turn it. This page is the **design** of that
+something: how a card that is ready gets claimed, dispatched, watched, reviewed and closed
+when the agent kind doing the work has **no clock of its own** — Claude Code, Codex and Pi
+only run when a session starts them.
 
-There are two execution shapes, and the same supervisor serves both:
+The design stance, in four sentences:
+
+- The scheduler lives **outside** the agent application: `taskctl loop …`
+  (`src/orchestrator/`) ships with the toolkit, and the application is only ever the worker
+  that gets woken. The decisions the loop applies are the
+  **[`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill**; this page is the system those
+  decisions run inside.
+- It owns **two clocks** — a cheap *ping* for liveness and one *continue* judgment turn — and
+  performs no board I/O of its own.
+- The board work is **deterministic passes** — `taskctl loop poll|patrol|workflow` — that the
+  continue turn invokes; the model's invariants live in those passes and in the board, never
+  in a prompt.
+- A **resident session pool** turns an abstract "dispatch" into one project session per
+  target directory and one subagent per card. Without it the loop still patrols and applies
+  workflow, but it dispatches nothing.
+
+## Design at a glance
+
+| Component | Responsibility | Invariant it upholds |
+|---|---|---|
+| **ping** clock | prunes dead pids, keeps the registry honest | no board read and no model turn |
+| **continue** turn | one judgment turn per cadence; runs the deterministic passes | bounded — one per interval |
+| **poll** | scans candidates, claims, enqueues the handoff | **the atomic claim is the single dispatch source** |
+| **patrol** | the SLA pass: stale claims, review aging, recovery | no silent state; every alert is re-checked before emit |
+| **workflow** | review dispatch, verdict application, containers | the delivery gate is enforced by the board, not the prompt |
+| **session pool** | one control session plus one project session per directory | one writer per card; concurrency is capped |
+| **subscriber** | event-driven continue turns | a latency path only — the clocks remain the fallback |
+| **taskd guard** | keepalive for the board service itself | one guard per machine; one writer per data directory |
+
+The model in one line: **the board is the source of truth, the claim is the only dispatch
+source, and every clock is a bounded, idempotent pass over state the board already holds.**
+
+Two execution shapes serve the same model:
 
 - **resident** (default on launchd/systemd): `taskctl loop session` runs a long-lived *session
   pool* — one control conversation that runs the continue turn, plus one *project
@@ -21,14 +49,32 @@ There are two execution shapes, and the same supervisor serves both:
   nothing and worker/reviewer dispatch is paused — see
   [No resident pool: what still runs](#no-resident-pool-what-still-runs).
 
-The loop is a skill of its own, and it is distributed as one: `claude`, `codex` and `pi`
-install it, and OpenClaw deliberately does not (see
-[OpenClaw: do not build a supervisor](#openclaw-do-not-build-a-supervisor)).
+What the loop does **not** own: the board's data, the review decision and the acceptance
+authority. Those belong to the board, the
+[`meerkat`](../skills/meerkat/SKILL.md) skill and [acceptance.md](acceptance.md). This page
+stops at the boundary of the scheduler.
 
-This is the design OpenClaw already ships as
-[openclaw-team](https://github.com/tanyu216/openclaw-team) — a per-agent poll and a
-`task-patrol`; this document is the agent-kind-agnostic statement of it, plus what
-Claude Code, Codex and Pi add on top.
+**How to read the rest** — the model ([two clocks](#the-two-clocks),
+[time contract](#the-time-contract)); dispatch
+([atomic claim](#atomic-claim--the-single-dispatch-source),
+[the cost gate](#the-cost-gate-a-worker-turn-starts-only-on-fire),
+[the session pool](#the-resident-session-pool)); liveness and SLA
+([heartbeat](#fresh-heartbeat-is-a-no-op-a-broken-one-is-never-silent),
+[the rest of the table](#the-rest-of-the-sla-table-the-same-pass-five-more-rows)); delivery
+([the workflow channel](#the-workflow-channel-review-acceptance-and-containers),
+[team roles](#team-roles-optional)); runtime
+([where a worker runs](#where-a-worker-runs),
+[where the supervisor runs](#where-the-supervisor-runs),
+[the agent kinds](#the-three-agent-kinds-how-each-one-is-triggered)); operations
+([enabling](#enabling-the-supervisor-opt-in), [running](#running-the-supervisor),
+[verifying the hook](#verifying-the-generated-hook)); and the policies every deployment
+shares ([claim-unassigned](#the-claim-unassigned-policy),
+[end to end](#the-end-to-end-path)).
+
+The loop is a skill of its own, and it is distributed as one: `claude`, `codex` and `pi`
+install it; OpenClaw installs the board skill only, because its agent framework runs the
+equivalent automations itself (see
+[OpenClaw: no loop units](#openclaw-no-loop-units)).
 
 ## The two clocks
 
@@ -113,6 +159,99 @@ The contract:
 After a human answers, the card is `todo`; dispatch happens on the next continue/poll (the
 default 10-minute cadence, or sooner when the event subscriber fires). That delay is the
 continue interval, not a new clock.
+
+## Atomic claim = the single dispatch source
+
+The board, not the supervisor, decides who gets a card. A claim is
+compare-and-swap in SQLite (`issue claim`, or `issue move … in_progress` for a
+`todo` card), so when several agents (or several supervisor ticks) race the same
+card **exactly one claim succeeds**; every loser gets a conflict and, crucially,
+**no worker is started**. That is what makes the claim the *only* dispatch path —
+a supervisor never "reserves" a card out of band, never wakes a worker for a card
+it did not win, and never claims success on a failed spawn.
+
+`issue claim` is also the **stale-recovery** path. A claim is not always a
+transition: re-taking an `in_progress` card does not change its status, so the
+move route (whose table has no `in_progress → in_progress`) cannot express it.
+The thresholds are layered:
+
+- the same holder may re-claim after **10 minutes** (refreshing ownership/heartbeat);
+- only after **30 minutes** does the card enter the `issue candidates --stale`
+  recovery pool;
+- any agent may take over after **6 hours**, and a takeover writes a `change` comment.
+
+The supervisor runs with `--recover-stale=yes` by default, adds `--stale` to the
+candidate read, and claims every candidate through `issue claim` — one path for
+ready and recovered work. Discovery and ownership are separate: the candidate read
+only *finds* stale cards; `issue claim` (backed by the board's CAS) is what
+transfers ownership.
+
+SLA patrol measures and alerts; by default it moves nothing. `--patrol-llm` is its
+only authorized move path — and that path is `move`, not `claim`: ownership changes
+always go through `issue claim` and the board's CAS.
+
+This is also why worker dispatch needs no lock file: the service model is
+single-writer and the CAS already serialises dispatch. Two entries racing each
+other is wasteful, not incorrect — the loser's claim is refused. The continue
+turn does have a single-flight lock (`continue.state.json`), because a second
+LLM turn is pure cost, not a wasted claim; the lock is separate from the worker
+registry so it never consumes a concurrency slot.
+
+### Idempotent wake + a concurrency cap
+
+Waking must be safe to repeat, or a re-run of a tick (or an overlapping cron
+line) double-starts work. Guards:
+
+- **De-dup by card.** In the resident path the card queue coalesces a
+  `(card, role)` pair that is still pending or processing; a card offered twice
+  in one tick (the public pool, read by every agent) is claimed once. The legacy
+  one-shot path keeps the process registry (`supervisor.state.json`: card →
+  `{agent, pid, startedAt}`) for operators who still use it.
+- **Cap by count.** Poll's claim budget is
+  `max-concurrency − live subagents − queued cards` (default 8), and each project
+  directory has its own cap (`--project-concurrency`). Workers and reviewers draw
+  from the same budget — there is no per-role reservation; whichever cards are
+  offered first take the slots. The candidate read is **weight-ordered**, so
+  "first" means the highest-weight card (tier, then priority, time in status,
+  age, SLA pressure and downstream fan-out), not the oldest one. A full fleet
+  defers candidates rather than piling up handoffs.
+- **Crash recovery.** The **ping** clock prunes the legacy registry of pids that
+  are gone every 60 seconds. The resident path releases a slot from the ledger:
+  every live row is either a turn in flight or an orphan, so a row whose last
+  sighting outlives the 2-hour bound is marked stale and its slot freed; a
+  stalled queue entry is requeued up to three attempts, then failed and left to
+  the board's stale-claim recovery. A **retried** handoff (and every card of a
+  failed or timed-out turn) re-reads the card first: one that has already left
+  `todo`/`in_progress` — the worker delivered just before the interrupt — is
+  completed locally instead of being re-dispatched. A timed-out turn also closes
+  its session rather than reusing it.
+
+## The cost gate: a worker turn starts only on fire
+
+Waking a worker for every candidate on every pass would burn money on the work
+that is not ready. So the scan is a **plain CLI process** —
+`taskctl issue candidates` — with no model attached, and a worker turn starts
+**only when the scan produced work and the claim succeeded**:
+
+```
+poll entry
+ ├─ resident?  sessions.state.json: pool pid + fresh heartbeat → no? claim nothing, alert once
+ ├─ scan       taskctl issue candidates …        → no candidates? stop. 0 handoffs
+ ├─ budget     max-concurrency − live − queued   → 0? defer, claim nothing
+ ├─ admit      project → target_dir + per-project cap → no directory? defer before the claim
+ ├─ brief      register the watch → .meerkat/<id>/card.md → failed? defer unclaimed
+ ├─ claim      taskctl issue claim …             → refused? stop. no handoff
+ └─ enqueue    cards.queue.json (handoff, target_dir, role, task_id)
+                     ↓
+                project session (cwd = target_dir) → one subagent per card  ← the tokens
+```
+
+The continue turn itself is the one LLM turn the scheduler pays for, once per
+cadence, whether or not the board has work: it is the loop's judgment turn.
+Inside it, the poll entry is still the deterministic cost gate above. The project
+session's turn — one per batch of handoffs for a directory, not one per card — is
+the second cost, and it buys a subagent that starts in the right directory.
+`--dry-run` prints the plan and starts neither a claim nor a worker.
 
 ## The resident session pool
 
@@ -217,104 +356,11 @@ runs ping + a one-shot continue and **cannot dispatch worker/reviewer subagents*
 An agent kind with a session service gets the full loop. `--resident=no` forces the
 fallback even when a pool is running.
 
-## The cost gate: a worker turn starts only on fire
-
-Waking a worker for every candidate on every pass would burn money on the work
-that is not ready. So the scan is a **plain CLI process** —
-`taskctl issue candidates` — with no model attached, and a worker turn starts
-**only when the scan produced work and the claim succeeded**:
-
-```
-poll entry
- ├─ resident?  sessions.state.json: pool pid + fresh heartbeat → no? claim nothing, alert once
- ├─ scan       taskctl issue candidates …        → no candidates? stop. 0 handoffs
- ├─ budget     max-concurrency − live − queued   → 0? defer, claim nothing
- ├─ admit      project → target_dir + per-project cap → no directory? defer before the claim
- ├─ brief      register the watch → .meerkat/<id>/card.md → failed? defer unclaimed
- ├─ claim      taskctl issue claim …             → refused? stop. no handoff
- └─ enqueue    cards.queue.json (handoff, target_dir, role, task_id)
-                     ↓
-                project session (cwd = target_dir) → one subagent per card  ← the tokens
-```
-
-The continue turn itself is the one LLM turn the scheduler pays for, once per
-cadence, whether or not the board has work: it is the loop's judgment turn.
-Inside it, the poll entry is still the deterministic cost gate above. The project
-session's turn — one per batch of handoffs for a directory, not one per card — is
-the second cost, and it buys a subagent that starts in the right directory.
-`--dry-run` prints the plan and starts neither a claim nor a worker.
-
-## Atomic claim = the single dispatch source
-
-The board, not the supervisor, decides who gets a card. A claim is
-compare-and-swap in SQLite (`issue claim`, or `issue move … in_progress` for a
-`todo` card), so when several agents (or several supervisor ticks) race the same
-card **exactly one claim succeeds**; every loser gets a conflict and, crucially,
-**no worker is started**. That is what makes the claim the *only* dispatch path —
-a supervisor never "reserves" a card out of band, never wakes a worker for a card
-it did not win, and never claims success on a failed spawn.
-
-`issue claim` is also the **stale-recovery** path. A claim is not always a
-transition: re-taking an `in_progress` card does not change its status, so the
-move route (whose table has no `in_progress → in_progress`) cannot express it.
-The thresholds are layered:
-
-- the same holder may re-claim after **10 minutes** (refreshing ownership/heartbeat);
-- only after **30 minutes** does the card enter the `issue candidates --stale`
-  recovery pool;
-- any agent may take over after **6 hours**, and a takeover writes a `change` comment.
-
-The supervisor runs with `--recover-stale=yes` by default, adds `--stale` to the
-candidate read, and claims every candidate through `issue claim` — one path for
-ready and recovered work. Discovery and ownership are separate: the candidate read
-only *finds* stale cards; `issue claim` (backed by the board's CAS) is what
-transfers ownership.
-
-SLA patrol measures and alerts; by default it moves nothing. `--patrol-llm` is its
-only authorized move path — and that path is `move`, not `claim`: ownership changes
-always go through `issue claim` and the board's CAS.
-
-This is also why worker dispatch needs no lock file: the service model is
-single-writer and the CAS already serialises dispatch. Two entries racing each
-other is wasteful, not incorrect — the loser's claim is refused. The continue
-turn does have a single-flight lock (`continue.state.json`), because a second
-LLM turn is pure cost, not a wasted claim; the lock is separate from the worker
-registry so it never consumes a concurrency slot.
-
-### Idempotent wake + a concurrency cap
-
-Waking must be safe to repeat, or a re-run of a tick (or an overlapping cron
-line) double-starts work. Guards:
-
-- **De-dup by card.** In the resident path the card queue coalesces a
-  `(card, role)` pair that is still pending or processing; a card offered twice
-  in one tick (the public pool, read by every agent) is claimed once. The legacy
-  one-shot path keeps the process registry (`supervisor.state.json`: card →
-  `{agent, pid, startedAt}`) for operators who still use it.
-- **Cap by count.** Poll's claim budget is
-  `max-concurrency − live subagents − queued cards` (default 8), and each project
-  directory has its own cap (`--project-concurrency`). Workers and reviewers draw
-  from the same budget — there is no per-role reservation; whichever cards are
-  offered first take the slots. The candidate read is **weight-ordered**, so
-  "first" means the highest-weight card (tier, then priority, time in status,
-  age, SLA pressure and downstream fan-out), not the oldest one. A full fleet
-  defers candidates rather than piling up handoffs.
-- **Crash recovery.** The **ping** clock prunes the legacy registry of pids that
-  are gone every 60 seconds. The resident path releases a slot from the ledger:
-  every live row is either a turn in flight or an orphan, so a row whose last
-  sighting outlives the 2-hour bound is marked stale and its slot freed; a
-  stalled queue entry is requeued up to three attempts, then failed and left to
-  the board's stale-claim recovery. A **retried** handoff (and every card of a
-  failed or timed-out turn) re-reads the card first: one that has already left
-  `todo`/`in_progress` — the worker delivered just before the interrupt — is
-  completed locally instead of being re-dispatched. A timed-out turn also closes
-  its session rather than reusing it.
-
 ## Fresh heartbeat is a no-op; a broken one is never silent
 
 A claim carries a heartbeat. The board treats it as *fresh* for 10 minutes and
-*same-holder-recoverable* after 30; these windows are shared with
-[openclaw-team](https://github.com/tanyu216/openclaw-team).
+*same-holder-recoverable* after 30; these are the board's own windows, and the supervisor
+enforces exactly them.
 
 | Heartbeat age | Meaning | What the supervisor does |
 |---|---|---|
@@ -506,8 +552,9 @@ Why not let the reviewer close its own card (or skip the card entirely)? A revie
 both produces the verdict and accepts it is not a second pair of eyes, and a card is the
 retryable artefact: a crash between "apply the verdict" and "close the review" is
 recovered on the next pass, whereas a missing card leaves nothing to recover from. The
-separation is the same one the openclaw-team review protocol uses (`review_of` cards, the
-leader accepts); the loop is just the leader's automated stand-in.
+separation is exactly what the `review_of` card encodes — a separate card carries the
+verdict, and an actor other than the reviewer applies it; the loop is that actor's automated
+stand-in.
 
 ### Acceptance authority is enforced by the board
 
@@ -806,7 +853,7 @@ timers** — their hooks fire only on session events. So the loop lives outside:
 | `taskctl loop …` (this tree) | the scheduler: `loop run --ping-once` / `--continue-once` for the clocks, `loop session` for the resident pool, `loop run` for its own daemon clocks |
 | the installed runtime tree | what `install.sh` deploys; the units name `<tree>/src/cli/index.mjs loop …`, and an agent-only install names the checkout |
 | the local `taskd` process | a natural home for the same loop in a future milestone |
-| [openclaw-team](https://github.com/tanyu216/openclaw-team) | on OpenClaw, the framework *is* the supervisor |
+| the OpenClaw agent framework | on OpenClaw, the framework itself is the supervisor |
 
 The application is just a worker: the poll entry claims on the board, then the resident
 project session spawns the agent's subagent in the project directory.
@@ -897,7 +944,7 @@ write lock (R1: one `taskd` per data directory).
 > This is the board **server**'s guard, not the loop. It is separate from the table
 > above, which asks where the *loop* might one day run; the guard answers only "keep
 > `taskd` up". Enabling and stopping it is in
-> [`install.md`](install.md#the-taskd-guard-keepalive-always-enabled).
+> [`install.md`](ops/install.md#the-taskd-guard-keepalive-always-enabled).
 
 #### Where the unit lands (ownership separation)
 
@@ -908,7 +955,7 @@ write lock (R1: one `taskd` per data directory).
 
 The install root (`<prefix>/.meerkat-taskpanel/`; `<prefix>` is `install.sh --prefix`,
 default `$HOME`), deliberately **not** `<agent-dir>/scheduling/` where the loop's `ping`/`continue` units
-live ([Scheduling units](install.md#scheduling-units-claude-codex-pi)). Re-installing a
+live ([Scheduling units](ops/install.md#scheduling-units-claude-codex-pi)). Re-installing a
 agent kind's loop units never touches this directory, and the two are never confused for one
 another.
 
@@ -920,7 +967,7 @@ a second board is the unguarded case; see
 [One guard per machine](#one-guard-per-machine).
 
 `taskd` writes its own log at `<dataDir>/logs/taskd.log` — one line per event, rotated
-by size (see [Observability](observability.md#structured-logs)). The unit deliberately
+by size (see [Observability](ops/observability.md#structured-logs)). The unit deliberately
 **does not** redirect stdout/stderr into that file: the application is the only writer,
 and a redirect would duplicate every line. `install.sh` still creates `<dataDir>/logs`
 before writing the unit, and anything written before the logger starts (an unreadable
@@ -1290,7 +1337,7 @@ This is a **design boundary**, not a defect to be closed:
   loaded guard's own board has been read (`unitBoard()` / `servedBoard()`), and a guard
   already loaded for another board is a **named refusal** that leaves that file alone —
   exit 3 (`exitCode()`), with `--force` as the deliberate way to re-point it.
-  `docs/install.md § The taskd guard` has the report lines.
+  `docs/ops/install.md § The taskd guard` has the report lines.
 
 **Not adopted — for the record.** If a resident second guarded board is ever really
 needed, the minimal change set is: (a) parameterise the Label/unit name with a board slug;
@@ -1420,7 +1467,7 @@ differ. The supervisor's `--actor-kind` selects the one-shot continue command; t
 | **Claude Code** | `claude -p "<handoff>"` (headless) | external: launchd / systemd / cron running `taskctl loop run --ping-once` / `--continue-once`, or the scheduler's own two clocks | `claude -p … --resume <sid>` — resume the session that owns the card |
 | **Codex** | `codex exec "<handoff>"` | external: the same units, or Codex app automation (`intervalMinutes`, `quotaAware`, `model`, `reasoningEffort`) | resume the thread with `codex exec resume <sid> <prompt>`; carry `$CODEX_THREAD_ID` as `--session-id` |
 | **Pi** | `pi --print "<handoff>"` | external units | resume with `pi --print --session <sid> <prompt>`; pass the session id through the handoff |
-| **OpenClaw** | *n/a — no self-scheduler* | install **openclaw-team**; its `poll`/`patrol` automations are this design | the framework keeps the id stable across resumes |
+| **OpenClaw** | *n/a — no self-scheduler* | the agent framework's own `poll`/`patrol` automations — this design is their statement | the framework keeps the id stable across resumes |
 
 The wake command column is what the *agent CLI* is called with for a one-shot
 continue turn. A resident pool spawns the provider CLI directly instead, and the
@@ -1515,28 +1562,19 @@ explicit act: the opt-in switch is [`--supervisor=enable`](#enabling-the-supervi
 below, and it is the one thing that makes an installer load a unit or run `crontab` for you
 — see the exception stated there.
 
-### OpenClaw: do not build a supervisor
+### OpenClaw: no loop units
 
-OpenClaw is the one agent kind with a scheduler of its own. The
-[openclaw-team](https://github.com/tanyu216/openclaw-team) framework already
-implements exactly this pattern — a per-agent poll (its schedule *is* the trigger,
-so an idle tick costs nothing) for the scan and a `task-patrol` for the stale pass.
-Neither framework cadence is repeated here; the framework's `AUTOMATIONS.md` is the
-single source of truth for it.
+OpenClaw is the one agent kind whose framework already ships a scheduler: a per-agent poll
+(the schedule *is* the trigger, so an idle tick costs nothing) for the scan, and a
+stale-pass patrol. That is this design implemented on the framework's side; repeating it
+here would put two supervisors on one board, racing for the same cards. The board's claim is
+atomic, so the race is bounded — but the second supervisor is pure waste.
+
 `install.sh --target openclaw` therefore installs the **board skill only**: no
-`meerkat-loop` skill, no scheduler, no per-kind config — permanently, by
-ruling, not as a gap to be filled later. Two supervisors on one board would only race
-each other for the same cards, and the board's claim is atomic, so the race is bounded
-but the second supervisor is pure waste. Point OpenClaw at the framework instead:
-
-```bash
-git clone https://github.com/tanyu216/openclaw-team && cd openclaw-team
-./install.sh --dry-run      # preview
-./install.sh                # idempotent
-```
-
-Meerkat TaskPanel is that framework's default board, and its claim and candidate
-criteria are kept in lockstep with openclaw-team's poll — which is the point.
+`meerkat-loop` skill, no scheduler, no per-kind config — permanently, by ruling, not as a
+gap to be filled later. The framework's own automations are the supervisor on that host;
+this page stops at the boundary of what they must preserve — the atomic claim and the
+candidate criteria the board hands out.
 
 ## Enabling the supervisor (opt-in)
 
@@ -1552,7 +1590,7 @@ the one-time TTY question — also asked by the no-options wizard, default **non
 default is **N**): enabling is never a silent default, and
 a plain `install.sh` still only prints the load command. The flag surface, the TTY question
 and the env var are documented once in
-[`install.md §Enabling the supervisor (opt-in)`](install.md#enabling-the-supervisor-opt-in);
+[`install.md §Enabling the supervisor (opt-in)`](ops/install.md#enabling-the-supervisor-opt-in);
 this section is the per-OS detail, the failure modes, and what an enabled daemon runs.
 
 The switch is `--supervisor=enable|disable|status` with
@@ -1608,7 +1646,7 @@ Exit 0 with a `state =` line ⇒ loaded; `Could not find service …` ⇒ not lo
 | Symptom | Meaning | What the enable path does |
 |---|---|---|
 | `Bootstrap failed: 5: Input/output error` | no Aqua/GUI session — an SSH-only or headless launchd context | reports it and tells you to retry from a GUI login session (or use `launchctl load -w`). It does **not** claim success |
-| **the loop's** `Bootstrap failed: 37: … already bootstrapped` (legacy: `service already loaded`) | already loaded | **idempotent success** — the **supervisor** reports `supervisor: already enabled (…)`, exit 0. The `taskd` guard is bootstrapped the same way but reports its own, board-aware line instead — `already enabled` is *not* its wording ([`install.md § The taskd guard`](install.md#the-taskd-guard-keepalive-always-enabled)) |
+| **the loop's** `Bootstrap failed: 37: … already bootstrapped` (legacy: `service already loaded`) | already loaded | **idempotent success** — the **supervisor** reports `supervisor: already enabled (…)`, exit 0. The `taskd` guard is bootstrapped the same way but reports its own, board-aware line instead — `already enabled` is *not* its wording ([`install.md § The taskd guard`](ops/install.md#the-taskd-guard-keepalive-always-enabled)) |
 | `Could not find service` on disable | not loaded | **idempotent no-op** — reports `already disabled`, exit 0 |
 
 ### Linux — systemd `--user`
@@ -1752,7 +1790,7 @@ describes.
 ### OpenClaw stays excluded
 
 The new switch does not change the [OpenClaw
-ruling](#openclaw-do-not-build-a-supervisor). `--target openclaw` still installs the
+ruling](#openclaw-no-loop-units). `--target openclaw` still installs the
 **board skill only** — no `meerkat-loop` skill, no units, no glue, so nothing to enable.
 `--target all --supervisor=enable` **skips** openclaw: the enable action applies only to
 `{claude,codex,pi}`. `--supervisor-actor-kinds openclaw` is **rejected** (reason on stderr, exit
@@ -1914,11 +1952,11 @@ not exercise the real board's claim semantics (`scripts/verify/install-e2e.sh` d
 real `taskctl`/`taskd`). Per agent kind, only the forms the bundle actually ships are
 covered: Claude has a SessionStart hook; Codex and Pi have no hook, and their scheduling
 units are the automation. (The `taskctl` shim is not one of these forms and is not part of
-this boundary: every agent kind gets one — see `docs/install.md`.)
+this boundary: every agent kind gets one — see `docs/ops/install.md`.)
 
 ## See also
 
-- [`install.md`](install.md) — the installer flags, including `--claim-unassigned` and the
+- [`install.md`](ops/install.md) — the installer flags, including `--claim-unassigned` and the
   opt-in `--supervisor=enable|disable|status`.
 - [`../skills/meerkat-loop/SKILL.md`](../skills/meerkat-loop/SKILL.md) — the loop as the
   skill it is distributed as, and the board interface generation it requires;
@@ -1928,4 +1966,3 @@ this boundary: every agent kind gets one — see `docs/install.md`.)
   the agent-facing view: §Owning the clock.
 - [`../skills/meerkat/references/cli.md`](../skills/meerkat/references/cli.md) —
   `issue candidates --include-unassigned`.
-- [openclaw-team](https://github.com/tanyu216/openclaw-team) — the OpenClaw supervisor.

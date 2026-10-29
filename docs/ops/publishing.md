@@ -95,7 +95,7 @@ The published tarball's contents are decided by the `files` whitelist in the roo
 `CHANGELOG.md`, `LICENSE` and the two READMEs. `web/dist` (the **built** frontend, produced
 by the image's `webbuild` stage) is included so the package is a runnable board; the rest of
 `web/`, `dist/` and the test/CI directories are **not**. See
-[development.md](development.md#two-build-layers-engine-and-web).
+[development.md](../agents/development.md#two-build-layers-engine-and-web).
 
 > **`web/dist` needs `web/.npmignore`.** npm's packlist reads `.npmignore` in a directory
 > *instead of* `.gitignore`, and a `files` entry does not override either — verified against
@@ -232,7 +232,7 @@ published — so "a release with no bill of materials" is not a state this pipel
 reach. `security-scan.yml` also attaches an SBOM for the same tag, best-effort and after
 the fact; both jobs run the same action over the same commit, and it is `release.yml`'s copy
 whose presence the release depends on. The scanner, its threshold and the waiver ledger are
-documented in [security.md](security.md).
+documented in [security.md](../security.md).
 
 Tags are cut from `main` — §3.3 states that policy and the repository settings that back it.
 
@@ -272,7 +272,7 @@ node scripts/verify/changelog.mjs v1.2.3 --strict     # the tag-time form above
 ```
 
 Local hooks (`git config core.hooksPath .githooks`, wired by the root `package.json`
-`prepare` script — no `husky` dependency, see [`.githooks/README.md`](../.githooks/README.md)):
+`prepare` script — no `husky` dependency, see [`.githooks/README.md`](../../.githooks/README.md)):
 
 - **`.githooks/pre-tag v1.2.3`** — run it yourself *before* `git tag`. Git has no native
   `pre-tag` hook (a tag is a ref, not a commit), so this is invoked explicitly. It runs the
@@ -281,7 +281,7 @@ Local hooks (`git config core.hooksPath .githooks`, wired by the root `package.j
   `refs/tags/vX.Y.Z` also runs `tag-version.mjs` and `changelog.mjs --strict`, and a branch
   push ends with the container gate.
 - **`.githooks/pre-commit`** — the append-only migration check (see
-  [migration.md](migration.md#the-append-only-migration-gate)); unrelated to tagging but
+  [migration.md](../agents/migration.md#the-append-only-migration-gate)); unrelated to tagging but
   shipped in the same directory.
 
 CI is the authority: **`.github/workflows/version-gate.yml`** runs on a `v*` tag push and
@@ -303,7 +303,7 @@ proves the declaration the snapshot freezes is the one the handler honours: it r
 each route's handler source and compares the fields it reads against the declared
 `{query, body}`. `version-gate.yml` runs the snapshot check at tag time, and the
 `contract` job in `.github/workflows/check.yml` runs both on every pull request and every
-push to `dev`. The full story, and the `--update` workflow, is in [contract.md](contract.md).
+push to `dev`. The full story, and the `--update` workflow, is in [contract.md](../agents/contract.md).
 
 ### 3.3 Branch protection on `main`, and tags cut only from `main`
 
@@ -315,14 +315,15 @@ does not hand its workflows). They are stated as policy, with the human steps th
 
 1. **`main` changes only through a pull request.** No direct pushes, no force pushes, no
    deletions: an unreviewed commit must not become reachable from `main`. The `pre-push` hook
-   refuses a direct push to `main` locally ([.githooks/README.md](../.githooks/README.md)),
+   refuses a direct push to `main` locally ([.githooks/README.md](../../.githooks/README.md)),
    which is a courtesy — the rule below is the enforcement.
 2. **The required checks are green before the merge.** The checks are this repository's own
    workflows, so the list is short and closed — and deliberately aggregated:
    - `ci-success` (from `check.yml`) covers the `check` job (both matrix legs), `docker`,
      `contract`, `paths` and `signposts`;
    - `security-success` (from `security-scan.yml`) covers the `Dependency scan
-     (osv-scanner + npm audit)` and `SBOM (syft)` jobs.
+     (osv-scanner + npm audit)`, `Secret scan (gitleaks)`, `SAST (CodeQL)` and `SBOM (syft)`
+     jobs.
 
    The underlying jobs still appear in the UI under the names they declare: `check (22)`,
    `check (24)`, `docker`, `contract`. Requiring the aggregate rather than each job is the
@@ -513,7 +514,7 @@ pi list
 
 Every manifest points at the repository's one `skills/` tree, so the npm whitelist ships the
 skills directly and no bundle carries a generated copy of its own (see
-[development.md](development.md#the-skills-are-authored-never-generated)). The loop needs no
+[development.md](../agents/development.md#the-skills-are-authored-never-generated)). The loop needs no
 payload step: it is `src/orchestrator/` inside the published tree, and the units run
 `taskctl loop …`.
 
@@ -525,7 +526,7 @@ default, so a manifest that is not listed never reaches the tarball, and
 ## See also
 
 - [install.md](install.md) — the per-agent-kind install and plugin-registration commands in full.
-- [development.md](development.md) — the two build layers, the offline policy and the
+- [development.md](../agents/development.md) — the two build layers, the offline policy and the
   generated-skill rule.
-- [`../README.md`](../README.md) / [`../README.zh-CN.md`](../README.zh-CN.md) — status and
+- [`../README.md`](../README.md) / [`../README.zh-CN.md`](../../README.zh-CN.md) — status and
   the four-agent-kind support matrix.

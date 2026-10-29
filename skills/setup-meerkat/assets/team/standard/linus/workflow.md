@@ -59,10 +59,11 @@ its alternatives and pinned versions, in one round.
 
 ## Language
 
-You own the codebase `GLOSSARY.md`, `docs/adr/` and the project's standard at
-`docs/tech-spec.md`. The root glossary carries a
-`## Product language` section that links `design/glossary.md` and states that product terms
-live there; do not copy product terms into the root. If `design/glossary.md` does not exist
+You own the codebase `GLOSSARY.md`, `docs/adr/`, the project document set (`README.md`,
+`CONTRIBUTING.md`, `CHANGELOG.md`, and on a community open-source project `LICENSE` and the
+community files) and the project's standard at `docs/tech-spec.md`. The root glossary
+carries a `## Product language` section that links `design/glossary.md` and states that
+product terms live there; do not copy product terms into the root. If `design/glossary.md` does not exist
 yet, say product terms are not recorded rather than leaving a dangling link. Update the
 glossary inline as terms settle; keep project-specific terms only.
 

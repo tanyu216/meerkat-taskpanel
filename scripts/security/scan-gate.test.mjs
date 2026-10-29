@@ -423,6 +423,76 @@ describe("parseReport", () => {
 });
 
 // ---------------------------------------------------------------------------
+// gitleaks reports
+// ---------------------------------------------------------------------------
+
+/** A gitleaks v8 report: an array of leaks. */
+function gitleaksReport({ rule = "aws-access-token", file = "src/config.js", line = 12 } = {}) {
+  return [
+    {
+      RuleID: rule,
+      Description: "AWS Access Token",
+      StartLine: line,
+      EndLine: line,
+      Match: "AKIAIOSFODNN7EXAMPLE",
+      Secret: "AKIAIOSFODNN7EXAMPLE",
+      File: file,
+      Commit: "0123456789abcdef",
+      Author: "dev",
+      Email: "dev@example.com",
+      Date: "2026-10-01T00:00:00Z",
+      Tags: ["key", "AWS"],
+      Fingerprint: `${file}:${rule}:${line}`,
+    },
+  ];
+}
+
+describe("gitleaks reports", () => {
+  it("detects the format from its shape and parses one finding per leak", () => {
+    assert.equal(detectFormat(gitleaksReport()), "gitleaks");
+    const parsed = parseReport(gitleaksReport());
+    assert.equal(parsed.format, "gitleaks");
+    assert.equal(parsed.findings.length, 1);
+    assert.equal(parsed.findings[0].source, "gitleaks");
+    assert.equal(parsed.findings[0].kind, "secret");
+    assert.equal(parsed.findings[0].severity, "critical");
+    assert.match(parsed.findings[0].location, /src\/config\.js:12/);
+  });
+
+  it("never carries the secret itself into the verdict", () => {
+    const parsed = parseReport(gitleaksReport());
+    const rendered = JSON.stringify(parsed);
+    assert.ok(!rendered.includes("AKIAIOSFODNN7EXAMPLE"), "the secret is dropped at the parser");
+  });
+
+  it("blocks a committed secret under strict, and a waiver cannot cover it", () => {
+    const parsed = parseReport(gitleaksReport());
+    const decision = evaluateGate({
+      findings: parsed.findings,
+      strict: true,
+      now: NOW,
+      waivers: [
+        {
+          id: `secret:aws-access-token`,
+          reason: "temporary allowance for a test",
+          granted: "2026-10-01",
+          expires: "2026-12-01",
+        },
+      ],
+    });
+    assert.equal(decision.blocked.length, 1);
+    assert.equal(decision.waived.length, 0, "a secret is never waivered");
+    assert.equal(decision.exitCode, EXIT.BLOCKED);
+  });
+
+  it("treats an empty array as a real, empty gitleaks report when forced", () => {
+    const result = parseReport([], "gitleaks");
+    assert.equal(result.format, "gitleaks");
+    assert.deepEqual(result.findings, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Waivers
 // ---------------------------------------------------------------------------
 
@@ -716,6 +786,29 @@ describe("scan-gate.mjs CLI", () => {
 
     assert.equal(result.status, EXIT.PASS, result.stderr);
     assert.match(result.stdout, /no blocking advisories|0 findings/);
+  });
+
+  it("accepts an empty gitleaks report when the format is forced", async () => {
+    const dir = await makeTree({ "gitleaks.json": [] });
+    const result = runCli(["--input", join(dir, "gitleaks.json"), "--format", "gitleaks", "--now", NOW]);
+
+    assert.equal(result.status, EXIT.PASS, result.stderr);
+    assert.match(result.stdout, /no blocking advisories|0 findings/);
+  });
+
+  it("blocks a committed secret under strict and never prints it", async () => {
+    const dir = await makeTree({ "gitleaks.json": gitleaksReport() });
+    const summary = join(dir, "summary.md");
+    const result = runCli(
+      ["--input", join(dir, "gitleaks.json"), "--format", "gitleaks", "--now", NOW, "--summary", summary],
+      { [STRICT_ENV]: "1" },
+    );
+
+    assert.equal(result.status, EXIT.BLOCKED);
+    assert.ok(!result.stdout.includes("AKIAIOSFODNN7EXAMPLE"), "the secret is never echoed");
+    assert.ok(!result.stderr.includes("AKIAIOSFODNN7EXAMPLE"));
+    const text = await readFile(summary, "utf8");
+    assert.ok(!text.includes("AKIAIOSFODNN7EXAMPLE"), "the summary never carries the secret");
   });
 
   it("exits 0 but reports a High finding by default (alert-only)", async () => {

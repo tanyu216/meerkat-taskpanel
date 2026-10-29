@@ -448,7 +448,7 @@ export function parsePid(plan, output) {
  * Write both units and load this platform's one.
  *
  * Every step is reported: a write says `wrote` / `kept`, and the load says
- * `enabled (…, pid …)` — the line `docs/install.md` documents — or, when this
+ * `enabled (…, pid …)` — the line `docs/ops/install.md` documents — or, when this
  * machine has no way to load it, `installed … not loaded` plus the command that
  * would. A load that cannot happen is **not** a failed install: the agent skills
  * are installed either way, and the honest report plus the printed command is

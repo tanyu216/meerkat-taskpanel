@@ -347,11 +347,55 @@ export function parseOsvReport(doc) {
 function dedupeFindings(findings) {
   const seen = new Set();
   return findings.filter((finding) => {
-    const key = [finding.source, finding.id, finding.package, finding.version, finding.score].join("|");
+    const key = [finding.source, finding.id, finding.package, finding.version, finding.location ?? "", finding.score].join("|");
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+// ---------------------------------------------------------------------------
+// gitleaks reports
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a `gitleaks git --report-format json` report: an array of leaks.
+ *
+ * The secret itself (`Secret`, `Match`, `Entropy`) is deliberately dropped here — the
+ * verdict names the rule and the location, never the credential. Every leak is `critical`
+ * and is not waivable: a committed secret is rotated and purged, not accepted.
+ *
+ * @param {unknown} doc
+ * @returns {{findings: object[], errors: string[]}}
+ */
+export function parseGitleaksReport(doc) {
+  if (!Array.isArray(doc)) return { findings: [], errors: ["gitleaks: report must be a JSON array"] };
+
+  /** @type {object[]} */
+  const findings = [];
+  for (const leak of doc) {
+    if (!isObject(leak)) continue;
+    const rule = typeof leak.RuleID === "string" && leak.RuleID !== "" ? leak.RuleID : "unknown-rule";
+    const file = typeof leak.File === "string" && leak.File !== "" ? leak.File : null;
+    const line = Number.isInteger(leak.StartLine) ? leak.StartLine : null;
+    findings.push({
+      source: "gitleaks",
+      kind: "secret",
+      id: `secret:${rule}`,
+      aliases: [],
+      package: file,
+      version: null,
+      ecosystem: null,
+      title: typeof leak.Description === "string" && leak.Description !== "" ? leak.Description : rule,
+      manifest: null,
+      location: file === null ? null : `${file}:${line ?? "?"}`,
+      score: null,
+      scoreSource: null,
+      severity: "critical",
+    });
+  }
+
+  return { findings: dedupeFindings(findings), errors: [] };
 }
 
 // ---------------------------------------------------------------------------
@@ -447,9 +491,14 @@ export function parseNpmAuditReport(doc, options = {}) {
  * Identify which scanner wrote a report.
  *
  * @param {unknown} doc
- * @returns {"osv"|"npm"|null}
+ * @returns {"osv"|"npm"|"gitleaks"|null}
  */
 export function detectFormat(doc) {
+  if (Array.isArray(doc)) {
+    // An empty array carries no shape; the caller must force `--format gitleaks` for it.
+    if (doc.length === 0) return null;
+    return doc.some((entry) => isObject(entry) && typeof entry.RuleID === "string") ? "gitleaks" : null;
+  }
   if (!isObject(doc)) return null;
   if (typeof doc.auditReportVersion === "number") return "npm";
   if (isObject(doc.vulnerabilities) && isObject(doc.metadata?.vulnerabilities)) return "npm";
@@ -461,21 +510,29 @@ export function detectFormat(doc) {
  * Parse a scanner report, auto-detecting its format unless one is forced.
  *
  * @param {unknown} doc
- * @param {"auto"|"osv"|"npm"} [format]
+ * @param {"auto"|"osv"|"npm"|"gitleaks"} [format]
  * @param {{manifest?: string}} [options]
- * @returns {{findings: object[], errors: string[], format: "osv"|"npm"|null}}
+ * @returns {{findings: object[], errors: string[], format: "osv"|"npm"|"gitleaks"|null}}
  */
 export function parseReport(doc, format = "auto", options = {}) {
-  if (format !== "auto" && format !== "osv" && format !== "npm") {
+  if (!["auto", "osv", "npm", "gitleaks"].includes(format)) {
     return { findings: [], errors: [`unknown report format: ${format}`], format: null };
   }
 
   const resolved = format === "auto" ? detectFormat(doc) : format;
   if (resolved === null) {
-    return { findings: [], errors: ["unrecognised report: not an osv-scanner or npm audit JSON document"], format: null };
+    return {
+      findings: [],
+      errors: ["unrecognised report: not an osv-scanner, npm audit or gitleaks JSON document"],
+      format: null,
+    };
   }
 
-  const parsed = resolved === "osv" ? parseOsvReport(doc) : parseNpmAuditReport(doc, options);
+  const parsed = resolved === "osv"
+    ? parseOsvReport(doc)
+    : resolved === "npm"
+      ? parseNpmAuditReport(doc, options)
+      : parseGitleaksReport(doc);
   return { findings: parsed.findings, errors: parsed.errors, format: resolved };
 }
 
@@ -671,6 +728,14 @@ export function evaluateGate(options = {}) {
       return annotated;
     }
 
+    // A committed secret is not an advisory: no waiver ledger entry can cover it. The fix
+    // is to rotate the credential and purge it from the history.
+    if (annotated.kind === "secret") {
+      annotated.status = "blocked";
+      annotated.waiverRejected = "a committed secret is not waivable; rotate and purge";
+      return annotated;
+    }
+
     /** @type {string[]} */
     const rejected = [];
     for (const waiver of ledger) {
@@ -789,7 +854,7 @@ export function renderText(decision) {
 export function renderSummary(decision) {
   const { counts, policy } = decision;
   const lines = [
-    "## Dependency security scan",
+    "## Security scan",
     "",
     `**Gate:** CVSS >= ${policy.threshold.toFixed(1)} blocks · waivers up to ${policy.maxWaiverDays.default} days (Critical ${policy.maxWaiverDays.critical}) · mode: **${policy.mode}** · evaluated ${policy.now}`,
     "",
@@ -809,7 +874,7 @@ export function renderSummary(decision) {
   if (decision.findings.length > 0) {
     lines.push("| Status | Severity | CVSS | Package | Advisory | Manifest | Note |", "|---|---|---|---|---|---|---|");
     for (const finding of decision.findings) {
-      const where = [finding.package, finding.version].filter(Boolean).join("@");
+      const where = finding.location ?? [finding.package, finding.version].filter(Boolean).join("@");
       const note =
         finding.status === "waived" && finding.waiver !== null
           ? `waived until ${finding.waiver.expires} — ${finding.waiver.reason}`
@@ -819,6 +884,10 @@ export function renderSummary(decision) {
       );
     }
     lines.push("");
+  }
+
+  if (decision.findings.some((finding) => finding.kind === "secret")) {
+    lines.push("Secrets are never waivable: rotate the credential and purge it from the history.", "");
   }
 
   if (decision.scanErrors.length > 0) {
@@ -836,12 +905,13 @@ export function renderSummary(decision) {
 
 const USAGE = `Usage: node scripts/security/scan-gate.mjs --input <report.json> [options]
 
-Reads scanner JSON (osv-scanner and/or \`npm audit --json\`) and reports whether anything
-unwaived is at or above CVSS ${CVSS_BLOCK_THRESHOLD.toFixed(1)}.
+Reads scanner JSON (osv-scanner, \`npm audit --json\` and/or gitleaks) and reports whether
+anything unwaived is at or above CVSS ${CVSS_BLOCK_THRESHOLD.toFixed(1)}, or is a committed
+secret.
 
 Options:
-  --input <file>       a scanner report; repeat for osv-scanner + npm audit (required)
-  --format <f>         auto (default) | osv | npm — force the parser for every --input
+  --input <file>       a scanner report; repeat for osv-scanner + npm audit + gitleaks (required)
+  --format <f>         auto (default) | osv | npm | gitleaks — force the parser for every --input
   --waivers <file>     the waiver ledger (default: scripts/security/waivers.json)
   --now <YYYY-MM-DD>   the date to evaluate waivers at (default: today, UTC)
   --strict             enforce the threshold with exit ${EXIT.BLOCKED} (same as ${STRICT_ENV}=1)
@@ -859,7 +929,7 @@ Environment: ${STRICT_ENV}=1 enforces the threshold; anything else alerts only.`
  * which the caller reports, not a crash.
  *
  * @param {string} file
- * @param {"auto"|"osv"|"npm"} format
+ * @param {"auto"|"osv"|"npm"|"gitleaks"} format
  * @returns {Promise<{ok: true, findings: object[], errors: string[]} | {ok: false, error: string}>}
  */
 async function readReport(file, format) {
@@ -913,8 +983,8 @@ async function main(argv) {
     return EXIT.PASS;
   }
 
-  if (!["auto", "osv", "npm"].includes(values.format)) {
-    process.stderr.write(`scan-gate: unknown --format "${values.format}" (expected auto, osv or npm)\n`);
+  if (!["auto", "osv", "npm", "gitleaks"].includes(values.format)) {
+    process.stderr.write(`scan-gate: unknown --format "${values.format}" (expected auto, osv, npm or gitleaks)\n`);
     return EXIT.USAGE;
   }
   if (values.now !== undefined && parseDate(values.now) === null) {

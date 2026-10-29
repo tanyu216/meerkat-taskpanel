@@ -1047,8 +1047,8 @@ describe("static: profiles and docs", () => {
   });
 
   it("documents the docker workflow", async () => {
-    const text = await read("docs/docker.md");
-    assert.ok(text.length > 500, "docs/docker.md looks empty");
+    const text = await read("docs/agents/docker.md");
+    assert.ok(text.length > 500, "docs/agents/docker.md looks empty");
     for (const needle of [
       "npm run verify:docker",
       "docker compose",
@@ -1056,7 +1056,7 @@ describe("static: profiles and docs", () => {
       "/health",
       "Troubleshooting",
     ]) {
-      assert.ok(text.includes(needle), `docs/docker.md should mention ${needle}`);
+      assert.ok(text.includes(needle), `docs/agents/docker.md should mention ${needle}`);
     }
   });
 

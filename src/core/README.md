@@ -15,15 +15,12 @@ Rules that are enforced, not just documented:
 * nothing here imports `cli/` or `server/` — the dependency direction is
   `cli|server → core → foundation`;
 * every failure is a `DomainError` with a code, never a bare `Error`;
-* a table rebuild re-creates **every** index and trigger the dropped table had, so an
-  upgraded board and a fresh install end on the same schema. 0013's rebuild of `tasks`
-  lost 0005's `ix_tasks_source` and 0014 restores it (0014's header carries the index
-  count 0013's own header got wrong, since its text is frozen); the property is held by
-  `test/core/storage/migrations-0013.test.mjs`, which derives the expected set from the
-  board *before* 0013 instead of listing it. 0015 (the `deploy` kind) is the next
-  rebuild of `tasks` and names all seven indexes itself — the set a board at 0014
-  carries, which is what its own `migrations-0015.test.mjs` compares against a fresh
-  one;
+* the migration SQL and the JS vocabulary agree in both directions — a table, an enum literal
+  or a `RAISE` code that lives on only one side is named by `test/contract/sql-parity.test.mjs`.
+  A **future** table rebuild must re-create every index and trigger the dropped table had, so
+  an upgraded board and a fresh install end on the same schema. The `00xx` numbers cited here
+  and in code comments are pre-release design labels: the 0.1.0 baseline squashed the
+  `0001..0042` history into `0001_init.sql` (`docs/agents/migration.md`);
 * the delivery gate is a database trigger *and* a domain check, and the two are
   tested against each other (`test/contract/`);
 * a **review card** is an ordinary `kind=task` card carrying the immutable
@@ -31,7 +28,7 @@ Rules that are enforced, not just documented:
   reader (`foundation/review-identity.mjs`): the columns are the authority, and
   `meta.review_of` is a readable/legacy mirror. A review card cannot be reopened, cannot
   be a parent or a child, and cannot itself be reviewed — the command layer refuses first,
-  and the `0041` triggers refuse a raw writer. The wire derives a readable `role`
+  and the migration's triggers refuse a raw writer. The wire derives a readable `role`
   (`task|epic|review`) from `kind` + the marker, and `kind=review` is a **filter over the
   marker** (translated in `commands/tasks.mjs#readOrdered`), never a third kind: `kind=task`
   keeps returning review cards and create/update still refuse `review`;
@@ -86,8 +83,7 @@ Rules that are enforced, not just documented:
 
 Two agent turns can race to create the same card. The defence has two layers,
 and the ordering matters: the mechanical key below is a **backstop**, not the
-gate. The rule is stated in full below and implemented by `domain/idem.mjs`;
-provenance: `guides/task-interface.md` §14.
+gate. The rule is stated in full below and implemented by `domain/idem.mjs`.
 
 **1 — Main gate: read before you create (semantic, an LLM does it).** Before
 creating a card, the creator reads the existing **non-terminal** cards —

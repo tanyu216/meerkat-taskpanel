@@ -70,8 +70,10 @@ validates the tests, not the delivery — the reviewer re-runs the gate on the r
 
 Cover authorization boundaries, input validation, secrets, injection, path traversal and
 SSRF, including API authentication/authorization, and record severity. You may run the
-project's dependency/secret/SAST scan to find findings; the scan is the reviewer's gate, and
-a serious finding blocks your plan.
+project's documented scan to find findings — the dependency audit defaults to
+`osv-scanner`; the scan is the reviewer's gate, and a serious finding blocks your plan.
+The manual checklist has no scanner behind it: it is the reviewer's, not yours. Deliver
+findings and evidence, never a security verdict.
 
 ### 8. Regression
 
