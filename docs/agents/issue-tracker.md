@@ -14,6 +14,9 @@ as comments (`taskctl comment add <ref> --kind decision|note|question --body …
 for a person is `taskctl issue move <ref> awaiting --awaiting-reason E1..E5 --question …`.
 Finish by delivering a report for the current round —
 `taskctl issue deliver <ref> --report-file -` — which moves the card to `in_review`.
+In a team project, **the create is the routing step**: the card carries its accountable role
+as the assignee. The loop scans only `MEERKAT_TASKPANEL_AGENTS`, so an unassigned card (or one
+assigned to a name nobody scans) is never claimed until someone routes it.
 Acceptance is somebody else's act: a human, or the loop when the card's `acceptance_mode` is
 `agent`/`off`. Never write the board's SQLite file or its HTTP API directly, and never edit an
 exported brief.
@@ -22,7 +25,7 @@ exported brief.
 
 | The skills say | Do this here |
 |---|---|
-| create an issue | when you are in a conversation with the human or the create carries their explicit instruction: `taskctl --as-human issue create --project <id> --title … --acceptance "…"`; otherwise drop `--as-human` |
+| create an issue | when you are in a conversation with the human or the create carries their explicit instruction: `taskctl --as-human issue create --project <id> --title … [--assignee <role>] --acceptance "…"`; otherwise drop `--as-human`. In a team project the create carries the one accountable role from `ownership.md`; an unassigned card is unowned. |
 | list open issues | `taskctl issue list --status todo --status in_progress --json` |
 | read an issue | `taskctl issue get <ref> --json` |
 | comment on an issue | `taskctl comment add <ref> --kind note --body …` |
