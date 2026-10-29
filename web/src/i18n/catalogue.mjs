@@ -12,18 +12,18 @@
  * Measured counts (host-static, re-pinned after R17 · T-20261013-184457,
  * R14 · T-20261014-082533 and T-20261014-212017-3)
  * ---------------------------------------------------------------------------
- *   prototype MESSAGES  en 288 / zh 288 (exact 1:1 mirror)
- *   this catalogue      en 271 / zh 271 — the 288 minus the 17 prototype-only
+ *   prototype MESSAGES  en 289 / zh 289 (exact 1:1 mirror)
+ *   this catalogue      en 272 / zh 272 — the 289 minus the 17 prototype-only
  *                       keys listed below, still an exact 1:1 mirror (identical
  *                       key sets, identical key order, no duplicates, no empty
  *                       values)
  *   `%s` placeholders  252 keys carry none, 17 carry one, 2 carry two — and the
  *                       histogram is identical for en and zh, key for key (no
  *                       prototype-only key carries a placeholder)
- *   data-i18n* hooks    851 in `design/prototype/index.html`:
- *                         545 `data-i18n=`
- *                         193 `data-i18n-arg=`
- *                          85 `data-i18n-aria-label=`
+ *   data-i18n* hooks    836 in `design/prototype/index.html`:
+ *                         540 `data-i18n=`
+ *                         188 `data-i18n-arg=`
+ *                          80 `data-i18n-aria-label=`
  *                          19 `data-i18n-title=`
  *                           9 `data-i18n-placeholder=`
  *
@@ -53,10 +53,10 @@
  * ---------------------------------------------------------------------------
  * Its header now quotes **626 `data-i18n*` hooks** and **282 catalogue keys** —
  * its own line reads "522 `data-i18n` plus 104 `placeholder` / `aria-label` /
- * `title` variants", so it counts four of the five attributes and leaves the 193
- * `data-i18n-arg` seats out. Measured over all five, the document carries 851;
+ * `title` variants", so it counts four of the five attributes and leaves the 188
+ * `data-i18n-arg` seats out. Measured over all five, the document carries 836;
  * and its key count no longer agrees either — the 282 it states is one design
- * round behind the 288 `app.js` now holds (T-20261014-212017-3 added the
+ * round behind the 289 `app.js` now holds (T-20261014-212017-3 added the
  * drawer's six edit keys). Earlier rounds were wrong on both, which is the
  * case `test/web/blocks.contract.mjs` still keeps on the books as
  * `STALE_PROSE_COUNTS`. Machine checks must therefore count from the real
@@ -66,14 +66,14 @@
  * ---------------------------------------------------------------------------
  * Coverage: every hook the prototype's own markup authors resolves
  * ---------------------------------------------------------------------------
- * All 543 `data-i18n`, 85 `-aria-label`, 19 `-title` and 9 `-placeholder`
+ * All 540 `data-i18n`, 80 `-aria-label`, 19 `-title` and 9 `-placeholder`
  * values are real catalogue keys — except the 17 prototype-only demo values the
  * shipped app does not render (16 of them on `data-i18n`, `states.close` on
  * `-aria-label`), which the suite tracks by name. Every key composed at runtime
  * (`status.*`, `priority.*`, `access.theme.*`, `access.lang.short.*` in `app.js`)
- * exists too. `data-i18n-arg` is different in kind: its 193 values (50 distinct)
+ * exists too. `data-i18n-arg` is different in kind: its 188 values (45 distinct)
  * are arguments, not keys — the prototype resolves one with `text(arg)`, which
- * returns the argument verbatim when it is not itself a key. 43 of the 50 are
+ * returns the argument verbatim when it is not itself a key. 38 of the 45 are
  * literals ("ci", "ux", "3", "TD-134"); the rest name keys. `translate()`
  * reproduces that fallback exactly, so both cases behave as they do in the
  * prototype.
@@ -390,7 +390,7 @@ export const CATALOGUE = {
       "nav.board": "看板",
       "nav.list": "列表",
       "nav.activity": "动态",
-      "nav.waiting": "等你回复",
+      "nav.waiting": "等你处理",
       "sidebar.projects": "项目",
       "sidebar.agents": "活跃 Agent",
       "presence.running": "运行中",
@@ -636,8 +636,8 @@ export const CATALOGUE = {
       "activity.empty.filter.title": "没有动态符合这些筛选",
       "activity.empty.filter.hint": "放宽筛选即可看到完整记录。",
       "activity.empty.filter.reset": "重置筛选",
-      "waiting.title": "等你回复",
-      "waiting.subtitle": "所有等你答复的事项，最久的排在最前。",
+      "waiting.title": "等你处理",
+      "waiting.subtitle": "所有等你答复或验收的事项，最久的排在最前。",
       "waiting.count": "%s 项等你回复",
       "waiting.reason.question": "待回答",
       "waiting.reason.blocked": "已阻塞",

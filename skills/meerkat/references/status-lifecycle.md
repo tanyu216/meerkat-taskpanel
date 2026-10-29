@@ -212,7 +212,9 @@ into the snapshot; the gates never read meta.
   the pointer, not the truth of the pointer. The judgement behind it is the reviewer's: a
   claim that cannot be reproduced is `not_met`, never `met`, and `partial` does not soften a
   requirement that was not implemented. An `off` or `human` card keeps the lighter contract
-  (matching items, statuses and notes).
+  (matching items, statuses and notes). `deliver` applies the same rule before it writes the
+  row (`details.source = "delivery"`): a report is bound to its round and cannot be amended, so
+  an anchorless `met` is cheaper to refuse at the writer than to discover after a review.
 - **Reviews.** An `APPROVE` on a review card is checked against the original's snapshot (and
   the review card's own) before it can close anything, and the review report must carry at
   least one `command` anchor — the reviewer runs the gate itself, so an APPROVE that ran

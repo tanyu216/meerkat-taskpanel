@@ -578,6 +578,27 @@ product override of the prototype's 520px `--shell-drawer`. The `100vw` ceiling
 keeps a narrow viewport full-width exactly as before; every other box in this
 block follows the prototype.
 
+**Implementation supplement — the Acceptance tab can act (M6).** 〔原型只读；这是
+记录在案的扩展，不是原型被回改〕 The prototype's Acceptance panel is a read-only
+list of verdicts; in the shipped board the card's own `acceptance_mode` is what
+assigns the closing act to a person, so the tab is where that act belongs. A card
+whose `acceptance_mode` is `human` and whose client twin of the board's gate
+(`isAcceptanceWaiting(task, tasks)`, `web/src/lib/waiting-queue.js`) says the
+decision is still owed leads with the **latest delivery's summary** —
+`[data-detail-acceptance-summary]` → `[data-detail-acceptance-round]` ·
+`[data-detail-acceptance-author]` · `[data-detail-acceptance-conclusion]` — above
+the criteria list, then offers `[data-detail-acceptance-actions]` →
+`[data-detail-accept]` (`in_review → done`) and `[data-detail-send-back]`. Send
+back opens `[data-detail-send-back-panel]` → `[data-detail-send-back-note]`,
+`[data-detail-send-back-confirm]`, `[data-detail-send-back-cancel]`; the note is
+required and is written **before** the `in_review → in_progress` move, which
+starts a new delivery round. The generic status menu is unchanged and remains the
+other way to make both moves; the server gate stays the authority, and its
+refusal renders through the ordinary `[data-detail-save-error]` + toast path.
+Every hook here is pinned by `test/web/blocks.contract.mjs` §B09 in `states`
+(they exist only on a waiting card), and both legs — accept and send back — are
+driven in `web/scripts/dom-smoke.mjs` (run by `test/web/blocks.dom.test.mjs`).
+
 **Implementation supplement — the panel opens before its card is read.** Opening a card
 clears the detail and flips the drawer to `open` in one act, so the panel now slides in at
 once with a skeleton head and body (`[data-detail-skeleton]`, daisyUI `skeleton` bars in
@@ -1256,11 +1277,20 @@ is in *their* court, and only by how long they have been waiting. Two destinatio
 roots, two questions; the ruling that keeps them apart is Elon's (card comment, 2026-10-12
 19:04) and the reasoning is DESIGN.md §30.1.
 
+**Which filters narrow it — none of the board's.** The queue is derived from the whole board
+reading, not from the board's visible set, and narrowed by exactly one condition: the sidebar's
+assignee (whose queue is being read). The status / priority / label / search filters belong to
+the board view and never reach the queue — the waiting view hides the filter bar, so a filter
+narrowing it would hide an overdue item invisibly, the failure §30.6's rejected "give `waiting`
+its own filter bar" alternative already names. Both halves of the one queue — awaiting questions
+and waiting acceptances — apply that same assignee narrowing, and the header's tally reads the
+same two derivations the rows do, so the count cannot disagree with what is on screen (TP-0021).
+
 | | |
 |---|---|
 | Root | `[data-waiting-view]` — fourth child of `main.td-main`, beside `[data-board-view]`, `[data-list]` and `[data-activity-view]`; ships **`hidden`**, because the no-script default view is the board |
 | B27.2 header | `[data-waiting-head]` → `[data-waiting-title]` (`waiting.title`, byte-identical to `nav.waiting`) + the description (`waiting.subtitle`, R15 ④ — a `data-i18n` seat only, no `data-waiting-*` of its own) + `[data-waiting-count]` (`waiting.count`, `%s` template) |
-| B27.1 the queue | `[data-waiting-list]` → `[data-waiting-item]` → `[data-waiting-actor]` / `[data-waiting-reason]` / `[data-waiting-task]` + `[data-waiting-task-title]` / `[data-waiting-since]` / `[data-waiting-open]` |
+| B27.1 the queue | `[data-waiting-list]` → `[data-waiting-item]` → `[data-waiting-actor]` / `[data-waiting-reason]` (+ `[data-waiting-action]`) / `[data-waiting-task]` + `[data-waiting-task-title]` / `[data-waiting-preview]` / `[data-waiting-since]` / `[data-waiting-open]` |
 | B27.3 empty state | `[data-waiting-empty]`; ships `hidden`. R17 gives it B12's reading — the brand mark first, `td-empty-lg`, top-aligned — and the second line the state was missing (`waiting.empty.hint`). No button: nothing in this view filters. Its R17 420px cap is withdrawn (2026-10-15): it is `width: 100%`, full-width like B12's |
 
 **R15 ④ — the header states what the view is, not only its name.** Terry's 2026-10-13 third
@@ -1268,12 +1298,12 @@ request (`T-20261013-165112`) was that `Waiting on me` learn the two-line head B
 had. The header is now a **text block plus the tally**: `.td-waiting-head-text` holds the
 title over a one-line description, and `[data-waiting-count]` keeps its `margin-left: auto`
 seat at the far end. The description is the round's one new string — `waiting.subtitle`
-(`"Everything waiting on your answer, oldest first."` / `"所有等你答复的事项，最久的排在最前。"`)
+(`"Everything waiting on your answer, oldest first."` / `"所有等你答复或验收的事项，最久的排在最前。"`)
 — and it says the queue's own two properties and nothing else: whose court the ball is in,
 and that the longest wait reads first (B27's ordering rule, restated in the header so a
 reader knows it without counting rows). It carries a `data-i18n` hook **only**, no
 `data-waiting-*` of its own, exactly as B26's own subtitle does (B26.1) — so the view's
-auxiliary hook set stays at its 14 names. The block computes **identically** to B26's
+auxiliary hook set stays at its 16 names. The block computes **identically** to B26's
 (`design/fidelity-r15.md` §3: `12px`, `--color-td-ink-3`, `margin-top: 2px`, and the title
 above it unchanged at `16px`/`600`), and it is spelled in this view's own family names
 (`.td-waiting-head-text` / `.td-waiting-sub`) per B27's rule that either header may move
@@ -1288,8 +1318,8 @@ carries it again on `data-since`, and the visible text is that instant read the 
 reads one — the same three `time.*` keys, and in the shipped document the text already equals
 what the page would compute.
 
-**The queue is static markup, not a render.** 5 rows, each one's actor, kind, identifier,
-title, stamp and opener present in the document — 0 `<template>` inside the view. With the
+**The queue is static markup, not a render.** 5 rows, each one's actor, act, identifier,
+title, preview, stamp and opener present in the document — 0 `<template>` inside the view. With the
 script off the queue is complete and merely `hidden`, and the header's tally is the static
 sentence it ships. This is the property R-5 states and the check measures twice: once against
 the source, once in a context with JavaScript disabled.
@@ -1300,19 +1330,32 @@ rows follow. Waiting is the first surface that *proves* it without a script: `PR
 the board's longest identifier at nine characters, so at the ten-character cap its cell
 reads `PROJ-0007` in the markup itself, whole.
 
-**The reason chip is an attribute with three values.** `[data-waiting-reason]` carries
-`data-waiting-reason-kind="question" | "blocked" | "acceptance"` and reads its copy from
-`waiting.reason.<kind>`; those three are the whole domain (`acceptance` is M6's ruling change,
-recorded in `DESIGN.md` §30.3). Its dot is coloured the way every other dot on this board is
-coloured — an attribute rule sets `--status-color` (`[data-waiting-reason-kind]`, declared
-beside the `[data-status]` and `[data-priority]` bindings in `src/input.css`) and the component
-reads the variable, so no component names a colour. Every kind reads a status token, because
-the reason *is* the task's state: a block, a question, or a delivery waiting on acceptance.
+**The state is an attribute with three values; the act is the chip's copy.** `[data-waiting-reason]`
+carries `data-waiting-reason-kind="question" | "blocked" | "acceptance"` — those three are the
+whole domain (`acceptance` is M6's ruling change, recorded in `DESIGN.md` §30.3) — while its
+visible text, `[data-waiting-action]`, names what the **human does** about it: Answer /
+Unblock / Accept (`waiting.action.<kind>`). Naming the state alone was the defect TP-0019
+closed: 「待回答」/「待你验收」 tells a reader what the card is, not what is owed. The dot is
+coloured the way every other dot on this board is coloured — an attribute rule sets
+`--status-color` (`[data-waiting-reason-kind]`, declared beside the `[data-status]` and
+`[data-priority]` bindings in `src/input.css`) and the component reads the variable, so no
+component names a colour. Every kind reads a status token, because the state *is* the task's
+own: a block, a question, or a delivery waiting on acceptance.
+
+**The ask gets a second line.** `[data-waiting-preview]` carries what the row is asking: the
+triggering comment's first sentence for a question or a block (the comment is already read for
+`since`, so this costs no request), or the delivery round and acceptance count for an
+acceptance row (`第 N 轮 · M 条验收项`), drawn from `delivery_round` and the frozen acceptance
+list already on the list wire. The row is therefore two lines — the act and the card on the
+first, the ask beneath it — and `.td-waiting-item` grows by `min-height` rather than a fixed
+height so the second line has somewhere to land.
 
 **A row opens B09.** `[data-waiting-open]` is the keyboard affordance and the row body its
 pointer twin, and both land on the board's own detail surface for the task the row names —
-found by the identifier the row carries. The queue is a way *into* a task, never a second
-task page; there is no second drawer, and no anchor back to the board.
+found by the identifier the row carries. The opener is not a bare glyph: it shows the action
+word and names it in the accessible name (`Answer TD-13`, never `Open TD-13`), so the press
+says what it does. The queue is a way *into* a task, never a second task page; there is no
+second drawer, and no anchor back to the board.
 
 **Zero new hues.** The view's rules live in `src/input.css` beside B26's. They declare no
 custom property of their own, carry no colour literal, and every `var(--…)` they read already
@@ -1320,24 +1363,26 @@ resolves in `tw.css` — the token registry is byte-identical to the round's bas
 
 **B27's own consistency items.**
 
-1. **Every item carries the identical hook set** — actor, reason (+ kind), identifier, title,
-   stamp, opener — and nothing else: the queue has no filter, no paging and no folding, so a
-   row is never a special case.
+1. **Every item carries the identical hook set** — actor, reason (+ kind), action, identifier,
+   title, preview, stamp, opener — and nothing else: the queue has no filter, no paging and no
+   folding, so a row is never a special case.
 2. **A row states only the instant it carries**: `[data-waiting-since]`'s `datetime` equals
    the row's `data-since`, and its visible text is that same instant.
 3. **One time vocabulary**: the stamp reads `time.minutesAgo` / `time.hoursAgo` /
    `time.daysAgo` — B26's three keys, reused, with no waiting-specific time copy.
 4. **One name per destination**: `waiting.title` and `nav.waiting` are byte-identical, so the
    heading over the list and the name pressed in the sidebar cannot drift apart.
-5. **Two reason kinds, both present**: the domain is `question | blocked` and the shipped
-   queue carries both.
+5. **Three reason kinds, all present**: the domain is `question | blocked | acceptance`; the
+   shipped queue carries `question` and `acceptance`, and `blocked` is the prototype's third
+   reading (no producer in the current data domain).
 
 **Auxiliary hooks** (implementation detail, not part of the block contract), the full
-`data-waiting-*` set the document carries — 14 names, no more:
+`data-waiting-*` set the document carries — 16 names, no more:
 `[data-waiting-view]` · `[data-waiting-head]` · `[data-waiting-title]` ·
 `[data-waiting-count]` · `[data-waiting-list]` · `[data-waiting-item]` ·
 `[data-waiting-actor]` · `[data-waiting-reason]` / `[data-waiting-reason-kind]` ·
-`[data-waiting-task]` · `[data-waiting-task-title]` · `[data-waiting-since]` ·
+`[data-waiting-action]` · `[data-waiting-task]` · `[data-waiting-task-title]` ·
+`[data-waiting-preview]` · `[data-waiting-since]` ·
 `[data-waiting-open]` · `[data-waiting-empty]`. Each row also carries two carriers outside
 the family: `data-task` (the task's human identifier — the same name B26's rows use) and
 `data-since` (the row's own instant), plus `data-assignee-kind` on the actor, which is the
@@ -1423,7 +1468,7 @@ not declared — it is read off the cards' `data-reporter` at first pass, which 
 | `data-label-value` / `data-detail-label-value` | the name a label option **and** a label chip carry (B25), in the create dialog and the drawer respectively; `[data-label-remove]` / `[data-detail-label-remove]` drops the chip |
 | `[data-combo-new]` | marks the generated row that offers a name the roster does not hold yet |
 | `[data-activity-*]` | **B26**'s own family — its 35 hooks are listed in that block's section rather than repeated here |
-| `[data-waiting-*]` | **B27**'s own family — its 14 hooks are listed in that block's section rather than repeated here |
+| `[data-waiting-*]` | **B27**'s own family — its 16 hooks are listed in that block's section rather than repeated here |
 | `[data-nav-count]` | on B03's `activity` nav item: the unread count, `hidden` at zero (R12x — see B03) |
 
 ---

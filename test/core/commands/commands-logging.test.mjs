@@ -17,7 +17,7 @@ const HUMAN = { kind: "human", id: "Terry" };
 const AGENT = { kind: "agent", id: "linus" };
 const report = () => ({
   conclusion: "done",
-  acceptance: [{ text: "x", status: "met" }],
+  acceptance: [{ text: "x", status: "met", note: "ran it (evidence[1])" }],
   evidence: [{ kind: "commit", sha: "abc1234" }],
   author: AGENT,
 });

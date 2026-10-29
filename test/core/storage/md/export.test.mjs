@@ -368,8 +368,8 @@ describe("md/export — 0032 snapshot and workflow facts", () => {
         report: {
           conclusion: "Delivered.",
           acceptance: [
-            { text: "a", status: "met" },
-            { text: "b", status: "met" },
+            { text: "a", status: "met", note: "ran it (evidence[1])" },
+            { text: "b", status: "met", note: "ran it (evidence[1])" },
           ],
           evidence: [{ kind: "commit", sha: "dcd7d15" }],
           author: { kind: "agent", id: "linus" },

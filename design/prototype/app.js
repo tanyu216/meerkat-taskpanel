@@ -386,7 +386,7 @@
       "nav.board": "看板",
       "nav.list": "列表",
       "nav.activity": "动态",
-      "nav.waiting": "等你回复",
+      "nav.waiting": "等你处理",
       "sidebar.projects": "项目",
       "sidebar.agents": "活跃 Agent",
       "sidebar.legend": "图例",
@@ -663,8 +663,8 @@
       "activity.empty.filter.reset": "重置筛选",
       /* R12x · B27 的词典，与上方 en 逐键对应。两条 reason 用状态词而非动词短语：
          `已阻塞` 与 `status.blocked` 是同一个词。 */
-      "waiting.title": "等你回复",
-      "waiting.subtitle": "所有等你答复的事项，最久的排在最前。",
+      "waiting.title": "等你处理",
+      "waiting.subtitle": "所有等你答复或验收的事项，最久的排在最前。",
       "waiting.count": "%s 项等你回复",
       "waiting.reason.question": "待回答",
       "waiting.reason.blocked": "已阻塞",
