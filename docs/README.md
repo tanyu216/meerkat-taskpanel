@@ -25,6 +25,7 @@ How the product behaves, and why.
 
 | Document | Contents |
 |---|---|
+| [lifecycle.md](lifecycle.md) | The card lifecycle: flow A (create, claim, wait, deliver, accept), the delivery round and the delivery gate, flow B (the review card's identity, dispatch, verdict and outcomes), the workflow pass, containers, the enforcement layers, the standing states, and the decisions and limits behind them. |
 | [acceptance.md](acceptance.md) | The acceptance model — who may close a card: the two-layer vocabulary (`projects.acceptance` vs `tasks.acceptance_mode`), resolution at creation and why the fallback is `agent`, the three modes, review's independence from the closer, the standing states, the three enforcement layers, and the two deliberate gaps. |
 | [scheduling.md](scheduling.md) | The scheduling model: the ping/continue clocks, the deterministic loop passes, the fire-only cost gate, the atomic-claim dispatch, the event subscriber, the three-agent-kind trigger differences, and why OpenClaw installs the board skill only. |
 | [sla.md](sla.md) | The SLA design: the wait-time model, why the board computes and the loop notifies, the threshold table and tier ladder, the working-hours basis, the alert tuple, the row detectors, de-duplication and pre-emit re-check, the peer watchdog, and the decisions with their costs. |

@@ -12,6 +12,9 @@ Two decisions are deliberately separate:
 - **Acceptance is the closer.** The card's *acceptance mode* is a single word that names who may
   perform the `done` move: the loop after a current-round `APPROVE`, or a person.
 
+The states, the delivery round and the review card this move closes are
+[lifecycle.md](lifecycle.md)'s subject.
+
 `done` is the board's acceptance act. `canceled` is abandonment, never an acceptance: it is
 legal from most stages and has no child guard, so treating it as "closing" a card silently
 orphans the work.
