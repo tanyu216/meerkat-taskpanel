@@ -21,7 +21,8 @@ directory, and a reviewer session in the same directory when a review card is qu
 live pool, poll claims nothing and only patrol and workflow run — see
 `references/operation.md` §No resident pool.
 
-The continue turn runs three deterministic commands, in this order:
+The continue turn runs these in order — the three deterministic passes, and a bounded routing
+read between workflow and poll when the project has a team:
 
 1. **patrol** — notify-only SLA pass. The board computes the SLA rows; the loop de-duplicates
    them, re-reads a survivor and notifies the leader. It also emits the legacy stale-heartbeat
@@ -40,7 +41,14 @@ The continue turn runs three deterministic commands, in this order:
    (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / per-kind config). An `agent` card with no
    effective reviewer fails the loop at startup: the board would have dispatched a review
    nobody can claim.
-3. **poll** — scan, **register the card brief watch**, atomically claim, **enqueue the handoff**. It
+3. **route** (a team only) — creation routes every team card, so a card still unowned after
+   **30 minutes** is a defect, not a queue. Read `issue list --status todo`; for a card with no
+   assignee past that window, `issue assign` it to the one role the ownership guide names for
+   its shape. The prompt carries the role names, because the control lane can run `taskctl`
+   but cannot `Read` the guide. Assignment is not a claim: it writes the route, not the
+   execution lock. A fresh card is still the creator's to route; an ambiguous one is the
+   project session's. Never invent a role name.
+4. **poll** — scan, **register the card brief watch**, atomically claim, **enqueue the handoff**. It
    also runs the **question lane**: an unanswered agent `question` on an `in_progress` card is
    enqueued for the project session (no claim, no subagent slot). It never spawns a worker: the
    resident project session does, as a subagent that inherits the project directory. Runs last

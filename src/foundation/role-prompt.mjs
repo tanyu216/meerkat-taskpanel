@@ -184,8 +184,12 @@ export function renderDecisionPolicySummary(policy) {
 
 /**
  * The team's routing guide, in full, for the project session's spawn turn.
- * Routing belongs to that session — it triages and assigns — not to the
- * control turn (which has no project directory) or to a subagent's handoff.
+ * Routing at creation belongs to the card's author — the project session when it
+ * creates or splits work, the `/meerkat` session for a human's card — not to a
+ * subagent's handoff. The control turn's own routing is only the bounded fallback
+ * for a card that still landed unowned (see `buildContinuePrompt`), and it cannot
+ * read this guide: its lane has `taskctl`, not `Read`, so it is handed the role
+ * names separately.
  *
  * @param {{path?: string|null, text?: string|null}|null} ownership
  * @returns {string[]}

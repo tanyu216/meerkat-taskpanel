@@ -743,7 +743,11 @@ the control/continue turn receives a compact summary and its path. It assigns on
 role per work shape; the card's assignee still selects the executing role, and it never
 changes who decides. A shape the guide does not describe is not force-fit into a role — it
 goes to a worker outside the roles, whose board name must be in `MEERKAT_TASKPANEL_AGENTS`
-because the manifest does not name it.
+because the manifest does not name it. **The create is the routing step**: a team card is
+created with its role as the assignee. A card that still lands unowned past 30 minutes is the
+control turn's bounded fallback — it carries the role names, since its lane cannot read the
+guide — and with `claim_unassigned: no` the workflow pass reports it as `unowned_todo`
+instead of letting a scan race for it.
 
 **Decisions.** A subagent does not decide an unauthorized question: it writes an agent
 `question` comment on the `in_progress` card and stops. Poll's **question lane** sees the

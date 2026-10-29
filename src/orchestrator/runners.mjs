@@ -1073,6 +1073,7 @@ export async function runContinue(opts, deps = {}) {
     openedBy: opts.openedBy,
     decisionPolicy: roleSet.decisionPolicy,
     ownership: roleSet.ownership,
+    owners: roleSet.roles.map((role) => role.agent),
     includePoll: false,
   });
   const invocation = planContinueInvocation({

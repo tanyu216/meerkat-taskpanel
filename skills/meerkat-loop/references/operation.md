@@ -24,6 +24,11 @@ taskctl loop console --json
 taskctl loop session --control=external
 ```
 
+With a team configured, the continue turn adds one bounded routing read between `workflow`
+and `poll`: `issue list --status todo`, then `issue assign <ref> --assignee <role>` for a card
+unowned past 30 minutes. It is not a `loop` pass — assignment writes the route, poll still
+takes the execution lock.
+
 The agent's `taskctl` shim carries `--agent` / `--actor-kind`; add them explicitly from a shell
 that does not go through the shim. `--control=external` is the pool half of the manual mode: it
 opens no control session and skips `continue.pending`; the live session runs the control turn

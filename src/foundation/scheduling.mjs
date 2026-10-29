@@ -896,6 +896,7 @@ export function buildQuestionPrompt(rows, input = {}) {
  *   openedBy?: "human"|"supervisor",
  *   decisionPolicy?: {path?: string|null, text?: string|null}|null,
  *   ownership?: {path?: string|null, text?: string|null}|null,
+ *   owners?: string[],
  * }} [input]
  * @returns {string}
  */
@@ -939,9 +940,29 @@ export function buildContinuePrompt(input = {}) {
     `  2) ${run("workflow")}   # apply the board's workflow plan (issue reconcile --workflow)`,
   ];
 
+  // The bounded routing fallback. Creation routes a team card, but a card that
+  // still lands unowned (a role-less create, a human's card, a role name outside
+  // the scan set) must not sit forever. The control turn names the roles here
+  // because it cannot read the guide: its lane allows `taskctl` and `node`, not
+  // `Read`. Only a card past the window is touched — a fresh one is still the
+  // creator's to route.
+  const owners = Array.isArray(input.owners)
+    ? input.owners
+        .filter((name) => typeof name === "string" && name.trim() !== "")
+        .map((name) => name.trim())
+    : [];
+  const routePool = includePoll && input.ownership != null && owners.length > 0;
+  if (routePool) {
+    lines.push(
+      `  3) ${board} issue list --status todo --json   # route a card left unowned`,
+      `     A card with no assignee over 30 minutes: assign the role the guide names —`,
+      `     one of ${owners.join(", ")} — with ${board} issue assign <ref> --assignee <role>.`,
+      "     Not a claim; leave a fresh or ambiguous card. Never invent a role name.",
+    );
+  }
   if (includePoll) {
     lines.push(
-      `  3) ${run("poll")}   # scan → atomic claim (as ${agent}) → enqueue the handoff`,
+      `  ${routePool ? "4" : "3"}) ${run("poll")}   # scan → atomic claim (as ${agent}) → enqueue the handoff`,
       "",
       "Poll only claims and enqueues: it never spawns a worker or reviewer. A resident",
       "project session takes the handoff from the queue and spawns the subagent in the",
