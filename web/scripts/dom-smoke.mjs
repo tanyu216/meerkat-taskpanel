@@ -254,8 +254,6 @@ export function fixtureApi() {
       assignee: AGENT.openclaw,
       acceptance_mode: "human",
       acceptance: ["Audit the token store end to end", "Report the findings"],
-      // TP-0019 — the queue row states the round it is asked to judge.
-      delivery_round: 2,
     }),
     fixture("p1", "in_review", { identifier: "TD-8", title: "Redesign the sidebar rail", priority: "low", labels: ["design", "ui"], assignee: AGENT.pi, acceptance_mode: "human" }),
     fixture("p1", "blocked", { identifier: "TD-9", title: "Waiting on review", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
@@ -5272,7 +5270,7 @@ export async function run() {
     // acceptance count), both from fields the list wire already carries.
     check(m1.acceptance.reason === "Accept" && m1.acceptance.reasonKind === "acceptance", `acceptance reason ${m1.acceptance?.reason} (${m1.acceptance?.reasonKind})`);
     check(m1.acceptance.action === "Accept", `acceptance action ${m1.acceptance?.action}`);
-    check(m1.acceptance.preview === "Round 2 · 2 acceptance items", `acceptance preview ${JSON.stringify(m1.acceptance?.preview)}`);
+    check(m1.acceptance.preview === "Round 1 · 2 acceptance items", `acceptance preview ${JSON.stringify(m1.acceptance?.preview)}`);
     check(m1.acceptance.actor === "elon", `acceptance row's actor ${m1.acceptance?.actor} — the assignee that delivered it`);
     check(m1.acceptance.since === "2026-10-01T00:00:00Z", `acceptance row's since ${m1.acceptance?.since} — the delivery instant`);
     check(m1.itemTask === "TD-13", `the row names ${m1.itemTask}, expected TD-13`);
