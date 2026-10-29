@@ -596,7 +596,7 @@ The wizard asks, in order — every question shows a default and Enter accepts i
 1. install root (the server tree and agent skills live under it)
 2. install mode — full (server + agent skills), skills only, or server only
 3. agent kinds (only for full / skills only): claude / codex / pi / openclaw
-4. your name on the board (default: the OS user)
+4. your name on the board (default: the name an earlier install recorded, else the OS user)
 5. link or copy the board skill (only when an agent is selected)
 6. build `web/dist` if missing (only when the server is selected)
 7. claim unassigned / recover stale / workflow / continue switch
@@ -611,6 +611,13 @@ the shim/settings, and a server install records it as `TASKCTL_HUMAN` in the
 tree's `.env`. `taskctl` reads that key, and `taskd` uses it as the default actor
 for a request that carries no `X-Taskctl-Actor` header (the browser UI, `curl`);
 with the key unset they stay `human:local`.
+
+An answer is not the only source of the name. When nothing supplies one, an
+install **keeps the one already recorded** — `TASKCTL_HUMAN` in the board's
+`.env` first, else the shim's baked default — and only a machine with no record
+falls back to the OS user. A `--force` reinstall therefore never re-signs the
+operator's decisions under a second name; to change it, say so (wizard answer or
+`MEERKAT_TASKPANEL_HUMAN_NAME`), which always wins.
 
 **Agent name, reviewer, and the ping/continue intervals are not asked.** Their
 defaults are fixed (`Worker` / `Reviewer` / `60` / `600`); edit

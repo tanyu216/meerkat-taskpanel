@@ -848,4 +848,56 @@ describe("agent bundle: --force preserves operator data", () => {
       "--force must leave no map beside the skill",
     );
   });
+
+  it("keeps the human name an earlier install recorded across a forced reinstall", () => {
+    const home = makeTempDir();
+    const env = agentEnv(home);
+    const first = runInstall(["--target", "claude"], { ...env, MEERKAT_TASKPANEL_HUMAN_NAME: "Terry" });
+    assert.equal(first.status, 0, first.stderr);
+
+    // The name is given once, by the person installing. A later `--force` run that
+    // says nothing about the human must reuse the record — falling back to $USER
+    // would silently re-sign the operator's decisions under a second name.
+    const forced = runInstall(["--target", "claude", "--force"], env);
+    assert.equal(forced.status, 0, forced.stderr);
+
+    const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+    assert.equal(settings.env.TASKCTL_HUMAN, "Terry");
+    assert.match(
+      readFileSync(join(home, ".claude", "bin", "taskctl"), "utf8"),
+      /TASKCTL_HUMAN:-Terry\}/,
+      "the shim's baked default is the same record",
+    );
+  });
+
+  it("reads the recorded human name from the board's own .env", () => {
+    // The combined install keeps the identity in the board's config; an agent-only
+    // run beside it (or a hand-edited `.env`) must pick it up rather than restart
+    // from $USER.
+    const home = makeTempDir();
+    mkdirSync(join(home, ".meerkat-taskpanel"), { recursive: true });
+    writeFileSync(join(home, ".meerkat-taskpanel", ".env"), "TASKCTL_HUMAN=Terry\n", "utf8");
+
+    const run = runInstall(["--target", "codex"], agentEnv(home));
+    assert.equal(run.status, 0, run.stderr);
+
+    assert.match(
+      readFileSync(join(home, ".codex", "AGENTS.md"), "utf8"),
+      /TASKCTL_HUMAN=Terry/,
+      "the AGENTS.md snippet names the recorded human, not the OS user",
+    );
+  });
+
+  it("still replaces a recorded human name when one is given", () => {
+    const home = makeTempDir();
+    const env = agentEnv(home);
+    const first = runInstall(["--target", "claude"], { ...env, MEERKAT_TASKPANEL_HUMAN_NAME: "Terry" });
+    assert.equal(first.status, 0, first.stderr);
+
+    const renamed = runInstall(["--target", "claude", "--force"], { ...env, MEERKAT_TASKPANEL_HUMAN_NAME: "Alice" });
+    assert.equal(renamed.status, 0, renamed.stderr);
+
+    const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+    assert.equal(settings.env.TASKCTL_HUMAN, "Alice", "an explicit name wins over the record");
+  });
 });

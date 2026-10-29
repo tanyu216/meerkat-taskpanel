@@ -225,7 +225,8 @@ MEERKAT_TASKPANEL_SUPERVISOR below, a plain install only prints the load command
 Environment (set for each agent-kind installer):
   MEERKAT_TASKPANEL_TARGET_HOME  overrides $HOME
   MEERKAT_TASKPANEL_AGENT_NAME   agent identity (default: Worker)
-  MEERKAT_TASKPANEL_HUMAN_NAME   the human name --as-human signs with (default: $USER)
+  MEERKAT_TASKPANEL_HUMAN_NAME   the human name --as-human signs with (default: the
+                                 name an earlier install recorded, else $USER)
   MEERKAT_TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger + scheduling
   MEERKAT_TASKPANEL_CLAIM_UNASSIGNED  "yes"/"no" default for the claim policy
   MEERKAT_TASKPANEL_RECOVER_STALE     "yes"/"no" (default yes)
