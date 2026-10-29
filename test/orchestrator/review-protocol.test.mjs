@@ -99,7 +99,7 @@ describe("the review-card protocol", () => {
       // Run as the loop does. The CLI harness otherwise injects `--as-human`,
       // which would give this card a human reporter and hide a regression.
       const created = dataOf(
-        ctx.run([...reviewCreateArgs(action), "--json"], { actorKind: "taskd" }),
+        ctx.run([...reviewCreateArgs(action), "--json"], { actorKind: "system" }),
       );
 
       assert.equal(created.task.reporter, null, "an automated review card names no human");

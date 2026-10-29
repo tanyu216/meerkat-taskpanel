@@ -23,10 +23,10 @@ import { api, ApiError } from "../services/api.js";
 // pure row builders can use it without pulling Vue into their unit tests. It is
 // re-exported here so a component has one import site.
 import { actorMatches } from "../lib/assignee-filter.js";
-import { isAgentKind, kindLabel, platformForActor, platformOfKind } from "../lib/actor-kind.js";
+import { authorLabel, isAgentKind, kindLabel, platformForActor, platformOfKind } from "../lib/actor-kind.js";
 import { AWAITING, COLUMN_STATUSES, PRIORITIES, STATUSES } from "../lib/board-enums.js";
 
-export { isAgentKind, kindLabel, platformForActor, platformOfKind };
+export { authorLabel, isAgentKind, kindLabel, platformForActor, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
 import { acceptanceWaitingTasks, firstSentence, payloadCommentOf } from "../lib/waiting-queue.js";
 // The preview's sentence rule moved into the projection (a row's field); it is

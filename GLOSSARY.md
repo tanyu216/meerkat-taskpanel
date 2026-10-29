@@ -71,8 +71,8 @@ the system. Actors are created by use and are never renamed or deleted.
 _Avoid_: user, owner, person
 
 **Actor kind**:
-Which application wrote: a platform slug (`claude`, `codex`, `pi`, `openclaw`,
-`taskd`), with `human` the one reserved value a caller may not
+Which application wrote: a platform slug (`claude`, `codex`, `pi`, `openclaw`), the board's
+own `system`, or `human` — the one reserved value a caller may not
 declare. It is recorded on every write and read back as `author_kind` / `owner_kind`;
 the CLI flag is `--actor-kind`. It is **not** the identity: that is the actor id
 (`--agent jobs|linus|…`).
@@ -223,8 +223,8 @@ _Avoid_: review gate, checklist, policy
 
 **Acceptance mode**:
 The one word that decides who may move a card into `done`: `off` (the deliverer may close it,
-and `in_progress → done` is allowed), `agent` (an independent review card must APPROVE first;
-`taskd` or a human closes), `human` (a person only, after the review's verdict is recorded).
+and `in_progress → done` is allowed), `agent` (an independent review card must APPROVE first, and the
+card is then closed by anyone but the reviewer — or by a human), `human` (a person only, after the review's verdict is recorded).
 It never decides *whether* a review happens: `agent` and `human` are both dispatched a
 reviewer, and only `off` is not. `human` is **top-level only** — a card with a parent is never
 human-accepted; a person's decision on a subtask is an `awaiting` question. Resolved once at
@@ -483,7 +483,8 @@ _Avoid_: audit, sweep, health check; do not call the whole loop "the patrol"
 The board's workflow decisions (`issue reconcile --workflow`: reconcile containers, review
 outcomes, auto-accept and review dispatch) and the loop's execution of that plan. The board
 decides; the loop creates the review card, applies the verdict, auto-accepts a no-review
-delivery and closes the review card as `taskd`. It is not scheduled; the continue turn runs
+delivery and closes the review card — as the board's own kind, `system`, under the automation
+id `Orchestrator`. It is not scheduled; the continue turn runs
 it after patrol.
 _中文_: 工作流通道
 _Avoid_: workflow engine, pipeline; SLA alerts are not part of it

@@ -755,7 +755,7 @@ export const TASK_ORDER_CAPABILITY = "weights-v1";
  * The one reserved actor kind — the only value any decision turns on.
  *
  * An actor's kind is otherwise an opaque string: `human`, or the platform an
- * agent runs on (`claude`, `codex`, `pi`, …), or `taskd` for the board itself.
+ * agent runs on (`claude`, `codex`, `pi`, …), or `system` for the board itself.
  * Everywhere the board asks "was this a person?" — a decision comment going on
  * the record (I5), an `awaiting` card resuming, the patrol counting the leader
  * as active — the test is `kind === HUMAN_KIND`. Everything else is an agent.
@@ -767,18 +767,44 @@ export const TASK_ORDER_CAPABILITY = "weights-v1";
 export const HUMAN_KIND = "human";
 
 /**
- * The board's own platform name.
+ * The board's own kind: the writes no agent and no person made.
  *
- * `taskd` is a concrete writer, not a role: it names the process that performs
- * the board's housekeeping (rollup, the label GC) and the automation that
- * applies an acceptance verdict. It is the value
- * `HUMAN_KIND`'s documentation has always pointed at — "or `taskd` for the board
- * itself" — and the one the `system` placeholder in older rows is replaced by.
+ * The board's housekeeping (rollup, the label GC) and the loop's automation both
+ * write under this kind, so a reader can tell "the system did this" from "an
+ * agent did this" without knowing our process names. It replaced `taskd`
+ * (2026-10-30): `taskd` named the service process, which users could not read as
+ * "the system", and it left the board mistaken for just another platform.
  *
- * The actor-kind column stays open; this constant exists so our own writes name
- * a platform instead of a vague role word.
+ * **This is the one recorded reversal of the concrete-writer rule.** `system` is
+ * a role word, not a platform, and any caller may still declare it — exactly as
+ * they could declare `taskd`. That is affordable only because no rule trusts the
+ * kind any more: acceptance is decided by the review evidence (an independent
+ * current-round APPROVE, and never by the actor who wrote the verdict), so
+ * claiming `system` buys no authority. See `docs/events.md` §9.
  */
-export const TASKD_KIND = "taskd";
+export const SYSTEM_KIND = "system";
+
+/**
+ * The loop's automation identity — an **actor id, never a kind**.
+ *
+ * The workflow pass (create the review card, apply the verdict, close the
+ * review card) runs inside the loop process, but it is not any one worker's act:
+ * it applies a decision the board planned. Naming it `Orchestrator` keeps those
+ * writes out of the first worker's record and keeps the automation distinct from
+ * the reviewer, which matters because a review's verdict author may not close
+ * the card it reviewed.
+ */
+export const ORCHESTRATOR_ACTOR_ID = "Orchestrator";
+
+/**
+ * The SLA mechanism label.
+ *
+ * Not an actor kind: it names *which mechanism* computed an SLA row, and it is
+ * part of the alert's de-duplication key. It stays `taskd` because the board
+ * process is what computes the row — renaming the actor kind must not silently
+ * rename this, or every outstanding alert would look new.
+ */
+export const SLA_MECHANISM = "taskd";
 
 /**
  * The `meta.accepted_by` marker the workflow pass writes when the board's

@@ -8,7 +8,7 @@
 
 import { dirname } from "node:path";
 
-import { TASKD_KIND } from "../foundation/constants.mjs";
+import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { planStrandedTodoAlerts } from "../foundation/scheduling.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
@@ -295,8 +295,10 @@ export async function runSlaPass(opts, log, periodSeconds = opts.patrolInterval)
 
 /**
  * The real-I/O half of the workflow pass. Every write goes through `taskctl`
- * as `--actor-kind taskd`, so an automated acceptance is attributable as the
- * board's act, not a human's.
+ * as the board's own kind (`system`), under the automation identity
+ * `Orchestrator`: an automated acceptance is the board's act, not a human's and
+ * not the first worker's — and not the reviewer's either, which matters because
+ * the actor who wrote a verdict may not close the card it reviewed.
  */
 /**
  * The `todo` cards no scan can claim, read from the board and turned into
@@ -336,9 +338,8 @@ function strandedTodoAlerts(opts, config, invoke, log) {
 
 export async function runWorkflowPass(opts, config, log) {
   if (config.workflow !== true) return null;
-  const agent = opts.agents[0];
-  const automation = { actorKind: TASKD_KIND };
-  const invoke = (args) => runCli(opts, agent, args, automation);
+  const automation = { actorKind: SYSTEM_KIND };
+  const invoke = (args) => runCli(opts, ORCHESTRATOR_ACTOR_ID, args, automation);
 
   // One call does the board's container reconcile and returns the plan.
   const args = ["issue", "reconcile", "--workflow"];
@@ -410,7 +411,7 @@ export async function runWorkflowPass(opts, config, log) {
       return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : { ok: false, error: read.error };
     },
     linkFixChild: (epicRef, childRef) => {
-      const listed = runCli(opts, agent, ["relation", "list", epicRef]);
+      const listed = runCli(opts, ORCHESTRATOR_ACTOR_ID, ["relation", "list", epicRef]);
       if (listed.ok && Array.isArray(listed.data.children) && listed.data.children.some((edge) => edge.target === childRef)) {
         return { ok: true };
       }

@@ -64,7 +64,7 @@ describe("commands/context", () => {
   it("normalises actors, and refuses a write with nobody behind it", () => {
     assert.deepEqual(actorOf({ kind: "human", id: "Terry" }), { kind: "human", id: "Terry" });
     assert.deepEqual(actorOf("linus", { defaultKind: "claude" }), { kind: "claude", id: "linus" });
-    assert.deepEqual(actorOf({ kind: "taskd", id: "taskd" }), BOARD_ACTOR);
+    assert.deepEqual(actorOf({ kind: "system", id: "system" }), BOARD_ACTOR);
 
     for (const bad of [null, undefined]) {
       assert.throws(() => actorOf(bad), (err) => {

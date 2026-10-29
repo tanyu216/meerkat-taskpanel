@@ -12,8 +12,9 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 ```
 
 - `--actor-kind` is required. The loop uses the actor kind (`claude`, `codex`,
-  `pi`) for reads and claims, and `taskd` for the workflow
-  writes so an automated acceptance is attributable to the board, not a human.
+  `pi`) for reads and claims, and `system` for the workflow writes so an automated
+  acceptance is attributable to the board, not a human. The two are not the same
+  question: the kind says *which class of writer*, the id (`--agent`) says *who*.
 - The token rides in `TASKD_TOKEN` in the child environment, never on argv.
 - stdout is `{ok:true,data}` or `{ok:false,error{code,message,http,details,hint}}`;
   exits are 0 ok, 1 runtime, 2 usage, 3 `export md --check` differences.
@@ -132,7 +133,7 @@ rolls it up; its review reads the children and the rollup, an `APPROVE` yields t
 
 ## 7. Workflow writes
 
-All writes use `--actor-kind taskd` and are idempotent by their key.
+All writes use `--actor-kind system --agent Orchestrator` and are idempotent by their key.
 
 | Capability | Invocation | Keys read |
 |---|---|---|

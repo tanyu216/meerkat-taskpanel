@@ -111,7 +111,7 @@ The deterministic passes are **not scheduled individually**:
 |---|---|---|
 | `taskctl loop poll` | scan → atomic claim → **enqueue the handoff**; also enqueues open agent questions (the question lane) | claims, card queue |
 | `taskctl loop patrol` | heartbeat alerts + SLA rows | card queue only with `--patrol-llm=yes` |
-| `taskctl loop workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `taskd` |
+| `taskctl loop workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `system`/`Orchestrator` |
 
 The continue prompt runs them in the order **patrol → workflow → poll**: the
 workflow pass dispatches a review card, and the poll that follows in the same
@@ -533,7 +533,7 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
   with a status, how it checked and an `evidence[n]` anchor; a `met` the board cannot trace,
   or an `APPROVE` with no command anchor, is refused rather than applied. It delivers a
   report whose first line is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
-- the loop applies the verdict as `--actor-kind taskd`. An `APPROVE` on an `agent` original
+- the loop applies the verdict as `--actor-kind system --agent Orchestrator`. An `APPROVE` on an `agent` original
   writes `meta.accepted_by=loop-review` and moves it `in_review → done`; on a `human`
   original it writes `meta.review_verdict=approve` / `meta.review_verdict_round` and leaves
   the card `in_review` for the person. A `REJECT` — in either mode — comments the findings,
@@ -562,18 +562,21 @@ stand-in.
 
 The separation is not only a prompt rule. `in_review → done` has a **board-level
 acceptance authority**: the card's own `acceptance_mode` decides who may perform it.
-`off` may be closed by the deliverer, the loop (`taskd` — the loop's workflow pass) or a
-human, and `in_progress → done` is allowed; `agent` waits for a current-round `APPROVE`,
-then the loop or a human closes it; `human` is a person only. A review card is the one
-structural exception — its reviewer reports the verdict, and the loop or a human closes
-it. There is no board-level policy and no child/top-level matrix. The refusal is
+`off` may be closed by the deliverer, the loop (the workflow pass) or a human, and
+`in_progress → done` is allowed; `agent` waits for a current-round `APPROVE`, then any
+actor but the one who wrote the verdict closes it — the loop, another agent, or a human;
+`human` is a person only. A review card is the one structural exception — its reviewer
+reports the verdict, and anyone but that reviewer (or a human) closes it. The **kind is not
+an allow-list**: the authority is the evidence, so the board's own `system` writes carry no
+extra right. There is no board-level policy and no child/top-level matrix. The refusal is
 `ACCEPTANCE_FORBIDDEN` (409) and it changes nothing. This is what makes "a worker stops
 at `in_review`" a machine rule rather than a habit, and it is why the loop's automated
-acceptance is attributable as `taskd`.
+acceptance is attributable as `system`.
 
-Two honest limits. First, the check reads the actor's **declared** kind: a loopback caller
-is trusted and `--actor-kind human` is refused, but the board has no cryptographic identity
-— an agent that omits `--actor-kind` writes as `human` by default. Second, it is a
+Two honest limits. First, the check reads the actor's **declared** id and the stored
+verdict: a loopback caller is trusted and `--actor-kind human` is refused, but the board has
+no cryptographic identity — an agent that omits `--actor-kind` writes as `human` by default.
+Second, it is a
 service-layer invariant, not a trigger: the actor is not a column of the `tasks` row, so —
 unlike the delivery gate, whose evidence is the report table — no `tasks` trigger can see
 it. Both limits are properties of the board's attribution model, and improving them means

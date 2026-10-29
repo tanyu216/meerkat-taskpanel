@@ -31,7 +31,7 @@
  * Pure: no `node:` specifiers, no clock.
  */
 
-import { HUMAN_KIND, TASKD_KIND } from "../../foundation/constants.mjs";
+import { HUMAN_KIND } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { reviewIdentityOf } from "../../foundation/review-identity.mjs";
 
@@ -228,36 +228,55 @@ export function resolveCardAcceptance(input = {}) {
 }
 
 /**
- * May `actorKind` close a card in `mode`?
+ * May this actor close a card in `mode`?
  *
- * Scope is deliberately gone: a child is closed by whoever its own mode names,
- * not by a matrix. The one structural override is the review card itself — its
- * reviewer reports a verdict, and the acceptor (the board or a human) closes it.
+ * The question is answered by the **evidence**, not by who claims to be the
+ * board: `agent` mode needs a current-round APPROVE (checked by the caller), and
+ * the one actor it excludes is the agent that wrote that verdict. So "the loop
+ * closes it" is no longer a privilege a caller can claim by declaring a kind —
+ * any writer that did not review the card may apply the approval, and the
+ * reviewer never closes its own finding.
+ *
+ * `human` mode still admits exactly one kind. `off` trusts the deliverer.
  *
  * @param {string|null|undefined} actorKind
  * @param {"off"|"agent"|"human"} mode
- * @param {{reviewCard?: boolean}} [options]
+ * @param {{reviewCard?: boolean, actorId?: string|null, verdictAuthorId?: string|null}} [options]
+ *   `actorId` and `verdictAuthorId` are **actor-row ids** (`actors.id`), not
+ *   `--agent` names: the caller normalises before asking.
  * @returns {boolean}
  */
 export function acceptanceAllows(actorKind, mode, options = {}) {
   const who = String(actorKind ?? "").trim();
   if (who === "") return false;
+  const wroteTheVerdict = sameActorId(options.actorId, options.verdictAuthorId);
   if (options.reviewCard === true) {
     // The reviewer must not close the card it just wrote a verdict on.
-    return who === HUMAN_KIND || who === TASKD_KIND;
+    return who === HUMAN_KIND || !wroteTheVerdict;
   }
   switch (cardAcceptanceOf(mode)) {
     case "off":
       // Trust mode: the deliverer itself may close the card.
       return true;
     case "agent":
-      // The loop applies the APPROVE; a human may always close.
-      return who === HUMAN_KIND || who === TASKD_KIND;
+      // An independent APPROVE is the authority; the verdict's author is not.
+      return who === HUMAN_KIND || !wroteTheVerdict;
     case "human":
       return who === HUMAN_KIND;
     default:
       return false;
   }
+}
+
+/** Two actor ids that name one writer. A missing id on either side is not a match. */
+function sameActorId(actorId, verdictAuthorId) {
+  return (
+    typeof actorId === "string" &&
+    actorId !== "" &&
+    typeof verdictAuthorId === "string" &&
+    verdictAuthorId !== "" &&
+    actorId === verdictAuthorId
+  );
 }
 
 /**
@@ -273,7 +292,7 @@ export function acceptanceAllows(actorKind, mode, options = {}) {
  * @returns {{
  *   isReview: boolean,
  *   mode: "off"|"agent"|"human",
- *   canAccept: (actorKind: string|null|undefined) => boolean,
+ *   canAccept: (actorKind: string|null|undefined, options?: {actorId?: string|null, verdictAuthorId?: string|null}) => boolean,
  * }}
  */
 export function acceptanceAuthorityFor(task) {
@@ -282,22 +301,30 @@ export function acceptanceAuthorityFor(task) {
   return {
     isReview,
     mode,
-    canAccept: (actorKind) => acceptanceAllows(actorKind, mode, { reviewCard: isReview }),
+    canAccept: (actorKind, options = {}) =>
+      acceptanceAllows(actorKind, mode, { reviewCard: isReview, ...options }),
   };
 }
 
 /**
+ * The error's `allowed` field: which kinds are **never** refused.
+ *
+ * `agent` and review-card closure are no longer a kind allow-list — anyone who
+ * did not write the verdict may close — so a human is the only kind that is
+ * always admitted. The refusal names `verdictAuthorId`, which is the identity
+ * that actually mattered.
+ *
  * @param {"off"|"agent"|"human"} mode
  * @param {boolean} reviewCard
  * @returns {string|string[]}
  */
 function allowedFor(mode, reviewCard) {
-  if (reviewCard) return [HUMAN_KIND, TASKD_KIND];
+  if (reviewCard) return [HUMAN_KIND];
   switch (cardAcceptanceOf(mode)) {
     case "off":
       return "any non-blank actor kind";
     case "agent":
-      return [HUMAN_KIND, TASKD_KIND];
+      return [HUMAN_KIND];
     case "human":
       return [HUMAN_KIND];
     default:
@@ -313,7 +340,7 @@ function allowedFor(mode, reviewCard) {
  * acceptance policy did.
  *
  * @param {{kind?: string, id?: string}|null|undefined} actor
- * @param {{mode?: unknown, reviewCard?: boolean}} [options]
+ * @param {{mode?: unknown, reviewCard?: boolean, actorId?: string|null, verdictAuthorId?: string|null}} [options]
  * @returns {true}
  * @throws {DomainError} ACCEPTANCE_FORBIDDEN
  */
@@ -321,15 +348,23 @@ export function assertAcceptanceAuthority(actor, options = {}) {
   const kind = String(actor?.kind ?? "").trim();
   const mode = cardAcceptanceOf(options.mode);
   const reviewCard = options.reviewCard === true;
-  if (acceptanceAllows(kind, mode, { reviewCard })) return true;
+  const actorId = typeof options.actorId === "string" ? options.actorId : null;
+  const verdictAuthorId =
+    typeof options.verdictAuthorId === "string" ? options.verdictAuthorId : null;
+  if (acceptanceAllows(kind, mode, { reviewCard, actorId, verdictAuthorId })) return true;
 
   const allowed = allowedFor(mode, reviewCard);
+  const wroteTheVerdict = sameActorId(actorId, verdictAuthorId);
   const message = reviewCard
-    ? "a review card is closed by the acceptor, never by the reviewer"
+    ? wroteTheVerdict
+      ? "a review card is closed after its verdict, never by the actor who wrote the verdict"
+      : "a review card needs an actor to close it"
     : mode === "human"
       ? "this card is human-accepted: only a human may move it to done"
       : mode === "agent"
-        ? "this card needs an independent review; the loop (or a human) closes it after APPROVE"
+        ? wroteTheVerdict
+          ? "a card is never accepted by the agent that reviewed it"
+          : "this card needs an independent review; it is closed after APPROVE"
         : "an actor kind is required to accept a card";
   throw new DomainError("ACCEPTANCE_FORBIDDEN", {
     message,
@@ -338,6 +373,7 @@ export function assertAcceptanceAuthority(actor, options = {}) {
       actorId: actor?.id ?? null,
       mode,
       reviewCard,
+      verdictAuthorId,
       allowed,
     },
     hint: {
@@ -345,8 +381,8 @@ export function assertAcceptanceAuthority(actor, options = {}) {
         mode === "human"
           ? "a human can run this with --as-human; an agent must leave the card in in_review"
           : reviewCard
-            ? "let the reviewer deliver a verdict; the loop or a human closes the review card"
-            : "pass --actor-kind <platform>; a card is never accepted anonymously",
+            ? "let the reviewer deliver a verdict; another actor (or a human) closes the review card"
+            : "another actor closes the card after APPROVE; the reviewer cannot accept its own finding",
     },
   });
 }

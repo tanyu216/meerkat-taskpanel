@@ -255,7 +255,9 @@ the board holds no project directory, and a boolean would be a claim it cannot m
 liveness row has no card and puts the peer's own facts there instead (`peer`, `peer_last_ok`,
 `peer_age_min`, `peer_bound_min`, `peer_state`).
 
-Two provenance rules matter. The board builds the tuple stamped `mechanism: "taskd"`,
+Two provenance rules matter. The board builds the tuple stamped `mechanism: "taskd"` (a
+**mechanism label**, not an actor kind — it stays `taskd` so a rename never re-keys the
+alert ledger),
 `mechanism_actor: null`; the **notifier** restamps `mechanism` / `mechanism_actor` before
 sending, so the peer sees who delivered it, not who computed it. And fields 23–25 are
 **ledger provenance**: a freshly computed plan sets `first_seen` to the origin and

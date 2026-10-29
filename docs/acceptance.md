@@ -49,19 +49,20 @@ writer asks, and the parent edge onto a `human` card is refused too.
 <!-- acceptance-matrix:begin -->
 | Card mode | Review card | Who may move it to `done` |
 |---|---|---|
-| `off` | none | the deliverer (any actor kind), `taskd`, or a human; `in_progress → done` is allowed |
-| `agent` | yes — an agent reviewer | `taskd` (after a current-round `APPROVE`) or a human |
+| `off` | none | the deliverer (any actor kind), or a human; `in_progress → done` is allowed |
+| `agent` | yes — an agent reviewer | anyone but the reviewer, after a current-round `APPROVE`; a human may always |
 | `human` | yes — an agent reviewer | a human only |
-| a review card | — | a human or `taskd` — never the reviewer itself |
+| a review card | — | a human, or any actor but its reviewer — never the one who wrote the verdict |
 <!-- acceptance-matrix:end -->
 
 In agent terms:
 
 - **`off`** — trust mode. No review; the deliverer may close, and a delivery may go straight to
   `done` without passing through `in_review`.
-- **`agent`** — the loop applies a current-round `APPROVE`: it records the loop as the
-  acceptor, moves the card to `done`, then closes the review card. A human may close instead,
-  on the review's evidence.
+- **`agent`** — the reviewer's current-round `APPROVE` is the authority. The loop applies it
+  (moves the card to `done`, then closes the review card), and any actor **except the one who
+  wrote the verdict** may apply it too; a human may close instead, on the same evidence. The
+  kind is not an allow-list: declaring `system` buys no right to accept.
 - **`human`** — the review still runs. On `APPROVE` the loop records the verdict for that
   round, comments it, closes the review card, and leaves the original in `in_review`; the
   person then closes it through the ordinary acceptance gate. Opt-in only, and top-level only.
@@ -95,7 +96,8 @@ silence the card's only watcher.
 
 The mode is enforced at three layers, so a raw writer cannot bypass it:
 
-- **Domain.** The actor kind is checked against the mode: a violation is `ACCEPTANCE_FORBIDDEN`.
+- **Domain.** The writer is checked against the mode and against the current-round verdict's
+  author: a violation is `ACCEPTANCE_FORBIDDEN`.
   A `human` close on a child, or a parent edge onto a `human` card, is `VALIDATION_FAILED`.
 - **Storage.** Storage-level invariants force a review card to `off` and constrain the close
   paths, so the application layer is never the only guard.
