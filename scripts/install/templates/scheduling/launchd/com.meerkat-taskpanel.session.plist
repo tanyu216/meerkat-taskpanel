@@ -24,8 +24,6 @@
     <string>session</string>
     <string>--actor-kind</string>
     <string>{{ACTOR_KIND}}</string>
-    <string>--agent</string>
-    <string>{{AGENT}}</string>
     <string>--log</string>
     <string>{{LOG}}</string>
     <string>--state-dir</string>

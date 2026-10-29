@@ -766,8 +766,9 @@ co-design — is the loop's `references/decision-policy.md` §Decision rounds.
 
 The scan set is still explicit: write `MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing` (and
 `MEERKAT_TASKPANEL_REVIEWER=Reviewer`) to the per-kind config, or the loop scans only its
-default agent and a role card is never claimed. `/setup-meerkat` does this merge with the
-user's consent. Roles are installed and upgraded **only** by that skill: `install.sh` never
+default agent and a role card is never claimed. The installed units carry no `--agent`, so
+this key **is** the loop's identity — a name not listed here can never claim its cards.
+`/setup-meerkat` does this merge with the user's consent. Roles are installed and upgraded **only** by that skill: `install.sh` never
 creates, writes or deletes a roles root, and a forced loop reinstall replaces the **skill**,
 not the team — its `roles/` directory is kept, as is any config key the installer's template
 does not carry.
@@ -908,7 +909,7 @@ never by drift.
 # cron: ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 PATH=/home/you/.claude/bin:/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
 
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
 ```
 
 (Both are rendered for the agent CLI you installed *for*, and only for it: a unit that wakes
@@ -1604,8 +1605,10 @@ in `--target`) and `--scheduler auto|launchd|systemd|cron` (which mechanism; def
 
 Per-OS commands below are written for the Claude install (`~/.claude`); for Codex and Pi
 substitute `~/.codex` / `~/.agents` for the agent kind directory and `codex` / `pi` for
-`--actor-kind`. `<agent>` is the `--agent-name` from the install (default `Worker`), and
-`<uid>` is `id -u`.
+`--actor-kind`. `<agent>` names the unit label and state directory from the install's
+`--agent-name` (default `Worker`), and `<uid>` is `id -u`. The units carry no `--agent`:
+the loop's scan set is the per-kind config's `MEERKAT_TASKPANEL_AGENTS`, which `install.sh`
+seeds with that name and `/setup-meerkat` replaces with the team's roles.
 
 ### macOS — launchd
 
@@ -1700,8 +1703,8 @@ it is idempotent and cleanly removable:
 ```cron
 # >>> meerkat-taskpanel (~/.claude) >>>
 PATH=/home/you/.claude/bin:/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
-*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --continue-once --actor-kind claude --agent alice --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
+*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --continue-once --actor-kind claude --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
 # <<< meerkat-taskpanel (~/.claude) <<<
 ```
 
@@ -1748,9 +1751,11 @@ loosens it: the resident adapters ship **no** bypass flag by default, and turnin
 still needs the written authorization, documented at the point of use, that section
 describes.
 
-- **Identity and parameters.** The units start the scheduler with `--agent <agent>`
-  (`--agent-name`, default `Worker`), `--actor-kind <h>`, and one pass
-  (`taskctl loop run --ping-once` / `--continue-once`). The continue turn starts the
+- **Identity and parameters.** The units start the scheduler with `--actor-kind <h>` and one
+  pass (`taskctl loop run --ping-once` / `--continue-once`); they deliberately carry no
+  `--agent`, so the scan set is the per-kind config's `MEERKAT_TASKPANEL_AGENTS` (seeded by
+  `install.sh` with the install's agent name, replaced by `/setup-meerkat` with the team's
+  roles). A flag here would outrank that key and leave a team's role cards unclaimed. The continue turn starts the
   agent kind's headless entry point directly with the bounded `Continue` prompt — no
   project directory. Poll claims a card and enqueues it; a resident project session
   spawns the worker as a subagent of the provider CLI, which runs non-interactively

@@ -766,6 +766,10 @@ seed_env_file() {
 # ensure_agent_config_keys — add the installer-owned keys when missing, never overwrite.
 # Requires export_tp_env first.
 ensure_agent_config_keys() {
+  # The loop's scan set. The scheduling units deliberately carry no `--agent`
+  # (a flag would outrank this key), so this is the identity the loop runs as.
+  # setup-meerkat replaces it with the team's role names; never clobber one here.
+  ensure_env_key "MEERKAT_TASKPANEL_AGENTS" "$TP_AGENT"
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
   ensure_env_key "MEERKAT_TASKPANEL_RECOVER_STALE" "$TP_RECOVER_STALE"
   ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"

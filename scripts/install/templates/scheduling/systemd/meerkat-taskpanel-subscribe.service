@@ -12,7 +12,7 @@ Description=Meerkat TaskPanel event subscriber ({{AGENT}} on {{ACTOR_KIND}})
 
 [Service]
 Type=simple
-ExecStart={{NODE}} {{CLI}} loop subscribe --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
+ExecStart={{NODE}} {{CLI}} loop subscribe --actor-kind {{ACTOR_KIND}} --log {{LOG}} --state-dir {{STATE_DIR}}
 Restart=always
 RestartSec=5
 # No stdout/stderr redirect: the loop writes --log itself (with rotation).

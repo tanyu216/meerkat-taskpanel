@@ -646,7 +646,7 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--no-server` | Install the agent-kind skills only, leaving the runtime tree out (`--target all --no-server` is the old `all`). |
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`; the server tree lands at `<home>/.meerkat-taskpanel`. |
 | `--skip-web-build` | Never try to build `web/dist`. A server install without a prebuilt `web/dist` is then API-only (with a warning) instead of building it. |
-| `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `Worker`). Must equal the board assignee for the agent to claim cards. |
+| `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle and seeded as the loop's default `MEERKAT_TASKPANEL_AGENTS` (default `Worker`). `/setup-meerkat` replaces that key with a team's role list; the scheduling units carry no `--agent`, so the key is the loop's identity. |
 | `--no-automation` | Skip the Codex scheduling units **and** the `taskd` keepalive guard; the Claude/OpenClaw/Pi skill bundles are otherwise unaffected. |
 | `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each agent-kind installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<program root>/.env.<actor-kind>`; overrides the interactive answer. Default `yes`. |
@@ -701,7 +701,8 @@ never an error:
   exactly as they are, and the installer reports each as unchanged — for an emitted file,
   `left unchanged — use --force to overwrite`. This means changing a flag such as
   `--agent-name` on its own does **not** take effect on an existing install — it still
-  exits 0, with only the unchanged notices on stdout.
+  exits 0, with only the unchanged notices on stdout. The loop's identity is the
+  `MEERKAT_TASKPANEL_AGENTS` key; `--agent-name` seeds it only when the file lacks it.
 - **`--force` is the only way to overwrite.** With it, the managed files and managed
   config keys are re-rendered from the current flags (unrelated keys and hooks are still
   preserved). Deleting the destination first also gives a clean slate.
