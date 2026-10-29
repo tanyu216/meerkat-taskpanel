@@ -305,7 +305,7 @@ Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/age
 ## Docs to read next (do not re-paste)
 
 - `docs/tech-spec.md` — **this repository's standard, read it before the first code change**: the numbered rules (`TS-NN`) a change must satisfy, each naming its enforcement, plus the stack table and the security toolchain with its decision policy.
-- `docs/architecture.md` — the system record: boundaries, the layered style, the data model, the contract, configuration, security, the canonical directory tree. Provisional until a human accepts it.
+- `docs/architecture.md` — the system record: boundaries, the layered style, the data model, the contract, configuration, security, the canonical directory tree (reconstructed from the tree, accepted 2026-10-30).
 - `docs/adr/` — the recorded decisions and their status vocabulary.
 - `GLOSSARY.md` — the canonical vocabulary: one word per concept, the words to avoid, and the terms that are *not* in the model.
 - `CONTRIBUTING.md` — how a change lands: isolation, the gate, the PR flow, cleanup. `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.

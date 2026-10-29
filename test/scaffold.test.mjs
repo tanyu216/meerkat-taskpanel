@@ -396,8 +396,10 @@ describe("foundation documents", () => {
     ]) {
       assert.ok(architecture.includes(heading), `docs/architecture.md must carry "${heading}"`);
     }
-    // The record is a reconstruction until a human accepts it (E5).
-    assert.match(architecture, /Reconstructed from .+ — E5 pending/);
+    // The provenance survives acceptance: a reader must be able to tell a derived
+    // fact from an inherited one. Acceptance is recorded, so it is not still pending.
+    assert.match(architecture, /Reconstructed from .+/, "the record must keep its provenance");
+    assert.doesNotMatch(architecture, /E5 pending/, "the accepted record must not still read as pending");
 
     const adrIndex = readFileSync(join(ROOT, "docs", "adr", "README.md"), "utf8");
     assert.match(adrIndex, /0001-architecture-style\.md/);
@@ -406,7 +408,9 @@ describe("foundation documents", () => {
       assert.match(text, /^# /m, `${adr} needs a title`);
       assert.match(text, /^## Status$/m, `${adr} needs a Status section`);
       assert.match(text, /^## Decision$/m, `${adr} needs a Decision section`);
-      assert.match(text, /Accepted \(reconstructed\) — E5 pending/, `${adr} must record its provisional state`);
+      const status = /^## Status\n+([^\n]+)/m.exec(text)?.[1] ?? "";
+      assert.match(status, /^Accepted/, `${adr} must record an accepted status, found: ${status}`);
+      assert.doesNotMatch(status, /E5 pending/, `${adr} must not still read as pending`);
     }
   });
 

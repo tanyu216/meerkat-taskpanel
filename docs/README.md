@@ -12,7 +12,7 @@ operating procedure.
 | Document | Contents |
 |---|---|
 | [tech-spec.md](tech-spec.md) | This repository's standard: the numbered rules a change must satisfy (stack, structure and enumerations, naming, errors and contract, configuration, logging, tests and gates, release, project documents), each naming its enforcement, plus the security toolchain and its decision policy. |
-| [architecture.md](architecture.md) | The system record: purpose and boundary, the layered style, module boundaries and the one-way dependency, the data model, the contract, configuration, logging, security boundaries, the canonical directory tree and the vertical slice. Provisional until a human accepts it. |
+| [architecture.md](architecture.md) | The system record: purpose and boundary, the layered style, module boundaries and the one-way dependency, the data model, the contract, configuration, logging, security boundaries, the canonical directory tree and the vertical slice. Reconstructed from the tree and accepted by the human on 2026-10-30. |
 | [adr/](adr/) | Architecture decision records: one file per durable decision, numbered, with the status vocabulary. |
 | [development.md](agents/development.md) | The operational facts you cannot read off the code: the two build layers (`dist` vs `web/dist`, the offline `web/` build) and the server invariants (one writer per data directory, the bounded stop, lock contention as a 503). Commands and layout live in `CLAUDE.md`. |
 | [docker.md](agents/docker.md) | Why verification and the four-agent-kind installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
@@ -67,7 +67,7 @@ this repository. Where a topic has a live authority, the citation names it expli
 
 | Cited as | Live authority |
 |---|---|
-| The system design, layers and tree | [architecture.md](architecture.md) (reconstructed; E5 pending) |
+| The system design, layers and tree | [architecture.md](architecture.md) (reconstructed from the tree, accepted 2026-10-30) |
 | Project ordering (`ARCHITECTURE §4.6`) | [`../design/DESIGN.md`](../design/DESIGN.md) §20, implemented by `src/foundation/project-order.mjs` |
 | Container verification (`ARCHITECTURE §9.1`) | [docker.md](agents/docker.md) |
 

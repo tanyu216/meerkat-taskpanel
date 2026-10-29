@@ -1,6 +1,6 @@
 # Architecture
 
-Reconstructed from the tree at `999a5a8c` — E5 pending.
+Reconstructed from the tree at `999a5a8c`, accepted by the human on 2026-10-30 (E5).
 
 This is the system record: what the product is, how it is layered, where each design area's
 canonical artifact lives, and what the directory tree means. It points; it does not restate.
@@ -9,7 +9,8 @@ The **standard** — the normative rules a change must comply with — is
 
 Every fact below carries a disposition (see [Dispositions](#dispositions)): `inherited` when a
 document already binds it, `reconstructed` when it is read off the tree, `not recorded` when no
-evidence settles it. The reconstruction is **provisional** until the project session accepts it.
+evidence settles it. The reconstruction was reviewed and accepted on 2026-10-30; the provenance
+stays so a later reader can tell an inherited fact from a derived one.
 
 ## Purpose and boundary
 
