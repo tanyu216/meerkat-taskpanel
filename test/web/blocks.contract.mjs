@@ -1583,6 +1583,25 @@ const BLOCKS = [
       "[data-activity-row]",
       "[data-activity-actor]",
       "[data-activity-ts]",
+      // M6 — the Acceptance tab's delivery summary and its two acts. They exist
+      // only on a card that still owes a human the decision (a `human` card in
+      // `in_review`, no open child, no current-round review — the client twin
+      // `isAcceptanceWaiting`), so they are `states`, not `required`: the
+      // resting document has no card open and no card waiting. The driven
+      // presence/absence pairs are measured in `web/scripts/dom-smoke.mjs`;
+      // their copy is the implementation-only `drawer.accept*` / `drawer.sendBack*`
+      // family in `web/src/i18n/extra.mjs`, like Reopen's.
+      "[data-detail-acceptance-summary]",
+      "[data-detail-acceptance-round]",
+      "[data-detail-acceptance-author]",
+      "[data-detail-acceptance-conclusion]",
+      "[data-detail-acceptance-actions]",
+      "[data-detail-accept]",
+      "[data-detail-send-back]",
+      "[data-detail-send-back-panel]",
+      "[data-detail-send-back-note]",
+      "[data-detail-send-back-confirm]",
+      "[data-detail-send-back-cancel]",
     ],
     rules: [
       { kind: "count", selector: "[data-detail-drawer]", equals: 1 },
@@ -1908,6 +1927,35 @@ const BLOCKS = [
       { kind: "computed", probe: "div[data-detail-relations]", count: 1 },
       { kind: "computed", probe: "div[data-detail-attachments]", count: 1 },
       { kind: "computed", probe: "div[data-detail-comments]", count: 1 },
+      // 2026-10-30 — the meta line's third word is the author's *category*, and
+      // the wire's `author_kind` is a **platform** (`claude`, `codex`, `pi`),
+      // the reserved `human`, or the board's own `system` (the literal `agent`
+      // is the assignee category a card records when it names no platform). The
+      // drawer reads the column through `authorLabel` (`web/src/lib/actor-kind.js`);
+      // comparing the kind to `"agent"` instead made the branch dead, so every
+      // agent — and the loop's own workflow pass — wore the human label.
+      //
+      // TD-1's fixture carries one comment of each category, so a regression has
+      // nowhere to hide: a mislabelled row loses its own word and the rule fails
+      // with "nothing matches" rather than passing on a neighbour's row.
+      {
+        kind: "text",
+        probe: "[data-detail-comments] .td-comment-meta [data-i18n=\"comment.agent\"]",
+        oneOf: ["agent", "Agent"],
+        when: "drawer open",
+      },
+      {
+        kind: "text",
+        probe: "[data-detail-comments] .td-comment-meta [data-i18n=\"comment.human\"]",
+        oneOf: ["human", "人类"],
+        when: "drawer open",
+      },
+      {
+        kind: "text",
+        probe: "[data-detail-comments] .td-comment-meta [data-i18n=\"comment.system\"]",
+        oneOf: ["system", "系统"],
+        when: "drawer open",
+      },
       { kind: "computed", probe: "div[data-detail-activity]", count: 1 },
       { kind: "computed", probe: "section[data-detail-agent-session]", count: 1 },
       // R14 D28 (A18) — the id copy control is the prototype's `.td-copy` box and
@@ -2996,8 +3044,10 @@ const BLOCKS = [
       "[data-waiting-actor]",
       "[data-waiting-reason]",
       "[data-waiting-reason-kind]",
+      "[data-waiting-action]",
       "[data-waiting-task]",
       "[data-waiting-task-title]",
+      "[data-waiting-preview]",
       "[data-waiting-since]",
       "[data-waiting-open]",
       "[data-waiting-empty]",
@@ -3056,20 +3106,24 @@ const BLOCKS = [
       { kind: "domain", selector: "[data-waiting-reason]", attribute: "data-waiting-reason-kind", subset: DOMAINS.WAITING_REASON },
       { kind: "domain", selector: "[data-waiting-actor]", attribute: "data-assignee-kind", subset: DOMAINS.ASSIGNEE_KIND, when: "waiting view" },
       /* The queue has no filter, no paging and no folding (§30.1's consistency
-       * item 1), so every row carries the identical hook set — six fields and
-       * nothing else. This is the one place `identical-hookset` fits a view
-       * whose rows carry no per-row state flags (B26's rows do, which is why its
-       * rule is stated differently). */
+       * item 1), so every row carries the identical hook set — the actor, the
+       * act chip and its wire field, the identifier + title, the preview, the
+       * stamp and the opener. This is the one place `identical-hookset` fits a
+       * view whose rows carry no per-row state flags (B26's rows do, which is why
+       * its rule is stated differently). */
       { kind: "identical-hookset", selector: "[data-waiting-item]", when: "waiting view" },
       { kind: "count", selector: "[data-waiting-item]", min: 1, when: "waiting view" },
       { kind: "count", selector: "[data-waiting-reason]", within: "[data-waiting-view]", min: 1, when: "waiting view" },
+      { kind: "count", selector: "[data-waiting-action]", min: 1, when: "waiting view" },
+      { kind: "count", selector: "[data-waiting-preview]", min: 1, when: "waiting view" },
       { kind: "count", selector: "[data-waiting-open]", min: 1, when: "waiting view" },
       { kind: "count", selector: "[data-waiting-item]", within: "[data-waiting-item]", equals: 0, when: "waiting view" },
       { kind: "count", selector: "[data-waiting-task]", within: "[data-waiting-task]", equals: 0, when: "waiting view" },
       { kind: "manual", note: "The queue runs **oldest first** (§30.2) — the top row has waited longest. The order is a relation between the rows' own `data-since`, so it is asserted in `test/web/waiting.queue.test.mjs` (the projection) and measured live in `web/scripts/dom-smoke.mjs` (the render)." },
       { kind: "manual", note: "`[data-waiting-since]` carries the instant on `datetime` and the row carries it again on `data-since`; the visible text is that instant on B26's three `time.*` keys — one time vocabulary across the two views. Measured live." },
       { kind: "manual", note: "`[data-waiting-task]` renders at most ten characters plus `…` with the whole value on `title` (R8 ③; the cap moved 8 → 10 in T-20261014-001418). Measured live." },
-      { kind: "manual", note: "The reason chip's dot is coloured through `[data-waiting-reason-kind]` → `var(--status-color)` (§30's one-attribute rule), so no component names a colour and the token registry is unchanged. Asserted as a source scan in `web/scripts/dom-smoke.mjs`'s C-group." },
+      { kind: "manual", note: "The act chip's dot is coloured through `[data-waiting-reason-kind]` → `var(--status-color)` (§30's one-attribute rule), so no component names a colour and the token registry is unchanged. Asserted as a source scan in `web/scripts/dom-smoke.mjs`'s C-group." },
+      { kind: "manual", note: "`[data-waiting-action]` names the human's act (Answer / Unblock / Accept) and `[data-waiting-preview]` carries the ask — the triggering question's first sentence, or the delivery round and acceptance count. Every row carries exactly one of each; the texts are measured live in `web/scripts/dom-smoke.mjs`." },
     ],
   },
 ];
@@ -3300,8 +3354,8 @@ const CONSISTENCY_ITEMS = [
 export const STALE_PROSE_COUNTS = Object.freeze([
   Object.freeze({
     claim: "252 `data-i18n*` hooks",
-    measured: 851,
-    detail: "545 `data-i18n` + 193 `-arg` + 85 `-aria-label` + 19 `-title` + 9 `-placeholder`",
+    measured: 836,
+    detail: "540 `data-i18n` + 188 `-arg` + 80 `-aria-label` + 19 `-title` + 9 `-placeholder`",
     verdict: "stale",
   }),
   Object.freeze({

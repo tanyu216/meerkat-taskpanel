@@ -21,7 +21,8 @@ directory, and a reviewer session in the same directory when a review card is qu
 live pool, poll claims nothing and only patrol and workflow run — see
 `references/operation.md` §No resident pool.
 
-The continue turn runs three deterministic commands, in this order:
+The continue turn runs these in order — the three deterministic passes, and a bounded routing
+read between workflow and poll when the project has a team:
 
 1. **patrol** — notify-only SLA pass. The board computes the SLA rows; the loop de-duplicates
    them, re-reads a survivor and notifies the leader. It also emits the legacy stale-heartbeat
@@ -40,7 +41,14 @@ The continue turn runs three deterministic commands, in this order:
    (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / per-kind config). An `agent` card with no
    effective reviewer fails the loop at startup: the board would have dispatched a review
    nobody can claim.
-3. **poll** — scan, **register the card brief watch**, atomically claim, **enqueue the handoff**. It
+3. **route** (a team only) — creation routes every team card, so a card still unowned after
+   **30 minutes** is a defect, not a queue. Read `issue list --status todo`; for a card with no
+   assignee past that window, `issue assign` it to the one role the ownership guide names for
+   its shape. The prompt carries the role names, because the control lane can run `taskctl`
+   but cannot `Read` the guide. Assignment is not a claim: it writes the route, not the
+   execution lock. A fresh card is still the creator's to route; an ambiguous one is the
+   project session's. Never invent a role name.
+4. **poll** — scan, **register the card brief watch**, atomically claim, **enqueue the handoff**. It
    also runs the **question lane**: an unanswered agent `question` on an `in_progress` card is
    enqueued for the project session (no claim, no subagent slot). It never spawns a worker: the
    resident project session does, as a subagent that inherits the project directory. Runs last
@@ -162,9 +170,10 @@ list. An install that has no shim on `PATH` can use `<agent-dir>/bin/taskctl`, o
 ### Who may close
 
 The card's own `acceptance_mode` is authoritative and arrives on the card; the loop keeps no
-local copy and there is no board-level policy. In loop terms it closes what the plan lets
-`taskd` close: an `agent` original after a current-round `APPROVE`, its review card, and an
-`off` card the plan auto-accepts. A `human` card is still reviewed, but it is never accepted
+local copy and there is no board-level policy. The authority is the evidence, not the kind:
+an `agent` original is closable once a current-round `APPROVE` exists, and never by the
+actor that wrote the verdict — so the loop applies the plan as `system` under the id
+`Orchestrator`, closes its review card, and auto-accepts an `off` card the plan names. A `human` card is still reviewed, but it is never accepted
 by the loop — record the verdict on the original, close the review card, and let the person
 close it. A card with a parent is never `human` (the board refuses the mode at the parent edge
 and at `issue update --acceptance-mode human`), and every unresolved card — task or epic —
@@ -223,7 +232,8 @@ Precedence is whole-manifest: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, the
 the loop behaves exactly as before. The loop's own `references/decision-policy.md` is the
 single decision-authority source; a team's `decision-policy.md` is ignored. An `ownership.md`,
 if the team has one, is a short routing guide the project session reads to assign one
-accountable role per work shape; the card's assignee still selects the executing role. A shape
+accountable role per work shape; the create names that role as the card's assignee, and the
+assignee still selects the executing role. A shape
 the guide does not describe goes to a worker outside the roles — a board name absent from the
 manifest — rather than being force-fit into a role.
 `MEERKAT_TASKPANEL_AGENTS` lists the team's board names; without it the loop only scans its

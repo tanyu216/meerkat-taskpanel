@@ -34,17 +34,17 @@ function commandsFor(db) {
   return createCommands(createContext({ db, repos: createRepositories(db) }));
 }
 
-function insertComment(db, { id, taskId, body, at }) {
+function insertComment(db, { id, taskId, body, at, authorKind = "taskd" }) {
   // `comments.author_id` references actors; the board's own actor already exists.
   const authorId = db.prepare("SELECT id FROM actors LIMIT 1").get().id;
   db.prepare(
     `INSERT INTO comments (id, task_id, body, kind, author_kind, author_id, version, created_at)
-     VALUES (?, ?, ?, 'note', 'taskd', ?, 1, ?)`,
-  ).run(id, taskId, body, authorId, at);
+     VALUES (?, ?, ?, 'note', ?, ?, 1, ?)`,
+  ).run(id, taskId, body, authorKind, authorId, at);
   db.prepare(
     `INSERT INTO task_activities (task_id, actor_kind, actor_id, event, changes_json, created_at)
-     VALUES (?, 'taskd', ?, 'comment_added', ?, ?)`,
-  ).run(taskId, authorId, JSON.stringify({ commentId: id, kind: "note" }), at);
+     VALUES (?, ?, ?, 'comment_added', ?, ?)`,
+  ).run(taskId, authorKind, authorId, JSON.stringify({ commentId: id, kind: "note" }), at);
 }
 
 /** A board with three identical loop notes, one legitimate loop note, and a human note. */
@@ -55,6 +55,14 @@ function seed(db) {
   insertComment(db, { id: "c1", taskId: task.id, body: REPEATED, at: "2026-10-29T17:16:51.000Z" });
   insertComment(db, { id: "c2", taskId: task.id, body: REPEATED, at: "2026-10-29T17:27:00.000Z" });
   insertComment(db, { id: "c3", taskId: task.id, body: REPEATED, at: "2026-10-29T17:36:53.000Z" });
+  // The identity change renamed the automated author: both kinds are in scope.
+  insertComment(db, {
+    id: "c6",
+    taskId: task.id,
+    body: REPEATED,
+    at: "2026-10-29T17:46:54.000Z",
+    authorKind: "system",
+  });
   insertComment(db, { id: "c4", taskId: task.id, body: SINGLE, at: "2026-10-29T18:00:00.000Z" });
   insertComment(db, { id: "c5", taskId: task.id, body: UNRELATED, at: "2026-10-29T18:01:00.000Z" });
   return task;
@@ -66,12 +74,12 @@ describe("dedupe-loop-acceptance-comments", () => {
       seed(db);
       const plan = planDuplicates(db, { keep: 1 });
 
-      assert.equal(plan.total, 4, "only the four loop notes are in scope");
+      assert.equal(plan.total, 5, "only the five loop notes are in scope");
       assert.equal(plan.keeping, 2);
-      assert.equal(plan.deleting, 2);
+      assert.equal(plan.deleting, 3);
 
       const repeated = plan.groups.find((group) => group.body === REPEATED);
-      assert.deepEqual(repeated.delete, ["c2", "c3"], "the earliest survives");
+      assert.deepEqual(repeated.delete, ["c2", "c3", "c6"], "the earliest survives");
       const single = plan.groups.find((group) => group.body === SINGLE);
       assert.deepEqual(single.delete, [], "a real one-off acceptance is untouched");
       assert.equal(plan.groups.some((group) => group.body === UNRELATED), false);
@@ -87,8 +95,8 @@ describe("dedupe-loop-acceptance-comments", () => {
       assert.ok(existsSync(backup), "a backup is written before any delete");
 
       const result = applyRepair(db, plan);
-      assert.equal(result.deletedComments, 2);
-      assert.equal(result.deletedActivities, 2, "no phantom `commented` feed rows are left");
+      assert.equal(result.deletedComments, 3);
+      assert.equal(result.deletedActivities, 3, "no phantom `commented` feed rows are left");
 
       assert.deepEqual(
         db
@@ -114,9 +122,9 @@ describe("dedupe-loop-acceptance-comments", () => {
       const record = JSON.parse(readFileSync(writeRepairRecord(dir, plan, result, backup), "utf8"));
       assert.deepEqual(
         record.groups.find((group) => group.body === REPEATED).deletedIds,
-        ["c2", "c3"],
+        ["c2", "c3", "c6"],
       );
-      assert.equal(record.deletedComments, 2);
+      assert.equal(record.deletedComments, 3);
     });
   });
 

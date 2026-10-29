@@ -251,7 +251,10 @@ responsibilities or boundaries — so that name must also be in the loop's scan 
 (`MEERKAT_TASKPANEL_AGENTS`) or its cards are never claimed. The project session receives the
 guide in full when it spawns a batch; the control/continue turn receives a compact summary
 and the path. It is prompt guidance, not a gate: the card's assignee still selects the
-executing role, and it never changes who decides.
+executing role, and it never changes who decides. **Creating a team card is the routing
+step**: the create carries the accountable role's board name as `--assignee <role>
+--assignee-kind agent`. An unassigned team card is unowned — the loop scans only the names in
+`MEERKAT_TASKPANEL_AGENTS`, so it is not a handoff and may sit until someone routes it.
 A legacy `decision-policy.md` in the root is ignored; `--validate` reports it.
 
 ## Installing and upgrading
@@ -272,11 +275,17 @@ per-kind config (`<program root>/.env.<actor-kind>`, with the user's consent):
 ```text
 MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing
 MEERKAT_TASKPANEL_REVIEWER=Reviewer
+MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no
 ```
 
 Without `MEERKAT_TASKPANEL_AGENTS` the loop scans only its default agent; a role card is
-never claimed. The reviewer is added by the existing reviewer scan. A role may also be
-listed with repeated `--agent` flags.
+never claimed. A team card must also be **created** with that role's board name as its
+`--assignee`; the installed scheduling units carry no `--agent`, so this key is the loop's
+identity. The reviewer is added by the existing reviewer scan. A role may also be listed
+with repeated `--agent` flags on a manual run. A team install is **assignee-only**
+(`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no`): with routing at creation, an unassigned card is a
+defect the workflow pass reports, not work for whichever role scans first. Ask before
+changing an existing `yes`.
 
 ## Native agent definitions
 

@@ -309,11 +309,11 @@ describe("commands/workflowTick — 0031", () => {
       // The executor's writes: the round bump unlocks the baseline, then the
       // must-fix items land, then the card is released to the pool.
       commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });
-      commands.updateTask({ id: original.id, acceptance: rejected.mustFix, actor: { kind: "taskd", id: "loop" } });
+      commands.updateTask({ id: original.id, acceptance: rejected.mustFix, actor: { kind: "system", id: "Orchestrator" } });
       commands.moveStatus({ id: original.id, to: "todo", actor: WORKER });
       // The executor closes the review card last; without it the next tick
       // would still treat this original as handled by the outcome.
-      commands.moveStatus({ id: review.id, to: "done", actor: { kind: "taskd", id: "loop" } });
+      commands.moveStatus({ id: review.id, to: "done", actor: { kind: "system", id: "Orchestrator" } });
       assert.deepEqual(commands.getTask({ id: original.id }).acceptance, [
         "the thing works",
         "add the e2e case for a canceled child",
@@ -374,7 +374,7 @@ describe("commands/workflowTick — 0031", () => {
         actor: REVIEWER,
       });
       assert.throws(
-        () => commands.moveStatus({ id: original.id, to: "done", actor: { kind: "taskd", id: "loop" } }),
+        () => commands.moveStatus({ id: original.id, to: "done", actor: { kind: "system", id: "Orchestrator" } }),
         (err) =>
           err.code === "ACCEPTANCE_INCOMPLETE" &&
           err.details.missing.some((item) => item.text === finding),

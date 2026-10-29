@@ -13,7 +13,8 @@
  * This is a **recorded exception** to the append-only comment/activity tables
  * (`tr_comments_no_delete`, `tr_activities_no_delete`, see docs/events.md).
  * It is safe because it is:
- *   - narrow: only `taskd` notes whose body matches the loop's acceptance line,
+ *   - narrow: only automated notes (`taskd` before the identity change, `system`
+ *     after) whose body matches the loop's acceptance line,
  *     grouped by `(task_id, body)`, keeping the earliest `--keep` rows;
  *   - transactional: the two no-delete triggers are dropped and recreated
  *     byte-for-byte from `sqlite_master` inside one `BEGIN IMMEDIATE`;
@@ -38,6 +39,11 @@ import { DatabaseSync } from "node:sqlite";
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 export const BODY_LIKE = "Loop acceptance after review %: VERDICT: APPROVE.";
+/**
+ * The loop wrote these as `taskd` before the identity change and as `system`
+ * after it; a board upgraded mid-bug can carry both.
+ */
+export const AUTHOR_KINDS = ["taskd", "system"];
 const NO_DELETE_TRIGGERS = ["tr_comments_no_delete", "tr_activities_no_delete"];
 const CHUNK = 400;
 
@@ -60,10 +66,10 @@ export function planDuplicates(db, options = {}) {
       `SELECT c.id, c.task_id, c.body, c.created_at, c.author_kind, t.identifier
          FROM comments c
          LEFT JOIN tasks t ON t.id = c.task_id
-        WHERE c.author_kind = 'taskd' AND c.body LIKE ?
+        WHERE c.author_kind IN (${AUTHOR_KINDS.map(() => "?").join(",")}) AND c.body LIKE ?
         ORDER BY c.task_id, c.body, c.created_at, c.id`,
     )
-    .all(BODY_LIKE);
+    .all(...AUTHOR_KINDS, BODY_LIKE);
 
   const groups = new Map();
   for (const row of rows) {

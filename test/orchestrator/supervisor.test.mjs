@@ -36,6 +36,7 @@ import {
   parseEnvFile,
   parseHeartbeat,
   planPatrol,
+  planStrandedTodoAlerts,
   planTick,
   pruneRegistry,
   resolveClaimUnassigned,
@@ -135,6 +136,83 @@ describe("planTick (pure)", () => {
     });
     assert.equal(actions.filter((a) => a.type === "wake").length, 0);
     assert.equal(actions[0].why, "cap");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pure: stranded todo cards
+// ---------------------------------------------------------------------------
+
+describe("planStrandedTodoAlerts (pure)", () => {
+  const NOW = Date.parse("2026-10-30T12:00:00.000Z");
+  const OLD = "2026-10-30T09:00:00.000Z"; // 3 h
+  const FRESH = "2026-10-30T11:50:00.000Z"; // 10 min
+  const AGING = 30 * 60 * 1000;
+  const card = (identifier, over = {}) => ({
+    identifier,
+    kind: "task",
+    status: "todo",
+    status_changed_at: OLD,
+    assignee: null,
+    ...over,
+  });
+
+  it("flags an agent-assigned card whose name nobody scans, whatever the pool policy", () => {
+    const alerts = planStrandedTodoAlerts({
+      todoTasks: [card("PROJ-1", { assignee: { display_name: "Worker", kind: "claude" } })],
+      agents: ["Jobs", "Linus", "Turing"],
+      reviewer: "Reviewer",
+      claimUnassigned: true,
+      now: NOW,
+      agingMs: AGING,
+    });
+    assert.deepEqual(
+      alerts.map((a) => [a.type, a.reason, a.original]),
+      [["unowned_todo", "assignee_not_scanned", "PROJ-1"]],
+    );
+  });
+
+  it("does not flag a scanned role, the reviewer, a human owner, or an epic", () => {
+    const alerts = planStrandedTodoAlerts({
+      todoTasks: [
+        card("PROJ-2", { assignee: { display_name: "linus", kind: "claude" } }),
+        card("PROJ-3", { assignee: { display_name: "Reviewer", kind: "claude" } }),
+        card("PROJ-4", { assignee: { display_name: "Terry", kind: "human" } }),
+        card("PROJ-5", { kind: "epic", assignee: { display_name: "Worker", kind: "claude" } }),
+      ],
+      agents: ["Jobs", "Linus", "Turing"],
+      reviewer: "Reviewer",
+      claimUnassigned: true,
+      now: NOW,
+      agingMs: AGING,
+    });
+    assert.deepEqual(alerts, []);
+  });
+
+  it("flags an unassigned claimable card only when the loop will not take the pool", () => {
+    const pool = [{ identifier: "PROJ-6", reason: "unassigned", created_at: OLD }];
+    const on = planStrandedTodoAlerts({
+      unassignedPool: pool, agents: ["Jobs"], claimUnassigned: true, now: NOW, agingMs: AGING,
+    });
+    assert.deepEqual(on, [], "the pool is the normal path when claim_unassigned is on");
+    const off = planStrandedTodoAlerts({
+      unassignedPool: pool, agents: ["Jobs"], claimUnassigned: false, now: NOW, agingMs: AGING,
+    });
+    assert.deepEqual(
+      off.map((a) => [a.type, a.reason, a.original]),
+      [["unowned_todo", "unassigned", "PROJ-6"]],
+    );
+  });
+
+  it("ignores a card younger than the aging window", () => {
+    const alerts = planStrandedTodoAlerts({
+      todoTasks: [card("PROJ-7", { status_changed_at: FRESH, assignee: { display_name: "Worker", kind: "claude" } })],
+      agents: ["Jobs"],
+      claimUnassigned: true,
+      now: NOW,
+      agingMs: AGING,
+    });
+    assert.deepEqual(alerts, []);
   });
 });
 
@@ -2285,7 +2363,7 @@ describe("the workflow plan survives the wire and executes", () => {
 
   const DELIVERY = {
     conclusion: "The thing is done.",
-    acceptance: [{ text: "the thing works", status: "met", note: "evidence[1] — the commit" }],
+    acceptance: [{ text: "the thing works", status: "met", note: "the commit — evidence[1]" }],
     evidence: [{ kind: "commit", sha: "abc1234" }],
   };
   const VERDICT = {

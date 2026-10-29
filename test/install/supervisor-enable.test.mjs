@@ -626,8 +626,8 @@ describe("install.sh: enable — cron", () => {
     // PATH line sits *inside* the block, so `disable` takes it away with the block.
     const blockLines = table.split("# >>> meerkat-taskpanel (~/.claude) >>>\n")[1].split("\n");
     assert.match(blockLines[0], /^PATH=\S+$/);
-    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --ping-once --actor-kind claude --agent alice --log .* >\/dev\/null 2>&1$/);
-    assert.match(blockLines[2], /^\*\/10 \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --continue-once --actor-kind claude --agent alice /);
+    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --ping-once --actor-kind claude --log .* >\/dev\/null 2>&1$/);
+    assert.match(blockLines[2], /^\*\/10 \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --continue-once --actor-kind claude /);
     assert.equal(blockLines[3], "# <<< meerkat-taskpanel (~/.claude) <<<");
     assert.match(table, /^# <<< meerkat-taskpanel \(~\/\.claude\) <<<$/m);
 

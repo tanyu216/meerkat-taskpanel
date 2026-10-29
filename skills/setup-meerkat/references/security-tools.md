@@ -36,6 +36,65 @@ Rejected candidates, so the next reader does not re-open them: TruffleHog (AGPL-
 A secret is **not** waivable the way an advisory is: rotate the credential, purge it from
 the history, then record what happened. A waiver ledger covers CVEs, not leaked keys.
 
+## CI coverage
+
+A machine with every scanner installed still has no security gate if the project's CI never
+runs one. The same `--check` pass therefore reads the project's CI configuration and reports,
+per arm, `covered` / `missing` / `unknown` / `absent`.
+
+Recognised, in priority order: `.github/workflows/*.ya?ml` (GitHub Actions), `.gitlab-ci.yml`,
+`.circleci/config.{yml,yaml}`, `.travis.yml`, `azure-pipelines.yml` / `.azure-pipelines.yml`,
+`bitbucket-pipelines.yml`, `Jenkinsfile`, `.buildkite/pipeline.{yml,yaml}`. Markers it will
+not judge — `.cirrus.yml`, `appveyor.yml`, `cloudbuild.*`, `buildspec.*`, `.woodpecker.yml`,
+`.drone.yml`, `.teamcity/` — are reported `unknown` with the file named, and the arms stay
+unjudged. No CI file at all is `absent`: an absence this skill reports but does not treat as
+its own finding, because creating the pipeline belongs to the architecture flow.
+
+Coverage is text matching, not YAML parsing: full-line comments are skipped and each arm's
+`ciMatch` tokens (in `assets/security/toolchain.json`) are matched case-insensitively, with
+the first `file:line` kept as evidence. The bias is deliberate — a false positive hides a
+gap, a false negative would generate a duplicate job. The tokens are per **arm**, not per
+tool, so a bare `trivy` does not count as a secret scan.
+
+**Writing.** For GitHub Actions, each arm has one complete, standalone workflow asset under
+`assets/security/github/<arm>.yml`, written verbatim to
+`.github/workflows/security-<arm>.yml` — one file per arm, so adding a second arm later is a
+new file rather than an edit to an existing one. Each carries `permissions: contents: read`,
+a weekly schedule, a `concurrency` group, and every `uses:` pinned to a commit SHA with the
+tag in a trailing comment. Those SHAs are the ones this repository validated when the skill
+shipped: re-check them when you upgrade the skill. A scanner's own exit code is the gate —
+except CodeQL, which has none and reports into code scanning. Waivers are a recorded decision
+in the project's standard, never an edit to the generated file.
+
+**Everywhere else the skill composes it, at that moment.** No per-provider template ships:
+`--ci-plan` prints each arm's command and `--ci-write` refuses, because a generator that
+rewrites another system's pipeline without parsing it is a guess. The addition is written
+into the file the check reads, from the same blueprint as the GitHub arms:
+
+| Element | What every arm keeps |
+|---|---|
+| Checkout | full history for a secret scan; the working tree otherwise |
+| Gate | the scanner's own exit code; CodeQL has none — it reports into code scanning |
+| Scope | the whole tree, every lockfile |
+| Schedule | weekly, plus the provider's pull-request trigger |
+| Privilege | read-only; only the SAST arm asks for the security-report write |
+| Pinning | a pinned image tag or action commit, never `latest` |
+| SBOM | optional, never gates |
+
+| Provider | Where the addition goes |
+|---|---|
+| GitLab CI | a job in `.gitlab-ci.yml` |
+| CircleCI | a job under `jobs:` plus its entry under `workflows:` |
+| Azure Pipelines | a step in `azure-pipelines.yml` |
+| Bitbucket | a step under `pipelines:` |
+| Travis | a job in `.travis.yml`, or a matrix entry |
+| Jenkins | a stage in the `Jenkinsfile` — declarative only; present the diff for anything more |
+| Buildkite | a step in `.buildkite/pipeline.yml` |
+
+Composing it into a separate file that the pipeline includes reads as `missing` on the next
+run: the check reads the file that defines the pipeline, and a scan nobody can find there is
+not a gate. Change the fewest lines, show the diff, and write only on an explicit yes.
+
 ## The Vue gap
 
 Neither default SAST tool extracts `.vue` single-file components (Semgrep's language table
@@ -65,12 +124,18 @@ node <skill-dir>/scripts/security-tools.mjs --print --project <dir>
 # Act — only on request, only on the named tools.
 node <skill-dir>/scripts/security-tools.mjs --install --tool gitleaks --project <dir>
 node <skill-dir>/scripts/security-tools.mjs --upgrade --json --project <dir>
+
+# Close a CI gap: show the file, then create it. Nothing is ever overwritten.
+node <skill-dir>/scripts/security-tools.mjs --ci-plan --project <dir>
+node <skill-dir>/scripts/security-tools.mjs --ci-write --ci-arm sast --project <dir>
 ```
 
 Exit codes: `0` the check ran (or the requested actions succeeded), `1` a required tool is
-missing, behind, or its version could not be read, `2` usage, `3` an action was requested
+missing, behind, or its version could not be read — or a CI write was refused (a conflict, a
+provider this skill cannot write, no CI at all), `2` usage, `3` an action was requested
 and this host has no supported package manager. The host (`github` or `other`) comes from
-`<dir>/.git/config`; `--host` overrides it.
+`<dir>/.git/config`; `--host` overrides it. A CI gap alone never changes `--check`'s exit
+code: `ok` is the local-tool verdict, `ci.ok` the CI one.
 
 `codeql` is reported as `ci` on purpose: on a public GitHub repository the analysis runs in
 the workflow, not on the developer's machine.

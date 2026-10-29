@@ -42,7 +42,6 @@ import {
   reworkIdemKey,
   roundOf,
 } from "../../../src/core/domain/workflow.mjs";
-import { TASKD_KIND } from "../../../src/foundation/constants.mjs";
 
 const NOW = "2026-10-19T10:00:00.000Z";
 
@@ -1437,7 +1436,7 @@ describe("planAutoAccept — no review required", () => {
 
   it("plans exactly the cards the write gate will accept", () => {
     // One rule, not a matrix: the planner releases an `off` card and the board
-    // accepts it as `taskd`; agent/human cards are never released.
+    // accepts it; agent/human cards are never released.
     for (const mode of ["off", "agent", "human"]) {
       const task = autoCard({ acceptance_mode: mode });
       const planned = planAutoAccept({ tasks: [task], config: CONFIG });

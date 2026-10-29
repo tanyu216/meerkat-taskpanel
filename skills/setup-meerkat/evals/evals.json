@@ -155,6 +155,22 @@
         "The answer is persisted in the project's instruction file, not only in the conversation.",
         "A second run reports the entry unchanged rather than restating or duplicating it."
       ]
+    },
+    {
+      "id": 12,
+      "name": "ci-security-gap",
+      "prompt": "Set up meerkat in this repo. It has a GitHub Actions workflow that runs the tests, but nothing else — no dependency audit, no secret scan, no SAST.",
+      "expected_output": "The security check reports the pipeline as GitHub Actions with those three arms missing and secret-scan covered only if a scanner is really in a workflow; the setup round asks about each missing arm once, with the recommended answer yes, and writes nothing before the answer; on yes it shows the file first (`--ci-plan`) and then creates one self-contained `security-<arm>.yml` per arm with `--ci-write`, never editing the existing workflow; an arm already covered in CI is never asked about; a project with no CI at all is reported and left to the architecture flow.",
+      "files": [],
+      "assertions": [
+        "The check reads the project's CI files and reports every arm's state with its evidence, rather than assuming coverage from the tool being installed on the machine.",
+        "Only the missing required arms are asked about, each with a recommended answer; a covered arm is not questioned.",
+        "The write is previewed before it happens, and only an explicit yes creates a file — `--yes` alone does not authorise the optional SBOM arm.",
+        "Each missing arm becomes its own `security-<arm>.yml`; an existing workflow file is never edited, and a differing file at the target path is reported as a conflict instead of overwritten.",
+        "For a provider other than GitHub Actions the skill composes the addition into that provider's own pipeline file from the printed commands — diff shown first, fewest lines changed — rather than refusing the case or shipping a per-provider template.",
+        "A project with no CI configuration is reported `absent` and no file is created — pipeline creation belongs to the architecture flow.",
+        "Re-running the check after the write reports the arm covered, and the summary says the project's own standard (docs/tech-spec.md § Security toolchain) is the record to update."
+      ]
     }
   ]
 }

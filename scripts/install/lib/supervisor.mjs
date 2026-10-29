@@ -415,7 +415,8 @@ export function cronContentLines(paths) {
       "run",
       once,
       `--actor-kind ${paths.actorKind}`,
-      `--agent ${paths.agent}`,
+      // No `--agent`: the scan set is the per-kind config's
+      // MEERKAT_TASKPANEL_AGENTS, and a flag here would outrank it.
       `--log ${paths.log}`,
       `--state-dir ${paths.stateDir}`,
       ">/dev/null 2>&1",

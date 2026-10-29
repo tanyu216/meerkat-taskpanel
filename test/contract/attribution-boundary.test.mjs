@@ -96,12 +96,12 @@ describe("contract/attribution-boundary — what 0020 does and does not referenc
   it("creates no actor row for the reserved names when they live only in the log", async () => {
     const board = await createTempBoard();
     try {
-      // The realistic shape: the board's own housekeeping writes `taskd` to the
+      // The realistic shape: the board's own housekeeping writes `system` to the
       // audit log, and the importer writes `md-import` there too. Nothing writes
       // either into an attribution column.
       board.db
         .prepare(
-          "INSERT INTO task_activities(task_id, actor_kind, actor_id, event, changes_json, created_at) VALUES (NULL, 'system', 'taskd', 'anomaly', '{}', ?)",
+          "INSERT INTO task_activities(task_id, actor_kind, actor_id, event, changes_json, created_at) VALUES (NULL, 'system', 'system', 'anomaly', '{}', ?)",
         )
         .run(TS);
       board.db
@@ -126,13 +126,13 @@ describe("contract/attribution-boundary — what 0020 does and does not referenc
         .run(TS);
 
       const reserved = board.db
-        .prepare("SELECT normalized_name FROM actors WHERE normalized_name IN ('taskd','md-import')")
+        .prepare("SELECT normalized_name FROM actors WHERE normalized_name IN ('system','md-import')")
         .all();
       assert.deepEqual(reserved, [], "a log-only synthetic id must not become a roster entry");
 
       // And the names really are the ones the code writes.
-      assert.equal(BOARD_ACTOR.id, "taskd");
-      assert.equal(BOARD_ACTOR.kind, "taskd");
+      assert.equal(BOARD_ACTOR.id, "system");
+      assert.equal(BOARD_ACTOR.kind, "system");
     } finally {
       board.close();
     }

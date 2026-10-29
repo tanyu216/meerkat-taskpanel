@@ -196,17 +196,20 @@ project-level `human` is a top-level default: a child that names no mode under i
 <!-- acceptance-matrix:begin -->
 | Card mode | Review card | Who may move it to `done` |
 |---|---|---|
-| `off` | none | the deliverer (any actor kind), `taskd`, or a human; `in_progress → done` is allowed |
-| `agent` | yes — an agent reviewer | `taskd` (after a current-round `APPROVE`) or a human |
+| `off` | none | the deliverer (any actor kind), or a human; `in_progress → done` is allowed |
+| `agent` | yes — an agent reviewer | anyone but the reviewer, after a current-round `APPROVE`; a human may always |
 | `human` | yes — an agent reviewer | a human only |
-| a review card | — | a human or `taskd` — never the reviewer itself |
+| a review card | — | a human, or any actor but its reviewer — never the one who wrote the verdict |
 <!-- acceptance-matrix:end -->
 
-In agent terms: on an `agent` card the loop applies a current-round `APPROVE` and closes
-both cards; a human may close either. On an `off` card nobody has to review it — the
-deliverer may close it, or deliver straight to `done`. A `human` card is reviewed like an
-`agent` one: the loop records the round-scoped verdict and closes the review card, and only
-a person closes the original. A reviewer never closes the card it reviewed.
+In agent terms: on an `agent` card the reviewer's current-round `APPROVE` is what makes the
+card closable — the loop applies it, and so may any actor except the one who wrote the
+verdict; a human may close either card. The authority is the evidence, not who is asking,
+so the board's own `system` writes carry no extra right. On an `off` card nobody has to
+review it — the deliverer may close it, or deliver straight to `done`. A `human` card is
+reviewed like an `agent` one: the reviewer records the round-scoped verdict and another
+actor closes the review card, and only a person closes the original. A reviewer never
+closes the card it reviewed.
 
 The board enforces the mode; `ACCEPTANCE_FORBIDDEN` carries `mode` and `reviewCard` in its
 `details`. What the matrix means for the loop is in

@@ -76,8 +76,9 @@ If the JSON is malformed, stop and report; never guess a path.
 Run the setup as one decision round. Detection is the fact-gatherer: never ask the user for
 a board URL, role root, actor kind or human name that `detect.mjs` can establish. The
 **frontier** is every setup *decision* detection leaves open — the board target, the install
-set, the team shape, the role set, the install scope, the identity, the tracker integration
-and the card scope.
+set, the team shape, the role set, the install scope, the identity, the tracker integration,
+the card scope, and the **CI security gap** (§6 — asked only when a pipeline is detected and a
+required scan arm has no coverage in it).
 
 Ask the whole frontier in **one numbered round**, each question carrying a recommended
 answer and worded so "yes" accepts it; `--yes` is the same shorthand for the recommended
@@ -353,13 +354,18 @@ After installation, offer to merge (with consent) into the per-kind config that
 ```text
 MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing
 MEERKAT_TASKPANEL_REVIEWER=Reviewer
+MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no
 ```
 
 Use `configure-env.mjs`; a different existing value is a conflict, not an overwrite. Get
 an explicit yes for each key before writing it: an empty installer default (for example
 `MEERKAT_TASKPANEL_REVIEWER=`) is **not** consent, and `--force` is never implied by an
 empty value — ask before replacing it. Without `MEERKAT_TASKPANEL_AGENTS` the loop scans
-only its default agent and a role card is never claimed.
+only its default agent and a role card is never claimed. Creating a team card is the routing
+step: pass the role's board name as `--assignee <role> --assignee-kind agent`; an unassigned
+team card is unowned. A team is therefore **assignee-only**: ask before flipping an existing
+`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes` to `no`, because an unassigned card is a defect to
+report, not work for whichever role scans first.
 
 Native agent definitions are written for every host with a native format: Claude
 (`.claude/agents/<name>.md`), Codex (`.codex/agents/<name>.toml`) and Pi
@@ -402,12 +408,62 @@ node <skill-dir>/scripts/security-tools.mjs --upgrade --json --project <dir>
 official URL instead. A `.vue` (or Svelte) single-file component has no SAST extractor in
 either default: say so, and let the reviewer's manual checklist cover it.
 
+### CI security coverage — the second half of the same check
+
+The same pass reads the project's CI configuration and reports, per arm, whether the
+pipeline already runs a scanner. It recognises GitHub Actions, GitLab CI, CircleCI,
+Travis, Azure Pipelines, Bitbucket Pipelines, Jenkins and Buildkite; any other marker is
+reported `unknown` and left alone, never guessed at.
+
+- **No CI at all** is not this skill's finding. It reports every arm `absent` and asks
+  nothing — creating a pipeline is the architecture flow's CI skeleton.
+- **A recognised pipeline** is judged per arm: `covered` or `missing`. Ask **only** about
+  the missing required arms, one line each, recommended answer yes:
+  > The project runs `<provider>` (`<files>`), but not `<arm>` (`<tool>`). Add it — a new
+  > `security-<arm>.yml` on GitHub Actions, a job/stage/step in `<file>` anywhere else?
+  > I will show it first and write only on your yes.
+  A covered arm is never asked about. SBOM is optional: offer it only when the user wants
+  an inventory.
+- **GitHub Actions — the script writes it.** Preview, then create, only after an explicit
+  yes:
+
+  ```bash
+  node <skill-dir>/scripts/security-tools.mjs --ci-plan --json --project <dir>
+  node <skill-dir>/scripts/security-tools.mjs --ci-write --ci-arm <arm> --json --project <dir>
+  ```
+
+  `--ci-plan`'s `proposed[].diff` is the file, line for line — show it, do not summarise it.
+
+  Each arm is one self-contained `security-<arm>.yml`, so a later second arm is a new
+  file, never an edit to an existing one. A target that already exists with different
+  content is a conflict: nothing is written, nothing is renamed around it — report it and
+  let the user merge by hand.
+- **Any other provider — you write it, there and then.** No per-provider template ships;
+  compose the addition in that system's own idiom, from the same blueprint the GitHub arms
+  follow and against the file that is already there: the arm's scanner command
+  (`--ci-plan` prints it), the full history for a secret scan, the scanner's exit code as
+  the gate, least privilege and a weekly schedule. Put it **in the file the check reads**
+  (`.gitlab-ci.yml`, `.circleci/config.yml`, `azure-pipelines.yml`, `bitbucket-pipelines.yml`,
+  `.travis.yml`, `Jenkinsfile`, `.buildkite/pipeline.yml`) — a scanner parked in a file
+  nothing references reads as `missing` on the next run, and a scan nobody can find is not
+  a gate. Change the fewest lines: a job, a stage, a step. Show the exact diff first and
+  write only on an explicit yes — a hand-written edit to an existing pipeline is never
+  covered by `--yes`. If you cannot edit that file safely (a Groovy Jenkinsfile, a generated
+  config), present the addition for the user to apply instead of guessing.
+- `--yes` covers creating a new file for a required arm. It never covers SBOM, a conflict,
+  or an existing file. A declined arm is not remembered — the next run asks again, so say
+  that in the summary rather than implying a stored decision.
+- After a write, re-run `--check`: the arm reports `covered`. The project's own standard
+  (`docs/tech-spec.md` § Security toolchain, when it has one) is still the record — point
+  at it rather than restating the tools.
+
 ## 7. Verify and finish
 
 1. Re-run `<skill-dir>/scripts/detect.mjs --json`; report roles present and the selected agents.
 2. Run `<skill-dir>/scripts/install-roles.mjs --validate <roles-root>`; it must be `ok`.
 3. Re-run `<skill-dir>/scripts/security-tools.mjs --check --json --project <dir>`; report
-   what is missing, behind its floor, and what the project's CI provides.
+   what is missing, behind its floor, and what the project's CI provides — the `ci` block
+   names each arm's state, and after a write the arm must report `covered`.
 4. Print the next command to load/restart the supervisor
    (`install.sh --supervisor=enable` for the actor kind), and note that a running pool
    picks up role edits on its next dispatch.
@@ -444,6 +500,7 @@ skills/setup-meerkat/
 ├── scripts/{detect,install-roles,configure-env,security-tools}.mjs
 ├── scripts/lib/{agent-kinds,atomic,env-merge,validate,entry-guard}.mjs
 ├── assets/security/toolchain.json
+├── assets/security/github/{dependency-audit,secret-scan,sast,sbom}.yml
 └── assets/team/standard/{manifest.json,ownership.md,jobs/,linus/,turing/,reviewer/,agents/}
 ```
 

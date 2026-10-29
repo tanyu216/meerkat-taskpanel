@@ -248,6 +248,41 @@ describe("buildContinuePrompt", () => {
     assert.doesNotMatch(plain, /## Work routing/);
   });
 
+  it("routes a card left unowned past the window, before poll, only when a team is known", () => {
+    const withTeam = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "Jobs",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      ownership: { path: "/roles/ownership.md", text: "# Ownership\n" },
+      owners: ["Jobs", "Linus", "Turing"],
+    });
+    assert.match(withTeam, /issue assign <ref> --assignee <role>/, "the fallback writes the route");
+    assert.match(withTeam, /Jobs, Linus, Turing/, "the role names are on the prompt — the control turn cannot read the guide");
+    assert.match(withTeam, /30 minutes?|30 min/, "only a card past the window is touched");
+    assert.match(withTeam, /not claiming|not a claim/i, "assignment writes the route, not the lock");
+    const route = withTeam.indexOf("issue assign <ref>");
+    const poll = withTeam.indexOf("taskctl loop poll");
+    assert.ok(route !== -1 && route < poll, "route before poll, so the owner can claim it this turn");
+
+    const noOwners = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "alice",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      ownership: { path: "/roles/ownership.md", text: "# Ownership\n" },
+    });
+    assert.doesNotMatch(noOwners, /issue assign <ref>/, "a team with no role names routes nothing");
+
+    const noPoll = buildContinuePrompt({
+      actorKind: "claude",
+      agent: "Jobs",
+      continueIntervalSeconds: DEFAULT_CONTINUE_SECONDS,
+      ownership: { path: "/roles/ownership.md", text: "# Ownership\n" },
+      owners: ["Jobs"],
+      includePoll: false,
+    });
+    assert.doesNotMatch(noPoll, /issue assign <ref>/, "no poll, no routing fallback");
+  });
+
   it("carries the decision round: one frontier, one note, one escalation string", () => {
     // The round is how a question is asked; the ladder still says who decides.
     // One round is ONE question string per card: `console.mjs` only surfaces the
@@ -280,7 +315,7 @@ describe("buildContinuePrompt", () => {
     assert.ok(prompt.length < 6000, `prompt is ${prompt.length} chars`);
   });
 
-  it("stays bounded in the longest manual + policy form", () => {
+  it("stays bounded in the longest manual + policy + team form", () => {
     const longest = buildContinuePrompt({
       actorKind: "claude",
       agent: "alice",
@@ -289,6 +324,7 @@ describe("buildContinuePrompt", () => {
       openedBy: "human",
       decisionPolicy: { path: "/roles/decision-policy.md", text: "# Policy\n" },
       ownership: { path: "/roles/ownership.md", text: "# Ownership\n" },
+      owners: ["Jobs", "Linus", "Turing"],
     });
     assert.ok(longest.length < 6000, `longest prompt is ${longest.length} chars`);
   });

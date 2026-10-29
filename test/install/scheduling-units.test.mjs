@@ -153,6 +153,28 @@ describe("install.sh: scheduling units", () => {
     assert.ok(!cron.includes("--patrol-only"));
     assert.doesNotMatch(cron, /supervisor\.mjs/, "the retired executor must not be named");
 
+    // Identity is the per-kind config's, never the unit's: a unit that pins
+    // `--agent` outranks MEERKAT_TASKPANEL_AGENTS, so a team's roles could never
+    // be scanned (the defect that left TP-0027…34 unclaimed).
+    for (const [name, body] of [
+      ["pingPlist", pingPlist],
+      ["continuePlist", continuePlist],
+      ["subscribePlist", subscribePlist],
+      ["sessionPlist", sessionPlist],
+      ["pingService", readFileSync(paths.pingService, "utf8")],
+      ["continueService", readFileSync(paths.continueService, "utf8")],
+      ["subscribeService", subscribeService],
+      ["sessionService", sessionService],
+      ["cron", cron],
+    ]) {
+      assert.doesNotMatch(body, /--agent\b/, `${name} must not pin an agent identity`);
+    }
+    assert.match(
+      readFileSync(join(kindConfigDirFor(home), ".env.claude"), "utf8"),
+      /^MEERKAT_TASKPANEL_AGENTS=alice$/m,
+      "the installer seeds the scan set from the agent name",
+    );
+
     for (const [name, path] of Object.entries(unitPaths(home, ".claude", "claude"))) {
       const body = readFileSync(path, "utf8");
       assert.ok(!body.includes("{{"), `${name} must be fully rendered`);
@@ -244,6 +266,29 @@ describe("install.sh: scheduling units", () => {
     const again = runInstall(["--target", "claude", "--agent-name", "alice"], env);
     assert.equal(again.status, 0, again.stderr);
     assert.equal(readFileSync(paths.pingPlist, "utf8"), before);
+  });
+
+  it("seeds the loop's scan set once and never clobbers a team list", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const env = installEnv(home, bin);
+    assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], env).status, 0);
+
+    const configPath = join(kindConfigDirFor(home), ".env.claude");
+    assert.match(readFileSync(configPath, "utf8"), /^MEERKAT_TASKPANEL_AGENTS=alice$/m);
+
+    // setup-meerkat's team list is the operator's choice; a reinstall keeps it.
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, "utf8").replace(
+        /^MEERKAT_TASKPANEL_AGENTS=.*$/m,
+        "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing",
+      ),
+      "utf8",
+    );
+    assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], env).status, 0);
+    assert.match(readFileSync(configPath, "utf8"), /^MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing$/m);
   });
 });
 

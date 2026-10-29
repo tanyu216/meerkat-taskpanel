@@ -86,6 +86,20 @@ function fixture(projectId, status, overrides = {}) {
     // this" from `acceptance_mode === "human"`, and an absent field would read
     // as `off` and silently empty the queue.
     acceptance_mode: overrides.acceptance_mode ?? "off",
+    // 0032 — the card's frozen acceptance baseline (`task.acceptance` on the
+    // wire). Present on every card: a card with no list answers `[]`, which is
+    // the Acceptance tab's genuinely-empty case, distinct from "no verdict yet".
+    acceptance: overrides.acceptance ?? [],
+    acceptance_revision: overrides.acceptance_revision ?? 0,
+    // The relations and round fields the wire always carries. The drawer's
+    // acceptance acts read them (`isAcceptanceWaiting` walks children and
+    // reviews), so a fixture without them would hand the client a shape the
+    // route never serves — and `delivery_round` is what the move handler bumps.
+    parent_id: overrides.parent_id ?? null,
+    review_of_id: overrides.review_of_id ?? null,
+    review_round: overrides.review_round ?? null,
+    delivery_round: overrides.delivery_round ?? 1,
+    status_changed_at: overrides.status_changed_at ?? "2026-10-01T00:00:00Z",
     meta: overrides.meta ?? {},
     assignee: overrides.assignee ?? { id: "a1", display_name: "linus", kind: "agent" },
     reporter: { id: "h1", display_name: "Terry", kind: "human" },
@@ -192,6 +206,9 @@ export function fixtureApi() {
       priority: "low",
       labels: ["design"],
       assignee: AGENT.pi,
+      // The two criteria its delivery reports answer, spelled exactly as the
+      // report spells them so the Acceptance tab pairs by normalised text.
+      acceptance: ["Criterion one", "Criterion two"],
       meta: {
         attachment_count: 5,
         attachments: [
@@ -211,11 +228,33 @@ export function fixtureApi() {
     // contract's own anchor sample, so the driven assertions and the contract's
     // table name the same string.
     fixture("p1", "backlog", { identifier: "PROJ-0007", title: "Collect the install survey", priority: "none", labels: [], assignee: AGENT.human }),
-    fixture("p1", "todo", { identifier: "TD-3", title: "Wire the board", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
+    // TD-3 is the pre-delivery card: it carries criteria but no report, so the
+    // Acceptance tab must list them as pending rather than claiming it has none.
+    fixture("p1", "todo", {
+      identifier: "TD-3",
+      title: "Wire the board",
+      priority: "high",
+      labels: ["bug"],
+      assignee: AGENT.claude,
+      acceptance: ["Wire the board end to end", "Explain the empty state"],
+    }),
     fixture("p1", "todo", { identifier: "TD-4", title: "Polish the empty states", priority: "medium", labels: ["ui"], assignee: AGENT.codex }),
     fixture("p1", "in_progress", { identifier: "TD-5", title: "Fix the renderer", priority: "urgent", labels: ["bug", "ui"], assignee: AGENT.codex }),
     fixture("p1", "in_progress", { identifier: "TD-6", title: "Profile the board scroll", priority: "high", labels: ["perf"], assignee: AGENT.claude }),
-    fixture("p1", "in_review", { identifier: "TD-7", title: "Audit the token store", priority: "medium", labels: ["security"], assignee: AGENT.openclaw, acceptance_mode: "human" }),
+    // TD-7 is the delivered card the Acceptance tab's second leg reads: it is
+    // genuinely `in_review` and carries the current-round report below, so the
+    // criterion list and its verdicts are one card's two faces — the state the
+    // frozen acceptance item names. (TD-1, the drawer's anchor card, is still
+    // `backlog`; its two reports are history, not a current delivery.)
+    fixture("p1", "in_review", {
+      identifier: "TD-7",
+      title: "Audit the token store",
+      priority: "medium",
+      labels: ["security"],
+      assignee: AGENT.openclaw,
+      acceptance_mode: "human",
+      acceptance: ["Audit the token store end to end", "Report the findings"],
+    }),
     fixture("p1", "in_review", { identifier: "TD-8", title: "Redesign the sidebar rail", priority: "low", labels: ["design", "ui"], assignee: AGENT.pi, acceptance_mode: "human" }),
     fixture("p1", "blocked", { identifier: "TD-9", title: "Waiting on review", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
     // M1 · the 「等你回复」card. Its status is the overlay, so it is *listed* under
@@ -250,8 +289,17 @@ export function fixtureApi() {
     // TD-1 · the drawer's comment list (B09), served **oldest-first** on
     // purpose: the route's `order` parameter is not honoured by this fixture, so
     // the drawer's own newest-first ordering is what the interaction pass reads.
+    // `author_kind` is a **platform** on this column (`claude`, `codex`, `pi`, or
+    // the board's own `taskd`), never the literal `agent` — that value belongs to
+    // an assignee who names no platform. A fixture that wrote `agent` here made
+    // the drawer's `kind === "agent"` comparison look right while every real
+    // agent (and the loop's workflow pass) wore the human label; the B09 rule
+    // that reads this row's label is what keeps that from returning. `TD-13`
+    // keeps the category value on purpose: `isAgentKind` must read it as an
+    // agent too, and this is the one row that proves it.
     "TD-1": [
-      { id: "cm-4", task_id: "td_TD_1", kind: "note", author_kind: "agent", author_id: "jobs", body: "先起草第一段。", refs: [], created_at: "2026-10-12T00:03:00Z" },
+      { id: "cm-6", task_id: "td_TD_1", kind: "note", author_kind: "system", author_id: "system", body: "自动启动：子卡进入 in_progress。", refs: [], created_at: "2026-10-12T00:02:00Z" },
+      { id: "cm-4", task_id: "td_TD_1", kind: "note", author_kind: "claude", author_id: "jobs", body: "先起草第一段。", refs: [], created_at: "2026-10-12T00:03:00Z" },
       { id: "cm-5", task_id: "td_TD_1", kind: "note", author_kind: "human", author_id: "Terry", body: "补上第二段，再走一遍。", refs: [], created_at: "2026-10-12T00:04:00Z" },
     ],
     "TD-13": [
@@ -376,6 +424,31 @@ export function fixtureApi() {
     ],
   };
   const reports = {
+    // TD-7 is `in_review` and human-mode: the delivered card whose acceptance
+    // verdicts the drawer pairs with its own criteria, one met with a note and
+    // one partial. Its `status_changed_at` (not this report) is the wait's
+    // `since`, so the queue's rows are unaffected.
+    td_TD_7: [
+      {
+        id: "rp-7",
+        task_id: "td_TD_7",
+        round: 1,
+        seg: "1",
+        session_id: null,
+        conclusion: "Audit complete; findings written up.",
+        acceptance: [
+          { text: "Audit the token store end to end", status: "met", note: "evidence[7]" },
+          { text: "Report the findings", status: "partial", note: "findings.md pending" },
+        ],
+        evidence: [],
+        evidence_truncated: false,
+        leftovers: "Publish the findings.",
+        author_kind: "agent",
+        author_id: "a3",
+        author: { id: "a3", display_name: "elon", kind: "agent" },
+        created_at: minutes(10),
+      },
+    ],
     td_TD_1: [
       {
         id: "rp-1",
@@ -400,7 +473,10 @@ export function fixtureApi() {
         seg: "3",
         session_id: "sess-2",
         conclusion: "Second round closed the gap.",
-        acceptance: [{ text: "Criterion one", status: "met" }, { text: "Criterion two", status: "met" }],
+        acceptance: [
+          { text: "Criterion one", status: "met", note: "evidence[1]" },
+          { text: "Criterion two", status: "met" },
+        ],
         evidence: [],
         evidence_truncated: false,
         leftovers: null,
@@ -424,6 +500,11 @@ export function fixtureApi() {
     attachmentBytes,
     sessions,
     reports,
+    // M6 · the write log, in arrival order. The Acceptance tab's send-back is
+    // two writes — the note, then the move that starts a new round — and their
+    // order is the card's own acceptance item; measuring it from the server side
+    // is the only place the order is a fact rather than an intention.
+    writes: [],
     // B19 — the access policy the fixture API serves and `PUT` mutates. The
     // token is a well-formed 64-hex credential so the panel's copy/reveal and
     // rotation paths exercise the real shapes.
@@ -525,6 +606,76 @@ export function startServer() {
     if (path === "/api/v1/tasks") {
       const projectId = url.searchParams.get("project_id");
       return ok({ tasks: data.tasks.filter((t) => !projectId || t.project_id === projectId) });
+    }
+    const refOf = (prefix) => decodeURIComponent(path.slice(prefix.length).split("/")[0]);
+    const readJsonBody = (done) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(chunk));
+      req.on("end", () => {
+        try {
+          done(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"));
+        } catch {
+          done({});
+        }
+      });
+    };
+    // M6 · the two writes the Acceptance tab's send-back makes, in the order it
+    // makes them. The real routes answer `{task, status}` and `{comment}`, and a
+    // refusal is a non-2xx envelope; modelling the success shape is what lets
+    // the client's optimistic status be replaced by the server's own record.
+    if (req.method === "POST" && /^\/api\/v1\/tasks\/[^/]+\/comments$/.test(path)) {
+      const ref = refOf("/api/v1/tasks/");
+      const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
+      readJsonBody((body) => {
+        if (!task) {
+          res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+          return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", http: 404, message: "no such card" } }));
+        }
+        const comment = {
+          id: `cm-write-${data.writes.length + 1}`,
+          task_id: task.id,
+          kind: body.kind ?? "discuss",
+          author_kind: "human",
+          author_id: "Terry",
+          author: { id: "h1", display_name: "Terry", kind: "human" },
+          body: body.body ?? "",
+          refs: [],
+          created_at: new Date().toISOString(),
+        };
+        (data.comments[task.identifier] ??= []).push(comment);
+        data.writes.push({ verb: "comment", ref: task.identifier, body: comment.body });
+        ok({ comment });
+      });
+      return;
+    }
+    if (req.method === "POST" && /^\/api\/v1\/tasks\/[^/]+\/move$/.test(path)) {
+      const ref = refOf("/api/v1/tasks/");
+      const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
+      readJsonBody((body) => {
+        if (!task) {
+          res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+          return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", http: 404, message: "no such card" } }));
+        }
+        const from = task.status;
+        task.status = body.to;
+        task.version = (task.version ?? 1) + 1;
+        task.status_changed_at = new Date().toISOString();
+        // 0034 — `in_review → in_progress` starts a new delivery round. The probe
+        // reads the round back, so it is the state machine's fact, not the
+        // client's optimism, that the check records.
+        if (from === "in_review" && body.to === "in_progress") {
+          task.delivery_round = (task.delivery_round ?? 1) + 1;
+        }
+        data.writes.push({
+          verb: "move",
+          ref: task.identifier,
+          from,
+          to: body.to,
+          delivery_round: task.delivery_round,
+        });
+        ok({ task, status: task.status });
+      });
+      return;
     }
     const commentsFor = /^\/api\/v1\/tasks\/([^/]+)\/comments$/.exec(path);
     if (commentsFor) return ok({ comments: data.comments[decodeURIComponent(commentsFor[1])] ?? [] });
@@ -1292,10 +1443,23 @@ export async function run() {
     const acceptanceRead = await page.evaluate(() => ({
       items: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
       statuses: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-status]')].map((e) => e.getAttribute("data-acceptance-status")),
+      paired: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-paired]')].map((e) => e.getAttribute("data-acceptance-paired")),
+      notes: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-note]')].map((e) => e.textContent.trim()),
+      extras: document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-extra="true"]').length,
     }));
     drawerTabsCheck(
       acceptanceRead.items === 2 && acceptanceRead.statuses.join(",") === "met,met",
       `Acceptance read ${acceptanceRead.items} item(s) / ${acceptanceRead.statuses.join("/")}`,
+    );
+    // TD-1 carries the two criteria its reports answer, so every row is a
+    // pairing — not a bare verdict list, and not a duplicate for the extras.
+    drawerTabsCheck(
+      acceptanceRead.paired.join(",") === "true,true" && acceptanceRead.extras === 0,
+      `Acceptance pairing read ${acceptanceRead.paired.join("/")} with ${acceptanceRead.extras} extra row(s)`,
+    );
+    drawerTabsCheck(
+      acceptanceRead.notes.join("|") === "evidence[1]",
+      `Acceptance notes read ${JSON.stringify(acceptanceRead.notes)}, expected the round's own note`,
     );
 
     await page.click('[data-detail-tab="leftovers"]');
@@ -1307,6 +1471,38 @@ export async function run() {
     drawerTabsCheck(
       leftoversRead.rows === 2 && leftoversRead.empty === 1,
       `Leftovers read ${leftoversRead.rows} row(s), ${leftoversRead.empty} empty round(s)`,
+    );
+
+    /* The pre-delivery half: a `todo` card with criteria and no report. The tab
+       must list the card's own criteria as pending — the defect was that it
+       rendered the (absent) verdict list and said the card had no criteria. */
+    await page.evaluate(() => {
+      const card = [...document.querySelectorAll("[data-card]")].find(
+        (el) => (el.querySelector("[data-card-identifier]")?.textContent ?? "").trim() === "TD-3",
+      );
+      card?.click();
+    });
+    await page.waitForTimeout(300);
+    await page.click('[data-detail-tab="acceptance"]');
+    await page.waitForTimeout(120);
+    const pendingRead = await page.evaluate(() => ({
+      items: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
+      texts: [...document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-text')].map((e) => e.textContent.trim()),
+      statuses: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-status]')].map((e) => e.getAttribute("data-acceptance-status")),
+      paired: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-paired]')].map((e) => e.getAttribute("data-acceptance-paired")),
+      empty: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-empty').length,
+    }));
+    drawerTabsCheck(
+      pendingRead.items === 2 && pendingRead.empty === 0,
+      `a todo card read ${pendingRead.items} row(s) and ${pendingRead.empty} empty state(s), expected its 2 criteria`,
+    );
+    drawerTabsCheck(
+      pendingRead.statuses.join(",") === "pending,pending" && pendingRead.paired.join(",") === "false,false",
+      `a todo card's criteria read ${pendingRead.statuses.join("/")} (paired ${pendingRead.paired.join("/")} ), expected pending and unpaired`,
+    );
+    drawerTabsCheck(
+      pendingRead.texts.join("|") === "Wire the board end to end|Explain the empty state",
+      `a todo card's criteria read ${JSON.stringify(pendingRead.texts)}`,
     );
 
     /* Data-driven visibility, the other half: a card with no session rows has
@@ -1332,6 +1528,8 @@ export async function run() {
         sectionHidden: document.querySelector("[data-detail-agent-session]")?.hidden ?? null,
         selected: tabs.filter((tab) => tab.getAttribute("aria-selected") === "true").map((tab) => tab.getAttribute("data-detail-tab")),
         reports: document.querySelector('[data-detail-panel="reports"]')?.textContent ?? "",
+        acceptance: document.querySelector('[data-detail-panel="acceptance"]')?.textContent ?? "",
+        acceptanceItems: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
       };
     });
     drawerTabsCheck(
@@ -1349,6 +1547,64 @@ export async function run() {
     drawerTabsCheck(
       noSessionsRead.reports.includes("No reports yet."),
       "a card with no reports does not say so in the Reports panel",
+    );
+    // The genuinely empty acceptance case: no criteria and no report. The copy
+    // names the **verdict** that is missing and never claims the card has no
+    // criteria — "no acceptance criteria yet" was exactly the lie, and even the
+    // "…or verdicts yet" repair still said it.
+    drawerTabsCheck(
+      noSessionsRead.acceptanceItems === 0 &&
+        noSessionsRead.acceptance.includes("No acceptance verdicts yet.") &&
+        !noSessionsRead.acceptance.includes("criteria"),
+      `a card with no criteria and no report read ${noSessionsRead.acceptanceItems} row(s): ${JSON.stringify(noSessionsRead.acceptance.trim())}`,
+    );
+
+    /* The delivered half of the acceptance item: an `in_review` card whose
+       current-round report answers its criteria. TD-7 is that card — status
+       `in_review`, `acceptance_mode: human`, two criteria, and a round-1 report
+       that answers both — so the tab must pair each criterion with its verdict
+       and note instead of listing a bare verdict list. */
+    const deliveredStatus = await page.evaluate(() => {
+      const card = [...document.querySelectorAll("[data-card]")].find(
+        (el) => (el.querySelector("[data-card-identifier]")?.textContent ?? "").trim() === "TD-7",
+      );
+      const status = card?.getAttribute("data-status") ?? null;
+      card?.click();
+      return status;
+    });
+    drawerTabsCheck(
+      deliveredStatus === "in_review",
+      `the delivered pairing card is ${deliveredStatus}, expected in_review`,
+    );
+    await page.waitForTimeout(300);
+    await page.click('[data-detail-tab="acceptance"]');
+    await page.waitForTimeout(120);
+    const deliveredRead = await page.evaluate(() => ({
+      items: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
+      texts: [...document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-text')].map((e) => e.textContent.trim()),
+      statuses: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-status]')].map((e) => e.getAttribute("data-acceptance-status")),
+      paired: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-paired]')].map((e) => e.getAttribute("data-acceptance-paired")),
+      notes: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-note]')].map((e) => e.textContent.trim()),
+      extras: document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-extra="true"]').length,
+      empty: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-empty').length,
+    }));
+    drawerTabsCheck(
+      deliveredRead.items === 2 && deliveredRead.empty === 0,
+      `an in_review card read ${deliveredRead.items} row(s) and ${deliveredRead.empty} empty state(s), expected its 2 criteria`,
+    );
+    drawerTabsCheck(
+      deliveredRead.statuses.join(",") === "met,partial" && deliveredRead.paired.join(",") === "true,true" && deliveredRead.extras === 0,
+      `an in_review card's criteria read ${deliveredRead.statuses.join("/")} (paired ${deliveredRead.paired.join("/")}, ${deliveredRead.extras} extra row(s)), expected the report's met/partial`,
+    );
+    drawerTabsCheck(
+      deliveredRead.texts.length === 2 &&
+        deliveredRead.texts[0].includes("Audit the token store end to end") &&
+        deliveredRead.texts[1].includes("Report the findings"),
+      `an in_review card's rows read ${JSON.stringify(deliveredRead.texts)}, expected the card's own criteria`,
+    );
+    drawerTabsCheck(
+      deliveredRead.notes.join("|") === "evidence[7]|findings.md pending",
+      `an in_review card's notes read ${JSON.stringify(deliveredRead.notes)}, expected the round's own notes`,
     );
 
     await page.evaluate(() => {
@@ -1375,7 +1631,7 @@ export async function run() {
       const activities = stamps("[data-detail-activity] [data-activity-row] [data-activity-ts]");
       return { comments, activities, commentsDesc: descending(comments), activitiesDesc: descending(activities) };
     });
-    drawerTabsCheck(chronoRead.comments.length === 2, `drawer comments ${chronoRead.comments.length}, expected 2`);
+    drawerTabsCheck(chronoRead.comments.length === 3, `drawer comments ${chronoRead.comments.length}, expected 3`);
     drawerTabsCheck(chronoRead.commentsDesc, `drawer comments are not newest-first: ${chronoRead.comments.join(" | ")}`);
     drawerTabsCheck(chronoRead.activities.length === 4, `drawer activity rows ${chronoRead.activities.length}, expected 4`);
     drawerTabsCheck(chronoRead.activitiesDesc, `drawer activity rows are not newest-first: ${chronoRead.activities.join(" | ")}`);
@@ -4787,7 +5043,7 @@ export async function run() {
       const rows = [...document.querySelectorAll("[data-waiting-item]")];
       // M6 — the queue now has two producers: the awaiting card (TD-13) and the
       // delivered cards whose own `acceptance_mode` is `human` (TD-7, TD-8).
-      // The six-field rule below is about the awaiting row, so it
+      // The per-row field rule below is about the awaiting row, so it
       // selects that row explicitly; the order rule is asserted separately.
       const item = rows.find((row) => row.getAttribute("data-task") === "TD-13") ?? null;
       // Resolve the accent the same way the stylesheet does, so the comparison is
@@ -4825,9 +5081,9 @@ export async function run() {
         countText: countPill?.textContent?.trim() ?? null,
         countHidden: countPill ? countPill.hasAttribute("hidden") : null,
         rows: rows.length,
-        // B27.1 — the six fields a row owes, read off the one row this fixture
-        // has: actor (+ kind), reason (+ kind), identifier (with the whole value
-        // on `title`), title, the stamp, the opener.
+        // B27.1 — the fields a row owes, read off the one row this fixture has:
+        // actor (+ kind), reason (+ kind), action, identifier (with the whole
+        // value on `title`), title, preview, the stamp, the opener.
         itemTask: item?.getAttribute("data-task") ?? null,
         itemIds: rows.map((row) => row.getAttribute("data-task")),
         acceptance: (() => {
@@ -4836,6 +5092,8 @@ export async function run() {
           return {
             reason: row.querySelector("[data-waiting-reason]")?.textContent?.trim() ?? null,
             reasonKind: row.querySelector("[data-waiting-reason]")?.getAttribute("data-waiting-reason-kind") ?? null,
+            action: row.querySelector("[data-waiting-action]")?.textContent?.trim() ?? null,
+            preview: row.querySelector("[data-waiting-preview]")?.textContent?.trim() ?? null,
             actor: row.querySelector("[data-waiting-actor]")?.textContent?.trim() ?? null,
             since: row.getAttribute("data-since"),
           };
@@ -4845,12 +5103,15 @@ export async function run() {
         actorKind: item?.querySelector("[data-waiting-actor]")?.getAttribute("data-assignee-kind") ?? null,
         reason: item?.querySelector("[data-waiting-reason]")?.textContent?.trim() ?? null,
         reasonKind: item?.querySelector("[data-waiting-reason]")?.getAttribute("data-waiting-reason-kind") ?? null,
+        action: item?.querySelector("[data-waiting-action]")?.textContent?.trim() ?? null,
+        preview: item?.querySelector("[data-waiting-preview]")?.textContent?.trim() ?? null,
         task: item?.querySelector("[data-waiting-task]")?.textContent?.trim() ?? null,
         taskTitleAttr: item?.querySelector("[data-waiting-task]")?.getAttribute("title") ?? null,
         taskTitle: item?.querySelector("[data-waiting-task-title]")?.textContent?.trim() ?? null,
         sinceDatetime: item?.querySelector("[data-waiting-since]")?.getAttribute("datetime") ?? null,
         sinceText: item?.querySelector("[data-waiting-since]")?.textContent?.trim() ?? null,
         openLabel: item?.querySelector("[data-waiting-open]")?.getAttribute("aria-label") ?? null,
+        openText: item?.querySelector("[data-waiting-open] .td-waiting-open-label")?.textContent?.trim() ?? null,
         // B27.2 — the head's name and its tally.
         headTitle: document.querySelector("[data-waiting-title]")?.textContent?.trim() ?? null,
         // R15 ④ — the head's description: a `<p>` inside the header's text block,
@@ -4907,6 +5168,78 @@ export async function run() {
     });
     // The contract's own B27 rules, read while the queue is on screen.
     const waitingResults = await evaluateRuleSet(waitingRules);
+
+    // ---- TP-0018 · a waiting row opens the drawer on the tab its reason names
+    //
+    // The queue's row knows what the drawer cannot infer from status alone:
+    // TD-7 is a delivery waiting for acceptance, so it opens the Acceptance
+    // panel; TD-13 is a question, so it opens Activity (the old rule's answer,
+    // which must survive). Then the *same* delivered card opened from the board
+    // must land on Details — proof the one-shot intent was consumed and cleared
+    // rather than sticking to the drawer.
+    // The drawer's landing tab, read once the card's own read has landed — the
+    // tab is chosen in the drawer's card watcher, so reading two frames early
+    // would read the *previous* card's tab.
+    const drawerState = async () =>
+      page.evaluate(() => ({
+        selected: [...document.querySelectorAll("[data-detail-tab]")]
+          .filter((tab) => tab.getAttribute("aria-selected") === "true")
+          .map((tab) => tab.getAttribute("data-detail-tab")),
+        tabs: document.querySelectorAll("[data-detail-tab]").length,
+        identifier: document.querySelector("[data-detail-drawer]")?.getAttribute("data-identifier") ?? null,
+        state: document.querySelector("[data-detail-drawer]")?.getAttribute("data-state") ?? null,
+      }));
+    const settleTab = async (ref) => {
+      await page.waitForFunction(
+        (expected) => {
+          const drawer = document.querySelector("[data-detail-drawer]");
+          if (!drawer || drawer.getAttribute("data-state") !== "open") return false;
+          if (drawer.getAttribute("data-identifier") !== expected) return false;
+          // `aria-busy` is false only once the card's read has landed; the
+          // landing tab is selected in the same watcher that adopts it.
+          return drawer.getAttribute("aria-busy") === "false";
+        },
+        ref,
+        { timeout: 10_000 },
+      );
+    };
+
+    await page.click('[data-waiting-item][data-task="TD-7"] [data-waiting-open]');
+    await settleTab("TD-7");
+    await page.waitForTimeout(120);
+    const acceptanceOpen = await drawerState();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const acceptanceClosed = await page.evaluate(
+      () => document.querySelector("[data-detail-drawer]")?.getAttribute("data-state") ?? null,
+    );
+
+    await page.click('[data-waiting-item][data-task="TD-13"] [data-waiting-open]');
+    await settleTab("TD-13");
+    await page.waitForTimeout(120);
+    const questionOpen = await drawerState();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const questionClosed = await page.evaluate(
+      () => document.querySelector("[data-detail-drawer]")?.getAttribute("data-state") ?? null,
+    );
+
+    // The board opens no intent: the delivered card falls back to Details even
+    // though the previous waiting open left it on Acceptance.
+    await page.click('[data-nav-item="board"]');
+    await page.waitForTimeout(150);
+    await page.evaluate(() => {
+      const card = [...document.querySelectorAll("[data-card]")].find(
+        (el) => (el.querySelector("[data-card-identifier]")?.textContent ?? "").trim() === "TD-7",
+      );
+      card?.click();
+    });
+    await settleTab("TD-7");
+    await page.waitForTimeout(120);
+    const boardOpenTab = await drawerState();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+
     await page.click('[data-nav-item="board"]');
     await page.waitForTimeout(120);
 
@@ -4931,7 +5264,7 @@ export async function run() {
     check(awaitingMenuLabels.some((label) => /Canceled/i.test(label)), "awaiting menu must offer Canceled");
 
     // B27 — the queue. Three rows (one awaiting question, two accepted-waiting
-    // deliveries), the awaiting row's six fields, the stamp it carries stated
+    // deliveries), the awaiting row's fields, the stamp it carries stated
     // twice (attribute + `datetime`), and the head's own name and tally.
     check(m1.rows === 3, `[data-waiting-item] count ${m1.rows} !== 3`);
     // Oldest first: TD-7/TD-8 are delivered cards from the fixture's older
@@ -4942,18 +5275,28 @@ export async function run() {
       `waiting row order ${JSON.stringify(m1.itemIds)}`,
     );
     check(m1.acceptance !== null, "the delivered human-mode card must be in the queue");
-    check(m1.acceptance.reason === "Ready for acceptance" && m1.acceptance.reasonKind === "acceptance", `acceptance reason ${m1.acceptance?.reason} (${m1.acceptance?.reasonKind})`);
+    // TP-0019 — an acceptance row states the act (Accept) and the ask (round +
+    // acceptance count), both from fields the list wire already carries.
+    check(m1.acceptance.reason === "Accept" && m1.acceptance.reasonKind === "acceptance", `acceptance reason ${m1.acceptance?.reason} (${m1.acceptance?.reasonKind})`);
+    check(m1.acceptance.action === "Accept", `acceptance action ${m1.acceptance?.action}`);
+    check(m1.acceptance.preview === "Round 1 · 2 acceptance items", `acceptance preview ${JSON.stringify(m1.acceptance?.preview)}`);
     check(m1.acceptance.actor === "elon", `acceptance row's actor ${m1.acceptance?.actor} — the assignee that delivered it`);
     check(m1.acceptance.since === "2026-10-01T00:00:00Z", `acceptance row's since ${m1.acceptance?.since} — the delivery instant`);
     check(m1.itemTask === "TD-13", `the row names ${m1.itemTask}, expected TD-13`);
     check(m1.actor === "linus" && m1.actorKind === "agent", `actor ${m1.actor} (${m1.actorKind}) — the card's assignee waits`);
-    check(m1.reason === "Question" && m1.reasonKind === "question", `reason ${m1.reason} (${m1.reasonKind})`);
+    // `data-waiting-reason-kind` still carries the semantic state; the chip's
+    // visible copy is the act.
+    check(m1.reasonKind === "question", `reason kind ${m1.reasonKind}`);
+    check(m1.reason === "Answer" && m1.action === "Answer", `question row action ${m1.reason} / ${m1.action}`);
+    // The preview is the triggering comment's first sentence — and only that.
+    check(m1.preview === "范围确认：这一版不做第 8 列。", `question preview ${JSON.stringify(m1.preview)}`);
     check(m1.task === "TD-13" && m1.taskTitleAttr === "TD-13", `task cell ${m1.task} / title ${m1.taskTitleAttr}`);
     check(m1.taskTitle === "Confirm the release scope before the cut", `task title ${m1.taskTitle}`);
     check(m1.itemSince === AWAITING_COMMENT_AT, `the row's since ${m1.itemSince} !== the triggering comment ${AWAITING_COMMENT_AT}`);
     check(m1.sinceDatetime === m1.itemSince, `stamp datetime ${m1.sinceDatetime} !== the row's own ${m1.itemSince}`);
     check(/^\d+[dhm] ago$/.test(m1.sinceText ?? ""), `stamp text ${m1.sinceText}`);
-    check((m1.openLabel ?? "").startsWith("Open "), `opener aria-label ${m1.openLabel}`);
+    check(m1.openLabel === "Answer TD-13", `opener aria-label ${m1.openLabel}`);
+    check(m1.openText === "Answer", `opener visible label ${m1.openText}`);
     check(m1.headTitle === "Waiting on me", `head title ${m1.headTitle}`);
     // R15 ④ — the header states what the view is as well as what it is called.
     check(m1.headSub === "Everything waiting on your answer, oldest first.", `R15 ④: head description ${JSON.stringify(m1.headSub)}`);
@@ -4964,6 +5307,28 @@ export async function run() {
     );
     check(m1.headCount === "3 waiting on you", `head count ${m1.headCount}`);
     check(m1.headCountHidden === false, "a non-empty queue must show its tally");
+    // TP-0018 — the row names the drawer tab its reason opens, and the intent is
+    // one-shot: the board's later open of the same delivered card is Details.
+    check(
+      acceptanceOpen.state === "open" && acceptanceOpen.identifier === "TD-7",
+      `the acceptance row opened ${acceptanceOpen.identifier} in state ${acceptanceOpen.state}`,
+    );
+    check(
+      acceptanceOpen.selected.join(",") === "acceptance",
+      `a delivered waiting row opened the drawer on ${acceptanceOpen.selected.join("/")}, expected acceptance`,
+    );
+    check(
+      questionOpen.selected.join(",") === "activity",
+      `the awaiting fixture opened the drawer on ${questionOpen.selected.join("/")} (${questionOpen.tabs} tabs, ${questionOpen.identifier}/${questionOpen.state}), expected activity`,
+    );
+    check(
+      boardOpenTab.selected.join(",") === "details",
+      `the board opened the delivered card on ${boardOpenTab.selected.join("/")} (${boardOpenTab.tabs} tabs, ${boardOpenTab.identifier}/${boardOpenTab.state}), expected details — a stale waiting intent`,
+    );
+    check(
+      acceptanceClosed === "closed" && questionClosed === "closed",
+      `Escape must close each waiting open (${acceptanceClosed} / ${questionClosed})`,
+    );
     check(waitingView.current === "page", "the waiting nav item must carry aria-current");
     check(waitingView.viewVisible === true, "the waiting view must be visible");
     check(waitingView.boardHidden === true, "the board view must be hidden while the waiting view is up");
@@ -5373,6 +5738,12 @@ export async function run() {
           (selector) => document.querySelector(selector)?.textContent?.trim() ?? null,
         ),
         waitingSub: document.querySelector("[data-waiting-head] p")?.textContent?.trim() ?? null,
+        // TP-0019 — the zh rename covers acceptance as well as answering, the
+        // heading and the nav name stay one string, and the chip's act is the
+        // catalogue's zh word (not an English literal).
+        waitingTitle: document.querySelector("[data-waiting-title]")?.textContent?.trim() ?? null,
+        waitingNav: document.querySelector('[data-nav-item="waiting"] [data-side-text]')?.textContent?.trim() ?? null,
+        waitingAction: document.querySelector('[data-waiting-item][data-task="TD-13"] [data-waiting-action]')?.textContent?.trim() ?? null,
       };
     });
     await page.evaluate(() => document.querySelector('[data-lang-option="en"]')?.click());
@@ -5532,9 +5903,14 @@ export async function run() {
       `R15 ② zh: the board's converted triggers read ${b26Zh.boardTriggers.join(" / ")}`,
     );
     b26Check(
-      b26Zh.waitingSub === "所有等你答复的事项，最久的排在最前。",
+      b26Zh.waitingSub === "所有等你答复或验收的事项，最久的排在最前。",
       `R15 ④ zh: the queue's description reads ${JSON.stringify(b26Zh.waitingSub)}`,
     );
+    b26Check(
+      b26Zh.waitingTitle === "等你处理" && b26Zh.waitingNav === "等你处理",
+      `TP-0019 zh: the queue's name and its nav item must read 「等你处理」 — ${JSON.stringify(b26Zh.waitingTitle)} / ${JSON.stringify(b26Zh.waitingNav)}`,
+    );
+    b26Check(b26Zh.waitingAction === "回答", `TP-0019 zh: the chip's act reads ${JSON.stringify(b26Zh.waitingAction)}`);
     b26Check(b26En.title === "Activity", `en copy after the cycle ${b26En.title}`);
     b26Check((b26En.openLabel ?? "").startsWith("Open "), `en open label ${b26En.openLabel}`);
     await page.click('[data-nav-item="board"]');
@@ -6454,6 +6830,193 @@ export async function run() {
       reopenFailures.push(`the reopen probe could not run: ${err.message}`);
     }
 
+    /* M6 · the Acceptance tab's two acts (B09). Runs last, because it writes:
+       the send-back moves TD-7 out of `in_review` and the accept closes TD-8, so
+       every earlier leg (above all the Waiting queue's three-row reading) has to
+       have happened first. The fixture logs both writes in arrival order, which
+       is the only place the "note, then move" order is a fact. */
+    const acceptanceActFailures = [];
+    const acceptanceActCheck = (ok, message) => { if (!ok) acceptanceActFailures.push(message); };
+    try {
+      const openAcceptanceTab = async (ref) => {
+        await page.evaluate((identifier) => {
+          document.querySelector(`[data-card][data-identifier="${identifier}"]`)?.click();
+        }, ref);
+        await page.waitForTimeout(300);
+        await page.click('[data-detail-tab="acceptance"]');
+        await page.waitForTimeout(120);
+      };
+      const closeDrawer = async () => {
+        await page.evaluate(() => document.querySelector("[data-detail-close]")?.click());
+        await page.waitForTimeout(150);
+      };
+
+      // A delivered human-mode card leads with its delivery summary (round,
+      // author, conclusion) and offers both acts.
+      await openAcceptanceTab("TD-7");
+      const deliveredPanel = await page.evaluate(() => {
+        const panel = document.querySelector('[data-detail-panel="acceptance"]');
+        const summary = panel?.querySelector("[data-detail-acceptance-summary]");
+        const list = panel?.querySelector(".td-dv-list");
+        const text = (selector) => summary?.querySelector(selector)?.textContent?.trim() ?? "";
+        return {
+          hasSummary: summary !== null && summary !== undefined,
+          round: text("[data-detail-acceptance-round]"),
+          author: text("[data-detail-acceptance-author]"),
+          conclusion: text("[data-detail-acceptance-conclusion]"),
+          // The card's own acceptance item: the summary sits **above** the
+          // criteria list, not beside or after it.
+          summaryBeforeList:
+            summary !== null && summary !== undefined && list !== null && list !== undefined
+              ? (summary.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+              : false,
+          accept: panel?.querySelector("[data-detail-accept]") !== null && panel?.querySelector("[data-detail-accept]") !== undefined,
+          sendBack: panel?.querySelector("[data-detail-send-back]") !== null && panel?.querySelector("[data-detail-send-back]") !== undefined,
+        };
+      });
+      acceptanceActCheck(deliveredPanel.hasSummary, "an in_review human-mode card shows no delivery summary");
+      acceptanceActCheck(/round\s*1/i.test(deliveredPanel.round), `the delivery summary's round reads ${JSON.stringify(deliveredPanel.round)}, expected round 1`);
+      acceptanceActCheck(deliveredPanel.author.includes("elon"), `the delivery summary's author reads ${JSON.stringify(deliveredPanel.author)}, expected elon`);
+      acceptanceActCheck(
+        deliveredPanel.conclusion === "Audit complete; findings written up.",
+        `the delivery summary's conclusion reads ${JSON.stringify(deliveredPanel.conclusion)}`,
+      );
+      acceptanceActCheck(deliveredPanel.summaryBeforeList, "the delivery summary does not render above the criteria list");
+      acceptanceActCheck(deliveredPanel.accept, "a waiting card offers no Accept-and-close control");
+      acceptanceActCheck(deliveredPanel.sendBack, "a waiting card offers no Send-back-for-rework control");
+
+      // A refusal the client cannot foresee lands on the standard error path:
+      // the alert opens, the toast carries the code's sentence, and the card
+      // goes back to `in_review` (the optimistic status is rolled back).
+      //
+      // The refusal is the wire's `ok:false` envelope — the branch the client
+      // actually takes (`services/api.js` reads `envelope.ok`, not the status).
+      // It is answered 200 here on purpose: a synthetic 403 would also make
+      // Chromium log "Failed to load resource" and red the harness's
+      // zero-console-error bar, which says nothing about the app.
+      const refuseMove = /\/api\/v1\/tasks\/TD-7\/move$/;
+      await page.route(refuseMove, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            error: { code: "ACCEPTANCE_FORBIDDEN", http: 403, message: "refused by the board's acceptance gate" },
+          }),
+        }),
+      );
+      await page.evaluate(() => document.querySelector("[data-detail-accept]")?.click());
+      await page.waitForTimeout(450);
+      const refusedAccept = await page.evaluate(() => ({
+        chip: document.querySelector("[data-detail-status-chip]")?.getAttribute("data-status") ?? null,
+        saveState: document.querySelector("[data-detail-save]")?.getAttribute("data-save-state") ?? null,
+        alertHidden: document.querySelector("[data-detail-save-error]")?.hidden ?? null,
+        // Danger toasts only: the reopen leg's success toast may still be on
+        // screen, and "the last toast" must mean the refusal's.
+        toast: [...document.querySelectorAll('[data-toast][data-toast-kind="danger"] [data-toast-text]')].map((el) => el.textContent.trim()).pop() ?? "",
+      }));
+      await page.unroute(refuseMove);
+      acceptanceActCheck(refusedAccept.chip === "in_review", `a refused accept left the drawer showing ${refusedAccept.chip}, expected in_review`);
+      acceptanceActCheck(refusedAccept.saveState === "error", `a refused accept left data-save-state=${refusedAccept.saveState}, expected error`);
+      acceptanceActCheck(refusedAccept.alertHidden === false, "a refused accept did not open [data-detail-save-error]");
+      acceptanceActCheck(
+        refusedAccept.toast.includes("TD-7") && /cannot be closed by you/i.test(refusedAccept.toast),
+        `a refused accept's toast reads ${JSON.stringify(refusedAccept.toast)}, expected the ACCEPTANCE_FORBIDDEN sentence`,
+      );
+
+      // Send back for rework — the note is required, and it is written before
+      // the move. Comment first, then the move (stated in the delivery report):
+      // a failed move leaves the note that explains the rework in place, while a
+      // move-first order could strand the worker with no instructions.
+      await page.evaluate(() => document.querySelector("[data-detail-send-back]")?.click());
+      await page.waitForTimeout(80);
+      const promptOpen = await page.evaluate(() => ({
+        panel: document.querySelector("[data-detail-send-back-panel]") !== null && document.querySelector("[data-detail-send-back-panel]") !== undefined,
+        note: document.querySelector("[data-detail-send-back-note]") !== null && document.querySelector("[data-detail-send-back-note]") !== undefined,
+        disabled: document.querySelector("[data-detail-send-back-confirm]")?.disabled ?? null,
+      }));
+      acceptanceActCheck(promptOpen.panel && promptOpen.note, "Send back did not open its note prompt");
+      acceptanceActCheck(promptOpen.disabled === true, "the send-back confirm is enabled with an empty note");
+
+      await page.evaluate(() => {
+        const input = document.querySelector("[data-detail-send-back-note]");
+        input.value = "The findings file is still missing.";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await page.waitForTimeout(60);
+      const readyDisabled = await page.evaluate(() => document.querySelector("[data-detail-send-back-confirm]")?.disabled ?? null);
+      acceptanceActCheck(readyDisabled === false, "the send-back confirm stays disabled with a note");
+
+      const writesBefore = data.writes.length;
+      await page.evaluate(() => document.querySelector("[data-detail-send-back-confirm]")?.click());
+      await page.waitForTimeout(500);
+      const sentBack = await page.evaluate(() => ({
+        chip: document.querySelector("[data-detail-status-chip]")?.getAttribute("data-status") ?? null,
+        card: document.querySelector('[data-card][data-identifier="TD-7"]')?.getAttribute("data-status") ?? null,
+        prompt: document.querySelector("[data-detail-send-back-panel]") !== null && document.querySelector("[data-detail-send-back-panel]") !== undefined,
+      }));
+      const sendBackWrites = data.writes.slice(writesBefore);
+      const [noteWrite, moveWrite] = sendBackWrites;
+      acceptanceActCheck(sendBackWrites.length === 2, `send back wrote ${sendBackWrites.length} time(s), expected the note then the move`);
+      acceptanceActCheck(
+        noteWrite?.verb === "comment" && noteWrite?.ref === "TD-7" && noteWrite?.body === "The findings file is still missing.",
+        `send back's first write is ${JSON.stringify(noteWrite)}, expected the note`,
+      );
+      acceptanceActCheck(
+        moveWrite?.verb === "move" && moveWrite?.from === "in_review" && moveWrite?.to === "in_progress",
+        `send back's second write is ${JSON.stringify(moveWrite)}, expected in_review → in_progress`,
+      );
+      acceptanceActCheck(moveWrite?.delivery_round === 2, `send back started round ${moveWrite?.delivery_round}, expected a new round (2)`);
+      acceptanceActCheck(sentBack.chip === "in_progress", `the drawer still shows ${sentBack.chip} after send back`);
+      acceptanceActCheck(sentBack.card === "in_progress", `the card still reads ${sentBack.card} after send back`);
+      acceptanceActCheck(sentBack.prompt === false, "the send-back prompt stays open after the move");
+      acceptanceActCheck(
+        (await page.evaluate(() => document.querySelector("[data-detail-accept]") !== null && document.querySelector("[data-detail-accept]") !== undefined)) === false,
+        "the acceptance actions stayed after the card left in_review",
+      );
+
+      // Accept and close on a second waiting card (TD-8 has no report, so the
+      // summary is legitimately absent while the acts are present).
+      await openAcceptanceTab("TD-8");
+      const beforeAccept = await page.evaluate(() => ({
+        summary: document.querySelector("[data-detail-acceptance-summary]") !== null && document.querySelector("[data-detail-acceptance-summary]") !== undefined,
+        accept: document.querySelector("[data-detail-accept]") !== null && document.querySelector("[data-detail-accept]") !== undefined,
+      }));
+      acceptanceActCheck(beforeAccept.accept, "a waiting card with no report offers no Accept-and-close control");
+      acceptanceActCheck(beforeAccept.summary === false, "a card with no report rendered a delivery summary");
+      const acceptBefore = data.writes.length;
+      await page.evaluate(() => document.querySelector("[data-detail-accept]")?.click());
+      await page.waitForTimeout(500);
+      const accepted = await page.evaluate(() => ({
+        chip: document.querySelector("[data-detail-status-chip]")?.getAttribute("data-status") ?? null,
+        card: document.querySelector('[data-card][data-identifier="TD-8"]')?.getAttribute("data-status") ?? null,
+      }));
+      const acceptWrites = data.writes.slice(acceptBefore);
+      acceptanceActCheck(
+        acceptWrites.length === 1 && acceptWrites[0]?.verb === "move" && acceptWrites[0]?.to === "done",
+        `accept wrote ${JSON.stringify(acceptWrites)}, expected one in_review → done move`,
+      );
+      acceptanceActCheck(accepted.chip === "done", `the drawer still shows ${accepted.chip} after accepting`);
+      acceptanceActCheck(accepted.card === "done", `the card still reads ${accepted.card} after accepting`);
+
+      // Absent when the client-side twin is false: a backlog card on `off`
+      // mode. Its delivery summary still renders (that is report data, not an
+      // action state).
+      await openAcceptanceTab("TD-1");
+      const notWaiting = await page.evaluate(() => ({
+        summary: document.querySelector("[data-detail-acceptance-summary]") !== null && document.querySelector("[data-detail-acceptance-summary]") !== undefined,
+        accept: document.querySelector("[data-detail-accept]") !== null && document.querySelector("[data-detail-accept]") !== undefined,
+        sendBack: document.querySelector("[data-detail-send-back]") !== null && document.querySelector("[data-detail-send-back]") !== undefined,
+      }));
+      acceptanceActCheck(notWaiting.accept === false, "a card that is not acceptance-waiting still offers Accept and close");
+      acceptanceActCheck(notWaiting.sendBack === false, "a card that is not acceptance-waiting still offers Send back");
+      acceptanceActCheck(notWaiting.summary, "a backlog card with reports lost its delivery summary");
+
+      await closeDrawer();
+    } catch (err) {
+      acceptanceActFailures.push(`the acceptance-acts probe could not run: ${err.message}`);
+    }
+
     const results = [
       ...boardResults,
       ...listResults,
@@ -6478,6 +7041,7 @@ export async function run() {
       viewportFailures,
       interactions,
       reopen: { failures: reopenFailures },
+      acceptanceActs: { failures: acceptanceActFailures },
       m1,
       m1Failures,
       r6: { failures: r6Failures, themeSweep, titleGeometry, listDetail, panel: panelGeometry, rail },
@@ -6600,7 +7164,7 @@ if (isEntryPoint) run().then(
         console.log(`M1 · B27 (waiting) — ${report.m1Failures.length} failed:`);
         for (const failure of report.m1Failures) console.log(`  ✗ ${failure}`);
       } else {
-        console.log("M1 · B27 (waiting) — the board badge, the queue's six fields, the tally, the filter bar's stand-down and the move menu all pass");
+        console.log("M1 · B27 (waiting) — the board badge, the queue's fields (act + preview included), the tally, the filter bar's stand-down and the move menu all pass");
       }
       if (report.r6.failures.length > 0) {
         console.log(`R6 (fidelity) — ${report.r6.failures.length} failed:`);
@@ -6751,6 +7315,16 @@ if (isEntryPoint) run().then(
             "the confirm enforces the 8-character reason, and the card returns to todo",
         );
       }
+      if (report.acceptanceActs.failures.length > 0) {
+        console.log(`M6 (acceptance acts) — ${report.acceptanceActs.failures.length} failed:`);
+        for (const failure of report.acceptanceActs.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          "M6 (acceptance acts) — the tab leads with the delivery summary above the criteria, " +
+            "Accept and close moves a waiting card to done, Send back writes the note then moves it to in_progress in a new round, " +
+            "a server refusal lands on the standard alert and sentence, and neither act is offered on a card that is not waiting",
+        );
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -6784,6 +7358,7 @@ if (isEntryPoint) run().then(
       report.ui.failures.length === 0 &&
       report.r16.failures.length === 0 &&
       report.reopen.failures.length === 0 &&
+      report.acceptanceActs.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

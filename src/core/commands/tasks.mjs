@@ -174,7 +174,7 @@ export function createTask(ctx, input) {
       // The creator IS the reporter (0019), so a human's own card names them
       // without being asked. Scoped to `human` on purpose: an agent write must
       // not stamp the human as the filer (see `transport/actor.mjs`), and the
-      // loop's cards (`taskd`) have no person behind them. An explicit reporter
+      // loop's cards (`system`) have no person behind them. An explicit reporter
       // — by name or by id — always wins. Identity, not a search: the name is
       // exact-matched or created, never fuzzy-matched onto a different person.
       const reporterGiven =
