@@ -34,7 +34,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { pathToFileURL } from "node:url";
+
+import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 
 export const BODY_LIKE = "Loop acceptance after review %: VERDICT: APPROVE.";
 const NO_DELETE_TRIGGERS = ["tr_comments_no_delete", "tr_activities_no_delete"];
@@ -293,7 +294,7 @@ function main(argv) {
   }
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isEntryPoint(import.meta.url)) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {
