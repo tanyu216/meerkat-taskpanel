@@ -263,7 +263,7 @@ describe("cli/report list", () => {
   function reportJson(conclusion) {
     return JSON.stringify({
       conclusion,
-      acceptance: [{ text: "cli works", status: "met" }],
+      acceptance: [{ text: "cli works", status: "met", note: "ran it (evidence[1])" }],
       evidence: [
         { kind: "commit", sha: "abc1234" },
         { kind: "path", path: "src/cli/index.mjs" },

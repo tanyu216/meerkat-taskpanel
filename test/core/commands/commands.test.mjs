@@ -44,7 +44,7 @@ async function board(fn, { clock } = {}) {
 
 const report = () => ({
   conclusion: "done",
-  acceptance: [{ text: "x", status: "met" }],
+  acceptance: [{ text: "x", status: "met", note: "ran it (evidence[1])" }],
   evidence: [{ kind: "commit", sha: "abc1234" }],
   author: AGENT,
 });
@@ -746,7 +746,7 @@ describe("commands/projects — the acceptance default (0038)", () => {
 describe("commands/delivery — a path anchor needs a commit anchor", () => {
   const pathOnly = () => ({
     conclusion: "done",
-    acceptance: [{ text: "x", status: "met" }],
+    acceptance: [{ text: "x", status: "met", note: "ran it (evidence[1])" }],
     evidence: [{ kind: "path", path: "src/core/a.mjs" }],
     author: AGENT,
   });
@@ -759,7 +759,7 @@ describe("commands/delivery — a path anchor needs a commit anchor", () => {
   });
   const commandOnly = () => ({
     conclusion: "done",
-    acceptance: [{ text: "x", status: "met" }],
+    acceptance: [{ text: "x", status: "met", note: "ran it (evidence[1])" }],
     evidence: [{ kind: "command", cmd: "node --test x", exit_code: 0 }],
     author: AGENT,
   });

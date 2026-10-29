@@ -663,6 +663,11 @@ reference dangle. An `off` or `human` card is not held to this rule. An APPROVE 
 card additionally needs a `{kind: "command", cmd, exit_code}` anchor — the reviewer runs the
 gate it records.
 
+The same rule bites **at delivery**: `issue deliver` refuses an anchored-`met` violation the
+way `done` would (`ACCEPTANCE_INCOMPLETE`, `details.source = "delivery"`), because a report is
+bound to its round and cannot be amended afterwards. Fix the note — or report the item as
+`not_met`/`partial` — and deliver again; nothing is written on a refusal.
+
 ## The `awaiting` state — asking a human a question
 
 A card that needs an answer from a person is **`awaiting`**, not `blocked` and not a chat

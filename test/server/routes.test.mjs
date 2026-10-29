@@ -61,7 +61,7 @@ async function deliverCard(ref) {
     await call("POST", `/api/v1/tasks/${ref}/deliver`, {
       report: {
         conclusion: "delivered",
-        acceptance: [{ text: "a", status: "met" }],
+        acceptance: [{ text: "a", status: "met", note: "ran it (evidence[1])" }],
         evidence: [
           { kind: "commit", sha: "abc1234" },
           { kind: "path", path: "x" },
@@ -219,7 +219,7 @@ describe("server/routes — tasks, the gate and deliver", () => {
     const result = await call("POST", `/api/v1/tasks/${identifier}/deliver`, {
       report: {
         conclusion: "M2 landed.",
-        acceptance: [{ text: "cli works", status: "met" }],
+        acceptance: [{ text: "cli works", status: "met", note: "ran it (evidence[1])" }],
         evidence: [
           { kind: "commit", sha: "abc1234" },
           { kind: "path", path: "src/cli/index.mjs" },
@@ -280,7 +280,7 @@ describe("server/routes — tasks, the gate and deliver", () => {
       await call("POST", `/api/v1/tasks/${ref}/deliver`, {
         report: {
           conclusion: "landed",
-          acceptance: [{ text: "works", status: "met" }],
+          acceptance: [{ text: "works", status: "met", note: "ran it (evidence[1])" }],
           evidence: [
             { kind: "commit", sha: "abc1234" },
             { kind: "path", path: "x" },
@@ -295,7 +295,7 @@ describe("server/routes — tasks, the gate and deliver", () => {
       to: "todo",
       report: {
         conclusion: "sneaky",
-        acceptance: [{ text: "works", status: "met" }],
+        acceptance: [{ text: "works", status: "met", note: "ran it (evidence[1])" }],
         evidence: [
           { kind: "commit", sha: "abc1234" },
           { kind: "path", path: "x" },
@@ -357,7 +357,7 @@ describe("server/routes — the workflow plan on reconcile", () => {
       await call("POST", `/api/v1/tasks/${originalRef}/deliver`, {
         report: {
           conclusion: "Done.",
-          acceptance: [{ text: "works", status: "met" }],
+          acceptance: [{ text: "works", status: "met", note: "ran it (evidence[1])" }],
           evidence: [
             { kind: "commit", sha: "abc1234" },
             { kind: "path", path: "src/cli/index.mjs" },
@@ -854,7 +854,7 @@ describe("server/routes — the edges a happy path never reaches", () => {
       await call("POST", `/api/v1/tasks/${movable.identifier}/deliver`, {
         report: {
           conclusion: "done",
-          acceptance: [{ text: "a", status: "met" }],
+          acceptance: [{ text: "a", status: "met", note: "ran it (evidence[1])" }],
           evidence: [
             { kind: "commit", sha: "abc1234" },
             { kind: "path", path: "x" },
