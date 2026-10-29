@@ -1161,6 +1161,9 @@ export function planReviewOutcomes(input = {}) {
       // that **new** round, so crash recovery compares it against the card's
       // current `delivery_round` rather than the round the review audited.
       const reworkRound = originalRound + 1;
+      // The marker is written with that new round; a move refused after it is
+      // retried on the next pass without re-posting the rejection (`held`).
+      const reworkHeld = intOrNull(original.meta?.rework_round) === reworkRound;
       // The findings must survive the round: they are appended to the
       // original's frozen baseline by the executor, so the next round's report
       // template and the next review card's baseline both carry them. A reject
@@ -1184,6 +1187,7 @@ export function planReviewOutcomes(input = {}) {
           findings,
           mustFix,
           closeReview,
+          ...(reworkHeld ? { held: reworkHeld } : {}),
         });
       } else {
         actions.push({
@@ -1196,6 +1200,7 @@ export function planReviewOutcomes(input = {}) {
           findings,
           mustFix,
           closeReview,
+          ...(reworkHeld ? { held: reworkHeld } : {}),
         });
       }
       continue;

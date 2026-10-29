@@ -123,8 +123,8 @@ const APPROVE_ORDER = [
 // The must-fix append sits **after** the move to `in_progress` (the round bump
 // is what unlocks the baseline) and **before** the card leaves for `todo`.
 const REJECT_TASK_ORDER = [
-  "comment:PROJ-0001:change",
   'setMeta:PROJ-0001:{"rework_round":"2"}',
+  "comment:PROJ-0001:change",
   "move:PROJ-0001:in_progress",
   "appendAcceptance:PROJ-0001:1",
   "move:PROJ-0001:todo",
@@ -135,8 +135,8 @@ const REJECT_TASK_ORDER = [
 const REJECT_EPIC_ORDER = [
   "createFixChild:PROJ-0001",
   "linkFixChild:PROJ-0001:PROJ-0004",
-  "comment:PROJ-0001:change",
   'setMeta:PROJ-0001:{"rework_round":"2"}',
+  "comment:PROJ-0001:change",
   "move:PROJ-0001:in_progress",
   "appendAcceptance:PROJ-0001:1",
   "comment:PROJ-0002:note",
@@ -233,8 +233,8 @@ const SCENARIOS = [
     verdicts: { "PROJ-0002": verdict("APPROVE") },
     expectedAction: "record_verdict",
     expectedOrder: [
-      "comment:PROJ-0001:note",
       'setMeta:PROJ-0001:{"review_verdict":"approve","review_verdict_round":"1"}',
+      "comment:PROJ-0001:note",
       "comment:PROJ-0002:note",
       "move:PROJ-0002:done",
     ],
@@ -263,6 +263,23 @@ const SCENARIOS = [
     verdicts: { "PROJ-0002": verdict("REJECT", "the acceptance list is missing a case") },
     expectedAction: "reject_task",
     expectedOrder: REJECT_TASK_ORDER,
+  },
+  {
+    name: "reject_task (rework marker already applied)",
+    tasks: (() => {
+      const original = card({ meta: { rework_round: "2" } });
+      const review = reviewCard(original);
+      return [original, review];
+    })(),
+    verdicts: { "PROJ-0002": verdict("REJECT", "the acceptance list is missing a case") },
+    expectedAction: "reject_task",
+    expectedOrder: [
+      "move:PROJ-0001:in_progress",
+      "appendAcceptance:PROJ-0001:1",
+      "move:PROJ-0001:todo",
+      "comment:PROJ-0002:note",
+      "move:PROJ-0002:done",
+    ],
   },
   {
     name: "reject_epic",
@@ -472,8 +489,8 @@ describe("workflow plan → execution", () => {
     });
     assert.deepEqual(applied.plan.actions.map((action) => action.type), ["record_verdict"]);
     assert.deepEqual(applied.order, [
-      "comment:PROJ-0001:note",
       'setMeta:PROJ-0001:{"review_verdict":"approve","review_verdict_round":"1"}',
+      "comment:PROJ-0001:note",
       "comment:PROJ-0002:note",
       "move:PROJ-0002:done",
     ]);
@@ -508,10 +525,10 @@ describe("workflow plan → execution", () => {
       auto_accept: ["type", "original_ref", "round", "accepted_by", "held"],
       approve: ["type", "review_status", "review_ref", "original_ref", "round", "close_review", "accepted_by", "held"],
       record_verdict: ["type", "review_status", "review_ref", "original_ref", "round", "reason", "close_review", "held"],
-      reject_task: ["type", "review_status", "review_ref", "original_ref", "round", "rework_round", "findings", "must_fix", "close_review"],
+      reject_task: ["type", "review_status", "review_ref", "original_ref", "round", "rework_round", "findings", "must_fix", "close_review", "held"],
       reject_epic: [
         "type", "review_status", "review_ref", "original_ref", "round", "rework_round",
-        "project_id", "assignee_id", "original_title", "acceptance_mode", "findings", "must_fix", "close_review",
+        "project_id", "assignee_id", "original_title", "acceptance_mode", "findings", "must_fix", "close_review", "held",
       ],
       reject_task_finish: ["type", "review_status", "review_ref", "original_ref", "round", "must_fix", "close_review"],
       reopen_review: ["type", "review_status", "review_ref", "original_ref", "round", "retry", "reason"],

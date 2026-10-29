@@ -575,16 +575,19 @@ export async function runWorkflowTick(deps) {
         // close recoverable (`held`).
         case "record_verdict":
           if (action.held !== true) {
+            // Marker first, note second (the same order as `auto_accept` and
+            // `approve`): a crash between them is recovered by `held` and the
+            // note is not posted twice.
+            await step(setMeta, "setMeta", action.original_ref, {
+              review_verdict: "approve",
+              review_verdict_round: String(action.round),
+            });
             await step(comment, "comment", action.original_ref, {
               kind: "note",
               body:
                 `Review ${action.review_ref} (round ${action.round}): VERDICT: APPROVE. ` +
                 "This card's acceptance_mode is `human`, so the verdict is recorded " +
                 "and the card stays in in_review for a person to close.",
-            });
-            await step(setMeta, "setMeta", action.original_ref, {
-              review_verdict: "approve",
-              review_verdict_round: String(action.round),
             });
           }
           await closeReviewCard(
@@ -598,8 +601,12 @@ export async function runWorkflowTick(deps) {
           const body = `VERDICT: REJECT (review ${action.review_ref}, round ${action.round}).\n\n${
             action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
           }`;
-          await step(comment, "comment", action.original_ref, { kind: "change", body });
-          await step(setMeta, "setMeta", action.original_ref, { rework_round: String(action.rework_round) });
+          // Marker first, note second: a refused move below is retried on the
+          // next pass (`held`) without re-posting the same rejection.
+          if (action.held !== true) {
+            await step(setMeta, "setMeta", action.original_ref, { rework_round: String(action.rework_round) });
+            await step(comment, "comment", action.original_ref, { kind: "change", body });
+          }
           await step(move, "move", action.original_ref, "in_progress");
           // The round bump on the move above is what unlocks the baseline; the
           // items land before the card is released to `todo`, so the next
@@ -621,8 +628,12 @@ export async function runWorkflowTick(deps) {
           const childRef = created?.ref ?? created?.identifier ?? created?.task?.identifier ?? null;
           if (childRef === null) throw new Error("create_fix_child returned no ref");
           await step(linkFixChild, "link_fix_child", action.original_ref, childRef);
-          await step(comment, "comment", action.original_ref, { kind: "change", body });
-          await step(setMeta, "setMeta", action.original_ref, { rework_round: String(action.rework_round) });
+          // Marker first, note second (see `reject_task`): `held` retries the
+          // reopen without re-posting the rejection.
+          if (action.held !== true) {
+            await step(setMeta, "setMeta", action.original_ref, { rework_round: String(action.rework_round) });
+            await step(comment, "comment", action.original_ref, { kind: "change", body });
+          }
           await step(move, "move", action.original_ref, "in_progress");
           // The fix child is `acceptance_mode=off` and is never reviewed, so the
           // epic's own baseline is what the next review card copies.

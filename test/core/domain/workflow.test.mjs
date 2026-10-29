@@ -601,6 +601,25 @@ describe("planReviewOutcomes", () => {
     assert.equal(result.actions[0].reworkRound, 2, "the round the card is on after leaving in_review");
   });
 
+  it("recovers a reject already marked on the original (held)", () => {
+    const result = outcomes({
+      tasks: [card({ meta: { rework_round: "2" } }), reviewCard()],
+      verdicts: { "T-2": reject },
+      config: CONFIG,
+    });
+    assert.deepEqual(types(result), ["reject_task"]);
+    assert.equal(result.actions[0].held, true, "the move is retried; the rejection is not re-posted");
+  });
+
+  it("does not hold a reject whose marker names another round", () => {
+    const result = outcomes({
+      tasks: [card({ meta: { rework_round: "3" } }), reviewCard()],
+      verdicts: { "T-2": reject },
+      config: CONFIG,
+    });
+    assert.equal(result.actions[0].held, undefined);
+  });
+
   it("carries the reviewer's numbered must-fix list into the reject action", () => {
     const findings = [
       "VERDICT: REJECT",

@@ -1136,8 +1136,8 @@ describe("runWorkflowTick (injected deps)", () => {
       }),
     );
     assert.deepEqual(order, [
-      "comment:T-1:change",
       'meta:T-1:{"rework_round":"2"}',
+      "comment:T-1:change",
       "move:T-1:in_progress",
       "move:T-1:todo",
       "comment:T-2:note",
@@ -1180,8 +1180,8 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.deepEqual(order, [
       "create_fix",
       "link:E-1:E-2",
-      "comment:E-1",
       "meta:E-1",
+      "comment:E-1",
       "move:E-1:in_progress",
       "comment:T-2",
       "move:T-2:done",
