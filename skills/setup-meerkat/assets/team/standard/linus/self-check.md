@@ -4,7 +4,8 @@ Run this after the branch work and before delivery. First re-export the brief th
 `meerkat` board skill so the check runs against the current card, then run the section for
 the branch you took; the Shared checks and the Mandatory gates apply to every branch. The
 evidence table lives in `plan.md` and grows while you work — this check audits it, it does not
-write it from memory.
+write it from memory. A no-card conformance audit skips the brief: its evidence lives in the
+artifacts it produces.
 
 Never hand-edit `card.md`; re-export it. Board operations are the `meerkat` board skill's
 contract. This is the role's pre-delivery audit, not the delivery itself.
@@ -29,6 +30,9 @@ It is not the `## Handoff` block: that block is a producer card's cross-card tra
    - **partial** / **not_met** — a blocker: close it and re-run, or ask with an agent
      `question` and keep the card `in_progress`. The delivery gate refuses either status on
      a baseline item, so neither is a way to deliver.
+
+   On a reconstruction or audit card, prefix the row with `reconstructed — <evidence>`; the
+   disposition is still one of these.
 4. A **leftover** is work the card surfaced but does not own: it lies outside the frozen
    acceptance and names the item, its owner and the follow-up card (or why none is needed).
    Never a leftover: a red gate, a security finding, a missing acceptance item, a missing or
@@ -115,12 +119,36 @@ run them.
     a delivery verifiable; one writer per surface, the identity and configuration roots, and
     the generated artifacts that are never hand-edited.
 22. Every path and command the baseline names resolves against the tree and the manifest; on
-    an existing project the file was improved in place, not regenerated.
+    an existing project the file was improved in place, not regenerated. When the file was
+    absent, a reconstruction wrote it with a provenance header:
+    `Reconstructed from <evidence> — E5 pending`.
 23. Constants and enumerations have one home each: a deployment-dependent value is a
     configuration key, never a literal; a literal a second module needs is a named constant;
     each enum is one definition with a recorded wire form and unknown-value policy, and the
     database constraint, the contract and the UI label map agree. Otherwise the recorded
     `n/a` is present.
+
+**Reconstruction and audit.** Also check:
+
+24. Every derived fact carries its disposition (`inherited`, `reconstructed — <evidence>`,
+    `not recorded — review question`, `n/a — <reason>`), and a reconstruction names the E5 it
+    awaits.
+25. Step 4 was observed, not re-scaffolded: each recorded row maps to an artifact that
+    resolves, or to `missing — <reason>` with its follow-up.
+26. Gate honesty: every gate names the real entry point and a failure probe — walk each
+    gate's command to the entry point it runs; a placeholder or liveness-only service is
+    `not a gate — <reason>`; an unexecuted gate is `unverified — <reason>`, never a claimed
+    pass.
+27. A release that changes stored data records its backup, recovery, startup-apply behaviour
+    and the older-store upgrade path; a squashed baseline records its pre-baseline
+    disposition.
+28. Every exposure-widening default is recorded with its blast radius; an audit records it
+    rather than changing it.
+29. Verifiability: the coverage floor names every runtime subsystem or its `n/a`; every parity
+    check enumerates its enforcement sites; a prose-only boundary is review-only.
+
+On an audit, items 8–10 are satisfied by `observed — <file:line>` or `not run — <reason>`,
+never by a claimed pass.
 
 ## Implementation branch
 
@@ -153,4 +181,5 @@ card's acceptance — not a narrative rewritten at delivery. A card with an open
 red gate or an unanswered question is not delivered: close it and re-run, or ask and keep
 the card `in_progress`. The delivered tree is committed on the card's branch and the report
 carries the `commit` anchor; nothing was merged, rebased or pushed from this card. Only then
-deliver at `in_review`. Do not accept your own work.
+deliver at `in_review`. Do not accept your own work. A no-card conformance audit stops here:
+it records E5 pending and writes no board state.

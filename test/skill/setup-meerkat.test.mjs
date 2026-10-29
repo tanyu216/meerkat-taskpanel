@@ -347,6 +347,41 @@ describe("skill frontmatter and assets", () => {
     );
   });
 
+  it("hardens the architecture flow for reconstruction, audit and honest gates", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");
+    const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    const linus = readFileSync(join(team, "linus", "workflow.md"), "utf8");
+
+    assert.match(arch, /^## Run modes$/m, "the flow names its run modes");
+    for (const mode of ["create", "extend", "reconstruct", "conformance audit"]) {
+      assert.match(arch, new RegExp(mode, "i"), `the run modes cover ${mode}`);
+    }
+    assert.match(arch, /reconstructed — <evidence>/, "a reconstruction records its evidence");
+    assert.match(arch, /not recorded — review question/, "an unsettled decision stays open");
+    assert.match(arch, /not a gate — <reason>/, "a placeholder is named as not a gate");
+    assert.match(arch, /failure probe/i, "each gate names the change that fails it");
+    assert.match(arch, /blast radius/i, "an exposure-widening default records its blast radius");
+    assert.match(arch, /worst-case path that blocks/i, "observability names the blocking path");
+    assert.match(arch, /upgrade path/i, "a squashed baseline records its upgrade path");
+    assert.match(arch, /coverage floor[\s\S]{0,200}subsystem/i, "the floor names its subsystems");
+    assert.match(arch, /parity[\s\S]{0,240}enforcement site/i, "parity lists its sites");
+    assert.match(arch, /one rule names one enforcement point/i, "granularity counts enforcement points");
+    assert.match(arch, /two enforcement points/i, "an invariant with two homes stays one rule");
+    assert.match(arch, /deploy check names the command/i, "a deploy check names its entry point");
+    assert.match(arch, /URL or query string/i, "a credential in a URL is a finding");
+    assert.match(arch, /E5 pending/i, "a reconstruction records E5 pending");
+    assert.match(check, /reconstructed — <evidence>/, "the self-check knows provenance");
+    assert.match(check, /not run — <reason>/, "an unexecuted gate is recorded");
+    assert.match(check, /never by a claimed pass/i, "an audit never claims a gate");
+    assert.match(check, /^24\./m, "the reconstruction items append after item 23");
+    assert.match(linus, /missing or partial|reconstruction/i, "a missing foundation routes here");
+    assert.ok(
+      Buffer.byteLength(arch, "utf8") < 56 * 1024,
+      "the architecture workflow stays under the size cap",
+    );
+  });
+
   it("records a standard technical specification and points the baseline at it", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");

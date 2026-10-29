@@ -78,6 +78,7 @@ Choose the workflow before touching code:
 | Card | Workflow |
 |---|---|
 | A new project or subsystem, the architecture style or stack, a system-wide boundary/contract/data-model change, the configuration surface, the directory tree, scaffolding or the project's gates | `architecture-workflow.md` |
+| An existing project whose recorded foundation is missing or partial, or a read-only conformance audit of one | `architecture-workflow.md` |
 | A feature or module inside the recorded architecture, a behaviour change, or a bug fix | `implementation-workflow.md` |
 | A refactor: restructuring working code without changing its observable behaviour | `refactor-workflow.md` |
 
@@ -87,6 +88,8 @@ and leave the observable behaviour unchanged. Everything else is implementation 
 card contains both, run architecture first and propose the implementation in the `## Handoff`;
 the project session triages one card vs an epic with children and creates it. Do not split the
 card yourself. If the branch is genuinely unclear, write an agent `question` and stop.
+A missing recorded foundation is reconstruction, not "everything else is implementation":
+route it to the architecture flow; only a feature inside a recorded foundation inherits one.
 
 ## Shared rules
 

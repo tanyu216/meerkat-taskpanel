@@ -1,8 +1,9 @@
 # Linus — system initialization and architecture design
 
 Read this from the role workflow when a card creates a project or a subsystem, changes the
-stack, or establishes or changes the repository's foundation. This is the **project's
-system-initialization design flow**, not a feature or module design: it decides the system
+stack, or establishes or changes the repository's foundation. It also reconstructs a recorded
+foundation whose record is missing or partial, and runs a read-only conformance audit of an
+existing system. This is the **project's system-initialization design flow**, not a feature or module design: it decides the system
 whole — its style, boundaries, contracts, configuration, tree and gates. A feature, module
 or behaviour change inside the recorded architecture belongs to
 `implementation-workflow.md`. The architecture direction is **E5**: the project session
@@ -12,7 +13,24 @@ Board operations (claim, heartbeat, comment, report, deliver, move, brief refres
 `meerkat` board skill's contract; load it before the first write.
 
 Every step below names its output. A step is done when that output exists and is linked
-from `.meerkat/<id>/plan.md`; do not start the next step while a decision is open.
+from `.meerkat/<id>/plan.md`; do not start the next step while a decision is open. A no-card
+run names the artifact instead of `plan.md` and writes no board state.
+
+## Run modes
+
+The flow runs in one of four modes; the mode decides what the run may write and what E5
+covers. Name the mode before Step 1.
+
+| Mode | Precondition | Writes | E5 | Done when |
+|---|---|---|---|---|
+| Create | no recorded foundation exists and the card establishes one | the full package | the human approves before implementation | Step 8's decision is recorded |
+| Extend | a recorded foundation exists and the card changes a recorded decision | the delta, its ADR and the affected artifacts | the human approves the change before implementation | the delta and its ADR are recorded |
+| Reconstruct | the recorded foundation is missing or partial; the tree is the only record | the reconstructed package, with provenance on every fact | the reconstruction is provisional: E5 is pending | every fact carries a disposition |
+| Conformance audit | the record exists and the card asks whether the system conforms | findings with evidence; no source or contract rewrite | none unless the audit proposes a change | every finding cites evidence |
+
+A no-card run is a reconstruction or a conformance audit. It writes the artifacts only — not
+`plan.md`, not board state — records an open decision as `not recorded — review question`, and
+delivers with E5 pending. Board operations begin only when a card exists.
 
 ## Design stance
 
@@ -51,6 +69,13 @@ foundation change is a delta; re-scaffolding or re-choosing a recorded decision 
 decision the card must ask for, not a side effect of running this flow. Extend the recorded
 foundation; never fork a second one.
 
+A fact is recorded with one of four dispositions: `inherited — <path>` when the record exists
+and binds; `reconstructed — <evidence>` when the record is absent or partial and the fact is
+derived from the tree; `not recorded — review question` when no evidence settles it; and
+`n/a — <reason>` when the capability is absent. A reconstruction never re-chooses a recorded
+decision — a proposed change is a new card or ADR — and its ADR status is
+`Accepted (reconstructed) — E5 pending`.
+
 ## Inputs
 
 - `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot;
@@ -59,7 +84,10 @@ foundation; never fork a second one.
   card;
 - the existing repository, if any: its manifests, its standard (`docs/tech-spec.md`), its
   architecture document, ADRs, API contract, `.env.example`, directory tree and
-  `GLOSSARY.md`.
+  `GLOSSARY.md`;
+- on a reconstruction, the evidence the tree itself carries: manifests and lockfiles,
+  container files, entry points, tests, hooks, CI configuration and the code that enforces an
+  invariant. A card is optional; `file:line` replaces it.
 
 ## Steps
 
@@ -70,8 +98,10 @@ compliance, hosting), the quality attributes that matter (performance, reliabili
 security, operability, cost) and the decision drivers.
 
 Take the project's **positioning and purpose** from the card, the `## Handoff` or the
-existing README; do not invent it. If it is missing, write a `question` and stop — the
-architecture style depends on it. From that positioning, name the signals the style
+existing README; do not invent it. On a card run, if it is missing, write a `question` and
+stop — the architecture style depends on it. A reconstruction instead reads the README, the
+manifest, the CLI help and the tests, records `not recorded — review question` for what no
+evidence settles, and continues with what it does. From that positioning, name the signals the style
 decision needs: how much of the value is domain rules and invariants, how many subdomains
 exist, whether domain experts and contested terms exist, and how long the model must live.
 
@@ -147,8 +177,10 @@ Rules:
    option per row, and do not mix two frameworks or two component libraries.
 2. An existing project inherits its stack: read its standard, build and package manifests
    and its container files, and record `inherited — <path>`. Do not re-choose or migrate
-   without a card that asks for it. If the inherited table is missing, write a `question`
-   and stop; do not choose a stack for another card.
+   without a card that asks for it. If the inherited table is missing and the mode is create,
+   write a `question` and stop; do not choose a stack for another card. A reconstruction is
+   the exception: rebuild the table from the manifests, lockfiles, container files and the
+   runtime, mark each row `reconstructed — <evidence>`, and do not migrate or re-choose it.
 3. Check compatibility across the rows: framework ↔ build tool ↔ language; engine ↔
    driver/ORM ↔ migration tool; base image ↔ runtime; UI component layer ↔ styling layer.
 4. A departure from the confirmed table, a new dependency or a licence carries a written
@@ -201,6 +233,11 @@ and a value arriving from outside is rejected or mapped to a documented fallback
 accepted silently. The database constraint, the contract's enum and the UI's label map are
 checked against that one definition.
 
+A release that changes stored data records its backup before the change, its recovery step,
+whether migrations apply at startup, and the upgrade path an older store takes to the new
+schema. A squashed baseline has no predecessor: record whether a pre-baseline store is
+refused, rebuilt or migrated forward, and where that is enforced.
+
 Output: the boundaries, data model, error model, constants and enumeration homes and the
 vertical slice in the architecture document.
 
@@ -215,7 +252,10 @@ no server contract to design.
 Default to **RESTful HTTP** over the resource model unless the card or the user names
 another style (GraphQL, gRPC, an RPC envelope, event-driven). A preference is recorded, not
 assumed; do not mix two styles for one surface, and inherit an existing non-REST contract
-rather than rewriting it to the default.
+rather than rewriting it to the default. On an existing project the recorded contract is
+inherited even when it differs from the defaults below; the default applies only when no
+contract is recorded. An audit records the deviation and a foundation change proposes it as a
+decision — neither rewrites the handlers.
 
 Resources and transport:
 
@@ -361,6 +401,10 @@ saturation, queue depth or the domain's own counters — before naming a platfor
 the vertical slice; a dashboard or alert with no consumer is not added. Logging, designed
 above, is one signal, not the observability plan.
 
+Name the worst-case path that blocks the runtime — a synchronous dependency, one connection,
+a lock — and whether the liveness probe can still answer while it is blocked. A probe that
+shares the blocked resource is not a liveness signal.
+
 Output: the observability section of the architecture document — the signals, their
 thresholds and their consumers.
 
@@ -370,6 +414,12 @@ Name what is trusted and what is validated at each edge: loopback versus remote,
 versus authenticated, the validation performed at every boundary crossing, where secrets
 live and how they are rotated, and the one place each authorization decision is made. A
 boundary that trusts by convenience is a recorded decision.
+
+Every exposure-widening default — the bind address, what an empty allow-list means, where a
+credential may travel, what loopback is trusted for — is a recorded decision that names its
+blast radius. A credential that can travel in a URL or query string is a finding: record the
+allowed channel and what refuses the others. An audit records the default; it does not change
+it.
 
 Output: the security boundaries in the architecture document.
 
@@ -425,6 +475,9 @@ document points at the canonical artifact for each detail and never restates it.
 A rule is one line, imperative, with the enforcement that catches a violation — a test, a
 lint rule, a gate, or `review`. A rule with no enforcement point is a wish: remove it or
 record it as review-only. Number the rules (`TS-01`, …) so a card and a review can cite one.
+One rule names one enforcement point — a test, a lint rule, a gate or a review. An invariant
+enforced in two places (an application check and a database constraint, say) is one rule with
+two enforcement points, not two rules; a rule that restates another is a pointer.
 The six design principles live in the architecture document's design stance; this document
 cites them rather than restating them.
 
@@ -439,7 +492,10 @@ table in its own section, and every rule naming its enforcement point.
 
 Instantiate exactly the stack recorded in Step 2; a substitution is a recorded decision.
 The scaffold is complete only when every row below has its artifact. "Not applicable" is a
-written `n/a — <reason>`, never a missing file.
+written `n/a — <reason>`, never a missing file. On an existing project this step is
+observation: a row is done when the artifact is found and its definition resolves, or the gap
+is `missing — <reason>` with its follow-up. Never re-scaffold an existing tree or create a
+second standard.
 
 | Area | Must contain | Done when |
 |---|---|---|
@@ -478,7 +534,9 @@ standard is not an architecture delivery: this flow creates one or asks.
 
 On an existing project, improve the baseline that is there: keep every section that still
 resolves, add what is missing, and regenerate only when the card asks for it — a rewrite that
-drops an existing agreement is a regression.
+drops an existing agreement is a regression. When no baseline exists at all, a reconstruction
+writes one headed `Reconstructed from <evidence> — E5 pending` instead of treating the absence
+as failure.
 
 Review the generated file — an init step guesses commands and layout. Resolve every line
 before accepting it: open each named path against the tree, run each documented command or
@@ -569,6 +627,15 @@ is named in `.env.example`) → an enumeration drift check (each documented wire
 the values its handler accepts) → build the artifact → security scan (dependency audit,
 secret scan, SAST) with no unaddressed high or critical finding.
 
+**Gate honesty.** A gate is only a gate when it exercises the real entry point: name what
+each one runs, and a failure probe — the change that makes it fail. A smoke test against a
+placeholder, or a service that answers only a liveness route, is `not a gate — <reason>`; a
+post-deploy check proves the product surface with one real read and one real flow, not
+liveness alone. An audit maps each gate to `file:line` and records an unexecuted gate as
+`unverified — <reason>`, never a claimed pass. The coverage floor names every runtime
+subsystem it excludes; a parity or drift check enumerates every enforcement site it covers;
+an invariant guarded only by prose is recorded as review-only.
+
 #### Release and deploy
 
 **Release** publishes a version; **deploy** runs it somewhere. They are separate paths and
@@ -584,7 +651,10 @@ never deploys, so recording `n/a` for both would erase the release that does hap
 - **Deploy** promotes that same artifact to a runtime target, only from a release tag or the
   mainline. Secrets live in the deploy environment, never in the repository; every deploy
   has a healthcheck, a recorded rollback, and a post-deploy check that the running system —
-  not the pipeline — serves the new version.
+  not the pipeline — serves the new version. A deploy check names the command or service
+  definition it starts and the entry point that command runs; a service definition that
+  starts a placeholder or a liveness-only process is not a deploy check — record
+  `not a gate — <reason>` and name the real entry point.
 - **Rollback** names its trigger, who decides, and the exact previous artifact. A rollback
   of the artifact is not a rollback of the data: a release that changes stored data records
   its own recovery step, and a published version is not rolled back at all.
@@ -609,7 +679,10 @@ does not restate it; this step names only the proof the architecture package mus
 - the architecture package in Step 8 is complete; the agent-instruction baseline carries
   the working agreement, the change and integration policy and the operational invariants,
   and every path and command it names resolves against the tree and the manifest;
-- no secret, no host-absolute path, no second source of truth.
+- no secret, no host-absolute path, no second source of truth;
+- a reconstruction or audit carries the proof its mode requires: provenance on every derived
+  fact, gate honesty, data recovery and the upgrade path, security defaults with their blast
+  radius, and verifiability coverage — as the self-check's reconstruction items define them.
 
 Output: the requirement → artifact table in `plan.md`.
 
@@ -621,7 +694,8 @@ table with pinned versions, its rules and their enforcement), the boundaries, th
 contract, the configuration surface, the directory tree, the gate path, the release and
 deploy paths and the agent-instruction baseline — to the project session. E5 belongs to
 the human; a public API contract is E5, and a configuration key that touches a secret is E4.
-Record the decision on the card. Do not start implementation before the review is recorded.
+Record the decision on the card. A no-card audit records the open decision in the assessment
+as `E5 pending`, not on a card. Do not start implementation before the review is recorded.
 
 Output: the recorded E5 decision on the card.
 
@@ -645,6 +719,10 @@ card(s). Deliver at `in_review` with the evidence. Do not create the implementat
 the project session triages it, seeds its acceptance and links it to this card as a blocker
 (or as a parent for an epic), using the `meerkat` board skill's relation command.
 
+A no-card conformance audit delivers artifacts only: it writes no board state, does not
+enter `in_review`, and records E5 as pending. The commit and delivery rules above apply only
+when a card exists.
+
 The self-check audits this card; the `## Handoff` block is the cross-card transfer. A
 producer card has both.
 
@@ -658,5 +736,9 @@ producer card has both.
   human's E5), never a silent edit.
 - Write only the skeleton and its smoke test here; product behaviour belongs to the
   implementation branch.
-- Migrations are append-only. A published contract or schema change needs the human.
+- Migrations are append-only: the recorded baseline is the first append, and a squashed
+  baseline has no predecessor, so its disposition is recorded. A published contract or schema
+  change needs the human.
 - No destructive operation and no secret.
+- An audit or no-card evaluation writes no project source and no board state; its findings
+  and their evidence are the deliverable.
