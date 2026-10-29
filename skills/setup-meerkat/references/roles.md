@@ -128,8 +128,10 @@ tree.
 ## Engineering artifacts
 
 Linus keeps the project's standard at `docs/tech-spec.md`, durable architecture at
-`docs/architecture.md`, the codebase vocabulary at root `GLOSSARY.md`, and engineering
-decisions at `docs/adr/NNNN-<slug>.md`; a card-local foundation change may live in
+`docs/architecture.md`, the codebase vocabulary at root `GLOSSARY.md`, the project document
+set (`README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, and on a community open-source project
+`LICENSE` and the community files), and engineering decisions at `docs/adr/NNNN-<slug>.md`;
+a card-local foundation change may live in
 `.meerkat/<id>/tech-spec.md` or `.meerkat/<id>/architecture.md`. The standard carries the
 canonical `## Tech stack` table (frontend, backend, persistence and container/build) and the
 normative rules — naming, layering, errors, configuration, constants and enumerations,

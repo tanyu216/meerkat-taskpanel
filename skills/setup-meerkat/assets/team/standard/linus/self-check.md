@@ -125,6 +125,14 @@ run them.
     floor, one local command, one CI command, the report it writes and who may waive a
     finding; an arm the project does not run records `n/a — <reason>`. A `.vue` or Svelte
     single-file component is named as uncovered rather than assumed scanned.
+25. The document set is complete and single-sourced: `README.md`, `GLOSSARY.md`,
+    `CONTRIBUTING.md` and `CHANGELOG.md` exist; when the card records a community
+    open-source project, `LICENSE`, `SECURITY.md`, `CODE_OF_CONDUCT.md`,
+    `.github/CODEOWNERS` and the issue/PR templates exist too, and otherwise the standard
+    records `n/a — not a community open-source project`. The changelog has one empty
+    unreleased section between releases; the baseline points at `CONTRIBUTING.md` instead of
+    restating the change policy; and no two documents own the same rule. The root glossary
+    is item 11's finding, not repeated here.
 
 ## Implementation branch
 

@@ -280,9 +280,10 @@ Every worker workflow carries the same decision round before it freezes a direct
 decision tree, the frontier of questions whose prerequisites are settled, one round at a
 time with a recommended answer, and no building while a decision is open. Jobs keeps the
 product glossary at `design/glossary.md` and product ADRs under `design/adr/`; Linus keeps
-the codebase `GLOSSARY.md` and `docs/adr/`, and the root glossary links the product one
-without copying it. `ui-workflow.md` also runs standalone for a single feature or prototype
-change.
+the codebase `GLOSSARY.md`, `docs/adr/` and the project document set (`README.md`,
+`CONTRIBUTING.md`, `CHANGELOG.md`, plus the community files on a community open-source
+project), and the root glossary links the product one without copying it. `ui-workflow.md`
+also runs standalone for a single feature or prototype change.
 
 Linus establishes the project's agent-instruction baseline (the host's `CLAUDE.md` or
 `AGENTS.md`) as a foundation outcome. It is the file every role reads, not an optional step,

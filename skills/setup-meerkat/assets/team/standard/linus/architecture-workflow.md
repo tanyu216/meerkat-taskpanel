@@ -75,6 +75,12 @@ architecture style depends on it. From that positioning, name the signals the st
 decision needs: how much of the value is domain rules and invariants, how many subdomains
 exist, whether domain experts and contested terms exist, and how long the model must live.
 
+Record whether the project is a **community open-source project** — outside contributors and
+a public channel for vulnerability reports — or a private one. Take it from the card, the
+`## Handoff` or the existing README; when none of them says, write a `question` and stop
+rather than assuming either. The answer decides the community-document group in Step 4,
+including whether the project ships a licence file.
+
 Name the system boundary and the external systems and contractual obligations it carries.
 Design those contracts in Step 3, not here.
 
@@ -182,6 +188,10 @@ One artifact is canonical per design area; every other location points to it.
 | Configuration | `.env.example` plus the typed schema; other documents point at them |
 | Constants and enumerations | The definition module in the source tree; the standard records the rule, and the contract and the UI label map point at it |
 | Directory tree | `docs/architecture.md`; `CLAUDE.md`/`AGENTS.md` carry a top-level map and a pointer |
+| Vocabulary | Root `GLOSSARY.md`; it links the product glossary rather than copying its terms |
+| Change and integration policy | `CONTRIBUTING.md`; the agent-instruction baseline points at it |
+| Release record | `CHANGELOG.md` |
+| Community files (only when Step 1 records a community open-source project) | `LICENSE`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS` and the issue/PR templates |
 
 #### Module boundaries and data model
 
@@ -422,6 +432,7 @@ document points at the canonical artifact for each detail and never restates it.
 | Tests and gates | test layout and naming, the coverage floor, the local gates and the CI checks | a change knows what must pass before delivery |
 | Security toolchain | one row per arm — dependency audit, secret scan, SAST, SBOM — with the tool, its version floor, the exact local and CI command, the report path and who may waive a finding; `n/a — <reason>` per arm the project does not run | every arm has a command that fails on an unaddressed high/critical finding, or records why it does not apply |
 | Release and delivery | release and deploy invariants, artifact immutability, rollback and its data plan | each path records its invariant or its `n/a` |
+| Project documents | the core set and its paths — `README.md`, `GLOSSARY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`; the community group (`LICENSE`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS`, issue/PR templates) when Step 1 records a community open-source project, otherwise `n/a — not a community open-source project`; who owns the vocabulary, the change policy and the release record | every required document exists or its `n/a` is recorded, and no two documents restate the same rule |
 
 A rule is one line, imperative, with the enforcement that catches a violation — a test, a
 lint rule, a gate, or `review`. A rule with no enforcement point is a wish: remove it or
@@ -457,7 +468,27 @@ written `n/a — <reason>`, never a missing file.
 | Container / build path | only when the runtime form is a container: build file, non-root user, healthcheck, local multi-service definition; otherwise the recorded `n/a` | the build file builds and the healthcheck passes |
 | CI skeleton | a pipeline running the Step 6 checks | it runs on a pull request |
 | VCS | ignore rules for build output, data directories and environment files | no generated file is committed |
-| Docs | README with purpose, run, test and links to the architecture document and the standard | every link resolves |
+| Docs | the document set in `#### Project documents` below | every required document exists and every link resolves |
+
+#### Project documents
+
+The documents that outlive any one card are scaffolded here, each with one owner and one
+canonical location. The core set is always created; the community group is created, or
+recorded as `n/a — not a community open-source project` in the standard, from the posture
+Step 1 recorded.
+
+| Document | Must contain | Done when |
+|---|---|---|
+| `README.md` | purpose, run, test and links to the architecture document and the standard | every link resolves |
+| `GLOSSARY.md` | the codebase's canonical terms; a `## Product language` section that links the product glossary or states product terms are not recorded; no copied product terms | every role reads one vocabulary file |
+| `CONTRIBUTING.md` | where parallel work is isolated, the protected line, the ref a card starts from and the ref acceptance lands into, the confirmation gate, the commit rule, the cleanup order and the local gate commands | a newcomer can land a change without asking |
+| `CHANGELOG.md` | one empty `## [Unreleased]` section between releases and one `## [X.Y.Z] - YYYY-MM-DD` section per released version, written at the release merge and never on a feature branch | the pre-tag gate can read a section for the version |
+| `LICENSE` | the licence text and copyright holder for the licence decision Step 2 recorded; only when Step 1 records a community open-source project | the file is the recorded decision, not a default |
+| `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS`, issue/PR templates | the vulnerability-disclosure path, the contribution conduct and the ownership map; only when Step 1 records a community open-source project | each exists, or the standard records `n/a — not a community open-source project` |
+
+An existing project inherits its document set: read what it already has and record the delta.
+Adding a missing document is a change, not a rewrite — the same rule the recorded foundation
+follows.
 
 Never commit a secret, add a dependency or licence without a decision, or create a second
 source of truth.
@@ -528,16 +559,17 @@ carry:
    where parallel work is isolated, which branch or release line is protected, the ref a
    card starts from and the ref acceptance lands into, what must be confirmed before it
    lands, the commit rule that makes a delivery verifiable (the delivered tree is committed
-   and the report names that commit), and the cleanup order. Point at the contributing guide
-   or the standard for the detail; carry only the rules a fresh session would otherwise
+   and the report names that commit), and the cleanup order. Point at `CONTRIBUTING.md` or
+   the standard for the detail; carry only the rules a fresh session would otherwise
    break.
 9. **Operational invariants** — the state a fresh session can break and cannot see from the
    code: who may write a given surface (one writer per surface; a second writer is a defect),
    where runtime identity and configuration are read from, and which artifacts are generated
    and must never be hand-edited. One line each; point at the standard for the detail.
 10. **Pointers** — link the standard first (its recorded path; `docs/tech-spec.md` on a
-    project this flow created), then `docs/architecture.md`, `GLOSSARY.md`, `docs/adr/`, the
-    contract artifact and the configuration surface; do not copy their content.
+    project this flow created), then `docs/architecture.md`, `GLOSSARY.md`,
+    `CONTRIBUTING.md`, `docs/adr/`, the contract artifact and the configuration surface; do
+    not copy their content.
 
 These items are a floor, not a ceiling. A rule a fresh session can break that no pointed-at
 document owns belongs here, one line each, with its enforcement.
@@ -633,6 +665,9 @@ does not restate it; this step names only the proof the architecture package mus
 - the architecture package in Step 8 is complete; the agent-instruction baseline carries
   the working agreement, the change and integration policy and the operational invariants,
   and every path and command it names resolves against the tree and the manifest;
+- the document set is complete and single-sourced: `README.md`, `GLOSSARY.md`,
+  `CONTRIBUTING.md` and `CHANGELOG.md` exist, the community group exists or its recorded
+  `n/a` stands in, each document has one owner, and no two restate the same rule;
 - no secret, no host-absolute path, no second source of truth.
 
 Output: the requirement → artifact table in `plan.md`.
@@ -642,9 +677,10 @@ Output: the requirement → artifact table in `plan.md`.
 Present the **architecture package** — the design-stance evidence, the options, the style
 ADR, the recorded standard (`docs/tech-spec.md` for a project this flow created; its stack
 table with pinned versions, its rules and their enforcement), the boundaries, the external
-contract, the configuration surface, the directory tree, the gate path, the release and
-deploy paths and the agent-instruction baseline — to the project session. E5 belongs to
-the human; a public API contract is E5, and a configuration key that touches a secret is E4.
+contract, the configuration surface, the directory tree, the project document set, the gate
+path, the release and deploy paths and the agent-instruction baseline — to the project
+session. E5 belongs to the human; a public API contract is E5, and a configuration key that
+touches a secret is E4.
 Record the decision on the card. Do not start implementation before the review is recorded.
 
 Output: the recorded E5 decision on the card.
@@ -662,8 +698,8 @@ naming the standard (`docs/tech-spec.md` for a new project, the inherited bindin
 card-local delta otherwise), the architecture document, `.meerkat/<id>/architecture.md` (when
 the change is card-local), the style and
 other ADR paths, the contract artifact, the configuration surface, the directory tree, the
-gate path, the release and deploy paths (or their recorded `n/a`), the agent-instruction
-baseline (`CLAUDE.md` or `AGENTS.md`), the acceptance source,
+document set, the gate path, the release and deploy paths (or their recorded `n/a`), the
+agent-instruction baseline (`CLAUDE.md` or `AGENTS.md`), the acceptance source,
 the `Delivery shape` (one task, or an epic with children) and the proposed implementation
 card(s). Deliver at `in_review` with the evidence. Do not create the implementation card;
 the project session triages it, seeds its acceptance and links it to this card as a blocker
