@@ -2016,6 +2016,21 @@ button.td-prop-value:hover {
   border-top: var(--border) solid var(--brand-border);
 }
 .td-comment:first-child { border-top: 0; }
+
+/* B26 → B09 · the entry a feed row landed on. The attribute **is** the state:
+   it exists only while the row holds DOM focus, because a programmatic focus
+   after a pointer press does not reliably match `:focus-visible`. Tokens only —
+   no new hues. The comment row is a bare flex line (it has no radius of its
+   own); the report card already carries `--radius-field`, which shapes its
+   ring, so it is deliberately left alone here. */
+[data-detail-focus] {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--brand-focus-ring);
+}
+.td-comment[data-detail-focus] {
+  border-radius: var(--radius-selector);
+}
 .td-comment-meta {
   display: flex;
   align-items: center;
