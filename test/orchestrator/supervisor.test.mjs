@@ -2476,10 +2476,18 @@ describe("parseArgs — the team scan set and roles root", () => {
     // setup-meerkat is optional: without a team env/config the loop still needs
     // one identity to scan with. The empty config path is the point of the temp
     // home — a developer's installed agent config must not leak in.
+    //
+    // The team list also comes from `<config root>/.env.<kind>`, and the config
+    // root is *not* `--home`: unset, it falls back to the program root — this
+    // checkout, where a gitignored `.env.claude` would answer for the team and
+    // turn this case into a test of the developer's machine. Pin it.
     const dir = mkdtempSync(join(tmpdir(), "tp-team-unset-"));
     try {
       const agentsFor = (env) =>
-        parseArgs(["--actor-kind", "claude", "--home", dir], env).agents;
+        parseArgs(["--actor-kind", "claude", "--home", dir], {
+          ...env,
+          MEERKAT_TASKPANEL_CONFIG_DIR: dir,
+        }).agents;
       assert.deepEqual(agentsFor({}), ["agent"], "no identity at all");
       assert.deepEqual(agentsFor({ LOGNAME: "logname" }), ["logname"]);
       assert.deepEqual(agentsFor({ USER: "user", LOGNAME: "logname" }), ["user"]);
