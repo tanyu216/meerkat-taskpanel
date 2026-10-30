@@ -304,7 +304,9 @@ describe("install.sh: the supervisor flag surface", () => {
   it("restarts a loaded supervisor when the runtime tree changed", () => {
     const home = makeTempDir();
     const manager = fakeManager();
-    const env = installEnv(home, manager);
+    // Pinned: the case seeds launchd's job state and asserts `launchctl kickstart`.
+    // `auto` would pick systemd on Linux and this would silently assert nothing.
+    const env = installEnv(home, manager, { MEERKAT_TASKPANEL_SCHEDULER: "launchd" });
     const first = runInstall(["--target", "claude", "--agent-name", "alice", "--prefix", home], env);
     assert.equal(first.status, 0, first.stderr);
     assert.deepEqual(calls(manager), [], "the first install asks no service manager");
@@ -336,7 +338,8 @@ describe("install.sh: the supervisor flag surface", () => {
   it("says nothing to restart when the tree changed but no unit is loaded", () => {
     const home = makeTempDir();
     const manager = fakeManager();
-    const env = installEnv(home, manager);
+    // Pinned for the same reason as the case above: the verdict is launchd's.
+    const env = installEnv(home, manager, { MEERKAT_TASKPANEL_SCHEDULER: "launchd" });
     runInstall(["--target", "claude", "--agent-name", "alice", "--prefix", home], env);
     writeFileSync(manager.log, "");
 
@@ -956,6 +959,9 @@ describe("install.sh: a plain reinstall tells the truth about loaded units", () 
   };
 
   it("warns that the loaded definition is stale, and names the command that reloads it", () => {
+    // The reload hint names `--scheduler=launchd` whenever launchd is not what `auto`
+    // picks here — this case forces launchd, so the suffix is platform-dependent.
+    const reloadSuffix = PLATFORM_DEFAULT === "launchd" ? "" : " --scheduler=launchd";
     // The bug this pins: `install.sh --force` rewrites the plists, prints "nothing is
     // loaded for you" even though the jobs ARE loaded, and the live supervisor keeps an
     // `--agent` flag the file no longer has. The rewrite has to say so.
@@ -972,7 +978,10 @@ describe("install.sh: a plain reinstall tells the truth about loaded units", () 
 
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /supervisor: warning \(kind=claude\) — the scheduling units were just rewritten, but launchd still has the old definition loaded/);
-    assert.match(run.stdout, /reload it with: install\.sh --supervisor=enable --supervisor-actor-kinds claude$/m);
+    assert.match(
+      run.stdout,
+      new RegExp(`reload it with: install\\.sh --supervisor=enable --supervisor-actor-kinds claude${reloadSuffix}$`, "m"),
+    );
     assert.doesNotMatch(run.stdout, /nothing is loaded for you/);
     assert.deepEqual(
       calls(manager).slice(before).filter((line) => !/^launchctl print /.test(line)),
