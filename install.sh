@@ -152,14 +152,17 @@ Options:
                     Aliases: --enable-supervisor, --disable-supervisor,
                     --supervisor-status.
   --supervisor-actor-kinds <list>
-                    Which loop actor kinds the action applies to: claude, codex or pi
-                    (default: the loop actor kinds in --target).
+                    Which loop actor kinds the action applies to: claude, codex or pi.
+                    Default: enable = the FIRST loop kind in --target order (one loop
+                    supervisor per machine); disable/status = EVERY loop kind in
+                    --target, so a stray is seen and stopped. Naming more than one
+                    kind is the explicit multi-supervisor choice.
                     'openclaw' is rejected (exit 2) — it runs openclaw-team's own
                     poll/patrol. The values are actor kinds — the same vocabulary
                     taskctl loop takes on --actor-kind.
   --scheduler <m>   auto | launchd | systemd | cron   (default: auto — launchd on
                     macOS, systemd --user on Linux, cron elsewhere). Only one
-                    mechanism may be loaded per machine.
+                    mechanism may be loaded for one loop kind.
   --link            Symlink the skill instead of copying it (board skill only)
   --force           Overwrite an existing installation (never .env, .data, roles/, or an
                     existing config-root projects.json — this installer ships none of
