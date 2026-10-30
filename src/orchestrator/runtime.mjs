@@ -460,7 +460,14 @@ export function createLogger(opts) {
     ...(file === null ? {} : { sinks: [stderrSink, file] }),
   });
 
-  const log = (line, meta) => base({ level: meta?.level ?? "info", message: String(line) });
+  // The line logger keeps its `(line, fields)` shape; an `event` a caller names
+  // (e.g. `pool_start_failed`) is carried into the record, not dropped.
+  const log = (line, meta) =>
+    base({
+      level: meta?.level ?? "info",
+      ...(typeof meta?.event === "string" && meta.event !== "" ? { event: meta.event } : {}),
+      message: String(line),
+    });
   log.close = () => base.close();
   return log;
 }
