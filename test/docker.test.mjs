@@ -438,6 +438,22 @@ describe("docker-plan", () => {
     assert.ok(!buildArgs(".").some((a) => a.startsWith("--pull")));
   });
 
+  it("invalidates the frontend stage on every run", () => {
+    // A cached `web/dist` is a build artifact whose timestamp stops meaning "these
+    // sources" as soon as a fresh checkout rewrites their mtimes, so the gate never
+    // reuses it: the nonce is part of the build's cache key for that layer only.
+    const args = buildArgs(".", { nonce: "1720000000000" });
+    const index = args.indexOf("--build-arg");
+    assert.ok(index !== -1, "expected a build arg");
+    assert.equal(args[index + 1], "VERIFY_BUILD_NONCE=1720000000000");
+    assert.equal(args.at(-1), ".", "the context stays last");
+  });
+
+  it("leaves the build arg out when no nonce was resolved", () => {
+    const args = buildArgs(".");
+    assert.ok(!args.includes("--build-arg"), "no nonce, no build arg");
+  });
+
   it("builds a docker run command that is removed afterwards and runs the in-container script", () => {
     const args = runVerifyInContainerArgs();
     assert.equal(args[0], "run");

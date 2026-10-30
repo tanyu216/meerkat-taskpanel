@@ -144,8 +144,13 @@ try {
   // omitted (the preflight above is then the guarantee).
   const pullFlag = resolvePullFlag({ run });
 
+  // Every run rebuilds the frontend stage: the gate compares `web/dist`'s build time
+  // with the sources' mtimes, and a cached layer plus a fresh checkout is exactly the
+  // pair that makes that comparison lie.
+  const nonce = String(Date.now());
+
   phase(`docker build -t ${imageTag()}${pullFlag ? ` (${pullFlag})` : ""}`, () => {
-    const res = run("docker", buildArgs(".", { pullFlag }));
+    const res = run("docker", buildArgs(".", { pullFlag, nonce }));
     return { ...res, ok: !res.error && res.status === 0, detail: res.error?.message ?? tail(res.stderr) };
   });
 
