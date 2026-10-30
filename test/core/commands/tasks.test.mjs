@@ -4102,6 +4102,93 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
       );
     });
   });
+
+  it("refuses an APPROVE whose own delivery report can never close the original", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "reviewed",
+        meta: { acceptance: ["a", "b"] },
+        acceptanceMode: "agent",
+        actor: HUMAN,
+      });
+      commands.claim({ id: original.id, actor: AGENT });
+      // `partial` is honest progress, so the delivery gate admits this report —
+      // but the report binds its round, so no later `done` can be accepted from
+      // it. An APPROVE written over it would freeze the card for ever: the close
+      // gate refuses the move and no action asks the worker for a new round.
+      commands.deliver({
+        taskId: original.id,
+        report: report({
+          acceptance: [
+            { text: "a", status: "met", note: "evidence[1] — the run" },
+            { text: "b", status: "partial", note: "the gate has not run yet" },
+          ],
+          leftovers: "b: the container gate has not run yet",
+        }),
+        actor: AGENT,
+      });
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "review",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        actor: HUMAN,
+      });
+      commands.claim({ id: review.id, actor: AGENT });
+
+      assert.throws(
+        () =>
+          commands.deliver({
+            taskId: review.id,
+            report: report({
+              conclusion: "VERDICT: APPROVE\n\nI ran the suite myself.",
+              acceptance: [
+                { text: "a", status: "met", note: "evidence[2]" },
+                { text: "b", status: "met", note: "evidence[2]" },
+              ],
+              evidence: [
+                { kind: "commit", sha: "dcd7d15" },
+                { kind: "command", cmd: "node --test test/io.test.mjs", exit_code: 0 },
+              ],
+            }),
+            actor: AGENT,
+          }),
+        (err) =>
+          err.code === "ACCEPTANCE_INCOMPLETE" &&
+          err.details.source === "delivery" &&
+          err.details.blocking.some((item) => item.text === "b") &&
+          /REJECT/.test(String(err.hint?.fix ?? "")),
+        "the reviewer must be refused at the writer, not left with an unclosable verdict",
+      );
+
+      assert.deepEqual(
+        commands.listReports({ taskId: review.id }),
+        [],
+        "the refusal rolls the verdict back; nothing is left to be misread",
+      );
+
+      // The same delivery still takes a REJECT: the honest verdict stays writable.
+      commands.deliver({
+        taskId: review.id,
+        report: report({
+          conclusion: "VERDICT: REJECT\n\nb is only partial.",
+          acceptance: [
+            { text: "a", status: "met", note: "evidence[2]" },
+            { text: "b", status: "not_met", note: "the gate never ran" },
+          ],
+          leftovers: "b: the container gate never ran",
+          evidence: [
+            { kind: "commit", sha: "dcd7d15" },
+            { kind: "command", cmd: "node --test test/io.test.mjs", exit_code: 0 },
+          ],
+        }),
+        actor: AGENT,
+      });
+      assert.equal(commands.listReports({ taskId: review.id }).length, 1);
+    });
+  });
 });
 
 describe("commands/tasks — a claim must point at its evidence", () => {

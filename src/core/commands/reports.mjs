@@ -21,6 +21,7 @@ import {
   assertChildrenTerminal,
   assertDeliveryCommitAnchor,
   assertDeliveryEvidenceAnchors,
+  assertOriginalDeliverable,
   assertReviewReady,
 } from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
@@ -252,6 +253,9 @@ export function deliver(ctx, input) {
       // can never be accepted, and the round binds the report — refusing it now
       // costs the worker one edit instead of the review a wasted round.
       assertDeliveryEvidenceAnchors(task, prepared);
+      // A verdict is judged where it is written, not only where it is applied:
+      // an APPROVE over a delivery the close gate refuses has no exit.
+      assertOriginalDeliverable(ctx, task, prepared);
       const isRollup = task.kind === TASK_KIND.EPIC;
       if (isRollup) assertRollupCoverage(ctx, task, prepared.acceptance);
       const report = insertDeliveryReport(ctx, {
