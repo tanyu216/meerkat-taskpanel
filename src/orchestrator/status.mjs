@@ -48,7 +48,8 @@ const USAGE = `Usage: taskctl loop status [--json] [--agent <name>] [--actor-kin
          [--state <path>] [--log <path>] [--config <path>]
          [--take-over | --stop]
 
-Reports whether a supervisor/pool is running and what is driving it.
+Reports whether a supervisor/pool is running and what is driving it, including the
+agent platform (--actor-kind) and the scan set the loop resolves from its config.
   --take-over  start the pool in external-control mode (explicit; refuses unless absent)
   --stop       stop the pool this session started
 Nothing here is a scheduler: status only reads, and a takeover is one pool.`;
@@ -184,6 +185,10 @@ export function probeSupervisor(opts, deps = {}) {
 
   return {
     verdict,
+    // Which agent platform this loop is. `units.kind` carries it too, but a human or a
+    // script reading the verdict needs it next to the scan set: a machine can run more
+    // than one loop kind, and this report answers for one of them.
+    platform: opts.actorKind ?? "claude",
     agents,
     pool: {
       ...pool,
@@ -328,10 +333,11 @@ function humanReport(report) {
   ].join(", ");
   return [
     `supervisor: ${report.verdict}`,
+    `  platform:  ${report.platform} (~/${AGENT_DIRS[report.platform] ?? report.platform})`,
+    `  scan set:  ${report.agents.length > 0 ? report.agents.join(",") : "(none)"}`,
     `  pool:      ${pool}`,
     `  continue:  ${report.continue.processing ? "processing" : report.continue.pending ? "pending" : report.continue.oneShot ? `one-shot pid ${report.continue.oneShot.pid}` : "idle"}`,
     `  subscribe: ${report.subscribe.live ? `running (pid ${report.subscribe.pid})` : "not running"}`,
-    `  agents:    ${report.agents.length > 0 ? report.agents.join(",") : "(none)"}`,
     `  units:     ${units}`,
     ...(report.sessionStarted === null
       ? []

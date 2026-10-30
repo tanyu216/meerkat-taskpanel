@@ -80,6 +80,9 @@ started with `--control=external`, so it opens no control session and leaves
 question ladder, the same acceptance rules.
 
 1. `taskctl loop status --json` → `running | busy | starting | configured-idle | partial | absent`.
+   The report also names the `platform` (`--actor-kind`) and the resolved `agents` scan set:
+   a role outside the scan set is never claimed, and one loop supervisor per machine is the
+   deployment rule.
    - `running` + `pool.controlMode: internal`: the supervisor owns the turn; do not run a
      second one. You may attach as a question console.
    - `configured-idle` / `partial` / `busy`: report; the service manager or an in-flight turn

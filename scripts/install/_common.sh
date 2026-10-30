@@ -562,6 +562,99 @@ supervisor_value() {
   printf ''
 }
 
+# supervisor_actor_kinds_value <action> <explicit-list> <targets> — resolve which loop agent
+# kinds a supervisor action applies to. Prints a space-padded, ordered, de-duplicated list
+# (" claude codex ") or empty; validation failures go to stderr and return 1, so the caller
+# decides the exit code. Read-only and side-effect free.
+#
+# One loop supervisor per machine is the rule (`docs/scheduling.md`):
+#   * an explicit <list> wins — it is the only way to act on more than one kind, and a kind
+#     the install does not cover is named and dropped (its installer would never run);
+#   * otherwise `enable` acts on the FIRST loop kind in --target order; `disable` and
+#     `status` act on EVERY loop kind, so an old three-supervisor install can be seen and
+#     stopped in one command.
+# OpenClaw is never one: it runs openclaw-team's own poll/patrol.
+supervisor_actor_kinds_value() {
+  local action="${1:-}" explicit="${2:-}" targets="${3:-}"
+  local resolved="" kept="" entry raw kind target old_ifs
+  case "$action" in
+    "" | enable | disable | status) ;;
+    *)
+      echo "--supervisor must be enable, disable or status (got '$action')." >&2
+      return 1
+      ;;
+  esac
+
+  if [ -n "$explicit" ]; then
+    resolved=""
+    old_ifs="$IFS"
+    IFS=','
+    for raw in $explicit; do
+      IFS="$old_ifs"
+      entry="$(printf '%s' "$raw" | tr -d '[:space:]')"
+      IFS=','
+      case "$entry" in
+        "") ;;
+        claude | codex | pi)
+          case " $resolved " in
+            *" $entry "*) ;;
+            *) resolved="$resolved $entry" ;;
+          esac
+          ;;
+        openclaw)
+          IFS="$old_ifs"
+          echo "--supervisor-actor-kinds openclaw: OpenClaw has no meerkat-loop supervisor to enable (it runs openclaw-team's own poll/patrol — see docs/scheduling.md)" >&2
+          return 1
+          ;;
+        server)
+          IFS="$old_ifs"
+          echo "--supervisor-actor-kinds server: the server target has no meerkat-loop supervisor (the taskd guard is separate)" >&2
+          return 1
+          ;;
+        *)
+          IFS="$old_ifs"
+          echo "invalid --supervisor-actor-kinds: $entry (expected claude|codex|pi)" >&2
+          return 1
+          ;;
+      esac
+    done
+    IFS="$old_ifs"
+
+    kept=""
+    for kind in $resolved; do
+      case " $targets " in
+        *" $kind "*) kept="$kept $kind" ;;
+        *)
+          echo "install.sh: supervisor: kind '$kind' is not in --target; nothing to act on for it" >&2
+          ;;
+      esac
+    done
+    [ -n "$kept" ] && printf ' %s ' "${kept# }"
+    return 0
+  fi
+
+  [ -n "$action" ] || return 0
+  resolved=""
+  for target in $targets; do
+    case "$target" in
+      claude | codex | pi) ;;
+      *) continue ;;
+    esac
+    case "$action" in
+      enable)
+        # One supervisor per machine: the first loop kind in --target order.
+        printf ' %s ' "$target"
+        return 0
+        ;;
+      *)
+        resolved="$resolved $target"
+        ;;
+    esac
+  done
+  [ -n "$resolved" ] && printf ' %s ' "${resolved# }"
+  return 0
+}
+
 # apply_supervisor — perform this agent kind's requested enable / disable / status action.
 # Requires export_tp_env first (TP_ACTOR_KIND, TP_AGENT, TP_AGENT_BASE, TP_SCHED).
 #

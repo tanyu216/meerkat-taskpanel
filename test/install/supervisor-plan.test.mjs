@@ -20,7 +20,7 @@ import { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 import { QUEUE_FILES } from "../../src/orchestrator/queue.mjs";
 
-import { ACTIONS, LOOP_KINDS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, poolReport, resolveScheduler, stripBlock, subscribeReport, subscribeStatusLine, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
+import { ACTIONS, LOOP_KINDS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, machineStatus, poolReport, resolveScheduler, scanSetFromConfig, stripBlock, subscribeReport, subscribeStatusLine, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
 
 const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-plan-" });
 
@@ -94,6 +94,75 @@ describe("_common.sh: supervisor_value decides the opt-in", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 0b — which loop kinds an action applies to (one supervisor per machine)
+// ---------------------------------------------------------------------------
+
+describe("_common.sh: supervisor_actor_kinds_value resolves the action's kinds", () => {
+  const resolve = (action, explicit, targets) =>
+    runCommon(
+      `supervisor_actor_kinds_value ${JSON.stringify(action)} ${JSON.stringify(explicit)} ${JSON.stringify(targets)}`,
+    );
+
+  it("enable defaults to the FIRST loop kind in --target order — one supervisor per machine", () => {
+    // `--target all` normalizes to `server claude openclaw codex pi`.
+    assert.equal(resolve("enable", "", " server claude openclaw codex pi ").stdout, " claude ");
+    // Target order, not a hard-coded preference.
+    assert.equal(resolve("enable", "", " pi claude ").stdout, " pi ");
+    assert.equal(resolve("enable", "", " codex ").stdout, " codex ");
+    // No loop kind at all: nothing to act on.
+    assert.equal(resolve("enable", "", " server openclaw ").stdout, "");
+  });
+
+  it("disable and status default to EVERY loop kind in --target order — the way back out, and the stray view", () => {
+    assert.equal(resolve("disable", "", " server claude openclaw codex pi ").stdout, " claude codex pi ");
+    assert.equal(resolve("status", "", " server claude openclaw codex pi ").stdout, " claude codex pi ");
+    assert.equal(resolve("status", "", " pi claude ").stdout, " pi claude ");
+  });
+
+  it("an empty action computes nothing, so a plain install changes no set", () => {
+    assert.equal(resolve("", "", " server claude openclaw codex pi ").stdout, "");
+  });
+
+  it("an explicit list is the only multi-kind form, and de-duplicates in first-occurrence order", () => {
+    assert.equal(resolve("enable", "claude,pi", " server claude codex pi ").stdout, " claude pi ");
+    assert.equal(resolve("enable", "pi,claude,pi", " server claude codex pi ").stdout, " pi claude ");
+    assert.equal(resolve("disable", "codex", " server claude codex pi ").stdout, " codex ");
+  });
+
+  it("an explicit kind the install does not cover is named and dropped — its installer never runs", () => {
+    const run = resolve("enable", "claude,codex", " claude ");
+    assert.equal(run.stdout, " claude ");
+    assert.match(run.stderr, /supervisor: kind 'codex' is not in --target; nothing to act on for it/);
+  });
+
+  it("rejects openclaw, server and an unknown kind — with their own reasons", () => {
+    const openclaw = resolve("enable", "openclaw", " claude ");
+    assert.notEqual(openclaw.status, 0);
+    assert.match(openclaw.stderr, /OpenClaw has no meerkat-loop supervisor to enable/);
+
+    const server = resolve("enable", "server", " claude ");
+    assert.notEqual(server.status, 0);
+    assert.match(server.stderr, /the server target has no meerkat-loop supervisor/);
+
+    const unknown = resolve("enable", "emacs", " claude ");
+    assert.notEqual(unknown.status, 0);
+    assert.match(unknown.stderr, /invalid --supervisor-actor-kinds: emacs/);
+  });
+
+  it("validates an explicit list even when no action was requested", () => {
+    const run = resolve("", "openclaw", " claude ");
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /OpenClaw has no meerkat-loop supervisor to enable/);
+  });
+
+  it("rejects an unknown action", () => {
+    const run = resolve("maybe", "", " claude ");
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /--supervisor must be enable, disable or status/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 1 — resolvers and identifiers
 // ---------------------------------------------------------------------------
 
@@ -161,6 +230,64 @@ describe("supervisor: the scheduler and the identifiers", () => {
       supervisorPaths({ agentBase: "/p/.codex", agent: "a", actorKind: "codex", env: { XDG_CONFIG_HOME: "/xdg" }, home: "/home/op" })
         .systemdUnitDir,
       "/xdg/systemd/user",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 1b — the two facts `--supervisor=status` adds: the scan set and the machine view
+// ---------------------------------------------------------------------------
+
+describe("supervisor: the per-kind scan set and the machine-level view", () => {
+  it("reads the scan set from the per-kind config, never the installer's own env", () => {
+    const dir = makeTempDir();
+    const path = join(dir, ".env.claude");
+
+    assert.deepEqual(scanSetFromConfig(path), { agents: [], source: "unset" });
+
+    writeFileSync(path, "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing\n", "utf8");
+    assert.deepEqual(scanSetFromConfig(path), { agents: ["Jobs", "Linus", "Turing"], source: "config" });
+
+    // Whitespace-separated is accepted too, and the last occurrence wins (agentConfigValue's rule).
+    writeFileSync(path, "MEERKAT_TASKPANEL_AGENTS=Jobs Linus\nMEERKAT_TASKPANEL_AGENTS=Turing\n", "utf8");
+    assert.deepEqual(scanSetFromConfig(path), { agents: ["Turing"], source: "config" });
+
+    writeFileSync(path, "MEERKAT_TASKPANEL_AGENTS=\n", "utf8");
+    assert.deepEqual(scanSetFromConfig(path), { agents: [], source: "unset" });
+  });
+
+  it("names every loop kind loaded on the machine, across mechanisms", () => {
+    const home = makeTempDir();
+    // A launchd job is loaded; everything else answers "not loaded".
+    const run = (command, args) => {
+      const loaded = command === "launchctl" && args[0] === "print" && args[1].includes(".codex.");
+      return {
+        status: loaded ? 0 : 1,
+        stdout: "",
+        stderr: loaded ? "" : "Could not find service",
+        error: null,
+      };
+    };
+    const report = machineStatus({
+      home,
+      agent: "alice",
+      scheduler: "launchd",
+      env: { HOME: home },
+      run,
+      platform: "darwin",
+    });
+    assert.deepEqual(report.loadedKinds, ["codex"]);
+    assert.equal(report.kinds.length, LOOP_KINDS.length);
+    assert.equal(report.kinds.find((row) => row.kind === "codex").loaded, true);
+    assert.equal(report.kinds.find((row) => row.kind === "claude").loaded, false);
+  });
+
+  it("reports none when no loop kind is loaded", () => {
+    const home = makeTempDir();
+    const run = () => ({ status: 1, stdout: "", stderr: "", error: null });
+    assert.deepEqual(
+      machineStatus({ home, agent: "alice", scheduler: "launchd", env: { HOME: home }, run, platform: "darwin" }).loadedKinds,
+      [],
     );
   });
 });

@@ -318,19 +318,29 @@ A plain install **writes** the units above and prints the load command — it ne
 anything. Starting the daemon is a separate, **explicit request**, and it is one flag:
 
 ```bash
-bash install.sh --target all --supervisor=enable                # enable every non-OpenClaw loop agent kind
-bash install.sh --supervisor=enable --supervisor-actor-kinds claude   # …just one agent kind
-bash install.sh --supervisor=status                             # what is loaded right now
-bash install.sh --supervisor=disable --supervisor-actor-kinds claude  # stop and remove it
+bash install.sh --target all --supervisor=enable        # the FIRST loop kind in --target (claude)
+bash install.sh --target pi,claude --supervisor=enable  # first in target order: pi
+bash install.sh --target all --supervisor=enable --supervisor-actor-kinds claude,codex  # explicit multi-kind
+bash install.sh --target all --supervisor=status        # every loop kind in --target
+bash install.sh --target all --supervisor=disable       # stop every loop kind in --target
 ```
 
+**One loop supervisor per machine is the rule** (see
+[`scheduling.md §One loop supervisor per machine`](../scheduling.md#one-loop-supervisor-per-machine)).
+`--supervisor=enable` without `--supervisor-actor-kinds` acts on the **first loop kind in
+normalized `--target` order** — `--target all` therefore enables `claude` only. Running more
+than one kind is the explicit `--supervisor-actor-kinds claude,codex,pi` choice, and the
+installer says so when it is used. `--supervisor=disable` and `--supervisor=status` cover
+**every** loop kind in `--target`, so a pre-rule three-supervisor machine is visible in one
+status and stopped by one disable.
+
 **Per-agent-kind selection is `--supervisor-actor-kinds claude,codex,pi`** — a
-subset of the loop actor kinds the install covers (default: the loop actor kinds present in
-`--target`). The flag selects *which* kinds an action applies to, rather than naming the kind
-the installer itself runs as, which is why it is not called `--actor-kind` here: that name is
-the per-command identity flag (`taskctl loop … --actor-kind claude|codex|pi`).
-**`openclaw` is rejected** in this list (reason on stderr, exit 2) — it has no loop
-supervisor to enable (see
+subset of the loop actor kinds the install covers. A kind outside `--target` is named and
+dropped (its installer never runs). The flag selects *which* kinds an action applies to,
+rather than naming the kind the installer itself runs as, which is why it is not called
+`--actor-kind` here: that name is the per-command identity flag
+(`taskctl loop … --actor-kind claude|codex|pi`). **`openclaw` is rejected** in this list
+(reason on stderr, exit 2) — it has no loop supervisor to enable (see
 [`scheduling.md §OpenClaw: no loop units`](../scheduling.md#openclaw-no-loop-units)).
 
 **One entry point, three actions.** `--supervisor=enable|disable|status` (aliases
@@ -688,8 +698,8 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |
 | `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the agent kind with a bounded `Continue` prompt; that turn runs poll, patrol and workflow. |
 | `--continue=yes\|no` | Enable the continue turn. Persisted to the per-kind config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
-| `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints the per-agent-kind load state and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
-| `--supervisor-actor-kinds <list>` | Which loop agent kinds the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}` (default: the loop actor kinds present in `--target`). Not `--actor-kind`: that is the loop's per-command identity flag, and this flag selects a set. `openclaw` is **rejected** (reason on stderr, exit 2). |
+| `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints each agent kind's load state, platform and configured scan set, plus a machine-level view of every loaded loop kind, and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
+| `--supervisor-actor-kinds <list>` | Which loop agent kinds the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}`. Default: `enable` = the first loop kind in `--target` order; `disable`/`status` = every loop kind in `--target`. Naming more than one kind is how the one-supervisor-per-machine rule is waived, explicitly. A kind outside `--target` is named and dropped. Not `--actor-kind`: that is the loop's per-command identity flag, and this flag selects a set. `openclaw` is **rejected** (reason on stderr, exit 2). |
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per agent kind — see [`scheduling.md §Enabling the supervisor (opt-in)`](../scheduling.md#enabling-the-supervisor-opt-in). |
 | `MEERKAT_TASKPANEL_SUPERVISOR=enable\|disable\|status` | The non-interactive form of `--supervisor` (an explicit flag wins) — the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`. |
 | `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied (it is standalone docs + decisions). For `--target server` it only warns: the runtime tree is always copied, because it must survive the checkout and the npx cache. |
@@ -749,7 +759,7 @@ never an error:
 bash install.sh --target all --dry-run                 # preview
 bash install.sh --target claude --link --force         # development install
 bash install.sh --target all --prefix /tmp/tp-home     # isolated home (testing)
-bash install.sh --target all --supervisor=enable       # opt in: install + load the supervisor
+bash install.sh --target all --supervisor=enable       # opt in: install + load one loop supervisor (claude)
 bash install.sh --target all                           # full install: runtime tree + every agent
 bash install.sh --target server --skip-web-build       # API-only server, no frontend build
 ```

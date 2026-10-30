@@ -33,6 +33,7 @@ The design stance, in four sentences:
 | **session pool** | one control session plus one project session per directory | one writer per card; concurrency is capped |
 | **subscriber** | event-driven continue turns | a latency path only — the clocks remain the fallback |
 | **taskd guard** | keepalive for the board service itself | one guard per machine; one writer per data directory |
+| **loop supervisor** | the loop's clocks, pool and subscriber for one agent kind | one loop supervisor per machine; one mechanism per agent kind |
 
 The model in one line: **the board is the source of truth, the claim is the only dispatch
 source, and every clock is a bounded, idempotent pass over state the board already holds.**
@@ -976,6 +977,27 @@ agent kinds does not multiply the guard. Which board it serves is chosen **at in
 a second board is the unguarded case; see
 [One guard per machine](#one-guard-per-machine).
 
+#### One loop supervisor per machine
+
+The loop follows the same machine-level rule: `install.sh --supervisor=enable` acts on the
+**first loop kind in normalized `--target` order** (`all` → `claude`; `--target pi,claude` →
+`pi`), not on every loop kind in the target. The atomic claim keeps two loops from executing
+the same card, but not from doubling the work around it: two polling cadences, two session
+pools, two logs and two SLA ledgers over one board. Per-loop alarm de-duplication makes the
+cost visible — one `unowned_todo` alerts once per loop — and one loop's `recover_stale` can
+take a card another loop is still heartbeating.
+
+Running more than one kind is therefore explicit: `--supervisor-actor-kinds claude,codex`.
+On **systemd** the six unit names are machine-wide — the installer copies the same files for
+every kind — so enabling a second kind rewrites and restarts the first rather than adding a
+supervisor; launchd labels and cron markers do carry the kind. Status reports that difference
+instead of counting one systemd set three times.
+
+`--supervisor=status` and `--supervisor=disable` always cover **every** loop kind in
+`--target`; status flags a machine with more than one kind loaded, and disable stops all of
+them, including the three a pre-rule install left behind. An action whose kinds do not cover
+a loaded stray names it and prints the disable command.
+
 `taskd` writes its own log at `<dataDir>/logs/taskd.log` — one line per event, rotated
 by size (see [Observability](ops/observability.md#structured-logs)). The unit deliberately
 **does not** redirect stdout/stderr into that file: the application is the only writer,
@@ -1609,10 +1631,14 @@ and the env var are documented once in
 this section is the per-OS detail, the failure modes, and what an enabled daemon runs.
 
 The switch is `--supervisor=enable|disable|status` with
-`--supervisor-actor-kinds claude,codex,pi` (which agent kinds; default: the loop agent kinds
-in `--target`) and `--scheduler auto|launchd|systemd|cron` (which mechanism; default
-`auto`). On `--target all`, `--supervisor=enable` enables **every non-OpenClaw loop agent kind**
-(see [OpenClaw stays excluded](#openclaw-stays-excluded)).
+`--supervisor-actor-kinds claude,codex,pi` (which agent kinds) and
+`--scheduler auto|launchd|systemd|cron` (which mechanism; default `auto`). The defaults are
+the [one-supervisor-per-machine](#one-loop-supervisor-per-machine) rule:
+**`enable` acts on the first loop kind in `--target` order** (`--target all` → `claude`),
+while **`disable` and `status` act on every loop kind in `--target`** so no stray is left
+unseen or running. On `--target all`, `--supervisor=enable` therefore does **not** enable
+`codex`/`pi`, and never OpenClaw (see
+[OpenClaw stays excluded](#openclaw-stays-excluded)).
 
 Per-OS commands below are written for the Claude install (`~/.claude`); for Codex and Pi
 substitute `~/.codex` / `~/.agents` for the agent kind directory and `codex` / `pi` for
@@ -1830,7 +1856,9 @@ describes.
   [The cost gate: a worker turn starts only on fire](#the-cost-gate-a-worker-turn-starts-only-on-fire).
 - **Disable and status** are part of the same entry point: `--supervisor=disable` unloads /
   removes, `--supervisor=status` prints the per-agent kind load state and changes nothing
-  (per-OS forms above).
+  (per-OS forms above). Status also names that kind's **platform** and its configured
+  **scan set** (`MEERKAT_TASKPANEL_AGENTS`), and closes with a machine line — a machine that
+  still runs a second kind's loop is visible there, with the command that stops it.
 
 ### OpenClaw stays excluded
 
@@ -1838,8 +1866,9 @@ The new switch does not change the [OpenClaw
 ruling](#openclaw-no-loop-units). `--target openclaw` still installs the
 **board skill only** — no `meerkat-loop` skill, no units, no glue, so nothing to enable.
 `--target all --supervisor=enable` **skips** openclaw: the enable action applies only to
-`{claude,codex,pi}`. `--supervisor-actor-kinds openclaw` is **rejected** (reason on stderr, exit
-2).
+`{claude,codex,pi}` — and, by the one-supervisor-per-machine rule, by default only to the
+first of those in `--target` order. `--supervisor-actor-kinds openclaw` is **rejected**
+(reason on stderr, exit 2).
 
 > **Where it is implemented.** `scripts/install/_common.sh` (`apply_supervisor`, the
 > per-agent kind action) drives `scripts/install/lib/supervisor.mjs`, which owns the per-OS
