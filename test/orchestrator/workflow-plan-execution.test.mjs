@@ -389,7 +389,7 @@ describe("workflow plan → execution", () => {
     assert.deepEqual(order, [], "no acceptance write happens before the landing");
   });
 
-  it("a refused `done` leaves the marker and one note, and the retry posts nothing", async () => {
+  it("a refused `done` is routed back for a new round instead of retried for ever", async () => {
     const deps = (record) => ({
       config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
       dryRun: false,
@@ -408,50 +408,88 @@ describe("workflow plan → execution", () => {
 
     const original = card();
     const review = reviewCard(original);
-    const firstPlan = planWorkflowTick({
+    const plan = planWorkflowTick({
       tasks: [original, review],
       verdicts: { "PROJ-0002": verdict("APPROVE") },
       config: CONFIG,
       now: NOW,
     });
 
-    // The live failure: the board's acceptance gate refuses the `done` move.
+    // The live failure: the board's acceptance gate refuses the `done` move
+    // because the delivery report cannot close the card. Retrying the same move
+    // changes nothing — the report binds its round — so the refusal is routed
+    // back to the worker as a new round, and the review card is closed.
     const first = [];
-    const failedRun = await runWorkflowTick({
+    const notes = [];
+    const blockedRun = await runWorkflowTick({
       ...deps(first),
-      plan: workflowToWire(firstPlan),
+      plan: workflowToWire(plan),
       move: async (ref, to) => {
         first.push(`move:${ref}:${to}`);
         if (ref === "PROJ-0001" && to === "done") {
-          return { ok: false, error: "ACCEPTANCE_INCOMPLETE: 1 blocking" };
+          return {
+            ok: false,
+            error: "PROJ-0001: 1 blocking acceptance item(s) for delivery round 1",
+            code: "ACCEPTANCE_INCOMPLETE",
+            details: {
+              identifier: "PROJ-0001",
+              round: 1,
+              blocking: [{ text: "the gate has run", status: "partial" }],
+              unsupported: [],
+            },
+          };
         }
         return { ok: true };
       },
+      notify: (alert) => notes.push(alert),
     });
-    assert.equal(failedRun.failed, 1);
+    assert.equal(blockedRun.failed, 0, "a routed refusal is not a failure");
+    assert.equal(blockedRun.blocked, 1);
     assert.deepEqual(first, [
       'setMeta:PROJ-0001:{"accepted_by":"loop-review","accepted_round":"1"}',
       "comment:PROJ-0001:note",
       "move:PROJ-0001:done",
+      "comment:PROJ-0001:change",
+      "move:PROJ-0001:in_progress",
+      "move:PROJ-0001:todo",
+      "comment:PROJ-0002:note",
+      "move:PROJ-0002:done",
     ]);
+    assert.deepEqual(notes.map((alert) => alert.type), ["acceptance_blocked"]);
+  });
 
-    // The next pass reads the marker the failed one left behind.
-    const recoveryPlan = planWorkflowTick({
-      tasks: [card({ meta: { accepted_by: "loop-review", accepted_round: "1" } }), review],
-      verdicts: { "PROJ-0002": verdict("APPROVE") },
+  it("routes a refused auto_accept the same way, with no review card to close", async () => {
+    const record = [];
+    const plan = planWorkflowTick({
+      tasks: [card({ acceptance_mode: "off" })],
       config: CONFIG,
       now: NOW,
     });
-    assert.equal(recoveryPlan.actions[0]?.held, true, "the marker makes the retry a recovery");
+    const result = await runWorkflowTick({
+      plan: workflowToWire(plan),
+      config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
+      dryRun: false,
+      land: async () => ({ ok: true }),
+      move: async (ref, to) => {
+        record.push(`move:${ref}:${to}`);
+        return ref === "PROJ-0001" && to === "done"
+          ? { ok: false, error: "PROJ-0001: 1 blocking", code: "ACCEPTANCE_INCOMPLETE", details: {} }
+          : { ok: true };
+      },
+      comment: async (ref, { kind }) => (record.push(`comment:${ref}:${kind}`), { ok: true }),
+      setMeta: async (ref, meta) => (record.push(`setMeta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+      notify: () => {},
+      now: () => NOW,
+      log: () => {},
+    });
 
-    const second = [];
-    const recovered = await runWorkflowTick({ ...deps(second), plan: workflowToWire(recoveryPlan) });
-    assert.equal(recovered.failed, 0);
-    assert.deepEqual(
-      second,
-      ["move:PROJ-0001:done", "comment:PROJ-0002:note", "move:PROJ-0002:done"],
-      "the recovery pass moves and closes; it never re-posts the acceptance note",
-    );
+    assert.equal(result.failed, 0);
+    assert.equal(result.blocked, 1);
+    assert.deepEqual(record.slice(-3), [
+      "comment:PROJ-0001:change",
+      "move:PROJ-0001:in_progress",
+      "move:PROJ-0001:todo",
+    ]);
   });
 
   it("dispatches a delivered human card through the same create_review action", async () => {

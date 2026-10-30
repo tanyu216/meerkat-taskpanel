@@ -460,11 +460,20 @@ export async function runWorkflowTick(deps) {
   let executed = 0;
   let failed = 0;
   let skipped = 0;
+  let blocked = 0;
 
   const step = async (fn, name, ...args) => {
     if (typeof fn !== "function") throw new Error(`${name} is not wired`);
     const result = await fn(...args);
-    if (result?.ok === false) throw new Error(result.error ?? `${name} failed`);
+    if (result?.ok === false) {
+      // The board's refusal keeps its code: the catch classifies on it. Without
+      // this, every board refusal looked like an unclassified failure.
+      const error = new Error(result.error ?? `${name} failed`);
+      if (typeof result.code === "string") error.code = result.code;
+      if (result.details !== undefined) error.details = result.details;
+      if (result.hint !== undefined) error.hint = result.hint;
+      throw error;
+    }
     return result;
   };
 
@@ -499,6 +508,45 @@ export async function runWorkflowTick(deps) {
       return;
     }
     await step(move, "move", action.review_ref, "canceled");
+  };
+
+  /**
+   * The board refused an acceptance because the delivery report cannot close the
+   * card. Re-trying the same move changes nothing — the report binds its round —
+   * so the refusal is routed back to the worker as a new delivery round, using
+   * the same two-hop reopen `reject_task` uses (its crash recovery then applies
+   * unchanged), and the review card is closed.
+   *
+   * The `accepted_by` marker written before the refused move is left alone: the
+   * round bump makes it a mark from an earlier round, which is exactly how the
+   * planner's `held` rule already reads one.
+   */
+  const routeAcceptanceBlocked = async (action, err) => {
+    const ref = action.original_ref ?? action.review_ref;
+    const details = err.details ?? {};
+    const items = [...(details.blocking ?? []), ...(details.unsupported ?? [])]
+      .map((item) => {
+        const status = typeof item?.status === "string" ? ` (${item.status})` : "";
+        return `- ${item?.text ?? item?.key ?? "an acceptance item"}${status}`;
+      })
+      .join("\n");
+    const body =
+      `The board refused the acceptance: ${err.message}\n\n` +
+      (items === "" ? "" : `Unanswered:\n${items}\n\n`) +
+      "Work that already landed is not rolled back — this round is missing evidence. " +
+      "Deliver a new round that answers these items.";
+    await step(comment, "comment", ref, { kind: "change", body });
+    // `in_review → in_progress` bumps the delivery round (and so unfreezes the
+    // baseline); the second hop releases the card to `todo`.
+    await step(move, "move", ref, "in_progress");
+    await step(move, "move", ref, "todo");
+    if (action.type === "approve") {
+      await closeReviewCard(
+        action,
+        `Loop closed this review card because the board refused the approval of ${ref}: ` +
+          "its delivery report cannot close the card.",
+      );
+    }
   };
 
   for (const action of actions) {
@@ -690,6 +738,40 @@ export async function runWorkflowTick(deps) {
       // action, not an implementation failure: the next tick re-plans it. Keep
       // it out of `failed` (and out of the notification set) so a broken
       // delivery does not page every period.
+      // An acceptance the board refuses is neither transient nor a plan race:
+      // re-planning produces the same action, because the delivery report binds
+      // its round. It is routed back as a new round (see the function above).
+      if (
+        err.code === "ACCEPTANCE_INCOMPLETE" &&
+        (action.type === "approve" || action.type === "auto_accept")
+      ) {
+        const key = `acceptance_blocked|${action.type}|${ref}|r${action.round}`;
+        try {
+          await routeAcceptanceBlocked(action, err);
+        } catch (routeErr) {
+          failed += 1;
+          log(
+            `workflow: ${action.type} blocked for ${ref} (${err.message}), and the reopen failed ` +
+              `(${routeErr.message}) — the next pass retries`,
+            { level: "error" },
+          );
+          notifyBatch([
+            { type: "acceptance_blocked", action: action.type, ref, round: action.round,
+              error: err.message, route_error: routeErr.message, dedupKey: key },
+          ]);
+          continue;
+        }
+        blocked += 1;
+        log(
+          `workflow: ${action.type} refused for ${ref} (${err.message}) — reopened for a new delivery round`,
+          { level: "warn" },
+        );
+        notifyBatch([
+          { type: "acceptance_blocked", action: action.type, ref, round: action.round,
+            error: err.message, dedupKey: key },
+        ]);
+        continue;
+      }
       if (EXPECTED_ACCEPTANCE_SKIP_CODES.has(err.code)) {
         skipped += 1;
         log(`workflow: ${action.type} skipped for ${ref} (${err.code}: ${err.message})`);
@@ -750,7 +832,8 @@ export async function runWorkflowTick(deps) {
     executed,
     failed,
     skipped,
-    summary: { ...(plan.summary ?? {}), executed, failed, skipped },
+    blocked,
+    summary: { ...(plan.summary ?? {}), executed, failed, skipped, blocked },
     ledger: workingLedger,
   };
 }

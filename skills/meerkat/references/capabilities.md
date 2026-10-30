@@ -117,9 +117,12 @@ Alert `type`s include `original_unseen`, `verdict_unreadable`, `verdict_incomple
 anchor — reason `evidence_missing` / `no_command_evidence`), `acceptance_incomplete`,
 `acceptance_unverified`, `review_aging`, `actions_capped`, `dispatch_capped`,
 `review_awaiting_human_acceptance` (a finished review waiting on a person to close a `human`
-card — log-only), `self_review_not_independent`. Each carries a `dedup_key`. The acceptance/verdict alerts are log-only: the planner
-declines to plan an action the write gate would refuse, rather than producing one failure per
-tick. An epic's skip reasons are `rollup_unverified` (no current-round rollup) and
+card — log-only), `self_review_not_independent`, `acceptance_blocked` (the board refused an
+`approve`/`auto_accept` because the delivery report cannot close the card; the loop reopened it
+for a new round and **did** notify, once per round — the executor raises it, not the planner).
+Each carries a `dedup_key`. The planner-side acceptance/verdict alerts are log-only: the
+planner declines to plan an action the write gate would refuse, rather than producing one
+failure per tick. An epic's skip reasons are `rollup_unverified` (no current-round rollup) and
 `rollup_stale` (the rollup no longer matches the children); both appear on
 `auto_accept_skipped` / `verdict_incomplete`.
 

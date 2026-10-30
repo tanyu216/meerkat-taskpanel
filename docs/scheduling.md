@@ -670,6 +670,12 @@ the container; with it, the container stays `in_progress` and names the child bl
 - **One action failing never stops the rest**; the review card is always closed last, so
   every half-applied outcome is recoverable (`original done + APPROVE`,
   `rework_round` matching a rework in progress, …).
+- **A refused acceptance is routed, not retried.** The board can refuse an `approve` /
+  `auto_accept` with `ACCEPTANCE_INCOMPLETE` when the original's delivery report cannot close
+  the card. Re-planning reproduces the same action — the report binds its round — so the tick
+  counts it `blocked` (beside `executed` / `failed` / `skipped`), comments the refused items,
+  reopens the card through the same two-hop `reject_task` uses, closes the review card and
+  notifies `acceptance_blocked` once per round. `docs/lifecycle.md` §4.5 has the order.
 - **Idempotent.** Deterministic `--idem` keys plus the SQLite partial unique index; both
   `done` and `canceled` release the key (the index excludes both terminal statuses). The
   planner's policy is what differs: a `canceled` review is recreated, while a `done` review

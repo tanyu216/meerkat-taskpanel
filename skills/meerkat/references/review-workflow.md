@@ -172,6 +172,16 @@ the report's `leftovers` — this is where the reviewer writes its findings once
 The board parses the verdict and the loop performs the writes. A reviewer that moves a card
 is racing the acceptor.
 
+### An APPROVE the board refuses
+
+On an `agent` card the board checks, when the verdict is **written**, that the original's
+current-round delivery report can still close the card. If it cannot — a criterion left
+`partial`/`not_met`, or a `met` naming no evidence anchor — the delivery is refused with
+`ACCEPTANCE_INCOMPLETE`, naming the items. That is not a transient error and re-delivering the
+same verdict will be refused again: write **`VERDICT: REJECT`** instead, with those items as
+your findings. A recorded APPROVE over such a report has no exit (the report binds its round),
+so the board will not let you create one.
+
 ## 4. Acceptance mode
 
 The card's own `acceptance_mode` is the whole rule; there is no policy and no scope. It

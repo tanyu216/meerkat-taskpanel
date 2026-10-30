@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import { readBoard } from "../../src/orchestrator/board.mjs";
+import { boardRefusal, readBoard } from "../../src/orchestrator/board.mjs";
 
 const dirs = [];
 function tempDir() {
@@ -136,5 +136,32 @@ describe("loop/readBoard — one read, and the shape callers rely on", () => {
     const seen = JSON.parse(readFileSync(record, "utf8"));
     assert.equal(seen.noAutostart, "1", "the child must not be allowed to start a board");
     assert.equal(seen.token, "td_from_opts", "the real token still wins over the injected env");
+  });
+});
+
+describe("boardRefusal — the code survives the seam", () => {
+  it("keeps the board's code, details and hint beside the readable message", () => {
+    assert.deepEqual(
+      boardRefusal({
+        ok: false,
+        error: "PROJ-0001: 1 blocking",
+        code: "ACCEPTANCE_INCOMPLETE",
+        details: { blocking: [{ text: "b", status: "partial" }] },
+        hint: { fix: "REJECT instead" },
+      }),
+      {
+        ok: false,
+        error: "PROJ-0001: 1 blocking",
+        code: "ACCEPTANCE_INCOMPLETE",
+        details: { blocking: [{ text: "b", status: "partial" }] },
+        hint: { fix: "REJECT instead" },
+      },
+      "the executor classifies on `code`; a message alone is not enough",
+    );
+  });
+
+  it("passes a success through untouched, and adds nothing to a bare failure", () => {
+    assert.deepEqual(boardRefusal({ ok: true }), { ok: true });
+    assert.deepEqual(boardRefusal({ ok: false, error: "exit 1" }), { ok: false, error: "exit 1" });
   });
 });

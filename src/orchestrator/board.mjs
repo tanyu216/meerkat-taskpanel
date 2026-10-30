@@ -37,6 +37,25 @@ import {
  * `review_of` / `review_round` are declared create fields: the board resolves
  * them and mirrors the meta keys itself. Do not write those meta keys here.
  */
+/**
+ * A board refusal, keeping the code and the item list the loop classifies on.
+ *
+ * `runCli` reads the whole error envelope; every seam used to forward only the
+ * message, so the executor's `err.code` was always `undefined` and the codes it
+ * branches on (`EXPECTED_ACCEPTANCE_SKIP_CODES`, `ACCEPTANCE_INCOMPLETE`) could
+ * never match. The readable `error` stays first: callers log it verbatim.
+ */
+export function boardRefusal(read) {
+  if (!read || read.error === undefined) return read;
+  return {
+    ok: false,
+    error: read.error,
+    ...(typeof read.code === "string" ? { code: read.code } : {}),
+    ...(read.details === undefined ? {} : { details: read.details }),
+    ...(read.hint === undefined ? {} : { hint: read.hint }),
+  };
+}
+
 export function reviewCreateArgs(action) {
   return [
     "issue", "create",
@@ -390,7 +409,7 @@ export async function runWorkflowPass(opts, config, log) {
     ledger: loadSlaLedger(opts.workflowLedger),
     createReview: (action) => {
       const read = invoke(reviewCreateArgs(action));
-      return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : { ok: false, error: read.error };
+      return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : boardRefusal(read);
     },
     createFixChild: (action) => {
       const read = invoke([
@@ -410,7 +429,7 @@ export async function runWorkflowPass(opts, config, log) {
         "--target", `rework:${action.original_ref}:r${action.rework_round}`,
         "--idem", `loop-rework|${action.original_ref}|r${action.rework_round}`,
       ]);
-      return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : { ok: false, error: read.error };
+      return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : boardRefusal(read);
     },
     linkFixChild: (epicRef, childRef) => {
       const listed = runCli(opts, ORCHESTRATOR_ACTOR_ID, ["relation", "list", epicRef]);
@@ -418,15 +437,15 @@ export async function runWorkflowPass(opts, config, log) {
         return { ok: true };
       }
       const added = invoke(["relation", "add", epicRef, "--type", "parent", "--target", childRef]);
-      return added.ok ? { ok: true } : { ok: false, error: added.error };
+      return added.ok ? { ok: true } : boardRefusal(added);
     },
     move: (ref, to) => {
       const read = invoke(["issue", "move", ref, to]);
-      return read.ok ? { ok: true } : { ok: false, error: read.error };
+      return read.ok ? { ok: true } : boardRefusal(read);
     },
     comment: (ref, { kind, body }) => {
       const read = invoke(["comment", "add", ref, "--kind", kind, "--body", body]);
-      return read.ok ? { ok: true } : { ok: false, error: read.error };
+      return read.ok ? { ok: true } : boardRefusal(read);
     },
     setMeta: (ref, meta) => {
       // `issue meta` merges. `issue update --meta` replaces the whole object,
@@ -436,7 +455,7 @@ export async function runWorkflowPass(opts, config, log) {
         "issue", "meta", ref,
         ...Object.entries(meta).flatMap(([key, value]) => ["--meta", `${key}=${value}`]),
       ]);
-      return read.ok ? { ok: true } : { ok: false, error: read.error };
+      return read.ok ? { ok: true } : boardRefusal(read);
     },
     appendAcceptance: (ref, items) => {
       // Append-only and idempotent at the board: a normalised duplicate is
@@ -445,7 +464,7 @@ export async function runWorkflowPass(opts, config, log) {
         "issue", "update", ref,
         ...items.flatMap((item) => ["--acceptance", String(item)]),
       ]);
-      return read.ok ? { ok: true } : { ok: false, error: read.error };
+      return read.ok ? { ok: true } : boardRefusal(read);
     },
     // Acceptance lands the work: the lane branch is merged into the project's
     // current branch *before* the card reaches `done`. A failed merge keeps the
@@ -498,6 +517,7 @@ export async function runWorkflowPass(opts, config, log) {
 
   log(
     `workflow: ${result.executed} action(s) executed, ${result.failed} failed, ` +
+      `${result.blocked ?? 0} blocked, ` +
       `${result.alerts.length} alert(s)${opts.dryRun ? " (dry-run)" : ""}`,
   );
   return result;

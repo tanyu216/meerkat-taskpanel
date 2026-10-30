@@ -391,6 +391,21 @@ card in place and raises an alert; the next tick re-plans.
 | the original is `done`, the verdict is `REJECT` | `verdict_conflict`, no write |
 | the review card is not `in_review` (todo / in_progress / blocked / awaiting) past the aging threshold | `review_aging` |
 | the re-dispatch bound (`meta.review_retry`, default two) is exhausted | `review_retries_exhausted`, left for a human |
+| the board refuses the acceptance: the original's delivery report cannot close the card | `acceptance_blocked`, routed back as a new round (below) |
+
+**A refused acceptance is routed, not retried.** `ACCEPTANCE_INCOMPLETE` on an `approve` /
+`auto_accept` is not a plan race: the delivery report binds its round, so re-planning produces
+the same move. The executor comments the refused items on the original with `kind=change`,
+reopens it through the same two-hop `in_review → in_progress → todo` `reject_task` uses (the
+first hop bumps the round and unfreezes the baseline), and then closes the review card.
+Landing already happened by then, so the work is not rolled back — the new round owes evidence,
+not a rebuild. The `meta.accepted_by` marker written before the refused move stays; the round
+bump makes it a mark from an earlier round, which is how `held` already reads one.
+
+The reviewer's half of the same rule runs earlier, at the writer: on an `agent` card a
+`VERDICT: APPROVE` is refused when the original's current-round report cannot close it, with a
+hint to `REJECT` instead (`assertOriginalDeliverable` in `src/core/commands/acceptance.mjs`).
+The loop's routing is the recovery for verdicts written before that check existed.
 
 A re-dispatch writes the retry marker **before** the two-hop `in_review → in_progress → todo`,
 so a crash between the hops is finished on the next pass. An `in_progress` review card whose
