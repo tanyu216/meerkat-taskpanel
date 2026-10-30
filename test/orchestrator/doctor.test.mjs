@@ -236,6 +236,44 @@ describe("loop doctor — the report", () => {
     assert.equal(report.stuck_cards.total, 1);
   });
 
+  it("calls out an acceptance the board refused: the marker says accepted, the card does not", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          identifier: "T-400",
+          title: "Approved but unclosable",
+          status: "in_review",
+          delivery_round: 1,
+          status_changed_at: at(90 * MIN),
+          meta: { accepted_by: "loop-review", accepted_round: "1" },
+        },
+        {
+          // A marker from an earlier round is history, not a blocked approval.
+          identifier: "T-401",
+          title: "Marker from round 1",
+          status: "in_review",
+          delivery_round: 2,
+          status_changed_at: at(30 * MIN),
+          meta: { accepted_by: "loop-review", accepted_round: "1" },
+        },
+        { identifier: "T-402", title: "Plain delivery", status: "in_review", meta: {} },
+      ],
+    });
+    seedState(dir);
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(
+      report.blocked_acceptance.cards.map((card) => [card.ref, card.round, card.age_ms]),
+      [["T-400", 1, 90 * MIN]],
+      "only a marker for the card's current round is a blocked acceptance",
+    );
+    assert.equal(report.blocked_acceptance.total, 1);
+    assert.ok(report.attention_reasons.includes("blocked_acceptance: 1"));
+    assert.equal(report.stuck_cards.total, 0, "a stray marker is not a stale claim");
+  });
+
   it("keeps in_review as facts: the review-aging setting does not judge them", () => {
     const dir = tempDir();
     const { script } = sentinel(dir);

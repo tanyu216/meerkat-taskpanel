@@ -389,8 +389,45 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   stuck.total = stuck.in_progress.length;
   waiting.total = waiting.in_review.length;
 
+  // An approval the board refused leaves `meta.accepted_by` on a card that is
+  // still `in_review`: the marker records an acceptance the row never reached.
+  // The workflow pass now routes that refusal back for a new round (which bumps
+  // the round and turns the marker into history), so what remains here is a
+  // card the reopen has not reached yet — or a verdict written before it could.
+  const blockedAcceptance = { cards: [], total: 0 };
+  if (board.error === null) {
+    blockedAcceptance.cards = tasks
+      .filter((task) => {
+        if (task?.status !== "in_review") return false;
+        const acceptedBy = task?.meta?.accepted_by;
+        const acceptedRound = task?.meta?.accepted_round;
+        if (typeof acceptedBy !== "string" || acceptedBy === "") return false;
+        if (acceptedRound === undefined || acceptedRound === null || String(acceptedRound) === "") {
+          return false;
+        }
+        return String(acceptedRound) === String(task?.delivery_round ?? "");
+      })
+      .map((task) => {
+        const since = task.status_changed_at ?? task.created_at ?? null;
+        const at = since === null || since === undefined ? Number.NaN : Date.parse(since);
+        return {
+          ref: task.identifier,
+          title: task.title ?? null,
+          round: task.delivery_round ?? null,
+          accepted_by: task.meta.accepted_by,
+          since: since ?? null,
+          age_ms: Number.isFinite(at) ? Math.max(0, nowMs - at) : null,
+        };
+      })
+      .sort(byAgeDesc);
+  }
+  blockedAcceptance.total = blockedAcceptance.cards.length;
+
   const attentionReasons = [];
   if (stuck.total > 0) attentionReasons.push(`stuck_cards: ${stuck.total}`);
+  if (blockedAcceptance.total > 0) {
+    attentionReasons.push(`blocked_acceptance: ${blockedAcceptance.total}`);
+  }
   if (compat !== null && compat.ok !== true) attentionReasons.push(`compat: ${compat.code}`);
   if (queue.failed > 0) attentionReasons.push(`queue: ${queue.failed} failed`);
   if (supervisor?.verdict === "absent" || supervisor?.verdict === "partial") {
@@ -417,6 +454,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     subagents,
     stuck_cards: stuck,
     waiting,
+    blocked_acceptance: blockedAcceptance,
     errors,
     skipped,
   };
@@ -509,6 +547,20 @@ function humanReport(report) {
     lines.push(
       `  ${card.ref}  in_review  ${age}${card.review ? "  [review]" : ""}  ${card.title ?? ""}`.trimEnd(),
     );
+  }
+
+  if (report.blocked_acceptance.total > 0) {
+    lines.push(
+      `blocked     ${report.blocked_acceptance.total} accepted but still in_review ` +
+        "— the board refused the close",
+    );
+    for (const card of report.blocked_acceptance.cards) {
+      const age = card.age_ms === null ? "?" : minutes(card.age_ms);
+      lines.push(
+        `  ${card.ref}  in_review  round ${card.round ?? "?"}  ${age}  ` +
+          `[${card.accepted_by}]  ${card.title ?? ""}`.trimEnd(),
+      );
+    }
   }
 
   lines.push(`errors      ${report.errors.length === 0 ? "none" : report.errors.join("; ")}`);

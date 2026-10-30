@@ -201,6 +201,59 @@ export function assertDeliveryEvidenceAnchors(task, report) {
 }
 
 /**
+ * A review card's `VERDICT: APPROVE` must be one the board can act on.
+ *
+ * The reviewer's evidence gate (`assertReviewEvidence`) judges the **review's**
+ * own report; the close gate (`assertAcceptanceCoverage`) judges the
+ * **original's** delivery report. Both must pass for the card to reach `done`,
+ * but only the first was checked when the verdict was written — so an APPROVE
+ * could be recorded over a delivery that can never be accepted. That state has
+ * no exit: the report binds its round, the round only moves by delivering a new
+ * one, and nothing asks the worker to deliver again.
+ *
+ * So the verdict is judged at the writer: if the original's current-round
+ * report cannot close it, the reviewer is told to REJECT instead. Only `agent`
+ * is judged — that is the mode the loop turns an APPROVE into `done` for; an
+ * `off` verdict moves nothing, and a `human` verdict is recorded for a person.
+ *
+ * @param {object} ctx
+ * @param {object} reviewCard the card delivering the verdict
+ * @param {object|null|undefined} report the prepared review report
+ * @returns {true}
+ * @throws {DomainError} ACCEPTANCE_INCOMPLETE
+ */
+export function assertOriginalDeliverable(ctx, reviewCard, report) {
+  if (reviewCard?.reviewOfId === null || reviewCard?.reviewOfId === undefined) return true;
+  const verdict = parseReviewVerdict([report], report?.round ?? reviewCard.deliveryRound ?? null);
+  if (verdict.ok !== true || verdict.verdict !== "APPROVE") return true;
+
+  const original = ctx.repos.tasks.requireAnyRef(reviewCard.reviewOfId);
+  if (cardAcceptanceOf(original.acceptanceMode) !== "agent") return true;
+
+  try {
+    assertAcceptanceCoverage(ctx, original);
+  } catch (err) {
+    if (err?.code !== "ACCEPTANCE_INCOMPLETE") throw err;
+    // The board's own words are kept (the reviewer needs the item list, and
+    // `source: "delivery"` is what it is); only the fix is re-aimed.
+    throw new DomainError("ACCEPTANCE_INCOMPLETE", {
+      message:
+        `${err.message} — an APPROVE over it would leave ${original.identifier} in in_review ` +
+        "for ever",
+      details: { ...err.details, blockedApproval: reviewCard.identifier ?? null },
+      hint: {
+        fix:
+          `write VERDICT: REJECT instead, and name the blocking item(s) as findings: ` +
+          `${original.identifier}'s round ${original.deliveryRound} report can never be ` +
+          "accepted, so the worker must deliver a new round before any approval can land",
+      },
+      cause: err,
+    });
+  }
+  return true;
+}
+
+/**
  * Does the current-round delivery report cover the card's frozen baseline?
  *
  * This is the 0032 acceptance gate. A review card is exempt here — its evidence

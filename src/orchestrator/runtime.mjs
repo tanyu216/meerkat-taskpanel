@@ -151,7 +151,17 @@ export function runCli(opts, agent, args, { input = null, actorKind = null } = {
   if (run.error) return { ok: false, error: run.error.message };
   try {
     const parsed = JSON.parse(run.stdout ?? "");
-    return parsed?.ok === true ? { ok: true, data: parsed.data ?? {} } : { ok: false, error: parsed?.error?.message ?? `exit ${run.status}` };
+    if (parsed?.ok === true) return { ok: true, data: parsed.data ?? {} };
+    // The board's code is what lets the loop classify a refusal (a re-plan next
+    // tick vs. a state no tick can fix). `error` stays the readable message.
+    const error = parsed?.error ?? null;
+    return {
+      ok: false,
+      error: error?.message ?? `exit ${run.status}`,
+      ...(typeof error?.code === "string" ? { code: error.code } : {}),
+      ...(error?.details === undefined ? {} : { details: error.details }),
+      ...(error?.hint === undefined ? {} : { hint: error.hint }),
+    };
   } catch {
     return { ok: false, error: (run.stderr ?? "").trim() || `exit ${run.status}` };
   }

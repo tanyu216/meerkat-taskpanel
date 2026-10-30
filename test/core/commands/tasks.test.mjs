@@ -4102,6 +4102,173 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
       );
     });
   });
+
+  it("refuses an APPROVE whose own delivery report can never close the original", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "reviewed",
+        meta: { acceptance: ["a", "b"] },
+        acceptanceMode: "agent",
+        actor: HUMAN,
+      });
+      commands.claim({ id: original.id, actor: AGENT });
+      // `partial` is honest progress, so the delivery gate admits this report —
+      // but the report binds its round, so no later `done` can be accepted from
+      // it. An APPROVE written over it would freeze the card for ever: the close
+      // gate refuses the move and no action asks the worker for a new round.
+      commands.deliver({
+        taskId: original.id,
+        report: report({
+          acceptance: [
+            { text: "a", status: "met", note: "evidence[1] — the run" },
+            { text: "b", status: "partial", note: "the gate has not run yet" },
+          ],
+          leftovers: "b: the container gate has not run yet",
+        }),
+        actor: AGENT,
+      });
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "review",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        actor: HUMAN,
+      });
+      commands.claim({ id: review.id, actor: AGENT });
+
+      assert.throws(
+        () =>
+          commands.deliver({
+            taskId: review.id,
+            report: report({
+              conclusion: "VERDICT: APPROVE\n\nI ran the suite myself.",
+              acceptance: [
+                { text: "a", status: "met", note: "evidence[2]" },
+                { text: "b", status: "met", note: "evidence[2]" },
+              ],
+              evidence: [
+                { kind: "commit", sha: "dcd7d15" },
+                { kind: "command", cmd: "node --test test/io.test.mjs", exit_code: 0 },
+              ],
+            }),
+            actor: AGENT,
+          }),
+        (err) =>
+          err.code === "ACCEPTANCE_INCOMPLETE" &&
+          err.details.source === "delivery" &&
+          err.details.blocking.some((item) => item.text === "b") &&
+          /REJECT/.test(String(err.hint?.fix ?? "")),
+        "the reviewer must be refused at the writer, not left with an unclosable verdict",
+      );
+
+      assert.deepEqual(
+        commands.listReports({ taskId: review.id }),
+        [],
+        "the refusal rolls the verdict back; nothing is left to be misread",
+      );
+
+      // The same delivery still takes a REJECT: the honest verdict stays writable.
+      commands.deliver({
+        taskId: review.id,
+        report: report({
+          conclusion: "VERDICT: REJECT\n\nb is only partial.",
+          acceptance: [
+            { text: "a", status: "met", note: "evidence[2]" },
+            { text: "b", status: "not_met", note: "the gate never ran" },
+          ],
+          leftovers: "b: the container gate never ran",
+          evidence: [
+            { kind: "commit", sha: "dcd7d15" },
+            { kind: "command", cmd: "node --test test/io.test.mjs", exit_code: 0 },
+          ],
+        }),
+        actor: AGENT,
+      });
+      assert.equal(commands.listReports({ taskId: review.id }).length, 1);
+    });
+  });
+
+  it("leaves an APPROVE on a `human` card alone: a verdict is recorded, not applied", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "a person closes this",
+        meta: { acceptance: ["a", "b"] },
+        acceptanceMode: "human",
+        actor: HUMAN,
+      });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({
+        taskId: original.id,
+        report: report({
+          acceptance: [
+            { text: "a", status: "met", note: "evidence[1] — the run" },
+            { text: "b", status: "partial", note: "a person decides" },
+          ],
+          leftovers: "b: a person decides",
+        }),
+        actor: AGENT,
+      });
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "review",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        actor: HUMAN,
+      });
+      commands.claim({ id: review.id, actor: AGENT });
+      // Only `agent` turns an APPROVE into `done`; a `human` verdict is recorded
+      // for the person, so the writer gate judges nothing here.
+      commands.deliver({
+        taskId: review.id,
+        report: report({ conclusion: "VERDICT: APPROVE\n\nA person closes this one." }),
+        actor: AGENT,
+      });
+      assert.equal(commands.listReports({ taskId: review.id }).length, 1);
+    });
+  });
+
+  it("does not restate a refusal that is not a coverage failure", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "delivered without a report",
+        meta: { acceptance: ["a"] },
+        acceptanceMode: "agent",
+        actor: HUMAN,
+      });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({
+        taskId: original.id,
+        noReport: true,
+        reason: "no report available for this round",
+        actor: AGENT,
+      });
+      assert.equal(commands.getTask({ id: original.id }).status, "in_review");
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "review",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        actor: HUMAN,
+      });
+      commands.claim({ id: review.id, actor: AGENT });
+      assert.throws(
+        () =>
+          commands.deliver({
+            taskId: review.id,
+            report: report({ conclusion: "VERDICT: APPROVE\n\nlooks fine" }),
+            actor: AGENT,
+          }),
+        (err) => err.code === "ACCEPTANCE_UNVERIFIED",
+        "a missing report keeps its own code; only a coverage failure is re-aimed",
+      );
+    });
+  });
 });
 
 describe("commands/tasks — a claim must point at its evidence", () => {
