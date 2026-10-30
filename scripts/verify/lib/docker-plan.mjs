@@ -40,6 +40,13 @@ export function imageTag() {
 export function buildArgs(ctx = ".", options = {}) {
   const args = ["build", "-f", "docker/Dockerfile", "-t", imageTag()];
   if (options.pullFlag) args.push(options.pullFlag);
+  // The frontend stage is rebuilt on every gate run (see the Dockerfile's
+  // `VERIFY_BUILD_NONCE`): a cached `web/dist` carries the time *it* was built,
+  // while a fresh checkout gives its sources new mtimes without changing a byte of
+  // content, and the staleness check compares exactly those two numbers.
+  if (options.nonce !== undefined && options.nonce !== null && options.nonce !== "") {
+    args.push("--build-arg", `VERIFY_BUILD_NONCE=${options.nonce}`);
+  }
   return [...args, ctx];
 }
 

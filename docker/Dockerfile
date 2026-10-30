@@ -88,7 +88,17 @@ RUN if [ -f web/package.json ] && [ -d web/.vendor/npm-cache ]; then \
 # The build only needs `web/`, which is already here, so it runs *before* the
 # repository-wide copy below. A change outside `web/` therefore still reuses this
 # layer.
-RUN if [ -f web/package.json ]; then \
+#
+# The gate passes a fresh `VERIFY_BUILD_NONCE` on every run, so this layer — and only
+# this one; the `npm ci` above still caches — is always rebuilt. The reason is
+# `scripts/verify/web-dist.mjs`: it compares `web/dist`'s build time with the sources'
+# mtimes, and a fresh checkout rewrites those mtimes without changing a byte. Reusing a
+# cached `web/dist` therefore reports a stale build on content that never changed. In the
+# gate the artifact is rebuilt, never reused, so the comparison stays honest for the host
+# build path where it still carries information.
+ARG VERIFY_BUILD_NONCE=unspecified
+RUN echo "webbuild: build nonce ${VERIFY_BUILD_NONCE}" \
+ && if [ -f web/package.json ]; then \
       npm --prefix /app/web run build; \
     else \
       echo "webbuild: web/package.json absent — skipping the frontend build (web/dist stays empty)"; \
