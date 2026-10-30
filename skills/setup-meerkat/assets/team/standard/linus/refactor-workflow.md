@@ -12,11 +12,39 @@ Board operations (claim, heartbeat, comment, report, deliver, move, brief refres
 - `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot;
 - this card's `.meerkat/<id>/plan.md`, written by you before starting — the candidate report
   below lives here, as ordinary markdown, and is the reviewer's evidence;
-- `GLOSSARY.md` and the ADRs in the area — a recorded decision is not re-litigated here;
-- the standard at `docs/tech-spec.md` — its rules bind the refactor;
+- `GLOSSARY.md`, the architecture document and the ADRs in the area — Step 0 confirms they
+  are recorded; a recorded decision is not re-litigated here;
+- the standard (`docs/tech-spec.md`, or the path the project's own README or architecture
+  document names) — its rules bind the refactor;
 - the tests that pin the current behaviour, the callers, and the published contract.
 
 ## Steps
+
+### 0. Confirm the recorded foundation
+
+A refactor rests on a recorded foundation; moving code without one is guessing. Before the
+friction, read what the card depends on:
+
+- the standard (`docs/tech-spec.md`, or the path the project's own README or architecture
+  document names) and the rules it binds;
+- the architecture document and the ADRs in the area;
+- the root `GLOSSARY.md`;
+- the published contract, the schema and its migrations, and `.env.example`.
+
+When any of them is missing or partial, that is a **foundation gap**, not a blank input.
+Do not start Step 1: write an agent `question`, and the project session proposes an
+`architecture-workflow.md` card — Reconstruct when the tree is the only record, Extend when
+a recorded decision changes. The refactor resumes only after that foundation is recorded and
+accepted, including a card-local foundation delta (`.meerkat/<id>/architecture.md`,
+`.meerkat/<id>/tech-spec.md`) recorded by that card.
+
+The reconstruction's vocabulary binds here: `inherited — <path>` when the record exists and
+binds, `reconstructed — <evidence>` when the tree supplies the fact,
+`not recorded — review question` when no evidence settles it, `n/a — <reason>` when the
+capability is absent — and a reconstruction is `E5 pending`. Do not record or re-choose the
+foundation on this card; that is the architecture flow's work shape, not the refactor's.
+Characterisation tests (Step 4) pin the current behaviour; they do not stand in for the
+missing record.
 
 ### 1. Frame the friction
 
@@ -41,8 +69,8 @@ Walk the area and note where you experience friction:
 Apply the **deletion test** to anything that looks shallow. Would deleting it concentrate the
 complexity in one place, or merely move it? "Concentrates" is the signal; "moves" is not.
 
-The six design principles of the project's `docs/architecture.md` are the tie-breakers here
-too: simplicity and reliability first, cohesion over coupling, and every new abstraction
+The six design principles of the recorded architecture document (Step 0) are the tie-breakers
+here too: simplicity and reliability first, cohesion over coupling, and every new abstraction
 names its forcing function — for a refactor, the deletion test is that evidence.
 
 Record every candidate in `plan.md` as a markdown table — files, the problem, the change in
@@ -102,6 +130,9 @@ not change — that is the claim being reviewed.
 ## Boundaries
 
 - No observable behaviour change on a refactor card.
+- Do not start a refactor on a missing foundation: Step 0 stops the card until
+  `architecture-workflow.md` records it; a refactor card never records or re-chooses the
+  foundation.
 - Do not restructure working code as part of a feature or a bug fix; that is this branch's card.
 - Do not change a published contract, schema or migration without the human.
 - Do not reopen a recorded ADR silently.

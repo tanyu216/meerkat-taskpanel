@@ -85,7 +85,9 @@ Choose the workflow before touching code:
 
 A card belongs to the architecture branch **iff** it creates or changes a recorded
 foundation decision; to the refactor branch **iff** its goal is to restructure existing code
-and leave the observable behaviour unchanged. Everything else is implementation work. If the
+and leave the observable behaviour unchanged. A refactor never starts on a missing recorded
+foundation: `refactor-workflow.md` Step 0 stops the card until the architecture flow records
+it. Everything else is implementation work. If the
 card contains both, run architecture first and propose the implementation in the `## Handoff`;
 the project session triages one card vs an epic with children and creates it. Do not split the
 card yourself. If the branch is genuinely unclear, write an agent `question` and stop.

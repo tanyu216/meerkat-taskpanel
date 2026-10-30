@@ -478,6 +478,20 @@ describe("skill frontmatter and assets", () => {
     );
   });
 
+  it("gates a refactor on a recorded foundation", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const refactor = readFileSync(join(team, "linus", "refactor-workflow.md"), "utf8");
+    assert.match(refactor, /^### 0\. .*foundation/m, "Step 0 checks the recorded foundation");
+    assert.match(refactor, /foundation gap/i, "a missing record is a foundation gap");
+    assert.match(refactor, /architecture-workflow\.md/, "the gap routes to the architecture flow");
+    assert.match(refactor, /reconstructed — <evidence>/, "the provenance vocabulary binds");
+    assert.match(refactor, /E5 pending/i, "a reconstruction awaits E5");
+
+    const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    const branch = check.slice(check.indexOf("## Refactor branch"));
+    assert.match(branch, /Step 0|foundation/i, "the self-check audits the foundation gate");
+  });
+
   it("records a standard technical specification and points the baseline at it", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");

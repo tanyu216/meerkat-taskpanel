@@ -184,6 +184,8 @@ never by a claimed pass.
 8. Each step was green on its own; no feature or bug fix rode along.
 9. The candidate list, the rejected candidates and their reasons are in the plan; the chosen
    interface names what sits behind its seam and what it makes testable.
+10. Step 0 held: every foundation input resolved, or the gap was resolved by the
+    architecture card before the refactor began; this card recorded no foundation.
 
 ## Delivery
 
