@@ -78,6 +78,73 @@ describe("orchestrator/workspace — names and refs", () => {
       { ok: true, ref: "dev", source: "current" },
     );
   });
+
+  it("probes a ref with rev-parse --verify --quiet and separates absent from unprobeable", () => {
+    const present = recorder([["rev-parse --verify --quiet", OK("abc123\n")]]);
+    assert.deepEqual(ws.probeRef({ projectDir: "/p", ref: "lane/x", run: present.run }), {
+      ok: true,
+      exists: true,
+    });
+    assert.deepEqual(present.calls[0].argv, [
+      "-C",
+      "/p",
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      "lane/x^{commit}",
+    ]);
+
+    assert.deepEqual(
+      ws.probeRef({ projectDir: "/p", ref: "lane/x", run: () => FAIL("", 1) }),
+      { ok: true, exists: false },
+      "exit 1 is an absent ref",
+    );
+
+    const broken = ws.probeRef({
+      projectDir: "/p",
+      ref: "lane/x",
+      run: () => FAIL("fatal: not a git repository", 128),
+    });
+    assert.equal(broken.ok, false, "exit 128 is not an absent ref");
+    assert.equal(broken.code, "WORKSPACE_BASE_UNRESOLVED");
+
+    const noGit = ws.probeRef({ projectDir: "/p", ref: "lane/x", run: () => null });
+    assert.equal(noGit.ok, false, "git could not start");
+  });
+
+  it("falls back to the current branch when the previous round's lane branch is gone", () => {
+    const run = (cmd, argv) => {
+      const key = argv.join(" ");
+      if (key.includes("rev-parse --verify --quiet")) return FAIL("", 1);
+      if (key.includes("rev-parse --abbrev-ref HEAD")) return OK("dev\n");
+      return OK("");
+    };
+    assert.deepEqual(
+      ws.resolveBaseRef({
+        projectDir: "/p",
+        entry: entryNone,
+        previousBranch: "lane/TP-0009-r2",
+        run,
+      }),
+      { ok: true, ref: "dev", source: "current", skipped_previous: "lane/TP-0009-r2" },
+    );
+  });
+
+  it("refuses a declared base_ref that does not resolve instead of falling back", () => {
+    const run = (cmd, argv) => {
+      const key = argv.join(" ");
+      if (key.includes("rev-parse --verify --quiet")) return FAIL("", 1);
+      return OK("dev\n");
+    };
+    const result = ws.resolveBaseRef({
+      projectDir: "/p",
+      entry: { base_ref: "release" },
+      previousBranch: null,
+      run,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "WORKSPACE_BASE_UNRESOLVED");
+  });
 });
 
 describe("orchestrator/workspace — create and remove", () => {

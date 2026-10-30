@@ -115,12 +115,62 @@ export function currentBranch({ projectDir, run = runGit }) {
 }
 
 /**
+ * Probe a candidate base ref.
+ *
+ * The exit code is load-bearing: `rev-parse --verify --quiet` exits 1 for an
+ * absent ref, but 128 when git could not answer at all (not a repository, a
+ * broken checkout). An absent ref may fall back; an unprobeable one must not be
+ * treated as absent — that would let a transient git failure delete a live
+ * workspace record.
+ *
+ * @param {{projectDir: string, ref: string, run?: Function}} input
+ * @returns {{ok: true, exists: boolean} | {ok: false, code: string, message: string}}
+ */
+export function probeRef({ projectDir, ref, run = runGit }) {
+  const value = typeof ref === "string" ? ref.trim() : "";
+  if (value === "") {
+    return {
+      ok: false,
+      code: WORKSPACE_CODES.BASE_UNRESOLVED,
+      message: "the base ref is empty",
+    };
+  }
+  const result = run("git", [
+    "-C",
+    String(projectDir),
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `${value}^{commit}`,
+  ]);
+  if (result === null) {
+    return {
+      ok: false,
+      code: WORKSPACE_CODES.BASE_UNRESOLVED,
+      message: `git did not start while probing ${value}`,
+    };
+  }
+  if (result.status === 0) return { ok: true, exists: true };
+  if (result.status === 1) return { ok: true, exists: false };
+  return {
+    ok: false,
+    code: WORKSPACE_CODES.BASE_UNRESOLVED,
+    message: `git could not resolve ${value}: ${String(result.stderr ?? "").trim()}`,
+  };
+}
+
+/**
  * The commit a new round starts from.
  *
  * Precedence, in this order:
  *   1. the project's own rule (`projects.json` entry `base_ref`);
  *   2. the previous round's lane branch (a rework keeps the rejected work);
  *   3. the project directory's current branch.
+ *
+ * A recorded ref is a hint, not a promise: a previous lane branch whose work was
+ * merged and then deleted falls back to the current branch instead of failing
+ * every pass on `invalid reference`. A declared `base_ref` is configuration and
+ * does not fall back — a missing one is a coded error the operator must fix.
  *
  * The ref is not hard-coded: a project that lands on `main`, or on a release
  * branch, gets what it asked for.
@@ -130,10 +180,26 @@ export function currentBranch({ projectDir, run = runGit }) {
 export function resolveBaseRef({ projectDir, entry, previousBranch = null, run = runGit }) {
   const declared = entry !== null && entry !== undefined ? entry.base_ref : null;
   if (typeof declared === "string" && declared.trim() !== "") {
-    return { ok: true, ref: declared.trim(), source: "project" };
+    const ref = declared.trim();
+    const probe = probeRef({ projectDir, ref, run });
+    if (probe.ok !== true || probe.exists !== true) {
+      return {
+        ok: false,
+        code: WORKSPACE_CODES.BASE_UNRESOLVED,
+        message: `the project declares base_ref '${ref}', but ${projectDir} has no such commit`,
+      };
+    }
+    return { ok: true, ref, source: "project" };
   }
   if (typeof previousBranch === "string" && previousBranch.trim() !== "") {
-    return { ok: true, ref: previousBranch.trim(), source: "previous" };
+    const ref = previousBranch.trim();
+    const probe = probeRef({ projectDir, ref, run });
+    if (probe.ok === true && probe.exists === true) {
+      return { ok: true, ref, source: "previous" };
+    }
+    const current = currentBranch({ projectDir, run });
+    if (!current.ok) return current;
+    return { ok: true, ref: current.ref, source: "current", skipped_previous: ref };
   }
   const current = currentBranch({ projectDir, run });
   if (!current.ok) return current;
