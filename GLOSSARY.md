@@ -55,9 +55,11 @@ A card's human-facing name, `<PREFIX>-<serial>`, zero-padded (for example `DEMO-
 _Avoid_: id, key, ref, number
 
 **Prefix**:
-The project half of every identifier that project issues. It is the project's declared
-prefix if it has one, otherwise derived from the project id, and no two projects may share
-one.
+The project half of every identifier that project issues. A new project's prefix is 1–4
+characters of `A`–`Z` and `0`–`9` after normalization, declared with `meta.prefix` (the CLI
+spelling is `taskctl project create --prefix`) or else derived from the project id; a value
+outside that shape refuses the create. Rows that predate the rule keep their longer or
+hyphenated token. It is fixed at creation, and no two projects may share one.
 _Avoid_: namespace, code, tag
 
 **Label**:

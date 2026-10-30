@@ -88,6 +88,17 @@ The stored value is re-normalized on read rather than trusted, so a row written 
 use-case (a hand-written or imported row) still resolves to what creation would have stored.
 The normal path is unaffected because the function is idempotent.
 
+**Creation holds the winning source to 1–4 `[A-Z0-9]`.** `PROJECT_PREFIX_MAX`,
+`PROJECT_PREFIX_PATTERN` and `isValidProjectPrefix` live beside the normalizer, and every
+create path applies them to the resolved token — `project create --prefix <p>`,
+`project ensure`, and `POST /api/v1/projects`. `--prefix` is sugar over `meta.prefix`, the one
+reserved key, so the CLI adds no second rule: passing both with different values is a usage
+error (`CLI_USAGE`, exit 2), and with `--prefix` alone the id is optional — the server mints an
+opaque id the prefix does not depend on. The normalizer stays wider than the rule on purpose:
+it is what the **read** path uses, so legacy or imported rows carrying a longer or hyphenated
+token (`MEERKAT-TASKPANEL`, `DEMO-X`) still read and number cards exactly as before. Creation
+is the only place that refuses.
+
 **Why the slot exists.** A project created through the dialog gets a UUID id; numbering from
 that would print a UUID on every card. The declared prefix is the project's *own* property,
 which is also what the prototype models — the sidebar chip and the card number are the same
@@ -108,9 +119,10 @@ still on cards.
 |---|---|---|
 | new id normalizes to a prefix another project owns | `VALIDATION_FAILED` (400), `details.field: "id"` | no |
 | declared `meta.prefix` normalizes to a taken prefix | `VALIDATION_FAILED` (400), `details.field: "meta.prefix"` | no |
-| declared prefix is not a string, or normalizes to nothing | `VALIDATION_FAILED` (400), `details.field: "meta.prefix"` | no |
+| declared prefix is not a string, normalizes to nothing, or falls outside 1–4 `[A-Z0-9]` | `VALIDATION_FAILED` (400), `details.field: "meta.prefix"` | no |
 | id equals an existing project's id | `ID_CONFLICT` (409) — the primary key, not a prefix refusal | no |
-| id with no declared prefix normalizes to nothing (`--id ###`) | creation succeeds; the first card allocation fails | later |
+| id with no declared prefix does not match `^[A-Z0-9]{1,4}$` (`--id ###`, a long id) | `VALIDATION_FAILED` (400), `details.field: "id"` | no |
+| `--prefix` and `--meta prefix=…` disagree | `CLI_USAGE` (exit 2) — a contradictory request, not a board refusal | no |
 
 A prefix refusal carries `details.prefix` and `details.conflictProjectId`; the message names
 the owning project too. When history already contains several projects sharing a prefix, the
@@ -118,10 +130,11 @@ refusal names the same (lowest-id) one every time, so the answer is deterministi
 and the insert share one transaction, so a refusal leaves no row and no `project_created`
 activity behind.
 
-An undeclared prefix that normalizes to nothing is **not** a creation refusal: that guard lives
-downstream, in `identifierForPrefix`, which refuses to mint for an empty prefix. The rule here
-is about collisions, not emptiness. A **declared** empty prefix is refused at creation, because
-storing it would create a project that can never mint a card.
+The emptiness guard is still there downstream (`identifierForPrefix` refuses to mint for an
+empty prefix), but creation now stops the case before it can reach a card: an id that normalizes
+to nothing, or to more than four characters, names no valid prefix and is refused at creation
+like a declared one. Reading is deliberately lenient — see
+[The legacy and import seam](#the-legacy-and-import-seam-reads-stay-lenient).
 
 ### The prefix is fixed at creation
 
@@ -141,9 +154,9 @@ Allocating a number bumps only the counter, which is not one of the columns the 
 trigger watches, so allocation alone does **not** advance the board's global revision; the
 card's own insert does.
 
-The board itself puts no length limit on a prefix. The web dialog caps its field at four
-characters (a design constraint, not a server rule), so longer prefixes arrive only through the
-CLI or the HTTP API; the rail chip's 24px box and how it clips them belong to
+A prefix is 1–4 characters at creation, so the four-digit serial is what makes the identifier
+length vary. The web dialog's four-character field is a mirror of the server rule, not a
+separate constraint; the rail chip's 24px box and how it clips a legacy long token belong to
 [rail-chip-overflow.md](../design/contracts/rail-chip-overflow.md).
 
 ### Pre-existing collisions are read, not repaired
@@ -153,6 +166,14 @@ written straight through the storage layer. The board reads them normally: nothi
 no command fails, startup is not blocked. The rule applies to **new** creations, so a new
 project that joins an existing collision is refused and told which project it clashes with. To
 resolve a collision, give the project a distinct id; archiving does not free the prefix.
+
+### The legacy and import seam reads stay lenient
+
+The 1–4 rule is a **creation** rule. Rows written before it existed — or imported, or written
+straight through the storage layer — keep their token, including a longer or hyphenated one
+(`MEERKAT-TASKPANEL`, `DEMO-X`); they read, number cards and roll up exactly as before. Nothing
+is renamed and no read fails. The narrow rule exists so a *new* project cannot add another such
+token to the board.
 
 ## What a project carries
 

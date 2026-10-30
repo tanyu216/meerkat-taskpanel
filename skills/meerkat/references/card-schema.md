@@ -257,11 +257,18 @@ The executable storable pattern is:
 - `serial` starts at 1 for each project and is left-padded with zeroes to **at least** four
   digits. The width is a minimum, not a cap: serial `12345` yields `DEMO-12345`. There is no
   overflow refusal.
-- The prefix is the project's declared `meta.prefix`, normalized, when it has one; otherwise
-  it is derived from the project id. Normalization is: trim surrounding whitespace, uppercase,
-  collapse every run of characters outside `A`–`Z` and `0`–`9` into a single `-`, then strip
-  leading and trailing `-`. A prefix may therefore contain digits and multiple `-` segments,
-  and it may start with a digit.
+- The prefix is the project's declared `meta.prefix`, normalized, when it has one (a declared
+  prefix wins over an id); otherwise it is derived from the project id. A create must carry one
+  of those two sources — with neither it is refused, and the server no longer mints a UUID and
+  derives a token from it. Normalization is: trim surrounding whitespace, uppercase, collapse
+  every run of characters outside `A`–`Z` and `0`–`9` into a single `-`, then strip leading and
+  trailing `-`.
+- **Every create path then holds the result to 1–4 characters of `A`–`Z` and `0`–`9`**
+  (`PROJECT_PREFIX_MAX`, `PROJECT_PREFIX_PATTERN`, `isValidProjectPrefix`). Digits and a
+  leading digit are fine (`A0B9`); a hyphenated or longer token refuses the create with
+  `VALIDATION_FAILED` (HTTP `400`), writing no row. Multiple `-` segments and tokens longer
+  than four characters exist only on legacy/imported rows, whose stored prefix is read
+  unchanged (see the length note below).
 - Unique per project, case-sensitively; not unique across projects. A bare identifier that
   exists in more than one project is refused as ambiguous rather than guessed.
 
@@ -275,9 +282,11 @@ Use that pattern only to recognize identifiers the board **generated**. Stored i
 be legacy or custom and still pass `isValidIdentifier` without matching it; a parser that must
 read every card should accept the wider storable pattern.
 
-Length edge: the prefix normalizer has no length cap. A prefix long enough to push the whole
-generated identifier past 128 characters makes card creation fail `VALIDATION_FAILED`; not
-every prefix a project could ask for yields a valid generated identifier.
+Length edge: the prefix normalizer itself still has no length cap, which is what lets legacy
+rows keep reading and minting the token they stored. A **new** project cannot carry such a
+prefix: creation refuses a normalized token outside 1–4 characters before the row lands. Only
+a legacy row can carry a prefix long enough to push the whole generated identifier past 128
+characters, and card creation for that row then fails `VALIDATION_FAILED`.
 
 Examples (the test suite re-derives each line):
 
@@ -293,7 +302,8 @@ invalid with space
 invalid with/slash
 <!-- identifier-examples:end -->
 
-Generated form:
+Generated form (the allocator's derivation; the `meerkat-taskpanel` and `demo_x` rows are
+legacy/read-path tokens, not prefixes a new project may declare):
 
 <!-- identifier-generated:begin -->
 demo => 1 => DEMO-0001

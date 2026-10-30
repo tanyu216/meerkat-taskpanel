@@ -2,6 +2,8 @@
 
 > prefix 字段决定卡号前缀；**唯一口径 = 服务端把项目的 `meta.prefix` 规范化后存为项目前缀，铸号读它**；归一化只有一份（`identifierPrefix`）；老项目与 CLI 路径回退 `identifierPrefix(id)`。
 
+> **2026-10-28 修订（M8）**：创建面新增 1–4 `[A-Z0-9]` 的形状门，M3/M4 收窄为读面口径——见文末「Amendment 2026-10-28（M8）」。
+
 > 卡：`T-20261014-003808`（goal：依原型冻结口径，裁定「建项目 prefix 字段」与「卡号前缀」的绑定，产出可实现、可验证的唯一契约。flow A 前置。）
 > **裁定来源**：卡工作区 `design-spec.md`（负责 agent Jobs 的裁定 + 详细契约规格，本节 §3/§4 逐条落地它）。本文件是**执行方**把它写成的契约文档。
 > 分工：**C1 = 本契约**（写面 `design/**`，**零实现**）→ **C2 = 实现**（Linus 另卡）→ **C3 = 独立验证**（Turing）。本文件是 C2/C3 的**唯一口径**。
@@ -359,3 +361,44 @@ PATCH /api/v1/projects/:id
 | `design/README.md` | 目录树补一行 `contracts/` 及一段说明（非共享文件，零冲突面） |
 | `design/BLOCKS.md` | **仅** §B11 补一行原型登记（design-spec §4.2）；⚠️ 该文件正被 lane `T-20261014-001418` 写入，**冲突面已在 Report 点明** |
 | 其余（`DESIGN.md` / `fidelity-*.md` / `design/prototype/**` / `web/**` / `src/**` / `test/**`） | **零改动**（原型侧改动提案见 §8，交 Elon） |
+
+---
+
+## Amendment 2026-10-28（M8）
+
+> 本修订**不改写**上文 M1–M7 与 §3.3 的历史文本，只记录落地后新增的 **M8** 以及它对 **M3/M4 的收窄**。实现基线：`3345c6e4`（`lane/TP-0005-prefix-rule`，核心规则）+ `c9982246`（`lane/TP-0006-prefix-flag`，CLI `--prefix`）。
+
+### A. M8｜创建形状（新增）
+
+**每条创建路径**（`createProject` 的 declared 分支、id 派生分支，以及 `ensureProject` 首次创建）在插入前都必须解析出符合 `^[A-Z0-9]{1,4}$` 的前缀。规则常量与函数在 `src/foundation/ids.mjs`：`PROJECT_PREFIX_MAX = 4`、`PROJECT_PREFIX_PATTERN`、`isValidProjectPrefix`。
+
+- 解析顺序 = **declared（`meta.prefix`，CLI `--prefix`）优先，否则 id 派生**；两者都出现时 declared 胜，id 仍只是不透明主键。
+- 检查顺序 = **type → empty → shape → collision**：形状不合格绝不会被报成 `conflictProjectId`。
+- 拒绝面（全部 `VALIDATION_FAILED`，HTTP 400；事务内、插入前，**不落库**）：
+
+| 发送面 | `details` | `hint` |
+|---|---|---|
+| declared 非字符串 | `{ field: "meta.prefix", received }` | — |
+| declared 规范化后为空（`####` / `"   "` / `---`） | `{ field: "meta.prefix", received }` | — |
+| declared 规范化后超出规则（`abcde` → `ABCDE`、`or c` → `OR-C`） | `{ field: "meta.prefix", received, prefix, max: 4 }` | — |
+| id 派生且为空或超出规则（`other` → `OTHER`、`demo-x` → `DEMO-X`、`###` → `""`） | `{ field: "id", projectId, prefix, max: 4 }` | `fix`：run `taskctl project create --prefix <p>` with 1–4 characters of A–Z and 0–9 |
+| 既无 id 也无 declared | `{ field: "meta.prefix", max: 4 }` | 同上 |
+
+- **旧分支已关闭**：既无 id 也无 declared 的 create 不再铸 UUID 再从前缀推导——直接按上表拒绝。带 declared 而无 id 时，服务端仍铸 UUID 作为**项目 id**，前缀取 declared。
+- `ensure` 只在真正创建时受 M8 约束；已存在的老行（含长 token）是读，原样返回。
+
+### B. M3 收窄为「读面」口径
+
+M3 的「铸号读项目存的前缀，缺省回退 `identifierPrefix(id)`」**继续逐字成立**，并且是**读面**规则：`projectPrefix` 与 `allocateIdentifier` 不套用 M8，`MEERKAT-TASKPANEL`、`DEMO-X` 这类存量前缀继续按原 token 铸号。M8 只挡**新行**；库里存在超出 1–4 的 token 不意味着读取面也收窄。
+
+### C. M4 收窄为「创建面的一个子集」
+
+M4 的「未提供 `meta.prefix` 者不受此条约束（走 M3 回退，其空前缀由 `identifierFor` 既有守卫兜底）」只对**读**与**已有行**成立。创建面已由 M8 接管：没有 id 也没有 declared 的前缀不再放行；declared 为空仍按 M4 原形拒绝（上表第二行，刻意保留无 `max`/`hint` 的旧形）。
+
+### D. 与 §3.3 样例表的读法
+
+§3.3 的行按**读面 / 归一化**理解：`demo_x`（`DEMO-X`）、`or c`（`OR-C`）仍是 `identifierPrefix` 的实测折叠值，但**不再是新项目可声明的值**（M8 在创建时拒绝）；`td`/`TD`、`ABCD`、`A` 仍是合法创建值。`####` 行仍为「必须拒绝」，理由由 M4 扩展到 M8。
+
+### E. CLI 面
+
+`project create` 的 `--id` 变为可选，新增 `--prefix <p>`（`project ensure` 同）；`--prefix` 是保留键 `meta.prefix` 的友好拼写，与 `--meta prefix=` 冲突时以 `CLI_USAGE`（exit 2）拒绝，同值接受。命令面与 1–4 规则的文字见 `skills/meerkat/references/cli.md`（`c9982246` 更新），本契约不重复。
