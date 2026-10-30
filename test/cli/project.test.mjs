@@ -196,6 +196,96 @@ describe("cli/project — the identifier prefix (C-PREFIX-1)", () => {
     });
   });
 
+  it("creates with --prefix alone: the server mints the id, and cards number TP-0001", async () => {
+    await withCli(async ({ run }) => {
+      const created = dataOf(run([
+        "project", "create",
+        "--name", "Meerkat TaskPanel",
+        "--prefix", "tp",
+        "--json",
+      ]));
+      assert.equal(created.project.meta.prefix, "TP", "the server stores the normalized prefix");
+      assert.equal(typeof created.project.id, "string");
+
+      const card = dataOf(run(["issue", "create", "--project", created.project.id, "--title", "one", "--json"]));
+      assert.equal(card.task.identifier, "TP-0001");
+    });
+  });
+
+  it("lets --prefix beat an id that could not supply a prefix on its own", async () => {
+    await withCli(async ({ run }) => {
+      // `meerkat-taskpanel` normalizes to a 17-character token, which the
+      // creation rule refuses when the id is the only prefix source. The
+      // declared prefix wins, so the same id is accepted.
+      const created = dataOf(run([
+        "project", "create",
+        "--id", "meerkat-taskpanel",
+        "--name", "Meerkat TaskPanel",
+        "--prefix", "tp",
+        "--json",
+      ]));
+      assert.equal(created.project.id, "meerkat-taskpanel");
+      const card = dataOf(run(["issue", "create", "--project", "meerkat-taskpanel", "--title", "one", "--json"]));
+      assert.equal(card.task.identifier, "TP-0001");
+    });
+  });
+
+  it("refuses an id that cannot supply a prefix, and creates nothing", async () => {
+    await withCli(async ({ run }) => {
+      const refused = run(["project", "create", "--id", "other", "--name", "Other", "--json"]);
+      assert.equal(refused.status, 1);
+      const error = JSON.parse(refused.stdout).error;
+      assert.equal(error.code, "VALIDATION_FAILED");
+      assert.equal(error.details.field, "id");
+      assert.equal(dataOf(run(["project", "list", "--json"])).projects.length, 0);
+    });
+  });
+
+  it("refuses --prefix that contradicts --meta prefix=…, and accepts the same value", async () => {
+    await withCli(async ({ run }) => {
+      const clash = run([
+        "project", "create",
+        "--name", "Clash",
+        "--prefix", "TP",
+        "--meta", "prefix=OT",
+        "--json",
+      ]);
+      assert.equal(clash.status, 2, "a contradictory request is a usage error, not a board refusal");
+      assert.equal(JSON.parse(clash.stdout).error.code, "CLI_USAGE");
+      assert.equal(dataOf(run(["project", "list", "--json"])).projects.length, 0);
+
+      const agreed = dataOf(run([
+        "project", "create",
+        "--name", "Agreed",
+        "--prefix", "TP",
+        "--meta", "prefix=TP",
+        "--json",
+      ]));
+      assert.equal(agreed.project.meta.prefix, "TP");
+    });
+  });
+
+  it("ensures a project with --prefix, and leaves an existing one untouched", async () => {
+    await withCli(async ({ run }) => {
+      const first = dataOf(run([
+        "project", "ensure", "zoomer",
+        "--name", "Zoomer",
+        "--prefix", "zk",
+        "--json",
+      ]));
+      assert.equal(first.created, true);
+      assert.equal(first.project.id, "zoomer");
+      const card = dataOf(run(["issue", "create", "--project", "zoomer", "--title", "one", "--json"]));
+      assert.equal(card.task.identifier, "ZK-0001");
+
+      // The second call is a read: a different prefix does not touch the row.
+      const second = dataOf(run(["project", "ensure", "zoomer", "--prefix", "zz", "--json"]));
+      assert.equal(second.created, false);
+      assert.equal(second.project.meta.prefix, "ZK");
+    });
+  });
+
+
   it("refuses a declared prefix another project already owns", async () => {
     await withCli(async ({ run }) => {
       run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
