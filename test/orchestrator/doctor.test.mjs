@@ -374,6 +374,10 @@ describe("loop doctor — the process boundary", () => {
     const textExit = await main(argv, { HOME: dir }, deps(), { out: (text) => (out += text) });
     assert.equal(textExit, 0);
     assert.match(out, /supervisor\s+absent/);
+    assert.match(out, /patrol\s+last_ok 2025-12-31T23:30:00.000Z \(30m ago, cadence 15m\)/);
+    assert.match(out, /stuck\s+3 card\(s\): 2 in_progress, 1 in_review aging/);
+    assert.match(out, /T-100  in_progress  stale 31m > 30m  Stale claim/);
+    assert.match(out, /T-200  in_review    aging 90m >= 60m  Waiting too long/);
     assert.match(out, /queue\s+depth 2/);
 
     out = "";
