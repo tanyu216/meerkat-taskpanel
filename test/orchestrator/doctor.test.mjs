@@ -22,6 +22,7 @@ import { after, describe, it } from "node:test";
 import {
   LOG_TAIL_LINES,
   LOG_TAIL_BYTES,
+  LOG_TAIL_LINE_CHARS,
   doctorReport,
   main,
 } from "../../src/orchestrator/doctor.mjs";
@@ -316,6 +317,20 @@ describe("loop doctor — the log tail", () => {
     assert.deepEqual(missing.log.lines, []);
     assert.deepEqual(missing.errors, [], "a log that was never written is not an error");
     assert.equal(missing.ok, true);
+  });
+
+  it("caps a long line so one embedded message cannot crowd out the report", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir);
+    seedState(dir);
+    // The live log carries whole assistant messages inside `msg="…"`.
+    writeFileSync(join(dir, "supervisor.log"), `short line\n${"x".repeat(500)}\n`);
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.equal(report.log.lines[0], "short line");
+    assert.equal(report.log.lines[1].length, LOG_TAIL_LINE_CHARS + 1);
+    assert.match(report.log.lines[1], /x…$/);
   });
 
   it("reads a bounded tail rather than the whole file", () => {

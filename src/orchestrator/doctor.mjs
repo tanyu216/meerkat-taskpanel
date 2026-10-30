@@ -41,6 +41,11 @@ import { probeSupervisor } from "./status.mjs";
 /** How many log lines the report carries, and how many bytes it will read for them. */
 export const LOG_TAIL_LINES = 40;
 export const LOG_TAIL_BYTES = 64 * 1024;
+/**
+ * How much of one line survives. The live log embeds whole assistant messages in
+ * `msg="…"`, so an uncapped line turns a 40-line tail into pages of one report.
+ */
+export const LOG_TAIL_LINE_CHARS = 200;
 
 /** The peer-marker rule: a marker older than this many cadences means "stalled". */
 const PEER_LIVENESS_K = 3;
@@ -107,6 +112,11 @@ function splitLines(text) {
   return lines;
 }
 
+/** One line, capped. The report keeps the logfmt prefix, which is the readable half. */
+function capLine(line) {
+  return line.length > LOG_TAIL_LINE_CHARS ? `${line.slice(0, LOG_TAIL_LINE_CHARS)}…` : line;
+}
+
 /**
  * The live log's tail, with the rotated generation used only when the live file
  * is missing or too short — enough to fill `LOG_TAIL_LINES` without reading two
@@ -135,7 +145,7 @@ function logTail(path) {
         tail = [...older.slice(-(LOG_TAIL_LINES - lines.length)), ...tail];
       }
     }
-    return { ...base, source, lines: tail, truncated };
+    return { ...base, source, lines: tail.map(capLine), truncated };
   }
 
   const rotated = readTailBytes(`${path}.1`, LOG_TAIL_BYTES);
@@ -147,7 +157,7 @@ function logTail(path) {
     return {
       ...base,
       source: "rotated",
-      lines: lines.slice(-LOG_TAIL_LINES),
+      lines: lines.slice(-LOG_TAIL_LINES).map(capLine),
       truncated: rotated.truncated || lines.length > LOG_TAIL_LINES,
     };
   }
