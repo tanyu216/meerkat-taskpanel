@@ -489,8 +489,7 @@ Every verb is **local** (`local: true`): it resolves its own board context from 
 loop is never a human, never inherits a caller's session and never uses the CLI's
 optimistic-concurrency guard. `--actor-kind` is required on every verb that writes to the
 board (`patrol`, `workflow`, `poll`, `tick`, `run`, `subscribe`, `session`); the reads
-(`console`, `doctor`, `status`, `compat`) work without it, and `status` / `compat` need no board at
-all.
+(`console`, `doctor`, `status`) work without it, and `status` needs no board at all.
 
 | Command | Purpose |
 |---|---|
@@ -499,17 +498,15 @@ all.
 | `loop poll` | Scan, admit, claim and enqueue ready cards; writes the queue. |
 | `loop tick [--passes <list>]` | Run `patrol,workflow,poll` (or `--passes` order) in one command — the cron/unit entry. |
 | `loop console` | One read-only question / frontier cycle. |
-| `loop doctor` | One read-only daily-inspection report: supervisor verdict, the resolved scan set, board compatibility, the patrol's last-successful-run marker, the log tail, queue and ledger depth, the cards whose heartbeat is stale or unreadable, the `in_review` cards waiting on a human (age only — review aging stays the workflow pass's judgement), and the cards carrying an acceptance marker for their current round while still `in_review` (`blocked_acceptance` — the board refused the close), and the `done` cards whose lane branch is not in the project's current branch (`unlanded`). Writes nothing and exits 0 whenever it produced a report — read `attention` from `--json`. |
+| `loop doctor` | One read-only daily-inspection report: supervisor verdict, the resolved scan set, the patrol's last-successful-run marker, the log tail, queue and ledger depth, the cards whose heartbeat is stale or unreadable, the `in_review` cards waiting on a human (age only — review aging stays the workflow pass's judgement), and the cards carrying an acceptance marker for their current round while still `in_review` (`blocked_acceptance` — the board refused the close), and the `done` cards whose lane branch is not in the project's current branch (`unlanded`). Writes nothing and exits 0 whenever it produced a report — read `attention` from `--json`. |
 | `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict, the agent platform (`--actor-kind`) and the scan set it resolved; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
 | `loop run [--ping-once] [--continue-once]` | The two clocks as a daemon; either `--*-once` runs one pass and exits. |
 | `loop subscribe` | The event subscriber daemon; it dispatches continues. |
 | `loop session` | The resident session pool daemon. |
-| `loop compat [--quiet]` | The board-interface gate: exit 0 compatible, 2 usage (a named `--cli` is missing), 3 no verdict; `--quiet` prints nothing on success. |
 
 `loop tick` stops at the first failing pass and returns its exit code. `loop run` refuses
 `--ping-once` together with `--continue-once`. `loop status`, `loop console` and `loop doctor` are the
-verbs a human runs while the daemons are up; `loop compat` is the gate to run before relying
-on a board's `taskctl`. Every verb writes its **own** output: `loop status --json` is the
+verbs a human runs while the daemons are up. Every verb writes its **own** output: `loop status --json` is the
 loop's JSON, not the `{ok:true,data}` envelope, and none of them adds `token_source`.
 `loop status --json` carries `platform` (`claude|codex|pi`) and `agents` (the resolved scan
 set); the human output prints the same two facts as `platform:` and `scan set:` lines. They

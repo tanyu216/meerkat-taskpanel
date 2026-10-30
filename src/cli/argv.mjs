@@ -42,7 +42,6 @@ export const BOOLEAN_FLAGS = Object.freeze(
     "order-debug",
     "stale",
     "failed",
-    "quiet",
     "check-blockers",
     "once",
     "detach",

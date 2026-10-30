@@ -43,10 +43,8 @@
  *   * The framework's **protocol document name and its section anchors** are *published
  *     data*: the SLA patrol emits them as a wire field (`threshold_ref`) and the test
  *     suite asserts the shape. Banning the string would red shipped code and a test.
- *   * The framework's **project name** and its **interface generation codename** are
- *     sanctioned cross-repository references — the first is a pointer that must carry
- *     its URL, the second is the loop's declaration of which interface generation it
- *     drives. The naming-boundary contract keeps both, and says why.
+ *   * The framework's **project name** is a sanctioned cross-repository pointer that must
+ *     carry its URL. The naming-boundary contract keeps it, and says why.
  *   * The framework's interface guide is a **provenance citation** in source comments.
  *
  * Those are the same distinction the design contract draws: a word may name somebody

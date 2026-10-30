@@ -687,7 +687,7 @@ export const TASK_ORDER_WEIGHTS = Object.freeze({ P: 0.3, W: 0.25, S: 0.2, A: 0.
 /**
  * Is the optional severity factor `L` in play? **No** (contract §4.2 / R9).
  *
- * `sev:*` is a documented convention (`guides/task-interface.md` §15), not a
+ * `sev:*` is a documented convention (openclaw-team's ACL guide §15), not a
  * schema-checked column, so its weight is not spent until Terry rules otherwise
  * (contract §5.4 question 3). While it is off the *factor* is forced to `0` for
  * every card: the optional factor's share is left **unused, not redistributed**,

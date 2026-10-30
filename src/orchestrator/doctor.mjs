@@ -3,11 +3,10 @@
  * `taskctl loop doctor` — one read-only daily-inspection report.
  *
  * The loop's other read verbs each answer one question (`status`: is the process
- * up; `console`: what is waiting on a human; `compat`: can this loop drive this
- * board). A human keeping a team alive has to ask all of them, then read the log
- * and the queue by hand. This verb asks them together and adds the two facts the
- * answers do not carry: whether the patrol is still *completing*, and which cards
- * are stuck.
+ * up; `console`: what is waiting on a human). A human keeping a team alive has to
+ * ask all of them, then read the log and the queue by hand. This verb asks them
+ * together and adds the two facts the answers do not carry: whether the patrol is
+ * still *completing*, and which cards are stuck.
  *
  * **It is not a pass.** It claims nothing, dispatches nothing, starts no process,
  * writes no state and opens no logger — an inspection that changed the thing it
@@ -22,11 +21,9 @@
  * would make an unhealthy loop indistinguishable from a broken doctor.
  */
 
-import { spawnSync } from "node:child_process";
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { checkBoard } from "../foundation/board-compat.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import { QUEUE_FILES } from "../foundation/loop-state.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
@@ -54,22 +51,12 @@ const PEER_LIVENESS_K = 3;
 
 export const USAGE = `Usage: taskctl loop doctor [--state <path>] [--log <path>] [--config <path>]
 
-One read-only inspection: the supervisor verdict, the resolved scan set, board
-compatibility, the patrol's last-successful-run marker, the tail of the loop log,
-the dispatch queue and the subagent ledger, and the cards that look stuck.
+One read-only inspection: the supervisor verdict, the resolved scan set, the
+patrol's last-successful-run marker, the tail of the loop log, the dispatch queue
+and the subagent ledger, and the cards that look stuck.
 
 It writes nothing, claims nothing and starts no process. The exit code is 0
 whenever a report was produced; read \`attention\` from --json.`;
-
-function defaultBoardRun(command, args) {
-  const result = spawnSync(command, args, { encoding: "utf8" });
-  return {
-    status: result.status,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-    error: result.error ?? null,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // The log tail — a bounded read of a file that rotates under us
@@ -253,7 +240,7 @@ function patrolReport(opts, nowMs) {
  *
  * @param {object} opts the loop's parsed options
  * @param {NodeJS.ProcessEnv} [env]
- * @param {{run?: Function, isAlive?: Function, now?: Function, boardRun?: Function, git?: Function}} [deps]
+ * @param {{run?: Function, isAlive?: Function, now?: Function, git?: Function}} [deps]
  */
 export function doctorReport(opts, env = process.env, deps = {}) {
   const now = deps.now ?? Date.now;
@@ -283,21 +270,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     errors.push(`patrol: ${error.message}`);
   }
 
-  // 3. The board interface, asked with the same `--cli` the reads use.
-  let compat = null;
-  if (typeof opts.cli !== "string" || opts.cli === "") {
-    skipped.push("compat: no --cli resolved");
-  } else {
-    try {
-      const run = deps.boardRun ?? defaultBoardRun;
-      compat = checkBoard({ command: process.execPath, args: [opts.cli, "--version", "--json"], run });
-    } catch (error) {
-      errors.push(`compat: ${error.message}`);
-      compat = { ok: false, code: "BOARD_UNREACHABLE", message: error.message };
-    }
-  }
-
-  // 4. One board read — the patrol's view, so "stuck" means the same thing here
+  // 3. One board read — the patrol's view, so "stuck" means the same thing here
   // as it does to the pass that will act on it.
   let tasks = [];
   const board = { total: 0, truncated: false, counts: {}, error: null };
@@ -325,7 +298,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     errors.push(`board: ${error.message}`);
   }
 
-  // 5. The log.
+  // 4. The log.
   let log;
   try {
     log = logTail(opts.log);
@@ -335,7 +308,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     errors.push(`log: ${error.message}`);
   }
 
-  // 6. The queue and the subagent ledger, both beside the worker registry.
+  // 5. The queue and the subagent ledger, both beside the worker registry.
   const stateDir = dirname(String(opts.state));
   const queue = {
     file: join(stateDir, QUEUE_FILES.cards),
@@ -389,7 +362,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     errors.push(`subagents: ${error.message}`);
   }
 
-  // 7. The cards that look stuck, judged by the rule that already owns that
+  // 6. The cards that look stuck, judged by the rule that already owns that
   // judgement: the patrol's stale-heartbeat plan. `in_review` is reported as a
   // fact, not a judgement — `review_aging` belongs to the workflow pass and
   // applies to *review* cards that are **not** in_review (`docs/lifecycle.md`).
@@ -463,7 +436,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   }
   blockedAcceptance.total = blockedAcceptance.cards.length;
 
-  // 8. Acceptances whose lane never landed. `done` is the board's answer, not
+  // 7. Acceptances whose lane never landed. `done` is the board's answer, not
   // git's: a card worked in a tree the loop never registered is accepted with
   // its branch still unmerged, and nothing else looks. Only `done` counts — a
   // `canceled` branch is abandoned work, and an active lane is correctly open.
@@ -525,7 +498,6 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     attentionReasons.push(`blocked_acceptance: ${blockedAcceptance.total}`);
   }
   if (unlanded.total > 0) attentionReasons.push(`unlanded: ${unlanded.total}`);
-  if (compat !== null && compat.ok !== true) attentionReasons.push(`compat: ${compat.code}`);
   if (queue.failed > 0) attentionReasons.push(`queue: ${queue.failed} failed`);
   if (supervisor?.verdict === "absent" || supervisor?.verdict === "partial") {
     attentionReasons.push(`supervisor: ${supervisor.verdict}`);
@@ -544,7 +516,6 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     supervisor,
     agents,
     patrol,
-    compat,
     board,
     log,
     queue,
@@ -575,14 +546,6 @@ function humanReport(report) {
       (pool?.live === true ? `  pool pid ${pool.poolPid} (control ${pool.controlMode})` : ""),
   );
   lines.push(`agents      ${report.agents.length > 0 ? report.agents.join(", ") : "(none resolved)"}`);
-
-  lines.push(
-    report.compat === null
-      ? "compat      skipped"
-      : report.compat.ok === true
-        ? `compat      OK — board ${report.compat.version} (schema_version ${report.compat.schemaVersion ?? "?"}) satisfies ${report.compat.boardInterface}`
-        : `compat      FAILED — ${report.compat.code}: ${report.compat.message}`,
-  );
 
   const patrolDetail = [];
   if (report.patrol.age_ms !== null) patrolDetail.push(`${minutes(report.patrol.age_ms)} ago`);

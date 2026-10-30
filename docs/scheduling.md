@@ -115,7 +115,7 @@ The deterministic passes are **not scheduled individually**:
 | `taskctl loop workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `system`/`Orchestrator` |
 
 `taskctl loop doctor` is **not** one of these passes. It is the read-only inspection a human
-runs: one report covering the supervisor verdict, the resolved scan set, board compatibility,
+runs: one report covering the supervisor verdict, the resolved scan set,
 the patrol's last-successful-run marker, the tail of the loop log, the queue and subagent
 ledger, the cards that look stuck (a stale or unreadable heartbeat, judged by the patrol's own
 plan — an `epic` container is not a stale worker), and the `in_review` cards waiting on a human
@@ -2087,7 +2087,7 @@ this boundary: every agent kind gets one — see `docs/ops/install.md`.)
 - [`install.md`](ops/install.md) — the installer flags, including `--claim-unassigned` and the
   opt-in `--supervisor=enable|disable|status`.
 - [`../skills/meerkat-loop/SKILL.md`](../skills/meerkat-loop/SKILL.md) — the loop as the
-  skill it is distributed as, and the board interface generation it requires;
+  skill it is distributed as;
   [`references/operation.md`](../skills/meerkat-loop/references/operation.md) is the
   operator's view.
 - [`../skills/meerkat/SKILL.md`](../skills/meerkat/SKILL.md) —

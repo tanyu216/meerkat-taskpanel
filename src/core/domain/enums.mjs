@@ -2,9 +2,8 @@
  * Enumerations — the single source of truth for every closed value set in the
  * domain, and the JS side of the SQL `CHECK (... IN (...))` parity contract.
  *
- * Cardinal rule: the card's statuses are canonical. The old
- * `task-interface v1` words `ready`/`failed` are gone — neither stored nor
- * accepted on any surface.
+ * Cardinal rule: the card's statuses are canonical. The external ACL's old
+ * words `ready`/`failed` are gone — neither stored nor accepted on any surface.
  *
  * This module is pure: no `node:` specifiers.
  */

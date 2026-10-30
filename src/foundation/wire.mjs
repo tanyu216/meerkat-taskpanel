@@ -2,7 +2,7 @@
  * The wire vocabulary — core DTOs (camelCase) projected to the `--json` shape
  * (snake_case), exactly once (§F-C1).
  *
- * The card and `task-interface v1` both speak snake_case (`display_name`,
+ * The card and the board wire both speak snake_case (`display_name`,
  * `created_at`, `delivery_round`), so the projection happens at the boundary and
  * nowhere else. It lives in `foundation` because *both* surfaces need it: the server
  * to build a response, the CLI to render one — and neither may import the other.

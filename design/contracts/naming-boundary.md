@@ -2,33 +2,35 @@
 
 > **唯一口径**：**产品对外契约名必须是产品自有的**——`taskctl` CLI 面 + board wire（`src/foundation/wire.mjs`）+ 契约快照代号 `schema_version`。框架词只可在 **① 指针 / ② 兼容声明 / ③ 溯源** 三种角色下出现，且**任何角色下都不得充当产品自有契约的名字**；框架**内部机制名**（外部协议文档名、`task-ops`、`redlines`、框架内部文件/符号/花名册）**不得进入产品契约与对外文档**。
 
-> 卡：`T-20261014-011057-2`（goal：裁定 `task-interface v1` 等 openclaw-team 框架名在产品仓的可用边界。范围 = operator 2026-10-14 拍板的 **(B) 命名耦合**。）
-> **裁定来源**：卡面 Background 的三问（① `task-interface` 作产品对外契约名是否合法；② 哪些框架内部名不得进产品契约/文档；③ 跨仓发版说明类引用如何标注方可保留）+ Acceptance ③ 的事实源口径。本文件是**执行方的落文**，不是新裁定。
+> 卡：`T-20261014-011057-2`（goal：裁定 `ACL 接口代 v1` 等 openclaw-team 框架名在产品仓的可用边界。范围 = operator 2026-10-14 拍板的 **(B) 命名耦合**。）
+> **裁定来源**：卡面 Background 的三问（① `ACL 接口代` 作产品对外契约名是否合法；② 哪些框架内部名不得进产品契约/文档；③ 跨仓发版说明类引用如何标注方可保留）+ Acceptance ③ 的事实源口径。本文件是**执行方的落文**，不是新裁定。
 > 分工：**本卡 = C1**（写面 `design/**`，**零实现**）→ 后续**清理卡 = C2**（Linus，按 §4 逐类处置 + §7 分批）→ **独立验证 = C3**（Turing，按 §4 每条的「判据」核落点）。本文件是 C2/C3 的**唯一口径**。
 > 事实源（**实读**）：`src/shared/wire.mjs`、`src/shared/constants.mjs`、`src/core/domain/enums.mjs`、`src/core/domain/idem.mjs`、`src/core/commands/tasks.mjs`、`src/cli/index.mjs`、`test/fixtures/contract/api.snapshot.json`、`docs/contract.md`、`README.md`、`README.zh-CN.md`、`CHANGELOG.md`、`skills/meerkat-loop/**`、`skills/meerkat-taskpanel/**`、`install.sh`、`scripts/install/**`（**实读未实测**）；框架侧的协议文档与接口合同（**实读**，仓库外，路径不入仓）。
 > 定位规则：一律「**文件**」或「**文件:符号**」；散文类文件以**引文**定位，**不使用行号锚**（行号会随任何一次编辑漂移）。
 > 基线 commit：`61f7f3a`（= 本 lane 工作树 HEAD = `main` HEAD，开工时实测同一 sha）。
 > 本文件为**新增文件**：不改任何代码；`design/README.md` 仅按 `C-PREFIX-1` 先例补一行登记（见 §8）。**未 push**（§10）。
 
-> **⛔ 已退役（2026-10-17）。** 本裁定 2026-10-14 由 C1 落文，**§8 的双签从未取得，C2（清理）从未开工，C3（独立验证）从未执行**。2026-10-17 复核：其 §7 独立判据 ④⑤ PASS、**①②③ FAIL** —— 外部协议文档名的落点由本文件记录的 6 个文件涨到 **29 个**（约 13 个在已发布面）；`src/shared/**` 与 `src/core/domain/enums.mjs` 的 `task-interface` 未清零；`task-ops` 全仓非 0，命中全在本文件与其登记行。operator 2026-10-17 裁定 **退役并收窄**：不执行 §7 的 P0/P1/P2，把 ①②③ 换成本文件 §7.1 的**现状表**，只有 §7.2 的**两条禁令**继续生效并由 `scripts/verify/signposts.mjs` 机械执行。
+> **⛔ 已退役（2026-10-17）。** 本裁定 2026-10-14 由 C1 落文，**§8 的双签从未取得，C2（清理）从未开工，C3（独立验证）从未执行**。2026-10-17 复核：其 §7 独立判据 ④⑤ PASS、**①②③ FAIL** —— 外部协议文档名的落点由本文件记录的 6 个文件涨到 **29 个**（约 13 个在已发布面）；`src/shared/**` 与 `src/core/domain/enums.mjs` 的 `ACL 接口代` 未清零；`task-ops` 全仓非 0，命中全在本文件与其登记行。operator 2026-10-17 裁定 **退役并收窄**：不执行 §7 的 P0/P1/P2，把 ①②③ 换成本文件 §7.1 的**现状表**，只有 §7.2 的**两条禁令**继续生效并由 `scripts/verify/signposts.mjs` 机械执行。
 >
 > **随之作废**：§2 的计数与文件清单锚在 `61f7f3a`（现落后 `dev` HEAD 数百个提交），只作当时的快照；§4 里 `plugins/**` 的全部生成副本目标（12 + 8 + 4 份）**在今天的树上不存在** —— `plugins/` 已由 `39a009d` 整目录删除，`skills/` 是仓库里唯一的 skills 树；§10 的 lane 分支持已消失。**§2–§6 保留为历史落点盘点，不再是工单。**
 >
 > **2026-10-20 后续**：OpenClaw 专用的 markdown 卡片导入器已整块移出产品 —— `src/core/storage/md/{import,migrate-cli,project-registry,invariants-check}.mjs`、`scripts/migrate/**`、`docker/migrate-in-container.sh`、`test/migrate/**` 均已删除，`docs/migration.md` 只保留 schema 迁移闸门与 MCP 移除记录。因此本文件 §2/§4/§7 中锚在 `project-registry.mjs`、`docs/migration.md` 的 `__team__` 段或 `test/migrate/**` 的行**只作历史记录**；当前事实源已不含这些文件。
 >
 > **2026-10-22 后续**：外部协议文档名的树内引用已清除 —— SLA 契约内化（`a4cc5e4`）后，`threshold_ref` 指向 `docs/sla.md` §2；本次又把 §①/§㉙ 等逻辑引用改指产品自有源码/文档。§7.1 的旧「R2 / 已发布接口数据」判定随之作废；本文件只在 §9 的原始输出中保留该词作历史证据。**门禁未改**：`scripts/verify/signposts.mjs` 仍不机械拦截该词，本次按「只清文件」执行。
+>
+> **2026-10-30 后续：本文许可的那个「兼容声明」已被整体移除。** loop 与看板同包、同 `VERSION`、同树发布，不再有跨仓接口代可声明，也没有可核的地板 —— `taskctl loop compat`、`src/foundation/board-compat.mjs` 与 `src/orchestrator/compat.mjs` 一并删除，理由与代价见 [`docs/adr/0005-the-loop-ships-with-the-board.md`](../../docs/adr/0005-the-loop-ships-with-the-board.md)。本文件保留为历史记录，但**为遵守它自己确立的命名边界，全文不再书写那个代号**，一律记作「ACL 接口代」；§9 的历史输出也按此改写，**重跑不会复现当时的计数**。**§7.2 的两条禁令逐字未改**，仍是本文件唯一生效的部分。
 
 ---
 
 ## 0. 结论摘要
 
-- **① 裁定 = 否：`task-interface` 不得作为产品的对外契约名。** 它是 **openclaw-team 的 ACL 代号**（框架侧的接口合同，版本记于该文件 §13），产品只是它的**参考实现（reference implementation）**。产品的对外契约名自有的那一套（`taskctl` / board wire / `schema_version`）**已经在位**（§5 实测），因此这是**纠正自述**，不是新建命名。
-- **① - 补：但 `task-interface v1` 可保留，且只保留在一个角色上 = 「兼容声明」。** 它陈述「本产物绑定框架 ACL 的哪一代」，只挂在**框架侧产物**（loop skill 及其 references / `board-check.mjs`）上，并**始终带归属**。这与 Acceptance ③「框架侧只保留 ACL 最小必需集 + 指针」是同一句话的两种说法。
+- **① 裁定 = 否：`ACL 接口代` 不得作为产品的对外契约名。** 它是 **openclaw-team 的 ACL 代号**（框架侧的接口合同，版本记于该文件 §13），产品只是它的**参考实现（reference implementation）**。产品的对外契约名自有的那一套（`taskctl` / board wire / `schema_version`）**已经在位**（§5 实测），因此这是**纠正自述**，不是新建命名。
+- **① - 补：但 `ACL 接口代 v1` 可保留，且只保留在一个角色上 = 「兼容声明」。** 它陈述「本产物绑定框架 ACL 的哪一代」，只挂在**框架侧产物**（loop skill 及其 references / `board-check.mjs`）上，并**始终带归属**。这与 Acceptance ③「框架侧只保留 ACL 最小必需集 + 指针」是同一句话的两种说法。
 - **② 判据 = 三轴四条**（§3）：**J1 归属**（这个词命名的是产品自己的东西，还是别人家的东西）→ **J2 角色**（别人家的东西，在此处扮演 指针 R1 / 兼容声明 R2 / 溯源 R3 中的哪一个）→ 都不属三者且指向**框架内部机制**者 = **F1 泄漏**；**J3 事实源**（框架规范与产品 schema 同时描述一个形状时，产品 schema 是事实源，框架侧只放指针）。
-- **③ 逐类处置见 §4**（保留 / 改名 / 加标注，逐文件可执行）。一句话版本：**`openclaw-team` 指针类全保留**；**`task-interface` 分五个子角色**（兼容声明保留、自述改标注、自有 schema 改名、溯源改写、测试锁保留）；**外部协议文档名六处全改写**（F1）；**`task-ops` 零落点 + 立禁**。
+- **③ 逐类处置见 §4**（保留 / 改名 / 加标注，逐文件可执行）。一句话版本：**`openclaw-team` 指针类全保留**；**`ACL 接口代` 分五个子角色**（兼容声明保留、自述改标注、自有 schema 改名、溯源改写、测试锁保留）；**外部协议文档名六处全改写**（F1）；**`task-ops` 零落点 + 立禁**。
 - **④ 两处必须先说的精度：**
   1. **卡面基线与本 lane 实测有差**：`openclaw-team` **39 → 40 文件**、`task-ops` **1 → 0 文件**（§2）。`main` 在 Elon 排查与本 lane 开工点之间前进了。本文件一律以 `61f7f3a` 的实测为准。
-  2. **`task-interface v1` 在产品里没有任何机器表示**：`git grep` 在 `src/server`、`src/cli`、`web/`、`scripts/verify` 全零命中；loop 的闸门读的是 board 自有的 `version` + `schema_version`（§5）。⇒ **命名耦合是纯散文层的**，这也正是本裁定可以把「保留作兼容声明」与「不得作产品契约名」同时说圆的原因。
+  2. **`ACL 接口代 v1` 在产品里没有任何机器表示**：`git grep` 在 `src/server`、`src/cli`、`web/`、`scripts/verify` 全零命中；loop 的闸门读的是 board 自有的 `version` + `schema_version`（§5）。⇒ **命名耦合是纯散文层的**，这也正是本裁定可以把「保留作兼容声明」与「不得作产品契约名」同时说圆的原因。
 - **⑤ 双签（Acceptance ③「Elon / operator 双签」）本 lane 未取**——它是本卡的完成条件，不是执行方可以自我满足的动作。签名栏与待答问题见 §8。
 
 ---
@@ -65,7 +67,7 @@
 
 | 类 | 卡面（Elon 排查） | 本 lane 实测 | 差 |
 |---|---|---|---|
-| `task-interface` | 37 文件 | **37 文件** | — |
+| `ACL 接口代` | 37 文件 | **37 文件** | — |
 | `openclaw-team` | 39 文件 | **40 文件** | +1 |
 | 外部协议文档名 | 6 文件 | **6 文件** | — |
 | `task-ops` | 1 文件 | **0 文件** | −1 |
@@ -74,7 +76,7 @@
 
 | 类 | 自撰 | 生成副本 |
 |---|---|---|
-| `task-interface` | **17**：`README.md`·`README.zh-CN.md`·`CHANGELOG.md`·`skills/meerkat-taskpanel/{SKILL.md,references/cli.md}`·`skills/meerkat-loop/{SKILL.md,references/operation.md,scripts/board-check.mjs}`·`src/core/README.md`·`src/core/domain/{enums.mjs,idem.mjs}`·`src/shared/{README.md,status-alias.mjs,wire.mjs}`·`test/{cli/output.test.mjs,core/domain/idem.test.mjs,skill/loop.test.mjs}` | **20**（全部在 `plugins/**`） |
+| `ACL 接口代` | **17**：`README.md`·`README.zh-CN.md`·`CHANGELOG.md`·`skills/meerkat-taskpanel/{SKILL.md,references/cli.md}`·`skills/meerkat-loop/{SKILL.md,references/operation.md,scripts/board-check.mjs}`·`src/core/README.md`·`src/core/domain/{enums.mjs,idem.mjs}`·`src/shared/{README.md,status-alias.mjs,wire.mjs}`·`test/{cli/output.test.mjs,core/domain/idem.test.mjs,skill/loop.test.mjs}` | **20**（全部在 `plugins/**`） |
 | `openclaw-team` | **23** | **17**（`plugins/**` 16 + `skills/meerkat-loop/body/src/shared/constants.mjs` 1） |
 
 > 生成副本的**传播面**（实测：`check:skills` 报 8 条 skill 同步）：loop skill → `plugins/{claude,codex,pi,loop}/skills/meerkat-loop/**`；board skill → `plugins/{claude,codex,openclaw,pi}/skills/meerkat-taskpanel/**`；loop payload → 同名 4 份 `…/meerkat-loop/body/**`。任一改动落在**源**上，这些副本随 `sync-skills.mjs` 重写。
@@ -86,10 +88,10 @@
 | # | 落点 | 是否随 npm 发布 | 现文 |
 |---|---|---|---|
 | 1 | `docs/migration.md`（「The reserved `__team__` project」段）**（随 importer 删除）** | **是**（`docs` 在 `package.json#files`） | `__team__` is the reserved **team-internal** project (外部协议文档 §②): … |
-| 2 | `src/core/README.md` | **是**（`src` 在 `files`） | L1 reading: 外部协议文档 §㉙ + `guides/task-interface.md §14`. |
-| 3 | `src/core/domain/idem.mjs`（模块注释） | **是** | L1 reading: 外部协议文档 §㉙ + `guides/task-interface.md §14`. |
+| 2 | `src/core/README.md` | **是**（`src` 在 `files`） | L1 reading: 外部协议文档 §㉙ + `openclaw-team 的 ACL 指南 §14`. |
+| 3 | `src/core/domain/idem.mjs`（模块注释） | **是** | L1 reading: 外部协议文档 §㉙ + `openclaw-team 的 ACL 指南 §14`. |
 | 4 | `src/core/storage/md/project-registry.mjs`（`BUILDIN_PROJECTS` 注释）**（文件已删除）** | **是** | `__team__` is the reserved team-internal project (外部协议文档 §②: …) |
-| 5 | `test/core/domain/idem.test.mjs` | 否（`test` 不在 `files`） | L1 reading: 外部协议文档 §㉙ + `guides/task-interface §14`. |
+| 5 | `test/core/domain/idem.test.mjs` | 否（`test` 不在 `files`） | L1 reading: 外部协议文档 §㉙ + `openclaw-team 的 ACL 指南 §14`. |
 | 6 | `test/migrate/import-hardening.test.mjs`（describe 名）**（已删除）** | 否 | … the buildin `__team__` project (外部协议文档 ②) |
 
 **「随 npm 发布」这一列是本表的关键**：`package.json#files` = `src` / `skills` / `plugins` / `scripts` / `docs` / `install.sh` / 三个根散文。⇒ 上表 1–4 **是** npm 包的对外面，5–6 只面对**仓库读者**。
@@ -124,7 +126,7 @@
 
 | 框架词 | 归属 | 许可角色 | 判据一句话 |
 |---|---|---|---|
-| **`task-interface` / `task-interface v1`** | 外部（openclaw-team 的 ACL 代号） | **仅 R2 兼容声明** | 它命名的是「loop 驱动的那一代接口」，是**跨仓绑定声明**；但它**不是**产品的 CLI 面的名字（那个叫 `taskctl`）。 |
+| **`ACL 接口代` / `ACL 接口代 v1`** | 外部（openclaw-team 的 ACL 代号） | **仅 R2 兼容声明** | 它命名的是「loop 驱动的那一代接口」，是**跨仓绑定声明**；但它**不是**产品的 CLI 面的名字（那个叫 `taskctl`）。 |
 | **`openclaw-team`** | 外部（框架项目名） | **仅 R1 指针** | 它是第三方项目的名字，产品与它**互操作**（OpenClaw 上由它承担 supervisor）。带 URL 引用是正常的、必要的。 |
 | **外部协议文档名（及 `§N` 锚）** | 外部（框架的内部协议文档） | **无** | 它管的是框架的五角色 / 派单 / redlines——**产品用户不需要它**，而它在 npm 包里是一枚**悬空指针**。⇒ **F1**。 |
 | **`task-ops`** | 外部（框架的内部 skill + `lib/task.mjs`） | **无** | 框架的收口实现路径。⇒ **F1**（`61f7f3a` 已零落点）。 |
@@ -140,7 +142,7 @@
 
 处置词只有三个：**保留** / **改名** / **加标注**。每条给出：落点 → 处置 → 改法与理由 → 是否触发再生成。
 
-### 4.1 类 ①：`task-interface`（37 文件）
+### 4.1 类 ①：`ACL 接口代`（37 文件）
 
 分 **五个子角色**，因为同一枚词在不同角色下处置相反：
 
@@ -154,17 +156,17 @@
 | 12 个**生成副本**（`plugins/{claude,codex,loop,pi}/skills/meerkat-loop/{SKILL.md,references/operation.md,scripts/board-check.mjs}`） | **保留**（随源；**不得手改**） |
 
 **理由**：这是 J2 的 R2——loop 是**框架侧的产物**（面向 claude/codex/pi 分发，永不给 OpenClaw），它必须声明自己驱动 ACL 的哪一代。`references/operation.md` 的兼容表**已经**把两侧分清了（loop 声明接口代号 + 地板；board 用自有的 `version` / `schema_version`），这正是 Acceptance ③ 要的形状，**无需改**。
-**可选加固（低成本，建议 C2 顺手做）**：在 `SKILL.md` 该代码块下补一句归属——「`task-interface v1` 是 openclaw-team 的任务提供方 ACL 代号；本板是其参考实现」。一行，满足「R2 必须带归属」。
+**可选加固（低成本，建议 C2 顺手做）**：在 `SKILL.md` 该代码块下补一句归属——「`ACL 接口代 v1` 是 openclaw-team 的任务提供方 ACL 代号；本板是其参考实现」。一行，满足「R2 必须带归属」。
 
 #### ①-b 产品**自述**（**加标注**）
 
 | 落点 | 现文 | 改法 |
 |---|---|---|
-| `README.md`（M2 里程碑行） | `taskctl` command surface aligned with `task-interface v1` | 改为先给产品名、后给归属指针：`taskctl` command surface（= openclaw-team 的 `task-interface v1` ACL 的参考实现） |
+| `README.md`（M2 里程碑行） | `taskctl` command surface aligned with `ACL 接口代 v1` | 改为先给产品名、后给归属指针：`taskctl` command surface（= openclaw-team 的 `ACL 接口代 v1` ACL 的参考实现） |
 | `README.zh-CN.md`（M2 行 + 特性段） | 同上两处 | 同上 |
-| `CHANGELOG.md`（`[Unreleased]` 的 loop 段） | declares the board interface generation it requires — `task-interface v1` | 该句主语是 **loop**（框架侧产物）⇒ **保留**；若同段出现「board 的接口叫 `task-interface v1`」的读法则补归属。 |
-| `skills/meerkat-taskpanel/SKILL.md`（Status 行） | The command surface is implemented and aligned with `task-interface v1` | 同上（先 `taskctl`，`task-interface v1` 作归属括注） |
-| `skills/meerkat-taskpanel/references/cli.md`（引言） | It is aligned with **`task-interface v1`** | 同上 |
+| `CHANGELOG.md`（`[Unreleased]` 的 loop 段） | declares the board interface generation it requires — `ACL 接口代 v1` | 该句主语是 **loop**（框架侧产物）⇒ **保留**；若同段出现「board 的接口叫 `ACL 接口代 v1`」的读法则补归属。 |
+| `skills/meerkat-taskpanel/SKILL.md`（Status 行） | The command surface is implemented and aligned with `ACL 接口代 v1` | 同上（先 `taskctl`，`ACL 接口代 v1` 作归属括注） |
+| `skills/meerkat-taskpanel/references/cli.md`（引言） | It is aligned with **`ACL 接口代 v1`** | 同上 |
 
 **理由**：J1——这些句子在描述**产品自己的命令面**，却用了别人家的名字。**不是**「产品不能提 ACL」，而是「产品不能**用 ACL 的名字当自己的名字**」。
 **注意**：`skills/meerkat-taskpanel/**` 是**自撰**（它是作者区），改动后**必须** `node scripts/sync-skills.mjs`（生成副本 8 文件：`plugins/{claude,codex,openclaw,pi}/skills/meerkat-taskpanel/{SKILL.md,references/cli.md}`）。改 `README*/CHANGELOG` **不触发**再生成。
@@ -174,10 +176,10 @@
 
 | 落点:符号 | 现文 | 改法 |
 |---|---|---|
-| `src/shared/README.md`（首段） | …the `task-interface v1` payload schemas… | …the board **wire** payload schemas（`wire.mjs`）… |
-| `src/shared/wire.mjs`（模块注释） | The card and `task-interface v1` both speak snake_case | The card and the board wire both speak snake_case（谓词两端都是**产品自有**的东西） |
-| `src/core/domain/enums.mjs`（首段 F2 裁定句） | The `task-interface v1` words `ready`/`failed` are aliases only | The **ACL's legacy** words `ready`/`failed` are aliases only（保留「它们是外来别名」的事实，去掉「产品的枚举叫 `task-interface v1`」的暗示） |
-| `src/shared/status-alias.mjs`（首行） | `task-interface v1` ↔ core status aliases（F2 ruling） | 同 enums.mjs；若需指向外部规范，用 R3 形式另起一句（见 ①-d） |
+| `src/shared/README.md`（首段） | …the `ACL 接口代 v1` payload schemas… | …the board **wire** payload schemas（`wire.mjs`）… |
+| `src/shared/wire.mjs`（模块注释） | The card and `ACL 接口代 v1` both speak snake_case | The card and the board wire both speak snake_case（谓词两端都是**产品自有**的东西） |
+| `src/core/domain/enums.mjs`（首段 F2 裁定句） | The `ACL 接口代 v1` words `ready`/`failed` are aliases only | The **ACL's legacy** words `ready`/`failed` are aliases only（保留「它们是外来别名」的事实，去掉「产品的枚举叫 `ACL 接口代 v1`」的暗示） |
+| `src/shared/status-alias.mjs`（首行） | `ACL 接口代 v1` ↔ core status aliases（F2 ruling） | 同 enums.mjs；若需指向外部规范，用 R3 形式另起一句（见 ①-d） |
 
 **理由**：J1 + J3——这些 payload schema / 枚举 / 别名**都是产品铸造的**（`wire.mjs` 是服务端与 CLI 共用的一份投影；F2 已裁定七态为 canonical）。用外部代号命名它们，等于把产品的 schema 挂在别人的版本号下。**这是本卡最实质的一类耦合**。
 **触发再生成**：**否**。实测 loop payload（`skills/meerkat-loop/body/**` = 9 文件，含 `manifest.txt`）中，`src/shared/` 只有 `{constants,errors,project-dir,redact,runtime-locator,scheduling}.mjs` 六个模块 —— `wire.mjs` / `status-alias.mjs` / `enums.mjs` **不在**其中。⇒ C2 改这四处**不需** `sync-loop`；仍应跑 `check:skills` 确认（零成本）。
@@ -187,7 +189,7 @@
 
 | 落点 | 现文 | 改法 |
 |---|---|---|
-| `src/core/README.md`（§Creation idempotency） | L1 reading: 外部协议文档 §㉙ + `guides/task-interface.md §14`. | 删去外部协议文档锚（F1）；保留 ACL 指针：`L1 reading: task-interface v1 §14`（或 `guides/task-interface.md §14`），**并**保证同段已用产品语言复述规则（现文已复述，符合 R3）。 |
+| `src/core/README.md`（§Creation idempotency） | L1 reading: 外部协议文档 §㉙ + `openclaw-team 的 ACL 指南 §14`. | 删去外部协议文档锚（F1）；保留 ACL 指针：`L1 reading: ACL 接口代 v1 §14`（或 `openclaw-team 的 ACL 指南 §14`），**并**保证同段已用产品语言复述规则（现文已复述，符合 R3）。 |
 | `src/core/domain/idem.mjs`（模块注释） | 同上 | 同上 |
 | `test/core/domain/idem.test.mjs` | 同上 | 同上（一致性；该文件不随 npm 发布） |
 
@@ -197,7 +199,7 @@
 
 | 落点 | 处置 |
 |---|---|
-| `test/skill/loop.test.mjs`（`declares the board interface it requires` + `boardInterface: "task-interface v1"`） | **保留** |
+| `test/skill/loop.test.mjs`（`declares the board interface it requires` + `boardInterface: "ACL 接口代 v1"`） | **保留** |
 
 **理由**：它断言的是 **①-a**（loop 的自有声明），不是产品的自述。**仅当 ①-a 改动时**才随之改；本裁定**不动** ①-a，故测试**不动**。
 **可执行判据**：C2 完成后 `node --test "test/skill/*.test.mjs"` 必须仍绿——若 ①-b 的改动意外红了它，说明改到了 ①-a 的语料。
@@ -283,15 +285,15 @@
    - 代号 = `schema_version`，值来自 `CONTRACT_SCHEMA_VERSION`（实测 **4**；`package.json#version` = **1.0.0**）。
    ⇒ 裁定「产品对外契约名必须自有」**不需要产品新增任何东西**，只需**纠正自述**。
 
-2. **框架侧已经先行让位（实读）**：`guides/task-interface.md` §2 的 Data Model 表把 Card 字段逐字标为「= meerkat-taskpanel `KNOWN_CARD_KEYS`；未识别键原样保存在 `meta.legacy`」。⇒ ACL 规范**自己就承认产品 schema 是事实源**。本裁定的 J3 只是把这条已存在的方向写成判据。
+2. **框架侧已经先行让位（实读）**：`openclaw-team 的 ACL 指南` §2 的 Data Model 表把 Card 字段逐字标为「= meerkat-taskpanel `KNOWN_CARD_KEYS`；未识别键原样保存在 `meta.legacy`」。⇒ ACL 规范**自己就承认产品 schema 是事实源**。本裁定的 J3 只是把这条已存在的方向写成判据。
 
-3. **F2 裁定是先例**：`src/core/domain/enums.mjs` 首段记「Cardinal rule (F2 ruling): the card's seven states are canonical. The `task-interface v1` words `ready`/`failed` are aliases only」。⇒ **值**层面的「产品 canonical，外部是别名」**早已裁定**；本卡把它延伸到**名**层面。两者是同一条原则的两个层级，**不冲突、不重复**。
+3. **F2 裁定是先例**：`src/core/domain/enums.mjs` 首段记「Cardinal rule (F2 ruling): the card's seven states are canonical. The `ACL 接口代 v1` words `ready`/`failed` are aliases only」。⇒ **值**层面的「产品 canonical，外部是别名」**早已裁定**；本卡把它延伸到**名**层面。两者是同一条原则的两个层级，**不冲突、不重复**。
 
-4. **机器面证据（实测，本裁定的关键支点）**：`git grep -n task-interface` 在 `src/server`、`src/cli`、`web/`、`scripts/verify`、`test/fixtures/contract/api.snapshot.json` **全零命中**；`src/cli/index.mjs` 的 `--version --json` 只产出 `{version, schema_version}`。⇒ **产品在任何机器可读界面上都不发布 `task-interface` 这个名字**。它是**纯人读标签**。
+4. **机器面证据（实测，本裁定的关键支点）**：`git grep -n ACL 接口代` 在 `src/server`、`src/cli`、`web/`、`scripts/verify`、`test/fixtures/contract/api.snapshot.json` **全零命中**；`src/cli/index.mjs` 的 `--version --json` 只产出 `{version, schema_version}`。⇒ **产品在任何机器可读界面上都不发布 `ACL 接口代` 这个名字**。它是**纯人读标签**。
    ⇒ 由此得到 §0-④-2 的推论：**命名耦合不承载任何机器语义**，因此「保留作兼容声明」（承认绑定）与「不得作产品契约名」（纠正归属）可以并存，无需二选一。
 
 5. **「框架侧只保留 ACL 最小必需集 + 指针」的落地形态**：
-   - **最小必需集** = loop 的 `requires: board task-interface v1 — board release >= 1.0.0`（一个外部接口代号 + 一个机器可核的**地板**）；机器半由 `board-check.mjs` 查询 board 自有的 `version` 实现，**不预设**任何 `task-interface` 串。
+   - **最小必需集** = loop 的 `requires: board ACL 接口代 v1 — board release >= 1.0.0`（一个外部接口代号 + 一个机器可核的**地板**）；机器半由 `board-check.mjs` 查询 board 自有的 `version` 实现，**不预设**任何 `ACL 接口代` 串。
    - **指针** = `references/operation.md` §Compatibility 的两行表：loop 声明接口代号，board 用**自己的** `version`/`schema_version` 回答。两侧各说各的，**只在表里配对**。
    ⇒ 这正是 Acceptance ③ 要求的形状；本裁定**不要求**改它，只要求**别再让产品自述借用这个代号**。
 
@@ -322,18 +324,18 @@
 
 - ① 对当时的外部协议文档名做 `git grep`，在 `src/**`、`docs/**`、`README*`、`CHANGELOG.md`、`skills/**`、`plugins/**` **恒为 0**（原始命令见 `git show 61f7f3a:<path>`）；
 - ② `git grep -n 'task-ops'` 全仓**恒为 0**；
-- ③ `task-interface` 的剩余落点**只**在 loop 侧兼容声明三文件及其生成副本 + `test/skill/loop.test.mjs` + （若 C2 选择保留括注）§4.1-①-b 的五个自述文件；**`src/shared/**` 与 `src/core/domain/enums.mjs` 必须清零**；
+- ③ `ACL 接口代` 的剩余落点**只**在 loop 侧兼容声明三文件及其生成副本 + `test/skill/loop.test.mjs` + （若 C2 选择保留括注）§4.1-①-b 的五个自述文件；**`src/shared/**` 与 `src/core/domain/enums.mjs` 必须清零**；
 - ④ `node scripts/verify/contract.mjs` **零漂移**，`schema_version` 仍为 4（本裁定是 doc-only：**注释与散文的改动不得移动契约**）；
 - ⑤ `npm run check:skills` 绿（无未同步的生成副本）。
 
-> ① 与 ③ 在退役时**已不成立**（见文首）。它们的错误在于把「**跨仓兼容声明**」当成「泄漏」来清零 —— 当时的 SLA 章节锚确实是产品已发布的接口数据（`threshold_ref` 字段），`task-interface` 是 loop 侧对框架接口代的绑定声明。这两样当时不是命名耦合，是**跨仓契约**。**2026-10-22 订正**：SLA 契约内化（`a4cc5e4`）后，`threshold_ref` 已改指 `docs/sla.md` §2，测试现在断言外部名缺席；因此「已发布接口数据」的例外不再成立，外部协议文档名的树内引用已清除。④⑤ 仍然成立，但它们守的是**通用不变量**（契约快照不漂移、生成副本已同步），与命名边界无关。
+> ① 与 ③ 在退役时**已不成立**（见文首）。它们的错误在于把「**跨仓兼容声明**」当成「泄漏」来清零 —— 当时的 SLA 章节锚确实是产品已发布的接口数据（`threshold_ref` 字段），`ACL 接口代` 是 loop 侧对框架接口代的绑定声明。这两样当时不是命名耦合，是**跨仓契约**。**2026-10-22 订正**：SLA 契约内化（`a4cc5e4`）后，`threshold_ref` 已改指 `docs/sla.md` §2，测试现在断言外部名缺席；因此「已发布接口数据」的例外不再成立，外部协议文档名的树内引用已清除。④⑤ 仍然成立，但它们守的是**通用不变量**（契约快照不漂移、生成副本已同步），与命名边界无关。
 
 ### 7.1 现状表（取代判据 ①②③ —— 「现在是什么样」）
 
 | 框架词 | 今天的角色 | 今天的面（示例，非穷举） |
 |---|---|---|
 | 外部协议文档名 / `§N` 锚 | **已清除（2026-10-22）** | 曾是 R2 跨仓兼容声明 + 已发布的接口数据；SLA 内化后 `threshold_ref` 指向 `docs/sla.md` §2（`src/foundation/sla-patrol.mjs`），测试现在断言外部名缺席。树内引用已改指产品自有权威；仅 §9 原始输出保留该词作历史证据 |
-| `task-interface` / `task-interface v1` | **R2 兼容声明**（loop 侧）+ **R3 溯源**（注释） | loop 侧 `skills/meerkat-loop/**` 与 `test/skill/loop.test.mjs`；产品侧的**自述与注释**（`src/shared/**`、`src/core/domain/enums.mjs` 等） |
+| `ACL 接口代` / `ACL 接口代 v1` | **R2 兼容声明**（loop 侧）+ **R3 溯源**（注释） | loop 侧 `skills/meerkat-loop/**` 与 `test/skill/loop.test.mjs`；产品侧的**自述与注释**（`src/shared/**`、`src/core/domain/enums.mjs` 等） |
 | `openclaw-team` | **R1 指针**（带 URL） | 跨仓事实：OpenClaw 宿主由该框架承担 supervisor，本产品因此**不给它装 loop**（`README*.md`、`docs/{install,scheduling}.md`、`install.sh`） |
 | 框架**私有 store 路径** | **F1 —— 禁** | 无落点（2026-10-17 由本轮指路牌清理达成，见 §7.2 第一条） |
 | 框架**内部机制词** | **F1 —— 禁** | 仅本文件，为「说明禁令」而出现（门禁对**它一个**文件按规则豁免；`design/README.md` 的登记行已改写为不枚举这些词，因此不需要豁免） |
@@ -351,10 +353,10 @@
 
 **登记**：`design/README.md` 的 `contracts/` 段现写「The first one is `contracts/project-prefix-binding.md`（…）」——本文件是**第二份** topic-scoped 契约，该句随本卡补一行（`C-PREFIX-1` 的先例：契约文档在 `design/README.md` 的目录树/说明段登记）。**除该行外，本卡不改 `design/**` 任何现文**（未动 `DESIGN.md` / `BLOCKS.md` / `fidelity-*.md` / `prototype/**`）。
 
-**双签（Acceptance ③）—— 从未取得，现已不再适用（2026-10-17）**：按 `task-interface.md` §7 的接口变更要求与卡面 Acceptance ③，本裁定须 **Elon / operator 双签**方可作为 C2 的开工依据；执行方**不能自签**。**这两个 ☐ 到退役为止始终是空的**，C2 因此从未开工 —— 这是本文件「写得很细却一行没执行」的机制性原因，也是它退役的直接背景。下方两条保留为当时的待办记录：
+**双签（Acceptance ③）—— 从未取得，现已不再适用（2026-10-17）**：按 ACL 指南 §7 的接口变更要求与卡面 Acceptance ③，本裁定须 **Elon / operator 双签**方可作为 C2 的开工依据；执行方**不能自签**。**这两个 ☐ 到退役为止始终是空的**，C2 因此从未开工 —— 这是本文件「写得很细却一行没执行」的机制性原因，也是它退役的直接背景。下方两条保留为当时的待办记录：
 
 - ☐ **Elon** —— 裁定与事实源口径一致（§5 五条）；双签建议落 `kind:confirm` comment。
-- ☐ **operator** —— 范围 (B)/② 的裁定成立；`task-interface v1` 保留为**纯兼容声明**、不作产品契约名。
+- ☐ **operator** —— 范围 (B)/② 的裁定成立；`ACL 接口代 v1` 保留为**纯兼容声明**、不作产品契约名。
 
 **留给双签方的一个待答问题**：§4.2-②-c 的示例数据 `openclaw-team`（项目 id 示例）与框架名同形。本裁定判**保留**（它是数据不是引用，且改动会动测试断言）。**2026-10-17 随退役一并按「保留」关闭** —— 该示例至今仍是刻意的示例数据（`test/core/commands/project-prefix.test.mjs` 依赖它），§7.2 的两条禁令都不触及它。
 
@@ -369,7 +371,7 @@ $ git rev-parse --short HEAD ; git rev-parse --short refs/heads/main
 61f7f3a
 61f7f3a
 
-$ git grep -l -- task-interface | wc -l
+$ git grep -l -- ACL 接口代 | wc -l
 37
 $ git grep -l -- openclaw-team | wc -l
 40
@@ -386,7 +388,7 @@ src/core/storage/md/project-registry.mjs
 test/core/domain/idem.test.mjs
 test/migrate/import-hardening.test.mjs
 
-$ git grep -rn 'task-interface' -- src/server src/cli web scripts/verify test/fixtures/contract
+$ git grep -rn 'ACL 接口代' -- src/server src/cli web scripts/verify test/fixtures/contract
 （零命中）
 
 $ grep -n 'CONTRACT_SCHEMA_VERSION = ' src/shared/constants.mjs

@@ -61,7 +61,7 @@ export const groups = Object.freeze([
   },
   {
     name: "loop",
-    summary: "The external loop: passes, daemons, status and the board gate.",
+    summary: "The external loop: passes, daemons and status.",
     commands: loopCommands,
   },
 ]);

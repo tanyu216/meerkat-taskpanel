@@ -94,8 +94,8 @@ describe("version.mjs — the shipped carriers", () => {
     assert.equal(VERSION_SOURCES.at(-1).kind, "module");
 
     // The loop is not a version carrier: its only two carriers were the `plugins/loop`
-    // manifests, and nothing consumes a loop version (board-check enforces the *board's*
-    // interface floor). A group for it could not be checked against anything.
+    // manifests, and nothing consumes a loop version — it ships in the board's own package
+    // and moves with it. A group for it could not be checked against anything.
     assert.deepEqual(
       VERSION_GROUPS.map((group) => group.name),
       ["board"],

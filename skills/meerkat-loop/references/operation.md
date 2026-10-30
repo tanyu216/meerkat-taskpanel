@@ -1,7 +1,7 @@
 # Operating the loop
 
-Running the loop by hand, the flags that matter, the review workflow, and the
-board/loop compatibility contract.
+Running the loop by hand, the flags that matter, the review workflow, and what the
+loop needs from its runtime tree.
 
 ## Run by hand
 
@@ -37,7 +37,7 @@ and the pool keeps only the project sessions. `loop status --take-over` starts e
 records its pid, and `--stop` stops only that process.
 
 `loop doctor` is the daily read-only inspection: one report over the supervisor verdict, the
-scan set, board compatibility, the patrol marker, the log tail, the queue and ledger, and the
+scan set, the patrol marker, the log tail, the queue and ledger, and the
 stuck cards. It is not a pass and writes nothing; when something needs a human, the report says
 so in `attention` and the exit code still reads 0.
 
@@ -116,7 +116,7 @@ control turn repeats on the clock — question tick 60 s, control tick 600 s, TT
    - Only a human comment resumes `awaiting`, whatever its kind. A tick that lands mid-question
      is a no-op: re-read that card's trail and wait.
 3. **Health and blocks.** From the doctor report: verdict, `attention_reasons`, `stuck_cards`
-   (stale heartbeats), `waiting.in_review`, `queue`, `compat`, `board.truncated`. Then the
+   (stale heartbeats), `waiting.in_review`, `queue`, `board.truncated`. Then the
    `blocked` cards through the `meerkat` board skill — `doctor` counts them but never lists
    them — with `blocked_reason` (`clarify · decision · dependency · out_of_bounds · defect ·
    external · resource · unknown`), the age and the assignee. Report only; the loop never
@@ -303,15 +303,7 @@ MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON="<who authorized it and why>"
 The reason is required. With it, every session runs with the user's full OS permissions; the
 project directory is a working directory, **not** an isolation boundary.
 
-## Compatibility
-
-The loop declares `task-interface v1` and board release ≥ 0.1.0 in `SKILL.md`, enforced by
-`taskctl loop compat`; the board declares its release and contract `schema_version` through
-`taskctl --version --json`. The gate is deliberately coarse: it answers "is this a board of the
-generation I was written against?", not "does every command still behave identically". A change
-to the `task-interface` surface means a new generation on both sides.
-
-### What the loop needs from its runtime tree
+## What the loop needs from its runtime tree
 
 The loop **is** part of the toolkit now (`taskctl loop …`), so it needs no separate body and no
 checkout of its own: the installed tree (or the checkout, for a development run) is enough, and

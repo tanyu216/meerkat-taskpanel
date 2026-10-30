@@ -4,7 +4,7 @@
  * Two promises are asserted here and nowhere else:
  *
  *   * the wire is **snake_case** — no camelCase key may leak, because that is
- *     the vocabulary the card and `task-interface v1` bind to;
+ *     the vocabulary the card and the board wire share;
  *   * an actor always carries `display_name` **and** `id`, so a human can
  *     recognise it and a script can address it.
  *

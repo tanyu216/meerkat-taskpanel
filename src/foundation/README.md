@@ -4,7 +4,7 @@ DTOs, type shapes, constants and small pure helpers used by more than one surfac
 (`src/core`, `src/cli`, `src/server` and the `web/` frontend).
 
 In M1+ this module owns the vocabulary that every surface agrees on: task/agent shapes,
-status and priority enums, the `task-interface v1` payload schemas, ID formats, and the
+status and priority enums, the board wire payload schemas, ID formats, and the
 constants exported from `constants.mjs`. Nothing here may import from `src/core` — the
 dependency direction is `core/cli/server → foundation`, never the reverse.
 

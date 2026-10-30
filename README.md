@@ -245,7 +245,7 @@ install.sh --supervisor=disable    # unload every loop kind
 
 One loop supervisor per machine is the rule: `enable` defaults to the first loop kind in `--target` (claude for `--target all`); running a second kind needs the explicit `--supervisor-actor-kinds claude,codex` and costs another poller, log and per-loop alarm ledger. `status` and `disable` always cover every loop kind. The installer also asks once whether the supervisor may claim unassigned cards (default yes) and remembers the answer in `<program root>/.env.<actor-kind>`.
 
-The loop declares the board interface it needs: `task-interface v1`, board release >= 0.1.0. It carries no version of its own. Its `taskctl loop compat` checks the board against its own `--version --json` and exits 3 when it cannot get a verdict.
+The loop carries no version of its own and declares no board interface: it ships in the same package as the board and moves with it, so it always drives the `taskctl` installed beside it.
 
 The cost model is simple. Ping is $0. Continue is one bounded LLM turn per cadence. Inside it, poll is the deterministic cost gate: a worker or reviewer turn starts only after a successful claim. On cron there is no pool, so there is no worker dispatch.
 
@@ -314,7 +314,7 @@ Ordered by priority; IM integration is the next planned item.
 | Area | Contents | Status |
 |---|---|---|
 | **Engine** | `src/core/` — domain model, SQLite storage + migrations, state machine, invariants pushed down into database triggers, `openBoard()` | *landed* |
-| **CLI & local service** | `src/cli/` — the `taskctl` command surface aligned with `task-interface v1`; the loopback `taskd` it auto-starts | *landed* |
+| **CLI & local service** | `src/cli/` — the `taskctl` command surface; the loopback `taskd` it auto-starts | *landed* |
 | **Installers** | `install.sh` + `scripts/install/<actor-kind>.sh` — the claude / openclaw / codex / pi agent-kind targets plus the `server` runtime, idempotent and merge-style | *landed* |
 | **Markdown export** | `src/core/storage/md/` — `taskctl export md` writes one canonical card per task | *landed* |
 | **Board API & frontend** | `src/server/` — the full board HTTP API and its SSE stream; `web/` — the Vue 3 board built to `web/dist` | *landed* |

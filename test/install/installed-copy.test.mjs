@@ -261,8 +261,8 @@ for (const { kind, dir } of KINDS) {
     });
 
     it("runs the CLI of a checkout named by MEERKAT_TASKPANEL_REPO", () => {
-      // The key install.sh records in the agent config, and the one the loop's
-      // board-check.mjs resolves through — same vocabulary, deliberately.
+      // The key install.sh records in the agent config, and the one the loop resolves
+      // its runtime tree through — same vocabulary, deliberately.
       const run = runWrapper(dir, ["--version"], { PATH: "", MEERKAT_TASKPANEL_REPO: ROOT });
       assert.equal(run.status, 0, `stderr: ${run.stderr}`);
       assert.equal(run.stdout.trim(), VERSION);

@@ -21,7 +21,6 @@ import * as passesEntry from "./passes.mjs";
 import * as statusEntry from "./status.mjs";
 import * as subscribeEntry from "./subscribe.mjs";
 import * as supervisorEntry from "./supervisor.mjs";
-import { runCompat } from "./compat.mjs";
 
 const VERBS = new Set([
   "patrol",
@@ -34,7 +33,6 @@ const VERBS = new Set([
   "run",
   "subscribe",
   "session",
-  "compat",
 ]);
 
 /** The raw tokens after removing the `loop <verb>` pair. */
@@ -105,7 +103,7 @@ export async function runLoopVerb(ctx, verb) {
     }
   }
 
-  // Reads (`console`, `doctor`, `status`, `compat`) work with no actor; every mutating
+  // Reads (`console`, `doctor`, `status`) work with no actor; every mutating
   // verb must say who is acting, like every board command.
   const MUTATING = new Set(["patrol", "workflow", "poll", "tick", "run", "subscribe", "session"]);
   if (MUTATING.has(verb) && !(ctx.flags?.actorKind ?? ctx.env?.TASKCTL_ACTOR_KIND)) {
@@ -161,9 +159,6 @@ export async function runLoopVerb(ctx, verb) {
 
     case "session":
       return { streamed: true, exit: await supervisorEntry.main(["--session", ...rest], env, io) };
-
-    case "compat":
-      return runCompat(ctx, { cli: ctx.flags?.cli, repo: ctx.flags?.repo });
 
     default:
       io.err(`loop: unknown verb ${verb}\n`);

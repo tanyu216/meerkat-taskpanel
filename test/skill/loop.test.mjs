@@ -9,8 +9,8 @@
  *
  *   1. the skill carries a charter, not a second implementation — no scripts, templates
  *      or manifest;
- *   2. the skill declares the board interface it needs, and `taskctl loop compat`
- *      enforces it against a board's own `--version --json` answer;
+ *   2. the skill declares no board-interface generation: the loop ships with the board it
+ *      drives, so there is no foreign surface to gate on (ADR 0005);
  *   3. the board skill no longer points into the repository root — a distributed skill's
  *      links have to resolve where the skill is installed, not where it was authored.
  *
@@ -158,10 +158,13 @@ describe("loop skill: SKILL.md", () => {
     assert.match(section, /routing|assignee still selects/i, "the guide routes; the assignee executes");
   });
 
-  it("declares the board interface it requires", () => {
-    assert.match(text, /task-interface v1/, "the required board interface generation must be stated");
-    assert.match(text, /board release >= 0\.1\.0/, "…and the release floor a machine can check");
-    assert.ok(text.includes("taskctl loop compat"), "the gate must be named at the point of declaration");
+  it("declares no board interface generation and no gate command", () => {
+    const operation = readFileSync(join(LOOP_SKILL, "references", "operation.md"), "utf8");
+    for (const [name, body] of [["SKILL.md", text], ["references/operation.md", operation]]) {
+      assert.doesNotMatch(body, /^##+ Required board interface$/m, `${name}: the retired section must stay gone`);
+      assert.doesNotMatch(body, /loop compat/, `${name}: the retired gate must stay unnamed`);
+      assert.doesNotMatch(body, /board release >=/, `${name}: there is no release floor to declare`);
+    }
   });
 
   it("keeps installation out of the skill, and ships no committed loop bundle", () => {

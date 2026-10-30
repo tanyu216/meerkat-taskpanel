@@ -18,8 +18,8 @@
  *
  *   1. `$MEERKAT_TASKPANEL_ROOT`  — an explicit root, the user's own override
  *   2. `$MEERKAT_TASKPANEL_REPO`  — the key recorded in the per-kind config, and
- *                                   the one `taskctl loop compat` resolves through
- *                                   (same vocabulary, deliberately)
+ *                                   the one the loop resolves its runtime tree
+ *                                   through (same vocabulary, deliberately)
  *   3. this file's own checkout   — `here/../../..`, the rung that works in a checkout
  *   4. **the agent's own shim**   — `<agent-dir>/bin/taskctl`, the `taskctl` wrapper
  *                                   beside this skill

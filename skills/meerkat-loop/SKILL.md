@@ -151,7 +151,7 @@ keep the clock — the question tick (60 s) and the control tick (600 s) continu
    UI are one thing, so the board comment stays authoritative and the in-session question is
    only the front-end.
 3. **Loop health and blocks.** Report `doctor`'s verdict, `attention_reasons`, `stuck_cards`
-   (stale heartbeats), `waiting.in_review`, `queue`, `compat`, and a truncated board read. Then
+   (stale heartbeats), `waiting.in_review`, `queue`, and a truncated board read. Then
    the cards in `blocked` status — read through the `meerkat` board skill, because `doctor`
    counts them but lists none: ref, title, `blocked_reason`, how long, assignee, and what the
    human could do about each. Never unblock one on your own. Close with what step 1's verdict
@@ -281,23 +281,9 @@ never writes a decision kind for its own answer and never signs `--as-human` for
 round asks the whole frontier at once — one question string per card — so the next pass asks
 only what the answers unblocked.
 
-## Required board interface
-
-```text
-requires: board task-interface v1   — board release >= 0.1.0
-```
+## What the loop needs from the board
 
 The loop drives the board only through `taskctl` — the capability subset is the `meerkat`
 board skill's `references/capabilities.md` (including `events follow` for the live stream; the loop never
-calls the HTTP API). `task-interface v1` and the board-side workflow plan both ship in the
-0.1.0 baseline. Gate check before pointing a loop at a board:
-
-```bash
-taskctl loop compat                 # taskctl on PATH
-taskctl loop compat --repo <path>   # the runtime tree / checkout to inspect
-taskctl loop compat --json          # machine-readable verdict
-```
-
-Exit 3 means no verdict: the board could not be asked, or its declared version is below the
-floor. The gate does not prove that every command still behaves the same way; the compatibility
-table in `references/operation.md` records that pairing.
+calls the HTTP API). There is no board-interface generation to declare or check: the loop
+ships in the same package as the board and moves with it.

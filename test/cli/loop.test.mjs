@@ -1,27 +1,26 @@
 /**
  * `taskctl loop …` — the command surface and its two board-free verbs.
  *
- * The migration's honesty hinges on three things this file pins:
+ * The migration's honesty hinges on two things this file pins:
  *
- *   1. the eleven verbs are registered as *local* commands (no board connect
+ *   1. the ten verbs are registered as *local* commands (no board connect
  *      happens before the handler runs — `loop status` must answer with the
  *      board down);
  *   2. the two globals the loop cannot honour (`--as-human`, `--session-id`,
  *      `--if-version`) are refused, and a mutating verb without
- *      `--actor-kind` is a usage error, not a board call;
- *   3. `loop compat` still makes the same three-way decision the retired
- *      `board-check.mjs` made (0 compatible, 2 usage, 3 no verdict).
+ *      `--actor-kind` is a usage error, not a board call.
+ *
+ * `loop compat` is gone: the loop ships with the board, so there is no board
+ * generation to gate on (ADR 0005). The last describe pins that it stays gone.
  */
 
 import assert from "node:assert/strict";
-import { chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import { COMMANDS } from "../../src/cli/commands/loop.mjs";
-import { VERSION } from "../../src/foundation/constants.mjs";
 import {
-  ROOT,
   cleanupTempDirs,
   makeTempDir,
   parseJson,
@@ -41,11 +40,10 @@ const VERBS = [
   "run",
   "subscribe",
   "session",
-  "compat",
 ];
 
 describe("cli/commands/loop — the surface", () => {
-  it("registers the eleven verbs, each local", () => {
+  it("registers the ten verbs, each local", () => {
     assert.deepEqual(COMMANDS.map((command) => command.name), VERBS);
     for (const command of COMMANDS) {
       assert.equal(command.local, true, `${command.name} must not connect first`);
@@ -178,7 +176,7 @@ describe("cli/commands/loop — doctor", () => {
     assert.equal(data.read_only, true);
     assert.equal(data.data, undefined, "the loop's verbs print their own JSON, not the envelope");
     assert.equal(typeof data.supervisor.verdict, "string");
-    assert.equal(data.compat.ok, true);
+    assert.equal(data.compat, undefined, "the report carries no board-interface verdict");
     assert.equal(data.queue.depth, 0, "a fresh state directory is empty, not an error");
     assert.equal(data.log.missing, true, "a log that was never written is not an error");
     assert.deepEqual(data.stuck_cards.in_progress.map((card) => card.ref), ["T-1"]);
@@ -262,46 +260,20 @@ describe("cli/commands/loop — the moved entries", () => {
   });
 });
 
-describe("cli/commands/loop — compat", () => {
-  it("accepts this tree as a board", () => {
-    const result = runCli(["loop", "compat", "--repo", ROOT, "--json"], {
-      actorKind: "claude",
-      noUrl: true,
-    });
-    assert.equal(result.status, 0, result.stderr);
-    const data = parseJson(result);
-    assert.equal(data.ok, true);
-    assert.equal(data.version, VERSION);
-    assert.equal(data.boardInterface, "task-interface v1");
+describe("cli/commands/loop — the retired board-interface gate", () => {
+  it("no longer answers `loop compat`", () => {
+    const result = runCli(["loop", "compat"], { noIdentity: true });
+    assert.equal(result.status, 2, "an unknown verb is usage, not a verdict");
+    assert.match(result.stderr, /unknown command/);
   });
 
-  it("treats a named-but-missing --cli as usage, not a verdict", () => {
-    const result = runCli(["loop", "compat", "--cli", join(makeTempDir(), "nope")], {
-      actorKind: "claude",
-      noUrl: true,
-    });
-    assert.equal(result.status, 2);
-    assert.match(result.stderr, /--cli not found/);
-  });
+  it("no longer advertises the verb, or a `--quiet` it was the only user of", () => {
+    const group = runCli(["loop", "--help"], { noIdentity: true });
+    assert.equal(group.status, 0);
+    assert.doesNotMatch(group.stdout, /\bcompat\b/);
 
-  it("exits 3 for a board below the floor", () => {
-    const dir = makeTempDir("meerkat-taskpanel-old-board-");
-    const board = join(dir, "board.js");
-    writeFileSync(
-      board,
-      "#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({ ok: true, data: { version: \"0.0.9\", schema_version: 1 } }));\n",
-    );
-    chmodSync(board, 0o755);
-
-    const old = runCli(["loop", "compat", "--cli", board, "--json"], { actorKind: "claude", noUrl: true });
-    assert.equal(old.status, 3, old.stderr);
-    const data = parseJson(old);
-    assert.equal(data.ok, false);
-    assert.equal(data.code, "BOARD_TOO_OLD");
-
-    // `--quiet` changes only the success line, never the verdict.
-    const quiet = runCli(["loop", "compat", "--repo", ROOT, "--quiet"], { actorKind: "claude", noUrl: true });
-    assert.equal(quiet.status, 0);
-    assert.equal(quiet.stdout, "");
+    const quiet = runCli(["loop", "doctor", "--quiet"], { noIdentity: true });
+    assert.equal(quiet.status, 2);
+    assert.match(quiet.stderr, /--quiet/);
   });
 });

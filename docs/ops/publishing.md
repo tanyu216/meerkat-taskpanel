@@ -33,11 +33,10 @@ itself in the canonical `package.json` itself (its `pi` field) — a row for any
 restate one above.
 
 There is **no loop version**. `meerkat-loop` is distributed by `install.sh` from
-`skills/meerkat-loop/` rather than as a plugin, and it declares the *board interface
-generation* it requires (`task-interface v1`, enforced by `taskctl loop compat`) instead
-of a version of its own. Its two former carriers were the `plugins/loop` manifests, which
-this repository no longer ships — so ruling O4 (independent versions) is retired: the loop
-moves with the board.
+`skills/meerkat-loop/` rather than as a plugin, and it declares no version of its own. Its
+two former carriers were the `plugins/loop` manifests, which this repository no longer
+ships — so ruling O4 (independent versions) is retired: the loop moves with the board, in
+one package at one `VERSION`, and drives the `taskctl` installed beside it.
 
 **Bump them with one command.** Editing these files by hand is exactly how drift starts;
 `scripts/release/bump.mjs` moves the whole group at once:

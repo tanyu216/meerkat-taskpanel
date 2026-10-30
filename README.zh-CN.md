@@ -245,7 +245,7 @@ install.sh --supervisor=disable    # 卸载每个 loop kind
 
 一台机器只跑一套 loop supervisor：`enable` 默认只作用于 `--target` 里的第一个 loop kind（`--target all` 即 claude）；要再跑一个 kind 必须显式 `--supervisor-actor-kinds claude,codex`，代价是多一套轮询、日志和按 loop 去重的告警账本。`status` 与 `disable` 始终覆盖所有 loop kind。安装时还会问一次是否允许 supervisor 认领未分配的卡（默认允许），并把答案记在 `<program root>/.env.<actor-kind>`。
 
-loop 会声明它需要的看板接口：`task-interface v1`、board 版本 >= 0.1.0。loop 自身不带版本号。它的 `taskctl loop compat` 会对着看板自己的 `--version --json` 检查，拿不到结论时退出码为 3。
+loop 自身不带版本号，也不声明看板接口：它与看板同一个包发布、同步演进，因此总是驱动安装时与它同在一棵树里的 `taskctl`。
 
 成本模型很简单。ping 是 $0。continue 每个周期一个有界模型回合。回合里的 poll 是确定性的成本闸门：只有认领成功，才会起 worker 或 reviewer 回合。cron 上没有会话池，也就没有 worker 派发。
 
@@ -314,7 +314,7 @@ npm run check
 | 能力域 | 内容 | 状态 |
 |---|---|---|
 | **引擎** | `src/core/` —— 领域模型、SQLite 存储与迁移、状态机、下沉到数据库触发器的各项不变量、`openBoard()` | *已落地* |
-| **CLI 与本地服务** | `src/cli/` —— 对齐 `task-interface v1` 的 `taskctl` 命令面，以及 CLI 自动启动的回环 `taskd` | *已落地* |
+| **CLI 与本地服务** | `src/cli/` —— `taskctl` 命令面，以及 CLI 自动启动的回环 `taskd` | *已落地* |
 | **安装器** | `install.sh` + `scripts/install/<actor-kind>.sh` —— claude / openclaw / codex / pi 四个 agent kind 目标，外加 `server` 运行时；幂等且合并式写入 | *已落地* |
 | **md 导出** | `src/core/storage/md/` —— `taskctl export md` 为每张卡写一份规范 markdown | *已落地* |
 | **看板 API 与前端** | `src/server/` —— 完整的看板 HTTP API 及其 SSE 流；`web/` —— 构建到 `web/dist` 的 Vue 3 看板 | *已落地* |

@@ -2,7 +2,7 @@
  * Idempotency keys for task creation — the *mechanical* backstop.
  *
  * The rule is stated in full in `src/core/README.md` §Creation idempotency
- * (provenance: `guides/task-interface.md` §14). The key is
+ * (provenance: openclaw-team's ACL guide §14). The key is
  * `<kind> | <assignee> | <source> | <target>` (each field `String(x).trim()`,
  * joined with a single space-padded pipe, exactly as the md base derives it so
  * the two bases agree on the same card). `source` is `review_of`, else `parent`,

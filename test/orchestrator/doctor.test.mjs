@@ -81,19 +81,11 @@ const noUnits = () => ({ status: 1, stdout: "", stderr: "", error: null });
 /** A successful child-process result, in the shape every run seam uses. */
 const ok = (stdout = "") => ({ status: 0, stdout, stderr: "" });
 
-const compatibleBoard = () => ({
-  status: 0,
-  stdout: JSON.stringify({ ok: true, data: { version: "0.1.0", schema_version: 4 } }),
-  stderr: "",
-  error: null,
-});
-
 function deps(overrides = {}) {
   return {
     run: noUnits,
     isAlive: () => false,
     now: () => NOW,
-    boardRun: compatibleBoard,
     ...overrides,
   };
 }
@@ -163,12 +155,7 @@ describe("loop doctor — the report", () => {
     assert.equal(report.supervisor.verdict, "absent");
     assert.deepEqual(report.agents, ["alice", "bob"]);
 
-    assert.deepEqual(report.compat, {
-      ok: true,
-      version: "0.1.0",
-      schemaVersion: 4,
-      boardInterface: "task-interface v1",
-    });
+    assert.equal(report.compat, undefined, "the report carries no board-interface verdict");
 
     assert.equal(report.patrol.age_ms, 30 * MIN);
     assert.equal(report.patrol.cadence_min, 15);
@@ -414,24 +401,25 @@ describe("loop doctor — the report", () => {
     assert.equal(report.attention, true);
   });
 
-  it("reports an incompatible board as a verdict, not as a broken report", () => {
+  it("never asks the board what version it is", () => {
     const dir = tempDir();
-    const { script } = sentinel(dir);
+    const { script, record } = sentinel(dir);
     seedState(dir);
 
-    const report = doctorReport(
-      optsFor(dir, script),
-      { HOME: dir },
-      deps({
-        boardRun: () => ({ status: 0, stdout: "not json", stderr: "", error: null }),
-      }),
-    );
+    process.env.TP_CALLS = record;
+    try {
+      doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+    } finally {
+      delete process.env.TP_CALLS;
+    }
 
-    assert.equal(report.compat.ok, false);
-    assert.equal(report.compat.code, "BOARD_UNREADABLE");
-    assert.equal(report.ok, true, "the report itself is complete");
-    assert.equal(report.attention, true);
-    assert.ok(report.attention_reasons.some((reason) => reason.startsWith("compat:")));
+    const calls = readFileSync(record, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    assert.ok(calls.length > 0, "the doctor still reads the board");
+    assert.deepEqual(
+      calls.filter((args) => args.includes("--version")),
+      [],
+      "the retired board-interface gate must not leave a version probe behind",
+    );
   });
 });
 

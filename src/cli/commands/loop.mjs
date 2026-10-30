@@ -2,8 +2,8 @@
  * `taskctl loop …` — the external loop, now part of the toolkit.
  *
  * The commands are `local: true`: the loop resolves its own board/token through
- * the moved entries, and `loop status`/`loop compat` must work with the board
- * down. The raw command line is forwarded to the moved entries (see
+ * the moved entries, and `loop status` must work with the board down. The raw
+ * command line is forwarded to the moved entries (see
  * `src/orchestrator/dispatch.mjs`), so the flag declarations here are the one
  * source the CLI validates and the help prints.
  */
@@ -114,7 +114,4 @@ export const COMMANDS = [
   ]),
   verb("subscribe", "The event subscriber daemon (it dispatches continues)."),
   verb("session", "The resident session pool daemon."),
-  verb("compat", "The board-interface gate.", [
-    bool("quiet", "quiet", "Print nothing on success."),
-  ]),
 ];

@@ -915,7 +915,7 @@ function acceptanceDetection(card, context) {
  * **The attribution set is the author's, not the kind's** (§6.3-D, "F2") — see
  * `isLeaderTrailEntry`. The measurable leader events are a `{confirm, decision,
  * change}` entry *authored by the leader*, a card **created** by the leader, and
- * a transition to `done` (leader-only per `task-interface` §4). A worker's
+ * a transition to `done` (leader-only per the ACL §4). A worker's
  * `change` does not reset the stall clock; the leader's does. That single set is
  * what both mechanisms must use, so neither may add or drop a member.
  *
@@ -1235,7 +1235,7 @@ function boardContext(cards, trails, options = {}) {
     // Creating a card is the leader's act (§6.3: the sole dispatcher) — and it is
     // attributed like every other leader event: by who did it.
     if (createdByLeader(card)) note(instant(card?.created_at), "created_at", "frontmatter");
-    // `done` is a leader-only transition (task-interface §4), so no author test
+    // `done` is a leader-only transition (ACL §4), so no author test
     // can narrow it further: the transition itself is the attribution. The one
     // exception is the loop's own automated acceptance: a `done` the workflow
     // pass wrote carries `meta.accepted_by = "loop-review"` (after a verdict) or

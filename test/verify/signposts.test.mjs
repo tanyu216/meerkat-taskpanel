@@ -133,24 +133,17 @@ describe("verify/signposts — the mechanism-word rule", () => {
 });
 
 describe("verify/signposts — what the gate deliberately does not ban", () => {
-  // These pin the judgement calls the gate makes. The external project name and the
-  // interface codename are sanctioned cross-repository references; the external protocol
-  // document name is no longer used by the tree (2026-10-22), but the gate still does not
-  // ban it — the ban is editorial, not mechanical. A later change that adds a rule would
-  // red these assertions first.
+  // These pin the judgement calls the gate makes. The external project name is a sanctioned
+  // cross-repository pointer; the external protocol document name is no longer used by the
+  // tree (2026-10-22), but the gate still does not ban it — the ban is editorial, not
+  // mechanical. A later change that adds a rule would red these assertions first.
   it("does not flag the external document name or its anchors — the ban is editorial, not mechanical", () => {
     assert.deepEqual(signpostsIn("the PROTOCOL §⑮ timeout table"), []);
     assert.deepEqual(signpostsIn('assert.match(row.ref, /^PROTOCOL §⑮/)'), []);
   });
 
-  it("keeps the framework's project name and interface codename", () => {
+  it("keeps the framework's project name", () => {
     assert.deepEqual(signpostsIn("the openclaw-team framework ships its own supervisor"), []);
-    assert.deepEqual(signpostsIn("boardInterface: `task-interface v1`"), []);
-    assert.deepEqual(signpostsIn("see guides/task-interface.md §14 for the reading"), []);
-  });
-
-  it("keeps the loop's compatibility declaration", () => {
-    assert.deepEqual(signpostsIn("required board interface generation: task-interface v1"), []);
   });
 });
 

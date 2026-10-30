@@ -21,11 +21,11 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 - **The event-stream commands are the exception**: `events tail` and
   `events follow` write newline-delimited JSON, not the envelope (see §8).
 
-## 1. Interface floor — `--version`
+## 1. The version probe — `--version`
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `taskctl --version --json` | `data.version`, `data.schema_version` | `taskctl loop compat`, `taskctl loop doctor` |
+| `taskctl --version --json` | `data.version`, `data.schema_version` | install and verification scripts; a plain `--version` prints the release alone |
 
 ## 2. Project rows — `project list`
 
