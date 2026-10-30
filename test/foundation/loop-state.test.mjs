@@ -25,7 +25,9 @@ describe("loop-state — the loop's state vocabulary", () => {
       slaLedger: join("/state", "sla-ledger.json"),
       workflowLedger: join("/state", "workflow-ledger.json"),
       slaLastOk: join("/state", "loop-patrol-last-ok.json"),
+      deferrals: join("/state", "deferrals.json"),
     });
+    assert.equal(STATE_FILES.deferrals, "deferrals.json");
   });
 
   it("pins the queue, liveness and session constants", () => {

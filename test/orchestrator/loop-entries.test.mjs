@@ -1334,3 +1334,109 @@ describe("worktree admission", () => {
     assert.equal(admission.dirFor("T-9"), worktree, "the reviewer sees the delivered tree");
   });
 });
+
+describe("poll deferral accounting", () => {
+  const card = { identifier: "T-1", project: "P", delivery_round: 2 };
+  const base = (overrides = {}) => ({
+    agents: ["alice"],
+    registry: { running: {} },
+    config: {},
+    readCandidates: () => [{ ...card, agent: "alice", reason: "ready" }],
+    claim: async () => ({ ok: true }),
+    dispatch: async () => ({ ok: true }),
+    now: () => "2026-10-22T00:00:00.000Z",
+    log: () => {},
+    ...overrides,
+  });
+
+  it("counts a card-scoped admission failure and clears it on success", async () => {
+    const recorded = [];
+    const cleared = [];
+    const failing = await runPollTick(
+      base({
+        admit: async () => ({
+          ok: false,
+          why: "WORKSPACE_CREATE_FAILED: x",
+          code: "WORKSPACE_CREATE_FAILED",
+          accounted: true,
+        }),
+        recordDefer: (id, failure) => recorded.push({ id, failure }),
+        clearDeferral: (id) => cleared.push(id),
+      }),
+    );
+    assert.equal(failing.deferred, 1);
+    assert.deepEqual(recorded, [
+      {
+        id: "T-1",
+        failure: {
+          code: "WORKSPACE_CREATE_FAILED",
+          reason: "WORKSPACE_CREATE_FAILED: x",
+          round: 2,
+        },
+      },
+    ]);
+    assert.deepEqual(cleared, []);
+
+    const ok = await runPollTick(
+      base({
+        admit: async () => ({ ok: true }),
+        recordDefer: (id, failure) => recorded.push({ id, failure }),
+        clearDeferral: (id) => cleared.push(id),
+      }),
+    );
+    assert.equal(ok.claimed, 1);
+    assert.deepEqual(cleared, ["T-1"]);
+  });
+
+  it("does not count backpressure or a terminal card", async () => {
+    const recorded = [];
+    const defer = (admitted) =>
+      runPollTick(
+        base({
+          admit: async () => admitted,
+          recordDefer: (id, failure) => recorded.push({ id, failure }),
+        }),
+      );
+    await defer({
+      ok: false,
+      why: "project P is at its concurrency cap",
+      code: "ADMISSION_CONCURRENCY_CAP",
+      accounted: false,
+    });
+    await defer({
+      ok: false,
+      why: "card is already terminal (terminal)",
+      code: "ADMISSION_CARD_TERMINAL",
+      accounted: false,
+    });
+    assert.deepEqual(recorded, []);
+  });
+
+  it("does not count a claim-budget defer", async () => {
+    const recorded = [];
+    const result = await runPollTick(
+      base({
+        limit: 0,
+        admit: async () => {
+          throw new Error("admit must not run when the budget is zero");
+        },
+        recordDefer: (id, failure) => recorded.push({ id, failure }),
+      }),
+    );
+    assert.equal(result.deferred, 1);
+    assert.deepEqual(recorded, []);
+  });
+
+  it("releases the reservation when dispatch fails", async () => {
+    const released = [];
+    const result = await runPollTick(
+      base({
+        admit: async () => ({ ok: true }),
+        dispatch: async () => ({ ok: false, error: "spawn failed" }),
+        release: async (id) => released.push(id),
+      }),
+    );
+    assert.equal(result.failed, 1);
+    assert.deepEqual(released, ["T-1"]);
+  });
+});
