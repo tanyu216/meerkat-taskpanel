@@ -80,8 +80,8 @@ never delivered.
    Acceptance source, Delivery shape, Proposed implementation, Proposed verification and
    Open questions / leftovers. Every path resolves, or says `none` with the reason.
 4. `Acceptance source` can seed the next card's frozen acceptance once; `Delivery shape`
-   agrees with the proposed scopes (one task, or an epic with children); the content slugs
-   contain no task id.
+   agrees with the proposed scopes (one task, or an epic whose children are each a landable
+   deliverable — never one child per layer); the content slugs contain no task id.
 5. Jobs created no downstream card: the project session triages, creates, seeds and links
    it. The reviewer can read the spec, PRD, prototype evidence, handoff block and frozen
    acceptance.

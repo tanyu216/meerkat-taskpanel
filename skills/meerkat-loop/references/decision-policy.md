@@ -28,8 +28,9 @@ an E1-E5 decision it cannot make.
 
 It executes what the handoff, `plan.md` and the frozen acceptance explicitly authorize.
 Anything else — including implementation shape, file layout, naming, test selection,
-fixtures, logging, documentation wording, **epic splitting, acceptance derivation or
-change, and scope change** — is a question to the project session.
+fixtures, logging, documentation wording, **epic splitting (a layer of one change is not a
+split), acceptance derivation or change, and scope change** — is a question to the project
+session.
 
 ### The main session decides
 
@@ -38,7 +39,9 @@ Operational and plan/acceptance-internal choices:
 - which role/agent handles a card, ordering, retry/requeue, concurrency, the project
   directory, choosing a verification command, re-running a failed check, adjusting a
   timeout inside its bounds;
-- splitting an epic **within the same deliverable** (a scope expansion is E1);
+- splitting an epic into children that are each a **deliverable** — one that can land on the
+  base branch alone and leave the tree coherent; one change's layers are its scope, not
+  separate children; a scope expansion is E1;
 - a mechanical acceptance derivation the handoff pre-authorized (changing an existing
   acceptance item is E2).
 

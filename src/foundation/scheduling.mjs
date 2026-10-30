@@ -604,6 +604,11 @@ export function planContinueInvocation(input = {}) {
  * (a scope expansion is E1 for the human). A card with one deliverable
  * proceeds untouched.
  *
+ * Sizing is by deliverable, not by layer: one change's core, CLI, web, docs and
+ * fixture updates are one card. A child that needs a sibling's unmerged commit,
+ * hands its red suite to a sibling, or owes a follow-up cleanup card is
+ * mis-sized, and the project session regroups it.
+ *
  * The handoff names the task's **process directory** (`.meerkat/<identifier>/`),
  * relative to the project session's cwd. `card.md` is the loop's authoritative
  * export of the card; it is read-only, and every other process file — notes,
@@ -655,12 +660,12 @@ export function buildHandoff(input) {
     "",
     `Flags (substitute <flags>): ${flags}`,
     "",
-    "Step 0 — container check. Read the brief first, then the live card:",
+    "Step 0 — container check. Read the brief, then the live card:",
     `  ${brief}    # description, acceptance, comments, sessions, attachments, report`,
     `  taskctl issue get ${ref} --json <flags>    # live status, version, acceptance snapshot, meta`,
-    "  Several deliverables? Do not promote or split yourself. Add an agent question",
-    "  comment describing the pieces, keep the card in_progress, and stop. The project",
-    "  session decides whether to split (scope expansion is E1 and goes to the human).",
+    "  Several deliverables, or layers of one change? Do not promote or split yourself.",
+    "  Add an agent question naming the pieces, keep the card in_progress, and stop. The",
+    "  project session decides; a scope expansion is E1 and goes to the human.",
     "    taskctl comment add ${ref} --kind question --body \"...\" <flags>",
     "    meta.epic_triage=off: do not promote; record the split question in a comment.",
     "",

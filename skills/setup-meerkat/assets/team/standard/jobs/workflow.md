@@ -191,6 +191,8 @@ Rules:
 - an epic is `kind=epic` and not claimable; children are `kind=task`, linked with `parent`.
   `blocks` gates on `done`, not merely delivery. A verification card also points at the
   report list;
+- a child is a **deliverable** that can land on the base branch alone; one change's core,
+  CLI, web, docs and fixtures are one child, not one card per layer;
 - the project session takes the handoff from the current round's latest report; an earlier
   round is history.
 

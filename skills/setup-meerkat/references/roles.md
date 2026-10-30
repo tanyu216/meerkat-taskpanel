@@ -28,6 +28,8 @@ matching product archive exists:
 | A feature with an archived spec/prototype/PRD | one `task` per downstream stage, or one | the card's `## Handoff`; `meta.design_stage=<design-ref>` |
 | A large feature with several independently verifiable deliverables | an `epic` + one `task` per deliverable | the handoff on the epic and each child; the child's scope |
 
+- A **deliverable** can land on the base branch alone and leaves the tree coherent; technical
+  layers (core, CLI, web, docs, fixtures) are one card's scope, never one card each.
 - Every card's worker writes `.meerkat/<id>/plan.md` before starting. A rework of the same
   card extends it; another card's plan is never this card's plan.
 - A producer card (design or architecture) sets `meta.stage_handoff=required` and writes a

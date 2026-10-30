@@ -259,6 +259,11 @@ is not `done` — literally `status !== "done"`, so a `canceled` predecessor wit
 
 ## 6. Containers (`epic`)
 
+- **Sizing is not schema-enforced.** The board enforces shape — children, depth — not whether
+  a child is a deliverable. A child must land on the base branch alone and leave the tree
+  coherent; one change's core, CLI, web, docs and fixtures are its scope, not five children.
+  The four questions are in
+  [`SKILL.md` §Containers](../SKILL.md#containers-when-the-card-is-an-epic).
 - **Never claimable.** `issue move <epic> in_progress` is `not_claimable`.
 - **The board starts it.** The first child to enter the work moves the container
   `todo → in_progress` (actor kind `system`, no claim), with an `epic_auto_start` activity and

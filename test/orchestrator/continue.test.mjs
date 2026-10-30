@@ -235,6 +235,7 @@ describe("buildContinuePrompt", () => {
     assert.match(withOwnership, /one accountable role per work shape/i);
     assert.match(withOwnership, /reviewer/);
     assert.match(withOwnership, /card's assignee still\s+selects/i);
+    assert.match(withOwnership, /not per technical layer/i);
     assert.match(withOwnership, /\/roles\/ownership\.md/);
     assert.doesNotMatch(withOwnership, /\| Work shape \|/, "the table belongs to the project session");
   });
