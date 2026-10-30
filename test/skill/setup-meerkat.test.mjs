@@ -1889,6 +1889,34 @@ describe("install-roles.mjs — project scope", () => {
     assert.equal(existsSync(join(project, ".meerkat", "roles")), false, "global must not write into the project");
   });
 
+  it("installs a global roles root per actor kind — the fact a platform split depends on", (t) => {
+    // Global roles live under each kind's own loop skill. A split that installs globally
+    // must run this once per participating kind, or the other loop scans cards it has no
+    // workflows for.
+    const home = temp(t);
+    const project = temp(t);
+    const codexLoop = join(home, ".codex", "skills", "meerkat-loop");
+    mkdirSync(codexLoop, { recursive: true });
+    writeFileSync(join(codexLoop, "SKILL.md"), "---\nname: meerkat-loop\n---\n");
+
+    const result = runJson(
+      t,
+      INSTALL,
+      ["--scope", "global", "--project", project, "--home", home, "--actor-kind", "codex"],
+      { cwd: project },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(existsSync(join(codexLoop, "roles", "manifest.json")), "codex's own roles root");
+    assert.equal(
+      existsSync(join(home, ".claude", "skills", "meerkat-loop", "roles")),
+      false,
+      "one kind's install does not cover another's roles root",
+    );
+    // Native agent definitions are written for every native kind regardless of --actor-kind.
+    assert.ok(existsSync(join(home, ".claude", "agents", "jobs.md")));
+    assert.ok(existsSync(join(home, ".codex", "agents", "jobs.toml")));
+  });
+
   it("warns when ownership.md is absent and when a legacy policy remains", (t) => {
     const root = temp(t);
     writeFileSync(join(root, "manifest.json"), JSON.stringify({ version: 1, roles: [] }));
