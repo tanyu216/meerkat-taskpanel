@@ -287,6 +287,31 @@ with repeated `--agent` flags on a manual run. A team install is **assignee-only
 defect the workflow pass reports, not work for whichever role scans first. Ask before
 changing an existing `yes`.
 
+### One platform, or an explicit split
+
+The default is **one platform for the whole team** — one loop supervisor per machine. Its
+`.env.<kind>` carries every role, and only that platform's loop is enabled.
+
+When the interview approves a split, the same three keys are written **per participating
+kind**, not once:
+
+- `MEERKAT_TASKPANEL_AGENTS` = that platform's role subset;
+- `MEERKAT_TASKPANEL_REVIEWER` = `Reviewer` on exactly one platform, empty on the others
+  (the installer seeds `Reviewer` everywhere, so this is a conflict that needs consent and
+  `--force`; an empty value means "no review dispatch" for that loop);
+- `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no` on every platform.
+
+A split also needs **one shared roles root**: project scope
+(`<project>/.meerkat/roles/`, preferred) or a global install per participating kind, or
+`MEERKAT_TASKPANEL_ROLES_DIR` pointing every loop at one root. Global roles live under
+`<agent-dir>/skills/meerkat-loop/roles/`, so one `--scope global` install covers one kind.
+
+The enable command must carry the explicit list —
+`install.sh --supervisor=enable --supervisor-actor-kinds claude,codex` — because the default
+is one kind. The cost is another supervisor, poller and log, per-loop alarm de-duplication
+(one alert fires once per supervisor), and a `recover_stale` that can take a card another
+loop is heartbeating.
+
 ## Native agent definitions
 
 Claude (`~/.claude/agents/<name>.md` or `<project>/.claude/agents/`) and Codex

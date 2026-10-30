@@ -1591,6 +1591,131 @@ describe("detect.mjs — read-only discovery", () => {
   });
 });
 
+describe("detect.mjs — platforms and the role→platform proposal", () => {
+  /** A home with two ready platforms, their per-kind config and an installed skill list. */
+  function twoPlatformHome(t) {
+    const home = temp(t);
+    const project = temp(t);
+    const configDir = temp(t);
+    for (const kind of ["claude", "codex"]) {
+      mkdirSync(join(home, `.${kind}`, "skills", "meerkat-loop"), { recursive: true });
+      writeFileSync(join(home, `.${kind}`, "skills", "meerkat-loop", "SKILL.md"), "# loop\n");
+    }
+    mkdirSync(join(home, ".claude", "skills", "tdd"), { recursive: true });
+    writeFileSync(join(home, ".claude", "skills", "tdd", "SKILL.md"), "# tdd\n");
+    mkdirSync(join(home, ".claude", "meerkat-taskpanel"), { recursive: true });
+    writeFileSync(
+      join(configDir, ".env.claude"),
+      "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus\nMEERKAT_TASKPANEL_REVIEWER=Reviewer\n",
+    );
+    writeFileSync(join(configDir, ".env.codex"), "MEERKAT_TASKPANEL_AGENTS=Turing\n");
+    const rolesRoot = join(project, ".meerkat", "roles");
+    mkdirSync(rolesRoot, { recursive: true });
+    writeFileSync(
+      join(rolesRoot, "manifest.json"),
+      JSON.stringify({
+        version: 1,
+        roles: [
+          { id: "jobs", agent: "Jobs", lanes: ["worker"] },
+          { id: "linus", agent: "Linus", lanes: ["worker"] },
+          { id: "turing", agent: "Turing", lanes: ["worker"] },
+          { id: "reviewer", agent: "Reviewer", lanes: ["reviewer"] },
+        ],
+      }),
+    );
+    return { home, project, configDir };
+  }
+
+  const detectAll = (t, { home, project, configDir }) =>
+    runJson(t, DETECT, ["--home", home, "--project", project, "--actor-kind", "all", "--no-network"], {
+      cwd: project,
+      env: { HOME: home, PATH: temp(t), MEERKAT_TASKPANEL_CONFIG_DIR: configDir },
+    });
+
+  it("reports per-kind skills, loop state, supervisor, config and roles root", (t) => {
+    const fixture = twoPlatformHome(t);
+    const result = detectAll(t, fixture);
+    assert.equal(result.status, 0, result.stderr);
+
+    const claude = result.body.platforms.claude;
+    assert.equal(claude.skills.loop, true);
+    assert.ok(claude.skills.names.includes("tdd"), "the installed skill names are reported");
+    assert.equal(claude.loopState.installed, true);
+    assert.equal(typeof claude.supervisor.installed, "boolean");
+    assert.deepEqual(claude.config.agents, ["Jobs", "Linus"]);
+    assert.equal(claude.config.reviewer, "Reviewer");
+    assert.equal(claude.available, true);
+
+    assert.deepEqual(result.body.platforms.codex.config.agents, ["Turing"]);
+    assert.equal(result.body.platforms.codex.config.reviewer, null);
+
+    // No loop skill on pi, so it cannot host a supervisor.
+    assert.equal(result.body.platforms.pi.available, false);
+  });
+
+  it("proposes Jobs/Linus/Reviewer on claude and Turing on codex — a proposal, never a write", (t) => {
+    const fixture = twoPlatformHome(t);
+    const result = detectAll(t, fixture);
+    assert.equal(result.status, 0, result.stderr);
+
+    assert.equal(result.body.rolePlatforms.status, "split");
+    assert.deepEqual(result.body.rolePlatforms.byPlatform, {
+      claude: ["Jobs", "Linus", "Reviewer"],
+      codex: ["Turing"],
+    });
+    // The one-supervisor alternative is always offered alongside.
+    assert.equal(result.body.rolePlatforms.singlePlatform, "claude");
+  });
+
+  it("is deterministic and never forces a split: one platform, or none", async () => {
+    const { recommendRolePlatforms } = await import("../../skills/setup-meerkat/scripts/detect.mjs");
+    const roles = [
+      { id: "jobs", agent: "Jobs", lanes: ["worker"] },
+      { id: "linus", agent: "Linus", lanes: ["worker"] },
+      { id: "turing", agent: "Turing", lanes: ["worker"] },
+      { id: "reviewer", agent: "Reviewer", lanes: ["reviewer"] },
+    ];
+    const caps = {
+      claude: ["design", "architecture", "implementation", "tests", "review"],
+      codex: ["implementation", "tests", "review"],
+      pi: ["implementation", "tests"],
+    };
+
+    const single = recommendRolePlatforms(roles, {
+      claude: { available: true, capabilities: caps.claude },
+      codex: { available: false, capabilities: caps.codex },
+      pi: { available: false, capabilities: caps.pi },
+    });
+    assert.equal(single.status, "single");
+    assert.deepEqual(single.byPlatform, { claude: ["Jobs", "Linus", "Turing", "Reviewer"] });
+
+    // pi without pi-subagents is not available, so there is no platform at all.
+    const none = recommendRolePlatforms(roles, {
+      claude: { available: false, capabilities: caps.claude },
+      codex: { available: false, capabilities: caps.codex },
+      pi: { available: false, capabilities: caps.pi },
+    });
+    assert.equal(none.status, "no-platform");
+
+    // A custom role with no known id falls back to its lane, not to a guess.
+    const custom = recommendRolePlatforms(
+      [{ id: "ops", agent: "Ops", lanes: ["reviewer"] }],
+      { claude: { available: true, capabilities: caps.claude }, codex: { available: true, capabilities: caps.codex } },
+    );
+    assert.equal(custom.assignments[0].platform, "claude");
+    assert.deepEqual(custom.assignments[0].tags, ["review"]);
+  });
+
+  it("documents the platform question, its cost, and the explicit multi-kind command", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    assert.match(skill, /which platform runs which role/i);
+    assert.match(skill, /one supervisor per machine/i);
+    assert.match(skill, /--supervisor-actor-kinds/);
+    assert.match(skill, /per-loop alarm|alarms are deduplicated per loop|alarm ledger/i);
+    assert.match(skill, /decline|one platform for all roles/i);
+  });
+});
+
 describe("install-roles.mjs — project scope", () => {
   it("dry-runs without writing, installs, and is idempotent", (t) => {
     const home = temp(t);

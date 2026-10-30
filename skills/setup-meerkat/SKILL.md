@@ -42,7 +42,7 @@ checkout.
 | `--json` | machine-readable reports from the bundled scripts |
 | `--project <dir>` | the repository/project whose `.meerkat/roles` and `docs/agents` matter (default: cwd) |
 | `--scope global\|project` | team install scope (default: global) |
-| `--actor-kind <kind>` | the platform to configure (default: `claude`) |
+| `--actor-kind <kind>` | the platform to configure (default: `claude`); `all` runs detection across every loop platform, which is what the role→platform question reads |
 | `--checkout <dir>` | use this checkout instead of discovering one |
 | `--human-name <name>` | the fixed local human name; exported as `MEERKAT_TASKPANEL_HUMAN_NAME` |
 | `--yes` | accept recommended defaults only; destructive/overwrite/daemon steps still ask |
@@ -63,7 +63,11 @@ Report the important rows, not the raw JSON:
 
 - `taskctl` path/version; `server.url`, its source (`flag`/`env`/`env-file`/`pointer`/
   `default`), `loopback` vs `remote`, and `/health`;
-- board/loop/setup skills per actor kind; loop state and live pool; supervisor units;
+- board/loop/setup skills per actor kind, and the installed skill names each platform
+  actually has; loop state and live pool; supervisor units;
+- per platform (`platforms`): its current `MEERKAT_TASKPANEL_AGENTS` scan set and
+  `MEERKAT_TASKPANEL_REVIEWER`, whether pi has `pi-subagents`, and `available`;
+- the proposed role→platform assignment (`rolePlatforms`) — a proposal, never a write;
 - effective roles root (explicit/project/global) and role count;
 - the fixed human name and its source (`env`/`settings`/`config`/`shim`/`env-file`/
   `fallback`);
@@ -111,6 +115,23 @@ The round closes only when the frontier is empty. Do not install, write a file o
 daemon before that, and never treat an incomplete answer as consent. `--yes` never authorizes
 starting a daemon, replacing a different existing file, overwriting an unrelated tracker, or
 a remote server the user did not name.
+
+When detection reports more than one **available** loop platform, add one later-round
+question — **which platform runs which role** — after the team is settled:
+
+1. Show each platform's facts: loop skill, subagent support (pi needs `pi-subagents`),
+   detected skill names, and its current scan set. Never guess these.
+2. Recommend **one platform for all roles** (one supervisor per machine), chosen as the
+   platform whose capabilities best cover the team.
+3. Offer the split as the explicit alternative, with `rolePlatforms.byPlatform` as the
+   proposal (for the standard team: Jobs/Linus/Reviewer on Claude, Turing on Codex when both
+   are available). Say the cost plainly: a split means another supervisor, its own polling,
+   log and SLA ledger; claims stay atomic, but **alarms are deduplicated per loop** (one
+   alert fires once per supervisor) and one loop's `recover_stale` can take a card another
+   loop is still heartbeating.
+4. The user may accept the recommendation, edit the assignment, or decline and keep one
+   platform. Never assign a role to a platform the user did not approve, and never enable a
+   second supervisor without the explicit `--supervisor-actor-kinds`.
 
 ## 2. Install or repair
 
@@ -375,6 +396,45 @@ that extension is installed. The loop's project session also uses that extension
 one subagent per card; `detect.mjs` reports a missing extension and `install.sh --target pi`
 prints the install command. `--native-agent-defs none` writes none of them.
 
+### Which platform runs which role
+
+The env merge above writes the whole team to **one** platform's config. That is the
+recommended answer and the default: one supervisor per machine. If the interview approved an
+explicit split instead, then per participating platform:
+
+- write **that platform's** `MEERKAT_TASKPANEL_AGENTS` subset (`rolePlatforms.byPlatform`);
+- leave `MEERKAT_TASKPANEL_REVIEWER` non-empty on **exactly one** platform and empty on the
+  others — `install.sh` seeds `Reviewer` on every kind, so this is a conflict and needs the
+  user's yes plus `--force`; an empty value resolves as "not configured", so a non-owning
+  loop does not scan review cards;
+- keep `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no` on every platform.
+
+**The roles root is per platform.** Global roles live at
+`<home>/<agent-dir>/skills/meerkat-loop/roles/`, and `install-roles.mjs --scope global`
+writes only the `--actor-kind` it was given. A split therefore needs one of:
+
+- **project scope** (preferred): `<project>/.meerkat/roles/`, shared by every platform and
+  higher precedence than any global copy; or
+- the global install run once per participating kind (`--actor-kind claude`, then
+  `--actor-kind codex`, …); native agent definitions are written for every native kind on
+  the first run and report `unchanged` after; or
+- one shared root named in the other kinds' configs with `MEERKAT_TASKPANEL_ROLES_DIR`.
+
+Never leave a participating platform with an empty roles root: its loop would scan role
+cards it has no workflows for.
+
+Print the enable command; never run it without consent. A split needs the explicit list
+because the default is one kind:
+
+```bash
+bash <checkout>/install.sh --target claude,codex,server \
+  --supervisor=enable --supervisor-actor-kinds claude,codex
+```
+
+A one-platform answer needs no `--supervisor-actor-kinds`. Re-running the skill recomputes
+the proposal from detection; it reports an existing assignment as `unchanged` and never
+moves a role or clears a reviewer key without asking.
+
 ## 6. Security toolchain
 
 The team's security scan is three arms — dependency audit, secret scan and SAST — plus an
@@ -466,10 +526,14 @@ reported `unknown` and left alone, never guessed at.
    names each arm's state, and after a write the arm must report `covered`.
 4. Run `install.sh --supervisor=enable` for the actor kind — it reloads a unit whose
    definition changed, which is what makes the loop actually scan the team you just wrote.
-   Then read `taskctl loop status` and compare its `agents:` line with the team list: a
-   name the loop does not scan can never claim its cards, so a mismatch is a **finding to
-   report**, never "ready". (Role *file* edits are picked up by a running pool on its next
-   dispatch; the scan set is not — it comes from the units and the per-kind config.)
+   For an approved split, pass the explicit list
+   (`--supervisor=enable --supervisor-actor-kinds claude,codex`). Then read
+   `taskctl loop status --actor-kind <kind>` and compare its `scan set:` line with that
+   platform's assigned list: a name the loop does not scan can never claim its cards, so a
+   mismatch is a **finding to report**, never "ready". Run
+   `install.sh --supervisor=status` too: its `machine:` line must name one loaded kind
+   unless the split was approved. (Role *file* edits are picked up by a running pool on its
+   next dispatch; the scan set is not — it comes from the units and the per-kind config.)
 5. Re-read the host's instruction file: the task entry is stated once, names `/meerkat`, and
    carries the card scope.
 6. Summarize: what was installed, where, the effective roles root, the human name, the
