@@ -77,6 +77,10 @@ lock left by a dead process is removed automatically on the next start (or by ha
 
 `SIGTERM` / `SIGINT` is the graceful stop, and it is **bounded**. The daemon releases the
 database (no `-wal` is left), removes its runtime pointer, releases the lock and exits 0.
+The exit code is derived from the close: a close that throws still removes the pointer and
+exits 1 (reached at most once, however many signals arrive), and a socket `error` after
+`listen` takes the same graceful path with 1 — a daemon that cannot serve must not report
+success to a service manager.
 
 What has to be bounded is the SSE stream. `server.close()` stops accepting and settles only
 when every socket is gone — and an `/api/v1/events` response has no reason to end on its
