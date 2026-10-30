@@ -10,7 +10,7 @@ Board operations (claim, heartbeat, comment, report, deliver, move, brief refres
 ## Inputs
 
 - `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot;
-- this card's `.meerkat/<id>/plan.md`, written by you before starting;
+- this card's `.meerkat/<id>/plan.md`, written or adopted by you and audited before starting;
 - for a feature or behaviour change, the card's `## Handoff` block (with
   `meta.design_stage`) names the archived spec, PRD and prototype and the acceptance
   source. Read those paths; the card and the frozen `acceptance` remain the contract; where

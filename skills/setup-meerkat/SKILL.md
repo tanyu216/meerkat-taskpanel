@@ -297,8 +297,8 @@ artifacts; a feature with an archive gets a task (or one per downstream stage) c
 `## Handoff` and `meta.design_stage`; a large feature with several independently verifiable
 deliverables becomes an `epic` with one child per deliverable — a child must land on the base
 branch alone, so one change's core, CLI, web, docs and fixtures are one child, not five.
-Every card's worker writes
-its own `.meerkat/<id>/plan.md`; no card inherits another card's plan.
+Every card's worker writes or adopts — and audits — its own `.meerkat/<id>/plan.md`, with an
+attached plan adopted rather than rewritten; no card inherits another card's plan.
 
 Every worker workflow carries the same decision round before it freezes a direction: a
 decision tree, the frontier of questions whose prerequisites are settled, one round at a

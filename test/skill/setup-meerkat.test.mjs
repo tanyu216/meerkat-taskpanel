@@ -334,6 +334,45 @@ describe("skill frontmatter and assets", () => {
     }
   });
 
+  it("takes the card's plan before work — adopted first, then audited", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    for (const rel of ["jobs/workflow.md", "linus/workflow.md", "turing/workflow.md"]) {
+      const text = readFileSync(join(team, rel), "utf8");
+      const start = text.indexOf("## Before work — the plan");
+      assert.ok(start >= 0, `${rel} states the pre-work plan step`);
+      const end = text.indexOf("\n## ", start + 1);
+      const section = text.slice(start, end === -1 ? undefined : end);
+      assert.match(section, /attachments?/i, `${rel} reads the card's attachments`);
+      assert.match(
+        section,
+        /`meerkat`[^\n]*(board skill|card operation|card brief)/i,
+        `${rel} points the download at the board skill`,
+      );
+      assert.match(section, /adopt|fold/i, `${rel} adopts an attached plan`);
+      assert.match(section, /no plan attached|carries none/i, `${rel} writes the plan when none is attached`);
+      assert.match(section, /audit the plan/i, `${rel} audits the plan before starting`);
+      assert.ok(
+        section.search(/attachments?/i) < section.search(/audit the plan/i),
+        `${rel} takes the plan before it audits it`,
+      );
+    }
+  });
+
+  it("names an adopted plan in every branch input", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    for (const rel of [
+      "linus/implementation-workflow.md",
+      "linus/refactor-workflow.md",
+      "turing/regression-workflow.md",
+    ]) {
+      assert.match(
+        readFileSync(join(team, rel), "utf8"),
+        /written or adopted by you/,
+        `${rel} accepts an adopted plan`,
+      );
+    }
+  });
+
   it("designs the system initialization surface before implementation", () => {
     const team = join(SKILL, "assets", "team", "standard");
     const arch = readFileSync(join(team, "linus", "architecture-workflow.md"), "utf8");

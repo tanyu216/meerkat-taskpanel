@@ -16,27 +16,39 @@ until the project session answers or escalates E1-E5.
 
 ## Before work — the plan
 
-1. Read `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot.
-2. Triage the card by its marker:
+1. Read `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot, then
+   triage the card by its marker:
    - `meta.design_stage` (a feature or behaviour change): read the `## Handoff` block in
      its description. It names the archived spec/PRD/prototype and the acceptance source.
      If the block is missing or a named path does not exist, write an agent `question` and
      stop; do not search another card's directory or plan.
    - `meta.product_change=none` (a small change or bug): do not read design artifacts.
    - neither marker: unclassified — write a `question` and stop.
-3. Write `.meerkat/<id>/plan.md` **before starting** — the loop requires it. It carries
-   this card's branch, design, steps, risks, test plan, acceptance mapping and open
-   questions. An architecture card links the `## Tech stack` table it records; a feature,
-   behaviour-change or bug card records `Stack: inherited — docs/tech-spec.md` (or the
-   card-local standard path). If the inherited stack table is missing, write a
-   `question` and stop; do not choose a stack for the card. The same baseline carries the
-   project's change and integration policy: if it has none, or it names neither where
-   parallel work is isolated nor the ref acceptance lands into, that is a
-   **foundation gap** — write a `question` and propose an architecture card; never invent a
-   branch or landing policy inside this card. A rework extends this card's
-   plan; another card's plan is never this card's plan. The reviewer reads it.
-4. If this card is an epic child, the plan covers only this card's scope; the epic's
-   rollup is not this card's report. Do not split the card yourself.
+2. Take the plan before you start — the loop requires it.
+   - A `.meerkat/<id>/plan.md` that already exists is this card's plan: a rework extends
+     it, folding in an attached plan rather than replacing it.
+   - Otherwise read the card's attachments (the `meerkat` board skill lists and downloads
+     them). A plan is the attachment named `plan.md`; a non-text plan keeps its extension
+     (`plan.pdf`). Download it to `.meerkat/<id>/plan.md`, transcribing a non-text plan,
+     and note its source on the first line. No plan attached: write
+     `.meerkat/<id>/plan.md` from the card's requirements and the frozen `acceptance`.
+   - Either way it carries this card's branch, design, steps, risks, test plan,
+     acceptance mapping and open questions. An architecture card links the `## Tech stack`
+     table it records; a feature, behaviour-change or bug card records `Stack: inherited —
+     docs/tech-spec.md` (or the card-local standard path). If the inherited stack table is
+     missing, write a `question` and stop; do not choose a stack for the card. The same
+     baseline carries the project's change and integration policy: if it has none, or it
+     names neither where parallel work is isolated nor the ref acceptance lands into, that
+     is a **foundation gap** — write a `question` and propose an architecture card; never
+     invent a branch or landing policy inside this card. Another card's plan is never this
+     card's plan. The reviewer reads it.
+3. Audit the plan before starting, written or adopted: every requirement and every frozen
+   `acceptance` item maps to a step and to its proof; the order and its prerequisites hold;
+   each assumption, open question and failure mode (with its detection and fallback) is
+   written; no step widens the acceptance; and the branch, stack baseline and gate are
+   named. Fix the plan in `plan.md` — add the missing step, drop the speculative one,
+   reorder, tighten the mapping — and keep what you cannot settle as an open question for
+   the decision round below. Do not start while one is open.
 
 `.meerkat/<id>/` stays in the project working directory as the card's task trail.
 

@@ -18,18 +18,35 @@ until the project session answers or escalates E1-E5.
 
 1. Read `.meerkat/<id>/card.md` (the authoritative brief), the live card and the frozen
    `acceptance`; the snapshot is the baseline.
-2. Write `.meerkat/<id>/plan.md` as the **card index**: the acceptance mapping, risks,
-   open questions and links to the product artifacts. The working copies live in the card
-   directory; stage 4 promotes them to content-named files under `design/`:
-   - `.meerkat/<id>/spec.md` — problem, evidence, users, flows, states, goals/non-goals/
-     metrics, the design register (brand / product / workflow / AI console / commerce / h5),
-     the frozen direction, draft tokens, anti-patterns and the 1–3 assumptions the prototype
-     must answer;
-   - `.meerkat/<id>/prototype/` — the prototype, screenshots and evidence;
-   - `.meerkat/<id>/prd.md` — the PRD, written after the prototype resolves the assumptions.
+2. Take the plan before you start.
+   - A `.meerkat/<id>/plan.md` that already exists is this card's plan: a rework extends
+     it, folding in an attached plan rather than replacing it.
+   - Otherwise read the card's attachments (the `meerkat` board skill lists and downloads
+     them). A plan is the attachment named `plan.md`; a non-text plan keeps its extension
+     (`plan.pdf`). Download it to `.meerkat/<id>/plan.md`, transcribing a non-text plan,
+     and note its source on the first line. No plan attached: write
+     `.meerkat/<id>/plan.md` from the card's requirements and the frozen `acceptance`.
+   - Either way the plan is the **card index**: the acceptance mapping, risks, open
+     questions and links to the product artifacts. The working copies live in the card
+     directory; stage 4 promotes them to content-named files under `design/`:
+     - `.meerkat/<id>/spec.md` — problem, evidence, users, flows, states, goals/non-goals/
+       metrics, the design register (brand / product / workflow / AI console / commerce /
+       h5), the frozen direction, draft tokens, anti-patterns and the 1–3 assumptions the
+       prototype must answer;
+     - `.meerkat/<id>/prototype/` — the prototype, screenshots and evidence;
+     - `.meerkat/<id>/prd.md` — the PRD, written after the prototype resolves the
+       assumptions.
    A design filename never carries the task id; it uses a content slug chosen at archive
    time. This is **this card's** plan: another card's plan is never this card's plan. The
    cross-card channel is the `## Handoff` block in stage 6.
+3. Audit the plan before starting, written or adopted: every requirement and every frozen
+   `acceptance` item maps to a stage and to the artifact that proves it; the stage order
+   holds and each stage's inputs exist when it runs; the assumptions the prototype must
+   answer, the risks and the open questions are written; no stage widens the acceptance;
+   and the index names the product artifacts and their archive paths. Fix the plan in
+   `plan.md` — add the missing stage or artifact, drop the speculative one, reorder,
+   tighten the mapping — and keep what you cannot settle as an open question for the
+   decision round below. Do not freeze a direction while one is open.
 
 ## Decide before you build
 

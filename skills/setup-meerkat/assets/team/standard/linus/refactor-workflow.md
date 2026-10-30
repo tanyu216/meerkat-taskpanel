@@ -10,8 +10,9 @@ Board operations (claim, heartbeat, comment, report, deliver, move, brief refres
 ## Inputs
 
 - `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot;
-- this card's `.meerkat/<id>/plan.md`, written by you before starting — the candidate report
-  below lives here, as ordinary markdown, and is the reviewer's evidence;
+- this card's `.meerkat/<id>/plan.md`, written or adopted by you and audited before
+  starting — the candidate report below lives here, as ordinary markdown, and is the
+  reviewer's evidence;
 - `GLOSSARY.md`, the architecture document and the ADRs in the area — Step 0 confirms they
   are recorded; a recorded decision is not re-litigated here;
 - the standard (`docs/tech-spec.md`, or the path the project's own README or architecture

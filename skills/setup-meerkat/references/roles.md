@@ -30,8 +30,9 @@ matching product archive exists:
 
 - A **deliverable** can land on the base branch alone and leaves the tree coherent; technical
   layers (core, CLI, web, docs, fixtures) are one card's scope, never one card each.
-- Every card's worker writes `.meerkat/<id>/plan.md` before starting. A rework of the same
-  card extends it; another card's plan is never this card's plan.
+- Every card's worker writes or adopts — and then audits — `.meerkat/<id>/plan.md` before
+  starting; an attached plan is adopted rather than rewritten. A rework of the same card
+  extends it; another card's plan is never this card's plan.
 - A producer card (design or architecture) sets `meta.stage_handoff=required` and writes a
   `## Handoff` block into its delivery report `conclusion`: the archived paths, the
   acceptance source, the delivery shape and the proposed next cards.

@@ -10,7 +10,7 @@ Board operations (claim, heartbeat, comment, report, deliver, move, brief refres
 ## Inputs
 
 - the bug card and the fix card/report, with the commit or artifact under test;
-- this card's `.meerkat/<id>/plan.md` (written by you, not the fix card's plan);
+- this card's `.meerkat/<id>/plan.md` (written or adopted by you, not the fix card's plan);
 - the original reproduction, logs or production evidence;
 - the previous passing baseline and the relevant tests.
 

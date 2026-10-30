@@ -19,19 +19,35 @@ reviewer role issues the verdict.
 
 ## Before work — the plan
 
-1. Read `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot.
-2. Triage the card by its marker:
+1. Read `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot, then
+   triage the card by its marker:
    - `## Handoff` (`meta.design_stage`): read it. It names the archived spec/PRD, the
      acceptance source and the implementation/fix card or report. Read the named paths and
      the named report. Do not read another card's plan.
    - `meta.product_change=none`: a small change or bug — do not read design artifacts.
    - neither marker: unclassified — write a `question` and stop.
-3. Write `.meerkat/<id>/plan.md` **before starting** — the loop requires it, and it is
-   this card's execution plan. For test design also write `.meerkat/<id>/test-plan.md`, the
-   detailed test artifact (inventory, traceability matrix, environments, mock policy). A
-   rework extends this card's plan; another card's plan is never this card's plan.
-4. If this card is an epic child, the test plan covers only its scope; the epic's rollup is
-   reviewed by the reviewer, not delivered by this card.
+2. Take the plan before you start — the loop requires it, and it is this card's execution
+   plan.
+   - A `.meerkat/<id>/plan.md` that already exists is this card's plan: a rework extends
+     it, folding in an attached plan rather than replacing it.
+   - Otherwise read the card's attachments (the `meerkat` board skill lists and downloads
+     them). A plan is the attachment named `plan.md`; a non-text plan keeps its extension
+     (`plan.pdf`). Download it to `.meerkat/<id>/plan.md`, transcribing a non-text plan,
+     and note its source on the first line. No plan attached: write
+     `.meerkat/<id>/plan.md` from the card's requirements and the frozen `acceptance`.
+   - Either way it carries this card's steps, risks, environments, acceptance mapping and
+     open questions. For test design also write `.meerkat/<id>/test-plan.md`,
+     the detailed test artifact (inventory, traceability matrix, environments, mock
+     policy). Another card's plan is never this card's plan.
+3. Audit the plan before starting, written or adopted: every requirement and every frozen
+   `acceptance` item maps to a scenario and to the evidence that proves it; the order and
+   its prerequisites hold; each assumption, open question, environment and mock boundary is
+   written; no scenario widens the acceptance; and the branch, the suite and the gate are
+   named. Fix the plan in `plan.md` — add the missing scenario, drop the padded one,
+   reorder, tighten the mapping — and keep what you cannot settle as an open question for
+   the decision round below. Do not start while one is open. The detailed test plan gets
+   the same audit when you write it
+   (`test-design-workflow.md` §4).
 
 `.meerkat/<id>/` stays in the project working directory as the card's task trail.
 
