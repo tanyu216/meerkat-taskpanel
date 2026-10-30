@@ -455,6 +455,11 @@ function launchdNoSession(text) {
   return /input\/output error/i.test(text);
 }
 
+/** A synchronous pause — `Atomics.wait`, so no child process and no dependency. */
+function settle(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 /** XML text as launchd reads it (`&amp;` and friends unescaped). */
 function unescapeXml(text) {
   return text
@@ -563,6 +568,25 @@ export function launchdMechanism({ paths, uid, run }) {
     return { loaded: states.every((state) => state.loaded), units: states };
   };
 
+  /**
+   * `launchctl bootstrap`, with the take-down race handled.
+   *
+   * `bootout` returns before the job is really gone, and a bootstrap inside that window
+   * fails with "5: Input/output error" — the same text as a missing GUI session, so the
+   * message cannot tell the two apart. Only a unit **this call itself took down** is
+   * retried: a first load that answers this way is a real environment problem and is
+   * reported, exactly as before.
+   */
+  const bootstrapUnit = (unit, afterBootout) => {
+    let outcome = runStep({ command: "launchctl", args: ["bootstrap", domain, unit.plist] }, run);
+    for (let attempt = 1; afterBootout && attempt <= 3; attempt++) {
+      if (outcome.ok || launchdAlready(outcome.stderr) || !launchdNoSession(outcome.stderr)) return outcome;
+      settle(500);
+      outcome = runStep({ command: "launchctl", args: ["bootstrap", domain, unit.plist] }, run);
+    }
+    return outcome;
+  };
+
   return {
     name: "launchd",
     unitsReport: `${supervisorBase(paths.agent, paths.actorKind)}.session,.ping,.continue,.subscribe`,
@@ -608,7 +632,7 @@ export function launchdMechanism({ paths, uid, run }) {
           allAlready = false;
         }
 
-        let outcome = runStep({ command: "launchctl", args: ["bootstrap", domain, unit.plist] }, run);
+        let outcome = bootstrapUnit(unit, reloaded.includes(unit.label));
         // The fallback is for a `bootstrap` this macOS does not have — **not** for a
         // refusal. A no-GUI-session error is reported below, exactly as the docs say it
         // must be ("the enable must not claim success on this").

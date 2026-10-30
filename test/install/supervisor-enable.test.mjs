@@ -85,6 +85,10 @@ function fakeManager() {
       '         echo "Could not find service \\"$2\\" in domain for port" >&2; exit 1 ;;',
       '  bootstrap) if [ "${FAKE_ALREADY:-}" = "1" ]; then echo "Bootstrap failed: 37: Service is already bootstrapped" >&2; exit 1; fi',
       '             if [ "${FAKE_IO_ERROR:-}" = "1" ]; then echo "Bootstrap failed: 5: Input/output error" >&2; exit 1; fi',
+      // The real race: the first bootstrap right after a bootout answers with the
+      // no-GUI-session text, and the next one works.
+      '             if [ "${FAKE_IO_ERROR_ONCE:-}" = "1" ] && [ ! -f "$FAKE_LAUNCHD_STATE.ioonce" ]; then',
+      '               touch "$FAKE_LAUNCHD_STATE.ioonce"; echo "Bootstrap failed: 5: Input/output error" >&2; exit 1; fi',
       '             label="$(label_of "$3")"',
       '             echo "$2/$label" >> "$FAKE_LAUNCHD_STATE"',
       '             sed -n "/<key>ProgramArguments<\\\\/key>/,/<\\\\/array>/p" "$3" | sed -n "s/.*<string>\\\\(.*\\\\)<\\\\/string>.*/\\\\1/p" > "$FAKE_LAUNCHD_STATE.args.$label"',
@@ -971,5 +975,35 @@ describe("install.sh: enable — systemd reload", () => {
       .filter((line) => /systemctl --user (disable|enable) /.test(line));
     assert.match(verbs[0] ?? "", /^systemctl --user disable --now /, "the old unit is stopped first");
     assert.match(verbs[1] ?? "", /^systemctl --user enable --now /, "then the new one is started");
+  });
+});
+
+describe("install.sh: reload after a take-down race", () => {
+  it("retries a bootstrap the manager refused while the old job was still going away", () => {
+    // The live failure: `bootout` returns before the job is gone, and the bootstrap that
+    // follows answers "5: Input/output error" — the same text as a missing GUI session.
+    // Retrying that one bootstrap is the difference between a reload and a loop left
+    // half-down (the window the installer hit on 2026-10-30).
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const args = ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--supervisor=enable", "--scheduler=launchd"];
+    assert.equal(runInstall(args, installEnv(home, manager)).status, 0);
+
+    // A loaded unit whose definition changed → the drift path boots it out first.
+    writeFileSync(
+      manager.argsFile("com.meerkat-taskpanel.alice.claude.session"),
+      ["/usr/bin/node", "/x/cli.mjs", "loop", "session", "--agent", "Worker"].join("\n") + "\n",
+      "utf8",
+    );
+
+    const before = calls(manager).length;
+    const again = runInstall(args, installEnv(home, manager, { FAKE_IO_ERROR_ONCE: "1" }));
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(again.stdout, /supervisor: reloaded \(kind=claude, scheduler=launchd/);
+    assert.doesNotMatch(again.stdout, /no GUI login session/);
+
+    const reload = calls(manager).slice(before).filter((line) => /^launchctl (bootout|bootstrap) /.test(line));
+    const sessionBootstraps = reload.filter((line) => line.includes("com.meerkat-taskpanel.session.plist"));
+    assert.equal(sessionBootstraps.length, 2, "the refused bootstrap is retried once the job is gone");
   });
 });
