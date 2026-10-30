@@ -56,6 +56,7 @@
 
 import { AUTOMATED_ACCEPTORS, LOOP_ACCEPTOR } from "./constants.mjs";
 import { reviewIdentityIndex, reviewIdentityOf } from "./review-identity.mjs";
+import { isContainer } from "./task-kind.mjs";
 import {
   DEFAULT_SLA_ROWS,
   LEADER_LOOKBACK_DAYS,
@@ -983,7 +984,10 @@ function leaderStalledDetection(context) {
  * `heartbeat-unreadable` alert rather than replacing it.
  */
 function heartbeatStaleDetection(card, context) {
-  if (card?.status !== "in_progress") return null;
+  // A container is never claimed and never pulses; its `in_progress` is the
+  // board's designed state, not a worker that stopped beating. Both the stale
+  // and the unreadable branches sit below this guard.
+  if (card?.status !== "in_progress" || isContainer(card)) return null;
   const spec = context.rows.heartbeat_stale;
   const hb = instant(card?.heartbeat_at);
   if (hb === null) {

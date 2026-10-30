@@ -303,6 +303,28 @@ describe("planPatrol (pure)", () => {
     assert.deepEqual(alerts, []);
   });
 
+  // A container (`epic`) auto-started into in_progress is never claimed and
+  // never pulses — that is the board's designed container state, not a stale
+  // worker. Reporting it every pass is an observation bug, not a finding.
+  it("never reports an epic container as a stale worker", () => {
+    for (const heartbeat of [ago(31), null, "not-a-date"]) {
+      const alerts = planPatrol({
+        tasks: [{ identifier: "E-1", kind: "epic", status: "in_progress", heartbeat_at: heartbeat }],
+        now,
+      });
+      assert.deepEqual(alerts, [], `epic with heartbeat_at=${String(heartbeat)}`);
+    }
+  });
+
+  it("still reports a work card with the same shape", () => {
+    const alerts = planPatrol({
+      tasks: [{ identifier: "T-9", kind: "task", status: "in_progress", heartbeat_at: null }],
+      now,
+    });
+    assert.equal(alerts.length, 1);
+    assert.equal(alerts[0].type, "heartbeat-unreadable");
+  });
+
   // M1 · A1 — an `awaiting` card has **no live session**, so its heartbeat is
   // necessarily stale. Patrol must read "is a human payload outstanding?", never
   // "how old is the heartbeat": escalating a card that is deliberately parked on

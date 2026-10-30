@@ -29,6 +29,7 @@ import {
 } from "./constants.mjs";
 import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
+import { isContainer } from "./task-kind.mjs";
 import {
   renderDecisionPolicySummary,
   renderDecisionRoundPrinciples,
@@ -373,6 +374,9 @@ export function planPatrol(input = {}) {
   const alerts = [];
   for (const task of tasks) {
     if (task?.status !== "in_progress") continue;
+    // A container's `in_progress` is the board's design (never claimed, never
+    // pulsed), so there is no worker whose heartbeat could be late.
+    if (isContainer(task)) continue;
     const identifier = String(task?.identifier ?? "");
     if (identifier === "") continue;
     // Who holds the card, as a person: `claimed_by` is an actor **id** since 0020,
@@ -492,7 +496,7 @@ export function planStrandedTodoAlerts(input = {}) {
 
   const alerts = [];
   for (const task of todoTasks) {
-    if (task?.kind === "epic") continue;
+    if (isContainer(task)) continue;
     const ref = task?.assignee ?? null;
     const name = typeof ref === "string" ? ref : ref?.display_name ?? ref?.id ?? null;
     if (name === null) continue;

@@ -118,7 +118,8 @@ The deterministic passes are **not scheduled individually**:
 runs: one report covering the supervisor verdict, the resolved scan set, board compatibility,
 the patrol's last-successful-run marker, the tail of the loop log, the queue and subagent
 ledger, the cards that look stuck (a stale or unreadable heartbeat, judged by the patrol's own
-plan), and the `in_review` cards waiting on a human with their age. That last list is **facts
+plan — an `epic` container is not a stale worker), and the `in_review` cards waiting on a human
+with their age. That last list is **facts
 only**: review aging is the workflow pass's judgement and applies to review cards that are
 *not* `in_review` (`docs/lifecycle.md`), so the inspection neither restates nor widens it. It
 claims, dispatches, starts and writes nothing — its board read runs
@@ -143,7 +144,7 @@ is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `1800
 | `HEARTBEAT_FRESH_MS` | 10 min | `src/foundation/constants.mjs` |
 | `CLAIM_STALE_SAME_MS` | 30 min | `src/foundation/constants.mjs` |
 | `CLAIM_STALE_ANY_MS` | 6 h | `src/foundation/constants.mjs` |
-| patrol stale (scans `in_progress` only) | 30 min (= `CLAIM_STALE_SAME_MS`) | `src/foundation/scheduling.mjs` |
+| patrol stale (scans `in_progress` work cards; an epic container is excluded) | 30 min (= `CLAIM_STALE_SAME_MS`) | `src/foundation/scheduling.mjs` |
 | continue interval | 10 min | `src/orchestrator/options.mjs` |
 | queue `recoverStaleCards` | `2 × turn` | `src/orchestrator/session.mjs` |
 | ledger live-row reap | 2 h (`LEDGER_STALE_MS`) | `src/foundation/scheduling.mjs` |
@@ -459,7 +460,10 @@ What that means concretely:
 ### Two rows that used to be exceptions
 
 - **`heartbeat_stale` now emits the §4 tuple as well**, beside the legacy
-  per-card heartbeat alert (`{type: "stale" | "heartbeat-unreadable", …}`). That
+  per-card heartbeat alert (`{type: "stale" | "heartbeat-unreadable", …}`). Both
+  channels skip an `epic` container: it is never claimed and never pulses, so its
+  `in_progress` is the board's design rather than a stopped worker
+  (`src/foundation/task-kind.mjs`). That
   shape is a published consumer contract and keeps working exactly as before, but
   it carries no `dedup_key` and no `sla_row`, so it cannot take part in the
   shared ledger — without the tuple the two mechanisms would each notify the same
