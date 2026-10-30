@@ -133,7 +133,10 @@ export function cliInvocation(opts, agent, args, { actorKind = null } = {}) {
     ...(opts.url ? ["--url", opts.url] : []),
     ...args,
   ];
-  const env = { ...process.env };
+  // `cliEnv` is the caller's own additions (never a CLI flag): the doctor uses it
+  // to forbid autostart, so an inspection cannot start a board as a side effect.
+  // The token is applied last — a caller may not shadow it by accident.
+  const env = { ...process.env, ...(opts.cliEnv ?? {}) };
   if (opts.token) env.TASKD_TOKEN = opts.token;
   return { argv, env };
 }

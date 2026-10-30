@@ -114,6 +114,14 @@ The deterministic passes are **not scheduled individually**:
 | `taskctl loop patrol` | heartbeat alerts + SLA rows | card queue only with `--patrol-llm=yes` |
 | `taskctl loop workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `system`/`Orchestrator` |
 
+`taskctl loop doctor` is **not** one of these passes. It is the read-only inspection a human
+runs: one report covering the supervisor verdict, the resolved scan set, board compatibility,
+the patrol's last-successful-run marker, the tail of the loop log, the queue and subagent
+ledger, and the cards that look stuck (a stale or unreadable heartbeat; a review card past the
+review-aging threshold). It claims, dispatches, starts and writes nothing — its board read runs
+with autostart disabled — and it exits 0 whenever a report was produced, so a scheduled
+inspection reads `attention` from `--json` rather than an exit code.
+
 The continue prompt runs them in the order **patrol → workflow → poll**: the
 workflow pass dispatches a review card, and the poll that follows in the same
 turn can enqueue its reviewer immediately. Polling first would delay that review

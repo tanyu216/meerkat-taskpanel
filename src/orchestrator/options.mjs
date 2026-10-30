@@ -813,7 +813,7 @@ export function loopBoardCommand(opts) {
   return ["node", quoteArg(opts.cli), "--actor-kind", opts.actorKind, "--agent", opts.agents[0] ?? "agent"].join(" ");
 }
 
-export const USAGE = `Usage: taskctl loop <patrol|workflow|poll|tick|console|status|run|subscribe|session|compat> [options]
+export const USAGE = `Usage: taskctl loop <patrol|workflow|poll|tick|console|doctor|status|run|subscribe|session|compat> [options]
 
 Run it through \`taskctl loop <verb>\`; this page lists the shared options. The
 verbs map onto the entries below, so the selectors are not part of the public

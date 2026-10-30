@@ -16,6 +16,7 @@
 import { join } from "node:path";
 
 import * as consoleEntry from "./console.mjs";
+import * as doctorEntry from "./doctor.mjs";
 import * as passesEntry from "./passes.mjs";
 import * as statusEntry from "./status.mjs";
 import * as subscribeEntry from "./subscribe.mjs";
@@ -28,6 +29,7 @@ const VERBS = new Set([
   "poll",
   "tick",
   "console",
+  "doctor",
   "status",
   "run",
   "subscribe",
@@ -103,7 +105,7 @@ export async function runLoopVerb(ctx, verb) {
     }
   }
 
-  // Reads (`console`, `status`, `compat`) work with no actor; every mutating
+  // Reads (`console`, `doctor`, `status`, `compat`) work with no actor; every mutating
   // verb must say who is acting, like every board command.
   const MUTATING = new Set(["patrol", "workflow", "poll", "tick", "run", "subscribe", "session"]);
   if (MUTATING.has(verb) && !(ctx.flags?.actorKind ?? ctx.env?.TASKCTL_ACTOR_KIND)) {
@@ -134,6 +136,9 @@ export async function runLoopVerb(ctx, verb) {
 
     case "console":
       return { streamed: true, exit: await consoleEntry.main(["--once", ...rest], env, {}, io) };
+
+    case "doctor":
+      return { streamed: true, exit: await doctorEntry.main(rest, env, {}, io) };
 
     case "status":
       return { streamed: true, exit: await statusEntry.main(rest, env, {}, io) };

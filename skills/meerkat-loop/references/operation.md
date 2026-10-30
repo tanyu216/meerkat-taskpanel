@@ -21,6 +21,7 @@ taskctl loop status --json
 taskctl loop status --take-over
 taskctl loop status --stop
 taskctl loop console --json
+taskctl loop doctor --json                  # the daily read-only inspection
 taskctl loop session --control=external
 ```
 
@@ -34,6 +35,11 @@ that does not go through the shim. `--control=external` is the pool half of the 
 opens no control session and skips `continue.pending`; the live session runs the control turn
 and the pool keeps only the project sessions. `loop status --take-over` starts exactly that,
 records its pid, and `--stop` stops only that process.
+
+`loop doctor` is the daily read-only inspection: one report over the supervisor verdict, the
+scan set, board compatibility, the patrol marker, the log tail, the queue and ledger, and the
+stuck cards. It is not a pass and writes nothing; when something needs a human, the report says
+so in `attention` and the exit code still reads 0.
 
 ### Main flags
 
