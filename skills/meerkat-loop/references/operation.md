@@ -82,36 +82,60 @@ Pi (`--mode rpc`).
 
 The loop has one control turn. In manual mode the **live session** runs it; the pool is
 started with `--control=external`, so it opens no control session and leaves
-`continue.pending` alone. Nothing else changes: the same `patrol → workflow → poll`, the same
-question ladder, the same acceptance rules.
+`continue.pending` alone. The session's opening pass is the **agenda** below; after it the
+control turn repeats on the clock — question tick 60 s, control tick 600 s, TTL 30 min or
+"stop".
 
-1. `taskctl loop status --json` → `running | busy | starting | configured-idle | partial | absent`.
-   The report also names the `platform` (`--actor-kind`) and the resolved `agents` scan set:
-   a role outside the scan set is never claimed, and one loop supervisor per machine is the
-   deployment rule.
-   - `running` + `pool.controlMode: internal`: the supervisor owns the turn; do not run a
-     second one. You may attach as a question console.
-   - `configured-idle` / `partial` / `busy`: report; the service manager or an in-flight turn
-     owns it.
-   - `absent`: ask the human, then `taskctl loop status --take-over` (explicit; the pool
-     persists until `taskctl loop status --stop`).
-2. Control ticks run `taskctl loop patrol → workflow → poll`. With the external pool live, poll
-   claims and enqueues; the pool's project sessions spawn the workers/reviewers.
-3. Question ticks run `taskctl loop console --json`: `awaiting` cards, in_progress agent
-   questions with no later human comment, and `in_review` cards pending acceptance. The UI
-   comment and the in-session answer are the **same record**: re-read the card before asking
-   and again before recording; if a human comment is already newer than the question, do not
-   ask or duplicate it — use that comment and run a control tick. Otherwise ask, then record
-   their answer as a human comment (`--as-human`, per the `meerkat` board skill). The board
-   comment is authoritative, the in-session question is the front-end. Then apply the ladder's
-   move and run a control tick.
-4. Bound the loop (control cadence 600 s, question tick 30 s, TTL 30 min). Never decide E1–E5
-   yourself, never claim/move a work card, never start a second pool, and run at most one
-   console per agent directory (`session.lock` guards the pool; two consoles would race the
-   workflow ledger). For unattended operation, enable the units.
+### The agenda
 
-`--opened-by human` is the same idea at the single-turn level; manual mode adds the pool and
-the repeated loop around it.
+1. **Open the board once.** `taskctl loop doctor --json` is the health read; `taskctl loop
+   console --json` is the work read (`questions`, `pending_acceptance`, `supervisor`). Report
+   one digest before any write. `taskctl loop status --json` returns
+   `running | busy | starting | configured-idle | partial | absent`, plus the `platform`
+   (`--actor-kind`) and the resolved `agents` scan set: a role outside the scan set is never
+   claimed, and one loop supervisor per machine is the deployment rule.
+   - `running` + `pool.controlMode: internal` — the supervisor owns the turn. Question console
+     only; run no control tick.
+   - `running` + `external` — the pool runs in external-control mode; the full agenda applies.
+   - `busy` / `starting` / `configured-idle` / `partial` — report; the service manager or an
+     in-flight turn owns it. Never take over.
+   - `absent` — ask the human, then `taskctl loop status --take-over` (it refuses any other
+     verdict; the pool persists until `taskctl loop status --stop`). Declined → question
+     console only, and no `workflow` pass: two writers would race the ledger.
+2. **Waiting on me — one card at a time.** `console.questions[]` mixes two rungs; branch on
+   `kind`.
+   - `awaiting` is the human's. Select one card — priority, then age; the console emits board
+     weight order, which is not a decision order. **re-read** its trailing comments and skip
+     it when a human comment is newer than the question. Ask that card's **frontier** as **one
+     numbered block** / one question string, then record the answer as a human comment
+     (`--as-human`, per the `meerkat` board skill) after showing the exact body. A comment
+     posted in the board **UI** while you asked is the same record — do not duplicate it. The
+     board requeues `awaiting → todo` by itself; do not move the card again.
+   - `agent-question` is the session's rung: decide it with an agent note and the ladder's
+     move, or escalate E1–E5 to `awaiting`.
+   - Only a human comment resumes `awaiting`, whatever its kind. A tick that lands mid-question
+     is a no-op: re-read that card's trail and wait.
+3. **Health and blocks.** From the doctor report: verdict, `attention_reasons`, `stuck_cards`
+   (stale heartbeats), `waiting.in_review`, `queue`, `compat`, `board.truncated`. Then the
+   `blocked` cards through the `meerkat` board skill — `doctor` counts them but never lists
+   them — with `blocked_reason` (`clarify · decision · dependency · out_of_bounds · defect ·
+   external · resource · unknown`), the age and the assignee. Report only; the loop never
+   unblocks one.
+4. **Backlog release.** The `backlog` cards, read the same way. `backlog → todo` is the only
+   forward edge: `in_progress` is a *claimed* state, reached by a claim and never by a move.
+   Assign only an owner the human names. An epic is released but never claimed; its children
+   are. Warn first when the verdict from step 1 says nothing will dispatch.
+5. **Card management.** Every other write — create, split, assign, comment, accept, reopen,
+   cancel, relation, attachment — is the `meerkat` board skill's command; show it before
+   writing it.
+
+Every write is shown first, verbatim — the decision comment, an agent note, a move, an assign.
+Newer guidance overrides nothing here: a "yes" to a recommendation is recorded as that
+recommendation plus yes, never paraphrased.
+
+`--opened-by human` is the same idea at the single-turn level; manual mode is the repeated
+agenda around it. Run at most one console per agent directory: `session.lock` guards the pool,
+and two consoles would still race the workflow ledger.
 
 ## Card briefs and task process directories
 
