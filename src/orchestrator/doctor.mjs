@@ -5,15 +5,21 @@
  * The loop's other read verbs each answer one question (`status`: is the process
  * up; `console`: what is waiting on a human). A human keeping a team alive has to
  * ask all of them, then read the log and the queue by hand. This verb asks them
- * together and adds the two facts the answers do not carry: whether the patrol is
- * still *completing*, and which cards are stuck.
+ * together and adds the facts the answers do not carry: whether the patrol is
+ * still *completing*, which cards are stuck, and which cards keep going round
+ * the same loop (rework rounds, review reopens, dispatch retries, failed
+ * subagents).
  *
  * **It is not a pass.** It claims nothing, dispatches nothing, starts no process,
  * writes no state and opens no logger — an inspection that changed the thing it
- * inspected would be worth nothing. Every judgement is reused, never restated:
- * the verdict is `probeSupervisor`, the board read is `readBoard` (one call, the
- * patrol's own view), the stale-heartbeat line is `planPatrol`, and the review
- * line is the workflow's `review_aging` setting resolved once.
+ * inspected would be worth nothing. Every existing judgement is reused, never
+ * restated: the verdict is `probeSupervisor`, the board read is `readBoard` (one
+ * call, the patrol's own view), the stale-heartbeat line is `planPatrol`, and the
+ * review line is the workflow's `review_aging` setting resolved once. The
+ * `looping` section adds judgements no other pass owns, judged over the same
+ * snapshot and the queue/ledger rows already read; the review-reopen bound is
+ * mirrored from the workflow's own constant (the orchestrator may import only
+ * `foundation`), never re-invented.
  *
  * Exit codes: 0 whenever a report was produced — a report that says "attention"
  * is a successful inspection. 2 on a usage error, 1 only when no report could be
@@ -29,6 +35,7 @@ import { QUEUE_FILES } from "../foundation/loop-state.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import { PATROL_STALE_MS, planPatrol } from "../foundation/scheduling.mjs";
+import { TERMINAL_STATUSES } from "../foundation/sla-patrol.mjs";
 import { readBoard } from "./board.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { parseArgs } from "./options.mjs";
@@ -46,6 +53,34 @@ export const LOG_TAIL_BYTES = 64 * 1024;
  */
 export const LOG_TAIL_LINE_CHARS = 200;
 
+/**
+ * When a card is treated as going round in circles.
+ *
+ * Round 1 is the first delivery; every rejection, rework or audited reopen bumps
+ * `delivery_round`, so 4 means the work came back three times. These are review
+ * thresholds: `doctor` reports them, it never acts on them.
+ */
+export const LOOP_REWORK_ROUND_MIN = 4;
+/**
+ * The review-reopen bound, mirrored from `DEFAULT_REVIEW_REOPEN_MAX`
+ * (`src/core/domain/workflow.mjs`) because the orchestrator may import only
+ * `foundation` (`test/orchestrator/imports.test.mjs`). If that bound ever becomes
+ * configurable (`resolveWorkflowConfig` does not expose it today), this must read
+ * the same config instead of the default.
+ */
+export const LOOP_REVIEW_REOPEN_MIN = 2;
+/** A review card's own round bumps by one per reopen — it leaves `in_review`. */
+export const LOOP_REVIEW_ROUND_MIN = LOOP_REVIEW_REOPEN_MIN + 1;
+/** Five handoffs for one card inside the queue's 24h retention. */
+export const LOOP_DISPATCH_ROWS_MIN = 5;
+/** Two handoffs that each exhausted their own attempt budget. */
+export const LOOP_DISPATCH_FAILED_MIN = 2;
+/** Three failed subagent rows for one card inside the ledger's 7-day retention. */
+export const LOOP_SUBAGENT_FAILED_MIN = 3;
+
+/** Ledger statuses that mean the subagent did not finish its work. */
+const LEDGER_FAILURE_STATUSES = new Set(["failed", "interrupted", "stale"]);
+
 /** The peer-marker rule: a marker older than this many cadences means "stalled". */
 const PEER_LIVENESS_K = 3;
 
@@ -53,7 +88,8 @@ export const USAGE = `Usage: taskctl loop doctor [--state <path>] [--log <path>]
 
 One read-only inspection: the supervisor verdict, the resolved scan set, the
 patrol's last-successful-run marker, the tail of the loop log, the dispatch queue
-and the subagent ledger, and the cards that look stuck.
+and the subagent ledger, the cards that look stuck, and the cards that keep
+looping (rework rounds, review reopens, dispatch retries, failed subagents).
 
 It writes nothing, claims nothing and starts no process. The exit code is 0
 whenever a report was produced; read \`attention\` from --json.`;
@@ -104,6 +140,12 @@ function splitLines(text) {
 /** One line, capped. The report keeps the logfmt prefix, which is the readable half. */
 function capLine(line) {
   return line.length > LOG_TAIL_LINE_CHARS ? `${line.slice(0, LOG_TAIL_LINE_CHARS)}…` : line;
+}
+
+/** A record's free text, folded onto one line and capped for the human page. */
+function oneLine(value) {
+  if (typeof value !== "string" || value.trim() === "") return "";
+  return capLine(value.replace(/\s+/g, " ").trim());
 }
 
 /**
@@ -211,6 +253,188 @@ function countStatuses(rows) {
   return counts;
 }
 
+// ---------------------------------------------------------------------------
+// The looping judgements — pure, over rows the report already read
+// ---------------------------------------------------------------------------
+
+/** A non-negative integer, or a digit-only string, else 0. */
+function intOrZero(value) {
+  if (Number.isInteger(value) && value >= 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim());
+  return 0;
+}
+
+/** A handoff row's attempt counter, tolerating a missing or malformed value. */
+function attemptsOf(row) {
+  const value = Number(row?.attempts ?? 0);
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+/** The card a queue/ledger row belongs to, or `null` when it names none. */
+function refOf(row) {
+  const value = typeof row?.card === "string" ? row.card.trim() : "";
+  return value === "" ? null : value;
+}
+
+/** Does the board snapshot know this card is finished? Unknown stays unfiltered. */
+function knownTerminal(ref, boardByRef) {
+  const status = boardByRef.get(ref)?.status;
+  return typeof status === "string" && TERMINAL_STATUSES.includes(status);
+}
+
+/** `age_ms` for a card's current status, or `null` when the timestamp is unreadable. */
+function ageSince(since, nowMs) {
+  const at = since === null || since === undefined ? Number.NaN : Date.parse(String(since));
+  return Number.isFinite(at) ? Math.max(0, nowMs - at) : null;
+}
+
+/**
+ * The two board-side loop findings: a card whose work keeps coming back, and a
+ * review card the loop keeps re-dispatching.
+ *
+ * `byId` resolves a review card's structural `review_of_id` to its original's
+ * identifier; the list projection does not pass one, so `review_of` alone falls
+ * back to the `meta.review_of` mirror and a column-only review card reads `null`.
+ */
+function boardLoopFindings(tasks, byId, nowMs) {
+  const rework = [];
+  const reviews = [];
+  for (const task of tasks) {
+    const ref = typeof task?.identifier === "string" ? task.identifier : "";
+    if (ref === "") continue;
+    if (TERMINAL_STATUSES.includes(String(task?.status ?? ""))) continue;
+    const identity = reviewIdentityOf(task, { byId });
+    const since = task.status_changed_at ?? task.created_at ?? null;
+    if (identity.isReview) {
+      const retries = intOrZero(task?.meta?.review_retry);
+      if (retries < LOOP_REVIEW_REOPEN_MIN && identity.ownRound < LOOP_REVIEW_ROUND_MIN) continue;
+      reviews.push({
+        ref,
+        title: task.title ?? null,
+        original: identity.originalRef ?? task.review_of ?? null,
+        retries,
+        own_round: identity.ownRound,
+        audited_round: identity.auditedRound,
+        status: task.status ?? null,
+        since,
+        age_ms: ageSince(since, nowMs),
+      });
+      continue;
+    }
+    if (identity.ownRound < LOOP_REWORK_ROUND_MIN) continue;
+    rework.push({
+      ref,
+      title: task.title ?? null,
+      kind: task.kind ?? null,
+      round: identity.ownRound,
+      status: task.status ?? null,
+      since,
+      age_ms: ageSince(since, nowMs),
+    });
+  }
+  rework.sort((left, right) => right.round - left.round || left.ref.localeCompare(right.ref));
+  reviews.sort(
+    (left, right) =>
+      right.retries - left.retries ||
+      right.own_round - left.own_round ||
+      left.ref.localeCompare(right.ref),
+  );
+  return { rework_rounds: rework, review_reopens: reviews };
+}
+
+/**
+ * Handoff rows that keep failing for one card.
+ *
+ * Question-lane rows are keyed by the question, not by the card's dispatch, so
+ * they are excluded here; they are still counted by the aggregate `queue.failed`.
+ * Rows the board knows belong to a finished card are history, not a live loop.
+ */
+function queueLoopFindings(rows, boardByRef) {
+  const groups = new Map();
+  for (const row of rows) {
+    if (String(row?.queue_kind ?? "handoff") === "question") continue;
+    const ref = refOf(row);
+    if (ref === null || knownTerminal(ref, boardByRef)) continue;
+    if (!groups.has(ref)) groups.set(ref, []);
+    groups.get(ref).push(row);
+  }
+  const findings = [];
+  for (const [ref, group] of groups) {
+    const failedRows = group.filter((row) => String(row?.status ?? "") === "failed");
+    if (group.length < LOOP_DISPATCH_ROWS_MIN && failedRows.length < LOOP_DISPATCH_FAILED_MIN) {
+      continue;
+    }
+    const board = boardByRef.get(ref) ?? null;
+    findings.push({
+      ref,
+      title: board?.title ?? null,
+      status: board?.status ?? null,
+      rows: group.length,
+      failed: failedRows.length,
+      // The row arrays are append-ordered (`enqueueCard`) and pruned in place, so
+      // the last entry is the newest handoff and the last failed entry the newest
+      // failure.
+      last_status: group.at(-1)?.status ?? null,
+      max_attempts: Math.max(...group.map(attemptsOf)),
+      last_error: failedRows.at(-1)?.lastError ?? null,
+    });
+  }
+  findings.sort(
+    (left, right) =>
+      right.failed - left.failed ||
+      right.rows - left.rows ||
+      right.max_attempts - left.max_attempts ||
+      left.ref.localeCompare(right.ref),
+  );
+  return findings;
+}
+
+/**
+ * Failed subagent rows that keep accumulating for one card.
+ *
+ * Question-role rows are deliberately included: a subagent that cannot start for
+ * the same card is the same loop whatever lane asked for it.
+ */
+function ledgerLoopFindings(rows, boardByRef) {
+  const groups = new Map();
+  for (const row of rows) {
+    if (!LEDGER_FAILURE_STATUSES.has(String(row?.status ?? ""))) continue;
+    const ref = refOf(row);
+    if (ref === null || knownTerminal(ref, boardByRef)) continue;
+    if (!groups.has(ref)) groups.set(ref, []);
+    groups.get(ref).push(row);
+  }
+  const findings = [];
+  for (const [ref, group] of groups) {
+    if (group.length < LOOP_SUBAGENT_FAILED_MIN) continue;
+    const statuses = { failed: 0, interrupted: 0, stale: 0 };
+    let newest = null;
+    let newestAt = Number.NEGATIVE_INFINITY;
+    for (const row of group) {
+      statuses[String(row.status)] += 1;
+      const at = Date.parse(String(row?.lastSeenAt ?? row?.startedAt ?? ""));
+      if (Number.isFinite(at) && at > newestAt) {
+        newest = row;
+        newestAt = at;
+      }
+    }
+    const board = boardByRef.get(ref) ?? null;
+    findings.push({
+      ref,
+      title: board?.title ?? null,
+      status: board?.status ?? null,
+      failures: group.length,
+      statuses,
+      last_result: newest?.lastResult ?? null,
+      last_seen_at: newest?.lastSeenAt ?? newest?.startedAt ?? null,
+    });
+  }
+  findings.sort(
+    (left, right) => right.failures - left.failures || left.ref.localeCompare(right.ref),
+  );
+  return findings;
+}
+
 function patrolReport(opts, nowMs) {
   const markerPath = opts.slaLastOk ?? null;
   const marker = readPeerMarker(markerPath);
@@ -298,6 +522,12 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     errors.push(`board: ${error.message}`);
   }
 
+  // One projection of the snapshot, shared by the stuck and looping judgements.
+  // An unreadable board yields empty maps, so every card-keyed section behaves as
+  // before and the local loop halves still report.
+  const boardByRef = new Map(tasks.map((task) => [task?.identifier, task]));
+  const byId = new Map(tasks.map((task) => [task?.id, task?.identifier]));
+
   // 4. The log.
   let log;
   try {
@@ -310,6 +540,8 @@ export function doctorReport(opts, env = process.env, deps = {}) {
 
   // 5. The queue and the subagent ledger, both beside the worker registry.
   const stateDir = dirname(String(opts.state));
+  let queueRows = [];
+  let ledgerRows = [];
   const queue = {
     file: join(stateDir, QUEUE_FILES.cards),
     depth: 0,
@@ -328,6 +560,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
       errors.push(`queue: ${read.error}`);
     }
     const cards = Array.isArray(read.value?.cards) ? read.value.cards : [];
+    queueRows = cards;
     queue.total = cards.length;
     queue.pending = cards.filter((card) => card?.status === "pending").length;
     queue.processing = cards.filter((card) => card?.status === "processing").length;
@@ -354,6 +587,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
       errors.push(`subagents: ${read.error}`);
     }
     const rows = Array.isArray(read.value?.subagents) ? read.value.subagents : [];
+    ledgerRows = rows;
     subagents.total = rows.length;
     subagents.live = liveSubagents(read.value).length;
     subagents.by_status = countStatuses(rows);
@@ -370,11 +604,10 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   const stuck = { in_progress: [], total: 0 };
   const waiting = { in_review: [], total: 0 };
   if (board.error === null) {
-    const titles = new Map(tasks.map((task) => [task?.identifier, task?.title ?? null]));
     stuck.in_progress = planPatrol({ tasks, now: nowMs })
       .map((alert) => ({
         ref: alert.identifier,
-        title: titles.get(alert.identifier) ?? null,
+        title: boardByRef.get(alert.identifier)?.title ?? null,
         agent: alert.agent ?? null,
         reason: alert.type,
         detail: alert.type === "heartbeat-unreadable" ? (alert.reason ?? null) : null,
@@ -401,6 +634,36 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   }
   stuck.total = stuck.in_progress.length;
   waiting.total = waiting.in_review.length;
+
+  // 7. The cards that look like they are looping. The board half reuses the
+  // same snapshot; the local halves read the queue and ledger rows the sections
+  // above already loaded — no second file read. A card the board knows is
+  // finished is dropped from the local halves: its failures are history. When
+  // the board cannot be read that filter is unavailable and the local halves
+  // still report, which is the conservative direction for an inspection.
+  const boardLoop =
+    board.error === null
+      ? boardLoopFindings(tasks, byId, nowMs)
+      : { rework_rounds: [], review_reopens: [] };
+  const looping = {
+    rework_rounds: boardLoop.rework_rounds,
+    review_reopens: boardLoop.review_reopens,
+    dispatch_retries: queueLoopFindings(queueRows, boardByRef),
+    subagent_failures: ledgerLoopFindings(ledgerRows, boardByRef),
+    total: 0,
+  };
+  // One card, one count: a card may be named by more than one list, and the
+  // attention total must not double-count it.
+  const loopRefs = new Set();
+  for (const list of [
+    looping.rework_rounds,
+    looping.review_reopens,
+    looping.dispatch_retries,
+    looping.subagent_failures,
+  ]) {
+    for (const card of list) loopRefs.add(card.ref);
+  }
+  looping.total = loopRefs.size;
 
   // An approval the board refused leaves `meta.accepted_by` on a card that is
   // still `in_review`: the marker records an acceptance the row never reached.
@@ -436,7 +699,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   }
   blockedAcceptance.total = blockedAcceptance.cards.length;
 
-  // 7. Acceptances whose lane never landed. `done` is the board's answer, not
+  // 8. Acceptances whose lane never landed. `done` is the board's answer, not
   // git's: a card worked in a tree the loop never registered is accepted with
   // its branch still unmerged, and nothing else looks. Only `done` counts — a
   // `canceled` branch is abandoned work, and an active lane is correctly open.
@@ -494,6 +757,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
 
   const attentionReasons = [];
   if (stuck.total > 0) attentionReasons.push(`stuck_cards: ${stuck.total}`);
+  if (looping.total > 0) attentionReasons.push(`looping: ${looping.total}`);
   if (blockedAcceptance.total > 0) {
     attentionReasons.push(`blocked_acceptance: ${blockedAcceptance.total}`);
   }
@@ -521,6 +785,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     queue,
     subagents,
     stuck_cards: stuck,
+    looping,
     waiting,
     blocked_acceptance: blockedAcceptance,
     unlanded,
@@ -592,6 +857,48 @@ function humanReport(report) {
         ? `stale ${minutes(card.age_ms)} > ${minutes(card.threshold_ms)}`
         : `heartbeat-unreadable (${card.detail ?? "unknown"})`;
     lines.push(`  ${card.ref}  in_progress  ${why}  ${card.title ?? ""}`.trimEnd());
+  }
+
+  const loopKinds = [
+    ["rework", report.looping.rework_rounds.length],
+    ["review-reopen", report.looping.review_reopens.length],
+    ["dispatch", report.looping.dispatch_retries.length],
+    ["subagent", report.looping.subagent_failures.length],
+  ];
+  const loopListed = loopKinds.reduce((sum, [, count]) => sum + count, 0);
+  lines.push(
+    `looping     ${report.looping.total} card(s) — ${loopKinds
+      .map(([name, count]) => `${name} ${count}`)
+      .join(", ")}` + (loopListed > report.looping.total ? " (a card can appear in more than one list)" : ""),
+  );
+  for (const card of report.looping.rework_rounds) {
+    const age = card.age_ms === null ? "?" : minutes(card.age_ms);
+    lines.push(
+      `  ${card.ref}  rework  round ${card.round}  ${card.status ?? "?"}  ${age}` +
+        `${card.kind === "epic" ? "  [epic]" : ""}  ${card.title ?? ""}`.trimEnd(),
+    );
+  }
+  for (const card of report.looping.review_reopens) {
+    const age = card.age_ms === null ? "?" : minutes(card.age_ms);
+    lines.push(
+      `  ${card.ref}  review-reopen  retries ${card.retries}  own round ${card.own_round}` +
+        `  audits ${card.audited_round ?? "?"}  ${card.status ?? "?"}  ${age}  ${card.title ?? ""}`.trimEnd(),
+    );
+  }
+  for (const card of report.looping.dispatch_retries) {
+    const last = card.last_status === null ? "" : `, last ${card.last_status}`;
+    const detail = oneLine(card.last_error);
+    lines.push(
+      `  ${card.ref}  dispatch  ${card.rows} handoff(s) (${card.failed} failed${last})` +
+        `  ${card.status ?? "?"}${detail === "" ? "" : `  ${detail}`}  ${card.title ?? ""}`.trimEnd(),
+    );
+  }
+  for (const card of report.looping.subagent_failures) {
+    const detail = oneLine(card.last_result);
+    lines.push(
+      `  ${card.ref}  subagent  ${card.failures} failure(s)` +
+        `  ${card.status ?? "?"}${detail === "" ? "" : `  ${detail}`}  ${card.title ?? ""}`.trimEnd(),
+    );
   }
 
   const oldest = report.waiting.in_review.reduce(

@@ -151,7 +151,8 @@ keep the clock — the question tick (60 s) and the control tick (600 s) continu
    UI are one thing, so the board comment stays authoritative and the in-session question is
    only the front-end.
 3. **Loop health and blocks.** Report `doctor`'s verdict, `attention_reasons`, `stuck_cards`
-   (stale heartbeats), `waiting.in_review`, `queue`, and a truncated board read. Then
+   (stale heartbeats), `looping` (rework rounds, review reopens, dispatch retries, subagent
+   failures), `waiting.in_review`, `queue`, and a truncated board read. Then
    the cards in `blocked` status — read through the `meerkat` board skill, because `doctor`
    counts them but lists none: ref, title, `blocked_reason`, how long, assignee, and what the
    human could do about each. Never unblock one on your own. Close with what step 1's verdict

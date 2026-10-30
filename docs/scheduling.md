@@ -124,10 +124,24 @@ only**: review aging is the workflow pass's judgement and applies to review card
 *not* `in_review` (`docs/lifecycle.md`), so the inspection neither restates nor widens it.
 A third list, `blocked_acceptance`, names the cards carrying `meta.accepted_by` for their
 **current** round while still `in_review` — an acceptance the board refused, which the round
-bump of the routed reopen otherwise turns invisible. The inspection
-claims, dispatches, starts and writes nothing — its board read runs
-with autostart disabled — and it exits 0 whenever a report was produced, so a scheduled
-inspection reads `attention` from `--json` rather than an exit code.
+bump of the routed reopen otherwise turns invisible. A fourth section, `looping`, names the
+cards that keep going round the same loop, from the snapshot and the rows already read:
+**rework rounds** (`delivery_round >= 4`, i.e. the work came back three times),
+**review reopens** (a review card at the workflow's re-dispatch bound — `meta.review_retry >= 2`
+or its own round `>= 3`), **dispatch retries** (five handoffs for one card, or two handoffs that
+each exhausted their attempt budget, inside the queue's 24 h retention), and **subagent
+failures** (three `failed`/`interrupted`/`stale` ledger rows for one card inside the ledger's
+7-day retention). A card the board snapshot knows is `done`/`canceled` is dropped from the two
+local halves; when the board cannot be read those halves still report, and a truncated board
+read makes the two board-derived lists a lower bound (the board line says `TRUNCATED`).
+`looping.total` counts **distinct cards** — one card may appear under more than one kind.
+These are current-state readings only: a worker pulsing a fresh heartbeat without progress,
+claim/release or `blocked`/`awaiting` churn inside one round, and activity-level oscillation
+are not counted — the first belongs beside the stale-heartbeat rule, and the rest would need
+the activity trail rather than the card row. The inspection claims, dispatches, starts and
+writes nothing — its board read runs with autostart disabled — and it exits 0 whenever a
+report was produced, so a scheduled inspection reads `attention` from `--json` rather than an
+exit code.
 
 The continue prompt runs them in the order **patrol → workflow → poll**: the
 workflow pass dispatches a review card, and the poll that follows in the same

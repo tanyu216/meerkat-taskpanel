@@ -20,12 +20,20 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import {
+  LOOP_DISPATCH_FAILED_MIN,
+  LOOP_DISPATCH_ROWS_MIN,
+  LOOP_REVIEW_REOPEN_MIN,
+  LOOP_REVIEW_ROUND_MIN,
+  LOOP_REWORK_ROUND_MIN,
+  LOOP_SUBAGENT_FAILED_MIN,
   LOG_TAIL_LINES,
   LOG_TAIL_BYTES,
   LOG_TAIL_LINE_CHARS,
   doctorReport,
   main,
 } from "../../src/orchestrator/doctor.mjs";
+import { bumpsDeliveryRound } from "../../src/core/domain/status.mjs";
+import { DEFAULT_REVIEW_REOPEN_MAX } from "../../src/core/domain/workflow.mjs";
 import { parseArgs } from "../../src/orchestrator/options.mjs";
 
 const dirs = [];
@@ -110,14 +118,17 @@ function writeJson(file, value) {
   writeFileSync(file, `${JSON.stringify(value)}\n`);
 }
 
-function seedState(dir, { patrolAgeMs = 30 * MIN, cadenceMin = 15 } = {}) {
+function seedState(
+  dir,
+  { patrolAgeMs = 30 * MIN, cadenceMin = 15, cards, subagents } = {},
+) {
   writeJson(join(dir, "cards.queue.json"), {
     version: 1,
-    cards: [{ status: "pending" }, { status: "processing" }],
+    cards: cards ?? [{ status: "pending" }, { status: "processing" }],
   });
   writeJson(join(dir, "subagents.state.json"), {
     version: 1,
-    subagents: [{ status: "running" }, { status: "completed" }],
+    subagents: subagents ?? [{ status: "running" }, { status: "completed" }],
   });
   writeJson(join(dir, "loop-patrol-last-ok.json"), {
     mechanism: "sla",
@@ -198,6 +209,13 @@ describe("loop doctor — the report", () => {
     assert.equal("aging" in report.waiting.in_review[0], false);
     assert.equal(report.waiting.total, 3);
     assert.equal(report.stuck_cards.total, 2, "only the patrol's heartbeat judgement is 'stuck'");
+    assert.deepEqual(report.looping, {
+      rework_rounds: [],
+      review_reopens: [],
+      dispatch_retries: [],
+      subagent_failures: [],
+      total: 0,
+    }, "the looping section is always present, and empty when nothing is circling");
 
     assert.deepEqual(report.errors, []);
     assert.deepEqual(report.skipped, []);
@@ -423,6 +441,369 @@ describe("loop doctor — the report", () => {
   });
 });
 
+describe("loop doctor — the loop thresholds", () => {
+  it("mirrors the review-reopen bound and the round-bump rule", () => {
+    assert.equal(LOOP_REVIEW_REOPEN_MIN, DEFAULT_REVIEW_REOPEN_MAX);
+    assert.equal(LOOP_REVIEW_ROUND_MIN, LOOP_REVIEW_REOPEN_MIN + 1);
+    assert.equal(bumpsDeliveryRound("in_review", "in_progress"), true);
+    assert.equal(bumpsDeliveryRound("in_review", "blocked"), true);
+    assert.equal(bumpsDeliveryRound("done", "todo"), true);
+    assert.equal(bumpsDeliveryRound("in_progress", "in_review"), false);
+    assert.equal(LOOP_REWORK_ROUND_MIN, 4);
+    assert.equal(LOOP_DISPATCH_ROWS_MIN, 5);
+    assert.equal(LOOP_DISPATCH_FAILED_MIN, 2);
+    assert.equal(LOOP_SUBAGENT_FAILED_MIN, 3);
+  });
+});
+
+describe("loop doctor — looping cards", () => {
+  it("flags a card whose delivery rounds keep coming back", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          identifier: "T-701",
+          title: "Round five",
+          status: "todo",
+          delivery_round: 5,
+          status_changed_at: at(90 * MIN),
+        },
+        {
+          identifier: "T-700",
+          title: "Round four",
+          status: "in_progress",
+          delivery_round: 4,
+          heartbeat_at: at(5 * MIN),
+        },
+        {
+          identifier: "E-1",
+          title: "Epic round four",
+          kind: "epic",
+          status: "in_progress",
+          delivery_round: 4,
+        },
+        { identifier: "T-702", title: "Done at four", status: "done", delivery_round: 4 },
+        {
+          identifier: "R-9",
+          title: "Review own two",
+          status: "in_review",
+          delivery_round: 2,
+          review_of_id: "orig-9",
+          review_round: 1,
+        },
+        { identifier: "T-704", title: "Round three", status: "todo", delivery_round: 3 },
+      ],
+    });
+    seedState(dir);
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(
+      report.looping.rework_rounds.map((card) => [card.ref, card.round]),
+      [
+        ["T-701", 5],
+        ["E-1", 4],
+        ["T-700", 4],
+      ],
+      "terminal cards, review cards and round 3 are not rework loops",
+    );
+    assert.equal(report.looping.rework_rounds[0].age_ms, 90 * MIN);
+    assert.equal(report.looping.rework_rounds[0].since, at(90 * MIN));
+    assert.equal(report.looping.rework_rounds[1].kind, "epic", "a rejected container is still a loop");
+    assert.deepEqual(report.looping.review_reopens, [], "a review card is never counted as rework");
+    assert.equal(report.looping.total, 3);
+    assert.ok(report.attention_reasons.includes("looping: 3"));
+    assert.equal(report.ok, true, "a looping finding is not an error");
+  });
+
+  it("flags a review card the loop re-dispatched to exhaustion", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        { id: "id-900", identifier: "T-900", title: "Original", status: "in_review", delivery_round: 3 },
+        {
+          identifier: "R-1",
+          title: "Retry two",
+          status: "in_review",
+          delivery_round: 1,
+          review_of_id: "id-900",
+          review_round: 1,
+          meta: { review_retry: 2 },
+        },
+        {
+          identifier: "R-2",
+          title: "Retry one",
+          status: "in_review",
+          delivery_round: 2,
+          review_of_id: "id-900",
+          review_round: 1,
+          meta: { review_retry: "1" },
+        },
+        {
+          identifier: "R-3",
+          title: "Round three",
+          status: "todo",
+          delivery_round: 3,
+          review_of_id: "id-900",
+          review_round: 1,
+        },
+        {
+          identifier: "R-4",
+          title: "Done at three",
+          status: "done",
+          delivery_round: 3,
+          review_of_id: "id-900",
+          review_round: 1,
+        },
+        {
+          identifier: "R-5",
+          title: "Legacy review",
+          status: "in_review",
+          delivery_round: 3,
+          meta: { review_of: "T-900" },
+        },
+      ],
+    });
+    seedState(dir);
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(
+      report.looping.review_reopens.map((card) => [
+        card.ref,
+        card.retries,
+        card.own_round,
+        card.audited_round,
+        card.original,
+      ]),
+      [
+        ["R-1", 2, 1, 1, "T-900"],
+        ["R-3", 0, 3, 1, "T-900"],
+        ["R-5", 0, 3, null, "T-900"],
+      ],
+      "the retry marker and the review card's own round are two readings of the same reopens",
+    );
+    assert.equal(report.looping.total, 3);
+    assert.equal(report.looping.rework_rounds.length, 0);
+  });
+
+  it("flags a dispatch retry loop from accumulated handoff rows", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          identifier: "T-1",
+          title: "One",
+          status: "in_progress",
+          delivery_round: 1,
+          heartbeat_at: at(5 * MIN),
+        },
+        { identifier: "T-2", title: "Two", status: "in_review", delivery_round: 1 },
+        {
+          identifier: "T-3",
+          title: "Three",
+          status: "in_progress",
+          delivery_round: 1,
+          heartbeat_at: at(5 * MIN),
+        },
+        { identifier: "T-5", title: "Five", status: "done", delivery_round: 1 },
+      ],
+    });
+    seedState(dir, {
+      cards: [
+        { card: "T-1", status: "done" },
+        { card: "T-1", status: "failed", attempts: 3, lastError: "old" },
+        { card: "T-1", status: "done" },
+        { card: "T-1", status: "failed", attempts: 3, lastError: "attempt cap hit" },
+        { card: "T-1", status: "done" },
+        { card: "T-2", status: "failed", attempts: 3, lastError: "a" },
+        { card: "T-2", status: "failed", attempts: 3, lastError: "b" },
+        { card: "T-3", status: "done" },
+        { card: "T-3", status: "done" },
+        { card: "T-3", status: "done" },
+        { card: "T-3", status: "done" },
+        ...Array.from({ length: 5 }, () => ({
+          card: "T-4",
+          status: "failed",
+          queue_kind: "question",
+        })),
+        ...Array.from({ length: 3 }, () => ({ status: "failed" })),
+        ...Array.from({ length: 5 }, () => ({ card: "T-5", status: "done" })),
+      ],
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(
+      report.looping.dispatch_retries.map((card) => [
+        card.ref,
+        card.rows,
+        card.failed,
+        card.last_status,
+        card.last_error,
+      ]),
+      [
+        ["T-1", 5, 2, "done", "attempt cap hit"],
+        ["T-2", 2, 2, "failed", "b"],
+      ],
+      "question rows, unattributed rows and finished cards are not dispatch loops",
+    );
+    assert.equal(
+      report.queue.failed,
+      2 + 2 + 5 + 3,
+      "the aggregate still counts question and unattributed rows",
+    );
+    assert.ok(report.attention_reasons.includes("looping: 2"));
+  });
+
+  it("flags a subagent failure loop from the ledger", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          identifier: "T-1",
+          title: "One",
+          status: "in_progress",
+          delivery_round: 1,
+          heartbeat_at: at(5 * MIN),
+        },
+        {
+          identifier: "T-2",
+          title: "Two",
+          status: "in_progress",
+          delivery_round: 1,
+          heartbeat_at: at(5 * MIN),
+        },
+        { identifier: "T-3", title: "Three", status: "done", delivery_round: 1 },
+      ],
+    });
+    seedState(dir, {
+      subagents: [
+        { card: "T-1", status: "failed", lastResult: "first", lastSeenAt: at(50 * MIN) },
+        { card: "T-1", status: "interrupted", lastResult: "second", lastSeenAt: at(40 * MIN) },
+        { card: "T-1", status: "stale", lastResult: "third", lastSeenAt: at(30 * MIN) },
+        { card: "T-1", status: "running", lastSeenAt: at(20 * MIN) },
+        { card: "T-2", status: "failed", lastResult: "x", lastSeenAt: at(10 * MIN) },
+        { card: "T-2", status: "completed", lastResult: "y", lastSeenAt: at(5 * MIN) },
+        ...Array.from({ length: 3 }, () => ({ card: "T-3", status: "failed" })),
+        ...Array.from({ length: 3 }, () => ({ card: null, status: "failed" })),
+      ],
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(
+      report.looping.subagent_failures.map((card) => [
+        card.ref,
+        card.failures,
+        card.statuses,
+        card.last_result,
+        card.last_seen_at,
+      ]),
+      [["T-1", 3, { failed: 1, interrupted: 1, stale: 1 }, "third", at(30 * MIN)]],
+      "only terminal failures count; a live row is not a failure",
+    );
+    assert.equal(report.looping.total, 1);
+  });
+
+  it("counts a card once when two kinds name it", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          identifier: "T-700",
+          title: "Both",
+          status: "in_progress",
+          delivery_round: 4,
+          heartbeat_at: at(5 * MIN),
+        },
+      ],
+    });
+    seedState(dir, {
+      cards: Array.from({ length: 5 }, () => ({ card: "T-700", status: "done" })),
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(report.looping.rework_rounds.map((card) => card.ref), ["T-700"]);
+    assert.deepEqual(report.looping.dispatch_retries.map((card) => card.ref), ["T-700"]);
+    assert.equal(report.looping.total, 1, "the attention total is distinct cards");
+    assert.ok(report.attention_reasons.includes("looping: 1"));
+  });
+
+  it("keeps the local loop halves when the board cannot be read", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, { fail: true });
+    seedState(dir, {
+      cards: Array.from({ length: 5 }, () => ({ card: "T-Q", status: "done" })),
+      subagents: [
+        { card: "T-L", status: "failed" },
+        { card: "T-L", status: "failed" },
+        { card: "T-L", status: "stale" },
+      ],
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(report.looping.rework_rounds, []);
+    assert.deepEqual(report.looping.review_reopens, []);
+    assert.deepEqual(report.looping.dispatch_retries.map((card) => card.ref), ["T-Q"]);
+    assert.deepEqual(report.looping.subagent_failures.map((card) => card.ref), ["T-L"]);
+    assert.equal(report.looping.total, 2);
+    assert.match(report.errors[0], /^board:/);
+    assert.equal(report.ok, false);
+    assert.ok(report.attention_reasons.includes("looping: 2"));
+  });
+
+  it("reports nothing at the thresholds' edge", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        { identifier: "T-1", title: "Three", status: "todo", delivery_round: 3 },
+        {
+          identifier: "R-1",
+          title: "Retry one",
+          status: "in_review",
+          delivery_round: 2,
+          review_of_id: "x",
+          meta: { review_retry: "1" },
+        },
+        {
+          identifier: "R-2",
+          title: "Garbage retry",
+          status: "in_review",
+          delivery_round: 2,
+          review_of_id: "x",
+          meta: { review_retry: "not-a-number" },
+        },
+      ],
+    });
+    seedState(dir, {
+      cards: [
+        { card: "T-1", status: "done" },
+        { card: "T-1", status: "done" },
+        { card: "T-1", status: "failed" },
+        { card: "T-1", status: "done" },
+      ],
+      subagents: [
+        { card: "T-1", status: "failed" },
+        { card: "T-1", status: "failed" },
+      ],
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(report.looping, {
+      rework_rounds: [],
+      review_reopens: [],
+      dispatch_retries: [],
+      subagent_failures: [],
+      total: 0,
+    });
+    assert.equal(report.attention_reasons.some((reason) => reason.startsWith("looping")), false);
+  });
+});
+
 describe("loop doctor — the log tail", () => {
   it("falls back to the rotated generation, and calls a missing log missing", () => {
     const dir = tempDir();
@@ -476,18 +857,25 @@ describe("loop doctor — read-only", () => {
   it("issues no board write, and leaves the state directory alone", () => {
     const dir = tempDir();
     const { script, record } = sentinel(dir);
-    seedState(dir);
+    // A looping shape too: the new judgement must read the same files without
+    // writing a byte of its own state.
+    seedState(dir, {
+      cards: Array.from({ length: 5 }, () => ({ card: "T-100", status: "done" })),
+      subagents: Array.from({ length: 3 }, () => ({ card: "T-100", status: "failed" })),
+    });
     writeLog(dir, 5);
 
     const before = ["cards.queue.json", "subagents.state.json", "loop-patrol-last-ok.json", "supervisor.log"]
       .map((name) => readFileSync(join(dir, name), "utf8"));
 
     process.env.TP_CALLS = record;
+    let report;
     try {
-      doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+      report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
     } finally {
       delete process.env.TP_CALLS;
     }
+    assert.equal(report.looping.total, 1, "the loop-shaped rows were actually judged");
 
     const after = ["cards.queue.json", "subagents.state.json", "loop-patrol-last-ok.json", "supervisor.log"]
       .map((name) => readFileSync(join(dir, name), "utf8"));
@@ -533,6 +921,7 @@ describe("loop doctor — the process boundary", () => {
     assert.match(out, /supervisor\s+absent/);
     assert.match(out, /patrol\s+last_ok 2025-12-31T23:30:00.000Z \(30m ago, cadence 15m\)/);
     assert.match(out, /stuck\s+2 card\(s\): 2 in_progress/);
+    assert.match(out, /looping\s+0 card\(s\)/);
     assert.match(out, /T-100  in_progress  stale 31m > 30m  Stale claim/);
     assert.match(out, /waiting\s+3 in_review \(oldest 120m\)/);
     assert.match(out, /T-202  in_review  120m  \[review\]  Reviewer card/);
@@ -543,5 +932,87 @@ describe("loop doctor — the process boundary", () => {
     const helpExit = await main(["--help"], { HOME: dir }, deps(), { out: (text) => (out += text) });
     assert.equal(helpExit, 0);
     assert.match(out, /^Usage: taskctl loop doctor/);
+  });
+
+  it("renders the looping block and caps its free text on one line", async () => {
+    const dir = tempDir();
+    const long = "x".repeat(LOG_TAIL_LINE_CHARS * 2);
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          identifier: "T-700",
+          title: "Both",
+          status: "in_progress",
+          delivery_round: 4,
+          heartbeat_at: at(5 * MIN),
+        },
+        {
+          identifier: "E-1",
+          title: "Rejected container",
+          kind: "epic",
+          status: "in_progress",
+          delivery_round: 4,
+        },
+        {
+          identifier: "R-1",
+          title: "Retry",
+          status: "in_review",
+          delivery_round: 1,
+          review_of_id: "x",
+          meta: { review_retry: "2" },
+        },
+        {
+          identifier: "T-D",
+          title: "Dispatch",
+          status: "in_progress",
+          delivery_round: 1,
+          heartbeat_at: at(5 * MIN),
+        },
+        {
+          identifier: "T-L",
+          title: "Ledger",
+          status: "in_progress",
+          delivery_round: 1,
+          heartbeat_at: at(5 * MIN),
+        },
+      ],
+    });
+    seedState(dir, {
+      cards: [
+        ...Array.from({ length: 5 }, () => ({ card: "T-700", status: "done" })),
+        { card: "T-D", status: "failed", attempts: 3, lastError: long },
+        { card: "T-D", status: "failed", attempts: 3, lastError: long },
+      ],
+      subagents: Array.from({ length: 3 }, () => ({ card: "T-L", status: "failed" })),
+    });
+    const argv = [
+      "--state", join(dir, "state.json"),
+      "--log", join(dir, "supervisor.log"),
+      "--config", join(dir, "config.env"),
+      "--cli", script,
+      "--agent", "alice",
+      "--actor-kind", "claude",
+      "--home", dir,
+    ];
+
+    let out = "";
+    const exit = await main(argv, { HOME: dir }, deps(), { out: (text) => (out += text) });
+    assert.equal(exit, 0);
+    assert.match(out, /looping\s+5 card\(s\)/);
+    assert.match(out, /T-700  rework  round 4/);
+    assert.match(out, /E-1  rework  round 4.*\[epic\]/);
+    assert.match(out, /R-1  review-reopen  retries 2/);
+    assert.match(out, /T-D  dispatch  2 handoff\(s\) \(2 failed, last failed\)/);
+    assert.match(out, /T-L  subagent  3 failure\(s\)/);
+    assert.match(out, /a card can appear in more than one list/);
+    assert.equal(out.includes(long), false, "the human page caps free text");
+
+    out = "";
+    await main([...argv, "--json"], { HOME: dir }, deps(), { out: (text) => (out += text) });
+    assert.equal(
+      JSON.parse(out).looping.dispatch_retries[0].last_error,
+      long,
+      "the JSON keeps the raw value",
+    );
   });
 });
