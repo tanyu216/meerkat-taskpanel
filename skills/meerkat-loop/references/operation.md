@@ -197,6 +197,12 @@ removed first, then the merged branch; a dirty worktree is left for its owner. T
 `.meerkat/<identifier>/` sits **inside** the worktree, so it disappears with it — the delivery
 report is the durable evidence, the process directory is not.
 
+Landing covers **the lanes the loop created**: a worktree it registered at admission, recorded
+in `workspaces.json`. A tree a session made for itself is never in that registry, so accepting
+its card merges nothing — the loop logs `has no lane record` and `done` means *accepted*, not
+*merged*. `taskctl loop doctor` lists those cards under `unlanded`; a session that works in its
+own worktree merges before it delivers.
+
 Roles, the decision policy and the process directory resolve from the project checkout;
 only the worker's working directory is the worktree.
 
