@@ -150,10 +150,10 @@
 
 | 落点 | 处置 |
 |---|---|
-| `skills/meerkat-loop/SKILL.md`（§Required board interface） | **保留** |
-| `skills/meerkat-loop/references/operation.md`（§Compatibility 表） | **保留** |
-| `skills/meerkat-loop/scripts/board-check.mjs`（`REQUIRED_BOARD_INTERFACE`） | **保留** |
-| 12 个**生成副本**（`plugins/{claude,codex,loop,pi}/skills/meerkat-loop/{SKILL.md,references/operation.md,scripts/board-check.mjs}`） | **保留**（随源；**不得手改**） |
+| `skills/meerkat-loop/SKILL.md`（§Required board interface） | **已移除**（2026-10-30，ADR 0005） |
+| `skills/meerkat-loop/references/operation.md`（§Compatibility 表） | **已移除**（2026-10-30，ADR 0005） |
+| `skills/meerkat-loop/scripts/board-check.mjs`（`REQUIRED_BOARD_INTERFACE`） | **已移除**：`2780b764` 起迁入工具包，2026-10-30 连工具包侧一并删除 |
+| 12 个**生成副本**（`plugins/{claude,codex,loop,pi}/skills/meerkat-loop/{SKILL.md,references/operation.md,scripts/board-check.mjs}`） | **随源移除**（`plugins/` 已由 `39a009d` 整目录删除） |
 
 **理由**：这是 J2 的 R2——loop 是**框架侧的产物**（面向 claude/codex/pi 分发，永不给 OpenClaw），它必须声明自己驱动 ACL 的哪一代。`references/operation.md` 的兼容表**已经**把两侧分清了（loop 声明接口代号 + 地板；board 用自有的 `version` / `schema_version`），这正是 Acceptance ③ 要的形状，**无需改**。
 **可选加固（低成本，建议 C2 顺手做）**：在 `SKILL.md` 该代码块下补一句归属——「`ACL 接口代 v1` 是 openclaw-team 的任务提供方 ACL 代号；本板是其参考实现」。一行，满足「R2 必须带归属」。
@@ -199,7 +199,7 @@
 
 | 落点 | 处置 |
 |---|---|
-| `test/skill/loop.test.mjs`（`declares the board interface it requires` + `boardInterface: "ACL 接口代 v1"`） | **保留** |
+| `test/skill/loop.test.mjs`（`declares the board interface it requires` + `boardInterface: "ACL 接口代 v1"`） | **已移除**（2026-10-30）：该腿改成「声明与门都不得再出现」的负向守卫 |
 
 **理由**：它断言的是 **①-a**（loop 的自有声明），不是产品的自述。**仅当 ①-a 改动时**才随之改；本裁定**不动** ①-a，故测试**不动**。
 **可执行判据**：C2 完成后 `node --test "test/skill/*.test.mjs"` 必须仍绿——若 ①-b 的改动意外红了它，说明改到了 ①-a 的语料。
