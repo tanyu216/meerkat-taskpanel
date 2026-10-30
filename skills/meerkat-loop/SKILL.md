@@ -152,7 +152,8 @@ keep the clock — the question tick (60 s) and the control tick (600 s) continu
    only the front-end.
 3. **Loop health and blocks.** Report `doctor`'s verdict, `attention_reasons`, `stuck_cards`
    (stale heartbeats), `looping` (rework rounds, review reopens, dispatch retries, subagent
-   failures), `waiting.in_review`, `queue`, and a truncated board read. Then
+   failures, deferred admission), `stale_workspaces` (a non-terminal tree and branch both
+   gone), `waiting.in_review`, `queue`, and a truncated board read. Then
    the cards in `blocked` status — read through the `meerkat` board skill, because `doctor`
    counts them but lists none: ref, title, `blocked_reason`, how long, assignee, and what the
    human could do about each. Never unblock one on your own. Close with what step 1's verdict
@@ -238,7 +239,9 @@ which is also the subagent's cwd:
   The hub writes the first snapshot before it answers, then keeps the file fresh until the
   card is `done` or `canceled`. A failed registration — or a card that is already terminal —
   **defers the card unclaimed**; a refused claim unregisters it again. A claim with no brief
-  has nowhere to run.
+  has nowhere to run. A card-scoped admission failure is recorded in `deferrals.json`; three
+  consecutive failures write one `Orchestrator` note on the card, and `loop doctor` reports it
+  under `looping`.
 - `card.md` is the **authoritative brief** handed to the subagent and re-read on resume. The
   hub rewrites it from the board: **never edit it**. It is a snapshot; the live card (read as
   JSON through the `meerkat` board skill) is the live state and the source of the `version` a

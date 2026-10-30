@@ -39,7 +39,7 @@ import {
   isGitCheckout,
 } from "../../src/orchestrator/passes.mjs";
 import { QUEUE_FILES, readCards } from "../../src/orchestrator/queue.mjs";
-import { findWorkspace } from "../../src/orchestrator/workspace.mjs";
+import { findWorkspace, upsertWorkspaceRecord } from "../../src/orchestrator/workspace.mjs";
 import { runContinue, runPollTick, runQuestionTick } from "../../src/orchestrator/runners.mjs";
 import {
   acquireContinueLock,
@@ -1283,8 +1283,66 @@ describe("worktree admission", () => {
     );
     assert.equal(result.ok, false);
     assert.match(result.why, /WORKSPACE_CREATE_FAILED/);
+    assert.equal(result.code, "WORKSPACE_CREATE_FAILED");
+    assert.equal(result.accounted, true);
     assert.equal(admission.dirFor("T-2"), null);
     assert.equal(findWorkspace(f.dir, { identifier: "T-2" }), null, "nothing is registered");
+  });
+
+  it("reproduces TP-0009: a missing previous lane branch falls back and admits", async () => {
+    const f = fixture();
+    upsertWorkspaceRecord(f.dir, {
+      identifier: "T-3",
+      round: 1,
+      path: join(f.app, ".worktrees", "T-3"),
+      branch: "lane/T-3",
+      project_dir: f.app,
+    });
+    const refAware = (cmd, argv) => {
+      const key = argv.join(" ");
+      if (key.includes("rev-parse --verify --quiet")) {
+        return { status: 1, stdout: "", stderr: "" };
+      }
+      if (key.includes("rev-parse --abbrev-ref HEAD")) {
+        return { status: 0, stdout: "dev\n", stderr: "" };
+      }
+      return { status: 0, stdout: "", stderr: "" };
+    };
+    const admission = admissionFor(f, refAware);
+    const result = await admission.admit(
+      { identifier: "T-3", agent: "alice" },
+      { identifier: "T-3", project: "P", delivery_round: 2 },
+    );
+    assert.equal(result.ok, true, "a dead previous branch no longer blocks admission");
+    const record = findWorkspace(f.dir, { identifier: "T-3", round: 2 });
+    assert.equal(record.base_ref, "dev", "the missing previous branch is not used");
+    assert.equal(record.branch, "lane/T-3-r2");
+  });
+
+  it("fails a review admission when the original workspace is gone, never using the shared tree", async () => {
+    const f = fixture();
+    upsertWorkspaceRecord(f.dir, {
+      identifier: "T-0",
+      round: 1,
+      path: join(f.app, ".worktrees", "T-0"),
+      branch: "lane/T-0",
+      project_dir: f.app,
+    });
+    const admission = admissionFor(f, gitRunner([]));
+    const result = await admission.admit(
+      { identifier: "R-1", agent: "alice" },
+      {
+        identifier: "R-1",
+        project: "P",
+        review_of: "T-0",
+        review_round: 1,
+        delivery_round: 1,
+      },
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "WORKSPACE_REVIEW_TARGET_MISSING");
+    assert.equal(result.accounted, true);
+    assert.equal(admission.dirFor("R-1"), null, "no shared-tree fallback");
   });
 
   it("routes a review into the original card's worktree", async () => {
@@ -1295,11 +1353,120 @@ describe("worktree admission", () => {
       { identifier: "T-1", project: "P", delivery_round: 1 },
     );
     const worktree = admission.dirFor("T-1");
+    // The injected git runner does not create the tree; the routing check is
+    // about a usable checkout, so materialise one.
+    mkdirSync(join(worktree, ".git"), { recursive: true });
     const review = await admission.admit(
       { identifier: "T-9", agent: "jobs" },
       { identifier: "T-9", project: "P", review_of: "T-1", review_round: 1 },
     );
     assert.equal(review.ok, true);
     assert.equal(admission.dirFor("T-9"), worktree, "the reviewer sees the delivered tree");
+  });
+});
+
+describe("poll deferral accounting", () => {
+  const card = { identifier: "T-1", project: "P", delivery_round: 2 };
+  const base = (overrides = {}) => ({
+    agents: ["alice"],
+    registry: { running: {} },
+    config: {},
+    readCandidates: () => [{ ...card, agent: "alice", reason: "ready" }],
+    claim: async () => ({ ok: true }),
+    dispatch: async () => ({ ok: true }),
+    now: () => "2026-10-22T00:00:00.000Z",
+    log: () => {},
+    ...overrides,
+  });
+
+  it("counts a card-scoped admission failure and clears it on success", async () => {
+    const recorded = [];
+    const cleared = [];
+    const failing = await runPollTick(
+      base({
+        admit: async () => ({
+          ok: false,
+          why: "WORKSPACE_CREATE_FAILED: x",
+          code: "WORKSPACE_CREATE_FAILED",
+          accounted: true,
+        }),
+        recordDefer: (id, failure) => recorded.push({ id, failure }),
+        clearDeferral: (id) => cleared.push(id),
+      }),
+    );
+    assert.equal(failing.deferred, 1);
+    assert.deepEqual(recorded, [
+      {
+        id: "T-1",
+        failure: {
+          code: "WORKSPACE_CREATE_FAILED",
+          reason: "WORKSPACE_CREATE_FAILED: x",
+          round: 2,
+        },
+      },
+    ]);
+    assert.deepEqual(cleared, []);
+
+    const ok = await runPollTick(
+      base({
+        admit: async () => ({ ok: true }),
+        recordDefer: (id, failure) => recorded.push({ id, failure }),
+        clearDeferral: (id) => cleared.push(id),
+      }),
+    );
+    assert.equal(ok.claimed, 1);
+    assert.deepEqual(cleared, ["T-1"]);
+  });
+
+  it("does not count backpressure or a terminal card", async () => {
+    const recorded = [];
+    const defer = (admitted) =>
+      runPollTick(
+        base({
+          admit: async () => admitted,
+          recordDefer: (id, failure) => recorded.push({ id, failure }),
+        }),
+      );
+    await defer({
+      ok: false,
+      why: "project P is at its concurrency cap",
+      code: "ADMISSION_CONCURRENCY_CAP",
+      accounted: false,
+    });
+    await defer({
+      ok: false,
+      why: "card is already terminal (terminal)",
+      code: "ADMISSION_CARD_TERMINAL",
+      accounted: false,
+    });
+    assert.deepEqual(recorded, []);
+  });
+
+  it("does not count a claim-budget defer", async () => {
+    const recorded = [];
+    const result = await runPollTick(
+      base({
+        limit: 0,
+        admit: async () => {
+          throw new Error("admit must not run when the budget is zero");
+        },
+        recordDefer: (id, failure) => recorded.push({ id, failure }),
+      }),
+    );
+    assert.equal(result.deferred, 1);
+    assert.deepEqual(recorded, []);
+  });
+
+  it("releases the reservation when dispatch fails", async () => {
+    const released = [];
+    const result = await runPollTick(
+      base({
+        admit: async () => ({ ok: true }),
+        dispatch: async () => ({ ok: false, error: "spawn failed" }),
+        release: async (id) => released.push(id),
+      }),
+    );
+    assert.equal(result.failed, 1);
+    assert.deepEqual(released, ["T-1"]);
   });
 });

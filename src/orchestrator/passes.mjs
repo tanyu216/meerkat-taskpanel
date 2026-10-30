@@ -17,6 +17,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { resolveWakeDir, resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
@@ -30,16 +31,26 @@ import {
   runWorkflowPass,
 } from "./board.mjs";
 import { briefCards, openCardWatch, registerCardWatch, stopCardWatch } from "./card-watch.mjs";
+import {
+  createDeferralRecorder,
+  pruneDeferrals,
+  readDeferralLedger,
+  writeDeferralLedger,
+} from "./deferrals.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { mergeReviewerSets, parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
 import {
   createWorkspace,
   findWorkspace,
+  isUsableWorkspaceRecord,
+  listPreviousWorkspaces,
+  probeRef,
   removeWorkspace,
   removeWorkspaceRecord,
   sweepWorkspaces,
   upsertWorkspaceRecord,
+  WORKSPACE_CODES,
 } from "./workspace.mjs";
 import {
   notifyNoResident,
@@ -157,8 +168,19 @@ function prepareDispatchTarget({
       identifier: card.review_of,
       round: card.review_round,
     });
-    if (record !== null) {
+    if (record !== null && isUsableWorkspaceRecord(record, { exists, projectDir })) {
       return { ok: true, targetDir: record.path, workspace: record, created: false };
+    }
+    if (record !== null) {
+      // The reviewer would otherwise run in the shared checkout and could dirty
+      // the tree acceptance merges into. Defer instead; the ledger escalates.
+      return {
+        ok: false,
+        code: WORKSPACE_CODES.REVIEW_TARGET_MISSING,
+        why:
+          `${WORKSPACE_CODES.REVIEW_TARGET_MISSING}: the original workspace ` +
+          `${record.path} is not a usable checkout`,
+      };
     }
     log(`admission: review ${identifier} has no recorded workspace; running in ${projectDir}`);
     return { ok: true, targetDir: projectDir, workspace: null, created: false };
@@ -170,25 +192,45 @@ function prepareDispatchTarget({
 
   const round = Number(card?.delivery_round ?? 1);
   const existing = findWorkspace(stateDir, { identifier, round });
+  let reuseExistingBranch = false;
   if (existing !== null) {
-    return { ok: true, targetDir: existing.path, workspace: existing, created: false };
+    if (isUsableWorkspaceRecord(existing, { exists, projectDir })) {
+      return { ok: true, targetDir: existing.path, workspace: existing, created: false };
+    }
+    // The directory is gone or is not a checkout: drop the dead pointer and
+    // re-attach the lane branch if it survived (prune + add without -b).
+    log(`admission: ${identifier} r${round} workspace ${existing.path} is gone; dropping the record`);
+    removeWorkspaceRecord(stateDir, { identifier, round });
+    reuseExistingBranch = true;
   }
-  // A rework continues from the previous round's lane branch: the rejected
-  // work is the starting point, not something to throw away.
-  const previous = findWorkspace(stateDir, { identifier });
+
+  // A rework continues from the most recent previous round whose branch still
+  // exists — not simply the latest record, whose branch may be gone.
+  let previousBranch = null;
+  for (const previous of listPreviousWorkspaces(stateDir, { identifier, round })) {
+    if (previous.project_dir && previous.project_dir !== projectDir) continue;
+    const probe = probeRef({ projectDir, ref: previous.branch, run: runGit });
+    if (probe.ok === true && probe.exists === true) {
+      previousBranch = previous.branch;
+      break;
+    }
+  }
+
   const created = createWorkspace({
     projectDir,
     entry: target.entry ?? null,
     project: target.project ?? card?.project ?? null,
     identifier,
     round,
-    previousBranch: previous === null ? null : previous.branch,
+    previousBranch,
+    reuseExistingBranch,
     run: runGit,
     exists,
     mkdir,
+    log,
   });
   if (created.ok !== true) {
-    return { ok: false, why: `${created.code}: ${created.message}` };
+    return { ok: false, why: `${created.code}: ${created.message}`, code: created.code };
   }
   upsertWorkspaceRecord(stateDir, created.workspace);
   return { ok: true, targetDir: created.workspace.path, workspace: created.workspace, created: true };
@@ -204,6 +246,29 @@ function discardWorkspace({ stateDir, workspace, runGit }) {
       round: workspace.round,
     });
   }
+}
+
+/**
+ * The deferral recorder both admission sites share: the poll pass and the
+ * patrol's LLM turn. The board write is the escalation itself — one note per
+ * (streak, failure code), attributed to `Orchestrator`.
+ */
+function deferralRecorderFor(opts, stateDir, log) {
+  return createDeferralRecorder({
+    stateDir,
+    dryRun: opts.dryRun === true,
+    log,
+    notify: opts.dryRun === true ? () => {} : notifyReal(opts, log),
+    postComment: (ref, body) => {
+      const posted = runCli(
+        opts,
+        ORCHESTRATOR_ACTOR_ID,
+        ["comment", "add", ref, "--kind", "note", "--body", body],
+        { actorKind: SYSTEM_KIND },
+      );
+      return posted.ok ? { ok: true } : { ok: false, error: posted.error };
+    },
+  });
 }
 
 export function createProjectAdmission(input) {
@@ -229,17 +294,29 @@ export function createProjectAdmission(input) {
   return {
     async admit(action, card) {
       const project = typeof card?.project === "string" ? card.project.trim() : "";
-      if (project === "") return { ok: false, why: "the card names no project" };
+      if (project === "") {
+        return {
+          ok: false,
+          why: "the card names no project",
+          code: "ADMISSION_NO_PROJECT",
+          accounted: true,
+        };
+      }
       const target = resolveWakeTarget({ project, projectsJson: opts.projectsJson });
       if (target.ok !== true) {
         const first = String(target.message ?? "").split("\n")[0];
-        return { ok: false, why: `${target.code}: ${first}` };
+        return { ok: false, why: `${target.code}: ${first}`, code: target.code, accounted: true };
       }
       const projectDir = target.dir;
       const key = capacityKey(project, projectDir);
       const used = (liveBy.get(key) ?? 0) + (queuedBy.get(key) ?? 0) + (claimedBy.get(key) ?? 0);
       if (used >= projectConcurrency) {
-        return { ok: false, why: `project ${project} is at its concurrency cap` };
+        return {
+          ok: false,
+          why: `project ${project} is at its concurrency cap`,
+          code: "ADMISSION_CONCURRENCY_CAP",
+          accounted: false,
+        };
       }
 
       const identifier =
@@ -260,7 +337,14 @@ export function createProjectAdmission(input) {
         identifier,
         log,
       });
-      if (prepared.ok !== true) return { ok: false, why: prepared.why };
+      if (prepared.ok !== true) {
+        return {
+          ok: false,
+          why: prepared.why,
+          code: prepared.code ?? "ADMISSION_FAILED",
+          accounted: true,
+        };
+      }
       const targetDir = prepared.targetDir;
 
       // Shared-tree mode is explicit now; keep the warning for a deployment
@@ -286,13 +370,23 @@ export function createProjectAdmission(input) {
         const watched = await watchCards(cards);
         if (watched?.ok !== true) {
           if (prepared.created) discardWorkspace({ stateDir, workspace: prepared.workspace, runGit });
-          return { ok: false, why: `card brief watch failed: ${watched?.error ?? "unknown error"}` };
+          return {
+            ok: false,
+            why: `card brief watch failed: ${watched?.error ?? "unknown error"}`,
+            code: "ADMISSION_BRIEF_WATCH_FAILED",
+            accounted: true,
+          };
         }
         if (watched.running === false) {
           // The hub wrote the final brief and opened no stream. Claiming would
           // leave a worker with nothing to keep fresh; the card is terminal.
           if (prepared.created) discardWorkspace({ stateDir, workspace: prepared.workspace, runGit });
-          return { ok: false, why: `card is already terminal (${watched.reason ?? "terminal"})` };
+          return {
+            ok: false,
+            why: `card is already terminal (${watched.reason ?? "terminal"})`,
+            code: "ADMISSION_CARD_TERMINAL",
+            accounted: false,
+          };
         }
         // Only a registration this pass created may be released. A covered or
         // reused registration belongs to another owner; releasing it would
@@ -430,6 +524,7 @@ export async function runPollOnce(opts, env = process.env) {
   const log = createLogger(opts);
   const { config } = resolveLoopConfig(opts, env);
   const stateDir = dirname(String(opts.state));
+  const deferrals = deferralRecorderFor(opts, stateDir, log);
 
   // 0031 — project-level reviewer overrides join the deployment reviewer in the
   // scan/wake set. A failed read falls back to the global reviewer (the board
@@ -591,6 +686,8 @@ export async function runPollOnce(opts, env = process.env) {
     dispatch,
     admit: admission.admit,
     release: admission.release,
+    recordDefer: (identifier, failure) => deferrals.record(identifier, failure),
+    clearDeferral: (identifier) => deferrals.clear(identifier),
     limit: budget,
     verb: "enqueued",
     now: () => new Date().toISOString(),
@@ -641,6 +738,7 @@ export async function runPatrolOnce(opts, env = process.env) {
   // reviewer may still need the tree after delivery. A path still named by a
   // queued row or a live subagent is left alone.
   const stateDir = dirname(String(opts.state));
+  const deferrals = deferralRecorderFor(opts, stateDir, log);
   const busyPaths = new Set([
     ...readCards(stateDir)
       .value.cards.filter((card) => card.status === "pending" || card.status === "processing")
@@ -649,6 +747,14 @@ export async function runPatrolOnce(opts, env = process.env) {
   ]);
   if (opts.dryRun !== true) {
     sweepWorkspaces({ stateDir, tasks, isBusy: (path) => busyPaths.has(path), log });
+    // A deferral entry is evidence, not a queue row: terminal cards and streaks
+    // past retention are the only ones dropped. An unknown card is kept.
+    const ledger = readDeferralLedger(stateDir);
+    const pruned = pruneDeferrals(ledger.value, { tasks, nowMs: Date.now() });
+    for (const drop of pruned.dropped) {
+      log(`deferral: dropping ${drop.identifier} (${drop.why})`);
+    }
+    if (pruned.dropped.length > 0) writeDeferralLedger(stateDir, pruned.ledger);
   }
 
   const patrol = await runPatrolTick({
@@ -687,6 +793,13 @@ export async function runPatrolOnce(opts, env = process.env) {
         log,
       });
       if (prepared.ok !== true) {
+        // The patrol is the second admission site: count the same card-scoped
+        // failure poll counts, or this lane retries silently forever.
+        deferrals.record(alert.identifier, {
+          code: prepared.code ?? "ADMISSION_FAILED",
+          reason: prepared.why,
+          round: Number(task?.delivery_round ?? 1),
+        });
         log(`patrol: ${alert.identifier} — ${prepared.why}; notify-only, no LLM turn`);
         return { ok: false };
       }
@@ -704,11 +817,24 @@ export async function runPatrolOnce(opts, env = process.env) {
         const watched = await registerCardWatch(opts, cards, {
           owner: `${opts.actorKind}:${action.agent}`,
         });
-        if (watched.ok !== true || watched.running === false) {
+        if (watched.ok !== true) {
+          if (prepared.created) discardWorkspace({ stateDir, workspace: prepared.workspace });
+          const reason =
+            `card brief watch failed: ${watched.error ?? "unknown error"}`;
+          deferrals.record(alert.identifier, {
+            code: "ADMISSION_BRIEF_WATCH_FAILED",
+            reason,
+            round: Number(task?.delivery_round ?? 1),
+          });
+          log(`patrol: ${alert.identifier} — ${reason}; notify-only, no LLM turn`);
+          return { ok: false };
+        }
+        if (watched.running === false) {
+          // The hub wrote the final brief and opened no stream: terminal, not stuck.
           if (prepared.created) discardWorkspace({ stateDir, workspace: prepared.workspace });
           log(
-            `patrol: ${alert.identifier} — card brief watch failed: ` +
-              `${watched.error ?? watched.reason ?? "unknown error"}; notify-only, no LLM turn`,
+            `patrol: ${alert.identifier} — card is already terminal ` +
+              `(${watched.reason ?? "terminal"}); notify-only, no LLM turn`,
           );
           return { ok: false };
         }
@@ -731,6 +857,8 @@ export async function runPatrolOnce(opts, env = process.env) {
         if (owned !== null) await stopCardWatch(opts, owned);
         return { ok: false };
       }
+      // Admission is proven: the card is no longer deferred.
+      deferrals.clear(alert.identifier);
       const { role, handoff } = wakeHandoff(
         opts,
         config,

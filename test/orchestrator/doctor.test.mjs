@@ -14,7 +14,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
@@ -214,6 +214,7 @@ describe("loop doctor — the report", () => {
       review_reopens: [],
       dispatch_retries: [],
       subagent_failures: [],
+      deferrals: [],
       total: 0,
     }, "the looping section is always present, and empty when nothing is circling");
 
@@ -798,6 +799,7 @@ describe("loop doctor — looping cards", () => {
       review_reopens: [],
       dispatch_retries: [],
       subagent_failures: [],
+      deferrals: [],
       total: 0,
     });
     assert.equal(report.attention_reasons.some((reason) => reason.startsWith("looping")), false);
@@ -1014,5 +1016,121 @@ describe("loop doctor — the process boundary", () => {
       long,
       "the JSON keeps the raw value",
     );
+  });
+});
+
+describe("loop doctor — deferred admission and stale workspaces", () => {
+  it("flags a card whose admission keeps failing", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [{ identifier: "T-800", title: "Deferred card", status: "todo" }],
+    });
+    seedState(dir);
+    writeJson(join(dir, "deferrals.json"), {
+      version: 1,
+      cards: {
+        "T-800": {
+          identifier: "T-800",
+          round: 2,
+          count: 4,
+          first_at: at(40 * MIN),
+          last_at: at(5 * MIN),
+          code: "WORKSPACE_CREATE_FAILED",
+          reason: "invalid reference: lane/T-800-r2",
+        },
+      },
+    });
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+    assert.deepEqual(
+      report.looping.deferrals.map((card) => [card.ref, card.count, card.code]),
+      [["T-800", 4, "WORKSPACE_CREATE_FAILED"]],
+    );
+    assert.equal(report.looping.total, 1);
+    assert.ok(report.attention_reasons.includes("looping: 1"));
+    assert.equal(report.ok, true, "a deferral finding is not an error");
+  });
+
+  it("does not flag a deferral below the threshold", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [{ identifier: "T-801", title: "Transient", status: "todo" }],
+    });
+    seedState(dir);
+    writeJson(join(dir, "deferrals.json"), {
+      version: 1,
+      cards: {
+        "T-801": {
+          identifier: "T-801",
+          count: 2,
+          first_at: at(20 * MIN),
+          last_at: at(5 * MIN),
+          code: "X",
+          reason: "x",
+        },
+      },
+    });
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+    assert.deepEqual(report.looping.deferrals, []);
+    assert.equal(report.ok, true);
+  });
+
+  it("treats a corrupt ledger as an error but keeps reporting", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir);
+    seedState(dir);
+    writeFileSync(join(dir, "deferrals.json"), "{not json");
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+    assert.deepEqual(report.looping.deferrals, []);
+    assert.equal(report.ok, false);
+    assert.ok(report.errors.some((line) => line.startsWith("deferrals:")));
+  });
+
+  function staleFixture({ status = "todo", probe = 1 } = {}) {
+    const dir = tempDir();
+    const app = join(dir, "app");
+    mkdirSync(join(app, ".git"), { recursive: true });
+    const { script } = sentinel(dir, {
+      tasks: [{ identifier: "T-810", title: "Stale record", status }],
+    });
+    seedState(dir);
+    writeJson(join(dir, "workspaces.json"), {
+      version: 1,
+      workspaces: [
+        {
+          identifier: "T-810",
+          round: 1,
+          path: join(app, ".worktrees", "T-810"),
+          branch: "lane/T-810",
+          project_dir: app,
+        },
+      ],
+    });
+    const git = (cmd, argv) => {
+      const key = argv.join(" ");
+      if (key.includes("rev-parse --verify --quiet")) {
+        return { status: probe, stdout: "", stderr: "" };
+      }
+      return { status: 0, stdout: "", stderr: "" };
+    };
+    return { dir, script, git };
+  }
+
+  it("names a stale workspace record for a non-terminal card", () => {
+    const f = staleFixture();
+    const report = doctorReport(optsFor(f.dir, f.script), { HOME: f.dir }, deps({ git: f.git }));
+    assert.deepEqual(report.workspaces.stale.map((record) => record.ref), ["T-810"]);
+    assert.ok(report.attention_reasons.includes("stale_workspaces: 1"));
+  });
+
+  it("does not call a terminal card's record stale", () => {
+    const f = staleFixture({ status: "done" });
+    const report = doctorReport(optsFor(f.dir, f.script), { HOME: f.dir }, deps({ git: f.git }));
+    assert.deepEqual(report.workspaces.stale, []);
+  });
+
+  it("keeps a record when git cannot probe the branch", () => {
+    const f = staleFixture({ probe: 128 });
+    const report = doctorReport(optsFor(f.dir, f.script), { HOME: f.dir }, deps({ git: f.git }));
+    assert.deepEqual(report.workspaces.stale, [], "a git failure is not evidence of absence");
   });
 });

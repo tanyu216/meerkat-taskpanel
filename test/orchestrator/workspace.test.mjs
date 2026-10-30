@@ -78,6 +78,73 @@ describe("orchestrator/workspace — names and refs", () => {
       { ok: true, ref: "dev", source: "current" },
     );
   });
+
+  it("probes a ref with rev-parse --verify --quiet and separates absent from unprobeable", () => {
+    const present = recorder([["rev-parse --verify --quiet", OK("abc123\n")]]);
+    assert.deepEqual(ws.probeRef({ projectDir: "/p", ref: "lane/x", run: present.run }), {
+      ok: true,
+      exists: true,
+    });
+    assert.deepEqual(present.calls[0].argv, [
+      "-C",
+      "/p",
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      "lane/x^{commit}",
+    ]);
+
+    assert.deepEqual(
+      ws.probeRef({ projectDir: "/p", ref: "lane/x", run: () => FAIL("", 1) }),
+      { ok: true, exists: false },
+      "exit 1 is an absent ref",
+    );
+
+    const broken = ws.probeRef({
+      projectDir: "/p",
+      ref: "lane/x",
+      run: () => FAIL("fatal: not a git repository", 128),
+    });
+    assert.equal(broken.ok, false, "exit 128 is not an absent ref");
+    assert.equal(broken.code, "WORKSPACE_BASE_UNRESOLVED");
+
+    const noGit = ws.probeRef({ projectDir: "/p", ref: "lane/x", run: () => null });
+    assert.equal(noGit.ok, false, "git could not start");
+  });
+
+  it("falls back to the current branch when the previous round's lane branch is gone", () => {
+    const run = (cmd, argv) => {
+      const key = argv.join(" ");
+      if (key.includes("rev-parse --verify --quiet")) return FAIL("", 1);
+      if (key.includes("rev-parse --abbrev-ref HEAD")) return OK("dev\n");
+      return OK("");
+    };
+    assert.deepEqual(
+      ws.resolveBaseRef({
+        projectDir: "/p",
+        entry: entryNone,
+        previousBranch: "lane/TP-0009-r2",
+        run,
+      }),
+      { ok: true, ref: "dev", source: "current", skipped_previous: "lane/TP-0009-r2" },
+    );
+  });
+
+  it("refuses a declared base_ref that does not resolve instead of falling back", () => {
+    const run = (cmd, argv) => {
+      const key = argv.join(" ");
+      if (key.includes("rev-parse --verify --quiet")) return FAIL("", 1);
+      return OK("dev\n");
+    };
+    const result = ws.resolveBaseRef({
+      projectDir: "/p",
+      entry: { base_ref: "release" },
+      previousBranch: null,
+      run,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "WORKSPACE_BASE_UNRESOLVED");
+  });
 });
 
 describe("orchestrator/workspace — create and remove", () => {
@@ -134,6 +201,68 @@ describe("orchestrator/workspace — create and remove", () => {
     });
     assert.equal(result.ok, false);
     assert.equal(result.code, "WORKSPACE_NOT_GIT");
+  });
+
+  it("re-attaches a surviving same-round lane branch without -b and without resolving a base", () => {
+    const { run, calls } = recorder([
+      ["worktree prune", OK("")],
+      ["rev-parse --verify --quiet", OK("abc123\n")],
+      ["worktree add", OK("")],
+    ]);
+    const result = ws.createWorkspace({
+      projectDir: "/p",
+      entry: { base_ref: "missing" },
+      project: "TP",
+      identifier: "TP-0001",
+      round: 2,
+      previousBranch: "lane/TP-0001",
+      reuseExistingBranch: true,
+      run,
+      mkdir: () => {},
+      exists: (path) => path === "/p/.git",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.workspace.reused_branch, true);
+    assert.equal(result.workspace.base_ref, "lane/TP-0001-r2");
+    const add = calls.find((call) => call.argv.includes("add"));
+    assert.deepEqual(add.argv, [
+      "-C",
+      "/p",
+      "worktree",
+      "add",
+      "/p/.worktrees/TP-0001-r2",
+      "lane/TP-0001-r2",
+    ]);
+    assert.equal(
+      calls.some((call) => call.argv.join(" ").includes("rev-parse --abbrev-ref")),
+      false,
+      "a repair needs no base",
+    );
+  });
+
+  it("moves an orphan non-checkout directory aside before creating the worktree", () => {
+    const path = "/p/.worktrees/TP-0001-r2";
+    const moves = [];
+    const { run } = recorder([
+      ["worktree prune", OK("")],
+      ["rev-parse --verify --quiet", OK("abc123\n")],
+      ["worktree add", OK("")],
+    ]);
+    const result = ws.createWorkspace({
+      projectDir: "/p",
+      entry: entryNone,
+      identifier: "TP-0001",
+      round: 2,
+      previousBranch: null,
+      reuseExistingBranch: true,
+      run,
+      mkdir: () => {},
+      exists: (candidate) => candidate === "/p/.git" || candidate === path,
+      rename: (from, to) => moves.push({ from, to }),
+      now: () => 1700000000000,
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(moves, [{ from: path, to: `${path}.orphan-1700000000000` }]);
   });
 
   it("defers when git refuses the worktree, and never falls back to the shared tree", () => {
@@ -307,6 +436,158 @@ describe("orchestrator/workspace — the registry", () => {
     ws.removeWorkspaceRecord(dir, { identifier: "TP-0001", round: 2 });
     assert.equal(ws.findWorkspace(dir, { identifier: "TP-0001" }).round, 1);
     assert.equal(ws.findWorkspace(dir, { identifier: "NOPE" }), null);
+  });
+
+  it("lists only earlier rounds as previous workspaces, highest first", () => {
+    const dir = stateDir();
+    for (const round of [1, 2, 3]) {
+      ws.upsertWorkspaceRecord(dir, {
+        identifier: "TP-0001",
+        round,
+        path: `/p/.worktrees/TP-0001-r${round}`,
+        branch: `lane/TP-0001-r${round}`,
+        project_dir: "/p",
+      });
+    }
+    assert.deepEqual(
+      ws.listPreviousWorkspaces(dir, { identifier: "TP-0001", round: 3 }).map((record) => record.round),
+      [2, 1],
+    );
+    assert.deepEqual(ws.listPreviousWorkspaces(dir, { identifier: "TP-0001", round: 1 }), []);
+    assert.deepEqual(ws.listPreviousWorkspaces(dir, { identifier: "NOPE", round: 3 }), []);
+  });
+
+  it("judges a record usable only when its tree is a checkout of this project", () => {
+    const record = {
+      identifier: "TP-0001",
+      round: 1,
+      path: "/p/.worktrees/TP-0001",
+      branch: "lane/TP-0001",
+      project_dir: "/p",
+    };
+    assert.equal(
+      ws.isUsableWorkspaceRecord(record, {
+        exists: (path) => path === "/p/.worktrees/TP-0001/.git",
+        projectDir: "/p",
+      }),
+      true,
+    );
+    assert.equal(ws.isUsableWorkspaceRecord(record, { exists: () => false, projectDir: "/p" }), false);
+    assert.equal(
+      ws.isUsableWorkspaceRecord(
+        { ...record, project_dir: "/other" },
+        { exists: () => true, projectDir: "/p" },
+      ),
+      false,
+    );
+  });
+
+  it("calls a record stale only when the tree is not usable and the branch is absent", () => {
+    const record = {
+      identifier: "TP-0001",
+      round: 1,
+      path: "/p/.worktrees/TP-0001",
+      branch: "lane/TP-0001",
+      project_dir: "/p",
+    };
+    const exists = (path) => path === "/p/.git";
+    const probe = (status) => (cmd, argv) =>
+      argv.join(" ").includes("rev-parse --verify --quiet")
+        ? { status, stdout: status === 0 ? "abc\n" : "", stderr: "" }
+        : OK("");
+
+    assert.equal(ws.isStaleWorkspaceRecord(record, { exists, run: probe(1) }), true);
+    assert.equal(ws.isStaleWorkspaceRecord(record, { exists, run: probe(0) }), false);
+    assert.equal(ws.isStaleWorkspaceRecord(record, { exists, run: () => null }), false);
+    assert.equal(ws.isStaleWorkspaceRecord(record, { exists: () => false, run: probe(1) }), false);
+    assert.equal(
+      ws.isStaleWorkspaceRecord(record, {
+        exists: (path) => path === "/p/.git" || path === "/p/.worktrees/TP-0001/.git",
+        run: probe(1),
+      }),
+      false,
+      "a usable tree outlives a deleted branch",
+    );
+  });
+});
+
+describe("orchestrator/workspace — sweeping the registry", () => {
+  const dirs = [];
+  after(() => {
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+  });
+  const stateDir = () => {
+    const dir = mkdtempSync(join(tmpdir(), "meerkat-sweep-"));
+    dirs.push(dir);
+    return dir;
+  };
+  const record = {
+    identifier: "TP-0001",
+    round: 1,
+    path: "/p/.worktrees/TP-0001",
+    branch: "lane/TP-0001",
+    project_dir: "/p",
+  };
+  const probe = (status) => (cmd, argv) =>
+    argv.join(" ").includes("rev-parse --verify --quiet")
+      ? { status, stdout: status === 0 ? "abc\n" : "", stderr: "" }
+      : OK("");
+  const tasks = [{ identifier: "TP-0001", status: "todo" }];
+
+  it("drops a non-terminal record whose tree and branch are both gone", () => {
+    const dir = stateDir();
+    ws.upsertWorkspaceRecord(dir, record);
+    const lines = [];
+    const result = ws.sweepWorkspaces({
+      stateDir: dir,
+      tasks,
+      run: probe(1),
+      exists: (path) => path === "/p/.git",
+      log: (line) => lines.push(line),
+    });
+    assert.equal(result.removed.length, 1);
+    assert.equal(ws.findWorkspace(dir, { identifier: "TP-0001" }), null);
+    assert.match(lines.join("\n"), /dropping TP-0001 r1/);
+  });
+
+  it("keeps a non-terminal record whose branch still exists", () => {
+    const dir = stateDir();
+    ws.upsertWorkspaceRecord(dir, record);
+    const result = ws.sweepWorkspaces({
+      stateDir: dir,
+      tasks,
+      run: probe(0),
+      exists: (path) => path === "/p/.git",
+    });
+    assert.equal(result.removed.length, 0);
+    assert.notEqual(ws.findWorkspace(dir, { identifier: "TP-0001" }), null);
+  });
+
+  it("keeps a record when git cannot be probed", () => {
+    const dir = stateDir();
+    ws.upsertWorkspaceRecord(dir, record);
+    const result = ws.sweepWorkspaces({
+      stateDir: dir,
+      tasks,
+      run: () => null,
+      exists: (path) => path === "/p/.git",
+    });
+    assert.equal(result.removed.length, 0);
+    assert.notEqual(ws.findWorkspace(dir, { identifier: "TP-0001" }), null);
+  });
+
+  it("keeps a busy record even when its tree is gone", () => {
+    const dir = stateDir();
+    ws.upsertWorkspaceRecord(dir, record);
+    const result = ws.sweepWorkspaces({
+      stateDir: dir,
+      tasks,
+      run: probe(1),
+      exists: (path) => path === "/p/.git",
+      isBusy: () => true,
+    });
+    assert.equal(result.removed.length, 0);
+    assert.notEqual(ws.findWorkspace(dir, { identifier: "TP-0001" }), null);
   });
 });
 

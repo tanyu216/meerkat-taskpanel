@@ -29,6 +29,7 @@ export const STATE_FILES = Object.freeze({
   slaLedger: "sla-ledger.json",
   workflowLedger: "workflow-ledger.json",
   slaLastOk: "loop-patrol-last-ok.json",
+  deferrals: "deferrals.json",
   subscribe: "subscribe.state.json",
   sessionLock: "session.lock",
   runLock: "run.lock",
@@ -65,7 +66,7 @@ export const POOL_STALE_MS = 4 * POOL_HEARTBEAT_MS;
  * The state siblings that live beside `continue.state.json`.
  *
  * @param {string} stateDir
- * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string}}
+ * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string, deferrals: string}}
  */
 export function statePathsForDir(stateDir) {
   const dir = String(stateDir);
@@ -74,5 +75,6 @@ export function statePathsForDir(stateDir) {
     slaLedger: join(dir, STATE_FILES.slaLedger),
     workflowLedger: join(dir, STATE_FILES.workflowLedger),
     slaLastOk: join(dir, STATE_FILES.slaLastOk),
+    deferrals: join(dir, STATE_FILES.deferrals),
   };
 }

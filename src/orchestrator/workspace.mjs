@@ -22,7 +22,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { MEERKAT_PROCESS_DIR, taskDirName } from "../foundation/card-brief.mjs";
@@ -39,6 +39,7 @@ export const WORKSPACE_CODES = Object.freeze({
   TARGET_UNREADABLE: "WORKSPACE_TARGET_UNREADABLE",
   MERGE_CONFLICT: "WORKSPACE_MERGE_CONFLICT",
   MERGE_TARGET_MISMATCH: "WORKSPACE_MERGE_TARGET_MISMATCH",
+  REVIEW_TARGET_MISSING: "WORKSPACE_REVIEW_TARGET_MISSING",
 });
 
 /** The registry's file name, beside the queue's own state files. */
@@ -69,6 +70,42 @@ export function runGit(cmd, argv, options = DEFAULT_RUN_OPTIONS) {
 /** `.git` exists (a directory, or the `.git` file of a linked worktree). */
 export function isGitCheckout(dir, { exists = existsSync } = {}) {
   return exists(join(String(dir), ".git"));
+}
+
+/**
+ * A record whose tree is still this project's checkout.
+ *
+ * The path is the loop's own slot, but it can outlive its registration (a
+ * removed worktree leaves a bare directory behind). A directory without `.git`
+ * is not a usable target; a record from another project is not this card's.
+ */
+export function isUsableWorkspaceRecord(record, { exists = existsSync, projectDir = null } = {}) {
+  if (record === null || typeof record !== "object") return false;
+  const path = String(record.path ?? "");
+  if (path === "") return false;
+  const wanted = String(projectDir ?? "");
+  const recorded = String(record.project_dir ?? "");
+  if (wanted !== "" && recorded !== "" && wanted !== recorded) return false;
+  return isGitCheckout(path, { exists });
+}
+
+/**
+ * A record whose tree is gone *and* whose branch is absent.
+ *
+ * Both halves are required: a surviving branch still holds the rejected work a
+ * rework starts from, and a probe that could not run (git missing, not a repo)
+ * is not evidence of absence. Dropping on either would destroy recoverable state.
+ */
+export function isStaleWorkspaceRecord(record, { exists = existsSync, run = runGit } = {}) {
+  if (record === null || typeof record !== "object") return false;
+  const projectDir = String(record.project_dir ?? "");
+  const path = String(record.path ?? "");
+  const branch = String(record.branch ?? "");
+  if (projectDir === "" || path === "" || branch === "") return false;
+  if (!isGitCheckout(projectDir, { exists })) return false;
+  if (isUsableWorkspaceRecord(record, { exists })) return false;
+  const probe = probeRef({ projectDir, ref: branch, run });
+  return probe.ok === true && probe.exists === false;
 }
 
 /** `TP-0001` round 1 → `TP-0001`; round 2 → `TP-0001-r2`. */
@@ -115,12 +152,62 @@ export function currentBranch({ projectDir, run = runGit }) {
 }
 
 /**
+ * Probe a candidate base ref.
+ *
+ * The exit code is load-bearing: `rev-parse --verify --quiet` exits 1 for an
+ * absent ref, but 128 when git could not answer at all (not a repository, a
+ * broken checkout). An absent ref may fall back; an unprobeable one must not be
+ * treated as absent — that would let a transient git failure delete a live
+ * workspace record.
+ *
+ * @param {{projectDir: string, ref: string, run?: Function}} input
+ * @returns {{ok: true, exists: boolean} | {ok: false, code: string, message: string}}
+ */
+export function probeRef({ projectDir, ref, run = runGit }) {
+  const value = typeof ref === "string" ? ref.trim() : "";
+  if (value === "") {
+    return {
+      ok: false,
+      code: WORKSPACE_CODES.BASE_UNRESOLVED,
+      message: "the base ref is empty",
+    };
+  }
+  const result = run("git", [
+    "-C",
+    String(projectDir),
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `${value}^{commit}`,
+  ]);
+  if (result === null) {
+    return {
+      ok: false,
+      code: WORKSPACE_CODES.BASE_UNRESOLVED,
+      message: `git did not start while probing ${value}`,
+    };
+  }
+  if (result.status === 0) return { ok: true, exists: true };
+  if (result.status === 1) return { ok: true, exists: false };
+  return {
+    ok: false,
+    code: WORKSPACE_CODES.BASE_UNRESOLVED,
+    message: `git could not resolve ${value}: ${String(result.stderr ?? "").trim()}`,
+  };
+}
+
+/**
  * The commit a new round starts from.
  *
  * Precedence, in this order:
  *   1. the project's own rule (`projects.json` entry `base_ref`);
  *   2. the previous round's lane branch (a rework keeps the rejected work);
  *   3. the project directory's current branch.
+ *
+ * A recorded ref is a hint, not a promise: a previous lane branch whose work was
+ * merged and then deleted falls back to the current branch instead of failing
+ * every pass on `invalid reference`. A declared `base_ref` is configuration and
+ * does not fall back — a missing one is a coded error the operator must fix.
  *
  * The ref is not hard-coded: a project that lands on `main`, or on a release
  * branch, gets what it asked for.
@@ -130,10 +217,26 @@ export function currentBranch({ projectDir, run = runGit }) {
 export function resolveBaseRef({ projectDir, entry, previousBranch = null, run = runGit }) {
   const declared = entry !== null && entry !== undefined ? entry.base_ref : null;
   if (typeof declared === "string" && declared.trim() !== "") {
-    return { ok: true, ref: declared.trim(), source: "project" };
+    const ref = declared.trim();
+    const probe = probeRef({ projectDir, ref, run });
+    if (probe.ok !== true || probe.exists !== true) {
+      return {
+        ok: false,
+        code: WORKSPACE_CODES.BASE_UNRESOLVED,
+        message: `the project declares base_ref '${ref}', but ${projectDir} has no such commit`,
+      };
+    }
+    return { ok: true, ref, source: "project" };
   }
   if (typeof previousBranch === "string" && previousBranch.trim() !== "") {
-    return { ok: true, ref: previousBranch.trim(), source: "previous" };
+    const ref = previousBranch.trim();
+    const probe = probeRef({ projectDir, ref, run });
+    if (probe.ok === true && probe.exists === true) {
+      return { ok: true, ref, source: "previous" };
+    }
+    const current = currentBranch({ projectDir, run });
+    if (!current.ok) return current;
+    return { ok: true, ref: current.ref, source: "current", skipped_previous: ref };
   }
   const current = currentBranch({ projectDir, run });
   if (!current.ok) return current;
@@ -143,15 +246,30 @@ export function resolveBaseRef({ projectDir, entry, previousBranch = null, run =
 /**
  * Create the card's worktree and lane branch.
  *
+ * A repair round passes `reuseExistingBranch`: the current round's lane branch
+ * may have outlived its directory, and re-attaching it keeps unmerged work the
+ * card still owns. The base is not resolved on that path — there is nothing to
+ * base from. If the branch is gone too, the call falls through to a fresh
+ * create from the resolved base.
+ *
+ * A directory the loop does not own can occupy the slot (a removed worktree
+ * leaves its `.meerkat` behind). It is not a checkout, so nothing tracked is
+ * lost; it is moved aside instead of failing every pass on "already exists".
+ *
  * @param {{
  *   projectDir: string,
  *   entry: object|null,
  *   identifier: string,
  *   round?: number,
  *   previousBranch?: string|null,
+ *   reuseExistingBranch?: boolean,
+ *   project?: string|null,
  *   run?: Function,
  *   mkdir?: Function,
  *   exists?: Function,
+ *   rename?: Function,
+ *   now?: Function,
+ *   log?: (line: string) => void,
  * }} input
  * @returns {{ok: true, workspace: object} | {ok: false, code: string, message: string}}
  */
@@ -163,9 +281,13 @@ export function createWorkspace(input) {
     identifier,
     round = 1,
     previousBranch = null,
+    reuseExistingBranch = false,
     run = runGit,
     mkdir = mkdirSync,
     exists = existsSync,
+    rename = renameSync,
+    now = Date.now,
+    log = () => {},
   } = input;
 
   if (!isGitCheckout(projectDir, { exists })) {
@@ -175,9 +297,6 @@ export function createWorkspace(input) {
       message: `${projectDir} is not a git checkout; there is nothing to branch from`,
     };
   }
-
-  const base = resolveBaseRef({ projectDir, entry, previousBranch, run });
-  if (!base.ok) return base;
 
   const path = workspacePath(projectDir, identifier, round);
   const branch = laneBranch(identifier, round);
@@ -189,6 +308,59 @@ export function createWorkspace(input) {
       code: WORKSPACE_CODES.CREATE_FAILED,
       message: `cannot create ${join(String(projectDir), ".worktrees")}: ${err.message}`,
     };
+  }
+
+  if (exists(path) && !isGitCheckout(path, { exists })) {
+    const orphan = `${path}.orphan-${now()}`;
+    try {
+      rename(path, orphan);
+      log(`workspace: moved ${path} aside to ${orphan}`);
+    } catch (err) {
+      return {
+        ok: false,
+        code: WORKSPACE_CODES.CREATE_FAILED,
+        message: `cannot move ${path} aside: ${err.message}`,
+      };
+    }
+  }
+
+  if (reuseExistingBranch) {
+    // A registration left behind by an externally removed directory makes git
+    // read the branch as still checked out; prune clears it before the add.
+    run("git", ["-C", String(projectDir), "worktree", "prune"]);
+    const probe = probeRef({ projectDir, ref: branch, run });
+    if (probe.ok === true && probe.exists === true) {
+      const attached = run("git", ["-C", String(projectDir), "worktree", "add", path, branch]);
+      if (attached === null || attached.status !== 0) {
+        return {
+          ok: false,
+          code: WORKSPACE_CODES.CREATE_FAILED,
+          message: `git worktree add failed for ${identifier}: ${String(attached?.stderr ?? "git did not start").trim()}`,
+        };
+      }
+      return {
+        ok: true,
+        workspace: {
+          identifier,
+          project: typeof project === "string" && project !== "" ? project : null,
+          round,
+          path,
+          branch,
+          base_ref: branch,
+          project_dir: String(projectDir),
+          created_by_loop: true,
+          reused_branch: true,
+        },
+      };
+    }
+  }
+
+  const base = resolveBaseRef({ projectDir, entry, previousBranch, run });
+  if (!base.ok) return base;
+  if (typeof base.skipped_previous === "string") {
+    log(
+      `workspace: ${identifier} previous base ${base.skipped_previous} is gone; basing on ${base.ref}`,
+    );
   }
 
   const result = run("git", ["-C", String(projectDir), "worktree", "add", "-b", branch, path, base.ref]);
@@ -425,6 +597,24 @@ export function findWorkspace(stateDir, { identifier, round }) {
 }
 
 /**
+ * The earlier rounds of one card, highest first.
+ *
+ * A rework wants the most recent *usable* rejected work. The latest record is
+ * only a candidate: its branch may already be gone while an older one survives,
+ * and `findWorkspace`'s "latest wins" would throw that older work away.
+ *
+ * @param {string} stateDir @param {{identifier: string, round?: number}} input
+ */
+export function listPreviousWorkspaces(stateDir, { identifier, round }) {
+  const current = Number(round);
+  if (!Number.isFinite(current)) return [];
+  const { workspaces } = readWorkspaceRegistry(stateDir);
+  return workspaces
+    .filter((entry) => entry.identifier === identifier && Number(entry.round) < current)
+    .sort((left, right) => Number(right.round) - Number(left.round));
+}
+
+/**
  * Remove the workspaces of terminal cards. Called from the patrol pass, which
  * already reads the board; never from a turn's completion (the reviewer may
  * still need the tree).
@@ -454,6 +644,21 @@ export function sweepWorkspaces({
     const task = byIdentifier.get(record.identifier);
     const terminal = task !== undefined && (task.status === "done" || task.status === "canceled");
     if (!terminal) {
+      // A non-terminal record used to be kept unconditionally, which is how a
+      // deleted branch survived in the registry and became a rework's base. A
+      // record whose tree and branch are both gone can no longer help anyone.
+      if (isBusy(record.path)) {
+        kept.push(record);
+        continue;
+      }
+      if (isStaleWorkspaceRecord(record, { exists, run })) {
+        removed.push(record);
+        log(
+          `workspace: dropping ${record.identifier} r${record.round} record — ` +
+            `${record.path} and ${record.branch} are both gone`,
+        );
+        continue;
+      }
       kept.push(record);
       continue;
     }

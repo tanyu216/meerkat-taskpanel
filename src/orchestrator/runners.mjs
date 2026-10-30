@@ -57,8 +57,10 @@ const BOARD_LEVEL_ROWS = new Set(["leader_stalled", "inspector_liveness"]);
  *   claim: (identifier: string, agent: string) => Promise<{ok: boolean, error?: string}>,
  *   spawnWorker: (action: object, card: object|undefined) => Promise<{ok: boolean, pid?: number, error?: string}>,
  *   dispatch?: (action: object, card: object|undefined) => Promise<{ok: boolean, pid?: number, error?: string}>,
- *   admit?: (action: object, card: object|undefined) => Promise<{ok: boolean, why?: string}>,
+ *   admit?: (action: object, card: object|undefined) => Promise<{ok: boolean, why?: string, code?: string, accounted?: boolean}>,
  *   release?: (identifier: string) => Promise<unknown>,
+ *   recordDefer?: (identifier: string, failure: {code: string, reason: string, round: number}) => void,
+ *   clearDeferral?: (identifier: string) => void,
  *   limit?: number,
  *   verb?: string,
  *   now: () => string,
@@ -76,6 +78,8 @@ export async function runPollTick(deps) {
     dispatch = spawnWorker,
     admit = null,
     release = null,
+    recordDefer = null,
+    clearDeferral = null,
     limit = Number.POSITIVE_INFINITY,
     verb = "woke",
     now,
@@ -117,9 +121,21 @@ export async function runPollTick(deps) {
     const admitted = admit === null ? { ok: true } : await admit(action, card);
     if (admitted?.ok !== true) {
       deferred += 1;
+      // Card-scoped failures are the ones that can loop forever. Budget and
+      // concurrency backpressure are not counted (`accounted: false`).
+      if (admitted?.accounted === true) {
+        recordDefer?.(action.identifier, {
+          code: admitted.code ?? "ADMISSION_FAILED",
+          reason: admitted.why ?? "not admitted",
+          round: Number(card?.delivery_round ?? 1),
+        });
+      }
       log(`defer ${action.identifier} (${admitted?.why ?? "not admitted"})`);
       continue;
     }
+    // Admission succeeded: whatever was wrong last pass is gone. A later
+    // dispatch failure is a different, tracked gap.
+    clearDeferral?.(action.identifier);
 
     // Atomic claim first: the board (not the supervisor) decides the winner.
     const verdict = await claim(action.identifier, action.agent);
@@ -138,6 +154,9 @@ export async function runPollTick(deps) {
     if (!outcome?.ok) {
       // Honest failure: a card we could not dispatch is not "running".
       failed += 1;
+      // Give back what this pass reserved (brief watch, a workspace it created):
+      // no subagent will use them. The board claim is left to the stale recovery.
+      if (release !== null) await release(action.identifier);
       log(`${verb} failed ${action.identifier}: ${outcome?.error ?? "unknown error"}`, {
         level: "error",
       });
