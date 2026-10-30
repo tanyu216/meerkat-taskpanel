@@ -331,7 +331,7 @@ shape of every row:
 | `confirmation_gate` | a confirmation request on the card | `meta.gate_at`, a `confirm_request` comment, the legacy marker, the prose shape | no later leader-authored `confirm` | `high` except the prose shape |
 | `defect_card_creation` | a `kind=defect` trail entry | the earlier of that entry and the card's entry into `blocked`/`canceled` | no bug-labelled card references this one | `high`; `low` when the board read was capped |
 | `acceptance_card_creation` | `status == in_review` on a non-review card | `status_changed_at` | no open review card for this delivery round | `high`; `low` when capped or unreadable |
-| `heartbeat_stale` | `status == in_progress` | `heartbeat_at` | the card is still `in_progress` | `high`; `low` when unreadable |
+| `heartbeat_stale` | `status == in_progress` and `kind != epic` | `heartbeat_at` | the card is still `in_progress` | `high`; `low` when unreadable |
 | `leader_stalled` | at least one leader-owed row is open | the latest leader-attributed event | the leader acts | `high` inside the lookback; `low` outside it |
 | `inspector_liveness` | peer age > `k × P_peer` | the peer's `last_ok` | the peer completes a pass | `high` |
 
@@ -434,13 +434,17 @@ row is still reported.
 
 ### 6.5 `heartbeat_stale`
 
-Applies to `in_progress` cards. Origin: `heartbeat_at` (`high`). An unreadable heartbeat is
-not green: it alerts at `warn` with no threshold, mirroring the legacy `heartbeat-unreadable`
-alert rather than replacing it.
+Applies to `in_progress` **work** cards. An `epic` is excluded: a container is never claimed and
+never pulses, and its auto-start enters `in_progress` with no holder by design
+(`src/core/README.md`), so a heartbeat predicate over it can only report the board's own state as
+a defect. Origin: `heartbeat_at` (`high`). An unreadable heartbeat is not green: it alerts at
+`warn` with no threshold, mirroring the legacy `heartbeat-unreadable` alert rather than
+replacing it.
 
 The row emits the shared tuple **beside** the legacy heartbeat alert stream that
 `planPatrol` produces (`{type: "stale" | "heartbeat-unreadable", …}`), which keeps its
-published per-card shape and its consumer. One stale heartbeat therefore notifies twice, on
+published per-card shape and its consumer. Both channels skip the container: `planPatrol` reads
+`src/foundation/task-kind.mjs#isContainer`, the same reading the row uses. One stale heartbeat therefore notifies twice, on
 two channels, by design: the legacy shape has no `dedup_key`, `sla_row` or working-hours
 basis, so without the tuple the two mechanisms could not de-duplicate it.
 
@@ -505,7 +509,11 @@ The ledger is a JSON file beside the loop's state (`sla-ledger.json`):
 
 A missing or unreadable ledger reads as **empty**, so the pass notifies rather than
 suppresses. A failed write costs a duplicate, never an alert. The same code and file shape
-serve the workflow pass's own ledger; both read only `dedup_key`.
+serve the workflow pass's own ledger; both use `dedup_key` for suppression. The workflow pass is
+the one reader that also uses `first_seen`: a `workflow_action_failed` that outlives a 24-hour
+window re-notifies as `workflow_action_failed_escalated` under a **new, bucketed key**, so the
+suppression rule is unchanged — a standing refusal reaches a human once per bucket instead of
+once ever.
 
 ### 8.2 Keys
 

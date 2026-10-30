@@ -29,6 +29,15 @@ import { QUEUE_FILES } from "../foundation/loop-state.mjs";
 export const DEFAULT_CARD_MAX_ATTEMPTS = 3;
 
 /**
+ * Rows that are history, not work. A row's id is deterministic (`<card>-<role>`),
+ * so once an old row is terminal a new handoff for the same card carries the
+ * *same* id (`enqueueCard`). Every mutator must therefore skip terminal rows, or
+ * one requeue inflates — and can resurrect — the retained history.
+ */
+const TERMINAL_CARD_STATUSES = new Set(["done", "failed"]);
+const isTerminalCard = (entry) => TERMINAL_CARD_STATUSES.has(String(entry?.status ?? ""));
+
+/**
  * @param {string} stateDir
  * @returns {{continuePending: string, continueProcessing: string, cards: string, ledger: string, sessions: string}}
  */
@@ -371,6 +380,7 @@ export function completeCards(stateDir, ids, options = {}) {
   const value = read.value;
   for (const entry of value.cards) {
     if (!wanted.has(String(entry.id))) continue;
+    if (isTerminalCard(entry)) continue;
     entry.status = options.status ?? "done";
     entry.lastError = options.error ?? null;
     entry.completedAt = options.now ?? new Date().toISOString();
@@ -399,8 +409,7 @@ export function pruneCards(stateDir, options = {}) {
   const kept = [];
   let dropped = 0;
   for (const entry of value.cards) {
-    const terminal = entry.status === "done" || entry.status === "failed";
-    if (!terminal) {
+    if (!isTerminalCard(entry)) {
       kept.push(entry);
       continue;
     }
@@ -434,6 +443,7 @@ export function requeueCards(stateDir, ids, options = {}) {
   let failed = 0;
   for (const entry of value.cards) {
     if (!wanted.has(String(entry.id))) continue;
+    if (isTerminalCard(entry)) continue;
     const attempts = Number(entry.attempts ?? 0) + 1;
     entry.attempts = attempts;
     entry.claimedAt = null;

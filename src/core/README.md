@@ -69,7 +69,11 @@ Rules that are enforced, not just documented:
   on a claimed card, which keeps its claim in place. Bare SQL can therefore
   still write a `claimed_by` onto an epic; after the service scoping that value
   is inert (the card can be neither claimed nor pulsed), and closing it needs
-  the promotion semantics decided first (T-20261018-060214);
+  the promotion semantics decided first (T-20261018-060214). The observability
+  half of the same fact lives in `foundation/task-kind.mjs#isContainer` (the
+  `"epic"` literal, since `foundation` may not import `core`): the stale-heartbeat
+  row and the loop's legacy heartbeat scan both skip a container, so its designed
+  `in_progress` is never reported as a stopped worker;
 * a task command's **input** is declared once, in `commands/tasks-input.mjs`, in
   wire terms — field name, type, vocabulary, multiplicity, and which surface
   carries it. The route's request shape and the CLI's flags and body are

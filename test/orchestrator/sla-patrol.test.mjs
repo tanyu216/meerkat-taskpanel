@@ -648,6 +648,22 @@ describe("heartbeat_stale (the SLA channel beside the legacy alert stream, §6.5
     assert.equal(rowsOf(result).includes("heartbeat_stale"), false);
   });
 
+  // The container's `in_progress` is the board's own design (a never-claimed
+  // epic, `claimed_by = null`): there is no worker whose heartbeat could be
+  // late. Both the stale and the unreadable branches sit below this guard.
+  it("excludes an epic container, which is never claimed and never pulses", () => {
+    for (const heartbeat of [ago(40), null, "not-a-timestamp"]) {
+      const result = plan([
+        card({ kind: "epic", claimed_by: null, status: "in_progress", heartbeat_at: heartbeat }),
+      ]);
+      assert.equal(
+        rowsOf(result).includes("heartbeat_stale"),
+        false,
+        `epic with heartbeat_at=${String(heartbeat)}`,
+      );
+    }
+  });
+
   it("alerts with no threshold when the heartbeat cannot be read (§6.5)", () => {
     const result = plan([card({ heartbeat_at: "not-a-timestamp" })]);
     const alert = hbAlert(result);

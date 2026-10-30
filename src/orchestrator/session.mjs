@@ -977,12 +977,35 @@ export function createSessionPool(input = {}) {
       }
       const unmatched = batch.slice(matched);
       if (unmatched.length > 0) {
-        requeueCards(stateDir, unmatched.map((card) => card.id), {
-          error: `project session reported ${ids.length} subagent(s) for ${batch.length} card(s)`,
-        });
+        // A successful turn that reports no id for a card is ambiguous: the
+        // adapter only captures ids from a tool result, and the session may
+        // also stand down when the lane already holds the card. Ask the board,
+        // which owns the fact: a card that left `todo` got its handoff, so
+        // retrying it would put a second worker on the same card.
+        const requeue = [];
+        let inFlight = 0;
+        for (const card of unmatched) {
+          if (revalidateCard === null) {
+            requeue.push(card);
+            continue;
+          }
+          const live = await revalidateCard({ card: card.card, row: card });
+          if (live?.ok === true && typeof live.status === "string" && live.status !== "todo") {
+            completeCards(stateDir, [card.id], { status: "done", error: "handoff already in flight" });
+            inFlight += 1;
+            log(`session: ${card.card} is ${live.status} with no reported subagent id — handoff already in flight`);
+            continue;
+          }
+          requeue.push(card);
+        }
+        if (requeue.length > 0) {
+          requeueCards(stateDir, requeue.map((card) => card.id), {
+            error: `project session reported ${ids.length} subagent(s) for ${batch.length} card(s)`,
+          });
+        }
         log(
           `session: ${dir} reported ${ids.length} subagent(s) for ${batch.length} card(s) — ` +
-            `${unmatched.length} requeued`,
+            `${inFlight} already in flight, ${requeue.length} requeued`,
         );
       }
       dispatched += matched;

@@ -60,7 +60,7 @@ const TASKS = [
   { identifier: "T-300", title: "Queued", status: "todo" },
 ];
 
-function sentinel(dir, { fail = false } = {}) {
+function sentinel(dir, { fail = false, tasks = TASKS } = {}) {
   const record = join(dir, "calls.jsonl");
   const script = join(dir, "sentinel-cli.mjs");
   writeFileSync(
@@ -70,7 +70,7 @@ function sentinel(dir, { fail = false } = {}) {
       "if (process.env.TP_CALLS) appendFileSync(process.env.TP_CALLS, `${JSON.stringify(process.argv.slice(2))}\\n`);",
       fail
         ? 'process.stdout.write(JSON.stringify({ ok: false, error: { message: "board down" } }));'
-        : `process.stdout.write(JSON.stringify({ ok: true, data: { tasks: ${JSON.stringify(TASKS)} } }));`,
+        : `process.stdout.write(JSON.stringify({ ok: true, data: { tasks: ${JSON.stringify(tasks)} } }));`,
     ].join("\n"),
   );
   return { script, record };
@@ -214,6 +214,26 @@ describe("loop doctor — the report", () => {
     assert.equal(report.ok, true);
     assert.equal(report.attention, true);
     assert.ok(report.attention_reasons.includes("stuck_cards: 2"));
+  });
+
+  it("does not call an epic container a stuck card", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        { identifier: "E-1", title: "Container", kind: "epic", status: "in_progress", heartbeat_at: null },
+        { identifier: "T-1", title: "Work", kind: "task", status: "in_progress", heartbeat_at: null },
+      ],
+    });
+    seedState(dir);
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(
+      report.stuck_cards.in_progress.map((card) => card.ref),
+      ["T-1"],
+      "an epic's in_progress is the board's design, not a stale claim",
+    );
+    assert.equal(report.stuck_cards.total, 1);
   });
 
   it("keeps in_review as facts: the review-aging setting does not judge them", () => {
