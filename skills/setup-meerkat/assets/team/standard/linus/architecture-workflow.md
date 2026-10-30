@@ -51,6 +51,11 @@ elegance constrains how, it never adds machinery.** A boundary is not traded for
 crossing one is a recorded decision. A pattern that cannot answer the deletion question is
 not introduced — or is recorded as an explicit decision with its cost.
 
+The six principles above bind; the lists and ranges in this flow — the options compared, the
+named styles, the stack layers, the contract shapes and the default tools — are not the only
+options: a better solution or tool may be chosen too, recorded as a decision with its
+rationale.
+
 ## When this flow applies
 
 A card belongs here **iff** it creates or changes a recorded foundation decision: the
