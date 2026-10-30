@@ -779,9 +779,11 @@ cannot override it.
 
 Questions are asked as one **decision round**: the frontier of decisions whose prerequisites
 are settled, numbered Q1..Qn with a recommendation each, one question string per card, with
-the asker looking up the facts. The complete protocol — including the collaborative card
-mode and the adversarial design mode `/setup-meerkat` uses for the setup interview and team
-co-design — is the loop's `references/decision-policy.md` §Decision rounds.
+the asker looking up the facts. In manual mode the round is scoped to one card — the session
+walks the waiting cards one at a time, and the next card starts only after the answer to this
+one is recorded. The complete protocol — including the collaborative card mode and the
+adversarial design mode `/setup-meerkat` uses for the setup interview and team co-design — is
+the loop's `references/decision-policy.md` §Decision rounds.
 
 The scan set is still explicit: write `MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing` (and
 `MEERKAT_TASKPANEL_REVIEWER=Reviewer`) to the per-kind config, or the loop scans only its
@@ -1593,14 +1595,18 @@ briefs fresh but no event wakes a turn.
 
 The loop has **one** control turn. A live `/meerkat-loop` session can host it instead of the
 installed clock: the pool starts with `--control=external` (no control session,
-`continue.pending` untouched; project sessions still dispatch), the session runs
-`patrol → workflow → poll`, and the session's console cycle surfaces `awaiting`/question
-cards to the human. The answer is recorded as a `--as-human` board comment — the comment is
-the record, the in-session question is only the front-end. `status.mjs --json` reports
-`running | busy | starting | configured-idle | partial | absent`; `--take-over` starts the
-external-control pool only when the verdict is `absent`, and `--stop` stops only what it
-started. The scheduler's clocks and the session's loop are different **drivers** of the same
-turn; the units and the session's pool are the same dispatcher.
+`continue.pending` untouched; project sessions still dispatch) and the session runs
+`patrol → workflow → poll`. The session's **opening pass is an agenda**, and only then does the
+control turn repeat on the clock (question tick 60 s, control tick 600 s, 30 min TTL): it asks
+the human about the `awaiting` cards **one card at a time**, records the answer as a
+`--as-human` board comment after showing the exact body, reports `doctor`'s health plus every
+card in `blocked` status with its reason, and releases `backlog → todo` on request — the only
+forward edge, since `in_progress` belongs to a claim. Every board write is shown before it
+happens; the comment is the record, the in-session question is only the front-end.
+`status.mjs --json` reports `running | busy | starting | configured-idle | partial | absent`;
+`--take-over` starts the external-control pool only when the verdict is `absent`, and `--stop`
+stops only what it started. The scheduler's clocks and the session's loop are different
+**drivers** of the same turn; the units and the session's pool are the same dispatcher.
 
 This "live-session mode" is not the install's **manual path** described next (units written
 but not loaded); the two words name different things.

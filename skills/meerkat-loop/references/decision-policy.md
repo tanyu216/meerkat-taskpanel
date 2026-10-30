@@ -76,6 +76,10 @@ A decision round settles the choices a piece of work would otherwise assume sile
 changes *how* a question is asked, never *who* decides: the ladder above still binds, and
 only a human comment resumes an `awaiting` card.
 
+**In manual mode a round is scoped to one card.** The live session walks the waiting cards
+one at a time, so the frontier is that card's unsettled decisions — never several cards at
+once. The next card opens only after this one's answer is recorded.
+
 1. **Draw the tree.** Each decision is a branch; a decision hangs off the answers it
    depends on.
 2. **Find the frontier.** The frontier is every decision whose prerequisites are settled —
@@ -117,6 +121,11 @@ worker judges whether the round is complete and, if not, asks the next round as 
 string. Never spread one round across several question comments, and never open a second
 `awaiting` question for the same round.
 
+**In manual mode** the live session is the middle rung: it selects the card, asks its frontier
+in the conversation, and records the answer on that card. The next card starts only after the
+answer is written. An operational `agent-question` is the session's to decide; only E1–E5 is
+carried to the human.
+
 A single item (or each Qn inside a round) uses this shape:
 
 ```text
@@ -137,10 +146,12 @@ E-code.
 - Main-session decision: a `note` comment recording the decision, then answer the subagent or
   move the card back to `todo`.
 - Human escalation: move the card to `awaiting` with the E1–E5 reason and the question.
-- Human answer: a human comment (`--as-human`) of any kind; the board auto-requeues the card.
-  On the board the human types in the drawer's comment box (the UI sends `discuss`, which is an
-  answer too). `decision` / `confirm` / `change` is the explicit record marker a reviewer can
-  query; the resume does not depend on it.
+- Human answer: a human comment (`--as-human`) of any kind; the board requeues the card to
+  `todo` in the same transaction, so do not move it again. On the board the human types in the
+  drawer's comment box (the UI sends `discuss`, which is an answer too). `decision` / `confirm`
+  / `change` is the explicit record marker a reviewer can query; the resume does not depend on
+  it. The body is the human's own words, shown to them before it is written — a "yes" to a
+  recommendation is recorded as that recommendation plus yes, never paraphrased or enriched.
 
 The comment and move commands themselves are the `meerkat` board skill's contract.
 

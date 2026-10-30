@@ -188,7 +188,14 @@ You run it yourself, in a live session:
 /meerkat-loop
 ```
 
-That is **manual mode**. The session is the control turn, the human is the clock, and the session is the question front-end.
+That is **manual mode**, and it opens with an agenda rather than a scheduler pass:
+
+1. **What is waiting on you.** One card at a time — the session reads the card back, asks that card's whole question, shows you the exact comment it is about to write, and writes it as your comment once you agree. A board-UI answer counts too; it will not ask again.
+2. **Loop health and blocks.** The supervisor verdict, stale heartbeats, anything aged in review, and every card sitting in `blocked` with its reason — reported, never changed behind your back.
+3. **The backlog.** Cards you want started move `backlog → todo` (the only forward edge; `in_progress` belongs to a claim), with an owner only if you name one.
+4. **Anything else.** Create, split, assign, accept, reopen, cancel, relate, attach — through the board with you watching.
+
+Every board write is shown before it happens. After the agenda the clock keeps running — a question tick every 60 s, a control tick every 600 s, for 30 minutes or until you say stop.
 
 **Supervised mode is the same command, not a different brain.** If you install the scheduling units, they feed `/meerkat-loop Continue — …` to the resident control session. The unit is the clock; the model still did not decide to invoke the skill.
 

@@ -111,20 +111,26 @@ describe("loop skill: SKILL.md", () => {
     assert.match(operation, /re-read/);
     assert.match(operation, /UI/);
     assert.match(operation, /frontier/i);
-    assert.match(operation, /one numbered block per card/i);
+    assert.match(operation, /one numbered block/i);
+    assert.match(operation, /one card at a time/i);
+    assert.match(operation, /backlog/);
+    assert.match(operation, /blocked/);
   });
 
-  it("batches the question frontier in manual mode", () => {
+  it("walks the question queue one card at a time in manual mode", () => {
     const begin = text.indexOf("#### Manual mode");
     assert.notEqual(begin, -1, "manual mode must have its own sub-section");
     const next = text.indexOf("\n### ", begin + 1);
     const manual = text.slice(begin, next === -1 ? text.length : next);
 
     assert.match(manual, /frontier/i);
-    assert.match(manual, /one message/i);
-    assert.match(manual, /one numbered block per card/i);
+    assert.match(manual, /one card at a time/i);
+    assert.match(manual, /one numbered block/i);
     assert.match(manual, /one question string/i);
     assert.match(manual, /Only a human comment resumes awaiting/);
+    assert.match(manual, /backlog/i);
+    assert.match(manual, /blocked/i);
+    assert.match(manual, /60 s/);
   });
 
   it("documents the decision round in the decision policy", () => {

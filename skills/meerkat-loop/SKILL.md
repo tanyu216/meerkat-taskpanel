@@ -1,6 +1,6 @@
 ---
 name: meerkat-loop
-description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation, one worker session per target directory, and a reviewer session there on demand. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the worker or reviewer session spawns the matching subagent in the project directory. Runs under launchd / systemd / cron units for claude, codex and pi; OpenClaw is excluded.
+description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation, one worker session per target directory, and a reviewer session there on demand. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the worker or reviewer session spawns the matching subagent in the project directory. In manual mode a person runs it from a live session, where it is an agenda: decide the cards waiting on them one card at a time, report loop health and blocked cards, release backlog work into the queue, and manage cards — showing every board write before it happens. Runs under launchd / systemd / cron units for claude, codex and pi; OpenClaw is excluded.
 disable-model-invocation: true
 ---
 
@@ -90,14 +90,14 @@ no argument parsing.
   human is present and can be asked in the conversation (the answer is still recorded as a
   board comment).
 
-The two modes run the same control turn — see §Execution modes. On an agent kind that does not
-slash commands, the `/meerkat-loop` prefix stays literal text and the rest of the prompt still
-carries the work.
+The two modes share one control turn and one question ladder; they differ in who is present —
+see §Execution modes. On an agent kind that does not slash commands, the `/meerkat-loop` prefix
+stays literal text and the rest of the prompt still carries the work.
 
 ### Execution modes
 
-There is **one control turn**: `patrol → workflow → poll`, the same question ladder and the
-same acceptance rules. Two drivers run it; the turn says which.
+The control turn is `patrol → workflow → poll`; the question ladder and the acceptance rules are
+the same in both modes. What differs is who the turn is talking to.
 
 - **Supervised** (`mode: supervised`). The scheduler (ping/continue/events) or a one-shot
   supplies the prompt. This session is **headless**: no user is watching the session window, so
@@ -106,53 +106,75 @@ same acceptance rules. Two drivers run it; the turn says which.
   clock, a pool, a subscriber or a watcher; return when the turn is done.
 - **Manual** (no marker). A human invoked the skill in a live session. The session is the
   control turn and the pool is the dispatcher; the human is the clock and the question
-  front-end. Questions may be asked in the conversation and are recorded as board comments.
+  front-end. Its opening pass is the agenda below; the control turn then repeats on the clock.
 
 #### Manual mode
 
-1. **Detect.** Run `taskctl loop status --json` (`taskctl loop doctor --json` is the one-command
-   inspection: the same verdict plus board compatibility, the patrol marker, the log tail, the
-   queue/ledger and the stuck cards — read-only, and it starts nothing):
-   - `running` — a pool is live. `pool.controlMode` says who owns the turn. `internal` means
-     the supervisor owns it: do **not** run a second control turn; you may attach as a question
-     console. `external` means a live session owns it; run the loop.
-   - `configured-idle` / `partial` / `busy` — report; do not start a pool and do not fight the
-     service manager.
-   - `absent` — nothing is running. Ask the human before taking over.
-2. **Take over (explicit only).** If `absent` and the human agrees, run
-   `taskctl loop status --take-over`: it starts the pool in **external-control** mode (project
-   sessions still dispatch) and records its pid. Stop it with `taskctl loop status --stop`. If
-   the human declines, stop after the read-only report.
-3. **Control tick.** Run the three commands the supervised prompt lists — `taskctl loop patrol`,
-   `taskctl loop workflow`, `taskctl loop poll`. With the external pool live, poll claims and
-   enqueues; the pool's project sessions spawn the workers/reviewers.
-4. **Question tick — one round across all waiting cards.**
-   `taskctl loop console --json` lists the `awaiting` cards, in-progress agent questions no
-   human has answered, and `in_review` cards pending acceptance. **Both
-   answer channels are the same record** — a human comment in the board UI and an answer typed
-   in this conversation:
-   - Before asking, re-read the card's comment trail (the `meerkat` board skill's comment
-     list). If a human comment is newer than the question, the human already answered — so
-     do not ask again, do not write a second comment, and run a control tick.
-   - Otherwise ask the whole frontier in **one message**: one numbered block per card, each item
-     Q1..Qn with a recommendation, worded so "yes" accepts it. Facts are yours to look up —
-     never ask for a fact the card, code or docs can establish. A question that depends on
-     another open one waits for the next round. One round is one question string per card:
-     never drip one comment per item.
-   - After they answer, re-read once more: if a human comment (a UI answer posted while you were
-     asking) is already newer than the question, do not duplicate it; otherwise record their
-     answer verbatim as a human comment (`--as-human`, per the `meerkat` board skill). The
-     board comment is authoritative; the in-session question is only the front-end.
-   - Apply the move the question ladder prescribes (an awaiting card resumes on the human
-     comment; an in_progress agent question → `todo`/reattach) and run a control tick so the
-     resumed card is processed promptly. Only a human comment resumes awaiting.
-5. **Bound the loop.** Control ticks follow the continue cadence (default 600s); question ticks
-   default to 30s; stop at the requested TTL (default 30 min) or on "stop". On exit report the
-   pool pid and `taskctl loop status --stop`.
+A person typed `/meerkat-loop`. Work the board *with* them, in this order: what is waiting on
+them, then the loop's health, then the backlog, then whatever else they ask. After the agenda,
+keep the clock — the question tick (60 s) and the control tick (600 s) continue until the TTL
+(default 30 min) or "stop".
 
-**Never** decide an E1–E5 question yourself; never claim or move a work card; never start a
-second pool. Run at most one manual console per agent directory: `session.lock` guards the
-pool, but two consoles would still race the workflow ledger.
+1. **Open the board once.** `taskctl loop doctor --json` is the health read;
+   `taskctl loop console --json` is the work read (`questions`, `pending_acceptance`,
+   `supervisor`). Report one compact digest before writing anything. The
+   `supervisor.verdict` decides what this session may do:
+   - `running` with `pool.controlMode: internal` — the supervisor owns the turn. Attach as a
+     question console only; run no control tick.
+   - `running` with `external` — the pool runs in **external-control** mode: the live session
+     owns the turn, so the full agenda applies.
+   - `busy` / `starting` / `configured-idle` / `partial` — report and leave it alone; the
+     service manager or an in-flight turn owns it. Never take over.
+   - `absent` — nothing is running. Ask the human before `taskctl loop status --take-over`
+     (it refuses any other verdict). If they decline, the agenda still runs, but nothing will
+     claim what you release. Stop a pool you started with `taskctl loop status --stop`.
+2. **Waiting on me — one card at a time.** `questions[]` carries two rungs; branch on `kind`:
+   - `awaiting` is **the human's**. Take one card — priority, then age; console order is board
+     weight order, not a decision order. Re-read its comment trail first: a human comment newer
+     than the question is already the answer, whether it came from the board UI or from this
+     conversation, so do not ask again and do not duplicate it. Ask that card's whole frontier
+     as **one numbered block / one question string**, each item with a recommendation worded so
+     "yes" accepts it; facts are yours to look up. Show the exact comment body, and on
+     confirmation write it as a human comment (`--as-human`, per the `meerkat` board skill).
+     The board requeues the card to `todo` by itself — do not also move it. Then the next card.
+   - `agent-question` is **the session's** rung, not the human's: it is operational, so decide
+     it with an agent note and the ladder's move, or escalate E1–E5 to the human by moving the
+     card to `awaiting`. Mention it; ask the human only if they want to weigh in.
+   - **Only a human comment resumes awaiting**, whatever its kind. A tick that fires while a
+     question is open is a no-op — re-read that card's trail, and start the next card only after
+     the answer is written.
+
+   **Both answer channels are the same record**: an answer typed here and a comment in the board
+   UI are one thing, so the board comment stays authoritative and the in-session question is
+   only the front-end.
+3. **Loop health and blocks.** Report `doctor`'s verdict, `attention_reasons`, `stuck_cards`
+   (stale heartbeats), `waiting.in_review`, `queue`, `compat`, and a truncated board read. Then
+   the cards in `blocked` status — read through the `meerkat` board skill, because `doctor`
+   counts them but lists none: ref, title, `blocked_reason`, how long, assignee, and what the
+   human could do about each. Never unblock one on your own. Close with what step 1's verdict
+   means here: with no live pool nothing claims, so released or resumed work waits.
+4. **Release the backlog.** Read the `backlog` cards the same delegated way. For each one the
+   human wants started, move it to `todo` — the board allows no `backlog → in_progress`
+   transition, because `in_progress` is a *claimed* state and the claim belongs to a worker, not
+   to this session. Assign only an owner the human names. An epic is released too, but it is
+   never claimed; its children are. Say so first when step 1's verdict means nothing will
+   dispatch the released cards.
+5. **Manage cards.** Anything else — create, split, assign, comment, accept, reopen, cancel, a
+   relation, an attachment — the `meerkat` board skill owns the command; this one owns why.
+   `pending_acceptance` is a reading, not a to-do: an `agent` original closes through the
+   workflow plan after a current-round `APPROVE`, and a `human` original closes only when the
+   person accepts it.
+6. **Show every write first.** No exception — the decision comment, an agent note, a move, an
+   assign. Put the exact body or the exact transition in front of the human and wait for a yes.
+   A "yes" to a recommendation is recorded as that recommendation plus yes, never paraphrased or
+   enriched.
+
+**Never** decide an E1–E5 question yourself; **never claim** a card; never move one on your own
+initiative. The sanctioned moves are the confirmed `backlog → todo`, the E1–E5 move to
+`awaiting`, the `todo` move that hands an answered card back to the queue, and any move the
+human explicitly asks for once it is shown. Never start a second pool. Run at most one manual
+console per agent directory: `session.lock` guards the pool, but two consoles would still race
+the workflow ledger.
 
 ```bash
 # The agent's own `taskctl` shim carries `--agent` and `--actor-kind`; a session
