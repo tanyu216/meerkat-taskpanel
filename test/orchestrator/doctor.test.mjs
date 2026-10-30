@@ -78,6 +78,9 @@ function sentinel(dir, { fail = false, tasks = TASKS } = {}) {
 
 const noUnits = () => ({ status: 1, stdout: "", stderr: "", error: null });
 
+/** A successful child-process result, in the shape every run seam uses. */
+const ok = (stdout = "") => ({ status: 0, stdout, stderr: "" });
+
 const compatibleBoard = () => ({
   status: 0,
   stdout: JSON.stringify({ ok: true, data: { version: "0.1.0", schema_version: 4 } }),
@@ -272,6 +275,82 @@ describe("loop doctor — the report", () => {
     assert.equal(report.blocked_acceptance.total, 1);
     assert.ok(report.attention_reasons.includes("blocked_acceptance: 1"));
     assert.equal(report.stuck_cards.total, 0, "a stray marker is not a stale claim");
+  });
+
+  it("names a done card whose lane never landed, and only when git says it did not", () => {
+    const dir = tempDir();
+    const projectDir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        { identifier: "T-500", title: "Landed long ago", status: "done", project_id: "proj" },
+        { identifier: "T-501", title: "Worktree still out", status: "done", project_id: "proj" },
+        { identifier: "T-502", title: "Branch survived cleanup", status: "done", project_id: "proj" },
+        { identifier: "T-503", title: "Still being worked", status: "in_progress", project_id: "proj" },
+      ],
+    });
+    seedState(dir);
+
+    const opts = optsFor(dir, script);
+    opts.projectsJson = join(dir, "projects.json");
+    writeJson(opts.projectsJson, { projects: [{ project: "proj", local_path: projectDir }] });
+
+    const report = doctorReport(opts, { HOME: dir }, deps({
+      git: (cmd, argv) => {
+        const key = argv.join(" ");
+        if (key.includes("worktree list")) {
+          return ok(
+            [
+              `worktree ${projectDir}`,
+              "branch refs/heads/dev",
+              "",
+              `worktree ${projectDir}/.worktrees/T-500`,
+              "branch refs/heads/lane/T-500",
+              "",
+              `worktree ${projectDir}/.worktrees/T-501-m8`,
+              "branch refs/heads/lane/T-501-prefix",
+              "",
+            ].join("\n"),
+          );
+        }
+        if (key.includes("branch --no-merged")) {
+          return ok("  lane/T-501-prefix\n  lane/T-502-docs\n");
+        }
+        return ok("");
+      },
+    }));
+
+    assert.deepEqual(
+      report.unlanded.cards.map((card) => [card.ref, card.branch, card.path === null ? null : "worktree"]),
+      [
+        ["T-501", "lane/T-501-prefix", "worktree"],
+        ["T-502", "lane/T-502-docs", null],
+      ],
+      "T-500's lane is merged, and T-503 is not done at all",
+    );
+    assert.equal(report.unlanded.total, 2);
+    assert.ok(report.attention_reasons.includes("unlanded: 2"));
+    assert.deepEqual(report.errors, [], "a plain finding is not an error");
+  });
+
+  it("skips a project the map cannot resolve instead of failing the report", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [{ identifier: "T-600", title: "Elsewhere", status: "done", project_id: "missing" }],
+    });
+    seedState(dir);
+
+    const opts = optsFor(dir, script);
+    opts.projectsJson = join(dir, "projects.json");
+    writeJson(opts.projectsJson, { projects: [] });
+
+    const report = doctorReport(opts, { HOME: dir }, deps({ git: () => ok("") }));
+
+    assert.equal(report.unlanded.total, 0);
+    assert.ok(
+      report.skipped.some((line) => /unlanded: missing/.test(line)),
+      `the unreadable project is named as skipped: ${JSON.stringify(report.skipped)}`,
+    );
+    assert.deepEqual(report.errors, []);
   });
 
   it("keeps in_review as facts: the review-aging setting does not judge them", () => {

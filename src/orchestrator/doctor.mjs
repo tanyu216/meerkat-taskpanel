@@ -24,11 +24,12 @@
 
 import { spawnSync } from "node:child_process";
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { checkBoard } from "../foundation/board-compat.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import { QUEUE_FILES } from "../foundation/loop-state.mjs";
+import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import { PATROL_STALE_MS, planPatrol } from "../foundation/scheduling.mjs";
 import { readBoard } from "./board.mjs";
@@ -37,6 +38,7 @@ import { parseArgs } from "./options.mjs";
 import { readCards } from "./queue.mjs";
 import { readPeerMarker } from "./runtime.mjs";
 import { probeSupervisor } from "./status.mjs";
+import { runGit } from "./workspace.mjs";
 
 /** How many log lines the report carries, and how many bytes it will read for them. */
 export const LOG_TAIL_LINES = 40;
@@ -169,6 +171,43 @@ function logTail(path) {
 // ---------------------------------------------------------------------------
 
 /** Newest first, with an unreadable age last — the order a human triages in. */
+/** One `git` read against a checkout: its stdout, or `null` when git cannot say. */
+function gitRead(git, dir, args) {
+  const read = git("git", ["-C", String(dir), ...args]);
+  if (read === null || read.status !== 0) return null;
+  return String(read.stdout ?? "");
+}
+
+/** `git worktree list --porcelain` → `[{path, branch}]`; a detached head has no branch. */
+function parseWorktrees(text) {
+  const rows = [];
+  let current = null;
+  for (const raw of String(text ?? "").split("\n")) {
+    const line = raw.trimEnd();
+    if (line.startsWith("worktree ")) {
+      if (current !== null) rows.push(current);
+      current = { path: line.slice("worktree ".length), branch: null };
+      continue;
+    }
+    if (current !== null && line.startsWith("branch ")) {
+      const ref = line.slice("branch ".length).trim();
+      current.branch = ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : ref;
+    }
+  }
+  if (current !== null) rows.push(current);
+  return rows;
+}
+
+/** `git branch --no-merged` → the set of branch names that are not in HEAD. */
+function parseUnmerged(text) {
+  return new Set(
+    String(text ?? "")
+      .split("\n")
+      .map((line) => line.replace(/^[*+ ]+/, "").trim())
+      .filter((line) => line !== ""),
+  );
+}
+
 function byAgeDesc(left, right) {
   const a = left.age_ms ?? -1;
   const b = right.age_ms ?? -1;
@@ -214,11 +253,12 @@ function patrolReport(opts, nowMs) {
  *
  * @param {object} opts the loop's parsed options
  * @param {NodeJS.ProcessEnv} [env]
- * @param {{run?: Function, isAlive?: Function, now?: Function, boardRun?: Function}} [deps]
+ * @param {{run?: Function, isAlive?: Function, now?: Function, boardRun?: Function, git?: Function}} [deps]
  */
 export function doctorReport(opts, env = process.env, deps = {}) {
   const now = deps.now ?? Date.now;
   const nowMs = now();
+  const git = deps.git ?? runGit;
   const errors = [];
   const skipped = [];
 
@@ -423,11 +463,68 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   }
   blockedAcceptance.total = blockedAcceptance.cards.length;
 
+  // 8. Acceptances whose lane never landed. `done` is the board's answer, not
+  // git's: a card worked in a tree the loop never registered is accepted with
+  // its branch still unmerged, and nothing else looks. Only `done` counts — a
+  // `canceled` branch is abandoned work, and an active lane is correctly open.
+  // The project's directory comes from the loop's own map (`projects.json`), not
+  // from the card: `meta.target` is an opaque label, not a checkout path.
+  const unlanded = { cards: [], total: 0 };
+  if (board.error === null) {
+    const byProject = new Map();
+    for (const task of tasks) {
+      if (task?.status !== "done" || reviewIdentityOf(task).isReview) continue;
+      const project = String(task?.project_id ?? task?.project ?? "").trim();
+      if (project === "") continue;
+      if (!byProject.has(project)) byProject.set(project, []);
+      byProject.get(project).push(task);
+    }
+    for (const [project, cards] of byProject) {
+      const target = resolveWakeTarget({ project, projectsJson: opts.projectsJson });
+      if (target.ok !== true) {
+        skipped.push(`unlanded: ${project} (${target.code})`);
+        continue;
+      }
+      const worktreeText = gitRead(git, target.dir, ["worktree", "list", "--porcelain"]);
+      const unmergedText = gitRead(git, target.dir, ["branch", "--no-merged", "HEAD"]);
+      if (worktreeText === null || unmergedText === null) {
+        skipped.push(`unlanded: ${project} (git unavailable)`);
+        continue;
+      }
+      const worktrees = parseWorktrees(worktreeText);
+      const open = parseUnmerged(unmergedText);
+      for (const task of cards) {
+        const ref = String(task.identifier ?? "");
+        if (ref === "") continue;
+        // Two ways a lane outlives the card: its worktree is still on disk, or
+        // (after a cleanup) only the branch is. The worktree is matched by path
+        // because a session's own name never has to follow the loop's.
+        const tree = worktrees.find((row) => {
+          const name = basename(row.path);
+          return name === ref || name.startsWith(`${ref}-`);
+        });
+        if (tree !== undefined && tree.branch !== null && open.has(tree.branch)) {
+          unlanded.cards.push({ ref, title: task.title ?? null, branch: tree.branch, path: tree.path });
+          continue;
+        }
+        const branch = [...open].find(
+          (name) => name === `lane/${ref}` || name.startsWith(`lane/${ref}-`),
+        );
+        if (branch !== undefined) {
+          unlanded.cards.push({ ref, title: task.title ?? null, branch, path: null });
+        }
+      }
+    }
+    unlanded.cards.sort((left, right) => left.ref.localeCompare(right.ref));
+  }
+  unlanded.total = unlanded.cards.length;
+
   const attentionReasons = [];
   if (stuck.total > 0) attentionReasons.push(`stuck_cards: ${stuck.total}`);
   if (blockedAcceptance.total > 0) {
     attentionReasons.push(`blocked_acceptance: ${blockedAcceptance.total}`);
   }
+  if (unlanded.total > 0) attentionReasons.push(`unlanded: ${unlanded.total}`);
   if (compat !== null && compat.ok !== true) attentionReasons.push(`compat: ${compat.code}`);
   if (queue.failed > 0) attentionReasons.push(`queue: ${queue.failed} failed`);
   if (supervisor?.verdict === "absent" || supervisor?.verdict === "partial") {
@@ -455,6 +552,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     stuck_cards: stuck,
     waiting,
     blocked_acceptance: blockedAcceptance,
+    unlanded,
     errors,
     skipped,
   };
@@ -559,6 +657,19 @@ function humanReport(report) {
       lines.push(
         `  ${card.ref}  in_review  round ${card.round ?? "?"}  ${age}  ` +
           `[${card.accepted_by}]  ${card.title ?? ""}`.trimEnd(),
+      );
+    }
+  }
+
+  if (report.unlanded.total > 0) {
+    lines.push(
+      `unlanded    ${report.unlanded.total} done card(s) whose branch is not merged ` +
+        "— `done` is the board's answer, not git's",
+    );
+    for (const card of report.unlanded.cards) {
+      lines.push(
+        `  ${card.ref}  done  ${card.branch}${card.path === null ? "" : `  ${card.path}`}  ` +
+          `${card.title ?? ""}`.trimEnd(),
       );
     }
   }
