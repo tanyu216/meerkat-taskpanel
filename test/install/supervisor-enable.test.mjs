@@ -71,11 +71,24 @@ function fakeManager() {
       'if [ "${FAKE_FAIL:-}" = "1" ]; then echo "fake launchctl: refusing" >&2; exit 1; fi',
       'label_of() { sed -n "s/.*<string>\\(com\\.meerkat-taskpanel[^<]*\\)<\\/string>.*/\\1/p" "$1" | head -1; }',
       'case "$1" in',
-      '  print) if [ -f "$FAKE_LAUNCHD_STATE" ] && grep -qxF "$2" "$FAKE_LAUNCHD_STATE"; then printf "\\tpid = 4242\\n"; exit 0; fi',
+      // The loaded definition is what `print` reports, exactly as the real one does:
+      // answering at all says "loaded", the `arguments` block says *which* definition.
+      '  print) if [ -f "$FAKE_LAUNCHD_STATE" ] && grep -qxF "$2" "$FAKE_LAUNCHD_STATE"; then',
+      '           printf "\\tpid = 4242\\n"',
+      '           args_file="$FAKE_LAUNCHD_STATE.args.${2##*/}"',
+      '           if [ -f "$args_file" ]; then',
+      '             printf "\\targuments = {\\n"',
+      '             while IFS= read -r line; do printf "\\t\\t%s\\n" "$line"; done < "$args_file"',
+      '             printf "\\t}\\n"',
+      '           fi',
+      '           exit 0; fi',
       '         echo "Could not find service \\"$2\\" in domain for port" >&2; exit 1 ;;',
       '  bootstrap) if [ "${FAKE_ALREADY:-}" = "1" ]; then echo "Bootstrap failed: 37: Service is already bootstrapped" >&2; exit 1; fi',
       '             if [ "${FAKE_IO_ERROR:-}" = "1" ]; then echo "Bootstrap failed: 5: Input/output error" >&2; exit 1; fi',
-      '             echo "$2/$(label_of "$3")" >> "$FAKE_LAUNCHD_STATE"; exit 0 ;;',
+      '             label="$(label_of "$3")"',
+      '             echo "$2/$label" >> "$FAKE_LAUNCHD_STATE"',
+      '             sed -n "/<key>ProgramArguments<\\\\/key>/,/<\\\\/array>/p" "$3" | sed -n "s/.*<string>\\\\(.*\\\\)<\\\\/string>.*/\\\\1/p" > "$FAKE_LAUNCHD_STATE.args.$label"',
+      '             exit 0 ;;',
       '  load) echo "gui/$(id -u)/$(label_of "$3")" >> "$FAKE_LAUNCHD_STATE"; exit 0 ;;',
       '  bootout) if [ -f "$FAKE_LAUNCHD_STATE" ] && grep -qxF "$2" "$FAKE_LAUNCHD_STATE"; then',
       '             grep -vxF "$2" "$FAKE_LAUNCHD_STATE" > "$FAKE_LAUNCHD_STATE.next"',
@@ -140,6 +153,8 @@ function fakeManager() {
     launchdState,
     systemdState,
     crontab: crontabTable,
+    /** Where the fake keeps the arguments a bootstrap read — seed it to fake an old definition. */
+    argsFile: (label) => `${launchdState}.args.${label}`,
     env: {
       FAKE_LOG: log,
       FAKE_LAUNCHD_STATE: launchdState,
@@ -350,6 +365,59 @@ describe("install.sh: enable — launchd", () => {
     assert.equal(again.status, 0, again.stderr);
     assert.match(again.stdout, /supervisor: already enabled \(kind=claude, scheduler=launchd, units=/);
     assert.deepEqual(loads(manager), afterFirst, "no second load");
+  });
+
+  it("reloads a loaded unit whose definition changed — and only that unit", () => {
+    // A loaded job keeps the flags launchd read at bootstrap. The real failure this
+    // pins: units bootstrapped before the renderer stopped pinning `--agent` kept
+    // `--agent Worker`, which outranks the per-kind config forever — the loop scanned
+    // `Worker,Reviewer` while the team was `Jobs,Linus,Turing`.
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const args = ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--supervisor=enable", "--scheduler=launchd"];
+    assert.equal(runInstall(args, installEnv(home, manager)).status, 0);
+    // `loads()` is about loading only; a reload is a take-down *and* a load, so count
+    // both verbs to see exactly which unit was cycled.
+    const cycles = () => calls(manager).filter((line) => /^launchctl (bootout|bootstrap) /.test(line));
+    const before = cycles().length;
+
+    const sessionLabel = "com.meerkat-taskpanel.alice.claude.session";
+    writeFileSync(
+      manager.argsFile(sessionLabel),
+      ["/usr/bin/node", "/x/cli.mjs", "loop", "session", "--actor-kind", "claude", "--agent", "Worker"].join("\n") + "\n",
+      "utf8",
+    );
+
+    const again = runInstall(args, installEnv(home, manager));
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(again.stdout, /supervisor: reloaded \(kind=claude, scheduler=launchd, units=/);
+    assert.match(again.stdout, /reloaded com\.meerkat-taskpanel\.alice\.claude\.session — the definition on disk had changed/);
+    assert.deepEqual(
+      cycles().slice(before),
+      [
+        `launchctl bootout gui/${UID}/${sessionLabel}`,
+        `launchctl bootstrap gui/${UID} ${join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.session.plist")}`,
+      ],
+      "the pool is taken down and loaded again; the units that did not change are left alone",
+    );
+  });
+
+  it("leaves a loaded unit alone when its definition cannot be compared, and says so", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const args = ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--supervisor=enable", "--scheduler=launchd"];
+    assert.equal(runInstall(args, installEnv(home, manager)).status, 0);
+    const before = loads(manager);
+
+    // No `arguments` block in `launchctl print`: the fake cannot say which definition is
+    // loaded, and an unknown definition must never be treated as a changed one.
+    rmSync(manager.argsFile("com.meerkat-taskpanel.alice.claude.session"));
+
+    const again = runInstall(args, installEnv(home, manager));
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(again.stdout, /could not compare the loaded definition of com\.meerkat-taskpanel\.alice\.claude\.session/);
+    assert.match(again.stdout, /reload it by hand: install\.sh --supervisor=disable/);
+    assert.deepEqual(loads(manager).slice(before.length), [], "a live job is never touched on a parse failure");
   });
 
   it("treats launchd's `already bootstrapped` refusal as an idempotent success", () => {
@@ -807,5 +875,101 @@ describe("install.sh: --dry-run and per-agent-kind selection", () => {
     // With `auto`, the printed remedy is the doc's own line — no `--scheduler` suffix, on
     // either platform, because the hint only carries one when auto would pick differently.
     assert.match(run.stdout, /^to disable:  install\.sh --supervisor=disable --supervisor-actor-kinds claude$/m);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9 — a rewrite over units a service manager already has loaded
+// ---------------------------------------------------------------------------
+
+describe("install.sh: a plain reinstall tells the truth about loaded units", () => {
+  const LABELS = ["session", "ping", "continue", "subscribe"].map(
+    (unit) => `com.meerkat-taskpanel.Worker.claude.${unit}`,
+  );
+  const plain = (home, extra = {}) =>
+    installEnv(home, extra.manager, { MEERKAT_TASKPANEL_SCHEDULER: "launchd", ...extra.env });
+
+  /** Pretend the service manager has these launchd jobs loaded (no args: probe only). */
+  const seedLoaded = (manager) => {
+    writeFileSync(manager.launchdState, LABELS.map((label) => `gui/${UID}/${label}`).join("\n") + "\n", "utf8");
+  };
+
+  it("warns that the loaded definition is stale, and names the command that reloads it", () => {
+    // The bug this pins: `install.sh --force` rewrites the plists, prints "nothing is
+    // loaded for you" even though the jobs ARE loaded, and the live supervisor keeps an
+    // `--agent` flag the file no longer has. The rewrite has to say so.
+    const home = makeTempDir();
+    const manager = fakeManager();
+    assert.equal(runInstall(["--target", "claude", "--prefix", home], plain(home, { manager })).status, 0);
+
+    seedLoaded(manager);
+    // A byte the next run will rewrite.
+    writeFileSync(join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist"), "<!---->\n", "utf8");
+
+    const before = calls(manager).length;
+    const run = runInstall(["--target", "claude", "--prefix", home, "--force"], plain(home, { manager }));
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /supervisor: warning \(kind=claude\) — the scheduling units were just rewritten, but launchd still has the old definition loaded/);
+    assert.match(run.stdout, /reload it with: install\.sh --supervisor=enable --supervisor-actor-kinds claude$/m);
+    assert.doesNotMatch(run.stdout, /nothing is loaded for you/);
+    assert.deepEqual(
+      calls(manager).slice(before).filter((line) => !/^launchctl print /.test(line)),
+      [],
+      "the warning is a read-only probe: it loads nothing",
+    );
+  });
+
+  it("stays quiet when the reinstall changed no unit bytes", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    assert.equal(runInstall(["--target", "claude", "--prefix", home], plain(home, { manager })).status, 0);
+    seedLoaded(manager);
+
+    const before = calls(manager).length;
+    const run = runInstall(["--target", "claude", "--prefix", home], plain(home, { manager }));
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.doesNotMatch(run.stdout, /supervisor: warning/);
+    assert.match(run.stdout, /nothing is loaded for you/);
+    assert.deepEqual(calls(manager).slice(before), [], "an unchanged rewrite does not even probe");
+  });
+
+  it("keeps the load hint when the units are rewritten but nothing is loaded", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    assert.equal(runInstall(["--target", "claude", "--prefix", home], plain(home, { manager })).status, 0);
+    writeFileSync(join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist"), "<!---->\n", "utf8");
+
+    const run = runInstall(["--target", "claude", "--prefix", home, "--force"], plain(home, { manager }));
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.doesNotMatch(run.stdout, /supervisor: warning/);
+    assert.match(run.stdout, /nothing is loaded for you/);
+  });
+});
+
+describe("install.sh: enable — systemd reload", () => {
+  it("restarts an enabled unit whose file changed, instead of only daemon-reloading it", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const args = ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--supervisor=enable", "--scheduler=systemd"];
+    assert.equal(runInstall(args, installEnv(home, manager)).status, 0);
+    const before = calls(manager).length;
+
+    // The installed copy now differs from the rendered source: systemd has to be told to
+    // stop the old ExecStart, not merely to re-read files.
+    const unit = join(home, ".config", "systemd", "user", "meerkat-taskpanel-ping.service");
+    writeFileSync(unit, `${readFileSync(unit, "utf8")}\n# stale\n`, "utf8");
+
+    const again = runInstall(args, installEnv(home, manager));
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(again.stdout, /supervisor: reloaded \(kind=claude, scheduler=systemd, units=/);
+
+    const verbs = calls(manager)
+      .slice(before)
+      .filter((line) => /systemctl --user (disable|enable) /.test(line));
+    assert.match(verbs[0] ?? "", /^systemctl --user disable --now /, "the old unit is stopped first");
+    assert.match(verbs[1] ?? "", /^systemctl --user enable --now /, "then the new one is started");
   });
 });

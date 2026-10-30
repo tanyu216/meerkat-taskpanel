@@ -354,15 +354,39 @@ unattended, so silence must mean *no*: it is opt-in, never silent residency, and
 question (default `none`) as part of its one flow; when it has run, this standalone prompt
 is skipped.
 
-**Idempotence and safety.** A repeat enable never double-loads — an already-loaded unit is
-reported as `already enabled` and exits 0 — and enabling a second mechanism for the same
-agent kind requires disabling the first, so the installer never leaves two loaded. `--dry-run`
-always wins: with it, `--supervisor=enable` prints the exact commands it would run and
-changes nothing. On success the installer reports what it enabled **and how to stop it**:
+**Idempotence and safety.** A repeat enable never double-loads — an already-loaded unit with
+an **unchanged** definition is reported as `already enabled` and exits 0 — and enabling a
+second mechanism for the same agent kind requires disabling the first, so the installer
+never leaves two loaded. An already-loaded unit whose definition **changed** is a different
+thing: a service manager reads a unit only when it loads it, so the running job would keep
+the old flags (a stale `--agent` outranks the per-kind config forever). `enable` compares
+the loaded definition with the file just written, takes the changed unit down and loads it
+again, and reports `reloaded`; a definition it cannot compare (older `launchctl print`
+formats) is left alone and reported, never guessed at. `--dry-run` always wins: with it,
+`--supervisor=enable` prints the exact commands it would run and changes nothing. On
+success the installer reports what it enabled **and how to stop it**:
 
 ```text
 supervisor: enabled (kind=claude, scheduler=launchd, units=com.meerkat-taskpanel.<agent>.claude.session,.ping,.continue,.subscribe)
 to disable:  install.sh --supervisor=disable --supervisor-actor-kinds claude
+```
+
+A reload says so, and names what it cycled:
+
+```text
+supervisor: reloaded (kind=claude, scheduler=launchd, units=…)
+supervisor:   reloaded com.meerkat-taskpanel.<agent>.claude.session — the definition on disk had changed and a loaded unit is only read at bootstrap
+```
+
+**A plain install says when it left a loaded unit stale.** The installer still never
+*changes* a service-manager state on its own, but a reinstall that rewrote units a manager
+already has loaded no longer prints "nothing is loaded for you" — that would be false. It
+probes (read-only) and reports:
+
+```text
+supervisor: warning (kind=claude) — the scheduling units were just rewritten, but launchd still has the old definition loaded
+supervisor:   the running supervisor keeps its old flags until it is reloaded (an old --agent outranks the per-kind config)
+supervisor:   reload it with: install.sh --supervisor=enable --supervisor-actor-kinds claude
 ```
 
 Enabling installs the resident pool, the two clocks **and the event daemon**: a long-lived

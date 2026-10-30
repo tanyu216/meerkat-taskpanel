@@ -464,9 +464,12 @@ reported `unknown` and left alone, never guessed at.
 3. Re-run `<skill-dir>/scripts/security-tools.mjs --check --json --project <dir>`; report
    what is missing, behind its floor, and what the project's CI provides — the `ci` block
    names each arm's state, and after a write the arm must report `covered`.
-4. Print the next command to load/restart the supervisor
-   (`install.sh --supervisor=enable` for the actor kind), and note that a running pool
-   picks up role edits on its next dispatch.
+4. Run `install.sh --supervisor=enable` for the actor kind — it reloads a unit whose
+   definition changed, which is what makes the loop actually scan the team you just wrote.
+   Then read `taskctl loop status` and compare its `agents:` line with the team list: a
+   name the loop does not scan can never claim its cards, so a mismatch is a **finding to
+   report**, never "ready". (Role *file* edits are picked up by a running pool on its next
+   dispatch; the scan set is not — it comes from the units and the per-kind config.)
 5. Re-read the host's instruction file: the task entry is stated once, names `/meerkat`, and
    carries the card scope.
 6. Summarize: what was installed, where, the effective roles root, the human name, the

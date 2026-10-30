@@ -616,6 +616,19 @@ apply_supervisor() {
   return 0
 }
 
+# supervisor_stale_report — say whether this agent kind's units are already loaded, and
+# how to reload them. Read-only (`status --stale-only`), and never fatal: this is the
+# warning path of a plain install, and a warning that can fail an install is worse than
+# the silence it replaces. Requires export_tp_env first.
+supervisor_stale_report() {
+  node "$(script_dir)/lib/supervisor.mjs" status --stale-only \
+    --actor-kind "$TP_ACTOR_KIND" \
+    --agent "$TP_AGENT" \
+    --agent-base "$TP_AGENT_BASE" \
+    --config "$TP_ENV" \
+    --scheduler "${MEERKAT_TASKPANEL_SCHEDULER:-auto}" 2>/dev/null || true
+}
+
 # install_scheduling — write the scheduling units, then either print the exact
 # command that loads them or — when the user asked for it (`--supervisor=…`, i.e.
 # MEERKAT_TASKPANEL_SUPERVISOR is set) — run that load. Without a request the installer
@@ -631,6 +644,12 @@ install_scheduling() {
     mkdir -p "$TP_LOOP"
   fi
 
+  # Whether this is a reinstall (the units' directory already exists) and whether this run
+  # actually rewrote any of them. Together they decide if a loaded unit is now stale.
+  TP_SCHED_EXISTED=0
+  if [ -d "$TP_SCHED" ]; then TP_SCHED_EXISTED=1; fi
+  TP_SCHED_CHANGED=0
+
   # Said here, not in export_tp_env: this is the function that knows the agent kind gets
   # units, and the warning is about *them*. An agent kind with no supervisor never reaches it.
   if [ "${TP_CLI_ON_PATH:-1}" = "0" ]; then
@@ -638,23 +657,36 @@ install_scheduling() {
     echo "$TP_ACTOR_KIND:   so a woken $TP_ACTOR_KIND would not resolve. Install it, then re-run this install with --force."
   fi
 
-  emit_file "scheduling/launchd/com.meerkat-taskpanel.ping.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist"
-  emit_file "scheduling/launchd/com.meerkat-taskpanel.continue.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.continue.plist"
-  emit_file "scheduling/launchd/com.meerkat-taskpanel.subscribe.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.subscribe.plist"
-  emit_file "scheduling/launchd/com.meerkat-taskpanel.session.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.session.plist"
-  emit_file "scheduling/systemd/meerkat-taskpanel-ping.service" "$TP_SCHED/systemd/meerkat-taskpanel-ping.service"
-  emit_file "scheduling/systemd/meerkat-taskpanel-ping.timer" "$TP_SCHED/systemd/meerkat-taskpanel-ping.timer"
-  emit_file "scheduling/systemd/meerkat-taskpanel-continue.service" "$TP_SCHED/systemd/meerkat-taskpanel-continue.service"
-  emit_file "scheduling/systemd/meerkat-taskpanel-continue.timer" "$TP_SCHED/systemd/meerkat-taskpanel-continue.timer"
-  emit_file "scheduling/systemd/meerkat-taskpanel-subscribe.service" "$TP_SCHED/systemd/meerkat-taskpanel-subscribe.service"
-  emit_file "scheduling/systemd/meerkat-taskpanel-session.service" "$TP_SCHED/systemd/meerkat-taskpanel-session.service"
-  emit_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
+  emit_sched_file "scheduling/launchd/com.meerkat-taskpanel.ping.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist"
+  emit_sched_file "scheduling/launchd/com.meerkat-taskpanel.continue.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.continue.plist"
+  emit_sched_file "scheduling/launchd/com.meerkat-taskpanel.subscribe.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.subscribe.plist"
+  emit_sched_file "scheduling/launchd/com.meerkat-taskpanel.session.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.session.plist"
+  emit_sched_file "scheduling/systemd/meerkat-taskpanel-ping.service" "$TP_SCHED/systemd/meerkat-taskpanel-ping.service"
+  emit_sched_file "scheduling/systemd/meerkat-taskpanel-ping.timer" "$TP_SCHED/systemd/meerkat-taskpanel-ping.timer"
+  emit_sched_file "scheduling/systemd/meerkat-taskpanel-continue.service" "$TP_SCHED/systemd/meerkat-taskpanel-continue.service"
+  emit_sched_file "scheduling/systemd/meerkat-taskpanel-continue.timer" "$TP_SCHED/systemd/meerkat-taskpanel-continue.timer"
+  emit_sched_file "scheduling/systemd/meerkat-taskpanel-subscribe.service" "$TP_SCHED/systemd/meerkat-taskpanel-subscribe.service"
+  emit_sched_file "scheduling/systemd/meerkat-taskpanel-session.service" "$TP_SCHED/systemd/meerkat-taskpanel-session.service"
+  emit_sched_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
 
   echo "$TP_ACTOR_KIND: scheduling units installed under $TP_SCHED"
 
   if [ -n "${MEERKAT_TASKPANEL_SUPERVISOR:-}" ]; then
     apply_supervisor
     return 0
+  fi
+
+  # A rewrite over units a service manager already has loaded leaves the *running* job on
+  # its old definition — a loaded unit is only read at bootstrap. Saying "nothing is loaded
+  # for you" there would be false, and staying silent is how a loop runs for hours with an
+  # `--agent` the config no longer has. Only a reinstall that changed bytes probes (a fresh
+  # install has no units to be stale, and a plain install never asks a service manager).
+  if [ "${TP_SCHED_EXISTED:-0}" = "1" ] && [ "${TP_SCHED_CHANGED:-0}" = "1" ] && [ -z "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    stale="$(supervisor_stale_report)"
+    if [ -n "$stale" ]; then
+      printf '%s\n' "$stale"
+      return 0
+    fi
   fi
 
   echo "$TP_ACTOR_KIND: to start the supervisor, load one of these (nothing is loaded for you):"
@@ -1111,6 +1143,19 @@ emit_from() {
 #   slash commands, the Codex trigger and AGENTS.md snippet, the taskctl shims, the
 #   scheduling units and the per-kind config.
 emit_file() { emit_from "$(script_dir)/templates" "$@"; }
+
+# emit_sched_file <template_rel> <dest>
+#   `emit_file` for a scheduling unit, remembering whether the bytes actually changed.
+#   The emitter already answers `wrote <dest>` / `unchanged <dest>`; this only keeps the
+#   fact, because a rewrite over a unit a service manager already loaded is what leaves
+#   the running definition stale — and `install_scheduling` says so.
+emit_sched_file() {
+  emitted="$(emit_file "$@")"
+  printf '%s\n' "$emitted"
+  case "$emitted" in
+    "wrote "*) TP_SCHED_CHANGED=1 ;;
+  esac
+}
 
 # merge_settings <settings_file>
 #   Merge env.TASKCTL_AGENT and the SessionStart hook into a Claude settings.json,

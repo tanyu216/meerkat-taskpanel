@@ -1380,7 +1380,7 @@ The units name the runtime tree's CLI entry, not this directory:
 
 ```text
 program: <absolute node> <runtime>/src/cli/index.mjs loop run --ping-once
-                                  --actor-kind <kind> --agent <name>
+                                  --actor-kind <kind>
                                   --log <state>/supervisor.log --state-dir <state>
 ```
 
@@ -1514,7 +1514,11 @@ the operator's documentation and the decisions the loop applies. It is always a 
 skill carries.
 
 Installers write per-agent kind units under `<agent-dir>/scheduling/{launchd,systemd,cron}`,
-then **print the load command** — they never enable a daemon or run `crontab` for you:
+then **print the load command** — they never enable a daemon or run `crontab` for you. A
+reinstall that *rewrites* units the manager already has loaded says so instead of printing
+"nothing is loaded for you": the running job still carries the old definition, and
+`install.sh --supervisor=enable` is the one command that reloads it (see
+[Reloading a changed unit](#reloading-a-changed-unit)):
 
 ```bash
 # macOS
@@ -1659,8 +1663,34 @@ Exit 0 with a `state =` line ⇒ loaded; `Could not find service …` ⇒ not lo
 | Symptom | Meaning | What the enable path does |
 |---|---|---|
 | `Bootstrap failed: 5: Input/output error` | no Aqua/GUI session — an SSH-only or headless launchd context | reports it and tells you to retry from a GUI login session (or use `launchctl load -w`). It does **not** claim success |
-| **the loop's** `Bootstrap failed: 37: … already bootstrapped` (legacy: `service already loaded`) | already loaded | **idempotent success** — the **supervisor** reports `supervisor: already enabled (…)`, exit 0. The `taskd` guard is bootstrapped the same way but reports its own, board-aware line instead — `already enabled` is *not* its wording ([`install.md § The taskd guard`](ops/install.md#the-taskd-guard-keepalive-always-enabled)) |
+| **the loop's** `Bootstrap failed: 37: … already bootstrapped` (legacy: `service already loaded`) | already loaded, same definition | **idempotent success** — the **supervisor** reports `supervisor: already enabled (…)`, exit 0. The `taskd` guard is bootstrapped the same way but reports its own, board-aware line instead — `already enabled` is *not* its wording ([`install.md § The taskd guard`](ops/install.md#the-taskd-guard-keepalive-always-enabled)) |
+| a unit file was rewritten while its job stayed loaded | the live job runs the **old** definition (e.g. an old `--agent`) | `enable` compares the loaded definition with the file: a difference is taken down and loaded again, reported as `supervisor: reloaded (…)`; an unreadable definition is left alone and reported |
 | `Could not find service` on disable | not loaded | **idempotent no-op** — reports `already disabled`, exit 0 |
+
+#### Reloading a changed unit
+
+A service manager reads a unit's definition **once**, when it loads it. Editing the plist or
+the `.service` file afterwards changes nothing about the running job — `KeepAlive` restarts
+and `launchctl kickstart` re-run the old definition too. That is how a loop ends up scanning
+`Worker,Reviewer` for days while the per-kind config says `Jobs,Linus,Turing`: an `--agent`
+flag baked into the loaded definition outranks the config, and the file that no longer has
+it is never re-read.
+
+`install.sh --supervisor=enable` therefore does not stop at "is it loaded?". For launchd it
+compares the `ProgramArguments` the plist declares with the `arguments` block
+`launchctl print` reports; for systemd it compares the installed unit file with the rendered
+one. Same → `already enabled` (idempotent, nothing touched). Different → `bootout` (or
+`disable --now`) then load again, reported as:
+
+```text
+supervisor: reloaded (kind=claude, scheduler=launchd, units=…)
+supervisor:   reloaded com.meerkat-taskpanel.<agent>.claude.session — the definition on disk had changed and a loaded unit is only read at bootstrap
+```
+
+Not comparable (an older `launchctl print` without an `arguments` block) → the job is left
+exactly as it is, with the disable/enable pair printed for a manual reload. A reload
+interrupts the resident pool; in-flight child turns are cut and their cards recover through
+the pool's stale-card logic.
 
 ### Linux — systemd `--user`
 
