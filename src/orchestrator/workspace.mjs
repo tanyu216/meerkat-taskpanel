@@ -22,7 +22,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { MEERKAT_PROCESS_DIR, taskDirName } from "../foundation/card-brief.mjs";
@@ -209,15 +209,30 @@ export function resolveBaseRef({ projectDir, entry, previousBranch = null, run =
 /**
  * Create the card's worktree and lane branch.
  *
+ * A repair round passes `reuseExistingBranch`: the current round's lane branch
+ * may have outlived its directory, and re-attaching it keeps unmerged work the
+ * card still owns. The base is not resolved on that path — there is nothing to
+ * base from. If the branch is gone too, the call falls through to a fresh
+ * create from the resolved base.
+ *
+ * A directory the loop does not own can occupy the slot (a removed worktree
+ * leaves its `.meerkat` behind). It is not a checkout, so nothing tracked is
+ * lost; it is moved aside instead of failing every pass on "already exists".
+ *
  * @param {{
  *   projectDir: string,
  *   entry: object|null,
  *   identifier: string,
  *   round?: number,
  *   previousBranch?: string|null,
+ *   reuseExistingBranch?: boolean,
+ *   project?: string|null,
  *   run?: Function,
  *   mkdir?: Function,
  *   exists?: Function,
+ *   rename?: Function,
+ *   now?: Function,
+ *   log?: (line: string) => void,
  * }} input
  * @returns {{ok: true, workspace: object} | {ok: false, code: string, message: string}}
  */
@@ -229,9 +244,13 @@ export function createWorkspace(input) {
     identifier,
     round = 1,
     previousBranch = null,
+    reuseExistingBranch = false,
     run = runGit,
     mkdir = mkdirSync,
     exists = existsSync,
+    rename = renameSync,
+    now = Date.now,
+    log = () => {},
   } = input;
 
   if (!isGitCheckout(projectDir, { exists })) {
@@ -241,9 +260,6 @@ export function createWorkspace(input) {
       message: `${projectDir} is not a git checkout; there is nothing to branch from`,
     };
   }
-
-  const base = resolveBaseRef({ projectDir, entry, previousBranch, run });
-  if (!base.ok) return base;
 
   const path = workspacePath(projectDir, identifier, round);
   const branch = laneBranch(identifier, round);
@@ -255,6 +271,59 @@ export function createWorkspace(input) {
       code: WORKSPACE_CODES.CREATE_FAILED,
       message: `cannot create ${join(String(projectDir), ".worktrees")}: ${err.message}`,
     };
+  }
+
+  if (exists(path) && !isGitCheckout(path, { exists })) {
+    const orphan = `${path}.orphan-${now()}`;
+    try {
+      rename(path, orphan);
+      log(`workspace: moved ${path} aside to ${orphan}`);
+    } catch (err) {
+      return {
+        ok: false,
+        code: WORKSPACE_CODES.CREATE_FAILED,
+        message: `cannot move ${path} aside: ${err.message}`,
+      };
+    }
+  }
+
+  if (reuseExistingBranch) {
+    // A registration left behind by an externally removed directory makes git
+    // read the branch as still checked out; prune clears it before the add.
+    run("git", ["-C", String(projectDir), "worktree", "prune"]);
+    const probe = probeRef({ projectDir, ref: branch, run });
+    if (probe.ok === true && probe.exists === true) {
+      const attached = run("git", ["-C", String(projectDir), "worktree", "add", path, branch]);
+      if (attached === null || attached.status !== 0) {
+        return {
+          ok: false,
+          code: WORKSPACE_CODES.CREATE_FAILED,
+          message: `git worktree add failed for ${identifier}: ${String(attached?.stderr ?? "git did not start").trim()}`,
+        };
+      }
+      return {
+        ok: true,
+        workspace: {
+          identifier,
+          project: typeof project === "string" && project !== "" ? project : null,
+          round,
+          path,
+          branch,
+          base_ref: branch,
+          project_dir: String(projectDir),
+          created_by_loop: true,
+          reused_branch: true,
+        },
+      };
+    }
+  }
+
+  const base = resolveBaseRef({ projectDir, entry, previousBranch, run });
+  if (!base.ok) return base;
+  if (typeof base.skipped_previous === "string") {
+    log(
+      `workspace: ${identifier} previous base ${base.skipped_previous} is gone; basing on ${base.ref}`,
+    );
   }
 
   const result = run("git", ["-C", String(projectDir), "worktree", "add", "-b", branch, path, base.ref]);
@@ -488,6 +557,24 @@ export function findWorkspace(stateDir, { identifier, round }) {
   return matches.reduce((latest, entry) =>
     Number(entry.round) > Number(latest.round) ? entry : latest,
   );
+}
+
+/**
+ * The earlier rounds of one card, highest first.
+ *
+ * A rework wants the most recent *usable* rejected work. The latest record is
+ * only a candidate: its branch may already be gone while an older one survives,
+ * and `findWorkspace`'s "latest wins" would throw that older work away.
+ *
+ * @param {string} stateDir @param {{identifier: string, round?: number}} input
+ */
+export function listPreviousWorkspaces(stateDir, { identifier, round }) {
+  const current = Number(round);
+  if (!Number.isFinite(current)) return [];
+  const { workspaces } = readWorkspaceRegistry(stateDir);
+  return workspaces
+    .filter((entry) => entry.identifier === identifier && Number(entry.round) < current)
+    .sort((left, right) => Number(right.round) - Number(left.round));
 }
 
 /**

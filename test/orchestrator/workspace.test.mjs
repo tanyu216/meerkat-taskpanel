@@ -203,6 +203,68 @@ describe("orchestrator/workspace — create and remove", () => {
     assert.equal(result.code, "WORKSPACE_NOT_GIT");
   });
 
+  it("re-attaches a surviving same-round lane branch without -b and without resolving a base", () => {
+    const { run, calls } = recorder([
+      ["worktree prune", OK("")],
+      ["rev-parse --verify --quiet", OK("abc123\n")],
+      ["worktree add", OK("")],
+    ]);
+    const result = ws.createWorkspace({
+      projectDir: "/p",
+      entry: { base_ref: "missing" },
+      project: "TP",
+      identifier: "TP-0001",
+      round: 2,
+      previousBranch: "lane/TP-0001",
+      reuseExistingBranch: true,
+      run,
+      mkdir: () => {},
+      exists: (path) => path === "/p/.git",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.workspace.reused_branch, true);
+    assert.equal(result.workspace.base_ref, "lane/TP-0001-r2");
+    const add = calls.find((call) => call.argv.includes("add"));
+    assert.deepEqual(add.argv, [
+      "-C",
+      "/p",
+      "worktree",
+      "add",
+      "/p/.worktrees/TP-0001-r2",
+      "lane/TP-0001-r2",
+    ]);
+    assert.equal(
+      calls.some((call) => call.argv.join(" ").includes("rev-parse --abbrev-ref")),
+      false,
+      "a repair needs no base",
+    );
+  });
+
+  it("moves an orphan non-checkout directory aside before creating the worktree", () => {
+    const path = "/p/.worktrees/TP-0001-r2";
+    const moves = [];
+    const { run } = recorder([
+      ["worktree prune", OK("")],
+      ["rev-parse --verify --quiet", OK("abc123\n")],
+      ["worktree add", OK("")],
+    ]);
+    const result = ws.createWorkspace({
+      projectDir: "/p",
+      entry: entryNone,
+      identifier: "TP-0001",
+      round: 2,
+      previousBranch: null,
+      reuseExistingBranch: true,
+      run,
+      mkdir: () => {},
+      exists: (candidate) => candidate === "/p/.git" || candidate === path,
+      rename: (from, to) => moves.push({ from, to }),
+      now: () => 1700000000000,
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(moves, [{ from: path, to: `${path}.orphan-1700000000000` }]);
+  });
+
   it("defers when git refuses the worktree, and never falls back to the shared tree", () => {
     const result = ws.createWorkspace({
       projectDir: "/p",
@@ -374,6 +436,25 @@ describe("orchestrator/workspace — the registry", () => {
     ws.removeWorkspaceRecord(dir, { identifier: "TP-0001", round: 2 });
     assert.equal(ws.findWorkspace(dir, { identifier: "TP-0001" }).round, 1);
     assert.equal(ws.findWorkspace(dir, { identifier: "NOPE" }), null);
+  });
+
+  it("lists only earlier rounds as previous workspaces, highest first", () => {
+    const dir = stateDir();
+    for (const round of [1, 2, 3]) {
+      ws.upsertWorkspaceRecord(dir, {
+        identifier: "TP-0001",
+        round,
+        path: `/p/.worktrees/TP-0001-r${round}`,
+        branch: `lane/TP-0001-r${round}`,
+        project_dir: "/p",
+      });
+    }
+    assert.deepEqual(
+      ws.listPreviousWorkspaces(dir, { identifier: "TP-0001", round: 3 }).map((record) => record.round),
+      [2, 1],
+    );
+    assert.deepEqual(ws.listPreviousWorkspaces(dir, { identifier: "TP-0001", round: 1 }), []);
+    assert.deepEqual(ws.listPreviousWorkspaces(dir, { identifier: "NOPE", round: 3 }), []);
   });
 });
 
