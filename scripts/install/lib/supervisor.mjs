@@ -347,6 +347,16 @@ export function supervisorPaths(options) {
   const env = options.env ?? process.env;
   const home = options.home ?? homedir();
 
+  const config = options.config
+    ? resolve(options.config)
+    : resolveKindConfigPath({ actorKind: options.actorKind, env });
+  // The installer's config root, where the one loop log lives. `TP_CONFIG_DIR` is the
+  // shell's own resolution (`MEERKAT_TASKPANEL_CONFIG_DIR` -> `MEERKAT_TASKPANEL_REPO` ->
+  // the checkout); the JS `resolveConfigDir` does not reproduce it — it ignores
+  // `MEERKAT_TASKPANEL_REPO`, so for a combined install it would name the source checkout.
+  // `dirname(config)` is the same root by construction when the shell's answer is absent.
+  const configRoot = env.TP_CONFIG_DIR || (typeof config === "string" ? dirname(config) : agentBase);
+
   return {
     agentBase,
     agentDir: basename(agentBase),
@@ -361,10 +371,9 @@ export function supervisorPaths(options) {
     cli: env.TP_CLI || join(agentBase, "bin", "taskctl"),
     cliNeedsNode: typeof env.TP_CLI === "string" && env.TP_CLI !== "",
     stateDir: join(agentBase, "meerkat-taskpanel"),
-    log: join(agentBase, "meerkat-taskpanel", "supervisor.log"),
-    config: options.config
-      ? resolve(options.config)
-      : resolveKindConfigPath({ actorKind: options.actorKind, env }),
+    // One log for every actor kind, at the config root; the state stays per kind.
+    log: join(configRoot, "logs", "supervisor.log"),
+    config,
     legacyConfig: join(agentBase, "meerkat-taskpanel.env"),
     launchd: KINDS.map((kind) => ({
       kind,

@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import { parseArgs } from "../../src/orchestrator/options.mjs";
@@ -328,6 +328,35 @@ describe("session takeover", () => {
     const result = await stopSupervisor(optsFor(dir), { isAlive: () => false });
     assert.equal(result.ok, false);
     assert.match(result.reason, /no session-started supervisor/);
+  });
+});
+
+describe("the loop's default paths", () => {
+  const argv = (dir, kind) => [
+    "--config", join(dir, "config.env"),
+    "--agent", "alice",
+    "--actor-kind", kind,
+    "--home", dir,
+  ];
+
+  it("gives every actor kind the same log and its own state directory", () => {
+    const dir = tempDir();
+    const claude = parseArgs(argv(dir, "claude"), { HOME: dir });
+    const codex = parseArgs(argv(dir, "codex"), { HOME: dir });
+
+    assert.equal(claude.log, codex.log);
+    assert.match(claude.log, /\/logs\/supervisor\.log$/);
+    // The state stays per kind: two pools must never share a queue or a lock.
+    assert.notEqual(dirname(claude.state), dirname(codex.state));
+    assert.match(claude.state, /\.claude\//);
+    assert.match(codex.state, /\.codex\//);
+  });
+
+  it("still lets --log override the one file", () => {
+    const dir = tempDir();
+    const explicit = join(dir, "elsewhere.log");
+    const opts = parseArgs([...argv(dir, "claude"), "--log", explicit], { HOME: dir });
+    assert.equal(opts.log, explicit);
   });
 });
 

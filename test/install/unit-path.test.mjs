@@ -190,6 +190,9 @@ function installEnv(home, path) {
     PATH: path,
     MEERKAT_TASKPANEL_TARGET_HOME: home,
     MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+    // Pin the program root inside the temp home: the loop log now lives at
+    // `<config root>/logs/`, and an inherited override would name a real directory.
+    MEERKAT_TASKPANEL_CONFIG_DIR: join(home, ".meerkat-taskpanel"),
   };
 }
 
@@ -334,10 +337,11 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
     makeFakeCli(bin, "claude");
     const path = `${bin}:${process.env.PATH}`;
     const loop = join(home, ".claude", "meerkat-taskpanel");
+    const log = join(home, ".meerkat-taskpanel", "logs", "supervisor.log");
     const expected = [
       `PATH=${unitPath(NODE_DIR, { cliDir: bin, shimDir: join(home, ".claude", "bin"), scheduler: "cron" })}`,
-      `* * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ${loop}/supervisor.log --state-dir ${loop} >/dev/null 2>&1`,
-      `*/10 * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --continue-once --actor-kind claude --log ${loop}/supervisor.log --state-dir ${loop} >/dev/null 2>&1`,
+      `* * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ${log} --state-dir ${loop} >/dev/null 2>&1`,
+      `*/10 * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --continue-once --actor-kind claude --log ${log} --state-dir ${loop} >/dev/null 2>&1`,
     ];
 
     const dry = runInstall(

@@ -60,3 +60,5 @@ design
 
 # logs
 *.log
+# the loop's log tree at the config root — runtime output, never build input
+/logs

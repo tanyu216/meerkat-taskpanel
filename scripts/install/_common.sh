@@ -317,12 +317,14 @@ export_tp_env() {
   TP_LOOP="$(target_home)/$agent_dir/meerkat-taskpanel"
   TP_STATE_DIR="$TP_LOOP"
   TP_CLI="$TP_REPO/src/cli/index.mjs"
-  TP_LOG="$TP_LOOP/supervisor.log"
   # The machine-local config lives beside the board `.env` at the program root,
   # one per-kind file (`<program root>/.env.<kind>`) plus the project map
   # (`<program root>/projects.json`), not under the agent home.
   # `MEERKAT_TASKPANEL_CONFIG_DIR` is the tests/containers/read-only-root escape.
   TP_CONFIG_DIR="$(config_root)"
+  # One log for every actor kind, at the config root (the install root for a
+  # combined install); the state stays per kind under `$TP_LOOP`.
+  TP_LOG="$TP_CONFIG_DIR/logs/supervisor.log"
   TP_ENV="$TP_CONFIG_DIR/.env.$label"
   TP_LEGACY_ENV="$TP_AGENT_BASE/meerkat-taskpanel.env"
   TP_SCHED="$(target_home)/$agent_dir/scheduling"

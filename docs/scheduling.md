@@ -956,7 +956,7 @@ never by drift.
 # cron: ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 PATH=/home/you/.claude/bin:/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
 
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
 ```
 
 (Both are rendered for the agent CLI you installed *for*, and only for it: a unit that wakes
@@ -1438,7 +1438,6 @@ directory**:
 ```text
 <home>/<agent-dir>/meerkat-taskpanel/
 ├── supervisor.state.json         runtime (legacy worker registry)
-├── supervisor.log                runtime
 ├── sessions.state.json           runtime (resident pool: pids, session ids, heartbeat)
 ├── continue.state.json           runtime (the single-flight continue lock)
 ├── subscribe.state.json          runtime (the event subscriber's last connection)
@@ -1446,12 +1445,32 @@ directory**:
 └── subagents.state.json          runtime (ledger: subagent id → project, role, card, status)
 ```
 
+The log is **not** here. There is one supervisor log for every actor kind, at the config
+root — the program root, or `MEERKAT_TASKPANEL_CONFIG_DIR` when it names another:
+
+```text
+<config root>/logs/supervisor.log
+├── supervisor.log                runtime, one file for claude + codex + pi
+└── supervisor.log.1 … .5         runtime rotation (10 MiB each, 5 kept)
+```
+
+Every line carries `actor_kind=<kind>`, so one file is still readable per kind:
+
+```text
+time=2026-10-30T14:47:32.174Z level=info component=supervisor msg="ping: 0 live, no write" actor_kind=claude
+```
+
+The state directory stays **per kind** on purpose: two pools must never share a queue, a
+lock or a ledger. Only the log is shared, because reading one machine's history should not
+require the agent-kind → dot-directory table. A child turn's own stderr is appended to the
+same file as raw bytes (`spawnContinueTurn`), so those lines carry no `actor_kind=` field.
+
 The units name the runtime tree's CLI entry, not this directory:
 
 ```text
 program: <absolute node> <runtime>/src/cli/index.mjs loop run --ping-once
                                   --actor-kind <kind>
-                                  --log <state>/supervisor.log --state-dir <state>
+                                  --log <config root>/logs/supervisor.log --state-dir <state>
 ```
 
 `<runtime>` is `MEERKAT_TASKPANEL_REPO`: `~/.meerkat-taskpanel` for a combined install
@@ -1459,8 +1478,9 @@ program: <absolute node> <runtime>/src/cli/index.mjs loop run --ping-once
 it, so moving the tree is a re-install — no `launchctl` / `systemctl` / `crontab` reload,
 because the unit never hard-codes a versioned body path.
 
-`--state-dir <dir>` is the documented spelling; the loop derives every file above from it.
-`--state <file>` still names the registry file explicitly, and `--log` the log. The installer
+`--state-dir <dir>` is the documented spelling; the loop derives every state file above from
+it. `--state <file>` still names the registry file explicitly, and `--log` the log (its
+default is the config root's `logs/supervisor.log`). The installer
 removes an execution body left by an older install (`<state>/scripts/`, `<state>/templates/`,
 `<state>/manifest.txt`) on its next run, so an upgrade leaves no second implementation
 behind.
@@ -1822,8 +1842,8 @@ it is idempotent and cleanly removable:
 ```cron
 # >>> meerkat-taskpanel (~/.claude) >>>
 PATH=/home/you/.claude/bin:/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
-*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --continue-once --actor-kind claude --log ~/.claude/meerkat-taskpanel/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
+*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --continue-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
 # <<< meerkat-taskpanel (~/.claude) <<<
 ```
 
@@ -1880,10 +1900,10 @@ describes.
   spawns the worker as a subagent of the provider CLI, which runs non-interactively
   (`claude -p "<handoff>" [--resume <sid>]` / `codex exec "<handoff>"` /
   `pi --print "<handoff>"` are the one-shot shapes).
-- **Logs.** `<agent-dir>/meerkat-taskpanel/supervisor.log` (the supervisor's `--log`),
-  written and rotated by the loop itself. The units do **not** redirect their
-  stdout/stderr into it — that would duplicate every line; cron sends the same output to
-  `/dev/null` because `--log` already writes it.
+- **Logs.** `<config root>/logs/supervisor.log` (the supervisor's `--log`) — one file for
+  every actor kind, each line tagged `actor_kind=<kind>` — written and rotated by the loop
+  itself. The units do **not** redirect their stdout/stderr into it — that would duplicate
+  every line; cron sends the same output to `/dev/null` because `--log` already writes it.
 - **State.** `<agent-dir>/meerkat-taskpanel/supervisor.state.json` — the running registry.
 - **Working directory.** A woken worker still `cd`s to the directory the map names for
   the card's project (`local_path ?? run_dir`), resolved by the poll pass from the
@@ -1968,7 +1988,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--patrol-llm=yes\|no` | `no` | let patrol start an LLM turn on a stale card |
 | `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin — both the legacy heartbeat alert and the SLA tuple |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
-| `--log <path>` | `<home>/<agent-dir>/meerkat-taskpanel/supervisor.log` | where the tick log appends |
+| `--log <path>` | `<config root>/logs/supervisor.log` | where the tick log appends (one file for every actor kind) |
 | `--state <path>` | `<home>/<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 | `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
 | `--workflow-ledger <path>` | `workflow-ledger.json` beside `--state` | the workflow alert de-duplication ledger; an unreadable one suppresses nothing |
@@ -1979,14 +1999,16 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
 | `--config <path>` | `<program root>/.env.<actor-kind>` (or `MEERKAT_TASKPANEL_CONFIG_DIR`) | per-kind config: the loop's claim default and concurrency cap, `MEERKAT_TASKPANEL_REPO`, and — on the board path — the per-agent identity |
 | `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber's `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
-| `--home <path>` | `$HOME` | base for the agent directories (state, log, skills) |
+| `--home <path>` | `$HOME` | base for the agent directories (state, skills — not the log) |
 
 The project map is not a flag: the poll pass and `taskctl project dir` read the same
 `<config root>/projects.json` ([Where a worker runs](#where-a-worker-runs)).
 
 **Fixed paths.** Logs and state always land at the paths in the table — a user
-who wants to know why a card did not start reads
-`~/.claude/meerkat-taskpanel/supervisor.log` (or `.codex/`, `.agents/`).
+who wants to know why a card did not start reads one file,
+`~/.meerkat-taskpanel/logs/supervisor.log` for a combined install (the config
+root's `logs/` for an agent-only one); its lines name their `actor_kind=`. The state
+stays per kind: `~/.claude/meerkat-taskpanel/` (or `.codex/`, `.agents/`).
 
 ## The claim-unassigned policy
 

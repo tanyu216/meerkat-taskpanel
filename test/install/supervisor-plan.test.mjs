@@ -199,7 +199,13 @@ describe("supervisor: the scheduler and the identifiers", () => {
   });
 
   it("paths come from the agent directory, with the marker the docs name", () => {
-    const paths = supervisorPaths({ agentBase: "/home/op/.claude", agent: "alice", actorKind: "claude", env: {}, home: "/home/op" });
+    const paths = supervisorPaths({
+      agentBase: "/home/op/.claude",
+      agent: "alice",
+      actorKind: "claude",
+      env: { TP_CONFIG_DIR: "/home/op/.meerkat-taskpanel" },
+      home: "/home/op",
+    });
 
     assert.equal(paths.marker, "~/.claude");
     assert.equal(paths.agentDir, ".claude");
@@ -207,8 +213,21 @@ describe("supervisor: the scheduler and the identifiers", () => {
     // state now lives in the directory beside it.
     assert.equal(paths.cli, "/home/op/.claude/bin/taskctl");
     assert.equal(paths.cliNeedsNode, false);
-    assert.equal(paths.log, "/home/op/.claude/meerkat-taskpanel/supervisor.log");
+    // One log for every kind, at the config root; the state stays under the agent.
+    assert.equal(paths.log, "/home/op/.meerkat-taskpanel/logs/supervisor.log");
     assert.equal(paths.stateDir, "/home/op/.claude/meerkat-taskpanel");
+
+    // Without the shell's TP_CONFIG_DIR, the config file's own directory is the root:
+    // the two can never disagree about where the log lives.
+    const bare = supervisorPaths({
+      agentBase: "/home/op/.claude",
+      agent: "alice",
+      actorKind: "claude",
+      env: {},
+      home: "/home/op",
+      config: "/srv/tp/.env.claude",
+    });
+    assert.equal(bare.log, "/srv/tp/logs/supervisor.log");
     assert.deepEqual(
       paths.launchd.map((unit) => unit.plist),
       [
@@ -391,14 +410,15 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
         TP_NODE: "/opt/node/bin/node",
         TP_CLI: "/opt/repo/src/cli/index.mjs",
         TP_UNIT_PATH_CRON: "/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
+        TP_CONFIG_DIR: "/home/op/.meerkat-taskpanel",
       },
       home: "/home/op",
     });
     exported.cronFile = join(makeTempDir(), "meerkat-taskpanel.cron");
     assert.deepEqual(cronContentLines(exported), [
       "PATH=/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
-      "* * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --ping-once --actor-kind claude --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
-      "*/10 * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --continue-once --actor-kind claude --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
+      "* * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --ping-once --actor-kind claude --log /home/op/.meerkat-taskpanel/logs/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
+      "*/10 * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --continue-once --actor-kind claude --log /home/op/.meerkat-taskpanel/logs/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
     ]);
 
     // Once the installer has written the unit, that file is the source: the enable path

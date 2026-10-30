@@ -43,6 +43,9 @@ docs/verify/
 
 # logs
 *.log
+# the loop's one log at the config root, shared by every actor kind; `*.log`
+# misses the rotated generations `supervisor.log.1 …`
+/logs/
 
 # playwright-cli session artefacts (snapshots, screenshots, console logs)
 .playwright-cli/

@@ -461,7 +461,7 @@ export function readPeerLastOk(path) {
  * Logging must never take the loop down: a failed write is swallowed by the
  * sinks, and the file is rotated rather than growing without bound.
  *
- * @param {{log: string, dryRun?: boolean, logLevel?: string}} opts
+ * @param {{log: string, dryRun?: boolean, logLevel?: string, actorKind?: string}} opts
  * @returns {((line: string, meta?: {level?: string}) => void) & {close: () => void}}
  */
 export function createLogger(opts) {
@@ -470,6 +470,9 @@ export function createLogger(opts) {
   const base = createFoundationLogger({
     level,
     component: "supervisor",
+    // One file holds every actor kind's lines, so each line names its kind.
+    // `unknown` keeps the field shaped for a caller that has no parsed opts.
+    meta: { actor_kind: opts.actorKind ?? "unknown" },
     ...(file === null ? {} : { sinks: [stderrSink, file] }),
   });
 

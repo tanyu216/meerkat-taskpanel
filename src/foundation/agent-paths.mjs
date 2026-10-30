@@ -5,7 +5,9 @@
  * Two related facts, one module: `agentPaths` derives a kind's directories from
  * `--home`, and `resolveConfigDir` / `resolveKindConfigPath` name the one
  * directory that holds the machine-local config (`.env.<kind>`, `projects.json`).
- * The map itself lives in `project-dir.mjs`; this module only says *where*.
+ * `loopLogPath` is the one file that deliberately escapes the agent directory:
+ * every kind's supervisor log lands together at the config root. The map itself
+ * lives in `project-dir.mjs`; this module only says *where*.
  *
  * Pure path arithmetic: the home directory and the program root are arguments,
  * so this module needs no `os.homedir()` and stays deterministic in tests.
@@ -86,7 +88,7 @@ export function resolveKindConfigPath(options = {}) {
  * @param {string} home
  * @param {string} actorKind
  * @returns {{
- *   log: string, state: string, agentDir: string,
+ *   state: string, agentDir: string,
  *   loopSkill: string, boardSkill: string, stateDir: string,
  *   loopRoles: string,
  * }}
@@ -96,7 +98,6 @@ export function agentPaths(home, actorKind) {
   const loopSkill = join(dir, "skills", "meerkat-loop");
   const stateDir = join(dir, "meerkat-taskpanel");
   return {
-    log: join(dir, "meerkat-taskpanel", STATE_FILES.log),
     state: join(dir, "meerkat-taskpanel", STATE_FILES.supervisor),
     agentDir: AGENT_DIRS[actorKind],
     // The two skills the resident sessions need: the loop expands
@@ -109,4 +110,21 @@ export function agentPaths(home, actorKind) {
     stateDir,
     loopRoles: join(loopSkill, "roles"),
   };
+}
+
+/**
+ * The loop's log file: `<config root>/logs/supervisor.log`.
+ *
+ * Deliberately takes no actor kind. One file holds every kind's lines and each
+ * carries `actor_kind=`, so the path answers "where are this product's logs"
+ * without the agent-kind -> dot-directory table. The *state* directory stays
+ * per kind: a shared queue or lock would be shared mutable state.
+ *
+ * Pure arithmetic — the config root is an argument, exactly like `agentPaths`.
+ *
+ * @param {string} configDir the machine-local config root
+ * @returns {string} absolute file path
+ */
+export function loopLogPath(configDir) {
+  return join(configDir, "logs", STATE_FILES.log);
 }

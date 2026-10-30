@@ -106,7 +106,13 @@ request it belongs to without any handler passing an id down by hand.
   redirect into it, which would duplicate every line. Rotation is by size:
   `TASKD_LOG_MAX_BYTES` (default 10 MiB) into `taskd.log.1 … .N`, with `TASKD_LOG_KEEP`
   (default 5). Files are created `0600` in a `0700` directory.
-- **`--log <path>`** — the loop's own file, same sink and rotation, skipped by `--dry-run`.
+- **`<config root>/logs/supervisor.log`** — the loop's own file: **one** for every actor
+  kind (`~/.meerkat-taskpanel/logs/supervisor.log` for a combined install), each line
+  carrying `actor_kind=<kind>` because the path no longer says it. Same sink and rotation;
+  `--log <path>` overrides it and `--dry-run` skips it. A child turn's stderr is appended
+  to it as raw bytes, so those lines are the one exception to the field.
+  `taskd`'s log stays under the data directory — the board and its log move together when
+  `--data-dir` is set, and the loop and its log stay with the program root.
 
 The log holds no token, no request headers and no argv.
 
