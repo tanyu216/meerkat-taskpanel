@@ -246,7 +246,9 @@ A round is what four mechanisms key on, and they must agree:
 4. the SLA suppression (an open review card silences `acceptance_card_creation` for that round
    only).
 
-The round is also the baseline's lock boundary: the acceptance snapshot is append-only and
+`loop doctor` reads this counter as one of its `looping` signals: a card whose `delivery_round`
+has reached the rework threshold is reported (never moved). The round is also the baseline's
+lock boundary: the acceptance snapshot is append-only and
 frozen in `in_review`/terminal; a rework re-opens it, which is how a rejection's must-fix
 items can be appended before the card is re-queued.
 

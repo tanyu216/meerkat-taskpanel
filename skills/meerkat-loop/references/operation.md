@@ -37,8 +37,9 @@ and the pool keeps only the project sessions. `loop status --take-over` starts e
 records its pid, and `--stop` stops only that process.
 
 `loop doctor` is the daily read-only inspection: one report over the supervisor verdict, the
-scan set, the patrol marker, the log tail, the queue and ledger, and the
-stuck cards. It is not a pass and writes nothing; when something needs a human, the report says
+scan set, the patrol marker, the log tail, the queue and ledger, the stuck cards, and the
+cards that keep looping (`looping`: rework rounds, review reopens, dispatch retries, failed
+subagents). It is not a pass and writes nothing; when something needs a human, the report says
 so in `attention` and the exit code still reads 0.
 
 ### Main flags
@@ -116,7 +117,8 @@ control turn repeats on the clock — question tick 60 s, control tick 600 s, TT
    - Only a human comment resumes `awaiting`, whatever its kind. A tick that lands mid-question
      is a no-op: re-read that card's trail and wait.
 3. **Health and blocks.** From the doctor report: verdict, `attention_reasons`, `stuck_cards`
-   (stale heartbeats), `waiting.in_review`, `queue`, `board.truncated`. Then the
+   (stale heartbeats), `looping` (rework rounds, review reopens, dispatch retries, subagent
+   failures), `waiting.in_review`, `queue`, `board.truncated`. Then the
    `blocked` cards through the `meerkat` board skill — `doctor` counts them but never lists
    them — with `blocked_reason` (`clarify · decision · dependency · out_of_bounds · defect ·
    external · resource · unknown`), the age and the assignee. Report only; the loop never
