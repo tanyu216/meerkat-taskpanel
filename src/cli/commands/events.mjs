@@ -24,7 +24,7 @@ import { DomainError } from "../../foundation/errors.mjs";
 import { errorPayload } from "../../foundation/transport/errors.mjs";
 import { activityFrames, streamFailure } from "../activity-stream.mjs";
 import { hubError, hubRecords } from "../hub/client.mjs";
-import { ensureHub, hubPaths, newHubToken } from "../hub/runtime.mjs";
+import { ensureHub, hubPaths, newHubToken, readJsonFile, stopHub } from "../hub/runtime.mjs";
 import { createHubServer } from "../hub/server.mjs";
 
 /** The CLI entry a detached hub re-executes. */
@@ -77,6 +77,41 @@ export async function runHub(ctx, options = {}) {
   });
   await server.start();
   return server;
+}
+
+/**
+ * `events hub --stop`: stop the board's hub through its pointer and owner lock.
+ *
+ * The stop deliberately does not speak the hub's socket protocol — that is what
+ * lets it retire a hub from another `HUB_PROTOCOL` generation, whose hello would
+ * be refused. Both files must name the same pid before anything is signalled.
+ *
+ * @param {{board: {url: string, token: string|null}|null, env: object}} ctx
+ * @returns {Promise<{data: object, human: string}>}
+ */
+async function stopHubCommand(ctx) {
+  if (ctx.board === null || typeof ctx.board?.url !== "string") {
+    throw new DomainError("CLI_IO", {
+      message: "events hub: the board coordinates are not resolved",
+    });
+  }
+  const paths = hubPaths(ctx.board.url, ctx.board.token, ctx.env);
+  const outcome = await stopHub(readJsonFile(paths.pointer), paths);
+  if (outcome.reason === "owner-mismatch" || outcome.reason === "owner-missing") {
+    throw new DomainError("CLI_IO", {
+      message: outcome.reason === "owner-missing"
+        ? `events hub: pid ${outcome.pid} is named by the pointer, but no owner lock proves it is the hub`
+        : `events hub: pid ${outcome.pid} looks like the hub but the owner lock does not match`,
+      details: { pid: outcome.pid, reason: outcome.reason, owner: paths.owner },
+      hint: { fix: `inspect ${paths.owner}; stop pid ${outcome.pid} if it is yours, or remove the pointer and owner files if it is gone` },
+    });
+  }
+  return {
+    data: { stopped: outcome.stopped === true, pid: outcome.pid, reason: outcome.reason },
+    human: outcome.stopped === true
+      ? `stopped the local event hub (pid ${outcome.pid})`
+      : "no local event hub is running",
+  };
 }
 
 export const COMMANDS = [
@@ -149,10 +184,18 @@ export const COMMANDS = [
   {
     name: "hub",
     summary: "Run the local event hub: one board connection for every local consumer.",
-    usage: "events hub",
+    usage: "events hub [--stop]",
     positionals: [],
-    flags: [],
+    flags: [
+      {
+        flag: "stop",
+        key: "stop",
+        as: "boolean",
+        summary: "Stop the running local event hub for this board and exit.",
+      },
+    ],
     async run(ctx) {
+      if (ctx.flags.stop === true) return stopHubCommand(ctx);
       const server = await runHub(ctx);
       const onSignal = () => {
         void server.stop();

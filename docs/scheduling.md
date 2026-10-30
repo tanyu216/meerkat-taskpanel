@@ -1233,7 +1233,9 @@ running the previous code. When the server target replaced `src/**` (a content d
 timestamp), the already-loaded `taskd` guard is re-run (`launchctl kickstart -k` /
 `systemctl --user restart`), and so are the loaded `session` and `subscribe` units; the two
 timers are skipped (one-shot — their next fire reads the new code) and a stopped unit stays
-stopped. Nothing is ever loaded, enabled or disabled by this path.
+stopped. The lazily started local event hub has no unit, so it is **stopped** instead
+(`taskctl events hub --stop`, autostart disabled) and the next consumer starts one from the
+new tree (`docs/events.md` §6.2). Nothing is ever loaded, enabled or disabled by this path.
 
 The install reports what it did, and how to undo it:
 

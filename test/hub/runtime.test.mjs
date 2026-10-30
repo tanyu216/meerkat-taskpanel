@@ -7,6 +7,7 @@
  */
 
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -24,11 +25,56 @@ import {
   pidAlive,
   readJsonFile,
   releaseLock,
+  stopHub,
   writeJsonFile,
 } from "../../src/cli/hub/runtime.mjs";
 
 const dirs = [];
 const servers = [];
+const children = [];
+
+/**
+ * A stand-in for a hub process: it owns a pid, hears SIGTERM (or ignores it),
+ * and optionally clears its pointer/owner files first. `ready` on stdout means
+ * the handlers are installed before a test signals it.
+ */
+const SLEEPER = `
+const { rmSync } = require("node:fs");
+if (process.env.TP_IGNORE_SIGTERM === "1") process.on("SIGTERM", () => {});
+if (process.env.TP_CLEANUP) {
+  const files = process.env.TP_CLEANUP.split(":");
+  process.on("SIGTERM", () => { for (const file of files) rmSync(file, { force: true }); });
+}
+process.stdout.write("ready\\n");
+setInterval(() => {}, 1000);
+`;
+
+async function spawnSleeper({ ignoreSigterm = false, cleanup = [] } = {}) {
+  const child = spawn(process.execPath, ["-e", SLEEPER], {
+    stdio: ["ignore", "pipe", "ignore"],
+    env: {
+      ...process.env,
+      TP_IGNORE_SIGTERM: ignoreSigterm ? "1" : "",
+      ...(cleanup.length === 0 ? {} : { TP_CLEANUP: cleanup.join(":") }),
+    },
+  });
+  children.push(child);
+  await new Promise((done, fail) => {
+    child.stdout.once("data", done);
+    child.once("error", fail);
+  });
+  return child;
+}
+
+/** Wait for the OS to stop reporting a pid (a reaped child can lag the signal). */
+async function waitForExit(pid, budgetMs = 5_000) {
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    if (!pidAlive(pid)) return true;
+    await new Promise((done) => setTimeout(done, 10));
+  }
+  return false;
+}
 
 function tempDir() {
   const dir = mkdtempSync(join(tmpdir(), "meerkat-hub-runtime-"));
@@ -44,6 +90,13 @@ async function listen(handler) {
 }
 
 after(() => {
+  for (const child of children) {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      /* already gone */
+    }
+  }
   for (const server of servers) {
     server.closeAllConnections?.();
     server.close();
@@ -158,5 +211,97 @@ describe("hub runtime", () => {
       () => hubCall({ port, token: "t" }, "t", { op: "ping" }, { timeoutMs: 200, match: (record) => record.op === "ping" }),
       (err) => err.code === "CLI_IO",
     );
+  });
+
+  describe("stopHub", () => {
+    function hubFiles() {
+      const dir = tempDir();
+      return {
+        pointer: join(dir, "hub-test.json"),
+        owner: join(dir, "hub-test.owner"),
+        log: join(dir, "hub-test.log"),
+      };
+    }
+
+    it("does nothing when there is no pointer", async () => {
+      assert.deepEqual(await stopHub(null, hubFiles()), {
+        stopped: false,
+        pid: null,
+        reason: "no-pointer",
+        signal: null,
+      });
+    });
+
+    it("reports a dead pid instead of signalling", async () => {
+      const paths = hubFiles();
+      writeJsonFile(paths.pointer, { pid: 999_999 });
+      writeJsonFile(paths.owner, { pid: 999_999 });
+      assert.deepEqual(await stopHub(readJsonFile(paths.pointer), paths), {
+        stopped: false,
+        pid: 999_999,
+        reason: "not-running",
+        signal: null,
+      });
+    });
+
+    it("refuses to signal when the owner lock names another process", async () => {
+      const paths = hubFiles();
+      const child = await spawnSleeper();
+      writeJsonFile(paths.pointer, { pid: child.pid });
+      writeJsonFile(paths.owner, { pid: process.pid });
+
+      const outcome = await stopHub(readJsonFile(paths.pointer), paths);
+      assert.equal(outcome.stopped, false);
+      assert.equal(outcome.reason, "owner-mismatch");
+      assert.equal(pidAlive(child.pid), true);
+    });
+
+    it("reports a pointer with no owner lock instead of signalling", async () => {
+      const paths = hubFiles();
+      const child = await spawnSleeper();
+      writeJsonFile(paths.pointer, { pid: child.pid });
+
+      const outcome = await stopHub(readJsonFile(paths.pointer), paths);
+      assert.equal(outcome.stopped, false);
+      assert.equal(outcome.reason, "owner-missing");
+      assert.equal(pidAlive(child.pid), true);
+    });
+
+    it("stops a hub that handles SIGTERM", async () => {
+      const paths = hubFiles();
+      const child = await spawnSleeper();
+      writeJsonFile(paths.pointer, { pid: child.pid });
+      writeJsonFile(paths.owner, { pid: child.pid });
+
+      const outcome = await stopHub(readJsonFile(paths.pointer), paths);
+      assert.deepEqual(outcome, { stopped: true, pid: child.pid, reason: "stopped", signal: "SIGTERM" });
+      assert.equal(await waitForExit(child.pid), true);
+    });
+
+    it("falls back to SIGKILL when the hub ignores SIGTERM", async () => {
+      const paths = hubFiles();
+      const child = await spawnSleeper({ ignoreSigterm: true });
+      writeJsonFile(paths.pointer, { pid: child.pid });
+      writeJsonFile(paths.owner, { pid: child.pid });
+
+      const outcome = await stopHub(readJsonFile(paths.pointer), paths, {
+        timeoutMs: 150,
+        killTimeoutMs: 2_000,
+      });
+      assert.deepEqual(outcome, { stopped: true, pid: child.pid, reason: "stopped", signal: "SIGKILL" });
+      assert.equal(await waitForExit(child.pid), true);
+    });
+
+    it("counts a processed stop as done once the files are gone", async () => {
+      const paths = hubFiles();
+      const child = await spawnSleeper({ cleanup: [paths.pointer, paths.owner] });
+      writeJsonFile(paths.pointer, { pid: child.pid });
+      writeJsonFile(paths.owner, { pid: child.pid });
+
+      const outcome = await stopHub(readJsonFile(paths.pointer), paths);
+      assert.deepEqual(outcome, { stopped: true, pid: child.pid, reason: "stopped", signal: "SIGTERM" });
+      // The pid is still alive: the decision is made by the files it cleared.
+      assert.equal(pidAlive(child.pid), true);
+    });
   });
 });

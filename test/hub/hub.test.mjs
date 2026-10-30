@@ -30,7 +30,13 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 import { run } from "../../src/cli/index.mjs";
 import { hubRecords } from "../../src/cli/hub/client.mjs";
-import { hubKey, hubPaths, readJsonFile } from "../../src/cli/hub/runtime.mjs";
+import {
+  HUB_PROTOCOL,
+  hubKey,
+  hubPaths,
+  readJsonFile,
+  writeJsonFile,
+} from "../../src/cli/hub/runtime.mjs";
 import { fakeBoard } from "./helpers/fake-board.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -418,6 +424,73 @@ describe("local event hub", () => {
     assert.equal(readFileSync(cardPath("DEMO-0011"), "utf8"), "# human\n");
     const pointer = hubPointer();
     assert.ok(pointer !== null && alive(pointer.pid));
+  });
+
+  it("replaces a hub from another protocol generation and resumes its registrations", async () => {
+    board.add("DEMO-0012", "uuid-12", "# legacy\n");
+    const paths = hubPaths(board.url, TOKEN, env);
+    writeJsonFile(paths.state, {
+      version: 2,
+      registrations: [
+        {
+          id: "legacy-watch",
+          refs: ["DEMO-0012"],
+          dir: projectDir,
+          ttl_ms: 0,
+          created_at: 0,
+          expires_at: null,
+          cards: [{ ref: "DEMO-0012", path: cardPath("DEMO-0012") }],
+        },
+      ],
+    });
+
+    const legacy = spawn(
+      process.execPath,
+      [join(ROOT, "test", "hub", "helpers", "legacy-hub.mjs"), board.url, TOKEN],
+      { env, cwd: projectDir, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    children.push(legacy);
+    const legacyOutput = collect(legacy);
+    await waitFor(() => legacyOutput.stdout.includes("\n"));
+
+    const before = hubPointer();
+    assert.ok(before !== null && before.pid === legacy.pid);
+    assert.equal(before.protocol, HUB_PROTOCOL + 1);
+
+    // A client of this generation must evict it, not time out against its lock.
+    const follow = await cli(["events", "follow", "--idle", "600"]);
+    assert.equal(follow.exit, 0, follow.stderr);
+    assert.match(follow.stdout, /"type":"open"/);
+
+    assert.ok(await waitFor(() => !alive(legacy.pid)));
+    const after = hubPointer();
+    assert.ok(after !== null && after.pid !== legacy.pid && alive(after.pid));
+    assert.equal(after.protocol, HUB_PROTOCOL);
+
+    // The replacement rehydrates the detached registration the old hub persisted.
+    await waitFor(() => readFileSync(cardPath("DEMO-0012"), "utf8").includes("legacy"));
+  });
+
+  it("stops the local hub with events hub --stop", async () => {
+    board.add("DEMO-0014", "uuid-14", "# stop\n");
+    await cli(["export", "watch", "DEMO-0014", "--dir", projectDir, "--detach", "--json"]);
+    const running = hubPointer();
+    assert.ok(running !== null && alive(running.pid));
+
+    const stop = await cli(["events", "hub", "--stop", "--json"]);
+    assert.equal(stop.exit, 0, stop.stderr);
+    const envelope = JSON.parse(stop.stdout);
+    assert.equal(envelope.ok, true);
+    assert.deepEqual(
+      { stopped: envelope.data.stopped, pid: envelope.data.pid },
+      { stopped: true, pid: running.pid },
+    );
+    assert.ok(await waitFor(() => !alive(running.pid)));
+    assert.equal(hubPointer(), null);
+
+    const again = await cli(["events", "hub", "--stop", "--json"]);
+    assert.equal(again.exit, 0, again.stderr);
+    assert.equal(JSON.parse(again.stdout).data.stopped, false);
   });
 
   it("keys a hub by board URL", () => {

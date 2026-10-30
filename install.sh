@@ -228,9 +228,11 @@ MEERKAT_TASKPANEL_SUPERVISOR below, a plain install only prints the load command
 A plain install does **restart** what it would otherwise leave stale. When --target
 server copies a `src/` that differs from the last install (a content digest, not a
 timestamp), an already-loaded taskd guard and an already-loaded session/subscribe pair
-are re-run so they execute the new code. Nothing is loaded, enabled or disabled by that
-path: a stopped unit stays stopped. MEERKAT_TASKPANEL_RUNTIME_CHANGED=1 asks for the
-restart explicitly (an agent-only install cannot detect the change itself).
+are re-run so they execute the new code. The lazily started local event hub — which has
+no unit — is **stopped** at the same point; the next `events follow` / `export watch`
+starts one from the new tree. Nothing is loaded, enabled or disabled by that path: a
+stopped unit stays stopped. MEERKAT_TASKPANEL_RUNTIME_CHANGED=1 asks for the restart
+explicitly (an agent-only install cannot detect the change itself).
 
 Environment (set for each agent-kind installer):
   MEERKAT_TASKPANEL_TARGET_HOME  overrides $HOME
@@ -255,6 +257,8 @@ Environment (set for each agent-kind installer):
   MEERKAT_TASKPANEL_MIN_NODE     required Node major (default 22)
   MEERKAT_TASKPANEL_SKIP_NODE_CHECK  "1" to skip the Node version check
   MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE  "1" to skip the taskd keepalive guard
+                                 (internal — for tests, not a user option)
+  MEERKAT_TASKPANEL_SKIP_HUB_STOP  "1" to skip the post-install local-hub stop
                                  (internal — for tests, not a user option)
 
 The taskd keepalive guard is written and loaded on every install (one unit per
@@ -315,6 +319,51 @@ install_taskd_guard() {
   else
     node "$ROOT/scripts/install/lib/taskd-guard.mjs" install --prefix "$TARGET_HOME" $force_flag
   fi
+}
+
+# stop_local_hub — stop the lazily started per-board hub when the copied tree changed.
+#
+# The hub is not a unit: a consumer starts it on demand and it outlives that
+# command, so a plain install would leave it running the previous code until it
+# idles out. This is a restart-by-stop — the next `events follow` / `export watch`
+# starts one from the new tree, and detached registrations are persisted and
+# rehydrated. Never fatal: with the board down the hub keeps the previous code
+# until it exits, and the install reports that instead of failing.
+stop_local_hub() {
+  if [ "$SERVER_INSTALLED" != "1" ] || [ "$SERVER_TREE_CHANGED" != "1" ]; then
+    return 0
+  fi
+  if [ -n "$DRY_RUN" ]; then
+    echo "hub: skipped (dry-run)"
+    return 0
+  fi
+  # Automation off means the restart-by-stop is off too, like the taskd guard.
+  if [ "${NO_AUTOMATION:-}" = "1" ]; then
+    echo "hub: skipped (--no-automation)"
+    return 0
+  fi
+  if [ "${MEERKAT_TASKPANEL_SKIP_HUB_STOP:-}" = "1" ]; then
+    echo "hub: skipped (MEERKAT_TASKPANEL_SKIP_HUB_STOP=1 — tests only)"
+    return 0
+  fi
+  if [ ! -f "$SERVER_ROOT/src/cli/index.mjs" ]; then
+    echo "hub: skipped (the installed CLI is missing)"
+    return 0
+  fi
+  # Autostart off: stopping a hub must never start a board. The stop resolves the
+  # board exactly as every consumer does, and signals the pid its pointer names.
+  if hub_out="$(TASKD_NO_AUTOSTART=1 node "$SERVER_ROOT/src/cli/index.mjs" \
+        events hub --stop --as-human 2>&1)"; then
+    if [ -n "$hub_out" ]; then
+      echo "hub: $hub_out"
+    fi
+  else
+    echo "hub: could not stop the local event hub — the next consumer keeps the old code until it exits"
+    if [ -n "$hub_out" ]; then
+      printf '%s\n' "$hub_out" >&2
+    fi
+  fi
+  return 0
 }
 
 while [ "$#" -gt 0 ]; do
@@ -885,6 +934,13 @@ done
 echo
 if ! install_taskd_guard; then
   echo "install.sh: the taskd guard step failed (see the message above)" >&2
+fi
+
+# The hub is not a unit, so no service manager can restart it: stop the one the
+# previous code started. Non-fatal for the same reason as the guard step.
+echo
+if ! stop_local_hub; then
+  echo "install.sh: the hub stop step failed (see the message above)" >&2
 fi
 
 echo

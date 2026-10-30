@@ -7,6 +7,7 @@
  */
 
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,11 +15,13 @@ import { after, afterEach, beforeEach, describe, it } from "node:test";
 
 import { COMMANDS as eventCommands, runHub } from "../../src/cli/commands/events.mjs";
 import { COMMANDS as exportCommands } from "../../src/cli/commands/export.mjs";
+import { hubPaths, writeJsonFile } from "../../src/cli/hub/runtime.mjs";
 import { createBoardClient } from "../../src/foundation/transport/client.mjs";
 import { fakeBoard } from "./helpers/fake-board.mjs";
 
 const TOKEN = "td_hubcommands";
 const dirs = [];
+const children = [];
 
 function tempDir() {
   const dir = mkdtempSync(join(tmpdir(), "meerkat-hub-commands-"));
@@ -27,6 +30,13 @@ function tempDir() {
 }
 
 after(() => {
+  for (const child of children) {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      /* already gone */
+    }
+  }
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -101,6 +111,35 @@ describe("event and watch command branches", () => {
         (err) => err.code === "CLI_USAGE",
       );
     }
+  });
+
+  it("stops a hub through the command, and reports when there is none", async () => {
+    const hub = command(eventCommands, "hub");
+    assert.ok(
+      hub.flags.some((flag) => flag.flag === "stop"),
+      "events hub must declare --stop, or the dispatcher refuses it",
+    );
+    const none = await hub.run(
+      ctxFor({ board: { url: board.url, token: `${TOKEN}-none` }, flags: { stop: true } }),
+    );
+    assert.equal(none.data.stopped, false);
+    assert.equal(none.data.reason, "no-pointer");
+    assert.match(none.human, /no local event hub is running/);
+  });
+
+  it("refuses to stop a process the owner lock does not name", async () => {
+    const token = `${TOKEN}-mismatch`;
+    const paths = hubPaths(board.url, token, env);
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    children.push(child);
+    writeJsonFile(paths.pointer, { pid: child.pid });
+    writeJsonFile(paths.owner, { pid: process.pid });
+
+    const hub = command(eventCommands, "hub");
+    await assert.rejects(
+      () => hub.run(ctxFor({ board: { url: board.url, token }, flags: { stop: true } })),
+      (err) => err.code === "CLI_IO" && /owner lock does not match/.test(err.message),
+    );
   });
 
   it("starts and stops a hub even when its logger throws", async () => {

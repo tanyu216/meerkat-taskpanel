@@ -449,6 +449,18 @@ It exits after five idle minutes with no clients and no registrations. A persist
 registration keeps it alive, which is the point: the registration outlives the CLI that asked for
 it.
 
+A hub from another `HUB_PROTOCOL` generation is **replaced, never reused**. A starting client
+that holds the start lock and finds a live pointer with a different generation stops that hub —
+the pointer and the owner lock must name the same pid before any signal — and then starts the
+current one; its detached registrations are persisted and rehydrated by the replacement (a
+generation bump therefore cannot wedge consumers behind a stale owner lock). A **same-generation**
+hub that stops answering is deliberately not evicted (a slow hub is not a dead one): the explicit
+remedy is `taskctl events hub --stop`, which signals the pid the two files agree on and never
+speaks the socket protocol, so it works across generations. Like every board command, `--stop`
+resolves the board first; with the board down, pass `--url <board>` so resolving it cannot start
+one. `install.sh` uses the same stop after it replaces `src/**`, so an upgrade takes effect
+immediately instead of waiting for the idle exit.
+
 ### 6.3 One board connection
 
 The hub connects to `/api/v1/events` and reconnects on the loop's ladder — 1 s doubling to 30 s —
@@ -468,7 +480,10 @@ the correct answer to "I was away too long" is always a state rescan.
 
 Newline-delimited JSON over a loopback TCP socket on `127.0.0.1`, authenticated by the pointer's
 token. The socket protocol has a generation number (`HUB_PROTOCOL`); a client with another number
-is refused rather than half-understood.
+is refused rather than half-understood. The generation number is the **upgrade boundary**: a
+client of generation N finds a hub of any other generation on the pointer, and evicts it before
+starting its own (§6.2). A same-generation hub that stops answering is not evicted; use
+`taskctl events hub --stop`.
 
 After `hello`, two shapes exist:
 

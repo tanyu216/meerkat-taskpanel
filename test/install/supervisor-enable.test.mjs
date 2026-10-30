@@ -178,6 +178,9 @@ function installEnv(home, manager, extra = {}) {
     // `taskd-guard.test.mjs`, and this file is about the loop's units. Contract's
     // test-only bypass.
     MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+    // The hub stop resolves a board and signals a process; its own cases live in
+    // `hub-stop.test.mjs`. Contract's test-only bypass.
+    MEERKAT_TASKPANEL_SKIP_HUB_STOP: "1",
     // `systemdUserDir` prefers an absolute `XDG_CONFIG_HOME` over `$HOME/.config` — right
     // for systemd, but it means an inherited value decides where the units land. Pin it
     // to the directory this suite asserts; a case that wants to exercise the variable

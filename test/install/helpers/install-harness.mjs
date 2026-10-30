@@ -31,9 +31,14 @@ const INSTALL = join(ROOT, "install.sh");
  */
 export function createInstallHarness({
   prefix = "meerkat-taskpanel-",
-  // The contract's test-only bypass (`docs/scheduling.md`): an install really
-  // does load an OS unit for the taskd guard, and a test must never do that.
-  installDefaults = { MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1" },
+  // The contract's test-only bypasses (`docs/scheduling.md`, `docs/events.md`):
+  // an install really does load an OS unit for the taskd guard, and its hub stop
+  // resolves a board and signals a process — a test must never do either. A suite
+  // that tests one of those steps overrides the matching key with "".
+  installDefaults = {
+    MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+    MEERKAT_TASKPANEL_SKIP_HUB_STOP: "1",
+  },
 } = {}) {
   const dirs = [];
 

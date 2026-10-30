@@ -79,6 +79,7 @@ before(() => {
     env: {
       ...process.env,
       MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+      MEERKAT_TASKPANEL_SKIP_HUB_STOP: "1",
       MEERKAT_TASKPANEL_SKIP_WEB_BUILD: "1",
     },
   });
