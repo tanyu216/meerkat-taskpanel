@@ -39,6 +39,7 @@ export const WORKSPACE_CODES = Object.freeze({
   TARGET_UNREADABLE: "WORKSPACE_TARGET_UNREADABLE",
   MERGE_CONFLICT: "WORKSPACE_MERGE_CONFLICT",
   MERGE_TARGET_MISMATCH: "WORKSPACE_MERGE_TARGET_MISMATCH",
+  REVIEW_TARGET_MISSING: "WORKSPACE_REVIEW_TARGET_MISSING",
 });
 
 /** The registry's file name, beside the queue's own state files. */
@@ -69,6 +70,42 @@ export function runGit(cmd, argv, options = DEFAULT_RUN_OPTIONS) {
 /** `.git` exists (a directory, or the `.git` file of a linked worktree). */
 export function isGitCheckout(dir, { exists = existsSync } = {}) {
   return exists(join(String(dir), ".git"));
+}
+
+/**
+ * A record whose tree is still this project's checkout.
+ *
+ * The path is the loop's own slot, but it can outlive its registration (a
+ * removed worktree leaves a bare directory behind). A directory without `.git`
+ * is not a usable target; a record from another project is not this card's.
+ */
+export function isUsableWorkspaceRecord(record, { exists = existsSync, projectDir = null } = {}) {
+  if (record === null || typeof record !== "object") return false;
+  const path = String(record.path ?? "");
+  if (path === "") return false;
+  const wanted = String(projectDir ?? "");
+  const recorded = String(record.project_dir ?? "");
+  if (wanted !== "" && recorded !== "" && wanted !== recorded) return false;
+  return isGitCheckout(path, { exists });
+}
+
+/**
+ * A record whose tree is gone *and* whose branch is absent.
+ *
+ * Both halves are required: a surviving branch still holds the rejected work a
+ * rework starts from, and a probe that could not run (git missing, not a repo)
+ * is not evidence of absence. Dropping on either would destroy recoverable state.
+ */
+export function isStaleWorkspaceRecord(record, { exists = existsSync, run = runGit } = {}) {
+  if (record === null || typeof record !== "object") return false;
+  const projectDir = String(record.project_dir ?? "");
+  const path = String(record.path ?? "");
+  const branch = String(record.branch ?? "");
+  if (projectDir === "" || path === "" || branch === "") return false;
+  if (!isGitCheckout(projectDir, { exists })) return false;
+  if (isUsableWorkspaceRecord(record, { exists })) return false;
+  const probe = probeRef({ projectDir, ref: branch, run });
+  return probe.ok === true && probe.exists === false;
 }
 
 /** `TP-0001` round 1 → `TP-0001`; round 2 → `TP-0001-r2`. */
@@ -607,6 +644,21 @@ export function sweepWorkspaces({
     const task = byIdentifier.get(record.identifier);
     const terminal = task !== undefined && (task.status === "done" || task.status === "canceled");
     if (!terminal) {
+      // A non-terminal record used to be kept unconditionally, which is how a
+      // deleted branch survived in the registry and became a rework's base. A
+      // record whose tree and branch are both gone can no longer help anyone.
+      if (isBusy(record.path)) {
+        kept.push(record);
+        continue;
+      }
+      if (isStaleWorkspaceRecord(record, { exists, run })) {
+        removed.push(record);
+        log(
+          `workspace: dropping ${record.identifier} r${record.round} record — ` +
+            `${record.path} and ${record.branch} are both gone`,
+        );
+        continue;
+      }
       kept.push(record);
       continue;
     }

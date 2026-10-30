@@ -39,7 +39,7 @@ import {
   isGitCheckout,
 } from "../../src/orchestrator/passes.mjs";
 import { QUEUE_FILES, readCards } from "../../src/orchestrator/queue.mjs";
-import { findWorkspace } from "../../src/orchestrator/workspace.mjs";
+import { findWorkspace, upsertWorkspaceRecord } from "../../src/orchestrator/workspace.mjs";
 import { runContinue, runPollTick, runQuestionTick } from "../../src/orchestrator/runners.mjs";
 import {
   acquireContinueLock,
@@ -1283,8 +1283,36 @@ describe("worktree admission", () => {
     );
     assert.equal(result.ok, false);
     assert.match(result.why, /WORKSPACE_CREATE_FAILED/);
+    assert.equal(result.code, "WORKSPACE_CREATE_FAILED");
+    assert.equal(result.accounted, true);
     assert.equal(admission.dirFor("T-2"), null);
     assert.equal(findWorkspace(f.dir, { identifier: "T-2" }), null, "nothing is registered");
+  });
+
+  it("fails a review admission when the original workspace is gone, never using the shared tree", async () => {
+    const f = fixture();
+    upsertWorkspaceRecord(f.dir, {
+      identifier: "T-0",
+      round: 1,
+      path: join(f.app, ".worktrees", "T-0"),
+      branch: "lane/T-0",
+      project_dir: f.app,
+    });
+    const admission = admissionFor(f, gitRunner([]));
+    const result = await admission.admit(
+      { identifier: "R-1", agent: "alice" },
+      {
+        identifier: "R-1",
+        project: "P",
+        review_of: "T-0",
+        review_round: 1,
+        delivery_round: 1,
+      },
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "WORKSPACE_REVIEW_TARGET_MISSING");
+    assert.equal(result.accounted, true);
+    assert.equal(admission.dirFor("R-1"), null, "no shared-tree fallback");
   });
 
   it("routes a review into the original card's worktree", async () => {
@@ -1295,6 +1323,9 @@ describe("worktree admission", () => {
       { identifier: "T-1", project: "P", delivery_round: 1 },
     );
     const worktree = admission.dirFor("T-1");
+    // The injected git runner does not create the tree; the routing check is
+    // about a usable checkout, so materialise one.
+    mkdirSync(join(worktree, ".git"), { recursive: true });
     const review = await admission.admit(
       { identifier: "T-9", agent: "jobs" },
       { identifier: "T-9", project: "P", review_of: "T-1", review_round: 1 },
