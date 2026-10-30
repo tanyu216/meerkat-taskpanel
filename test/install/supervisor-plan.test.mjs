@@ -607,6 +607,18 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.ok(scheduling.includes("loginctl enable-linger"), "the lingering remedy");
   });
 
+  it("the docs state the one-supervisor rule and the first-kind default", () => {
+    const scheduling = doc("docs/scheduling.md");
+    assert.match(scheduling, /One loop supervisor per machine/);
+    assert.match(scheduling, /first loop kind in normalized `--target` order/);
+    assert.match(scheduling, /systemd.*unit names are machine-wide/s);
+
+    const install = doc("docs/ops/install.md");
+    assert.match(install, /One loop supervisor per machine is the rule/);
+    assert.match(install, /first loop kind in/);
+    assert.match(install, /--supervisor=disable` and `--supervisor=status` cover/);
+  });
+
   it("the opt-in is documented in the install docs, not in the skill", () => {
     for (const relative of ["docs/ops/install.md", "docs/scheduling.md"]) {
       assert.doesNotMatch(doc(relative), /Not yet wired/, `${relative} still says the flag is not implemented`);
