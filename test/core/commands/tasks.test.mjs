@@ -4189,6 +4189,86 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
       assert.equal(commands.listReports({ taskId: review.id }).length, 1);
     });
   });
+
+  it("leaves an APPROVE on a `human` card alone: a verdict is recorded, not applied", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "a person closes this",
+        meta: { acceptance: ["a", "b"] },
+        acceptanceMode: "human",
+        actor: HUMAN,
+      });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({
+        taskId: original.id,
+        report: report({
+          acceptance: [
+            { text: "a", status: "met", note: "evidence[1] — the run" },
+            { text: "b", status: "partial", note: "a person decides" },
+          ],
+          leftovers: "b: a person decides",
+        }),
+        actor: AGENT,
+      });
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "review",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        actor: HUMAN,
+      });
+      commands.claim({ id: review.id, actor: AGENT });
+      // Only `agent` turns an APPROVE into `done`; a `human` verdict is recorded
+      // for the person, so the writer gate judges nothing here.
+      commands.deliver({
+        taskId: review.id,
+        report: report({ conclusion: "VERDICT: APPROVE\n\nA person closes this one." }),
+        actor: AGENT,
+      });
+      assert.equal(commands.listReports({ taskId: review.id }).length, 1);
+    });
+  });
+
+  it("does not restate a refusal that is not a coverage failure", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "delivered without a report",
+        meta: { acceptance: ["a"] },
+        acceptanceMode: "agent",
+        actor: HUMAN,
+      });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({
+        taskId: original.id,
+        noReport: true,
+        reason: "no report available for this round",
+        actor: AGENT,
+      });
+      assert.equal(commands.getTask({ id: original.id }).status, "in_review");
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "review",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        actor: HUMAN,
+      });
+      commands.claim({ id: review.id, actor: AGENT });
+      assert.throws(
+        () =>
+          commands.deliver({
+            taskId: review.id,
+            report: report({ conclusion: "VERDICT: APPROVE\n\nlooks fine" }),
+            actor: AGENT,
+          }),
+        (err) => err.code === "ACCEPTANCE_UNVERIFIED",
+        "a missing report keeps its own code; only a coverage failure is re-aimed",
+      );
+    });
+  });
 });
 
 describe("commands/tasks — a claim must point at its evidence", () => {

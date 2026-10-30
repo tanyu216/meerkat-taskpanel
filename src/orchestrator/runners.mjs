@@ -880,6 +880,8 @@ const WORKFLOW_NOTIFY_TYPES = new Set([
   // rather than through this filter), so it is listed for consistency: a later
   // refactor that routes every alert through the filter must not drop it.
   "workflow_action_failed_escalated",
+  // Same reason: the refused-acceptance route notifies directly.
+  "acceptance_blocked",
 ]);
 
 function describeWorkflowAlert(alert) {

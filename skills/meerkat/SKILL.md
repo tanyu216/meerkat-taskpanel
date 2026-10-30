@@ -357,7 +357,8 @@ requirement in the description, comments and plan needs an acceptance item *and*
 implementation, or the verdict is `REJECT` — then verify at the report's `commit` anchor
 rather than the live tree, and answer every baseline item with a status, how you checked it,
 and an `evidence[n]` anchor. A `met` the board cannot trace is refused, and so is an
-`APPROVE` whose report records no command the reviewer ran. Then deliver a report **on this
+`APPROVE` whose report records no command the reviewer ran — and, on an `agent` card, one whose
+original delivery report the board could never close (write `REJECT`, naming those items). Then deliver a report **on this
 card** whose first line is exactly `VERDICT: APPROVE` or `VERDICT: REJECT`; put the findings
 after that line and in `leftovers`, as a numbered must-fix list on a `REJECT` — the loop
 appends those items to the original's acceptance. Move neither card — the loop applies the
