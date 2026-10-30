@@ -437,6 +437,7 @@ Read-only; it moves no card.
 | Command | Purpose |
 |---|---|
 | `events hub` | Run the local event hub: one board SSE connection for every local consumer. |
+| `events hub --stop` | Stop the running local event hub for this board and exit. |
 | `events follow [--after <rev>] [--idle <ms>]` | Follow the hub as **newline-delimited JSON**; the same line types as `events tail`. |
 | `events tail [--after <rev>] [--idle <ms>]` | Direct board SSE (diagnostic/fallback), the same NDJSON shape. |
 
@@ -447,6 +448,13 @@ per board**: it binds `127.0.0.1` and publishes a 0600 pointer file in the runti
 with the loop's 1 s→30 s ladder, keeps a bounded ring of recent events for a reconnecting
 follower, and refreshes every watch registration. Nothing else on the host should open its
 own board stream.
+
+`events hub --stop` retires a hub that is running an older code generation, or one that is
+wedged. It does not speak the socket protocol: it reads the pointer, requires the owner lock
+to name the same pid, sends `SIGTERM`, and escalates to `SIGKILL` after five seconds. It
+succeeds when no hub is running; a persisted detached registration is kept and the next
+consumer rehydrates it. Like every board command it resolves the board first; with the board
+down, pass `--url <board>` so resolving it cannot start one.
 
 `events follow` is the consumer the loop uses. `--after` replays from the hub's ring when it
 still retains the cursor (otherwise it starts live; the next board rescan is the fallback),
@@ -794,7 +802,7 @@ Bind scripts to `error.code` and `error.hint.command`, never to the prose.
 
 `events tail`, `events follow` and `export watch` are the exceptions: they write newline-delimited records
 (see [`events`](#events) and [`export watch`](#export-watch)), not this envelope. Every other
-command, including `sla list`, answers one document.
+command, including `sla list` and `events hub --stop`, answers one document.
 
 Everything is local (loopback only); data lives in `<dataDir>/board.sqlite` (default
 `<repo>/.data`), overridable with `TASKD_DATA_DIR` / `TASKD_DB`.
@@ -847,6 +855,7 @@ this envelope.
 | `export watch --watch-status` | `running`, `registration_id`, `cards`, `expires_at`, `last_refresh`, `dir`, `out` (or `running:false`, `reason:"no-hub"`, `ref`, `dir`, `out`) |
 | `token rotate` | `token_file`, `rotated`, `token` (`null` without `--show`) |
 | `sla list` / `sla get` | `generated_at`, `board_truncated`, `trails_truncated`, `config`, `alerts[]`, `warnings[]` |
+| `events hub --stop` | `stopped`, `pid`, `reason` (`no-pointer` · `not-running` · `owner-mismatch` is an error · `stopped`) |
 | `events tail` / `events follow` / `export watch` (foreground) | NDJSON lines, not this envelope |
 | every `loop` verb | its own streamed output, not this envelope |
 

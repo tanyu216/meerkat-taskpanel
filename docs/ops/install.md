@@ -401,6 +401,12 @@ so an install that changed nothing bounces nothing:
 - the loop supervisor — `session` and `subscribe` are restarted when loaded; the two timers
   are left alone (one-shot, they read the new code on their next fire), and a stopped unit
   stays stopped.
+- the local event hub — it has **no unit** and is started lazily, so it is stopped rather than
+  restarted: the installed CLI runs `events hub --stop` (with board autostart disabled), and the
+  next `events follow` / `export watch` starts one from the new tree. Detached registrations are
+  persisted and rehydrated. The step is non-fatal, skipped by `--no-automation` and `--dry-run`,
+  and by `MEERKAT_TASKPANEL_SKIP_HUB_STOP=1` (**for tests only**). A same-generation hub that is
+  wedged is not replaced by an install; `taskctl events hub --stop` retires it.
 - `cron` has no long-lived process, so there is nothing to restart.
 - A restart can be requested explicitly with `MEERKAT_TASKPANEL_RUNTIME_CHANGED=1`, which an
   agent-only install cannot otherwise know.

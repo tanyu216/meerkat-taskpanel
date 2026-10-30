@@ -345,7 +345,16 @@
         {
           "name": "hub",
           "positionals": [],
-          "flags": []
+          "flags": [
+            {
+              "flag": "stop",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
         },
         {
           "name": "tail",

@@ -12,6 +12,8 @@ export {
   HUB_IDLE_MS,
   HUB_PROTOCOL,
   HUB_START_TIMEOUT_MS,
+  HUB_STOP_KILL_TIMEOUT_MS,
+  HUB_STOP_TIMEOUT_MS,
   ensureHub,
   hubCall,
   hubDir,
@@ -20,6 +22,7 @@ export {
   hubPaths,
   logTail,
   newHubToken,
+  stopHub,
 } from "../../foundation/hub-client.mjs";
 
 export {

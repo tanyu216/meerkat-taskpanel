@@ -25,6 +25,7 @@ import {
   acquireLock,
   ensurePrivateDir,
   lockIsStale,
+  pidAlive,
   readJsonFile,
   releaseLock,
   removeFile,
@@ -356,6 +357,118 @@ export function logTail(path, max = 1_200) {
   }
 }
 
+/** How long a stop waits for a hub to finish before escalating. */
+export const HUB_STOP_TIMEOUT_MS = 5_000;
+
+/** How long the escalation waits for a SIGKILLed hub to disappear. */
+export const HUB_STOP_KILL_TIMEOUT_MS = 2_000;
+
+/** The cadence a stop re-reads the pid and the files that prove it is a hub. */
+const HUB_STOP_POLL_MS = 50;
+
+/**
+ * A hub has finished stopping when its pid is gone, or when the pointer and the
+ * owner lock it held are both gone. A graceful `stop()` removes the pointer and
+ * then the owner lock, so the file half also clears the window in which a
+ * replacement would still be refused by a lock the old process holds.
+ *
+ * @param {number} pid
+ * @param {{pointer: string, owner: string}} paths
+ * @returns {boolean}
+ */
+function hubGone(pid, paths) {
+  if (!pidAlive(pid)) return true;
+  const pointer = readJsonFile(paths.pointer);
+  const owner = readJsonFile(paths.owner);
+  return pointer === null && (owner === null || owner.pid !== pid);
+}
+
+/**
+ * Stop the hub a pointer names: SIGTERM, a bounded wait, then SIGKILL.
+ *
+ * The hub's pointer says which process is the hub; the owner lock it holds says
+ * the same pid. Both must agree before a signal is sent — that agreement is the
+ * guard against signalling a pid the OS reused after a crash. The stop never
+ * speaks the socket protocol, so it also works on a hub from another
+ * `HUB_PROTOCOL` generation, which would refuse a hello.
+ *
+ * @param {{pid?: number}|null} pointer
+ * @param {{pointer: string, owner: string, log: string}} paths
+ * @param {{
+ *   timeoutMs?: number,
+ *   killTimeoutMs?: number,
+ *   platform?: NodeJS.Platform,
+ *   log?: (line: string) => void,
+ * }} [options]
+ * @returns {Promise<{stopped: boolean, pid: number|null, reason: string, signal: string|null}>}
+ */
+export async function stopHub(pointer, paths, options = {}) {
+  const {
+    timeoutMs = HUB_STOP_TIMEOUT_MS,
+    killTimeoutMs = HUB_STOP_KILL_TIMEOUT_MS,
+    platform = process.platform,
+    log = () => {},
+  } = options;
+  const pid = Number.isInteger(pointer?.pid) && pointer.pid > 1 ? pointer.pid : null;
+  if (pid === null) return { stopped: false, pid: null, reason: "no-pointer", signal: null };
+  if (!pidAlive(pid)) return { stopped: false, pid, reason: "not-running", signal: null };
+  const owner = readJsonFile(paths.owner);
+  // A live hub always holds its owner lock (it claims the lock before it
+  // publishes the pointer). A pointer without one is a fossil; one naming a
+  // different pid is a conflict. Neither may be signalled.
+  if (owner === null) return { stopped: false, pid, reason: "owner-missing", signal: null };
+  if (owner.pid !== pid) return { stopped: false, pid, reason: "owner-mismatch", signal: null };
+
+  /** @param {NodeJS.Signals} name */
+  const signal = (name) => {
+    try {
+      process.kill(pid, name);
+      return true;
+    } catch (err) {
+      if (err?.code === "ESRCH") return false;
+      throw new DomainError("CLI_IO", {
+        message: `events hub: cannot stop the hub (pid ${pid}): ${err?.message ?? err}`,
+        details: { pid, signal: name, owner: paths.owner },
+        hint: { fix: "stop it as the user that started the hub, or fix the owner-only file it holds" },
+      });
+    }
+  };
+
+  /** @param {number} budgetMs */
+  const waitGone = async (budgetMs) => {
+    const deadline = Date.now() + budgetMs;
+    while (Date.now() < deadline) {
+      if (hubGone(pid, paths)) return true;
+      await sleep(HUB_STOP_POLL_MS);
+    }
+    return hubGone(pid, paths);
+  };
+
+  if (!signal("SIGTERM") || (await waitGone(timeoutMs))) {
+    return { stopped: true, pid, reason: "stopped", signal: "SIGTERM" };
+  }
+  if (platform !== "win32") {
+    log(`events hub: pid ${pid} ignored SIGTERM; sending SIGKILL`);
+    if (!signal("SIGKILL") || (await waitGone(killTimeoutMs))) {
+      return { stopped: true, pid, reason: "stopped", signal: "SIGKILL" };
+    }
+  }
+  throw new DomainError("CLI_IO", {
+    message: `events hub: the hub (pid ${pid}) did not stop`,
+    details: {
+      pid,
+      signal: platform === "win32" ? "SIGTERM" : "SIGKILL",
+      owner: paths.owner,
+      log_tail: logTail(paths.log),
+    },
+    hint: {
+      fix: platform === "win32"
+        ? `stop pid ${pid} with taskkill, or from Task Manager`
+        : `stop pid ${pid} by hand (kill -9 ${pid}) and remove ${paths.owner}`,
+    },
+  });
+}
+
 /**
  * Sleep while the starter waits for a hub. This timer must stay **ref'd**: in
  * the short-lived CLI process it is the only handle keeping the event loop
@@ -412,7 +525,9 @@ export async function ensureHub(input) {
   ensurePrivateDir(paths.dir);
 
   const existing = readJsonFile(paths.pointer);
-  if (existing !== null && await hubHealthy(existing)) {
+  // A hub from another protocol generation is not a candidate: its hello is
+  // refused, and ensureHub replaces it under the starter lock below.
+  if (existing !== null && existing.protocol === HUB_PROTOCOL && await hubHealthy(existing)) {
     return { pointer: existing, paths, spawned: false };
   }
 
@@ -427,7 +542,7 @@ export async function ensureHub(input) {
       const deadline = Date.now() + waitTimeoutMs;
       while (Date.now() < deadline) {
         const pointer = readJsonFile(paths.pointer);
-        if (pointer !== null && await hubHealthy(pointer)) {
+        if (pointer !== null && pointer.protocol === HUB_PROTOCOL && await hubHealthy(pointer)) {
           return { pointer, paths, spawned: false };
         }
         await sleep(100);
@@ -437,6 +552,48 @@ export async function ensureHub(input) {
         details: { lock: paths.lock },
         hint: { fix: `inspect ${paths.log}, then remove ${paths.lock} if no hub process exists` },
       });
+    }
+  }
+
+  // The starter lock is ours. The pointer may have been published while we
+  // waited, or a live hub from another HUB_PROTOCOL generation may still own
+  // the board. Only a generation mismatch is ours to replace: a same-generation
+  // hub that does not answer is left alone (a slow hub is not a dead one); its
+  // explicit remedy is `taskctl events hub --stop`.
+  const current = readJsonFile(paths.pointer);
+  if (current !== null && current.protocol === HUB_PROTOCOL && await hubHealthy(current)) {
+    releaseLock(paths.lock);
+    return { pointer: current, paths, spawned: false };
+  }
+  if (current !== null && current.protocol !== HUB_PROTOCOL && pidAlive(current.pid)) {
+    let outcome;
+    try {
+      outcome = await stopHub(current, paths, { log });
+    } catch (err) {
+      releaseLock(paths.lock);
+      throw err;
+    }
+    if (outcome.stopped !== true && outcome.reason === "owner-mismatch") {
+      // Another live process holds the owner lock. Do not signal either pid;
+      // spawning would only be refused by the same lock.
+      releaseLock(paths.lock);
+      throw new DomainError("CLI_IO", {
+        message: "events hub: a hub from an incompatible protocol generation owns this board and could not be stopped",
+        details: {
+          pid: current.pid,
+          protocol: current.protocol,
+          reason: outcome.reason,
+          owner: paths.owner,
+        },
+        hint: { fix: `inspect ${paths.owner}; stop pid ${current.pid}, or remove the lock if that process is gone` },
+      });
+    }
+    if (outcome.stopped === true) {
+      log(`events hub: replaced an incompatible hub (pid ${current.pid}, protocol ${current.protocol} -> ${HUB_PROTOCOL})`);
+    } else {
+      // A fossil pointer (no owner lock, or a dead pid) is not a live hub; the
+      // spawn below claims the free owner lock and overwrites the pointer.
+      log(`events hub: ignoring a ${outcome.reason} pointer from protocol ${current.protocol} (pid ${current.pid})`);
     }
   }
 
