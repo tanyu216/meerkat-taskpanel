@@ -129,11 +129,16 @@ cards that keep going round the same loop, from the snapshot and the rows alread
 **rework rounds** (`delivery_round >= 4`, i.e. the work came back three times),
 **review reopens** (a review card at the workflow's re-dispatch bound — `meta.review_retry >= 2`
 or its own round `>= 3`), **dispatch retries** (five handoffs for one card, or two handoffs that
-each exhausted their attempt budget, inside the queue's 24 h retention), and **subagent
+each exhausted their attempt budget, inside the queue's 24 h retention), **subagent
 failures** (three `failed`/`interrupted`/`stale` ledger rows for one card inside the ledger's
-7-day retention). A card the board snapshot knows is `done`/`canceled` is dropped from the two
-local halves; when the board cannot be read those halves still report, and a truncated board
+7-day retention), and **deferred admission** (three consecutive card-scoped admission
+failures in `deferrals.json` — the card is never enqueued, so no queue row can show it). A
+card the board snapshot knows is `done`/`canceled` is dropped from the three local halves;
+when the board cannot be read those halves still report, and a truncated board
 read makes the two board-derived lists a lower bound (the board line says `TRUNCATED`).
+A `workspaces.json` record for a non-terminal card whose worktree is not a checkout **and**
+whose branch no longer resolves is reported separately as `stale_workspaces`; it can no longer
+be landed and must not seed a rework.
 `looping.total` counts **distinct cards** — one card may appear under more than one kind.
 These are current-state readings only: a worker pulsing a fresh heartbeat without progress,
 claim/release or `blocked`/`awaiting` churn inside one round, and activity-level oscillation
@@ -283,6 +288,11 @@ poll entry
                 project session (cwd = target_dir) → one subagent per card  ← the tokens
 ```
 
+A **card-scoped** admission or brief-watch failure is recorded in `deferrals.json`; a
+successful admission clears the streak. Budget, no-pool and per-project-cap defers are
+backpressure, not a stuck card, and are not counted. Three consecutive failures raise one
+`Orchestrator` card comment (see "Deferred admission" below).
+
 The continue turn itself is the one LLM turn the scheduler pays for, once per
 cadence, whether or not the board has work: it is the loop's judgment turn.
 Inside it, the poll entry is still the deterministic cost gate above. The project
@@ -362,10 +372,21 @@ session service (`taskctl loop session`)
 
 The loop creates a git worktree for every card in a git project
 (`.worktrees/<ref>[-r<round>]` on branch `lane/<ref>[-r<round>]`) and points the queue's
-`target_dir` at it. The base is the project's declared `base_ref`, else the project
-directory's current branch; a rework starts from the previous round's lane branch. A
-creation failure defers the card — there is no fallback to the shared checkout.
-`--workspace=shared` restores the old behaviour explicitly.
+`target_dir` at it. Every base ref is **probed** (`rev-parse --verify --quiet`): the
+project's declared `base_ref` first (a missing one is `WORKSPACE_BASE_UNRESOLVED`, not a
+silent fallback), then the most recent previous round's lane branch that still resolves,
+then the current branch. A previous lane branch whose work was merged and deleted therefore
+falls back instead of failing every pass on `invalid reference`. A rework that repairs a
+missing current-round record re-attaches its lane branch (`worktree add` without `-b`, after
+`git worktree prune`); a non-checkout directory left in the slot is moved aside to
+`<path>.orphan-<epoch>`, preserving its contents. A review whose original workspace is gone is
+deferred (`WORKSPACE_REVIEW_TARGET_MISSING`) — it never runs in the shared checkout, where a
+write would block that project's landing. A creation failure defers the card; there is no
+fallback to the shared checkout. `--workspace=shared` restores the old behaviour explicitly.
+
+The patrol drops a **non-terminal** registry record only when its tree is not a checkout and
+its branch is gone *and* the probe could actually run; a transient git failure keeps the
+record. A surviving branch holds unmerged work and is never discarded by the sweep alone.
 
 The per-project cap counts a project's worktrees as one project (`--project-concurrency`),
 not one directory. Acceptance **lands** the work: the lane branch is merged into the
@@ -906,6 +927,34 @@ is worse than no session.
 The same map answers the interactive question: `taskctl project dir <project>` prints
 a project's registered directory, reports that the entry names none, or exits non-zero
 asking which directory it should be, rather than continuing.
+
+### Deferred admission
+
+A card that cannot be admitted stays `todo` and is offered again next turn. That is correct
+for backpressure and wrong for a persistent failure, which used to retry silently for hours.
+The loop now keeps `<state>/deferrals.json`:
+
+```json
+{
+  "version": 1,
+  "cards": {
+    "TP-0009": {
+      "identifier": "TP-0009", "round": 3, "count": 4,
+      "first_at": "…", "last_at": "…",
+      "code": "WORKSPACE_CREATE_FAILED", "reason": "…",
+      "alerted_code": "WORKSPACE_CREATE_FAILED", "alerted_at": "…"
+    }
+  }
+}
+```
+
+Both admission sites record into it — the poll pass and the patrol's LLM turn. A successful
+admission (a claim in the patrol lane; admission itself in poll) removes the entry. At
+`count >= 3` the loop writes **one** `Orchestrator` note on the card for that failure code,
+logs at error, and (when `--notify` is configured) pushes the same alert; a new failure code
+earns its own note, and a failed comment is retried on the next deferral. The patrol prunes
+terminal cards and entries older than seven days. There is no auto-block: the card's status
+stays the human's call, and `loop doctor` reports the same card under `looping` until it moves.
 
 ## Where the supervisor runs
 
@@ -1456,6 +1505,8 @@ directory**:
 ├── continue.state.json           runtime (the single-flight continue lock)
 ├── subscribe.state.json          runtime (the event subscriber's last connection)
 ├── cards.queue.json              runtime (claim → handoff dispatch queue)
+├── workspaces.json               runtime (per-card worktree/branch records)
+├── deferrals.json                runtime (consecutive admission failures per card)
 └── subagents.state.json          runtime (ledger: subagent id → project, role, card, status)
 ```
 

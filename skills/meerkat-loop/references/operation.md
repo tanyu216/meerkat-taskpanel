@@ -39,8 +39,10 @@ records its pid, and `--stop` stops only that process.
 `loop doctor` is the daily read-only inspection: one report over the supervisor verdict, the
 scan set, the patrol marker, the log tail, the queue and ledger, the stuck cards, and the
 cards that keep looping (`looping`: rework rounds, review reopens, dispatch retries, failed
-subagents). It is not a pass and writes nothing; when something needs a human, the report says
-so in `attention` and the exit code still reads 0.
+subagents, and deferred admission). A stale `workspaces.json` record — a non-terminal card
+whose worktree is gone and whose branch no longer resolves — is reported as
+`stale_workspaces`. It is not a pass and writes nothing; when something needs a human, the
+report says so in `attention` and the exit code still reads 0.
 
 ### Main flags
 
@@ -183,13 +185,21 @@ project's own working directory.
 
 A card in a git project runs in its **own worktree**. Admission creates
 `.worktrees/<ref>[-r<round>]` on branch `lane/<ref>[-r<round>]` and points the queue's
-`target_dir` at it. The base is the project's declared `base_ref` (in `projects.json`), else
-the project directory's current branch; a rework continues from the previous round's lane
-branch. There is no hard-coded development branch.
+`target_dir` at it. The base is the project's declared `base_ref` (in `projects.json`),
+else the most recent previous round's lane branch that still resolves, else the project
+directory's current branch. A deleted previous branch falls back instead of failing every
+pass; a repair re-attaches its own surviving branch and moves an orphan non-checkout
+directory aside. There is no hard-coded development branch.
 
 Creation is part of admission: a failure **defers** the card, and the loop never falls back
-to the project's shared checkout. `--workspace=shared` restores the old behaviour explicitly
+to the project's shared checkout. A review whose original workspace is gone is deferred too,
+rather than run in the shared tree. `--workspace=shared` restores the old behaviour explicitly
 and logs one warning per directory when parallel cards share a git checkout.
+
+**Deferred admission is durable.** A card-scoped admission or brief-watch failure increments
+`deferrals.json`; a successful admission clears it. Three consecutive failures write one
+`Orchestrator` note on the card (once per failure code) and log at error, and the doctor lists
+the card under `looping`. Budget, no-pool and per-project-cap defers are not counted.
 
 Acceptance **lands** the work: the lane branch is merged into the project's current branch
 before the card reaches `done`. A dirty project checkout or a merge conflict keeps the card
@@ -203,7 +213,9 @@ Landing covers **the lanes the loop created**: a worktree it registered at admis
 in `workspaces.json`. A tree a session made for itself is never in that registry, so accepting
 its card merges nothing — the loop logs `has no lane record` and `done` means *accepted*, not
 *merged*. `taskctl loop doctor` lists those cards under `unlanded`; a session that works in its
-own worktree merges before it delivers.
+own worktree merges before it delivers. The patrol drops a non-terminal record only when its
+tree is not a checkout and its branch is gone **and** git could be probed; a surviving branch
+holds unmerged work and is kept.
 
 Roles, the decision policy and the process directory resolve from the project checkout;
 only the worker's working directory is the worktree.
